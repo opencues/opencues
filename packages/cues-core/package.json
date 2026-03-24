@@ -1,0 +1,13 @@
+{
+  "name": "cues-core",
+  "version": "1.0.0",
+  "description": "Core cues system - pure TypeScript, no I/O dependencies",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "keywords": ["cues", "alternatives", "tips"],
+  "license": "MIT"
+}
