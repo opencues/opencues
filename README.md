@@ -42,7 +42,7 @@ Restart Claude Code. Done.
 │  ├── node-http-adapter.ts     HTTPS with keep-alive         │
 │  └── sources/                 GrammarSource, MathSource...  │
 │                                                             │
-│  packages/cues-patches/       tweakcc integration           │
+│  packages/cues-patches/       Claude Code integration       │
 │  ├── setup.sh                 One-command installer         │
 │  ├── wordHighlight.ts         Navigation + rendering        │
 │  ├── dynamicHighlight.ts      LLM integration + cycling     │
@@ -90,14 +90,16 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies.
 - **FactualSource** — answers factual questions (`Capital of France is _` → `Paris`)
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
-### cues-patches
+### cues-patches (Claude Code integration)
 
-tweakcc patch files that integrate cues-core into Claude Code.
+Integrates cues-core into Claude Code via [tweakcc](https://github.com/anthropics/tweakcc).
 
 - **setup.sh** — one-command installer
 - **wordHighlight.ts** — word navigation, number/gender handling, ANSI rendering
 - **dynamicHighlight.ts** — LLM integration, alternative cycling, span groups
 - **cursorStateExport.ts** — exports cursor position to JSON
+
+Other integrations (VS Code, web, etc.) can be added as separate packages.
 
 ## Configuration
 
