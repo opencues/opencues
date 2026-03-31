@@ -47,18 +47,14 @@ cues-system/
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   ├── claude-code-tips.json  # Per-word tips file
 │   │   └── actions/               # Action word scripts (volume.sh)
-│   ├── docs/                      # Claude Code feature docs
-│   │   ├── systems-diagram.md     # Architecture diagram
-│   │   ├── action-word-overrides.md # Action words guide
-│   │   ├── status-line-integration.md # Status line setup
-│   │   └── claude-code-prompting.md   # Claude Code CLI tips
-│   ├── references/                # Feature quick-reference cards
-│   │   ├── word-highlight.md
-│   │   ├── dynamic-highlight.md
-│   │   ├── status-line.md
-│   │   ├── action-word-overrides.md
-│   │   ├── config.md
-│   │   └── variable-map.md
+│   ├── docs/                      # Claude Code feature documentation
+│   │   ├── systems-diagram.md     # Architecture + data flow diagrams
+│   │   ├── word-highlight.md      # Navigation modes, keys, behaviour
+│   │   ├── dynamic-highlight.md   # LLM triggers, tips, blanks, clearing
+│   │   ├── status-line.md         # Status line setup, format, disabling
+│   │   ├── action-word-overrides.md # External action scripts + WSL guide
+│   │   ├── config.md              # All config options
+│   │   └── claude-code-prompting.md # Claude Code CLI tips
 │   └── tests/                     # Integration tests
 │
 ├── docs/                          # General documentation
