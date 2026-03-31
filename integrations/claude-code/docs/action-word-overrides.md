@@ -187,85 +187,6 @@ Action words are navigable in all highlight modes (numbers, gender, both, words)
 
 Action words require `enableWordHighlight: true` in config. The `actionWordOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and action words silently do nothing.
 
-## Implementation Details
-
-### Full Pipeline
-
-```
-~/.tweakcc/config.json
-  → settings.misc.actionWordOverrides              (user config)
-  → index.ts: highlightConfig.actionWordOverrides   (passed to patch at build time)
-  → wordHighlight.ts: writeWordHighlightClearOnTyping
-    → JSON.stringify(cfg.actionWordOverrides || {})  (serialized at build time)
-    → injected into cli.js as:
-      globalThis._actionWordOverrides = {"volume":{...}}  (set once at runtime)
-  → dynamicHighlight.ts: reads globalThis._actionWordOverrides||{}
-    → 4 Up/Down handlers check action words FIRST
-  → wordHighlight.ts: reads globalThis._actionWordOverrides||{}
-    → navigation filter includes action words
-    → rendering dims action words
-```
-
-### Files Modified
-
-| File | Role |
-|------|------|
-| `wordHighlight.ts` | **Owns** the globalThis assignment (serialized from config). Navigation filter (include action words as navigable). Rendering (dim action words). |
-| `dynamicHighlight.ts` | **Reads** globalThis at runtime. Action word checks in all 4 Up/Down handlers (key + raw sequence). Spawns scripts. |
-| `index.ts` | Passes `actionWordOverrides` from config to `highlightConfig` |
-
-### Key Insertion Points
-
-1. **Config → globalThis** (`wordHighlight.ts: writeWordHighlightClearOnTyping`):
-   ```javascript
-   // Set once at runtime, serialized from config at build time
-   if(!globalThis._actionWordOverrides)globalThis._actionWordOverrides=${actionOvrJson};
-   ```
-
-2. **Up/Down Handlers** (`dynamicHighlight.ts`, 4 locations — key + raw sequence, up + down):
-   ```javascript
-   var _actOvrChk=globalThis._actionWordOverrides||{};
-   var _actWLower=_word.toLowerCase();
-   if(_actOvrChk[_actWLower]){
-     var _actDef=_actOvrChk[_actWLower];
-     var _actScript=_actDef.scriptPath||(_home+"/.claude/actions/"+_actDef.action+".sh");
-     var _actArgs=["bash",_actScript].concat(_actDef.upArgs||["up"]);
-     require("child_process").spawn(_actArgs[0],_actArgs.slice(1),{detached:true,stdio:"ignore"}).unref();
-     return InputZone.fromText(R.text+toggleChar,G,R.offset);
-   }
-   ```
-
-3. **Navigation Filter** (`wordHighlight.ts`, 2 locations — key + raw sequence):
-   ```javascript
-   _allW.forEach(function(w,i){
-     if(_numP.test(w)||(globalThis._actionWordOverrides||{})[w.toLowerCase()])_targetIdx.push(i);
-   });
-   ```
-
-4. **Rendering** (`dynamicHighlight.ts: writeDynamicRendering`, 2 modes):
-   ```javascript
-   // Gender/Both mode:
-   else if(_numPat.test(_w)||_rootPat.test(_w)||(globalThis._actionWordOverrides||{})[_wLower]){
-     _dimRanges.push({start:_wStart,end:_wStart+_w.length});
-   }
-   // Numbers mode:
-   else if(_numPat.test(_w)||(globalThis._actionWordOverrides||{})[_w.toLowerCase()]){
-     _numRanges.push({start:_wStart,end:_wStart+_w.length});
-   }
-   ```
-
-### Spawn Pattern
-
-Scripts are spawned detached with ignored stdio:
-```javascript
-spawn(_args[0], _args.slice(1), {detached: true, stdio: "ignore"}).unref();
-```
-
-This ensures:
-- Script runs in background
-- Claude Code stays responsive
-- No stdout/stderr blocking
-
 ## Adding New Action Words
 
 1. **Add to config** (`~/.tweakcc/config.json`):
@@ -292,7 +213,7 @@ This ensures:
 
 4. **Re-apply patches**:
    ```bash
-   cd /home/wilfred/tweakcc-source
+   cd ~/tweakcc
    npm run build
    TWEAKCC_CC_INSTALLATION_PATH="..." node dist/index.mjs --apply
    ```
@@ -336,11 +257,6 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
 2. Re-apply patches after config change
 3. Check `globalThis._actionWordOverrides` in browser console
 
-## Future Extensions
+## Related
 
-Potential action words to implement:
-- `brightness` - Screen brightness control
-- `speed` - Playback speed (media)
-- `zoom` - Zoom level
-- `mute` - Toggle mute
-- `play` / `pause` - Media control
+- `references/action-word-overrides.md` — quick reference card

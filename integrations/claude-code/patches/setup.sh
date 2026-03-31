@@ -242,6 +242,7 @@ echo "Installing supporting files..."
 cp "$SCRIPT_DIR/claude-code-tips.json" ~/.claude/ 2>/dev/null && echo "  Copied tips file" || true
 mkdir -p ~/.claude/actions
 cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null && echo "  Copied action scripts" || true
+cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh && echo "  Copied status line script" || true
 
 # 8. Build tweakcc
 echo ""
@@ -277,6 +278,10 @@ echo "Next steps:"
 echo "  1. Set GROQ_API_KEY in your shell profile:"
 echo "     export GROQ_API_KEY=\"your-key\""
 echo ""
-echo "  2. Restart Claude Code"
+echo "  2. (Optional) Enable status line with word tips:"
+echo "     Run /statusline in Claude Code, then set command to:"
+echo "     $HOME/.claude/highlight-statusline.sh"
+echo ""
+echo "  3. Restart Claude Code"
 echo ""
 echo "Test: Type a number, press Ctrl+Alt+Left, then Ctrl+Alt+Up"

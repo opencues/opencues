@@ -5,7 +5,7 @@
  * Tests the new source modules and classifier.
  */
 
-const cues = require('/home/wilfred/.claude/node_modules/cues-core');
+const cues = require(process.env.HOME + '/.claude/node_modules/cues-core');
 
 let passed = 0;
 let failed = 0;

@@ -30,41 +30,47 @@ cues-system/
 │       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
 │       │   ├── classifier.ts      # looksLikeMath, looksLikeFactual
 │       │   └── sources/           # GrammarSource, MathSource, FactualSource
+│       ├── prompts/               # LLM system prompts (.txt) + references
+│       │   ├── grammar.txt        # Word alternatives prompt
+│       │   ├── blank_*.txt        # Fill-in-the-blank prompts (math, factual, grammar)
+│       │   ├── classifier.txt     # Mode classification prompt
+│       │   ├── linked.txt         # Linked words prompt
+│       │   └── references/        # Prompt documentation
 │       └── dist/                  # Built output
 │
-├── integrations/claude-code/                   # Claude Code integration (all in one place)
-│   ├── patches/                   # tweakcc patches
+├── integrations/claude-code/      # Claude Code integration
+│   ├── patches/                   # tweakcc patches + installer
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
 │   │   ├── cursorStateExport.ts   # Cursor position → JSON
 │   │   ├── wordHighlight.ts       # Navigation, numbers, gender, rendering
 │   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans
-│   │   ├── types-additions.ts     # TypeScript types to add
-│   │   ├── defaultSettings-additions.ts  # Default values to add
-│   │   ├── index-additions.ts     # Integration code to add
-│   │   ├── actions/               # Action word scripts (volume.sh)
-│   │   └── claude-code-tips.json  # Per-word tips file
-│   ├── docs/                      # Implementation documentation
-│   │   ├── tweakcc-cues-installation.md  # Install guide
-│   │   ├── implementation-notes.md       # Patching details
-│   │   ├── systems-diagram.md            # Architecture diagram
-│   │   ├── word-highlight-system.md      # Word highlight deep-dive
-│   │   ├── dynamic-highlight-system.md   # Dynamic highlight deep-dive
-│   │   └── ...
-│   ├── references/                # Feature references
-│   │   ├── word-highlight.md      # Full word highlight reference
-│   │   ├── dynamic-highlight.md   # Full dynamic highlight reference
-│   │   ├── config.md              # Config file reference
-│   │   └── ...
-│   └── tests/                     # Claude Code specific tests
+│   │   ├── highlight-statusline.sh # Status line script
+│   │   ├── claude-code-tips.json  # Per-word tips file
+│   │   └── actions/               # Action word scripts (volume.sh)
+│   ├── docs/                      # Claude Code feature docs
+│   │   ├── systems-diagram.md     # Architecture diagram
+│   │   ├── action-word-overrides.md # Action words guide
+│   │   ├── status-line-integration.md # Status line setup
+│   │   └── claude-code-prompting.md   # Claude Code CLI tips
+│   ├── references/                # Feature quick-reference cards
+│   │   ├── word-highlight.md
+│   │   ├── dynamic-highlight.md
+│   │   ├── status-line.md
+│   │   ├── action-word-overrides.md
+│   │   ├── config.md
+│   │   └── variable-map.md
+│   └── tests/                     # Integration tests
 │
 ├── docs/                          # General documentation
 │   ├── cues-system.md             # System overview
-│   ├── gpt-oss.md                 # LLM model documentation
-│   ├── groq-cerebras-benchmarks.md  # Model benchmarks
-│   └── prompt-optimization.md     # Prompt design notes
+│   ├── llm-providers.md           # LLM providers, config & benchmarks
+│   ├── blank-system.md            # Fill-in-the-blank feature
+│   ├── blank-position-detection.md # Blank grammar rules
+│   └── prompt-design-learnings.md # Prompt engineering principles
 │
-├── benchmarks/                    # Performance benchmarks
-└── examples/                      # Usage examples
+└── tests/                         # Benchmarks & test data
+    ├── benchmarks/                # LLM accuracy benchmarks
+    └── results/                   # Benchmark results
 ```
 
 ---
@@ -99,7 +105,7 @@ Pure TypeScript library with no I/O dependencies. Provides:
 | `FactualSource` | Answers factual questions (`Capital of France is _` → `Paris`) |
 | `NodeHttpAdapter` | HTTPS with connection keep-alive, ~200ms to Groq |
 
-### Claude Code Integration (cues-patches)
+### Claude Code Integration (integrations/claude-code)
 
 Patches Claude Code via tweakcc to add:
 
@@ -132,8 +138,7 @@ Patches Claude Code via tweakcc to add:
 | Doc | Purpose |
 |-----|---------|
 | `docs/cues-system.md` | System overview |
-| `docs/gpt-oss.md` | LLM model info |
-| `docs/groq-cerebras-benchmarks.md` | Model benchmarks |
+| `docs/llm-providers.md` | LLM providers, config & benchmarks |
 | `packages/cues-core/src/prompts.ts` | All LLM prompts (source of truth) |
 
 ---

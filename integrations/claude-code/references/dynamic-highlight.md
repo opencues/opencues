@@ -1,10 +1,8 @@
 ---
-last_updated: 2026-03-30
+last_updated: 2026-04-01
 ---
 
-# Dynamic Highlight (LLM-Based Word Analysis) — Full Reference
-
-> Extracted from CLAUDE.md. For the summary, see the main CLAUDE.md Feature 3 section.
+# Dynamic Highlight (LLM-Based Word Analysis) — Quick Reference
 
 ## Auto-Submit Mode (Recommended)
 
@@ -139,17 +137,6 @@ Underscores track context independently and queue re-evaluation if context chang
 - `underscore-trigger: context changed` - immediate trigger (no pending)
 - `underscore-queue-trigger: processing queued re-analysis` - queued request firing
 
-## Submit Trigger Mode (Original)
-
-Type "submit" to manually trigger analysis.
-
-**How to use**:
-1. Type your text followed by "submit": `The boy said he was happy submit`
-2. "submit" is removed from text automatically
-3. Wait for LLM analysis (polls every 100ms for up to 30 seconds)
-4. Navigate with Ctrl+Alt+Left/Right to highlight words
-5. Use Ctrl+Alt+Up/Down to cycle through alternatives
-
 ## LLM Provider Configuration
 
 **Default model: GPT-OSS-120b via Groq** (~200ms, 94% math accuracy)
@@ -177,7 +164,7 @@ claude
 | Gemini 3-flash-preview | ~1400ms | 79% | Fallback |
 | Gemini 2.5-flash | ~2500ms | 50% | Not recommended |
 
-**Full documentation**: See `docs/gpt-oss.md` for benchmarks, prompts, and 249 test cases.
+**Full documentation**: See `docs/llm-providers.md` for benchmarks and provider configuration.
 
 ## Claude Code Tips System
 
@@ -377,44 +364,7 @@ The words-first prompt with targetIndices is ~43% faster than the old CueResolve
 
 **Tips lookup:** ~0–1ms (hash map, no network). Shown as `tips-partial` in timing log when at least one word matched tips before LLM returns.
 
-## Forcing Input Refresh After LLM Result
-
-**Problem**: The resolver `.then()` callback runs asynchronously. When `_dynDefs` is set, the UI doesn't automatically re-render to show which words are now highlightable.
-
-**Solution**: The `_forceInputRefresh` pattern triggers a re-render by calling `onChange` with a toggled invisible character.
-
-**Implementation** (two parts):
-
-1. **Define refresh function** (in `wordHighlight.ts` → `writeWordHighlightClearOnTyping`):
-```javascript
-globalThis._forceInputRefresh=function(){
-  var _t=globalThis._hlText||"";
-  var _pv=globalThis._parentValue||"";
-  var _hasB=_pv.indexOf("\u200B")>=0;
-  var _tc=_hasB?"\u200C":"\u200B";
-  onChange(_t+_tc);  // Triggers re-render with toggled invisible char
-};
-```
-
-2. **Call refresh after LLM result** (in `dynamicHighlight.ts` → polling callback):
-```javascript
-if(_json&&_json.words&&Array.isArray(_json.words)){
-  globalThis._dynDefs=_json;
-  // ... timing code ...
-  if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-  if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();  // ← Triggers re-render
-}
-```
-
-**Key insight**: The invisible character toggle pattern (used for navigation) also works to force a refresh from async callbacks.
-
 ## Config
-
-In `defaultSettings.ts`:
-```typescript
-enableDynamicHighlight: true,
-dynamicHighlightDebounceMs: 0,       // debounce delay (0 = 50ms internal)
-```
 
 In `~/.tweakcc/config.json`:
 ```json
@@ -426,34 +376,9 @@ In `~/.tweakcc/config.json`:
 }
 ```
 
-## State Storage
+## Debugging
 
-- `globalThis._dynDefs`: Parsed JSON with word definitions
-- `globalThis._dynPending`: Boolean indicating resolver call in progress
-- `globalThis._dynPollStart`: Timestamp when resolver started (for timing)
-- `globalThis._dynPrevWords`: Previous word list (for new word detection)
-- `globalThis._dynDebounceTimer`: Debounce timer reference
-- `globalThis._cueResolver`: CueResolver instance (from cues-core)
-- `globalThis._cuesCore`: cues-core module reference
-- `globalThis._tipsMap`: Hash map for O(1) tips lookup
-- `globalThis._httpAdapter`: NodeHttpAdapter instance
-- `globalThis._cycleAlt`: Shared cycling function (action words, alts, linked, spans)
-## Timing/Debugging
-
-Timing is written to `/tmp/claude-llm-timing-{PID}.txt` when resolver returns:
-```
-471ms (resolver) | 3 words | grammar
-```
-
-**Auto-submit debug file** (`/tmp/claude-auto-debug-{PID}.txt`):
-```
-[1770932310674] text="The" cur=1 prev=0
-  newWords=true pending=false
-[1770932311360] text="The boy" cur=2 prev=1
-  newWords=true pending=true
-```
-
-To monitor:
+Monitor timing and triggers:
 ```bash
 tail -f /tmp/claude-llm-timing-*.txt /tmp/claude-auto-debug-*.txt
 ```
@@ -521,3 +446,10 @@ var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&
 - Preserves analysis during partial typing (backspace then retype)
 - Words are only navigable when they match an entry in their alts array
 - Existing unchanged words keep alts when new words are added
+
+## Related
+
+- `references/word-highlight.md` — navigation and rendering
+- `references/status-line.md` — status line tips display
+- `references/config.md` — all configuration options
+- `docs/llm-providers.md` — provider config and benchmarks

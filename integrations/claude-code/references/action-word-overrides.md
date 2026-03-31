@@ -1,39 +1,24 @@
 ---
-last_updated: 2026-03-27
+last_updated: 2026-03-31
 ---
 
-# Action Word Overrides — Full Reference
+# Action Word Overrides — Quick Reference
 
-> Extracted from CLAUDE.md. For the summary, see the main CLAUDE.md Feature 4 section.
+Words that trigger external scripts on Up/Down instead of normal cycling.
 
-## Prerequisites
+## Priority Order
 
-Requires `enableWordHighlight: true` in config. The wordHighlight patch serializes `actionWordOverrides` into `globalThis._actionWordOverrides` at build time — without it, the variable is never set.
+Action words are checked **first**, before all other Up/Down logic:
 
-### WSL Setup (Required)
-
-The volume script uses either nircmd or VBScript. If nircmd is not installed, **you must create the VBS helper files manually** — without them, `wscript.exe` will fail with "cannot find script file":
-
-```bash
-# From WSL:
-echo 'Set s=CreateObject("WScript.Shell"):s.SendKeys chr(175)' > /mnt/c/Windows/Temp/volup.vbs
-echo 'Set s=CreateObject("WScript.Shell"):s.SendKeys chr(174)' > /mnt/c/Windows/Temp/voldown.vbs
-```
-
-Or install nircmd (recommended) to bypass VBS entirely — see **Performance** section below.
-
-## How It Works
-
-- Config flows: `config.json` → `index.ts` → `wordHighlight.ts` (serializes to globalThis) → `dynamicHighlight.ts` (reads at runtime)
-- `wordHighlight.ts` owns the globalThis assignment and navigation/rendering
-- `dynamicHighlight.ts` checks action words FIRST in all 4 Up/Down handlers, spawns scripts
-- Scripts are located in `~/.claude/actions/{action}.sh`
-- Action words appear dimmed (gray) like numbers, highlighted white when selected
-- The word is NOT modified (unlike numbers). It triggers an external action script.
+1. **Action word** → spawn script, return
+2. Dynamic highlight cycling → LLM alternatives
+3. Gender mode → flip boy/girl
+4. Number mode → increment/decrement
 
 ## Config
 
 In `~/.tweakcc/config.json` → `settings.misc`:
+
 ```json
 "actionWordOverrides": {
   "volume": {
@@ -44,68 +29,67 @@ In `~/.tweakcc/config.json` → `settings.misc`:
 }
 ```
 
-## External Script: `~/.claude/actions/volume.sh` (WSL-optimized)
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | string | Script name (resolves to `~/.claude/actions/{action}.sh`) |
+| `scriptPath` | string? | Custom script path (overrides default) |
+| `upArgs` | string[] | Args passed on Ctrl+Alt+Up |
+| `downArgs` | string[] | Args passed on Ctrl+Alt+Down |
 
+## Visual
+
+- **Dimmed** (dark gray) when not highlighted — same as numbers
+- **Bold white** when highlighted
+- Word is **not modified** — it triggers an external action instead
+- Navigable in all highlight modes
+
+## Scripts
+
+Location: `~/.claude/actions/{action}.sh`
+
+Scripts receive args as configured:
 ```bash
-#!/bin/bash
-DIRECTION="$1"
-AMOUNT="${2:-5}"
-PRESSES=$((AMOUNT / 2))
-[[ $PRESSES -lt 1 ]] && PRESSES=1
-
-case "$DIRECTION" in
-  up)
-    if [[ -f /mnt/c/Windows/nircmd.exe ]]; then
-      # Instant (~5ms) - best option
-      /mnt/c/Windows/nircmd.exe changesysvolume $((AMOUNT * 655)) &
-    else
-      # VBScript fallback (~120ms) - needs Windows app focused
-      for ((i=0; i<PRESSES; i++)); do
-        wscript.exe //nologo "C:\\Windows\\Temp\\volup.vbs" &
-      done
-    fi
-    ;;
-  down)
-    if [[ -f /mnt/c/Windows/nircmd.exe ]]; then
-      /mnt/c/Windows/nircmd.exe changesysvolume -$((AMOUNT * 655)) &
-    else
-      for ((i=0; i<PRESSES; i++)); do
-        wscript.exe //nologo "C:\\Windows\\Temp\\voldown.vbs" &
-      done
-    fi
-    ;;
-esac
+~/.claude/actions/volume.sh up 5    # Ctrl+Alt+Up
+~/.claude/actions/volume.sh down 5  # Ctrl+Alt+Down
 ```
 
-**VBScript helpers** (create these for WSL without nircmd):
-```
-C:\Windows\Temp\volup.vbs:   Set s=CreateObject("WScript.Shell"):s.SendKeys chr(175)
-C:\Windows\Temp\voldown.vbs: Set s=CreateObject("WScript.Shell"):s.SendKeys chr(174)
-```
-
-## Performance (WSL)
-
-| Method | Latency | Notes |
-|--------|---------|-------|
-| nircmd | ~5ms | Best - instant, no focus needed |
-| VBScript | ~120ms | Good - needs Windows app focused |
-| PowerShell | ~1300ms | Avoid - too slow |
-
-**Install nircmd** (recommended for instant response):
-```powershell
-# PowerShell as Admin:
-iwr "https://www.nirsoft.net/utils/nircmd-x64.zip" -Out "$env:TEMP\n.zip"
-Expand-Archive "$env:TEMP\n.zip" "$env:TEMP\n" -Force
-copy "$env:TEMP\n\nircmd.exe" C:\Windows\
-```
+Scripts run detached in background — Claude Code stays responsive.
 
 ## Adding New Action Words
 
-1. Add to `actionWordOverrides` in config with `action`, `upArgs`, `downArgs`
-2. Create script at `~/.claude/actions/{action}.sh`
-3. Make script executable: `chmod +x ~/.claude/actions/{action}.sh`
-4. Re-apply patches
+1. Add to config (`~/.tweakcc/config.json`)
+2. Create `~/.claude/actions/{action}.sh`
+3. `chmod +x ~/.claude/actions/{action}.sh`
+4. Re-apply patches, restart Claude Code
 
-**Future extensions**: brightness, speed, zoom - any word with custom Up/Down behavior.
+## Performance (WSL volume example)
 
-**Details**: See `docs/action-word-overrides.md` for full implementation guide.
+| Method | Latency | Notes |
+|--------|---------|-------|
+| nircmd | ~5ms | Best — no focus needed |
+| VBScript | ~120ms | Needs Windows app focused |
+| PowerShell | ~1300ms | Avoid |
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Script not running | Check `ls -la ~/.claude/actions/volume.sh`, test manually |
+| Windows line endings | `sed -i 's/\r$//' ~/.claude/actions/volume.sh` |
+| VBS "cannot find script" | Create helpers — see `docs/action-word-overrides.md` |
+| Word not navigable | Check word is in config (case-insensitive), re-apply patches |
+
+## Future Extensions
+
+Potential action words:
+- `brightness` — screen brightness control
+- `speed` — playback speed (media)
+- `zoom` — zoom level
+- `mute` — toggle mute
+- `play` / `pause` — media control
+
+Any word can become an action word — just add config + script.
+
+## Related
+
+- `docs/action-word-overrides.md` — full guide with WSL setup, nircmd install, volume script

@@ -2,39 +2,47 @@
  * Dynamic Highlight Patch
  * =======================
  *
- * Enables dynamic word highlighting based on LLM-generated JSON definitions.
- * When user types "submit" in the input, the text is analyzed by Claude Haiku
- * and word relationships/alternatives are loaded for navigation.
+ * Adds LLM-powered word alternatives to Claude Code's word highlight system.
+ * Words are analyzed automatically as you type, with alternatives available
+ * for cycling via Ctrl+Alt+Up/Down.
  *
  * ## How It Works
  *
- * 1. User types "The boy said he was happy submit"
- * 2. Patch detects "submit" trigger word
- * 3. "submit" is deleted from text, cleaned text written to /tmp/claude-llm-input-{PID}.txt
- * 4. External script (~/.claude/llm-analyze.sh) is spawned
- * 5. Script calls Claude Haiku API and writes result to /tmp/claude-llm-result-{PID}.json
- * 6. Patch polls for JSON file (every 100ms for up to 30 seconds)
- * 7. JSON defines word alternatives and linked groups
- * 8. Ctrl+Alt+Up/Down cycles through alternatives instead of hardcoded behavior
+ * 1. User types text → three-tier auto-submit trigger fires:
+ *    - Tier 1: Space typed (50ms debounce) — analyze completed word
+ *    - Tier 2: 300ms pause — analyze final word
+ *    - Tier 3: Word edited mid-sentence (50ms) — re-analyze changed word
+ * 2. Per-word tips lookup runs first (~0ms from hash map)
+ * 3. Remaining words sent to CueResolver → Groq API (~400ms)
+ * 4. Words with alternatives turn gray (dimmed)
+ * 5. Ctrl+Alt+Up/Down cycles through alternatives
  *
- * ## JSON Schema
+ * ## Sources (via cues-core CueResolver)
  *
- * {
- *   "priority": 1,
- *   "sentence": "The boy said he was happy",
- *   "words": [
- *     { "index": 0, "word": "The", "alts": null, "linked": null },
- *     { "index": 1, "word": "boy", "alts": ["boy", "girl", "child"], "linked": [3], "currentAltIndex": 0 },
- *     { "index": 3, "word": "he", "alts": ["he", "she", "they"], "linked": [1], "currentAltIndex": 0 }
- *   ]
- * }
+ * - GrammarSource (priority 50) — synonym, opposite, creative alternatives
+ * - MathSource (priority 90) — evaluates expressions (4*12=_ → 48)
+ * - FactualSource (priority 90) — answers questions (capital of France → Paris)
+ * - Tips lookup — instant O(1) from ~/.claude/claude-code-tips.json
  *
- * ## Hybrid Mode
+ * ## Cycling Priority
  *
- * - If JSON exists and has alts for highlighted word: use JSON cycling
- * - If no JSON or word not defined: fall back to hardcoded behavior
- *   - Numbers: increment/decrement
- *   - Gender: boy/girl flip with linked words
+ * When Up/Down pressed on highlighted word:
+ * 1. Action word override → spawn external script, return
+ * 2. Gender root (boy/girl) → skip (let wordHighlight handle linked flip)
+ * 3. Dynamic alts → cycle through alternatives + update linked words
+ * 4. Fall through to wordHighlight (numbers, gender)
+ *
+ * ## Key State
+ *
+ * - globalThis._dynDefs — word definitions with alts, tips, linked indices
+ * - globalThis._dynPending — true while LLM request in flight
+ * - globalThis._dynSpans — multi-word alternative tracking
+ * - globalThis._cueResolver — CueResolver instance (from cues-core)
+ * - globalThis._tipsMap — hash map for instant tips lookup
+ * - globalThis._cycleAlt — shared cycling function (action words, alts, spans)
+ *
+ * @see references/dynamic-highlight.md for full feature reference
+ * @see docs/systems-diagram.md for architecture overview
  */
 
 import { LocationResult, showDiff, getRequireFuncName, escapeIdent } from './index';
@@ -213,6 +221,10 @@ if(_lStart>=0){_newText=_newText.slice(0,_lStart)+_lNew+_newText.slice(_lStart+_
 }}}
 globalThis._hlText=_newText;
 globalThis._hlState.text=_newText;
+// Write highlight export immediately so status line has fresh data
+try{var _cWords=_newText.split(/\\s+/).filter(function(w){return w});
+var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,tip:_dWord.tip||null,altTips:_dWord.altTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
+_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // Re-evaluate underscore if present
 var _cw=_newText.split(/\\s+/).filter(function(w){return w;});
@@ -450,7 +462,10 @@ var _lookup=globalThis._cuesCore&&globalThis._tipsMap?globalThis._cuesCore.looku
 
 // If ALL non-underscore words matched tips, skip LLM entirely
 if(_lookup.found.length>0&&_lookup.missingIndices.length===0&&_sentWords.indexOf("_")<0){
-globalThis._dynDefs={words:globalThis._cuesCore.formatAsWordDefs(_lookup.found,_sentWords),_model:"tips-only",_timing:"0ms"};
+var _oldDefs=globalThis._dynDefs&&globalThis._dynDefs.words?globalThis._dynDefs.words:[];
+var _newWords=globalThis._cuesCore.formatAsWordDefs(_lookup.found,_sentWords);
+for(var _ndi=0;_ndi<_newWords.length;_ndi++){var _od=_oldDefs.find(function(d){return d.index===_newWords[_ndi].index;});if(_od&&typeof _od.currentAltIndex==="number"){_newWords[_ndi].currentAltIndex=_od.currentAltIndex;}}
+globalThis._dynDefs={words:_newWords,_model:"tips-only",_timing:"0ms"};
 globalThis._dynLastAnalyzed=_sentWords;
 var _timingPath="/tmp/claude-llm-timing-"+process.pid+".txt";
 try{${requireFuncName}("fs").writeFileSync(_timingPath,"0ms (tips-only) | "+_lookup.found.length+" words\\n",{flag:"a"});}catch(_te){}

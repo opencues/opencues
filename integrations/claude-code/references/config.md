@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-03-31
+last_updated: 2026-04-01
 ---
 
 # Config Reference (`~/.tweakcc/config.json`)
@@ -70,56 +70,16 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 - `~/.claude/claude-code-tips.json` (tips data)
 - `GROQ_API_KEY` env var (for LLM calls)
 
-## Standard tweakcc Options
+## Feature Gating
 
-These are standard tweakcc options, not custom patches. Included for completeness.
+Features have a two-level dependency:
 
-| Option | Type | Default | Purpose |
-|--------|------|---------|---------|
-| `showTweakccVersion` | boolean | `true` | Show version in status |
-| `showPatchesApplied` | boolean | `true` | Show applied patches count |
-| `enableModelCustomizations` | boolean | `true` | Access all Claude models with /model |
-| `expandThinkingBlocks` | boolean | `true` | Show thinking blocks without Ctrl+O |
-| `hideStartupBanner` | boolean | `false` | Hide startup banner |
-| `hideCtrlGToEdit` | boolean | `false` | Hide "Ctrl+G to edit" message |
-| `hideStartupClawd` | boolean | `false` | Hide startup clawd |
-| `increaseFileReadLimit` | boolean | `false` | Increase file read limit |
-| `suppressLineNumbers` | boolean | `false` | Suppress line numbers |
-| `suppressRateLimitOptions` | boolean | `false` | Suppress rate limit options |
-| `tokenCountRounding` | number\|null | `null` | Round token counts |
-| `enableRememberSkill` | boolean | `false` | Enable /remember skill |
-| `autoAcceptPlanMode` | boolean | `false` | Auto-accept plan mode |
-| `allowBypassPermissionsInSudo` | boolean | `false` | Bypass permissions in sudo |
-| `suppressNativeInstallerWarning` | boolean | `false` | Suppress native installer warning |
-| `filterScrollEscapeSequences` | boolean | `false` | Filter scroll escape sequences |
-| `allowCustomAgentModels` | boolean | `false` | Custom agent models |
-| `enableWorktreeMode` | boolean | `true` | Worktree mode |
-| `enableSessionMemory` | boolean | `true` | Session memory |
-| `mcpConnectionNonBlocking` | boolean | `true` | MCP non-blocking connections |
-| `mcpServerBatchSize` | number\|null | `null` | MCP batch size |
-| `statuslineThrottleMs` | number\|null | `null` | Status line throttle |
-| `statuslineUseFixedInterval` | boolean | `false` | Fixed interval for status line |
-| `enableContextLimitOverride` | boolean | `false` | Override context limit |
-| `enableConversationTitle` | boolean | `true` | Conversation titles |
-| `enableVoiceMode` | boolean | `false` | Voice mode |
-| `enableVoiceConciseOutput` | boolean | `true` | Concise voice output |
-| `enableSwarmMode` | boolean | undefined | Swarm mode |
-| `tableFormat` | string | `'default'` | Table format style |
+1. **`enableWordHighlight`** — master switch for all highlight features
+2. **`enableDynamicHighlight`** — requires `enableWordHighlight: true`
 
-## Gating Logic
+If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are disabled entirely.
 
-The custom patches have a two-level gate in `index.ts:638-659`:
-
-```typescript
-// Level 1: Word highlight (numbers, gender, navigation)
-const highlightConfig = config.settings.misc?.enableWordHighlight ? {...} : null;
-
-// Level 2: Dynamic highlight (tips, LLM, action words)
-// Requires BOTH enableDynamicHighlight AND enableWordHighlight
-const dynamicConfig = (enableDynamic && config.settings.misc?.enableWordHighlight) ? {...} : null;
-```
-
-If `enableWordHighlight` is falsy (undefined, false, null), **BOTH** word highlight and dynamic highlight patches are skipped entirely. No error is logged.
+> For standard tweakcc options (model customizations, thinking blocks, etc.), see the [tweakcc documentation](https://github.com/anthropics/tweakcc).
 
 ## Action Word Overrides Format
 

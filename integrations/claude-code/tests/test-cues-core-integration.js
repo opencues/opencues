@@ -8,7 +8,7 @@
  * 3. Performance is acceptable
  */
 
-const cues = require('/home/wilfred/.claude/node_modules/cues-core');
+const cues = require(process.env.HOME + '/.claude/node_modules/cues-core');
 const fs = require('fs');
 
 let passed = 0;
@@ -39,7 +39,7 @@ function assertTrue(condition, msg) {
 }
 
 // Load tips data
-const tipsPath = '/home/wilfred/.claude/claude-code-tips.json';
+const tipsPath = process.env.HOME + '/.claude/claude-code-tips.json';
 const tipsContent = fs.readFileSync(tipsPath, 'utf8');
 const tipsData = cues.parseTipsFile(tipsContent);
 const tipsMap = cues.buildLookupMap(tipsData);

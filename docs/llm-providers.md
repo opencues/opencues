@@ -123,6 +123,11 @@ The adapter handles:
 ### Empty responses
 - Check `reasoning_effort: "low"` is set
 - For Groq 20b, increase `max_tokens` to 512
+- Response may be in `reasoning` instead of `content` for thinking models:
+  ```javascript
+  const message = resp.choices[0].message;
+  const content = (message.content || message.reasoning || '').trim();
+  ```
 
 ### High latency
 - First request is slower (cold start)

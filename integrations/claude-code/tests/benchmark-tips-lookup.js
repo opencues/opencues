@@ -5,11 +5,11 @@
  * Compares O(n×m) linear scan vs O(1) hash map lookup
  */
 
-const cues = require('/home/wilfred/.claude/node_modules/cues-core');
+const cues = require(process.env.HOME + '/.claude/node_modules/cues-core');
 const fs = require('fs');
 
 // Load tips data
-const tipsPath = '/home/wilfred/.claude/claude-code-tips.json';
+const tipsPath = process.env.HOME + '/.claude/claude-code-tips.json';
 const tipsContent = fs.readFileSync(tipsPath, 'utf8');
 const tipsData = cues.parseTipsFile(tipsContent);
 

@@ -150,14 +150,12 @@ See `docs/span-system.md` for full details.
 
 | File | Purpose |
 |------|---------|
-| `system_prompts/blank_grammar.txt` | Grammar blank filling prompt |
-| `system_prompts/math.txt` | Math computation prompt |
-| `system_prompts/factual.txt` | Factual answer prompt |
-| `~/.claude/node_modules/cues-core/` | CueResolver handles classification and LLM calls |
+| `packages/cues-core/prompts/blank_grammar.txt` | Grammar blank filling prompt |
+| `packages/cues-core/prompts/blank_math.txt` | Math computation prompt |
+| `packages/cues-core/prompts/blank_factual.txt` | Factual answer prompt |
+| `packages/cues-core/` | CueResolver handles classification and LLM calls |
 
 ## Related Documentation
 
-- `system_prompts/README.md` → All prompts overview
-- `docs/system-prompt-benchmark.md` → Latency benchmarks
-- `docs/span-system.md` → Multi-word span tracking
-- `docs/per-word-clearing.md` → How alternatives are preserved
+- `packages/cues-core/prompts/README.md` → All prompts overview
+- `docs/llm-providers.md` → Latency benchmarks

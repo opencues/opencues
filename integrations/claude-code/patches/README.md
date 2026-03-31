@@ -1,4 +1,4 @@
-# cues-patches
+# Claude Code Patches
 
 Custom patches for tweakcc that add LLM-powered word alternatives to Claude Code.
 
@@ -28,7 +28,7 @@ That's it. The setup script:
 ## Contents
 
 ```
-cues-patches/
+patches/
 ├── setup.sh                  # Automated setup script
 ├── cursorStateExport.ts      # Exports cursor position to JSON
 ├── wordHighlight.ts          # Ctrl+Alt navigation, numbers, gender
@@ -120,5 +120,5 @@ Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.
 
 ## See Also
 
-- [cues-core](../cues-core/) - The LLM analysis module
-- [tweakcc docs](https://github.com/wkasekende/tweakcc-) - Full documentation
+- [cues-core](../../../packages/cues-core/) - The LLM analysis module
+- [Full documentation](../docs/) - Implementation guides and references

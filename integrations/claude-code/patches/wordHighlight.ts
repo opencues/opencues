@@ -111,7 +111,7 @@
  * - K("hellox") called, differs from parent → refresh ✓
  * - Parent now has clean "hellox"
  *
- * @see docs/word-highlight-system.md for full technical documentation
+ * @see references/word-highlight.md for feature reference
  *
  * ### Handling Clear-on-Typing
  *
@@ -144,8 +144,7 @@
  * - Visual rendering wraps the renderedValue output with ANSI-aware processing
  * - Word highlighting is applied after rainbow input (if enabled)
  *
- * @see docs/implementation-notes.md for detailed patching guide
- * @see hci.md for full HCI specification
+ * @see docs/systems-diagram.md for architecture overview
  */
 
 // Please see the note about writing patches in ./index
@@ -668,11 +667,15 @@ if(globalThis._hlState&&globalThis._hlState.originalNumbers&&globalThis._hlState
 _hlOrigNum=globalThis._hlState.originalNumbers[globalThis._hlState.wordIndex];
 if(_hlOrigNum===undefined)_hlOrigNum=null;
 }
-var _hlExport={active:globalThis._hlState?globalThis._hlState.active:false,highlightedWordIndex:null,highlightedWord:null,wordCount:_hlWords.length,originalNumber:_hlOrigNum,timestamp:Date.now()};
+var _hlExport={active:globalThis._hlState?globalThis._hlState.active:false,highlightedWordIndex:null,highlightedWord:null,wordCount:_hlWords.length,originalNumber:_hlOrigNum,tip:null,altTips:null,alts:null,timestamp:Date.now()};
 if(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null){
 var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
+if(globalThis._dynDefs&&globalThis._dynDefs.words){
+var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
+if(_dw){_hlExport.tip=_dw.tip||null;_hlExport.altTips=_dw.altTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
+}
 }
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
 try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExport));}catch(_e){}

@@ -1,0 +1,72 @@
+Match user input to Claude Code tips. Output word indices that trigger tips.
+
+Input: {INPUT}
+
+Tips (id: keywords):
+1: plan,risky,refactor,careful,scary,dangerous,unfamiliar
+2: stuck,bug,debug,error,fix,undo,rewind,crash,broken,failing,loop
+3: parallel,agents,swarm,spawn,fast,speed,concurrent,task
+4: opus,complex,architecture,hard,difficult,reasoning
+5: context,limit,compact,tokens,history,full,space
+6: remember,always,instructions,rules,persistent
+7: search,find,where,codebase,locate,grep,references
+8: permission,allow,dangerous,skip,approve,auto-accept
+9: compose,draft,multiline,editor,long prompt
+10: previous,earlier,again,repeat,history,before
+11: pause,suspend,break,resume,later,stop
+12: branch,worktree,branches,parallel sessions
+13: ultrathink,think,reason,thorough,maximum,deep thought
+14: slow,performance,lag,wsl,windows,forever
+15: large,huge,monolith,split,massive,big file
+16: tab,thinking,extended,toggle
+17: background,running,process,async,ctrl+b
+18: shell,command,terminal,bash,execute
+19: model,switch,change model,sonnet,haiku
+20: usage,tokens,cost,limit,reset,quota
+21: simplify,clean,clarity,readable
+22: haiku,cheap,simple,quick,small task
+23: ripgrep,rg,gitignore,node_modules
+24: commit,attribution,co-authored
+25: mcp,server,brave,puppeteer,extension
+26: skill,skills,custom command,reusable
+27: hook,hooks,automation,lifecycle
+28: print,ci,cd,pipeline,scripting
+29: session,name,rename,resume,continue
+30: directory,add-dir,project,monorepo
+31: rules,organize,structure
+32: statusline,status,terminal,ps1
+33: linebreak,enter,newline,shift enter
+34: diff,changes,gutter,vscode
+35: stable,update,channel,version
+36: 503,overloaded,server error,wait
+37: lsp,language server,intellisense
+38: experiment,try,test,fearless
+39: security,review,audit,vulnerability
+40: vibe,outcome,result
+41: clear,fresh,start over,reset
+42: config,settings,configure,preference
+43: language,english,translation
+44: perspective,role,senior,expert
+45: step,steps,sequential,numbered
+46: stack trace,error message,full error
+47: git,recent change,correlate
+48: string replace,not found,edit fail
+49: privacy,sensitive,proprietary
+50: teleport,web,claude.ai,move session
+
+AVOID false positives for programming terms:
+- "error handler", "search algorithm", "parallel arrays" = code patterns, NOT tips
+- "edge case", "memory allocation", "file system" = technical terms, NOT tips
+
+Match INTENT not just keywords:
+- "can't figure out" / "doesn't work" = stuck (2)
+- "taking forever" = slow (14) or parallel (3)
+- "go back" = rewind (2)
+
+Output: HINTS: wordIndex:tipId,wordIndex:tipId
+Or: HINTS: none
+
+Examples:
+"I'm stuck on this bug" → HINTS: 1:2,4:2
+"search algorithm" → HINTS: none
+"ultrathink about this" → HINTS: 0:13
