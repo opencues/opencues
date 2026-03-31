@@ -1,0 +1,232 @@
+# HINTS Mode Test Cases - 50 Tips Coverage
+# Format: INPUT | EXPECTED | DESCRIPTION
+
+# ===========================================
+# CORE TIPS (1-15) - Most Common
+# ===========================================
+
+# Tip 1: Plan mode
+refactor | 0:1 | plan: refactor
+this is risky | 2:1 | plan: risky
+be careful | 1:1 | plan: careful
+
+# Tip 2: Rewind/debug
+stuck | 0:2 | rewind: stuck
+fix this bug | 0:2,2:2 | rewind: fix + bug
+I need to undo | 3:2 | rewind: undo
+it keeps crashing | 2:2 | rewind: crashing
+
+# Tip 3: Parallel agents
+run in parallel | 2:3 | parallel: parallel
+spawn agents | 0:3,1:3 | parallel: spawn + agents
+make it faster | 2:3 | parallel: faster
+
+# Tip 4: Opus model
+complex architecture | 0:4,1:4 | opus: complex + architecture
+this is hard | 2:4 | opus: hard
+
+# Tip 5: Compact
+running out of context | 3:5 | compact: context
+too many tokens | 2:5 | compact: tokens
+
+# Tip 6: CLAUDE.md
+remember this | 0:6 | claude.md: remember
+add to instructions | 2:6 | claude.md: instructions
+
+# Tip 7: Search
+search the codebase | 0:7,2:7 | search: search + codebase
+find all references | 0:7,2:7 | search: find + references
+
+# Tip 8: Permissions
+skip permissions | 0:8,1:8 | permissions: skip + permissions
+auto approve | 0:8,1:8 | permissions: auto + approve
+
+# Tip 9: External editor
+compose a prompt | 0:9 | editor: compose
+write multiline | 1:9 | editor: multiline
+
+# Tip 10: History
+repeat that | 0:10 | history: repeat
+what did I do before | 4:10 | history: before
+
+# Tip 11: Suspend
+take a break | 2:11 | suspend: break
+pause this | 0:11 | suspend: pause
+
+# Tip 12: Worktree
+switch branches | 1:12 | worktree: branches
+parallel sessions | 0:3,1:12 | worktree: parallel + sessions
+
+# Tip 13: Ultrathink
+ultrathink | 0:13 | ultrathink: ultrathink
+think deeply | 0:13,1:13 | ultrathink: think + deeply
+
+# Tip 14: Performance
+too slow | 1:14 | performance: slow
+running on wsl | 2:14 | performance: wsl
+
+# Tip 15: File size
+this file is huge | 3:15 | filesize: huge
+split the monolith | 1:15,2:15 | filesize: split + monolith
+
+# ===========================================
+# EXTENDED TIPS (16-30)
+# ===========================================
+
+# Tip 16: Extended thinking
+toggle thinking | 0:16,1:16 | thinking: toggle + thinking
+
+# Tip 17: Background
+run in background | 2:17 | background: background
+
+# Tip 18: Shell
+run a shell command | 3:18 | shell: command
+
+# Tip 19: Model switch
+switch to sonnet | 0:19,2:19 | model: switch + sonnet
+change model | 0:19,1:19 | model: change + model
+
+# Tip 20: Usage
+check my usage | 2:20 | usage: usage
+token limit | 0:20,1:20 | usage: token + limit
+
+# Tip 21: Simplify
+simplify this code | 0:21 | simplify: simplify
+
+# Tip 22: Haiku
+use haiku | 1:22 | haiku: haiku
+cheap and quick | 0:22,2:22 | haiku: cheap + quick
+
+# Tip 23: Ripgrep
+install ripgrep | 1:23 | ripgrep: ripgrep
+respects gitignore | 1:23 | ripgrep: gitignore
+
+# Tip 24: Commit
+commit attribution | 0:24,1:24 | commit: commit + attribution
+
+# Tip 25: MCP
+configure mcp | 1:25 | mcp: mcp
+add a server | 2:25 | mcp: server
+
+# Tip 26: Skills
+create a skill | 2:26 | skills: skill
+custom command | 0:26,1:26 | skills: custom + command
+
+# Tip 27: Hooks
+add a hook | 2:27 | hooks: hook
+automation | 0:27 | hooks: automation
+
+# Tip 28: CI/CD
+run in ci | 2:28 | cicd: ci
+pipeline script | 0:28,1:28 | cicd: pipeline + script
+
+# Tip 29: Sessions
+rename session | 0:29,1:29 | sessions: rename + session
+resume my session | 0:29 | sessions: resume
+
+# Tip 30: Multi-directory
+add another directory | 2:30 | directory: directory
+monorepo setup | 0:30 | directory: monorepo
+
+# ===========================================
+# ADDITIONAL TIPS (31-50)
+# ===========================================
+
+# Tip 31: Rules directory
+organize rules | 0:31,1:31 | rules: organize + rules
+
+# Tip 32: Status line
+customize statusline | 1:32 | statusline: statusline
+
+# Tip 33: Linebreak
+shift enter | 0:33,1:33 | linebreak: shift + enter
+
+# Tip 34: VS Code diff
+view the diff | 2:34 | diff: diff
+
+# Tip 35: Update channel
+stable channel | 0:35,1:35 | update: stable + channel
+
+# Tip 36: Server errors
+getting 503 | 1:36 | server: 503
+server overloaded | 0:36,1:36 | server: server + overloaded
+
+# Tip 37: LSP
+enable lsp | 1:37 | lsp: lsp
+language server | 0:37,1:37 | lsp: language + server
+
+# Tip 38: Experiment
+try something | 0:38 | experiment: try
+experiment fearlessly | 0:38,1:38 | experiment: experiment + fearlessly
+
+# Tip 39: Security
+security review | 0:39,1:39 | security: security + review
+check vulnerabilities | 1:39 | security: vulnerabilities
+
+# Tip 40: Vibe coding
+vibe check | 0:40 | vibe: vibe
+feels right | none | vibe: too vague
+
+# Tip 41: Clear
+start fresh | 1:41 | clear: fresh
+clear session | 0:41 | clear: clear
+
+# Tip 42: Config
+check config | 1:42 | config: config
+change settings | 1:42 | config: settings
+
+# Tip 43: Language
+non english | 1:43 | language: english
+
+# Tip 44: Perspective
+senior engineer | 0:44,1:44 | perspective: senior
+expert opinion | 0:44 | perspective: expert
+
+# Tip 45: Steps
+break into steps | 2:45 | steps: steps
+sequential process | 0:45 | steps: sequential
+
+# Tip 46: Stack trace
+full stack trace | 1:46,2:46 | stacktrace: stack + trace
+error message | 0:46,1:46 | stacktrace: error + message
+
+# Tip 47: Git correlation
+recent git changes | 1:47,2:47 | git: git + changes
+
+# Tip 48: Edit failures
+string not found | 0:48 | edit: string (might be vague)
+
+# Tip 49: Privacy
+sensitive data | 0:49 | privacy: sensitive
+proprietary code | 0:49 | privacy: proprietary
+
+# Tip 50: Teleport
+teleport session | 0:50 | teleport: teleport
+move to web | 2:50 | teleport: web
+
+# ===========================================
+# FALSE POSITIVES (should return none)
+# ===========================================
+check edge cases | none | programming: edge cases
+error handler | none | programming: error handler
+search algorithm | none | programming: search algorithm
+parallel arrays | none | programming: parallel arrays
+memory allocation | none | programming: memory
+model layer | none | programming: model layer
+file system | none | programming: file system
+
+# ===========================================
+# NATURAL LANGUAGE
+# ===========================================
+I'm stuck on this | 1:2 | natural: stuck
+this isn't working | 2:2 | natural: working
+can't figure it out | 0:2 | natural: can't
+how do I go back | 4:2 | natural: back
+taking forever | 1:14 | natural: forever
+
+# ===========================================
+# MULTI-TIP COMBINATIONS
+# ===========================================
+search and fix bugs | 0:7,2:2,3:2 | multi: search + fix + bugs
+refactor carefully | 0:1,1:1 | multi: refactor + carefully
+think about this complex problem | 0:13,3:4 | multi: think + complex

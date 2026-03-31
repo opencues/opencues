@@ -1,0 +1,34 @@
+Model: groq-120b
+Timestamp: 2026-02-18 17:22:00
+
+=== MATH ===
+Running math...
+math: 48/53 (90.5%) avg: 421ms
+
+Running math-edge...
+math-edge: 31/56 (55.3%) avg: 588ms
+
+Subtotal: 79/109 (72.4%)
+
+=== FACTUAL ===
+Running factual...
+factual: 48/51 (94.1%) avg: 291ms
+
+Running factual-edge...
+factual-edge: 28/51 (54.9%) avg: 523ms
+
+Subtotal: 76/102 (74.5%)
+
+=== GRAMMAR ===
+Running word...
+word: 44/48 (91.6%) avg: 509ms
+
+Running word-edge...
+word-edge: 40/53 (75.4%) avg: 593ms
+
+Subtotal: 84/101 (83.1%)
+
+=== TOTAL ===
+Passed: 239/312 (76.6%)
+Avg Latency: 489ms
+Est. Monthly (1k req/day): $.90

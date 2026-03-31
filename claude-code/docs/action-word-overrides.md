@@ -1,0 +1,346 @@
+---
+last_updated: 2026-03-27
+---
+
+# Action Word Overrides
+
+Action word overrides allow specific words to trigger external scripts when Up/Down is pressed, instead of the normal increment/decrement or cycling behavior.
+
+## Overview
+
+When you navigate to an "action word" (like "volume") and press Ctrl+Alt+Up or Down, it spawns an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
+
+## How It Works
+
+```
+User types: "set volume to max"
+           ↓
+Navigate to "volume" (Ctrl+Alt+Left)
+           ↓
+Press Ctrl+Alt+Up
+           ↓
+Action word check (FIRST priority)
+  → Word "volume" found in actionWordOverrides
+  → Spawn: ~/.claude/actions/volume.sh up 5
+  → Return (skip normal number/gender logic)
+           ↓
+Volume increases
+```
+
+## Priority Order
+
+Action words are checked **FIRST**, before any other logic:
+
+1. **Action word override** → spawn script, return
+2. **Dynamic highlight cycling** → cycle through LLM alternatives
+3. **Gender mode** → flip boy↔girl linked words
+4. **Number mode** → increment/decrement
+
+This is implemented in `dynamicHighlight.ts` — action word checks are injected in 4 locations (key handlers and raw sequence handlers for both Up and Down).
+
+## Configuration
+
+### In `~/.tweakcc/config.json`
+
+```json
+{
+  "settings": {
+    "misc": {
+      "actionWordOverrides": {
+        "volume": {
+          "action": "volume",
+          "upArgs": ["up", "5"],
+          "downArgs": ["down", "5"]
+        },
+        "brightness": {
+          "action": "brightness",
+          "upArgs": ["up", "10"],
+          "downArgs": ["down", "10"]
+        }
+      }
+    }
+  }
+}
+```
+
+### Config Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | string | Action identifier, used for default script path |
+| `scriptPath` | string? | Custom script path (optional) |
+| `upArgs` | string[] | Arguments passed when Up is pressed |
+| `downArgs` | string[] | Arguments passed when Down is pressed |
+
+### Default Script Path
+
+If `scriptPath` is not specified:
+```
+~/.claude/actions/{action}.sh
+```
+
+For example, action `"volume"` uses `~/.claude/actions/volume.sh`.
+
+## Script Implementation
+
+### Location
+
+```
+~/.claude/actions/
+├── volume.sh      # Volume control
+├── brightness.sh  # Brightness control (future)
+└── ...
+```
+
+### Script Interface
+
+Scripts receive arguments as defined in config:
+```bash
+# For upArgs: ["up", "5"]
+~/.claude/actions/volume.sh up 5
+
+# For downArgs: ["down", "5"]
+~/.claude/actions/volume.sh down 5
+```
+
+### Volume Script (WSL Optimized)
+
+```bash
+#!/bin/bash
+# ~/.claude/actions/volume.sh
+# Usage: volume.sh <up|down> <percent>
+
+DIRECTION="$1"
+AMOUNT="${2:-5}"
+PRESSES=$((AMOUNT / 2))
+[[ $PRESSES -lt 1 ]] && PRESSES=1
+
+case "$DIRECTION" in
+  up)
+    if [[ -f /mnt/c/Windows/nircmd.exe ]]; then
+      # Instant - best option (~5ms)
+      /mnt/c/Windows/nircmd.exe changesysvolume $((AMOUNT * 655)) &
+    else
+      # VBScript fallback (~120ms)
+      for ((i=0; i<PRESSES; i++)); do
+        wscript.exe //nologo "C:\\Windows\\Temp\\volup.vbs" &
+      done
+    fi
+    ;;
+  down)
+    if [[ -f /mnt/c/Windows/nircmd.exe ]]; then
+      /mnt/c/Windows/nircmd.exe changesysvolume -$((AMOUNT * 655)) &
+    else
+      for ((i=0; i<PRESSES; i++)); do
+        wscript.exe //nologo "C:\\Windows\\Temp\\voldown.vbs" &
+      done
+    fi
+    ;;
+esac
+```
+
+### VBScript Helpers (Required for WSL without nircmd)
+
+**You must create these files manually.** Without them, `wscript.exe` will fail with "cannot find script file". This is the most common setup issue on WSL.
+
+```bash
+# From WSL:
+echo 'Set s=CreateObject("WScript.Shell"):s.SendKeys chr(175)' > /mnt/c/Windows/Temp/volup.vbs
+echo 'Set s=CreateObject("WScript.Shell"):s.SendKeys chr(174)' > /mnt/c/Windows/Temp/voldown.vbs
+```
+
+Verify they exist:
+```bash
+cat /mnt/c/Windows/Temp/volup.vbs
+# Expected: Set s=CreateObject("WScript.Shell"):s.SendKeys chr(175)
+```
+
+## Performance
+
+| Method | Latency | Notes |
+|--------|---------|-------|
+| nircmd | ~5ms | Best - instant, no focus needed |
+| VBScript (wscript) | ~120ms | Good - needs Windows app focused |
+| PowerShell | ~1300ms | Slow - avoid |
+
+### Installing nircmd (Recommended)
+
+```powershell
+# Run in PowerShell as Admin:
+iwr "https://www.nirsoft.net/utils/nircmd-x64.zip" -Out "$env:TEMP\n.zip"
+Expand-Archive "$env:TEMP\n.zip" "$env:TEMP\n" -Force
+copy "$env:TEMP\n\nircmd.exe" C:\Windows\
+```
+
+## Visual Behavior
+
+Action words follow the same visual pattern as numbers:
+
+| State | Appearance |
+|-------|------------|
+| Not highlighted | Dimmed (dark gray) |
+| Highlighted | Bold white |
+
+Action words are navigable in all highlight modes (numbers, gender, both, words).
+
+## Prerequisites
+
+Action words require `enableWordHighlight: true` in config. The `actionWordOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and action words silently do nothing.
+
+## Implementation Details
+
+### Full Pipeline
+
+```
+~/.tweakcc/config.json
+  → settings.misc.actionWordOverrides              (user config)
+  → index.ts: highlightConfig.actionWordOverrides   (passed to patch at build time)
+  → wordHighlight.ts: writeWordHighlightClearOnTyping
+    → JSON.stringify(cfg.actionWordOverrides || {})  (serialized at build time)
+    → injected into cli.js as:
+      globalThis._actionWordOverrides = {"volume":{...}}  (set once at runtime)
+  → dynamicHighlight.ts: reads globalThis._actionWordOverrides||{}
+    → 4 Up/Down handlers check action words FIRST
+  → wordHighlight.ts: reads globalThis._actionWordOverrides||{}
+    → navigation filter includes action words
+    → rendering dims action words
+```
+
+### Files Modified
+
+| File | Role |
+|------|------|
+| `wordHighlight.ts` | **Owns** the globalThis assignment (serialized from config). Navigation filter (include action words as navigable). Rendering (dim action words). |
+| `dynamicHighlight.ts` | **Reads** globalThis at runtime. Action word checks in all 4 Up/Down handlers (key + raw sequence). Spawns scripts. |
+| `index.ts` | Passes `actionWordOverrides` from config to `highlightConfig` |
+
+### Key Insertion Points
+
+1. **Config → globalThis** (`wordHighlight.ts: writeWordHighlightClearOnTyping`):
+   ```javascript
+   // Set once at runtime, serialized from config at build time
+   if(!globalThis._actionWordOverrides)globalThis._actionWordOverrides=${actionOvrJson};
+   ```
+
+2. **Up/Down Handlers** (`dynamicHighlight.ts`, 4 locations — key + raw sequence, up + down):
+   ```javascript
+   var _actOvrChk=globalThis._actionWordOverrides||{};
+   var _actWLower=_word.toLowerCase();
+   if(_actOvrChk[_actWLower]){
+     var _actDef=_actOvrChk[_actWLower];
+     var _actScript=_actDef.scriptPath||(_home+"/.claude/actions/"+_actDef.action+".sh");
+     var _actArgs=["bash",_actScript].concat(_actDef.upArgs||["up"]);
+     require("child_process").spawn(_actArgs[0],_actArgs.slice(1),{detached:true,stdio:"ignore"}).unref();
+     return InputZone.fromText(R.text+toggleChar,G,R.offset);
+   }
+   ```
+
+3. **Navigation Filter** (`wordHighlight.ts`, 2 locations — key + raw sequence):
+   ```javascript
+   _allW.forEach(function(w,i){
+     if(_numP.test(w)||(globalThis._actionWordOverrides||{})[w.toLowerCase()])_targetIdx.push(i);
+   });
+   ```
+
+4. **Rendering** (`dynamicHighlight.ts: writeDynamicRendering`, 2 modes):
+   ```javascript
+   // Gender/Both mode:
+   else if(_numPat.test(_w)||_rootPat.test(_w)||(globalThis._actionWordOverrides||{})[_wLower]){
+     _dimRanges.push({start:_wStart,end:_wStart+_w.length});
+   }
+   // Numbers mode:
+   else if(_numPat.test(_w)||(globalThis._actionWordOverrides||{})[_w.toLowerCase()]){
+     _numRanges.push({start:_wStart,end:_wStart+_w.length});
+   }
+   ```
+
+### Spawn Pattern
+
+Scripts are spawned detached with ignored stdio:
+```javascript
+spawn(_args[0], _args.slice(1), {detached: true, stdio: "ignore"}).unref();
+```
+
+This ensures:
+- Script runs in background
+- Claude Code stays responsive
+- No stdout/stderr blocking
+
+## Adding New Action Words
+
+1. **Add to config** (`~/.tweakcc/config.json`):
+   ```json
+   "brightness": {
+     "action": "brightness",
+     "upArgs": ["up", "10"],
+     "downArgs": ["down", "10"]
+   }
+   ```
+
+2. **Create script** (`~/.claude/actions/brightness.sh`):
+   ```bash
+   #!/bin/bash
+   DIRECTION="$1"
+   AMOUNT="${2:-10}"
+   # Your brightness control logic here
+   ```
+
+3. **Make executable**:
+   ```bash
+   chmod +x ~/.claude/actions/brightness.sh
+   ```
+
+4. **Re-apply patches**:
+   ```bash
+   cd /home/wilfred/tweakcc-source
+   npm run build
+   TWEAKCC_CC_INSTALLATION_PATH="..." node dist/index.mjs --apply
+   ```
+
+## Troubleshooting
+
+### Script Not Running
+
+1. Check script exists and is executable:
+   ```bash
+   ls -la ~/.claude/actions/volume.sh
+   ```
+
+2. Test script directly:
+   ```bash
+   ~/.claude/actions/volume.sh up 5
+   ```
+
+3. Check for Windows line endings (WSL):
+   ```bash
+   sed -i 's/\r$//' ~/.claude/actions/volume.sh
+   ```
+
+### "Cannot find script file" Error (WSL)
+
+The VBS helper files must be created manually — they are NOT auto-generated. This is the most common cause of volume not working on WSL. See **VBScript Helpers** section above for the creation commands.
+
+### Volume Not Changing (WSL)
+
+1. **Create VBS helpers first** — see above section
+2. **SendKeys requires focused Windows app** - click on a browser/app first
+3. **Install nircmd** for focus-independent control (bypasses VBS entirely)
+4. **Verify VBS helpers exist**:
+   ```bash
+   ls -la /mnt/c/Windows/Temp/volup.vbs /mnt/c/Windows/Temp/voldown.vbs
+   ```
+
+### Action Word Not Navigable
+
+1. Verify word is in config (case-insensitive match)
+2. Re-apply patches after config change
+3. Check `globalThis._actionWordOverrides` in browser console
+
+## Future Extensions
+
+Potential action words to implement:
+- `brightness` - Screen brightness control
+- `speed` - Playback speed (media)
+- `zoom` - Zoom level
+- `mute` - Toggle mute
+- `play` / `pause` - Media control

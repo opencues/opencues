@@ -1,0 +1,496 @@
+HINTS Mode Benchmark - Tue Mar 17 15:08:22 GMT 2026
+Model: groq-120b
+========================================
+
+[MISS] implicit error - isn't working
+  Input: "this"
+  Expected: 2:2
+  Got: none
+
+[PASS] implicit error - failing
+  Input: "why does this keep failing"
+  Expected: 4:2
+  Got: 4:2
+
+[MISS] too vague, no hint
+  Input: "I"
+  Expected: none
+  Got: none
+
+[MISS] troubleshoot = debug context
+  Input: "help me troubleshoot"
+  Expected: 2:2
+  Got: none
+
+[PASS] crashing = broken/error
+  Input: "it keeps crashing"
+  Expected: 2:2
+  Got: 2:2
+
+[PASS] broke = broken
+  Input: "not sure what broke"
+  Expected: 3:2
+  Got: 3:2
+
+[MISS] uncertainty but not risky
+  Input: "not sure how this works"
+  Expected: none
+  Got: none
+
+[MISS] question, no clear trigger
+  Input: "should I touch this"
+  Expected: none
+  Got: none
+
+[WRONG] scary = risky
+  Input: "this looks scary"
+  Expected: 1:1
+  Got: 2:1
+
+[PASS] careful = risky context
+  Input: "be careful with this"
+  Expected: 1:1
+  Got: 1:1
+
+[MISS] vague
+  Input: "let me understand first"
+  Expected: none
+  Got: none
+
+[WRONG] forever = slow, want speed
+  Input: "this is taking forever"
+  Expected: 3:3
+  Got: 3:14
+
+[WRONG] speed triggers tip 3
+  Input: "can we speed this up"
+  Expected: 3:3
+  Got: 2:3
+
+[WRONG] files + check = parallel search
+  Input: "too many files to check"
+  Expected: 2:3,4:7
+  Got: 0:15
+
+[MISS] vague at once
+  Input: "do all of these at once"
+  Expected: none
+  Got: none
+
+[WRONG] could be disk, not context
+  Input: "running out of space"
+  Expected: none
+  Got: 0:5
+
+[PARTIAL] huge conversation = context
+  Input: "conversation is getting huge"
+  Expected: 3:5
+  Got: 0:5,3:5
+
+[PASS] history = memory/context
+  Input: "too much history"
+  Expected: 2:5
+  Got: 2:5
+
+[PASS] question with fix
+  Input: "how do I fix this"
+  Expected: 3:2
+  Got: 3:2
+
+[WRONG] where + used = search
+  Input: "where is this used"
+  Expected: 1:7,3:7
+  Got: 0:7
+
+[MISS] model question
+  Input: "what model should I use"
+  Expected: 2:4
+  Got: none
+
+[PASS] search question
+  Input: "can you search for this"
+  Expected: 2:7
+  Got: 2:7
+
+[PASS] slow question
+  Input: "why is this so slow"
+  Expected: 4:14
+  Got: 4:14
+
+[WRONG] go back = rewind context
+  Input: "how do I go back"
+  Expected: 3:2
+  Got: 4:2
+
+[PASS] casual broken
+  Input: "ugh this is broken"
+  Expected: 3:2
+  Got: 3:2
+
+[PASS] casual hard
+  Input: "man this is hard"
+  Expected: 3:4
+  Got: 3:4
+
+[MISS] casual refactor
+  Input: "ok"
+  Expected: 2:1
+  Got: none
+
+[MISS] think = ultrathink context
+  Input: "hmm need to think about this"
+  Expected: 3:13
+  Got: none
+
+[MISS] too vague
+  Input: "wait let me check something"
+  Expected: none
+  Got: none
+
+[PASS] casual search
+  Input: "yo search for imports"
+  Expected: 1:7
+  Got: 1:7
+
+[PARTIAL] typo serach - should still work?
+  Input: "serach the codebase"
+  Expected: 0:7
+  Got: 0:7,2:7
+
+[PASS] typo refacor - might miss
+  Input: "refacor this code"
+  Expected: 0:1
+  Got: 0:1
+
+[PASS] typo debugg - might miss
+  Input: "debugg this please"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] typo parrallel - might miss
+  Input: "parrallel processing"
+  Expected: 0:3
+  Got: 0:3
+
+[PASS] search + fix + bugs
+  Input: "search and fix all bugs"
+  Expected: 0:7,2:2,4:2
+  Got: 0:7,2:2,4:2
+
+[PASS] refactor + careful
+  Input: "refactor but be careful"
+  Expected: 0:1,3:1
+  Got: 0:1,3:1
+
+[PARTIAL] think + hard + complex
+  Input: "think hard about this complex problem"
+  Expected: 0:13,1:4,4:4
+  Got: 0:13,4:4
+
+[PARTIAL] find + where + used + fix
+  Input: "find where this is used and fix it"
+  Expected: 0:7,1:7,4:7,6:2
+  Got: 0:7,6:2
+
+[PASS] debug + parallel
+  Input: "debug in parallel"
+  Expected: 0:2,2:3
+  Got: 0:2,2:3
+
+[MISS] unrelated
+  Input: "the weather is nice"
+  Expected: none
+  Got: none
+
+[MISS] greeting
+  Input: "hello how are you"
+  Expected: none
+  Got: none
+
+[MISS] unrelated
+  Input: "I like pizza"
+  Expected: none
+  Got: none
+
+[MISS] write triggers external editor - maybe false positive?
+  Input: "write a function"
+  Expected: 0:9
+  Got: none
+
+[MISS] fast but positive context - false positive?
+  Input: "my computer is fast"
+  Expected: 2:3
+  Got: none
+
+[MISS] plan but past tense, worked
+  Input: "the plan worked"
+  Expected: 1:1
+  Got: none
+
+[MISS] fixed but already done
+  Input: "I fixed it already"
+  Expected: 1:2
+  Got: none
+
+[MISS] bug but resolved
+  Input: "that bug is gone"
+  Expected: 1:2
+  Got: none
+
+[MISS] change but trivial
+  Input: "change the color"
+  Expected: 1:1
+  Got: none
+
+[MISS] think - worth triggering?
+  Input: "let me think"
+  Expected: 2:13
+  Got: none
+
+[MISS] find but not code search
+  Input: "find the answer"
+  Expected: 0:7
+  Got: none
+
+[MISS] search but not codebase
+  Input: "search google"
+  Expected: 0:7
+  Got: none
+
+[PASS] complex but might be description
+  Input: "this is complex"
+  Expected: 2:4
+  Got: 2:4
+
+[WRONG] long = context or description?
+  Input: "the code is long"
+  Expected: 3:5
+  Got: 3:15
+
+[PASS] big = file size tip?
+  Input: "big project"
+  Expected: 0:15
+  Got: 0:15
+
+[PARTIAL] small contradicts big, bug matches
+  Input: "small bug"
+  Expected: 0:15,1:2
+  Got: 1:2
+
+[PASS] single word refactor
+  Input: "refactor"
+  Expected: 0:1
+  Got: 0:1
+
+[PASS] single word debug
+  Input: "debug"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] single word search
+  Input: "search"
+  Expected: 0:7
+  Got: 0:7
+
+[PASS] single word slow
+  Input: "slow"
+  Expected: 0:14
+  Got: 0:14
+
+[MISS] too generic
+  Input: "help"
+  Expected: none
+  Got: none
+
+[MISS] just politeness
+  Input: "please"
+  Expected: none
+  Got: none
+
+[MISS] just politeness
+  Input: "thanks"
+  Expected: none
+  Got: none
+
+[MISS] minimal fix
+  Input: "fix it"
+  Expected: 0:2
+  Got: none
+
+[PASS] minimal find
+  Input: "find it"
+  Expected: 0:7
+  Got: 0:7
+
+[WRONG] minimal rewind context
+  Input: "go back"
+  Expected: 1:2
+  Got: 0:2
+
+[WRONG] long sentence with stuck + bug
+  Input: "Ive been working on this bug for hours and Im completely stuck and"
+  Expected: 7:2,13:2
+  Got: 5:2,11:2
+
+[PARTIAL] long with architecture + complex + think + refactor
+  Input: "the architecture of this system is extremely complex and I need to think very carefully about how to refactor it"
+  Expected: 1:4,6:4,11:13,16:1
+  Got: 1:4,7:4,12:13,14:1,18:1
+
+[PASS] exact stuck
+  Input: "stuck"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] exact bug
+  Input: "bug"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] exact refactor
+  Input: "refactor"
+  Expected: 0:1
+  Got: 0:1
+
+[PASS] exact parallel
+  Input: "parallel"
+  Expected: 0:3
+  Got: 0:3
+
+[PASS] exact opus
+  Input: "opus"
+  Expected: 0:4
+  Got: 0:4
+
+[PASS] exact compact
+  Input: "compact"
+  Expected: 0:5
+  Got: 0:5
+
+[PASS] exact search
+  Input: "search"
+  Expected: 0:7
+  Got: 0:7
+
+[PASS] exact permission
+  Input: "permission"
+  Expected: 0:8
+  Got: 0:8
+
+[PASS] exact ultrathink
+  Input: "ultrathink"
+  Expected: 0:13
+  Got: 0:13
+
+[PASS] exact wsl
+  Input: "wsl"
+  Expected: 0:14
+  Got: 0:14
+
+[PASS] exact monolith
+  Input: "monolith"
+  Expected: 0:15
+  Got: 0:15
+
+[MISS] edge cases = programming term, not risky
+  Input: "check the edge cases"
+  Expected: none
+  Got: none
+
+[MISS] corner cases = programming term
+  Input: "handle corner cases"
+  Expected: none
+  Got: none
+
+[MISS] programming term
+  Input: "test boundary conditions"
+  Expected: none
+  Got: none
+
+[MISS] change in code context
+  Input: "implement the change handler"
+  Expected: none
+  Got: none
+
+[MISS] error but in handler context - false positive?
+  Input: "the error handler works"
+  Expected: 1:2
+  Got: none
+
+[MISS] model in MVC context - false positive?
+  Input: "the model layer"
+  Expected: 1:4
+  Got: none
+
+[PASS] search but algorithm context - false positive?
+  Input: "search algorithm"
+  Expected: 0:7
+  Got: 0:7
+
+[MISS] memory but leak context
+  Input: "memory leak"
+  Expected: 0:5
+  Got: none
+
+[MISS] file but system context
+  Input: "file system"
+  Expected: 0:15
+  Got: none
+
+[PASS] parallel but data structure
+  Input: "parallel arrays"
+  Expected: 0:3
+  Got: 0:3
+
+[WRONG] real: test failure
+  Input: "why does this test keep failing"
+  Expected: 4:2
+  Got: 5:2
+
+[MISS] real: feature request, no specific tip
+  Input: "I need to add a new feature"
+  Expected: none
+  Got: none
+
+[MISS] real: explanation request
+  Input: "can you explain this code"
+  Expected: none
+  Got: none
+
+[PASS] real: branch work
+  Input: "I want to work on another branch"
+  Expected: 6:12
+  Got: 6:12
+
+[PASS] real: background = parallel context?
+  Input: "how do I run this in the background"
+  Expected: 7:3
+  Got: 7:3
+
+[WRONG] real: long function, maybe split
+  Input: "this function is way too long"
+  Expected: 4:5,5:15
+  Got: 4:15
+
+[WRONG] real: slow response
+  Input: "the response is taking forever"
+  Expected: 4:3
+  Got: 4:14
+
+[PASS] real: undo = rewind
+  Input: "I need to undo what you just did"
+  Expected: 3:2
+  Got: 3:2
+
+[WRONG] real: remember = CLAUDE.md
+  Input: "can you remember this for next time"
+  Expected: 3:6
+  Got: 2:6,5:6
+
+========================================
+RESULTS SUMMARY
+Total: 97
+Correct: 40 (41%)
+Partial: 6 (6%)
+Wrong/Miss: 51 (52%)
+Accuracy (full+partial): 47%

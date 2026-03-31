@@ -1,0 +1,241 @@
+HINTS Mode Benchmark - Tue Mar 17 14:57:37 GMT 2026
+Model: groq-120b
+========================================
+
+[PASS] refactor triggers plan mode tip
+  Input: "refactor everything"
+  Expected: 0:1
+  Got: 0:1
+
+[PASS] rewrite triggers plan mode tip
+  Input: "I want to rewrite this module"
+  Expected: 3:1
+  Got: 3:1
+
+[PASS] risky and change both trigger tip 1
+  Input: "this is a risky change"
+  Expected: 3:1,4:1
+  Got: 3:1,4:1
+
+[PASS] fix and error trigger debugging tip
+  Input: "fix this error please"
+  Expected: 0:2,2:2
+  Got: 0:2,2:2
+
+[PASS] debug and broken trigger tip 2
+  Input: "debug the broken code"
+  Expected: 0:2,2:2
+  Got: 0:2,2:2
+
+[PARTIAL] parallel triggers agents tip
+  Input: "search in parallel"
+  Expected: 2:3
+  Got: 0:7,2:3
+
+[PASS] multiple and agents trigger tip 3
+  Input: "use multiple agents"
+  Expected: 1:3,2:3
+  Got: 1:3,2:3
+
+[PASS] fast triggers tip 3
+  Input: "make this fast please"
+  Expected: 2:3
+  Got: 2:3
+
+[PASS] complex and architecture trigger model tip
+  Input: "this is complex architecture"
+  Expected: 2:4,3:4
+  Got: 2:4,3:4
+
+[PASS] opus and model trigger tip 4
+  Input: "switch to opus model"
+  Expected: 2:4,3:4
+  Got: 2:4,3:4
+
+[PASS] hard and design trigger tip 4
+  Input: "this is hard to design"
+  Expected: 2:4,4:4
+  Got: 2:4,4:4
+
+[PASS] context triggers compact tip
+  Input: "running out of context"
+  Expected: 3:5
+  Got: 3:5
+
+[PASS] token and limit trigger tip 5
+  Input: "hit the token limit"
+  Expected: 2:5,3:5
+  Got: 2:5,3:5
+
+[PASS] compact and memory trigger tip 5
+  Input: "need to compact memory"
+  Expected: 2:5,3:5
+  Got: 2:5,3:5
+
+[PASS] remember and always trigger CLAUDE.md tip
+  Input: "remember this always"
+  Expected: 0:6,2:6
+  Got: 0:6,2:6
+
+[MISS] instructions triggers tip 6
+  Input: "follow these instructions"
+  Expected: 2:6
+  Got: none
+
+[PASS] rule and every trigger tip 6
+  Input: "add a rule for every build"
+  Expected: 2:6,4:6
+  Got: 2:6,4:6
+
+[PASS] search and codebase trigger search tip
+  Input: "search the codebase"
+  Expected: 0:7,2:7
+  Got: 0:7,2:7
+
+[PASS] find and where trigger tip 7
+  Input: "find where this is used"
+  Expected: 0:7,1:7
+  Got: 0:7,1:7
+
+[PASS] grep triggers tip 7
+  Input: "grep for this pattern"
+  Expected: 0:7
+  Got: 0:7
+
+[PARTIAL] skip and permission trigger permissions tip
+  Input: "skip permission checks"
+  Expected: 0:8,1:8
+  Got: 0:8,1:8,2:8
+
+[PASS] dangerous and allow trigger tip 8
+  Input: "dangerous to allow this"
+  Expected: 0:8,2:8
+  Got: 0:8,2:8
+
+[PASS] auto and approve trigger tip 8
+  Input: "auto approve everything"
+  Expected: 0:8,1:8
+  Got: 0:8,1:8
+
+[PARTIAL] compose triggers external editor tip
+  Input: "compose a long prompt"
+  Expected: 0:9
+  Got: 0:9,2:5
+
+[PASS] write and multiline trigger tip 9
+  Input: "write a multiline message"
+  Expected: 0:9,2:9
+  Got: 0:9,2:9
+
+[PARTIAL] previous triggers history tip
+  Input: "find my previous query"
+  Expected: 2:10
+  Got: 0:7,2:10
+
+[PASS] repeat and before trigger tip 10
+  Input: "repeat what I did before"
+  Expected: 0:10,4:10
+  Got: 0:10,4:10
+
+[PARTIAL] history triggers tip 10
+  Input: "search history please"
+  Expected: 1:10
+  Got: 0:7,1:10
+
+[PASS] break triggers suspend tip
+  Input: "take a break now"
+  Expected: 2:11
+  Got: 2:11
+
+[PASS] pause triggers tip 11
+  Input: "pause this session"
+  Expected: 0:11
+  Got: 0:11
+
+[PASS] resume and later trigger tip 11
+  Input: "resume my work later"
+  Expected: 0:11,3:11
+  Got: 0:11,3:11
+
+[PARTIAL] branches triggers worktree tip
+  Input: "work on multiple branches"
+  Expected: 3:12
+  Got: 2:3,3:12
+
+[PASS] concurrent triggers tip 12
+  Input: "run concurrent sessions"
+  Expected: 1:12
+  Got: 1:12
+
+[PASS] simultaneous triggers tip 12
+  Input: "simultaneous development"
+  Expected: 0:12
+  Got: 0:12
+
+[PASS] ultrathink triggers reasoning tip
+  Input: "ultrathink about this"
+  Expected: 0:13
+  Got: 0:13
+
+[PASS] deep and analysis trigger tip 13
+  Input: "need deep analysis"
+  Expected: 1:13,2:13
+  Got: 1:13,2:13
+
+[PARTIAL] think and thorough trigger tip 13
+  Input: "think through this thoroughly"
+  Expected: 0:13,4:13
+  Got: 0:13,3:13
+
+[PASS] slow and wsl trigger performance tip
+  Input: "this is too slow on wsl"
+  Expected: 3:14,5:14
+  Got: 3:14,5:14
+
+[PASS] windows triggers tip 14
+  Input: "running on windows"
+  Expected: 2:14
+  Got: 2:14
+
+[PASS] performance and lag trigger tip 14
+  Input: "performance is lagging"
+  Expected: 0:14,2:14
+  Got: 0:14,2:14
+
+[PARTIAL] file and large trigger size tip
+  Input: "this file is too large"
+  Expected: 2:15,4:15
+  Got: 1:15,4:15
+
+[PASS] monolith triggers tip 15
+  Input: "break up the monolith"
+  Expected: 3:15
+  Got: 3:15
+
+[PASS] massive triggers tip 15
+  Input: "massive codebase here"
+  Expected: 0:15
+  Got: 0:15
+
+[PASS] search=7, parallel=3, bugs=2
+  Input: "search in parallel for bugs"
+  Expected: 0:7,2:3,4:2
+  Got: 0:7,2:3,4:2
+
+[PASS] complex=4, error=2, hard=4, fix=2
+  Input: "this complex error is hard to fix"
+  Expected: 1:4,2:2,4:4,6:2
+  Got: 1:4,2:2,4:4,6:2
+
+[PASS] ultrathink=13, complex=4, architecture=4
+  Input: "ultrathink about this complex architecture"
+  Expected: 0:13,3:4,4:4
+  Got: 0:13,3:4,4:4
+
+========================================
+RESULTS SUMMARY
+Total: 46
+Correct: 37 (80%)
+Partial: 8 (17%)
+Wrong/Miss: 1 (2%)
+Accuracy (full+partial): 97%

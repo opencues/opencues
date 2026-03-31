@@ -1,0 +1,34 @@
+Model: cerebras-120b
+Timestamp: 2026-02-18 17:32:30
+
+=== MATH ===
+Running math...
+math: 48/53 (90.5%) avg: 2622ms
+
+Running math-edge...
+math-edge: 29/56 (51.7%) avg: 2727ms
+
+Subtotal: 77/109 (70.6%)
+
+=== FACTUAL ===
+Running factual...
+factual: 41/51 (80.3%) avg: 1096ms
+
+Running factual-edge...
+factual-edge: 17/51 (33.3%) avg: 1168ms
+
+Subtotal: 58/102 (56.8%)
+
+=== GRAMMAR ===
+Running word...
+word: 30/48 (62.5%) avg: 1696ms
+
+Running word-edge...
+word-edge: 13/53 (24.5%) avg: 712ms
+
+Subtotal: 43/101 (42.5%)
+
+=== TOTAL ===
+Passed: 178/312 (57.0%)
+Avg Latency: 1687ms
+Est. Monthly (1k req/day): $1.51

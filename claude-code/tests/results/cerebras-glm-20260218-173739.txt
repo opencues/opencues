@@ -1,0 +1,34 @@
+Model: cerebras-glm
+Timestamp: 2026-02-18 17:37:39
+
+=== MATH ===
+Running math...
+math: 0/53 (0%) avg: 389ms
+
+Running math-edge...
+math-edge: 0/56 (0%) avg: 421ms
+
+Subtotal: 0/109 (0%)
+
+=== FACTUAL ===
+Running factual...
+factual: 0/51 (0%) avg: 378ms
+
+Running factual-edge...
+factual-edge: 0/51 (0%) avg: 402ms
+
+Subtotal: 0/102 (0%)
+
+=== GRAMMAR ===
+Running word...
+word: 0/48 (0%) avg: 352ms
+
+Running word-edge...
+word-edge: 0/53 (0%) avg: 528ms
+
+Subtotal: 0/101 (0%)
+
+=== TOTAL ===
+Passed: 0/312 (0%)
+Avg Latency: 413ms
+Est. Monthly (1k req/day): $7.87

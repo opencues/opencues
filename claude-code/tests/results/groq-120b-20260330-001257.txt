@@ -1,0 +1,73 @@
+Model: groq-120b
+Timestamp: 2026-03-30 00:12:57
+
+=== MATH ===
+Running math...
+math: 48/53 (90.5%) avg: 950ms
+
+Running math-edge...
+math-edge: 53/56 (94.6%) avg: 926ms
+
+Subtotal: 101/109 (92.6%)
+
+=== FACTUAL ===
+Running factual...
+factual: 48/51 (94.1%) avg: 798ms
+
+Running factual-edge...
+factual-edge: 48/51 (94.1%) avg: 1056ms
+
+Subtotal: 96/102 (94.1%)
+
+=== GRAMMAR ===
+Running word...
+word: 44/48 (91.6%) avg: 859ms
+
+Running word-edge...
+word-edge: 39/47 (82.9%) avg: 896ms
+
+Subtotal: 83/95 (87.3%)
+
+=== LINKED ===
+Running link-gender...
+link-gender: 11/12 (91.6%) avg: 1167ms
+
+Running link-number...
+link-number: 12/14 (85.7%) avg: 1211ms
+
+Running link-verb...
+link-verb: 7/9 (77.7%) avg: 1048ms
+
+Running link-possession...
+link-possession: 8/9 (88.8%) avg: 1053ms
+
+Running link-tense...
+link-tense: 8/9 (88.8%) avg: 1196ms
+
+Running link-reflexive...
+link-reflexive: 6/7 (85.7%) avg: 1107ms
+
+Running link-quantity...
+link-quantity: 6/7 (85.7%) avg: 1186ms
+
+Running link-determiner...
+link-determiner: 6/8 (75.0%) avg: 1157ms
+
+Running link-negation...
+link-negation: 4/8 (50.0%) avg: 670ms
+
+Running link-comparative...
+link-comparative: 1/6 (16.6%) avg: 647ms
+
+Running link-conditional...
+link-conditional: 2/5 (40.0%) avg: 746ms
+
+Running link-concept...
+link-concept: 20/78 (25.6%) avg: 515ms
+
+Subtotal: 91/172 (52.9%)
+
+=== TOTAL ===
+Passed: 371/478 (77.6%)
+Avg Latency: 877ms
+Est. Monthly (1k req/day): $.90

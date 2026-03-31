@@ -1,0 +1,251 @@
+HINTS Mode Benchmark - Tue Mar 17 15:14:05 GMT 2026
+Model: groq-120b
+========================================
+
+[PASS] exact: stuck
+  Input: "stuck"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] exact: bug
+  Input: "bug"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] exact: refactor
+  Input: "refactor"
+  Expected: 0:1
+  Got: 0:1
+
+[PASS] exact: parallel
+  Input: "parallel"
+  Expected: 0:3
+  Got: 0:3
+
+[PASS] exact: opus
+  Input: "opus"
+  Expected: 0:4
+  Got: 0:4
+
+[PASS] exact: compact
+  Input: "compact"
+  Expected: 0:5
+  Got: 0:5
+
+[PASS] exact: search
+  Input: "search"
+  Expected: 0:7
+  Got: 0:7
+
+[PASS] exact: ultrathink
+  Input: "ultrathink"
+  Expected: 0:13
+  Got: 0:13
+
+[PASS] exact: wsl
+  Input: "wsl"
+  Expected: 0:14
+  Got: 0:14
+
+[PASS] exact: monolith
+  Input: "monolith"
+  Expected: 0:15
+  Got: 0:15
+
+[PASS] exact: debug
+  Input: "debug"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] exact: rewind
+  Input: "rewind"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] exact: undo
+  Input: "undo"
+  Expected: 0:2
+  Got: 0:2
+
+[PASS] two words: stuck at index 1
+  Input: "I'm stuck"
+  Expected: 1:2
+  Got: 1:2
+
+[PASS] two words: fix and bug
+  Input: "fix bug"
+  Expected: 0:2,1:2
+  Got: 0:2,1:2
+
+[PASS] two words: search and codebase
+  Input: "search codebase"
+  Expected: 0:7,1:7
+  Got: 0:7,1:7
+
+[PASS] two words: slow at index 1
+  Input: "too slow"
+  Expected: 1:14
+  Got: 1:14
+
+[PASS] natural: stuck and bug
+  Input: "I'm stuck on this bug"
+  Expected: 1:2,4:2
+  Got: 1:2,4:2
+
+[PASS] natural: refactor
+  Input: "refactor everything"
+  Expected: 0:1
+  Got: 0:1
+
+[PARTIAL] natural: slow and wsl
+  Input: "this is too slow on wsl"
+  Expected: 3:14,5:14
+  Got: 3:14
+
+[PASS] natural: search and codebase
+  Input: "search the codebase"
+  Expected: 0:7,2:7
+  Got: 0:7,2:7
+
+[PASS] programming term: edge cases
+  Input: "check edge cases"
+  Expected: none
+  Got: none
+
+[PASS] programming term: corner cases
+  Input: "handle corner cases"
+  Expected: none
+  Got: none
+
+[PASS] code structure: error handler
+  Input: "the error handler"
+  Expected: none
+  Got: none
+
+[PASS] MVC pattern: model layer
+  Input: "model layer"
+  Expected: none
+  Got: none
+
+[FALSE_POS] code: search algorithm
+  Input: "search algorithm"
+  Expected: none
+  Got: 0:7
+
+[PASS] technical: file system
+  Input: "file system operations"
+  Expected: none
+  Got: none
+
+[FALSE_POS] technical: memory (not context)
+  Input: "memory allocation"
+  Expected: none
+  Got: 0:5,1:5
+
+[FALSE_POS] data structure: parallel arrays
+  Input: "parallel arrays"
+  Expected: none
+  Got: 0:3
+
+[PASS] code pattern: change listener
+  Input: "change listener"
+  Expected: none
+  Got: none
+
+[WRONG] implicit: working=broken
+  Input: "this isn't working"
+  Expected: 2:2
+  Got: 0:2
+
+[WRONG] implicit: forever=slow
+  Input: "taking forever"
+  Expected: 1:3
+  Got: 1:14
+
+[WRONG] implicit: back=rewind
+  Input: "go back"
+  Expected: 1:2
+  Got: 0:2
+
+[PASS] implicit: speed=parallel
+  Input: "speed this up"
+  Expected: 0:3
+  Got: 0:3
+
+[MISS] question: fix
+  Input: "how do I fix this"
+  Expected: 3:2
+  Got: none
+
+[PASS] question: where and used
+  Input: "where is this used"
+  Expected: 0:7,3:7
+  Got: 0:7,3:7
+
+[PASS] question: slow
+  Input: "why is this slow"
+  Expected: 3:14
+  Got: 3:14
+
+[PASS] multi: search=7, bugs=2
+  Input: "search for bugs"
+  Expected: 0:7,2:2
+  Got: 0:7,2:2
+
+[PASS] multi: refactor=1, debug=2
+  Input: "refactor and debug"
+  Expected: 0:1,2:2
+  Got: 0:1,2:2
+
+[PASS] multi: complex and architecture=4
+  Input: "complex architecture"
+  Expected: 0:4,1:4
+  Got: 0:4,1:4
+
+[PASS] greeting: no tip
+  Input: "hello"
+  Expected: none
+  Got: none
+
+[PASS] politeness: no tip
+  Input: "thanks"
+  Expected: none
+  Got: none
+
+[PASS] acknowledgment: no tip
+  Input: "ok"
+  Expected: none
+  Got: none
+
+[PASS] article: no tip
+  Input: "the"
+  Expected: none
+  Got: none
+
+[PASS] vague request
+  Input: "please help"
+  Expected: none
+  Got: none
+
+[PASS] sentence: undo
+  Input: "I need to undo what you just did"
+  Expected: 3:2
+  Got: 3:2
+
+[PARTIAL] sentence: search, where, used
+  Input: "let me search for where this is used"
+  Expected: 2:7,4:7,7:7
+  Got: 2:7
+
+[PASS] sentence: complex
+  Input: "this code is way too complex"
+  Expected: 5:4
+  Got: 5:4
+
+========================================
+RESULTS SUMMARY
+Total: 48
+Correct: 39 (81%)
+Partial: 2 (4%)
+Wrong/Miss: 7 (14%)
+Accuracy (full+partial): 85%
