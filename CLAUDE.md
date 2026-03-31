@@ -11,7 +11,7 @@ This document provides context for Claude sessions working on this project.
 - **Integrations** — Editor-specific implementations that use cues-core
 
 **Current Integrations**:
-- **Claude Code** — via tweakcc patches (`packages/cues-patches/`)
+- **Claude Code** — via tweakcc patches (`claude-code/patches/`)
 
 ---
 
@@ -23,27 +23,26 @@ cues-system/
 ├── README.md                      # Public readme with install instructions
 │
 ├── packages/                      # Core packages
-│   ├── cues-core/                 # LLM analysis library
-│   │   ├── src/
-│   │   │   ├── prompts.ts         # GRAMMAR, MATH, FACTUAL prompts
-│   │   │   ├── resolver.ts        # CueResolver orchestration
-│   │   │   ├── node-http-adapter.ts  # HTTPS with keep-alive
-│   │   │   ├── classifier.ts      # looksLikeMath, looksLikeFactual
-│   │   │   └── sources/           # GrammarSource, MathSource, FactualSource
-│   │   └── dist/                  # Built output
-│   │
-│   └── cues-patches/              # Claude Code integration (tweakcc patches)
-│       ├── setup.sh               # ONE-COMMAND INSTALLER
-│       ├── cursorStateExport.ts   # Cursor position → JSON
-│       ├── wordHighlight.ts       # Navigation, numbers, gender, rendering
-│       ├── dynamicHighlight.ts    # LLM integration, cycling, spans
-│       ├── types-additions.ts     # TypeScript types to add
-│       ├── defaultSettings-additions.ts  # Default values to add
-│       ├── index-additions.ts     # Integration code to add
-│       ├── actions/               # Action word scripts (volume.sh)
-│       └── claude-code-tips.json  # Per-word tips file
+│   └── cues-core/                 # LLM analysis library
+│       ├── src/
+│       │   ├── prompts.ts         # GRAMMAR, MATH, FACTUAL prompts
+│       │   ├── resolver.ts        # CueResolver orchestration
+│       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
+│       │   ├── classifier.ts      # looksLikeMath, looksLikeFactual
+│       │   └── sources/           # GrammarSource, MathSource, FactualSource
+│       └── dist/                  # Built output
 │
-├── claude-code/                   # Claude Code integration docs & tests
+├── claude-code/                   # Claude Code integration (all in one place)
+│   ├── patches/                   # tweakcc patches
+│   │   ├── setup.sh               # ONE-COMMAND INSTALLER
+│   │   ├── cursorStateExport.ts   # Cursor position → JSON
+│   │   ├── wordHighlight.ts       # Navigation, numbers, gender, rendering
+│   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans
+│   │   ├── types-additions.ts     # TypeScript types to add
+│   │   ├── defaultSettings-additions.ts  # Default values to add
+│   │   ├── index-additions.ts     # Integration code to add
+│   │   ├── actions/               # Action word scripts (volume.sh)
+│   │   └── claude-code-tips.json  # Per-word tips file
 │   ├── docs/                      # Implementation documentation
 │   │   ├── tweakcc-cues-installation.md  # Install guide
 │   │   ├── implementation-notes.md       # Patching details
@@ -74,7 +73,7 @@ cues-system/
 
 ```bash
 git clone https://github.com/wkasekende/cues-system ~/cues-system
-~/cues-system/packages/cues-patches/setup.sh
+~/cues-system/claude-code/patches/setup.sh
 export GROQ_API_KEY="your-key"
 ```
 
@@ -175,7 +174,7 @@ const result = await resolver.resolve({
 cd packages/cues-core && npm run build
 
 # Run Claude Code setup
-packages/cues-patches/setup.sh
+claude-code/patches/setup.sh
 
 # Re-apply patches after Claude Code updates
 cd ~/tweakcc

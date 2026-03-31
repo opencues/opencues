@@ -6,7 +6,7 @@ LLM-powered word alternatives for Claude Code. Navigate words, increment numbers
 
 ```bash
 git clone https://github.com/wkasekende/cues-system ~/cues-system
-~/cues-system/packages/cues-patches/setup.sh
+~/cues-system/claude-code/patches/setup.sh
 export GROQ_API_KEY="your-key"  # add to ~/.bashrc
 ```
 
@@ -137,7 +137,7 @@ When cues-system updates:
 
 ```bash
 cd ~/cues-system && git pull
-~/cues-system/packages/cues-patches/setup.sh
+~/cues-system/claude-code/patches/setup.sh
 ```
 
 ## Troubleshooting
@@ -155,7 +155,7 @@ cd ~/cues-system && git pull
 cp ~/.tweakcc/cli.js.backup $(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
 
 # Re-run setup
-~/cues-system/packages/cues-patches/setup.sh
+~/cues-system/claude-code/patches/setup.sh
 ```
 
 ### setup.sh fails to patch

@@ -213,7 +213,7 @@ fi
 # 6. Build cues-core and install
 echo ""
 echo "Building cues-core..."
-CUES_CORE="$SCRIPT_DIR/../cues-core"
+CUES_CORE="$SCRIPT_DIR/../../packages/cues-core"
 if [ -d "$CUES_CORE" ]; then
   cd "$CUES_CORE"
   npm install --silent 2>/dev/null || npm install
