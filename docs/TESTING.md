@@ -73,7 +73,7 @@
 
 ```bash
 # Verify patched cli.js syntax
-node --check ~/.claude/local/node_modules/@anthropic-ai/claude-code/cli.js
+node --check ~/.claude/local/node_modules/@anthropic-ai/integrations/claude-code/cli.js
 # ✓ Syntax valid
 
 # Verify cues-core functions are called
@@ -94,7 +94,7 @@ node /home/wilfred/tweakcc/tests/benchmark-tips-lookup.js
 cd /home/wilfred/tweakcc-source
 npm run build
 node dist/index.mjs --apply
-node --check ~/.claude/local/node_modules/@anthropic-ai/claude-code/cli.js
+node --check ~/.claude/local/node_modules/@anthropic-ai/integrations/claude-code/cli.js
 ```
 
 ## Test Coverage

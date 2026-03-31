@@ -11,7 +11,7 @@ This document provides context for Claude sessions working on this project.
 - **Integrations** — Editor-specific implementations that use cues-core
 
 **Current Integrations**:
-- **Claude Code** — via tweakcc patches (`claude-code/patches/`)
+- **Claude Code** — via tweakcc patches (`integrations/claude-code/patches/`)
 
 ---
 
@@ -32,7 +32,7 @@ cues-system/
 │       │   └── sources/           # GrammarSource, MathSource, FactualSource
 │       └── dist/                  # Built output
 │
-├── claude-code/                   # Claude Code integration (all in one place)
+├── integrations/claude-code/                   # Claude Code integration (all in one place)
 │   ├── patches/                   # tweakcc patches
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
 │   │   ├── cursorStateExport.ts   # Cursor position → JSON
@@ -73,7 +73,7 @@ cues-system/
 
 ```bash
 git clone https://github.com/wkasekende/cues-system ~/cues-system
-~/cues-system/claude-code/patches/setup.sh
+~/cues-system/integrations/claude-code/patches/setup.sh
 export GROQ_API_KEY="your-key"
 ```
 
@@ -120,12 +120,12 @@ Patches Claude Code via tweakcc to add:
 
 | Doc | Purpose |
 |-----|---------|
-| `claude-code/docs/tweakcc-cues-installation.md` | Full install guide |
-| `claude-code/docs/implementation-notes.md` | How patching works |
-| `claude-code/docs/systems-diagram.md` | Architecture overview |
-| `claude-code/references/word-highlight.md` | Word highlight reference |
-| `claude-code/references/dynamic-highlight.md` | Dynamic highlight reference |
-| `claude-code/references/config.md` | Config file reference |
+| `integrations/claude-code/docs/tweakcc-cues-installation.md` | Full install guide |
+| `integrations/claude-code/docs/implementation-notes.md` | How patching works |
+| `integrations/claude-code/docs/systems-diagram.md` | Architecture overview |
+| `integrations/claude-code/references/word-highlight.md` | Word highlight reference |
+| `integrations/claude-code/references/dynamic-highlight.md` | Dynamic highlight reference |
+| `integrations/claude-code/references/config.md` | Config file reference |
 
 ### General (cues-core)
 
@@ -174,7 +174,7 @@ const result = await resolver.resolve({
 cd packages/cues-core && npm run build
 
 # Run Claude Code setup
-claude-code/patches/setup.sh
+integrations/claude-code/patches/setup.sh
 
 # Re-apply patches after Claude Code updates
 cd ~/tweakcc

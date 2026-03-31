@@ -38,7 +38,7 @@ After installation:
 git clone https://github.com/wkasekende/cues-system ~/cues-system
 
 # 2. Run setup (does everything)
-~/cues-system/packages/cues-patches/setup.sh
+~/cues-system/integrations/claude-code/patches/setup.sh
 
 # 3. Set API key (add to ~/.bashrc for persistence)
 export GROQ_API_KEY="your-key"
@@ -88,7 +88,7 @@ git clone https://github.com/wkasekende/cues-system
 
 Copy patch files:
 ```bash
-CUES_PATCHES=~/cues-system/packages/cues-patches
+CUES_PATCHES=~/cues-system/integrations/claude-code/patches
 
 cp $CUES_PATCHES/cursorStateExport.ts ~/tweakcc/src/patches/
 cp $CUES_PATCHES/wordHighlight.ts ~/tweakcc/src/patches/
@@ -378,7 +378,7 @@ When cues-system updates:
 cd ~/cues-system && git pull
 
 # Update patches
-CUES_PATCHES=~/cues-system/packages/cues-patches
+CUES_PATCHES=~/cues-system/integrations/claude-code/patches
 cp $CUES_PATCHES/*.ts ~/tweakcc/src/patches/
 
 # Rebuild cues-core

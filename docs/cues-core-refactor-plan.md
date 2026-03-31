@@ -156,7 +156,7 @@ File: `/home/wilfred/tweakcc-source/src/patches/dynamicHighlight.ts`
 cd /home/wilfred/tweakcc-source
 npm run build
 node dist/index.mjs --apply
-node --check ~/.claude/local/node_modules/@anthropic-ai/claude-code/cli.js
+node --check ~/.claude/local/node_modules/@anthropic-ai/integrations/claude-code/cli.js
 ```
 
 ### Step 7: Run benchmark

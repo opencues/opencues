@@ -192,7 +192,7 @@ cd /home/wilfred/tweakcc-source
 # Edit src/patches/*.ts
 npm run build
 node dist/index.mjs --apply
-node --check ~/.claude/local/node_modules/@anthropic-ai/claude-code/cli.js
+node --check ~/.claude/local/node_modules/@anthropic-ai/integrations/claude-code/cli.js
 ```
 
 ### Run tests

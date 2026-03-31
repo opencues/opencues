@@ -9,7 +9,7 @@ Custom patches for tweakcc that add LLM-powered word alternatives to Claude Code
 git clone https://github.com/wkasekende/cues-system ~/cues-system
 
 # 2. Run setup (clones tweakcc, patches everything, builds, applies)
-~/cues-system/packages/cues-patches/setup.sh
+~/cues-system/integrations/claude-code/patches/setup.sh
 
 # 3. Set API key (add to ~/.bashrc for persistence)
 export GROQ_API_KEY="your-key"
@@ -55,7 +55,7 @@ cd ~/tweakcc && npm install
 ### 2. Copy patch files
 
 ```bash
-CUES_PATCHES=~/cues-system/packages/cues-patches
+CUES_PATCHES=~/cues-system/integrations/claude-code/patches
 
 cp $CUES_PATCHES/cursorStateExport.ts ~/tweakcc/src/patches/
 cp $CUES_PATCHES/wordHighlight.ts ~/tweakcc/src/patches/
