@@ -117,7 +117,7 @@ agents (1/3) - Spawn parallel workers via Task tool
 
 **Disable:** Run `/statusline` again and clear the command.
 
-See [status line docs](integrations/claude-code/docs/status-line-integration.md) for details.
+See [status line docs](integrations/claude-code/docs/status-line.md) for details.
 
 ## Configuration
 

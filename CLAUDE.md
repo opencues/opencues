@@ -116,26 +116,29 @@ Patches Claude Code via tweakcc to add:
 
 ---
 
-## Documentation by Integration
+## Documentation
 
-### Claude Code
-
-| Doc | Purpose |
-|-----|---------|
-| `integrations/claude-code/docs/tweakcc-cues-installation.md` | Full install guide |
-| `integrations/claude-code/docs/implementation-notes.md` | How patching works |
-| `integrations/claude-code/docs/systems-diagram.md` | Architecture overview |
-| `integrations/claude-code/references/word-highlight.md` | Word highlight reference |
-| `integrations/claude-code/references/dynamic-highlight.md` | Dynamic highlight reference |
-| `integrations/claude-code/references/config.md` | Config file reference |
-
-### General (cues-core)
+### Claude Code (`integrations/claude-code/docs/`)
 
 | Doc | Purpose |
 |-----|---------|
-| `docs/cues-system.md` | System overview |
-| `docs/llm-providers.md` | LLM providers, config & benchmarks |
-| `packages/cues-core/src/prompts.ts` | All LLM prompts (source of truth) |
+| `systems-diagram.md` | Architecture + data flow diagrams |
+| `word-highlight.md` | Navigation modes, keys, behaviour |
+| `dynamic-highlight.md` | LLM triggers, tips, blanks, clearing |
+| `status-line.md` | Status line setup, format, disabling |
+| `action-word-overrides.md` | External action scripts + WSL guide |
+| `config.md` | All config options |
+| `claude-code-prompting.md` | Claude Code CLI tips |
+
+### General (`docs/`)
+
+| Doc | Purpose |
+|-----|---------|
+| `cues-system.md` | Architecture, feature concepts, API |
+| `llm-providers.md` | Provider config & benchmarks |
+| `blank-system.md` | Fill-in-the-blank classification |
+| `blank-position-detection.md` | Blank grammar rules |
+| `prompt-design-learnings.md` | Prompt engineering principles |
 
 ---
 
@@ -143,8 +146,8 @@ Patches Claude Code via tweakcc to add:
 
 To add a new editor integration:
 
-1. Create `packages/cues-<editor>/` with integration code
-2. Create `<editor>/docs/` for editor-specific documentation
+1. Create `integrations/<editor>/` with integration code
+2. Add `integrations/<editor>/docs/` for editor-specific documentation
 3. Use cues-core for LLM analysis:
 
 ```typescript
@@ -193,4 +196,4 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
-*Last updated: March 2026*
+*Last updated: April 2026*
