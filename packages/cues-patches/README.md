@@ -5,24 +5,25 @@ Custom patches for tweakcc that add LLM-powered word alternatives to Claude Code
 ## Quick Install
 
 ```bash
-# 1. Clone repos
-git clone https://github.com/anthropics/tweakcc ~/tweakcc
+# 1. Clone cues-system
 git clone https://github.com/wkasekende/cues-system ~/cues-system
 
-# 2. Install tweakcc dependencies
-cd ~/tweakcc && npm install
+# 2. Run setup (clones tweakcc, patches everything, builds, applies)
+~/cues-system/packages/cues-patches/setup.sh
 
-# 3. Run setup script (patches tweakcc + installs cues-core)
-~/cues-system/packages/cues-patches/setup.sh ~/tweakcc
-
-# 4. Set API key
+# 3. Set API key (add to ~/.bashrc for persistence)
 export GROQ_API_KEY="your-key"
 
-# 5. Build and apply
-cd ~/tweakcc && npm run build
-CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
-TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
+# 4. Restart Claude Code
+claude
 ```
+
+That's it. The setup script:
+- Clones tweakcc to ~/tweakcc
+- Installs dependencies
+- Copies and integrates patch files
+- Builds cues-core
+- Applies patches to Claude Code
 
 ## Contents
 

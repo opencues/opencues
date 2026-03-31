@@ -1,36 +1,47 @@
 #!/bin/bash
 #
-# setup.sh - Automated setup for cues-patches
+# setup.sh - One-command setup for cues-patches + tweakcc
 #
-# Usage: ./setup.sh /path/to/tweakcc
+# Usage: ./setup.sh [tweakcc-dir]
+#
+# If no directory specified, clones tweakcc to ~/tweakcc
 #
 
 set -e
 
-TWEAKCC_DIR="${1:-$HOME/tweakcc}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TWEAKCC_DIR="${1:-$HOME/tweakcc}"
 
-echo "Setting up cues-patches in: $TWEAKCC_DIR"
+echo "=== Cues System Setup ==="
+echo ""
 
-# Check tweakcc exists
-if [ ! -d "$TWEAKCC_DIR/src/patches" ]; then
-  echo "Error: $TWEAKCC_DIR/src/patches not found"
-  echo "Usage: ./setup.sh /path/to/tweakcc"
+# 1. Clone or update tweakcc
+if [ ! -d "$TWEAKCC_DIR" ]; then
+  echo "Cloning tweakcc to $TWEAKCC_DIR..."
+  git clone https://github.com/anthropics/tweakcc "$TWEAKCC_DIR"
+  cd "$TWEAKCC_DIR"
+  npm install
+elif [ ! -d "$TWEAKCC_DIR/src/patches" ]; then
+  echo "Error: $TWEAKCC_DIR exists but doesn't look like tweakcc"
   exit 1
+else
+  echo "Using existing tweakcc at $TWEAKCC_DIR"
+  cd "$TWEAKCC_DIR"
 fi
 
-# 1. Copy patch files
+# 2. Copy patch files
+echo ""
 echo "Copying patch files..."
 cp "$SCRIPT_DIR/cursorStateExport.ts" "$TWEAKCC_DIR/src/patches/"
 cp "$SCRIPT_DIR/wordHighlight.ts" "$TWEAKCC_DIR/src/patches/"
 cp "$SCRIPT_DIR/dynamicHighlight.ts" "$TWEAKCC_DIR/src/patches/"
+echo "  Copied 3 patch files"
 
-# 2. Add types to types.ts
+# 3. Add types to types.ts
+echo ""
 echo "Patching types.ts..."
 TYPES_FILE="$TWEAKCC_DIR/src/types.ts"
 if ! grep -q "enableCursorStateExport" "$TYPES_FILE"; then
-  # Find MiscSettings interface and add our fields before the closing brace
-  # This looks for the last } in MiscSettings interface
   node -e "
 const fs = require('fs');
 let content = fs.readFileSync('$TYPES_FILE', 'utf8');
@@ -71,10 +82,11 @@ if (miscMatch) {
 }
 "
 else
-  echo "  types.ts already patched"
+  echo "  Already patched"
 fi
 
-# 3. Add defaults to defaultSettings.ts
+# 4. Add defaults to defaultSettings.ts
+echo ""
 echo "Patching defaultSettings.ts..."
 DEFAULTS_FILE="$TWEAKCC_DIR/src/defaultSettings.ts"
 if ! grep -q "enableCursorStateExport" "$DEFAULTS_FILE"; then
@@ -118,10 +130,11 @@ if (miscMatch) {
 }
 "
 else
-  echo "  defaultSettings.ts already patched"
+  echo "  Already patched"
 fi
 
-# 4. Add imports and patch calls to index.ts
+# 5. Add imports and patch calls to index.ts
+echo ""
 echo "Patching index.ts..."
 INDEX_FILE="$TWEAKCC_DIR/src/patches/index.ts"
 if ! grep -q "writeCursorStateExport" "$INDEX_FILE"; then
@@ -183,28 +196,27 @@ const patchCode = \`
 // Find where to insert - look for the final writeFileSync or return statement
 const writeMatch = content.match(/writeFileSync|return content/);
 if (writeMatch) {
-  // Find the start of the line containing this
   let insertPos = content.lastIndexOf('\\n', writeMatch.index) + 1;
-  // Go back a bit more to be safe
   insertPos = content.lastIndexOf('\\n', insertPos - 2) + 1;
   content = content.slice(0, insertPos) + patchCode + content.slice(insertPos);
   fs.writeFileSync('$INDEX_FILE', content);
-  console.log('  Added imports and patch calls to index.ts');
+  console.log('  Added imports and patch calls');
 } else {
-  console.error('  Error: Could not find insertion point in index.ts');
+  console.error('  Error: Could not find insertion point');
   process.exit(1);
 }
 "
 else
-  echo "  index.ts already patched"
+  echo "  Already patched"
 fi
 
-# 5. Build cues-core and install
-echo "Building and installing cues-core..."
+# 6. Build cues-core and install
+echo ""
+echo "Building cues-core..."
 CUES_CORE="$SCRIPT_DIR/../cues-core"
 if [ -d "$CUES_CORE" ]; then
   cd "$CUES_CORE"
-  npm install --silent 2>/dev/null || true
+  npm install --silent 2>/dev/null || npm install
   npm run build --silent 2>/dev/null || npm run build
 
   mkdir -p ~/.claude/node_modules/cues-core
@@ -219,20 +231,52 @@ if [ -d "$CUES_CORE" ]; then
   "types": "index.d.ts"
 }
 EOF
-  echo "  cues-core installed to ~/.claude/node_modules/cues-core/"
+  echo "  Installed to ~/.claude/node_modules/cues-core/"
 else
   echo "  Warning: cues-core not found at $CUES_CORE"
 fi
 
-# 6. Copy supporting files
+# 7. Copy supporting files
+echo ""
 echo "Installing supporting files..."
 cp "$SCRIPT_DIR/claude-code-tips.json" ~/.claude/ 2>/dev/null && echo "  Copied tips file" || true
 mkdir -p ~/.claude/actions
-cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh && echo "  Copied action scripts" || true
+cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null && echo "  Copied action scripts" || true
+
+# 8. Build tweakcc
+echo ""
+echo "Building tweakcc..."
+cd "$TWEAKCC_DIR"
+npm run build
+
+# 9. Find and apply to Claude Code
+echo ""
+CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" 2>/dev/null | head -1)
+if [ -n "$CLI_JS" ]; then
+  echo "Applying patches to Claude Code..."
+  TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
+
+  echo ""
+  echo "Verifying..."
+  if node --check "$CLI_JS" 2>/dev/null; then
+    echo "  Syntax OK"
+  else
+    echo "  Warning: Syntax check failed"
+  fi
+else
+  echo "Claude Code cli.js not found. After installing Claude Code, run:"
+  echo "  cd $TWEAKCC_DIR"
+  echo "  CLI_JS=\$(find ~/.claude -name 'cli.js' -path '*claude-code*' | head -1)"
+  echo "  TWEAKCC_CC_INSTALLATION_PATH=\"\$CLI_JS\" node dist/index.mjs --apply"
+fi
 
 echo ""
-echo "Done! Next steps:"
-echo "  1. Set GROQ_API_KEY in your shell profile"
-echo "  2. cd $TWEAKCC_DIR && npm run build"
-echo "  3. node dist/index.mjs --apply"
-echo "  4. Restart Claude Code"
+echo "=== Setup Complete ==="
+echo ""
+echo "Next steps:"
+echo "  1. Set GROQ_API_KEY in your shell profile:"
+echo "     export GROQ_API_KEY=\"your-key\""
+echo ""
+echo "  2. Restart Claude Code"
+echo ""
+echo "Test: Type a number, press Ctrl+Alt+Left, then Ctrl+Alt+Up"
