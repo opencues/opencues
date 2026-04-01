@@ -130,7 +130,6 @@ Set in `~/.tweakcc/config.json` under `misc`.
 
 ## Related
 
-- `docs/status-line-integration.md` — setup guide and architecture
-- `references/word-highlight.md` — navigation and rendering
-- `references/dynamic-highlight.md` — LLM alternatives and cycling
-- `references/config.md` — all configuration options
+- `word-highlight.md` — navigation and rendering
+- `dynamic-highlight.md` — LLM alternatives and cycling
+- `config.md` — all configuration options

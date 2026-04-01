@@ -259,4 +259,5 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
 
 ## Related
 
-- `references/action-word-overrides.md` — quick reference card
+- `config.md` — all configuration options
+- `systems-diagram.md` — architecture overview

@@ -97,6 +97,6 @@ numberDimming: true,               // dim all numbers (highlight overrides)
 
 ## Related
 
-- `references/status-line.md` — status line display and tips
-- `references/dynamic-highlight.md` — LLM alternatives and cycling
-- `references/config.md` — all configuration options
+- `status-line.md` — status line display and tips
+- `dynamic-highlight.md` — LLM alternatives and cycling
+- `config.md` — all configuration options

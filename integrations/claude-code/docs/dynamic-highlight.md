@@ -109,8 +109,8 @@ Multi-word replacements are tracked as "spans" that cycle together:
 - **Dimming**: Both words in span dimmed gray when not selected
 - **Protection**: Re-analysis skips non-original span positions to prevent individual alternatives
 
-See `docs/span-system.md` for full implementation details.
-See `docs/blank-system.md` for full algorithm and benchmark details.
+Span tracking is handled within dynamicHighlight.ts.
+See `/docs/blank-system.md` for full algorithm and benchmark details.
 
 **Context-aware re-evaluation with queue:**
 Underscores track context independently and queue re-evaluation if context changes during pending requests:
@@ -164,7 +164,7 @@ claude
 | Gemini 3-flash-preview | ~1400ms | 79% | Fallback |
 | Gemini 2.5-flash | ~2500ms | 50% | Not recommended |
 
-**Full documentation**: See `docs/llm-providers.md` for benchmarks and provider configuration.
+**Full documentation**: See `/docs/llm-providers.md` for benchmarks and provider configuration.
 
 ## Claude Code Tips System
 
@@ -449,7 +449,7 @@ var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&
 
 ## Related
 
-- `references/word-highlight.md` — navigation and rendering
-- `references/status-line.md` — status line tips display
-- `references/config.md` — all configuration options
-- `docs/llm-providers.md` — provider config and benchmarks
+- `word-highlight.md` — navigation and rendering
+- `status-line.md` — status line tips display
+- `config.md` — all configuration options
+- `/docs/llm-providers.md` — provider config and benchmarks
