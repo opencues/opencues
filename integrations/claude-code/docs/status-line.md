@@ -2,7 +2,7 @@
 last_updated: 2026-03-31
 ---
 
-# Status Line — Claude Code Implementation
+# Status Line — Claude Code
 
 Implements feature 14 from `docs/features.md`: Status Display.
 

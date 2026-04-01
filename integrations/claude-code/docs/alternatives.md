@@ -2,7 +2,7 @@
 last_updated: 2026-04-01
 ---
 
-# Alternatives — Claude Code Implementation
+# Alternatives — Claude Code
 
 Implements features 6, 7, 8, 12 from `docs/features.md`: Tips, LLM Alternatives, Fill-in-the-Blank, Auto-Submit Trigger.
 

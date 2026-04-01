@@ -1,3 +1,7 @@
+---
+last_updated: 2026-04-01
+---
+
 # Tests
 
 Benchmarks for the four LLM analysis modes: MATH, FACTUAL, GRAMMAR (word alternatives), and LINKED (pronoun linking).

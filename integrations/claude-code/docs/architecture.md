@@ -2,7 +2,7 @@
 last_updated: 2026-03-31
 ---
 
-# System Architecture Diagram
+# Architecture — Claude Code
 
 This document explains how the patched Claude Code system works, tracing the flow from user input through each component.
 

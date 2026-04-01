@@ -2,7 +2,7 @@
 last_updated: 2026-02-18
 ---
 
-# Claude Code Prompting Guide
+# Prompting Guide — Claude Code
 
 Best practices for prompting Claude Code (the CLI tool) based on ClaudeLog.com FAQs.
 

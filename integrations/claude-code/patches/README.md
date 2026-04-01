@@ -1,3 +1,7 @@
+---
+last_updated: 2026-04-01
+---
+
 # Claude Code Patches
 
 Custom patches for tweakcc that add LLM-powered word alternatives to Claude Code.

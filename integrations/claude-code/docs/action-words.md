@@ -2,7 +2,7 @@
 last_updated: 2026-03-27
 ---
 
-# Action Word Overrides — Claude Code Implementation
+# Action Words — Claude Code
 
 Implements feature 11 from `docs/features.md`: Action Words.
 

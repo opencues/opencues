@@ -2,7 +2,7 @@
 last_updated: 2026-04-01
 ---
 
-# Config Reference (`~/.tweakcc/config.json`)
+# Config — Claude Code
 
 Complete list of all `settings.misc` config options that gate features. Options with no default listed are `undefined` unless explicitly set.
 
