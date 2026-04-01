@@ -58,10 +58,9 @@ cues-system/
 │   └── tests/                     # Integration tests
 │
 ├── docs/                          # General documentation
-│   ├── cues-system.md             # System overview
+│   ├── features.md                # All 14 feature concepts (platform-agnostic)
+│   ├── architecture.md            # System layers, API, interfaces, usage examples
 │   ├── llm-providers.md           # LLM providers, config & benchmarks
-│   ├── blank-system.md            # Fill-in-the-blank feature
-│   ├── blank-position-detection.md # Blank grammar rules
 │   └── prompt-design-learnings.md # Prompt engineering principles
 │
 └── tests/                         # Benchmarks & test data
@@ -134,10 +133,9 @@ Patches Claude Code via tweakcc to add:
 
 | Doc | Purpose |
 |-----|---------|
-| `cues-system.md` | Architecture, feature concepts, API |
+| `features.md` | All 14 feature concepts (what any integration must implement) |
+| `architecture.md` | System layers, core interfaces, API usage examples |
 | `llm-providers.md` | Provider config & benchmarks |
-| `blank-system.md` | Fill-in-the-blank classification |
-| `blank-position-detection.md` | Blank grammar rules |
 | `prompt-design-learnings.md` | Prompt engineering principles |
 
 ---
