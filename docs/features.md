@@ -38,7 +38,7 @@ Replace the focused word with an alternative from the `alts` array.
 **Cycling priority** (checked in order):
 1. **Action word** → trigger external action, don't modify word
 2. **Gender root** (boy/girl) → use hardcoded linked group flip, skip LLM alts
-3. **Dynamic alts** → cycle through `alts` array from `_dynDefs`
+3. **Dynamic alts** → cycle through alternatives from LLM/tips
 4. **Number** → increment/decrement
 5. **Gender (non-root)** → handled via linked words
 
@@ -49,7 +49,7 @@ Numbers have special cycling behaviour:
 - **Up**: increments by 1 (no upper limit): 0 → 1 → 2 → 3...
 - **Down**: decrements by 1, but never below the **floor**
 - The **floor** is the original value captured on first Up or Down press (not when highlighting)
-- Each number tracks its floor independently via an `originalNumbers` map keyed by word index
+- Each number tracks its floor independently (keyed by position)
 - Navigating away and back preserves the floor
 
 Example: highlight `0`, press Up 4 times → 1 → 2 → 3 → 4. Press Down 6 times → 3 → 2 → 1 → 0 → 0 → 0 (floors at 0).
@@ -119,7 +119,7 @@ The linked words prompt (`linked.txt`) detects semantic relationships:
 Instant per-word alternatives and hints from a local JSON file. No LLM call needed (~0ms).
 
 **How it works:**
-1. At startup, tips file is parsed and a hash map is built (`buildLookupMap`) — O(n) once
+1. At startup, tips file is parsed and a hash map is built — O(n) once
 2. On each analysis trigger, every word is checked against the map — O(1) per word
 3. Words with matches get instant alts + tip text
 4. Non-matching words are sent to the LLM
@@ -162,18 +162,18 @@ For words not in the tips file, an LLM generates alternatives via cues-core's `C
 
 **Sources (by priority):**
 
-| Source | Priority | When | Output format |
-|--------|----------|------|---------------|
-| TipsFileSource | 100 | Always (instant) | Direct alternatives |
-| MathSource | 90 | Input has `_` + looks like math | `COMPUTE=expression` → eval |
-| FactualSource | 90 | Input has `_` + looks like factual | `ANSWER=value` |
-| GrammarSource | 50 | Always (fallback) | `INDEX:alt1,alt2,alt3` |
+| Source | Priority | When | What it does |
+|--------|----------|------|-------------|
+| Tips | 100 | Always (instant) | Local lookup from JSON file |
+| Math | 90 | Input has `_` + looks like math | Extracts expression, evaluates locally |
+| Factual | 90 | Input has `_` + looks like factual | Returns factual answer |
+| Grammar | 50 | Always (fallback) | Synonym, opposite, creative alternative |
 
 **Priority resolution:** Higher priority wins. If tips and grammar both provide alts for the same word, tips wins. Same-priority results merge (deduplicated).
 
-**GrammarSource prompt:** Requests "synonym, opposite, creative" for each word. Includes extensive examples for adjectives, adverbs, verbs, nouns, proper nouns, emotional words. Output: `1:gorgeous,ugly,stunning|3:joyful,sad,cheerful`
+**Grammar alternatives:** For each word, the LLM provides three types — a synonym, an opposite, and a creative alternative. Proper nouns get similar entities (Google → Microsoft, Apple, Amazon).
 
-**Targeted index optimisation:** After the first full analysis, subsequent triggers only send words that don't already have valid alts. The prompt includes: "Generate exactly N entries for indices: X,Y."
+**Targeted optimisation:** After the first full analysis, subsequent triggers only send words that don't already have valid alts — reducing LLM calls and latency.
 
 ---
 
@@ -182,9 +182,9 @@ For words not in the tips file, an LLM generates alternatives via cues-core's `C
 Typing `_` (underscore) creates a blank that the system fills contextually.
 
 **Classification:** The system detects what kind of blank this is:
-- `looksLikeMath(text)` — contains operators, percentages, math keywords
-- `looksLikeFactual(text)` — matches "the X of Y is", "who/what/when", capital/CEO patterns
-- Default → grammar (fill with grammatically correct word)
+- **Math** — contains operators, percentages, math keywords (e.g., "4 * 12 = _")
+- **Factual** — matches knowledge patterns like "the X of Y is _", "who/what/when"
+- **Grammar** (default) — fill with grammatically correct word
 
 **Blank position detection** (grammar mode):
 
@@ -207,7 +207,7 @@ Examples:
 
 **Context invalidation:** If words around the blank change (e.g., "CEO of Google" → "CEO of Microsoft"), cached alts are cleared and re-analysis triggers. Cycling the blank itself does NOT trigger invalidation.
 
-**Separate prompts:** Grammar blanks use `blank_grammar.txt` (different from `grammar.txt`) because blank filling needs a different word TYPE than the surrounding words, while regular alternatives stay the same type.
+**Separate prompts:** Blank filling uses a different prompt than regular word alternatives, because blanks need a different word TYPE than surrounding words (e.g., "The _ dog" needs an adjective), while regular alternatives stay the same type (e.g., "beautiful" → "gorgeous").
 
 ---
 
@@ -281,7 +281,7 @@ Analysis fires automatically as the user types. Three tiers:
 
 **Optimisations:**
 - **Targeted indices**: after first full analysis, only words lacking alts are sent to the LLM
-- **Duplicate prevention**: `_dynPending` flag prevents overlapping requests
+- **Duplicate prevention**: a pending flag prevents overlapping LLM requests
 - **Tips first**: instant tips lookup runs before LLM, merging results immediately
 - **Skip if complete**: if all words have alts (from tips or previous LLM), skip LLM entirely
 
@@ -291,21 +291,17 @@ Analysis fires automatically as the user types. Three tiers:
 
 Export the current cursor position and context for external tools.
 
-**Output format:**
-```json
-{
-  "text": "hello world",
-  "cursorPosition": 6,
-  "currentWord": "world",
-  "atEnd": false,
-  "textLength": 11,
-  "timestamp": 1705500000000
-}
-```
+**Data to export:**
+- Current text content
+- Cursor offset (character position)
+- Current word (the word at the cursor)
+- Whether cursor is at end of text
+- Timestamp
 
-- Debounced writes (~100ms) to avoid I/O overhead
-- Written to a configurable path (default: `/tmp/claude-cursor-state.json`)
-- Enables external tools to react to cursor position
+**Implementation considerations:**
+- Debounce writes (~100ms) to avoid I/O overhead from rapid keystrokes
+- Use platform-appropriate mechanism (file, event emitter, API, etc.)
+- Enables external tools to react to cursor position in real time
 
 ---
 
@@ -321,4 +317,4 @@ Secondary display showing info about the highlighted word.
 
 **Integration decides the UI:** status bar, tooltip, hover panel, sidebar, etc.
 
-**Data source:** The highlight state is exported to a JSON file containing `highlightedWord`, `tip`, `alts`, `currentAltIndex`, and `altTips`. The display reads this and formats accordingly.
+**Data needed:** The display needs access to: current word, tip text, alternatives list, current position in cycle, and per-alternative tips. How this data flows (file, event, state) depends on the platform.
