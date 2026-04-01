@@ -219,4 +219,4 @@ grep "misc:" ~/tweakcc/src/defaultSettings.ts
 
 ## License
 
-MIT
+Proprietary. All rights reserved. See [LICENSE](LICENSE).

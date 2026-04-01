@@ -16,7 +16,7 @@
     "chrome",
     "extension"
   ],
-  "license": "MIT",
+  "license": "UNLICENSED",
   "devDependencies": {
     "@types/chrome": "^0.1.38"
   }

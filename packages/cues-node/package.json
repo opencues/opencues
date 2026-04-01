@@ -15,7 +15,7 @@
     "nodejs",
     "adapters"
   ],
-  "license": "MIT",
+  "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^25.5.0"
   }

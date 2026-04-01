@@ -9,5 +9,5 @@
     "test": "node --test dist/**/*.test.js"
   },
   "keywords": ["cues", "alternatives", "tips"],
-  "license": "MIT"
+  "license": "UNLICENSED"
 }
