@@ -2,7 +2,11 @@
 last_updated: 2026-04-01
 ---
 
-# Word Highlight Navigation — Quick Reference
+# Word Highlight — Claude Code Implementation
+
+Implements features 1-4 from `docs/features.md`: Word Navigation, Word Cycling (numbers + gender), Visual States, Cursor Preservation.
+
+**Patch file:** `patches/wordHighlight.ts`
 
 ## Navigation Modes
 

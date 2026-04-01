@@ -2,7 +2,11 @@
 last_updated: 2026-03-31
 ---
 
-# Status Line Tips — Full Reference
+# Status Line — Claude Code Implementation
+
+Implements feature 14 from `docs/features.md`: Status Display.
+
+**Script:** `patches/highlight-statusline.sh`
 
 Shows the highlighted word, tip text, and alternative count in Claude Code's status bar.
 

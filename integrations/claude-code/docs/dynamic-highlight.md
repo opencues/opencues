@@ -2,7 +2,11 @@
 last_updated: 2026-04-01
 ---
 
-# Dynamic Highlight (LLM-Based Word Analysis) — Quick Reference
+# Dynamic Highlight — Claude Code Implementation
+
+Implements features 5-10, 12-13 from `docs/features.md`: Linked Words, Tips, LLM Alternatives, Fill-in-the-Blank, Multi-Word Spans, Per-Word Clearing, Auto-Submit, Cursor State Export.
+
+**Patch file:** `patches/dynamicHighlight.ts`
 
 ## Auto-Submit Mode (Recommended)
 

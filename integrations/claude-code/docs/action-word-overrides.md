@@ -2,7 +2,11 @@
 last_updated: 2026-03-27
 ---
 
-# Action Word Overrides
+# Action Word Overrides — Claude Code Implementation
+
+Implements feature 11 from `docs/features.md`: Action Words.
+
+**Patch files:** `patches/wordHighlight.ts` (navigation + dimming), `patches/dynamicHighlight.ts` (cycling + script spawn)
 
 Action word overrides allow specific words to trigger external scripts when Up/Down is pressed, instead of the normal increment/decrement or cycling behavior.
 
