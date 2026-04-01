@@ -47,14 +47,15 @@ cues-system/
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   ├── claude-code-tips.json  # Per-word tips file
 │   │   └── actions/               # Action word scripts (volume.sh)
-│   ├── docs/                      # Claude Code feature documentation
-│   │   ├── systems-diagram.md     # Architecture + data flow diagrams
-│   │   ├── word-highlight.md      # Navigation modes, keys, behaviour
-│   │   ├── dynamic-highlight.md   # LLM triggers, tips, blanks, clearing
+│   ├── docs/                      # Claude Code implementation docs
+│   │   ├── navigation.md          # Keys, modes, visual states, cursor export
+│   │   ├── cycling.md             # Numbers, gender, alts, linked, spans, clearing
+│   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
+│   │   ├── action-words.md        # External action scripts + WSL guide
 │   │   ├── status-line.md         # Status line setup, format, disabling
-│   │   ├── action-word-overrides.md # External action scripts + WSL guide
 │   │   ├── config.md              # All config options
-│   │   └── claude-code-prompting.md # Claude Code CLI tips
+│   │   ├── architecture.md        # Architecture + data flow diagrams
+│   │   └── prompting-guide.md     # Claude Code CLI tips
 │   └── tests/                     # Integration tests
 │
 ├── docs/                          # General documentation
@@ -119,15 +120,16 @@ Patches Claude Code via tweakcc to add:
 
 ### Claude Code (`integrations/claude-code/docs/`)
 
-| Doc | Purpose |
-|-----|---------|
-| `systems-diagram.md` | Architecture + data flow diagrams |
-| `word-highlight.md` | Navigation modes, keys, behaviour |
-| `dynamic-highlight.md` | LLM triggers, tips, blanks, clearing |
-| `status-line.md` | Status line setup, format, disabling |
-| `action-word-overrides.md` | External action scripts + WSL guide |
-| `config.md` | All config options |
-| `claude-code-prompting.md` | Claude Code CLI tips |
+| Doc | Features | Purpose |
+|-----|----------|---------|
+| `navigation.md` | 1, 3, 4, 13 | Keys, modes, visual states, cursor export |
+| `cycling.md` | 2, 5, 9, 10 | Numbers, gender, alts, linked words, spans, clearing |
+| `alternatives.md` | 6, 7, 8, 12 | Tips, LLM sources, blanks, auto-submit |
+| `action-words.md` | 11 | External action scripts + WSL guide |
+| `status-line.md` | 14 | Status line setup, format, disabling |
+| `config.md` | — | All config options |
+| `architecture.md` | — | Data flow diagrams |
+| `prompting-guide.md` | — | Claude Code CLI tips |
 
 ### General (`docs/`)
 
