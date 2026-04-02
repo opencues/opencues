@@ -149,7 +149,6 @@ Question: `;
  * Matches: ~/tweakcc/system_prompts/grammar.txt
  */
 export const GRAMMAR_PROMPT = `Provide 3 alternatives per word: synonym, opposite, creative. Skip function words.
-For BLANK (_): provide 5 words of the CORRECT TYPE (see BLANK rules below). NOT synonyms for nearby words!
 
 Format: INDEX:alt1,alt2,alt3|INDEX:alt1,alt2
 
@@ -245,65 +244,15 @@ Emotional:
 - 1=excited → 1:bored,thrilled,eager
 - 1=worried → 1:calm,anxious,concerned
 
-BLANK/_ (the underscore _ is a PLACEHOLDER for a missing word - find words that fit grammatically):
-
-NOTE: _ is a PLACEHOLDER. Fill it with a word that makes the sentence grammatical.
-
-COMMON MISTAKES TO AVOID:
-- DON'T give synonyms for "blank/underscore" like empty/void/missing/gap/space
-- "The _ dog" → DON'T give nouns like cat/puppy (those replace "dog", not the blank!)
-- "The _ dog" → DO give adjectives like big/small/brown (describes the dog)
-- "The _ ran" → DON'T give adjectives like fast/quick (sentence needs a SUBJECT!)
-- "The _ ran" → DO give nouns like dog/boy/man (subject of "ran")
-
-KEY PRINCIPLE: The blank needs a DIFFERENT word type than the words around it!
-
-STEP 1 - Is the word AFTER the blank a VERB?
-Past tense verbs: ran, walked, jumped, spoke, slept, sang, ate, fell, flew, went, came, saw, took
-Also: -ed endings (walked, jumped, talked, played, cried, laughed)
-IF YES → blank needs NOUN (subject of verb). "The _ ran" needs dog/cat/boy NOT big/fast!
-
-STEP 2 - Is the word AFTER the blank a NOUN?
-Common nouns: dog, cat, boy, girl, man, woman, house, car, tree, bird, child
-IF YES → blank needs ADJECTIVE. "The _ dog" needs big/small/brown.
-
-STEP 3 - Is the word AFTER the blank an ADJECTIVE? (at start of sentence)
-IF YES → blank needs DETERMINER. "_ quick fox" needs The/A/That.
-
-STEP 4 - Is the word AFTER the blank an ADVERB?
-Adverbs: quickly, slowly, loudly, softly, carefully (often -ly endings)
-IF YES → blank needs VERB. "She _ quickly" needs ran/walked/moved.
-
-Examples (in priority order):
-
-1. VERB after blank → NOUN (most important - sentence needs subject!):
-- 0=The 1=_ 2=ran → 1:dog,cat,boy,girl,man
-- 0=The 1=_ 2=walked → 1:man,woman,child,dog,cat
-- 0=The 1=_ 2=jumped → 1:frog,cat,boy,rabbit,athlete
-- 0=The 1=_ 2=slept → 1:baby,cat,dog,child,man
-- 0=The 1=_ 2=sang → 1:bird,choir,singer,woman,child
-
-2. NOUN after blank → ADJECTIVE:
-- 0=The 1=_ 2=dog → 1:big,small,brown,happy,loud
-- 0=A 1=_ 2=cat → 1:fluffy,orange,small,cute,lazy
-
-3. Start + ADJECTIVE/NOUN → DETERMINER:
-- 0=_ 1=dog → 0:The,A,My,That,His
-- 0=_ 1=quick 2=fox → 0:The,A,That,One,Each
-
-4. Subject + _ + ADVERB → VERB:
-- 0=She 1=_ 2=quickly → 1:ran,walked,moved,left,spoke
-- 0=The 1=dog 2=_ 3=loudly → 2:barked,howled,growled,whined,yelped
-
 Output ONLY index:alternatives format.
-
 `;
 
 /**
  * Blank grammar prompt for fill-in-the-blank (with underscore).
  * Matches: ~/tweakcc/system_prompts/blank_grammar.txt
  */
-export const BLANK_GRAMMAR_PROMPT = `Fill the blank (_) with 5 words that make the sentence grammatical.
+export const BLANK_GRAMMAR_PROMPT = `Fill each blank (_) with 5 words that make the sentence grammatical.
+Use the EXACT index shown for each blank. If there are multiple blanks, fill ALL of them.
 
 RULES - check BOTH sides of blank:
 1. Blank at START + VERB after (ran/walked/jumped) → give NOUNS (subject of verb)

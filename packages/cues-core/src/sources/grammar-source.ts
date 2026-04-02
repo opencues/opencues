@@ -87,8 +87,18 @@ export class GrammarSource implements CueSource {
 
   private buildWordPrompt(context: CueContext): string {
     // Format: 0=word1 1=word2 2=word3
+    // Numbers are converted to word form (3→"three") to preserve context for
+    // surrounding words. parseResponse filters out results for number positions
+    // since digit cycling is handled natively by the word highlight system.
+    const isNumber = /^-?\d+(\.\d+)?$/;
+    const numToWord = (n: string): string => {
+      const small = ['zero','one','two','three','four','five','six','seven','eight','nine','ten',
+        'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
+      const i = parseInt(n, 10);
+      return (i >= 0 && i <= 20) ? small[i] : n;
+    };
     const indexed = context.words
-      .map((w, i) => `${i}=${w}`)
+      .map((w, i) => `${i}=${isNumber.test(w) ? numToWord(w) : w}`)
       .join(' ');
     return GRAMMAR_PROMPT + indexed;
   }
@@ -150,6 +160,12 @@ export class GrammarSource implements CueSource {
 
       // Get original word
       const originalWord = words[index];
+
+      // Skip numbers — digit cycling is handled natively by the word highlight system.
+      // buildWordPrompt sends the word form ("three") for context but we discard results here.
+      if (/^-?\d+(\.\d+)?$/.test(originalWord)) {
+        continue;
+      }
 
       // For blanks, don't include the original
       // For regular words, include original as first alt
