@@ -30,9 +30,11 @@ last_updated: 2026-04-02
 
 ## Sources
 
-**Local Cues** — Cues computed locally on your machine that return a result near-instantly (~0ms). Tips file lookups are local cues.
+How alternatives are computed:
 
-**Remote Cues** — Cues computed externally utilising an LLM or other system (~200-500ms). Grammar, math, and factual alternatives are remote cues.
+**Local Cues** — Alternatives computed locally on your machine, returning near-instantly (~0ms). The tips file is a local cue source — it provides both alternatives and cue-tips.
+
+**Remote Cues** — Alternatives computed externally utilising an LLM or other system (~200-500ms). Grammar, math, and factual sources are remote cue sources.
 
 ---
 
