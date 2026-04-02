@@ -4,7 +4,7 @@ last_updated: 2026-03-31
 
 # Status Line — Claude Code
 
-Implements feature 14 from `docs/features.md`: Status Display.
+Implements feature 14 from `docs/features/`: Status Display.
 
 **Script:** `patches/highlight-statusline.sh`
 

@@ -4,7 +4,7 @@ last_updated: 2026-04-01
 
 # Navigation — Claude Code
 
-Implements features 1, 3, 4, 13 from `docs/features.md`: Word Navigation, Visual States, Cursor Preservation, Cursor State Export.
+Implements features 1, 3, 4, 13 from `docs/features/`: Word Navigation, Visual States, Cursor Preservation, Cursor State Export.
 
 **Patch file:** `patches/wordHighlight.ts`
 

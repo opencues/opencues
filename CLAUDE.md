@@ -59,9 +59,17 @@ cues-system/
 │   └── tests/                     # Integration tests
 │
 ├── docs/                          # General documentation
-│   ├── features.md                # All 14 feature concepts (platform-agnostic)
-│   ├── architecture.md            # System layers, API, interfaces, usage examples
-│   ├── llm-providers.md           # LLM providers, config & benchmarks
+│   ├── overview.md                # System layers, API, interfaces, usage examples
+│   ├── features/                  # One file per feature concept (14 features)
+│   │   ├── README.md              # Feature index
+│   │   ├── navigation.md          # Feature 1: Word navigation
+│   │   ├── cycling.md             # Feature 2: Word cycling
+│   │   ├── ...                    # Features 3-14 (one file each)
+│   │   └── status-display.md      # Feature 14: Status display
+│   ├── guides/                    # Task-oriented how-tos
+│   │   ├── adding-a-feature.md    # How to add a new feature
+│   │   ├── adding-an-integration.md # How to add a new editor integration
+│   │   └── llm-providers.md       # LLM provider setup & benchmarks
 │   └── prompt-design-learnings.md # Prompt engineering principles
 │
 └── tests/                         # Benchmarks & test data
@@ -135,9 +143,11 @@ Patches Claude Code via tweakcc to add:
 
 | Doc | Purpose |
 |-----|---------|
-| `features.md` | All 14 feature concepts (what any integration must implement) |
-| `architecture.md` | System layers, core interfaces, API usage examples |
-| `llm-providers.md` | Provider config & benchmarks |
+| `overview.md` | System layers, core interfaces, API usage examples |
+| `features/` | 14 feature concepts (one file each) |
+| `guides/adding-a-feature.md` | How to add a new feature |
+| `guides/adding-an-integration.md` | How to add a new editor integration |
+| `guides/llm-providers.md` | Provider config & benchmarks |
 | `prompt-design-learnings.md` | Prompt engineering principles |
 
 ---

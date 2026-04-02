@@ -4,7 +4,7 @@ last_updated: 2026-04-01
 
 # Alternatives — Claude Code
 
-Implements features 6, 7, 8, 12 from `docs/features.md`: Tips, LLM Alternatives, Fill-in-the-Blank, Auto-Submit Trigger.
+Implements features 6, 7, 8, 12 from `docs/features/`: Tips, LLM Alternatives, Fill-in-the-Blank, Auto-Submit Trigger.
 
 **Patch file:** `patches/dynamicHighlight.ts`
 
@@ -90,7 +90,7 @@ Higher priority wins when sources conflict. Same-priority results merge.
 - Creates CueResolver with all sources
 - Stores in `globalThis._cueResolver`
 
-**Default provider:** GPT-OSS-120b via Groq (~400ms avg). See `/docs/llm-providers.md` for alternatives.
+**Default provider:** GPT-OSS-120b via Groq (~400ms avg). See `/docs/guides/llm-providers.md` for alternatives.
 
 ## Fill-in-the-Blank
 
@@ -152,4 +152,4 @@ Requires `enableWordHighlight: true` (master switch).
 - `navigation.md` — how to navigate to words
 - `cycling.md` — how Up/Down modifies words
 - `status-line.md` — tip display in status bar
-- `/docs/llm-providers.md` — provider config and benchmarks
+- `/docs/guides/llm-providers.md` — provider config and benchmarks

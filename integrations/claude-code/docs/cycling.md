@@ -4,7 +4,7 @@ last_updated: 2026-04-01
 
 # Cycling — Claude Code
 
-Implements features 2, 5, 9, 10 from `docs/features.md`: Word Cycling, Linked Words, Multi-Word Spans, Per-Word Clearing.
+Implements features 2, 5, 9, 10 from `docs/features/`: Word Cycling, Linked Words, Multi-Word Spans, Per-Word Clearing.
 
 **Patch files:** `patches/wordHighlight.ts` (numbers, gender), `patches/dynamicHighlight.ts` (LLM alts, action words, spans, clearing)
 

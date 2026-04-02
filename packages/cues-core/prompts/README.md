@@ -172,7 +172,7 @@ These prompts are optimized for **GPT-OSS-120b** via Groq with:
 - `LLM_MODEL_FACTUAL` — override FACTUAL mode only
 - `LLM_MODEL_LINKED` — override LINKED mode only
 
-See `/docs/llm-providers.md` for full model documentation.
+See `/docs/guides/llm-providers.md` for full model documentation.
 
 ## System Architecture
 

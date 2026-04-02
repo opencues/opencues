@@ -4,7 +4,7 @@ last_updated: 2026-03-27
 
 # Action Words — Claude Code
 
-Implements feature 11 from `docs/features.md`: Action Words.
+Implements feature 11 from `docs/features/`: Action Words.
 
 **Patch files:** `patches/wordHighlight.ts` (navigation + dimming), `patches/dynamicHighlight.ts` (cycling + script spawn)
 
