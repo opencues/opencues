@@ -35,7 +35,7 @@ That's it. The setup script:
 patches/
 ├── setup.sh                  # Automated setup script
 ├── cursorStateExport.ts      # Exports cursor position to JSON
-├── wordHighlight.ts          # Ctrl+Alt navigation, numbers, gender
+├── wordHighlight.ts          # Ctrl+Alt navigation, numbers, rendering
 ├── dynamicHighlight.ts       # LLM alternatives, cycling, spans
 ├── types-additions.ts        # Reference: types to add
 ├── defaultSettings-additions.ts  # Reference: defaults to add
@@ -112,7 +112,7 @@ After installation:
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Increment numbers, flip gender, cycle alternatives |
+| Ctrl+Alt+Up/Down | Increment numbers, cycle alternatives |
 | Escape | Clear highlight |
 
 Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.

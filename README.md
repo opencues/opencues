@@ -1,6 +1,6 @@
 # cues-system
 
-LLM-powered word alternatives for Claude Code. Navigate words, increment numbers, flip gender, and cycle through intelligent suggestions.
+LLM-powered word alternatives for Claude Code. Navigate words, increment numbers, and cycle through intelligent suggestions.
 
 ## Install
 
@@ -17,7 +17,7 @@ Restart Claude Code. Done.
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Increment numbers, flip gender, cycle alternatives |
+| Ctrl+Alt+Up/Down | Increment numbers, cycle alternatives |
 | Escape | Clear highlight |
 
 ### What you get
@@ -96,7 +96,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies.
 Integrates cues-core into Claude Code via [tweakcc](https://github.com/anthropics/tweakcc).
 
 - **patches/setup.sh** — one-command installer
-- **patches/wordHighlight.ts** — word navigation, number/gender handling, ANSI rendering
+- **patches/wordHighlight.ts** — word navigation, number handling, ANSI rendering
 - **patches/dynamicHighlight.ts** — LLM integration, alternative cycling, span groups
 - **patches/cursorStateExport.ts** — exports cursor position to JSON
 
@@ -128,7 +128,7 @@ Settings are in `~/.tweakcc/config.json`:
   "misc": {
     "enableWordHighlight": true,
     "enableDynamicHighlight": true,
-    "highlightMode": "numbers",
+    "highlightMode": "words",
     "numberDimming": true
   }
 }
@@ -138,7 +138,7 @@ Settings are in `~/.tweakcc/config.json`:
 |---------|---------|-------------|
 | `enableWordHighlight` | `true` | Enable Ctrl+Alt+Arrow navigation |
 | `enableDynamicHighlight` | `true` | Enable LLM alternatives |
-| `highlightMode` | `"numbers"` | `"numbers"`, `"words"`, `"gender"`, or `"both"` |
+| `highlightMode` | `"words"` | `"numbers"` or `"words"` |
 | `numberDimming` | `true` | Dim numbers in gray |
 | `highlightExportEnabled` | `true` | Write highlight state JSON for status line |
 

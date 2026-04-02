@@ -42,14 +42,14 @@ cues-system/
 │   ├── patches/                   # tweakcc patches + installer
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
 │   │   ├── cursorStateExport.ts   # Cursor position → JSON
-│   │   ├── wordHighlight.ts       # Navigation, numbers, gender, rendering
+│   │   ├── wordHighlight.ts       # Navigation, numbers, rendering
 │   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   ├── claude-code-tips.json  # Per-word tips file
 │   │   └── actions/               # Cue-action scripts (volume.sh)
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
-│   │   ├── cycling.md             # Numbers, gender, alts, linked, spans, clearing
+│   │   ├── cycling.md             # Numbers, alts, linked, spans, clearing
 │   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
 │   │   ├── cue-actions.md          # Cue-actions + WSL guide
 │   │   ├── status-line.md         # Status line setup, format, disabling

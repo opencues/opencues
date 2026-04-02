@@ -24,7 +24,7 @@ highlightAutoScroll?: boolean;
 highlightClearOnEscape?: boolean;
 highlightClearOnNavigation?: boolean;
 highlightWordPattern?: 'whitespace' | 'alphanum' | string;
-highlightMode?: 'words' | 'numbers' | 'gender' | 'both';  // 'words' = all, 'numbers' = numeric only, 'gender' = gender only, 'both' = numbers + gender
+highlightMode?: 'words' | 'numbers';  // 'words' = all navigable, 'numbers' = numeric only
 highlightExportEnabled?: boolean;
 highlightExportPath?: string;
 numberDimming?: boolean;  // dim all numbers in input (dark gray)
@@ -76,7 +76,7 @@ export interface MiscSettings {
   highlightClearOnEscape?: boolean;
   highlightClearOnNavigation?: boolean;
   highlightWordPattern?: 'whitespace' | 'alphanum' | string;
-  highlightMode?: 'words' | 'numbers' | 'gender' | 'both';
+  highlightMode?: 'words' | 'numbers';
   highlightExportEnabled?: boolean;
   highlightExportPath?: string;
   numberDimming?: boolean;

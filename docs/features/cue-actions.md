@@ -4,10 +4,13 @@ last_updated: 2026-04-02
 
 # Cue-Actions
 
-Cues that trigger external actions rather than modifying text. The word is not replaced — it triggers a side effect.
+Words with built-in cycling behavior that bypasses the normal alternatives pipeline. Cue-actions never show tips or alts in the secondary display.
 
-- Checked **first** before any other cycling logic
-- Configured per-word with custom arguments for up/down directions
-- Examples: "volume" → system volume control, "brightness" → screen brightness
+There are two kinds:
 
-**Priority:** Cue-actions → alternatives → linked words → numbers
+- **Custom cue-actions** — trigger external scripts instead of modifying text (e.g., "volume" → system volume control). Configured per-word with custom arguments for up/down directions.
+- **Number cue-actions** — increment/decrement numerals. Any word matching `/^-?\d+(\.\d+)?$/` is automatically a cue-action. See feature 2 (cycling) for floor behavior.
+
+Cue-actions are checked **first** before any other cycling logic.
+
+**Priority:** Cue-actions (custom + numbers) → alternatives → linked words

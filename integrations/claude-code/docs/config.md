@@ -15,7 +15,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | Option | Type | Default | Required? | Purpose |
 |--------|------|---------|-----------|---------|
 | `enableWordHighlight` | boolean | undefined | **YES** | Master switch — gates word highlight AND dynamic highlight patches |
-| `highlightMode` | `'numbers'\|'words'\|'gender'\|'both'` | `'numbers'` | No | Which words are navigable |
+| `highlightMode` | `'numbers'\|'words'` | `'words'` | No | Which words are navigable |
 | `highlightColor` | `'white'\|'cyan'\|'yellow'\|'inverse'\|'underline'` | `'white'` | No | Highlight color |
 | `numberDimming` | boolean | `true` | No | Dim numbers in dark gray |
 | `highlightClearOnEscape` | boolean | `true` | No | Clear highlight on Escape |

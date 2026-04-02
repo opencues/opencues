@@ -40,13 +40,16 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
 
     if [ -n "$word" ]; then
       altcount=$(echo "$content" | sed -n 's/.*"alts":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | wc -l)
-      altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')
-      altidx=${altidx:-0}
-      altpos=$((altidx + 1))
-      echo ""
-      printf '%s (%d/%d)' "$word" "$altpos" "$altcount"
-      if [ -n "$tip" ]; then
-        printf ' - %s' "$tip"
+      # Only show in status line if the word has tips or alts
+      if [ "$altcount" -gt 0 ] 2>/dev/null; then
+        altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')
+        altidx=${altidx:-0}
+        altpos=$((altidx + 1))
+        echo ""
+        printf '%s (%d/%d)' "$word" "$altpos" "$altcount"
+        if [ -n "$tip" ]; then
+          printf ' - %s' "$tip"
+        fi
       fi
     fi
   fi

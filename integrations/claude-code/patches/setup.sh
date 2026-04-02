@@ -5,41 +5,51 @@
 # Usage: ./setup.sh [tweakcc-dir]
 #
 # If no directory specified, clones tweakcc to ~/tweakcc
+# Re-runs are fast: skips clone, npm install, and unchanged builds.
 #
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TWEAKCC_DIR="${1:-$HOME/tweakcc}"
+CUES_CORE="$SCRIPT_DIR/../../../packages/cues-core"
+NEEDS_TWEAKCC_BUILD=false
 
 echo "=== Cues System Setup ==="
-echo ""
 
-# 1. Clone or update tweakcc
+# 1. Clone or reuse tweakcc
 if [ ! -d "$TWEAKCC_DIR" ]; then
-  echo "Cloning tweakcc to $TWEAKCC_DIR..."
-  git clone https://github.com/anthropics/tweakcc "$TWEAKCC_DIR"
+  echo "Cloning tweakcc..."
+  git clone https://github.com/Piebald-AI/tweakcc "$TWEAKCC_DIR"
   cd "$TWEAKCC_DIR"
-  npm install
+  npm install --legacy-peer-deps
+  NEEDS_TWEAKCC_BUILD=true
 elif [ ! -d "$TWEAKCC_DIR/src/patches" ]; then
   echo "Error: $TWEAKCC_DIR exists but doesn't look like tweakcc"
   exit 1
 else
-  echo "Using existing tweakcc at $TWEAKCC_DIR"
   cd "$TWEAKCC_DIR"
 fi
 
-# 2. Copy patch files
-echo ""
-echo "Copying patch files..."
-cp "$SCRIPT_DIR/cursorStateExport.ts" "$TWEAKCC_DIR/src/patches/"
-cp "$SCRIPT_DIR/wordHighlight.ts" "$TWEAKCC_DIR/src/patches/"
-cp "$SCRIPT_DIR/dynamicHighlight.ts" "$TWEAKCC_DIR/src/patches/"
-echo "  Copied 3 patch files"
+# 2. Copy patch files (always — cheap, ensures latest)
+PATCH_CHANGED=false
+for f in cursorStateExport.ts wordHighlight.ts dynamicHighlight.ts; do
+  if ! cmp -s "$SCRIPT_DIR/$f" "$TWEAKCC_DIR/src/patches/$f" 2>/dev/null; then
+    PATCH_CHANGED=true
+    break
+  fi
+done
+if $PATCH_CHANGED; then
+  cp "$SCRIPT_DIR/cursorStateExport.ts" "$TWEAKCC_DIR/src/patches/"
+  cp "$SCRIPT_DIR/wordHighlight.ts" "$TWEAKCC_DIR/src/patches/"
+  cp "$SCRIPT_DIR/dynamicHighlight.ts" "$TWEAKCC_DIR/src/patches/"
+  echo "Copied patch files"
+  NEEDS_TWEAKCC_BUILD=true
+else
+  echo "Patch files unchanged"
+fi
 
-# 3. Add types to types.ts
-echo ""
-echo "Patching types.ts..."
+# 3. Patch types.ts (skip if already done)
 TYPES_FILE="$TWEAKCC_DIR/src/types.ts"
 if ! grep -q "enableCursorStateExport" "$TYPES_FILE"; then
   node -e "
@@ -58,7 +68,7 @@ const additions = \`
   highlightClearOnEscape?: boolean;
   highlightClearOnNavigation?: boolean;
   highlightWordPattern?: 'whitespace' | 'alphanum' | string;
-  highlightMode?: 'words' | 'numbers' | 'gender' | 'both';
+  highlightMode?: 'words' | 'numbers';
   highlightExportEnabled?: boolean;
   highlightExportPath?: string;
   numberDimming?: boolean;
@@ -69,25 +79,21 @@ const additions = \`
   cueActionOverrides?: { [word: string]: { action: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
 \`;
 
-// Find MiscSettings interface and insert before its closing }
-const miscMatch = content.match(/export interface MiscSettings \\{[^}]+/);
+const miscMatch = content.match(/export interface MiscConfig \\{[^}]+/);
 if (miscMatch) {
   const insertPos = miscMatch.index + miscMatch[0].length;
   content = content.slice(0, insertPos) + additions + content.slice(insertPos);
   fs.writeFileSync('$TYPES_FILE', content);
-  console.log('  Added types to MiscSettings');
+  console.log('Patched types.ts');
 } else {
-  console.error('  Error: Could not find MiscSettings interface');
+  console.error('Error: Could not find MiscConfig interface');
   process.exit(1);
 }
 "
-else
-  echo "  Already patched"
+  NEEDS_TWEAKCC_BUILD=true
 fi
 
-# 4. Add defaults to defaultSettings.ts
-echo ""
-echo "Patching defaultSettings.ts..."
+# 4. Patch defaultSettings.ts (skip if already done)
 DEFAULTS_FILE="$TWEAKCC_DIR/src/defaultSettings.ts"
 if ! grep -q "enableCursorStateExport" "$DEFAULTS_FILE"; then
   node -e "
@@ -106,7 +112,7 @@ const additions = \`
     highlightClearOnEscape: true,
     highlightClearOnNavigation: false,
     highlightWordPattern: 'whitespace',
-    highlightMode: 'numbers',
+    highlightMode: 'words',
     highlightExportEnabled: true,
     highlightExportPath: '/tmp/claude-highlight-state.json',
     numberDimming: true,
@@ -117,32 +123,27 @@ const additions = \`
     cueActionOverrides: { volume: { action: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
 \`;
 
-// Find misc: { and insert after the opening brace
 const miscMatch = content.match(/misc:\\s*\\{/);
 if (miscMatch) {
   const insertPos = miscMatch.index + miscMatch[0].length;
   content = content.slice(0, insertPos) + additions + content.slice(insertPos);
   fs.writeFileSync('$DEFAULTS_FILE', content);
-  console.log('  Added defaults to misc object');
+  console.log('Patched defaultSettings.ts');
 } else {
-  console.error('  Error: Could not find misc object');
+  console.error('Error: Could not find misc object');
   process.exit(1);
 }
 "
-else
-  echo "  Already patched"
+  NEEDS_TWEAKCC_BUILD=true
 fi
 
-# 5. Add imports and patch calls to index.ts
-echo ""
-echo "Patching index.ts..."
+# 5. Patch index.ts (skip if already done)
 INDEX_FILE="$TWEAKCC_DIR/src/patches/index.ts"
 if ! grep -q "writeCursorStateExport" "$INDEX_FILE"; then
   node -e "
 const fs = require('fs');
 let content = fs.readFileSync('$INDEX_FILE', 'utf8');
 
-// Add imports after the last import statement
 const importAddition = \`
 import { writeCursorStateExport } from './cursorStateExport';
 import { writeWordHighlight } from './wordHighlight';
@@ -153,75 +154,77 @@ const lastImport = content.lastIndexOf('import ');
 const lastImportEnd = content.indexOf(';', lastImport) + 1;
 content = content.slice(0, lastImportEnd) + '\\n' + importAddition + content.slice(lastImportEnd);
 
-// Add patch application code before the final write
 const patchCode = \`
 
   // --- Cues Patches ---
-  if (config.settings.misc?.enableCursorStateExport) {
-    const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
-    if ((result = writeCursorStateExport(content, exportPath))) content = result;
-  }
+  {
+    let result: string | null;
+    if (config.settings.misc?.enableCursorStateExport) {
+      const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
+      if ((result = writeCursorStateExport(content, exportPath))) content = result;
+    }
 
-  if (config.settings.misc?.enableWordHighlight) {
-    const highlightConfig = {
-      enableWordHighlight: config.settings.misc.enableWordHighlight,
-      highlightColor: config.settings.misc.highlightColor,
-      highlightIndexFromLeft: config.settings.misc.highlightIndexFromLeft,
-      highlightWrap: config.settings.misc.highlightWrap,
-      highlightAutoScroll: config.settings.misc.highlightAutoScroll,
-      highlightClearOnEscape: config.settings.misc.highlightClearOnEscape,
-      highlightClearOnNavigation: config.settings.misc.highlightClearOnNavigation,
-      highlightWordPattern: config.settings.misc.highlightWordPattern,
-      highlightMode: config.settings.misc.highlightMode,
-      highlightExportEnabled: config.settings.misc.highlightExportEnabled,
-      highlightExportPath: config.settings.misc.highlightExportPath,
-      numberDimming: config.settings.misc.numberDimming,
-      cueActionOverrides: config.settings.misc.cueActionOverrides,
-    };
-    if ((result = writeWordHighlight(content, highlightConfig))) content = result;
-  }
+    if (config.settings.misc?.enableWordHighlight) {
+      const highlightConfig = {
+        enableWordHighlight: config.settings.misc.enableWordHighlight,
+        highlightColor: config.settings.misc.highlightColor,
+        highlightIndexFromLeft: config.settings.misc.highlightIndexFromLeft,
+        highlightWrap: config.settings.misc.highlightWrap,
+        highlightAutoScroll: config.settings.misc.highlightAutoScroll,
+        highlightClearOnEscape: config.settings.misc.highlightClearOnEscape,
+        highlightClearOnNavigation: config.settings.misc.highlightClearOnNavigation,
+        highlightWordPattern: config.settings.misc.highlightWordPattern,
+        highlightMode: config.settings.misc.highlightMode,
+        highlightExportEnabled: config.settings.misc.highlightExportEnabled,
+        highlightExportPath: config.settings.misc.highlightExportPath,
+        numberDimming: config.settings.misc.numberDimming,
+        cueActionOverrides: config.settings.misc.cueActionOverrides,
+      };
+      if ((result = writeWordHighlight(content, highlightConfig))) content = result;
+    }
 
-  if (config.settings.misc?.enableDynamicHighlight !== false && config.settings.misc?.enableWordHighlight) {
-    const dynamicConfig = {
-      enableDynamicHighlight: true,
-      dynamicHighlightScriptPath: config.settings.misc?.dynamicHighlightScriptPath || '~/.claude/llm-analyze.sh',
-      dynamicHighlightAutoSubmit: config.settings.misc?.dynamicHighlightAutoSubmit || false,
-      dynamicHighlightDebounceMs: config.settings.misc?.dynamicHighlightDebounceMs || 500,
-    };
-    if ((result = writeDynamicHighlight(content, dynamicConfig))) content = result;
+    if (config.settings.misc?.enableDynamicHighlight !== false && config.settings.misc?.enableWordHighlight) {
+      const dynamicConfig = {
+        enableDynamicHighlight: true,
+        dynamicHighlightScriptPath: config.settings.misc?.dynamicHighlightScriptPath || '~/.claude/llm-analyze.sh',
+        dynamicHighlightAutoSubmit: config.settings.misc?.dynamicHighlightAutoSubmit || false,
+        dynamicHighlightDebounceMs: config.settings.misc?.dynamicHighlightDebounceMs || 500,
+      };
+      if ((result = writeDynamicHighlight(content, dynamicConfig))) content = result;
+    }
   }
 
 \`;
 
-// Find where to insert - look for the final writeFileSync or return statement
-const writeMatch = content.match(/writeFileSync|return content/);
-if (writeMatch) {
-  let insertPos = content.lastIndexOf('\\n', writeMatch.index) + 1;
-  insertPos = content.lastIndexOf('\\n', insertPos - 2) + 1;
-  content = content.slice(0, insertPos) + patchCode + content.slice(insertPos);
+const writeBackMatch = content.match(/\\/\\/ =+\\s*\\n\\s*\\/\\/ Write the modified content back/);
+if (writeBackMatch) {
+  const insertPos = writeBackMatch.index;
+  content = content.slice(0, insertPos) + patchCode + '\\n' + content.slice(insertPos);
   fs.writeFileSync('$INDEX_FILE', content);
-  console.log('  Added imports and patch calls');
+  console.log('Patched index.ts');
 } else {
-  console.error('  Error: Could not find insertion point');
+  console.error('Error: Could not find Write the modified content back section');
   process.exit(1);
 }
 "
-else
-  echo "  Already patched"
+  NEEDS_TWEAKCC_BUILD=true
 fi
 
-# 6. Build cues-core and install
-echo ""
-echo "Building cues-core..."
-CUES_CORE="$SCRIPT_DIR/../../../packages/cues-core"
+# 6. Build cues-core (skip if dist is newer than src)
 if [ -d "$CUES_CORE" ]; then
-  cd "$CUES_CORE"
-  npm install --silent 2>/dev/null || npm install
-  npm run build --silent 2>/dev/null || npm run build
+  NEWEST_SRC=$(find "$CUES_CORE/src" -name '*.ts' -newer "$CUES_CORE/dist/index.js" 2>/dev/null | head -1)
+  if [ ! -f "$CUES_CORE/dist/index.js" ] || [ -n "$NEWEST_SRC" ]; then
+    echo "Building cues-core..."
+    cd "$CUES_CORE"
+    npm run build --silent 2>/dev/null || npm run build
+    cd "$TWEAKCC_DIR"
+  else
+    echo "cues-core up to date"
+  fi
 
   mkdir -p ~/.claude/node_modules/cues-core
-  cp dist/*.js dist/*.d.ts ~/.claude/node_modules/cues-core/ 2>/dev/null || true
-  [ -d dist/sources ] && cp -r dist/sources ~/.claude/node_modules/cues-core/
+  cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts ~/.claude/node_modules/cues-core/ 2>/dev/null || true
+  [ -d "$CUES_CORE/dist/sources" ] && cp -r "$CUES_CORE/dist/sources" ~/.claude/node_modules/cues-core/
 
   cat > ~/.claude/node_modules/cues-core/package.json << 'EOF'
 {
@@ -231,41 +234,36 @@ if [ -d "$CUES_CORE" ]; then
   "types": "index.d.ts"
 }
 EOF
-  echo "  Installed to ~/.claude/node_modules/cues-core/"
-else
-  echo "  Warning: cues-core not found at $CUES_CORE"
 fi
 
-# 7. Copy supporting files
-echo ""
-echo "Installing supporting files..."
-cp "$SCRIPT_DIR/claude-code-tips.json" ~/.claude/ 2>/dev/null && echo "  Copied tips file" || true
+# 7. Copy supporting files (cheap — always run)
+cp "$SCRIPT_DIR/claude-code-tips.json" ~/.claude/ 2>/dev/null || true
 mkdir -p ~/.claude/actions
-cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null && echo "  Copied action scripts" || true
-cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh && echo "  Copied status line script" || true
+cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null || true
+cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh 2>/dev/null || true
 
-# 8. Build tweakcc
-echo ""
-echo "Building tweakcc..."
+# 8. Build tweakcc (skip if no changes)
 cd "$TWEAKCC_DIR"
-npm run build
+if $NEEDS_TWEAKCC_BUILD || [ ! -f "$TWEAKCC_DIR/dist/index.mjs" ]; then
+  echo "Building tweakcc..."
+  npm run build
+else
+  echo "tweakcc up to date"
+fi
 
-# 9. Find and apply to Claude Code
-echo ""
+# 9. Apply to Claude Code
 CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" 2>/dev/null | head -1)
 if [ -n "$CLI_JS" ]; then
-  echo "Applying patches to Claude Code..."
+  echo "Applying patches..."
   TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
-  echo ""
-  echo "Verifying..."
   if node --check "$CLI_JS" 2>/dev/null; then
-    echo "  Syntax OK"
+    echo "Syntax OK"
   else
-    echo "  Warning: Syntax check failed"
+    echo "Warning: Syntax check failed"
   fi
 else
-  echo "Claude Code cli.js not found. After installing Claude Code, run:"
+  echo "Claude Code cli.js not found."
   echo "  cd $TWEAKCC_DIR"
   echo "  CLI_JS=\$(find ~/.claude -name 'cli.js' -path '*claude-code*' | head -1)"
   echo "  TWEAKCC_CC_INSTALLATION_PATH=\"\$CLI_JS\" node dist/index.mjs --apply"
@@ -273,15 +271,3 @@ fi
 
 echo ""
 echo "=== Setup Complete ==="
-echo ""
-echo "Next steps:"
-echo "  1. Set GROQ_API_KEY in your shell profile:"
-echo "     export GROQ_API_KEY=\"your-key\""
-echo ""
-echo "  2. (Optional) Enable status line with word tips:"
-echo "     Run /statusline in Claude Code, then set command to:"
-echo "     $HOME/.claude/highlight-statusline.sh"
-echo ""
-echo "  3. Restart Claude Code"
-echo ""
-echo "Test: Type a number, press Ctrl+Alt+Left, then Ctrl+Alt+Up"

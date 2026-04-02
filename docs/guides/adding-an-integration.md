@@ -36,7 +36,7 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 | Recommended | Local Cues (6) | Instant alternatives, much faster than remote cues |
 | Recommended | Fill-in-the-Blank (8) | Popular feature for knowledge/math |
 | Recommended | Secondary Display (14) | Shows cue-tips and cycle position |
-| Optional | Linked Words (5) | Gender/agreement tracking |
+| Optional | Linked Words (5) | Agreement tracking |
 | Optional | Multi-Word Spans (9) | Complex but useful for factual answers |
 | Optional | Cue-Actions (11) | Platform-specific external triggers |
 | Optional | Cursor Export (13) | For external tool integration |

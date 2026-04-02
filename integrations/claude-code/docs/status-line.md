@@ -8,7 +8,7 @@ Implements feature 14 from `docs/features/`: Status Display.
 
 **Script:** `patches/highlight-statusline.sh`
 
-Shows the highlighted word, tip text, and alternative count in Claude Code's status bar.
+Shows the highlighted word, tip text, and alternative count in Claude Code's status bar. Only words with tips or alts appear — cue-actions (numbers, custom actions) are excluded.
 
 ## Display Format
 
@@ -20,6 +20,8 @@ word (N/M) - Tip text for this word
 - **word** — the currently highlighted word
 - **N/M** — current alternative position / total alternatives
 - **Tip text** — from `~/.claude/claude-code-tips.json` (only for tips words, not LLM alternatives)
+
+Words without alts (including cue-actions like numbers and custom actions) produce no status line output.
 
 ## Setup
 
@@ -66,10 +68,11 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 |-------|------|--------|
 | `active` | boolean | `_hlState.active` |
 | `highlightedWord` | string | Current word text |
-| `tip` | string | `_dynDefs.words[i].tip` (from local cues) |
-| `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues) |
+| `cueAction` | boolean | `true` if word is a cue-action (number or custom). When set, `tip`/`alts`/`altCueTips` are null. |
+| `tip` | string | `_dynDefs.words[i].tip` (from local cues, null for cue-actions) |
+| `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues, null for cue-actions) |
 | `currentAltIndex` | number | Updated by cycling and per-word clearing |
-| `altCueTips` | object | Per-alternative tip text (tips words only) |
+| `altCueTips` | object | Per-alternative tip text (tips words only, null for cue-actions) |
 
 ## Tips Source
 

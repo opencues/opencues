@@ -23,8 +23,8 @@ Implements features [1](../../../docs/features/navigation.md), [3](../../../docs
 
 | Key | Action |
 |-----|--------|
-| Ctrl+Alt+Up | Cycle to next alternative / increment number |
-| Ctrl+Alt+Down | Cycle to previous alternative / decrement number |
+| Ctrl+Alt+Up | Cue-action (custom script / number increment) or cycle to next alternative |
+| Ctrl+Alt+Down | Cue-action (custom script / number decrement) or cycle to previous alternative |
 
 **Raw sequence fallback:** Also handles `\x1B[1;7D/C/A/B` (modifier 7 = Ctrl+Alt) for terminals that don't set meta/option flags.
 
@@ -63,7 +63,7 @@ PID-based path prevents multi-instance interference.
 | Option | Default | Purpose |
 |--------|---------|---------|
 | `enableWordHighlight` | — | Master switch (required) |
-| `highlightMode` | `'numbers'` | `numbers`, `words`, `gender`, `both` |
+| `highlightMode` | `'words'` | `numbers`, `words` |
 | `highlightColor` | `'white'` | `white`, `cyan`, `yellow`, `inverse`, `underline` |
 | `numberDimming` | `true` | Dim numbers in dark gray |
 | `highlightExportEnabled` | `true` | Write highlight state JSON |

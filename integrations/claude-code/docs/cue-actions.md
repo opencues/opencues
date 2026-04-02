@@ -8,11 +8,16 @@ Implements feature [11](../../../docs/features/cue-actions.md). See that doc for
 
 **Patch files:** `patches/wordHighlight.ts` (navigation + dimming), `patches/dynamicHighlight.ts` (cycling + script spawn)
 
-Cue-actions allow specific words to trigger external scripts when Up/Down is pressed, instead of the normal increment/decrement or cycling behavior.
+Cue-actions are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the status line.
 
 ## Overview
 
-When you navigate to a cue-action (like "volume") and press Ctrl+Alt+Up or Down, it spawns an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
+There are two kinds of cue-action:
+
+- **Custom cue-actions** — navigate to a word (like "volume") and press Ctrl+Alt+Up or Down to spawn an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
+- **Number cue-actions** — any word matching `/^-?\d+(\.\d+)?$/` automatically increments/decrements. See `cycling.md` for floor behavior.
+
+The unified check `globalThis._isCueAction(word)` identifies both types. It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-actions from tips/alts display.
 
 ## How It Works
 
@@ -26,21 +31,21 @@ Press Ctrl+Alt+Up
 cue-action check (FIRST priority)
   → Word "volume" found in cueActionOverrides
   → Spawn: ~/.claude/actions/volume.sh up 5
-  → Return (skip normal number/gender logic)
+  → Return (skip normal number/cycling logic)
            ↓
 Volume increases
 ```
 
 ## Priority Order
 
-cue-actions are checked **FIRST**, before any other logic:
+Cue-actions are checked **FIRST** in `_cycleAlt()`, before any other logic:
 
-1. **Cue-action** → spawn script, return
-2. **Alternatives** → cycle through alternatives
-3. **Linked words** → co-dependent words cycle together
-4. **Numbers** → increment/decrement
+1. **Cue-action (custom)** → spawn script, return
+2. **Cue-action (number)** → increment/decrement, return
+3. **Alternatives** → cycle through alternatives
+4. **Linked words** → co-dependent words cycle together
 
-This is implemented in `dynamicHighlight.ts` — cue-action checks are injected in 4 locations (key handlers and raw sequence handlers for both Up and Down).
+`_cycleAlt` is called from 4 locations (key handlers and raw sequence handlers for both Up and Down). `wordHighlight.ts` retains number handlers as fallback if `_cycleAlt` is not available.
 
 ## Configuration
 

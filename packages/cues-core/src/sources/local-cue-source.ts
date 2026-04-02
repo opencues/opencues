@@ -344,17 +344,24 @@ export function buildLookupMap(data: LocalCueData): Map<string, LocalCueLookupRe
 export function lookupMultiple(
   words: string[],
   map: Map<string, LocalCueLookupResult>,
-  options?: { skipPattern?: RegExp }
+  options?: { skipPattern?: RegExp; skipFn?: (word: string) => boolean }
 ): LookupMultipleResult {
   const found: WordDef[] = [];
   const missingIndices: number[] = [];
   const skipPattern = options?.skipPattern;
+  const skipFn = options?.skipFn;
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
 
     // Skip words matching pattern (e.g., blanks "_")
     if (skipPattern && skipPattern.test(word)) {
+      continue;
+    }
+
+    // Skip words rejected by custom function (e.g., cue-actions)
+    if (skipFn && skipFn(word)) {
+      missingIndices.push(i);
       continue;
     }
 

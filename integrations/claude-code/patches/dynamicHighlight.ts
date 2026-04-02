@@ -120,11 +120,11 @@ globalThis._localCueMap=null;
 // NodeHttpAdapter: keep-alive + Groq provider config (reasoning_effort, max_tokens)
 if(!globalThis._httpAdapter){
 try{
-var _NodeHttpAdapter=globalThis._cuesCore.NodeHttpAdapter;
+var _NodeHttpAdapter=${requireFuncName}((process.env.HOME||"~")+"/.claude/node_modules/cues-core/node-http-adapter").NodeHttpAdapter;
 globalThis._httpAdapter=new _NodeHttpAdapter({
 maxSockets:2,
 timeout:30000,
-providerOverrides:{"api.groq.com":{reasoning_effort:"low",max_tokens:400}}
+providerOverrides:{"api.groq.com":{reasoning_effort:"low",max_tokens:800}}
 });
 // Warm connection pool on startup
 if(process.env.GROQ_API_KEY){
@@ -146,7 +146,13 @@ new globalThis._cuesCore.FactualSource({httpAdapter:_ha,endpoint:_ep,apiKey:_api
 ],{parallel:false,timeout:30000,continueOnError:true});
 }catch(_e6){globalThis._cueResolver=null;}
 }
-// Shared cycling function: handles action words, alt cycling, linked words, spans, underscore re-analysis
+// Cue-action check: returns true for words with built-in cycling behavior
+// (numbers increment/decrement, custom actions run scripts) — these bypass alt cycling and tips
+globalThis._isCueAction=function(_w){
+var _numPat=/^-?\\d+(\\.\\d+)?$/;
+return _numPat.test(_w)||!!(globalThis._cueActionOverrides||{})[_w.toLowerCase()];
+};
+// Shared cycling function: handles cue-actions, alt cycling, linked words, spans, underscore re-analysis
 // dir=1 for Up (next alt), dir=-1 for Down (prev alt)
 globalThis._cycleAlt=function(_dir,_IZClass,_IZVar,_cfgVar,_reqFn){
 if(!globalThis._hlState||!globalThis._hlState.active||globalThis._hlState.wordIndex==null)return null;
@@ -154,7 +160,8 @@ var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w)
 var _hlIdx=globalThis._hlState.wordIndex;
 if(_hlIdx<0||_hlIdx>=_allW.length)return null;
 var _curWord=_allW[_hlIdx];
-// Action word check
+// === Cue-actions: words with built-in cycling behavior (no tips, no LLM alts) ===
+// Custom cue-actions: run external scripts (e.g. volume.sh)
 var _actOvr=globalThis._cueActionOverrides||{};
 var _wLower=_curWord.toLowerCase();
 if(_actOvr[_wLower]){
@@ -165,6 +172,27 @@ var _args=["bash",_script].concat(_dir>0?_ad.upArgs||["up"]:_ad.downArgs||["down
 try{_reqFn("child_process").spawn(_args[0],_args.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{refresh:true};
+}
+// Built-in cue-action: number increment/decrement
+var _numPat=/^-?\\d+(\\.\\d+)?$/;
+if(_numPat.test(_curWord)){
+if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
+var _num=parseFloat(_curWord);
+if(globalThis._hlState.originalNumbers[_hlIdx]===undefined)globalThis._hlState.originalNumbers[_hlIdx]=_num;
+var _newNum=_num+_dir;
+if(_dir<0){var _orig=globalThis._hlState.originalNumbers[_hlIdx];if(_newNum<_orig)_newNum=_orig;}
+var _isInt=_curWord.indexOf(".")<0;
+var _newWord=_isInt?String(Math.round(_newNum)):String(_newNum);
+var _text=globalThis._hlText;
+var _wordPos=0;
+for(var _wi=0;_wi<_hlIdx;_wi++){_wordPos=_text.indexOf(_allW[_wi],_wordPos)+_allW[_wi].length;}
+var _wStart=_text.indexOf(_curWord,_wordPos);
+var _wEnd=_wStart+_curWord.length;
+var _newText=_text.slice(0,_wStart)+_newWord+_text.slice(_wEnd);
+globalThis._hlText=_newText;
+globalThis._hlState.text=_newText;
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+return{text:_newText,lenDiff:_newWord.length-_curWord.length,wStart:_wStart};
 }
 // Dynamic alt cycling
 if(!globalThis._dynDefs)return null;
@@ -456,7 +484,8 @@ globalThis._dynUnderscoreContext=_sentWords.filter(function(w){return w!=="_";})
 }
 
 // LOCAL TIPS LOOKUP - uses cues-core functions for O(1) lookup
-var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
+// Skip cue-actions (numbers, custom actions) — they have built-in cycling, not tips
+var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueAction}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
 
 // If ALL non-underscore words matched tips, skip LLM entirely
 if(_lookup.found.length>0&&_lookup.missingIndices.length===0&&_sentWords.indexOf("_")<0){
@@ -799,65 +828,28 @@ if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDi
 };
 
 /**
- * Add _actOvr variable definition for action word overrides.
- * This must be defined before _actOvr is used in the dimming logic.
+ * writeActionOvrVariable is no longer needed — gender mode was removed,
+ * so _rootPat no longer exists. The rendering code accesses
+ * globalThis._cueActionOverrides directly.
  */
 export const writeActionOvrVariable = (
   oldFile: string,
-  config: DynamicHighlightConfig = {}
+  _config: DynamicHighlightConfig = {}
 ): string | null => {
-  // Find where _rootPat is defined (after which we'll add _actOvr)
-  const rootPatPattern = /var _rootPat=\/\^\(boy\|girl\)\$\/i;/;
-  const rootPatMatch = oldFile.match(rootPatPattern);
-
-  if (!rootPatMatch || rootPatMatch.index === undefined) {
-    console.error('patch: dynamicHighlight: failed to find _rootPat variable definition');
-    return null;
-  }
-
-  // Insert after _rootPat definition
-  const insertPos = rootPatMatch.index + rootPatMatch[0].length;
-  const actOvrCode = `\nvar _actOvr=globalThis._cueActionOverrides||{};`;
-
-  const newFile = oldFile.slice(0, insertPos) + actOvrCode + oldFile.slice(insertPos);
-
-  return newFile;
+  return oldFile;
 };
 
 /**
  * Modify the rendering to show words with alts in gray (dim).
  * When dynamic defs are loaded, words with alternatives are dimmed to show they're navigable.
  *
- * Handles two rendering modes:
- * 1. Gender/Both mode: uses _dimRanges array with _rootPat check
- * 2. Numbers mode (default): uses _numRanges array with _numPat check only
+ * Extends the _numRanges pattern to also dim action words and dynamic alt words.
  */
 export const writeDynamicRendering = (
   oldFile: string,
   config: DynamicHighlightConfig = {}
 ): string | null => {
-  // Try gender/both mode pattern first (_dimRanges with _rootPat)
-  const dimPattern = /\}else if\(_numPat\.test\(_w\)\|\|_rootPat\.test\(_w\)(?:\|\|_actOvr\[_wLower\]|\|\|\(globalThis\._cueActionOverrides\|\|\{\}\)\[_wLower\])?\)\{\s*_dimRanges\.push\(\{start:_wStart,end:_wStart\+_w\.length\}\);\s*\}/;
-  const dimMatch = oldFile.match(dimPattern);
-
-  if (dimMatch && dimMatch.index !== undefined) {
-    // Gender/Both mode: replace _dimRanges pattern
-    // Use globalThis._cueActionOverrides directly to avoid ReferenceError
-    // when writeActionOvrVariable (step 5) fails to inject _actOvr
-    const newDimCode = `}else if(_numPat.test(_w)||_rootPat.test(_w)||(globalThis._cueActionOverrides||{})[_wLower]){
-_dimRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(globalThis._dynDefs&&globalThis._dynDefs.words){
-var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_wi&&d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0;});
-var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_wi];
-var _isInSpan=!!_spanInfo;
-var _isInHighlightedSpan=_spanInfo&&_spanInfo.originalIndex===_hlWordIdx;
-if((_dynDef||_isInSpan)&&_wi!==_hlWordIdx&&!_isInHighlightedSpan)_dimRanges.push({start:_wStart,end:_wStart+_w.length});
-}`;
-
-    return oldFile.replace(dimPattern, newDimCode);
-  }
-
-  // Try numbers mode pattern (_numRanges with _numPat only, no _rootPat)
+  // Find the _numRanges pattern (_numPat only)
   // Pattern: else if(_numPat.test(_w)){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
   const numPattern = /else if\(_numPat\.test\(_w\)\)\{_numRanges\.push\(\{start:_wStart,end:_wStart\+_w\.length\}\);\}/;
   const numMatch = oldFile.match(numPattern);

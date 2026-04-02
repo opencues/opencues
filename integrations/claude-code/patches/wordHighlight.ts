@@ -611,7 +611,9 @@ if(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordInde
 var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
-if(globalThis._dynDefs&&globalThis._dynDefs.words){
+var _isCA=globalThis._isCueAction&&globalThis._isCueAction(_hlWords[_idx]||"");
+if(_isCA){_hlExport.cueAction=true;}
+if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_dw){_hlExport.tip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
 }

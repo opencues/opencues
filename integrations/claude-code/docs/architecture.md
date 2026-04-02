@@ -102,8 +102,6 @@ User presses: Ctrl+Alt+Left
 │  │ 1. Get words from globalThis._hlText                     │ │
 │  │ 2. Filter to navigable words based on mode:              │ │
 │  │    • 'numbers': /^-?\d+(\.\d+)?$/                        │ │
-│  │    • 'gender': /^(boy|girl)$/i                           │ │
-│  │    • 'both': numbers OR gender roots                     │ │
 │  │    • 'words': all words                                  │ │
 │  │    • PLUS: cue-action overrides                         │ │
 │  │    • PLUS: words with dynamic alts                       │ │
@@ -119,33 +117,28 @@ User presses: Ctrl+Alt+Left
 ### Phase 3: Up/Down Action (Cycling/Incrementing)
 
 ```
-User presses: Ctrl+Alt+Up (with "boy" highlighted)
+User presses: Ctrl+Alt+Up (with "dogs" highlighted)
                 │
                 ▼
 ┌───────────────────────────────────────────────────────────────┐
 │                    UP KEY HANDLER                              │
 │                                                                │
-│  PATCHED BY: dynamicHighlight.ts (FIRST - action check)       │
+│  PATCHED BY: dynamicHighlight.ts (FIRST - _cycleAlt)          │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 1. Check if word is cue-action (e.g., "volume")         │ │
+│  │ 1. Check if word is custom cue-action (e.g., "volume")  │ │
 │  │    → If yes: spawn script, RETURN                        │ │
 │  │                                                          │ │
-│  │ 2. Check if word is gender root (boy/girl)               │ │
-│  │    → If yes: SKIP (let wordHighlight handle)             │ │
+│  │ 2. Check if word is number cue-action                    │ │
+│  │    → If yes: increment/decrement with floor, RETURN      │ │
 │  │                                                          │ │
 │  │ 3. Check if word has dynamic alts in _dynDefs            │ │
 │  │    → If yes: cycle to next alt, update linked words      │ │
 │  │    → Update text, RETURN                                 │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │                                                                │
-│  PATCHED BY: wordHighlight.ts (SECOND - fallback)             │
+│  PATCHED BY: wordHighlight.ts (SECOND - number fallback)      │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 4. Check if word is gender root (boy/girl)               │ │
-│  │    → Flip ALL linked words:                              │ │
-│  │      boy→girl, his→her, he→she, him→her, man→woman      │ │
-│  │    → Update text, RETURN                                 │ │
-│  │                                                          │ │
-│  │ 5. Check if word is number                               │ │
+│  │ 4. Check if word is number (fallback if _cycleAlt N/A)  │ │
 │  │    → Increment by 1 (track original for floor)           │ │
 │  │    → Update text, RETURN                                 │ │
 │  └──────────────────────────────────────────────────────────┘ │
@@ -167,11 +160,9 @@ Text ready to display: "The boy has 3 dogs"
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │ 1. Parse words and their positions                       │ │
 │  │ 2. Build highlight ranges (white) for selected word      │ │
-│  │    • If gender selected: include linked words            │ │
 │  │    • If span selected: include span words                │ │
 │  │ 3. Build dim ranges (gray) for:                          │ │
 │  │    • Numbers (if numberDimming enabled)                  │ │
-│  │    • Gender root words (boy/girl)                        │ │
 │  │    • Cue-actions                                        │ │
 │  │    • Words with dynamic alts                             │ │
 │  │ 4. Walk through renderedValue char-by-char:              │ │
@@ -276,7 +267,7 @@ DEPENDENCIES: None (standalone)
 ### wordHighlight.ts
 
 ```
-PURPOSE: Navigation, rendering, number/gender/cue-action handling
+PURPOSE: Navigation, rendering, number/cue-action handling
 
 PATCHES:
   ├── Key handler (Ctrl+Alt+Left/Right/Up/Down)
@@ -288,14 +279,13 @@ PATCHES:
 
 INJECTS:
   ├── Navigation logic with mode-based filtering
-  ├── Number increment/decrement with floor tracking
-  ├── Gender flip with linked word handling
+  ├── Number increment/decrement with floor tracking (fallback for _cycleAlt)
   ├── globalThis._cueActionOverrides assignment (serialized from config)
   ├── ANSI rendering with highlight/dim ranges
   └── Invisible char toggle for re-render triggering
 
 STATE (globalThis):
-  • _hlState: {active, index, wordIndex, originalNumbers, originalGender}
+  • _hlState: {active, index, wordIndex, originalNumbers}
   • _hlText: current input text
   • _parentValue: parent's value (for invisible char toggle)
   • _cueActionOverrides: action word config (serialized from config at build time)
@@ -303,7 +293,7 @@ STATE (globalThis):
   • _forceInputRefresh: function to force re-render
 
 CONFIG:
-  • highlightMode: 'numbers' | 'words' | 'gender' | 'both'
+  • highlightMode: 'numbers' | 'words'
   • highlightColor: 'white' | 'cyan' | 'yellow' | ...
   • numberDimming: boolean
   • cueActionOverrides: {word: {action, upArgs, downArgs}}
@@ -347,7 +337,8 @@ STATE (globalThis):
   • _tipsMap: prebuilt hash map from tips file
   • _httpAdapter: NodeHttpAdapter instance (from cues-core)
   • _cueResolver: CueResolver instance (from cues-core)
-  • _cycleAlt: shared cycling function
+  • _isCueAction: unified check for cue-actions (numbers + custom overrides)
+  • _cycleAlt: shared cycling function (cue-actions first, then dynamic alts)
   • _dynDefs: parsed LLM response {words: [...]}
   • _dynPending: boolean (resolver in progress)
   • _dynPrevWords: previous word list
@@ -410,10 +401,9 @@ DEPENDENCIES:
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  "The [gray]boy[/gray] has [gray]3[/gray] dogs"                │
-│        ^^^                  ^                                   │
-│        │                    └── number (dimmed)                 │
-│        └── gender root (dimmed, navigable)                      │
+│  "The boy has [gray]3[/gray] dogs"                             │
+│                    ^                                            │
+│                    └── number (dimmed)                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -463,7 +453,7 @@ SPAWNS (from cli.js):
 | File | One-Line Summary |
 |------|------------------|
 | `cursorStateExport.ts` | Writes cursor position to JSON on each keystroke |
-| `wordHighlight.ts` | Navigation + rendering + numbers + gender + actions |
+| `wordHighlight.ts` | Navigation + rendering + numbers + actions |
 | `dynamicHighlight.ts` | cues-core wiring + trigger + cycling + spans |
 
 **Dependency order:**
