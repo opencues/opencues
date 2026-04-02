@@ -8,9 +8,10 @@ Instant per-word alternatives and hints from a local JSON file. No LLM call need
 
 **How it works:**
 1. At startup, tips file is parsed and a hash map is built — O(n) once
-2. On each analysis trigger, every word is checked against the map — O(1) per word
-3. Words with matches get instant alts + tip text
+2. On each analysis trigger, tips lookup runs **first** — O(1) per word
+3. Words with matches get instant alts + tip text (merged immediately, don't wait for LLM)
 4. Non-matching words are sent to the LLM
+5. Words in the same sentence can have different sources: "quick" → LLM grammar, "ultrathink" → tips
 
 **Tips file supports two formats:**
 
@@ -42,4 +43,4 @@ Words (individual entries):
 **Per-alternative tips (`altTips`):**
 When cycling from "agents" to "swarm", the tip updates to show swarm's tip. This is built at lookup time by cross-referencing other sections.
 
-
+**Lookup priority:** Groups are checked first, then individual words (backward compatible).

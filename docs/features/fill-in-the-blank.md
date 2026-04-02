@@ -32,6 +32,6 @@ Examples:
 
 **Context invalidation:** If words around the blank change (e.g., "CEO of Google" → "CEO of Microsoft"), cached alts are cleared and re-analysis triggers. Cycling the blank itself does NOT trigger invalidation.
 
+**Queuing:** If context changes while an LLM request is already pending, re-analysis is queued and fires automatically when the current request completes. This prevents lost updates when the user types faster than the LLM responds.
+
 **Separate prompts:** Blank filling uses a different prompt than regular word alternatives, because blanks need a different word TYPE than surrounding words (e.g., "The _ dog" needs an adjective), while regular alternatives stay the same type (e.g., "beautiful" → "gorgeous").
-
-
