@@ -1,134 +1,72 @@
 ---
-last_updated: 2026-04-01
+last_updated: 2026-04-02
 ---
 
 # Alternatives — Claude Code
 
-Implements features 6, 7, 8, 12 from `docs/features/`: Tips, LLM Alternatives, Fill-in-the-Blank, Auto-Submit Trigger.
+Implements features [6](../../../docs/features/tips.md), [7](../../../docs/features/llm-alternatives.md), [8](../../../docs/features/fill-in-the-blank.md), [12](../../../docs/features/auto-submit.md). See those docs for the concepts.
 
 **Patch file:** `patches/dynamicHighlight.ts`
 
-## Auto-Submit Trigger
+## CC-Specific: Auto-Submit Flow
 
-Analysis fires automatically as the user types. Three tiers:
+The three-tier trigger (see feature 12) is implemented in the input handler:
 
-| Tier | Trigger | Debounce | Purpose |
-|------|---------|----------|---------|
-| 1 | Space typed (word count increases) | 50ms + stability check | Analyse just-completed word |
-| 2 | No typing for 300ms | 300ms + stability check | Analyse final word (no trailing space) |
-| 3 | Word edited (same word count) | 50ms + stability check | Re-analyse after mid-sentence edit |
+1. Trigger fires → `globalThis._tipsMap` lookup runs first (instant)
+2. Words with tips get alts merged into `_dynDefs` immediately
+3. Remaining words become `targetIndices`
+4. If empty → skip LLM entirely
+5. Otherwise → `globalThis._cueResolver.resolve()` with targeted indices (~400ms)
+6. Results merge into `_dynDefs` → `_forceInputRefresh()` triggers re-render
 
-**Flow:**
-1. Trigger fires → tips lookup runs first (instant, ~0ms)
-2. Words with tips get alts immediately
-3. Remaining words (without tips or existing alts) become `targetIndices`
-4. If `targetIndices` is empty → skip LLM entirely
-5. Otherwise → CueResolver call with targeted indices (~400ms)
-6. Results merge into existing `_dynDefs` → force UI refresh
+**State variables:**
+- `_dynPending` — prevents overlapping LLM requests
+- `_dynLastAnalyzed` — tracks what was sent to avoid duplicates
+- `_dynDebounceTimer` / `_dynFinalPauseTimer` — tier 1/2 timers
 
-**Optimisations:**
-- `_dynPending` flag prevents overlapping LLM requests
-- `_dynLastAnalyzed` tracks what was sent to avoid duplicate submissions
-- Tips results merge immediately (don't wait for LLM)
+## CC-Specific: Tips File
 
-## Tips Lookup
+Location: `~/.claude/claude-code-tips.json`
 
-Words matching `~/.claude/claude-code-tips.json` get instant alternatives without LLM.
+Hash map built at startup in `globalThis._tipsMap`. See feature 6 for the two formats (groups and words).
 
-- Hash map built at startup (`globalThis._tipsMap`) — O(1) per lookup
-- Runs before every LLM call
-- Words in the same sentence can have different sources: "quick" → grammar LLM, "ultrathink" → tips
-- Each word gets a `tip` string and `altTips` (per-alternative tips)
+## CC-Specific: CueResolver Initialisation
 
-**Per-word tips update when cycling:**
-- Navigate to "ultrathink" → tip: "Add 'ultrathink' to prompt..."
-- Cycle to "Tab" → tip: "Press Tab to toggle extended thinking..."
+IIFE injected at startup in cli.js:
+- Loads cues-core module → `globalThis._cuesCore`
+- Parses tips file → `globalThis._tipsMap`
+- Creates NodeHttpAdapter (HTTPS keep-alive, Groq provider config) → `globalThis._httpAdapter`
+- Creates CueResolver with GrammarSource + MathSource + FactualSource → `globalThis._cueResolver`
+- Creates shared `_cycleAlt(dir)` function
 
-**Two structures supported:**
+**Injection point (v2.1.84+ ESM):** Must be after `var g6=Gt4(import.meta.url)`, not just after the `import{createRequire}` statement.
 
-`words` (per-word tips):
-```json
-{
-  "id": "context-management",
-  "words": {
-    "/compact": { "tip": "Summarize history...", "alts": ["/clear", "/rewind"] }
-  }
-}
-```
+## CC-Specific: Provider
 
-`groups` (synonym groups — alts point to OTHER concepts):
-```json
-{
-  "id": "parallel-execution",
-  "groups": [{
-    "synonyms": ["agents", "sub-agents", "spawn"],
-    "tip": "Spawn parallel workers...",
-    "alts": ["swarm", "background"]
-  }]
-}
-```
+Default: GPT-OSS-120b via Groq. See `/docs/guides/llm-providers.md` for alternatives and benchmarks.
 
-Groups are checked first, then words.
+**Environment variables:**
+- `GROQ_API_KEY` — required for default mode
+- `GEMINI_API_KEY` — required if using `LLM_MODEL=gemini`
+- `LLM_MODEL` — override all modes
+- `LLM_MODEL_MATH` / `LLM_MODEL_FACTUAL` / `LLM_MODEL_LINKED` — per-mode overrides
 
-## LLM Sources
+## CC-Specific: Blank Handling
 
-All LLM calls go through cues-core's `CueResolver`:
+Classification uses cues-core's `looksLikeMath()` / `looksLikeFactual()` heuristics (no LLM classifier call for obvious cases).
 
-| Source | Priority | When | Output |
-|--------|----------|------|--------|
-| Tips | 100 | Always (instant) | Direct alternatives |
-| MathSource | 90 | Input has `_` + looks like math | `COMPUTE=expression` → eval |
-| FactualSource | 90 | Input has `_` + looks like factual | `ANSWER=value` |
-| GrammarSource | 50 | Always (fallback) | `INDEX:alt1,alt2,alt3` |
+**Underscore queuing:** State variables `_dynUnderscoreContext` and `_dynUnderscoreQueued` handle context changes during pending requests.
 
-Higher priority wins when sources conflict. Same-priority results merge.
-
-**CueResolver initialisation** (IIFE injected at startup in cli.js):
-- Loads cues-core module
-- Parses tips file → builds hash map
-- Creates NodeHttpAdapter (HTTPS keep-alive, Groq provider config)
-- Creates CueResolver with all sources
-- Stores in `globalThis._cueResolver`
-
-**Default provider:** GPT-OSS-120b via Groq (~400ms avg). See `/docs/guides/llm-providers.md` for alternatives.
-
-## Fill-in-the-Blank
-
-Type `_` (underscore) as a placeholder. The system classifies and fills it:
-
-| Type | Detection | Example | Source |
-|------|-----------|---------|--------|
-| Math | `looksLikeMath()` — operators, percentages, math keywords | `4 * 12 = _` → 48 | MathSource |
-| Factual | `looksLikeFactual()` — "X of Y is", who/what/when patterns | `Capital of France is _` → Paris | FactualSource |
-| Grammar | Default | `The _ dog barked` → big, small, brown | GrammarSource |
-
-**Blank grammar rules** (determines word type from position):
-
-| After blank | Before blank | Blank needs |
-|-------------|-------------|-------------|
-| Noun (dog) | Determiner (The) | ADJECTIVE |
-| Verb (ran) | Determiner (The) | NOUN (subject) |
-| Noun/Adj | Start of sentence | DETERMINER |
-| Adverb (quickly) | Subject | VERB |
-
-**Context invalidation:** Changing words around a blank clears its cached alts and triggers re-analysis. Cycling the blank itself does not invalidate.
-
-**Underscore queuing:** If context changes while an LLM request is pending, re-analysis is queued and fires when the current request completes.
-
-## Performance
-
-**CueResolver (current, words-first prompt):**
+## CC-Specific: Performance
 
 | Metric | Value |
 |--------|-------|
-| avg | 471ms |
-| p50 | 405ms |
-| p90 | 708ms |
-| min | 287ms |
+| CueResolver avg | 471ms |
+| CueResolver p50 | 405ms |
+| CueResolver p90 | 708ms |
+| Tips lookup | ~0-1ms |
 
-**Tips lookup:** ~0-1ms (hash map, no network)
-
-## Debugging
+## CC-Specific: Debugging
 
 ```bash
 tail -f /tmp/claude-llm-timing-*.txt /tmp/claude-auto-debug-*.txt
@@ -136,20 +74,16 @@ tail -f /tmp/claude-llm-timing-*.txt /tmp/claude-auto-debug-*.txt
 
 ## Config
 
-```json
-{
-  "misc": {
-    "enableDynamicHighlight": true,
-    "dynamicHighlightDebounceMs": 0
-  }
-}
-```
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `enableDynamicHighlight` | `true` | Enable LLM/tips analysis |
+| `dynamicHighlightDebounceMs` | `0` | Debounce delay (0 = 50ms internal) |
 
 Requires `enableWordHighlight: true` (master switch).
 
 ## Related
 
-- `navigation.md` — how to navigate to words
+- `navigation.md` — keybindings and rendering
 - `cycling.md` — how Up/Down modifies words
 - `status-line.md` — tip display in status bar
 - `/docs/guides/llm-providers.md` — provider config and benchmarks
