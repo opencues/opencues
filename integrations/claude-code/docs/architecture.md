@@ -105,7 +105,7 @@ User presses: Ctrl+Alt+Left
 │  │    • 'gender': /^(boy|girl)$/i                           │ │
 │  │    • 'both': numbers OR gender roots                     │ │
 │  │    • 'words': all words                                  │ │
-│  │    • PLUS: action word overrides                         │ │
+│  │    • PLUS: cue-action overrides                         │ │
 │  │    • PLUS: words with dynamic alts                       │ │
 │  │ 3. Move to previous navigable word                       │ │
 │  │ 4. Store wordIndex in globalThis._hlState                │ │
@@ -127,7 +127,7 @@ User presses: Ctrl+Alt+Up (with "boy" highlighted)
 │                                                                │
 │  PATCHED BY: dynamicHighlight.ts (FIRST - action check)       │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 1. Check if word is action word (e.g., "volume")         │ │
+│  │ 1. Check if word is cue-action (e.g., "volume")         │ │
 │  │    → If yes: spawn script, RETURN                        │ │
 │  │                                                          │ │
 │  │ 2. Check if word is gender root (boy/girl)               │ │
@@ -172,7 +172,7 @@ Text ready to display: "The boy has 3 dogs"
 │  │ 3. Build dim ranges (gray) for:                          │ │
 │  │    • Numbers (if numberDimming enabled)                  │ │
 │  │    • Gender root words (boy/girl)                        │ │
-│  │    • Action words                                        │ │
+│  │    • Cue-actions                                        │ │
 │  │    • Words with dynamic alts                             │ │
 │  │ 4. Walk through renderedValue char-by-char:              │ │
 │  │    • Track ANSI codes (preserve cursor styling)          │ │
@@ -276,7 +276,7 @@ DEPENDENCIES: None (standalone)
 ### wordHighlight.ts
 
 ```
-PURPOSE: Navigation, rendering, number/gender/action word handling
+PURPOSE: Navigation, rendering, number/gender/cue-action handling
 
 PATCHES:
   ├── Key handler (Ctrl+Alt+Left/Right/Up/Down)
@@ -331,7 +331,7 @@ INJECTS:
   │   ├── cues-core loading + tipsMap building
   │   ├── NodeHttpAdapter (keep-alive, Groq provider config)
   │   ├── CueResolver (GrammarSource + MathSource + FactualSource)
-  │   └── Shared _cycleAlt(dir) function (action words, alts, linked, spans)
+  │   └── Shared _cycleAlt(dir) function (cue-actions, alts, linked, spans)
   ├── Input handler:
   │   ├── Three-tier trigger (space 50ms, pause 300ms, edit 50ms)
   │   ├── Tips lookup (instant, merge immediately)
@@ -366,7 +366,7 @@ EXTERNAL DEPENDENCIES:
 
 READS (from wordHighlight.ts):
   • globalThis._hlState, _hlText, _parentValue
-  • globalThis._actionWordOverrides (for action word checks in Up/Down handlers)
+  • globalThis._actionWordOverrides (for cue-action checks in Up/Down handlers)
   • globalThis._triggerStatusLineRefresh, _forceInputRefresh
 
 DEPENDENCIES:

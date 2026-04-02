@@ -66,8 +66,8 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 |-------|------|--------|
 | `active` | boolean | `_hlState.active` |
 | `highlightedWord` | string | Current word text |
-| `tip` | string | `_dynDefs.words[i].tip` (from tips file) |
-| `alts` | string[] | `_dynDefs.words[i].alts` (tips or LLM) |
+| `tip` | string | `_dynDefs.words[i].tip` (from local cues) |
+| `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues) |
 | `currentAltIndex` | number | Updated by cycling and per-word clearing |
 | `altTips` | object | Per-alternative tip text (tips words only) |
 

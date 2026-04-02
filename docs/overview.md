@@ -4,7 +4,7 @@ last_updated: 2026-04-01
 
 # Cues System Architecture
 
-A modular system for providing word alternatives, tips, and suggestions across different platforms (CLI, Chrome extension, VS Code).
+A modular system for providing word alternatives, cue-tips, and suggestions across different platforms (CLI, Chrome extension, VS Code).
 
 For the full list of features any integration should implement, see `features/README.md`.
 
@@ -214,11 +214,11 @@ document.addEventListener('input', async (e) => {
 });
 ```
 
-## Tips File Format
+## Cue Source File Format
 
-The tips file supports two structures:
+The cue source file supports two structures:
 
-### Words Structure (per-word tips)
+### Words Structure (per-word cue-tips)
 
 ```json
 [
@@ -266,7 +266,7 @@ The tips file supports two structures:
 
 ## Multi-Domain Support
 
-Configure multiple tips files for different domains:
+Configure multiple cue source files for different domains:
 
 ```typescript
 const sources = [
@@ -427,7 +427,7 @@ npm run test
 
 1. **VS Code Extension**: Use `cues-core` with VS Code decoration API
 2. **Web Application**: Use `cues-browser` with any web framework
-3. **Database Source**: Implement `CueSource` for database-backed tips
+3. **Database Source**: Implement `CueSource` for database-backed cues
 4. **Real-time Sync**: Use file watchers or WebSocket for live updates
 5. **Analytics**: Track which cues are most useful via metrics
 
@@ -435,7 +435,7 @@ npm run test
 
 The migration to cues-core is complete:
 
-1. Existing tips JSON format is fully supported
+1. Existing cue source JSON format is fully supported
 2. All LLM calls go through CueResolver + NodeHttpAdapter (no more bash scripts)
 3. Output format matches existing `_dynDefs` structure
 4. Classification via cues-core's `looksLikeMath`/`looksLikeFactual` (no more wink-pos-tagger)

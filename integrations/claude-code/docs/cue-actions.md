@@ -2,17 +2,17 @@
 last_updated: 2026-03-27
 ---
 
-# Action Words — Claude Code
+# Cue-Actions — Claude Code
 
-Implements feature 11 from `docs/features/`: Action Words.
+Implements feature [11](../../../docs/features/cue-actions.md). See that doc for the concept.
 
 **Patch files:** `patches/wordHighlight.ts` (navigation + dimming), `patches/dynamicHighlight.ts` (cycling + script spawn)
 
-Action word overrides allow specific words to trigger external scripts when Up/Down is pressed, instead of the normal increment/decrement or cycling behavior.
+Cue-actions allow specific words to trigger external scripts when Up/Down is pressed, instead of the normal increment/decrement or cycling behavior.
 
 ## Overview
 
-When you navigate to an "action word" (like "volume") and press Ctrl+Alt+Up or Down, it spawns an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
+When you navigate to a cue-action (like "volume") and press Ctrl+Alt+Up or Down, it spawns an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
 
 ## How It Works
 
@@ -23,7 +23,7 @@ Navigate to "volume" (Ctrl+Alt+Left)
            ↓
 Press Ctrl+Alt+Up
            ↓
-Action word check (FIRST priority)
+cue-action check (FIRST priority)
   → Word "volume" found in actionWordOverrides
   → Spawn: ~/.claude/actions/volume.sh up 5
   → Return (skip normal number/gender logic)
@@ -33,14 +33,14 @@ Volume increases
 
 ## Priority Order
 
-Action words are checked **FIRST**, before any other logic:
+cue-actions are checked **FIRST**, before any other logic:
 
-1. **Action word override** → spawn script, return
-2. **Dynamic highlight cycling** → cycle through LLM alternatives
-3. **Gender mode** → flip boy↔girl linked words
-4. **Number mode** → increment/decrement
+1. **Cue-action** → spawn script, return
+2. **Alternatives** → cycle through alternatives
+3. **Linked words** → co-dependent words cycle together
+4. **Numbers** → increment/decrement
 
-This is implemented in `dynamicHighlight.ts` — action word checks are injected in 4 locations (key handlers and raw sequence handlers for both Up and Down).
+This is implemented in `dynamicHighlight.ts` — cue-action checks are injected in 4 locations (key handlers and raw sequence handlers for both Up and Down).
 
 ## Configuration
 
@@ -178,20 +178,20 @@ copy "$env:TEMP\n\nircmd.exe" C:\Windows\
 
 ## Visual Behavior
 
-Action words follow the same visual pattern as numbers:
+cue-actions follow the same visual pattern as numbers:
 
 | State | Appearance |
 |-------|------------|
 | Not highlighted | Dimmed (dark gray) |
 | Highlighted | Bold white |
 
-Action words are navigable in all highlight modes (numbers, gender, both, words).
+Cue-actions are always navigable.
 
 ## Prerequisites
 
-Action words require `enableWordHighlight: true` in config. The `actionWordOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and action words silently do nothing.
+cue-actions require `enableWordHighlight: true` in config. The `actionWordOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and cue-actions silently do nothing.
 
-## Adding New Action Words
+## Adding New cue-actions
 
 1. **Add to config** (`~/.tweakcc/config.json`):
    ```json
@@ -255,7 +255,7 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
    ls -la /mnt/c/Windows/Temp/volup.vbs /mnt/c/Windows/Temp/voldown.vbs
    ```
 
-### Action Word Not Navigable
+### cue-action Not Navigable
 
 1. Verify word is in config (case-insensitive match)
 2. Re-apply patches after config change

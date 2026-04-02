@@ -22,13 +22,13 @@ Restart Claude Code. Done.
 
 ### What you get
 
-- **Word navigation** — jump between words with keyboard
-- **Number increment** — `42` → `43` → `44`
-- **Gender flip** — `boy` ↔ `girl`, `he` ↔ `she`
-- **LLM alternatives** — words dim gray when alternatives available
-- **Fill-in-the-blank** — type `_` and get completions (`The capital of France is _` → `Paris`)
-- **Action words** — `volume` triggers system volume control
-- **Status line tips** — highlighted words show tip text in the status bar
+- **Navigation** — move between words with keyboard
+- **Visual cues** — words dim when alternatives are available
+- **Alternatives** — cycle through synonyms, opposites, creative suggestions
+- **Number cycling** — `42` → `43` → `44`
+- **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
+- **Cue-actions** — `volume` triggers system volume control
+- **Secondary display** — highlighted words show cue-tips
 
 ## How it works
 

@@ -30,15 +30,15 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 |----------|---------|-----|
 | **Required** | Navigation (1) | Core interaction — user needs to select words |
 | **Required** | Cycling (2) | Core interaction — user needs to change words |
-| **Required** | Visual States (3) | User must see what's interactive |
-| **Required** | LLM Alternatives (7) | The primary value — smart word suggestions |
+| **Required** | Visual Cues (3) | User must see what's interactive |
+| **Required** | Remote Cues (7) | The primary value — smart word suggestions |
 | **Required** | Auto-Submit (12) | Analysis must trigger automatically |
-| Recommended | Tips (6) | Instant alternatives, much faster than LLM |
+| Recommended | Local Cues (6) | Instant alternatives, much faster than remote cues |
 | Recommended | Fill-in-the-Blank (8) | Popular feature for knowledge/math |
-| Recommended | Status Display (14) | Shows tips and cycle position |
+| Recommended | Secondary Display (14) | Shows cue-tips and cycle position |
 | Optional | Linked Words (5) | Gender/agreement tracking |
 | Optional | Multi-Word Spans (9) | Complex but useful for factual answers |
-| Optional | Action Words (11) | Platform-specific external triggers |
+| Optional | Cue-Actions (11) | Platform-specific external triggers |
 | Optional | Cursor Export (13) | For external tool integration |
 
 ## Using cues-core
@@ -72,7 +72,7 @@ for (const cue of result.results) {
 }
 ```
 
-For tips:
+For local cues:
 
 ```typescript
 import { parseTipsFile, buildLookupMap, lookupMultiple } from 'cues-core';
@@ -112,7 +112,7 @@ Implements feature 1 from `docs/features/navigation.md`.
 
 - [ ] Directory created at `integrations/my-editor/`
 - [ ] Implements required features (1, 2, 3, 7, 12)
-- [ ] Uses cues-core for LLM/tips logic
+- [ ] Uses cues-core for LLM/local cue logic
 - [ ] Docs reference feature numbers from `docs/features/`
 - [ ] Tests cover core functionality
 - [ ] README.md with install instructions

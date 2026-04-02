@@ -81,7 +81,7 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 
 > For standard tweakcc options (model customizations, thinking blocks, etc.), see the [tweakcc documentation](https://github.com/anthropics/tweakcc).
 
-## Action Word Overrides Format
+## Cue-Action Overrides Format
 
 ```json
 {

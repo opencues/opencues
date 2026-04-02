@@ -6,13 +6,13 @@ last_updated: 2026-04-02
 
 Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/features/linked-words.md), [9](../../../docs/features/multi-word-spans.md), [10](../../../docs/features/per-word-clearing.md). See those docs for the concepts.
 
-**Patch files:** `patches/wordHighlight.ts` (numbers, gender), `patches/dynamicHighlight.ts` (LLM alts, action words, spans, clearing)
+**Patch files:** `patches/wordHighlight.ts` (numbers), `patches/dynamicHighlight.ts` (LLM alts, cue-actions, spans, clearing)
 
 ## CC-Specific: Cycling Priority Implementation
 
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
-1. **Action word** → spawn `~/.claude/actions/{action}.sh`, return
+1. **Cue-action** → spawn `~/.claude/actions/{action}.sh`, return
 2. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
 3. **Number** → increment/decrement with `originalNumbers` map
 4. **Fall through** → no action

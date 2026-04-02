@@ -46,12 +46,12 @@ cues-system/
 │   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   ├── claude-code-tips.json  # Per-word tips file
-│   │   └── actions/               # Action word scripts (volume.sh)
+│   │   └── actions/               # Cue-action scripts (volume.sh)
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
 │   │   ├── cycling.md             # Numbers, gender, alts, linked, spans, clearing
 │   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
-│   │   ├── action-words.md        # External action scripts + WSL guide
+│   │   ├── cue-actions.md          # Cue-actions + WSL guide
 │   │   ├── status-line.md         # Status line setup, format, disabling
 │   │   ├── config.md              # All config options
 │   │   ├── architecture.md        # Architecture + data flow diagrams
@@ -115,12 +115,12 @@ Patches Claude Code via tweakcc to add:
 
 | Feature | Description |
 |---------|-------------|
-| Word navigation | Ctrl+Alt+Left/Right to highlight words |
-| Number increment | Ctrl+Alt+Up/Down on numbers |
-| Gender flip | "boy" ↔ "girl", "he" ↔ "she" |
-| LLM alternatives | Words dim gray when alternatives available |
-| Fill-in-the-blank | Type `_` for completions |
-| Action words | "volume" triggers system volume |
+| Navigation | Ctrl+Alt+Left/Right to select words |
+| Visual cues | Words dim when alternatives available |
+| Cycling | Ctrl+Alt+Up/Down to cycle alternatives |
+| Blanks | Type `_` for contextual completions |
+| Cue-actions | "volume" triggers system volume |
+| Secondary display | Cue-tips shown in status bar |
 
 ---
 
@@ -133,7 +133,7 @@ Patches Claude Code via tweakcc to add:
 | `navigation.md` | 1, 3, 4, 13 | Keys, visual cues, cursor export |
 | `cycling.md` | 2, 5, 9, 10 | Alternatives, linked words, spans, clearing |
 | `alternatives.md` | 6, 7, 8, 12 | Local cues, remote cues, blanks, auto-submit |
-| `action-words.md` | 11 | Cue-actions + WSL guide |
+| `cue-actions.md` | 11 | Cue-actions + WSL guide |
 | `status-line.md` | 14 | Secondary display setup, format, disabling |
 | `config.md` | — | All config options |
 | `architecture.md` | — | Data flow diagrams |
