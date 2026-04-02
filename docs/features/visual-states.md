@@ -14,6 +14,6 @@ Words need three visual states so the user knows what's interactive:
 
 When a word is highlighted AND part of a span or linked group, all related words also show the highlighted state.
 
-Dimming applies to: numbers (if numberDimming enabled), gender root words, action words, and words with dynamic alternatives.
+Dimming applies to: numbers, action words, and words with alternatives.
 
 

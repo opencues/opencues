@@ -10,14 +10,9 @@ Words that must change together when any one of them cycles.
 - All linked words cycle to the same `currentAltIndex`
 - When the user cycles a word, all its linked words update simultaneously
 
-**Built-in linked groups (gender):**
-- Male: boy, he, him, his, man, he's
-- Female: girl, she, her, woman, she's
-
-**LLM-generated links:**
-The linked words prompt (`linked.txt`) detects semantic relationships:
+**LLM-detected links:**
+The linked words prompt detects semantic relationships:
 - Gender agreement: "The boy loves his dog" → boy↔his
 - Number agreement: "The cats chase their toys" → cats↔their↔toys
 - Verb agreement: "She runs" → she↔runs
-
-
+- Possession: "John loves his car" → John↔his
