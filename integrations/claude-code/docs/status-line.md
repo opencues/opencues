@@ -134,6 +134,6 @@ Set in `~/.tweakcc/config.json` under `misc`.
 
 ## Related
 
-- `word-highlight.md` — navigation and rendering
-- `dynamic-highlight.md` — LLM alternatives and cycling
+- `navigation.md` — keys, modes, visual states
+- `alternatives.md` — tips, LLM sources, auto-submit
 - `config.md` — all configuration options

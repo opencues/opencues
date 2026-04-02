@@ -6,7 +6,7 @@ last_updated: 2026-04-01
 
 A modular system for providing word alternatives, tips, and suggestions across different platforms (CLI, Chrome extension, VS Code).
 
-For the full list of features any integration should implement, see `features.md`.
+For the full list of features any integration should implement, see `features/README.md`.
 
 ## Overview
 
