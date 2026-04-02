@@ -27,7 +27,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `highlightAutoScroll` | boolean | undefined | No | Auto-scroll to highlighted word |
 | `highlightClearOnNavigation` | boolean | undefined | No | Clear on cursor navigation |
 | `highlightWordPattern` | string | undefined | No | Custom word boundary pattern |
-| `actionWordOverrides` | object | undefined | No | Words that trigger external scripts on Up/Down (requires `enableWordHighlight`) |
+| `cueActionOverrides` | object | undefined | No | Words that trigger external scripts on Up/Down (requires `enableWordHighlight`) |
 
 ### Dynamic Highlight (requires `enableWordHighlight: true`)
 
@@ -85,7 +85,7 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 
 ```json
 {
-  "actionWordOverrides": {
+  "cueActionOverrides": {
     "volume": {
       "action": "volume",
       "upArgs": ["up", "5"],

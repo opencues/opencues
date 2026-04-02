@@ -29,7 +29,7 @@ The cues system is designed with three layers:
               ▼               ▼               ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │ CUE SOURCES     │ │ CUE SOURCES     │ │ CUE SOURCES     │
-│ TipsFileSource  │ │ GroqSource      │ │ CustomSource    │
+│ LocalCueSource  │ │ GroqSource      │ │ CustomSource    │
 │ (loads JSON)    │ │ GeminiSource    │ │ (user-defined)  │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
                               │
@@ -61,7 +61,7 @@ npm run build
 │   │   │   ├── types.ts        # Interfaces
 │   │   │   ├── resolver.ts     # CueResolver
 │   │   │   └── sources/
-│   │   │       ├── tips-file.ts   # TipsFileSource
+│   │   │       ├── local-cue-source.ts   # LocalCueSource
 │   │   │       └── llm-base.ts    # LLM source classes
 │   │   └── dist/               # Compiled output
 │   │
@@ -94,7 +94,7 @@ interface CueResult {
   word: string;             // The actual word
   alternatives: string[];   // Original word at [0], then alternatives
   tip?: string;             // Hint text for status line
-  altTips?: Record<string, string>;  // Per-alternative tips
+  altCueTips?: Record<string, string>;  // Per-alternative tips
   linked?: number[];        // Indices of words that cycle together
   source: string;           // 'tips' | 'grammar' | 'math'
   priority: number;         // Higher wins on merge
@@ -133,17 +133,17 @@ interface CueSource {
 ### Basic Usage (Node.js)
 
 ```typescript
-import { CueResolver, TipsFileSource, parseTipsFile } from 'cues-core';
+import { CueResolver, LocalCueSource, parseLocalCueFile } from 'cues-core';
 import { NodeStorageAdapter } from 'cues-node';
 
 // Load tips from file
 const storage = new NodeStorageAdapter('~/.claude');
 const tipsContent = await storage.read('claude-code-tips.json');
-const tipsData = parseTipsFile(tipsContent!);
+const tipsData = parseLocalCueFile(tipsContent!);
 
 // Create resolver with tips source
 const resolver = new CueResolver([
-  new TipsFileSource(tipsData, { priority: 100 })
+  new LocalCueSource(tipsData, { priority: 100 })
 ]);
 
 // Resolve cues for input text
@@ -159,7 +159,7 @@ console.log(result.results);
 //     word: 'ultrathink',
 //     alternatives: ['ultrathink', 'Tab', 'deep thinking'],
 //     tip: 'Add ultrathink to prompt for max reasoning',
-//     source: 'tips',
+//     source: 'local',
 //     priority: 100
 //   }
 // ]
@@ -168,11 +168,11 @@ console.log(result.results);
 ### Multiple Sources
 
 ```typescript
-import { CueResolver, TipsFileSource, GroqSource } from 'cues-core';
+import { CueResolver, LocalCueSource, GroqSource } from 'cues-core';
 import { NodeStorageAdapter, NodeHttpAdapter } from 'cues-node';
 
 // Tips source (high priority, instant)
-const tipsSource = new TipsFileSource(tipsData, { priority: 100 });
+const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
 
 // LLM source (lower priority, slower but comprehensive)
 const llmSource = new GroqSource({
@@ -193,16 +193,16 @@ const result = await resolver.resolve(context);
 ### Browser Usage (Chrome Extension)
 
 ```typescript
-import { CueResolver, TipsFileSource, parseTipsFile } from 'cues-browser';
+import { CueResolver, LocalCueSource, parseLocalCueFile } from 'cues-browser';
 import { ChromeStorageAdapter, BrowserHttpAdapter } from 'cues-browser';
 
 // Load tips from chrome.storage
 const storage = new ChromeStorageAdapter('sync');
 const tipsContent = await storage.read('tips');
-const tipsData = parseTipsFile(tipsContent!);
+const tipsData = parseLocalCueFile(tipsContent!);
 
 const resolver = new CueResolver([
-  new TipsFileSource(tipsData)
+  new LocalCueSource(tipsData)
 ]);
 
 // Use in content script
@@ -270,12 +270,12 @@ Configure multiple cue source files for different domains:
 
 ```typescript
 const sources = [
-  new TipsFileSource(claudeCodeTips, {
+  new LocalCueSource(claudeCodeTips, {
     id: 'claude-code-tips',
     domain: 'claude-code',
     priority: 100
   }),
-  new TipsFileSource(medicalTips, {
+  new LocalCueSource(medicalTips, {
     id: 'medical-tips',
     domain: 'medical',
     priority: 100
@@ -296,17 +296,17 @@ const result = await resolver.resolve({
 
 ## Caching
 
-The `TipsFileSource` can be combined with file watching for hot reload:
+The `LocalCueSource` can be combined with file watching for hot reload:
 
 ```typescript
 import { NodeStorageAdapter } from 'cues-node';
 
 const storage = new NodeStorageAdapter('~/.claude');
-const source = new TipsFileSource(initialData);
+const source = new LocalCueSource(initialData);
 
 // Watch for changes
 storage.watch('claude-code-tips.json', (content) => {
-  const newData = parseTipsFile(content);
+  const newData = parseLocalCueFile(content);
   source.updateData(newData);
   console.log('Tips reloaded');
 });
@@ -385,29 +385,29 @@ class MyCustomSource implements CueSource {
 For simple use cases, use the pure function directly:
 
 ```typescript
-import { lookupWord, parseTipsFile, TipsData } from 'cues-core';
+import { lookupWord, parseLocalCueFile, LocalCueData } from 'cues-core';
 
-const data: TipsData = parseTipsFile(jsonContent);
+const data: LocalCueData = parseLocalCueFile(jsonContent);
 
 // Pure function lookup - no async, no I/O
 const result = lookupWord('ultrathink', data);
 if (result) {
   console.log(result.tip);          // "Add ultrathink to prompt..."
   console.log(result.alternatives); // ["ultrathink", "Tab", "deep thinking"]
-  console.log(result.altTips);      // { ultrathink: "...", Tab: "...", ... }
+  console.log(result.altCueTips);      // { ultrathink: "...", Tab: "...", ... }
 }
 ```
 
 ## Integration with dynamicHighlight.ts
 
-cues-core is now used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch initializes a CueResolver with TipsFileSource and GroqSource, and the NodeHttpAdapter handles all HTTPS calls inline:
+cues-core is now used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch initializes a CueResolver with LocalCueSource and GroqSource, and the NodeHttpAdapter handles all HTTPS calls inline:
 
 ```typescript
 // In dynamicHighlight.ts writeCuesCoreInit:
-// 1. Load tips file into TipsFileSource
+// 1. Load tips file into LocalCueSource
 // 2. Create NodeHttpAdapter (replaces _httpsAgent / _grammarPrompt globals)
 // 3. Create GroqSource with NodeHttpAdapter
-// 4. Create CueResolver with [TipsFileSource, GroqSource]
+// 4. Create CueResolver with [LocalCueSource, GroqSource]
 // 5. Store as globalThis._cueResolver
 ```
 

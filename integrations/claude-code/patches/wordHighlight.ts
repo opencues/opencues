@@ -363,7 +363,7 @@ export interface WordHighlightConfig {
   highlightExportEnabled?: boolean;
   highlightExportPath?: string;
   numberDimming?: boolean;  // dim all numbers in input (dark gray)
-  actionWordOverrides?: Record<string, { action: string; upArgs?: string[]; downArgs?: string[]; scriptPath?: string }>;
+  cueActionOverrides?: Record<string, { action: string; upArgs?: string[]; downArgs?: string[]; scriptPath?: string }>;
 }
 
 const DEFAULT_CONFIG: Required<WordHighlightConfig> = {
@@ -380,7 +380,7 @@ const DEFAULT_CONFIG: Required<WordHighlightConfig> = {
   highlightExportEnabled: true,
   highlightExportPath: '/tmp/claude-highlight-state.json',
   numberDimming: true,  // dim all numbers in input (dark gray)
-  actionWordOverrides: {},
+  cueActionOverrides: {},
 };
 
 /**
@@ -439,7 +439,7 @@ export const writeWordHighlightKeyHandler = (
   //
   // Navigation filter: numbers + action words are always navigable
   // Words with dynamic alts are added by dynamicHighlight.ts patch later
-  const actOvrCheck = `(globalThis._actionWordOverrides||{})[w.toLowerCase()]`;
+  const actOvrCheck = `(globalThis._cueActionOverrides||{})[w.toLowerCase()]`;
   const filterCode = `var _numP=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx=[];
 _allW.forEach(function(w,i){if(_numP.test(w)||${actOvrCheck})_targetIdx.push(i);});`;
@@ -606,14 +606,14 @@ if(globalThis._hlState&&globalThis._hlState.originalNumbers&&globalThis._hlState
 _hlOrigNum=globalThis._hlState.originalNumbers[globalThis._hlState.wordIndex];
 if(_hlOrigNum===undefined)_hlOrigNum=null;
 }
-var _hlExport={active:globalThis._hlState?globalThis._hlState.active:false,highlightedWordIndex:null,highlightedWord:null,wordCount:_hlWords.length,originalNumber:_hlOrigNum,tip:null,altTips:null,alts:null,timestamp:Date.now()};
+var _hlExport={active:globalThis._hlState?globalThis._hlState.active:false,highlightedWordIndex:null,highlightedWord:null,wordCount:_hlWords.length,originalNumber:_hlOrigNum,cueTip:null,altCueTips:null,alts:null,timestamp:Date.now()};
 if(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null){
 var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
-if(_dw){_hlExport.tip=_dw.tip||null;_hlExport.altTips=_dw.altTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
+if(_dw){_hlExport.tip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
 }
 }
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
@@ -635,11 +635,11 @@ try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExpor
   //    - Compare text WITHOUT invisible chars to detect real user typing
   //    - If real typing detected, clear highlight state
   // Serialize action word overrides to inject into cli.js
-  const actionOvrJson = JSON.stringify(cfg.actionWordOverrides || {});
+  const actionOvrJson = JSON.stringify(cfg.cueActionOverrides || {});
 
   const fullCode = `
 globalThis._parentValue=${valueParam};
-if(!globalThis._actionWordOverrides)globalThis._actionWordOverrides=${actionOvrJson};
+if(!globalThis._cueActionOverrides)globalThis._cueActionOverrides=${actionOvrJson};
 globalThis._forceInputRefresh=function(){
 var _t=globalThis._hlText||"";
 var _pv=globalThis._parentValue||"";
@@ -972,7 +972,7 @@ export const writeWordHighlightRawSequence = (
   // Mode-dependent navigation for raw escape sequences
   // index 0 = rightmost word/number (same as original word highlight behavior)
   // Navigation filter for raw sequence handlers — numbers + action words
-  const rawActOvrCheck = `(globalThis._actionWordOverrides||{})[w.toLowerCase()]`;
+  const rawActOvrCheck = `(globalThis._cueActionOverrides||{})[w.toLowerCase()]`;
   const rawFilterCode1 = `var _numP=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx=[];
 _allW.forEach(function(w,i){if(_numP.test(w)||${rawActOvrCheck})_targetIdx.push(i);});`;

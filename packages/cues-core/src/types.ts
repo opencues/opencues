@@ -18,11 +18,11 @@ export interface CueResult {
   /** Alternative words/phrases. Original word should be at index 0 */
   alternatives: string[];
 
-  /** Tip/hint text for this word (displayed in status line) */
-  tip?: string;
+  /** Cue-tip text for this word (displayed in secondary display) */
+  cueTip?: string;
 
-  /** Per-alternative tips (keyed by alternative word) */
-  altTips?: Record<string, string>;
+  /** Per-alternative cue-tips (keyed by alternative word) */
+  altCueTips?: Record<string, string>;
 
   /** Indices of other words that should cycle together (e.g., "boy" and "he") */
   linked?: number[];
@@ -155,11 +155,11 @@ export interface WordDef {
   /** Alternative words to cycle through, or null if none */
   alts: string[] | null;
 
-  /** Tip text for this word */
-  tip?: string;
+  /** Cue-tip text for this word */
+  cueTip?: string;
 
-  /** Per-alternative tips */
-  altTips?: Record<string, string>;
+  /** Per-alternative cue-tips */
+  altCueTips?: Record<string, string>;
 
   /** Source identifier */
   source?: 'tips' | 'llm' | 'grammar' | 'math' | 'factual';
@@ -183,14 +183,14 @@ export interface LookupMultipleResult {
 }
 
 // ============================================================================
-// Tips File Types (for TipsFileSource)
+// Local Cue Types (for LocalCueSource)
 // ============================================================================
 
 /**
  * Entry for a single word in the tips file (words structure).
  */
-export interface TipsWordEntry {
-  /** Tip text displayed when this word is highlighted */
+export interface CueWordEntry {
+  /** Cue-tip text displayed when this word is highlighted (JSON field: "tip") */
   tip: string;
 
   /** Alternative words to cycle through */
@@ -200,11 +200,11 @@ export interface TipsWordEntry {
 /**
  * A synonym group in the tips file (groups structure).
  */
-export interface TipsSynonymGroup {
+export interface CueSynonymGroup {
   /** Words that are synonyms (share the same tip) */
   synonyms: string[];
 
-  /** Tip text for all synonyms in this group */
+  /** Cue-tip text for all synonyms in this group (JSON field: "tip") */
   tip: string;
 
   /** Alternatives - point to other groups/concepts, not more synonyms */
@@ -214,21 +214,21 @@ export interface TipsSynonymGroup {
 /**
  * A section in the tips file.
  */
-export interface TipsSection {
+export interface LocalCueSection {
   /** Unique identifier for this section */
   id: string;
 
   /** Per-word entries (old format) */
-  words?: Record<string, TipsWordEntry>;
+  words?: Record<string, CueWordEntry>;
 
   /** Synonym groups (new format) */
-  groups?: TipsSynonymGroup[];
+  groups?: CueSynonymGroup[];
 }
 
 /**
  * Full tips file data.
  */
-export type TipsData = TipsSection[];
+export type LocalCueData = LocalCueSection[];
 
 // ============================================================================
 // Platform Adapters

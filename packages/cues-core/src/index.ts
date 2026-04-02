@@ -13,17 +13,17 @@ export { CueResolver, createResolver, type ResolverResult } from './resolver';
 
 // Sources
 export {
-  TipsFileSource,
+  LocalCueSource,
   lookupWord,
   lookupWords,
-  parseTipsFile,
-  validateTipsData,
+  parseLocalCueFile,
+  validateLocalCueData,
   buildLookupMap,
   lookupMultiple,
   formatAsWordDefs,
   mergeWordDefs,
-  type TipsLookupResult,
-} from './sources/tips-file';
+  type LocalCueLookupResult,
+} from './sources/local-cue-source';
 
 // Re-export WordDef types for consumers
 export type { WordDef, LookupMultipleResult } from './types';

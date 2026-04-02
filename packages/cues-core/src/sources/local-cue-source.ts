@@ -11,10 +11,10 @@ import {
   CueContext,
   CueSourceResult,
   CueResult,
-  TipsData,
-  TipsSection,
-  TipsWordEntry,
-  TipsSynonymGroup,
+  LocalCueData,
+  LocalCueSection,
+  CueWordEntry,
+  CueSynonymGroup,
   WordDef,
   LookupMultipleResult,
 } from '../types';
@@ -22,11 +22,11 @@ import {
 /**
  * Result of looking up a single word in the tips data.
  */
-export interface TipsLookupResult {
+export interface LocalCueLookupResult {
   word: string;
-  tip: string;
+  cueTip: string;
   alternatives: string[];
-  altTips?: Record<string, string>;
+  altCueTips?: Record<string, string>;
   source: 'tips';
 }
 
@@ -36,8 +36,8 @@ export interface TipsLookupResult {
  */
 function findInGroups(
   word: string,
-  groups: TipsSynonymGroup[]
-): TipsSynonymGroup | null {
+  groups: CueSynonymGroup[]
+): CueSynonymGroup | null {
   const lowerWord = word.toLowerCase();
   for (const group of groups) {
     for (const synonym of group.synonyms) {
@@ -55,8 +55,8 @@ function findInGroups(
  */
 function findInWords(
   word: string,
-  words: Record<string, TipsWordEntry>
-): { key: string; entry: TipsWordEntry } | null {
+  words: Record<string, CueWordEntry>
+): { key: string; entry: CueWordEntry } | null {
   const lowerWord = word.toLowerCase();
   for (const [key, entry] of Object.entries(words)) {
     if (key.toLowerCase() === lowerWord) {
@@ -74,7 +74,7 @@ function findInWords(
  * @param data - The tips file data
  * @returns Lookup result or null if word not found
  */
-export function lookupWord(word: string, data: TipsData): TipsLookupResult | null {
+export function lookupWord(word: string, data: LocalCueData): LocalCueLookupResult | null {
   if (!word || !data || !Array.isArray(data)) {
     return null;
   }
@@ -89,27 +89,27 @@ export function lookupWord(word: string, data: TipsData): TipsLookupResult | nul
         const alternatives = [word, ...group.alts];
 
         // Build per-alt tips by looking up each alternative
-        const altTips: Record<string, string> = {};
-        altTips[word] = group.tip;
+        const altCueTips: Record<string, string> = {};
+        altCueTips[word] = group.tip;
 
         for (const alt of group.alts) {
           // Look up the alternative in all sections to get its tip
           const altGroup = findInGroupsAcrossSections(alt, data);
           if (altGroup) {
-            altTips[alt] = altGroup.tip;
+            altCueTips[alt] = altGroup.tip;
           } else {
             const altWord = findInWordsAcrossSections(alt, data);
             if (altWord) {
-              altTips[alt] = altWord.entry.tip;
+              altCueTips[alt] = altWord.entry.tip;
             }
           }
         }
 
         return {
           word,
-          tip: group.tip,
+          cueTip: group.tip,
           alternatives,
-          altTips,
+          altCueTips,
           source: 'tips',
         };
       }
@@ -123,27 +123,27 @@ export function lookupWord(word: string, data: TipsData): TipsLookupResult | nul
         const alternatives = [word, ...found.entry.alts];
 
         // Build per-alt tips
-        const altTips: Record<string, string> = {};
-        altTips[word] = found.entry.tip;
+        const altCueTips: Record<string, string> = {};
+        altCueTips[word] = found.entry.tip;
 
         for (const alt of found.entry.alts) {
           // Look up alternative to get its tip
           const altEntry = findInWordsAcrossSections(alt, data);
           if (altEntry) {
-            altTips[alt] = altEntry.entry.tip;
+            altCueTips[alt] = altEntry.entry.tip;
           } else {
             const altGroup = findInGroupsAcrossSections(alt, data);
             if (altGroup) {
-              altTips[alt] = altGroup.tip;
+              altCueTips[alt] = altGroup.tip;
             }
           }
         }
 
         return {
           word,
-          tip: found.entry.tip,
+          cueTip: found.entry.tip,
           alternatives,
-          altTips,
+          altCueTips,
           source: 'tips',
         };
       }
@@ -158,8 +158,8 @@ export function lookupWord(word: string, data: TipsData): TipsLookupResult | nul
  */
 function findInGroupsAcrossSections(
   word: string,
-  data: TipsData
-): TipsSynonymGroup | null {
+  data: LocalCueData
+): CueSynonymGroup | null {
   for (const section of data) {
     if (section.groups) {
       const group = findInGroups(word, section.groups);
@@ -174,8 +174,8 @@ function findInGroupsAcrossSections(
  */
 function findInWordsAcrossSections(
   word: string,
-  data: TipsData
-): { key: string; entry: TipsWordEntry } | null {
+  data: LocalCueData
+): { key: string; entry: CueWordEntry } | null {
   for (const section of data) {
     if (section.words) {
       const found = findInWords(word, section.words);
@@ -194,9 +194,9 @@ function findInWordsAcrossSections(
  */
 export function lookupWords(
   words: string[],
-  data: TipsData
-): Map<number, TipsLookupResult> {
-  const results = new Map<number, TipsLookupResult>();
+  data: LocalCueData
+): Map<number, LocalCueLookupResult> {
+  const results = new Map<number, LocalCueLookupResult>();
 
   for (let i = 0; i < words.length; i++) {
     const result = lookupWord(words[i], data);
@@ -209,7 +209,7 @@ export function lookupWords(
 }
 
 /**
- * Parse tips file content (JSON string) into TipsData.
+ * Parse tips file content (JSON string) into LocalCueData.
  *
  * @param content - JSON string content of the tips file
  * @returns Parsed tips data
@@ -221,11 +221,11 @@ export function lookupWords(
 interface TipsFileWrapper {
   domain?: string;
   version?: number;
-  concepts: TipsData;
+  concepts: LocalCueData;
 }
 
 /**
- * Parse tips file content (JSON string) into TipsData.
+ * Parse tips file content (JSON string) into LocalCueData.
  * Supports two formats:
  * 1. Plain array: [{id: "section", words: {...}}, ...]
  * 2. Object with concepts: {domain: "...", concepts: [{id: "section", words: {...}}, ...]}
@@ -234,17 +234,17 @@ interface TipsFileWrapper {
  * @returns Parsed tips data (always returns the array of sections)
  * @throws Error if content is not valid JSON or wrong structure
  */
-export function parseTipsFile(content: string): TipsData {
+export function parseLocalCueFile(content: string): LocalCueData {
   const data = JSON.parse(content);
 
   // Format 1: Plain array
   if (Array.isArray(data)) {
-    return data as TipsData;
+    return data as LocalCueData;
   }
 
   // Format 2: Object with concepts array
   if (data && typeof data === 'object' && Array.isArray(data.concepts)) {
-    return data.concepts as TipsData;
+    return data.concepts as LocalCueData;
   }
 
   throw new Error('Tips file must be a JSON array or object with "concepts" array');
@@ -256,29 +256,29 @@ export function parseTipsFile(content: string): TipsData {
  *
  * Uses two-pass approach for O(n) build time:
  * 1. First pass: build map with primary tips only
- * 2. Second pass: resolve altTips using the map (O(1) per lookup)
+ * 2. Second pass: resolve altCueTips using the map (O(1) per lookup)
  *
  * @param data - Parsed tips data
  * @returns Map where key = lowercase word, value = lookup result
  */
-export function buildLookupMap(data: TipsData): Map<string, TipsLookupResult> {
-  const map = new Map<string, TipsLookupResult>();
-  const pendingAltTips: Array<{ result: TipsLookupResult; alts: string[] }> = [];
+export function buildLookupMap(data: LocalCueData): Map<string, LocalCueLookupResult> {
+  const map = new Map<string, LocalCueLookupResult>();
+  const pendingAltTips: Array<{ result: LocalCueLookupResult; alts: string[] }> = [];
 
-  // Pass 1: Build map with primary entries (no altTips yet)
+  // Pass 1: Build map with primary entries (no altCueTips yet)
   for (const section of data) {
     // Handle groups (synonym groups)
     if (section.groups) {
       for (const group of section.groups) {
         const alternatives = [group.synonyms[0], ...(group.alts || [])];
-        const altTips: Record<string, string> = {};
-        altTips[group.synonyms[0]] = group.tip;
+        const altCueTips: Record<string, string> = {};
+        altCueTips[group.synonyms[0]] = group.tip;
 
-        const result: TipsLookupResult = {
+        const result: LocalCueLookupResult = {
           word: group.synonyms[0],
-          tip: group.tip,
+          cueTip: group.tip,
           alternatives,
-          altTips,
+          altCueTips,
           source: 'tips',
         };
 
@@ -287,7 +287,7 @@ export function buildLookupMap(data: TipsData): Map<string, TipsLookupResult> {
           map.set(synonym.toLowerCase(), result);
         }
 
-        // Queue altTips resolution for pass 2
+        // Queue altCueTips resolution for pass 2
         if (group.alts && group.alts.length > 0) {
           pendingAltTips.push({ result, alts: group.alts });
         }
@@ -298,20 +298,20 @@ export function buildLookupMap(data: TipsData): Map<string, TipsLookupResult> {
     if (section.words) {
       for (const [key, entry] of Object.entries(section.words)) {
         const alternatives = [key, ...(entry.alts || [])];
-        const altTips: Record<string, string> = {};
-        altTips[key] = entry.tip;
+        const altCueTips: Record<string, string> = {};
+        altCueTips[key] = entry.tip;
 
-        const result: TipsLookupResult = {
+        const result: LocalCueLookupResult = {
           word: key,
-          tip: entry.tip,
+          cueTip: entry.tip,
           alternatives,
-          altTips,
+          altCueTips,
           source: 'tips',
         };
 
         map.set(key.toLowerCase(), result);
 
-        // Queue altTips resolution for pass 2
+        // Queue altCueTips resolution for pass 2
         if (entry.alts && entry.alts.length > 0) {
           pendingAltTips.push({ result, alts: entry.alts });
         }
@@ -319,12 +319,12 @@ export function buildLookupMap(data: TipsData): Map<string, TipsLookupResult> {
     }
   }
 
-  // Pass 2: Resolve altTips using the map (O(1) per lookup)
+  // Pass 2: Resolve altCueTips using the map (O(1) per lookup)
   for (const { result, alts } of pendingAltTips) {
     for (const alt of alts) {
       const altResult = map.get(alt.toLowerCase());
-      if (altResult?.tip) {
-        result.altTips![alt] = altResult.tip;
+      if (altResult?.cueTip) {
+        result.altCueTips![alt] = altResult.cueTip;
       }
     }
   }
@@ -343,7 +343,7 @@ export function buildLookupMap(data: TipsData): Map<string, TipsLookupResult> {
  */
 export function lookupMultiple(
   words: string[],
-  map: Map<string, TipsLookupResult>,
+  map: Map<string, LocalCueLookupResult>,
   options?: { skipPattern?: RegExp }
 ): LookupMultipleResult {
   const found: WordDef[] = [];
@@ -364,8 +364,8 @@ export function lookupMultiple(
         index: i,
         word: word,
         alts: result.alternatives,
-        tip: result.tip,
-        altTips: result.altTips,
+        cueTip: result.cueTip,
+        altCueTips: result.altCueTips,
         source: 'tips',
         linked: null,
         currentAltIndex: 0,
@@ -432,11 +432,11 @@ export function mergeWordDefs(
       if (!existingDef.alts && newDef.alts) {
         existingDef.alts = newDef.alts;
       }
-      if (!existingDef.tip && newDef.tip) {
-        existingDef.tip = newDef.tip;
+      if (!existingDef.cueTip && newDef.cueTip) {
+        existingDef.cueTip = newDef.cueTip;
       }
-      if (!existingDef.altTips && newDef.altTips) {
-        existingDef.altTips = newDef.altTips;
+      if (!existingDef.altCueTips && newDef.altCueTips) {
+        existingDef.altCueTips = newDef.altCueTips;
       }
       if (!existingDef.source && newDef.source) {
         existingDef.source = newDef.source;
@@ -456,7 +456,7 @@ export function mergeWordDefs(
  * @param data - Data to validate
  * @returns Array of validation errors (empty if valid)
  */
-export function validateTipsData(data: unknown): string[] {
+export function validateLocalCueData(data: unknown): string[] {
   const errors: string[] = [];
 
   if (!Array.isArray(data)) {
@@ -465,7 +465,7 @@ export function validateTipsData(data: unknown): string[] {
   }
 
   for (let i = 0; i < data.length; i++) {
-    const section = data[i] as TipsSection;
+    const section = data[i] as LocalCueSection;
 
     if (!section.id || typeof section.id !== 'string') {
       errors.push(`Section ${i}: missing or invalid 'id'`);
@@ -510,25 +510,25 @@ export function validateTipsData(data: unknown): string[] {
 }
 
 /**
- * TipsFileSource - implements CueSource for tips file data.
+ * LocalCueSource - implements CueSource for tips file data.
  *
  * This source is initialized with pre-loaded tips data.
  * Loading from file/storage is handled by the platform adapter layer.
  */
-export class TipsFileSource implements CueSource {
+export class LocalCueSource implements CueSource {
   readonly id: string;
   readonly priority: number;
-  private data: TipsData;
+  private data: LocalCueData;
   private domain?: string;
 
   /**
-   * Create a new TipsFileSource.
+   * Create a new LocalCueSource.
    *
    * @param data - Pre-loaded tips data
    * @param options - Configuration options
    */
   constructor(
-    data: TipsData,
+    data: LocalCueData,
     options: {
       id?: string;
       priority?: number;
@@ -568,8 +568,8 @@ export class TipsFileSource implements CueSource {
           wordIndex: index,
           word: lookup.word,
           alternatives: lookup.alternatives,
-          tip: lookup.tip,
-          altTips: lookup.altTips,
+          cueTip: lookup.cueTip,
+          altCueTips: lookup.altCueTips,
           source: 'tips',
           priority: this.priority,
         });
@@ -591,14 +591,14 @@ export class TipsFileSource implements CueSource {
   /**
    * Update the tips data (e.g., after file watcher detects change).
    */
-  updateData(data: TipsData): void {
+  updateData(data: LocalCueData): void {
     this.data = data;
   }
 
   /**
    * Get current tips data (for debugging/testing).
    */
-  getData(): TipsData {
+  getData(): LocalCueData {
     return this.data;
   }
 }

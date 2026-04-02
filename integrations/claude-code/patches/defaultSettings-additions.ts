@@ -33,7 +33,7 @@ dynamicHighlightAutoSubmit: true,   // Auto-submit mode (recommended)
 dynamicHighlightDebounceMs: 500,    // Debounce delay for auto-submit
 
 // --- Action Word Overrides ---
-actionWordOverrides: {
+cueActionOverrides: {
   volume: {
     action: 'volume',
     upArgs: ['up', '5'],

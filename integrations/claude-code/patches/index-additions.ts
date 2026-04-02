@@ -47,7 +47,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
       highlightExportEnabled: config.settings.misc.highlightExportEnabled,
       highlightExportPath: config.settings.misc.highlightExportPath,
       numberDimming: config.settings.misc.numberDimming,
-      actionWordOverrides: config.settings.misc.actionWordOverrides,  // Action words like "volume"
+      cueActionOverrides: config.settings.misc.cueActionOverrides,  // Action words like "volume"
     };
     if ((result = writeWordHighlight(content, highlightConfig))) content = result;
   }

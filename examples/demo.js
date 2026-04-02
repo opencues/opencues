@@ -6,11 +6,11 @@
 
 const {
   CueResolver,
-  TipsFileSource,
+  LocalCueSource,
 } = require('../packages/cues-core/dist/index.js');
 
 // Sample tips data (normally loaded from file)
-const sampleTipsData = [
+const sampleCueData = [
   {
     id: 'extended-thinking',
     words: {
@@ -50,13 +50,13 @@ async function main() {
   console.log('=== Cues System Demo ===\n');
 
   // Create a tips source
-  const tipsSource = new TipsFileSource(sampleTipsData, {
+  const localCueSource = new LocalCueSource(sampleCueData, {
     id: 'demo-tips',
     priority: 100,
   });
 
   // Create the resolver
-  const resolver = new CueResolver([tipsSource]);
+  const resolver = new CueResolver([localCueSource]);
 
   // Test input
   const text = 'I want to use ultrathink with parallel agents for this task';
@@ -82,12 +82,12 @@ async function main() {
   console.log('=== Cues Found ===\n');
   for (const cue of result.results) {
     console.log(`Word "${cue.word}" at index ${cue.wordIndex}:`);
-    console.log(`  Tip: ${cue.tip}`);
+    console.log(`  Tip: ${cue.cueTip}`);
     console.log(`  Alternatives: ${cue.alternatives.join(', ')}`);
     console.log(`  Source: ${cue.source}`);
-    if (cue.altTips) {
+    if (cue.altCueTips) {
       console.log('  Per-alt tips:');
-      for (const [alt, tip] of Object.entries(cue.altTips)) {
+      for (const [alt, tip] of Object.entries(cue.altCueTips)) {
         console.log(`    "${alt}": ${tip.substring(0, 50)}...`);
       }
     }

@@ -41,7 +41,7 @@ function assertTrue(condition, msg) {
 // Load tips data
 const tipsPath = process.env.HOME + '/.claude/claude-code-tips.json';
 const tipsContent = fs.readFileSync(tipsPath, 'utf8');
-const tipsData = cues.parseTipsFile(tipsContent);
+const tipsData = cues.parseLocalCueFile(tipsContent);
 const tipsMap = cues.buildLookupMap(tipsData);
 
 console.log('='.repeat(60));
@@ -51,15 +51,15 @@ console.log(`Tips file: ${tipsData.length} sections, ${tipsMap.size} keys`);
 console.log('');
 
 // ============================================================================
-// Test 1: parseTipsFile
+// Test 1: parseLocalCueFile
 // ============================================================================
-console.log('--- parseTipsFile ---');
+console.log('--- parseLocalCueFile ---');
 
-test('parseTipsFile returns array', () => {
+test('parseLocalCueFile returns array', () => {
   assertTrue(Array.isArray(tipsData), 'Should return array');
 });
 
-test('parseTipsFile has sections with id', () => {
+test('parseLocalCueFile has sections with id', () => {
   assertTrue(tipsData.every(s => s.id), 'Every section should have id');
 });
 
@@ -86,7 +86,7 @@ test('buildLookupMap values have required fields', () => {
   const val = tipsMap.get('ultrathink');
   assertTrue(val !== undefined, 'ultrathink should exist');
   assertTrue(val.word !== undefined, 'Should have word');
-  assertTrue(val.tip !== undefined, 'Should have tip');
+  assertTrue(val.cueTip !== undefined, 'Should have cueTip');
   assertTrue(Array.isArray(val.alternatives), 'Should have alternatives array');
   assertTrue(val.source === 'tips', 'Source should be tips');
 });

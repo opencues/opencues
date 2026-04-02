@@ -9,14 +9,14 @@ import * as assert from 'node:assert';
 import {
   lookupWord,
   lookupWords,
-  parseTipsFile,
-  validateTipsData,
-  TipsFileSource,
-} from './tips-file';
-import { TipsData } from '../types';
+  parseLocalCueFile,
+  validateLocalCueData,
+  LocalCueSource,
+} from './local-cue-source';
+import { LocalCueData } from '../types';
 
 // Sample tips data for testing
-const sampleTipsData: TipsData = [
+const sampleLocalCueData: LocalCueData = [
   {
     id: 'test-words',
     words: {
@@ -54,53 +54,53 @@ const sampleTipsData: TipsData = [
 
 describe('lookupWord', () => {
   it('should find word in words structure', () => {
-    const result = lookupWord('ultrathink', sampleTipsData);
+    const result = lookupWord('ultrathink', sampleLocalCueData);
     assert.ok(result);
     assert.strictEqual(result.word, 'ultrathink');
-    assert.strictEqual(result.tip, 'Add ultrathink to prompt for max reasoning');
+    assert.strictEqual(result.cueTip, 'Add ultrathink to prompt for max reasoning');
     assert.deepStrictEqual(result.alternatives, ['ultrathink', 'Tab', 'deep thinking']);
     assert.strictEqual(result.source, 'tips');
   });
 
   it('should find word in groups structure', () => {
-    const result = lookupWord('agents', sampleTipsData);
+    const result = lookupWord('agents', sampleLocalCueData);
     assert.ok(result);
     assert.strictEqual(result.word, 'agents');
-    assert.strictEqual(result.tip, 'Spawn parallel workers via Task tool');
+    assert.strictEqual(result.cueTip, 'Spawn parallel workers via Task tool');
     assert.deepStrictEqual(result.alternatives, ['agents', 'swarm', 'background']);
   });
 
   it('should find synonym in groups structure', () => {
-    const result = lookupWord('sub-agents', sampleTipsData);
+    const result = lookupWord('sub-agents', sampleLocalCueData);
     assert.ok(result);
     assert.strictEqual(result.word, 'sub-agents');
-    assert.strictEqual(result.tip, 'Spawn parallel workers via Task tool');
+    assert.strictEqual(result.cueTip, 'Spawn parallel workers via Task tool');
   });
 
   it('should be case-insensitive', () => {
-    const result = lookupWord('ULTRATHINK', sampleTipsData);
+    const result = lookupWord('ULTRATHINK', sampleLocalCueData);
     assert.ok(result);
-    assert.strictEqual(result.tip, 'Add ultrathink to prompt for max reasoning');
+    assert.strictEqual(result.cueTip, 'Add ultrathink to prompt for max reasoning');
   });
 
   it('should return null for unknown word', () => {
-    const result = lookupWord('unknown', sampleTipsData);
+    const result = lookupWord('unknown', sampleLocalCueData);
     assert.strictEqual(result, null);
   });
 
   it('should include per-alt tips', () => {
-    const result = lookupWord('ultrathink', sampleTipsData);
+    const result = lookupWord('ultrathink', sampleLocalCueData);
     assert.ok(result);
-    assert.ok(result.altTips);
-    assert.strictEqual(result.altTips['ultrathink'], 'Add ultrathink to prompt for max reasoning');
-    assert.strictEqual(result.altTips['Tab'], 'Press Tab to toggle extended thinking mode');
+    assert.ok(result.altCueTips);
+    assert.strictEqual(result.altCueTips['ultrathink'], 'Add ultrathink to prompt for max reasoning');
+    assert.strictEqual(result.altCueTips['Tab'], 'Press Tab to toggle extended thinking mode');
   });
 });
 
 describe('lookupWords', () => {
   it('should look up multiple words', () => {
     const words = ['The', 'agents', 'use', 'ultrathink'];
-    const results = lookupWords(words, sampleTipsData);
+    const results = lookupWords(words, sampleLocalCueData);
 
     assert.strictEqual(results.size, 2);
     assert.ok(results.has(1)); // 'agents' at index 1
@@ -110,44 +110,44 @@ describe('lookupWords', () => {
   });
 });
 
-describe('parseTipsFile', () => {
+describe('parseLocalCueFile', () => {
   it('should parse valid JSON', () => {
-    const json = JSON.stringify(sampleTipsData);
-    const result = parseTipsFile(json);
-    assert.deepStrictEqual(result, sampleTipsData);
+    const json = JSON.stringify(sampleLocalCueData);
+    const result = parseLocalCueFile(json);
+    assert.deepStrictEqual(result, sampleLocalCueData);
   });
 
   it('should throw on invalid JSON', () => {
-    assert.throws(() => parseTipsFile('not json'), /JSON/);
+    assert.throws(() => parseLocalCueFile('not json'), /JSON/);
   });
 
   it('should throw on non-array JSON', () => {
-    assert.throws(() => parseTipsFile('{}'), /array/);
+    assert.throws(() => parseLocalCueFile('{}'), /array/);
   });
 });
 
-describe('validateTipsData', () => {
+describe('validateLocalCueData', () => {
   it('should return no errors for valid data', () => {
-    const errors = validateTipsData(sampleTipsData);
+    const errors = validateLocalCueData(sampleLocalCueData);
     assert.deepStrictEqual(errors, []);
   });
 
   it('should detect missing id', () => {
     const data = [{ words: {} }];
-    const errors = validateTipsData(data);
-    assert.ok(errors.some((e) => e.includes('id')));
+    const errors = validateLocalCueData(data);
+    assert.ok(errors.some((e: any) => e.includes('id')));
   });
 
   it('should detect invalid words entry', () => {
     const data = [{ id: 'test', words: { foo: { tip: 123 } } }];
-    const errors = validateTipsData(data);
-    assert.ok(errors.some((e) => e.includes('tip')));
+    const errors = validateLocalCueData(data);
+    assert.ok(errors.some((e: any) => e.includes('tip')));
   });
 });
 
-describe('TipsFileSource', () => {
+describe('LocalCueSource', () => {
   it('should implement CueSource interface', async () => {
-    const source = new TipsFileSource(sampleTipsData);
+    const source = new LocalCueSource(sampleLocalCueData);
 
     assert.strictEqual(source.id, 'tips');
     assert.ok(source.priority > 0);
@@ -164,7 +164,7 @@ describe('TipsFileSource', () => {
   });
 
   it('should respect domain filtering', () => {
-    const source = new TipsFileSource(sampleTipsData, { domain: 'claude-code' });
+    const source = new LocalCueSource(sampleLocalCueData, { domain: 'claude-code' });
 
     assert.ok(source.supports({ text: 'test', words: ['test'], domain: 'claude-code' }));
     assert.ok(!source.supports({ text: 'test', words: ['test'], domain: 'medical' }));

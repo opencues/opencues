@@ -53,7 +53,7 @@ Configurable via `highlightColor`: white (default), cyan (`\x1b[1;96m`), yellow 
 
 **Highlight state** → `/tmp/claude-highlight-state-{PID}.json` (sync, on every navigation):
 ```json
-{"active":true,"highlightedWord":"agents","tip":"Spawn parallel workers...","alts":["agents","swarm","background"],"currentAltIndex":0,"altTips":{"agents":"...","swarm":"..."}}
+{"active":true,"highlightedWord":"agents","cueTip":"Spawn parallel workers...","alts":["agents","swarm","background"],"currentAltIndex":0,"altCueTips":{"agents":"...","swarm":"..."}}
 ```
 
 PID-based path prevents multi-instance interference.

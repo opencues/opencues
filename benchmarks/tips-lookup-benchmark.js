@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { lookupWord, lookupWords, parseTipsFile, CueResolver, TipsFileSource } = require('../packages/cues-core/dist/index.js');
+const { lookupWord, lookupWords, parseLocalCueFile, CueResolver, LocalCueSource } = require('../packages/cues-core/dist/index.js');
 
 // Load the real tips file
 const TIPS_PATH = path.join(process.env.HOME, '.claude', 'claude-code-tips.json');
@@ -42,11 +42,11 @@ async function runBenchmark() {
 
   // Load tips file
   const tipsContent = fs.readFileSync(TIPS_PATH, 'utf8');
-  const tipsData = parseTipsFile(tipsContent);
+  const tipsData = parseLocalCueFile(tipsContent);
   console.log(`Loaded ${tipsData.length} sections from tips file\n`);
 
   // Create source and resolver
-  const source = new TipsFileSource(tipsData, { priority: 100 });
+  const source = new LocalCueSource(tipsData, { priority: 100 });
   const resolver = new CueResolver([source]);
 
   // Load test cases
@@ -149,7 +149,7 @@ async function runDirectLookupBenchmark() {
   console.log('\n=== Direct lookupWord Benchmark ===\n');
 
   const tipsContent = fs.readFileSync(TIPS_PATH, 'utf8');
-  const tipsData = parseTipsFile(tipsContent);
+  const tipsData = parseLocalCueFile(tipsContent);
 
   // Test words from various tips
   const testWords = [

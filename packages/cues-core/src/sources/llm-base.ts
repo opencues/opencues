@@ -21,7 +21,7 @@ export interface LLMWordResponse {
   word: string;
   alts: string[] | null;
   linked?: number[] | null;
-  tip?: string;
+  cueTip?: string;
 }
 
 export interface LLMResponse {
@@ -149,7 +149,7 @@ export abstract class LLMSourceBase implements CueSource {
         word: wordResult.word,
         alternatives: wordResult.alts,
         linked: wordResult.linked || undefined,
-        tip: wordResult.tip,
+        cueTip: wordResult.cueTip,
         source: this.id,
         priority: this.priority,
       });

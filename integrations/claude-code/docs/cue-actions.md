@@ -24,7 +24,7 @@ Navigate to "volume" (Ctrl+Alt+Left)
 Press Ctrl+Alt+Up
            ↓
 cue-action check (FIRST priority)
-  → Word "volume" found in actionWordOverrides
+  → Word "volume" found in cueActionOverrides
   → Spawn: ~/.claude/actions/volume.sh up 5
   → Return (skip normal number/gender logic)
            ↓
@@ -50,7 +50,7 @@ This is implemented in `dynamicHighlight.ts` — cue-action checks are injected 
 {
   "settings": {
     "misc": {
-      "actionWordOverrides": {
+      "cueActionOverrides": {
         "volume": {
           "action": "volume",
           "upArgs": ["up", "5"],
@@ -189,7 +189,7 @@ Cue-actions are always navigable.
 
 ## Prerequisites
 
-cue-actions require `enableWordHighlight: true` in config. The `actionWordOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and cue-actions silently do nothing.
+cue-actions require `enableWordHighlight: true` in config. The `cueActionOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and cue-actions silently do nothing.
 
 ## Adding New cue-actions
 
@@ -259,7 +259,7 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
 
 1. Verify word is in config (case-insensitive match)
 2. Re-apply patches after config change
-3. Check `globalThis._actionWordOverrides` in browser console
+3. Check `globalThis._cueActionOverrides` in browser console
 
 ## Related
 

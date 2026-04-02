@@ -12,7 +12,7 @@ Implements features [6](../../../docs/features/tips.md), [7](../../../docs/featu
 
 The three-tier trigger (see feature 12) is implemented in the input handler:
 
-1. Trigger fires → `globalThis._tipsMap` lookup runs first (instant)
+1. Trigger fires → `globalThis._localCueMap` lookup runs first (instant)
 2. Words with tips get alts merged into `_dynDefs` immediately
 3. Remaining words become `targetIndices`
 4. If empty → skip LLM entirely
@@ -28,13 +28,13 @@ The three-tier trigger (see feature 12) is implemented in the input handler:
 
 Location: `~/.claude/claude-code-tips.json`
 
-Hash map built at startup in `globalThis._tipsMap`. See feature 6 for the two formats (groups and words).
+Hash map built at startup in `globalThis._localCueMap`. See feature 6 for the two formats (groups and words).
 
 ## CC-Specific: CueResolver Initialisation
 
 IIFE injected at startup in cli.js:
 - Loads cues-core module → `globalThis._cuesCore`
-- Parses tips file → `globalThis._tipsMap`
+- Parses tips file → `globalThis._localCueMap`
 - Creates NodeHttpAdapter (HTTPS keep-alive, Groq provider config) → `globalThis._httpAdapter`
 - Creates CueResolver with GrammarSource + MathSource + FactualSource → `globalThis._cueResolver`
 - Creates shared `_cycleAlt(dir)` function

@@ -46,7 +46,7 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 Every integration uses the same cues-core library:
 
 ```typescript
-import { CueResolver, GrammarSource, NodeHttpAdapter, parseTipsFile, buildLookupMap } from 'cues-core';
+import { CueResolver, GrammarSource, NodeHttpAdapter, parseLocalCueFile, buildLookupMap } from 'cues-core';
 
 // 1. Set up HTTP adapter
 const httpAdapter = new NodeHttpAdapter({
@@ -75,9 +75,9 @@ for (const cue of result.results) {
 For local cues:
 
 ```typescript
-import { parseTipsFile, buildLookupMap, lookupMultiple } from 'cues-core';
+import { parseLocalCueFile, buildLookupMap, lookupMultiple } from 'cues-core';
 
-const tipsData = parseTipsFile(tipsJsonString);
+const tipsData = parseLocalCueFile(tipsJsonString);
 const tipsMap = buildLookupMap(tipsData);
 const result = lookupMultiple(words, tipsMap);
 // result.found = WordDef[], result.missingIndices = number[]

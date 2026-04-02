@@ -38,7 +38,7 @@ dynamicHighlightDebounceMs?: number;   // Debounce delay for auto-submit (defaul
 
 // --- Action Word Overrides ---
 // Words that trigger external scripts on Up/Down instead of normal behavior
-actionWordOverrides?: {
+cueActionOverrides?: {
   [word: string]: {
     action: string;           // Action identifier, used for default script path
     scriptPath?: string;      // Custom script path (optional, defaults to ~/.claude/actions/{action}.sh)

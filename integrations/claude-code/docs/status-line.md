@@ -50,10 +50,10 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
   "highlightedWord": "agents",
   "highlightedWordIndex": 2,
   "wordCount": 5,
-  "tip": "Spawn parallel workers via Task tool",
+  "cueTip": "Spawn parallel workers via Task tool",
   "alts": ["agents", "swarm", "background"],
   "currentAltIndex": 0,
-  "altTips": {
+  "altCueTips": {
     "agents": "Spawn parallel workers via Task tool",
     "swarm": "Multiple coordinated agents working on related tasks",
     "background": "Press Ctrl+B to send running agent to background"
@@ -69,7 +69,7 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 | `tip` | string | `_dynDefs.words[i].tip` (from local cues) |
 | `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues) |
 | `currentAltIndex` | number | Updated by cycling and per-word clearing |
-| `altTips` | object | Per-alternative tip text (tips words only) |
+| `altCueTips` | object | Per-alternative tip text (tips words only) |
 
 ## Tips Source
 
@@ -82,7 +82,7 @@ Tips come from `~/.claude/claude-code-tips.json`. Two formats:
   "groups": {
     "0": {
       "synonyms": ["agents", "sub-agents", "spawn"],
-      "tip": "Spawn parallel workers via Task tool",
+      "cueTip": "Spawn parallel workers via Task tool",
       "alts": ["swarm", "background"]
     }
   }
@@ -95,7 +95,7 @@ Tips come from `~/.claude/claude-code-tips.json`. Two formats:
   "id": "extended-thinking",
   "words": {
     "ultrathink": {
-      "tip": "Add 'ultrathink' to prompt for max reasoning",
+      "cueTip": "Add 'ultrathink' to prompt for max reasoning",
       "alts": ["Tab", "deep thinking", "think harder"]
     }
   }

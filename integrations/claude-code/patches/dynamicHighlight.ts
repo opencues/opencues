@@ -37,7 +37,7 @@
  * - globalThis._dynPending — true while LLM request in flight
  * - globalThis._dynSpans — multi-word alternative tracking
  * - globalThis._cueResolver — CueResolver instance (from cues-core)
- * - globalThis._tipsMap — hash map for instant tips lookup
+ * - globalThis._localCueMap — hash map for instant tips lookup
  * - globalThis._cycleAlt — shared cycling function (action words, alts, spans)
  *
  * @see references/dynamic-highlight.md for full feature reference
@@ -99,21 +99,21 @@ export const writeCuesCoreInit = (
   // Uses cues-core's buildLookupMap() - no inline map building needed
   const cuesCoreInitCode = `
 ;(function(){
-if(globalThis._tipsMap&&globalThis._cueResolver)return;
-if(!globalThis._tipsMap){
+if(globalThis._localCueMap&&globalThis._cueResolver)return;
+if(!globalThis._localCueMap){
 try{
 var _cuesPath=(process.env.HOME||"~")+"/.claude/node_modules/cues-core";
 var _cues=${requireFuncName}(_cuesPath);
 var _tipsPath=(process.env.HOME||"~")+"/.claude/claude-code-tips.json";
 var _tipsContent=${requireFuncName}("fs").readFileSync(_tipsPath,"utf8");
-var _tipsData=_cues.parseTipsFile(_tipsContent);
+var _localCueData=_cues.parseLocalCueFile(_tipsContent);
 globalThis._cuesCore=_cues;
-globalThis._tipsData=_tipsData;
-globalThis._tipsMap=_cues.buildLookupMap(_tipsData);
+globalThis._localCueData=_localCueData;
+globalThis._localCueMap=_cues.buildLookupMap(_localCueData);
 }catch(_e){
 globalThis._cuesCore=null;
-globalThis._tipsData=null;
-globalThis._tipsMap=null;
+globalThis._localCueData=null;
+globalThis._localCueMap=null;
 }
 }
 // HTTPS keep-alive agent for inline LLM calls
@@ -155,7 +155,7 @@ var _hlIdx=globalThis._hlState.wordIndex;
 if(_hlIdx<0||_hlIdx>=_allW.length)return null;
 var _curWord=_allW[_hlIdx];
 // Action word check
-var _actOvr=globalThis._actionWordOverrides||{};
+var _actOvr=globalThis._cueActionOverrides||{};
 var _wLower=_curWord.toLowerCase();
 if(_actOvr[_wLower]){
 var _ad=_actOvr[_wLower];
@@ -221,7 +221,7 @@ globalThis._hlText=_newText;
 globalThis._hlState.text=_newText;
 // Write highlight export immediately so status line has fresh data
 try{var _cWords=_newText.split(/\\s+/).filter(function(w){return w});
-var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,tip:_dWord.tip||null,altTips:_dWord.altTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
+var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,tip:_dWord.cueTip||null,altCueTips:_dWord.altCueTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
 _reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // Re-evaluate underscore if present
@@ -456,7 +456,7 @@ globalThis._dynUnderscoreContext=_sentWords.filter(function(w){return w!=="_";})
 }
 
 // LOCAL TIPS LOOKUP - uses cues-core functions for O(1) lookup
-var _lookup=globalThis._cuesCore&&globalThis._tipsMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._tipsMap,{skipPattern:/^_$/}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
+var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
 
 // If ALL non-underscore words matched tips, skip LLM entirely
 if(_lookup.found.length>0&&_lookup.missingIndices.length===0&&_sentWords.indexOf("_")<0){
@@ -817,7 +817,7 @@ export const writeActionOvrVariable = (
 
   // Insert after _rootPat definition
   const insertPos = rootPatMatch.index + rootPatMatch[0].length;
-  const actOvrCode = `\nvar _actOvr=globalThis._actionWordOverrides||{};`;
+  const actOvrCode = `\nvar _actOvr=globalThis._cueActionOverrides||{};`;
 
   const newFile = oldFile.slice(0, insertPos) + actOvrCode + oldFile.slice(insertPos);
 
@@ -837,14 +837,14 @@ export const writeDynamicRendering = (
   config: DynamicHighlightConfig = {}
 ): string | null => {
   // Try gender/both mode pattern first (_dimRanges with _rootPat)
-  const dimPattern = /\}else if\(_numPat\.test\(_w\)\|\|_rootPat\.test\(_w\)(?:\|\|_actOvr\[_wLower\]|\|\|\(globalThis\._actionWordOverrides\|\|\{\}\)\[_wLower\])?\)\{\s*_dimRanges\.push\(\{start:_wStart,end:_wStart\+_w\.length\}\);\s*\}/;
+  const dimPattern = /\}else if\(_numPat\.test\(_w\)\|\|_rootPat\.test\(_w\)(?:\|\|_actOvr\[_wLower\]|\|\|\(globalThis\._cueActionOverrides\|\|\{\}\)\[_wLower\])?\)\{\s*_dimRanges\.push\(\{start:_wStart,end:_wStart\+_w\.length\}\);\s*\}/;
   const dimMatch = oldFile.match(dimPattern);
 
   if (dimMatch && dimMatch.index !== undefined) {
     // Gender/Both mode: replace _dimRanges pattern
-    // Use globalThis._actionWordOverrides directly to avoid ReferenceError
+    // Use globalThis._cueActionOverrides directly to avoid ReferenceError
     // when writeActionOvrVariable (step 5) fails to inject _actOvr
-    const newDimCode = `}else if(_numPat.test(_w)||_rootPat.test(_w)||(globalThis._actionWordOverrides||{})[_wLower]){
+    const newDimCode = `}else if(_numPat.test(_w)||_rootPat.test(_w)||(globalThis._cueActionOverrides||{})[_wLower]){
 _dimRanges.push({start:_wStart,end:_wStart+_w.length});
 }else if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_wi&&d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0;});
@@ -864,7 +864,7 @@ if((_dynDef||_isInSpan)&&_wi!==_hlWordIdx&&!_isInHighlightedSpan)_dimRanges.push
 
   if (numMatch && numMatch.index !== undefined) {
     // Numbers mode: extend _numRanges to also dim action words and dynamic alt words
-    const newNumCode = `else if(_numPat.test(_w)||(globalThis._actionWordOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
+    const newNumCode = `else if(_numPat.test(_w)||(globalThis._cueActionOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
 }else if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0;});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_ni];

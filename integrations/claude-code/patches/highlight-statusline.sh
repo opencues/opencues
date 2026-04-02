@@ -36,7 +36,7 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
 
   if echo "$content" | grep -q '"active":true'; then
     word=$(echo "$content" | sed -n 's/.*"highlightedWord":"\([^"]*\)".*/\1/p')
-    tip=$(echo "$content" | sed -n 's/.*"tip":"\([^"]*\)".*/\1/p')
+    tip=$(echo "$content" | sed -n 's/.*"cueTip":"\([^"]*\)".*/\1/p')
 
     if [ -n "$word" ]; then
       altcount=$(echo "$content" | sed -n 's/.*"alts":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | wc -l)

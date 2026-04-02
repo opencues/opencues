@@ -66,7 +66,7 @@ const additions = \`
   dynamicHighlightScriptPath?: string;
   dynamicHighlightAutoSubmit?: boolean;
   dynamicHighlightDebounceMs?: number;
-  actionWordOverrides?: { [word: string]: { action: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
+  cueActionOverrides?: { [word: string]: { action: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
 \`;
 
 // Find MiscSettings interface and insert before its closing }
@@ -114,7 +114,7 @@ const additions = \`
     dynamicHighlightScriptPath: '~/.claude/llm-analyze.sh',
     dynamicHighlightAutoSubmit: true,
     dynamicHighlightDebounceMs: 500,
-    actionWordOverrides: { volume: { action: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
+    cueActionOverrides: { volume: { action: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
 \`;
 
 // Find misc: { and insert after the opening brace
@@ -176,7 +176,7 @@ const patchCode = \`
       highlightExportEnabled: config.settings.misc.highlightExportEnabled,
       highlightExportPath: config.settings.misc.highlightExportPath,
       numberDimming: config.settings.misc.numberDimming,
-      actionWordOverrides: config.settings.misc.actionWordOverrides,
+      cueActionOverrides: config.settings.misc.cueActionOverrides,
     };
     if ((result = writeWordHighlight(content, highlightConfig))) content = result;
   }

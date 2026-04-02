@@ -11,7 +11,7 @@ const fs = require('fs');
 // Load tips data
 const tipsPath = process.env.HOME + '/.claude/claude-code-tips.json';
 const tipsContent = fs.readFileSync(tipsPath, 'utf8');
-const tipsData = cues.parseTipsFile(tipsContent);
+const tipsData = cues.parseLocalCueFile(tipsContent);
 
 console.log(`Tips file: ${tipsData.length} sections`);
 

@@ -190,8 +190,8 @@ export class CueResolver {
       altSet.add(alt);
     }
 
-    // Merge altTips
-    const altTips = { ...existing.altTips, ...incoming.altTips };
+    // Merge altCueTips
+    const altCueTips = { ...existing.altCueTips, ...incoming.altCueTips };
 
     // Merge linked (deduplicate)
     const linkedSet = new Set<number>([
@@ -202,7 +202,7 @@ export class CueResolver {
     return {
       ...existing,
       alternatives: Array.from(altSet),
-      altTips: Object.keys(altTips).length > 0 ? altTips : undefined,
+      altCueTips: Object.keys(altCueTips).length > 0 ? altCueTips : undefined,
       linked: linkedSet.size > 0 ? Array.from(linkedSet) : undefined,
     };
   }

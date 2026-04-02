@@ -290,7 +290,7 @@ INJECTS:
   ├── Navigation logic with mode-based filtering
   ├── Number increment/decrement with floor tracking
   ├── Gender flip with linked word handling
-  ├── globalThis._actionWordOverrides assignment (serialized from config)
+  ├── globalThis._cueActionOverrides assignment (serialized from config)
   ├── ANSI rendering with highlight/dim ranges
   └── Invisible char toggle for re-render triggering
 
@@ -298,7 +298,7 @@ STATE (globalThis):
   • _hlState: {active, index, wordIndex, originalNumbers, originalGender}
   • _hlText: current input text
   • _parentValue: parent's value (for invisible char toggle)
-  • _actionWordOverrides: action word config (serialized from config at build time)
+  • _cueActionOverrides: action word config (serialized from config at build time)
   • _triggerStatusLineRefresh: function to refresh status line
   • _forceInputRefresh: function to force re-render
 
@@ -306,7 +306,7 @@ CONFIG:
   • highlightMode: 'numbers' | 'words' | 'gender' | 'both'
   • highlightColor: 'white' | 'cyan' | 'yellow' | ...
   • numberDimming: boolean
-  • actionWordOverrides: {word: {action, upArgs, downArgs}}
+  • cueActionOverrides: {word: {action, upArgs, downArgs}}
 
 EXTERNAL SCRIPTS:
   • ~/.claude/actions/{action}.sh
@@ -366,7 +366,7 @@ EXTERNAL DEPENDENCIES:
 
 READS (from wordHighlight.ts):
   • globalThis._hlState, _hlText, _parentValue
-  • globalThis._actionWordOverrides (for cue-action checks in Up/Down handlers)
+  • globalThis._cueActionOverrides (for cue-action checks in Up/Down handlers)
   • globalThis._triggerStatusLineRefresh, _forceInputRefresh
 
 DEPENDENCIES:
