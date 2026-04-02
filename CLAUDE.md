@@ -1,10 +1,10 @@
-# CLAUDE.md - Cues System
+# CLAUDE.md - OpenCues
 
 This document provides context for Claude sessions working on this project.
 
 ## Project Overview
 
-**cues-system** provides LLM-powered word alternatives for text editors. The core library analyzes text and suggests alternatives (synonyms, opposites, completions) that users can cycle through.
+**OpenCues** provides LLM-powered word alternatives for text editors. The core library analyzes text and suggests alternatives (synonyms, opposites, completions) that users can cycle through.
 
 **Architecture**:
 - **cues-core** — Pure TypeScript library for LLM analysis (prompts, resolver, HTTP adapter)
@@ -18,7 +18,7 @@ This document provides context for Claude sessions working on this project.
 ## Repository Structure
 
 ```
-cues-system/
+opencues/
 ├── CLAUDE.md                      # THIS FILE - project overview
 ├── README.md                      # Public readme with install instructions
 │
@@ -82,8 +82,8 @@ cues-system/
 ## Quick Install (Claude Code)
 
 ```bash
-git clone https://github.com/wkasekende/cues-system ~/cues-system
-~/cues-system/integrations/claude-code/patches/setup.sh
+git clone https://github.com/wkasekende/opencues ~/opencues
+~/opencues/integrations/claude-code/patches/setup.sh
 export GROQ_API_KEY="your-key"
 ```
 

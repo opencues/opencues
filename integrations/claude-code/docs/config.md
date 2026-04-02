@@ -52,7 +52,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `enableRainbowInput` | boolean | undefined | No | Colorize specific words |
 | `rainbowInputWords` | string[] | `['wilfred']` | No | Words to rainbow-ize |
 
-## Minimum Config for Full Tips/Cues System
+## Minimum Config for Full Tips/OpenCues
 
 ```json
 {

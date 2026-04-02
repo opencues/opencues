@@ -2,7 +2,7 @@
 last_updated: 2026-04-01
 ---
 
-# Cues System Architecture
+# OpenCues Architecture
 
 A modular system for providing word alternatives, cue-tips, and suggestions across different platforms (CLI, Chrome extension, VS Code).
 
@@ -10,7 +10,7 @@ For the full list of features any integration should implement, see `features/RE
 
 ## Overview
 
-The cues system is designed with three layers:
+OpenCues is designed with three layers:
 
 1. **Core Layer** (`cues-core`) - Pure TypeScript with no I/O dependencies
 2. **Adapter Layer** (`cues-node`, `cues-browser`) - Platform-specific implementations
@@ -46,7 +46,7 @@ The cues system is designed with three layers:
 ## Installation
 
 ```bash
-cd ~/cues-system
+cd ~/opencues
 npm install
 npm run build
 ```
@@ -54,7 +54,7 @@ npm run build
 ## Package Structure
 
 ```
-~/cues-system/
+~/opencues/
 ├── packages/
 │   ├── cues-core/              # Pure TypeScript, no I/O
 │   │   ├── src/
@@ -418,7 +418,7 @@ cues-core is now used directly from the injected cli.js code (no shell scripts).
 Run the test suite:
 
 ```bash
-cd ~/cues-system/packages/cues-core
+cd ~/opencues/packages/cues-core
 npm run build
 npm run test
 ```

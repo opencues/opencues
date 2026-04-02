@@ -1,7 +1,7 @@
 /**
  * cues-core/types.ts
  *
- * Core interfaces for the cues system.
+ * Core interfaces for OpenCues.
  * These are pure TypeScript types with no I/O or platform dependencies.
  */
 

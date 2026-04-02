@@ -15,7 +15,7 @@ TWEAKCC_DIR="${1:-$HOME/tweakcc}"
 CUES_CORE="$SCRIPT_DIR/../../../packages/cues-core"
 NEEDS_TWEAKCC_BUILD=false
 
-echo "=== Cues System Setup ==="
+echo "=== OpenCues Setup ==="
 
 # 1. Clone or reuse tweakcc
 if [ ! -d "$TWEAKCC_DIR" ]; then

@@ -1,7 +1,7 @@
 {
   "name": "cues-node",
   "version": "1.0.0",
-  "description": "Node.js adapters for cues system",
+  "description": "Node.js adapters for OpenCues",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

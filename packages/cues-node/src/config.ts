@@ -60,7 +60,7 @@ export class NodeConfigAdapter implements ConfigAdapter {
 }
 
 /**
- * Get common config values used by cues system.
+ * Get common config values used by OpenCues.
  */
 export interface CuesConfig {
   groqApiKey?: string;

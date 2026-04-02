@@ -1,7 +1,7 @@
 {
   "name": "cues-core",
   "version": "1.0.0",
-  "description": "Core cues system - pure TypeScript, no I/O dependencies",
+  "description": "Core OpenCues library - pure TypeScript, no I/O dependencies",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

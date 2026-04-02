@@ -1,7 +1,7 @@
 /**
  * cues-node
  *
- * Node.js adapters for the cues system.
+ * Node.js adapters for OpenCues.
  */
 
 // Storage

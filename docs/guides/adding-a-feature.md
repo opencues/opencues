@@ -4,7 +4,7 @@ last_updated: 2026-04-02
 
 # Adding a New Feature
 
-How to add a new feature concept to the cues system.
+How to add a new feature concept to OpenCues.
 
 ## 1. Document the concept
 

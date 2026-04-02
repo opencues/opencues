@@ -1,7 +1,7 @@
 /**
  * cues-core
  *
- * Core cues system - pure TypeScript with no I/O dependencies.
+ * Core OpenCues library - pure TypeScript with no I/O dependencies.
  * Platform-specific functionality is provided via adapters.
  */
 

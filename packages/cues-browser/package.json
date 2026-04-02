@@ -1,7 +1,7 @@
 {
   "name": "cues-browser",
   "version": "1.0.0",
-  "description": "Browser adapters for cues system (Chrome extension, web)",
+  "description": "Browser adapters for OpenCues (Chrome extension, web)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

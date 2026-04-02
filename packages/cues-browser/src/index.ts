@@ -1,7 +1,7 @@
 /**
  * cues-browser
  *
- * Browser adapters for the cues system.
+ * Browser adapters for OpenCues.
  */
 
 // Storage
