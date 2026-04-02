@@ -359,7 +359,7 @@ export interface WordHighlightConfig {
   highlightClearOnEscape?: boolean;
   highlightClearOnNavigation?: boolean;
   highlightWordPattern?: 'whitespace' | 'alphanum' | string;
-  highlightMode?: 'words' | 'numbers' | 'gender' | 'both';  // 'words' = all, 'numbers' = numeric only, 'gender' = gender only, 'both' = numbers + gender
+  highlightMode?: string;  // deprecated — always navigates all words with alts
   highlightExportEnabled?: boolean;
   highlightExportPath?: string;
   numberDimming?: boolean;  // dim all numbers in input (dark gray)
@@ -376,7 +376,7 @@ const DEFAULT_CONFIG: Required<WordHighlightConfig> = {
   highlightClearOnEscape: true,
   highlightClearOnNavigation: false,
   highlightWordPattern: 'whitespace',
-  highlightMode: 'both',  // 'words' = all words, 'numbers' = only numeric tokens, 'both' = numbers + gender + action words
+  highlightMode: 'words',  // deprecated — always navigates all words with alts
   highlightExportEnabled: true,
   highlightExportPath: '/tmp/claude-highlight-state.json',
   numberDimming: true,  // dim all numbers in input (dark gray)
@@ -437,39 +437,17 @@ export const writeWordHighlightKeyHandler = (
   // Using R.insert() would insert at cursor, causing "cursor wall" bug.
   // Using fromText(R.text + char, G, R.offset) appends at end, preserving cursor.
   //
-  // Mode-dependent navigation:
-  // - 'numbers': filter to words matching /^-?\d+(\.\d+)?$/ (integers, decimals, negatives)
-  // - 'words': navigate all words
-  // - 'gender': filter to root words (boy/girl only)
-  // - 'both': filter to numbers AND root gender words
-  // Store wordIndex (actual position in all words) for rendering
-  // index 0 = rightmost word/number (same as original word highlight behavior)
-  // Default to 'numbers' mode if not specified (handles undefined from config)
-  const isNumbersMode = cfg.highlightMode === 'numbers' || cfg.highlightMode === undefined;
-  const isGenderMode = cfg.highlightMode === 'gender';
-  const isBothMode = cfg.highlightMode === 'both';
-  // Action words are always navigable regardless of mode
+  // Navigation filter: numbers + action words are always navigable
+  // Words with dynamic alts are added by dynamicHighlight.ts patch later
   const actOvrCheck = `(globalThis._actionWordOverrides||{})[w.toLowerCase()]`;
-  const filterCode = isBothMode
-    ? `var _numP=/^-?\\d+(\\.\\d+)?$/;
-var _rootPat=/^(boy|girl)$/i;
+  const filterCode = `var _numP=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx=[];
-_allW.forEach(function(w,i){if(_numP.test(w)||_rootPat.test(w)||${actOvrCheck})_targetIdx.push(i);});`
-    : isGenderMode
-    ? `var _rootPat=/^(boy|girl)$/i;
-var _targetIdx=[];
-_allW.forEach(function(w,i){if(_rootPat.test(w)||${actOvrCheck})_targetIdx.push(i);});`
-    : isNumbersMode
-    ? `var _numP=/^-?\\d+(\\.\\d+)?$/;
-var _targetIdx=[];
-_allW.forEach(function(w,i){if(_numP.test(w)||${actOvrCheck})_targetIdx.push(i);});`
-    : `var _targetIdx=[];
-_allW.forEach(function(w,i){_targetIdx.push(i);});`;
+_allW.forEach(function(w,i){if(_numP.test(w)||${actOvrCheck})_targetIdx.push(i);});`;
 
   // Left/Right handlers: Use originalNumbers map to track floor per word index
   // Don't reset when navigating - the map persists so we remember originals across navigation
   const keyHandlerCode = `case(${keyParam}.leftArrow&&${keyParam}.ctrl&&(${keyParam}.meta||${keyParam}.option||${keyParam}.alt)):return()=>{
-if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
 var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w){return w}):[];
 ${filterCode}
@@ -491,7 +469,7 @@ else if(_parentHasC){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u
 else{return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
 };
 case(${keyParam}.rightArrow&&${keyParam}.ctrl&&(${keyParam}.meta||${keyParam}.option||${keyParam}.alt)):return()=>{
-if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
 var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w){return w}):[];
 ${filterCode}
@@ -503,7 +481,7 @@ if(globalThis._hlState.index>0){
 globalThis._hlState.index--;
 globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1-globalThis._hlState.index];
 }else{
-globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 }
 }
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
@@ -522,33 +500,6 @@ var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w)
 var _idx=globalThis._hlState.wordIndex;
 if(_idx<0||_idx>=_allW.length)return ${inputZoneVar};
 var _word=_allW[_idx];
-var _rootPat=/^(boy|girl)$/i;
-if(_rootPat.test(_word)){
-var _maleGroup=['boy','he','him','his','man',"he's"];
-var _femaleGroup=['girl','she','her','woman',"she's"];
-var _flipMap={boy:'girl',girl:'boy',he:'she',she:'he',him:'her',his:'her',her:'him',man:'woman',woman:'man',"he's":"she's","she's":"he's"};
-var _selLower=_word.toLowerCase();
-var _linkedGroup=_maleGroup.indexOf(_selLower)>=0?_maleGroup:_femaleGroup;
-if(globalThis._hlState.originalGender===undefined)globalThis._hlState.originalGender=globalThis._hlText;
-var _newText=globalThis._hlText;
-var _offsetDelta=0;
-for(var _gi=_allW.length-1;_gi>=0;_gi--){
-var _gw=_allW[_gi].toLowerCase();
-if(_linkedGroup.indexOf(_gw)>=0&&_flipMap[_gw]){
-var _origWord=_allW[_gi];
-var _flipped=_flipMap[_gw];
-_flipped=_flipped.split('').map(function(c,ci){return ci<_origWord.length&&_origWord[ci]===_origWord[ci].toUpperCase()?c.toUpperCase():c;}).join('');
-var _wPos=0;
-for(var _wi2=0;_wi2<_gi;_wi2++){_wPos=_newText.indexOf(_allW[_wi2],_wPos)+_allW[_wi2].length;}
-var _wStart2=_newText.indexOf(_origWord,_wPos);
-if(_wStart2>=0){if(_wStart2<${inputZoneVar}.offset)_offsetDelta+=(_flipped.length-_origWord.length);_newText=_newText.slice(0,_wStart2)+_flipped+_newText.slice(_wStart2+_origWord.length);}
-}
-}
-globalThis._hlText=_newText;
-globalThis._hlState.text=_newText;
-if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-return ${inputZoneClass}.fromText(_newText,${configVar},${inputZoneVar}.offset+_offsetDelta);
-}
 var _numP=/^-?\\d+(\\.\\d+)?$/;
 if(!_numP.test(_word))return ${inputZoneVar};
 var _num=parseFloat(_word);
@@ -579,18 +530,6 @@ var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w)
 var _idx=globalThis._hlState.wordIndex;
 if(_idx<0||_idx>=_allW.length)return ${inputZoneVar};
 var _word=_allW[_idx];
-var _rootPat=/^(boy|girl)$/i;
-if(_rootPat.test(_word)){
-if(globalThis._hlState.originalGender!==undefined){
-var _newText=globalThis._hlState.originalGender;
-globalThis._hlText=_newText;
-globalThis._hlState.text=_newText;
-if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-var _newOffset=Math.min(${inputZoneVar}.offset,_newText.length);
-return ${inputZoneClass}.fromText(_newText,${configVar},_newOffset);
-}
-return ${inputZoneVar};
-}
 var _numP=/^-?\\d+(\\.\\d+)?$/;
 if(!_numP.test(_word))return ${inputZoneVar};
 var _num=parseFloat(_word);
@@ -720,7 +659,7 @@ var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
 if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){
-globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }
 }${exportCode}
@@ -767,7 +706,7 @@ export const writeWordHighlightClearOnEscape = (
 
   // Inject clear code at the start of the escape handler
   const insertPos = match.index + match[0].length;
-  const clearCode = 'if(globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};';
+  const clearCode = 'if(globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};';
 
   const newFile =
     oldFile.slice(0, insertPos) +
@@ -856,92 +795,16 @@ export const writeWordHighlightRendering = (
 
   // Word index is now stored directly in _hlState.wordIndex (for numbers-only mode)
   // ANSI-aware rendering with:
-  // 1. Number dimming (dark gray for all numbers) - or root word dimming for gender mode
-  // 2. Highlight rendering (white for highlighted word, overrides dimming)
-  // 3. Gender mode: highlight related words (he/him/man or she/her/woman) when root selected
+  // 1. Number dimming (dark gray for all numbers)
+  // 2. Highlight rendering (configurable color for highlighted word, overrides dimming)
+  // 3. Linked words highlight together
   // This wraps the previous output (either raw or rainbow-processed)
   const numberDimmingEnabled = cfg.numberDimming !== false;  // default true
-  const isGenderModeRender = cfg.highlightMode === 'gender';
-  const isBothModeRender = cfg.highlightMode === 'both';
   // Use raw ANSI code for dark gray (90 = dark gray foreground)
   // Starts with reset to clear any previous styling (like inverse mode from cursor)
   const dimCode = `"\\x1b[0m\\x1b[90m"+_ch+"\\x1b[0m"`;
 
-  // Gender mode rendering: highlight related words when root selected (span-aware)
-  const genderRenderCode = `
-var _maleWords=['boy','he','him','his','man',"he's"];
-var _femaleWords=['girl','she','her','woman',"she's"];
-var _rootPat=/^(boy|girl)$/i;
-var _selectedWord=(_hlWordIdx>=0&&_hlWordIdx<_words.length)?_words[_hlWordIdx].toLowerCase():null;
-var _relatedGroup=null;
-if(_selectedWord&&_maleWords.indexOf(_selectedWord)>=0)_relatedGroup=_maleWords;
-if(_selectedWord&&_femaleWords.indexOf(_selectedWord)>=0)_relatedGroup=_femaleWords;
-var _hlRanges=[];
-var _dimRanges=[];
-var _searchPos=0;
-var _dynHlDef=globalThis._dynDefs&&globalThis._dynDefs.words?globalThis._dynDefs.words.find(function(d){return d.index===_hlWordIdx;}):null;
-var _hlSpanLen=(_dynHlDef&&_dynHlDef.spanLength)?_dynHlDef.spanLength:1;
-for(var _wi=0;_wi<_words.length;_wi++){
-var _w=_words[_wi];
-var _wStart=_clean.indexOf(_w,_searchPos);
-if(_wStart<0)break;
-var _wLower=_w.toLowerCase();
-var _isDynLinked=_dynHlDef&&_dynHlDef.linked&&_dynHlDef.linked.indexOf(_wi)>=0;
-var _isInHlSpan=(_wi>=_hlWordIdx&&_wi<_hlWordIdx+_hlSpanLen);
-if(_relatedGroup&&_relatedGroup.indexOf(_wLower)>=0){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_isInHlSpan&&globalThis._dynDefs){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_isDynLinked){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_rootPat.test(_w)){
-_dimRanges.push({start:_wStart,end:_wStart+_w.length});
-}
-_searchPos=_wStart+_w.length;
-}`;
-
-  // Both mode rendering: dim numbers AND root gender words, highlight appropriately
-  const bothRenderCode = `
-var _numPat=/^-?\\d+(\\.\\d+)?$/;
-var _maleWords=['boy','he','him','his','man',"he's"];
-var _femaleWords=['girl','she','her','woman',"she's"];
-var _rootPat=/^(boy|girl)$/i;
-var _selectedWord=(_hlWordIdx>=0&&_hlWordIdx<_words.length)?_words[_hlWordIdx]:null;
-var _selLower=_selectedWord?_selectedWord.toLowerCase():null;
-var _isNumSelected=_selectedWord&&_numPat.test(_selectedWord);
-var _isGenderSelected=_selectedWord&&_rootPat.test(_selectedWord);
-var _relatedGroup=null;
-if(_isGenderSelected){
-if(_maleWords.indexOf(_selLower)>=0)_relatedGroup=_maleWords;
-if(_femaleWords.indexOf(_selLower)>=0)_relatedGroup=_femaleWords;
-}
-var _hlRanges=[];
-var _dimRanges=[];
-var _searchPos=0;
-var _dynHlDef=globalThis._dynDefs&&globalThis._dynDefs.words?globalThis._dynDefs.words.find(function(d){return d.index===_hlWordIdx;}):null;
-var _hlSpanLen=(_dynHlDef&&_dynHlDef.spanLength)?_dynHlDef.spanLength:1;
-for(var _wi=0;_wi<_words.length;_wi++){
-var _w=_words[_wi];
-var _wStart=_clean.indexOf(_w,_searchPos);
-if(_wStart<0)break;
-var _wLower=_w.toLowerCase();
-var _isDynLinked=_dynHlDef&&_dynHlDef.linked&&_dynHlDef.linked.indexOf(_wi)>=0;
-var _isInHlSpan=(_wi>=_hlWordIdx&&_wi<_hlWordIdx+_hlSpanLen);
-if(_isNumSelected&&_isInHlSpan){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_isGenderSelected&&_relatedGroup&&_relatedGroup.indexOf(_wLower)>=0){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_isInHlSpan&&globalThis._dynDefs){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_isDynLinked){
-_hlRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(_numPat.test(_w)||_rootPat.test(_w)){
-_dimRanges.push({start:_wStart,end:_wStart+_w.length});
-}
-_searchPos=_wStart+_w.length;
-}`;
-
-  // Standard number mode rendering - span-aware highlighting
+  // Universal rendering — numbers dimmed, highlighted word + linked + spans in highlight color
   const numberRenderCode = numberDimmingEnabled ? `var _searchPos=0;
 var _hlSpanLen=1;
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&_hlWordIdx>=0){
@@ -991,54 +854,7 @@ _wordPos=_wStart+_words[_wi].length;
 }
 }`;
 
-  // Shared render loop for gender and both modes (uses _hlRanges/_dimRanges arrays)
-  const rangeBasedRenderLoop = `var _out='',_cp=0,_i=0,_inv=false,_pending='';
-while(_i<_rv.length){
-var _am=_rv.slice(_i).match(/^\\x1b\\[[0-9;]*m/);
-if(_am){
-if(_am[0]==='\\x1b[7m')_inv=true;
-if(_am[0]==='\\x1b[27m'||_am[0]==='\\x1b[0m')_inv=false;
-_pending+=_am[0];
-_i+=_am[0].length;continue;
-}
-var _ch=_rv[_i];
-var _inHl=false;
-for(var _hi=0;_hi<_hlRanges.length;_hi++){
-if(_cp>=_hlRanges[_hi].start&&_cp<_hlRanges[_hi].end){_inHl=true;break;}
-}
-var _inDim=false;
-for(var _di=0;_di<_dimRanges.length;_di++){
-if(_cp>=_dimRanges[_di].start&&_cp<_dimRanges[_di].end){_inDim=true;break;}
-}
-if(_inv){_out+=_pending+_ch;}
-else if(_inHl){_out+=${colorCode};}
-else if(_inDim){_out+=${dimCode};}
-else{_out+=_pending+_ch;}
-_pending='';
-_cp++;_i++;
-}
-return _out;
-})()`;
-
-  const newCode = isBothModeRender ? `renderedValue:(function(){
-var _rv=${renderCall};
-if(typeof _rv!=="string")return _rv;
-var _ap=/\\x1b\\[[0-9;]*m/g;
-var _clean=_rv.replace(_ap,'');
-var _words=_clean.split(/\\s+/).filter(function(w){return w});
-if(!_words.length)return _rv;
-var _hlWordIdx=(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null)?globalThis._hlState.wordIndex:-1;
-${bothRenderCode}
-${rangeBasedRenderLoop}` : isGenderModeRender ? `renderedValue:(function(){
-var _rv=${renderCall};
-if(typeof _rv!=="string")return _rv;
-var _ap=/\\x1b\\[[0-9;]*m/g;
-var _clean=_rv.replace(_ap,'');
-var _words=_clean.split(/\\s+/).filter(function(w){return w});
-if(!_words.length)return _rv;
-var _hlWordIdx=(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null)?globalThis._hlState.wordIndex:-1;
-${genderRenderCode}
-${rangeBasedRenderLoop}` : `renderedValue:(function(){
+  const newCode = `renderedValue:(function(){
 var _rv=${renderCall};
 if(typeof _rv!=="string")return _rv;
 var _ap=/\\x1b\\[[0-9;]*m/g;
@@ -1155,45 +971,18 @@ export const writeWordHighlightRawSequence = (
   //
   // Mode-dependent navigation for raw escape sequences
   // index 0 = rightmost word/number (same as original word highlight behavior)
-  // Default to 'numbers' mode if not specified (handles undefined from config)
-  const isNumbersModeRaw = cfg.highlightMode === 'numbers' || cfg.highlightMode === undefined;
-  const isGenderModeRaw = cfg.highlightMode === 'gender';
-  const isBothModeRaw = cfg.highlightMode === 'both';
+  // Navigation filter for raw sequence handlers — numbers + action words
   const rawActOvrCheck = `(globalThis._actionWordOverrides||{})[w.toLowerCase()]`;
-  const rawFilterCode1 = isBothModeRaw
-    ? `var _numP=/^-?\\d+(\\.\\d+)?$/;
-var _rootPat=/^(boy|girl)$/i;
+  const rawFilterCode1 = `var _numP=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx=[];
-_allW.forEach(function(w,i){if(_numP.test(w)||_rootPat.test(w)||${rawActOvrCheck})_targetIdx.push(i);});`
-    : isGenderModeRaw
-    ? `var _rootPat=/^(boy|girl)$/i;
-var _targetIdx=[];
-_allW.forEach(function(w,i){if(_rootPat.test(w)||${rawActOvrCheck})_targetIdx.push(i);});`
-    : isNumbersModeRaw
-    ? `var _numP=/^-?\\d+(\\.\\d+)?$/;
-var _targetIdx=[];
-_allW.forEach(function(w,i){if(_numP.test(w)||${rawActOvrCheck})_targetIdx.push(i);});`
-    : `var _targetIdx=[];
-_allW.forEach(function(w,i){_targetIdx.push(i);});`;
+_allW.forEach(function(w,i){if(_numP.test(w)||${rawActOvrCheck})_targetIdx.push(i);});`;
 
-  const rawFilterCode2 = isBothModeRaw
-    ? `var _numP2=/^-?\\d+(\\.\\d+)?$/;
-var _rootPat2=/^(boy|girl)$/i;
+  const rawFilterCode2 = `var _numP2=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx2=[];
-_allW2.forEach(function(w,i){if(_numP2.test(w)||_rootPat2.test(w)||${rawActOvrCheck})_targetIdx2.push(i);});`
-    : isGenderModeRaw
-    ? `var _rootPat2=/^(boy|girl)$/i;
-var _targetIdx2=[];
-_allW2.forEach(function(w,i){if(_rootPat2.test(w)||${rawActOvrCheck})_targetIdx2.push(i);});`
-    : isNumbersModeRaw
-    ? `var _numP2=/^-?\\d+(\\.\\d+)?$/;
-var _targetIdx2=[];
-_allW2.forEach(function(w,i){if(_numP2.test(w)||${rawActOvrCheck})_targetIdx2.push(i);});`
-    : `var _targetIdx2=[];
-_allW2.forEach(function(w,i){_targetIdx2.push(i);});`;
+_allW2.forEach(function(w,i){if(_numP2.test(w)||${rawActOvrCheck})_targetIdx2.push(i);});`;
 
   // Raw sequence handlers for Left/Right: Use originalNumbers map to track floor per word index
-  const rawHandlerCode = `case(${rawParam}==="\\x1B[1;7D"):if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+  const rawHandlerCode = `case(${rawParam}==="\\x1B[1;7D"):if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
 var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w){return w}):[];
 ${rawFilterCode1}
@@ -1214,7 +1003,7 @@ var _parentHasC=_pv.indexOf("\\u200C")>=0;
 if(_parentHasB){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200C",${configVar},${inputZoneVar}.offset);}
 else if(_parentHasC){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
 else{return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
-case(${rawParam}==="\\x1B[1;7C"):if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+case(${rawParam}==="\\x1B[1;7C"):if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
 var _allW2=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w){return w}):[];
 ${rawFilterCode2}
@@ -1226,7 +1015,7 @@ if(globalThis._hlState.index>0){
 globalThis._hlState.index--;
 globalThis._hlState.wordIndex=_targetIdx2[_targetIdx2.length-1-globalThis._hlState.index];
 }else{
-globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{},originalGender:undefined};
+globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};
 }
 }
 }
@@ -1244,33 +1033,6 @@ var _allW3=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w
 var _idx3=globalThis._hlState.wordIndex;
 if(_idx3<0||_idx3>=_allW3.length)return ${inputZoneVar};
 var _word3=_allW3[_idx3];
-var _rootPat3=/^(boy|girl)$/i;
-if(_rootPat3.test(_word3)){
-var _maleGroup3=['boy','he','him','his','man',"he's"];
-var _femaleGroup3=['girl','she','her','woman',"she's"];
-var _flipMap3={boy:'girl',girl:'boy',he:'she',she:'he',him:'her',his:'her',her:'him',man:'woman',woman:'man',"he's":"she's","she's":"he's"};
-var _selLower3=_word3.toLowerCase();
-var _linkedGroup3=_maleGroup3.indexOf(_selLower3)>=0?_maleGroup3:_femaleGroup3;
-if(globalThis._hlState.originalGender===undefined)globalThis._hlState.originalGender=globalThis._hlText;
-var _newText3=globalThis._hlText;
-var _offsetDelta3=0;
-for(var _gi3=_allW3.length-1;_gi3>=0;_gi3--){
-var _gw3=_allW3[_gi3].toLowerCase();
-if(_linkedGroup3.indexOf(_gw3)>=0&&_flipMap3[_gw3]){
-var _origWord3=_allW3[_gi3];
-var _flipped3=_flipMap3[_gw3];
-_flipped3=_flipped3.split('').map(function(c,ci){return ci<_origWord3.length&&_origWord3[ci]===_origWord3[ci].toUpperCase()?c.toUpperCase():c;}).join('');
-var _wPos3=0;
-for(var _wi32=0;_wi32<_gi3;_wi32++){_wPos3=_newText3.indexOf(_allW3[_wi32],_wPos3)+_allW3[_wi32].length;}
-var _wStart32=_newText3.indexOf(_origWord3,_wPos3);
-if(_wStart32>=0){if(_wStart32<${inputZoneVar}.offset)_offsetDelta3+=(_flipped3.length-_origWord3.length);_newText3=_newText3.slice(0,_wStart32)+_flipped3+_newText3.slice(_wStart32+_origWord3.length);}
-}
-}
-globalThis._hlText=_newText3;
-globalThis._hlState.text=_newText3;
-if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-return ${inputZoneClass}.fromText(_newText3,${configVar},${inputZoneVar}.offset+_offsetDelta3);
-}
 var _numP3=/^-?\\d+(\\.\\d+)?$/;
 if(!_numP3.test(_word3))return ${inputZoneVar};
 var _num3=parseFloat(_word3);
@@ -1299,18 +1061,6 @@ var _allW4=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w
 var _idx4=globalThis._hlState.wordIndex;
 if(_idx4<0||_idx4>=_allW4.length)return ${inputZoneVar};
 var _word4=_allW4[_idx4];
-var _rootPat4=/^(boy|girl)$/i;
-if(_rootPat4.test(_word4)){
-if(globalThis._hlState.originalGender!==undefined){
-var _newText4g=globalThis._hlState.originalGender;
-globalThis._hlText=_newText4g;
-globalThis._hlState.text=_newText4g;
-if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-var _newOffset4g=Math.min(${inputZoneVar}.offset,_newText4g.length);
-return ${inputZoneClass}.fromText(_newText4g,${configVar},_newOffset4g);
-}
-return ${inputZoneVar};
-}
 var _numP4=/^-?\\d+(\\.\\d+)?$/;
 if(!_numP4.test(_word4))return ${inputZoneVar};
 var _num4=parseFloat(_word4);

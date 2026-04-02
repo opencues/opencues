@@ -13,18 +13,9 @@ Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/fe
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
 1. **Action word** → spawn `~/.claude/actions/{action}.sh`, return
-2. **Gender root** → hardcoded flip in `wordHighlight.ts`, skip LLM alts
-3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
-4. **Number** → increment/decrement with `originalNumbers` map
-5. **Fall through** → no action
-
-## CC-Specific: Gender Groups
-
-Hardcoded in `wordHighlight.ts`:
-- Male: `['boy','he','him','his','man',"he's"]`
-- Female: `['girl','she','her','woman',"she's"]`
-
-Gender roots always skip dynamic alt cycling to ensure linked words change together (LLM doesn't populate `linked` arrays for gender).
+2. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
+3. **Number** → increment/decrement with `originalNumbers` map
+4. **Fall through** → no action
 
 ## CC-Specific: State Export on Cycle
 

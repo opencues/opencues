@@ -28,9 +28,8 @@
  *
  * When Up/Down pressed on highlighted word:
  * 1. Action word override → spawn external script, return
- * 2. Gender root (boy/girl) → skip (let wordHighlight handle linked flip)
- * 3. Dynamic alts → cycle through alternatives + update linked words
- * 4. Fall through to wordHighlight (numbers, gender)
+ * 2. Dynamic alts → cycle through alternatives + update linked words
+ * 3. Fall through to wordHighlight (numbers)
  *
  * ## Key State
  *
@@ -175,7 +174,6 @@ var _span=globalThis._dynSpans&&globalThis._dynSpans[_dIdx];
 if(_span){_dIdx=_span.originalIndex;}
 var _dWord=_dWords.find(function(w){return w.index===_dIdx;});
 if(!_dWord||!_dWord.alts||_dWord.alts.length<=1)return null;
-if(/^(boy|girl)$/i.test(_allW[_dIdx]||""))return null;
 var _curIdx=typeof _dWord.currentAltIndex==='number'?_dWord.currentAltIndex:0;
 var _nextAlt=(_curIdx+_dir+_dWord.alts.length)%_dWord.alts.length;
 _dWord.currentAltIndex=_nextAlt;
