@@ -4,7 +4,7 @@ last_updated: 2026-04-02
 
 # Word Cycling
 
-Replace the focused word with an alternative from the `alts` array.
+Replace the focused word with an alternative. Cycling is the **vertical** axis — once a word is selected via navigation (feature 1), cycling changes what that word is.
 
 - `currentAltIndex` tracks position in the cycle
 - Original word is always `alts[0]`

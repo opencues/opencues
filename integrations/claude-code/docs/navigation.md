@@ -10,21 +10,27 @@ Implements features [1](../../../docs/features/navigation.md), [3](../../../docs
 
 ## Keybindings
 
+**Navigation (Left/Right)** — select which word to focus on:
+
 | Key | Action |
 |-----|--------|
-| Ctrl+Alt+Left | Highlight previous word (or activate at rightmost) |
-| Ctrl+Alt+Right | Highlight next word (or clear if at rightmost) |
-| Ctrl+Alt+Up | Increment / flip / cycle (see `cycling.md`) |
-| Ctrl+Alt+Down | Decrement / restore / cycle |
+| Ctrl+Alt+Left | Move highlight to previous navigable word (or activate at rightmost) |
+| Ctrl+Alt+Right | Move highlight to next navigable word (or clear if at rightmost) |
 | Escape | Clear highlight |
 | Any typing | Clear highlight |
 
+**Cycling (Up/Down)** — change the focused word. See `cycling.md` for details:
+
+| Key | Action |
+|-----|--------|
+| Ctrl+Alt+Up | Cycle to next alternative / increment number |
+| Ctrl+Alt+Down | Cycle to previous alternative / decrement number |
+
 **Raw sequence fallback:** Also handles `\x1B[1;7D/C/A/B` (modifier 7 = Ctrl+Alt) for terminals that don't set meta/option flags.
 
-## Regex Patterns
+## Number Pattern
 
-- Number: `/^-?\d+(\.\d+)?$/`
-- Gender root: `/^(boy|girl)$/i`
+`/^-?\d+(\.\d+)?$/` — matches integers, decimals, negatives (requires digit after decimal)
 
 ## ANSI Rendering
 
