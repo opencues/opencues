@@ -130,11 +130,11 @@ Patches Claude Code via tweakcc to add:
 
 | Doc | Features | Purpose |
 |-----|----------|---------|
-| `navigation.md` | 1, 3, 4, 13 | Keys, modes, visual states, cursor export |
-| `cycling.md` | 2, 5, 9, 10 | Numbers, gender, alts, linked words, spans, clearing |
-| `alternatives.md` | 6, 7, 8, 12 | Tips, LLM sources, blanks, auto-submit |
-| `action-words.md` | 11 | External action scripts + WSL guide |
-| `status-line.md` | 14 | Status line setup, format, disabling |
+| `navigation.md` | 1, 3, 4, 13 | Keys, visual cues, cursor export |
+| `cycling.md` | 2, 5, 9, 10 | Alternatives, linked words, spans, clearing |
+| `alternatives.md` | 6, 7, 8, 12 | Local cues, remote cues, blanks, auto-submit |
+| `action-words.md` | 11 | Cue-actions + WSL guide |
+| `status-line.md` | 14 | Secondary display setup, format, disabling |
 | `config.md` | — | All config options |
 | `architecture.md` | — | Data flow diagrams |
 | `prompting-guide.md` | — | Claude Code CLI tips |

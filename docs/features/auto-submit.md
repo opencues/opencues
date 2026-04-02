@@ -15,7 +15,7 @@ Analysis fires automatically as the user types. Three tiers:
 Each tier includes a **stability check** — the debounce timer fires, then the system verifies the text hasn't changed since the timer was set. This prevents false triggers from rapid typing.
 
 **Optimisations:**
-- **Targeted indices**: after first full analysis, only words lacking alts are sent to the LLM
+- **Targeted indices**: after first full analysis, only words lacking alternatives are sent to remote cue sources
 - **Duplicate prevention**: a pending flag prevents overlapping LLM requests
-- **Tips first**: instant tips lookup runs before LLM, merging results immediately
-- **Skip if complete**: if all words have alts (from tips or previous LLM), skip LLM entirely
+- **Local cues first**: instant local cue lookup runs before remote cues, merging results immediately
+- **Skip if complete**: if all words have alternatives (from local or previous remote cues), skip remote cues entirely

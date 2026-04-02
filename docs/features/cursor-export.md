@@ -22,15 +22,15 @@ Export the current cursor position and context for external tools.
 
 ## Highlight state
 
-Separately from cursor state, the system should export the current highlight state for the status display (feature 14) and external tools:
+Separately from cursor state, the system should export the current highlight state for the secondary display (feature 14) and external tools:
 
 - Whether highlight is active
 - Highlighted word and its index
-- Tip text and per-alt tips
+- Cue-tip text and per-alternative cue-tips
 - Alternatives list and current position in cycle
 - Word count
 
 **Implementation considerations:**
-- Write synchronously (not debounced) so data is ready before the status display reads it
+- Write synchronously (not debounced) so data is ready before the secondary display reads it
 - Use instance-specific identifiers (e.g., PID) to prevent interference between multiple running instances
 - Updated on every navigation AND on every cycle (Up/Down)

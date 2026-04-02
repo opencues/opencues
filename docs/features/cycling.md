@@ -11,8 +11,8 @@ Replace the focused word with an alternative. Cycling is the **vertical** axis �
 - Wraps around: after the last alt, returns to `alts[0]`
 
 **Cycling priority** (checked in order):
-1. **Action word** → trigger external action, don't modify word
-2. **Dynamic alts** → cycle through alternatives from LLM/tips
+1. **Cue-action** → trigger external action, don't modify word
+2. **Alternatives** → cycle through alternatives from local/remote cues
 3. **Linked words** → co-dependent words cycle to the same index
 4. **Number** → increment/decrement
 
