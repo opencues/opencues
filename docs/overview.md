@@ -4,13 +4,15 @@ last_updated: 2026-04-01
 
 # OpenCues Architecture
 
-A modular system for providing word alternatives, cue-tips, and suggestions across different platforms (CLI, Chrome extension, VS Code).
+A system for real-time guidance as you type — providing alternatives, blanks, cue-tips, and cue-controls across any text input. See the [glossary](glossary.md) for all terminology.
 
 For the full list of features any integration should implement, see `features/README.md`.
 
 ## Overview
 
-OpenCues is designed with two layers:
+OpenCues has three types of interaction: **Cues** (system indicates alternatives to the user), **Blanks** (user cues the system to fill in), and **Cue-Controls** (user triggers external actions like volume). All three share the same navigable system.
+
+The architecture has two layers:
 
 1. **Config Standard** (`cues.md`, `blanks.md`, `controls.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
 2. **Core Library** (`cues-core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.

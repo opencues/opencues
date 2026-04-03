@@ -1,6 +1,6 @@
 # OpenCues
 
-An open standard for LLM-powered word alternatives in text editors. Define prompts and behaviour in `.md` config files — integrations bring them to life.
+An open standard for real-time guidance as you type. OpenCues works on top of any text input — LLM prompts, word processors, mobile keyboards — providing alternatives, suggestions, and context before you press enter. Define all behaviour in `.md` config files; integrations bring them to life.
 
 ## The Standard
 
@@ -235,6 +235,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:
 - **Extend the standard** — add new word sources, blank modes, or cue-controls to the `.md` config files
 - **Build an integration** — bring OpenCues to a new editor or tool using cues-core
 - **Improve cues-core** — modify the core library, run tests, submit changes
+
+New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — cues, blanks, cue-controls, sources, parsers, and more.
 
 ## License
 

@@ -10,7 +10,7 @@ The easiest way to contribute is adding a new word source to `cues.md`. This req
 
 Add this under `## Prompt` in your `cues.md`:
 
-```markdown
+````markdown
 ### formal
 
 ```yaml
@@ -25,7 +25,7 @@ INDEX:formal1,formal2
 Examples:
 - "hi" → 0:hello,greetings
 - "gonna" → 0:going to,will
-```
+````
 
 That's it. When a user types a word matching the pattern, the LLM will suggest formal alternatives. Test it by running `setup.sh` and restarting Claude Code.
 
@@ -79,6 +79,16 @@ Your prompt instructions here...
 ```
 
 Then add examples to `### classifier` so the LLM can route to your mode.
+
+### How blank classification works
+
+When a blank (`_`) is encountered, the system picks which mode to use via a three-stage pipeline:
+
+1. **`match` (regex)** — fastest. If the surrounding text matches a mode's `match` pattern, that mode is selected immediately. No LLM call needed.
+2. **`keywords`** — fast. If no `match` hits, the system checks if any mode's keywords appear in the surrounding text.
+3. **`### classifier` (LLM fallback)** — if neither heuristic matches, the classifier prompt is sent to the LLM, which returns the mode name.
+
+When adding a blank mode, provide good `match` and `keywords` values to avoid unnecessary LLM calls. The classifier is a safety net, not the primary routing mechanism.
 
 ### SourceConfig fields
 
