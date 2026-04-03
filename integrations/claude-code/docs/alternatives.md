@@ -4,7 +4,7 @@ last_updated: 2026-04-02
 
 # Alternatives — Claude Code
 
-Implements features [6](../../../docs/features/tips.md), [7](../../../docs/features/llm-alternatives.md), [8](../../../docs/features/fill-in-the-blank.md), [12](../../../docs/features/auto-submit.md). See those docs for the concepts.
+Implements features [6](../../../docs/features/local-cues.md), [7](../../../docs/features/remote-cues.md), [8](../../../docs/features/fill-in-the-blank.md), [12](../../../docs/features/auto-submit.md). See those docs for the concepts.
 
 **Patch file:** `patches/dynamicHighlight.ts`
 
@@ -36,7 +36,8 @@ IIFE injected at startup in cli.js:
 - Loads cues-core module → `globalThis._cuesCore`
 - Parses tips file → `globalThis._localCueMap`
 - Creates NodeHttpAdapter (HTTPS keep-alive, Groq provider config) → `globalThis._httpAdapter`
-- Creates CueResolver with GrammarSource + MathSource + FactualSource → `globalThis._cueResolver`
+- Loads config from cues.md, blanks.md, controls.md
+- Builds sources via `buildSourcesFromConfig()` → `globalThis._cueResolver`
 - Creates shared `_cycleAlt(dir)` function
 
 **Injection point (v2.1.84+ ESM):** Must be after `var g6=Gt4(import.meta.url)`, not just after the `import{createRequire}` statement.
@@ -53,7 +54,7 @@ Default: GPT-OSS-120b via Groq. See `/docs/guides/llm-providers.md` for alternat
 
 ## CC-Specific: Blank Handling
 
-Classification uses cues-core's `looksLikeMath()` / `looksLikeFactual()` heuristics (no LLM classifier call for obvious cases).
+Classification uses fast heuristics (regex/keywords from blanks.md) before falling back to the LLM classifier.
 
 **Underscore queuing:** State variables `_dynUnderscoreContext` and `_dynUnderscoreQueued` handle context changes during pending requests.
 

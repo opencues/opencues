@@ -19,15 +19,14 @@
  *
  * ## Sources (via cues-core CueResolver)
  *
- * - GrammarSource (priority 50) — synonym, opposite, creative alternatives
- * - MathSource (priority 90) — evaluates expressions (4*12=_ → 48)
- * - FactualSource (priority 90) — answers questions (capital of France → Paris)
+ * - ConfigSource (scope:words) — word alternatives from cues.md (grammar, legal, medical, etc.)
+ * - ClassifiedSourceGroup (scope:blanks) — blank fill-in from blanks.md (math, factual, grammar)
  * - Tips lookup — instant O(1) from ~/.claude/claude-code-tips.json
  *
  * ## Cycling Priority
  *
  * When Up/Down pressed on highlighted word:
- * 1. Action word override → spawn external script, return
+ * 1. Control word override → spawn external script, return
  * 2. Dynamic alts → cycle through alternatives + update linked words
  * 3. Fall through to wordHighlight (numbers)
  *
@@ -38,7 +37,7 @@
  * - globalThis._dynSpans — multi-word alternative tracking
  * - globalThis._cueResolver — CueResolver instance (from cues-core)
  * - globalThis._localCueMap — hash map for instant tips lookup
- * - globalThis._cycleAlt — shared cycling function (action words, alts, spans)
+ * - globalThis._cycleAlt — shared cycling function (control words, alts, spans)
  *
  * @see references/dynamic-highlight.md for full feature reference
  * @see docs/systems-diagram.md for architecture overview
@@ -126,53 +125,43 @@ var _cuesPath=null;
 ["cues.md","hints.md","tips.md"].some(function(f){var p=_cwd+"/"+f;if(_fs.existsSync(p)){_cuesPath=p;return true;}});
 if(_cuesPath){
 var _cuesCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_cuesPath,"utf8"));
+globalThis._cuesMdParsed=_cuesCfg;
 if(_cuesCfg.tips&&globalThis._localCueMap){var _m=globalThis._cuesCore.buildLookupMap(_cuesCfg.tips);_m.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}
-if(_cuesCfg.promptConfig){
-globalThis._cuesPromptConfig=_cuesCfg.promptConfig;
-var _gramSrc=_cuesCfg.promptConfig.sources&&_cuesCfg.promptConfig.sources.grammar;
-if(_gramSrc&&_gramSrc.promptText){globalThis._cuesPromptInstructions=_gramSrc.promptText;}
-}
 if(_cuesCfg.ignore){_ignoreWords=_ignoreWords.concat(_cuesCfg.ignore);}
 }
-// controls.md — cue-actions
+// controls.md — cue-controls (custom control overrides)
 var _ctrlPath=_cwd+"/controls.md";
 if(_fs.existsSync(_ctrlPath)){
 var _ctrlCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_ctrlPath,"utf8"));
-if(_ctrlCfg.actions){globalThis._cueActionOverrides=Object.assign(globalThis._cueActionOverrides||{},_ctrlCfg.actions);}
+if(_ctrlCfg.actions){globalThis._cueControlOverrides=Object.assign(globalThis._cueControlOverrides||{},_ctrlCfg.actions);}
 if(_ctrlCfg.ignore){_ignoreWords=_ignoreWords.concat(_ctrlCfg.ignore);}
 }
-// blanks.md — ignore list + blank-fill prompt config (opt-in: blanks only work if file exists)
+// blanks.md — blank-fill config (opt-in: blanks only work if file exists)
 var _blankPath=_cwd+"/blanks.md";
 if(_fs.existsSync(_blankPath)){
 var _blankCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_blankPath,"utf8"));
+globalThis._blanksMdParsed=_blankCfg;
 if(_blankCfg.ignore){_ignoreWords=_ignoreWords.concat(_blankCfg.ignore);}
-if(_blankCfg.promptConfig){
-globalThis._blanksPromptConfig=_blankCfg.promptConfig;
-var _defaultMdMod=_blankCfg.promptConfig.model||"openai/gpt-oss-120b";
-var _blankModes=globalThis._cuesCore.buildBlankModes(_blankCfg.promptConfig.sources,_defaultMdMod);
-globalThis._blankModes=_blankModes;
-var _classifierSrc=_blankCfg.promptConfig.sources.classifier;
-globalThis._blanksEnabled=true;
-}
+if(_blankCfg.promptConfig){globalThis._blanksEnabled=true;}
 }
 if(_ignoreWords.length>0){globalThis._cuesIgnoreWords=new Set(_ignoreWords.map(function(w){return w.toLowerCase();}));}
 globalThis._cuesMdLoaded=true;
 }catch(_e1){}
 }
-// Periodic status line refresh when a cue-action word is selected
+// Periodic status line refresh when a cue-control word is selected
 // Writes cueTip directly to the JSON export file — no re-render, no flicker
-if(!globalThis._cueActionStatusInterval){
-globalThis._cueActionStatusInterval=setInterval(function(){
+if(!globalThis._cueControlStatusInterval){
+globalThis._cueControlStatusInterval=setInterval(function(){
 if(!(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null))return;
-if(!globalThis._cueActionTip)return;
+if(!globalThis._cueControlTip)return;
 var _ws=(globalThis._hlText||"").split(/\s+/).filter(function(w){return w;});
 var _wrd=_ws[globalThis._hlState.wordIndex]||"";
-if(!globalThis._isCueAction||!globalThis._isCueAction(_wrd))return;
+if(!globalThis._isCueControl||!globalThis._isCueControl(_wrd))return;
 try{
 var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
 var _fs=${requireFuncName}("fs");
 var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
-if(_ex.cueTip!==globalThis._cueActionTip){_ex.cueTip=globalThis._cueActionTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));}
+if(_ex.cueTip!==globalThis._cueControlTip){_ex.cueTip=globalThis._cueControlTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));}
 }catch(_ei){}
 },200);
 }
@@ -197,34 +186,22 @@ if(!globalThis._cueResolver&&globalThis._cuesCore&&process.env.GROQ_API_KEY){
 try{
 var _apiKey=process.env.GROQ_API_KEY;
 var _ep="https://api.groq.com/openai/v1/chat/completions";
-var _pc=globalThis._cuesPromptConfig||{};
-var _bpc=globalThis._blanksPromptConfig||{};
-var _defaultMod=_pc.model||_bpc.model||"openai/gpt-oss-120b";
+var _cuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
+var _blanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
+var _defaultMod=_cuesPc.model||_blanksPc.model||"openai/gpt-oss-120b";
 var _ha=globalThis._httpAdapter;
-var _ps=globalThis._cuesPromptInstructions||undefined;
-var _srcs=_pc.sources||{};
-var _srcCfg=function(n){return _srcs[n]||{};};
-var _resolverSources=[];
-// Grammar source for synonym cycling (non-blank words)
-if(_srcCfg("grammar").enabled!==false){_resolverSources.push(new globalThis._cuesCore.GrammarSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("grammar").model||_defaultMod,priority:_srcCfg("grammar").priority||50,promptSuffix:_ps,blankPrompt:null}));}
-// BlankSource — only if blanks.md present and modes defined
-if(globalThis._blanksEnabled&&globalThis._blankModes&&globalThis._blankModes.length>0){
-var _bClassifierCfg={httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_defaultMod};
-var _classifierSrcCfg=(_bpc.sources||{}).classifier;
-if(_classifierSrcCfg&&_classifierSrcCfg.promptText){_bClassifierCfg.prompt=_classifierSrcCfg.promptText;}
-var _blankClassifier=new globalThis._cuesCore.BlankClassifier(_bClassifierCfg,globalThis._blankModes);
-_resolverSources.push(new globalThis._cuesCore.BlankSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,defaultModel:_defaultMod,modes:globalThis._blankModes,classifier:_blankClassifier}));
-}
+// Build all sources from .md configs via generic ConfigSource + ClassifiedSourceGroup
+var _resolverSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,defaultModel:_defaultMod});
 globalThis._cueResolver=globalThis._cuesCore.createResolver(_resolverSources,{parallel:false,timeout:30000,continueOnError:true});
 }catch(_e6){globalThis._cueResolver=null;}
 }
-// Cue-action check: returns true for words with built-in cycling behavior
-// (numbers increment/decrement, custom actions run scripts) — these bypass alt cycling and tips
-globalThis._isCueAction=function(_w){
+// Cue-control check: returns true for words with built-in cycling behavior
+// (numbers increment/decrement, custom controls run scripts) — these bypass alt cycling and tips
+globalThis._isCueControl=function(_w){
 var _numPat=/^-?\\d+(\\.\\d+)?$/;
-return _numPat.test(_w)||!!(globalThis._cueActionOverrides||{})[_w.toLowerCase()];
+return _numPat.test(_w)||!!(globalThis._cueControlOverrides||{})[_w.toLowerCase()];
 };
-// Shared cycling function: handles cue-actions, alt cycling, linked words, spans, underscore re-analysis
+// Shared cycling function: handles cue-controls, alt cycling, linked words, spans, underscore re-analysis
 // dir=1 for Up (next alt), dir=-1 for Down (prev alt)
 globalThis._cycleAlt=function(_dir,_IZClass,_IZVar,_cfgVar,_reqFn){
 if(!globalThis._hlState||!globalThis._hlState.active||globalThis._hlState.wordIndex==null)return null;
@@ -232,37 +209,37 @@ var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w)
 var _hlIdx=globalThis._hlState.wordIndex;
 if(_hlIdx<0||_hlIdx>=_allW.length)return null;
 var _curWord=_allW[_hlIdx];
-// === Cue-actions: words with built-in cycling behavior (no tips, no LLM alts) ===
-// Custom cue-actions: run external scripts (e.g. volume.sh)
-var _actOvr=globalThis._cueActionOverrides||{};
+// === Cue-controls: words with built-in cycling behavior (no tips, no LLM alts) ===
+// Custom cue-controls: spawn external scripts (e.g. volume.sh)
+var _actOvr=globalThis._cueControlOverrides||{};
 var _wLower=_curWord.toLowerCase();
 if(_actOvr[_wLower]){
 var _ad=_actOvr[_wLower];
 var _home=process.env.HOME||"/home/"+(process.env.USER||"root");
-var _rawScript=_ad.script||_ad.scriptPath||(_home+"/.claude/actions/"+_ad.action+".sh");
+var _rawScript=_ad.script||_ad.scriptPath||(_home+"/.claude/actions/"+_ad.control+".sh");
 var _script=_rawScript.replace(/^~/,_home);
 var _args=["bash",_script].concat(_dir>0?_ad.upArgs||["up"]:_ad.downArgs||["down"]);
 // In-memory state: no file I/O on hot path after first press
-var _stateFile="/tmp/cue-action-"+_ad.action+".txt";
-var _dynTip=_ad.tip||_ad.action;
-if(!globalThis._cueActionValues)globalThis._cueActionValues={};
-var _curVal=globalThis._cueActionValues[_ad.action];
+var _stateFile="/tmp/cue-control-"+_ad.control+".txt";
+var _dynTip=_ad.tip||_ad.control;
+if(!globalThis._cueControlValues)globalThis._cueControlValues={};
+var _curVal=globalThis._cueControlValues[_ad.control];
 if(_curVal==null){try{_curVal=parseInt(_reqFn("fs").readFileSync(_stateFile,"utf8").trim(),10);}catch(_e3){}}
 if(typeof _curVal==="number"&&!isNaN(_curVal)){
 var _dirArgs=_dir>0?(_ad.upArgs||["up","10"]):(_ad.downArgs||["down","10"]);
 var _amt=parseInt(_dirArgs[_dirArgs.length-1],10)||10;
 var _newVal=_dir>0?Math.min(100,_curVal+_amt):Math.max(0,_curVal-_amt);
-globalThis._cueActionValues[_ad.action]=_newVal;
-globalThis._cueActionTip=_dynTip;
-}else{globalThis._cueActionTip=_dynTip;}
+globalThis._cueControlValues[_ad.control]=_newVal;
+globalThis._cueControlTip=_dynTip;
+}else{globalThis._cueControlTip=_dynTip;}
 // Debounce spawn: rapid presses only fire script once with final value
-if(!globalThis._cueActionTimers)globalThis._cueActionTimers={};
-if(globalThis._cueActionTimers[_ad.action])clearTimeout(globalThis._cueActionTimers[_ad.action]);
+if(!globalThis._cueControlTimers)globalThis._cueControlTimers={};
+if(globalThis._cueControlTimers[_ad.control])clearTimeout(globalThis._cueControlTimers[_ad.control]);
 var _spawnArgs=_args.slice(0);
-globalThis._cueActionTimers[_ad.action]=setTimeout(function(){try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}},50);
+globalThis._cueControlTimers[_ad.control]=setTimeout(function(){try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}},50);
 return{refresh:true};
 }
-// Built-in cue-action: number increment/decrement
+// Built-in cue-control: number increment/decrement
 // Skip if this position has dynamic alternatives (e.g. blank fill-in result) — let alt cycling handle it
 var _numPat=/^-?\\d+(\\.\\d+)?$/;
 var _hasAltsCycle=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.alts&&w.alts.length>1;});
@@ -575,8 +552,8 @@ globalThis._dynUnderscoreContext=_sentWords.filter(function(w){return w!=="_";})
 }
 
 // LOCAL TIPS LOOKUP - uses cues-core functions for O(1) lookup
-// Skip cue-actions (numbers, custom actions) — they have built-in cycling, not tips
-var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueAction}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
+// Skip cue-controls (numbers, custom controls) — they have built-in cycling, not tips
+var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
 
 // If ALL non-underscore words matched tips, skip LLM entirely
 if(_lookup.found.length>0&&_lookup.missingIndices.length===0&&_sentWords.indexOf("_")<0){
@@ -819,7 +796,7 @@ export const writeDynamicCycleHandlers = (
   const inputZoneClass = fromTextMatch[2]; // i5
   const configVar = fromTextMatch[4];       // G
 
-  // Get require function name for spawning action scripts
+  // Get require function name for spawning control scripts
   const requireFuncName = getRequireFuncName(oldFile);
 
   // Insert dynamic handling code at the start of the Up arrow handler
@@ -921,11 +898,11 @@ if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDi
 };
 
 /**
- * writeActionOvrVariable is no longer needed — gender mode was removed,
+ * writeControlOvrVariable is no longer needed — gender mode was removed,
  * so _rootPat no longer exists. The rendering code accesses
- * globalThis._cueActionOverrides directly.
+ * globalThis._cueControlOverrides directly.
  */
-export const writeActionOvrVariable = (
+export const writeControlOvrVariable = (
   oldFile: string,
   _config: DynamicHighlightConfig = {}
 ): string | null => {
@@ -936,7 +913,7 @@ export const writeActionOvrVariable = (
  * Modify the rendering to show words with alts in gray (dim).
  * When dynamic defs are loaded, words with alternatives are dimmed to show they're navigable.
  *
- * Extends the _numRanges pattern to also dim action words and dynamic alt words.
+ * Extends the _numRanges pattern to also dim control words and dynamic alt words.
  */
 export const writeDynamicRendering = (
   oldFile: string,
@@ -948,8 +925,8 @@ export const writeDynamicRendering = (
   const numMatch = oldFile.match(numPattern);
 
   if (numMatch && numMatch.index !== undefined) {
-    // Numbers mode: extend _numRanges to also dim action words and dynamic alt words
-    const newNumCode = `else if(_numPat.test(_w)||(globalThis._cueActionOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
+    // Numbers mode: extend _numRanges to also dim control words and dynamic alt words
+    const newNumCode = `else if(_numPat.test(_w)||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
 }else if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0;});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_ni];
@@ -1119,8 +1096,7 @@ export const writeDynamicHighlight = (
     console.log('patch: dynamicHighlight: cues-core initialized (instant tips lookup)');
   }
 
-  // wink-pos-tagger removed — blank classification handled by cues-core's
-  // looksLikeMath/looksLikeFactual in MathSource/FactualSource.supports()
+  // wink-pos-tagger removed — blank classification handled by ClassifiedSourceGroup
 
   // 2. Apply trigger detection OR auto-submit based on config
   // Apply auto-submit: debounced analysis on new words
@@ -1149,7 +1125,7 @@ export const writeDynamicHighlight = (
   }
 
   // 5. Add _actOvr variable definition (required for rendering)
-  result = writeActionOvrVariable(content, config);
+  result = writeControlOvrVariable(content, config);
   if (!result) {
     console.log('patch: dynamicHighlight: _actOvr variable not added (optional)');
   } else {

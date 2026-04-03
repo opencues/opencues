@@ -8,9 +8,10 @@ last_updated: 2026-03-27
 
 The GRAMMAR prompt instructs the LLM to generate word alternatives (synonyms, opposites, creative variations) for each content word in a sentence. This is the default mode when MATH and FACTUAL triggers don't match.
 
-## Prompt File
+## Prompt Location
 
-`../grammar.txt`
+Word alternatives prompt: defined in `cues.md` → `## Prompt` → `### grammar`
+Blank fill-in prompt: defined in `blanks.md` → `## Prompt` → `### grammar`
 
 ## Key Design Principles
 

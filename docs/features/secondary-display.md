@@ -6,13 +6,13 @@ last_updated: 2026-04-02
 
 Where cue-tips are shown. It is not in the text input box — it is a separate display area.
 
-**What to show** (only for words with tips or alts — cue-actions are excluded):
+**What to show** (only for words with tips or alts — cue-controls are excluded):
 - Current word name
 - Position in cycle (e.g., "2/4")
 - Cue-tip text (if available from local cues)
 - Per-alternative cue-tip when cycling
 
-Cue-actions (numbers, custom actions) have built-in cycling behavior and **do not appear** in the secondary display.
+Cue-controls (numbers, custom controls) have built-in cycling behavior and **do not appear** in the secondary display.
 
 **Integration decides the UI:** status bar, tooltip, hover panel, sidebar, etc.
 

@@ -8,9 +8,9 @@ last_updated: 2026-02-17
 
 The CLASSIFIER prompt determines which mode (MATH, FACTUAL, or GRAMMAR) should be used to process a given input. This replaces regex-based detection with intelligent classification.
 
-## Prompt File
+## Prompt Location
 
-`../classifier.txt`
+Defined in `blanks.md` → `## Prompt` → `### classifier`
 
 ## Key Design Principles
 
@@ -153,14 +153,14 @@ elif "MODE=" in reasoning:
 
 The classifier scales well for future modes. Adding a new mode requires:
 
-1. Add examples to `classifier.txt`:
+1. Add examples to `blanks.md` → `### classifier`:
 ```
 NEWMODE - Description of when to use:
 - "example input 1" → NEWMODE
 - "example input 2" → NEWMODE
 ```
 
-2. Create `newmode.txt` with mode-specific prompt
+2. Add a `### newmode` subsection to `blanks.md` with the mode-specific prompt
 
 3. Create `references/newmode.md` with documentation
 
@@ -177,19 +177,12 @@ With regex, each new mode requires handling overlaps with ALL existing modes. Wi
 
 ## Integration
 
-```bash
-# 1. Classify the input
-MODE=$(classify "$INPUT")  # Returns MATH, FACTUAL, or GRAMMAR
+Classification is handled by `ClassifiedSourceGroup` in cues-core. It reads modes from `blanks.md`, tries fast heuristics (regex/keywords), and falls back to the LLM classifier prompt if needed. All prompts come from `blanks.md` — no external files.
 
-# 2. Use mode-specific prompt
-case "$MODE" in
-    MATH)    PROMPT=$(cat system_prompts/math.txt) ;;
-    FACTUAL) PROMPT=$(cat system_prompts/factual.txt) ;;
-    GRAMMAR) PROMPT=$(cat system_prompts/grammar.txt) ;;
-esac
-
-# 3. Process with mode-specific prompt
-RESULT=$(call_llm "${PROMPT/\{INPUT\}/$INPUT}")
+```typescript
+// All handled automatically by buildSourcesFromConfig()
+const sources = buildSourcesFromConfig(cuesCfg, blanksCfg, options);
+// ClassifiedSourceGroup picks the right mode per input
 ```
 
 ## Latency

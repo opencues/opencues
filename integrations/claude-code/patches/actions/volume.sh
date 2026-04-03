@@ -5,7 +5,7 @@
 
 DIRECTION="$1"
 AMOUNT="${2:-5}"
-STATE_FILE="/tmp/cue-action-volume.txt"
+STATE_FILE="/tmp/cue-control-volume.txt"
 
 # Read cached value (instant); default 50 if no prior state
 [ -f "$STATE_FILE" ] && CURRENT=$(tr -dc '0-9' < "$STATE_FILE")

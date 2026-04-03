@@ -39,12 +39,12 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
     tip=$(echo "$content" | sed -n 's/.*"cueTip":"\([^"]*\)".*/\1/p')
 
     if [ -n "$word" ]; then
-      is_cue_action=$(echo "$content" | grep -o '"cueAction":true')
+      is_cue_control=$(echo "$content" | grep -o '"cueControl":true')
       altcount=$(echo "$content" | sed -n 's/.*"alts":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | wc -l)
-      # Show if word has alts OR is a cue-action with a tip
-      if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_action" -a -n "$tip" ]; then
+      # Show if word has alts OR is a cue-control with a tip
+      if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_control" -a -n "$tip" ]; then
         echo ""
-        if [ -n "$is_cue_action" ]; then
+        if [ -n "$is_cue_control" ]; then
           printf '%s' "$word"
         else
           altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')

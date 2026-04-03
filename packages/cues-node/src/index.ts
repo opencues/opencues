@@ -2,6 +2,10 @@
  * cues-node
  *
  * Node.js adapters for OpenCues.
+ *
+ * STATUS: Scaffolding — not yet implemented.
+ * The Claude Code integration currently uses the standalone node-http-adapter.js
+ * directly. This package is reserved for a future full Node.js adapter layer.
  */
 
 // Storage

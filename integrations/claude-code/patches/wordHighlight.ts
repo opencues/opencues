@@ -363,7 +363,7 @@ export interface WordHighlightConfig {
   highlightExportEnabled?: boolean;
   highlightExportPath?: string;
   numberDimming?: boolean;  // dim all numbers in input (dark gray)
-  cueActionOverrides?: Record<string, { action: string; upArgs?: string[]; downArgs?: string[]; scriptPath?: string }>;
+  cueControlOverrides?: Record<string, { control: string; upArgs?: string[]; downArgs?: string[]; scriptPath?: string }>;
 }
 
 const DEFAULT_CONFIG: Required<WordHighlightConfig> = {
@@ -380,7 +380,7 @@ const DEFAULT_CONFIG: Required<WordHighlightConfig> = {
   highlightExportEnabled: true,
   highlightExportPath: '/tmp/claude-highlight-state.json',
   numberDimming: true,  // dim all numbers in input (dark gray)
-  cueActionOverrides: {},
+  cueControlOverrides: {},
 };
 
 /**
@@ -437,12 +437,12 @@ export const writeWordHighlightKeyHandler = (
   // Using R.insert() would insert at cursor, causing "cursor wall" bug.
   // Using fromText(R.text + char, G, R.offset) appends at end, preserving cursor.
   //
-  // Navigation filter: numbers + action words are always navigable
+  // Navigation filter: numbers + control words are always navigable
   // Words with dynamic alts are added by dynamicHighlight.ts patch later
-  const actOvrCheck = `(globalThis._cueActionOverrides||{})[w.toLowerCase()]`;
+  const ctrlOvrCheck = `(globalThis._cueControlOverrides||{})[w.toLowerCase()]`;
   const filterCode = `var _numP=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx=[];
-_allW.forEach(function(w,i){if(_numP.test(w)||${actOvrCheck})_targetIdx.push(i);});`;
+_allW.forEach(function(w,i){if(_numP.test(w)||${ctrlOvrCheck})_targetIdx.push(i);});`;
 
   // Left/Right handlers: Use originalNumbers map to track floor per word index
   // Don't reset when navigating - the map persists so we remember originals across navigation
@@ -611,11 +611,11 @@ if(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordInde
 var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
-var _isCA=globalThis._isCueAction&&globalThis._isCueAction(_hlWords[_idx]||"");
-_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueActionTip:globalThis._cueActionTip||null,overrides:Object.keys(globalThis._cueActionOverrides||{}),cueValues:globalThis._cueActionValues||null};
-if(_isCA){_hlExport.cueAction=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
-var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueActionOverrides||{})[_caWord];
-var _caTip=_caOvr?_caOvr.tip||_caOvr.action:_caWord;
+var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null};
+if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
+var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
+var _caTip=_caOvr?_caOvr.tip||_caOvr.control:_caWord;
 _hlExport.cueTip=_caTip;
 }
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA){
@@ -641,12 +641,12 @@ try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExpor
   // 3. Clear-on-typing detection (IIFE for variable isolation)
   //    - Compare text WITHOUT invisible chars to detect real user typing
   //    - If real typing detected, clear highlight state
-  // Serialize action word overrides to inject into cli.js
-  const actionOvrJson = JSON.stringify(cfg.cueActionOverrides || {});
+  // Serialize control word overrides to inject into cli.js
+  const controlOvrJson = JSON.stringify(cfg.cueControlOverrides || {});
 
   const fullCode = `
 globalThis._parentValue=${valueParam};
-if(!globalThis._cueActionOverrides)globalThis._cueActionOverrides=${actionOvrJson};
+if(!globalThis._cueControlOverrides)globalThis._cueControlOverrides=${controlOvrJson};
 globalThis._forceInputRefresh=function(){
 var _t=globalThis._hlText||"";
 var _pv=globalThis._parentValue||"";
@@ -978,15 +978,15 @@ export const writeWordHighlightRawSequence = (
   //
   // Mode-dependent navigation for raw escape sequences
   // index 0 = rightmost word/number (same as original word highlight behavior)
-  // Navigation filter for raw sequence handlers — numbers + action words
-  const rawActOvrCheck = `(globalThis._cueActionOverrides||{})[w.toLowerCase()]`;
+  // Navigation filter for raw sequence handlers — numbers + control words
+  const rawCtrlOvrCheck = `(globalThis._cueControlOverrides||{})[w.toLowerCase()]`;
   const rawFilterCode1 = `var _numP=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx=[];
-_allW.forEach(function(w,i){if(_numP.test(w)||${rawActOvrCheck})_targetIdx.push(i);});`;
+_allW.forEach(function(w,i){if(_numP.test(w)||${rawCtrlOvrCheck})_targetIdx.push(i);});`;
 
   const rawFilterCode2 = `var _numP2=/^-?\\d+(\\.\\d+)?$/;
 var _targetIdx2=[];
-_allW2.forEach(function(w,i){if(_numP2.test(w)||${rawActOvrCheck})_targetIdx2.push(i);});`;
+_allW2.forEach(function(w,i){if(_numP2.test(w)||${rawCtrlOvrCheck})_targetIdx2.push(i);});`;
 
   // Raw sequence handlers for Left/Right: Use originalNumbers map to track floor per word index
   const rawHandlerCode = `case(${rawParam}==="\\x1B[1;7D"):if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};

@@ -93,7 +93,7 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-l
 All LLM calls go through cues-core's `NodeHttpAdapter`:
 
 ```typescript
-import { NodeHttpAdapter, GrammarSource } from 'cues-core';
+import { NodeHttpAdapter, ConfigSource, parseCuesMd } from 'cues-core';
 
 const httpAdapter = new NodeHttpAdapter({
   providerOverrides: {
@@ -101,7 +101,8 @@ const httpAdapter = new NodeHttpAdapter({
   }
 });
 
-const source = new GrammarSource({ httpAdapter });
+const cfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
+const source = new ConfigSource({ sourceConfig: cfg.promptConfig.sources.grammar, httpAdapter }); // driven by cues.md
 ```
 
 The adapter handles:

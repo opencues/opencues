@@ -38,7 +38,7 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 | Recommended | Secondary Display (14) | Shows cue-tips and cycle position |
 | Optional | Linked Words (5) | Agreement tracking |
 | Optional | Multi-Word Spans (9) | Complex but useful for factual answers |
-| Optional | Cue-Actions (11) | Platform-specific external triggers |
+| Optional | Cue-Controls (11) | Platform-specific external triggers |
 | Optional | Cursor Export (13) | For external tool integration |
 
 ## Using cues-core
@@ -46,18 +46,23 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 Every integration uses the same cues-core library:
 
 ```typescript
-import { CueResolver, GrammarSource, NodeHttpAdapter, parseLocalCueFile, buildLookupMap } from 'cues-core';
+import { buildSourcesFromConfig, createResolver, parseCuesMd, NodeHttpAdapter } from 'cues-core';
 
 // 1. Set up HTTP adapter
 const httpAdapter = new NodeHttpAdapter({
   providerOverrides: { "api.groq.com": { reasoning_effort: "low", max_tokens: 400 } }
 });
 
-// 2. Create sources
-const grammarSource = new GrammarSource({ httpAdapter, priority: 50 });
+// 2. Build sources from .md config files
+const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
+const blanksCfg = fs.existsSync('blanks.md') ? parseCuesMd(fs.readFileSync('blanks.md', 'utf8')) : undefined;
+const sources = buildSourcesFromConfig(cuesCfg, blanksCfg, {
+  httpAdapter, endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  apiKey: process.env.GROQ_API_KEY, defaultModel: 'openai/gpt-oss-120b',
+});
 
 // 3. Create resolver
-const resolver = new CueResolver([grammarSource]);
+const resolver = createResolver(sources);
 
 // 4. Analyse text
 const result = await resolver.resolve({

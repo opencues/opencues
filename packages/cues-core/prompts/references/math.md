@@ -8,9 +8,9 @@ last_updated: 2026-03-27
 
 The MATH prompt instructs the LLM to return a computable expression rather than computing the answer itself. This allows for **local evaluation** via Node.js, which is more accurate than LLM arithmetic.
 
-## Prompt File
+## Prompt Location
 
-`../blank_math.txt`
+Defined in `blanks.md` → `## Prompt` → `### math`
 
 ## Key Design Principles
 

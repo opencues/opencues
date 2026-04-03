@@ -5,7 +5,7 @@
 
 DIRECTION="$1"
 AMOUNT="${2:-10}"
-STATE_FILE="/tmp/cue-action-brightness.txt"
+STATE_FILE="/tmp/cue-control-brightness.txt"
 
 # Read cached value (instant)
 [ -f "$STATE_FILE" ] && CURRENT=$(tr -dc '0-9' < "$STATE_FILE")

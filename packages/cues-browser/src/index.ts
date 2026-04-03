@@ -2,6 +2,10 @@
  * cues-browser
  *
  * Browser adapters for OpenCues.
+ *
+ * STATUS: Scaffolding — not yet implemented.
+ * This package is reserved for a future browser integration layer
+ * (Chrome extensions, web apps, etc.).
  */
 
 // Storage

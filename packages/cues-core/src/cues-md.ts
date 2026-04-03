@@ -61,6 +61,15 @@ export interface SourceConfig {
    * (default: alternatives)
    */
   parser?: BlankParser;
+
+  /**
+   * When this source activates:
+   * words  — only when no blanks present (word alternatives)
+   * blanks — only when blanks (_) present (fill-in)
+   * all    — always
+   * (default: inferred from context — 'words' for cues.md, 'blanks' for blanks.md)
+   */
+  scope?: 'words' | 'blanks' | 'all';
 }
 
 /**
@@ -77,8 +86,11 @@ export interface PromptConfig {
   sources: Record<string, SourceConfig>;
 }
 
-export interface ActionConfig {
-  action: string;
+/** @deprecated Use ControlConfig instead */
+export type ActionConfig = ControlConfig;
+
+export interface ControlConfig {
+  control: string;
   tip?: string;
   script?: string;
   upArgs?: string[];
@@ -95,8 +107,8 @@ export interface CuesMdConfig {
   /** Prompt configuration with per-source definitions */
   promptConfig?: PromptConfig;
 
-  /** Cue-action definitions from ## Actions JSON block */
-  actions?: Record<string, ActionConfig>;
+  /** Cue-control definitions from ## Controls (or ## Actions) JSON block */
+  controls?: Record<string, ControlConfig>;
 
   /** Words to never suggest alternatives for from ## Ignore */
   ignore?: string[];
@@ -324,6 +336,7 @@ function parsePromptSection(content: string): PromptConfig {
       if (kv.prompt) source.promptPath = kv.prompt;
       if (kv.model) source.model = kv.model;
       if (kv.parser) source.parser = kv.parser as BlankParser;
+      if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
     }
 
     // Extract freeform text as inline prompt
@@ -346,6 +359,7 @@ function parsePromptSection(content: string): PromptConfig {
       if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
       if (kv.model) source.model = kv.model;
       if (kv.parser) source.parser = kv.parser as BlankParser;
+      if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
     }
     if (text) source.promptText = text;
     config.sources['grammar'] = source;
@@ -354,11 +368,11 @@ function parsePromptSection(content: string): PromptConfig {
   return config;
 }
 
-function parseActionsSection(content: string): Record<string, ActionConfig> | undefined {
+function parseControlsSection(content: string): Record<string, ControlConfig> | undefined {
   const jsonBlock = extractCodeBlock(content, 'json');
   if (!jsonBlock) return undefined;
   try {
-    return JSON.parse(jsonBlock) as Record<string, ActionConfig>;
+    return JSON.parse(jsonBlock) as Record<string, ControlConfig>;
   } catch {
     return undefined;
   }
@@ -400,8 +414,10 @@ export function parseCuesMd(content: string): CuesMdConfig {
         result.promptConfig = parsePromptSection(section.content);
         break;
       }
+      case 'controls':
       case 'actions': {
-        result.actions = parseActionsSection(section.content);
+        // Accept both ## Controls (preferred) and ## Actions (backward compat)
+        result.controls = parseControlsSection(section.content);
         break;
       }
       case 'ignore': {
@@ -444,10 +460,10 @@ export function validateCuesMd(config: CuesMdConfig): string[] {
     }
   }
 
-  if (config.actions) {
-    for (const [key, action] of Object.entries(config.actions)) {
-      if (!action.action) {
-        errors.push(`Action "${key}" missing required "action" field`);
+  if (config.controls) {
+    for (const [key, control] of Object.entries(config.controls)) {
+      if (!control.control) {
+        errors.push(`Control "${key}" missing required "control" field`);
       }
     }
   }

@@ -2,22 +2,22 @@
 last_updated: 2026-03-27
 ---
 
-# Cue-Actions — Claude Code
+# Cue-Controls — Claude Code
 
-Implements feature [11](../../../docs/features/cue-actions.md). See that doc for the concept.
+Implements feature [11](../../../docs/features/cue-controls.md). See that doc for the concept.
 
 **Patch files:** `patches/wordHighlight.ts` (navigation + dimming), `patches/dynamicHighlight.ts` (cycling + script spawn)
 
-Cue-actions are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the status line.
+Cue-controls are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the status line.
 
 ## Overview
 
-There are two kinds of cue-action:
+There are two kinds of cue-control:
 
-- **Custom cue-actions** — navigate to a word (like "volume") and press Ctrl+Alt+Up or Down to spawn an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
-- **Number cue-actions** — any word matching `/^-?\d+(\.\d+)?$/` automatically increments/decrements. See `cycling.md` for floor behavior.
+- **Custom cue-controls** — navigate to a word (like "volume") and press Ctrl+Alt+Up or Down to spawn an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
+- **Number cue-controls** — any word matching `/^-?\d+(\.\d+)?$/` automatically increments/decrements. See `cycling.md` for floor behavior.
 
-The unified check `globalThis._isCueAction(word)` identifies both types. It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-actions from tips/alts display.
+The unified check `globalThis._isCueControl(word)` identifies both types. It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-controls from tips/alts display.
 
 ## How It Works
 
@@ -28,8 +28,8 @@ Navigate to "volume" (Ctrl+Alt+Left)
            ↓
 Press Ctrl+Alt+Up
            ↓
-cue-action check (FIRST priority)
-  → Word "volume" found in cueActionOverrides
+cue-control check (FIRST priority)
+  → Word "volume" found in cueControlOverrides
   → Spawn: ~/.claude/actions/volume.sh up 5
   → Return (skip normal number/cycling logic)
            ↓
@@ -38,10 +38,10 @@ Volume increases
 
 ## Priority Order
 
-Cue-actions are checked **FIRST** in `_cycleAlt()`, before any other logic:
+Cue-controls are checked **FIRST** in `_cycleAlt()`, before any other logic:
 
-1. **Cue-action (custom)** → spawn script, return
-2. **Cue-action (number)** → increment/decrement, return
+1. **Cue-control (custom)** → spawn script, return
+2. **Cue-control (number)** → increment/decrement, return
 3. **Alternatives** → cycle through alternatives
 4. **Linked words** → co-dependent words cycle together
 
@@ -55,14 +55,14 @@ Cue-actions are checked **FIRST** in `_cycleAlt()`, before any other logic:
 {
   "settings": {
     "misc": {
-      "cueActionOverrides": {
+      "cueControlOverrides": {
         "volume": {
-          "action": "volume",
+          "control": "volume",
           "upArgs": ["up", "5"],
           "downArgs": ["down", "5"]
         },
         "brightness": {
-          "action": "brightness",
+          "control": "brightness",
           "upArgs": ["up", "10"],
           "downArgs": ["down", "10"]
         }
@@ -76,7 +76,7 @@ Cue-actions are checked **FIRST** in `_cycleAlt()`, before any other logic:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `action` | string | Action identifier, used for default script path |
+| `control` | string | Control identifier, used for default script path |
 | `scriptPath` | string? | Custom script path (optional) |
 | `upArgs` | string[] | Arguments passed when Up is pressed |
 | `downArgs` | string[] | Arguments passed when Down is pressed |
@@ -85,10 +85,10 @@ Cue-actions are checked **FIRST** in `_cycleAlt()`, before any other logic:
 
 If `scriptPath` is not specified:
 ```
-~/.claude/actions/{action}.sh
+~/.claude/actions/{control}.sh
 ```
 
-For example, action `"volume"` uses `~/.claude/actions/volume.sh`.
+For example, control `"volume"` uses `~/.claude/actions/volume.sh`.
 
 ## Script Implementation
 
@@ -183,25 +183,25 @@ copy "$env:TEMP\n\nircmd.exe" C:\Windows\
 
 ## Visual Behavior
 
-cue-actions follow the same visual pattern as numbers:
+cue-controls follow the same visual pattern as numbers:
 
 | State | Appearance |
 |-------|------------|
 | Not highlighted | Dimmed (dark gray) |
 | Highlighted | Bold white |
 
-Cue-actions are always navigable.
+Cue-controls are always navigable.
 
 ## Prerequisites
 
-cue-actions require `enableWordHighlight: true` in config. The `cueActionOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and cue-actions silently do nothing.
+cue-controls require `enableWordHighlight: true` in config. The `cueControlOverrides` config is serialized into cli.js by the wordHighlight patch — if wordHighlight is disabled, the globalThis variable is never set and cue-controls silently do nothing.
 
-## Adding New cue-actions
+## Adding New cue-controls
 
 1. **Add to config** (`~/.tweakcc/config.json`):
    ```json
    "brightness": {
-     "action": "brightness",
+     "control": "brightness",
      "upArgs": ["up", "10"],
      "downArgs": ["down", "10"]
    }
@@ -260,11 +260,11 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
    ls -la /mnt/c/Windows/Temp/volup.vbs /mnt/c/Windows/Temp/voldown.vbs
    ```
 
-### cue-action Not Navigable
+### cue-control Not Navigable
 
 1. Verify word is in config (case-insensitive match)
 2. Re-apply patches after config change
-3. Check `globalThis._cueActionOverrides` in browser console
+3. Check `globalThis._cueControlOverrides` in browser console
 
 ## Related
 

@@ -27,7 +27,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `highlightAutoScroll` | boolean | undefined | No | Auto-scroll to highlighted word |
 | `highlightClearOnNavigation` | boolean | undefined | No | Clear on cursor navigation |
 | `highlightWordPattern` | string | undefined | No | Custom word boundary pattern |
-| `cueActionOverrides` | object | undefined | No | Words that trigger external scripts on Up/Down (requires `enableWordHighlight`) |
+| `cueControlOverrides` | object | undefined | No | Words that trigger external scripts on Up/Down (requires `enableWordHighlight`) |
 
 ### Dynamic Highlight (requires `enableWordHighlight: true`)
 
@@ -81,13 +81,13 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 
 > For standard tweakcc options (model customizations, thinking blocks, etc.), see the [tweakcc documentation](https://github.com/anthropics/tweakcc).
 
-## Cue-Action Overrides Format
+## Cue-Control Overrides Format
 
 ```json
 {
-  "cueActionOverrides": {
+  "cueControlOverrides": {
     "volume": {
-      "action": "volume",
+      "control": "volume",
       "upArgs": ["up", "5"],
       "downArgs": ["down", "5"]
     }
@@ -95,4 +95,4 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 }
 ```
 
-Script path defaults to `~/.claude/actions/{action}.sh`. Override with `"scriptPath": "/path/to/script.sh"`.
+Script path defaults to `~/.claude/actions/{control}.sh`. Override with `"scriptPath": "/path/to/script.sh"`.

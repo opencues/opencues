@@ -4,7 +4,7 @@ last_updated: 2026-04-02
 
 # Navigation — Claude Code
 
-Implements features [1](../../../docs/features/navigation.md), [3](../../../docs/features/visual-states.md), [4](../../../docs/features/cursor-preservation.md), [13](../../../docs/features/cursor-export.md). See those docs for the concepts.
+Implements features [1](../../../docs/features/navigation.md), [3](../../../docs/features/visual-cues.md), [4](../../../docs/features/cursor-preservation.md), [13](../../../docs/features/cursor-export.md). See those docs for the concepts.
 
 **Patch file:** `patches/wordHighlight.ts`
 
@@ -23,8 +23,8 @@ Implements features [1](../../../docs/features/navigation.md), [3](../../../docs
 
 | Key | Action |
 |-----|--------|
-| Ctrl+Alt+Up | Cue-action (custom script / number increment) or cycle to next alternative |
-| Ctrl+Alt+Down | Cue-action (custom script / number decrement) or cycle to previous alternative |
+| Ctrl+Alt+Up | Cue-control (custom script / number increment) or cycle to next alternative |
+| Ctrl+Alt+Down | Cue-control (custom script / number decrement) or cycle to previous alternative |
 
 **Raw sequence fallback:** Also handles `\x1B[1;7D/C/A/B` (modifier 7 = Ctrl+Alt) for terminals that don't set meta/option flags.
 

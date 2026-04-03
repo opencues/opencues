@@ -20,22 +20,17 @@ This document provides context for Claude sessions working on this project.
 ```
 opencues/
 ├── CLAUDE.md                      # THIS FILE - project overview
-├── cues.md                        # OpenCues config (tips, prompts, actions, ignore)
+├── cues.md                        # OpenCues config (tips, prompts, controls, ignore)
 ├── README.md                      # Public readme with install instructions
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library
 │       ├── src/
-│       │   ├── prompts.ts         # GRAMMAR, MATH, FACTUAL prompts
 │       │   ├── resolver.ts        # CueResolver orchestration
 │       │   ├── cues-md.ts         # cues.md parser (parseCuesMd)
 │       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
-│       │   ├── classifier.ts      # looksLikeMath, looksLikeFactual
-│       │   └── sources/           # GrammarSource, MathSource, FactualSource
-│       ├── prompts/               # LLM system prompts (.txt) + references
-│       │   ├── grammar.txt        # Word alternatives prompt
-│       │   ├── blank_*.txt        # Fill-in-the-blank prompts (math, factual, grammar)
-│       │   ├── classifier.txt     # Mode classification prompt
+│       │   └── sources/           # ConfigSource, ClassifiedSourceGroup, parsers
+│       ├── prompts/               # Prompt references + documentation
 │       │   ├── linked.txt         # Linked words prompt
 │       │   └── references/        # Prompt documentation
 │       └── dist/                  # Built output
@@ -48,12 +43,12 @@ opencues/
 │   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   ├── claude-code-tips.json  # Per-word tips file
-│   │   └── actions/               # Cue-action scripts (volume.sh)
+│   │   └── actions/               # Cue-control scripts (volume.sh)
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
 │   │   ├── cycling.md             # Numbers, alts, linked, spans, clearing
 │   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
-│   │   ├── cue-actions.md          # Cue-actions + WSL guide
+│   │   ├── cue-controls.md         # Cue-controls + WSL guide
 │   │   ├── status-line.md         # Status line setup, format, disabling
 │   │   ├── config.md              # All config options
 │   │   ├── architecture.md        # Architecture + data flow diagrams
@@ -71,6 +66,8 @@ opencues/
 │   ├── guides/                    # Task-oriented how-tos
 │   │   ├── adding-a-feature.md    # How to add a new feature
 │   │   ├── adding-an-integration.md # How to add a new editor integration
+│   │   ├── adding-a-cue-control.md # How to add a cue-control (external script trigger)
+│   │   ├── parser-types.md        # Response parser types (alternatives, compute, answer, raw)
 │   │   └── llm-providers.md       # LLM provider setup & benchmarks
 │   └── prompt-design-learnings.md # Prompt engineering principles
 │
@@ -97,90 +94,15 @@ The setup script:
 
 ---
 
-## Key Components
+## Key References
 
-### cues-core
-
-Pure TypeScript library with no I/O dependencies. Provides:
-
-| Component | Purpose |
-|-----------|---------|
-| `CueResolver` | Orchestrates multiple sources, merges results by priority |
-| `GrammarSource` | Word alternatives via LLM (synonym, opposite, creative) |
-| `MathSource` | Evaluates math expressions (`4 * 12 = _` → `48`) |
-| `FactualSource` | Answers factual questions (`Capital of France is _` → `Paris`) |
-| `NodeHttpAdapter` | HTTPS with connection keep-alive, ~200ms to Groq |
-| `parseCuesMd` | Parses `cues.md` config files (tips, prompts, actions, ignore) |
-
-### Claude Code Integration (integrations/claude-code)
-
-Patches Claude Code via tweakcc to add:
-
-| Feature | Description |
-|---------|-------------|
-| Navigation | Ctrl+Alt+Left/Right to select words |
-| Visual cues | Words dim when alternatives available |
-| Cycling | Ctrl+Alt+Up/Down to cycle alternatives |
-| Blanks | Type `_` for contextual completions |
-| Cue-actions | "volume" triggers system volume |
-| Secondary display | Cue-tips shown in status bar |
-
----
-
-## Documentation
-
-### Claude Code (`integrations/claude-code/docs/`)
-
-| Doc | Features | Purpose |
-|-----|----------|---------|
-| `navigation.md` | 1, 3, 4, 13 | Keys, visual cues, cursor export |
-| `cycling.md` | 2, 5, 9, 10 | Alternatives, linked words, spans, clearing |
-| `alternatives.md` | 6, 7, 8, 12 | Local cues, remote cues, blanks, auto-submit |
-| `cue-actions.md` | 11 | Cue-actions + WSL guide |
-| `status-line.md` | 14 | Secondary display setup, format, disabling |
-| `config.md` | — | All config options |
-| `architecture.md` | — | Data flow diagrams |
-| `prompting-guide.md` | — | Claude Code CLI tips |
-
-### General (`docs/`)
-
-| Doc | Purpose |
-|-----|---------|
-| `overview.md` | System layers, core interfaces, API usage examples |
-| `features/` | 14 feature concepts (one file each) |
-| `guides/adding-a-feature.md` | How to add a new feature |
-| `guides/adding-an-integration.md` | How to add a new editor integration |
-| `guides/llm-providers.md` | Provider config & benchmarks |
-| `prompt-design-learnings.md` | Prompt engineering principles |
-
----
-
-## Adding New Integrations
-
-To add a new editor integration:
-
-1. Create `integrations/<editor>/` with integration code
-2. Add `integrations/<editor>/docs/` for editor-specific documentation
-3. Use cues-core for LLM analysis:
-
-```typescript
-import { createResolver, GrammarSource, NodeHttpAdapter } from 'cues-core';
-
-const httpAdapter = new NodeHttpAdapter({
-  providerOverrides: { "api.groq.com": { max_tokens: 400 } }
-});
-
-const resolver = createResolver([
-  GrammarSource({ httpAdapter }),
-  // MathSource, FactualSource as needed
-]);
-
-const result = await resolver.resolve({
-  words: ["The", "quick", "fox"],
-  targetIndices: [1, 2]  // only analyze "quick" and "fox"
-});
-// result.cues = { 1: ["fast", "slow", "rapid"], 2: ["wolf", "dog", "hound"] }
-```
+- **README.md** — Features, install, configuration, troubleshooting
+- **CONTRIBUTING.md** — How to extend the standard, build integrations, modify cues-core
+- **docs/overview.md** — System architecture, core interfaces, API usage
+- **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
+- **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
+- **integrations/claude-code/docs/** — Claude Code implementation docs (8 files)
+- **docs/features/** — 14 feature concepts (one file each)
 
 ---
 

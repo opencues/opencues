@@ -103,7 +103,7 @@ User presses: Ctrl+Alt+Left
 │  │ 2. Filter to navigable words based on mode:              │ │
 │  │    • 'numbers': /^-?\d+(\.\d+)?$/                        │ │
 │  │    • 'words': all words                                  │ │
-│  │    • PLUS: cue-action overrides                         │ │
+│  │    • PLUS: cue-control overrides                         │ │
 │  │    • PLUS: words with dynamic alts                       │ │
 │  │ 3. Move to previous navigable word                       │ │
 │  │ 4. Store wordIndex in globalThis._hlState                │ │
@@ -125,10 +125,10 @@ User presses: Ctrl+Alt+Up (with "dogs" highlighted)
 │                                                                │
 │  PATCHED BY: dynamicHighlight.ts (FIRST - _cycleAlt)          │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 1. Check if word is custom cue-action (e.g., "volume")  │ │
+│  │ 1. Check if word is custom cue-control (e.g., "volume")  │ │
 │  │    → If yes: spawn script, RETURN                        │ │
 │  │                                                          │ │
-│  │ 2. Check if word is number cue-action                    │ │
+│  │ 2. Check if word is number cue-control                    │ │
 │  │    → If yes: increment/decrement with floor, RETURN      │ │
 │  │                                                          │ │
 │  │ 3. Check if word has dynamic alts in _dynDefs            │ │
@@ -163,7 +163,7 @@ Text ready to display: "The boy has 3 dogs"
 │  │    • If span selected: include span words                │ │
 │  │ 3. Build dim ranges (gray) for:                          │ │
 │  │    • Numbers (if numberDimming enabled)                  │ │
-│  │    • Cue-actions                                        │ │
+│  │    • Cue-controls                                        │ │
 │  │    • Words with dynamic alts                             │ │
 │  │ 4. Walk through renderedValue char-by-char:              │ │
 │  │    • Track ANSI codes (preserve cursor styling)          │ │
@@ -214,12 +214,11 @@ Text ready to display: "The boy has 3 dogs"
 │                    CueResolver.resolve() (cues-core)                        │
 │                                                                             │
 │  Filters sources by supports():                                            │
-│    GrammarSource → always (priority 50)                                    │
-│    MathSource    → only if looksLikeMath() (priority 90)                   │
-│    FactualSource → only if looksLikeFactual() (priority 90)               │
+│    ConfigSource (scope:words) → non-blank words (from cues.md)            │
+│    ClassifiedSourceGroup (scope:blanks) → blanks only (from blanks.md)    │
 │                                                                             │
 │  Each source:                                                               │
-│    1. Builds prompt (GrammarSource: words-first + targetIndices filter)    │
+│    1. Builds prompt (ConfigSource: indexed words or BLANK replacement)     │
 │    2. Calls NodeHttpAdapter.post() → Groq API (keep-alive, ~400ms)        │
 │    3. Parses response → CueResult[]                                        │
 │                                                                             │
@@ -267,7 +266,7 @@ DEPENDENCIES: None (standalone)
 ### wordHighlight.ts
 
 ```
-PURPOSE: Navigation, rendering, number/cue-action handling
+PURPOSE: Navigation, rendering, number/cue-control handling
 
 PATCHES:
   ├── Key handler (Ctrl+Alt+Left/Right/Up/Down)
@@ -280,7 +279,7 @@ PATCHES:
 INJECTS:
   ├── Navigation logic with mode-based filtering
   ├── Number increment/decrement with floor tracking (fallback for _cycleAlt)
-  ├── globalThis._cueActionOverrides assignment (serialized from config)
+  ├── globalThis._cueControlOverrides assignment (serialized from config)
   ├── ANSI rendering with highlight/dim ranges
   └── Invisible char toggle for re-render triggering
 
@@ -288,7 +287,7 @@ STATE (globalThis):
   • _hlState: {active, index, wordIndex, originalNumbers}
   • _hlText: current input text
   • _parentValue: parent's value (for invisible char toggle)
-  • _cueActionOverrides: action word config (serialized from config at build time)
+  • _cueControlOverrides: control word config (serialized from config at build time)
   • _triggerStatusLineRefresh: function to refresh status line
   • _forceInputRefresh: function to force re-render
 
@@ -296,10 +295,10 @@ CONFIG:
   • highlightMode: 'numbers' | 'words'
   • highlightColor: 'white' | 'cyan' | 'yellow' | ...
   • numberDimming: boolean
-  • cueActionOverrides: {word: {action, upArgs, downArgs}}
+  • cueControlOverrides: {word: {control, upArgs, downArgs}}
 
 EXTERNAL SCRIPTS:
-  • ~/.claude/actions/{action}.sh
+  • ~/.claude/actions/{control}.sh
 
 DEPENDENCIES: None (foundation for dynamicHighlight)
 ```
@@ -320,8 +319,8 @@ INJECTS:
   ├── Startup IIFE:
   │   ├── cues-core loading + tipsMap building
   │   ├── NodeHttpAdapter (keep-alive, Groq provider config)
-  │   ├── CueResolver (GrammarSource + MathSource + FactualSource)
-  │   └── Shared _cycleAlt(dir) function (cue-actions, alts, linked, spans)
+  │   ├── CueResolver (via buildSourcesFromConfig)
+  │   └── Shared _cycleAlt(dir) function (cue-controls, alts, linked, spans)
   ├── Input handler:
   │   ├── Three-tier trigger (space 50ms, pause 300ms, edit 50ms)
   │   ├── Tips lookup (instant, merge immediately)
@@ -337,8 +336,8 @@ STATE (globalThis):
   • _tipsMap: prebuilt hash map from tips file
   • _httpAdapter: NodeHttpAdapter instance (from cues-core)
   • _cueResolver: CueResolver instance (from cues-core)
-  • _isCueAction: unified check for cue-actions (numbers + custom overrides)
-  • _cycleAlt: shared cycling function (cue-actions first, then dynamic alts)
+  • _isCueControl: unified check for cue-controls (numbers + custom overrides)
+  • _cycleAlt: shared cycling function (cue-controls first, then dynamic alts)
   • _dynDefs: parsed LLM response {words: [...]}
   • _dynPending: boolean (resolver in progress)
   • _dynPrevWords: previous word list
@@ -357,7 +356,7 @@ EXTERNAL DEPENDENCIES:
 
 READS (from wordHighlight.ts):
   • globalThis._hlState, _hlText, _parentValue
-  • globalThis._cueActionOverrides (for cue-action checks in Up/Down handlers)
+  • globalThis._cueControlOverrides (for cue-control checks in Up/Down handlers)
   • globalThis._triggerStatusLineRefresh, _forceInputRefresh
 
 DEPENDENCIES:
@@ -442,7 +441,7 @@ READS (at startup):
 
 SPAWNS (from cli.js):
   │
-  └── ~/.claude/actions/{action}.sh           ← _cycleAlt (action words)
+  └── ~/.claude/actions/{control}.sh           ← _cycleAlt (control words)
       Args: <up|down>
 ```
 
@@ -453,7 +452,7 @@ SPAWNS (from cli.js):
 | File | One-Line Summary |
 |------|------------------|
 | `cursorStateExport.ts` | Writes cursor position to JSON on each keystroke |
-| `wordHighlight.ts` | Navigation + rendering + numbers + actions |
+| `wordHighlight.ts` | Navigation + rendering + numbers + controls |
 | `dynamicHighlight.ts` | cues-core wiring + trigger + cycling + spans |
 
 **Dependency order:**

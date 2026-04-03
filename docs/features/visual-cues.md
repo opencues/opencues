@@ -16,4 +16,4 @@ Words need three visual states so the user knows what's interactive:
 
 When a word is highlighted AND part of a multi-word group or linked words, all related words also show the highlighted state.
 
-Dimming applies to: numbers, cue-actions, and words with alternatives.
+Dimming applies to: numbers, cue-controls, and words with alternatives.

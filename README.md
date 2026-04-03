@@ -1,8 +1,20 @@
 # OpenCues
 
-LLM-powered word alternatives for Claude Code. Navigate words, increment numbers, and cycle through intelligent suggestions.
+An open standard for LLM-powered word alternatives in text editors. Define prompts and behaviour in `.md` config files — integrations bring them to life.
 
-## Install
+## The Standard
+
+OpenCues is built on three `.md` config files. All prompts, modes, and behaviour live here — not in code.
+
+| File | What it defines | Example |
+|------|----------------|---------|
+| **cues.md** | Word tips and LLM prompt sources for word alternatives. Each `### section` is a source (grammar, legal, medical, etc.) | `### grammar` with synonym/opposite/creative prompt |
+| **blanks.md** | Fill-in-the-blank modes. Each `### section` is a mode with its own prompt and parser. `### classifier` picks which mode to use. | `### math` with `parser: compute` |
+| **controls.md** | Cue-controls — words that trigger external scripts instead of text cycling. | `"volume"` runs a volume control script |
+
+Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Install (Claude Code)
 
 ```bash
 git clone https://github.com/wkasekende/opencues ~/opencues
@@ -27,7 +39,7 @@ Restart Claude Code. Done.
 - **Alternatives** — cycle through synonyms, opposites, creative suggestions
 - **Number cycling** — `42` → `43` → `44`
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
-- **Cue-actions** — `volume` triggers system volume control
+- **Cue-controls** — `volume` triggers system volume control
 - **Secondary display** — highlighted words show cue-tips
 
 ## How it works
@@ -38,10 +50,10 @@ Restart Claude Code. Done.
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  packages/cues-core/          Runtime module                │
-│  ├── prompts.ts               LLM prompts (GRAMMAR, MATH)   │
 │  ├── resolver.ts              CueResolver orchestration     │
+│  ├── cues-md.ts               Config parser (cues/blanks.md)│
 │  ├── node-http-adapter.ts     HTTPS with keep-alive         │
-│  └── sources/                 GrammarSource, MathSource...  │
+│  └── sources/                 ConfigSource, parsers...      │
 │                                                             │
 │  integrations/claude-code/patches/       Claude Code integration       │
 │  ├── setup.sh                 One-command installer         │
@@ -86,9 +98,9 @@ Restart Claude Code. Done.
 Pure TypeScript module for LLM-based text analysis. No I/O dependencies.
 
 - **CueResolver** — orchestrates multiple sources, merges results
-- **GrammarSource** — word alternatives via LLM (synonym, opposite, creative)
-- **MathSource** — evaluates math expressions (`4 * 12 = _` → `48`)
-- **FactualSource** — answers factual questions (`Capital of France is _` → `Paris`)
+- **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
+- **ClassifiedSourceGroup** — wraps blank modes with fast/LLM classification
+- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
 ### integrations/claude-code
@@ -216,6 +228,13 @@ tweakcc may have changed. Check for pattern matches:
 grep "MiscSettings" ~/tweakcc/src/types.ts
 grep "misc:" ~/tweakcc/src/defaultSettings.ts
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:
+- **Extend the standard** — add new word sources, blank modes, or cue-controls to the `.md` config files
+- **Build an integration** — bring OpenCues to a new editor or tool using cues-core
+- **Improve cues-core** — modify the core library, run tests, submit changes
 
 ## License
 

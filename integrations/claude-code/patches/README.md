@@ -40,7 +40,7 @@ patches/
 ├── types-additions.ts        # Reference: types to add
 ├── defaultSettings-additions.ts  # Reference: defaults to add
 ├── index-additions.ts        # Reference: index.ts changes
-├── actions/                  # Cue-action scripts
+├── actions/                  # Cue-control scripts
 │   └── volume.sh
 └── claude-code-tips.json     # Per-word tips (instant lookup)
 ```

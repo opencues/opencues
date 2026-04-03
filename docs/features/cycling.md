@@ -11,17 +11,17 @@ Replace the focused word with an alternative. Cycling is the **vertical** axis �
 - Wraps around: after the last alt, returns to `alts[0]`
 
 **Cycling priority** (checked in order):
-1. **Cue-action** → trigger built-in behavior (numbers increment/decrement, custom actions run scripts). No tips, no LLM alts.
+1. **Cue-control** → trigger built-in behavior (numbers increment/decrement, custom controls run scripts). No tips, no LLM alts.
 2. **Alternatives** → cycle through alternatives from local/remote cues
 3. **Linked words** → co-dependent words cycle to the same index
 
-### Cue-Actions
+### Cue-Controls
 
-Cue-actions are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the secondary display. There are two kinds:
+Cue-controls are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the secondary display. There are two kinds:
 
-**Custom cue-actions** — trigger external scripts (e.g., "volume" → system volume control). See feature 11.
+**Custom cue-controls** — trigger external scripts (e.g., "volume" → system volume control). See feature 11.
 
-**Number cue-actions** — increment/decrement numerals:
+**Number cue-controls** — increment/decrement numerals:
 
 - **Up**: increments by 1 (no upper limit): 0 → 1 → 2 → 3...
 - **Down**: decrements by 1, but never below the **floor**

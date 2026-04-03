@@ -359,7 +359,7 @@ export function lookupMultiple(
       continue;
     }
 
-    // Skip words rejected by custom function (e.g., cue-actions)
+    // Skip words rejected by custom function (e.g., cue-controls)
     if (skipFn && skipFn(word)) {
       missingIndices.push(i);
       continue;

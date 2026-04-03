@@ -8,9 +8,9 @@ last_updated: 2026-03-31
 
 The FACTUAL prompt instructs the LLM to answer knowledge-based questions directly, rather than suggesting word alternatives. This mode handles questions about people, places, dates, and scientific facts.
 
-## Prompt File
+## Prompt Location
 
-`../blank_factual.txt`
+Defined in `blanks.md` → `## Prompt` → `### factual`
 
 ## Key Design Principles
 
@@ -62,7 +62,7 @@ Each category covers the specific phrasing patterns we detect:
 
 ## Detection Triggers
 
-These patterns are now checked by cues-core's `looksLikeFactual` function (previously in `llm-analyze-auto.sh`):
+These patterns are checked via the `match` and `keywords` fields in blanks.md `### factual`:
 
 ```bash
 # Title patterns
@@ -129,9 +129,9 @@ Returns the actual factual answer.
 
 To add support for new question types:
 
-1. Add detection trigger in cues-core's `looksLikeFactual` function
+1. Add detection keywords/match patterns to the `### factual` yaml block in `blanks.md`
 
-2. Add examples to `factual.txt`:
+2. Add examples to the `### factual` prompt text in `blanks.md`:
    ```
    New Category:
    - Example question BLANK → ANSWER=example answer

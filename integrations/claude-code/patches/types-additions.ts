@@ -36,12 +36,12 @@ dynamicHighlightScriptPath?: string;  // Path to LLM analysis script
 dynamicHighlightAutoSubmit?: boolean;  // Auto-submit on new words (500ms debounce)
 dynamicHighlightDebounceMs?: number;   // Debounce delay for auto-submit (default 500)
 
-// --- Action Word Overrides ---
+// --- Control Word Overrides ---
 // Words that trigger external scripts on Up/Down instead of normal behavior
-cueActionOverrides?: {
+cueControlOverrides?: {
   [word: string]: {
-    action: string;           // Action identifier, used for default script path
-    scriptPath?: string;      // Custom script path (optional, defaults to ~/.claude/actions/{action}.sh)
+    control: string;           // Control identifier, used for default script path
+    scriptPath?: string;      // Custom script path (optional, defaults to ~/.claude/actions/{control}.sh)
     upArgs?: string[];        // Arguments passed when Up is pressed
     downArgs?: string[];      // Arguments passed when Down is pressed
   };

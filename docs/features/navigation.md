@@ -11,6 +11,6 @@ Navigation is the **horizontal** axis — moving left/right through words to cho
 **What's navigable:**
 - Words with alternatives (from local or remote cues)
 - Numbers
-- Cue-actions (configured external triggers)
+- Cue-controls (configured external triggers)
 
 All analysis runs on all words automatically. The integration provides a UI for moving between navigable words (keyboard shortcuts, click, hover, etc.).

@@ -10,11 +10,14 @@ For the full list of features any integration should implement, see `features/RE
 
 ## Overview
 
-OpenCues is designed with three layers:
+OpenCues is designed with two layers:
 
-1. **Core Layer** (`cues-core`) - Pure TypeScript with no I/O dependencies
-2. **Adapter Layer** (`cues-node`, `cues-browser`) - Platform-specific implementations
-3. **Integration Layer** - Platform-specific UI and triggers
+1. **Config Standard** (`cues.md`, `blanks.md`, `controls.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
+2. **Core Library** (`cues-core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
+
+Integrations (Claude Code, future editors) use cues-core to load the config standard and provide the UI layer.
+
+> **Planned**: `cues-node` and `cues-browser` adapter packages exist as scaffolding for future platform-specific adapters (storage, HTTP, config loading).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -29,8 +32,8 @@ OpenCues is designed with three layers:
               ▼               ▼               ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │ CUE SOURCES     │ │ CUE SOURCES     │ │ CUE SOURCES     │
-│ LocalCueSource  │ │ GroqSource      │ │ CustomSource    │
-│ (loads JSON)    │ │ GeminiSource    │ │ (user-defined)  │
+│ LocalCueSource  │ │ ConfigSource    │ │ Classified      │
+│ (loads JSON)    │ │ (from .md file) │ │ SourceGroup     │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
                               │
               ┌───────────────┼───────────────┐
@@ -62,22 +65,14 @@ npm run build
 │   │   │   ├── resolver.ts     # CueResolver
 │   │   │   └── sources/
 │   │   │       ├── local-cue-source.ts   # LocalCueSource
-│   │   │       └── llm-base.ts    # LLM source classes
+│   │   │       ├── config-source.ts     # ConfigSource (generic, config-driven)
+│   │   │       ├── classified-source-group.ts # ClassifiedSourceGroup
+│   │   │       ├── build-sources.ts     # buildSourcesFromConfig factory
+│   │   │       └── parsers.ts           # Response parsers
 │   │   └── dist/               # Compiled output
 │   │
-│   ├── cues-node/              # Node.js adapters
-│   │   ├── src/
-│   │   │   ├── storage.ts      # NodeStorageAdapter
-│   │   │   ├── http.ts         # NodeHttpAdapter
-│   │   │   └── config.ts       # NodeConfigAdapter
-│   │   └── dist/
-│   │
-│   └── cues-browser/           # Browser adapters
-│       ├── src/
-│       │   ├── storage.ts      # LocalStorage, ChromeStorage
-│       │   ├── http.ts         # BrowserHttpAdapter (fetch)
-│       │   └── config.ts       # BrowserConfigAdapter
-│       └── dist/
+│   ├── cues-node/              # Node.js adapters (scaffolding — not yet implemented)
+│   └── cues-browser/           # Browser adapters (scaffolding — not yet implemented)
 │
 └── package.json                # Workspace root
 ```
@@ -134,12 +129,11 @@ interface CueSource {
 
 ```typescript
 import { CueResolver, LocalCueSource, parseLocalCueFile } from 'cues-core';
-import { NodeStorageAdapter } from 'cues-node';
+import * as fs from 'fs';
 
 // Load tips from file
-const storage = new NodeStorageAdapter('~/.claude');
-const tipsContent = await storage.read('claude-code-tips.json');
-const tipsData = parseLocalCueFile(tipsContent!);
+const tipsContent = fs.readFileSync('~/.claude/claude-code-tips.json', 'utf8');
+const tipsData = parseLocalCueFile(tipsContent);
 
 // Create resolver with tips source
 const resolver = new CueResolver([
@@ -168,22 +162,19 @@ console.log(result.results);
 ### Multiple Sources
 
 ```typescript
-import { CueResolver, LocalCueSource, GroqSource } from 'cues-core';
-import { NodeStorageAdapter, NodeHttpAdapter } from 'cues-node';
+import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'cues-core';
 
 // Tips source (high priority, instant)
 const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
 
-// LLM source (lower priority, slower but comprehensive)
-const llmSource = new GroqSource({
-  apiKey: process.env.GROQ_API_KEY!,
-  model: 'gpt-oss-120b',
-  systemPrompt: grammarPrompt,
-  httpAdapter: new NodeHttpAdapter(),
-  priority: 50
+// Config-driven sources from .md files
+const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
+const blanksCfg = fs.existsSync('blanks.md') ? parseCuesMd(fs.readFileSync('blanks.md', 'utf8')) : undefined;
+const configSources = buildSourcesFromConfig(cuesCfg, blanksCfg, {
+  httpAdapter, endpoint, apiKey, defaultModel: 'openai/gpt-oss-120b',
 });
 
-const resolver = new CueResolver([tipsSource, llmSource]);
+const resolver = createResolver([tipsSource, ...configSources]);
 
 // Tips results come first (higher priority)
 // LLM fills in gaps for words not in tips
@@ -193,17 +184,14 @@ const result = await resolver.resolve(context);
 ### Browser Usage (Chrome Extension)
 
 ```typescript
-import { CueResolver, LocalCueSource, parseLocalCueFile } from 'cues-browser';
-import { ChromeStorageAdapter, BrowserHttpAdapter } from 'cues-browser';
+// Browser integration example (cues-browser adapter is planned scaffolding)
+import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'cues-core';
 
-// Load tips from chrome.storage
-const storage = new ChromeStorageAdapter('sync');
-const tipsContent = await storage.read('tips');
-const tipsData = parseLocalCueFile(tipsContent!);
-
-const resolver = new CueResolver([
-  new LocalCueSource(tipsData)
-]);
+// Load tips and config
+const tipsData = parseLocalCueFile(tipsJson);
+const cuesCfg = parseCuesMd(cuesMdContent);
+const sources = buildSourcesFromConfig(cuesCfg, undefined, { httpAdapter, endpoint, apiKey, defaultModel });
+const resolver = createResolver([new LocalCueSource(tipsData), ...sources]);
 
 // Use in content script
 document.addEventListener('input', async (e) => {
@@ -280,11 +268,11 @@ const sources = [
     domain: 'medical',
     priority: 100
   }),
-  // LLM fallback for all domains
-  new GroqSource({ ... })
+  // Config-driven sources from .md files
+  ...buildSourcesFromConfig(cuesCfg, blanksCfg, options)
 ];
 
-const resolver = new CueResolver(sources);
+const resolver = createResolver(sources);
 
 // Only claude-code tips will match
 const result = await resolver.resolve({
@@ -299,13 +287,13 @@ const result = await resolver.resolve({
 The `LocalCueSource` can be combined with file watching for hot reload:
 
 ```typescript
-import { NodeStorageAdapter } from 'cues-node';
+import * as fs from 'fs';
 
-const storage = new NodeStorageAdapter('~/.claude');
 const source = new LocalCueSource(initialData);
 
 // Watch for changes
-storage.watch('claude-code-tips.json', (content) => {
+fs.watch('~/.claude/claude-code-tips.json', () => {
+  const content = fs.readFileSync('~/.claude/claude-code-tips.json', 'utf8');
   const newData = parseLocalCueFile(content);
   source.updateData(newData);
   console.log('Tips reloaded');
@@ -400,15 +388,15 @@ if (result) {
 
 ## Integration with dynamicHighlight.ts
 
-cues-core is now used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch initializes a CueResolver with LocalCueSource and GroqSource, and the NodeHttpAdapter handles all HTTPS calls inline:
+cues-core is used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch loads `.md` config files and builds all sources via `buildSourcesFromConfig()`:
 
 ```typescript
 // In dynamicHighlight.ts writeCuesCoreInit:
 // 1. Load tips file into LocalCueSource
-// 2. Create NodeHttpAdapter (replaces _httpsAgent / _grammarPrompt globals)
-// 3. Create GroqSource with NodeHttpAdapter
-// 4. Create CueResolver with [LocalCueSource, GroqSource]
-// 5. Store as globalThis._cueResolver
+// 2. Parse cues.md, blanks.md, controls.md
+// 3. Create NodeHttpAdapter (keep-alive, Groq provider config)
+// 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → ConfigSource[] + ClassifiedSourceGroup
+// 5. createResolver([...sources]) → globalThis._cueResolver
 ```
 
 > **HISTORICAL NOTE**: An earlier migration example showed wrapping cues-core inside `llm-analyze-auto.sh`. That script-based approach is no longer used; all calls are inline.
@@ -438,4 +426,4 @@ The migration to cues-core is complete:
 1. Existing cue source JSON format is fully supported
 2. All LLM calls go through CueResolver + NodeHttpAdapter (no more bash scripts)
 3. Output format matches existing `_dynDefs` structure
-4. Classification via cues-core's `looksLikeMath`/`looksLikeFactual` (no more wink-pos-tagger)
+4. Classification via `ClassifiedSourceGroup` with fast heuristics + LLM fallback (no more wink-pos-tagger)

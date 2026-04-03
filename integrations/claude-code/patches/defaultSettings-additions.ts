@@ -32,10 +32,10 @@ dynamicHighlightScriptPath: '~/.claude/llm-analyze.sh',
 dynamicHighlightAutoSubmit: true,   // Auto-submit mode (recommended)
 dynamicHighlightDebounceMs: 500,    // Debounce delay for auto-submit
 
-// --- Action Word Overrides ---
-cueActionOverrides: {
+// --- Control Word Overrides ---
+cueControlOverrides: {
   volume: {
-    action: 'volume',
+    control: 'volume',
     upArgs: ['up', '5'],
     downArgs: ['down', '5'],
   },

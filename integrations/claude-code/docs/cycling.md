@@ -6,18 +6,18 @@ last_updated: 2026-04-02
 
 Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/features/linked-words.md), [9](../../../docs/features/multi-word-spans.md), [10](../../../docs/features/per-word-clearing.md). See those docs for the concepts.
 
-**Patch files:** `patches/wordHighlight.ts` (number fallback, rendering), `patches/dynamicHighlight.ts` (all cycling via `_cycleAlt`, cue-actions, LLM alts, spans, clearing)
+**Patch files:** `patches/wordHighlight.ts` (number fallback, rendering), `patches/dynamicHighlight.ts` (all cycling via `_cycleAlt`, cue-controls, LLM alts, spans, clearing)
 
 ## CC-Specific: Cycling Priority Implementation
 
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
-1. **Cue-action (custom)** → spawn `~/.claude/actions/{action}.sh`, return
-2. **Cue-action (number)** → increment/decrement with `originalNumbers` map, return
+1. **Cue-control (custom)** → spawn `~/.claude/actions/{control}.sh`, return
+2. **Cue-control (number)** → increment/decrement with `originalNumbers` map, return
 3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
 4. **Fall through** → no action
 
-`_isCueAction(word)` is the unified check for both types. It's used by the tips lookup and status line export to exclude cue-actions from tips/alts display.
+`_isCueControl(word)` is the unified check for both types. It's used by the tips lookup and status line export to exclude cue-controls from tips/alts display.
 
 ## CC-Specific: State Export on Cycle
 

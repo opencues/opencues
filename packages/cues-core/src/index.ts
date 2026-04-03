@@ -11,7 +11,31 @@ export * from './types';
 // Resolver
 export { CueResolver, createResolver, type ResolverResult } from './resolver';
 
-// Sources
+// Config-driven sources (primary API)
+export {
+  ConfigSource,
+  type ConfigSourceOptions,
+} from './sources/config-source';
+
+export {
+  ClassifiedSourceGroup,
+  type ClassifiedSourceGroupConfig,
+} from './sources/classified-source-group';
+
+export {
+  buildSourcesFromConfig,
+  type BuildSourcesOptions,
+} from './sources/build-sources';
+
+// Response parsers
+export {
+  parseCompute,
+  parseAnswer,
+  parseAlternatives,
+  parseRaw,
+} from './sources/parsers';
+
+// Local tips source
 export {
   LocalCueSource,
   lookupWord,
@@ -28,16 +52,6 @@ export {
 // Re-export WordDef types for consumers
 export type { WordDef, LookupMultipleResult } from './types';
 
-export {
-  LLMSourceBase,
-  GroqSource,
-  GeminiSource,
-  type LLMSourceConfig,
-  type LLMResponse,
-  type LLMWordResponse,
-  type LLMMode,
-} from './sources/llm-base';
-
 // cues.md parser
 export {
   parseCuesMd,
@@ -46,55 +60,8 @@ export {
   type CuesMdFrontmatter,
   type PromptConfig,
   type SourceConfig,
+  type ControlConfig,
   type ActionConfig,
   type BlankParser,
 } from './cues-md';
 
-// Blank source (generic, driven by blanks.md)
-export {
-  BlankSource,
-  BlankClassifier,
-  buildBlankModes,
-  classifyFast,
-  type BlankMode,
-  type BlankSourceConfig,
-  type BlankClassifierConfig,
-} from './sources/blank-source';
-
-// Prompts
-export {
-  CLASSIFIER_PROMPT,
-  MATH_PROMPT,
-  FACTUAL_PROMPT,
-  GRAMMAR_PROMPT,
-  BLANK_GRAMMAR_PROMPT,
-} from './prompts';
-
-// Classifier
-export {
-  ModeClassifier,
-  looksLikeMath,
-  looksLikeFactual,
-  type CueMode,
-  type ClassifierConfig,
-  type ClassifierResult,
-} from './classifier';
-
-// Math Source
-export {
-  MathSource,
-  evaluateMath,
-  type MathSourceConfig,
-} from './sources/math-source';
-
-// Factual Source
-export {
-  FactualSource,
-  type FactualSourceConfig,
-} from './sources/factual-source';
-
-// Grammar Source
-export {
-  GrammarSource,
-  type GrammarSourceConfig,
-} from './sources/grammar-source';

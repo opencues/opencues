@@ -76,7 +76,7 @@ const additions = \`
   dynamicHighlightScriptPath?: string;
   dynamicHighlightAutoSubmit?: boolean;
   dynamicHighlightDebounceMs?: number;
-  cueActionOverrides?: { [word: string]: { action: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
+  cueControlOverrides?: { [word: string]: { control: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
 \`;
 
 const miscMatch = content.match(/export interface MiscConfig \\{[^}]+/);
@@ -120,7 +120,7 @@ const additions = \`
     dynamicHighlightScriptPath: '~/.claude/llm-analyze.sh',
     dynamicHighlightAutoSubmit: true,
     dynamicHighlightDebounceMs: 500,
-    cueActionOverrides: { volume: { action: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
+    cueControlOverrides: { volume: { control: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
 \`;
 
 const miscMatch = content.match(/misc:\\s*\\{/);
@@ -178,7 +178,7 @@ const patchCode = \`
         highlightExportEnabled: config.settings.misc.highlightExportEnabled,
         highlightExportPath: config.settings.misc.highlightExportPath,
         numberDimming: config.settings.misc.numberDimming,
-        cueActionOverrides: config.settings.misc.cueActionOverrides,
+        cueControlOverrides: config.settings.misc.cueControlOverrides,
       };
       if ((result = writeWordHighlight(content, highlightConfig))) content = result;
     }
@@ -242,7 +242,7 @@ mkdir -p ~/.claude/actions
 cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null || true
 cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh 2>/dev/null || true
 
-# 7b. Compile cue-action .exe files on WSL (skip on native Linux)
+# 7b. Compile cue-control .exe files on WSL (skip on native Linux)
 if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
   CSC="/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe"
   WIN_USER=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n')
