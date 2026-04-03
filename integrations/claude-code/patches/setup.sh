@@ -242,6 +242,27 @@ mkdir -p ~/.claude/actions
 cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null || true
 cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh 2>/dev/null || true
 
+# 7b. Compile cue-action .exe files on WSL (skip on native Linux)
+if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
+  CSC="/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe"
+  WIN_USER=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n')
+  WIN_TMP="/mnt/c/Users/$WIN_USER"
+  for CS_FILE in "$SCRIPT_DIR/actions/"*.cs; do
+    [ -f "$CS_FILE" ] || continue
+    BASE=$(basename "$CS_FILE" .cs)
+    EXE="$HOME/.claude/actions/${BASE}.exe"
+    if [ ! -f "$EXE" ] || [ "$CS_FILE" -nt "$EXE" ]; then
+      cp "$CS_FILE" "$WIN_TMP/${BASE}.cs"
+      "$CSC" /nologo /optimize "/out:C:\\Users\\${WIN_USER}\\${BASE}.exe" "C:\\Users\\${WIN_USER}\\${BASE}.cs" 2>/dev/null
+      if [ -f "$WIN_TMP/${BASE}.exe" ]; then
+        cp "$WIN_TMP/${BASE}.exe" "$EXE"
+        echo "Compiled ${BASE}.exe"
+      fi
+      rm -f "$WIN_TMP/${BASE}.cs" "$WIN_TMP/${BASE}.exe" 2>/dev/null
+    fi
+  done
+fi
+
 # 8. Build tweakcc (skip if no changes)
 cd "$TWEAKCC_DIR"
 if $NEEDS_TWEAKCC_BUILD || [ ! -f "$TWEAKCC_DIR/dist/index.mjs" ]; then

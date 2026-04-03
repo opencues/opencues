@@ -20,6 +20,7 @@ This document provides context for Claude sessions working on this project.
 ```
 opencues/
 ├── CLAUDE.md                      # THIS FILE - project overview
+├── cues.md                        # OpenCues config (tips, prompts, actions, ignore)
 ├── README.md                      # Public readme with install instructions
 │
 ├── packages/                      # Core packages
@@ -27,6 +28,7 @@ opencues/
 │       ├── src/
 │       │   ├── prompts.ts         # GRAMMAR, MATH, FACTUAL prompts
 │       │   ├── resolver.ts        # CueResolver orchestration
+│       │   ├── cues-md.ts         # cues.md parser (parseCuesMd)
 │       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
 │       │   ├── classifier.ts      # looksLikeMath, looksLikeFactual
 │       │   └── sources/           # GrammarSource, MathSource, FactualSource
@@ -108,6 +110,7 @@ Pure TypeScript library with no I/O dependencies. Provides:
 | `MathSource` | Evaluates math expressions (`4 * 12 = _` → `48`) |
 | `FactualSource` | Answers factual questions (`Capital of France is _` → `Paris`) |
 | `NodeHttpAdapter` | HTTPS with connection keep-alive, ~200ms to Groq |
+| `parseCuesMd` | Parses `cues.md` config files (tips, prompts, actions, ignore) |
 
 ### Claude Code Integration (integrations/claude-code)
 

@@ -38,6 +38,17 @@ export {
   type LLMMode,
 } from './sources/llm-base';
 
+// cues.md parser
+export {
+  parseCuesMd,
+  validateCuesMd,
+  type CuesMdConfig,
+  type CuesMdFrontmatter,
+  type PromptConfig,
+  type SourceConfig,
+  type ActionConfig,
+} from './cues-md';
+
 // Prompts
 export {
   CLASSIFIER_PROMPT,

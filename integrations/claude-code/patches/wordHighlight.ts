@@ -612,10 +612,15 @@ var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueAction&&globalThis._isCueAction(_hlWords[_idx]||"");
-if(_isCA){_hlExport.cueAction=true;}
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueActionTip:globalThis._cueActionTip||null,overrides:Object.keys(globalThis._cueActionOverrides||{}),cueValues:globalThis._cueActionValues||null};
+if(_isCA){_hlExport.cueAction=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
+var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueActionOverrides||{})[_caWord];
+var _caTip=_caOvr?_caOvr.tip||_caOvr.action:_caWord;
+_hlExport.cueTip=_caTip;
+}
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
-if(_dw){_hlExport.tip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
+if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
 }
 }
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";

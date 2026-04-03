@@ -116,6 +116,44 @@ globalThis._localCueData=null;
 globalThis._localCueMap=null;
 }
 }
+// Load cues.md from project root (aliases: hints.md, tips.md)
+if(globalThis._cuesCore&&!globalThis._cuesMdLoaded){
+try{
+var _fs=${requireFuncName}("fs");var _cwd=process.cwd();var _mdPath=null;
+["cues.md","hints.md","tips.md"].some(function(f){var p=_cwd+"/"+f;if(_fs.existsSync(p)){_mdPath=p;return true;}});
+if(_mdPath){
+var _mdContent=_fs.readFileSync(_mdPath,"utf8");
+var _mdCfg=globalThis._cuesCore.parseCuesMd(_mdContent);
+globalThis._cuesMdConfig=_mdCfg;
+globalThis._cuesMdLoaded=true;
+if(_mdCfg.tips&&globalThis._localCueMap){var _m=globalThis._cuesCore.buildLookupMap(_mdCfg.tips);_m.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}
+if(_mdCfg.promptConfig){
+globalThis._cuesPromptConfig=_mdCfg.promptConfig;
+var _gramSrc=_mdCfg.promptConfig.sources&&_mdCfg.promptConfig.sources.grammar;
+if(_gramSrc&&_gramSrc.promptText){globalThis._cuesPromptInstructions=_gramSrc.promptText;}
+}
+if(_mdCfg.actions){globalThis._cueActionOverrides=Object.assign(globalThis._cueActionOverrides||{},_mdCfg.actions);}
+if(_mdCfg.ignore){globalThis._cuesIgnoreWords=new Set(_mdCfg.ignore.map(function(w){return w.toLowerCase();}));}
+}
+}catch(_e1){}
+}
+// Periodic status line refresh when a cue-action word is selected
+// Writes cueTip directly to the JSON export file — no re-render, no flicker
+if(!globalThis._cueActionStatusInterval){
+globalThis._cueActionStatusInterval=setInterval(function(){
+if(!(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null))return;
+if(!globalThis._cueActionTip)return;
+var _ws=(globalThis._hlText||"").split(/\s+/).filter(function(w){return w;});
+var _wrd=_ws[globalThis._hlState.wordIndex]||"";
+if(!globalThis._isCueAction||!globalThis._isCueAction(_wrd))return;
+try{
+var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
+var _fs=${requireFuncName}("fs");
+var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
+if(_ex.cueTip!==globalThis._cueActionTip){_ex.cueTip=globalThis._cueActionTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));}
+}catch(_ei){}
+},200);
+}
 // HTTPS keep-alive agent for inline LLM calls
 // NodeHttpAdapter: keep-alive + Groq provider config (reasoning_effort, max_tokens)
 if(!globalThis._httpAdapter){
@@ -137,13 +175,17 @@ if(!globalThis._cueResolver&&globalThis._cuesCore&&process.env.GROQ_API_KEY){
 try{
 var _apiKey=process.env.GROQ_API_KEY;
 var _ep="https://api.groq.com/openai/v1/chat/completions";
-var _mod="openai/gpt-oss-120b";
+var _pc=globalThis._cuesPromptConfig||{};
+var _defaultMod=_pc.model||"openai/gpt-oss-120b";
 var _ha=globalThis._httpAdapter;
-globalThis._cueResolver=globalThis._cuesCore.createResolver([
-new globalThis._cuesCore.GrammarSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_mod,priority:50}),
-new globalThis._cuesCore.MathSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_mod,priority:90}),
-new globalThis._cuesCore.FactualSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_mod,priority:90})
-],{parallel:false,timeout:30000,continueOnError:true});
+var _ps=globalThis._cuesPromptInstructions||undefined;
+var _srcs=_pc.sources||{};
+var _srcCfg=function(n){return _srcs[n]||{};};
+var _resolverSources=[];
+if(_srcCfg("grammar").enabled!==false){_resolverSources.push(new globalThis._cuesCore.GrammarSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("grammar").model||_defaultMod,priority:_srcCfg("grammar").priority||50,promptSuffix:_ps}));}
+if(_srcCfg("math").enabled!==false){_resolverSources.push(new globalThis._cuesCore.MathSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("math").model||_defaultMod,priority:_srcCfg("math").priority||90}));}
+if(_srcCfg("factual").enabled!==false){_resolverSources.push(new globalThis._cuesCore.FactualSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("factual").model||_defaultMod,priority:_srcCfg("factual").priority||90}));}
+globalThis._cueResolver=globalThis._cuesCore.createResolver(_resolverSources,{parallel:false,timeout:30000,continueOnError:true});
 }catch(_e6){globalThis._cueResolver=null;}
 }
 // Cue-action check: returns true for words with built-in cycling behavior
@@ -167,10 +209,27 @@ var _wLower=_curWord.toLowerCase();
 if(_actOvr[_wLower]){
 var _ad=_actOvr[_wLower];
 var _home=process.env.HOME||"/home/"+(process.env.USER||"root");
-var _script=_ad.scriptPath||(_home+"/.claude/actions/"+_ad.action+".sh");
+var _rawScript=_ad.script||_ad.scriptPath||(_home+"/.claude/actions/"+_ad.action+".sh");
+var _script=_rawScript.replace(/^~/,_home);
 var _args=["bash",_script].concat(_dir>0?_ad.upArgs||["up"]:_ad.downArgs||["down"]);
-try{_reqFn("child_process").spawn(_args[0],_args.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}
-if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+// In-memory state: no file I/O on hot path after first press
+var _stateFile="/tmp/cue-action-"+_ad.action+".txt";
+var _dynTip=_ad.tip||_ad.action;
+if(!globalThis._cueActionValues)globalThis._cueActionValues={};
+var _curVal=globalThis._cueActionValues[_ad.action];
+if(_curVal==null){try{_curVal=parseInt(_reqFn("fs").readFileSync(_stateFile,"utf8").trim(),10);}catch(_e3){}}
+if(typeof _curVal==="number"&&!isNaN(_curVal)){
+var _dirArgs=_dir>0?(_ad.upArgs||["up","10"]):(_ad.downArgs||["down","10"]);
+var _amt=parseInt(_dirArgs[_dirArgs.length-1],10)||10;
+var _newVal=_dir>0?Math.min(100,_curVal+_amt):Math.max(0,_curVal-_amt);
+globalThis._cueActionValues[_ad.action]=_newVal;
+globalThis._cueActionTip=_dynTip;
+}else{globalThis._cueActionTip=_dynTip;}
+// Debounce spawn: rapid presses only fire script once with final value
+if(!globalThis._cueActionTimers)globalThis._cueActionTimers={};
+if(globalThis._cueActionTimers[_ad.action])clearTimeout(globalThis._cueActionTimers[_ad.action]);
+var _spawnArgs=_args.slice(0);
+globalThis._cueActionTimers[_ad.action]=setTimeout(function(){try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}},50);
 return{refresh:true};
 }
 // Built-in cue-action: number increment/decrement
@@ -249,7 +308,7 @@ globalThis._hlText=_newText;
 globalThis._hlState.text=_newText;
 // Write highlight export immediately so status line has fresh data
 try{var _cWords=_newText.split(/\\s+/).filter(function(w){return w});
-var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,tip:_dWord.cueTip||null,altCueTips:_dWord.altCueTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
+var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,cueTip:_dWord.cueTip||null,altCueTips:_dWord.altCueTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
 _reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // Re-evaluate underscore if present
@@ -533,9 +592,11 @@ globalThis._dynIndexMap=null;
 }else{
 // No blanks: find which indices already have valid alts — only send missing ones
 var _needLlmIndices=[];
+var _ignSet=globalThis._cuesIgnoreWords;
 for(var _si=0;_si<_sentWords.length;_si++){
-// Skip function words
+// Skip ignored words (from cues.md ## Ignore)
 var _sw=_sentWords[_si].toLowerCase();
+if(_ignSet&&_ignSet.has(_sw))continue;
 if(/^(the|a|an|to|is|was|of|and|in|on|at|for|it|its|be|am|are|were|been|has|had|have|do|did|does|not|but|or|if|so|no|my|we|he|she|me|us|them|this|that|with|from|by|as)$/.test(_sw))continue;
 // Check if this index already has valid alts in _dynDefs
 var _hasAlts=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_si&&d.alts&&d.alts.length>1&&d.alts.indexOf(_sentWords[_si])>=0;});
@@ -736,7 +797,7 @@ export const writeDynamicCycleHandlers = (
   // Dynamic cycle Up — delegates to shared _cycleAlt(direction, ...)
   const dynUpCode = `
 {var _r=globalThis._cycleAlt&&globalThis._cycleAlt(1,null,null,null,${requireFuncName});
-if(_r&&_r.refresh){var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
+if(_r&&_r.refresh){if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
 if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}
 `;
 
@@ -756,7 +817,7 @@ if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDi
   // Dynamic cycle Down — delegates to shared _cycleAlt(direction, ...)
   const dynDownCode = `
 {var _r=globalThis._cycleAlt&&globalThis._cycleAlt(-1,null,null,null,${requireFuncName});
-if(_r&&_r.refresh){var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
+if(_r&&_r.refresh){if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
 if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}
 `;
 

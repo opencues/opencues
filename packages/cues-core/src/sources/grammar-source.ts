@@ -35,6 +35,9 @@ export interface GrammarSourceConfig {
 
   /** Request timeout in ms */
   timeout?: number;
+
+  /** Additional prompt instructions (from cues.md) */
+  promptSuffix?: string;
 }
 
 /**
@@ -100,7 +103,10 @@ export class GrammarSource implements CueSource {
     const indexed = context.words
       .map((w, i) => `${i}=${isNumber.test(w) ? numToWord(w) : w}`)
       .join(' ');
-    return GRAMMAR_PROMPT + indexed;
+    const suffix = this.config.promptSuffix
+      ? '\n\nAdditional instructions:\n' + this.config.promptSuffix
+      : '';
+    return GRAMMAR_PROMPT + suffix + '\n' + indexed;
   }
 
   private buildBlankPrompt(context: CueContext): string {
