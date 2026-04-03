@@ -186,14 +186,23 @@ const result = await resolver.resolve({
 
 ## Build Commands
 
+**After any change, use `setup.sh`** — it handles everything (build, copy, tweakcc rebuild, patch apply):
+
 ```bash
-# Build cues-core
-cd packages/cues-core && npm run build
-
-# Run Claude Code setup
 integrations/claude-code/patches/setup.sh
+```
 
-# Re-apply patches after Claude Code updates
+This is the **only reliable way** to apply changes. It:
+1. Copies patch `.ts` files to tweakcc and **rebuilds tweakcc** (compiles patches into `dist/`)
+2. Builds cues-core (`src/` → `dist/`) and copies to `~/.claude/node_modules/cues-core/`
+3. Applies compiled patches to Claude Code's `cli.js`
+
+**Do not** run `node dist/index.mjs --apply` directly after editing patch files — that uses the old compiled tweakcc output and your changes won't take effect.
+
+After running setup.sh, **restart Claude Code** for changes to take effect.
+
+```bash
+# Re-apply patches only (after Claude Code updates, no source changes)
 cd ~/tweakcc
 CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply

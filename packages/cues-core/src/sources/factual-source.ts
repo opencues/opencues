@@ -35,6 +35,9 @@ export interface FactualSourceConfig {
 
   /** Request timeout in ms */
   timeout?: number;
+
+  /** Custom prompt override (from blanks.md ## Prompt ### factual) */
+  prompt?: string;
 }
 
 /**
@@ -70,7 +73,8 @@ export class FactualSource implements CueSource {
       }
 
       // Call LLM to get ANSWER=value
-      const prompt = FACTUAL_PROMPT + context.text.replace(/_/g, 'BLANK');
+      const basePrompt = (this.config.prompt || FACTUAL_PROMPT).trimEnd() + ' ';
+      const prompt = basePrompt + context.text.replace(/_/g, 'BLANK');
       const response = await this.callLLM(prompt);
 
       // Parse ANSWER=value

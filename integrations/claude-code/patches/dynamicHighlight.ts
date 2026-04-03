@@ -116,25 +116,47 @@ globalThis._localCueData=null;
 globalThis._localCueMap=null;
 }
 }
-// Load cues.md from project root (aliases: hints.md, tips.md)
+// Load config files from project root: cues.md, blanks.md, controls.md (each optional)
 if(globalThis._cuesCore&&!globalThis._cuesMdLoaded){
 try{
-var _fs=${requireFuncName}("fs");var _cwd=process.cwd();var _mdPath=null;
-["cues.md","hints.md","tips.md"].some(function(f){var p=_cwd+"/"+f;if(_fs.existsSync(p)){_mdPath=p;return true;}});
-if(_mdPath){
-var _mdContent=_fs.readFileSync(_mdPath,"utf8");
-var _mdCfg=globalThis._cuesCore.parseCuesMd(_mdContent);
-globalThis._cuesMdConfig=_mdCfg;
-globalThis._cuesMdLoaded=true;
-if(_mdCfg.tips&&globalThis._localCueMap){var _m=globalThis._cuesCore.buildLookupMap(_mdCfg.tips);_m.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}
-if(_mdCfg.promptConfig){
-globalThis._cuesPromptConfig=_mdCfg.promptConfig;
-var _gramSrc=_mdCfg.promptConfig.sources&&_mdCfg.promptConfig.sources.grammar;
+var _fs=${requireFuncName}("fs");var _cwd=process.cwd();
+var _ignoreWords=[];
+// cues.md (aliases: hints.md, tips.md) — tips + prompt config
+var _cuesPath=null;
+["cues.md","hints.md","tips.md"].some(function(f){var p=_cwd+"/"+f;if(_fs.existsSync(p)){_cuesPath=p;return true;}});
+if(_cuesPath){
+var _cuesCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_cuesPath,"utf8"));
+if(_cuesCfg.tips&&globalThis._localCueMap){var _m=globalThis._cuesCore.buildLookupMap(_cuesCfg.tips);_m.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}
+if(_cuesCfg.promptConfig){
+globalThis._cuesPromptConfig=_cuesCfg.promptConfig;
+var _gramSrc=_cuesCfg.promptConfig.sources&&_cuesCfg.promptConfig.sources.grammar;
 if(_gramSrc&&_gramSrc.promptText){globalThis._cuesPromptInstructions=_gramSrc.promptText;}
 }
-if(_mdCfg.actions){globalThis._cueActionOverrides=Object.assign(globalThis._cueActionOverrides||{},_mdCfg.actions);}
-if(_mdCfg.ignore){globalThis._cuesIgnoreWords=new Set(_mdCfg.ignore.map(function(w){return w.toLowerCase();}));}
+if(_cuesCfg.ignore){_ignoreWords=_ignoreWords.concat(_cuesCfg.ignore);}
 }
+// controls.md — cue-actions
+var _ctrlPath=_cwd+"/controls.md";
+if(_fs.existsSync(_ctrlPath)){
+var _ctrlCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_ctrlPath,"utf8"));
+if(_ctrlCfg.actions){globalThis._cueActionOverrides=Object.assign(globalThis._cueActionOverrides||{},_ctrlCfg.actions);}
+if(_ctrlCfg.ignore){_ignoreWords=_ignoreWords.concat(_ctrlCfg.ignore);}
+}
+// blanks.md — ignore list + blank-fill prompt config (opt-in: blanks only work if file exists)
+var _blankPath=_cwd+"/blanks.md";
+if(_fs.existsSync(_blankPath)){
+var _blankCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_blankPath,"utf8"));
+if(_blankCfg.ignore){_ignoreWords=_ignoreWords.concat(_blankCfg.ignore);}
+if(_blankCfg.promptConfig){
+globalThis._blanksPromptConfig=_blankCfg.promptConfig;
+var _defaultMdMod=_blankCfg.promptConfig.model||"openai/gpt-oss-120b";
+var _blankModes=globalThis._cuesCore.buildBlankModes(_blankCfg.promptConfig.sources,_defaultMdMod);
+globalThis._blankModes=_blankModes;
+var _classifierSrc=_blankCfg.promptConfig.sources.classifier;
+globalThis._blanksEnabled=true;
+}
+}
+if(_ignoreWords.length>0){globalThis._cuesIgnoreWords=new Set(_ignoreWords.map(function(w){return w.toLowerCase();}));}
+globalThis._cuesMdLoaded=true;
 }catch(_e1){}
 }
 // Periodic status line refresh when a cue-action word is selected
@@ -176,15 +198,23 @@ try{
 var _apiKey=process.env.GROQ_API_KEY;
 var _ep="https://api.groq.com/openai/v1/chat/completions";
 var _pc=globalThis._cuesPromptConfig||{};
-var _defaultMod=_pc.model||"openai/gpt-oss-120b";
+var _bpc=globalThis._blanksPromptConfig||{};
+var _defaultMod=_pc.model||_bpc.model||"openai/gpt-oss-120b";
 var _ha=globalThis._httpAdapter;
 var _ps=globalThis._cuesPromptInstructions||undefined;
 var _srcs=_pc.sources||{};
 var _srcCfg=function(n){return _srcs[n]||{};};
 var _resolverSources=[];
-if(_srcCfg("grammar").enabled!==false){_resolverSources.push(new globalThis._cuesCore.GrammarSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("grammar").model||_defaultMod,priority:_srcCfg("grammar").priority||50,promptSuffix:_ps}));}
-if(_srcCfg("math").enabled!==false){_resolverSources.push(new globalThis._cuesCore.MathSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("math").model||_defaultMod,priority:_srcCfg("math").priority||90}));}
-if(_srcCfg("factual").enabled!==false){_resolverSources.push(new globalThis._cuesCore.FactualSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("factual").model||_defaultMod,priority:_srcCfg("factual").priority||90}));}
+// Grammar source for synonym cycling (non-blank words)
+if(_srcCfg("grammar").enabled!==false){_resolverSources.push(new globalThis._cuesCore.GrammarSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_srcCfg("grammar").model||_defaultMod,priority:_srcCfg("grammar").priority||50,promptSuffix:_ps,blankPrompt:null}));}
+// BlankSource — only if blanks.md present and modes defined
+if(globalThis._blanksEnabled&&globalThis._blankModes&&globalThis._blankModes.length>0){
+var _bClassifierCfg={httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,model:_defaultMod};
+var _classifierSrcCfg=(_bpc.sources||{}).classifier;
+if(_classifierSrcCfg&&_classifierSrcCfg.promptText){_bClassifierCfg.prompt=_classifierSrcCfg.promptText;}
+var _blankClassifier=new globalThis._cuesCore.BlankClassifier(_bClassifierCfg,globalThis._blankModes);
+_resolverSources.push(new globalThis._cuesCore.BlankSource({httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,defaultModel:_defaultMod,modes:globalThis._blankModes,classifier:_blankClassifier}));
+}
 globalThis._cueResolver=globalThis._cuesCore.createResolver(_resolverSources,{parallel:false,timeout:30000,continueOnError:true});
 }catch(_e6){globalThis._cueResolver=null;}
 }
@@ -233,8 +263,10 @@ globalThis._cueActionTimers[_ad.action]=setTimeout(function(){try{_reqFn("child_
 return{refresh:true};
 }
 // Built-in cue-action: number increment/decrement
+// Skip if this position has dynamic alternatives (e.g. blank fill-in result) — let alt cycling handle it
 var _numPat=/^-?\\d+(\\.\\d+)?$/;
-if(_numPat.test(_curWord)){
+var _hasAltsCycle=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.alts&&w.alts.length>1;});
+if(_numPat.test(_curWord)&&!_hasAltsCycle){
 if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
 var _num=parseFloat(_curWord);
 if(globalThis._hlState.originalNumbers[_hlIdx]===undefined)globalThis._hlState.originalNumbers[_hlIdx]=_num;
@@ -463,8 +495,8 @@ break;
 }
 }
 
-// Underscore (blank) handling with queue support
-var _hasUnderscore=_curWords.indexOf("_")>=0;
+// Underscore (blank) handling — only active when blanks.md is present
+var _hasUnderscore=globalThis._blanksEnabled&&_curWords.indexOf("_")>=0;
 if(_hasUnderscore){
 // Get context (all words except underscore)
 var _underscoreContext=_curWords.filter(function(w){return w!=="_";}).join(" ");
@@ -637,7 +669,7 @@ if(_r.alternatives&&_r.alternatives.length>1){
 var _filteredAlts=[];
 for(var _fa=0;_fa<_r.alternatives.length;_fa++){
 var _a=_r.alternatives[_fa].replace(/[.;:!?]+$/,"");
-if(_a&&(_a==="_"||_a.length>1)&&_filteredAlts.indexOf(_a)<0)_filteredAlts.push(_a);
+if(_a&&(_a==="_"||_a.length>1||_r.word==="_")&&_filteredAlts.indexOf(_a)<0)_filteredAlts.push(_a);
 }
 if(_filteredAlts.length>1){
 _words.push({index:_r.wordIndex,word:_r.word,alts:_filteredAlts,linked:_r.linked||null,currentAltIndex:0,source:_r.source||"resolver"});

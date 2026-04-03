@@ -25,6 +25,9 @@ export interface ClassifierConfig {
 
   /** Request timeout in ms (default: 10000) */
   timeout?: number;
+
+  /** Custom prompt override (from blanks.md ## Prompt ### classifier) */
+  prompt?: string;
 }
 
 export interface ClassifierResult {
@@ -51,7 +54,8 @@ export class ModeClassifier {
   async classify(text: string): Promise<ClassifierResult> {
     const startTime = Date.now();
 
-    const prompt = CLASSIFIER_PROMPT + text;
+    const basePrompt = (this.config.prompt || CLASSIFIER_PROMPT).trimEnd() + ' ';
+    const prompt = basePrompt + text;
 
     try {
       const response = await this.callLLM(prompt);

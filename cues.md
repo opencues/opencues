@@ -6,8 +6,8 @@ version: 1
 
 # cues.md
 
-OpenCues configuration for Claude Code. This file defines word tips,
-cue-actions, and LLM prompt customizations.
+OpenCues configuration for Claude Code. Defines word tips and LLM prompt customizations.
+For cue-actions see controls.md. For blank-fill behaviour see blanks.md.
 
 ## Tips
 
@@ -728,27 +728,6 @@ cue-actions, and LLM prompt customizations.
 ]
 ```
 
-## Actions
-
-```json
-{
-  "volume": {
-    "action": "volume",
-    "tip": "system volume control",
-    "script": "~/.claude/actions/volume.sh",
-    "upArgs": ["up", "5"],
-    "downArgs": ["down", "5"]
-  },
-  "brightness": {
-    "action": "brightness",
-    "tip": "screen brightness",
-    "script": "~/.claude/actions/brightness.sh",
-    "upArgs": ["up", "10"],
-    "downArgs": ["down", "10"]
-  }
-}
-```
-
 ## Prompt
 
 ### grammar
@@ -807,13 +786,3 @@ terminology. Group related terms by clinical relationship:
 
 Never suggest informal patient-facing language as alternatives for
 clinical terms. Maintain HIPAA-appropriate terminology throughout.
-
-## Ignore
-
-Anthropic
-Claude
-OpenCues
-TypeScript
-JavaScript
-Groq
-Gemini

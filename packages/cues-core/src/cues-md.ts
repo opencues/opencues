@@ -21,12 +21,18 @@ export interface CuesMdFrontmatter {
  * A prompt source defined as a ### subsection under ## Prompt.
  * Each source has optional classification rules and a prompt.
  */
+/** How to parse the LLM response for a blank mode */
+export type BlankParser = 'compute' | 'answer' | 'alternatives' | 'raw';
+
 export interface SourceConfig {
   /** Source name (from ### heading, e.g. "grammar", "legal", "medical") */
   name: string;
 
-  /** Pipe-separated word patterns for fast regex classification */
+  /** Pipe-separated regex pattern for fast pre-LLM classification (e.g. "factorial|sqrt|\d+%") */
   match?: string;
+
+  /** Comma-separated keywords for fast pre-LLM classification (e.g. "average, half of, tip") */
+  keywords?: string;
 
   /** Natural language hint for LLM-based classification */
   classify?: string;
@@ -45,6 +51,16 @@ export interface SourceConfig {
 
   /** Model override for this source */
   model?: string;
+
+  /**
+   * How to parse the LLM response for blank fill-in.
+   * compute     — extract COMPUTE=expr and evaluate as JS math
+   * answer      — extract ANSWER=value as a single alternative
+   * alternatives — parse INDEX:alt1,alt2,... (grammar format)
+   * raw         — use the full LLM response verbatim as one alternative
+   * (default: alternatives)
+   */
+  parser?: BlankParser;
 }
 
 /**
@@ -301,11 +317,13 @@ function parsePromptSection(content: string): PromptConfig {
     if (yamlBlock) {
       const kv = parseSimpleYamlFlat(yamlBlock);
       if (kv.match) source.match = kv.match;
+      if (kv.keywords) source.keywords = kv.keywords;
       if (kv.classify) source.classify = kv.classify;
       if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
       if (kv.enabled !== undefined) source.enabled = kv.enabled !== 'false';
       if (kv.prompt) source.promptPath = kv.prompt;
       if (kv.model) source.model = kv.model;
+      if (kv.parser) source.parser = kv.parser as BlankParser;
     }
 
     // Extract freeform text as inline prompt
@@ -323,9 +341,11 @@ function parsePromptSection(content: string): PromptConfig {
     if (yamlBlock) {
       const kv = parseSimpleYamlFlat(yamlBlock);
       if (kv.match) source.match = kv.match;
+      if (kv.keywords) source.keywords = kv.keywords;
       if (kv.classify) source.classify = kv.classify;
       if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
       if (kv.model) source.model = kv.model;
+      if (kv.parser) source.parser = kv.parser as BlankParser;
     }
     if (text) source.promptText = text;
     config.sources['grammar'] = source;

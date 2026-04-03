@@ -47,7 +47,19 @@ export {
   type PromptConfig,
   type SourceConfig,
   type ActionConfig,
+  type BlankParser,
 } from './cues-md';
+
+// Blank source (generic, driven by blanks.md)
+export {
+  BlankSource,
+  BlankClassifier,
+  buildBlankModes,
+  classifyFast,
+  type BlankMode,
+  type BlankSourceConfig,
+  type BlankClassifierConfig,
+} from './sources/blank-source';
 
 // Prompts
 export {

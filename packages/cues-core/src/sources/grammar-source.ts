@@ -36,8 +36,11 @@ export interface GrammarSourceConfig {
   /** Request timeout in ms */
   timeout?: number;
 
-  /** Additional prompt instructions (from cues.md) */
+  /** Additional prompt instructions appended to the grammar prompt (from cues.md) */
   promptSuffix?: string;
+
+  /** Full blank-fill prompt override (from blanks.md ## Prompt ### grammar). Set null to disable blank handling entirely. */
+  blankPrompt?: string | null;
 }
 
 /**
@@ -55,7 +58,10 @@ export class GrammarSource implements CueSource {
   }
 
   supports(context: CueContext): boolean {
-    // Supports any context (fallback source)
+    // Skip blank contexts when blankPrompt is explicitly null (BlankSource owns blanks)
+    if (this.config.blankPrompt === null) {
+      return !context.words.some(w => w === '_');
+    }
     return true;
   }
 
@@ -110,11 +116,10 @@ export class GrammarSource implements CueSource {
   }
 
   private buildBlankPrompt(context: CueContext): string {
-    // Format: 0=word1 1=_ 2=word3
     const indexed = context.words
       .map((w, i) => `${i}=${w}`)
       .join(' ');
-    return BLANK_GRAMMAR_PROMPT + indexed;
+    return (this.config.blankPrompt || BLANK_GRAMMAR_PROMPT).trimEnd() + '\n\n' + indexed;
   }
 
   private async callLLM(prompt: string): Promise<string> {

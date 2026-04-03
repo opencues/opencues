@@ -35,6 +35,9 @@ export interface MathSourceConfig {
 
   /** Request timeout in ms */
   timeout?: number;
+
+  /** Custom prompt override (from blanks.md ## Prompt ### math) */
+  prompt?: string;
 }
 
 /**
@@ -70,7 +73,8 @@ export class MathSource implements CueSource {
       }
 
       // Call LLM to get COMPUTE=expression
-      const prompt = MATH_PROMPT + context.text.replace(/_/g, 'BLANK');
+      const basePrompt = (this.config.prompt || MATH_PROMPT).trimEnd() + ' ';
+      const prompt = basePrompt + context.text.replace(/_/g, 'BLANK');
       const response = await this.callLLM(prompt);
 
       // Parse COMPUTE=expression
