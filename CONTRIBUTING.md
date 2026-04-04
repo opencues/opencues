@@ -40,7 +40,7 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 | File | What it defines |
 |------|-----------------|
 | `cues.md` | Word tips (`## Tips`) and LLM prompt sources (`## Prompt`) for word alternatives. Each `### section` under `## Prompt` is a source — grammar, legal, medical, etc. |
-| `blanks.md` | Blank fill-in modes (`## Prompt`) — math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, grammar, plus the `### classifier` that picks which mode to use. Each mode has `match`/`keywords` for fast detection and a `parser` type (`compute`, `answer`, `alternatives`, `raw`). |
+| `blanks.md` | Blank fill-in modes (`## Prompt`) — math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, grammar, plus the `### classifier` that picks which mode to use. Each mode has `match`/`keywords` for fast detection and a `parser` type (`math`, `answer`, `alternatives`, `raw`, or `compute`). |
 | `controls.md` | Cue-controls (`## Controls`) — words that trigger external scripts instead of text cycling. |
 
 ### Adding a new word source
@@ -61,6 +61,8 @@ Your prompt instructions here...
 
 The `match` pattern filters which words this source handles. The prompt text becomes the LLM instruction. No code changes needed — `buildSourcesFromConfig()` picks it up automatically.
 
+**Important:** All word-scoped `alternatives`-parser sources get combined into a single LLM call. Domain sources (with a `match` regex) get a conditional header ("When the input contains terms like ..."), so the LLM only applies them for matching words. But sources **without** a `match` regex are treated as base instructions — their prompts are concatenated unconditionally. If you add a second base source (e.g., `### creative` alongside `### grammar`), both prompts will apply to every word. Make sure their instructions are complementary, not contradictory — "prefer concise synonyms" and "suggest wild unexpected alternatives" in the same prompt will confuse the LLM. If your new source is domain-specific, always include a `match` regex.
+
 ### Adding a new blank mode
 
 Add a `### section` under `## Prompt` in `blanks.md`:
@@ -78,7 +80,12 @@ keywords: implement, refactor, debug
 Your prompt instructions here...
 ```
 
-Then add examples to `### classifier` so the LLM can route to your mode.
+Then you **must** also update `### classifier` in two places:
+
+1. Add examples for your mode so the LLM knows when to select it
+2. Add your mode name to the `Output ONLY: MODE=...` line
+
+**If you skip this step**, inputs that miss your `match`/`keywords` fast-path will fall through to the LLM classifier, which won't know your mode exists and will route to grammar instead. Your mode will only work for inputs that hit the fast-match — anything ambiguous will silently misclassify.
 
 ### How blank classification works
 
@@ -97,7 +104,7 @@ Each `### section` supports these yaml fields:
 | Field | Type | Description |
 |-------|------|-------------|
 | `priority` | number | Higher = checked first (default: 50 for words, 90 for blanks) |
-| `parser` | string | `alternatives` / `compute` / `answer` / `raw` (default: `alternatives`) |
+| `parser` | string | `math` (safe arithmetic) / `answer` / `alternatives` / `raw` / `compute` (⚠️ unsafe — uses Function(), see below) (default: `alternatives`) |
 | `match` | regex | Fast pre-LLM regex pattern for classification |
 | `keywords` | string | Comma-separated keywords for classification |
 | `model` | string | LLM model override for this source |
@@ -180,6 +187,8 @@ Results are saved to `tests/results/cuescore-{model}-{timestamp}.json`. Compare 
 
 Current categories benchmarked (30 tests each): word-adj, word-verb, word-noun, word-finance, blank-math, blank-factual, blank-translate, blank-unit, blank-spell, blank-color, blank-http, blank-tz, blank-roman, blank-grammar.
 
+**Benchmark stability note:** Structured blank domains (math, factual, translation, color, HTTP, etc.) are highly stable — deterministic answers, consistent pass rates across runs. Word alternatives are inherently non-deterministic (~41% of word tests are flaky across runs) because the LLM returns valid synonyms that may not be in the expected list. Use the benchmark for **trend detection** (did a change make word accuracy worse overall?) not as a strict pass/fail gate. The total pass rate should stay above ~90%; a significant drop indicates a regression.
+
 ### Key source files
 
 | File | Purpose |
@@ -187,7 +196,7 @@ Current categories benchmarked (30 tests each): word-adj, word-verb, word-noun, 
 | `src/sources/config-source.ts` | Generic config-driven LLM source |
 | `src/sources/classified-source-group.ts` | Blank mode classification |
 | `src/sources/build-sources.ts` | Factory: .md configs to CueSource[] |
-| `src/sources/parsers.ts` | Response parsers (compute, answer, alternatives, raw) |
+| `src/sources/parsers.ts` | Response parsers (math, compute, answer, alternatives, raw) |
 | `src/cues-md.ts` | .md config file parser |
 | `src/resolver.ts` | CueResolver orchestration |
 | `src/types.ts` | Core interfaces (CueSource, CueContext, CueResult) |
@@ -200,13 +209,17 @@ cues-core uses two strategies for multi-source inputs. Understanding this is cri
 
 **Blanks (classifying)**: Blank-fill modes are **mutually exclusive** — an input is math OR factual OR grammar, never both. `ClassifiedSourceGroup` picks one mode via fast heuristics (regex/keywords) or LLM classifier fallback, then routes to that single source.
 
+**Why blanks can't be combined like words**: Word combining works because every domain uses the **same output format** (`INDEX:alt1,alt2,alt3`). Blank modes use **different parsers** — math outputs `COMPUTE=expression`, factual outputs `ANSWER=value`, grammar outputs `INDEX:word1,word2,word3`. Combining them into one prompt would force the LLM to pick the right format AND produce the answer — two decisions in one call. With 10 blank domains, that's 10 conflicting output formats in one prompt, which would overwhelm the LLM and degrade accuracy. Classifying first (one cheap decision) then routing to a focused prompt (one clear task) keeps each call simple and reliable.
+
+**Why combining instead of parallel execution**: The resolver runs with `parallel: false`. An alternative fix for the 3x word-source slowdown would have been `parallel: true`, but that fires N concurrent API calls per keystroke — tripling the request rate to Groq and risking rate limits during fast typing. Combining into one call keeps the request rate at 1:1 and produces better results since the LLM sees all domain context together.
+
 If you add a new `### section` to `cues.md`, it gets combined automatically — no extra LLM call. If you add a new `### section` to `blanks.md`, it becomes a new classification target. See `build-sources.ts` for the combining logic and `classified-source-group.ts` for the classification logic.
 
 ### Pitfalls discovered during testing
 
 These issues were found during development and are worth knowing about:
 
-**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. The classifier now checks both fields and uses `max_tokens: 200`. ConfigSource uses `max_tokens: 800` for alternatives. Always pass `reasoning_effort: "low"` via provider overrides for Groq.
+**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. The classifier now checks both fields and uses `max_tokens: 200`. ConfigSource uses `max_tokens: 800` for alternatives. Both `ConfigSource` and `ClassifiedSourceGroup` now include `reasoning_effort: "low"` in their request bodies — this is a Groq-specific field that non-Groq providers ignore. This ensures cues-core works correctly out of the box without requiring the integration's HTTP adapter to inject provider overrides.
 
 **The classifier reasoning field echoes the full prompt.** When checking the reasoning field for `MODE=GRAMMAR`, the reasoning text contains the classifier prompt which lists ALL mode names. Matching bare mode names (e.g., `raw.includes('MATH')`) would always hit the first entry. Only match the `MODE=X` pattern in reasoning.
 

@@ -173,7 +173,7 @@ var _NodeHttpAdapter=${requireFuncName}((process.env.HOME||"~")+"/.claude/node_m
 globalThis._httpAdapter=new _NodeHttpAdapter({
 maxSockets:2,
 timeout:30000,
-providerOverrides:{"api.groq.com":{reasoning_effort:"low",max_tokens:800}}
+providerOverrides:{}
 });
 // Warm connection pool on startup
 if(process.env.GROQ_API_KEY){
@@ -1088,11 +1088,13 @@ export const writeDynamicNavigation = (
     // Also: span originals are navigable even if current word isn't in alts (e.g., "Jeff" when alt is "Jeff Bezos")
     const newForEach = `${m.allW}.forEach(function(w,i){
 var _hasTipAlt=globalThis._localCueMap&&globalThis._localCueMap.has(w.toLowerCase());
-var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===i&&d.alts&&d.alts.length>1&&d.alts.indexOf(w)>=0;});
+var _wLow=w.toLowerCase();
+var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===i&&d.alts&&d.alts.length>1&&(d.alts.indexOf(w)>=0||d.alts.some(function(a){return a.toLowerCase()===_wLow;}));});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[i];
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==i;
 var _isSpanOriginal=_spanInfo&&_spanInfo.originalIndex===i;
-if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal)&&!_isNonOrigSpan)${m.targetIdx}.push(i);
+var _isInSpan=!!_spanInfo&&!_isNonOrigSpan;
+if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal||_isInSpan)&&!_isNonOrigSpan)${m.targetIdx}.push(i);
 });`;
 
     newFile = newFile.replace(m.full, newForEach);

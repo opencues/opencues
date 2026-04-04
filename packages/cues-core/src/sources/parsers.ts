@@ -10,18 +10,93 @@
 import { CueResult } from '../types';
 
 /**
- * Parse COMPUTE=expression responses and evaluate the math expression.
+ * Safe math evaluator — recursive descent, no Function()/eval().
+ * Supports: + - * / % ( ) and unary minus. Returns NaN on invalid input.
+ */
+function evalMath(expr: string): number {
+  let pos = 0;
+  const chars = expr.replace(/\s/g, '');
+
+  function parseExpr(): number {
+    let left = parseTerm();
+    while (pos < chars.length && (chars[pos] === '+' || chars[pos] === '-')) {
+      const op = chars[pos++];
+      const right = parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+
+  function parseTerm(): number {
+    let left = parseUnary();
+    while (pos < chars.length && (chars[pos] === '*' || chars[pos] === '/' || chars[pos] === '%')) {
+      const op = chars[pos++];
+      const right = parseUnary();
+      if (op === '*') left = left * right;
+      else if (op === '/') left = left / right;
+      else left = left % right;
+    }
+    return left;
+  }
+
+  function parseUnary(): number {
+    if (pos < chars.length && chars[pos] === '-') {
+      pos++;
+      return -parseUnary();
+    }
+    return parseAtom();
+  }
+
+  function parseAtom(): number {
+    if (pos < chars.length && chars[pos] === '(') {
+      pos++; // skip (
+      const val = parseExpr();
+      pos++; // skip )
+      return val;
+    }
+    const start = pos;
+    while (pos < chars.length && (chars[pos] >= '0' && chars[pos] <= '9' || chars[pos] === '.')) {
+      pos++;
+    }
+    if (start === pos) return NaN;
+    return parseFloat(chars.slice(start, pos));
+  }
+
+  const result = parseExpr();
+  return pos === chars.length ? result : NaN;
+}
+
+/**
+ * Parse COMPUTE=expression and evaluate using safe recursive-descent math.
+ * No Function()/eval() — only arithmetic operators. Use `parser: math`.
  * Returns the computed value as a string array, e.g. ["48"].
+ */
+export function parseMath(response: string): string[] {
+  const match = response.match(/COMPUTE\s*=\s*([^\n]+)/i);
+  if (!match) return [];
+  const expr = match[1].trim();
+  const safe = expr.replace(/[^0-9+\-*/().%]/g, '');
+  if (!safe) return [];
+  const result = evalMath(safe);
+  if (!isFinite(result)) return [];
+  const rounded = Math.round(result * 10000) / 10000;
+  return [String(rounded % 1 === 0 ? Math.round(rounded) : rounded)];
+}
+
+/**
+ * ⚠️ UNSAFE: Parse COMPUTE=expression and evaluate using Function().
+ * Can execute arbitrary JavaScript. Only use in trusted environments
+ * where the LLM response is controlled. Prefer `parser: math` for
+ * arithmetic. Use `parser: compute` only when you need JS expressions
+ * beyond basic arithmetic (e.g., Math.pow, Math.sqrt, ternary operators).
  */
 export function parseCompute(response: string): string[] {
   const match = response.match(/COMPUTE\s*=\s*([^\n]+)/i);
   if (!match) return [];
   const expr = match[1].trim();
   try {
-    const safe = expr.replace(/[^0-9+\-*/().%\s]/g, '');
-    if (!safe.trim()) return [];
     // eslint-disable-next-line no-new-func
-    const result = Function('"use strict"; return (' + safe + ')')();
+    const result = Function('"use strict"; return (' + expr + ')')();
     if (typeof result !== 'number' || !isFinite(result)) return [];
     const rounded = Math.round(result * 10000) / 10000;
     return [String(rounded % 1 === 0 ? Math.round(rounded) : rounded)];

@@ -91,7 +91,7 @@ Classify:
 
 ```yaml
 priority: 90
-parser: compute
+parser: math
 match: \d+\s*[+\-*/^%]\s*\d+|\d+%
 keywords: factorial, average, half of, double, triple, square root, sqrt, power of, tip, tax, discount, split, divide, multiply, mod, remainder, gcd, lcm, log, sine, cosine, floor, ceiling, round
 ```
@@ -226,7 +226,7 @@ Translate:
 
 ```yaml
 priority: 85
-parser: compute
+parser: math
 match: \d+\s*(celsius|fahrenheit|km|miles|kg|pounds|liters|gallons|meters|feet|inches|cm|oz|grams|yards|ounces|tons|mph|kph)\s+(in|to)\s+
 keywords: in celsius, in fahrenheit, in km, in miles, in kg, in pounds, in liters, in gallons, in meters, in feet, in inches, in cm, convert to, to celsius, to fahrenheit, in yards, in ounces
 ```

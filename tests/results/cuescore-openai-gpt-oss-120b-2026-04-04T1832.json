@@ -1,0 +1,9273 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "timestamp": "2026-04-04T18:32:00.845Z",
+  "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+  "totalPass": 373,
+  "totalCount": 390,
+  "totalCovered": 387,
+  "totalMatchPct": 95.6,
+  "totalCoverPct": 99.2,
+  "categories": {
+    "word-adj": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        634,
+        375,
+        529,
+        486,
+        641,
+        311,
+        523,
+        966,
+        828,
+        463,
+        260,
+        541,
+        1820,
+        433,
+        450,
+        865,
+        547,
+        289,
+        672,
+        688,
+        657,
+        544,
+        710,
+        351,
+        358,
+        998,
+        476,
+        735,
+        664,
+        658
+      ],
+      "altCounts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "totalAlts": [
+        9,
+        6,
+        6,
+        9,
+        6,
+        6,
+        9,
+        6,
+        6,
+        9,
+        6,
+        6,
+        6,
+        6,
+        6,
+        9,
+        6,
+        6,
+        6,
+        6,
+        6,
+        9,
+        9,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6
+      ]
+    },
+    "word-verb": {
+      "pass": 24,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        549,
+        594,
+        761,
+        405,
+        600,
+        503,
+        618,
+        757,
+        811,
+        303,
+        530,
+        619,
+        254,
+        451,
+        374,
+        510,
+        302,
+        324,
+        471,
+        745,
+        1028,
+        1061,
+        572,
+        260,
+        502,
+        674,
+        547,
+        292,
+        282,
+        350
+      ],
+      "altCounts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "totalAlts": [
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        12,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6
+      ]
+    },
+    "word-noun": {
+      "pass": 15,
+      "total": 15,
+      "covered": 15,
+      "latency": [
+        625,
+        261,
+        636,
+        449,
+        262,
+        597,
+        460,
+        511,
+        379,
+        417,
+        698,
+        477,
+        447,
+        1998,
+        499
+      ],
+      "altCounts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "totalAlts": [
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6
+      ]
+    },
+    "word-finance": {
+      "pass": 10,
+      "total": 15,
+      "covered": 12,
+      "latency": [
+        250,
+        246,
+        570,
+        240,
+        652,
+        392,
+        286,
+        331,
+        543,
+        648,
+        215,
+        268,
+        1222,
+        811,
+        1103
+      ],
+      "altCounts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        0,
+        0,
+        0,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "totalAlts": [
+        3,
+        3,
+        6,
+        3,
+        6,
+        3,
+        3,
+        3,
+        6,
+        6,
+        3,
+        6,
+        6,
+        12,
+        12
+      ]
+    },
+    "blank-math": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        126,
+        169,
+        177,
+        147,
+        443,
+        416,
+        356,
+        132,
+        1218,
+        122,
+        118,
+        162,
+        270,
+        105,
+        113,
+        174,
+        117,
+        125,
+        108,
+        185,
+        109,
+        121,
+        105,
+        153,
+        113,
+        219,
+        117,
+        122,
+        103,
+        101
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-factual": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        94,
+        101,
+        100,
+        108,
+        250,
+        139,
+        118,
+        87,
+        154,
+        112,
+        92,
+        174,
+        75,
+        145,
+        76,
+        73,
+        178,
+        72,
+        79,
+        98,
+        89,
+        74,
+        209,
+        271,
+        187,
+        69,
+        116,
+        93,
+        87,
+        129
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-translate": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        85,
+        113,
+        90,
+        168,
+        280,
+        79,
+        120,
+        116,
+        223,
+        169,
+        149,
+        105,
+        111,
+        266,
+        86,
+        100,
+        377,
+        90,
+        88,
+        126,
+        111,
+        132,
+        122,
+        75,
+        129,
+        106,
+        87,
+        108,
+        609,
+        156
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-unit": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        143,
+        174,
+        157,
+        172,
+        175,
+        213,
+        228,
+        164,
+        161,
+        120,
+        149,
+        133,
+        187,
+        378,
+        255,
+        142,
+        197,
+        165,
+        132,
+        173,
+        192,
+        151,
+        237,
+        302,
+        322,
+        311,
+        3375,
+        151,
+        153,
+        150
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-spell": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        79,
+        75,
+        84,
+        82,
+        81,
+        103,
+        111,
+        128,
+        109,
+        115,
+        83,
+        92,
+        81,
+        85,
+        79,
+        135,
+        108,
+        119,
+        89,
+        126,
+        101,
+        96,
+        159,
+        110,
+        129,
+        141,
+        134,
+        175,
+        148,
+        157
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-color": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        121,
+        110,
+        91,
+        178,
+        183,
+        88,
+        119,
+        109,
+        108,
+        111,
+        120,
+        314,
+        126,
+        80,
+        110,
+        149,
+        98,
+        101,
+        99,
+        102,
+        90,
+        231,
+        307,
+        155,
+        96,
+        100,
+        113,
+        77,
+        187,
+        200
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-http": {
+      "pass": 30,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        81,
+        88,
+        166,
+        111,
+        91,
+        71,
+        82,
+        72,
+        72,
+        84,
+        88,
+        196,
+        104,
+        193,
+        93,
+        91,
+        117,
+        88,
+        562,
+        368,
+        209,
+        141,
+        597,
+        164,
+        523,
+        1036,
+        133,
+        85,
+        115,
+        322
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-tz": {
+      "pass": 28,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        262,
+        267,
+        200,
+        464,
+        2506,
+        156,
+        130,
+        168,
+        222,
+        184,
+        248,
+        262,
+        318,
+        227,
+        346,
+        159,
+        194,
+        195,
+        212,
+        236,
+        357,
+        181,
+        288,
+        216,
+        297,
+        3274,
+        203,
+        202,
+        285,
+        199
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-roman": {
+      "pass": 29,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        84,
+        84,
+        73,
+        117,
+        93,
+        81,
+        134,
+        112,
+        103,
+        75,
+        101,
+        89,
+        93,
+        76,
+        73,
+        73,
+        97,
+        108,
+        85,
+        104,
+        75,
+        100,
+        89,
+        81,
+        116,
+        250,
+        77,
+        158,
+        80,
+        152
+      ],
+      "altCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "totalAlts": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    "blank-grammar": {
+      "pass": 27,
+      "total": 30,
+      "covered": 30,
+      "latency": [
+        501,
+        421,
+        461,
+        528,
+        435,
+        402,
+        480,
+        603,
+        416,
+        645,
+        284,
+        390,
+        255,
+        503,
+        407,
+        375,
+        757,
+        566,
+        383,
+        661,
+        698,
+        493,
+        545,
+        1570,
+        467,
+        367,
+        385,
+        373,
+        345,
+        397
+      ],
+      "altCounts": [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        1,
+        4,
+        4
+      ],
+      "totalAlts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        2,
+        5,
+        5
+      ]
+    }
+  },
+  "results": [
+    {
+      "desc": "happy",
+      "category": "word-adj",
+      "input": "The happy boy ran",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "joyful",
+        "sad",
+        "cheerful"
+      ],
+      "expectedAny": [
+        "glad",
+        "joyful",
+        "cheerful",
+        "content",
+        "pleased",
+        "sad",
+        "unhappy",
+        "delighted",
+        "ecstatic"
+      ],
+      "matched": "joyful",
+      "latencyMs": 634
+    },
+    {
+      "desc": "big",
+      "category": "word-adj",
+      "input": "The big house",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "large",
+        "small",
+        "enormous"
+      ],
+      "expectedAny": [
+        "large",
+        "huge",
+        "enormous",
+        "massive",
+        "small",
+        "tiny",
+        "grand",
+        "spacious"
+      ],
+      "matched": "large",
+      "latencyMs": 375
+    },
+    {
+      "desc": "old",
+      "category": "word-adj",
+      "input": "The old man",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "elderly",
+        "young",
+        "vintage"
+      ],
+      "expectedAny": [
+        "elderly",
+        "aged",
+        "ancient",
+        "young",
+        "senior",
+        "mature",
+        "veteran"
+      ],
+      "matched": "elderly",
+      "latencyMs": 529
+    },
+    {
+      "desc": "beautiful",
+      "category": "word-adj",
+      "input": "A beautiful sunset",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "gorgeous",
+        "ugly",
+        "stunning"
+      ],
+      "expectedAny": [
+        "gorgeous",
+        "stunning",
+        "lovely",
+        "pretty",
+        "ugly",
+        "magnificent",
+        "breathtaking"
+      ],
+      "matched": "gorgeous",
+      "latencyMs": 486
+    },
+    {
+      "desc": "small",
+      "category": "word-adj",
+      "input": "The small dog",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "tiny",
+        "large",
+        "wee"
+      ],
+      "expectedAny": [
+        "tiny",
+        "little",
+        "miniature",
+        "large",
+        "big",
+        "petite",
+        "compact"
+      ],
+      "matched": "tiny",
+      "latencyMs": 641
+    },
+    {
+      "desc": "cold",
+      "category": "word-adj",
+      "input": "A cold winter",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "chilly",
+        "warm",
+        "frosty"
+      ],
+      "expectedAny": [
+        "freezing",
+        "chilly",
+        "icy",
+        "warm",
+        "hot",
+        "bitter",
+        "frigid",
+        "harsh"
+      ],
+      "matched": "chilly",
+      "latencyMs": 311
+    },
+    {
+      "desc": "strong",
+      "category": "word-adj",
+      "input": "The strong wind blew",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "robust",
+        "weak",
+        "mighty"
+      ],
+      "expectedAny": [
+        "powerful",
+        "fierce",
+        "gentle",
+        "weak",
+        "mighty",
+        "intense",
+        "violent"
+      ],
+      "matched": "weak",
+      "latencyMs": 523
+    },
+    {
+      "desc": "dark",
+      "category": "word-adj",
+      "input": "A dark room",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "dim",
+        "bright",
+        "obscure"
+      ],
+      "expectedAny": [
+        "dim",
+        "bright",
+        "gloomy",
+        "shadowy",
+        "light",
+        "murky",
+        "pitch-black"
+      ],
+      "matched": "dim",
+      "latencyMs": 966
+    },
+    {
+      "desc": "tall",
+      "category": "word-adj",
+      "input": "The tall building",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "high",
+        "short",
+        "soaring"
+      ],
+      "expectedAny": [
+        "high",
+        "towering",
+        "short",
+        "massive",
+        "imposing",
+        "lofty",
+        "elevated"
+      ],
+      "matched": "high",
+      "latencyMs": 828
+    },
+    {
+      "desc": "fast",
+      "category": "word-adj",
+      "input": "A fast car",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "quick",
+        "slow",
+        "swift"
+      ],
+      "expectedAny": [
+        "quick",
+        "slow",
+        "rapid",
+        "speedy",
+        "swift"
+      ],
+      "matched": "quick",
+      "latencyMs": 463
+    },
+    {
+      "desc": "rich",
+      "category": "word-adj",
+      "input": "The rich man",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "wealthy",
+        "poor",
+        "affluent"
+      ],
+      "expectedAny": [
+        "wealthy",
+        "poor",
+        "affluent",
+        "prosperous",
+        "opulent"
+      ],
+      "matched": "wealthy",
+      "latencyMs": 260
+    },
+    {
+      "desc": "quiet",
+      "category": "word-adj",
+      "input": "A quiet room",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "calm",
+        "noisy",
+        "still"
+      ],
+      "expectedAny": [
+        "silent",
+        "loud",
+        "noisy",
+        "peaceful",
+        "calm",
+        "hushed",
+        "still"
+      ],
+      "matched": "noisy",
+      "latencyMs": 541
+    },
+    {
+      "desc": "heavy",
+      "category": "word-adj",
+      "input": "The heavy box",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "weighty",
+        "light",
+        "cumbersome"
+      ],
+      "expectedAny": [
+        "light",
+        "weighty",
+        "massive",
+        "bulky",
+        "dense",
+        "cumbersome"
+      ],
+      "matched": "light",
+      "latencyMs": 1820
+    },
+    {
+      "desc": "bright (light)",
+      "category": "word-adj",
+      "input": "A bright light",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "brilliant",
+        "dim",
+        "radiant"
+      ],
+      "expectedAny": [
+        "dim",
+        "brilliant",
+        "vivid",
+        "dazzling",
+        "glowing",
+        "intense",
+        "faint"
+      ],
+      "matched": "dim",
+      "latencyMs": 433
+    },
+    {
+      "desc": "narrow",
+      "category": "word-adj",
+      "input": "The narrow path",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "thin",
+        "broad",
+        "slender"
+      ],
+      "expectedAny": [
+        "wide",
+        "thin",
+        "broad",
+        "slim",
+        "tight",
+        "cramped",
+        "restricted"
+      ],
+      "matched": "thin",
+      "latencyMs": 450
+    },
+    {
+      "desc": "deep",
+      "category": "word-adj",
+      "input": "A deep ocean",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "profound",
+        "shallow",
+        "abyssal"
+      ],
+      "expectedAny": [
+        "shallow",
+        "vast",
+        "profound",
+        "bottomless",
+        "immense",
+        "endless"
+      ],
+      "matched": "shallow",
+      "latencyMs": 865
+    },
+    {
+      "desc": "clean",
+      "category": "word-adj",
+      "input": "The clean kitchen",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "spotless",
+        "dirty",
+        "pristine"
+      ],
+      "expectedAny": [
+        "dirty",
+        "tidy",
+        "spotless",
+        "messy",
+        "pristine",
+        "immaculate"
+      ],
+      "matched": "dirty",
+      "latencyMs": 547
+    },
+    {
+      "desc": "long",
+      "category": "word-adj",
+      "input": "A long road",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "extended",
+        "short",
+        "stretchy"
+      ],
+      "expectedAny": [
+        "short",
+        "winding",
+        "endless",
+        "straight",
+        "extended",
+        "lengthy"
+      ],
+      "matched": "short",
+      "latencyMs": 289
+    },
+    {
+      "desc": "empty",
+      "category": "word-adj",
+      "input": "The empty room",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "vacant",
+        "full",
+        "hollow"
+      ],
+      "expectedAny": [
+        "full",
+        "vacant",
+        "bare",
+        "hollow",
+        "crowded",
+        "occupied"
+      ],
+      "matched": "full",
+      "latencyMs": 672
+    },
+    {
+      "desc": "new",
+      "category": "word-adj",
+      "input": "A new car",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "modern",
+        "old",
+        "innovative"
+      ],
+      "expectedAny": [
+        "old",
+        "fresh",
+        "brand-new",
+        "used",
+        "modern",
+        "recent",
+        "novel"
+      ],
+      "matched": "old",
+      "latencyMs": 688
+    },
+    {
+      "desc": "angry",
+      "category": "word-adj",
+      "input": "The angry crowd",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "irate",
+        "calm",
+        "fuming"
+      ],
+      "expectedAny": [
+        "furious",
+        "calm",
+        "hostile",
+        "peaceful",
+        "enraged",
+        "irate",
+        "mad"
+      ],
+      "matched": "calm",
+      "latencyMs": 657
+    },
+    {
+      "desc": "brave",
+      "category": "word-adj",
+      "input": "A brave soldier",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "courageous",
+        "cowardly",
+        "daring"
+      ],
+      "expectedAny": [
+        "courageous",
+        "cowardly",
+        "fearless",
+        "bold",
+        "valiant",
+        "heroic",
+        "timid"
+      ],
+      "matched": "courageous",
+      "latencyMs": 544
+    },
+    {
+      "desc": "lazy",
+      "category": "word-adj",
+      "input": "The lazy cat slept",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 9,
+      "alternatives": [
+        "idle",
+        "active",
+        "slothful"
+      ],
+      "expectedAny": [
+        "idle",
+        "active",
+        "sluggish",
+        "energetic",
+        "lethargic",
+        "indolent"
+      ],
+      "matched": "idle",
+      "latencyMs": 710
+    },
+    {
+      "desc": "wise",
+      "category": "word-adj",
+      "input": "A wise decision",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "smart",
+        "unwise",
+        "sage"
+      ],
+      "expectedAny": [
+        "foolish",
+        "smart",
+        "clever",
+        "prudent",
+        "stupid",
+        "sound",
+        "sensible"
+      ],
+      "matched": "smart",
+      "latencyMs": 351
+    },
+    {
+      "desc": "smooth",
+      "category": "word-adj",
+      "input": "The smooth surface",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "even",
+        "rough",
+        "sleek"
+      ],
+      "expectedAny": [
+        "rough",
+        "flat",
+        "polished",
+        "uneven",
+        "silky",
+        "sleek",
+        "bumpy"
+      ],
+      "matched": "rough",
+      "latencyMs": 358
+    },
+    {
+      "desc": "dangerous",
+      "category": "word-adj",
+      "input": "A dangerous road",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "hazardous",
+        "safe",
+        "menacing"
+      ],
+      "expectedAny": [
+        "safe",
+        "hazardous",
+        "risky",
+        "perilous",
+        "treacherous",
+        "secure"
+      ],
+      "matched": "safe",
+      "latencyMs": 998
+    },
+    {
+      "desc": "thick",
+      "category": "word-adj",
+      "input": "The thick fog",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "dense",
+        "thin",
+        "viscous"
+      ],
+      "expectedAny": [
+        "thin",
+        "dense",
+        "heavy",
+        "light",
+        "opaque",
+        "impenetrable"
+      ],
+      "matched": "thin",
+      "latencyMs": 476
+    },
+    {
+      "desc": "simple",
+      "category": "word-adj",
+      "input": "A simple task",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "easy",
+        "complex",
+        "minimalistic"
+      ],
+      "expectedAny": [
+        "complex",
+        "easy",
+        "difficult",
+        "basic",
+        "straightforward",
+        "hard"
+      ],
+      "matched": "complex",
+      "latencyMs": 735
+    },
+    {
+      "desc": "expensive",
+      "category": "word-adj",
+      "input": "The expensive watch",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "pricey",
+        "cheap",
+        "luxury"
+      ],
+      "expectedAny": [
+        "cheap",
+        "costly",
+        "pricey",
+        "affordable",
+        "luxurious",
+        "valuable"
+      ],
+      "matched": "cheap",
+      "latencyMs": 664
+    },
+    {
+      "desc": "dry",
+      "category": "word-adj",
+      "input": "A dry desert",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "arid",
+        "wet",
+        "droughty"
+      ],
+      "expectedAny": [
+        "wet",
+        "arid",
+        "barren",
+        "parched",
+        "scorching",
+        "desolate"
+      ],
+      "matched": "wet",
+      "latencyMs": 658
+    },
+    {
+      "desc": "walked",
+      "category": "word-verb",
+      "input": "She walked home",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "strolled",
+        "halted",
+        "meandered"
+      ],
+      "expectedAny": [
+        "ran",
+        "strolled",
+        "marched",
+        "drove",
+        "sprinted",
+        "hurried",
+        "trudged"
+      ],
+      "matched": "strolled",
+      "latencyMs": 549
+    },
+    {
+      "desc": "ran",
+      "category": "word-verb",
+      "input": "He ran quickly",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "walked",
+        "sprinted",
+        "jogged"
+      ],
+      "expectedAny": [
+        "sprinted",
+        "jogged",
+        "dashed",
+        "walked",
+        "rushed",
+        "bolted",
+        "raced"
+      ],
+      "matched": "sprinted",
+      "latencyMs": 594
+    },
+    {
+      "desc": "built",
+      "category": "word-verb",
+      "input": "They built a house",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "constructed",
+        "demolished",
+        "crafted"
+      ],
+      "expectedAny": [
+        "constructed",
+        "created",
+        "erected",
+        "designed",
+        "destroyed",
+        "assembled"
+      ],
+      "matched": "constructed",
+      "latencyMs": 761
+    },
+    {
+      "desc": "said",
+      "category": "word-verb",
+      "input": "I said hello",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "uttered",
+        "whispered",
+        "declared"
+      ],
+      "expectedAny": [
+        "whispered",
+        "shouted",
+        "muttered",
+        "yelled",
+        "spoke",
+        "screamed",
+        "exclaimed"
+      ],
+      "matched": "whispered",
+      "latencyMs": 405
+    },
+    {
+      "desc": "ate",
+      "category": "word-verb",
+      "input": "She ate dinner",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "consumed",
+        "fasted",
+        "noshed"
+      ],
+      "expectedAny": [
+        "consumed",
+        "devoured",
+        "skipped",
+        "finished",
+        "enjoyed",
+        "prepared",
+        "cooked"
+      ],
+      "matched": "consumed",
+      "latencyMs": 600
+    },
+    {
+      "desc": "broke",
+      "category": "word-verb",
+      "input": "He broke the window",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "shattered",
+        "repaired",
+        "smashed"
+      ],
+      "expectedAny": [
+        "shattered",
+        "cracked",
+        "smashed",
+        "fixed",
+        "repaired",
+        "damaged"
+      ],
+      "matched": "shattered",
+      "latencyMs": 503
+    },
+    {
+      "desc": "found",
+      "category": "word-verb",
+      "input": "They found treasure",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "discovered",
+        "lost",
+        "unearthed"
+      ],
+      "expectedAny": [
+        "discovered",
+        "lost",
+        "uncovered",
+        "located",
+        "stumbled upon",
+        "unearthed"
+      ],
+      "matched": "discovered",
+      "latencyMs": 618
+    },
+    {
+      "desc": "wrote",
+      "category": "word-verb",
+      "input": "I wrote a letter",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "pen",
+        "erase",
+        "scribble"
+      ],
+      "expectedAny": [
+        "typed",
+        "composed",
+        "drafted",
+        "penned",
+        "scribbled",
+        "read"
+      ],
+      "matched": null,
+      "latencyMs": 757
+    },
+    {
+      "desc": "threw",
+      "category": "word-verb",
+      "input": "She threw the ball",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "tossed",
+        "caught",
+        "lobbed"
+      ],
+      "expectedAny": [
+        "tossed",
+        "hurled",
+        "caught",
+        "lobbed",
+        "pitched",
+        "flung",
+        "launched"
+      ],
+      "matched": "tossed",
+      "latencyMs": 811
+    },
+    {
+      "desc": "gave",
+      "category": "word-verb",
+      "input": "He gave a speech",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "provided",
+        "took",
+        "conferred"
+      ],
+      "expectedAny": [
+        "delivered",
+        "received",
+        "prepared",
+        "presented",
+        "made",
+        "offered"
+      ],
+      "matched": null,
+      "latencyMs": 303
+    },
+    {
+      "desc": "fought",
+      "category": "word-verb",
+      "input": "They fought bravely",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "engaged",
+        "retreated",
+        "clashed"
+      ],
+      "expectedAny": [
+        "battled",
+        "surrendered",
+        "struggled",
+        "clashed",
+        "resisted",
+        "warred"
+      ],
+      "matched": "clashed",
+      "latencyMs": 530
+    },
+    {
+      "desc": "sang",
+      "category": "word-verb",
+      "input": "She sang beautifully",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "vocalized",
+        "silent",
+        "warbled"
+      ],
+      "expectedAny": [
+        "performed",
+        "hummed",
+        "chanted",
+        "crooned",
+        "whistled",
+        "screamed"
+      ],
+      "matched": null,
+      "latencyMs": 619
+    },
+    {
+      "desc": "opened",
+      "category": "word-verb",
+      "input": "He opened the door",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "unlocked",
+        "closed",
+        "unsealed"
+      ],
+      "expectedAny": [
+        "closed",
+        "shut",
+        "unlocked",
+        "slammed",
+        "pushed",
+        "pulled"
+      ],
+      "matched": "closed",
+      "latencyMs": 254
+    },
+    {
+      "desc": "bought",
+      "category": "word-verb",
+      "input": "I bought groceries",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "purchased",
+        "acquired",
+        "procured"
+      ],
+      "expectedAny": [
+        "purchased",
+        "sold",
+        "ordered",
+        "grabbed",
+        "picked up",
+        "acquired"
+      ],
+      "matched": "purchased",
+      "latencyMs": 451
+    },
+    {
+      "desc": "climbed",
+      "category": "word-verb",
+      "input": "She climbed the mountain",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "ascended",
+        "descended",
+        "scaled"
+      ],
+      "expectedAny": [
+        "ascended",
+        "descended",
+        "scaled",
+        "hiked",
+        "summited",
+        "conquered"
+      ],
+      "matched": "ascended",
+      "latencyMs": 374
+    },
+    {
+      "desc": "studied",
+      "category": "word-verb",
+      "input": "He studied hard",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "researched",
+        "ignored",
+        "delved"
+      ],
+      "expectedAny": [
+        "learned",
+        "practiced",
+        "reviewed",
+        "crammed",
+        "examined",
+        "worked",
+        "read"
+      ],
+      "matched": null,
+      "latencyMs": 510
+    },
+    {
+      "desc": "destroyed",
+      "category": "word-verb",
+      "input": "They destroyed the evidence",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "ruined",
+        "demolished",
+        "annihilated"
+      ],
+      "expectedAny": [
+        "preserved",
+        "eliminated",
+        "removed",
+        "concealed",
+        "shredded",
+        "burned",
+        "created"
+      ],
+      "matched": null,
+      "latencyMs": 302
+    },
+    {
+      "desc": "laughed",
+      "category": "word-verb",
+      "input": "She laughed loudly",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "chortled",
+        "howled",
+        "giggle"
+      ],
+      "expectedAny": [
+        "giggled",
+        "chuckled",
+        "cried",
+        "snickered",
+        "roared",
+        "howled",
+        "sobbed"
+      ],
+      "matched": "howled",
+      "latencyMs": 324
+    },
+    {
+      "desc": "carried",
+      "category": "word-verb",
+      "input": "He carried the box",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "transported",
+        "dropped",
+        "lugged"
+      ],
+      "expectedAny": [
+        "lifted",
+        "dropped",
+        "hauled",
+        "moved",
+        "dragged",
+        "transported",
+        "held"
+      ],
+      "matched": "dropped",
+      "latencyMs": 471
+    },
+    {
+      "desc": "chose",
+      "category": "word-verb",
+      "input": "I chose the blue one",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 12,
+      "alternatives": [
+        "selected",
+        "rejected",
+        "handpicked"
+      ],
+      "expectedAny": [
+        "selected",
+        "picked",
+        "rejected",
+        "preferred",
+        "grabbed",
+        "took"
+      ],
+      "matched": "selected",
+      "latencyMs": 745
+    },
+    {
+      "desc": "painted",
+      "category": "word-verb",
+      "input": "She painted the wall",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "colored",
+        "stripped",
+        "splashed"
+      ],
+      "expectedAny": [
+        "decorated",
+        "drew",
+        "colored",
+        "coated",
+        "covered",
+        "stained"
+      ],
+      "matched": "colored",
+      "latencyMs": 1028
+    },
+    {
+      "desc": "taught",
+      "category": "word-verb",
+      "input": "He taught the class",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "instructed",
+        "ignored",
+        "coached"
+      ],
+      "expectedAny": [
+        "instructed",
+        "educated",
+        "learned",
+        "trained",
+        "tutored",
+        "led",
+        "lectured"
+      ],
+      "matched": "instructed",
+      "latencyMs": 1061
+    },
+    {
+      "desc": "promised",
+      "category": "word-verb",
+      "input": "They promised to return",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "guaranteed",
+        "renounced",
+        "vowed"
+      ],
+      "expectedAny": [
+        "vowed",
+        "swore",
+        "pledged",
+        "refused",
+        "agreed",
+        "guaranteed"
+      ],
+      "matched": "vowed",
+      "latencyMs": 572
+    },
+    {
+      "desc": "whispered",
+      "category": "word-verb",
+      "input": "She whispered softly",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "murmured",
+        "muttered",
+        "hissed"
+      ],
+      "expectedAny": [
+        "murmured",
+        "shouted",
+        "mumbled",
+        "hissed",
+        "muttered",
+        "spoke",
+        "breathed"
+      ],
+      "matched": "murmured",
+      "latencyMs": 260
+    },
+    {
+      "desc": "pushed",
+      "category": "word-verb",
+      "input": "He pushed the cart",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "thrust",
+        "pulled",
+        "catapulted"
+      ],
+      "expectedAny": [
+        "pulled",
+        "shoved",
+        "dragged",
+        "moved",
+        "wheeled",
+        "rolled"
+      ],
+      "matched": "pulled",
+      "latencyMs": 502
+    },
+    {
+      "desc": "celebrated",
+      "category": "word-verb",
+      "input": "They celebrated victory",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "honored",
+        "defeat",
+        "feted"
+      ],
+      "expectedAny": [
+        "mourned",
+        "enjoyed",
+        "cheered",
+        "honored",
+        "marked",
+        "toasted"
+      ],
+      "matched": "honored",
+      "latencyMs": 674
+    },
+    {
+      "desc": "grabbed",
+      "category": "word-verb",
+      "input": "She grabbed the rope",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "seized",
+        "released",
+        "yanked"
+      ],
+      "expectedAny": [
+        "seized",
+        "released",
+        "clutched",
+        "snatched",
+        "caught",
+        "held",
+        "dropped"
+      ],
+      "matched": "seized",
+      "latencyMs": 547
+    },
+    {
+      "desc": "decided",
+      "category": "word-verb",
+      "input": "He decided quickly",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "determined",
+        "hesitated",
+        "resolved"
+      ],
+      "expectedAny": [
+        "chose",
+        "hesitated",
+        "determined",
+        "resolved",
+        "concluded",
+        "picked"
+      ],
+      "matched": "hesitated",
+      "latencyMs": 292
+    },
+    {
+      "desc": "remembered",
+      "category": "word-verb",
+      "input": "I remembered the song",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "recall",
+        "recollect",
+        "reminisce"
+      ],
+      "expectedAny": [
+        "forgot",
+        "recalled",
+        "recognized",
+        "hummed",
+        "recollected"
+      ],
+      "matched": null,
+      "latencyMs": 282
+    },
+    {
+      "desc": "accepted",
+      "category": "word-verb",
+      "input": "She accepted the offer",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "embraced",
+        "rejected",
+        "approved"
+      ],
+      "expectedAny": [
+        "rejected",
+        "declined",
+        "received",
+        "took",
+        "embraced",
+        "refused"
+      ],
+      "matched": "rejected",
+      "latencyMs": 350
+    },
+    {
+      "desc": "dog",
+      "category": "word-noun",
+      "input": "The dog barked",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "canine",
+        "cat",
+        "puppy"
+      ],
+      "expectedAny": [
+        "cat",
+        "hound",
+        "puppy",
+        "wolf",
+        "animal",
+        "mutt"
+      ],
+      "matched": "cat",
+      "latencyMs": 625
+    },
+    {
+      "desc": "car",
+      "category": "word-noun",
+      "input": "The car stopped",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "automobile",
+        "vehicle",
+        "ride"
+      ],
+      "expectedAny": [
+        "vehicle",
+        "truck",
+        "bus",
+        "train",
+        "van",
+        "automobile"
+      ],
+      "matched": "vehicle",
+      "latencyMs": 261
+    },
+    {
+      "desc": "teacher",
+      "category": "word-noun",
+      "input": "The teacher spoke",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "instructor",
+        "student",
+        "guru"
+      ],
+      "expectedAny": [
+        "professor",
+        "instructor",
+        "student",
+        "lecturer",
+        "mentor",
+        "educator"
+      ],
+      "matched": "instructor",
+      "latencyMs": 636
+    },
+    {
+      "desc": "house",
+      "category": "word-noun",
+      "input": "The house collapsed",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "home",
+        "building",
+        "nest"
+      ],
+      "expectedAny": [
+        "building",
+        "structure",
+        "home",
+        "tower",
+        "wall",
+        "roof"
+      ],
+      "matched": "building",
+      "latencyMs": 449
+    },
+    {
+      "desc": "child",
+      "category": "word-noun",
+      "input": "The child cried",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "kid",
+        "adult",
+        "tot"
+      ],
+      "expectedAny": [
+        "baby",
+        "boy",
+        "girl",
+        "kid",
+        "toddler",
+        "infant",
+        "adult"
+      ],
+      "matched": "kid",
+      "latencyMs": 262
+    },
+    {
+      "desc": "king",
+      "category": "word-noun",
+      "input": "The king ruled",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "monarch",
+        "subject",
+        "sovereign"
+      ],
+      "expectedAny": [
+        "queen",
+        "emperor",
+        "prince",
+        "ruler",
+        "monarch",
+        "dictator"
+      ],
+      "matched": "monarch",
+      "latencyMs": 597
+    },
+    {
+      "desc": "river",
+      "category": "word-noun",
+      "input": "The river flowed",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "stream",
+        "desert",
+        "ribbon"
+      ],
+      "expectedAny": [
+        "stream",
+        "creek",
+        "water",
+        "ocean",
+        "lake",
+        "canal"
+      ],
+      "matched": "stream",
+      "latencyMs": 460
+    },
+    {
+      "desc": "sword",
+      "category": "word-noun",
+      "input": "The sword gleamed",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "blade",
+        "shield",
+        "Excalibur"
+      ],
+      "expectedAny": [
+        "blade",
+        "knife",
+        "dagger",
+        "weapon",
+        "spear",
+        "shield"
+      ],
+      "matched": "blade",
+      "latencyMs": 511
+    },
+    {
+      "desc": "mountain",
+      "category": "word-noun",
+      "input": "The mountain loomed",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "peak",
+        "valley",
+        "monolith"
+      ],
+      "expectedAny": [
+        "hill",
+        "peak",
+        "cliff",
+        "volcano",
+        "ridge",
+        "summit"
+      ],
+      "matched": "peak",
+      "latencyMs": 379
+    },
+    {
+      "desc": "city",
+      "category": "word-noun",
+      "input": "The city bustled",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "metropolis",
+        "hamlet",
+        "urban‑scape"
+      ],
+      "expectedAny": [
+        "town",
+        "village",
+        "metropolis",
+        "suburb",
+        "capital",
+        "country"
+      ],
+      "matched": "metropolis",
+      "latencyMs": 417
+    },
+    {
+      "desc": "doctor",
+      "category": "word-noun",
+      "input": "The doctor arrived",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "physician",
+        "patient",
+        "diagnostician"
+      ],
+      "expectedAny": [
+        "nurse",
+        "surgeon",
+        "physician",
+        "patient",
+        "medic",
+        "specialist"
+      ],
+      "matched": "physician",
+      "latencyMs": 698
+    },
+    {
+      "desc": "ship",
+      "category": "word-noun",
+      "input": "The ship sailed",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "vessel",
+        "land",
+        "starship"
+      ],
+      "expectedAny": [
+        "boat",
+        "vessel",
+        "yacht",
+        "submarine",
+        "ferry",
+        "craft"
+      ],
+      "matched": "vessel",
+      "latencyMs": 477
+    },
+    {
+      "desc": "forest",
+      "category": "word-noun",
+      "input": "The forest burned",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "woods",
+        "desert",
+        "grove"
+      ],
+      "expectedAny": [
+        "jungle",
+        "woods",
+        "trees",
+        "field",
+        "meadow",
+        "wilderness"
+      ],
+      "matched": "woods",
+      "latencyMs": 447
+    },
+    {
+      "desc": "storm",
+      "category": "word-noun",
+      "input": "The storm raged",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "tempest",
+        "calm",
+        "maelstrom"
+      ],
+      "expectedAny": [
+        "hurricane",
+        "tempest",
+        "blizzard",
+        "tornado",
+        "typhoon",
+        "wind",
+        "rain"
+      ],
+      "matched": "tempest",
+      "latencyMs": 1998
+    },
+    {
+      "desc": "army",
+      "category": "word-noun",
+      "input": "The army advanced",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "military",
+        "forces",
+        "legion"
+      ],
+      "expectedAny": [
+        "troops",
+        "soldiers",
+        "forces",
+        "battalion",
+        "enemy",
+        "fleet",
+        "militia"
+      ],
+      "matched": "forces",
+      "latencyMs": 499
+    },
+    {
+      "desc": "equity",
+      "category": "word-finance",
+      "input": "The equity increased",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 3,
+      "alternatives": [
+        "ownership",
+        "debt",
+        "stake"
+      ],
+      "expectedAny": [
+        "stock",
+        "shares",
+        "ownership",
+        "stake",
+        "debt",
+        "capital"
+      ],
+      "matched": "ownership",
+      "latencyMs": 250
+    },
+    {
+      "desc": "dividend",
+      "category": "word-finance",
+      "input": "The dividend was paid",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 3,
+      "alternatives": [
+        "distribution",
+        "expense",
+        "shareholder‑reward"
+      ],
+      "expectedAny": [
+        "payout",
+        "distribution",
+        "yield",
+        "return",
+        "interest",
+        "payment"
+      ],
+      "matched": "distribution",
+      "latencyMs": 246
+    },
+    {
+      "desc": "portfolio",
+      "category": "word-finance",
+      "input": "His portfolio grew",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "holdings",
+        "liabilities",
+        "investment‑basket"
+      ],
+      "expectedAny": [
+        "holdings",
+        "investments",
+        "assets",
+        "fund",
+        "collection",
+        "account"
+      ],
+      "matched": "holdings",
+      "latencyMs": 570
+    },
+    {
+      "desc": "leverage",
+      "category": "word-finance",
+      "input": "The leverage was high",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 3,
+      "alternatives": [
+        "gearing",
+        "equity",
+        "boost"
+      ],
+      "expectedAny": [
+        "debt",
+        "borrowing",
+        "margin",
+        "gearing",
+        "exposure",
+        "risk"
+      ],
+      "matched": "gearing",
+      "latencyMs": 240
+    },
+    {
+      "desc": "hedge",
+      "category": "word-finance",
+      "input": "The hedge protected",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "offset",
+        "vulnerable",
+        "buffer"
+      ],
+      "expectedAny": [
+        "protection",
+        "insurance",
+        "safeguard",
+        "shield",
+        "buffer",
+        "offset"
+      ],
+      "matched": "buffer",
+      "latencyMs": 652
+    },
+    {
+      "desc": "yield",
+      "category": "word-finance",
+      "input": "The yield dropped",
+      "pass": false,
+      "covered": false,
+      "altCount": 0,
+      "totalAlts": 3,
+      "alternatives": [],
+      "expectedAny": [
+        "return",
+        "interest",
+        "rate",
+        "profit",
+        "income",
+        "dividend"
+      ],
+      "matched": null,
+      "latencyMs": 392
+    },
+    {
+      "desc": "liquidity",
+      "category": "word-finance",
+      "input": "Check the liquidity",
+      "pass": false,
+      "covered": false,
+      "altCount": 0,
+      "totalAlts": 3,
+      "alternatives": [],
+      "expectedAny": [
+        "cash flow",
+        "solvency",
+        "availability",
+        "fluidity",
+        "convertibility",
+        "cash"
+      ],
+      "matched": null,
+      "latencyMs": 286
+    },
+    {
+      "desc": "depreciation",
+      "category": "word-finance",
+      "input": "The depreciation accelerated",
+      "pass": false,
+      "covered": false,
+      "altCount": 0,
+      "totalAlts": 3,
+      "alternatives": [],
+      "expectedAny": [
+        "decline",
+        "devaluation",
+        "amortization",
+        "write-down",
+        "loss",
+        "appreciation"
+      ],
+      "matched": null,
+      "latencyMs": 331
+    },
+    {
+      "desc": "collateral",
+      "category": "word-finance",
+      "input": "The collateral was seized",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "security",
+        "liability",
+        "guarantee"
+      ],
+      "expectedAny": [
+        "security",
+        "guarantee",
+        "asset",
+        "pledge",
+        "surety",
+        "deposit"
+      ],
+      "matched": "security",
+      "latencyMs": 543
+    },
+    {
+      "desc": "arbitrage",
+      "category": "word-finance",
+      "input": "The arbitrage opportunity",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "speculation",
+        "loss",
+        "price‑gap‑play"
+      ],
+      "expectedAny": [
+        "trading",
+        "speculation",
+        "opportunity",
+        "profit",
+        "exploit",
+        "spread"
+      ],
+      "matched": "speculation",
+      "latencyMs": 648
+    },
+    {
+      "desc": "securities",
+      "category": "word-finance",
+      "input": "The securities were traded",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 3,
+      "alternatives": [
+        "stocks",
+        "liabilities",
+        "financial instruments"
+      ],
+      "expectedAny": [
+        "stocks",
+        "bonds",
+        "assets",
+        "instruments",
+        "shares",
+        "holdings"
+      ],
+      "matched": "stocks",
+      "latencyMs": 215
+    },
+    {
+      "desc": "derivative",
+      "category": "word-finance",
+      "input": "The derivative expired",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "option",
+        "termination",
+        "legacy"
+      ],
+      "expectedAny": [
+        "option",
+        "contract",
+        "future",
+        "swap",
+        "instrument",
+        "warrant"
+      ],
+      "matched": "option",
+      "latencyMs": 268
+    },
+    {
+      "desc": "amortization",
+      "category": "word-finance",
+      "input": "The amortization schedule",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 6,
+      "alternatives": [
+        "paydown",
+        "accumulation",
+        "loan erosion"
+      ],
+      "expectedAny": [
+        "repayment",
+        "depreciation",
+        "payment",
+        "installment",
+        "write-off",
+        "payoff"
+      ],
+      "matched": null,
+      "latencyMs": 1222
+    },
+    {
+      "desc": "portfolio in context",
+      "category": "word-finance",
+      "input": "The portfolio lost equity value",
+      "pass": true,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 12,
+      "alternatives": [
+        "holdings",
+        "liability",
+        "collection"
+      ],
+      "expectedAny": [
+        "holdings",
+        "investments",
+        "assets",
+        "fund",
+        "account"
+      ],
+      "matched": "holdings",
+      "latencyMs": 811
+    },
+    {
+      "desc": "derivatives in context",
+      "category": "word-finance",
+      "input": "The hedge fund leveraged derivatives",
+      "pass": false,
+      "covered": true,
+      "altCount": 3,
+      "totalAlts": 12,
+      "alternatives": [
+        "geared",
+        "unleveraged",
+        "turbocharged"
+      ],
+      "expectedAny": [
+        "options",
+        "contracts",
+        "futures",
+        "swaps",
+        "instruments",
+        "securities"
+      ],
+      "matched": null,
+      "latencyMs": 1103
+    },
+    {
+      "desc": "4*12",
+      "category": "blank-math",
+      "input": "4 * 12 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "48"
+      ],
+      "expectedAny": [
+        "48"
+      ],
+      "matched": "48",
+      "latencyMs": 126
+    },
+    {
+      "desc": "100/4",
+      "category": "blank-math",
+      "input": "100 / 4 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "25"
+      ],
+      "expectedAny": [
+        "25"
+      ],
+      "matched": "25",
+      "latencyMs": 169
+    },
+    {
+      "desc": "7+8",
+      "category": "blank-math",
+      "input": "7 + 8 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "15"
+      ],
+      "expectedAny": [
+        "15"
+      ],
+      "matched": "15",
+      "latencyMs": 177
+    },
+    {
+      "desc": "50-17",
+      "category": "blank-math",
+      "input": "50 - 17 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "33"
+      ],
+      "expectedAny": [
+        "33"
+      ],
+      "matched": "33",
+      "latencyMs": 147
+    },
+    {
+      "desc": "2*2*2",
+      "category": "blank-math",
+      "input": "2 * 2 * 2 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8"
+      ],
+      "expectedAny": [
+        "8"
+      ],
+      "matched": "8",
+      "latencyMs": 443
+    },
+    {
+      "desc": "99+1",
+      "category": "blank-math",
+      "input": "99 + 1 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 416
+    },
+    {
+      "desc": "15*15",
+      "category": "blank-math",
+      "input": "15 * 15 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "225"
+      ],
+      "expectedAny": [
+        "225"
+      ],
+      "matched": "225",
+      "latencyMs": 356
+    },
+    {
+      "desc": "1000-1",
+      "category": "blank-math",
+      "input": "1000 - 1 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "999"
+      ],
+      "expectedAny": [
+        "999"
+      ],
+      "matched": "999",
+      "latencyMs": 132
+    },
+    {
+      "desc": "81/9",
+      "category": "blank-math",
+      "input": "81 / 9 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9"
+      ],
+      "expectedAny": [
+        "9"
+      ],
+      "matched": "9",
+      "latencyMs": 1218
+    },
+    {
+      "desc": "25+75",
+      "category": "blank-math",
+      "input": "25 + 75 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 122
+    },
+    {
+      "desc": "123+456",
+      "category": "blank-math",
+      "input": "123 + 456 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "579"
+      ],
+      "expectedAny": [
+        "579"
+      ],
+      "matched": "579",
+      "latencyMs": 118
+    },
+    {
+      "desc": "999-500",
+      "category": "blank-math",
+      "input": "999 - 500 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "499"
+      ],
+      "expectedAny": [
+        "499"
+      ],
+      "matched": "499",
+      "latencyMs": 162
+    },
+    {
+      "desc": "12*12",
+      "category": "blank-math",
+      "input": "12 * 12 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "144"
+      ],
+      "expectedAny": [
+        "144"
+      ],
+      "matched": "144",
+      "latencyMs": 270
+    },
+    {
+      "desc": "200/8",
+      "category": "blank-math",
+      "input": "200 / 8 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "25"
+      ],
+      "expectedAny": [
+        "25"
+      ],
+      "matched": "25",
+      "latencyMs": 105
+    },
+    {
+      "desc": "33*3",
+      "category": "blank-math",
+      "input": "33 * 3 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "99"
+      ],
+      "expectedAny": [
+        "99"
+      ],
+      "matched": "99",
+      "latencyMs": 113
+    },
+    {
+      "desc": "half of 16",
+      "category": "blank-math",
+      "input": "half of 16 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8"
+      ],
+      "expectedAny": [
+        "8"
+      ],
+      "matched": "8",
+      "latencyMs": 174
+    },
+    {
+      "desc": "double 25",
+      "category": "blank-math",
+      "input": "double 25 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "50"
+      ],
+      "expectedAny": [
+        "50"
+      ],
+      "matched": "50",
+      "latencyMs": 117
+    },
+    {
+      "desc": "triple 7",
+      "category": "blank-math",
+      "input": "triple 7 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "21"
+      ],
+      "expectedAny": [
+        "21"
+      ],
+      "matched": "21",
+      "latencyMs": 125
+    },
+    {
+      "desc": "half of 100",
+      "category": "blank-math",
+      "input": "half of 100 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "50"
+      ],
+      "expectedAny": [
+        "50"
+      ],
+      "matched": "50",
+      "latencyMs": 108
+    },
+    {
+      "desc": "double 50",
+      "category": "blank-math",
+      "input": "double 50 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 185
+    },
+    {
+      "desc": "10+20*3",
+      "category": "blank-math",
+      "input": "10 + 20 * 3 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "70"
+      ],
+      "expectedAny": [
+        "70",
+        "90"
+      ],
+      "matched": "70",
+      "latencyMs": 109
+    },
+    {
+      "desc": "5*5+5",
+      "category": "blank-math",
+      "input": "5 * 5 + 5 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "30"
+      ],
+      "expectedAny": [
+        "30"
+      ],
+      "matched": "30",
+      "latencyMs": 121
+    },
+    {
+      "desc": "100-25*2",
+      "category": "blank-math",
+      "input": "100 - 25 * 2 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "50"
+      ],
+      "expectedAny": [
+        "50"
+      ],
+      "matched": "50",
+      "latencyMs": 105
+    },
+    {
+      "desc": "50+50",
+      "category": "blank-math",
+      "input": "50 + 50 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 153
+    },
+    {
+      "desc": "1+2+3+4",
+      "category": "blank-math",
+      "input": "1 + 2 + 3 + 4 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "10"
+      ],
+      "expectedAny": [
+        "10"
+      ],
+      "matched": "10",
+      "latencyMs": 113
+    },
+    {
+      "desc": "9*9",
+      "category": "blank-math",
+      "input": "9 * 9 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "81"
+      ],
+      "expectedAny": [
+        "81"
+      ],
+      "matched": "81",
+      "latencyMs": 219
+    },
+    {
+      "desc": "7*7",
+      "category": "blank-math",
+      "input": "7 * 7 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "49"
+      ],
+      "expectedAny": [
+        "49"
+      ],
+      "matched": "49",
+      "latencyMs": 117
+    },
+    {
+      "desc": "6*8",
+      "category": "blank-math",
+      "input": "6 * 8 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "48"
+      ],
+      "expectedAny": [
+        "48"
+      ],
+      "matched": "48",
+      "latencyMs": 122
+    },
+    {
+      "desc": "11*11",
+      "category": "blank-math",
+      "input": "11 * 11 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "121"
+      ],
+      "expectedAny": [
+        "121"
+      ],
+      "matched": "121",
+      "latencyMs": 103
+    },
+    {
+      "desc": "144/12",
+      "category": "blank-math",
+      "input": "144 / 12 = _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "12"
+      ],
+      "expectedAny": [
+        "12"
+      ],
+      "matched": "12",
+      "latencyMs": 101
+    },
+    {
+      "desc": "capital of France",
+      "category": "blank-factual",
+      "input": "The capital of France is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Paris"
+      ],
+      "expectedAny": [
+        "Paris"
+      ],
+      "matched": "Paris",
+      "latencyMs": 94
+    },
+    {
+      "desc": "capital of Japan",
+      "category": "blank-factual",
+      "input": "The capital of Japan is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Tokyo"
+      ],
+      "expectedAny": [
+        "Tokyo"
+      ],
+      "matched": "Tokyo",
+      "latencyMs": 101
+    },
+    {
+      "desc": "capital of Germany",
+      "category": "blank-factual",
+      "input": "The capital of Germany is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Berlin"
+      ],
+      "expectedAny": [
+        "Berlin"
+      ],
+      "matched": "Berlin",
+      "latencyMs": 100
+    },
+    {
+      "desc": "capital of Italy",
+      "category": "blank-factual",
+      "input": "The capital of Italy is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Rome"
+      ],
+      "expectedAny": [
+        "Rome",
+        "Roma"
+      ],
+      "matched": "Rome",
+      "latencyMs": 108
+    },
+    {
+      "desc": "capital of Australia",
+      "category": "blank-factual",
+      "input": "The capital of Australia is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Canberra"
+      ],
+      "expectedAny": [
+        "Canberra"
+      ],
+      "matched": "Canberra",
+      "latencyMs": 250
+    },
+    {
+      "desc": "capital of Brazil",
+      "category": "blank-factual",
+      "input": "The capital of Brazil is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Brasília"
+      ],
+      "expectedAny": [
+        "Brasilia",
+        "Brasília"
+      ],
+      "matched": "Brasília",
+      "latencyMs": 139
+    },
+    {
+      "desc": "capital of Canada",
+      "category": "blank-factual",
+      "input": "The capital of Canada is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Ottawa"
+      ],
+      "expectedAny": [
+        "Ottawa"
+      ],
+      "matched": "Ottawa",
+      "latencyMs": 118
+    },
+    {
+      "desc": "capital of Egypt",
+      "category": "blank-factual",
+      "input": "The capital of Egypt is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Cairo"
+      ],
+      "expectedAny": [
+        "Cairo"
+      ],
+      "matched": "Cairo",
+      "latencyMs": 87
+    },
+    {
+      "desc": "capital of Spain",
+      "category": "blank-factual",
+      "input": "The capital of Spain is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Madrid"
+      ],
+      "expectedAny": [
+        "Madrid"
+      ],
+      "matched": "Madrid",
+      "latencyMs": 154
+    },
+    {
+      "desc": "capital of India",
+      "category": "blank-factual",
+      "input": "The capital of India is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "New Delhi"
+      ],
+      "expectedAny": [
+        "New Delhi",
+        "Delhi"
+      ],
+      "matched": "New Delhi",
+      "latencyMs": 112
+    },
+    {
+      "desc": "CEO of Apple",
+      "category": "blank-factual",
+      "input": "The CEO of Apple is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Tim Cook"
+      ],
+      "expectedAny": [
+        "Tim Cook"
+      ],
+      "matched": "Tim Cook",
+      "latencyMs": 92
+    },
+    {
+      "desc": "author of HP",
+      "category": "blank-factual",
+      "input": "The author of Harry Potter is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "J.K. Rowling"
+      ],
+      "expectedAny": [
+        "J.K. Rowling",
+        "Rowling",
+        "JK Rowling"
+      ],
+      "matched": "J.K. Rowling",
+      "latencyMs": 174
+    },
+    {
+      "desc": "founder of MSFT",
+      "category": "blank-factual",
+      "input": "The founder of Microsoft is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Bill Gates"
+      ],
+      "expectedAny": [
+        "Bill Gates",
+        "Gates"
+      ],
+      "matched": "Bill Gates",
+      "latencyMs": 75
+    },
+    {
+      "desc": "founder of Amazon",
+      "category": "blank-factual",
+      "input": "The founder of Amazon is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Jeff Bezos"
+      ],
+      "expectedAny": [
+        "Jeff Bezos",
+        "Bezos"
+      ],
+      "matched": "Jeff Bezos",
+      "latencyMs": 145
+    },
+    {
+      "desc": "CEO of Tesla",
+      "category": "blank-factual",
+      "input": "The CEO of Tesla is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Elon Musk"
+      ],
+      "expectedAny": [
+        "Elon Musk",
+        "Musk"
+      ],
+      "matched": "Elon Musk",
+      "latencyMs": 76
+    },
+    {
+      "desc": "author of 1984",
+      "category": "blank-factual",
+      "input": "The author of 1984 is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "George Orwell"
+      ],
+      "expectedAny": [
+        "George Orwell",
+        "Orwell"
+      ],
+      "matched": "George Orwell",
+      "latencyMs": 73
+    },
+    {
+      "desc": "founder of Apple",
+      "category": "blank-factual",
+      "input": "The founder of Apple is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Steve Jobs"
+      ],
+      "expectedAny": [
+        "Steve Jobs",
+        "Jobs"
+      ],
+      "matched": "Steve Jobs",
+      "latencyMs": 178
+    },
+    {
+      "desc": "author of R&J",
+      "category": "blank-factual",
+      "input": "The author of Romeo and Juliet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "William Shakespeare"
+      ],
+      "expectedAny": [
+        "Shakespeare",
+        "William Shakespeare"
+      ],
+      "matched": "William Shakespeare",
+      "latencyMs": 72
+    },
+    {
+      "desc": "symbol for gold",
+      "category": "blank-factual",
+      "input": "The chemical symbol for gold is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Au"
+      ],
+      "expectedAny": [
+        "Au"
+      ],
+      "matched": "Au",
+      "latencyMs": 79
+    },
+    {
+      "desc": "symbol for iron",
+      "category": "blank-factual",
+      "input": "The chemical symbol for iron is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Fe"
+      ],
+      "expectedAny": [
+        "Fe"
+      ],
+      "matched": "Fe",
+      "latencyMs": 98
+    },
+    {
+      "desc": "symbol for silver",
+      "category": "blank-factual",
+      "input": "The chemical symbol for silver is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Ag"
+      ],
+      "expectedAny": [
+        "Ag"
+      ],
+      "matched": "Ag",
+      "latencyMs": 89
+    },
+    {
+      "desc": "largest ocean",
+      "category": "blank-factual",
+      "input": "The largest ocean is the _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Pacific"
+      ],
+      "expectedAny": [
+        "Pacific"
+      ],
+      "matched": "Pacific",
+      "latencyMs": 74
+    },
+    {
+      "desc": "tallest mountain",
+      "category": "blank-factual",
+      "input": "The tallest mountain is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Mount Everest"
+      ],
+      "expectedAny": [
+        "Everest",
+        "Mount Everest",
+        "Mt. Everest"
+      ],
+      "matched": "Mount Everest",
+      "latencyMs": 209
+    },
+    {
+      "desc": "longest river",
+      "category": "blank-factual",
+      "input": "The longest river is the _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Nile"
+      ],
+      "expectedAny": [
+        "Nile",
+        "Amazon"
+      ],
+      "matched": "Nile",
+      "latencyMs": 271
+    },
+    {
+      "desc": "largest planet",
+      "category": "blank-factual",
+      "input": "The largest planet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Jupiter"
+      ],
+      "expectedAny": [
+        "Jupiter"
+      ],
+      "matched": "Jupiter",
+      "latencyMs": 187
+    },
+    {
+      "desc": "first US president",
+      "category": "blank-factual",
+      "input": "who was the first president of the US _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "George Washington"
+      ],
+      "expectedAny": [
+        "George Washington",
+        "Washington"
+      ],
+      "matched": "George Washington",
+      "latencyMs": 69
+    },
+    {
+      "desc": "telephone inventor",
+      "category": "blank-factual",
+      "input": "who was the inventor of the telephone _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Alexander Graham Bell"
+      ],
+      "expectedAny": [
+        "Alexander Graham Bell",
+        "Bell",
+        "Graham Bell"
+      ],
+      "matched": "Alexander Graham Bell",
+      "latencyMs": 116
+    },
+    {
+      "desc": "CEO of Google",
+      "category": "blank-factual",
+      "input": "who is the CEO of Google _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Sundar Pichai"
+      ],
+      "expectedAny": [
+        "Sundar Pichai",
+        "Pichai"
+      ],
+      "matched": "Sundar Pichai",
+      "latencyMs": 93
+    },
+    {
+      "desc": "Mona Lisa painter",
+      "category": "blank-factual",
+      "input": "who was the painter of the Mona Lisa _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Leonardo da Vinci"
+      ],
+      "expectedAny": [
+        "Leonardo da Vinci",
+        "Da Vinci",
+        "Leonardo"
+      ],
+      "matched": "Leonardo da Vinci",
+      "latencyMs": 87
+    },
+    {
+      "desc": "founder of Facebook",
+      "category": "blank-factual",
+      "input": "who is the founder of Facebook _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Mark Zuckerberg"
+      ],
+      "expectedAny": [
+        "Mark Zuckerberg",
+        "Zuckerberg"
+      ],
+      "matched": "Mark Zuckerberg",
+      "latencyMs": 129
+    },
+    {
+      "desc": "hello → French",
+      "category": "blank-translate",
+      "input": "Hello in French is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Bonjour"
+      ],
+      "expectedAny": [
+        "Bonjour",
+        "bonjour",
+        "Salut"
+      ],
+      "matched": "Bonjour",
+      "latencyMs": 85
+    },
+    {
+      "desc": "goodbye → French",
+      "category": "blank-translate",
+      "input": "Goodbye in French is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Au revoir"
+      ],
+      "expectedAny": [
+        "Au revoir",
+        "au revoir",
+        "Adieu"
+      ],
+      "matched": "Au revoir",
+      "latencyMs": 113
+    },
+    {
+      "desc": "bread → French",
+      "category": "blank-translate",
+      "input": "Bread in French is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Pain"
+      ],
+      "expectedAny": [
+        "Pain",
+        "pain"
+      ],
+      "matched": "Pain",
+      "latencyMs": 90
+    },
+    {
+      "desc": "water → French",
+      "category": "blank-translate",
+      "input": "Water in French is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Eau"
+      ],
+      "expectedAny": [
+        "Eau",
+        "eau"
+      ],
+      "matched": "Eau",
+      "latencyMs": 168
+    },
+    {
+      "desc": "thank you → French",
+      "category": "blank-translate",
+      "input": "Thank you in French is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Merci"
+      ],
+      "expectedAny": [
+        "Merci",
+        "merci"
+      ],
+      "matched": "Merci",
+      "latencyMs": 280
+    },
+    {
+      "desc": "dog → Spanish",
+      "category": "blank-translate",
+      "input": "Dog in Spanish is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Perro"
+      ],
+      "expectedAny": [
+        "Perro",
+        "perro"
+      ],
+      "matched": "Perro",
+      "latencyMs": 79
+    },
+    {
+      "desc": "cat → Spanish",
+      "category": "blank-translate",
+      "input": "Cat in Spanish is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Gato"
+      ],
+      "expectedAny": [
+        "Gato",
+        "gato"
+      ],
+      "matched": "Gato",
+      "latencyMs": 120
+    },
+    {
+      "desc": "red → Spanish",
+      "category": "blank-translate",
+      "input": "Red in Spanish is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Rojo"
+      ],
+      "expectedAny": [
+        "Rojo",
+        "rojo"
+      ],
+      "matched": "Rojo",
+      "latencyMs": 116
+    },
+    {
+      "desc": "house → Spanish",
+      "category": "blank-translate",
+      "input": "House in Spanish is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Casa"
+      ],
+      "expectedAny": [
+        "Casa",
+        "casa"
+      ],
+      "matched": "Casa",
+      "latencyMs": 223
+    },
+    {
+      "desc": "good morning → Spanish",
+      "category": "blank-translate",
+      "input": "Good morning in Spanish is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Buenos días"
+      ],
+      "expectedAny": [
+        "Buenos dias",
+        "Buenos días",
+        "buenos dias"
+      ],
+      "matched": "Buenos días",
+      "latencyMs": 169
+    },
+    {
+      "desc": "house → German",
+      "category": "blank-translate",
+      "input": "The German word for house is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Haus"
+      ],
+      "expectedAny": [
+        "Haus",
+        "haus"
+      ],
+      "matched": "Haus",
+      "latencyMs": 149
+    },
+    {
+      "desc": "book → German",
+      "category": "blank-translate",
+      "input": "Book in German is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Buch"
+      ],
+      "expectedAny": [
+        "Buch",
+        "buch"
+      ],
+      "matched": "Buch",
+      "latencyMs": 105
+    },
+    {
+      "desc": "water → German",
+      "category": "blank-translate",
+      "input": "Water in German is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Wasser"
+      ],
+      "expectedAny": [
+        "Wasser",
+        "wasser"
+      ],
+      "matched": "Wasser",
+      "latencyMs": 111
+    },
+    {
+      "desc": "thank you → German",
+      "category": "blank-translate",
+      "input": "Thank you in German is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Danke"
+      ],
+      "expectedAny": [
+        "Danke",
+        "danke"
+      ],
+      "matched": "Danke",
+      "latencyMs": 266
+    },
+    {
+      "desc": "good night → German",
+      "category": "blank-translate",
+      "input": "Good night in German is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Gute Nacht"
+      ],
+      "expectedAny": [
+        "Gute Nacht",
+        "gute Nacht",
+        "gute nacht"
+      ],
+      "matched": "Gute Nacht",
+      "latencyMs": 86
+    },
+    {
+      "desc": "goodbye → Italian",
+      "category": "blank-translate",
+      "input": "How do you say goodbye in Italian _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Arrivederci"
+      ],
+      "expectedAny": [
+        "Arrivederci",
+        "arrivederci",
+        "Ciao",
+        "ciao"
+      ],
+      "matched": "Arrivederci",
+      "latencyMs": 100
+    },
+    {
+      "desc": "love → Italian",
+      "category": "blank-translate",
+      "input": "Love in Italian is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Amore"
+      ],
+      "expectedAny": [
+        "Amore",
+        "amore"
+      ],
+      "matched": "Amore",
+      "latencyMs": 377
+    },
+    {
+      "desc": "friend → Italian",
+      "category": "blank-translate",
+      "input": "Friend in Italian is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Amico"
+      ],
+      "expectedAny": [
+        "Amico",
+        "amico",
+        "Amica"
+      ],
+      "matched": "Amico",
+      "latencyMs": 90
+    },
+    {
+      "desc": "thank you → Japanese",
+      "category": "blank-translate",
+      "input": "Thank you in Japanese is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Arigatou"
+      ],
+      "expectedAny": [
+        "Arigatou",
+        "arigatou",
+        "Arigato",
+        "arigato",
+        "Arigatō"
+      ],
+      "matched": "Arigatou",
+      "latencyMs": 88
+    },
+    {
+      "desc": "hello → Japanese",
+      "category": "blank-translate",
+      "input": "Hello in Japanese is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Konnichiwa"
+      ],
+      "expectedAny": [
+        "Konnichiwa",
+        "konnichiwa",
+        "Konnichi wa"
+      ],
+      "matched": "Konnichiwa",
+      "latencyMs": 126
+    },
+    {
+      "desc": "cat → Portuguese",
+      "category": "blank-translate",
+      "input": "Cat in Portuguese is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Gato"
+      ],
+      "expectedAny": [
+        "Gato",
+        "gato"
+      ],
+      "matched": "Gato",
+      "latencyMs": 111
+    },
+    {
+      "desc": "thank you → Portuguese",
+      "category": "blank-translate",
+      "input": "Thank you in Portuguese is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Obrigado"
+      ],
+      "expectedAny": [
+        "Obrigado",
+        "obrigado",
+        "Obrigada"
+      ],
+      "matched": "Obrigado",
+      "latencyMs": 132
+    },
+    {
+      "desc": "love → Latin",
+      "category": "blank-translate",
+      "input": "Love in Latin is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Amor"
+      ],
+      "expectedAny": [
+        "Amor",
+        "amor"
+      ],
+      "matched": "Amor",
+      "latencyMs": 122
+    },
+    {
+      "desc": "peace → Latin",
+      "category": "blank-translate",
+      "input": "Peace in Latin is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Pax"
+      ],
+      "expectedAny": [
+        "Pax",
+        "pax"
+      ],
+      "matched": "Pax",
+      "latencyMs": 75
+    },
+    {
+      "desc": "friend → Korean",
+      "category": "blank-translate",
+      "input": "Friend in Korean is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Chingu"
+      ],
+      "expectedAny": [
+        "Chingu",
+        "chingu",
+        "Chin-gu",
+        "Chingoo"
+      ],
+      "matched": "Chingu",
+      "latencyMs": 129
+    },
+    {
+      "desc": "peace → Arabic",
+      "category": "blank-translate",
+      "input": "Peace in Arabic is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Salaam"
+      ],
+      "expectedAny": [
+        "Salaam",
+        "salaam",
+        "Salam",
+        "salam"
+      ],
+      "matched": "Salaam",
+      "latencyMs": 106
+    },
+    {
+      "desc": "hello → Russian",
+      "category": "blank-translate",
+      "input": "Hello in Russian is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Privet"
+      ],
+      "expectedAny": [
+        "Privet",
+        "privet",
+        "Zdravstvuyte",
+        "Zdrastvuyte"
+      ],
+      "matched": "Privet",
+      "latencyMs": 87
+    },
+    {
+      "desc": "peace → Hebrew",
+      "category": "blank-translate",
+      "input": "Peace in Hebrew is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Shalom"
+      ],
+      "expectedAny": [
+        "Shalom",
+        "shalom"
+      ],
+      "matched": "Shalom",
+      "latencyMs": 108
+    },
+    {
+      "desc": "thank you → Chinese",
+      "category": "blank-translate",
+      "input": "Thank you in Chinese is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Xie xie"
+      ],
+      "expectedAny": [
+        "Xie xie",
+        "xie xie",
+        "Xiexie",
+        "xiexie",
+        "Xièxiè"
+      ],
+      "matched": "Xie xie",
+      "latencyMs": 609
+    },
+    {
+      "desc": "beautiful → French",
+      "category": "blank-translate",
+      "input": "The French word for beautiful is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Beau"
+      ],
+      "expectedAny": [
+        "Belle",
+        "belle",
+        "Beau",
+        "beau",
+        "Magnifique"
+      ],
+      "matched": "Beau",
+      "latencyMs": 156
+    },
+    {
+      "desc": "100C→F",
+      "category": "blank-unit",
+      "input": "100 celsius in fahrenheit is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "212"
+      ],
+      "expectedAny": [
+        "212"
+      ],
+      "matched": "212",
+      "latencyMs": 143
+    },
+    {
+      "desc": "0C→F",
+      "category": "blank-unit",
+      "input": "0 celsius in fahrenheit is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "32"
+      ],
+      "expectedAny": [
+        "32"
+      ],
+      "matched": "32",
+      "latencyMs": 174
+    },
+    {
+      "desc": "37C→F (body temp)",
+      "category": "blank-unit",
+      "input": "37 celsius in fahrenheit is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "98.6"
+      ],
+      "expectedAny": [
+        "98.6",
+        "98"
+      ],
+      "matched": "98.6",
+      "latencyMs": 157
+    },
+    {
+      "desc": "32F→C",
+      "category": "blank-unit",
+      "input": "32 fahrenheit in celsius is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "0"
+      ],
+      "expectedAny": [
+        "0"
+      ],
+      "matched": "0",
+      "latencyMs": 172
+    },
+    {
+      "desc": "212F→C",
+      "category": "blank-unit",
+      "input": "212 fahrenheit in celsius is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 175
+    },
+    {
+      "desc": "1mi→km",
+      "category": "blank-unit",
+      "input": "1 miles in km is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "1.6093"
+      ],
+      "expectedAny": [
+        "1.6093",
+        "1.609",
+        "1.61"
+      ],
+      "matched": "1.6093",
+      "latencyMs": 213
+    },
+    {
+      "desc": "5mi→km",
+      "category": "blank-unit",
+      "input": "5 miles in km is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8.0467"
+      ],
+      "expectedAny": [
+        "8.0467",
+        "8.047",
+        "8.05",
+        "8"
+      ],
+      "matched": "8.0467",
+      "latencyMs": 228
+    },
+    {
+      "desc": "10km→mi",
+      "category": "blank-unit",
+      "input": "10 km in miles is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "6.2137"
+      ],
+      "expectedAny": [
+        "6.2137",
+        "6.214",
+        "6.21",
+        "6"
+      ],
+      "matched": "6.2137",
+      "latencyMs": 164
+    },
+    {
+      "desc": "100km→mi",
+      "category": "blank-unit",
+      "input": "100 km in miles is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "62.1371"
+      ],
+      "expectedAny": [
+        "62.1371",
+        "62.137",
+        "62.14",
+        "62"
+      ],
+      "matched": "62.1371",
+      "latencyMs": 161
+    },
+    {
+      "desc": "26mi→km (marathon)",
+      "category": "blank-unit",
+      "input": "26 miles in km is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "41.8428"
+      ],
+      "expectedAny": [
+        "41.8428",
+        "41.843",
+        "41.84",
+        "42"
+      ],
+      "matched": "41.8428",
+      "latencyMs": 120
+    },
+    {
+      "desc": "1kg→lb",
+      "category": "blank-unit",
+      "input": "1 kg in pounds is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "2.2046"
+      ],
+      "expectedAny": [
+        "2.2046",
+        "2.205",
+        "2.2"
+      ],
+      "matched": "2.2046",
+      "latencyMs": 149
+    },
+    {
+      "desc": "70kg→lb",
+      "category": "blank-unit",
+      "input": "70 kg in pounds is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "154.3234"
+      ],
+      "expectedAny": [
+        "154.3234",
+        "154.323",
+        "154.32",
+        "154"
+      ],
+      "matched": "154.3234",
+      "latencyMs": 133
+    },
+    {
+      "desc": "100lb→kg",
+      "category": "blank-unit",
+      "input": "100 pounds in kg is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "45.3592"
+      ],
+      "expectedAny": [
+        "45.3592",
+        "45.359",
+        "45.36",
+        "45"
+      ],
+      "matched": "45.3592",
+      "latencyMs": 187
+    },
+    {
+      "desc": "200lb→kg",
+      "category": "blank-unit",
+      "input": "200 pounds in kg is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "90.7184"
+      ],
+      "expectedAny": [
+        "90.7184",
+        "90.718",
+        "90.72",
+        "91"
+      ],
+      "matched": "90.7184",
+      "latencyMs": 378
+    },
+    {
+      "desc": "1m→ft",
+      "category": "blank-unit",
+      "input": "1 meters in feet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "3.2808"
+      ],
+      "expectedAny": [
+        "3.2808",
+        "3.281",
+        "3.28"
+      ],
+      "matched": "3.2808",
+      "latencyMs": 255
+    },
+    {
+      "desc": "10m→ft",
+      "category": "blank-unit",
+      "input": "10 meters in feet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "32.8084"
+      ],
+      "expectedAny": [
+        "32.8084",
+        "32.808",
+        "32.81",
+        "33"
+      ],
+      "matched": "32.8084",
+      "latencyMs": 142
+    },
+    {
+      "desc": "6ft→m",
+      "category": "blank-unit",
+      "input": "6 feet in meters is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "1.8288"
+      ],
+      "expectedAny": [
+        "1.8288",
+        "1.829",
+        "1.83"
+      ],
+      "matched": "1.8288",
+      "latencyMs": 197
+    },
+    {
+      "desc": "100ft→m",
+      "category": "blank-unit",
+      "input": "100 feet in meters is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "30.48"
+      ],
+      "expectedAny": [
+        "30.48",
+        "30.5"
+      ],
+      "matched": "30.48",
+      "latencyMs": 165
+    },
+    {
+      "desc": "1in→cm",
+      "category": "blank-unit",
+      "input": "1 inches in cm is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "2.54"
+      ],
+      "expectedAny": [
+        "2.54"
+      ],
+      "matched": "2.54",
+      "latencyMs": 132
+    },
+    {
+      "desc": "12in→cm",
+      "category": "blank-unit",
+      "input": "12 inches in cm is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "30.48"
+      ],
+      "expectedAny": [
+        "30.48",
+        "30.5"
+      ],
+      "matched": "30.48",
+      "latencyMs": 173
+    },
+    {
+      "desc": "10cm→in",
+      "category": "blank-unit",
+      "input": "10 cm in inches is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "3.937"
+      ],
+      "expectedAny": [
+        "3.937",
+        "3.94",
+        "4"
+      ],
+      "matched": "3.937",
+      "latencyMs": 192
+    },
+    {
+      "desc": "1L→gal",
+      "category": "blank-unit",
+      "input": "1 liters in gallons is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "0.2642"
+      ],
+      "expectedAny": [
+        "0.2642",
+        "0.264",
+        "0.26"
+      ],
+      "matched": "0.2642",
+      "latencyMs": 151
+    },
+    {
+      "desc": "10L→gal",
+      "category": "blank-unit",
+      "input": "10 liters in gallons is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "2.6417"
+      ],
+      "expectedAny": [
+        "2.6417",
+        "2.642",
+        "2.64"
+      ],
+      "matched": "2.6417",
+      "latencyMs": 237
+    },
+    {
+      "desc": "1gal→L",
+      "category": "blank-unit",
+      "input": "1 gallons in liters is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "3.7854"
+      ],
+      "expectedAny": [
+        "3.7854",
+        "3.785",
+        "3.79"
+      ],
+      "matched": "3.7854",
+      "latencyMs": 302
+    },
+    {
+      "desc": "100yd→m",
+      "category": "blank-unit",
+      "input": "100 yards in meters is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "91.44"
+      ],
+      "expectedAny": [
+        "91.44",
+        "91.4",
+        "91"
+      ],
+      "matched": "91.44",
+      "latencyMs": 322
+    },
+    {
+      "desc": "1oz→g",
+      "category": "blank-unit",
+      "input": "1 oz in grams is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "28.3495"
+      ],
+      "expectedAny": [
+        "28.3495",
+        "28.35",
+        "28"
+      ],
+      "matched": "28.3495",
+      "latencyMs": 311
+    },
+    {
+      "desc": "16oz→g (1lb)",
+      "category": "blank-unit",
+      "input": "16 oz in grams is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "453.592"
+      ],
+      "expectedAny": [
+        "453.592",
+        "453.59",
+        "454"
+      ],
+      "matched": "453.592",
+      "latencyMs": 3375
+    },
+    {
+      "desc": "0mi→km",
+      "category": "blank-unit",
+      "input": "0 miles in km is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "0"
+      ],
+      "expectedAny": [
+        "0"
+      ],
+      "matched": "0",
+      "latencyMs": 151
+    },
+    {
+      "desc": "0C→F (dup check)",
+      "category": "blank-unit",
+      "input": "0 celsius in fahrenheit is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "32"
+      ],
+      "expectedAny": [
+        "32"
+      ],
+      "matched": "32",
+      "latencyMs": 153
+    },
+    {
+      "desc": "50m→ft",
+      "category": "blank-unit",
+      "input": "50 meters in feet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "164.042"
+      ],
+      "expectedAny": [
+        "164.042",
+        "164.04",
+        "164"
+      ],
+      "matched": "164.042",
+      "latencyMs": 150
+    },
+    {
+      "desc": "opposite: hot",
+      "category": "blank-spell",
+      "input": "The opposite of hot is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "cold"
+      ],
+      "expectedAny": [
+        "cold",
+        "cool"
+      ],
+      "matched": "cold",
+      "latencyMs": 79
+    },
+    {
+      "desc": "opposite: big",
+      "category": "blank-spell",
+      "input": "The opposite of big is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "small"
+      ],
+      "expectedAny": [
+        "small",
+        "little",
+        "tiny"
+      ],
+      "matched": "small",
+      "latencyMs": 75
+    },
+    {
+      "desc": "opposite: fast",
+      "category": "blank-spell",
+      "input": "The opposite of fast is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "slow"
+      ],
+      "expectedAny": [
+        "slow"
+      ],
+      "matched": "slow",
+      "latencyMs": 84
+    },
+    {
+      "desc": "opposite: happy",
+      "category": "blank-spell",
+      "input": "The opposite of happy is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "sad"
+      ],
+      "expectedAny": [
+        "sad",
+        "unhappy"
+      ],
+      "matched": "sad",
+      "latencyMs": 82
+    },
+    {
+      "desc": "opposite: light",
+      "category": "blank-spell",
+      "input": "The opposite of light is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "dark"
+      ],
+      "expectedAny": [
+        "dark",
+        "heavy"
+      ],
+      "matched": "dark",
+      "latencyMs": 81
+    },
+    {
+      "desc": "opposite: old",
+      "category": "blank-spell",
+      "input": "The opposite of old is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "young"
+      ],
+      "expectedAny": [
+        "young",
+        "new"
+      ],
+      "matched": "young",
+      "latencyMs": 103
+    },
+    {
+      "desc": "opposite: rich",
+      "category": "blank-spell",
+      "input": "The opposite of rich is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "poor"
+      ],
+      "expectedAny": [
+        "poor"
+      ],
+      "matched": "poor",
+      "latencyMs": 111
+    },
+    {
+      "desc": "opposite: love",
+      "category": "blank-spell",
+      "input": "The opposite of love is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "hate"
+      ],
+      "expectedAny": [
+        "hate",
+        "hatred"
+      ],
+      "matched": "hate",
+      "latencyMs": 128
+    },
+    {
+      "desc": "opposite: open",
+      "category": "blank-spell",
+      "input": "The opposite of open is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "closed"
+      ],
+      "expectedAny": [
+        "closed",
+        "shut"
+      ],
+      "matched": "closed",
+      "latencyMs": 109
+    },
+    {
+      "desc": "opposite: true",
+      "category": "blank-spell",
+      "input": "The opposite of true is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "false"
+      ],
+      "expectedAny": [
+        "false"
+      ],
+      "matched": "false",
+      "latencyMs": 115
+    },
+    {
+      "desc": "synonym: happy",
+      "category": "blank-spell",
+      "input": "A synonym for happy is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "joyful"
+      ],
+      "expectedAny": [
+        "joyful",
+        "glad",
+        "cheerful",
+        "content",
+        "delighted"
+      ],
+      "matched": "joyful",
+      "latencyMs": 83
+    },
+    {
+      "desc": "synonym: big",
+      "category": "blank-spell",
+      "input": "A synonym for big is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "large"
+      ],
+      "expectedAny": [
+        "large",
+        "huge",
+        "enormous",
+        "massive",
+        "great"
+      ],
+      "matched": "large",
+      "latencyMs": 92
+    },
+    {
+      "desc": "synonym: fast",
+      "category": "blank-spell",
+      "input": "A synonym for fast is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "quick"
+      ],
+      "expectedAny": [
+        "quick",
+        "rapid",
+        "swift",
+        "speedy"
+      ],
+      "matched": "quick",
+      "latencyMs": 81
+    },
+    {
+      "desc": "synonym: angry",
+      "category": "blank-spell",
+      "input": "A synonym for angry is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "furious"
+      ],
+      "expectedAny": [
+        "furious",
+        "mad",
+        "irate",
+        "enraged"
+      ],
+      "matched": "furious",
+      "latencyMs": 85
+    },
+    {
+      "desc": "synonym: beautiful",
+      "category": "blank-spell",
+      "input": "A synonym for beautiful is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "gorgeous"
+      ],
+      "expectedAny": [
+        "gorgeous",
+        "stunning",
+        "lovely",
+        "pretty"
+      ],
+      "matched": "gorgeous",
+      "latencyMs": 79
+    },
+    {
+      "desc": "another: scared",
+      "category": "blank-spell",
+      "input": "Another word for scared is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "afraid"
+      ],
+      "expectedAny": [
+        "afraid",
+        "frightened",
+        "terrified",
+        "fearful"
+      ],
+      "matched": "afraid",
+      "latencyMs": 135
+    },
+    {
+      "desc": "another: smart",
+      "category": "blank-spell",
+      "input": "Another word for smart is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "intelligent"
+      ],
+      "expectedAny": [
+        "intelligent",
+        "clever",
+        "bright",
+        "brilliant"
+      ],
+      "matched": "intelligent",
+      "latencyMs": 108
+    },
+    {
+      "desc": "same as: tired",
+      "category": "blank-spell",
+      "input": "Means the same as tired _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "weary"
+      ],
+      "expectedAny": [
+        "exhausted",
+        "fatigued",
+        "weary",
+        "drained"
+      ],
+      "matched": "weary",
+      "latencyMs": 119
+    },
+    {
+      "desc": "antonym: light",
+      "category": "blank-spell",
+      "input": "An antonym of light is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "dark"
+      ],
+      "expectedAny": [
+        "dark",
+        "heavy"
+      ],
+      "matched": "dark",
+      "latencyMs": 89
+    },
+    {
+      "desc": "antonym: quiet",
+      "category": "blank-spell",
+      "input": "An antonym of quiet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "loud"
+      ],
+      "expectedAny": [
+        "loud",
+        "noisy"
+      ],
+      "matched": "loud",
+      "latencyMs": 126
+    },
+    {
+      "desc": "rhyme: cat",
+      "category": "blank-spell",
+      "input": "Rhymes with cat _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "hat"
+      ],
+      "expectedAny": [
+        "hat",
+        "bat",
+        "mat",
+        "rat",
+        "sat",
+        "fat",
+        "flat"
+      ],
+      "matched": "hat",
+      "latencyMs": 101
+    },
+    {
+      "desc": "rhyme: dog",
+      "category": "blank-spell",
+      "input": "Rhymes with dog _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "log"
+      ],
+      "expectedAny": [
+        "log",
+        "fog",
+        "bog",
+        "hog",
+        "frog",
+        "jog"
+      ],
+      "matched": "log",
+      "latencyMs": 96
+    },
+    {
+      "desc": "rhyme: day",
+      "category": "blank-spell",
+      "input": "Rhymes with day _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "say"
+      ],
+      "expectedAny": [
+        "way",
+        "say",
+        "play",
+        "may",
+        "pay",
+        "stay",
+        "bay"
+      ],
+      "matched": "say",
+      "latencyMs": 159
+    },
+    {
+      "desc": "rhyme: moon",
+      "category": "blank-spell",
+      "input": "Rhymes with moon _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "spoon"
+      ],
+      "expectedAny": [
+        "soon",
+        "noon",
+        "spoon",
+        "tune",
+        "June",
+        "balloon"
+      ],
+      "matched": "spoon",
+      "latencyMs": 110
+    },
+    {
+      "desc": "rhyme: light",
+      "category": "blank-spell",
+      "input": "Rhymes with light _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "night"
+      ],
+      "expectedAny": [
+        "night",
+        "sight",
+        "right",
+        "bright",
+        "fight",
+        "might",
+        "white",
+        "flight"
+      ],
+      "matched": "night",
+      "latencyMs": 129
+    },
+    {
+      "desc": "rhyme: tree",
+      "category": "blank-spell",
+      "input": "Rhymes with tree _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "bee"
+      ],
+      "expectedAny": [
+        "free",
+        "sea",
+        "three",
+        "key",
+        "bee",
+        "see",
+        "me",
+        "we"
+      ],
+      "matched": "bee",
+      "latencyMs": 141
+    },
+    {
+      "desc": "rhyme: blue",
+      "category": "blank-spell",
+      "input": "Rhymes with blue _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "clue"
+      ],
+      "expectedAny": [
+        "true",
+        "new",
+        "two",
+        "you",
+        "shoe",
+        "through",
+        "flew",
+        "grew",
+        "clue"
+      ],
+      "matched": "clue",
+      "latencyMs": 134
+    },
+    {
+      "desc": "rhyme: rain",
+      "category": "blank-spell",
+      "input": "Rhymes with rain _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "train"
+      ],
+      "expectedAny": [
+        "pain",
+        "main",
+        "brain",
+        "train",
+        "gain",
+        "lane",
+        "plain",
+        "chain"
+      ],
+      "matched": "train",
+      "latencyMs": 175
+    },
+    {
+      "desc": "rhyme: book",
+      "category": "blank-spell",
+      "input": "Rhymes with book _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "look"
+      ],
+      "expectedAny": [
+        "look",
+        "cook",
+        "hook",
+        "took",
+        "shook",
+        "nook",
+        "brook"
+      ],
+      "matched": "look",
+      "latencyMs": 148
+    },
+    {
+      "desc": "rhyme: ring",
+      "category": "blank-spell",
+      "input": "Rhymes with ring _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "sing"
+      ],
+      "expectedAny": [
+        "sing",
+        "king",
+        "thing",
+        "spring",
+        "bring",
+        "wing",
+        "string",
+        "swing"
+      ],
+      "matched": "sing",
+      "latencyMs": 157
+    },
+    {
+      "desc": "red→hex",
+      "category": "blank-color",
+      "input": "Red in hex is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FF0000"
+      ],
+      "expectedAny": [
+        "#FF0000",
+        "#ff0000"
+      ],
+      "matched": "#FF0000",
+      "latencyMs": 121
+    },
+    {
+      "desc": "blue→hex",
+      "category": "blank-color",
+      "input": "Blue in hex is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#0000FF"
+      ],
+      "expectedAny": [
+        "#0000FF",
+        "#0000ff"
+      ],
+      "matched": "#0000FF",
+      "latencyMs": 110
+    },
+    {
+      "desc": "green→hex",
+      "category": "blank-color",
+      "input": "Green in hex is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#00FF00"
+      ],
+      "expectedAny": [
+        "#00FF00",
+        "#00ff00",
+        "#008000",
+        "#008000"
+      ],
+      "matched": "#00FF00",
+      "latencyMs": 91
+    },
+    {
+      "desc": "white→hex",
+      "category": "blank-color",
+      "input": "White in hex is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FFFFFF"
+      ],
+      "expectedAny": [
+        "#FFFFFF",
+        "#ffffff",
+        "#FFF"
+      ],
+      "matched": "#FFFFFF",
+      "latencyMs": 178
+    },
+    {
+      "desc": "black→hex",
+      "category": "blank-color",
+      "input": "Black in hex is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#000000"
+      ],
+      "expectedAny": [
+        "#000000",
+        "#000",
+        "#000000"
+      ],
+      "matched": "#000000",
+      "latencyMs": 183
+    },
+    {
+      "desc": "yellow→hex",
+      "category": "blank-color",
+      "input": "Yellow in hex is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FFFF00"
+      ],
+      "expectedAny": [
+        "#FFFF00",
+        "#ffff00"
+      ],
+      "matched": "#FFFF00",
+      "latencyMs": 88
+    },
+    {
+      "desc": "purple→hex",
+      "category": "blank-color",
+      "input": "Hex for purple is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#800080"
+      ],
+      "expectedAny": [
+        "#800080",
+        "#A020F0",
+        "#a020f0",
+        "#8B008B"
+      ],
+      "matched": "#800080",
+      "latencyMs": 119
+    },
+    {
+      "desc": "orange→hex",
+      "category": "blank-color",
+      "input": "Hex for orange is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FFA500"
+      ],
+      "expectedAny": [
+        "#FFA500",
+        "#ffa500",
+        "#FF8C00"
+      ],
+      "matched": "#FFA500",
+      "latencyMs": 109
+    },
+    {
+      "desc": "cyan→hex",
+      "category": "blank-color",
+      "input": "Hex for cyan is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#00FFFF"
+      ],
+      "expectedAny": [
+        "#00FFFF",
+        "#00ffff"
+      ],
+      "matched": "#00FFFF",
+      "latencyMs": 108
+    },
+    {
+      "desc": "pink→hex",
+      "category": "blank-color",
+      "input": "Hex for pink is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FFC0CB"
+      ],
+      "expectedAny": [
+        "#FFC0CB",
+        "#ffc0cb",
+        "#FF69B4"
+      ],
+      "matched": "#FFC0CB",
+      "latencyMs": 111
+    },
+    {
+      "desc": "gray→hex",
+      "category": "blank-color",
+      "input": "Hex for gray is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#808080"
+      ],
+      "expectedAny": [
+        "#808080",
+        "#C0C0C0",
+        "#A9A9A9",
+        "#808080"
+      ],
+      "matched": "#808080",
+      "latencyMs": 120
+    },
+    {
+      "desc": "brown→hex",
+      "category": "blank-color",
+      "input": "Hex for brown is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#A52A2A"
+      ],
+      "expectedAny": [
+        "#A52A2A",
+        "#8B4513",
+        "#a52a2a",
+        "#964B00"
+      ],
+      "matched": "#A52A2A",
+      "latencyMs": 314
+    },
+    {
+      "desc": "navy→hex",
+      "category": "blank-color",
+      "input": "Hex for navy is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#000080"
+      ],
+      "expectedAny": [
+        "#000080",
+        "#000080"
+      ],
+      "matched": "#000080",
+      "latencyMs": 126
+    },
+    {
+      "desc": "gold→hex",
+      "category": "blank-color",
+      "input": "Hex for gold is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FFD700"
+      ],
+      "expectedAny": [
+        "#FFD700",
+        "#ffd700"
+      ],
+      "matched": "#FFD700",
+      "latencyMs": 80
+    },
+    {
+      "desc": "silver→hex",
+      "category": "blank-color",
+      "input": "Hex for silver is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#C0C0C0"
+      ],
+      "expectedAny": [
+        "#C0C0C0",
+        "#c0c0c0"
+      ],
+      "matched": "#C0C0C0",
+      "latencyMs": 110
+    },
+    {
+      "desc": "red→rgb",
+      "category": "blank-color",
+      "input": "Red in rgb is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "rgb(255,0,0)"
+      ],
+      "expectedAny": [
+        "rgb(255,0,0)",
+        "rgb(255, 0, 0)",
+        "255,0,0"
+      ],
+      "matched": "rgb(255,0,0)",
+      "latencyMs": 149
+    },
+    {
+      "desc": "blue→rgb",
+      "category": "blank-color",
+      "input": "Blue in rgb is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "rgb(0,0,255)"
+      ],
+      "expectedAny": [
+        "rgb(0,0,255)",
+        "rgb(0, 0, 255)",
+        "0,0,255"
+      ],
+      "matched": "rgb(0,0,255)",
+      "latencyMs": 98
+    },
+    {
+      "desc": "green→rgb",
+      "category": "blank-color",
+      "input": "Green in rgb is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "rgb(0,255,0)"
+      ],
+      "expectedAny": [
+        "rgb(0,255,0)",
+        "rgb(0, 255, 0)",
+        "rgb(0,128,0)",
+        "0,255,0",
+        "0,128,0"
+      ],
+      "matched": "rgb(0,255,0)",
+      "latencyMs": 101
+    },
+    {
+      "desc": "white→rgb",
+      "category": "blank-color",
+      "input": "White in rgb is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "rgb(255,255,255)"
+      ],
+      "expectedAny": [
+        "rgb(255,255,255)",
+        "rgb(255, 255, 255)",
+        "255,255,255"
+      ],
+      "matched": "rgb(255,255,255)",
+      "latencyMs": 99
+    },
+    {
+      "desc": "black→rgb",
+      "category": "blank-color",
+      "input": "Black in rgb is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "rgb(0,0,0)"
+      ],
+      "expectedAny": [
+        "rgb(0,0,0)",
+        "rgb(0, 0, 0)",
+        "0,0,0"
+      ],
+      "matched": "rgb(0,0,0)",
+      "latencyMs": 102
+    },
+    {
+      "desc": "teal→hex",
+      "category": "blank-color",
+      "input": "Color code for teal is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#008080"
+      ],
+      "expectedAny": [
+        "#008080",
+        "#008080"
+      ],
+      "matched": "#008080",
+      "latencyMs": 90
+    },
+    {
+      "desc": "magenta→hex",
+      "category": "blank-color",
+      "input": "Color code for magenta is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FF00FF"
+      ],
+      "expectedAny": [
+        "#FF00FF",
+        "#ff00ff"
+      ],
+      "matched": "#FF00FF",
+      "latencyMs": 231
+    },
+    {
+      "desc": "lime→hex",
+      "category": "blank-color",
+      "input": "Color code for lime is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#00FF00"
+      ],
+      "expectedAny": [
+        "#00FF00",
+        "#00ff00",
+        "#32CD32"
+      ],
+      "matched": "#00FF00",
+      "latencyMs": 307
+    },
+    {
+      "desc": "coral→hex",
+      "category": "blank-color",
+      "input": "Color code for coral is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FF7F50"
+      ],
+      "expectedAny": [
+        "#FF7F50",
+        "#ff7f50"
+      ],
+      "matched": "#FF7F50",
+      "latencyMs": 155
+    },
+    {
+      "desc": "indigo→hex",
+      "category": "blank-color",
+      "input": "Color code for indigo is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#4B0082"
+      ],
+      "expectedAny": [
+        "#4B0082",
+        "#4b0082"
+      ],
+      "matched": "#4B0082",
+      "latencyMs": 96
+    },
+    {
+      "desc": "turquoise→hex",
+      "category": "blank-color",
+      "input": "Hex for turquoise is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#40E0D0"
+      ],
+      "expectedAny": [
+        "#40E0D0",
+        "#40e0d0",
+        "#30D5C8"
+      ],
+      "matched": "#40E0D0",
+      "latencyMs": 100
+    },
+    {
+      "desc": "maroon→hex",
+      "category": "blank-color",
+      "input": "Hex for maroon is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#800000"
+      ],
+      "expectedAny": [
+        "#800000",
+        "#800000"
+      ],
+      "matched": "#800000",
+      "latencyMs": 113
+    },
+    {
+      "desc": "olive→hex",
+      "category": "blank-color",
+      "input": "Hex for olive is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#808000"
+      ],
+      "expectedAny": [
+        "#808000",
+        "#808000"
+      ],
+      "matched": "#808000",
+      "latencyMs": 77
+    },
+    {
+      "desc": "salmon→hex",
+      "category": "blank-color",
+      "input": "Hex for salmon is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#FA8072"
+      ],
+      "expectedAny": [
+        "#FA8072",
+        "#fa8072"
+      ],
+      "matched": "#FA8072",
+      "latencyMs": 187
+    },
+    {
+      "desc": "violet→hex",
+      "category": "blank-color",
+      "input": "Hex for violet is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "#EE82EE"
+      ],
+      "expectedAny": [
+        "#EE82EE",
+        "#ee82ee",
+        "#8B00FF",
+        "#7F00FF"
+      ],
+      "matched": "#EE82EE",
+      "latencyMs": 200
+    },
+    {
+      "desc": "OK→200",
+      "category": "blank-http",
+      "input": "HTTP status for OK is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "200"
+      ],
+      "expectedAny": [
+        "200"
+      ],
+      "matched": "200",
+      "latencyMs": 81
+    },
+    {
+      "desc": "created→201",
+      "category": "blank-http",
+      "input": "HTTP status for created is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "201"
+      ],
+      "expectedAny": [
+        "201"
+      ],
+      "matched": "201",
+      "latencyMs": 88
+    },
+    {
+      "desc": "no content→204",
+      "category": "blank-http",
+      "input": "HTTP status for no content is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "204"
+      ],
+      "expectedAny": [
+        "204"
+      ],
+      "matched": "204",
+      "latencyMs": 166
+    },
+    {
+      "desc": "redirect→30x",
+      "category": "blank-http",
+      "input": "HTTP status for redirect is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "301"
+      ],
+      "expectedAny": [
+        "301",
+        "302",
+        "307"
+      ],
+      "matched": "301",
+      "latencyMs": 111
+    },
+    {
+      "desc": "not modified→304",
+      "category": "blank-http",
+      "input": "HTTP status for not modified is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "304"
+      ],
+      "expectedAny": [
+        "304"
+      ],
+      "matched": "304",
+      "latencyMs": 91
+    },
+    {
+      "desc": "bad request→400",
+      "category": "blank-http",
+      "input": "HTTP status for bad request is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "400"
+      ],
+      "expectedAny": [
+        "400"
+      ],
+      "matched": "400",
+      "latencyMs": 71
+    },
+    {
+      "desc": "unauthorized→401",
+      "category": "blank-http",
+      "input": "HTTP status for unauthorized is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "401"
+      ],
+      "expectedAny": [
+        "401"
+      ],
+      "matched": "401",
+      "latencyMs": 82
+    },
+    {
+      "desc": "forbidden→403",
+      "category": "blank-http",
+      "input": "HTTP status for forbidden is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "403"
+      ],
+      "expectedAny": [
+        "403"
+      ],
+      "matched": "403",
+      "latencyMs": 72
+    },
+    {
+      "desc": "not found→404",
+      "category": "blank-http",
+      "input": "HTTP status for not found is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "404"
+      ],
+      "expectedAny": [
+        "404"
+      ],
+      "matched": "404",
+      "latencyMs": 72
+    },
+    {
+      "desc": "method not allowed→405",
+      "category": "blank-http",
+      "input": "HTTP status for method not allowed is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "405"
+      ],
+      "expectedAny": [
+        "405"
+      ],
+      "matched": "405",
+      "latencyMs": 84
+    },
+    {
+      "desc": "conflict→409",
+      "category": "blank-http",
+      "input": "HTTP status for conflict is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "409"
+      ],
+      "expectedAny": [
+        "409"
+      ],
+      "matched": "409",
+      "latencyMs": 88
+    },
+    {
+      "desc": "gone→410",
+      "category": "blank-http",
+      "input": "HTTP status for gone is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "410"
+      ],
+      "expectedAny": [
+        "410"
+      ],
+      "matched": "410",
+      "latencyMs": 196
+    },
+    {
+      "desc": "rate limit→429",
+      "category": "blank-http",
+      "input": "HTTP status for too many requests is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "429"
+      ],
+      "expectedAny": [
+        "429"
+      ],
+      "matched": "429",
+      "latencyMs": 104
+    },
+    {
+      "desc": "server error→500",
+      "category": "blank-http",
+      "input": "HTTP status for server error is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "500"
+      ],
+      "expectedAny": [
+        "500"
+      ],
+      "matched": "500",
+      "latencyMs": 193
+    },
+    {
+      "desc": "bad gateway→502",
+      "category": "blank-http",
+      "input": "HTTP status for bad gateway is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "502"
+      ],
+      "expectedAny": [
+        "502"
+      ],
+      "matched": "502",
+      "latencyMs": 93
+    },
+    {
+      "desc": "unavailable→503",
+      "category": "blank-http",
+      "input": "HTTP status for service unavailable is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "503"
+      ],
+      "expectedAny": [
+        "503"
+      ],
+      "matched": "503",
+      "latencyMs": 91
+    },
+    {
+      "desc": "gateway timeout→504",
+      "category": "blank-http",
+      "input": "HTTP status for gateway timeout is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "504"
+      ],
+      "expectedAny": [
+        "504"
+      ],
+      "matched": "504",
+      "latencyMs": 117
+    },
+    {
+      "desc": "accepted→202",
+      "category": "blank-http",
+      "input": "HTTP status for accepted is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "202"
+      ],
+      "expectedAny": [
+        "202"
+      ],
+      "matched": "202",
+      "latencyMs": 88
+    },
+    {
+      "desc": "200→OK",
+      "category": "blank-http",
+      "input": "HTTP 200 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "OK"
+      ],
+      "expectedAny": [
+        "OK",
+        "ok",
+        "Ok"
+      ],
+      "matched": "OK",
+      "latencyMs": 562
+    },
+    {
+      "desc": "404→Not Found",
+      "category": "blank-http",
+      "input": "HTTP 404 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Not Found"
+      ],
+      "expectedAny": [
+        "Not Found",
+        "not found"
+      ],
+      "matched": "Not Found",
+      "latencyMs": 368
+    },
+    {
+      "desc": "500→ISE",
+      "category": "blank-http",
+      "input": "HTTP 500 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Internal Server Error"
+      ],
+      "expectedAny": [
+        "Internal Server Error",
+        "internal server error",
+        "Server Error"
+      ],
+      "matched": "Internal Server Error",
+      "latencyMs": 209
+    },
+    {
+      "desc": "301→Moved",
+      "category": "blank-http",
+      "input": "HTTP 301 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Moved Permanently"
+      ],
+      "expectedAny": [
+        "Moved Permanently",
+        "moved permanently"
+      ],
+      "matched": "Moved Permanently",
+      "latencyMs": 141
+    },
+    {
+      "desc": "403→Forbidden",
+      "category": "blank-http",
+      "input": "HTTP 403 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Forbidden"
+      ],
+      "expectedAny": [
+        "Forbidden",
+        "forbidden"
+      ],
+      "matched": "Forbidden",
+      "latencyMs": 597
+    },
+    {
+      "desc": "401→Unauthorized",
+      "category": "blank-http",
+      "input": "HTTP 401 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Unauthorized"
+      ],
+      "expectedAny": [
+        "Unauthorized",
+        "unauthorized"
+      ],
+      "matched": "Unauthorized",
+      "latencyMs": 164
+    },
+    {
+      "desc": "201→Created",
+      "category": "blank-http",
+      "input": "HTTP 201 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Created"
+      ],
+      "expectedAny": [
+        "Created",
+        "created"
+      ],
+      "matched": "Created",
+      "latencyMs": 523
+    },
+    {
+      "desc": "204→No Content",
+      "category": "blank-http",
+      "input": "HTTP 204 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "No Content"
+      ],
+      "expectedAny": [
+        "No Content",
+        "no content"
+      ],
+      "matched": "No Content",
+      "latencyMs": 1036
+    },
+    {
+      "desc": "400→Bad Request",
+      "category": "blank-http",
+      "input": "HTTP 400 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Bad Request"
+      ],
+      "expectedAny": [
+        "Bad Request",
+        "bad request"
+      ],
+      "matched": "Bad Request",
+      "latencyMs": 133
+    },
+    {
+      "desc": "502→Bad Gateway",
+      "category": "blank-http",
+      "input": "HTTP 502 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Bad Gateway"
+      ],
+      "expectedAny": [
+        "Bad Gateway",
+        "bad gateway"
+      ],
+      "matched": "Bad Gateway",
+      "latencyMs": 85
+    },
+    {
+      "desc": "503→Unavailable",
+      "category": "blank-http",
+      "input": "HTTP 503 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Service Unavailable"
+      ],
+      "expectedAny": [
+        "Service Unavailable",
+        "service unavailable"
+      ],
+      "matched": "Service Unavailable",
+      "latencyMs": 115
+    },
+    {
+      "desc": "429→Rate Limit",
+      "category": "blank-http",
+      "input": "HTTP 429 means _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "Too Many Requests"
+      ],
+      "expectedAny": [
+        "Too Many Requests",
+        "too many requests",
+        "Rate Limit"
+      ],
+      "matched": "Too Many Requests",
+      "latencyMs": 322
+    },
+    {
+      "desc": "9am EST→PST",
+      "category": "blank-tz",
+      "input": "9am EST in PST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "6am"
+      ],
+      "expectedAny": [
+        "6am",
+        "6:00am",
+        "6 am"
+      ],
+      "matched": "6am",
+      "latencyMs": 262
+    },
+    {
+      "desc": "3pm PST→EST",
+      "category": "blank-tz",
+      "input": "3pm PST in EST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "6pm"
+      ],
+      "expectedAny": [
+        "6pm",
+        "6:00pm",
+        "6 pm"
+      ],
+      "matched": "6pm",
+      "latencyMs": 267
+    },
+    {
+      "desc": "10am PST→EST",
+      "category": "blank-tz",
+      "input": "10am PST in EST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "1pm"
+      ],
+      "expectedAny": [
+        "1pm",
+        "1:00pm",
+        "1 pm"
+      ],
+      "matched": "1pm",
+      "latencyMs": 200
+    },
+    {
+      "desc": "noon EST→PST",
+      "category": "blank-tz",
+      "input": "noon EST in PST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9am"
+      ],
+      "expectedAny": [
+        "9am",
+        "9:00am",
+        "9 am"
+      ],
+      "matched": "9am",
+      "latencyMs": 464
+    },
+    {
+      "desc": "midnight EST→PST",
+      "category": "blank-tz",
+      "input": "midnight EST in PST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9pm"
+      ],
+      "expectedAny": [
+        "9pm",
+        "9:00pm",
+        "9 pm"
+      ],
+      "matched": "9pm",
+      "latencyMs": 2506
+    },
+    {
+      "desc": "noon UTC→EST",
+      "category": "blank-tz",
+      "input": "noon UTC in EST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "7am"
+      ],
+      "expectedAny": [
+        "7am",
+        "7:00am",
+        "7 am"
+      ],
+      "matched": "7am",
+      "latencyMs": 156
+    },
+    {
+      "desc": "6am UTC→CET",
+      "category": "blank-tz",
+      "input": "6am UTC in CET is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "7am"
+      ],
+      "expectedAny": [
+        "7am",
+        "7:00am",
+        "7 am"
+      ],
+      "matched": "7am",
+      "latencyMs": 130
+    },
+    {
+      "desc": "midnight UTC→JST",
+      "category": "blank-tz",
+      "input": "midnight UTC in JST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9am"
+      ],
+      "expectedAny": [
+        "9am",
+        "9:00am",
+        "9 am"
+      ],
+      "matched": "9am",
+      "latencyMs": 168
+    },
+    {
+      "desc": "3pm UTC→IST",
+      "category": "blank-tz",
+      "input": "3pm UTC in IST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8:30pm"
+      ],
+      "expectedAny": [
+        "8:30pm",
+        "8:30 pm",
+        "20:30"
+      ],
+      "matched": "8:30pm",
+      "latencyMs": 222
+    },
+    {
+      "desc": "10am UTC→PST",
+      "category": "blank-tz",
+      "input": "10am UTC in PST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "2am"
+      ],
+      "expectedAny": [
+        "2am",
+        "2:00am",
+        "2 am"
+      ],
+      "matched": "2am",
+      "latencyMs": 184
+    },
+    {
+      "desc": "3pm London→Tokyo",
+      "category": "blank-tz",
+      "input": "3pm London time in Tokyo is _",
+      "pass": false,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "midnight (12am next day)"
+      ],
+      "expectedAny": [
+        "midnight",
+        "12am",
+        "12:00am",
+        "12 am"
+      ],
+      "matched": null,
+      "latencyMs": 248
+    },
+    {
+      "desc": "8pm Tokyo→London",
+      "category": "blank-tz",
+      "input": "8pm Tokyo time in London is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "11am"
+      ],
+      "expectedAny": [
+        "11am",
+        "11:00am",
+        "11 am"
+      ],
+      "matched": "11am",
+      "latencyMs": 262
+    },
+    {
+      "desc": "3pm NY→London",
+      "category": "blank-tz",
+      "input": "3pm New York time in London is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8pm"
+      ],
+      "expectedAny": [
+        "8pm",
+        "8:00pm",
+        "8 pm"
+      ],
+      "matched": "8pm",
+      "latencyMs": 318
+    },
+    {
+      "desc": "2pm London→NY",
+      "category": "blank-tz",
+      "input": "2pm London time in New York is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9am"
+      ],
+      "expectedAny": [
+        "9am",
+        "9:00am",
+        "9 am"
+      ],
+      "matched": "9am",
+      "latencyMs": 227
+    },
+    {
+      "desc": "9am NY→Tokyo",
+      "category": "blank-tz",
+      "input": "9am New York time in Tokyo is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "11pm"
+      ],
+      "expectedAny": [
+        "10pm",
+        "10:00pm",
+        "10 pm",
+        "11pm"
+      ],
+      "matched": "11pm",
+      "latencyMs": 346
+    },
+    {
+      "desc": "5pm UTC→GMT (same)",
+      "category": "blank-tz",
+      "input": "5pm UTC in GMT is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "5pm"
+      ],
+      "expectedAny": [
+        "5pm",
+        "5:00pm",
+        "5 pm"
+      ],
+      "matched": "5pm",
+      "latencyMs": 159
+    },
+    {
+      "desc": "8am EST→UTC",
+      "category": "blank-tz",
+      "input": "8am EST in UTC is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "1pm"
+      ],
+      "expectedAny": [
+        "1pm",
+        "1:00pm",
+        "1 pm"
+      ],
+      "matched": "1pm",
+      "latencyMs": 194
+    },
+    {
+      "desc": "4pm CET→UTC",
+      "category": "blank-tz",
+      "input": "4pm CET in UTC is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "3pm"
+      ],
+      "expectedAny": [
+        "3pm",
+        "3:00pm",
+        "3 pm"
+      ],
+      "matched": "3pm",
+      "latencyMs": 195
+    },
+    {
+      "desc": "1am JST→UTC",
+      "category": "blank-tz",
+      "input": "1am JST in UTC is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "4pm"
+      ],
+      "expectedAny": [
+        "4pm",
+        "4:00pm",
+        "4 pm"
+      ],
+      "matched": "4pm",
+      "latencyMs": 212
+    },
+    {
+      "desc": "10am IST→UTC",
+      "category": "blank-tz",
+      "input": "10am IST in UTC is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "4:30am"
+      ],
+      "expectedAny": [
+        "4:30am",
+        "4:30 am",
+        "04:30"
+      ],
+      "matched": "4:30am",
+      "latencyMs": 236
+    },
+    {
+      "desc": "noon JST→EST",
+      "category": "blank-tz",
+      "input": "noon JST in EST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "10pm"
+      ],
+      "expectedAny": [
+        "10pm",
+        "10:00pm",
+        "10 pm",
+        "11pm"
+      ],
+      "matched": "10pm",
+      "latencyMs": 357
+    },
+    {
+      "desc": "6pm KST→UTC",
+      "category": "blank-tz",
+      "input": "6pm KST in UTC is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9am"
+      ],
+      "expectedAny": [
+        "9am",
+        "9:00am",
+        "9 am"
+      ],
+      "matched": "9am",
+      "latencyMs": 181
+    },
+    {
+      "desc": "8am AEST→UTC",
+      "category": "blank-tz",
+      "input": "8am AEST in UTC is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "10pm"
+      ],
+      "expectedAny": [
+        "10pm",
+        "10:00pm",
+        "10 pm"
+      ],
+      "matched": "10pm",
+      "latencyMs": 288
+    },
+    {
+      "desc": "noon UTC→AEST",
+      "category": "blank-tz",
+      "input": "noon UTC in AEST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "10pm"
+      ],
+      "expectedAny": [
+        "10pm",
+        "10:00pm",
+        "10 pm"
+      ],
+      "matched": "10pm",
+      "latencyMs": 216
+    },
+    {
+      "desc": "9am CST→EST",
+      "category": "blank-tz",
+      "input": "9am CST in EST is _",
+      "pass": false,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8pm"
+      ],
+      "expectedAny": [
+        "10am",
+        "10:00am",
+        "10 am"
+      ],
+      "matched": null,
+      "latencyMs": 297
+    },
+    {
+      "desc": "2pm MST→PST",
+      "category": "blank-tz",
+      "input": "2pm MST in PST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "1pm"
+      ],
+      "expectedAny": [
+        "1pm",
+        "1:00pm",
+        "1 pm"
+      ],
+      "matched": "1pm",
+      "latencyMs": 3274
+    },
+    {
+      "desc": "11am EST→CST",
+      "category": "blank-tz",
+      "input": "11am EST in CST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "10am"
+      ],
+      "expectedAny": [
+        "10am",
+        "10:00am",
+        "10 am"
+      ],
+      "matched": "10am",
+      "latencyMs": 203
+    },
+    {
+      "desc": "7am PST→MST",
+      "category": "blank-tz",
+      "input": "7am PST in MST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8am"
+      ],
+      "expectedAny": [
+        "8am",
+        "8:00am",
+        "8 am"
+      ],
+      "matched": "8am",
+      "latencyMs": 202
+    },
+    {
+      "desc": "11pm EST→PST",
+      "category": "blank-tz",
+      "input": "11pm EST in PST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8pm"
+      ],
+      "expectedAny": [
+        "8pm",
+        "8:00pm",
+        "8 pm"
+      ],
+      "matched": "8pm",
+      "latencyMs": 285
+    },
+    {
+      "desc": "1am UTC→EST (prev day)",
+      "category": "blank-tz",
+      "input": "1am UTC in EST is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "8pm"
+      ],
+      "expectedAny": [
+        "8pm",
+        "8:00pm",
+        "8 pm"
+      ],
+      "matched": "8pm",
+      "latencyMs": 199
+    },
+    {
+      "desc": "1→I",
+      "category": "blank-roman",
+      "input": "1 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "I"
+      ],
+      "expectedAny": [
+        "I"
+      ],
+      "matched": "I",
+      "latencyMs": 84
+    },
+    {
+      "desc": "4→IV",
+      "category": "blank-roman",
+      "input": "4 in roman numerals is _",
+      "pass": false,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "XIV"
+      ],
+      "expectedAny": [
+        "IV"
+      ],
+      "matched": null,
+      "latencyMs": 84
+    },
+    {
+      "desc": "5→V",
+      "category": "blank-roman",
+      "input": "5 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "V"
+      ],
+      "expectedAny": [
+        "V"
+      ],
+      "matched": "V",
+      "latencyMs": 73
+    },
+    {
+      "desc": "9→IX",
+      "category": "blank-roman",
+      "input": "9 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "IX"
+      ],
+      "expectedAny": [
+        "IX"
+      ],
+      "matched": "IX",
+      "latencyMs": 117
+    },
+    {
+      "desc": "10→X",
+      "category": "blank-roman",
+      "input": "10 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "X"
+      ],
+      "expectedAny": [
+        "X"
+      ],
+      "matched": "X",
+      "latencyMs": 93
+    },
+    {
+      "desc": "14→XIV",
+      "category": "blank-roman",
+      "input": "14 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "XIV"
+      ],
+      "expectedAny": [
+        "XIV"
+      ],
+      "matched": "XIV",
+      "latencyMs": 81
+    },
+    {
+      "desc": "40→XL",
+      "category": "blank-roman",
+      "input": "40 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "XL"
+      ],
+      "expectedAny": [
+        "XL"
+      ],
+      "matched": "XL",
+      "latencyMs": 134
+    },
+    {
+      "desc": "42→XLII",
+      "category": "blank-roman",
+      "input": "42 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "XLII"
+      ],
+      "expectedAny": [
+        "XLII"
+      ],
+      "matched": "XLII",
+      "latencyMs": 112
+    },
+    {
+      "desc": "50→L",
+      "category": "blank-roman",
+      "input": "50 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "L"
+      ],
+      "expectedAny": [
+        "L"
+      ],
+      "matched": "L",
+      "latencyMs": 103
+    },
+    {
+      "desc": "90→XC",
+      "category": "blank-roman",
+      "input": "90 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "XC"
+      ],
+      "expectedAny": [
+        "XC"
+      ],
+      "matched": "XC",
+      "latencyMs": 75
+    },
+    {
+      "desc": "99→XCIX",
+      "category": "blank-roman",
+      "input": "99 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "XCIX"
+      ],
+      "expectedAny": [
+        "XCIX"
+      ],
+      "matched": "XCIX",
+      "latencyMs": 101
+    },
+    {
+      "desc": "100→C",
+      "category": "blank-roman",
+      "input": "100 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "C"
+      ],
+      "expectedAny": [
+        "C"
+      ],
+      "matched": "C",
+      "latencyMs": 89
+    },
+    {
+      "desc": "400→CD",
+      "category": "blank-roman",
+      "input": "400 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "CD"
+      ],
+      "expectedAny": [
+        "CD"
+      ],
+      "matched": "CD",
+      "latencyMs": 93
+    },
+    {
+      "desc": "500→D",
+      "category": "blank-roman",
+      "input": "500 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "D"
+      ],
+      "expectedAny": [
+        "D"
+      ],
+      "matched": "D",
+      "latencyMs": 76
+    },
+    {
+      "desc": "900→CM",
+      "category": "blank-roman",
+      "input": "900 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "CM"
+      ],
+      "expectedAny": [
+        "CM"
+      ],
+      "matched": "CM",
+      "latencyMs": 73
+    },
+    {
+      "desc": "1000→M",
+      "category": "blank-roman",
+      "input": "1000 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "M"
+      ],
+      "expectedAny": [
+        "M"
+      ],
+      "matched": "M",
+      "latencyMs": 73
+    },
+    {
+      "desc": "1990→MCMXC",
+      "category": "blank-roman",
+      "input": "1990 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "MCMXC"
+      ],
+      "expectedAny": [
+        "MCMXC"
+      ],
+      "matched": "MCMXC",
+      "latencyMs": 97
+    },
+    {
+      "desc": "2024→MMXXIV",
+      "category": "blank-roman",
+      "input": "2024 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "MMXXIV"
+      ],
+      "expectedAny": [
+        "MMXXIV"
+      ],
+      "matched": "MMXXIV",
+      "latencyMs": 108
+    },
+    {
+      "desc": "3999→MMMCMXCIX",
+      "category": "blank-roman",
+      "input": "3999 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "MMMCMXCIX"
+      ],
+      "expectedAny": [
+        "MMMCMXCIX"
+      ],
+      "matched": "MMMCMXCIX",
+      "latencyMs": 85
+    },
+    {
+      "desc": "888→DCCCLXXXVIII",
+      "category": "blank-roman",
+      "input": "888 in roman numerals is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "DCCCLXXXVIII"
+      ],
+      "expectedAny": [
+        "DCCCLXXXVIII"
+      ],
+      "matched": "DCCCLXXXVIII",
+      "latencyMs": 104
+    },
+    {
+      "desc": "XIV→14",
+      "category": "blank-roman",
+      "input": "XIV in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "14"
+      ],
+      "expectedAny": [
+        "14"
+      ],
+      "matched": "14",
+      "latencyMs": 75
+    },
+    {
+      "desc": "XLII→42",
+      "category": "blank-roman",
+      "input": "XLII in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "42"
+      ],
+      "expectedAny": [
+        "42"
+      ],
+      "matched": "42",
+      "latencyMs": 100
+    },
+    {
+      "desc": "MCMXC→1990",
+      "category": "blank-roman",
+      "input": "MCMXC in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "1990"
+      ],
+      "expectedAny": [
+        "1990"
+      ],
+      "matched": "1990",
+      "latencyMs": 89
+    },
+    {
+      "desc": "MMXXIV→2024",
+      "category": "blank-roman",
+      "input": "MMXXIV in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "2024"
+      ],
+      "expectedAny": [
+        "2024"
+      ],
+      "matched": "2024",
+      "latencyMs": 81
+    },
+    {
+      "desc": "IX→9",
+      "category": "blank-roman",
+      "input": "IX in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "9"
+      ],
+      "expectedAny": [
+        "9"
+      ],
+      "matched": "9",
+      "latencyMs": 116
+    },
+    {
+      "desc": "CDXLIV→444",
+      "category": "blank-roman",
+      "input": "CDXLIV in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "444"
+      ],
+      "expectedAny": [
+        "444"
+      ],
+      "matched": "444",
+      "latencyMs": 250
+    },
+    {
+      "desc": "DCCCLXXXVIII→888",
+      "category": "blank-roman",
+      "input": "DCCCLXXXVIII in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "888"
+      ],
+      "expectedAny": [
+        "888"
+      ],
+      "matched": "888",
+      "latencyMs": 77
+    },
+    {
+      "desc": "MMMCMXCIX→3999",
+      "category": "blank-roman",
+      "input": "MMMCMXCIX in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "3999"
+      ],
+      "expectedAny": [
+        "3999"
+      ],
+      "matched": "3999",
+      "latencyMs": 158
+    },
+    {
+      "desc": "XCIX→99",
+      "category": "blank-roman",
+      "input": "XCIX in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "99"
+      ],
+      "expectedAny": [
+        "99"
+      ],
+      "matched": "99",
+      "latencyMs": 80
+    },
+    {
+      "desc": "LXXVII→77",
+      "category": "blank-roman",
+      "input": "LXXVII in numbers is _",
+      "pass": true,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "77"
+      ],
+      "expectedAny": [
+        "77"
+      ],
+      "matched": "77",
+      "latencyMs": 152
+    },
+    {
+      "desc": "vaulted over NOUN",
+      "category": "blank-grammar",
+      "input": "The boy vaulted over the _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "fence",
+        "barrier",
+        "gap",
+        "yard"
+      ],
+      "expectedAny": [
+        "fence",
+        "wall",
+        "hedge",
+        "gate",
+        "hurdle",
+        "barrier",
+        "railing",
+        "obstacle"
+      ],
+      "matched": "fence",
+      "latencyMs": 501
+    },
+    {
+      "desc": "going to DEST",
+      "category": "blank-grammar",
+      "input": "We are going to _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "Tokyo",
+        "London",
+        "school",
+        "work"
+      ],
+      "expectedAny": [
+        "Paris",
+        "school",
+        "work",
+        "London",
+        "home",
+        "Tokyo",
+        "eat",
+        "leave",
+        "sleep"
+      ],
+      "matched": "school",
+      "latencyMs": 421
+    },
+    {
+      "desc": "written in LANG",
+      "category": "blank-grammar",
+      "input": "The code is written in _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "Java",
+        "C++",
+        "Rust",
+        "Go"
+      ],
+      "expectedAny": [
+        "Python",
+        "Java",
+        "C++",
+        "Rust",
+        "Go",
+        "JavaScript",
+        "TypeScript",
+        "Ruby"
+      ],
+      "matched": "Java",
+      "latencyMs": 461
+    },
+    {
+      "desc": "felt extremely ADJ",
+      "category": "blank-grammar",
+      "input": "He felt extremely _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "sad",
+        "excited",
+        "confused",
+        "amazed"
+      ],
+      "expectedAny": [
+        "happy",
+        "sad",
+        "tired",
+        "nervous",
+        "anxious",
+        "excited",
+        "angry",
+        "grateful",
+        "lonely"
+      ],
+      "matched": "sad",
+      "latencyMs": 528
+    },
+    {
+      "desc": "works at PLACE",
+      "category": "blank-grammar",
+      "input": "She works at _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "hospital",
+        "school",
+        "company",
+        "factory"
+      ],
+      "expectedAny": [
+        "Google",
+        "home",
+        "night",
+        "school",
+        "hospital",
+        "Amazon",
+        "Microsoft",
+        "Apple"
+      ],
+      "matched": "school",
+      "latencyMs": 435
+    },
+    {
+      "desc": "sat on NOUN",
+      "category": "blank-grammar",
+      "input": "The cat sat on the _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "sofa",
+        "roof",
+        "table",
+        "chair"
+      ],
+      "expectedAny": [
+        "mat",
+        "chair",
+        "floor",
+        "table",
+        "sofa",
+        "bed",
+        "rug",
+        "couch",
+        "roof",
+        "windowsill"
+      ],
+      "matched": "chair",
+      "latencyMs": 402
+    },
+    {
+      "desc": "learn WHAT",
+      "category": "blank-grammar",
+      "input": "I want to learn _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "Spanish",
+        "mathematics",
+        "guitar",
+        "programming"
+      ],
+      "expectedAny": [
+        "Python",
+        "piano",
+        "guitar",
+        "Spanish",
+        "cooking",
+        "French",
+        "swimming",
+        "coding"
+      ],
+      "matched": "guitar",
+      "latencyMs": 480
+    },
+    {
+      "desc": "traveled to DEST",
+      "category": "blank-grammar",
+      "input": "They traveled to _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "Tokyo",
+        "London",
+        "Paris",
+        "London"
+      ],
+      "expectedAny": [
+        "Paris",
+        "Tokyo",
+        "London",
+        "Rome",
+        "Europe",
+        "Italy",
+        "Japan",
+        "Spain"
+      ],
+      "matched": "Paris",
+      "latencyMs": 603
+    },
+    {
+      "desc": "dinner was ADJ",
+      "category": "blank-grammar",
+      "input": "The dinner was _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "terrible",
+        "quick",
+        "memorable",
+        "boring"
+      ],
+      "expectedAny": [
+        "delicious",
+        "terrible",
+        "amazing",
+        "cold",
+        "ready",
+        "served",
+        "wonderful",
+        "perfect"
+      ],
+      "matched": "terrible",
+      "latencyMs": 416
+    },
+    {
+      "desc": "dreams of NOUN",
+      "category": "blank-grammar",
+      "input": "He dreams of _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "adventure",
+        "peace",
+        "wealth",
+        "fame"
+      ],
+      "expectedAny": [
+        "success",
+        "flying",
+        "freedom",
+        "wealth",
+        "home",
+        "traveling",
+        "adventure",
+        "peace"
+      ],
+      "matched": "wealth",
+      "latencyMs": 645
+    },
+    {
+      "desc": "SUBJ ran across",
+      "category": "blank-grammar",
+      "input": "_ ran across the street",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "She",
+        "They",
+        "The dog",
+        "A cat"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "It",
+        "A",
+        "The"
+      ],
+      "matched": "She",
+      "latencyMs": 284
+    },
+    {
+      "desc": "SUBJ walked in",
+      "category": "blank-grammar",
+      "input": "_ walked into the room",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "She",
+        "They",
+        "The dog",
+        "A child"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "A",
+        "The"
+      ],
+      "matched": "She",
+      "latencyMs": 390
+    },
+    {
+      "desc": "SUBJ crashed",
+      "category": "blank-grammar",
+      "input": "_ crashed into the wall",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "She",
+        "The car",
+        "The truck",
+        "Someone"
+      ],
+      "expectedAny": [
+        "It",
+        "He",
+        "She",
+        "The car",
+        "A truck",
+        "Someone",
+        "The"
+      ],
+      "matched": "She",
+      "latencyMs": 255
+    },
+    {
+      "desc": "SUBJ flew over",
+      "category": "blank-grammar",
+      "input": "_ flew over the mountain",
+      "pass": false,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "Plane",
+        "Butterfly",
+        "Drone",
+        "Spirit"
+      ],
+      "expectedAny": [
+        "It",
+        "He",
+        "She",
+        "The bird",
+        "A plane",
+        "They",
+        "The"
+      ],
+      "matched": null,
+      "latencyMs": 503
+    },
+    {
+      "desc": "SUBJ screamed",
+      "category": "blank-grammar",
+      "input": "_ screamed loudly",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "She",
+        "Someone",
+        "The dog",
+        "A child"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "The",
+        "A"
+      ],
+      "matched": "She",
+      "latencyMs": 407
+    },
+    {
+      "desc": "ADJ dog barked",
+      "category": "blank-grammar",
+      "input": "The _ dog barked loudly",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "small",
+        "brown",
+        "happy",
+        "loud"
+      ],
+      "expectedAny": [
+        "big",
+        "small",
+        "brown",
+        "old",
+        "little",
+        "angry",
+        "large",
+        "black",
+        "young",
+        "stray"
+      ],
+      "matched": "small",
+      "latencyMs": 375
+    },
+    {
+      "desc": "walked ADV to school",
+      "category": "blank-grammar",
+      "input": "She walked _ to school",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "slowly",
+        "briskly",
+        "carefully",
+        "hurriedly"
+      ],
+      "expectedAny": [
+        "slowly",
+        "quickly",
+        "carefully",
+        "briskly",
+        "happily",
+        "alone",
+        "home",
+        "fast"
+      ],
+      "matched": "slowly",
+      "latencyMs": 757
+    },
+    {
+      "desc": "team VERB convincingly",
+      "category": "blank-grammar",
+      "input": "The team _ convincingly",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "lost",
+        "played",
+        "dominated",
+        "performed"
+      ],
+      "expectedAny": [
+        "won",
+        "lost",
+        "played",
+        "performed",
+        "dominated",
+        "argued",
+        "competed"
+      ],
+      "matched": "lost",
+      "latencyMs": 566
+    },
+    {
+      "desc": "ADJ car raced",
+      "category": "blank-grammar",
+      "input": "The _ car raced down the highway",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "red",
+        "old",
+        "shiny",
+        "gleaming"
+      ],
+      "expectedAny": [
+        "fast",
+        "red",
+        "blue",
+        "new",
+        "old",
+        "stolen",
+        "black",
+        "sleek",
+        "sports"
+      ],
+      "matched": "red",
+      "latencyMs": 383
+    },
+    {
+      "desc": "ADJ woman entered",
+      "category": "blank-grammar",
+      "input": "A _ woman entered the building",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "brave",
+        "old",
+        "determined",
+        "confident"
+      ],
+      "expectedAny": [
+        "tall",
+        "young",
+        "old",
+        "beautiful",
+        "mysterious",
+        "short",
+        "blonde",
+        "elderly"
+      ],
+      "matched": "old",
+      "latencyMs": 661
+    },
+    {
+      "desc": "students VERB exam",
+      "category": "blank-grammar",
+      "input": "The students _ the exam",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "passed",
+        "failed",
+        "aced",
+        "wrote"
+      ],
+      "expectedAny": [
+        "passed",
+        "failed",
+        "took",
+        "finished",
+        "aced",
+        "completed",
+        "studied for"
+      ],
+      "matched": "passed",
+      "latencyMs": 698
+    },
+    {
+      "desc": "VERB ball over fence",
+      "category": "blank-grammar",
+      "input": "He _ the ball over the fence",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "kicked",
+        "tossed",
+        "rolled",
+        "launched"
+      ],
+      "expectedAny": [
+        "threw",
+        "kicked",
+        "hit",
+        "tossed",
+        "lobbed",
+        "launched",
+        "hurled"
+      ],
+      "matched": "kicked",
+      "latencyMs": 493
+    },
+    {
+      "desc": "ADJ sky rain",
+      "category": "blank-grammar",
+      "input": "The _ sky indicated rain",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "gray",
+        "stormy",
+        "clear",
+        "overcast"
+      ],
+      "expectedAny": [
+        "dark",
+        "gray",
+        "cloudy",
+        "grey",
+        "overcast",
+        "gloomy",
+        "stormy"
+      ],
+      "matched": "gray",
+      "latencyMs": 545
+    },
+    {
+      "desc": "VERB piano",
+      "category": "blank-grammar",
+      "input": "She _ the piano beautifully",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "performed",
+        "practiced",
+        "tuned",
+        "mastered"
+      ],
+      "expectedAny": [
+        "played",
+        "performed",
+        "practiced",
+        "touched",
+        "strummed"
+      ],
+      "matched": "performed",
+      "latencyMs": 1570
+    },
+    {
+      "desc": "ADJ river valley",
+      "category": "blank-grammar",
+      "input": "The _ river flows through the valley",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "swift",
+        "meandering",
+        "crystal",
+        "deep"
+      ],
+      "expectedAny": [
+        "wide",
+        "long",
+        "deep",
+        "narrow",
+        "ancient",
+        "mighty",
+        "great",
+        "winding"
+      ],
+      "matched": "deep",
+      "latencyMs": 467
+    },
+    {
+      "desc": "app using TECH",
+      "category": "blank-grammar",
+      "input": "She built the app using _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "React",
+        "Flutter",
+        "Swift",
+        "Kotlin"
+      ],
+      "expectedAny": [
+        "React",
+        "Python",
+        "Flutter",
+        "Swift",
+        "JavaScript",
+        "TypeScript",
+        "Java",
+        "Vue",
+        "Angular",
+        "Rails"
+      ],
+      "matched": "React",
+      "latencyMs": 367
+    },
+    {
+      "desc": "breakfast with NOUN",
+      "category": "blank-grammar",
+      "input": "He ate breakfast with _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "fork",
+        "knife",
+        "hands",
+        "coffee"
+      ],
+      "expectedAny": [
+        "friends",
+        "family",
+        "coffee",
+        "cereal",
+        "toast",
+        "enthusiasm",
+        "joy"
+      ],
+      "matched": "coffee",
+      "latencyMs": 385
+    },
+    {
+      "desc": "written by AUTHOR",
+      "category": "blank-grammar",
+      "input": "The book was written by _",
+      "pass": false,
+      "covered": true,
+      "altCount": 1,
+      "totalAlts": 2,
+      "alternatives": [
+        "author"
+      ],
+      "expectedAny": [
+        "Shakespeare",
+        "Tolkien",
+        "Orwell",
+        "Hemingway",
+        "Twain",
+        "Dickens",
+        "a",
+        "an",
+        "the",
+        "her",
+        "him"
+      ],
+      "matched": null,
+      "latencyMs": 373
+    },
+    {
+      "desc": "arrived in NOUN",
+      "category": "blank-grammar",
+      "input": "They arrived in _",
+      "pass": true,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "Tokyo",
+        "London",
+        "school",
+        "work"
+      ],
+      "expectedAny": [
+        "time",
+        "Paris",
+        "London",
+        "style",
+        "silence",
+        "Tokyo",
+        "Rome",
+        "minutes",
+        "January"
+      ],
+      "matched": "London",
+      "latencyMs": 345
+    },
+    {
+      "desc": "hangs in PLACE",
+      "category": "blank-grammar",
+      "input": "The painting hangs in the _",
+      "pass": false,
+      "covered": true,
+      "altCount": 4,
+      "totalAlts": 5,
+      "alternatives": [
+        "ancient",
+        "large",
+        "colorful",
+        "expensive"
+      ],
+      "expectedAny": [
+        "museum",
+        "gallery",
+        "hall",
+        "room",
+        "office",
+        "lobby",
+        "living room",
+        "bedroom"
+      ],
+      "matched": null,
+      "latencyMs": 397
+    }
+  ]
+}

@@ -214,7 +214,7 @@ describe('buildSourcesFromConfig — blanks pipeline', () => {
     const blanksConfig = mkConfig({
         sources: {
           classifier: { name: 'classifier', promptText: 'Classify input.' },
-          math: { name: 'math', promptText: 'Solve.', parser: 'compute', priority: 90, match: '\\d+' },
+          math: { name: 'math', promptText: 'Solve.', parser: 'math', priority: 90, match: '\\d+' },
           grammar: { name: 'grammar', promptText: 'Fill blank.', priority: 50 },
         },
     });
@@ -235,7 +235,7 @@ describe('buildSourcesFromConfig — blanks pipeline', () => {
     const blanksConfig = mkConfig({
         sources: {
           classifier: { name: 'classifier', promptText: 'Classify.' },
-          math: { name: 'math', promptText: 'Compute.', parser: 'compute', priority: 90 },
+          math: { name: 'math', promptText: 'Compute.', parser: 'math', priority: 90 },
           grammar: { name: 'grammar', promptText: 'Fill blank.', priority: 50 },
         },
     });
@@ -459,7 +459,7 @@ describe('buildSourcesFromConfig — source count', () => {
     const blanksConfig = mkConfig({
       sources: {
         classifier: { name: 'classifier', promptText: 'Classify input.' },
-        math: { name: 'math', promptText: 'Compute.', parser: 'compute', priority: 90, match: '\\d+' },
+        math: { name: 'math', promptText: 'Compute.', parser: 'math', priority: 90, match: '\\d+' },
         factual: { name: 'factual', promptText: 'Answer.', parser: 'answer', priority: 90, match: 'capital of' },
         grammar: { name: 'grammar', promptText: 'Fill blank.', priority: 50 },
       },
@@ -541,7 +541,7 @@ describe('ClassifiedSourceGroup — fallback on empty results', () => {
 // ---------------------------------------------------------------------------
 
 describe('classifyFast — keyword robustness', () => {
-  function buildGroup(sources: Array<{ name: string; promptText: string; parser?: 'compute' | 'answer' | 'alternatives' | 'raw'; priority?: number; match?: string; keywords?: string }>) {
+  function buildGroup(sources: Array<{ name: string; promptText: string; parser?: 'math' | 'compute' | 'answer' | 'alternatives' | 'raw'; priority?: number; match?: string; keywords?: string }>) {
     const configSources = sources.map(s => new ConfigSource({
       sourceConfig: { ...s, scope: 'blanks' as const },
       ...defaultOptions,
@@ -592,7 +592,7 @@ describe('classifyFast — keyword robustness', () => {
     let translationCalled = false;
 
     const mathSource = new ConfigSource({
-      sourceConfig: { name: 'math', promptText: 'Compute.', parser: 'compute', scope: 'blanks', priority: 90, keywords: 'half of' },
+      sourceConfig: { name: 'math', promptText: 'Compute.', parser: 'math', scope: 'blanks', priority: 90, keywords: 'half of' },
       ...defaultOptions,
       httpAdapter: { post: async () => { mathCalled = true; return JSON.stringify({ choices: [{ message: { content: 'COMPUTE=50' } }] }); } },
     });
@@ -822,7 +822,7 @@ describe('end-to-end: blanks — math (fast classify)', () => {
         math: {
           name: 'math',
           promptText: 'Solve. Output ONLY: COMPUTE=expression',
-          parser: 'compute',
+          parser: 'math',
           priority: 90,
           match: '\\d+\\s*[+\\-*/]\\s*\\d+',
         },
@@ -892,7 +892,7 @@ describe('end-to-end: blanks — grammar (default fallback)', () => {
         math: {
           name: 'math',
           promptText: 'Compute.',
-          parser: 'compute',
+          parser: 'math',
           priority: 90,
           match: '\\d+\\s*[+\\-*/]\\s*\\d+',
         },
@@ -1027,7 +1027,7 @@ describe('end-to-end: blanks — classifier misclassification fallback', () => {
         math: {
           name: 'math',
           promptText: 'Solve.',
-          parser: 'compute',
+          parser: 'math',
           priority: 90,
           match: '\\d+\\s*[+\\-*/]\\s*\\d+',
         },

@@ -34,7 +34,12 @@ The highlight export JSON is written directly inside `_cycleAlt` (not just in th
 
 ## CC-Specific: Clearing Implementation
 
-Navigation and rendering check `alts.indexOf(word) >= 0` — a word is only navigable/dimmed if it currently matches an entry in its alts array. This enables typing recovery without special logic.
+Rendering checks `alts.indexOf(word) >= 0` — a word is only dimmed if it matches an entry in its alts array. Navigation uses the same check but with two fallbacks to stay in sync with rendering:
+
+1. **Case-insensitive matching** — if `alts.indexOf(w)` fails (exact match), falls back to `alts.some(a => a.toLowerCase() === w.toLowerCase())`. Handles LLM returning capitalized alts for lowercase words.
+2. **Span-aware navigation** — words that are part of a multi-word span (`_isInSpan`) are navigable, matching the render's dim behavior for spans.
+
+This ensures any word that dims is also navigable — no dimmed-but-unreachable words.
 
 ## Related
 

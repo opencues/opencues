@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --test dist/**/*.test.js"
+    "test": "find dist -name '*.test.js' | xargs node --test"
   },
   "keywords": ["cues", "alternatives", "tips"],
   "license": "UNLICENSED"

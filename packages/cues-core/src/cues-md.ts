@@ -22,7 +22,7 @@ export interface CuesMdFrontmatter {
  * Each source has optional classification rules and a prompt.
  */
 /** How to parse the LLM response for a blank mode */
-export type BlankParser = 'compute' | 'answer' | 'alternatives' | 'raw';
+export type BlankParser = 'math' | 'compute' | 'answer' | 'alternatives' | 'raw';
 
 export interface SourceConfig {
   /** Source name (from ### heading, e.g. "grammar", "legal", "medical") */
@@ -469,6 +469,8 @@ export function validateCuesMd(config: CuesMdConfig): string[] {
   }
 
   if (config.promptConfig) {
+    const sourceNames = Object.keys(config.promptConfig.sources);
+
     for (const [key, source] of Object.entries(config.promptConfig.sources)) {
       if (source.priority !== undefined && (source.priority < 0 || source.priority > 100)) {
         errors.push(`Source "${key}" priority must be between 0 and 100`);
@@ -481,6 +483,20 @@ export function validateCuesMd(config: CuesMdConfig): string[] {
           errors.push(`Source "${key}" has invalid match pattern: ${source.match}`);
         }
       }
+    }
+
+    // Warn if multiple blank modes exist but no classifier prompt
+    const blankModes = sourceNames.filter(n => n !== 'classifier' && config.promptConfig!.sources[n].scope === 'blanks');
+    const hasBlankParsers = sourceNames.some(n =>
+      n !== 'classifier' && ['math', 'compute', 'answer'].includes(config.promptConfig!.sources[n].parser ?? '')
+    );
+    if ((blankModes.length > 1 || hasBlankParsers) && !sourceNames.includes('classifier')) {
+      errors.push('Multiple blank modes found but no ### classifier section. Ambiguous inputs will fall to grammar instead of being routed to the correct mode. Add a ### classifier with mode examples.');
+    }
+
+    // Warn if classifier exists but has no promptText
+    if (sourceNames.includes('classifier') && !config.promptConfig.sources.classifier.promptText) {
+      errors.push('### classifier section exists but has no prompt text. The LLM classifier needs instructions to route ambiguous inputs.');
     }
   }
 

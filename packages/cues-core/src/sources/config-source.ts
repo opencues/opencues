@@ -14,7 +14,7 @@ import {
   HttpAdapter,
 } from '../types';
 import { SourceConfig, BlankParser } from '../cues-md';
-import { parseCompute, parseAnswer, parseAlternatives, parseRaw } from './parsers';
+import { parseMath, parseCompute, parseAnswer, parseAlternatives, parseRaw } from './parsers';
 
 // ============================================================================
 // Types
@@ -102,14 +102,19 @@ export class ConfigSource implements CueSource {
       const separator = this.parser === 'alternatives' ? '\n' : ' ';
       const fullPrompt = promptText.trimEnd() + separator + input;
 
-      const maxTokens = (this.parser === 'compute' || this.parser === 'answer') ? 200 : 800;
-      const temperature = (this.parser === 'compute' || this.parser === 'answer') ? 0.1 : 0.3;
+      const shortResponse = this.parser === 'math' || this.parser === 'compute' || this.parser === 'answer';
+      const maxTokens = shortResponse ? 200 : 800;
+      const temperature = shortResponse ? 0.1 : 0.3;
 
       const body = JSON.stringify({
         model: this.model,
         messages: [{ role: 'user', content: fullPrompt }],
         max_tokens: maxTokens,
         temperature,
+        // Groq reasoning models (e.g. openai/gpt-oss-120b) burn tokens on internal
+        // reasoning. Without this, max_tokens goes to reasoning and content is empty.
+        // Non-Groq providers ignore this field.
+        reasoning_effort: 'low',
       });
       const headers = {
         'Content-Type': 'application/json',
@@ -141,12 +146,19 @@ export class ConfigSource implements CueSource {
       }
       return context.words.map((w, i) => `${i}=${w}`).join(' ');
     }
-    // compute/answer/raw: send text with _ replaced by BLANK
+    // math/compute/answer/raw: send text with _ replaced by BLANK
     return context.text.replace(/_/g, 'BLANK');
   }
 
   private parseResponse(response: string, words: string[]): CueResult[] {
     switch (this.parser) {
+      case 'math': {
+        const alts = parseMath(response);
+        if (!alts.length) return [];
+        const blankIdx = words.indexOf('_');
+        if (blankIdx < 0) return [];
+        return [{ wordIndex: blankIdx, word: '_', alternatives: ['_', ...alts], source: this.id, priority: this.priority }];
+      }
       case 'compute': {
         const alts = parseCompute(response);
         if (!alts.length) return [];

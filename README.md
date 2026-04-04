@@ -229,6 +229,27 @@ grep "MiscSettings" ~/tweakcc/src/types.ts
 grep "misc:" ~/tweakcc/src/defaultSettings.ts
 ```
 
+## Extending blanks.md
+
+blanks.md ships with 10 blank modes: math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, and grammar. You can add your own.
+
+Each `### section` under `## Prompt` is a blank mode. The system picks which mode to use via a three-stage pipeline:
+
+1. **`match` regex** — instant. If the text matches, that mode is selected immediately.
+2. **`keywords`** — instant. Checked if no regex matches.
+3. **`### classifier` LLM** — ~200ms fallback for ambiguous inputs.
+
+**When adding a new mode, you must update two things:**
+
+1. Add your `### section` with `match`/`keywords`/`parser`/`priority` and a prompt
+2. Update `### classifier` — add examples for your mode AND add it to the `Output ONLY: MODE=...` line
+
+If you skip step 2, inputs that miss your fast-match keywords will silently fall to grammar instead of your new mode. The classifier won't know your mode exists.
+
+**Word sources** in cues.md are simpler — all word-scoped `alternatives`-parser sources get combined into a single LLM call automatically. Domain sources should include a `match` regex so the LLM only applies their instructions for matching words. Sources without `match` are treated as base instructions that apply to every word — make sure they don't contradict each other.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full details and pitfalls.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:

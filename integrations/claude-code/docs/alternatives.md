@@ -10,14 +10,15 @@ Implements features [6](../../../docs/features/local-cues.md), [7](../../../docs
 
 ## CC-Specific: Instant Tips Rendering
 
-Tip words dim and become navigable **immediately on keystroke** (<5ms), before the LLM responds:
+Tip words dim and become navigable **immediately on keystroke** (<5ms), before the LLM responds. The <5ms is achieved by the **render path**, not the analysis pipeline — the rendering code checks `_localCueMap.has(word)` directly on every repaint, independent of `_dynDefs` or `_dynPending` state.
 
-1. **Eager tips lookup** — runs on every input change (inside `_needsAnalysis` block, before debounce). Calls `lookupMultiple()` against `_localCueMap` and merges results into `_dynDefs` instantly. If ALL words resolve from tips, skips LLM entirely.
-2. **Instant render** — the rendering code checks `_localCueMap.has(word)` directly to dim tip words, without waiting for `_dynDefs` to be populated by the analysis pipeline.
-3. **Instant navigation** — navigation indices include words found in `_localCueMap`, so tip words are navigable before LLM analysis completes.
-4. **Tip cycling fallback** — if a user navigates to a tip word and cycles (Up/Down) before `_dynDefs` is populated, `_cycleAlt` resolves alts on-the-fly from `_localCueMap`.
+Three layers ensure tip words are fully interactive even during pending LLM calls:
 
-This means tip words appear interactive in <5ms, while LLM words take ~400ms.
+1. **Instant render** — the rendering code checks `_localCueMap.has(word)` directly to dim tip words. This runs on every render cycle regardless of `_dynPending`, so dimming works even when an LLM call is in flight.
+2. **Instant navigation** — navigation indices include words found in `_localCueMap` (via `_hasTipAlt` check), so tip words are navigable before LLM analysis completes.
+3. **Tip cycling fallback** — if a user navigates to a tip word and cycles (Up/Down) before `_dynDefs` is populated, `_cycleAlt` resolves alts on-the-fly from `_localCueMap`.
+
+Separately, the **eager tips lookup** (inside the `_needsAnalysis && !_dynPending` block) pre-populates `_dynDefs` with tip alts before the debounce timer fires. This is an optimisation — it means `_dynDefs` has tip data ready for the resolver merge, and if ALL words resolve from tips, the LLM call is skipped entirely. But it's not what makes the visual feedback instant — that's the render-time `_localCueMap` check.
 
 ## CC-Specific: Post-Pending Re-Trigger
 

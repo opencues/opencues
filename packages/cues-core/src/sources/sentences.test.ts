@@ -62,7 +62,7 @@ function buildBlankSources(adapter: HttpAdapter) {
         math: {
           name: 'math',
           promptText: 'Solve the math. Output ONLY: COMPUTE=expression',
-          parser: 'compute',
+          parser: 'math',
           priority: 90,
           match: '\\d+\\s*[+\\-*/^%]\\s*\\d+|\\d+%',
           keywords: 'factorial,average,half of,double,triple,square root',

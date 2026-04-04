@@ -36,13 +36,8 @@ const agent = new https.Agent({ keepAlive: true, maxSockets: 2 });
 const httpAdapter: HttpAdapter = {
   post: (url: string, body: string, headers: Record<string, string>) =>
     new Promise((resolve, reject) => {
-      // Apply provider overrides matching production NodeHttpAdapter behavior
+      // cues-core sets reasoning_effort internally — no adapter overrides needed
       const u = new URL(url);
-      if (u.hostname === 'api.groq.com') {
-        const parsed = JSON.parse(body);
-        parsed.reasoning_effort = 'low';
-        body = JSON.stringify(parsed);
-      }
       const req = https.request({
         hostname: u.hostname,
         path: u.pathname,
@@ -597,7 +592,14 @@ interface TestResult {
   desc: string;
   category: string;
   input: string;
+  /** Did one of the expected words appear in the alternatives? */
   pass: boolean;
+  /** Did the resolver return ANY alternatives for the target position? */
+  covered: boolean;
+  /** How many alternatives were returned (excluding the original word) */
+  altCount: number;
+  /** Total alternatives returned across ALL word positions */
+  totalAlts: number;
   alternatives: string[];
   expectedAny: string[];
   matched: string | null;
@@ -613,10 +615,15 @@ async function runTest(tc: TestCase): Promise<TestResult> {
     const resolved = await resolver.resolve(context);
     const latencyMs = Date.now() - start;
 
-    // Find the result to check
+    // Total alternatives across all positions (richness of full response)
+    const totalAlts = resolved.results.reduce((sum, r) => {
+      const count = r.alternatives ? r.alternatives.length - (r.word === '_' ? 0 : 1) : 0;
+      return sum + Math.max(0, count);
+    }, 0);
+
+    // Find the result to check at the target position
     let alts: string[] = [];
     if (tc.checkIndex === -1) {
-      // Blank: find the _ position
       const blankIdx = words.indexOf('_');
       const r = resolved.results.find(x => x.wordIndex === blankIdx);
       alts = r ? r.alternatives.filter(a => a !== '_') : [];
@@ -625,6 +632,7 @@ async function runTest(tc: TestCase): Promise<TestResult> {
       alts = r ? r.alternatives.slice(1) : []; // skip original at [0]
     }
 
+    const covered = alts.length > 0;
     const altsLower = alts.map(a => a.toLowerCase());
     const matched = tc.expectedAny.find(e => altsLower.includes(e.toLowerCase())) || null;
 
@@ -633,6 +641,9 @@ async function runTest(tc: TestCase): Promise<TestResult> {
       category: tc.category,
       input: tc.input,
       pass: matched !== null,
+      covered,
+      altCount: alts.length,
+      totalAlts,
       alternatives: alts.slice(0, 5),
       expectedAny: tc.expectedAny,
       matched,
@@ -644,6 +655,9 @@ async function runTest(tc: TestCase): Promise<TestResult> {
       category: tc.category,
       input: tc.input,
       pass: false,
+      covered: false,
+      altCount: 0,
+      totalAlts: 0,
       alternatives: [],
       expectedAny: tc.expectedAny,
       matched: null,
@@ -661,34 +675,55 @@ async function main() {
   console.log(`Date: ${new Date().toISOString()}\n`);
 
   const results: TestResult[] = [];
-  const catStats: Record<string, { pass: number; total: number; latency: number[] }> = {};
+  const catStats: Record<string, {
+    pass: number; total: number; covered: number;
+    latency: number[]; altCounts: number[]; totalAlts: number[];
+  }> = {};
 
   for (const tc of ALL_TESTS) {
     const r = await runTest(tc);
     results.push(r);
 
-    if (!catStats[tc.category]) catStats[tc.category] = { pass: 0, total: 0, latency: [] };
-    catStats[tc.category].total++;
-    catStats[tc.category].latency.push(r.latencyMs);
-    if (r.pass) catStats[tc.category].pass++;
+    if (!catStats[tc.category]) catStats[tc.category] = {
+      pass: 0, total: 0, covered: 0, latency: [], altCounts: [], totalAlts: [],
+    };
+    const s = catStats[tc.category];
+    s.total++;
+    s.latency.push(r.latencyMs);
+    s.altCounts.push(r.altCount);
+    s.totalAlts.push(r.totalAlts);
+    if (r.pass) s.pass++;
+    if (r.covered) s.covered++;
 
-    const mark = r.pass ? '✓' : '✗';
+    const mark = r.pass ? '✓' : r.covered ? '~' : '✗';
     const altsStr = r.alternatives.slice(0, 3).join(', ');
-    console.log(`  ${mark} ${r.desc} (${r.latencyMs}ms) → ${altsStr || r.error || 'none'}`);
+    console.log(`  ${mark} ${r.desc} (${r.latencyMs}ms) [${r.altCount} alts] → ${altsStr || r.error || 'none'}`);
   }
 
   // Summary
+  const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+
   console.log('\n--- Summary ---');
-  let totalPass = 0, totalCount = 0;
+  console.log('  (✓=expected match  ~=covered but different  ✗=no alternatives)');
+  console.log(`  ${'Category'.padEnd(20)} Match%   Cover%   Alts  Latency`);
+  console.log(`  ${'─'.repeat(60)}`);
+
+  let totalPass = 0, totalCount = 0, totalCovered = 0;
   for (const [cat, s] of Object.entries(catStats)) {
-    const avg = Math.round(s.latency.reduce((a, b) => a + b, 0) / s.latency.length);
-    const pct = ((s.pass / s.total) * 100).toFixed(1);
-    console.log(`  ${cat}: ${s.pass}/${s.total} (${pct}%) avg ${avg}ms`);
+    const matchPct = ((s.pass / s.total) * 100).toFixed(0).padStart(3);
+    const coverPct = ((s.covered / s.total) * 100).toFixed(0).padStart(3);
+    const avgAlts = avg(s.altCounts).toString().padStart(4);
+    const avgMs = (avg(s.latency) + 'ms').padStart(6);
+    console.log(`  ${cat.padEnd(20)} ${matchPct}%    ${coverPct}%   ${avgAlts}  ${avgMs}`);
     totalPass += s.pass;
     totalCount += s.total;
+    totalCovered += s.covered;
   }
-  const totalPct = ((totalPass / totalCount) * 100).toFixed(1);
-  console.log(`\n  TOTAL: ${totalPass}/${totalCount} (${totalPct}%)`);
+
+  const totalMatchPct = ((totalPass / totalCount) * 100).toFixed(1);
+  const totalCoverPct = ((totalCovered / totalCount) * 100).toFixed(1);
+  console.log(`  ${'─'.repeat(60)}`);
+  console.log(`  TOTAL: match ${totalPass}/${totalCount} (${totalMatchPct}%)  coverage ${totalCovered}/${totalCount} (${totalCoverPct}%)`);
 
   // Save results
   const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
@@ -703,7 +738,9 @@ async function main() {
     endpoint: ENDPOINT,
     totalPass,
     totalCount,
-    totalPct: parseFloat(totalPct),
+    totalCovered,
+    totalMatchPct: parseFloat(totalMatchPct),
+    totalCoverPct: parseFloat(totalCoverPct),
     categories: catStats,
     results,
   };

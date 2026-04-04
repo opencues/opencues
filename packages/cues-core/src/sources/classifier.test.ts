@@ -297,9 +297,7 @@ const apiKey = process.env.GROQ_API_KEY;
   const liveAdapter: HttpAdapter = {
     post: (url: string, body: string, headers: Record<string, string>) =>
       new Promise((resolve, reject) => {
-        const parsed = JSON.parse(body);
-        parsed.reasoning_effort = 'low';
-        body = JSON.stringify(parsed);
+        // cues-core sets reasoning_effort internally — plain adapter works
         const u = new URL(url);
         const req = https.request({
           hostname: u.hostname, path: u.pathname, method: 'POST',

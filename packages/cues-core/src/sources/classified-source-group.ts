@@ -159,6 +159,8 @@ export class ClassifiedSourceGroup implements CueSource {
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 200,
         temperature: 0.1,
+        // Groq reasoning models burn tokens on internal reasoning without this.
+        reasoning_effort: 'low',
       });
       const headers = {
         'Content-Type': 'application/json',

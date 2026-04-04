@@ -50,6 +50,11 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
       s.promptText!
     );
   }
+  // Reinforce output format at the end — domain prompts may push the
+  // original format instruction into the middle of the combined prompt
+  if (domain.length > 0) {
+    parts.push('\nOutput ONLY index:alternatives format.');
+  }
 
   return {
     name: 'grammar',

@@ -6,70 +6,100 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { parseCompute, parseAnswer, parseAlternatives, parseRaw } from './parsers';
+import { parseMath, parseCompute, parseAnswer, parseAlternatives, parseRaw } from './parsers';
 
 // ---------------------------------------------------------------------------
 // parseCompute
 // ---------------------------------------------------------------------------
 
-describe('parseCompute', () => {
+describe('parseMath (safe — no code execution)', () => {
+  it('should evaluate basic arithmetic', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=4*12'), ['48']);
+  });
+
+  it('should evaluate addition', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=50+30'), ['80']);
+  });
+
+  it('should evaluate subtraction', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=100-37'), ['63']);
+  });
+
+  it('should evaluate division', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=100/4'), ['25']);
+  });
+
+  it('should evaluate parenthesized expressions', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=(80+90+100)/3'), ['90']);
+  });
+
+  it('should handle decimal results', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=10/3'), ['3.3333']);
+  });
+
+  it('should handle modulo', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=17%5'), ['2']);
+  });
+
+  it('should be case-insensitive', () => {
+    assert.deepStrictEqual(parseMath('compute = 2+3'), ['5']);
+  });
+
+  it('should handle whitespace around equals', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE = 7 * 8'), ['56']);
+  });
+
+  it('should return empty for non-COMPUTE response', () => {
+    assert.deepStrictEqual(parseMath('The answer is 42'), []);
+  });
+
+  it('should return empty for empty string', () => {
+    assert.deepStrictEqual(parseMath(''), []);
+  });
+
+  it('should strip non-numeric characters — no code execution possible', () => {
+    // Letters stripped: "alert(1)" → "(1)" → evaluates to 1 (harmless number)
+    assert.deepStrictEqual(parseMath('COMPUTE=alert(1)'), ['1']);
+    // No digits → empty after strip
+    assert.deepStrictEqual(parseMath('COMPUTE=process.exit()'), []);
+    // These are harmless — recursive-descent evaluator, not Function():
+    assert.deepStrictEqual(parseMath('COMPUTE=require("fs")'), []);
+    assert.deepStrictEqual(parseMath('COMPUTE=global.constructor'), []);
+    assert.deepStrictEqual(parseMath('COMPUTE=this.__proto__'), []);
+  });
+
+  it('should return empty for Infinity', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=1/0'), []);
+  });
+
+  it('should handle negative numbers', () => {
+    assert.deepStrictEqual(parseMath('COMPUTE=-5*-3'), ['15']);
+  });
+});
+
+describe('parseCompute (⚠️ unsafe — uses Function())', () => {
   it('should evaluate basic arithmetic', () => {
     assert.deepStrictEqual(parseCompute('COMPUTE=4*12'), ['48']);
   });
 
-  it('should evaluate addition', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=50+30'), ['80']);
+  it('should evaluate Math.pow', () => {
+    assert.deepStrictEqual(parseCompute('COMPUTE=Math.pow(2,8)'), ['256']);
   });
 
-  it('should evaluate subtraction', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=100-37'), ['63']);
+  it('should evaluate Math.sqrt', () => {
+    assert.deepStrictEqual(parseCompute('COMPUTE=Math.sqrt(144)'), ['12']);
   });
 
-  it('should evaluate division', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=100/4'), ['25']);
+  it('should evaluate ternary operator', () => {
+    assert.deepStrictEqual(parseCompute('COMPUTE=10>5?10:5'), ['10']);
   });
 
-  it('should evaluate parenthesized expressions', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=(80+90+100)/3'), ['90']);
+  it('should return empty for non-numeric result', () => {
+    assert.deepStrictEqual(parseCompute('COMPUTE="hello"'), []);
   });
 
-  it('should handle decimal results', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=10/3'), ['3.3333']);
-  });
-
-  it('should handle modulo', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=17%5'), ['2']);
-  });
-
-  it('should be case-insensitive', () => {
-    assert.deepStrictEqual(parseCompute('compute = 2+3'), ['5']);
-  });
-
-  it('should handle whitespace around equals', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE = 7 * 8'), ['56']);
-  });
-
-  it('should return empty for non-COMPUTE response', () => {
-    assert.deepStrictEqual(parseCompute('The answer is 42'), []);
-  });
-
-  it('should return empty for empty string', () => {
-    assert.deepStrictEqual(parseCompute(''), []);
-  });
-
-  it('should strip non-numeric characters for safety', () => {
-    // Letters get stripped: "alert(1)" → "(1)" → evaluates to 1
-    assert.deepStrictEqual(parseCompute('COMPUTE=alert(1)'), ['1']);
-    // Truly dangerous expressions with no digits become empty
-    assert.deepStrictEqual(parseCompute('COMPUTE=process.exit()'), []);
-  });
-
-  it('should return empty for Infinity', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=1/0'), []);
-  });
-
-  it('should handle negative numbers', () => {
-    assert.deepStrictEqual(parseCompute('COMPUTE=-5*-3'), ['15']);
+  it('should return empty on error', () => {
+    assert.deepStrictEqual(parseCompute('COMPUTE=invalidSyntax((('), []);
   });
 });
 

@@ -47,7 +47,7 @@ async function blankResult(sentence: string, adapter: HttpAdapter): Promise<CueS
     undefined,
     mk({ sources: {
       classifier: { name: 'classifier', promptText: 'Classify:\n' },
-      math:       { name: 'math', promptText: 'Solve.', parser: 'compute', priority: 90,
+      math:       { name: 'math', promptText: 'Solve.', parser: 'math', priority: 90,
                     match: '\\d+\\s*[+\\-*/^%]\\s*\\d+|\\d+%',
                     keywords: 'factorial,average,half of,double,triple,square root,sqrt' },
       factual:    { name: 'factual', promptText: 'Answer.', parser: 'answer', priority: 90,
