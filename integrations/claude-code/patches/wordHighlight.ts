@@ -648,11 +648,15 @@ try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExpor
 globalThis._parentValue=${valueParam};
 if(!globalThis._cueControlOverrides)globalThis._cueControlOverrides=${controlOvrJson};
 globalThis._forceInputRefresh=function(){
+if(globalThis._refreshTimer)return;
+globalThis._refreshTimer=setTimeout(function(){
+globalThis._refreshTimer=null;
 var _t=globalThis._hlText||"";
 var _pv=globalThis._parentValue||"";
 var _hasB=_pv.indexOf("\\u200B")>=0;
 var _tc=_hasB?"\\u200C":"\\u200B";
 ${onChangeParam}(_t+_tc);
+},16);
 };
 if(${inputZoneVar}.text.indexOf("\\u200B")>=0||${inputZoneVar}.text.indexOf("\\u200C")>=0){
 var _zwsClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");

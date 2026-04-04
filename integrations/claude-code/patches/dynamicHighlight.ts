@@ -693,24 +693,18 @@ try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolv
 }
 globalThis._dynPending=false;
 // Re-trigger if text changed while we were pending (typing during LLM call)
-// Cooldown: don't re-trigger more than once per second to avoid event loop thrashing
 var _postWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
 var _postChanged=_postWords.length!==globalThis._dynLastAnalyzed.length||_postWords.some(function(w,i){return w!==globalThis._dynLastAnalyzed[i];});
-var _now=Date.now();
-var _cooldownOk=!globalThis._dynLastRetrigger||(_now-globalThis._dynLastRetrigger)>1000;
-if((_postChanged||globalThis._dynUnderscoreQueued)&&_cooldownOk){
+if(_postChanged||globalThis._dynUnderscoreQueued){
 globalThis._dynUnderscoreQueued=false;
-globalThis._dynLastRetrigger=_now;
-setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},300);
+setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},100);
 }
 }).catch(function(_err){
 globalThis._dynPending=false;
 try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolver-error: "+_err.message+"\\n");}catch(_e4){}
 var _errWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
 var _errChanged=_errWords.length!==globalThis._dynLastAnalyzed.length||_errWords.some(function(w,i){return w!==globalThis._dynLastAnalyzed[i];});
-var _errNow=Date.now();
-var _errCooldownOk=!globalThis._dynLastRetrigger||(_errNow-globalThis._dynLastRetrigger)>1000;
-if(_errChanged&&_errCooldownOk){globalThis._dynLastRetrigger=_errNow;setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},300);}
+if(_errChanged){setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},100);}
 });
 }else{
 // Fallback: no resolver/prompt available
