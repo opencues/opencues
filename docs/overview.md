@@ -397,7 +397,9 @@ cues-core is used directly from the injected cli.js code (no shell scripts). The
 // 1. Load tips file into LocalCueSource
 // 2. Parse cues.md, blanks.md, controls.md
 // 3. Create NodeHttpAdapter (keep-alive, Groq provider config)
-// 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → ConfigSource[] + ClassifiedSourceGroup
+// 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → sources
+//    - Word sources: combined into ONE ConfigSource (grammar + domain prompts merged)
+//    - Blank sources: ClassifiedSourceGroup (classify → route to one mode)
 // 5. createResolver([...sources]) → globalThis._cueResolver
 ```
 

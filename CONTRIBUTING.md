@@ -40,7 +40,7 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 | File | What it defines |
 |------|-----------------|
 | `cues.md` | Word tips (`## Tips`) and LLM prompt sources (`## Prompt`) for word alternatives. Each `### section` under `## Prompt` is a source — grammar, legal, medical, etc. |
-| `blanks.md` | Blank fill-in modes (`## Prompt`) — math, factual, grammar, plus the `### classifier` that picks which mode to use. Each mode has `match`/`keywords` for fast detection and a `parser` type (`compute`, `answer`, `alternatives`, `raw`). |
+| `blanks.md` | Blank fill-in modes (`## Prompt`) — math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, grammar, plus the `### classifier` that picks which mode to use. Each mode has `match`/`keywords` for fast detection and a `parser` type (`compute`, `answer`, `alternatives`, `raw`). |
 | `controls.md` | Cue-controls (`## Controls`) — words that trigger external scripts instead of text cycling. |
 
 ### Adding a new word source
@@ -145,11 +145,40 @@ npm run build
 ### Running tests
 
 ```bash
-# From repo root
-node integrations/claude-code/tests/test-cues-modes.js     # Export tests
-node integrations/claude-code/tests/test-blanks.js          # Blanks pipeline (66 tests)
-node integrations/claude-code/tests/test-cues-core-integration.js  # Integration tests
+cd packages/cues-core
+npm run build    # compile TypeScript
+npm test         # run all unit tests (418 tests)
 ```
+
+The test suite has four layers:
+
+| File | Tests | What it covers |
+|------|-------|----------------|
+| `src/sources/parsers.test.ts` | 43 | Response parsers: COMPUTE, ANSWER, alternatives, raw |
+| `src/sources/build-sources.test.ts` | 56 | Source combining, building, error handling, resolver integration |
+| `src/sources/output.test.ts` | 67 | Exact output verification for words and blanks with mocked LLM |
+| `src/sources/sentences.test.ts` | 41 | Full sentence integration tests with mocked LLM |
+| `src/sources/classifier.test.ts` | 196 | Fast-match routing (96) + live LLM classifier (100) |
+| `src/sources/local-cue-source.test.ts` | 15 | Tips lookup, parsing, validation |
+
+**Live LLM classifier tests** require `GROQ_API_KEY` — they call the real Groq API to verify the classifier routes ambiguous inputs correctly. Without the key, these tests are skipped automatically.
+
+```bash
+# Run with live LLM classifier tests
+GROQ_API_KEY=xxx npm test
+```
+
+### Live benchmark
+
+The benchmark runs 390 real sentences through the full pipeline with live LLM calls and saves results for comparison:
+
+```bash
+GROQ_API_KEY=xxx npx tsx tests/benchmarks/cues-core-benchmark.ts
+```
+
+Results are saved to `tests/results/cuescore-{model}-{timestamp}.json`. Compare runs to detect regressions.
+
+Current categories benchmarked (30 tests each): word-adj, word-verb, word-noun, word-finance, blank-math, blank-factual, blank-translate, blank-unit, blank-spell, blank-color, blank-http, blank-tz, blank-roman, blank-grammar.
 
 ### Key source files
 
@@ -162,6 +191,32 @@ node integrations/claude-code/tests/test-cues-core-integration.js  # Integration
 | `src/cues-md.ts` | .md config file parser |
 | `src/resolver.ts` | CueResolver orchestration |
 | `src/types.ts` | Core interfaces (CueSource, CueContext, CueResult) |
+
+### Architecture: combining vs classifying
+
+cues-core uses two strategies for multi-source inputs. Understanding this is critical when adding sources.
+
+**Words (combining)**: All word-scoped `alternatives`-parser sources from `cues.md` are merged into a **single LLM call** at build time. Domain prompts (grammar, legal, medical, financial) become conditional sections in one combined prompt. This is because domains can overlap — "the contract covers the diagnosis" needs grammar, legal, AND medical alternatives in the same response.
+
+**Blanks (classifying)**: Blank-fill modes are **mutually exclusive** — an input is math OR factual OR grammar, never both. `ClassifiedSourceGroup` picks one mode via fast heuristics (regex/keywords) or LLM classifier fallback, then routes to that single source.
+
+If you add a new `### section` to `cues.md`, it gets combined automatically — no extra LLM call. If you add a new `### section` to `blanks.md`, it becomes a new classification target. See `build-sources.ts` for the combining logic and `classified-source-group.ts` for the classification logic.
+
+### Pitfalls discovered during testing
+
+These issues were found during development and are worth knowing about:
+
+**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. The classifier now checks both fields and uses `max_tokens: 200`. ConfigSource uses `max_tokens: 800` for alternatives. Always pass `reasoning_effort: "low"` via provider overrides for Groq.
+
+**The classifier reasoning field echoes the full prompt.** When checking the reasoning field for `MODE=GRAMMAR`, the reasoning text contains the classifier prompt which lists ALL mode names. Matching bare mode names (e.g., `raw.includes('MATH')`) would always hit the first entry. Only match the `MODE=X` pattern in reasoning.
+
+**Keyword matching needs word boundaries.** `"in french"` as a keyword would match inside `"frozen in french toast"`. The fast classifier uses word-boundary checks (non-alphanumeric characters at both ends of the match). When adding keywords, test for false positives with embedded matches.
+
+**Fast-match priority matters.** When multiple domains have keywords that could match the same input, the highest-priority source wins. For example, math (priority 90) would beat translation (priority 85) if both match. Keep domain-specific terms in the right source's keywords — `celsius`/`fahrenheit` belong in unit conversion, not math.
+
+**The factual regex was too broad.** The original pattern `the .+ of .+ is` matched any sentence with that structure, including "The opposite of hot is _" (spelling, not factual). Tighten regexes to include domain-specific nouns: `the (capital|ceo|founder|author|...) of .+ is`.
+
+**Combined word sources must use the same parser.** Only sources with `parser: alternatives` and `scope: words` get combined. A source with `parser: raw` or `scope: all` stays separate and adds an extra sequential LLM call.
 
 ### After making changes
 

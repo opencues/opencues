@@ -133,7 +133,7 @@ if(_cuesCfg.ignore){_ignoreWords=_ignoreWords.concat(_cuesCfg.ignore);}
 var _ctrlPath=_cwd+"/controls.md";
 if(_fs.existsSync(_ctrlPath)){
 var _ctrlCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_ctrlPath,"utf8"));
-if(_ctrlCfg.actions){globalThis._cueControlOverrides=Object.assign(globalThis._cueControlOverrides||{},_ctrlCfg.actions);}
+if(_ctrlCfg.controls){globalThis._cueControlOverrides=Object.assign(globalThis._cueControlOverrides||{},_ctrlCfg.controls);}
 if(_ctrlCfg.ignore){_ignoreWords=_ignoreWords.concat(_ctrlCfg.ignore);}
 }
 // blanks.md — blank-fill config (opt-in: blanks only work if file exists)
@@ -263,12 +263,21 @@ if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_newText,lenDiff:_newWord.length-_curWord.length,wStart:_wStart};
 }
 // Dynamic alt cycling
-if(!globalThis._dynDefs)return null;
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 var _dWords=globalThis._dynDefs.words;
 var _dIdx=_hlIdx;
 var _span=globalThis._dynSpans&&globalThis._dynSpans[_dIdx];
 if(_span){_dIdx=_span.originalIndex;}
 var _dWord=_dWords.find(function(w){return w.index===_dIdx;});
+// Tip-lookup fallback: if word is navigable via _localCueMap but not yet in _dynDefs, resolve it now
+if((!_dWord||!_dWord.alts||_dWord.alts.length<=1)&&globalThis._cuesCore&&globalThis._localCueMap){
+var _tipResult=globalThis._localCueMap.get(_curWord.toLowerCase());
+if(_tipResult&&_tipResult.alternatives&&_tipResult.alternatives.length>1){
+var _tipDef={index:_dIdx,word:_curWord,alts:_tipResult.alternatives,cueTip:_tipResult.cueTip,altCueTips:_tipResult.altCueTips,source:"tips",linked:null,currentAltIndex:0};
+if(_dWord){_dWord.alts=_tipResult.alternatives;_dWord.cueTip=_tipResult.cueTip;_dWord.altCueTips=_tipResult.altCueTips;}
+else{globalThis._dynDefs.words.push(_tipDef);_dWord=_tipDef;}
+}
+}
 if(!_dWord||!_dWord.alts||_dWord.alts.length<=1)return null;
 var _curIdx=typeof _dWord.currentAltIndex==='number'?_dWord.currentAltIndex:0;
 var _nextAlt=(_curIdx+_dir+_dWord.alts.length)%_dWord.alts.length;
@@ -683,13 +692,20 @@ if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
 try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolver-parse-error: "+_pe.message+"\\n");}catch(_e3){}
 }
 globalThis._dynPending=false;
-if(globalThis._dynUnderscoreQueued){
+// Re-trigger if text changed while we were pending (typing during LLM call)
+var _postWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
+var _postChanged=_postWords.length!==globalThis._dynLastAnalyzed.length||_postWords.some(function(w,i){return w!==globalThis._dynLastAnalyzed[i];});
+if(_postChanged||globalThis._dynUnderscoreQueued){
 globalThis._dynUnderscoreQueued=false;
 setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},100);
 }
 }).catch(function(_err){
 globalThis._dynPending=false;
 try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolver-error: "+_err.message+"\\n");}catch(_e4){}
+// Re-trigger on error too if text changed
+var _errWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
+var _errChanged=_errWords.length!==globalThis._dynLastAnalyzed.length||_errWords.some(function(w,i){return w!==globalThis._dynLastAnalyzed[i];});
+if(_errChanged){setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},100);}
 });
 }else{
 // Fallback: no resolver/prompt available
@@ -700,6 +716,22 @@ try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] no-res
 }
 
 if(_needsAnalysis&&_curWords.length>0&&!globalThis._dynPending){
+// EAGER TIPS LOOKUP: resolve tip words immediately on keystroke (before debounce)
+// This ensures tip words dim in <5ms, not after 300ms pause + 50ms debounce + LLM round-trip
+if(globalThis._cuesCore&&globalThis._localCueMap){
+var _eagerLookup=globalThis._cuesCore.lookupMultiple(_curWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl});
+if(_eagerLookup.found.length>0){
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
+globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_eagerLookup.found);
+if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
+// If ALL words resolved from tips (no LLM needed), mark as analyzed and skip debounce
+if(_eagerLookup.missingIndices.length===0&&_curWords.indexOf("_")<0){
+globalThis._dynLastAnalyzed=_curWords;
+var _tPath="/tmp/claude-llm-timing-"+process.pid+".txt";
+try{${requireFuncName}("fs").writeFileSync(_tPath,"0ms (tips-eager) | "+_eagerLookup.found.length+" words\\n",{flag:"a"});}catch(_te){}
+}
+}
+}
 // Clear existing debounce timer
 if(globalThis._dynDebounceTimer){
 clearTimeout(globalThis._dynDebounceTimer);
@@ -926,7 +958,9 @@ export const writeDynamicRendering = (
 
   if (numMatch && numMatch.index !== undefined) {
     // Numbers mode: extend _numRanges to also dim control words and dynamic alt words
+    // INSTANT TIPS: check _localCueMap directly in render — no waiting for analysis pipeline
     const newNumCode = `else if(_numPat.test(_w)||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
+}else if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});
 }else if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0;});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_ni];
@@ -1053,11 +1087,12 @@ export const writeDynamicNavigation = (
     // Span-aware: Skip non-original span positions (don't navigate to "Pichai" separately)
     // Also: span originals are navigable even if current word isn't in alts (e.g., "Jeff" when alt is "Jeff Bezos")
     const newForEach = `${m.allW}.forEach(function(w,i){
+var _hasTipAlt=globalThis._localCueMap&&globalThis._localCueMap.has(w.toLowerCase());
 var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===i&&d.alts&&d.alts.length>1&&d.alts.indexOf(w)>=0;});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[i];
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==i;
 var _isSpanOriginal=_spanInfo&&_spanInfo.originalIndex===i;
-if(((${m.condition})||_hasDynAlt||_isSpanOriginal)&&!_isNonOrigSpan)${m.targetIdx}.push(i);
+if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal)&&!_isNonOrigSpan)${m.targetIdx}.push(i);
 });`;
 
     newFile = newFile.replace(m.full, newForEach);

@@ -82,9 +82,11 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **Remote Cues** — Alternatives computed externally using an LLM (~200-500ms). Each `### section` in `cues.md` or `blanks.md` becomes a config-driven source that sends a prompt to the LLM and parses the response. In code: `ConfigSource`.
 
-**ClassifiedSourceGroup** — Wraps multiple config-driven sources for blanks. Picks one mode per input via fast heuristics (regex/keywords) or LLM classifier fallback.
+**ClassifiedSourceGroup** — Wraps multiple config-driven sources for blanks. Picks one mode per input via fast heuristics (regex/keywords) or LLM classifier fallback. Blank modes are **mutually exclusive** — an input is math OR factual OR grammar, so classifying and routing to one source is correct.
 
-**buildSourcesFromConfig** — Factory function that takes parsed `cues.md` and `blanks.md` configs and returns `CueSource[]`. Single entry point — replaces manual source construction.
+**buildSourcesFromConfig** — Factory function that takes parsed `cues.md` and `blanks.md` configs and returns `CueSource[]`. Uses two strategies:
+- **Words**: Combines all word-scoped alternatives sources into ONE `ConfigSource` with a merged prompt. Domains (legal, medical) can overlap in a single input, so the LLM handles all domains in one pass.
+- **Blanks**: Routes to one mode via `ClassifiedSourceGroup` (modes are mutually exclusive).
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 

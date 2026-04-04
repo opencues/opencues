@@ -164,7 +164,8 @@ Text ready to display: "The boy has 3 dogs"
 │  │ 3. Build dim ranges (gray) for:                          │ │
 │  │    • Numbers (if numberDimming enabled)                  │ │
 │  │    • Cue-controls                                        │ │
-│  │    • Words with dynamic alts                             │ │
+│  │    • Tip words (instant — checked via _localCueMap)      │ │
+│  │    • Words with dynamic alts (after LLM response)        │ │
 │  │ 4. Walk through renderedValue char-by-char:              │ │
 │  │    • Track ANSI codes (preserve cursor styling)          │ │
 │  │    • Apply highlight color to highlight ranges           │ │

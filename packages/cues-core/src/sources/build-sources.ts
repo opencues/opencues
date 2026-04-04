@@ -3,10 +3,23 @@
  *
  * Factory that creates CueSource[] from parsed .md configs.
  * Single entry point — replaces manual source construction in integrations.
+ *
+ * ## Two strategies for multi-source inputs
+ *
+ * **Words (combining)**: Domain prompts (grammar, legal, medical) are combined
+ * into a single LLM call. Domains can overlap in the same input — "the contract
+ * shall indemnify the diagnosis" needs grammar, legal, AND medical alternatives
+ * for different words simultaneously. Combining produces one response covering
+ * all words/domains in a single pass.
+ *
+ * **Blanks (classifying)**: Blank-fill modes (math, factual, grammar) are
+ * mutually exclusive — an input is math OR factual OR grammar, never both.
+ * ClassifiedSourceGroup picks one mode via fast heuristics or LLM classifier,
+ * then routes to that single source.
  */
 
 import { CueSource, HttpAdapter } from '../types';
-import { CuesMdConfig } from '../cues-md';
+import { CuesMdConfig, SourceConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
 import { ClassifiedSourceGroup } from './classified-source-group';
 
@@ -18,9 +31,40 @@ export interface BuildSourcesOptions {
 }
 
 /**
+ * Combine word-scoped alternatives sources into a single ConfigSource.
+ * Base sources (no match regex) go first, domain sources get conditional headers.
+ * Result: ONE LLM call instead of N sequential calls.
+ */
+export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
+  const base = srcs.filter(s => !s.match);
+  const domain = srcs.filter(s => !!s.match);
+
+  const parts: string[] = [];
+  for (const s of base) {
+    parts.push(s.promptText!);
+  }
+  for (const s of domain) {
+    const terms = s.match!.replace(/\|/g, ', ');
+    parts.push(
+      `\nWhen the input contains terms like ${terms}:\n` +
+      s.promptText!
+    );
+  }
+
+  return {
+    name: 'grammar',
+    scope: 'words',
+    parser: 'alternatives',
+    priority: Math.max(...srcs.map(s => s.priority ?? 50)),
+    promptText: parts.join('\n'),
+  };
+}
+
+/**
  * Build CueSource[] from parsed cues.md and blanks.md configs.
  *
- * - cues.md ### sections → ConfigSource instances (scope: words)
+ * - cues.md word-scoped alternatives ### sections → combined into ONE ConfigSource
+ * - cues.md other ### sections → individual ConfigSource instances
  * - blanks.md ### sections → ClassifiedSourceGroup (scope: blanks)
  *   - ### classifier → group's classifier prompt
  *   - other ### sections → child ConfigSource instances
@@ -32,12 +76,29 @@ export function buildSourcesFromConfig(
 ): CueSource[] {
   const sources: CueSource[] = [];
 
-  // From cues.md: each ### section becomes a words-scoped ConfigSource
+  // From cues.md: combine word-scoped alternatives sources into one LLM call
   if (cuesConfig?.promptConfig?.sources) {
+    const wordAltSources: SourceConfig[] = [];
+
     for (const [, srcCfg] of Object.entries(cuesConfig.promptConfig.sources)) {
       if (srcCfg.enabled === false || !srcCfg.promptText) continue;
+      const scope = srcCfg.scope ?? 'words';
+      const parser = srcCfg.parser ?? 'alternatives';
+
+      if (scope === 'words' && parser === 'alternatives') {
+        wordAltSources.push(srcCfg);
+      } else {
+        // Non-combinable sources stay individual
+        sources.push(new ConfigSource({
+          sourceConfig: { ...srcCfg, scope },
+          ...options,
+        }));
+      }
+    }
+
+    if (wordAltSources.length > 0) {
       sources.push(new ConfigSource({
-        sourceConfig: { ...srcCfg, scope: srcCfg.scope ?? 'words' },
+        sourceConfig: combineWordSources(wordAltSources),
         ...options,
       }));
     }

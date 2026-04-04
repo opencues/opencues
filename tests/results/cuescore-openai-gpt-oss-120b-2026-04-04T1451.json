@@ -1,0 +1,808 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "timestamp": "2026-04-04T14:51:51.616Z",
+  "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+  "totalPass": 25,
+  "totalCount": 40,
+  "totalPct": 62.5,
+  "categories": {
+    "word-adj": {
+      "pass": 4,
+      "total": 6,
+      "latency": [
+        730,
+        977,
+        850,
+        817,
+        975,
+        960
+      ]
+    },
+    "word-verb": {
+      "pass": 2,
+      "total": 4,
+      "latency": [
+        964,
+        846,
+        1028,
+        946
+      ]
+    },
+    "word-noun": {
+      "pass": 2,
+      "total": 3,
+      "latency": [
+        769,
+        889,
+        845
+      ]
+    },
+    "word-adv": {
+      "pass": 0,
+      "total": 2,
+      "latency": [
+        963,
+        1026
+      ]
+    },
+    "word-ctx": {
+      "pass": 1,
+      "total": 4,
+      "latency": [
+        1037,
+        941,
+        825,
+        1191
+      ]
+    },
+    "word-long": {
+      "pass": 0,
+      "total": 2,
+      "latency": [
+        873,
+        1208
+      ]
+    },
+    "blank-math": {
+      "pass": 6,
+      "total": 6,
+      "latency": [
+        124,
+        119,
+        379,
+        219,
+        272,
+        165
+      ]
+    },
+    "blank-factual": {
+      "pass": 5,
+      "total": 5,
+      "latency": [
+        109,
+        106,
+        110,
+        91,
+        94
+      ]
+    },
+    "blank-grammar": {
+      "pass": 5,
+      "total": 8,
+      "latency": [
+        1060,
+        1113,
+        823,
+        906,
+        971,
+        574,
+        683,
+        1144
+      ]
+    }
+  },
+  "results": [
+    {
+      "desc": "happy synonyms",
+      "category": "word-adj",
+      "input": "The happy boy ran",
+      "pass": true,
+      "alternatives": [
+        "joyful",
+        "sad",
+        "cheerful"
+      ],
+      "expectedAny": [
+        "glad",
+        "joyful",
+        "cheerful",
+        "content",
+        "pleased",
+        "sad",
+        "unhappy"
+      ],
+      "matched": "joyful",
+      "latencyMs": 730
+    },
+    {
+      "desc": "big synonyms",
+      "category": "word-adj",
+      "input": "The big house",
+      "pass": true,
+      "alternatives": [
+        "large",
+        "small",
+        "colossal"
+      ],
+      "expectedAny": [
+        "large",
+        "huge",
+        "enormous",
+        "massive",
+        "small",
+        "tiny"
+      ],
+      "matched": "large",
+      "latencyMs": 977
+    },
+    {
+      "desc": "old synonyms",
+      "category": "word-adj",
+      "input": "The old man",
+      "pass": true,
+      "alternatives": [
+        "elderly",
+        "young",
+        "vintage"
+      ],
+      "expectedAny": [
+        "elderly",
+        "aged",
+        "ancient",
+        "young",
+        "senior"
+      ],
+      "matched": "elderly",
+      "latencyMs": 850
+    },
+    {
+      "desc": "beautiful synonyms",
+      "category": "word-adj",
+      "input": "A beautiful sunset",
+      "pass": true,
+      "alternatives": [
+        "gorgeous",
+        "ugly",
+        "stunning"
+      ],
+      "expectedAny": [
+        "gorgeous",
+        "stunning",
+        "lovely",
+        "pretty",
+        "ugly"
+      ],
+      "matched": "gorgeous",
+      "latencyMs": 817
+    },
+    {
+      "desc": "small synonyms",
+      "category": "word-adj",
+      "input": "The small dog",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "tiny",
+        "little",
+        "miniature",
+        "large",
+        "big"
+      ],
+      "matched": null,
+      "latencyMs": 975
+    },
+    {
+      "desc": "cold synonyms",
+      "category": "word-adj",
+      "input": "A cold winter",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "freezing",
+        "chilly",
+        "icy",
+        "warm",
+        "hot"
+      ],
+      "matched": null,
+      "latencyMs": 960
+    },
+    {
+      "desc": "walked synonyms",
+      "category": "word-verb",
+      "input": "She walked home",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "ran",
+        "strolled",
+        "marched",
+        "drove",
+        "sprinted"
+      ],
+      "matched": null,
+      "latencyMs": 964
+    },
+    {
+      "desc": "ran synonyms",
+      "category": "word-verb",
+      "input": "He ran quickly",
+      "pass": true,
+      "alternatives": [
+        "jogged",
+        "walked",
+        "bolted"
+      ],
+      "expectedAny": [
+        "sprinted",
+        "jogged",
+        "dashed",
+        "walked",
+        "rushed"
+      ],
+      "matched": "jogged",
+      "latencyMs": 846
+    },
+    {
+      "desc": "built synonyms",
+      "category": "word-verb",
+      "input": "They built a house",
+      "pass": true,
+      "alternatives": [
+        "constructed"
+      ],
+      "expectedAny": [
+        "constructed",
+        "created",
+        "erected",
+        "designed",
+        "destroyed"
+      ],
+      "matched": "constructed",
+      "latencyMs": 1028
+    },
+    {
+      "desc": "said synonyms",
+      "category": "word-verb",
+      "input": "I said hello",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "whispered",
+        "shouted",
+        "muttered",
+        "yelled",
+        "spoke"
+      ],
+      "matched": null,
+      "latencyMs": 946
+    },
+    {
+      "desc": "dog synonyms",
+      "category": "word-noun",
+      "input": "The dog barked",
+      "pass": true,
+      "alternatives": [
+        "canine",
+        "cat",
+        "puppy"
+      ],
+      "expectedAny": [
+        "cat",
+        "hound",
+        "puppy",
+        "wolf",
+        "animal"
+      ],
+      "matched": "cat",
+      "latencyMs": 769
+    },
+    {
+      "desc": "car synonyms",
+      "category": "word-noun",
+      "input": "The car stopped",
+      "pass": false,
+      "alternatives": [
+        "automobile",
+        "bicycle",
+        "steed"
+      ],
+      "expectedAny": [
+        "vehicle",
+        "truck",
+        "bus",
+        "train",
+        "van"
+      ],
+      "matched": null,
+      "latencyMs": 889
+    },
+    {
+      "desc": "teacher synonyms",
+      "category": "word-noun",
+      "input": "The teacher spoke",
+      "pass": true,
+      "alternatives": [
+        "educator",
+        "student",
+        "mentor"
+      ],
+      "expectedAny": [
+        "professor",
+        "instructor",
+        "student",
+        "lecturer",
+        "mentor"
+      ],
+      "matched": "student",
+      "latencyMs": 845
+    },
+    {
+      "desc": "quickly synonyms",
+      "category": "word-adv",
+      "input": "She ran quickly",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "slowly",
+        "fast",
+        "rapidly",
+        "swiftly",
+        "briskly"
+      ],
+      "matched": null,
+      "latencyMs": 963
+    },
+    {
+      "desc": "softly synonyms",
+      "category": "word-adv",
+      "input": "He spoke softly",
+      "pass": false,
+      "alternatives": [
+        "quiet"
+      ],
+      "expectedAny": [
+        "quietly",
+        "gently",
+        "loudly",
+        "harshly",
+        "tenderly"
+      ],
+      "matched": null,
+      "latencyMs": 1026
+    },
+    {
+      "desc": "bright (sun context)",
+      "category": "word-ctx",
+      "input": "The bright sun rose",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "shining",
+        "brilliant",
+        "dazzling",
+        "dim",
+        "glowing",
+        "radiant"
+      ],
+      "matched": null,
+      "latencyMs": 1037
+    },
+    {
+      "desc": "bright (student context)",
+      "category": "word-ctx",
+      "input": "A bright student answered",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "smart",
+        "clever",
+        "intelligent",
+        "gifted",
+        "dull"
+      ],
+      "matched": null,
+      "latencyMs": 941
+    },
+    {
+      "desc": "sharp (knife context)",
+      "category": "word-ctx",
+      "input": "The sharp knife cut",
+      "pass": true,
+      "alternatives": [
+        "keen",
+        "dull",
+        "incisive"
+      ],
+      "expectedAny": [
+        "dull",
+        "blunt",
+        "keen",
+        "pointed",
+        "serrated"
+      ],
+      "matched": "dull",
+      "latencyMs": 825
+    },
+    {
+      "desc": "sharp (mind context)",
+      "category": "word-ctx",
+      "input": "A sharp mind solves",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "keen",
+        "quick",
+        "astute",
+        "brilliant",
+        "dull"
+      ],
+      "matched": null,
+      "latencyMs": 1191
+    },
+    {
+      "desc": "ancient in long sentence",
+      "category": "word-long",
+      "input": "The ancient temple stood majestically on the hilltop",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "old",
+        "historic",
+        "sacred",
+        "modern",
+        "crumbling"
+      ],
+      "matched": null,
+      "latencyMs": 873
+    },
+    {
+      "desc": "exhausted in long sentence",
+      "category": "word-long",
+      "input": "The exhausted runner finally crossed the finish line",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "tired",
+        "weary",
+        "fatigued",
+        "drained",
+        "energetic"
+      ],
+      "matched": null,
+      "latencyMs": 1208
+    },
+    {
+      "desc": "4*12",
+      "category": "blank-math",
+      "input": "4 * 12 = _",
+      "pass": true,
+      "alternatives": [
+        "48"
+      ],
+      "expectedAny": [
+        "48"
+      ],
+      "matched": "48",
+      "latencyMs": 124
+    },
+    {
+      "desc": "100/4",
+      "category": "blank-math",
+      "input": "100 / 4 = _",
+      "pass": true,
+      "alternatives": [
+        "25"
+      ],
+      "expectedAny": [
+        "25"
+      ],
+      "matched": "25",
+      "latencyMs": 119
+    },
+    {
+      "desc": "7+8",
+      "category": "blank-math",
+      "input": "7 + 8 = _",
+      "pass": true,
+      "alternatives": [
+        "15"
+      ],
+      "expectedAny": [
+        "15"
+      ],
+      "matched": "15",
+      "latencyMs": 379
+    },
+    {
+      "desc": "50-17",
+      "category": "blank-math",
+      "input": "50 - 17 = _",
+      "pass": true,
+      "alternatives": [
+        "33"
+      ],
+      "expectedAny": [
+        "33"
+      ],
+      "matched": "33",
+      "latencyMs": 219
+    },
+    {
+      "desc": "2*2*2",
+      "category": "blank-math",
+      "input": "2 * 2 * 2 = _",
+      "pass": true,
+      "alternatives": [
+        "8"
+      ],
+      "expectedAny": [
+        "8"
+      ],
+      "matched": "8",
+      "latencyMs": 272
+    },
+    {
+      "desc": "99+1",
+      "category": "blank-math",
+      "input": "99 + 1 = _",
+      "pass": true,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 165
+    },
+    {
+      "desc": "capital of France",
+      "category": "blank-factual",
+      "input": "The capital of France is _",
+      "pass": true,
+      "alternatives": [
+        "Paris"
+      ],
+      "expectedAny": [
+        "Paris"
+      ],
+      "matched": "Paris",
+      "latencyMs": 109
+    },
+    {
+      "desc": "capital of Japan",
+      "category": "blank-factual",
+      "input": "The capital of Japan is _",
+      "pass": true,
+      "alternatives": [
+        "Tokyo"
+      ],
+      "expectedAny": [
+        "Tokyo"
+      ],
+      "matched": "Tokyo",
+      "latencyMs": 106
+    },
+    {
+      "desc": "CEO of Apple",
+      "category": "blank-factual",
+      "input": "The CEO of Apple is _",
+      "pass": true,
+      "alternatives": [
+        "Tim Cook"
+      ],
+      "expectedAny": [
+        "Tim Cook"
+      ],
+      "matched": "Tim Cook",
+      "latencyMs": 110
+    },
+    {
+      "desc": "author of HP",
+      "category": "blank-factual",
+      "input": "The author of Harry Potter is _",
+      "pass": true,
+      "alternatives": [
+        "J.K. Rowling"
+      ],
+      "expectedAny": [
+        "J.K. Rowling",
+        "Rowling",
+        "JK Rowling"
+      ],
+      "matched": "J.K. Rowling",
+      "latencyMs": 91
+    },
+    {
+      "desc": "founder of MSFT",
+      "category": "blank-factual",
+      "input": "The founder of Microsoft is _",
+      "pass": true,
+      "alternatives": [
+        "Bill Gates"
+      ],
+      "expectedAny": [
+        "Bill Gates",
+        "Gates"
+      ],
+      "matched": "Bill Gates",
+      "latencyMs": 94
+    },
+    {
+      "desc": "boy vaulted over",
+      "category": "blank-grammar",
+      "input": "The boy vaulted over the _",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "fence",
+        "wall",
+        "hedge",
+        "gate",
+        "hurdle",
+        "barrier",
+        "railing"
+      ],
+      "matched": null,
+      "latencyMs": 1060
+    },
+    {
+      "desc": "walked ADV to school",
+      "category": "blank-grammar",
+      "input": "She walked _ to school",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "slowly",
+        "quickly",
+        "carefully",
+        "briskly",
+        "happily"
+      ],
+      "matched": null,
+      "latencyMs": 1113
+    },
+    {
+      "desc": "ADJ dog barked",
+      "category": "blank-grammar",
+      "input": "The _ dog barked loudly",
+      "pass": true,
+      "alternatives": [
+        "small",
+        "brown",
+        "happy",
+        "loud"
+      ],
+      "expectedAny": [
+        "big",
+        "small",
+        "brown",
+        "old",
+        "little",
+        "angry",
+        "large"
+      ],
+      "matched": "small",
+      "latencyMs": 823
+    },
+    {
+      "desc": "SUBJ ran across",
+      "category": "blank-grammar",
+      "input": "_ ran across the street",
+      "pass": true,
+      "alternatives": [
+        "She",
+        "The dog",
+        "A cat",
+        "Someone"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "It",
+        "A"
+      ],
+      "matched": "She",
+      "latencyMs": 906
+    },
+    {
+      "desc": "going to DEST",
+      "category": "blank-grammar",
+      "input": "We are going to _",
+      "pass": true,
+      "alternatives": [
+        "school",
+        "work",
+        "home",
+        "office"
+      ],
+      "expectedAny": [
+        "Paris",
+        "school",
+        "work",
+        "London",
+        "home",
+        "Tokyo",
+        "eat",
+        "leave"
+      ],
+      "matched": "school",
+      "latencyMs": 971
+    },
+    {
+      "desc": "written in LANG",
+      "category": "blank-grammar",
+      "input": "The code is written in _",
+      "pass": true,
+      "alternatives": [
+        "Java",
+        "C++",
+        "Rust",
+        "Go"
+      ],
+      "expectedAny": [
+        "Python",
+        "Java",
+        "C++",
+        "Rust",
+        "Go",
+        "JavaScript",
+        "TypeScript"
+      ],
+      "matched": "Java",
+      "latencyMs": 574
+    },
+    {
+      "desc": "team VERB convincingly",
+      "category": "blank-grammar",
+      "input": "The team _ convincingly",
+      "pass": true,
+      "alternatives": [
+        "lost",
+        "played",
+        "performed",
+        "dominated"
+      ],
+      "expectedAny": [
+        "won",
+        "lost",
+        "played",
+        "performed",
+        "dominated"
+      ],
+      "matched": "lost",
+      "latencyMs": 683
+    },
+    {
+      "desc": "felt extremely ADJ",
+      "category": "blank-grammar",
+      "input": "He felt extremely _",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "happy",
+        "sad",
+        "tired",
+        "nervous",
+        "anxious",
+        "excited",
+        "angry"
+      ],
+      "matched": null,
+      "latencyMs": 1144
+    }
+  ]
+}

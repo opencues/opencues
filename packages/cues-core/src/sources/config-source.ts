@@ -102,7 +102,7 @@ export class ConfigSource implements CueSource {
       const separator = this.parser === 'alternatives' ? '\n' : ' ';
       const fullPrompt = promptText.trimEnd() + separator + input;
 
-      const maxTokens = (this.parser === 'compute' || this.parser === 'answer') ? 100 : 400;
+      const maxTokens = (this.parser === 'compute' || this.parser === 'answer') ? 200 : 800;
       const temperature = (this.parser === 'compute' || this.parser === 'answer') ? 0.1 : 0.3;
 
       const body = JSON.stringify({

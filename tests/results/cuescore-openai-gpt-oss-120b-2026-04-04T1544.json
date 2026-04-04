@@ -1,0 +1,6290 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "timestamp": "2026-04-04T15:44:37.916Z",
+  "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+  "totalPass": 317,
+  "totalCount": 330,
+  "totalPct": 96.1,
+  "categories": {
+    "word-adj": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        451,
+        382,
+        302,
+        358,
+        427,
+        632,
+        516,
+        432,
+        246,
+        397,
+        495,
+        410,
+        306,
+        519,
+        518,
+        497,
+        339,
+        494,
+        605,
+        615,
+        505,
+        531,
+        562,
+        428,
+        638,
+        276,
+        895,
+        556,
+        706,
+        637
+      ]
+    },
+    "word-verb": {
+      "pass": 25,
+      "total": 30,
+      "latency": [
+        372,
+        370,
+        566,
+        525,
+        479,
+        475,
+        202,
+        678,
+        572,
+        589,
+        288,
+        512,
+        472,
+        426,
+        317,
+        397,
+        553,
+        272,
+        575,
+        737,
+        450,
+        446,
+        699,
+        318,
+        349,
+        664,
+        1064,
+        437,
+        280,
+        348
+      ]
+    },
+    "word-noun": {
+      "pass": 14,
+      "total": 15,
+      "latency": [
+        382,
+        548,
+        601,
+        523,
+        401,
+        619,
+        542,
+        494,
+        470,
+        727,
+        443,
+        440,
+        580,
+        497,
+        789
+      ]
+    },
+    "word-finance": {
+      "pass": 13,
+      "total": 15,
+      "latency": [
+        436,
+        207,
+        519,
+        203,
+        380,
+        537,
+        289,
+        433,
+        321,
+        421,
+        594,
+        552,
+        365,
+        741,
+        895
+      ]
+    },
+    "blank-math": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        194,
+        259,
+        126,
+        152,
+        118,
+        185,
+        165,
+        112,
+        150,
+        112,
+        109,
+        169,
+        105,
+        170,
+        129,
+        117,
+        151,
+        114,
+        102,
+        146,
+        113,
+        152,
+        108,
+        152,
+        444,
+        139,
+        108,
+        109,
+        150,
+        108
+      ]
+    },
+    "blank-factual": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        74,
+        111,
+        68,
+        77,
+        75,
+        118,
+        139,
+        200,
+        111,
+        314,
+        209,
+        111,
+        250,
+        104,
+        216,
+        85,
+        117,
+        113,
+        146,
+        105,
+        114,
+        75,
+        136,
+        271,
+        104,
+        72,
+        98,
+        105,
+        114,
+        105
+      ]
+    },
+    "blank-translate": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        111,
+        97,
+        84,
+        126,
+        78,
+        83,
+        84,
+        117,
+        118,
+        198,
+        79,
+        83,
+        130,
+        122,
+        127,
+        91,
+        102,
+        98,
+        99,
+        110,
+        130,
+        145,
+        193,
+        91,
+        91,
+        111,
+        95,
+        82,
+        114,
+        198
+      ]
+    },
+    "blank-unit": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        114,
+        170,
+        135,
+        173,
+        159,
+        130,
+        267,
+        179,
+        174,
+        129,
+        195,
+        134,
+        193,
+        139,
+        119,
+        246,
+        121,
+        268,
+        315,
+        162,
+        150,
+        154,
+        248,
+        176,
+        294,
+        167,
+        131,
+        145,
+        171,
+        129
+      ]
+    },
+    "blank-spell": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        97,
+        75,
+        76,
+        131,
+        102,
+        79,
+        74,
+        89,
+        73,
+        75,
+        97,
+        84,
+        116,
+        86,
+        114,
+        144,
+        827,
+        207,
+        91,
+        99,
+        103,
+        114,
+        130,
+        138,
+        148,
+        187,
+        310,
+        177,
+        114,
+        143
+      ]
+    },
+    "blank-color": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        100,
+        101,
+        131,
+        92,
+        322,
+        166,
+        100,
+        102,
+        81,
+        136,
+        86,
+        158,
+        126,
+        80,
+        124,
+        107,
+        104,
+        110,
+        104,
+        119,
+        117,
+        107,
+        131,
+        104,
+        372,
+        107,
+        83,
+        116,
+        84,
+        208
+      ]
+    },
+    "blank-http": {
+      "pass": 30,
+      "total": 30,
+      "latency": [
+        107,
+        91,
+        105,
+        85,
+        92,
+        126,
+        208,
+        79,
+        76,
+        87,
+        91,
+        96,
+        97,
+        75,
+        129,
+        112,
+        94,
+        115,
+        331,
+        78,
+        86,
+        84,
+        143,
+        140,
+        116,
+        78,
+        119,
+        79,
+        88,
+        201
+      ]
+    },
+    "blank-grammar": {
+      "pass": 25,
+      "total": 30,
+      "latency": [
+        590,
+        395,
+        406,
+        490,
+        438,
+        568,
+        1768,
+        638,
+        546,
+        429,
+        404,
+        367,
+        469,
+        492,
+        333,
+        377,
+        833,
+        475,
+        433,
+        608,
+        1247,
+        637,
+        504,
+        966,
+        471,
+        286,
+        372,
+        333,
+        329,
+        587
+      ]
+    }
+  },
+  "results": [
+    {
+      "desc": "happy",
+      "category": "word-adj",
+      "input": "The happy boy ran",
+      "pass": true,
+      "alternatives": [
+        "joyful",
+        "sad",
+        "cheerful"
+      ],
+      "expectedAny": [
+        "glad",
+        "joyful",
+        "cheerful",
+        "content",
+        "pleased",
+        "sad",
+        "unhappy",
+        "delighted",
+        "ecstatic"
+      ],
+      "matched": "joyful",
+      "latencyMs": 451
+    },
+    {
+      "desc": "big",
+      "category": "word-adj",
+      "input": "The big house",
+      "pass": true,
+      "alternatives": [
+        "large",
+        "small",
+        "enormous"
+      ],
+      "expectedAny": [
+        "large",
+        "huge",
+        "enormous",
+        "massive",
+        "small",
+        "tiny",
+        "grand",
+        "spacious"
+      ],
+      "matched": "large",
+      "latencyMs": 382
+    },
+    {
+      "desc": "old",
+      "category": "word-adj",
+      "input": "The old man",
+      "pass": true,
+      "alternatives": [
+        "elderly",
+        "young",
+        "aged"
+      ],
+      "expectedAny": [
+        "elderly",
+        "aged",
+        "ancient",
+        "young",
+        "senior",
+        "mature",
+        "veteran"
+      ],
+      "matched": "elderly",
+      "latencyMs": 302
+    },
+    {
+      "desc": "beautiful",
+      "category": "word-adj",
+      "input": "A beautiful sunset",
+      "pass": true,
+      "alternatives": [
+        "gorgeous",
+        "ugly",
+        "stunning",
+        "lovely",
+        "hideous"
+      ],
+      "expectedAny": [
+        "gorgeous",
+        "stunning",
+        "lovely",
+        "pretty",
+        "ugly",
+        "magnificent",
+        "breathtaking"
+      ],
+      "matched": "gorgeous",
+      "latencyMs": 358
+    },
+    {
+      "desc": "small",
+      "category": "word-adj",
+      "input": "The small dog",
+      "pass": true,
+      "alternatives": [
+        "tiny",
+        "large",
+        "petite"
+      ],
+      "expectedAny": [
+        "tiny",
+        "little",
+        "miniature",
+        "large",
+        "big",
+        "petite",
+        "compact"
+      ],
+      "matched": "tiny",
+      "latencyMs": 427
+    },
+    {
+      "desc": "cold",
+      "category": "word-adj",
+      "input": "A cold winter",
+      "pass": true,
+      "alternatives": [
+        "chilly",
+        "hot",
+        "frosty"
+      ],
+      "expectedAny": [
+        "freezing",
+        "chilly",
+        "icy",
+        "warm",
+        "hot",
+        "bitter",
+        "frigid",
+        "harsh"
+      ],
+      "matched": "chilly",
+      "latencyMs": 632
+    },
+    {
+      "desc": "strong",
+      "category": "word-adj",
+      "input": "The strong wind blew",
+      "pass": true,
+      "alternatives": [
+        "robust",
+        "weak",
+        "mighty"
+      ],
+      "expectedAny": [
+        "powerful",
+        "fierce",
+        "gentle",
+        "weak",
+        "mighty",
+        "intense",
+        "violent"
+      ],
+      "matched": "weak",
+      "latencyMs": 516
+    },
+    {
+      "desc": "dark",
+      "category": "word-adj",
+      "input": "A dark room",
+      "pass": true,
+      "alternatives": [
+        "dim",
+        "gloomy",
+        "shadowy",
+        "bright",
+        "lit"
+      ],
+      "expectedAny": [
+        "dim",
+        "bright",
+        "gloomy",
+        "shadowy",
+        "light",
+        "murky",
+        "pitch-black"
+      ],
+      "matched": "dim",
+      "latencyMs": 432
+    },
+    {
+      "desc": "tall",
+      "category": "word-adj",
+      "input": "The tall building",
+      "pass": true,
+      "alternatives": [
+        "high",
+        "short",
+        "soaring"
+      ],
+      "expectedAny": [
+        "high",
+        "towering",
+        "short",
+        "massive",
+        "imposing",
+        "lofty",
+        "elevated"
+      ],
+      "matched": "high",
+      "latencyMs": 246
+    },
+    {
+      "desc": "fast",
+      "category": "word-adj",
+      "input": "A fast car",
+      "pass": true,
+      "alternatives": [
+        "quick",
+        "slow",
+        "swift"
+      ],
+      "expectedAny": [
+        "quick",
+        "slow",
+        "rapid",
+        "speedy",
+        "swift"
+      ],
+      "matched": "quick",
+      "latencyMs": 397
+    },
+    {
+      "desc": "rich",
+      "category": "word-adj",
+      "input": "The rich man",
+      "pass": true,
+      "alternatives": [
+        "wealthy",
+        "poor",
+        "opulent"
+      ],
+      "expectedAny": [
+        "wealthy",
+        "poor",
+        "affluent",
+        "prosperous",
+        "opulent"
+      ],
+      "matched": "wealthy",
+      "latencyMs": 495
+    },
+    {
+      "desc": "quiet",
+      "category": "word-adj",
+      "input": "A quiet room",
+      "pass": true,
+      "alternatives": [
+        "still",
+        "noisy",
+        "serene"
+      ],
+      "expectedAny": [
+        "silent",
+        "loud",
+        "noisy",
+        "peaceful",
+        "calm",
+        "hushed",
+        "still"
+      ],
+      "matched": "noisy",
+      "latencyMs": 410
+    },
+    {
+      "desc": "heavy",
+      "category": "word-adj",
+      "input": "The heavy box",
+      "pass": true,
+      "alternatives": [
+        "weighty",
+        "light",
+        "massive"
+      ],
+      "expectedAny": [
+        "light",
+        "weighty",
+        "massive",
+        "bulky",
+        "dense",
+        "cumbersome"
+      ],
+      "matched": "light",
+      "latencyMs": 306
+    },
+    {
+      "desc": "bright (light)",
+      "category": "word-adj",
+      "input": "A bright light",
+      "pass": true,
+      "alternatives": [
+        "luminous",
+        "dim",
+        "radiant"
+      ],
+      "expectedAny": [
+        "dim",
+        "brilliant",
+        "vivid",
+        "dazzling",
+        "glowing",
+        "intense",
+        "faint"
+      ],
+      "matched": "dim",
+      "latencyMs": 519
+    },
+    {
+      "desc": "narrow",
+      "category": "word-adj",
+      "input": "The narrow path",
+      "pass": true,
+      "alternatives": [
+        "slim",
+        "broad",
+        "tapered"
+      ],
+      "expectedAny": [
+        "wide",
+        "thin",
+        "broad",
+        "slim",
+        "tight",
+        "cramped",
+        "restricted"
+      ],
+      "matched": "broad",
+      "latencyMs": 518
+    },
+    {
+      "desc": "deep",
+      "category": "word-adj",
+      "input": "A deep ocean",
+      "pass": true,
+      "alternatives": [
+        "profound",
+        "shallow",
+        "abyssal"
+      ],
+      "expectedAny": [
+        "shallow",
+        "vast",
+        "profound",
+        "bottomless",
+        "immense",
+        "endless"
+      ],
+      "matched": "shallow",
+      "latencyMs": 497
+    },
+    {
+      "desc": "clean",
+      "category": "word-adj",
+      "input": "The clean kitchen",
+      "pass": true,
+      "alternatives": [
+        "tidy",
+        "dirty",
+        "spotless"
+      ],
+      "expectedAny": [
+        "dirty",
+        "tidy",
+        "spotless",
+        "messy",
+        "pristine",
+        "immaculate"
+      ],
+      "matched": "dirty",
+      "latencyMs": 339
+    },
+    {
+      "desc": "long",
+      "category": "word-adj",
+      "input": "A long road",
+      "pass": true,
+      "alternatives": [
+        "lengthy",
+        "short",
+        "endless"
+      ],
+      "expectedAny": [
+        "short",
+        "winding",
+        "endless",
+        "straight",
+        "extended",
+        "lengthy"
+      ],
+      "matched": "short",
+      "latencyMs": 494
+    },
+    {
+      "desc": "empty",
+      "category": "word-adj",
+      "input": "The empty room",
+      "pass": true,
+      "alternatives": [
+        "vacant",
+        "full",
+        "void"
+      ],
+      "expectedAny": [
+        "full",
+        "vacant",
+        "bare",
+        "hollow",
+        "crowded",
+        "occupied"
+      ],
+      "matched": "full",
+      "latencyMs": 605
+    },
+    {
+      "desc": "new",
+      "category": "word-adj",
+      "input": "A new car",
+      "pass": true,
+      "alternatives": [
+        "fresh",
+        "old",
+        "cutting‑edge"
+      ],
+      "expectedAny": [
+        "old",
+        "fresh",
+        "brand-new",
+        "used",
+        "modern",
+        "recent",
+        "novel"
+      ],
+      "matched": "old",
+      "latencyMs": 615
+    },
+    {
+      "desc": "angry",
+      "category": "word-adj",
+      "input": "The angry crowd",
+      "pass": true,
+      "alternatives": [
+        "mad",
+        "calm",
+        "fiery"
+      ],
+      "expectedAny": [
+        "furious",
+        "calm",
+        "hostile",
+        "peaceful",
+        "enraged",
+        "irate",
+        "mad"
+      ],
+      "matched": "calm",
+      "latencyMs": 505
+    },
+    {
+      "desc": "brave",
+      "category": "word-adj",
+      "input": "A brave soldier",
+      "pass": true,
+      "alternatives": [
+        "courageous",
+        "cowardly",
+        "lionhearted"
+      ],
+      "expectedAny": [
+        "courageous",
+        "cowardly",
+        "fearless",
+        "bold",
+        "valiant",
+        "heroic",
+        "timid"
+      ],
+      "matched": "courageous",
+      "latencyMs": 531
+    },
+    {
+      "desc": "lazy",
+      "category": "word-adj",
+      "input": "The lazy cat slept",
+      "pass": true,
+      "alternatives": [
+        "indolent",
+        "active",
+        "slothful"
+      ],
+      "expectedAny": [
+        "idle",
+        "active",
+        "sluggish",
+        "energetic",
+        "lethargic",
+        "indolent"
+      ],
+      "matched": "active",
+      "latencyMs": 562
+    },
+    {
+      "desc": "wise",
+      "category": "word-adj",
+      "input": "A wise decision",
+      "pass": true,
+      "alternatives": [
+        "prudent",
+        "foolish",
+        "sage"
+      ],
+      "expectedAny": [
+        "foolish",
+        "smart",
+        "clever",
+        "prudent",
+        "stupid",
+        "sound",
+        "sensible"
+      ],
+      "matched": "foolish",
+      "latencyMs": 428
+    },
+    {
+      "desc": "smooth",
+      "category": "word-adj",
+      "input": "The smooth surface",
+      "pass": true,
+      "alternatives": [
+        "sleek",
+        "rough",
+        "velvety"
+      ],
+      "expectedAny": [
+        "rough",
+        "flat",
+        "polished",
+        "uneven",
+        "silky",
+        "sleek",
+        "bumpy"
+      ],
+      "matched": "rough",
+      "latencyMs": 638
+    },
+    {
+      "desc": "dangerous",
+      "category": "word-adj",
+      "input": "A dangerous road",
+      "pass": true,
+      "alternatives": [
+        "hazardous",
+        "secure",
+        "perilous",
+        "safe",
+        "harmless"
+      ],
+      "expectedAny": [
+        "safe",
+        "hazardous",
+        "risky",
+        "perilous",
+        "treacherous",
+        "secure"
+      ],
+      "matched": "safe",
+      "latencyMs": 276
+    },
+    {
+      "desc": "thick",
+      "category": "word-adj",
+      "input": "The thick fog",
+      "pass": true,
+      "alternatives": [
+        "dense",
+        "thin",
+        "viscous"
+      ],
+      "expectedAny": [
+        "thin",
+        "dense",
+        "heavy",
+        "light",
+        "opaque",
+        "impenetrable"
+      ],
+      "matched": "thin",
+      "latencyMs": 895
+    },
+    {
+      "desc": "simple",
+      "category": "word-adj",
+      "input": "A simple task",
+      "pass": true,
+      "alternatives": [
+        "easy",
+        "hard",
+        "plain"
+      ],
+      "expectedAny": [
+        "complex",
+        "easy",
+        "difficult",
+        "basic",
+        "straightforward",
+        "hard"
+      ],
+      "matched": "easy",
+      "latencyMs": 556
+    },
+    {
+      "desc": "expensive",
+      "category": "word-adj",
+      "input": "The expensive watch",
+      "pass": true,
+      "alternatives": [
+        "costly",
+        "cheap",
+        "lavish"
+      ],
+      "expectedAny": [
+        "cheap",
+        "costly",
+        "pricey",
+        "affordable",
+        "luxurious",
+        "valuable"
+      ],
+      "matched": "cheap",
+      "latencyMs": 706
+    },
+    {
+      "desc": "dry",
+      "category": "word-adj",
+      "input": "A dry desert",
+      "pass": true,
+      "alternatives": [
+        "arid",
+        "wet",
+        "parched"
+      ],
+      "expectedAny": [
+        "wet",
+        "arid",
+        "barren",
+        "parched",
+        "scorching",
+        "desolate"
+      ],
+      "matched": "wet",
+      "latencyMs": 637
+    },
+    {
+      "desc": "walked",
+      "category": "word-verb",
+      "input": "She walked home",
+      "pass": true,
+      "alternatives": [
+        "strolled",
+        "ran",
+        "sauntered"
+      ],
+      "expectedAny": [
+        "ran",
+        "strolled",
+        "marched",
+        "drove",
+        "sprinted",
+        "hurried",
+        "trudged"
+      ],
+      "matched": "ran",
+      "latencyMs": 372
+    },
+    {
+      "desc": "ran",
+      "category": "word-verb",
+      "input": "He ran quickly",
+      "pass": true,
+      "alternatives": [
+        "walked",
+        "sprinted",
+        "jogged"
+      ],
+      "expectedAny": [
+        "sprinted",
+        "jogged",
+        "dashed",
+        "walked",
+        "rushed",
+        "bolted",
+        "raced"
+      ],
+      "matched": "sprinted",
+      "latencyMs": 370
+    },
+    {
+      "desc": "built",
+      "category": "word-verb",
+      "input": "They built a house",
+      "pass": true,
+      "alternatives": [
+        "constructed",
+        "demolished",
+        "crafted"
+      ],
+      "expectedAny": [
+        "constructed",
+        "created",
+        "erected",
+        "designed",
+        "destroyed",
+        "assembled"
+      ],
+      "matched": "constructed",
+      "latencyMs": 566
+    },
+    {
+      "desc": "said",
+      "category": "word-verb",
+      "input": "I said hello",
+      "pass": false,
+      "alternatives": [
+        "stated",
+        "listened",
+        "quipped"
+      ],
+      "expectedAny": [
+        "whispered",
+        "shouted",
+        "muttered",
+        "yelled",
+        "spoke",
+        "screamed",
+        "exclaimed"
+      ],
+      "matched": null,
+      "latencyMs": 525
+    },
+    {
+      "desc": "ate",
+      "category": "word-verb",
+      "input": "She ate dinner",
+      "pass": true,
+      "alternatives": [
+        "consumed",
+        "fasted",
+        "noshed"
+      ],
+      "expectedAny": [
+        "consumed",
+        "devoured",
+        "skipped",
+        "finished",
+        "enjoyed",
+        "prepared",
+        "cooked"
+      ],
+      "matched": "consumed",
+      "latencyMs": 479
+    },
+    {
+      "desc": "broke",
+      "category": "word-verb",
+      "input": "He broke the window",
+      "pass": true,
+      "alternatives": [
+        "ruptured",
+        "restored",
+        "shattered"
+      ],
+      "expectedAny": [
+        "shattered",
+        "cracked",
+        "smashed",
+        "fixed",
+        "repaired",
+        "damaged"
+      ],
+      "matched": "shattered",
+      "latencyMs": 475
+    },
+    {
+      "desc": "found",
+      "category": "word-verb",
+      "input": "They found treasure",
+      "pass": false,
+      "alternatives": [
+        "discover",
+        "lose",
+        "uncover"
+      ],
+      "expectedAny": [
+        "discovered",
+        "lost",
+        "uncovered",
+        "located",
+        "stumbled upon",
+        "unearthed"
+      ],
+      "matched": null,
+      "latencyMs": 202
+    },
+    {
+      "desc": "wrote",
+      "category": "word-verb",
+      "input": "I wrote a letter",
+      "pass": false,
+      "alternatives": [
+        "pen",
+        "erase",
+        "scribble"
+      ],
+      "expectedAny": [
+        "typed",
+        "composed",
+        "drafted",
+        "penned",
+        "scribbled",
+        "read"
+      ],
+      "matched": null,
+      "latencyMs": 678
+    },
+    {
+      "desc": "threw",
+      "category": "word-verb",
+      "input": "She threw the ball",
+      "pass": true,
+      "alternatives": [
+        "tossed",
+        "caught",
+        "catapulted"
+      ],
+      "expectedAny": [
+        "tossed",
+        "hurled",
+        "caught",
+        "lobbed",
+        "pitched",
+        "flung",
+        "launched"
+      ],
+      "matched": "tossed",
+      "latencyMs": 572
+    },
+    {
+      "desc": "gave",
+      "category": "word-verb",
+      "input": "He gave a speech",
+      "pass": false,
+      "alternatives": [
+        "provided",
+        "took",
+        "conferred"
+      ],
+      "expectedAny": [
+        "delivered",
+        "received",
+        "prepared",
+        "presented",
+        "made",
+        "offered"
+      ],
+      "matched": null,
+      "latencyMs": 589
+    },
+    {
+      "desc": "fought",
+      "category": "word-verb",
+      "input": "They fought bravely",
+      "pass": true,
+      "alternatives": [
+        "engaged",
+        "retreated",
+        "clashed"
+      ],
+      "expectedAny": [
+        "battled",
+        "surrendered",
+        "struggled",
+        "clashed",
+        "resisted",
+        "warred"
+      ],
+      "matched": "clashed",
+      "latencyMs": 288
+    },
+    {
+      "desc": "sang",
+      "category": "word-verb",
+      "input": "She sang beautifully",
+      "pass": true,
+      "alternatives": [
+        "crooned",
+        "warbled",
+        "vocalized"
+      ],
+      "expectedAny": [
+        "performed",
+        "hummed",
+        "chanted",
+        "crooned",
+        "whistled",
+        "screamed"
+      ],
+      "matched": "crooned",
+      "latencyMs": 512
+    },
+    {
+      "desc": "opened",
+      "category": "word-verb",
+      "input": "He opened the door",
+      "pass": true,
+      "alternatives": [
+        "unlocked",
+        "closed",
+        "unbolted"
+      ],
+      "expectedAny": [
+        "closed",
+        "shut",
+        "unlocked",
+        "slammed",
+        "pushed",
+        "pulled"
+      ],
+      "matched": "closed",
+      "latencyMs": 472
+    },
+    {
+      "desc": "bought",
+      "category": "word-verb",
+      "input": "I bought groceries",
+      "pass": true,
+      "alternatives": [
+        "purchased",
+        "acquired",
+        "procured"
+      ],
+      "expectedAny": [
+        "purchased",
+        "sold",
+        "ordered",
+        "grabbed",
+        "picked up",
+        "acquired"
+      ],
+      "matched": "purchased",
+      "latencyMs": 426
+    },
+    {
+      "desc": "climbed",
+      "category": "word-verb",
+      "input": "She climbed the mountain",
+      "pass": true,
+      "alternatives": [
+        "ascended",
+        "descended",
+        "scaled"
+      ],
+      "expectedAny": [
+        "ascended",
+        "descended",
+        "scaled",
+        "hiked",
+        "summited",
+        "conquered"
+      ],
+      "matched": "ascended",
+      "latencyMs": 317
+    },
+    {
+      "desc": "studied",
+      "category": "word-verb",
+      "input": "He studied hard",
+      "pass": true,
+      "alternatives": [
+        "learned",
+        "neglected",
+        "delved"
+      ],
+      "expectedAny": [
+        "learned",
+        "practiced",
+        "reviewed",
+        "crammed",
+        "examined",
+        "worked",
+        "read"
+      ],
+      "matched": "learned",
+      "latencyMs": 397
+    },
+    {
+      "desc": "destroyed",
+      "category": "word-verb",
+      "input": "They destroyed the evidence",
+      "pass": true,
+      "alternatives": [
+        "demolished",
+        "created",
+        "obliterated"
+      ],
+      "expectedAny": [
+        "preserved",
+        "eliminated",
+        "removed",
+        "concealed",
+        "shredded",
+        "burned",
+        "created"
+      ],
+      "matched": "created",
+      "latencyMs": 553
+    },
+    {
+      "desc": "laughed",
+      "category": "word-verb",
+      "input": "She laughed loudly",
+      "pass": true,
+      "alternatives": [
+        "chortled",
+        "quieted",
+        "snickered"
+      ],
+      "expectedAny": [
+        "giggled",
+        "chuckled",
+        "cried",
+        "snickered",
+        "roared",
+        "howled",
+        "sobbed"
+      ],
+      "matched": "snickered",
+      "latencyMs": 272
+    },
+    {
+      "desc": "carried",
+      "category": "word-verb",
+      "input": "He carried the box",
+      "pass": true,
+      "alternatives": [
+        "transported",
+        "dropped",
+        "lugged"
+      ],
+      "expectedAny": [
+        "lifted",
+        "dropped",
+        "hauled",
+        "moved",
+        "dragged",
+        "transported",
+        "held"
+      ],
+      "matched": "dropped",
+      "latencyMs": 575
+    },
+    {
+      "desc": "chose",
+      "category": "word-verb",
+      "input": "I chose the blue one",
+      "pass": true,
+      "alternatives": [
+        "selected",
+        "rejected",
+        "picked"
+      ],
+      "expectedAny": [
+        "selected",
+        "picked",
+        "rejected",
+        "preferred",
+        "grabbed",
+        "took"
+      ],
+      "matched": "selected",
+      "latencyMs": 737
+    },
+    {
+      "desc": "painted",
+      "category": "word-verb",
+      "input": "She painted the wall",
+      "pass": true,
+      "alternatives": [
+        "coated",
+        "stripped",
+        "splashed"
+      ],
+      "expectedAny": [
+        "decorated",
+        "drew",
+        "colored",
+        "coated",
+        "covered",
+        "stained"
+      ],
+      "matched": "coated",
+      "latencyMs": 450
+    },
+    {
+      "desc": "taught",
+      "category": "word-verb",
+      "input": "He taught the class",
+      "pass": true,
+      "alternatives": [
+        "instructed",
+        "ignored",
+        "mentored"
+      ],
+      "expectedAny": [
+        "instructed",
+        "educated",
+        "learned",
+        "trained",
+        "tutored",
+        "led",
+        "lectured"
+      ],
+      "matched": "instructed",
+      "latencyMs": 446
+    },
+    {
+      "desc": "promised",
+      "category": "word-verb",
+      "input": "They promised to return",
+      "pass": true,
+      "alternatives": [
+        "guaranteed",
+        "reneged",
+        "vowed"
+      ],
+      "expectedAny": [
+        "vowed",
+        "swore",
+        "pledged",
+        "refused",
+        "agreed",
+        "guaranteed"
+      ],
+      "matched": "vowed",
+      "latencyMs": 699
+    },
+    {
+      "desc": "whispered",
+      "category": "word-verb",
+      "input": "She whispered softly",
+      "pass": true,
+      "alternatives": [
+        "murmured",
+        "muttered",
+        "hissed"
+      ],
+      "expectedAny": [
+        "murmured",
+        "shouted",
+        "mumbled",
+        "hissed",
+        "muttered",
+        "spoke",
+        "breathed"
+      ],
+      "matched": "murmured",
+      "latencyMs": 318
+    },
+    {
+      "desc": "pushed",
+      "category": "word-verb",
+      "input": "He pushed the cart",
+      "pass": true,
+      "alternatives": [
+        "thrust",
+        "pulled",
+        "catapulted"
+      ],
+      "expectedAny": [
+        "pulled",
+        "shoved",
+        "dragged",
+        "moved",
+        "wheeled",
+        "rolled"
+      ],
+      "matched": "pulled",
+      "latencyMs": 349
+    },
+    {
+      "desc": "celebrated",
+      "category": "word-verb",
+      "input": "They celebrated victory",
+      "pass": true,
+      "alternatives": [
+        "honored",
+        "ignored",
+        "commemorated"
+      ],
+      "expectedAny": [
+        "mourned",
+        "enjoyed",
+        "cheered",
+        "honored",
+        "marked",
+        "toasted"
+      ],
+      "matched": "honored",
+      "latencyMs": 664
+    },
+    {
+      "desc": "grabbed",
+      "category": "word-verb",
+      "input": "She grabbed the rope",
+      "pass": true,
+      "alternatives": [
+        "seized",
+        "released",
+        "yanked"
+      ],
+      "expectedAny": [
+        "seized",
+        "released",
+        "clutched",
+        "snatched",
+        "caught",
+        "held",
+        "dropped"
+      ],
+      "matched": "seized",
+      "latencyMs": 1064
+    },
+    {
+      "desc": "decided",
+      "category": "word-verb",
+      "input": "He decided quickly",
+      "pass": true,
+      "alternatives": [
+        "chose",
+        "hesitated",
+        "committed"
+      ],
+      "expectedAny": [
+        "chose",
+        "hesitated",
+        "determined",
+        "resolved",
+        "concluded",
+        "picked"
+      ],
+      "matched": "chose",
+      "latencyMs": 437
+    },
+    {
+      "desc": "remembered",
+      "category": "word-verb",
+      "input": "I remembered the song",
+      "pass": false,
+      "alternatives": [
+        "recall",
+        "forget",
+        "evoke"
+      ],
+      "expectedAny": [
+        "forgot",
+        "recalled",
+        "recognized",
+        "hummed",
+        "recollected"
+      ],
+      "matched": null,
+      "latencyMs": 280
+    },
+    {
+      "desc": "accepted",
+      "category": "word-verb",
+      "input": "She accepted the offer",
+      "pass": true,
+      "alternatives": [
+        "agreed",
+        "rejected",
+        "endorsed"
+      ],
+      "expectedAny": [
+        "rejected",
+        "declined",
+        "received",
+        "took",
+        "embraced",
+        "refused"
+      ],
+      "matched": "rejected",
+      "latencyMs": 348
+    },
+    {
+      "desc": "dog",
+      "category": "word-noun",
+      "input": "The dog barked",
+      "pass": true,
+      "alternatives": [
+        "cat",
+        "wolf",
+        "puppy"
+      ],
+      "expectedAny": [
+        "cat",
+        "hound",
+        "puppy",
+        "wolf",
+        "animal",
+        "mutt"
+      ],
+      "matched": "cat",
+      "latencyMs": 382
+    },
+    {
+      "desc": "car",
+      "category": "word-noun",
+      "input": "The car stopped",
+      "pass": true,
+      "alternatives": [
+        "automobile",
+        "bike",
+        "ride"
+      ],
+      "expectedAny": [
+        "vehicle",
+        "truck",
+        "bus",
+        "train",
+        "van",
+        "automobile"
+      ],
+      "matched": "automobile",
+      "latencyMs": 548
+    },
+    {
+      "desc": "teacher",
+      "category": "word-noun",
+      "input": "The teacher spoke",
+      "pass": true,
+      "alternatives": [
+        "educator",
+        "student",
+        "guru"
+      ],
+      "expectedAny": [
+        "professor",
+        "instructor",
+        "student",
+        "lecturer",
+        "mentor",
+        "educator"
+      ],
+      "matched": "student",
+      "latencyMs": 601
+    },
+    {
+      "desc": "house",
+      "category": "word-noun",
+      "input": "The house collapsed",
+      "pass": true,
+      "alternatives": [
+        "home",
+        "ruin",
+        "nest"
+      ],
+      "expectedAny": [
+        "building",
+        "structure",
+        "home",
+        "tower",
+        "wall",
+        "roof"
+      ],
+      "matched": "home",
+      "latencyMs": 523
+    },
+    {
+      "desc": "child",
+      "category": "word-noun",
+      "input": "The child cried",
+      "pass": true,
+      "alternatives": [
+        "kid",
+        "adult",
+        "youngster"
+      ],
+      "expectedAny": [
+        "baby",
+        "boy",
+        "girl",
+        "kid",
+        "toddler",
+        "infant",
+        "adult"
+      ],
+      "matched": "kid",
+      "latencyMs": 401
+    },
+    {
+      "desc": "king",
+      "category": "word-noun",
+      "input": "The king ruled",
+      "pass": true,
+      "alternatives": [
+        "monarch",
+        "peasant",
+        "sovereign"
+      ],
+      "expectedAny": [
+        "queen",
+        "emperor",
+        "prince",
+        "ruler",
+        "monarch",
+        "dictator"
+      ],
+      "matched": "monarch",
+      "latencyMs": 619
+    },
+    {
+      "desc": "river",
+      "category": "word-noun",
+      "input": "The river flowed",
+      "pass": true,
+      "alternatives": [
+        "stream",
+        "desert",
+        "ribbon"
+      ],
+      "expectedAny": [
+        "stream",
+        "creek",
+        "water",
+        "ocean",
+        "lake",
+        "canal"
+      ],
+      "matched": "stream",
+      "latencyMs": 542
+    },
+    {
+      "desc": "sword",
+      "category": "word-noun",
+      "input": "The sword gleamed",
+      "pass": true,
+      "alternatives": [
+        "blade",
+        "shield",
+        "Excalibur"
+      ],
+      "expectedAny": [
+        "blade",
+        "knife",
+        "dagger",
+        "weapon",
+        "spear",
+        "shield"
+      ],
+      "matched": "blade",
+      "latencyMs": 494
+    },
+    {
+      "desc": "mountain",
+      "category": "word-noun",
+      "input": "The mountain loomed",
+      "pass": true,
+      "alternatives": [
+        "hill",
+        "plain",
+        "alp"
+      ],
+      "expectedAny": [
+        "hill",
+        "peak",
+        "cliff",
+        "volcano",
+        "ridge",
+        "summit"
+      ],
+      "matched": "hill",
+      "latencyMs": 470
+    },
+    {
+      "desc": "city",
+      "category": "word-noun",
+      "input": "The city bustled",
+      "pass": true,
+      "alternatives": [
+        "metropolis",
+        "village",
+        "megalopolis"
+      ],
+      "expectedAny": [
+        "town",
+        "village",
+        "metropolis",
+        "suburb",
+        "capital",
+        "country"
+      ],
+      "matched": "village",
+      "latencyMs": 727
+    },
+    {
+      "desc": "doctor",
+      "category": "word-noun",
+      "input": "The doctor arrived",
+      "pass": true,
+      "alternatives": [
+        "physician",
+        "patient",
+        "healer"
+      ],
+      "expectedAny": [
+        "nurse",
+        "surgeon",
+        "physician",
+        "patient",
+        "medic",
+        "specialist"
+      ],
+      "matched": "physician",
+      "latencyMs": 443
+    },
+    {
+      "desc": "ship",
+      "category": "word-noun",
+      "input": "The ship sailed",
+      "pass": true,
+      "alternatives": [
+        "vessel",
+        "land",
+        "ark"
+      ],
+      "expectedAny": [
+        "boat",
+        "vessel",
+        "yacht",
+        "submarine",
+        "ferry",
+        "craft"
+      ],
+      "matched": "vessel",
+      "latencyMs": 440
+    },
+    {
+      "desc": "forest",
+      "category": "word-noun",
+      "input": "The forest burned",
+      "pass": true,
+      "alternatives": [
+        "woods",
+        "desert",
+        "sylvan"
+      ],
+      "expectedAny": [
+        "jungle",
+        "woods",
+        "trees",
+        "field",
+        "meadow",
+        "wilderness"
+      ],
+      "matched": "woods",
+      "latencyMs": 580
+    },
+    {
+      "desc": "storm",
+      "category": "word-noun",
+      "input": "The storm raged",
+      "pass": true,
+      "alternatives": [
+        "tempest",
+        "calm",
+        "maelstrom"
+      ],
+      "expectedAny": [
+        "hurricane",
+        "tempest",
+        "blizzard",
+        "tornado",
+        "typhoon",
+        "wind",
+        "rain"
+      ],
+      "matched": "tempest",
+      "latencyMs": 497
+    },
+    {
+      "desc": "army",
+      "category": "word-noun",
+      "input": "The army advanced",
+      "pass": false,
+      "alternatives": [
+        "military",
+        "civilian",
+        "legion"
+      ],
+      "expectedAny": [
+        "troops",
+        "soldiers",
+        "forces",
+        "battalion",
+        "enemy",
+        "fleet",
+        "militia"
+      ],
+      "matched": null,
+      "latencyMs": 789
+    },
+    {
+      "desc": "equity",
+      "category": "word-finance",
+      "input": "The equity increased",
+      "pass": true,
+      "alternatives": [
+        "stock",
+        "debt",
+        "ownership"
+      ],
+      "expectedAny": [
+        "stock",
+        "shares",
+        "ownership",
+        "stake",
+        "debt",
+        "capital"
+      ],
+      "matched": "stock",
+      "latencyMs": 436
+    },
+    {
+      "desc": "dividend",
+      "category": "word-finance",
+      "input": "The dividend was paid",
+      "pass": true,
+      "alternatives": [
+        "distribution",
+        "retention",
+        "cash splash"
+      ],
+      "expectedAny": [
+        "payout",
+        "distribution",
+        "yield",
+        "return",
+        "interest",
+        "payment"
+      ],
+      "matched": "distribution",
+      "latencyMs": 207
+    },
+    {
+      "desc": "portfolio",
+      "category": "word-finance",
+      "input": "His portfolio grew",
+      "pass": true,
+      "alternatives": [
+        "holdings",
+        "assets",
+        "investments"
+      ],
+      "expectedAny": [
+        "holdings",
+        "investments",
+        "assets",
+        "fund",
+        "collection",
+        "account"
+      ],
+      "matched": "holdings",
+      "latencyMs": 519
+    },
+    {
+      "desc": "leverage",
+      "category": "word-finance",
+      "input": "The leverage was high",
+      "pass": true,
+      "alternatives": [
+        "equity",
+        "debt",
+        "gear"
+      ],
+      "expectedAny": [
+        "debt",
+        "borrowing",
+        "margin",
+        "gearing",
+        "exposure",
+        "risk"
+      ],
+      "matched": "debt",
+      "latencyMs": 203
+    },
+    {
+      "desc": "hedge",
+      "category": "word-finance",
+      "input": "The hedge protected",
+      "pass": true,
+      "alternatives": [
+        "offset",
+        "expose",
+        "buffer"
+      ],
+      "expectedAny": [
+        "protection",
+        "insurance",
+        "safeguard",
+        "shield",
+        "buffer",
+        "offset"
+      ],
+      "matched": "buffer",
+      "latencyMs": 380
+    },
+    {
+      "desc": "yield",
+      "category": "word-finance",
+      "input": "The yield dropped",
+      "pass": true,
+      "alternatives": [
+        "return",
+        "loss",
+        "harvest"
+      ],
+      "expectedAny": [
+        "return",
+        "interest",
+        "rate",
+        "profit",
+        "income",
+        "dividend"
+      ],
+      "matched": "return",
+      "latencyMs": 537
+    },
+    {
+      "desc": "liquidity",
+      "category": "word-finance",
+      "input": "Check the liquidity",
+      "pass": false,
+      "alternatives": [],
+      "expectedAny": [
+        "cash flow",
+        "solvency",
+        "availability",
+        "fluidity",
+        "convertibility",
+        "cash"
+      ],
+      "matched": null,
+      "latencyMs": 289
+    },
+    {
+      "desc": "depreciation",
+      "category": "word-finance",
+      "input": "The depreciation accelerated",
+      "pass": true,
+      "alternatives": [
+        "amortization",
+        "appreciation",
+        "wear-and-tear"
+      ],
+      "expectedAny": [
+        "decline",
+        "devaluation",
+        "amortization",
+        "write-down",
+        "loss",
+        "appreciation"
+      ],
+      "matched": "amortization",
+      "latencyMs": 433
+    },
+    {
+      "desc": "collateral",
+      "category": "word-finance",
+      "input": "The collateral was seized",
+      "pass": true,
+      "alternatives": [
+        "security",
+        "liability",
+        "buffer"
+      ],
+      "expectedAny": [
+        "security",
+        "guarantee",
+        "asset",
+        "pledge",
+        "surety",
+        "deposit"
+      ],
+      "matched": "security",
+      "latencyMs": 321
+    },
+    {
+      "desc": "arbitrage",
+      "category": "word-finance",
+      "input": "The arbitrage opportunity",
+      "pass": true,
+      "alternatives": [
+        "speculation",
+        "inefficiency",
+        "price-gap‑exploitation"
+      ],
+      "expectedAny": [
+        "trading",
+        "speculation",
+        "opportunity",
+        "profit",
+        "exploit",
+        "spread"
+      ],
+      "matched": "speculation",
+      "latencyMs": 421
+    },
+    {
+      "desc": "securities",
+      "category": "word-finance",
+      "input": "The securities were traded",
+      "pass": true,
+      "alternatives": [
+        "stocks",
+        "liabilities",
+        "instruments"
+      ],
+      "expectedAny": [
+        "stocks",
+        "bonds",
+        "assets",
+        "instruments",
+        "shares",
+        "holdings"
+      ],
+      "matched": "stocks",
+      "latencyMs": 594
+    },
+    {
+      "desc": "derivative",
+      "category": "word-finance",
+      "input": "The derivative expired",
+      "pass": true,
+      "alternatives": [
+        "instrument",
+        "asset",
+        "synthetic"
+      ],
+      "expectedAny": [
+        "option",
+        "contract",
+        "future",
+        "swap",
+        "instrument",
+        "warrant"
+      ],
+      "matched": "instrument",
+      "latencyMs": 552
+    },
+    {
+      "desc": "amortization",
+      "category": "word-finance",
+      "input": "The amortization schedule",
+      "pass": true,
+      "alternatives": [
+        "repayment",
+        "accumulation",
+        "paydown"
+      ],
+      "expectedAny": [
+        "repayment",
+        "depreciation",
+        "payment",
+        "installment",
+        "write-off",
+        "payoff"
+      ],
+      "matched": "repayment",
+      "latencyMs": 365
+    },
+    {
+      "desc": "portfolio in context",
+      "category": "word-finance",
+      "input": "The portfolio lost equity value",
+      "pass": true,
+      "alternatives": [
+        "holdings",
+        "liability",
+        "collection"
+      ],
+      "expectedAny": [
+        "holdings",
+        "investments",
+        "assets",
+        "fund",
+        "account"
+      ],
+      "matched": "holdings",
+      "latencyMs": 741
+    },
+    {
+      "desc": "derivatives in context",
+      "category": "word-finance",
+      "input": "The hedge fund leveraged derivatives",
+      "pass": false,
+      "alternatives": [
+        "geared",
+        "unleveraged",
+        "turbocharged"
+      ],
+      "expectedAny": [
+        "options",
+        "contracts",
+        "futures",
+        "swaps",
+        "instruments",
+        "securities"
+      ],
+      "matched": null,
+      "latencyMs": 895
+    },
+    {
+      "desc": "4*12",
+      "category": "blank-math",
+      "input": "4 * 12 = _",
+      "pass": true,
+      "alternatives": [
+        "48"
+      ],
+      "expectedAny": [
+        "48"
+      ],
+      "matched": "48",
+      "latencyMs": 194
+    },
+    {
+      "desc": "100/4",
+      "category": "blank-math",
+      "input": "100 / 4 = _",
+      "pass": true,
+      "alternatives": [
+        "25"
+      ],
+      "expectedAny": [
+        "25"
+      ],
+      "matched": "25",
+      "latencyMs": 259
+    },
+    {
+      "desc": "7+8",
+      "category": "blank-math",
+      "input": "7 + 8 = _",
+      "pass": true,
+      "alternatives": [
+        "15"
+      ],
+      "expectedAny": [
+        "15"
+      ],
+      "matched": "15",
+      "latencyMs": 126
+    },
+    {
+      "desc": "50-17",
+      "category": "blank-math",
+      "input": "50 - 17 = _",
+      "pass": true,
+      "alternatives": [
+        "33"
+      ],
+      "expectedAny": [
+        "33"
+      ],
+      "matched": "33",
+      "latencyMs": 152
+    },
+    {
+      "desc": "2*2*2",
+      "category": "blank-math",
+      "input": "2 * 2 * 2 = _",
+      "pass": true,
+      "alternatives": [
+        "8"
+      ],
+      "expectedAny": [
+        "8"
+      ],
+      "matched": "8",
+      "latencyMs": 118
+    },
+    {
+      "desc": "99+1",
+      "category": "blank-math",
+      "input": "99 + 1 = _",
+      "pass": true,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 185
+    },
+    {
+      "desc": "15*15",
+      "category": "blank-math",
+      "input": "15 * 15 = _",
+      "pass": true,
+      "alternatives": [
+        "225"
+      ],
+      "expectedAny": [
+        "225"
+      ],
+      "matched": "225",
+      "latencyMs": 165
+    },
+    {
+      "desc": "1000-1",
+      "category": "blank-math",
+      "input": "1000 - 1 = _",
+      "pass": true,
+      "alternatives": [
+        "999"
+      ],
+      "expectedAny": [
+        "999"
+      ],
+      "matched": "999",
+      "latencyMs": 112
+    },
+    {
+      "desc": "81/9",
+      "category": "blank-math",
+      "input": "81 / 9 = _",
+      "pass": true,
+      "alternatives": [
+        "9"
+      ],
+      "expectedAny": [
+        "9"
+      ],
+      "matched": "9",
+      "latencyMs": 150
+    },
+    {
+      "desc": "25+75",
+      "category": "blank-math",
+      "input": "25 + 75 = _",
+      "pass": true,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 112
+    },
+    {
+      "desc": "123+456",
+      "category": "blank-math",
+      "input": "123 + 456 = _",
+      "pass": true,
+      "alternatives": [
+        "579"
+      ],
+      "expectedAny": [
+        "579"
+      ],
+      "matched": "579",
+      "latencyMs": 109
+    },
+    {
+      "desc": "999-500",
+      "category": "blank-math",
+      "input": "999 - 500 = _",
+      "pass": true,
+      "alternatives": [
+        "499"
+      ],
+      "expectedAny": [
+        "499"
+      ],
+      "matched": "499",
+      "latencyMs": 169
+    },
+    {
+      "desc": "12*12",
+      "category": "blank-math",
+      "input": "12 * 12 = _",
+      "pass": true,
+      "alternatives": [
+        "144"
+      ],
+      "expectedAny": [
+        "144"
+      ],
+      "matched": "144",
+      "latencyMs": 105
+    },
+    {
+      "desc": "200/8",
+      "category": "blank-math",
+      "input": "200 / 8 = _",
+      "pass": true,
+      "alternatives": [
+        "25"
+      ],
+      "expectedAny": [
+        "25"
+      ],
+      "matched": "25",
+      "latencyMs": 170
+    },
+    {
+      "desc": "33*3",
+      "category": "blank-math",
+      "input": "33 * 3 = _",
+      "pass": true,
+      "alternatives": [
+        "99"
+      ],
+      "expectedAny": [
+        "99"
+      ],
+      "matched": "99",
+      "latencyMs": 129
+    },
+    {
+      "desc": "half of 16",
+      "category": "blank-math",
+      "input": "half of 16 = _",
+      "pass": true,
+      "alternatives": [
+        "8"
+      ],
+      "expectedAny": [
+        "8"
+      ],
+      "matched": "8",
+      "latencyMs": 117
+    },
+    {
+      "desc": "double 25",
+      "category": "blank-math",
+      "input": "double 25 = _",
+      "pass": true,
+      "alternatives": [
+        "50"
+      ],
+      "expectedAny": [
+        "50"
+      ],
+      "matched": "50",
+      "latencyMs": 151
+    },
+    {
+      "desc": "triple 7",
+      "category": "blank-math",
+      "input": "triple 7 = _",
+      "pass": true,
+      "alternatives": [
+        "21"
+      ],
+      "expectedAny": [
+        "21"
+      ],
+      "matched": "21",
+      "latencyMs": 114
+    },
+    {
+      "desc": "half of 100",
+      "category": "blank-math",
+      "input": "half of 100 = _",
+      "pass": true,
+      "alternatives": [
+        "50"
+      ],
+      "expectedAny": [
+        "50"
+      ],
+      "matched": "50",
+      "latencyMs": 102
+    },
+    {
+      "desc": "double 50",
+      "category": "blank-math",
+      "input": "double 50 = _",
+      "pass": true,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 146
+    },
+    {
+      "desc": "10+20*3",
+      "category": "blank-math",
+      "input": "10 + 20 * 3 = _",
+      "pass": true,
+      "alternatives": [
+        "70"
+      ],
+      "expectedAny": [
+        "70",
+        "90"
+      ],
+      "matched": "70",
+      "latencyMs": 113
+    },
+    {
+      "desc": "5*5+5",
+      "category": "blank-math",
+      "input": "5 * 5 + 5 = _",
+      "pass": true,
+      "alternatives": [
+        "30"
+      ],
+      "expectedAny": [
+        "30"
+      ],
+      "matched": "30",
+      "latencyMs": 152
+    },
+    {
+      "desc": "100-25*2",
+      "category": "blank-math",
+      "input": "100 - 25 * 2 = _",
+      "pass": true,
+      "alternatives": [
+        "50"
+      ],
+      "expectedAny": [
+        "50"
+      ],
+      "matched": "50",
+      "latencyMs": 108
+    },
+    {
+      "desc": "50+50",
+      "category": "blank-math",
+      "input": "50 + 50 = _",
+      "pass": true,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 152
+    },
+    {
+      "desc": "1+2+3+4",
+      "category": "blank-math",
+      "input": "1 + 2 + 3 + 4 = _",
+      "pass": true,
+      "alternatives": [
+        "10"
+      ],
+      "expectedAny": [
+        "10"
+      ],
+      "matched": "10",
+      "latencyMs": 444
+    },
+    {
+      "desc": "9*9",
+      "category": "blank-math",
+      "input": "9 * 9 = _",
+      "pass": true,
+      "alternatives": [
+        "81"
+      ],
+      "expectedAny": [
+        "81"
+      ],
+      "matched": "81",
+      "latencyMs": 139
+    },
+    {
+      "desc": "7*7",
+      "category": "blank-math",
+      "input": "7 * 7 = _",
+      "pass": true,
+      "alternatives": [
+        "49"
+      ],
+      "expectedAny": [
+        "49"
+      ],
+      "matched": "49",
+      "latencyMs": 108
+    },
+    {
+      "desc": "6*8",
+      "category": "blank-math",
+      "input": "6 * 8 = _",
+      "pass": true,
+      "alternatives": [
+        "48"
+      ],
+      "expectedAny": [
+        "48"
+      ],
+      "matched": "48",
+      "latencyMs": 109
+    },
+    {
+      "desc": "11*11",
+      "category": "blank-math",
+      "input": "11 * 11 = _",
+      "pass": true,
+      "alternatives": [
+        "121"
+      ],
+      "expectedAny": [
+        "121"
+      ],
+      "matched": "121",
+      "latencyMs": 150
+    },
+    {
+      "desc": "144/12",
+      "category": "blank-math",
+      "input": "144 / 12 = _",
+      "pass": true,
+      "alternatives": [
+        "12"
+      ],
+      "expectedAny": [
+        "12"
+      ],
+      "matched": "12",
+      "latencyMs": 108
+    },
+    {
+      "desc": "capital of France",
+      "category": "blank-factual",
+      "input": "The capital of France is _",
+      "pass": true,
+      "alternatives": [
+        "Paris"
+      ],
+      "expectedAny": [
+        "Paris"
+      ],
+      "matched": "Paris",
+      "latencyMs": 74
+    },
+    {
+      "desc": "capital of Japan",
+      "category": "blank-factual",
+      "input": "The capital of Japan is _",
+      "pass": true,
+      "alternatives": [
+        "Tokyo"
+      ],
+      "expectedAny": [
+        "Tokyo"
+      ],
+      "matched": "Tokyo",
+      "latencyMs": 111
+    },
+    {
+      "desc": "capital of Germany",
+      "category": "blank-factual",
+      "input": "The capital of Germany is _",
+      "pass": true,
+      "alternatives": [
+        "Berlin"
+      ],
+      "expectedAny": [
+        "Berlin"
+      ],
+      "matched": "Berlin",
+      "latencyMs": 68
+    },
+    {
+      "desc": "capital of Italy",
+      "category": "blank-factual",
+      "input": "The capital of Italy is _",
+      "pass": true,
+      "alternatives": [
+        "Rome"
+      ],
+      "expectedAny": [
+        "Rome",
+        "Roma"
+      ],
+      "matched": "Rome",
+      "latencyMs": 77
+    },
+    {
+      "desc": "capital of Australia",
+      "category": "blank-factual",
+      "input": "The capital of Australia is _",
+      "pass": true,
+      "alternatives": [
+        "Canberra"
+      ],
+      "expectedAny": [
+        "Canberra"
+      ],
+      "matched": "Canberra",
+      "latencyMs": 75
+    },
+    {
+      "desc": "capital of Brazil",
+      "category": "blank-factual",
+      "input": "The capital of Brazil is _",
+      "pass": true,
+      "alternatives": [
+        "Brasília"
+      ],
+      "expectedAny": [
+        "Brasilia",
+        "Brasília"
+      ],
+      "matched": "Brasília",
+      "latencyMs": 118
+    },
+    {
+      "desc": "capital of Canada",
+      "category": "blank-factual",
+      "input": "The capital of Canada is _",
+      "pass": true,
+      "alternatives": [
+        "Ottawa"
+      ],
+      "expectedAny": [
+        "Ottawa"
+      ],
+      "matched": "Ottawa",
+      "latencyMs": 139
+    },
+    {
+      "desc": "capital of Egypt",
+      "category": "blank-factual",
+      "input": "The capital of Egypt is _",
+      "pass": true,
+      "alternatives": [
+        "Cairo"
+      ],
+      "expectedAny": [
+        "Cairo"
+      ],
+      "matched": "Cairo",
+      "latencyMs": 200
+    },
+    {
+      "desc": "capital of Spain",
+      "category": "blank-factual",
+      "input": "The capital of Spain is _",
+      "pass": true,
+      "alternatives": [
+        "Madrid"
+      ],
+      "expectedAny": [
+        "Madrid"
+      ],
+      "matched": "Madrid",
+      "latencyMs": 111
+    },
+    {
+      "desc": "capital of India",
+      "category": "blank-factual",
+      "input": "The capital of India is _",
+      "pass": true,
+      "alternatives": [
+        "New Delhi"
+      ],
+      "expectedAny": [
+        "New Delhi",
+        "Delhi"
+      ],
+      "matched": "New Delhi",
+      "latencyMs": 314
+    },
+    {
+      "desc": "CEO of Apple",
+      "category": "blank-factual",
+      "input": "The CEO of Apple is _",
+      "pass": true,
+      "alternatives": [
+        "Tim Cook"
+      ],
+      "expectedAny": [
+        "Tim Cook"
+      ],
+      "matched": "Tim Cook",
+      "latencyMs": 209
+    },
+    {
+      "desc": "author of HP",
+      "category": "blank-factual",
+      "input": "The author of Harry Potter is _",
+      "pass": true,
+      "alternatives": [
+        "J.K. Rowling"
+      ],
+      "expectedAny": [
+        "J.K. Rowling",
+        "Rowling",
+        "JK Rowling"
+      ],
+      "matched": "J.K. Rowling",
+      "latencyMs": 111
+    },
+    {
+      "desc": "founder of MSFT",
+      "category": "blank-factual",
+      "input": "The founder of Microsoft is _",
+      "pass": true,
+      "alternatives": [
+        "Bill Gates"
+      ],
+      "expectedAny": [
+        "Bill Gates",
+        "Gates"
+      ],
+      "matched": "Bill Gates",
+      "latencyMs": 250
+    },
+    {
+      "desc": "founder of Amazon",
+      "category": "blank-factual",
+      "input": "The founder of Amazon is _",
+      "pass": true,
+      "alternatives": [
+        "Jeff Bezos"
+      ],
+      "expectedAny": [
+        "Jeff Bezos",
+        "Bezos"
+      ],
+      "matched": "Jeff Bezos",
+      "latencyMs": 104
+    },
+    {
+      "desc": "CEO of Tesla",
+      "category": "blank-factual",
+      "input": "The CEO of Tesla is _",
+      "pass": true,
+      "alternatives": [
+        "Elon Musk"
+      ],
+      "expectedAny": [
+        "Elon Musk",
+        "Musk"
+      ],
+      "matched": "Elon Musk",
+      "latencyMs": 216
+    },
+    {
+      "desc": "author of 1984",
+      "category": "blank-factual",
+      "input": "The author of 1984 is _",
+      "pass": true,
+      "alternatives": [
+        "George Orwell"
+      ],
+      "expectedAny": [
+        "George Orwell",
+        "Orwell"
+      ],
+      "matched": "George Orwell",
+      "latencyMs": 85
+    },
+    {
+      "desc": "founder of Apple",
+      "category": "blank-factual",
+      "input": "The founder of Apple is _",
+      "pass": true,
+      "alternatives": [
+        "Steve Jobs"
+      ],
+      "expectedAny": [
+        "Steve Jobs",
+        "Jobs"
+      ],
+      "matched": "Steve Jobs",
+      "latencyMs": 117
+    },
+    {
+      "desc": "author of R&J",
+      "category": "blank-factual",
+      "input": "The author of Romeo and Juliet is _",
+      "pass": true,
+      "alternatives": [
+        "William Shakespeare"
+      ],
+      "expectedAny": [
+        "Shakespeare",
+        "William Shakespeare"
+      ],
+      "matched": "William Shakespeare",
+      "latencyMs": 113
+    },
+    {
+      "desc": "symbol for gold",
+      "category": "blank-factual",
+      "input": "The chemical symbol for gold is _",
+      "pass": true,
+      "alternatives": [
+        "Au"
+      ],
+      "expectedAny": [
+        "Au"
+      ],
+      "matched": "Au",
+      "latencyMs": 146
+    },
+    {
+      "desc": "symbol for iron",
+      "category": "blank-factual",
+      "input": "The chemical symbol for iron is _",
+      "pass": true,
+      "alternatives": [
+        "Fe"
+      ],
+      "expectedAny": [
+        "Fe"
+      ],
+      "matched": "Fe",
+      "latencyMs": 105
+    },
+    {
+      "desc": "symbol for silver",
+      "category": "blank-factual",
+      "input": "The chemical symbol for silver is _",
+      "pass": true,
+      "alternatives": [
+        "Ag"
+      ],
+      "expectedAny": [
+        "Ag"
+      ],
+      "matched": "Ag",
+      "latencyMs": 114
+    },
+    {
+      "desc": "largest ocean",
+      "category": "blank-factual",
+      "input": "The largest ocean is the _",
+      "pass": true,
+      "alternatives": [
+        "Pacific"
+      ],
+      "expectedAny": [
+        "Pacific"
+      ],
+      "matched": "Pacific",
+      "latencyMs": 75
+    },
+    {
+      "desc": "tallest mountain",
+      "category": "blank-factual",
+      "input": "The tallest mountain is _",
+      "pass": true,
+      "alternatives": [
+        "Mount Everest"
+      ],
+      "expectedAny": [
+        "Everest",
+        "Mount Everest",
+        "Mt. Everest"
+      ],
+      "matched": "Mount Everest",
+      "latencyMs": 136
+    },
+    {
+      "desc": "longest river",
+      "category": "blank-factual",
+      "input": "The longest river is the _",
+      "pass": true,
+      "alternatives": [
+        "Nile"
+      ],
+      "expectedAny": [
+        "Nile",
+        "Amazon"
+      ],
+      "matched": "Nile",
+      "latencyMs": 271
+    },
+    {
+      "desc": "largest planet",
+      "category": "blank-factual",
+      "input": "The largest planet is _",
+      "pass": true,
+      "alternatives": [
+        "Jupiter"
+      ],
+      "expectedAny": [
+        "Jupiter"
+      ],
+      "matched": "Jupiter",
+      "latencyMs": 104
+    },
+    {
+      "desc": "first US president",
+      "category": "blank-factual",
+      "input": "who was the first president of the US _",
+      "pass": true,
+      "alternatives": [
+        "George Washington"
+      ],
+      "expectedAny": [
+        "George Washington",
+        "Washington"
+      ],
+      "matched": "George Washington",
+      "latencyMs": 72
+    },
+    {
+      "desc": "telephone inventor",
+      "category": "blank-factual",
+      "input": "who was the inventor of the telephone _",
+      "pass": true,
+      "alternatives": [
+        "Alexander Graham Bell"
+      ],
+      "expectedAny": [
+        "Alexander Graham Bell",
+        "Bell",
+        "Graham Bell"
+      ],
+      "matched": "Alexander Graham Bell",
+      "latencyMs": 98
+    },
+    {
+      "desc": "CEO of Google",
+      "category": "blank-factual",
+      "input": "who is the CEO of Google _",
+      "pass": true,
+      "alternatives": [
+        "Sundar Pichai"
+      ],
+      "expectedAny": [
+        "Sundar Pichai",
+        "Pichai"
+      ],
+      "matched": "Sundar Pichai",
+      "latencyMs": 105
+    },
+    {
+      "desc": "Mona Lisa painter",
+      "category": "blank-factual",
+      "input": "who was the painter of the Mona Lisa _",
+      "pass": true,
+      "alternatives": [
+        "Leonardo da Vinci"
+      ],
+      "expectedAny": [
+        "Leonardo da Vinci",
+        "Da Vinci",
+        "Leonardo"
+      ],
+      "matched": "Leonardo da Vinci",
+      "latencyMs": 114
+    },
+    {
+      "desc": "founder of Facebook",
+      "category": "blank-factual",
+      "input": "who is the founder of Facebook _",
+      "pass": true,
+      "alternatives": [
+        "Mark Zuckerberg"
+      ],
+      "expectedAny": [
+        "Mark Zuckerberg",
+        "Zuckerberg"
+      ],
+      "matched": "Mark Zuckerberg",
+      "latencyMs": 105
+    },
+    {
+      "desc": "hello → French",
+      "category": "blank-translate",
+      "input": "Hello in French is _",
+      "pass": true,
+      "alternatives": [
+        "Bonjour"
+      ],
+      "expectedAny": [
+        "Bonjour",
+        "bonjour",
+        "Salut"
+      ],
+      "matched": "Bonjour",
+      "latencyMs": 111
+    },
+    {
+      "desc": "goodbye → French",
+      "category": "blank-translate",
+      "input": "Goodbye in French is _",
+      "pass": true,
+      "alternatives": [
+        "Au revoir"
+      ],
+      "expectedAny": [
+        "Au revoir",
+        "au revoir",
+        "Adieu"
+      ],
+      "matched": "Au revoir",
+      "latencyMs": 97
+    },
+    {
+      "desc": "bread → French",
+      "category": "blank-translate",
+      "input": "Bread in French is _",
+      "pass": true,
+      "alternatives": [
+        "Pain"
+      ],
+      "expectedAny": [
+        "Pain",
+        "pain"
+      ],
+      "matched": "Pain",
+      "latencyMs": 84
+    },
+    {
+      "desc": "water → French",
+      "category": "blank-translate",
+      "input": "Water in French is _",
+      "pass": true,
+      "alternatives": [
+        "Eau"
+      ],
+      "expectedAny": [
+        "Eau",
+        "eau"
+      ],
+      "matched": "Eau",
+      "latencyMs": 126
+    },
+    {
+      "desc": "thank you → French",
+      "category": "blank-translate",
+      "input": "Thank you in French is _",
+      "pass": true,
+      "alternatives": [
+        "Merci"
+      ],
+      "expectedAny": [
+        "Merci",
+        "merci"
+      ],
+      "matched": "Merci",
+      "latencyMs": 78
+    },
+    {
+      "desc": "dog → Spanish",
+      "category": "blank-translate",
+      "input": "Dog in Spanish is _",
+      "pass": true,
+      "alternatives": [
+        "Perro"
+      ],
+      "expectedAny": [
+        "Perro",
+        "perro"
+      ],
+      "matched": "Perro",
+      "latencyMs": 83
+    },
+    {
+      "desc": "cat → Spanish",
+      "category": "blank-translate",
+      "input": "Cat in Spanish is _",
+      "pass": true,
+      "alternatives": [
+        "Gato"
+      ],
+      "expectedAny": [
+        "Gato",
+        "gato"
+      ],
+      "matched": "Gato",
+      "latencyMs": 84
+    },
+    {
+      "desc": "red → Spanish",
+      "category": "blank-translate",
+      "input": "Red in Spanish is _",
+      "pass": true,
+      "alternatives": [
+        "Rojo"
+      ],
+      "expectedAny": [
+        "Rojo",
+        "rojo"
+      ],
+      "matched": "Rojo",
+      "latencyMs": 117
+    },
+    {
+      "desc": "house → Spanish",
+      "category": "blank-translate",
+      "input": "House in Spanish is _",
+      "pass": true,
+      "alternatives": [
+        "Casa"
+      ],
+      "expectedAny": [
+        "Casa",
+        "casa"
+      ],
+      "matched": "Casa",
+      "latencyMs": 118
+    },
+    {
+      "desc": "good morning → Spanish",
+      "category": "blank-translate",
+      "input": "Good morning in Spanish is _",
+      "pass": true,
+      "alternatives": [
+        "Buenos dias"
+      ],
+      "expectedAny": [
+        "Buenos dias",
+        "Buenos días",
+        "buenos dias"
+      ],
+      "matched": "Buenos dias",
+      "latencyMs": 198
+    },
+    {
+      "desc": "house → German",
+      "category": "blank-translate",
+      "input": "The German word for house is _",
+      "pass": true,
+      "alternatives": [
+        "Haus"
+      ],
+      "expectedAny": [
+        "Haus",
+        "haus"
+      ],
+      "matched": "Haus",
+      "latencyMs": 79
+    },
+    {
+      "desc": "book → German",
+      "category": "blank-translate",
+      "input": "Book in German is _",
+      "pass": true,
+      "alternatives": [
+        "Buch"
+      ],
+      "expectedAny": [
+        "Buch",
+        "buch"
+      ],
+      "matched": "Buch",
+      "latencyMs": 83
+    },
+    {
+      "desc": "water → German",
+      "category": "blank-translate",
+      "input": "Water in German is _",
+      "pass": true,
+      "alternatives": [
+        "Wasser"
+      ],
+      "expectedAny": [
+        "Wasser",
+        "wasser"
+      ],
+      "matched": "Wasser",
+      "latencyMs": 130
+    },
+    {
+      "desc": "thank you → German",
+      "category": "blank-translate",
+      "input": "Thank you in German is _",
+      "pass": true,
+      "alternatives": [
+        "Danke"
+      ],
+      "expectedAny": [
+        "Danke",
+        "danke"
+      ],
+      "matched": "Danke",
+      "latencyMs": 122
+    },
+    {
+      "desc": "good night → German",
+      "category": "blank-translate",
+      "input": "Good night in German is _",
+      "pass": true,
+      "alternatives": [
+        "Gute Nacht"
+      ],
+      "expectedAny": [
+        "Gute Nacht",
+        "gute Nacht",
+        "gute nacht"
+      ],
+      "matched": "Gute Nacht",
+      "latencyMs": 127
+    },
+    {
+      "desc": "goodbye → Italian",
+      "category": "blank-translate",
+      "input": "How do you say goodbye in Italian _",
+      "pass": true,
+      "alternatives": [
+        "Arrivederci"
+      ],
+      "expectedAny": [
+        "Arrivederci",
+        "arrivederci",
+        "Ciao",
+        "ciao"
+      ],
+      "matched": "Arrivederci",
+      "latencyMs": 91
+    },
+    {
+      "desc": "love → Italian",
+      "category": "blank-translate",
+      "input": "Love in Italian is _",
+      "pass": true,
+      "alternatives": [
+        "Amore"
+      ],
+      "expectedAny": [
+        "Amore",
+        "amore"
+      ],
+      "matched": "Amore",
+      "latencyMs": 102
+    },
+    {
+      "desc": "friend → Italian",
+      "category": "blank-translate",
+      "input": "Friend in Italian is _",
+      "pass": true,
+      "alternatives": [
+        "Amico"
+      ],
+      "expectedAny": [
+        "Amico",
+        "amico",
+        "Amica"
+      ],
+      "matched": "Amico",
+      "latencyMs": 98
+    },
+    {
+      "desc": "thank you → Japanese",
+      "category": "blank-translate",
+      "input": "Thank you in Japanese is _",
+      "pass": true,
+      "alternatives": [
+        "Arigatou"
+      ],
+      "expectedAny": [
+        "Arigatou",
+        "arigatou",
+        "Arigato",
+        "arigato",
+        "Arigatō"
+      ],
+      "matched": "Arigatou",
+      "latencyMs": 99
+    },
+    {
+      "desc": "hello → Japanese",
+      "category": "blank-translate",
+      "input": "Hello in Japanese is _",
+      "pass": true,
+      "alternatives": [
+        "Konnichiwa"
+      ],
+      "expectedAny": [
+        "Konnichiwa",
+        "konnichiwa",
+        "Konnichi wa"
+      ],
+      "matched": "Konnichiwa",
+      "latencyMs": 110
+    },
+    {
+      "desc": "cat → Portuguese",
+      "category": "blank-translate",
+      "input": "Cat in Portuguese is _",
+      "pass": true,
+      "alternatives": [
+        "Gato"
+      ],
+      "expectedAny": [
+        "Gato",
+        "gato"
+      ],
+      "matched": "Gato",
+      "latencyMs": 130
+    },
+    {
+      "desc": "thank you → Portuguese",
+      "category": "blank-translate",
+      "input": "Thank you in Portuguese is _",
+      "pass": true,
+      "alternatives": [
+        "Obrigado"
+      ],
+      "expectedAny": [
+        "Obrigado",
+        "obrigado",
+        "Obrigada"
+      ],
+      "matched": "Obrigado",
+      "latencyMs": 145
+    },
+    {
+      "desc": "love → Latin",
+      "category": "blank-translate",
+      "input": "Love in Latin is _",
+      "pass": true,
+      "alternatives": [
+        "Amor"
+      ],
+      "expectedAny": [
+        "Amor",
+        "amor"
+      ],
+      "matched": "Amor",
+      "latencyMs": 193
+    },
+    {
+      "desc": "peace → Latin",
+      "category": "blank-translate",
+      "input": "Peace in Latin is _",
+      "pass": true,
+      "alternatives": [
+        "Pax"
+      ],
+      "expectedAny": [
+        "Pax",
+        "pax"
+      ],
+      "matched": "Pax",
+      "latencyMs": 91
+    },
+    {
+      "desc": "friend → Korean",
+      "category": "blank-translate",
+      "input": "Friend in Korean is _",
+      "pass": true,
+      "alternatives": [
+        "Chingu"
+      ],
+      "expectedAny": [
+        "Chingu",
+        "chingu",
+        "Chin-gu",
+        "Chingoo"
+      ],
+      "matched": "Chingu",
+      "latencyMs": 91
+    },
+    {
+      "desc": "peace → Arabic",
+      "category": "blank-translate",
+      "input": "Peace in Arabic is _",
+      "pass": true,
+      "alternatives": [
+        "Salaam"
+      ],
+      "expectedAny": [
+        "Salaam",
+        "salaam",
+        "Salam",
+        "salam"
+      ],
+      "matched": "Salaam",
+      "latencyMs": 111
+    },
+    {
+      "desc": "hello → Russian",
+      "category": "blank-translate",
+      "input": "Hello in Russian is _",
+      "pass": true,
+      "alternatives": [
+        "Privet"
+      ],
+      "expectedAny": [
+        "Privet",
+        "privet",
+        "Zdravstvuyte",
+        "Zdrastvuyte"
+      ],
+      "matched": "Privet",
+      "latencyMs": 95
+    },
+    {
+      "desc": "peace → Hebrew",
+      "category": "blank-translate",
+      "input": "Peace in Hebrew is _",
+      "pass": true,
+      "alternatives": [
+        "Shalom"
+      ],
+      "expectedAny": [
+        "Shalom",
+        "shalom"
+      ],
+      "matched": "Shalom",
+      "latencyMs": 82
+    },
+    {
+      "desc": "thank you → Chinese",
+      "category": "blank-translate",
+      "input": "Thank you in Chinese is _",
+      "pass": true,
+      "alternatives": [
+        "Xie xie"
+      ],
+      "expectedAny": [
+        "Xie xie",
+        "xie xie",
+        "Xiexie",
+        "xiexie",
+        "Xièxiè"
+      ],
+      "matched": "Xie xie",
+      "latencyMs": 114
+    },
+    {
+      "desc": "beautiful → French",
+      "category": "blank-translate",
+      "input": "The French word for beautiful is _",
+      "pass": true,
+      "alternatives": [
+        "Beau"
+      ],
+      "expectedAny": [
+        "Belle",
+        "belle",
+        "Beau",
+        "beau",
+        "Magnifique"
+      ],
+      "matched": "Beau",
+      "latencyMs": 198
+    },
+    {
+      "desc": "100C→F",
+      "category": "blank-unit",
+      "input": "100 celsius in fahrenheit is _",
+      "pass": true,
+      "alternatives": [
+        "212"
+      ],
+      "expectedAny": [
+        "212"
+      ],
+      "matched": "212",
+      "latencyMs": 114
+    },
+    {
+      "desc": "0C→F",
+      "category": "blank-unit",
+      "input": "0 celsius in fahrenheit is _",
+      "pass": true,
+      "alternatives": [
+        "32"
+      ],
+      "expectedAny": [
+        "32"
+      ],
+      "matched": "32",
+      "latencyMs": 170
+    },
+    {
+      "desc": "37C→F (body temp)",
+      "category": "blank-unit",
+      "input": "37 celsius in fahrenheit is _",
+      "pass": true,
+      "alternatives": [
+        "98.6"
+      ],
+      "expectedAny": [
+        "98.6",
+        "98"
+      ],
+      "matched": "98.6",
+      "latencyMs": 135
+    },
+    {
+      "desc": "32F→C",
+      "category": "blank-unit",
+      "input": "32 fahrenheit in celsius is _",
+      "pass": true,
+      "alternatives": [
+        "0"
+      ],
+      "expectedAny": [
+        "0"
+      ],
+      "matched": "0",
+      "latencyMs": 173
+    },
+    {
+      "desc": "212F→C",
+      "category": "blank-unit",
+      "input": "212 fahrenheit in celsius is _",
+      "pass": true,
+      "alternatives": [
+        "100"
+      ],
+      "expectedAny": [
+        "100"
+      ],
+      "matched": "100",
+      "latencyMs": 159
+    },
+    {
+      "desc": "1mi→km",
+      "category": "blank-unit",
+      "input": "1 miles in km is _",
+      "pass": true,
+      "alternatives": [
+        "1.6093"
+      ],
+      "expectedAny": [
+        "1.6093",
+        "1.609",
+        "1.61"
+      ],
+      "matched": "1.6093",
+      "latencyMs": 130
+    },
+    {
+      "desc": "5mi→km",
+      "category": "blank-unit",
+      "input": "5 miles in km is _",
+      "pass": true,
+      "alternatives": [
+        "8.0467"
+      ],
+      "expectedAny": [
+        "8.0467",
+        "8.047",
+        "8.05",
+        "8"
+      ],
+      "matched": "8.0467",
+      "latencyMs": 267
+    },
+    {
+      "desc": "10km→mi",
+      "category": "blank-unit",
+      "input": "10 km in miles is _",
+      "pass": true,
+      "alternatives": [
+        "6.2137"
+      ],
+      "expectedAny": [
+        "6.2137",
+        "6.214",
+        "6.21",
+        "6"
+      ],
+      "matched": "6.2137",
+      "latencyMs": 179
+    },
+    {
+      "desc": "100km→mi",
+      "category": "blank-unit",
+      "input": "100 km in miles is _",
+      "pass": true,
+      "alternatives": [
+        "62.1371"
+      ],
+      "expectedAny": [
+        "62.1371",
+        "62.137",
+        "62.14",
+        "62"
+      ],
+      "matched": "62.1371",
+      "latencyMs": 174
+    },
+    {
+      "desc": "26mi→km (marathon)",
+      "category": "blank-unit",
+      "input": "26 miles in km is _",
+      "pass": true,
+      "alternatives": [
+        "41.8428"
+      ],
+      "expectedAny": [
+        "41.8428",
+        "41.843",
+        "41.84",
+        "42"
+      ],
+      "matched": "41.8428",
+      "latencyMs": 129
+    },
+    {
+      "desc": "1kg→lb",
+      "category": "blank-unit",
+      "input": "1 kg in pounds is _",
+      "pass": true,
+      "alternatives": [
+        "2.2046"
+      ],
+      "expectedAny": [
+        "2.2046",
+        "2.205",
+        "2.2"
+      ],
+      "matched": "2.2046",
+      "latencyMs": 195
+    },
+    {
+      "desc": "70kg→lb",
+      "category": "blank-unit",
+      "input": "70 kg in pounds is _",
+      "pass": true,
+      "alternatives": [
+        "154.3234"
+      ],
+      "expectedAny": [
+        "154.3234",
+        "154.323",
+        "154.32",
+        "154"
+      ],
+      "matched": "154.3234",
+      "latencyMs": 134
+    },
+    {
+      "desc": "100lb→kg",
+      "category": "blank-unit",
+      "input": "100 pounds in kg is _",
+      "pass": true,
+      "alternatives": [
+        "45.3592"
+      ],
+      "expectedAny": [
+        "45.3592",
+        "45.359",
+        "45.36",
+        "45"
+      ],
+      "matched": "45.3592",
+      "latencyMs": 193
+    },
+    {
+      "desc": "200lb→kg",
+      "category": "blank-unit",
+      "input": "200 pounds in kg is _",
+      "pass": true,
+      "alternatives": [
+        "90.7184"
+      ],
+      "expectedAny": [
+        "90.7184",
+        "90.718",
+        "90.72",
+        "91"
+      ],
+      "matched": "90.7184",
+      "latencyMs": 139
+    },
+    {
+      "desc": "1m→ft",
+      "category": "blank-unit",
+      "input": "1 meters in feet is _",
+      "pass": true,
+      "alternatives": [
+        "3.2808"
+      ],
+      "expectedAny": [
+        "3.2808",
+        "3.281",
+        "3.28"
+      ],
+      "matched": "3.2808",
+      "latencyMs": 119
+    },
+    {
+      "desc": "10m→ft",
+      "category": "blank-unit",
+      "input": "10 meters in feet is _",
+      "pass": true,
+      "alternatives": [
+        "32.8084"
+      ],
+      "expectedAny": [
+        "32.8084",
+        "32.808",
+        "32.81",
+        "33"
+      ],
+      "matched": "32.8084",
+      "latencyMs": 246
+    },
+    {
+      "desc": "6ft→m",
+      "category": "blank-unit",
+      "input": "6 feet in meters is _",
+      "pass": true,
+      "alternatives": [
+        "1.8288"
+      ],
+      "expectedAny": [
+        "1.8288",
+        "1.829",
+        "1.83"
+      ],
+      "matched": "1.8288",
+      "latencyMs": 121
+    },
+    {
+      "desc": "100ft→m",
+      "category": "blank-unit",
+      "input": "100 feet in meters is _",
+      "pass": true,
+      "alternatives": [
+        "30.48"
+      ],
+      "expectedAny": [
+        "30.48",
+        "30.5"
+      ],
+      "matched": "30.48",
+      "latencyMs": 268
+    },
+    {
+      "desc": "1in→cm",
+      "category": "blank-unit",
+      "input": "1 inches in cm is _",
+      "pass": true,
+      "alternatives": [
+        "2.54"
+      ],
+      "expectedAny": [
+        "2.54"
+      ],
+      "matched": "2.54",
+      "latencyMs": 315
+    },
+    {
+      "desc": "12in→cm",
+      "category": "blank-unit",
+      "input": "12 inches in cm is _",
+      "pass": true,
+      "alternatives": [
+        "30.48"
+      ],
+      "expectedAny": [
+        "30.48",
+        "30.5"
+      ],
+      "matched": "30.48",
+      "latencyMs": 162
+    },
+    {
+      "desc": "10cm→in",
+      "category": "blank-unit",
+      "input": "10 cm in inches is _",
+      "pass": true,
+      "alternatives": [
+        "3.937"
+      ],
+      "expectedAny": [
+        "3.937",
+        "3.94",
+        "4"
+      ],
+      "matched": "3.937",
+      "latencyMs": 150
+    },
+    {
+      "desc": "1L→gal",
+      "category": "blank-unit",
+      "input": "1 liters in gallons is _",
+      "pass": true,
+      "alternatives": [
+        "0.2642"
+      ],
+      "expectedAny": [
+        "0.2642",
+        "0.264",
+        "0.26"
+      ],
+      "matched": "0.2642",
+      "latencyMs": 154
+    },
+    {
+      "desc": "10L→gal",
+      "category": "blank-unit",
+      "input": "10 liters in gallons is _",
+      "pass": true,
+      "alternatives": [
+        "2.6417"
+      ],
+      "expectedAny": [
+        "2.6417",
+        "2.642",
+        "2.64"
+      ],
+      "matched": "2.6417",
+      "latencyMs": 248
+    },
+    {
+      "desc": "1gal→L",
+      "category": "blank-unit",
+      "input": "1 gallons in liters is _",
+      "pass": true,
+      "alternatives": [
+        "3.7854"
+      ],
+      "expectedAny": [
+        "3.7854",
+        "3.785",
+        "3.79"
+      ],
+      "matched": "3.7854",
+      "latencyMs": 176
+    },
+    {
+      "desc": "100yd→m",
+      "category": "blank-unit",
+      "input": "100 yards in meters is _",
+      "pass": true,
+      "alternatives": [
+        "91.44"
+      ],
+      "expectedAny": [
+        "91.44",
+        "91.4",
+        "91"
+      ],
+      "matched": "91.44",
+      "latencyMs": 294
+    },
+    {
+      "desc": "1oz→g",
+      "category": "blank-unit",
+      "input": "1 oz in grams is _",
+      "pass": true,
+      "alternatives": [
+        "28.3495"
+      ],
+      "expectedAny": [
+        "28.3495",
+        "28.35",
+        "28"
+      ],
+      "matched": "28.3495",
+      "latencyMs": 167
+    },
+    {
+      "desc": "16oz→g (1lb)",
+      "category": "blank-unit",
+      "input": "16 oz in grams is _",
+      "pass": true,
+      "alternatives": [
+        "453.592"
+      ],
+      "expectedAny": [
+        "453.592",
+        "453.59",
+        "454"
+      ],
+      "matched": "453.592",
+      "latencyMs": 131
+    },
+    {
+      "desc": "0mi→km",
+      "category": "blank-unit",
+      "input": "0 miles in km is _",
+      "pass": true,
+      "alternatives": [
+        "0"
+      ],
+      "expectedAny": [
+        "0"
+      ],
+      "matched": "0",
+      "latencyMs": 145
+    },
+    {
+      "desc": "0C→F (dup check)",
+      "category": "blank-unit",
+      "input": "0 celsius in fahrenheit is _",
+      "pass": true,
+      "alternatives": [
+        "32"
+      ],
+      "expectedAny": [
+        "32"
+      ],
+      "matched": "32",
+      "latencyMs": 171
+    },
+    {
+      "desc": "50m→ft",
+      "category": "blank-unit",
+      "input": "50 meters in feet is _",
+      "pass": true,
+      "alternatives": [
+        "164.042"
+      ],
+      "expectedAny": [
+        "164.042",
+        "164.04",
+        "164"
+      ],
+      "matched": "164.042",
+      "latencyMs": 129
+    },
+    {
+      "desc": "opposite: hot",
+      "category": "blank-spell",
+      "input": "The opposite of hot is _",
+      "pass": true,
+      "alternatives": [
+        "cold"
+      ],
+      "expectedAny": [
+        "cold",
+        "cool"
+      ],
+      "matched": "cold",
+      "latencyMs": 97
+    },
+    {
+      "desc": "opposite: big",
+      "category": "blank-spell",
+      "input": "The opposite of big is _",
+      "pass": true,
+      "alternatives": [
+        "small"
+      ],
+      "expectedAny": [
+        "small",
+        "little",
+        "tiny"
+      ],
+      "matched": "small",
+      "latencyMs": 75
+    },
+    {
+      "desc": "opposite: fast",
+      "category": "blank-spell",
+      "input": "The opposite of fast is _",
+      "pass": true,
+      "alternatives": [
+        "slow"
+      ],
+      "expectedAny": [
+        "slow"
+      ],
+      "matched": "slow",
+      "latencyMs": 76
+    },
+    {
+      "desc": "opposite: happy",
+      "category": "blank-spell",
+      "input": "The opposite of happy is _",
+      "pass": true,
+      "alternatives": [
+        "sad"
+      ],
+      "expectedAny": [
+        "sad",
+        "unhappy"
+      ],
+      "matched": "sad",
+      "latencyMs": 131
+    },
+    {
+      "desc": "opposite: light",
+      "category": "blank-spell",
+      "input": "The opposite of light is _",
+      "pass": true,
+      "alternatives": [
+        "dark"
+      ],
+      "expectedAny": [
+        "dark",
+        "heavy"
+      ],
+      "matched": "dark",
+      "latencyMs": 102
+    },
+    {
+      "desc": "opposite: old",
+      "category": "blank-spell",
+      "input": "The opposite of old is _",
+      "pass": true,
+      "alternatives": [
+        "young"
+      ],
+      "expectedAny": [
+        "young",
+        "new"
+      ],
+      "matched": "young",
+      "latencyMs": 79
+    },
+    {
+      "desc": "opposite: rich",
+      "category": "blank-spell",
+      "input": "The opposite of rich is _",
+      "pass": true,
+      "alternatives": [
+        "poor"
+      ],
+      "expectedAny": [
+        "poor"
+      ],
+      "matched": "poor",
+      "latencyMs": 74
+    },
+    {
+      "desc": "opposite: love",
+      "category": "blank-spell",
+      "input": "The opposite of love is _",
+      "pass": true,
+      "alternatives": [
+        "hate"
+      ],
+      "expectedAny": [
+        "hate",
+        "hatred"
+      ],
+      "matched": "hate",
+      "latencyMs": 89
+    },
+    {
+      "desc": "opposite: open",
+      "category": "blank-spell",
+      "input": "The opposite of open is _",
+      "pass": true,
+      "alternatives": [
+        "closed"
+      ],
+      "expectedAny": [
+        "closed",
+        "shut"
+      ],
+      "matched": "closed",
+      "latencyMs": 73
+    },
+    {
+      "desc": "opposite: true",
+      "category": "blank-spell",
+      "input": "The opposite of true is _",
+      "pass": true,
+      "alternatives": [
+        "false"
+      ],
+      "expectedAny": [
+        "false"
+      ],
+      "matched": "false",
+      "latencyMs": 75
+    },
+    {
+      "desc": "synonym: happy",
+      "category": "blank-spell",
+      "input": "A synonym for happy is _",
+      "pass": true,
+      "alternatives": [
+        "joyful"
+      ],
+      "expectedAny": [
+        "joyful",
+        "glad",
+        "cheerful",
+        "content",
+        "delighted"
+      ],
+      "matched": "joyful",
+      "latencyMs": 97
+    },
+    {
+      "desc": "synonym: big",
+      "category": "blank-spell",
+      "input": "A synonym for big is _",
+      "pass": true,
+      "alternatives": [
+        "large"
+      ],
+      "expectedAny": [
+        "large",
+        "huge",
+        "enormous",
+        "massive",
+        "great"
+      ],
+      "matched": "large",
+      "latencyMs": 84
+    },
+    {
+      "desc": "synonym: fast",
+      "category": "blank-spell",
+      "input": "A synonym for fast is _",
+      "pass": true,
+      "alternatives": [
+        "quick"
+      ],
+      "expectedAny": [
+        "quick",
+        "rapid",
+        "swift",
+        "speedy"
+      ],
+      "matched": "quick",
+      "latencyMs": 116
+    },
+    {
+      "desc": "synonym: angry",
+      "category": "blank-spell",
+      "input": "A synonym for angry is _",
+      "pass": true,
+      "alternatives": [
+        "furious"
+      ],
+      "expectedAny": [
+        "furious",
+        "mad",
+        "irate",
+        "enraged"
+      ],
+      "matched": "furious",
+      "latencyMs": 86
+    },
+    {
+      "desc": "synonym: beautiful",
+      "category": "blank-spell",
+      "input": "A synonym for beautiful is _",
+      "pass": true,
+      "alternatives": [
+        "gorgeous"
+      ],
+      "expectedAny": [
+        "gorgeous",
+        "stunning",
+        "lovely",
+        "pretty"
+      ],
+      "matched": "gorgeous",
+      "latencyMs": 114
+    },
+    {
+      "desc": "another: scared",
+      "category": "blank-spell",
+      "input": "Another word for scared is _",
+      "pass": true,
+      "alternatives": [
+        "Afraid"
+      ],
+      "expectedAny": [
+        "afraid",
+        "frightened",
+        "terrified",
+        "fearful"
+      ],
+      "matched": "afraid",
+      "latencyMs": 144
+    },
+    {
+      "desc": "another: smart",
+      "category": "blank-spell",
+      "input": "Another word for smart is _",
+      "pass": true,
+      "alternatives": [
+        "clever"
+      ],
+      "expectedAny": [
+        "intelligent",
+        "clever",
+        "bright",
+        "brilliant"
+      ],
+      "matched": "clever",
+      "latencyMs": 827
+    },
+    {
+      "desc": "same as: tired",
+      "category": "blank-spell",
+      "input": "Means the same as tired _",
+      "pass": true,
+      "alternatives": [
+        "weary"
+      ],
+      "expectedAny": [
+        "exhausted",
+        "fatigued",
+        "weary",
+        "drained"
+      ],
+      "matched": "weary",
+      "latencyMs": 207
+    },
+    {
+      "desc": "antonym: light",
+      "category": "blank-spell",
+      "input": "An antonym of light is _",
+      "pass": true,
+      "alternatives": [
+        "dark"
+      ],
+      "expectedAny": [
+        "dark",
+        "heavy"
+      ],
+      "matched": "dark",
+      "latencyMs": 91
+    },
+    {
+      "desc": "antonym: quiet",
+      "category": "blank-spell",
+      "input": "An antonym of quiet is _",
+      "pass": true,
+      "alternatives": [
+        "loud"
+      ],
+      "expectedAny": [
+        "loud",
+        "noisy"
+      ],
+      "matched": "loud",
+      "latencyMs": 99
+    },
+    {
+      "desc": "rhyme: cat",
+      "category": "blank-spell",
+      "input": "Rhymes with cat _",
+      "pass": true,
+      "alternatives": [
+        "hat"
+      ],
+      "expectedAny": [
+        "hat",
+        "bat",
+        "mat",
+        "rat",
+        "sat",
+        "fat",
+        "flat"
+      ],
+      "matched": "hat",
+      "latencyMs": 103
+    },
+    {
+      "desc": "rhyme: dog",
+      "category": "blank-spell",
+      "input": "Rhymes with dog _",
+      "pass": true,
+      "alternatives": [
+        "log"
+      ],
+      "expectedAny": [
+        "log",
+        "fog",
+        "bog",
+        "hog",
+        "frog",
+        "jog"
+      ],
+      "matched": "log",
+      "latencyMs": 114
+    },
+    {
+      "desc": "rhyme: day",
+      "category": "blank-spell",
+      "input": "Rhymes with day _",
+      "pass": true,
+      "alternatives": [
+        "play"
+      ],
+      "expectedAny": [
+        "way",
+        "say",
+        "play",
+        "may",
+        "pay",
+        "stay",
+        "bay"
+      ],
+      "matched": "play",
+      "latencyMs": 130
+    },
+    {
+      "desc": "rhyme: moon",
+      "category": "blank-spell",
+      "input": "Rhymes with moon _",
+      "pass": true,
+      "alternatives": [
+        "spoon"
+      ],
+      "expectedAny": [
+        "soon",
+        "noon",
+        "spoon",
+        "tune",
+        "June",
+        "balloon"
+      ],
+      "matched": "spoon",
+      "latencyMs": 138
+    },
+    {
+      "desc": "rhyme: light",
+      "category": "blank-spell",
+      "input": "Rhymes with light _",
+      "pass": true,
+      "alternatives": [
+        "night"
+      ],
+      "expectedAny": [
+        "night",
+        "sight",
+        "right",
+        "bright",
+        "fight",
+        "might",
+        "white",
+        "flight"
+      ],
+      "matched": "night",
+      "latencyMs": 148
+    },
+    {
+      "desc": "rhyme: tree",
+      "category": "blank-spell",
+      "input": "Rhymes with tree _",
+      "pass": true,
+      "alternatives": [
+        "free"
+      ],
+      "expectedAny": [
+        "free",
+        "sea",
+        "three",
+        "key",
+        "bee",
+        "see",
+        "me",
+        "we"
+      ],
+      "matched": "free",
+      "latencyMs": 187
+    },
+    {
+      "desc": "rhyme: blue",
+      "category": "blank-spell",
+      "input": "Rhymes with blue _",
+      "pass": true,
+      "alternatives": [
+        "clue"
+      ],
+      "expectedAny": [
+        "true",
+        "new",
+        "two",
+        "you",
+        "shoe",
+        "through",
+        "flew",
+        "grew",
+        "clue"
+      ],
+      "matched": "clue",
+      "latencyMs": 310
+    },
+    {
+      "desc": "rhyme: rain",
+      "category": "blank-spell",
+      "input": "Rhymes with rain _",
+      "pass": true,
+      "alternatives": [
+        "train"
+      ],
+      "expectedAny": [
+        "pain",
+        "main",
+        "brain",
+        "train",
+        "gain",
+        "lane",
+        "plain",
+        "chain"
+      ],
+      "matched": "train",
+      "latencyMs": 177
+    },
+    {
+      "desc": "rhyme: book",
+      "category": "blank-spell",
+      "input": "Rhymes with book _",
+      "pass": true,
+      "alternatives": [
+        "look"
+      ],
+      "expectedAny": [
+        "look",
+        "cook",
+        "hook",
+        "took",
+        "shook",
+        "nook",
+        "brook"
+      ],
+      "matched": "look",
+      "latencyMs": 114
+    },
+    {
+      "desc": "rhyme: ring",
+      "category": "blank-spell",
+      "input": "Rhymes with ring _",
+      "pass": true,
+      "alternatives": [
+        "sing"
+      ],
+      "expectedAny": [
+        "sing",
+        "king",
+        "thing",
+        "spring",
+        "bring",
+        "wing",
+        "string",
+        "swing"
+      ],
+      "matched": "sing",
+      "latencyMs": 143
+    },
+    {
+      "desc": "red→hex",
+      "category": "blank-color",
+      "input": "Red in hex is _",
+      "pass": true,
+      "alternatives": [
+        "#FF0000"
+      ],
+      "expectedAny": [
+        "#FF0000",
+        "#ff0000"
+      ],
+      "matched": "#FF0000",
+      "latencyMs": 100
+    },
+    {
+      "desc": "blue→hex",
+      "category": "blank-color",
+      "input": "Blue in hex is _",
+      "pass": true,
+      "alternatives": [
+        "#0000FF"
+      ],
+      "expectedAny": [
+        "#0000FF",
+        "#0000ff"
+      ],
+      "matched": "#0000FF",
+      "latencyMs": 101
+    },
+    {
+      "desc": "green→hex",
+      "category": "blank-color",
+      "input": "Green in hex is _",
+      "pass": true,
+      "alternatives": [
+        "#00FF00"
+      ],
+      "expectedAny": [
+        "#00FF00",
+        "#00ff00",
+        "#008000",
+        "#008000"
+      ],
+      "matched": "#00FF00",
+      "latencyMs": 131
+    },
+    {
+      "desc": "white→hex",
+      "category": "blank-color",
+      "input": "White in hex is _",
+      "pass": true,
+      "alternatives": [
+        "#FFFFFF"
+      ],
+      "expectedAny": [
+        "#FFFFFF",
+        "#ffffff",
+        "#FFF"
+      ],
+      "matched": "#FFFFFF",
+      "latencyMs": 92
+    },
+    {
+      "desc": "black→hex",
+      "category": "blank-color",
+      "input": "Black in hex is _",
+      "pass": true,
+      "alternatives": [
+        "#000000"
+      ],
+      "expectedAny": [
+        "#000000",
+        "#000",
+        "#000000"
+      ],
+      "matched": "#000000",
+      "latencyMs": 322
+    },
+    {
+      "desc": "yellow→hex",
+      "category": "blank-color",
+      "input": "Yellow in hex is _",
+      "pass": true,
+      "alternatives": [
+        "#FFFF00"
+      ],
+      "expectedAny": [
+        "#FFFF00",
+        "#ffff00"
+      ],
+      "matched": "#FFFF00",
+      "latencyMs": 166
+    },
+    {
+      "desc": "purple→hex",
+      "category": "blank-color",
+      "input": "Hex for purple is _",
+      "pass": true,
+      "alternatives": [
+        "#800080"
+      ],
+      "expectedAny": [
+        "#800080",
+        "#A020F0",
+        "#a020f0",
+        "#8B008B"
+      ],
+      "matched": "#800080",
+      "latencyMs": 100
+    },
+    {
+      "desc": "orange→hex",
+      "category": "blank-color",
+      "input": "Hex for orange is _",
+      "pass": true,
+      "alternatives": [
+        "#FFA500"
+      ],
+      "expectedAny": [
+        "#FFA500",
+        "#ffa500",
+        "#FF8C00"
+      ],
+      "matched": "#FFA500",
+      "latencyMs": 102
+    },
+    {
+      "desc": "cyan→hex",
+      "category": "blank-color",
+      "input": "Hex for cyan is _",
+      "pass": true,
+      "alternatives": [
+        "#00FFFF"
+      ],
+      "expectedAny": [
+        "#00FFFF",
+        "#00ffff"
+      ],
+      "matched": "#00FFFF",
+      "latencyMs": 81
+    },
+    {
+      "desc": "pink→hex",
+      "category": "blank-color",
+      "input": "Hex for pink is _",
+      "pass": true,
+      "alternatives": [
+        "#FFC0CB"
+      ],
+      "expectedAny": [
+        "#FFC0CB",
+        "#ffc0cb",
+        "#FF69B4"
+      ],
+      "matched": "#FFC0CB",
+      "latencyMs": 136
+    },
+    {
+      "desc": "gray→hex",
+      "category": "blank-color",
+      "input": "Hex for gray is _",
+      "pass": true,
+      "alternatives": [
+        "#808080"
+      ],
+      "expectedAny": [
+        "#808080",
+        "#C0C0C0",
+        "#A9A9A9",
+        "#808080"
+      ],
+      "matched": "#808080",
+      "latencyMs": 86
+    },
+    {
+      "desc": "brown→hex",
+      "category": "blank-color",
+      "input": "Hex for brown is _",
+      "pass": true,
+      "alternatives": [
+        "#A52A2A"
+      ],
+      "expectedAny": [
+        "#A52A2A",
+        "#8B4513",
+        "#a52a2a",
+        "#964B00"
+      ],
+      "matched": "#A52A2A",
+      "latencyMs": 158
+    },
+    {
+      "desc": "navy→hex",
+      "category": "blank-color",
+      "input": "Hex for navy is _",
+      "pass": true,
+      "alternatives": [
+        "#000080"
+      ],
+      "expectedAny": [
+        "#000080",
+        "#000080"
+      ],
+      "matched": "#000080",
+      "latencyMs": 126
+    },
+    {
+      "desc": "gold→hex",
+      "category": "blank-color",
+      "input": "Hex for gold is _",
+      "pass": true,
+      "alternatives": [
+        "#FFD700"
+      ],
+      "expectedAny": [
+        "#FFD700",
+        "#ffd700"
+      ],
+      "matched": "#FFD700",
+      "latencyMs": 80
+    },
+    {
+      "desc": "silver→hex",
+      "category": "blank-color",
+      "input": "Hex for silver is _",
+      "pass": true,
+      "alternatives": [
+        "#C0C0C0"
+      ],
+      "expectedAny": [
+        "#C0C0C0",
+        "#c0c0c0"
+      ],
+      "matched": "#C0C0C0",
+      "latencyMs": 124
+    },
+    {
+      "desc": "red→rgb",
+      "category": "blank-color",
+      "input": "Red in rgb is _",
+      "pass": true,
+      "alternatives": [
+        "rgb(255,0,0)"
+      ],
+      "expectedAny": [
+        "rgb(255,0,0)",
+        "rgb(255, 0, 0)",
+        "255,0,0"
+      ],
+      "matched": "rgb(255,0,0)",
+      "latencyMs": 107
+    },
+    {
+      "desc": "blue→rgb",
+      "category": "blank-color",
+      "input": "Blue in rgb is _",
+      "pass": true,
+      "alternatives": [
+        "rgb(0,0,255)"
+      ],
+      "expectedAny": [
+        "rgb(0,0,255)",
+        "rgb(0, 0, 255)",
+        "0,0,255"
+      ],
+      "matched": "rgb(0,0,255)",
+      "latencyMs": 104
+    },
+    {
+      "desc": "green→rgb",
+      "category": "blank-color",
+      "input": "Green in rgb is _",
+      "pass": true,
+      "alternatives": [
+        "rgb(0,255,0)"
+      ],
+      "expectedAny": [
+        "rgb(0,255,0)",
+        "rgb(0, 255, 0)",
+        "rgb(0,128,0)",
+        "0,255,0",
+        "0,128,0"
+      ],
+      "matched": "rgb(0,255,0)",
+      "latencyMs": 110
+    },
+    {
+      "desc": "white→rgb",
+      "category": "blank-color",
+      "input": "White in rgb is _",
+      "pass": true,
+      "alternatives": [
+        "rgb(255,255,255)"
+      ],
+      "expectedAny": [
+        "rgb(255,255,255)",
+        "rgb(255, 255, 255)",
+        "255,255,255"
+      ],
+      "matched": "rgb(255,255,255)",
+      "latencyMs": 104
+    },
+    {
+      "desc": "black→rgb",
+      "category": "blank-color",
+      "input": "Black in rgb is _",
+      "pass": true,
+      "alternatives": [
+        "rgb(0,0,0)"
+      ],
+      "expectedAny": [
+        "rgb(0,0,0)",
+        "rgb(0, 0, 0)",
+        "0,0,0"
+      ],
+      "matched": "rgb(0,0,0)",
+      "latencyMs": 119
+    },
+    {
+      "desc": "teal→hex",
+      "category": "blank-color",
+      "input": "Color code for teal is _",
+      "pass": true,
+      "alternatives": [
+        "#008080"
+      ],
+      "expectedAny": [
+        "#008080",
+        "#008080"
+      ],
+      "matched": "#008080",
+      "latencyMs": 117
+    },
+    {
+      "desc": "magenta→hex",
+      "category": "blank-color",
+      "input": "Color code for magenta is _",
+      "pass": true,
+      "alternatives": [
+        "#FF00FF"
+      ],
+      "expectedAny": [
+        "#FF00FF",
+        "#ff00ff"
+      ],
+      "matched": "#FF00FF",
+      "latencyMs": 107
+    },
+    {
+      "desc": "lime→hex",
+      "category": "blank-color",
+      "input": "Color code for lime is _",
+      "pass": true,
+      "alternatives": [
+        "#00FF00"
+      ],
+      "expectedAny": [
+        "#00FF00",
+        "#00ff00",
+        "#32CD32"
+      ],
+      "matched": "#00FF00",
+      "latencyMs": 131
+    },
+    {
+      "desc": "coral→hex",
+      "category": "blank-color",
+      "input": "Color code for coral is _",
+      "pass": true,
+      "alternatives": [
+        "#FF7F50"
+      ],
+      "expectedAny": [
+        "#FF7F50",
+        "#ff7f50"
+      ],
+      "matched": "#FF7F50",
+      "latencyMs": 104
+    },
+    {
+      "desc": "indigo→hex",
+      "category": "blank-color",
+      "input": "Color code for indigo is _",
+      "pass": true,
+      "alternatives": [
+        "#4B0082"
+      ],
+      "expectedAny": [
+        "#4B0082",
+        "#4b0082"
+      ],
+      "matched": "#4B0082",
+      "latencyMs": 372
+    },
+    {
+      "desc": "turquoise→hex",
+      "category": "blank-color",
+      "input": "Hex for turquoise is _",
+      "pass": true,
+      "alternatives": [
+        "#40E0D0"
+      ],
+      "expectedAny": [
+        "#40E0D0",
+        "#40e0d0",
+        "#30D5C8"
+      ],
+      "matched": "#40E0D0",
+      "latencyMs": 107
+    },
+    {
+      "desc": "maroon→hex",
+      "category": "blank-color",
+      "input": "Hex for maroon is _",
+      "pass": true,
+      "alternatives": [
+        "#800000"
+      ],
+      "expectedAny": [
+        "#800000",
+        "#800000"
+      ],
+      "matched": "#800000",
+      "latencyMs": 83
+    },
+    {
+      "desc": "olive→hex",
+      "category": "blank-color",
+      "input": "Hex for olive is _",
+      "pass": true,
+      "alternatives": [
+        "#808000"
+      ],
+      "expectedAny": [
+        "#808000",
+        "#808000"
+      ],
+      "matched": "#808000",
+      "latencyMs": 116
+    },
+    {
+      "desc": "salmon→hex",
+      "category": "blank-color",
+      "input": "Hex for salmon is _",
+      "pass": true,
+      "alternatives": [
+        "#FA8072"
+      ],
+      "expectedAny": [
+        "#FA8072",
+        "#fa8072"
+      ],
+      "matched": "#FA8072",
+      "latencyMs": 84
+    },
+    {
+      "desc": "violet→hex",
+      "category": "blank-color",
+      "input": "Hex for violet is _",
+      "pass": true,
+      "alternatives": [
+        "#EE82EE"
+      ],
+      "expectedAny": [
+        "#EE82EE",
+        "#ee82ee",
+        "#8B00FF",
+        "#7F00FF"
+      ],
+      "matched": "#EE82EE",
+      "latencyMs": 208
+    },
+    {
+      "desc": "OK→200",
+      "category": "blank-http",
+      "input": "HTTP status for OK is _",
+      "pass": true,
+      "alternatives": [
+        "200"
+      ],
+      "expectedAny": [
+        "200"
+      ],
+      "matched": "200",
+      "latencyMs": 107
+    },
+    {
+      "desc": "created→201",
+      "category": "blank-http",
+      "input": "HTTP status for created is _",
+      "pass": true,
+      "alternatives": [
+        "201"
+      ],
+      "expectedAny": [
+        "201"
+      ],
+      "matched": "201",
+      "latencyMs": 91
+    },
+    {
+      "desc": "no content→204",
+      "category": "blank-http",
+      "input": "HTTP status for no content is _",
+      "pass": true,
+      "alternatives": [
+        "204"
+      ],
+      "expectedAny": [
+        "204"
+      ],
+      "matched": "204",
+      "latencyMs": 105
+    },
+    {
+      "desc": "redirect→30x",
+      "category": "blank-http",
+      "input": "HTTP status for redirect is _",
+      "pass": true,
+      "alternatives": [
+        "301"
+      ],
+      "expectedAny": [
+        "301",
+        "302",
+        "307"
+      ],
+      "matched": "301",
+      "latencyMs": 85
+    },
+    {
+      "desc": "not modified→304",
+      "category": "blank-http",
+      "input": "HTTP status for not modified is _",
+      "pass": true,
+      "alternatives": [
+        "304"
+      ],
+      "expectedAny": [
+        "304"
+      ],
+      "matched": "304",
+      "latencyMs": 92
+    },
+    {
+      "desc": "bad request→400",
+      "category": "blank-http",
+      "input": "HTTP status for bad request is _",
+      "pass": true,
+      "alternatives": [
+        "400"
+      ],
+      "expectedAny": [
+        "400"
+      ],
+      "matched": "400",
+      "latencyMs": 126
+    },
+    {
+      "desc": "unauthorized→401",
+      "category": "blank-http",
+      "input": "HTTP status for unauthorized is _",
+      "pass": true,
+      "alternatives": [
+        "401"
+      ],
+      "expectedAny": [
+        "401"
+      ],
+      "matched": "401",
+      "latencyMs": 208
+    },
+    {
+      "desc": "forbidden→403",
+      "category": "blank-http",
+      "input": "HTTP status for forbidden is _",
+      "pass": true,
+      "alternatives": [
+        "403"
+      ],
+      "expectedAny": [
+        "403"
+      ],
+      "matched": "403",
+      "latencyMs": 79
+    },
+    {
+      "desc": "not found→404",
+      "category": "blank-http",
+      "input": "HTTP status for not found is _",
+      "pass": true,
+      "alternatives": [
+        "404"
+      ],
+      "expectedAny": [
+        "404"
+      ],
+      "matched": "404",
+      "latencyMs": 76
+    },
+    {
+      "desc": "method not allowed→405",
+      "category": "blank-http",
+      "input": "HTTP status for method not allowed is _",
+      "pass": true,
+      "alternatives": [
+        "405"
+      ],
+      "expectedAny": [
+        "405"
+      ],
+      "matched": "405",
+      "latencyMs": 87
+    },
+    {
+      "desc": "conflict→409",
+      "category": "blank-http",
+      "input": "HTTP status for conflict is _",
+      "pass": true,
+      "alternatives": [
+        "409"
+      ],
+      "expectedAny": [
+        "409"
+      ],
+      "matched": "409",
+      "latencyMs": 91
+    },
+    {
+      "desc": "gone→410",
+      "category": "blank-http",
+      "input": "HTTP status for gone is _",
+      "pass": true,
+      "alternatives": [
+        "410"
+      ],
+      "expectedAny": [
+        "410"
+      ],
+      "matched": "410",
+      "latencyMs": 96
+    },
+    {
+      "desc": "rate limit→429",
+      "category": "blank-http",
+      "input": "HTTP status for too many requests is _",
+      "pass": true,
+      "alternatives": [
+        "429"
+      ],
+      "expectedAny": [
+        "429"
+      ],
+      "matched": "429",
+      "latencyMs": 97
+    },
+    {
+      "desc": "server error→500",
+      "category": "blank-http",
+      "input": "HTTP status for server error is _",
+      "pass": true,
+      "alternatives": [
+        "500"
+      ],
+      "expectedAny": [
+        "500"
+      ],
+      "matched": "500",
+      "latencyMs": 75
+    },
+    {
+      "desc": "bad gateway→502",
+      "category": "blank-http",
+      "input": "HTTP status for bad gateway is _",
+      "pass": true,
+      "alternatives": [
+        "502"
+      ],
+      "expectedAny": [
+        "502"
+      ],
+      "matched": "502",
+      "latencyMs": 129
+    },
+    {
+      "desc": "unavailable→503",
+      "category": "blank-http",
+      "input": "HTTP status for service unavailable is _",
+      "pass": true,
+      "alternatives": [
+        "503"
+      ],
+      "expectedAny": [
+        "503"
+      ],
+      "matched": "503",
+      "latencyMs": 112
+    },
+    {
+      "desc": "gateway timeout→504",
+      "category": "blank-http",
+      "input": "HTTP status for gateway timeout is _",
+      "pass": true,
+      "alternatives": [
+        "504"
+      ],
+      "expectedAny": [
+        "504"
+      ],
+      "matched": "504",
+      "latencyMs": 94
+    },
+    {
+      "desc": "accepted→202",
+      "category": "blank-http",
+      "input": "HTTP status for accepted is _",
+      "pass": true,
+      "alternatives": [
+        "202"
+      ],
+      "expectedAny": [
+        "202"
+      ],
+      "matched": "202",
+      "latencyMs": 115
+    },
+    {
+      "desc": "200→OK",
+      "category": "blank-http",
+      "input": "HTTP 200 means _",
+      "pass": true,
+      "alternatives": [
+        "OK"
+      ],
+      "expectedAny": [
+        "OK",
+        "ok",
+        "Ok"
+      ],
+      "matched": "OK",
+      "latencyMs": 331
+    },
+    {
+      "desc": "404→Not Found",
+      "category": "blank-http",
+      "input": "HTTP 404 means _",
+      "pass": true,
+      "alternatives": [
+        "Not Found"
+      ],
+      "expectedAny": [
+        "Not Found",
+        "not found"
+      ],
+      "matched": "Not Found",
+      "latencyMs": 78
+    },
+    {
+      "desc": "500→ISE",
+      "category": "blank-http",
+      "input": "HTTP 500 means _",
+      "pass": true,
+      "alternatives": [
+        "Internal Server Error"
+      ],
+      "expectedAny": [
+        "Internal Server Error",
+        "internal server error",
+        "Server Error"
+      ],
+      "matched": "Internal Server Error",
+      "latencyMs": 86
+    },
+    {
+      "desc": "301→Moved",
+      "category": "blank-http",
+      "input": "HTTP 301 means _",
+      "pass": true,
+      "alternatives": [
+        "Moved Permanently"
+      ],
+      "expectedAny": [
+        "Moved Permanently",
+        "moved permanently"
+      ],
+      "matched": "Moved Permanently",
+      "latencyMs": 84
+    },
+    {
+      "desc": "403→Forbidden",
+      "category": "blank-http",
+      "input": "HTTP 403 means _",
+      "pass": true,
+      "alternatives": [
+        "Forbidden"
+      ],
+      "expectedAny": [
+        "Forbidden",
+        "forbidden"
+      ],
+      "matched": "Forbidden",
+      "latencyMs": 143
+    },
+    {
+      "desc": "401→Unauthorized",
+      "category": "blank-http",
+      "input": "HTTP 401 means _",
+      "pass": true,
+      "alternatives": [
+        "Unauthorized"
+      ],
+      "expectedAny": [
+        "Unauthorized",
+        "unauthorized"
+      ],
+      "matched": "Unauthorized",
+      "latencyMs": 140
+    },
+    {
+      "desc": "201→Created",
+      "category": "blank-http",
+      "input": "HTTP 201 means _",
+      "pass": true,
+      "alternatives": [
+        "Created"
+      ],
+      "expectedAny": [
+        "Created",
+        "created"
+      ],
+      "matched": "Created",
+      "latencyMs": 116
+    },
+    {
+      "desc": "204→No Content",
+      "category": "blank-http",
+      "input": "HTTP 204 means _",
+      "pass": true,
+      "alternatives": [
+        "No Content"
+      ],
+      "expectedAny": [
+        "No Content",
+        "no content"
+      ],
+      "matched": "No Content",
+      "latencyMs": 78
+    },
+    {
+      "desc": "400→Bad Request",
+      "category": "blank-http",
+      "input": "HTTP 400 means _",
+      "pass": true,
+      "alternatives": [
+        "Bad Request"
+      ],
+      "expectedAny": [
+        "Bad Request",
+        "bad request"
+      ],
+      "matched": "Bad Request",
+      "latencyMs": 119
+    },
+    {
+      "desc": "502→Bad Gateway",
+      "category": "blank-http",
+      "input": "HTTP 502 means _",
+      "pass": true,
+      "alternatives": [
+        "Bad Gateway"
+      ],
+      "expectedAny": [
+        "Bad Gateway",
+        "bad gateway"
+      ],
+      "matched": "Bad Gateway",
+      "latencyMs": 79
+    },
+    {
+      "desc": "503→Unavailable",
+      "category": "blank-http",
+      "input": "HTTP 503 means _",
+      "pass": true,
+      "alternatives": [
+        "Service Unavailable"
+      ],
+      "expectedAny": [
+        "Service Unavailable",
+        "service unavailable"
+      ],
+      "matched": "Service Unavailable",
+      "latencyMs": 88
+    },
+    {
+      "desc": "429→Rate Limit",
+      "category": "blank-http",
+      "input": "HTTP 429 means _",
+      "pass": true,
+      "alternatives": [
+        "Too Many Requests"
+      ],
+      "expectedAny": [
+        "Too Many Requests",
+        "too many requests",
+        "Rate Limit"
+      ],
+      "matched": "Too Many Requests",
+      "latencyMs": 201
+    },
+    {
+      "desc": "vaulted over NOUN",
+      "category": "blank-grammar",
+      "input": "The boy vaulted over the _",
+      "pass": false,
+      "alternatives": [
+        "high",
+        "wooden",
+        "metal",
+        "red"
+      ],
+      "expectedAny": [
+        "fence",
+        "wall",
+        "hedge",
+        "gate",
+        "hurdle",
+        "barrier",
+        "railing",
+        "obstacle"
+      ],
+      "matched": null,
+      "latencyMs": 590
+    },
+    {
+      "desc": "going to DEST",
+      "category": "blank-grammar",
+      "input": "We are going to _",
+      "pass": true,
+      "alternatives": [
+        "Tokyo",
+        "London",
+        "school",
+        "work"
+      ],
+      "expectedAny": [
+        "Paris",
+        "school",
+        "work",
+        "London",
+        "home",
+        "Tokyo",
+        "eat",
+        "leave",
+        "sleep"
+      ],
+      "matched": "school",
+      "latencyMs": 395
+    },
+    {
+      "desc": "written in LANG",
+      "category": "blank-grammar",
+      "input": "The code is written in _",
+      "pass": true,
+      "alternatives": [
+        "Java",
+        "C++",
+        "Rust",
+        "Go"
+      ],
+      "expectedAny": [
+        "Python",
+        "Java",
+        "C++",
+        "Rust",
+        "Go",
+        "JavaScript",
+        "TypeScript",
+        "Ruby"
+      ],
+      "matched": "Java",
+      "latencyMs": 406
+    },
+    {
+      "desc": "felt extremely ADJ",
+      "category": "blank-grammar",
+      "input": "He felt extremely _",
+      "pass": true,
+      "alternatives": [
+        "sad",
+        "proud",
+        "confused",
+        "exhausted"
+      ],
+      "expectedAny": [
+        "happy",
+        "sad",
+        "tired",
+        "nervous",
+        "anxious",
+        "excited",
+        "angry",
+        "grateful",
+        "lonely"
+      ],
+      "matched": "sad",
+      "latencyMs": 490
+    },
+    {
+      "desc": "works at PLACE",
+      "category": "blank-grammar",
+      "input": "She works at _",
+      "pass": true,
+      "alternatives": [
+        "school",
+        "hospital",
+        "store",
+        "restaurant"
+      ],
+      "expectedAny": [
+        "Google",
+        "home",
+        "night",
+        "school",
+        "hospital",
+        "Amazon",
+        "Microsoft",
+        "Apple"
+      ],
+      "matched": "school",
+      "latencyMs": 438
+    },
+    {
+      "desc": "sat on NOUN",
+      "category": "blank-grammar",
+      "input": "The cat sat on the _",
+      "pass": true,
+      "alternatives": [
+        "sofa",
+        "roof",
+        "table",
+        "chair"
+      ],
+      "expectedAny": [
+        "mat",
+        "chair",
+        "floor",
+        "table",
+        "sofa",
+        "bed",
+        "rug",
+        "couch",
+        "roof",
+        "windowsill"
+      ],
+      "matched": "chair",
+      "latencyMs": 568
+    },
+    {
+      "desc": "learn WHAT",
+      "category": "blank-grammar",
+      "input": "I want to learn _",
+      "pass": true,
+      "alternatives": [
+        "Spanish",
+        "mathematics",
+        "guitar",
+        "history"
+      ],
+      "expectedAny": [
+        "Python",
+        "piano",
+        "guitar",
+        "Spanish",
+        "cooking",
+        "French",
+        "swimming",
+        "coding"
+      ],
+      "matched": "guitar",
+      "latencyMs": 1768
+    },
+    {
+      "desc": "traveled to DEST",
+      "category": "blank-grammar",
+      "input": "They traveled to _",
+      "pass": true,
+      "alternatives": [
+        "Tokyo",
+        "London",
+        "Paris",
+        "school"
+      ],
+      "expectedAny": [
+        "Paris",
+        "Tokyo",
+        "London",
+        "Rome",
+        "Europe",
+        "Italy",
+        "Japan",
+        "Spain"
+      ],
+      "matched": "Paris",
+      "latencyMs": 638
+    },
+    {
+      "desc": "dinner was ADJ",
+      "category": "blank-grammar",
+      "input": "The dinner was _",
+      "pass": false,
+      "alternatives": [
+        "lavish",
+        "forgettable",
+        "hearty",
+        "exquisite"
+      ],
+      "expectedAny": [
+        "delicious",
+        "terrible",
+        "amazing",
+        "cold",
+        "ready",
+        "served",
+        "wonderful",
+        "perfect"
+      ],
+      "matched": null,
+      "latencyMs": 546
+    },
+    {
+      "desc": "dreams of NOUN",
+      "category": "blank-grammar",
+      "input": "He dreams of _",
+      "pass": true,
+      "alternatives": [
+        "adventure",
+        "peace",
+        "fame",
+        "love"
+      ],
+      "expectedAny": [
+        "success",
+        "flying",
+        "freedom",
+        "wealth",
+        "home",
+        "traveling",
+        "adventure",
+        "peace"
+      ],
+      "matched": "adventure",
+      "latencyMs": 429
+    },
+    {
+      "desc": "SUBJ ran across",
+      "category": "blank-grammar",
+      "input": "_ ran across the street",
+      "pass": false,
+      "alternatives": [
+        "cat",
+        "child",
+        "athlete",
+        "neighbor"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "It",
+        "A",
+        "The"
+      ],
+      "matched": null,
+      "latencyMs": 404
+    },
+    {
+      "desc": "SUBJ walked in",
+      "category": "blank-grammar",
+      "input": "_ walked into the room",
+      "pass": true,
+      "alternatives": [
+        "She",
+        "They",
+        "The dog",
+        "A child"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "A",
+        "The"
+      ],
+      "matched": "She",
+      "latencyMs": 367
+    },
+    {
+      "desc": "SUBJ crashed",
+      "category": "blank-grammar",
+      "input": "_ crashed into the wall",
+      "pass": true,
+      "alternatives": [
+        "She",
+        "The car",
+        "Someone",
+        "The plane"
+      ],
+      "expectedAny": [
+        "It",
+        "He",
+        "She",
+        "The car",
+        "A truck",
+        "Someone",
+        "The"
+      ],
+      "matched": "She",
+      "latencyMs": 469
+    },
+    {
+      "desc": "SUBJ flew over",
+      "category": "blank-grammar",
+      "input": "_ flew over the mountain",
+      "pass": false,
+      "alternatives": [
+        "eagle",
+        "plane",
+        "dragon",
+        "superhero"
+      ],
+      "expectedAny": [
+        "It",
+        "He",
+        "She",
+        "The bird",
+        "A plane",
+        "They",
+        "The"
+      ],
+      "matched": null,
+      "latencyMs": 492
+    },
+    {
+      "desc": "SUBJ screamed",
+      "category": "blank-grammar",
+      "input": "_ screamed loudly",
+      "pass": true,
+      "alternatives": [
+        "She",
+        "They",
+        "The dog",
+        "Someone"
+      ],
+      "expectedAny": [
+        "He",
+        "She",
+        "They",
+        "Someone",
+        "The",
+        "A"
+      ],
+      "matched": "She",
+      "latencyMs": 333
+    },
+    {
+      "desc": "ADJ dog barked",
+      "category": "blank-grammar",
+      "input": "The _ dog barked loudly",
+      "pass": true,
+      "alternatives": [
+        "small",
+        "brown",
+        "happy",
+        "loud"
+      ],
+      "expectedAny": [
+        "big",
+        "small",
+        "brown",
+        "old",
+        "little",
+        "angry",
+        "large",
+        "black",
+        "young",
+        "stray"
+      ],
+      "matched": "small",
+      "latencyMs": 377
+    },
+    {
+      "desc": "walked ADV to school",
+      "category": "blank-grammar",
+      "input": "She walked _ to school",
+      "pass": true,
+      "alternatives": [
+        "slowly",
+        "carefully",
+        "hurriedly",
+        "reluctantly"
+      ],
+      "expectedAny": [
+        "slowly",
+        "quickly",
+        "carefully",
+        "briskly",
+        "happily",
+        "alone",
+        "home",
+        "fast"
+      ],
+      "matched": "slowly",
+      "latencyMs": 833
+    },
+    {
+      "desc": "team VERB convincingly",
+      "category": "blank-grammar",
+      "input": "The team _ convincingly",
+      "pass": true,
+      "alternatives": [
+        "lost",
+        "played",
+        "dominated",
+        "performed"
+      ],
+      "expectedAny": [
+        "won",
+        "lost",
+        "played",
+        "performed",
+        "dominated",
+        "argued",
+        "competed"
+      ],
+      "matched": "lost",
+      "latencyMs": 475
+    },
+    {
+      "desc": "ADJ car raced",
+      "category": "blank-grammar",
+      "input": "The _ car raced down the highway",
+      "pass": true,
+      "alternatives": [
+        "red",
+        "old",
+        "shiny",
+        "gleaming"
+      ],
+      "expectedAny": [
+        "fast",
+        "red",
+        "blue",
+        "new",
+        "old",
+        "stolen",
+        "black",
+        "sleek",
+        "sports"
+      ],
+      "matched": "red",
+      "latencyMs": 433
+    },
+    {
+      "desc": "ADJ woman entered",
+      "category": "blank-grammar",
+      "input": "A _ woman entered the building",
+      "pass": true,
+      "alternatives": [
+        "old",
+        "tall",
+        "brave",
+        "mysterious"
+      ],
+      "expectedAny": [
+        "tall",
+        "young",
+        "old",
+        "beautiful",
+        "mysterious",
+        "short",
+        "blonde",
+        "elderly"
+      ],
+      "matched": "tall",
+      "latencyMs": 608
+    },
+    {
+      "desc": "students VERB exam",
+      "category": "blank-grammar",
+      "input": "The students _ the exam",
+      "pass": true,
+      "alternatives": [
+        "passed",
+        "failed",
+        "aced",
+        "cheated"
+      ],
+      "expectedAny": [
+        "passed",
+        "failed",
+        "took",
+        "finished",
+        "aced",
+        "completed",
+        "studied for"
+      ],
+      "matched": "passed",
+      "latencyMs": 1247
+    },
+    {
+      "desc": "VERB ball over fence",
+      "category": "blank-grammar",
+      "input": "He _ the ball over the fence",
+      "pass": true,
+      "alternatives": [
+        "kicked",
+        "tossed",
+        "hit",
+        "passed"
+      ],
+      "expectedAny": [
+        "threw",
+        "kicked",
+        "hit",
+        "tossed",
+        "lobbed",
+        "launched",
+        "hurled"
+      ],
+      "matched": "kicked",
+      "latencyMs": 637
+    },
+    {
+      "desc": "ADJ sky rain",
+      "category": "blank-grammar",
+      "input": "The _ sky indicated rain",
+      "pass": true,
+      "alternatives": [
+        "gray",
+        "stormy",
+        "overcast",
+        "bleak"
+      ],
+      "expectedAny": [
+        "dark",
+        "gray",
+        "cloudy",
+        "grey",
+        "overcast",
+        "gloomy",
+        "stormy"
+      ],
+      "matched": "gray",
+      "latencyMs": 504
+    },
+    {
+      "desc": "VERB piano",
+      "category": "blank-grammar",
+      "input": "She _ the piano beautifully",
+      "pass": true,
+      "alternatives": [
+        "performed",
+        "practiced",
+        "mastered",
+        "played"
+      ],
+      "expectedAny": [
+        "played",
+        "performed",
+        "practiced",
+        "touched",
+        "strummed"
+      ],
+      "matched": "played",
+      "latencyMs": 966
+    },
+    {
+      "desc": "ADJ river valley",
+      "category": "blank-grammar",
+      "input": "The _ river flows through the valley",
+      "pass": true,
+      "alternatives": [
+        "swift",
+        "meandering",
+        "crystal",
+        "deep"
+      ],
+      "expectedAny": [
+        "wide",
+        "long",
+        "deep",
+        "narrow",
+        "ancient",
+        "mighty",
+        "great",
+        "winding"
+      ],
+      "matched": "deep",
+      "latencyMs": 471
+    },
+    {
+      "desc": "app using TECH",
+      "category": "blank-grammar",
+      "input": "She built the app using _",
+      "pass": true,
+      "alternatives": [
+        "React",
+        "Flutter",
+        "Swift",
+        "Kotlin"
+      ],
+      "expectedAny": [
+        "React",
+        "Python",
+        "Flutter",
+        "Swift",
+        "JavaScript",
+        "TypeScript",
+        "Java",
+        "Vue",
+        "Angular",
+        "Rails"
+      ],
+      "matched": "React",
+      "latencyMs": 286
+    },
+    {
+      "desc": "breakfast with NOUN",
+      "category": "blank-grammar",
+      "input": "He ate breakfast with _",
+      "pass": true,
+      "alternatives": [
+        "fork",
+        "spoon",
+        "coffee",
+        "juice"
+      ],
+      "expectedAny": [
+        "friends",
+        "family",
+        "coffee",
+        "cereal",
+        "toast",
+        "enthusiasm",
+        "joy"
+      ],
+      "matched": "coffee",
+      "latencyMs": 372
+    },
+    {
+      "desc": "written by AUTHOR",
+      "category": "blank-grammar",
+      "input": "The book was written by _",
+      "pass": false,
+      "alternatives": [
+        "author"
+      ],
+      "expectedAny": [
+        "Shakespeare",
+        "Tolkien",
+        "Orwell",
+        "Hemingway",
+        "Twain",
+        "Dickens",
+        "a",
+        "an",
+        "the",
+        "her",
+        "him"
+      ],
+      "matched": null,
+      "latencyMs": 333
+    },
+    {
+      "desc": "arrived in NOUN",
+      "category": "blank-grammar",
+      "input": "They arrived in _",
+      "pass": true,
+      "alternatives": [
+        "Tokyo",
+        "London",
+        "school",
+        "work"
+      ],
+      "expectedAny": [
+        "time",
+        "Paris",
+        "London",
+        "style",
+        "silence",
+        "Tokyo",
+        "Rome",
+        "minutes",
+        "January"
+      ],
+      "matched": "London",
+      "latencyMs": 329
+    },
+    {
+      "desc": "hangs in PLACE",
+      "category": "blank-grammar",
+      "input": "The painting hangs in the _",
+      "pass": true,
+      "alternatives": [
+        "museum",
+        "room",
+        "hall",
+        "house"
+      ],
+      "expectedAny": [
+        "museum",
+        "gallery",
+        "hall",
+        "room",
+        "office",
+        "lobby",
+        "living room",
+        "bedroom"
+      ],
+      "matched": "museum",
+      "latencyMs": 587
+    }
+  ]
+}

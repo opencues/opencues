@@ -27,7 +27,7 @@ Gemini
 priority: 100
 ```
 
-Classify the input into one mode: MATH, FACTUAL, or GRAMMAR.
+Classify the input into one mode: MATH, FACTUAL, TRANSLATION, UNIT, SPELLING, COLOR, HTTP, or GRAMMAR.
 
 NOTE: This classifier only runs for inputs with blanks (_) when fast heuristics (match/keywords) don't match.
 Claude Code terms are detected via per-word tips lookup (no classifier needed).
@@ -36,36 +36,54 @@ MATH - Contains calculations, numbers with operators, percentages, or word math:
 - "4 * 12 = _" → MATH
 - "half of 16 = _" → MATH
 - "50 plus 20% tax = _" → MATH
-- "tip 18% on 85 = _" → MATH
 - "average of 80, 90, 100 = _" → MATH
-- "5 factorial = _" → MATH
-- "celsius to fahrenheit 100C = _" → MATH
-- "distance at 60 mph for 2 hours = _" → MATH
 
 FACTUAL - Asks for specific facts, names, dates, or knowledge:
 - "The CEO of Apple is _" → FACTUAL
 - "The capital of France is _" → FACTUAL
-- "World War 2 ended in _" → FACTUAL
 - "The chemical symbol for gold is _" → FACTUAL
-- "The author of Harry Potter is _" → FACTUAL
-- "The tallest mountain is _" → FACTUAL
-- "The first president of the US was _" → FACTUAL
-- "The speed of light is _" → FACTUAL
+
+TRANSLATION - Translating a word or phrase into another language:
+- "Hello in French is _" → TRANSLATION
+- "Dog in Spanish is _" → TRANSLATION
+
+UNIT - Converting between measurement units:
+- "100 celsius in fahrenheit is _" → UNIT
+- "5 miles in km is _" → UNIT
+- "10 kg in pounds is _" → UNIT
+
+SPELLING - Word relationships (opposites, synonyms, rhymes):
+- "The opposite of hot is _" → SPELLING
+- "A synonym for happy is _" → SPELLING
+- "Rhymes with cat _" → SPELLING
+
+COLOR - Color codes and color space conversions:
+- "Red in hex is _" → COLOR
+- "Hex for blue is _" → COLOR
+- "#FF0000 in rgb is _" → COLOR
+
+HTTP - HTTP status codes and meanings:
+- "HTTP status for not found is _" → HTTP
+- "HTTP 200 means _" → HTTP
+- "Status code for unauthorized is _" → HTTP
+
+TIMEZONE - Time zone conversions:
+- "3pm London in Tokyo is _" → TIMEZONE
+- "9am EST in PST is _" → TIMEZONE
+- "Noon UTC in IST is _" → TIMEZONE
+
+ROMAN - Roman numeral conversions:
+- "14 in roman numerals is _" → ROMAN
+- "MCMXC in numbers is _" → ROMAN
+- "2024 in roman is _" → ROMAN
 
 GRAMMAR - Needs word alternatives or sentence completion (default):
 - "The nervous boy _ quickly" → GRAMMAR
 - "She walked _ to school" → GRAMMAR
-- "The beautiful sunset _" → GRAMMAR
-- "He felt extremely _" → GRAMMAR
-- "The ancient temple stood _" → GRAMMAR
-- "I want to build an app using _" → GRAMMAR
-- "The code is written in _" → GRAMMAR
-- "We are going to _" → GRAMMAR
-- "She works at _" → GRAMMAR
-- "_ quick fox jumped" → GRAMMAR
+- "The _ dog barked loudly" → GRAMMAR
 - "_ ran across the street" → GRAMMAR
 
-Output ONLY: MODE=MATH or MODE=FACTUAL or MODE=GRAMMAR
+Output ONLY: MODE=MATH or MODE=FACTUAL or MODE=TRANSLATION or MODE=UNIT or MODE=SPELLING or MODE=COLOR or MODE=HTTP or MODE=TIMEZONE or MODE=ROMAN or MODE=GRAMMAR
 
 Classify:
 
@@ -75,7 +93,7 @@ Classify:
 priority: 90
 parser: compute
 match: \d+\s*[+\-*/^%]\s*\d+|\d+%
-keywords: factorial, average, half of, double, triple, square root, sqrt, power of, celsius, fahrenheit, mph, km/h, tip, tax, discount, split, divide, multiply, mod, remainder, gcd, lcm, log, sine, cosine, floor, ceiling, round
+keywords: factorial, average, half of, double, triple, square root, sqrt, power of, tip, tax, discount, split, divide, multiply, mod, remainder, gcd, lcm, log, sine, cosine, floor, ceiling, round
 ```
 
 Solve the math. Output ONLY: COMPUTE=expression
@@ -122,7 +140,7 @@ Solve:
 ```yaml
 priority: 90
 parser: answer
-match: the .+ of .+ is|who (is|was|invented|wrote|painted|composed)|capital of|ceo of|founder of|author of|chemical symbol|atomic number|speed of light|largest (ocean|planet|desert|continent)|tallest (mountain|building)|longest (river|bridge)
+match: the (capital|ceo|founder|author|inventor|creator|president|king|queen|leader|currency|language|population|area) of .+ is|who (is|was|invented|wrote|painted|composed)|capital of|ceo of|founder of|author of|chemical symbol|atomic number|speed of light|largest (ocean|planet|desert|continent)|tallest (mountain|building)|longest (river|bridge)
 keywords: capital of, ceo of, founder of, author of, who is, who was, when did, when was, where is, chemical symbol, atomic number, boils at, freezes at, speed of light
 ```
 
@@ -170,6 +188,239 @@ Science:
 - The largest planet is BLANK → ANSWER=Jupiter
 
 Question:
+
+### translation
+
+```yaml
+priority: 85
+parser: answer
+match: in (french|spanish|german|italian|japanese|chinese|korean|portuguese|arabic|russian|hindi|dutch|swedish|greek|latin|hebrew) (is|means)|how do you say .+ in|translate .+ to|(french|spanish|german|italian|japanese|chinese|korean|portuguese|arabic|russian) word for
+keywords: in french, in spanish, in german, in italian, in japanese, in chinese, in korean, in portuguese, in arabic, in russian, translate to, how do you say, french word for, german word for, spanish word for, italian word for, japanese word for, chinese word for, korean word for, arabic word for, russian word for, latin word for, hebrew word for
+```
+
+Translate the word or phrase. Output ONLY: ANSWER=translation
+
+Use the most common/standard translation. For languages with non-Latin scripts,
+provide the romanized form (e.g., "arigatou" not "ありがとう").
+
+Examples:
+- Hello in French is BLANK → ANSWER=Bonjour
+- Thank you in Japanese is BLANK → ANSWER=Arigatou
+- Dog in Spanish is BLANK → ANSWER=Perro
+- The German word for house is BLANK → ANSWER=Haus
+- How do you say goodbye in Italian BLANK → ANSWER=Arrivederci
+- Water in Arabic is BLANK → ANSWER=Maa
+- Cat in Portuguese is BLANK → ANSWER=Gato
+- Love in Latin is BLANK → ANSWER=Amor
+- Friend in Korean is BLANK → ANSWER=Chingu
+- Good morning in Chinese is BLANK → ANSWER=Zao shang hao
+- Beautiful in Russian is BLANK → ANSWER=Krasivyy
+- Peace in Hebrew is BLANK → ANSWER=Shalom
+- Bread in French is BLANK → ANSWER=Pain
+- Book in German is BLANK → ANSWER=Buch
+- Red in Spanish is BLANK → ANSWER=Rojo
+
+Translate:
+
+### unit
+
+```yaml
+priority: 85
+parser: compute
+match: \d+\s*(celsius|fahrenheit|km|miles|kg|pounds|liters|gallons|meters|feet|inches|cm|oz|grams|yards|ounces|tons|mph|kph)\s+(in|to)\s+
+keywords: in celsius, in fahrenheit, in km, in miles, in kg, in pounds, in liters, in gallons, in meters, in feet, in inches, in cm, convert to, to celsius, to fahrenheit, in yards, in ounces
+```
+
+Convert between units. Output ONLY: COMPUTE=expression
+
+Use these conversion formulas:
+- Celsius to Fahrenheit: COMPUTE=(C*9/5)+32
+- Fahrenheit to Celsius: COMPUTE=(F-32)*5/9
+- Miles to Kilometers: COMPUTE=miles*1.60934
+- Kilometers to Miles: COMPUTE=km*0.621371
+- Kilograms to Pounds: COMPUTE=kg*2.20462
+- Pounds to Kilograms: COMPUTE=lbs*0.453592
+- Liters to Gallons: COMPUTE=liters*0.264172
+- Gallons to Liters: COMPUTE=gallons*3.78541
+- Meters to Feet: COMPUTE=meters*3.28084
+- Feet to Meters: COMPUTE=feet*0.3048
+- Inches to Centimeters: COMPUTE=inches*2.54
+- Centimeters to Inches: COMPUTE=cm*0.393701
+- Yards to Meters: COMPUTE=yards*0.9144
+- Ounces to Grams: COMPUTE=oz*28.3495
+
+Examples:
+- 100 celsius in fahrenheit = BLANK → COMPUTE=(100*9/5)+32
+- 32 fahrenheit in celsius = BLANK → COMPUTE=(32-32)*5/9
+- 5 miles in km = BLANK → COMPUTE=5*1.60934
+- 10 km in miles = BLANK → COMPUTE=10*0.621371
+- 70 kg in pounds = BLANK → COMPUTE=70*2.20462
+- 150 pounds in kg = BLANK → COMPUTE=150*0.453592
+- 10 meters in feet = BLANK → COMPUTE=10*3.28084
+- 6 feet in meters = BLANK → COMPUTE=6*0.3048
+- 12 inches in cm = BLANK → COMPUTE=12*2.54
+
+Convert:
+
+### spelling
+
+```yaml
+priority: 82
+parser: answer
+match: (opposite|synonym|antonym|rhymes?) (of|for|with)|another word for|means the same as
+keywords: opposite of, synonym for, antonym of, rhymes with, another word for, means the same as
+```
+
+Answer the word relationship question. Output ONLY: ANSWER=word
+
+Examples:
+- The opposite of hot is BLANK → ANSWER=cold
+- The opposite of big is BLANK → ANSWER=small
+- The opposite of fast is BLANK → ANSWER=slow
+- A synonym for happy is BLANK → ANSWER=joyful
+- A synonym for big is BLANK → ANSWER=large
+- A synonym for fast is BLANK → ANSWER=quick
+- An antonym of light is BLANK → ANSWER=dark
+- Rhymes with cat BLANK → ANSWER=hat
+- Rhymes with dog BLANK → ANSWER=log
+- Another word for beautiful is BLANK → ANSWER=gorgeous
+- Means the same as angry BLANK → ANSWER=furious
+
+Answer:
+
+### color
+
+```yaml
+priority: 83
+parser: answer
+match: (hex|rgb|hsl|color code|colour code) (for|of|is)|in (hex|rgb|hsl)|#[0-9a-fA-F]{3,6}
+keywords: in hex, in rgb, hex for, rgb for, color code, hex code, colour code, color for, colour for
+```
+
+Answer the color code question. Output ONLY: ANSWER=value
+
+For hex codes, include the # prefix. For RGB, use format "rgb(R,G,B)".
+
+Examples:
+- Red in hex is BLANK → ANSWER=#FF0000
+- Blue in hex is BLANK → ANSWER=#0000FF
+- Green in hex is BLANK → ANSWER=#00FF00
+- White in hex is BLANK → ANSWER=#FFFFFF
+- Black in hex is BLANK → ANSWER=#000000
+- Yellow in hex is BLANK → ANSWER=#FFFF00
+- Hex for purple is BLANK → ANSWER=#800080
+- Hex for orange is BLANK → ANSWER=#FFA500
+- Red in rgb is BLANK → ANSWER=rgb(255,0,0)
+- Blue in rgb is BLANK → ANSWER=rgb(0,0,255)
+- Hex for cyan is BLANK → ANSWER=#00FFFF
+- Hex for pink is BLANK → ANSWER=#FFC0CB
+
+Answer:
+
+### http
+
+```yaml
+priority: 84
+parser: answer
+match: http (status|code|error|\d{3})|status code for
+keywords: http status, status code, http code, http error, status for
+```
+
+Answer the HTTP status code question. Output ONLY: ANSWER=value
+
+For code-to-meaning: give the standard reason phrase.
+For meaning-to-code: give the 3-digit status code.
+
+Examples:
+- HTTP status for not found is BLANK → ANSWER=404
+- HTTP status for OK is BLANK → ANSWER=200
+- HTTP status for unauthorized is BLANK → ANSWER=401
+- HTTP status for forbidden is BLANK → ANSWER=403
+- HTTP status for server error is BLANK → ANSWER=500
+- HTTP status for redirect is BLANK → ANSWER=301
+- HTTP status for bad request is BLANK → ANSWER=400
+- HTTP status for created is BLANK → ANSWER=201
+- HTTP 200 means BLANK → ANSWER=OK
+- HTTP 404 means BLANK → ANSWER=Not Found
+- HTTP 500 means BLANK → ANSWER=Internal Server Error
+- HTTP 301 means BLANK → ANSWER=Moved Permanently
+- HTTP 403 means BLANK → ANSWER=Forbidden
+- HTTP 401 means BLANK → ANSWER=Unauthorized
+
+Answer:
+
+### timezone
+
+```yaml
+priority: 84
+parser: answer
+match: \d{1,2}\s*(am|pm)\s+(in|to)\s+\w+\s+(is|time)|(noon|midnight)\s+(in|to)\s+|(\bEST\b|\bPST\b|\bCST\b|\bMST\b|\bUTC\b|\bGMT\b|\bCET\b|\bIST\b|\bJST\b|\bAEST\b|\bBST\b|\bKST\b)\s+(in|to)\s+
+keywords: in est, in pst, in cst, in mst, in utc, in gmt, in cet, in ist, in jst, in aest, in bst, in kst, time in, to est, to pst, to utc, to gmt, london time, tokyo time, new york time
+```
+
+Convert between time zones. Output ONLY: ANSWER=time
+
+Use these UTC offsets:
+- UTC/GMT: +0
+- EST (New York): -5, EDT: -4
+- CST (Chicago): -6, CDT: -5
+- MST (Denver): -7, MDT: -6
+- PST (Los Angeles): -8, PDT: -7
+- GMT/London: +0, BST: +1
+- CET (Paris/Berlin): +1, CEST: +2
+- IST (India): +5:30
+- JST (Tokyo): +9
+- KST (Seoul): +9
+- AEST (Sydney): +10, AEDT: +11
+- CST (China/Beijing): +8
+
+Give the converted time in 12-hour format with am/pm.
+
+Examples:
+- 3pm London in Tokyo is BLANK → ANSWER=midnight (12am next day)
+- 9am EST in PST is BLANK → ANSWER=6am
+- noon UTC in IST is BLANK → ANSWER=5:30pm
+- 8pm Tokyo in London is BLANK → ANSWER=11am
+- 10am PST in EST is BLANK → ANSWER=1pm
+- 6am UTC in CET is BLANK → ANSWER=7am
+- 3pm New York in London is BLANK → ANSWER=8pm
+- midnight UTC in JST is BLANK → ANSWER=9am
+- 2pm London in New York is BLANK → ANSWER=9am
+- 7am PST in Tokyo is BLANK → ANSWER=midnight (12am next day)
+
+Answer:
+
+### roman
+
+```yaml
+priority: 81
+parser: answer
+match: \b[IVXLCDM]{2,}\b|in roman (numeral|number)|to roman|from roman
+keywords: roman numeral, roman numerals, in roman, to roman, from roman
+```
+
+Convert between Arabic and Roman numerals. Output ONLY: ANSWER=value
+
+Roman numeral rules:
+- I=1, V=5, X=10, L=50, C=100, D=500, M=1000
+- Subtractive: IV=4, IX=9, XL=40, XC=90, CD=400, CM=900
+- Numbers 1-3999 only
+
+Examples:
+- 14 in roman numerals is BLANK → ANSWER=XIV
+- 2024 in roman numerals is BLANK → ANSWER=MMXXIV
+- 99 in roman numerals is BLANK → ANSWER=XCIX
+- 1990 in roman numerals is BLANK → ANSWER=MCMXC
+- 500 in roman numerals is BLANK → ANSWER=D
+- MCMXC in numbers is BLANK → ANSWER=1990
+- XIV in numbers is BLANK → ANSWER=14
+- XLII in numbers is BLANK → ANSWER=42
+- MMXXIV in numbers is BLANK → ANSWER=2024
+- IX in numbers is BLANK → ANSWER=9
+- CDXLIV in numbers is BLANK → ANSWER=444
+- DCCCLXXXVIII in numbers is BLANK → ANSWER=888
+
+Answer:
 
 ### grammar
 

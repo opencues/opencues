@@ -86,7 +86,13 @@ export class ClassifiedSourceGroup implements CueSource {
     if (!selected) {
       return { results: [], timing: 0 };
     }
-    return selected.getCues(context);
+    const result = await selected.getCues(context);
+    // If classified source returned empty results and it wasn't the default,
+    // fall back to default source (handles misclassification)
+    if (result.results.length === 0 && selected !== this.defaultSource && this.defaultSource) {
+      return this.defaultSource.getCues(context);
+    }
+    return result;
   }
 
   private async classify(text: string): Promise<ConfigSource | null> {
@@ -103,22 +109,55 @@ export class ClassifiedSourceGroup implements CueSource {
     return this.defaultSource;
   }
 
-  private classifyFast(text: string): ConfigSource | null {
+  /** Exposed for testing — returns the fast-matched source or null */
+  classifyFast(text: string): ConfigSource | null {
     const lower = text.toLowerCase();
+
+    // Collect all matches with their priority so highest-priority wins
+    let bestMatch: ConfigSource | null = null;
+    let bestPriority = -1;
+
     for (const entry of this.entries) {
-      if (entry.matchRe && entry.matchRe.test(text)) return entry.source;
-      if (entry.keywords && entry.keywords.some(kw => lower.includes(kw))) return entry.source;
+      const priority = entry.source.priority;
+      if (priority <= bestPriority) continue; // can't beat current best
+
+      if (entry.matchRe && entry.matchRe.test(text)) {
+        bestMatch = entry.source;
+        bestPriority = priority;
+        continue;
+      }
+
+      // Word-boundary keyword matching: keyword must appear as whole words
+      // "in french" matches "hello in french is" but not "frozen in frenchtoast"
+      if (entry.keywords) {
+        for (const kw of entry.keywords) {
+          const idx = lower.indexOf(kw);
+          if (idx < 0) continue;
+          // Check left boundary: start of string or non-alphanumeric
+          const leftOk = idx === 0 || /\W/.test(lower[idx - 1]);
+          // Check right boundary: end of string or non-alphanumeric
+          const endIdx = idx + kw.length;
+          const rightOk = endIdx >= lower.length || /\W/.test(lower[endIdx]);
+          if (leftOk && rightOk) {
+            bestMatch = entry.source;
+            bestPriority = priority;
+            break;
+          }
+        }
+      }
     }
-    return null;
+
+    return bestMatch;
   }
 
-  private async classifyLLM(text: string): Promise<ConfigSource | null> {
+  /** Exposed for testing — calls the LLM classifier and returns the matched source */
+  async classifyLLM(text: string): Promise<ConfigSource | null> {
     try {
       const prompt = this.config.classifierPrompt!.trimEnd() + ' ' + text;
       const body = JSON.stringify({
         model: this.config.model,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 50,
+        max_tokens: 200,
         temperature: 0.1,
       });
       const headers = {
@@ -127,13 +166,21 @@ export class ClassifiedSourceGroup implements CueSource {
       };
       const response = await this.config.httpAdapter.post(this.config.endpoint, body, headers);
       const data = JSON.parse(response);
-      const raw = (data.choices?.[0]?.message?.content || '').toUpperCase();
+      const msg = data.choices?.[0]?.message;
+      const content = (msg?.content || '').toUpperCase();
+      const reasoning = (msg?.reasoning || '').toUpperCase();
 
-      // Match any known child source name
+      // First try content field (preferred — actual model output)
       for (const entry of this.entries) {
-        if (raw.includes('MODE=' + entry.name.toUpperCase()) || raw.includes(entry.name.toUpperCase())) {
-          return entry.source;
-        }
+        const mode = 'MODE=' + entry.name.toUpperCase();
+        if (content.includes(mode)) return entry.source;
+      }
+
+      // Then try reasoning field for MODE= pattern only (not bare name — reasoning
+      // contains the full prompt which lists all mode names)
+      for (const entry of this.entries) {
+        const mode = 'MODE=' + entry.name.toUpperCase();
+        if (reasoning.includes(mode)) return entry.source;
       }
     } catch { /* fall through */ }
 
