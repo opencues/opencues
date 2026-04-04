@@ -6,4 +6,4 @@
 
 ## Benchmark
 
-- **Reduce word alternative flakiness.** ~41% of word tests are flaky across runs because the LLM returns valid synonyms not in the expected list. Options: widen expected lists based on multi-run data, switch to semantic similarity checking instead of exact match, or accept a "valid alternative" threshold rather than checking for specific words.
+- ~~**Reduce word alternative flakiness.**~~ Fixed: harvested valid alts from 10 benchmark runs and expanded expected lists. Match rate went from 95.6% to 98.5%. Re-harvest periodically with more runs to further reduce flakiness.
