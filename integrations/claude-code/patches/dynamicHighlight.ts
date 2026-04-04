@@ -260,7 +260,7 @@ var _newText=_text.slice(0,_wStart)+_newWord+_text.slice(_wEnd);
 globalThis._hlText=_newText;
 globalThis._hlState.text=_newText;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-return{text:_newText,lenDiff:_newWord.length-_curWord.length,wStart:_wStart};
+return{text:_newText,lenDiff:_newWord.length-_curWord.length,wStart:_wStart,newLen:_newWord.length};
 }
 // Dynamic alt cycling
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
@@ -332,7 +332,7 @@ if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // Re-evaluate underscore if present
 var _cw=_newText.split(/\\s+/).filter(function(w){return w;});
 if(_cw.indexOf("_")>=0){var _ctx=_cw.filter(function(w){return w!=="_";}).join(" ");if(_ctx!==(globalThis._dynUnderscoreContext||"")){globalThis._dynUnderscoreQueued=true;if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){setTimeout(globalThis._dynTriggerAnalysis,100);}}}
-return{text:_newText,lenDiff:_newWord.length-_oldWord.length,wStart:_wStart};
+return{text:_newText,lenDiff:_newWord.length-_oldWord.length,wStart:_wStart,newLen:_newWord.length};
 };
 })();`;
 
@@ -662,17 +662,38 @@ _words.push({index:_r.wordIndex,word:_r.word,alts:_filteredAlts,linked:_r.linked
 }
 }
 }
+// Check current text to detect stale results (word changed during LLM call)
+var _curTextWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
 for(var _mi2=0;_mi2<_words.length;_mi2++){
 var _nw2=_words[_mi2];
+// Skip stale results: if the word at this index no longer matches, discard
+if(_nw2.index<_curTextWords.length&&_nw2.word!==_curTextWords[_nw2.index])continue;
 var _spanInfo2=globalThis._dynSpans&&globalThis._dynSpans[_nw2.index];
 if(_spanInfo2&&_spanInfo2.originalIndex!==_nw2.index){_nw2.alts=null;continue;}
 var _oldW2=globalThis._dynDefs.words.find(function(w){return w.index===_nw2.index;});
 if(_oldW2&&_oldW2.alts){
 if(_oldW2.spanLength)_nw2.spanLength=_oldW2.spanLength;
-if(_nw2.alts){var _mg=_oldW2.alts.slice();for(var _ai3=0;_ai3<_nw2.alts.length;_ai3++){if(_mg.indexOf(_nw2.alts[_ai3])<0)_mg.push(_nw2.alts[_ai3]);}_nw2.alts=_mg;}
+if(_nw2.alts){
+// Merge: start with NEW alts, then add valid OLD alts
+// Filter old alts: only keep those that are real words (not partial prefixes of the current word)
+var _curW2=_curTextWords[_nw2.index]||_nw2.word;
+var _mg=_nw2.alts.slice();
+for(var _ai3=0;_ai3<_oldW2.alts.length;_ai3++){
+var _oa=_oldW2.alts[_ai3];
+if(_mg.indexOf(_oa)<0){
+// Skip old alt if it's a strict prefix of the current word (stale partial)
+if(_curW2&&_oa.length<_curW2.length&&_curW2.indexOf(_oa)===0)continue;
+_mg.push(_oa);
+}
+}
+_nw2.alts=_mg;
+}
 else{_nw2.alts=_oldW2.alts.slice();}
-_nw2.currentAltIndex=_oldW2.currentAltIndex||0;
+// Set currentAltIndex: prefer the current word's position in the alts list
+var _curAltWord=_curTextWords[_nw2.index];
+var _curAltIdx=_curAltWord&&_nw2.alts?_nw2.alts.indexOf(_curAltWord):-1;
+_nw2.currentAltIndex=_curAltIdx>=0?_curAltIdx:(_oldW2.currentAltIndex||0);
 }
 var _existIdx=globalThis._dynDefs.words.findIndex(function(d){return d.index===_nw2.index;});
 if(_existIdx>=0){globalThis._dynDefs.words[_existIdx]=_nw2;}else{globalThis._dynDefs.words.push(_nw2);}
@@ -838,7 +859,7 @@ export const writeDynamicCycleHandlers = (
   const dynUpCode = `
 {var _r=globalThis._cycleAlt&&globalThis._cycleAlt(1,null,null,null,${requireFuncName});
 if(_r&&_r.refresh){if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
-if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}
+if(_r){if(globalThis._refreshTimer){clearTimeout(globalThis._refreshTimer);globalThis._refreshTimer=null;}var _c=${inputZoneVar}.offset;var _wE=_r.wStart+_r.newLen-_r.lenDiff;var _off=_c<=_r.wStart?_c:_c>=_wE?_c+_r.lenDiff:_r.wStart+_r.newLen;if(_off>_r.text.length)_off=_r.text.length;if(_off<0)_off=0;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}
 `;
 
   let newFile = oldFile.slice(0, upInsertPos) + dynUpCode + oldFile.slice(upInsertPos);
@@ -858,7 +879,7 @@ if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDi
   const dynDownCode = `
 {var _r=globalThis._cycleAlt&&globalThis._cycleAlt(-1,null,null,null,${requireFuncName});
 if(_r&&_r.refresh){if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
-if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}
+if(_r){if(globalThis._refreshTimer){clearTimeout(globalThis._refreshTimer);globalThis._refreshTimer=null;}var _c=${inputZoneVar}.offset;var _wE=_r.wStart+_r.newLen-_r.lenDiff;var _off=_c<=_r.wStart?_c:_c>=_wE?_c+_r.lenDiff:_r.wStart+_r.newLen;if(_off>_r.text.length)_off=_r.text.length;if(_off<0)_off=0;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}
 `;
 
   newFile = newFile.slice(0, downInsertPos) + dynDownCode + newFile.slice(downInsertPos);
@@ -903,7 +924,7 @@ export const writeDynamicRawSequenceHandlers = (
   // Dynamic cycle Up — delegates to shared _cycleAlt
   const dynRawUpCode = `{var _r=globalThis._cycleAlt&&globalThis._cycleAlt(1,null,null,null,${requireFuncName});
 if(_r&&_r.refresh){var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
-if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}`;
+if(_r){if(globalThis._refreshTimer){clearTimeout(globalThis._refreshTimer);globalThis._refreshTimer=null;}var _c=${inputZoneVar}.offset;var _wE=_r.wStart+_r.newLen-_r.lenDiff;var _off=_c<=_r.wStart?_c:_c>=_wE?_c+_r.lenDiff:_r.wStart+_r.newLen;if(_off>_r.text.length)_off=_r.text.length;if(_off<0)_off=0;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}`;
   let newFile = oldFile.slice(0, rawUpInsertPos) + dynRawUpCode + oldFile.slice(rawUpInsertPos);
 
   // Find raw sequence Down handler: case(wA==="\x1B[1;7B"):
@@ -921,7 +942,7 @@ if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDi
   // Dynamic cycle Down — delegates to shared _cycleAlt
   const dynRawDownCode = `{var _r=globalThis._cycleAlt&&globalThis._cycleAlt(-1,null,null,null,${requireFuncName});
 if(_r&&_r.refresh){var _pv=globalThis._parentValue||"";return ${inputZoneClass}.fromText(${inputZoneVar}.text+(_pv.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"),${configVar},${inputZoneVar}.offset);}
-if(_r){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}`;
+if(_r){if(globalThis._refreshTimer){clearTimeout(globalThis._refreshTimer);globalThis._refreshTimer=null;}var _c=${inputZoneVar}.offset;var _wE=_r.wStart+_r.newLen-_r.lenDiff;var _off=_c<=_r.wStart?_c:_c>=_wE?_c+_r.lenDiff:_r.wStart+_r.newLen;if(_off>_r.text.length)_off=_r.text.length;if(_off<0)_off=0;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}}`;
 
   newFile = newFile.slice(0, rawDownInsertPos) + dynRawDownCode + newFile.slice(rawDownInsertPos);
 
