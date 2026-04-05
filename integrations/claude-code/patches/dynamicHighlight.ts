@@ -148,6 +148,9 @@ if(_ignoreWords.length>0){globalThis._cuesIgnoreWords=new Set(_ignoreWords.map(f
 globalThis._cuesMdLoaded=true;
 }catch(_e1){}
 }
+// TTS configuration (speak.sh path + speech rate; per-tip "speak" flag controls which tips are read)
+globalThis._ttsRate=${config.ttsSpeed || 2};
+globalThis._ttsScript=${config.ttsScript ? `"${config.ttsScript}"` : 'null'};
 // Periodic status line refresh when a cue-control word is selected
 // Writes cueTip directly to the JSON export file — no re-render, no flicker
 if(!globalThis._cueControlStatusInterval){
@@ -273,8 +276,8 @@ var _dWord=_dWords.find(function(w){return w.index===_dIdx;});
 if((!_dWord||!_dWord.alts||_dWord.alts.length<=1)&&globalThis._cuesCore&&globalThis._localCueMap){
 var _tipResult=globalThis._localCueMap.get(_curWord.toLowerCase());
 if(_tipResult&&_tipResult.alternatives&&_tipResult.alternatives.length>1){
-var _tipDef={index:_dIdx,word:_curWord,alts:_tipResult.alternatives,cueTip:_tipResult.cueTip,altCueTips:_tipResult.altCueTips,source:"tips",linked:null,currentAltIndex:0};
-if(_dWord){_dWord.alts=_tipResult.alternatives;_dWord.cueTip=_tipResult.cueTip;_dWord.altCueTips=_tipResult.altCueTips;}
+var _tipDef={index:_dIdx,word:_curWord,alts:_tipResult.alternatives,cueTip:_tipResult.cueTip,altCueTips:_tipResult.altCueTips,speak:_tipResult.speak||false,source:"tips",linked:null,currentAltIndex:0};
+if(_dWord){_dWord.alts=_tipResult.alternatives;_dWord.cueTip=_tipResult.cueTip;_dWord.altCueTips=_tipResult.altCueTips;_dWord.speak=_tipResult.speak||false;}
 else{globalThis._dynDefs.words.push(_tipDef);_dWord=_tipDef;}
 }
 }
@@ -329,6 +332,17 @@ try{var _cWords=_newText.split(/\\s+/).filter(function(w){return w});
 var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,cueTip:_dWord.cueTip||null,altCueTips:_dWord.altCueTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
 _reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+// TTS: speak the alt tip when cycling (only for tips with speak:true)
+if(_dWord.speak){
+var _ttsTip=(_dWord.altCueTips&&_dWord.altCueTips[_dWord.alts[_nextAlt]])||_dWord.cueTip||null;
+if(_ttsTip){
+if(globalThis._ttsTimer)clearTimeout(globalThis._ttsTimer);
+globalThis._ttsTimer=setTimeout(function(){
+var _ttsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
+var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");
+try{_reqFn("child_process").spawn("bash",[_ttsScript,_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"}).unref();}catch(_te){}
+},80);
+}}
 // Re-evaluate underscore if present
 var _cw=_newText.split(/\\s+/).filter(function(w){return w;});
 if(_cw.indexOf("_")>=0){var _ctx=_cw.filter(function(w){return w!=="_";}).join(" ");if(_ctx!==(globalThis._dynUnderscoreContext||"")){globalThis._dynUnderscoreQueued=true;if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){setTimeout(globalThis._dynTriggerAnalysis,100);}}}
@@ -346,11 +360,15 @@ return{text:_newText,lenDiff:_newWord.length-_oldWord.length,wStart:_wStart,newL
 export interface DynamicHighlightConfig {
   enableDynamicHighlight?: boolean;
   dynamicHighlightDebounceMs?: number;  // Debounce delay in ms (default 0 = 50ms internal)
+  ttsSpeed?: number;         // SAPI speech rate, -10 to 10 (default 2)
+  ttsScript?: string;        // Custom TTS script path (default ~/.claude/actions/speak.sh)
 }
 
 const DEFAULT_CONFIG: Required<DynamicHighlightConfig> = {
   enableDynamicHighlight: true,
   dynamicHighlightDebounceMs: 0,
+  ttsSpeed: 2,
+  ttsScript: '',
 };
 
 /**
@@ -694,6 +712,7 @@ else{_nw2.alts=_oldW2.alts.slice();}
 var _curAltWord=_curTextWords[_nw2.index];
 var _curAltIdx=_curAltWord&&_nw2.alts?_nw2.alts.indexOf(_curAltWord):-1;
 _nw2.currentAltIndex=_curAltIdx>=0?_curAltIdx:(_oldW2.currentAltIndex||0);
+if(_oldW2.speak)_nw2.speak=true;
 }
 var _existIdx=globalThis._dynDefs.words.findIndex(function(d){return d.index===_nw2.index;});
 if(_existIdx>=0){globalThis._dynDefs.words[_existIdx]=_nw2;}else{globalThis._dynDefs.words.push(_nw2);}

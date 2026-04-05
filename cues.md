@@ -17,12 +17,14 @@ For cue-controls see controls.md. For blank-fill behaviour see blanks.md.
     "id": "extended-thinking",
     "words": {
       "ultrathink": {
-        "tip": "Add 'ultrathink' to prompt for max reasoning (31,999 tokens)",
-        "alts": ["Tab", "deep thinking", "think harder"]
+        "tip": "Add ultrathink to prompt for max reasoning",
+        "alts": ["Tab", "deep thinking", "think harder"],
+        "speak": true
       },
       "Tab": {
-        "tip": "Press Tab to toggle extended thinking mode (sticky)",
-        "alts": ["ultrathink", "deep thinking", "think harder"]
+        "tip": "Press Tab to toggle extended thinking mode",
+        "alts": ["ultrathink", "deep thinking", "think harder"],
+        "speak": true
       },
       "deep thinking": {
         "tip": "Extended thinking - Claude reasons longer before responding",

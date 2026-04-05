@@ -542,3 +542,257 @@ describe('blank output: edge cases', () => {
     assert.ok(r.results[0].alternatives.includes('Berlin'));
   });
 });
+
+// ===================================================================
+// BLANK AT FIRST POSITION (index 0) — comprehensive coverage
+// ===================================================================
+
+describe('blank at first position: math', () => {
+  // When _ is first, the fast regex (\d+\s*[op]\s*\d+) won't match,
+  // so the classifier routes to MATH first, then the math source runs.
+  it('"_ + 3 = 8" → 5', async () => {
+    const r = await blankResult('_ + 3 = 8', classifyThen('MATH', 'COMPUTE=8-3'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('5'));
+  });
+
+  it('"_ * 7 = 42" → 6', async () => {
+    const r = await blankResult('_ * 7 = 42', classifyThen('MATH', 'COMPUTE=42/7'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('6'));
+  });
+
+  it('"_ - 10 = 5" → 15', async () => {
+    const r = await blankResult('_ - 10 = 5', classifyThen('MATH', 'COMPUTE=5+10'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('15'));
+  });
+
+  it('"_ / 4 = 25" → 100', async () => {
+    const r = await blankResult('_ / 4 = 25', classifyThen('MATH', 'COMPUTE=25*4'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('100'));
+  });
+
+  it('"_ + _ = 10" with COMPUTE → result at index 0', async () => {
+    const r = await blankResult('_ + _ = 10', classifyThen('MATH', 'COMPUTE=10/2'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('5'));
+  });
+
+  it('first-position blank has _ as first alt', async () => {
+    const r = await blankResult('_ + 1 = 4', classifyThen('MATH', 'COMPUTE=4-1'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[0].alternatives[0], '_');
+    assert.ok(r.results[0].alternatives.includes('3'));
+  });
+
+  it('"_ % 3 = 1" → 7', async () => {
+    const r = await blankResult('_ % 3 = 1', classifyThen('MATH', 'COMPUTE=7'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('7'));
+  });
+
+  it('decimal: "_ / 3 = 2.5" → 7.5', async () => {
+    const r = await blankResult('_ / 3 = 2.5', classifyThen('MATH', 'COMPUTE=2.5*3'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('7.5'));
+  });
+});
+
+describe('blank at first position: factual', () => {
+  it('"_ is the capital of France" → Paris', async () => {
+    const r = await blankResult('_ is the capital of France', fixed('ANSWER=Paris'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Paris'));
+  });
+
+  it('"_ founded Microsoft" → Bill Gates', async () => {
+    // No keyword/regex match for "founded" — needs classifier
+    const r = await blankResult('_ founded Microsoft', classifyThen('FACTUAL', 'ANSWER=Bill Gates'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Bill Gates'));
+  });
+
+  it('"_ is the CEO of Apple" → Tim Cook', async () => {
+    // "ceo of" keyword matches → fast path
+    const r = await blankResult('_ is the CEO of Apple', fixed('ANSWER=Tim Cook'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Tim Cook'));
+  });
+
+  it('"_ wrote Romeo and Juliet" → Shakespeare', async () => {
+    const r = await blankResult('_ wrote Romeo and Juliet', classifyThen('FACTUAL', 'ANSWER=Shakespeare'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Shakespeare'));
+  });
+
+  it('"_ is the largest planet" → Jupiter', async () => {
+    const r = await blankResult('_ is the largest planet', classifyThen('FACTUAL', 'ANSWER=Jupiter'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Jupiter'));
+  });
+
+  it('"_ invented the telephone" → Alexander Graham Bell', async () => {
+    const r = await blankResult('_ invented the telephone', classifyThen('FACTUAL', 'ANSWER=Alexander Graham Bell'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Alexander Graham Bell'));
+  });
+
+  it('"_ is the chemical symbol for gold" → Au', async () => {
+    const r = await blankResult('_ is the chemical symbol for gold', classifyThen('FACTUAL', 'ANSWER=Au'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Au'));
+  });
+
+  it('first-position factual blank has _ as first alt', async () => {
+    // "capital of" keyword matches → fast path
+    const r = await blankResult('_ is the capital of Italy', fixed('ANSWER=Rome'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[0].alternatives[0], '_');
+    assert.ok(r.results[0].alternatives.includes('Rome'));
+  });
+});
+
+describe('blank at first position: grammar fill', () => {
+  it('"_ ran away" → subject nouns at index 0', async () => {
+    const r = await blankResult('_ ran away', classifyThen('GRAMMAR', '0:He,She,They,The dog'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.deepStrictEqual(r.results[0].alternatives, ['He', 'She', 'They', 'The dog']);
+  });
+
+  it('"_ is delicious" → food nouns', async () => {
+    const r = await blankResult('_ is delicious', classifyThen('GRAMMAR', '0:Pizza,Pasta,Sushi,Cake'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Pizza'));
+    assert.ok(r.results[0].alternatives.includes('Sushi'));
+  });
+
+  it('"_ walked slowly down the street" → subject at start', async () => {
+    const r = await blankResult('_ walked slowly down the street', classifyThen('GRAMMAR', '0:He,She,The man,A woman,They'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[0].alternatives.length, 5);
+  });
+
+  it('"_ can fly" → nouns/pronouns', async () => {
+    const r = await blankResult('_ can fly', classifyThen('GRAMMAR', '0:Birds,Planes,Superman,Eagles'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Birds'));
+  });
+
+  it('"_ is the best programming language" → tech nouns', async () => {
+    const r = await blankResult('_ is the best programming language', classifyThen('GRAMMAR', '0:Python,Rust,JavaScript,Go,TypeScript'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Rust'));
+    assert.ok(r.results[0].alternatives.includes('TypeScript'));
+  });
+
+  it('"_ fell from the sky" → subjects', async () => {
+    const r = await blankResult('_ fell from the sky', classifyThen('GRAMMAR', '0:Rain,Snow,Hail,A meteorite'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Rain'));
+    assert.ok(r.results[0].alternatives.includes('A meteorite'));
+  });
+
+  it('"_ broke the window" → agent nouns', async () => {
+    const r = await blankResult('_ broke the window', classifyThen('GRAMMAR', '0:The ball,A rock,He,Someone'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[0].alternatives.length, 4);
+  });
+
+  it('"_ tastes sweet" → food items', async () => {
+    const r = await blankResult('_ tastes sweet', classifyThen('GRAMMAR', '0:Honey,Sugar,Chocolate,Candy'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Honey'));
+  });
+
+  it('"_ was elected president in 2008" → proper nouns', async () => {
+    const r = await blankResult('_ was elected president in 2008', classifyThen('GRAMMAR', '0:Obama,He,Barack Obama'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Obama'));
+  });
+
+  it('"_ makes people happy" → abstract nouns', async () => {
+    const r = await blankResult('_ makes people happy', classifyThen('GRAMMAR', '0:Music,Love,Laughter,Kindness,Food'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[0].alternatives.length, 5);
+  });
+});
+
+describe('blank at first position: edge cases', () => {
+  it('single blank "_" → grammar fill at index 0', async () => {
+    const r = await blankResult('_', classifyThen('GRAMMAR', '0:Hello,Yes,No,Maybe'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[0].alternatives.length, 4);
+  });
+
+  it('"_ _" → two blanks, first at index 0', async () => {
+    const r = await blankResult('_ _', classifyThen('GRAMMAR', '0:Hello,Hi\n1:world,there'));
+    assert.strictEqual(r.results.length, 2);
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[1].wordIndex, 1);
+  });
+
+  it('"_ _ _" → three blanks, all filled', async () => {
+    const r = await blankResult('_ _ _', classifyThen('GRAMMAR', '0:The,A\n1:big,small\n2:dog,cat'));
+    assert.strictEqual(r.results.length, 3);
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[1].wordIndex, 1);
+    assert.strictEqual(r.results[2].wordIndex, 2);
+  });
+
+  it('first blank plus end blank: "_ is _"', async () => {
+    const r = await blankResult('_ is _', classifyThen('GRAMMAR', '0:He,She\n2:here,there'));
+    assert.strictEqual(r.results.length, 2);
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results[1].wordIndex, 2);
+  });
+
+  it('LLM returns no result for first position → empty results', async () => {
+    const r = await blankResult('_ is great', classifyThen('GRAMMAR', ''));
+    assert.strictEqual(r.results.length, 0);
+  });
+
+  it('LLM error on first-position blank → empty results', async () => {
+    const r = await blankResult('_ is fun', { post: async () => { throw new Error('fail'); } });
+    assert.strictEqual(r.results.length, 0);
+  });
+
+  it('classifier routes first-position blank to math', async () => {
+    const r = await blankResult('_ + 5 = 12', classifyThen('MATH', 'COMPUTE=12-5'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('7'));
+  });
+
+  it('classifier routes first-position blank to factual', async () => {
+    // "author of" keyword matches → fast path
+    const r = await blankResult('_ is the author of Hamlet', fixed('ANSWER=Shakespeare'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Shakespeare'));
+  });
+
+  it('multi-word alt at first position', async () => {
+    const r = await blankResult('_ discovered America', classifyThen('GRAMMAR', '0:Christopher Columbus,Leif Erikson'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('Christopher Columbus'));
+  });
+
+  it('long sentence with blank at start', async () => {
+    const r = await blankResult('_ quickly ran through the dark forest to escape', classifyThen('GRAMMAR', '0:She,He,The fox,A deer'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.ok(r.results[0].alternatives.includes('The fox'));
+  });
+
+  it('alternatives for blank should not include _', async () => {
+    const r = await blankResult('_ ran fast', classifyThen('GRAMMAR', '0:He,She,It'));
+    for (const alt of r.results[0].alternatives) {
+      assert.notStrictEqual(alt, '_');
+    }
+  });
+
+  it('first-position blank with number words later', async () => {
+    const r = await blankResult('_ has 3 cats', classifyThen('GRAMMAR', '0:She,He,Tom'));
+    assert.strictEqual(r.results[0].wordIndex, 0);
+    assert.strictEqual(r.results.length, 1);
+  });
+});

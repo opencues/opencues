@@ -27,6 +27,7 @@ export interface LocalCueLookupResult {
   cueTip: string;
   alternatives: string[];
   altCueTips?: Record<string, string>;
+  speak?: boolean;
   source: 'tips';
 }
 
@@ -110,6 +111,7 @@ export function lookupWord(word: string, data: LocalCueData): LocalCueLookupResu
           cueTip: group.tip,
           alternatives,
           altCueTips,
+          speak: group.speak,
           source: 'tips',
         };
       }
@@ -144,6 +146,7 @@ export function lookupWord(word: string, data: LocalCueData): LocalCueLookupResu
           cueTip: found.entry.tip,
           alternatives,
           altCueTips,
+          speak: found.entry.speak,
           source: 'tips',
         };
       }
@@ -279,6 +282,7 @@ export function buildLookupMap(data: LocalCueData): Map<string, LocalCueLookupRe
           cueTip: group.tip,
           alternatives,
           altCueTips,
+          speak: group.speak,
           source: 'tips',
         };
 
@@ -306,6 +310,7 @@ export function buildLookupMap(data: LocalCueData): Map<string, LocalCueLookupRe
           cueTip: entry.tip,
           alternatives,
           altCueTips,
+          speak: entry.speak,
           source: 'tips',
         };
 
@@ -373,6 +378,7 @@ export function lookupMultiple(
         alts: result.alternatives,
         cueTip: result.cueTip,
         altCueTips: result.altCueTips,
+        speak: result.speak,
         source: 'tips',
         linked: null,
         currentAltIndex: 0,

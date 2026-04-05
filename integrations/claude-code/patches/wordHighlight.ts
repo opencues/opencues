@@ -622,9 +622,19 @@ if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
 }
-}
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
 try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExport));}catch(_e){}
+if(_hlExport.cueTip){
+var _ttsWord=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
+if(_ttsWord&&_ttsWord.speak){
+if(globalThis._ttsTimer)clearTimeout(globalThis._ttsTimer);
+globalThis._ttsTimer=setTimeout(function(){
+var _ttsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
+var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");
+try{${requireFuncName}("child_process").spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"}).unref();}catch(_te){}
+},80);
+}}
+}
 ` : '';
 
   // Full code consists of three parts:
@@ -877,6 +887,14 @@ var _hlWordIdx=(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlS
 var _numRanges=[];
 var _hlStart=-1,_hlEnd=-1;
 ${numberRenderCode}
+// Skip our color overrides for words that have external highlights (e.g. shimmer).
+// kP4 splits text char-by-char for shimmer — our per-char ANSI codes break that.
+// The word remains navigable/selectable — only the visual override is skipped.
+var _extHl=globalThis._extHighlights||[];
+if(_extHl.length>0){
+if(_hlStart>=0){for(var _ehi=0;_ehi<_extHl.length;_ehi++){var _eh=_extHl[_ehi];if(_eh.start<_hlEnd&&_eh.end>_hlStart){_hlStart=-1;_hlEnd=-1;break;}}}
+for(var _nri=_numRanges.length-1;_nri>=0;_nri--){var _nr=_numRanges[_nri];for(var _ehi2=0;_ehi2<_extHl.length;_ehi2++){var _eh2=_extHl[_ehi2];if(_eh2.start<_nr.end&&_eh2.end>_nr.start){_numRanges.splice(_nri,1);break;}}}
+}
 var _out='',_cp=0,_i=0,_inv=false,_pending='';
 while(_i<_rv.length){
 var _am=_rv.slice(_i).match(/^\\x1b\\[[0-9;]*m/);
@@ -902,7 +920,7 @@ _cp++;_i++;
 return _out;
 })()`;
 
-  const newFile =
+  let newFile =
     oldFile.slice(0, location.startIndex) +
     newCode +
     oldFile.slice(location.endIndex);
@@ -914,6 +932,17 @@ return _out;
     location.startIndex,
     location.endIndex
   );
+
+  // Inject globalThis._extHighlights store in the parent function (R5)
+  // so our renderedValue can skip ANSI for words with external highlights (shimmer).
+  // Pattern: "else P=<chalk>.inverse;let X=uu8(" — inject before "let X=uu8("
+  const extHlPattern = /else ([$\w]+)=([$\w]+)\.inverse;let ([$\w]+)=uu8\(/;
+  const extHlMatch = newFile.match(extHlPattern);
+  if (extHlMatch && extHlMatch.index !== undefined) {
+    const insertAt = extHlMatch.index + `else ${extHlMatch[1]}=${extHlMatch[2]}.inverse;`.length;
+    const extHlCode = `globalThis._extHighlights=A.highlights||[];`;
+    newFile = newFile.slice(0, insertAt) + extHlCode + newFile.slice(insertAt);
+  }
 
   return newFile;
 };

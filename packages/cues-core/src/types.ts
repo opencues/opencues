@@ -169,6 +169,9 @@ export interface WordDef {
 
   /** Current position in alts array when cycling */
   currentAltIndex?: number;
+
+  /** When true, tip is read aloud via TTS on navigation */
+  speak?: boolean;
 }
 
 /**
@@ -195,6 +198,9 @@ export interface CueWordEntry {
 
   /** Alternative words to cycle through */
   alts: string[];
+
+  /** When true, tip is read aloud via TTS on navigation */
+  speak?: boolean;
 }
 
 /**
@@ -209,6 +215,9 @@ export interface CueSynonymGroup {
 
   /** Alternatives - point to other groups/concepts, not more synonyms */
   alts: string[];
+
+  /** When true, tip is read aloud via TTS on navigation */
+  speak?: boolean;
 }
 
 /**

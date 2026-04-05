@@ -189,6 +189,8 @@ const patchCode = \`
         dynamicHighlightScriptPath: config.settings.misc?.dynamicHighlightScriptPath || '~/.claude/llm-analyze.sh',
         dynamicHighlightAutoSubmit: config.settings.misc?.dynamicHighlightAutoSubmit || false,
         dynamicHighlightDebounceMs: config.settings.misc?.dynamicHighlightDebounceMs || 500,
+        ttsSpeed: config.settings.misc?.ttsSpeed || 2,
+        ttsScript: config.settings.misc?.ttsScript || '',
       };
       if ((result = writeDynamicHighlight(content, dynamicConfig))) content = result;
     }
@@ -253,7 +255,9 @@ if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
     EXE="$HOME/.claude/actions/${BASE}.exe"
     if [ ! -f "$EXE" ] || [ "$CS_FILE" -nt "$EXE" ]; then
       cp "$CS_FILE" "$WIN_TMP/${BASE}.cs"
-      "$CSC" /nologo /optimize "/out:C:\\Users\\${WIN_USER}\\${BASE}.exe" "C:\\Users\\${WIN_USER}\\${BASE}.cs" 2>/dev/null
+      CSC_ARGS="/nologo /optimize"
+      [ "$BASE" = "SpeakCtl" ] && CSC_ARGS="$CSC_ARGS /reference:C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\WPF\\System.Speech.dll"
+      "$CSC" $CSC_ARGS "/out:C:\\Users\\${WIN_USER}\\${BASE}.exe" "C:\\Users\\${WIN_USER}\\${BASE}.cs" 2>/dev/null
       if [ -f "$WIN_TMP/${BASE}.exe" ]; then
         cp "$WIN_TMP/${BASE}.exe" "$EXE"
         echo "Compiled ${BASE}.exe"
