@@ -20,6 +20,14 @@ All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlig
 
 `_isCueControl(word)` is the unified check for both types. It's used by the tips lookup and status line export to exclude cue-controls from tips/alts display.
 
+## CC-Specific: Tips Protection from LLM
+
+Tip-sourced entries (`source: "tips"`) are never overwritten by LLM grammar results during the merge phase. When LLM results arrive and an existing entry has `source: "tips"`, the LLM result is skipped entirely for that index. Tips are curated — mixing in LLM suggestions would pollute the intended alternatives.
+
+## CC-Specific: TTS on Cycling
+
+When cycling (Up/Down) on a word with `speak: true`, the alt-specific tip is spoken via TTS. The `altCueTips[currentAlt]` text is used if available, falling back to `cueTip`. Same 80ms debounce and process cancellation as navigation TTS.
+
 ## CC-Specific: State Export on Cycle
 
 The highlight export JSON is written directly inside `_cycleAlt` (not just in the input handler) to ensure `currentAltIndex` is fresh for the status line.

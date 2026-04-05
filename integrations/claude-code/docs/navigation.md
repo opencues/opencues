@@ -71,3 +71,5 @@ PID-based path prevents multi-instance interference.
 | `highlightClearOnEscape` | `true` | Clear on Escape |
 | `highlightIndexFromLeft` | `false` | Index direction |
 | `highlightWrap` | `false` | Wrap at boundaries |
+| `ttsSpeed` | `2` | SAPI speech rate for TTS (-10 to 10) |
+| `ttsScript` | `''` | Custom TTS script path |

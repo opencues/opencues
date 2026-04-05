@@ -20,14 +20,31 @@ This document provides context for Claude sessions working on this project.
 ```
 opencues/
 ├── CLAUDE.md                      # THIS FILE - project overview
-├── cues.md                        # OpenCues config (tips, prompts, controls, ignore)
+├── cues.md                        # OpenCues config (tips, prompts, ignore)
+├── blanks.md                      # Blank-fill modes (math, factual, grammar, etc.)
+├── controls.md                    # Cue-controls (can be empty if using folders)
 ├── README.md                      # Public readme with install instructions
+│
+├── cues/                          # Folder-based word cue configs
+│   ├── grammar/cue.md             # Base word alternatives
+│   ├── legal/cue.md               # Legal terminology alternatives
+│   ├── medical/cue.md             # Clinical terminology alternatives
+│   └── financial/cue.md           # Financial terminology alternatives
+│
+├── controls/                      # Folder-based cue-controls (colocated scripts)
+│   ├── volume/
+│   │   ├── cue.md                 # Control config (type: control, speak: true)
+│   │   └── volume.sh              # Script colocated with config
+│   └── brightness/
+│       ├── cue.md
+│       └── brightness.sh
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library
 │       ├── src/
 │       │   ├── resolver.ts        # CueResolver orchestration
-│       │   ├── cues-md.ts         # cues.md parser (parseCuesMd)
+│       │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
+│       │   ├── discover.ts        # Folder-based config discovery
 │       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
 │       │   └── sources/           # ConfigSource, ClassifiedSourceGroup, parsers
 │       ├── prompts/               # Prompt references + documentation
@@ -39,11 +56,11 @@ opencues/
 │   ├── patches/                   # tweakcc patches + installer
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
 │   │   ├── cursorStateExport.ts   # Cursor position → JSON
-│   │   ├── wordHighlight.ts       # Navigation, numbers, rendering
-│   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans
+│   │   ├── wordHighlight.ts       # Navigation, numbers, rendering, TTS
+│   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans, TTS
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   ├── claude-code-tips.json  # Per-word tips file
-│   │   └── actions/               # Cue-control scripts (volume.sh)
+│   │   └── actions/               # Scripts (volume.sh, speak.sh, SpeakCtl.cs)
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
 │   │   ├── cycling.md             # Numbers, alts, linked, spans, clearing

@@ -77,18 +77,29 @@ Cue-controls are checked **FIRST** in `_cycleAlt()`, before any other logic:
 | Field | Type | Description |
 |-------|------|-------------|
 | `control` | string | Control identifier, used for default script path |
-| `scriptPath` | string? | Custom script path (optional) |
+| `tip` | string? | Label shown in status line when highlighted |
+| `script` | string? | Custom script path. Use `./script.sh` for folder-colocated scripts |
 | `upArgs` | string[] | Arguments passed when Up is pressed |
 | `downArgs` | string[] | Arguments passed when Down is pressed |
+| `speak` | boolean? | Read the tip aloud via TTS when navigated to (default: false) |
 
-### Default Script Path
+### Script Resolution
 
-If `scriptPath` is not specified:
+Script path is resolved in this order:
+1. `script` field value (supports `./` relative to folder for folder-based controls)
+2. `~/.claude/actions/{control}.sh` (default)
+
+### Folder-Based Controls
+
+Controls can be self-contained folders instead of entries in `controls.md`:
+
 ```
-~/.claude/actions/{control}.sh
+controls/volume/
+├── cue.md        # Control config in YAML frontmatter
+└── volume.sh     # Colocated script (script: ./volume.sh)
 ```
 
-For example, control `"volume"` uses `~/.claude/actions/volume.sh`.
+See `docs/guides/adding-a-cue-control.md` for the full folder format.
 
 ## Script Implementation
 

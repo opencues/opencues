@@ -35,8 +35,18 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 |--------|------|---------|-----------|---------|
 | `enableDynamicHighlight` | boolean | `!== false` | No | Enable LLM/tips word analysis (on unless explicitly `false`) |
 | `dynamicHighlightDebounceMs` | number | `0` | No | Debounce delay for auto-submit (0 = immediate on space) |
+| `ttsSpeed` | number | `2` | No | SAPI speech rate for TTS (-10 to 10) |
+| `ttsScript` | string | `''` | No | Custom TTS script path (overrides SpeakCtl.exe + speak.sh) |
 
 > **Note:** Auto-submit is now always on (no `dynamicHighlightAutoSubmit` toggle). LLM calls go through cues-core's CueResolver and NodeHttpAdapter, not external scripts (no `dynamicHighlightScriptPath`).
+
+### Text-to-Speech
+
+TTS is per-tip opt-in via the `speak: true` flag on individual tip entries or control configs — not a global toggle. When a user navigates to a word with `speak: true`, the tip text is read aloud.
+
+**Engine priority:** SpeakCtl.exe (~50ms) > PowerShell (~500ms) > espeak-ng > spd-say. SpeakCtl.exe is auto-compiled from `SpeakCtl.cs` by setup.sh on WSL.
+
+**Cancellation:** navigating away or to a different word kills the previous TTS process and cancels any pending speech. 80ms debounce prevents spam during rapid navigation.
 
 ### Cursor State Export
 
@@ -88,6 +98,8 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
   "cueControlOverrides": {
     "volume": {
       "control": "volume",
+      "tip": "system volume control",
+      "speak": true,
       "upArgs": ["up", "5"],
       "downArgs": ["down", "5"]
     }

@@ -95,6 +95,7 @@ export interface ControlConfig {
   script?: string;
   upArgs?: string[];
   downArgs?: string[];
+  speak?: boolean;
 }
 
 export interface CuesMdConfig {
@@ -460,6 +461,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   script?: string;
   upArgs?: string[];
   downArgs?: string[];
+  speak?: boolean;
 }
 
 /**
@@ -504,6 +506,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'script': fm.script = value; break;
       case 'upArgs': try { fm.upArgs = JSON.parse(value); } catch { /* ignore */ } break;
       case 'downArgs': try { fm.downArgs = JSON.parse(value); } catch { /* ignore */ } break;
+      case 'speak': fm.speak = value === 'true'; break;
     }
   }
 
@@ -550,6 +553,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
         tip: frontmatter.tip,
         upArgs: frontmatter.upArgs,
         downArgs: frontmatter.downArgs,
+        speak: frontmatter.speak,
       };
       // Resolve relative script path
       if (frontmatter.script) {

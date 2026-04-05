@@ -652,23 +652,11 @@ describe('parseCuesMd: real cues.md', () => {
   const cuesPath = path.resolve(__dirname, '../../../cues.md');
   const cuesExists = fs.existsSync(cuesPath);
 
-  (cuesExists ? it : it.skip)('should parse all 4 word sources', () => {
+  (cuesExists ? it : it.skip)('should parse grammar word source (domain sources in cues/ folders)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
     const names = Object.keys(cfg.promptConfig!.sources);
-    assert.strictEqual(names.length, 4);
     assert.ok(names.includes('grammar'));
-    assert.ok(names.includes('legal'));
-    assert.ok(names.includes('medical'));
-    assert.ok(names.includes('financial'));
-  });
-
-  (cuesExists ? it : it.skip)('domain sources should have match patterns', () => {
-    const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    const s = cfg.promptConfig!.sources;
-    assert.ok(s.legal.match, 'legal needs match');
-    assert.ok(s.medical.match, 'medical needs match');
-    assert.ok(s.financial.match, 'financial needs match');
-    assert.ok(!s.grammar.match, 'grammar should have no match (base source)');
+    assert.ok(!cfg.promptConfig!.sources.grammar.match, 'grammar should have no match (base source)');
   });
 
   (cuesExists ? it : it.skip)('should have tips data', () => {

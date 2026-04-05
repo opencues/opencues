@@ -31,13 +31,40 @@ Add an entry to the `## Controls` JSON block in your `controls.md` file:
 |-------|----------|------|-------------|
 | `control` | Yes | string | Identifier. Also used to construct the default script path: `~/.claude/actions/{control}.sh` |
 | `tip` | No | string | Label shown in the status line when the word is highlighted |
-| `script` | No | string | Custom script path (overrides the default `~/.claude/actions/{control}.sh`) |
+| `script` | No | string | Custom script path (overrides the default). Use `./script.sh` for folder-colocated scripts |
 | `upArgs` | No | string[] | Arguments passed on Up. Default: `["up"]` |
 | `downArgs` | No | string[] | Arguments passed on Down. Default: `["down"]` |
+| `speak` | No | boolean | Read the tip aloud via TTS when navigated to (default: false) |
+
+## Alternative: Folder-based control
+
+Instead of `controls.md`, create a self-contained folder with the config and script together:
+
+```
+controls/volume/
+├── cue.md        # Control config in YAML frontmatter
+└── volume.sh     # Script colocated (script: ./volume.sh)
+```
+
+**`controls/volume/cue.md`:**
+```markdown
+---
+name: volume
+type: control
+control: volume
+tip: system volume control
+speak: true
+script: ./volume.sh
+upArgs: ["up", "6"]
+downArgs: ["down", "6"]
+---
+```
+
+Relative `script` paths (starting with `./`) are resolved against the folder. Folder configs merge with `controls.md` — folder wins on name conflict.
 
 ## 2. Write the control script
 
-Create a script at `~/.claude/actions/{control}.sh`. The script receives the arguments from `upArgs` or `downArgs`:
+Create a script at `~/.claude/actions/{control}.sh` (or colocate it in the control folder). The script receives the arguments from `upArgs` or `downArgs`:
 
 ```bash
 #!/bin/bash

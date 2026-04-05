@@ -34,13 +34,18 @@ Words (individual entries):
   "words": {
     "ultrathink": {
       "tip": "Add 'ultrathink' for max reasoning",
-      "alts": ["Tab", "deep thinking"]
+      "alts": ["Tab", "deep thinking"],
+      "speak": true
     }
   }
 }
 ```
 
+**`speak: true`:** When set on a word or group entry, the tip is read aloud via TTS when the user navigates to it. Opt-in per-tip, not a global toggle.
+
 **Per-alternative cue-tips:**
 When cycling from "agents" to "swarm", the cue-tip updates to show swarm's tip. This is built at lookup time by cross-referencing other sections.
+
+**Tips are protected from LLM overwrite:** Entries with `source: "tips"` are never replaced by LLM grammar results. Tips are curated — LLM alternatives are skipped for tip-sourced words.
 
 **Lookup priority:** Groups are checked first, then individual words.

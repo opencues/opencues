@@ -625,16 +625,23 @@ if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||n
 }
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
 try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExport));}catch(_e){}
+// TTS: speak tip on navigation, cancel on deselect or word change
+// Check both _dynDefs (tips/LLM) and _cueControlOverrides (controls) for speak flag
+var _ttsShouldSpeak=false;
 if(_hlExport.cueTip){
 var _ttsWord=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
-if(_ttsWord&&_ttsWord.speak){
-if(globalThis._ttsTimer)clearTimeout(globalThis._ttsTimer);
+if(_ttsWord&&_ttsWord.speak){_ttsShouldSpeak=true;}
+else if(_hlExport.cueControl){var _ttsCtrl=(globalThis._cueControlOverrides||{})[(_hlExport.highlightedWord||"").toLowerCase()];if(_ttsCtrl&&_ttsCtrl.speak)_ttsShouldSpeak=true;}
+}
+var _ttsKey=_ttsShouldSpeak?(_idx+":"+_hlExport.cueTip):null;
+if(_ttsKey!==globalThis._ttsLastKey){
+globalThis._ttsLastKey=_ttsKey;
+if(globalThis._ttsTimer){clearTimeout(globalThis._ttsTimer);globalThis._ttsTimer=null;}
+if(globalThis._ttsPid){try{process.kill(globalThis._ttsPid);}catch(_ke){}globalThis._ttsPid=null;}
+if(_ttsShouldSpeak){
 globalThis._ttsTimer=setTimeout(function(){
 var _ttsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _cp=${requireFuncName}("child_process");
-// Kill previous TTS process
-if(globalThis._ttsPid){try{process.kill(globalThis._ttsPid);}catch(_ke){}}
-// Fast path: spawn SpeakCtl.exe directly (skip bash ~15ms)
 var _exePath=_ttsHome+"/.claude/actions/SpeakCtl.exe";
 try{if(${requireFuncName}("fs").existsSync(_exePath)){var _p=_cp.spawn(_exePath,[_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p.pid;_p.unref();}
 else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}

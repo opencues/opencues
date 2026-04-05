@@ -66,11 +66,13 @@ Defined in `controls.md`. See `docs/guides/adding-a-cue-control.md`.
 
 OpenCues is configured via `.md` files in the project root. These files are the standard — all prompts, modes, and behaviour are defined here, not in code.
 
-**cues.md** — The primary config file. Defines word tips (`## Tips`) and LLM prompt sources (`## Prompt`) for word alternatives (synonyms, opposites, creative variations). Each `### section` under `## Prompt` becomes a cue source — grammar is the default, but domain-specific sections (legal, medical, etc.) can be added with `match`/`keywords` patterns.
+**cues.md** — The primary config file. Defines word tips (`## Tips`) and LLM prompt sources (`## Prompt`) for word alternatives (synonyms, opposites, creative variations). Each `### section` under `## Prompt` becomes a cue source — grammar is the default. Domain sources can also be folder-based: `cues/{name}/cue.md` with YAML frontmatter config.
 
 **blanks.md** — Blank fill-in config. Defines how underscores (`_`) are resolved. Each `### section` under `## Prompt` is a mode with its own prompt and response parser type. `### classifier` is special — its prompt selects which mode to use when fast heuristics (regex/keywords) don't match. Also holds the `## Ignore` word list.
 
-**controls.md** — Cue-controls config. Defines words that trigger external scripts. Contains `## Controls` with JSON configuration for each control.
+**controls.md** — Cue-controls config. Defines words that trigger external scripts. Contains `## Controls` with JSON configuration. Controls can also be folder-based: `controls/{name}/cue.md` with a colocated script.
+
+**Folder-based config** — An alternative to monolithic `.md` files. Each cue is a self-contained folder with a `cue.md` file (YAML frontmatter for config, body for prompt) and optional colocated scripts. Folders in `cues/`, `blanks/`, `controls/` are auto-discovered. Folder configs merge with monolithic files — folders win on name conflict.
 
 ---
 

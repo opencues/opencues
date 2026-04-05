@@ -709,6 +709,8 @@ if(_nw2.index<_curTextWords.length&&_nw2.word!==_curTextWords[_nw2.index])contin
 var _spanInfo2=globalThis._dynSpans&&globalThis._dynSpans[_nw2.index];
 if(_spanInfo2&&_spanInfo2.originalIndex!==_nw2.index){_nw2.alts=null;continue;}
 var _oldW2=globalThis._dynDefs.words.find(function(w){return w.index===_nw2.index;});
+// Skip LLM results for tip-sourced entries — tips are curated, don't mix
+if(_oldW2&&_oldW2.source==="tips")continue;
 if(_oldW2&&_oldW2.alts){
 if(_oldW2.spanLength)_nw2.spanLength=_oldW2.spanLength;
 if(_nw2.alts){

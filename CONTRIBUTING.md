@@ -37,13 +37,33 @@ For details on the config fields, see [SourceConfig fields](#sourceconfig-fields
 
 The `.md` config files are the heart of OpenCues. They define what cues are, how they're computed, and how they behave — independent of any specific editor or implementation.
 
-| File | What it defines |
+| File/Folder | What it defines |
 |------|-----------------|
-| `cues.md` | Word tips (`## Tips`) and LLM prompt sources (`## Prompt`) for word alternatives. Each `### section` under `## Prompt` is a source — grammar, legal, medical, etc. |
-| `blanks.md` | Blank fill-in modes (`## Prompt`) — math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, grammar, plus the `### classifier` that picks which mode to use. Each mode has `match`/`keywords` for fast detection and a `parser` type (`math`, `answer`, `alternatives`, `raw`, or `compute`). |
-| `controls.md` | Cue-controls (`## Controls`) — words that trigger external scripts instead of text cycling. |
+| `cues.md` | Word tips (`## Tips`) and base LLM prompt (`## Prompt`). Domain sources can also be `### sections` here. |
+| `cues/{name}/cue.md` | Folder-based word source — config in YAML frontmatter, prompt in body. Overrides same-name monolithic section. |
+| `blanks.md` | Blank fill-in modes — math, factual, translation, etc., plus the `### classifier`. |
+| `controls.md` | Cue-controls — words that trigger external scripts (can be empty if using folders). |
+| `controls/{name}/cue.md` | Folder-based control with colocated script (e.g., `script: ./volume.sh`). |
 
 ### Adding a new word source
+
+**Option A: Folder (recommended for domain sources)**
+
+Create `cues/{name}/cue.md`:
+
+```markdown
+---
+name: legal
+scope: words
+priority: 70
+match: contract|agreement|clause|indemnify
+classify: Legal terminology
+---
+
+Your prompt instructions here...
+```
+
+**Option B: Monolithic section in cues.md**
 
 Add a `### section` under `## Prompt` in `cues.md`:
 
@@ -59,7 +79,7 @@ priority: 70
 Your prompt instructions here...
 ```
 
-The `match` pattern filters which words this source handles. The prompt text becomes the LLM instruction. No code changes needed — `buildSourcesFromConfig()` picks it up automatically.
+Both are picked up automatically by `buildSourcesFromConfig()`. Folder configs override same-name monolithic sections.
 
 **Important:** All word-scoped `alternatives`-parser sources get combined into a single LLM call. Domain sources (with a `match` regex) get a conditional header ("When the input contains terms like ..."), so the LLM only applies them for matching words. But sources **without** a `match` regex are treated as base instructions — their prompts are concatenated unconditionally. If you add a second base source (e.g., `### creative` alongside `### grammar`), both prompts will apply to every word. Make sure their instructions are complementary, not contradictory — "prefer concise synonyms" and "suggest wild unexpected alternatives" in the same prompt will confuse the LLM. If your new source is domain-specific, always include a `match` regex.
 

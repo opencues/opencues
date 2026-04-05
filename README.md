@@ -4,15 +4,17 @@ An open standard for real-time guidance as you type. OpenCues works on top of an
 
 ## The Standard
 
-OpenCues is built on three `.md` config files. All prompts, modes, and behaviour live here — not in code.
+OpenCues is built on `.md` config files — monolithic or folder-based. All prompts, modes, and behaviour live here, not in code.
 
-| File | What it defines | Example |
-|------|----------------|---------|
-| **cues.md** | Word tips and LLM prompt sources for word alternatives. Each `### section` is a source (grammar, legal, medical, etc.) | `### grammar` with synonym/opposite/creative prompt |
-| **blanks.md** | Fill-in-the-blank modes. Each `### section` is a mode with its own prompt and parser. `### classifier` picks which mode to use. | `### math` with `parser: compute` |
-| **controls.md** | Cue-controls — words that trigger external scripts instead of text cycling. | `"volume"` runs a volume control script |
+| Config | What it defines | Example |
+|--------|----------------|---------|
+| **cues.md** | Word tips and LLM prompt sources for word alternatives | `### grammar` with synonym/opposite/creative prompt |
+| **blanks.md** | Fill-in-the-blank modes with prompt + parser per mode | `### math` with `parser: compute` |
+| **controls.md** | Cue-controls — words that trigger external scripts | `"volume"` runs a volume control script |
+| **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
+| **controls/{name}/** | Self-contained control with colocated script | `controls/volume/cue.md` + `volume.sh` |
 
-Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Install (Claude Code)
 
