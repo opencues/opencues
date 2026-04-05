@@ -622,6 +622,7 @@ if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
 }
+}
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
 try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExport));}catch(_e){}
 if(_hlExport.cueTip){
@@ -634,7 +635,6 @@ var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");
 try{${requireFuncName}("child_process").spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"}).unref();}catch(_te){}
 },80);
 }}
-}
 ` : '';
 
   // Full code consists of three parts:
