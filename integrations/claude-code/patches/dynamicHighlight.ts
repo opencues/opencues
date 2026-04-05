@@ -148,6 +148,22 @@ if(_ignoreWords.length>0){globalThis._cuesIgnoreWords=new Set(_ignoreWords.map(f
 globalThis._cuesMdLoaded=true;
 }catch(_e1){}
 }
+// Folder-based config discovery (cues/, blanks/, controls/ directories)
+if(globalThis._cuesCore&&globalThis._cuesCore.discoverFolderConfigs){
+try{
+var _fsAdp={
+readFile:function(p){try{return _fs.readFileSync(p,"utf8");}catch(_e){return null;}},
+readDir:function(p){try{return _fs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_e){return null;}}
+};
+var _folderConfigs=globalThis._cuesCore.discoverFolderConfigs({basePath:_cwd,readFile:_fsAdp.readFile,readDir:_fsAdp.readDir});
+var _monoConfigs={cuesConfig:globalThis._cuesMdParsed||undefined,blanksConfig:globalThis._blanksMdParsed||undefined,controlOverrides:globalThis._cueControlOverrides||undefined,ignoreWords:globalThis._cuesIgnoreWords?Array.from(globalThis._cuesIgnoreWords):undefined};
+var _merged=globalThis._cuesCore.mergeConfigs(_monoConfigs,_folderConfigs);
+if(_merged.cuesConfig){globalThis._cuesMdParsed=_merged.cuesConfig;if(_merged.cuesConfig.tips&&globalThis._localCueMap){var _fm=globalThis._cuesCore.buildLookupMap(_merged.cuesConfig.tips);_fm.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}}
+if(_merged.blanksConfig){globalThis._blanksMdParsed=_merged.blanksConfig;if(_merged.blanksConfig.promptConfig){globalThis._blanksEnabled=true;}}
+if(_merged.controlOverrides){globalThis._cueControlOverrides=Object.assign(globalThis._cueControlOverrides||{},_merged.controlOverrides);}
+if(_merged.ignoreWords&&_merged.ignoreWords.length>0){if(!globalThis._cuesIgnoreWords)globalThis._cuesIgnoreWords=new Set();_merged.ignoreWords.forEach(function(w){globalThis._cuesIgnoreWords.add(w.toLowerCase());});}
+}catch(_e2){}
+}
 // TTS configuration (speak.sh path + speech rate; per-tip "speak" flag controls which tips are read)
 globalThis._ttsRate=${config.ttsSpeed || 2};
 globalThis._ttsScript=${config.ttsScript ? `"${config.ttsScript}"` : 'null'};

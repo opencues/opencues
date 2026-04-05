@@ -55,13 +55,24 @@ export type { WordDef, LookupMultipleResult } from './types';
 // cues.md parser
 export {
   parseCuesMd,
+  parseSingleCueMd,
   validateCuesMd,
   type CuesMdConfig,
   type CuesMdFrontmatter,
+  type SingleCueFrontmatter,
   type PromptConfig,
   type SourceConfig,
   type ControlConfig,
   type ActionConfig,
   type BlankParser,
 } from './cues-md';
+
+// Folder-based config discovery
+export {
+  discoverFolderConfigs,
+  mergeConfigs,
+  type DiscoverOptions,
+  type DiscoveredConfigs,
+  type DirEntry,
+} from './discover';
 

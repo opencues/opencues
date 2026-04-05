@@ -435,6 +435,163 @@ export function parseCuesMd(content: string): CuesMdConfig {
 }
 
 // ============================================================================
+// Single cue.md parser (folder-based config)
+// ============================================================================
+
+/**
+ * Extended frontmatter for individual cue.md files in folder layout.
+ * Config lives in frontmatter instead of YAML code blocks.
+ */
+export interface SingleCueFrontmatter extends CuesMdFrontmatter {
+  /** Cue type: 'prompt' (default), 'tips', or 'control' */
+  type?: 'prompt' | 'tips' | 'control';
+  scope?: 'words' | 'blanks' | 'all';
+  parser?: BlankParser;
+  priority?: number;
+  match?: string;
+  keywords?: string;
+  classify?: string;
+  model?: string;
+  enabled?: boolean;
+  promptPath?: string;
+  // Control-specific fields
+  control?: string;
+  tip?: string;
+  script?: string;
+  upArgs?: string[];
+  downArgs?: string[];
+}
+
+/**
+ * Parse extended frontmatter from a single cue.md file.
+ * Handles arrays (JSON bracket syntax) for upArgs/downArgs.
+ */
+function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFrontmatter; body: string } {
+  const match = content.match(FRONTMATTER_RE);
+  if (!match) {
+    return { frontmatter: {}, body: content };
+  }
+
+  const raw = match[1];
+  const body = content.slice(match[0].length);
+  const fm: SingleCueFrontmatter = {};
+
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) continue;
+    const key = trimmed.slice(0, colonIdx).trim();
+    const value = trimmed.slice(colonIdx + 1).trim();
+    if (!value) continue;
+
+    switch (key) {
+      case 'name': fm.name = value; break;
+      case 'domain': fm.domain = value; break;
+      case 'version': fm.version = parseInt(value, 10) || undefined; break;
+      case 'type': fm.type = value as SingleCueFrontmatter['type']; break;
+      case 'scope': fm.scope = value as SourceConfig['scope']; break;
+      case 'parser': fm.parser = value as BlankParser; break;
+      case 'priority': fm.priority = parseInt(value, 10) || undefined; break;
+      case 'match': fm.match = value; break;
+      case 'keywords': fm.keywords = value; break;
+      case 'classify': fm.classify = value; break;
+      case 'model': fm.model = value; break;
+      case 'enabled': fm.enabled = value !== 'false'; break;
+      case 'promptPath': fm.promptPath = value; break;
+      case 'control': fm.control = value; break;
+      case 'tip': fm.tip = value; break;
+      case 'script': fm.script = value; break;
+      case 'upArgs': try { fm.upArgs = JSON.parse(value); } catch { /* ignore */ } break;
+      case 'downArgs': try { fm.downArgs = JSON.parse(value); } catch { /* ignore */ } break;
+    }
+  }
+
+  return { frontmatter: fm, body };
+}
+
+/**
+ * Parse a single cue.md file (folder-based layout).
+ *
+ * Unlike parseCuesMd() which expects ## sections, this reads config from
+ * extended frontmatter and treats the body as content (prompt text or tips JSON).
+ *
+ * @param content - File content string
+ * @param folderPath - Absolute path to the containing folder (for resolving relative paths)
+ */
+export function parseSingleCueMd(content: string, folderPath: string): CuesMdConfig {
+  const { frontmatter, body } = parseExtendedFrontmatter(content);
+  const type = frontmatter.type || 'prompt';
+  const name = frontmatter.name || 'unknown';
+
+  const result: CuesMdConfig = {
+    frontmatter,
+    sections: {},
+  };
+
+  // Check for ## Ignore section in body
+  // Extract ## Ignore section: everything after "## Ignore\n" until next "## " or end
+  const ignoreIdx = body.indexOf('## Ignore');
+  const ignoreMatch = ignoreIdx >= 0 ? body.slice(ignoreIdx + '## Ignore'.length) : null;
+  if (ignoreMatch) {
+    const nextSection = ignoreMatch.search(/^## /m);
+    const ignoreContent = nextSection >= 0 ? ignoreMatch.slice(0, nextSection) : ignoreMatch;
+    result.ignore = parseIgnoreSection(ignoreContent);
+  }
+
+  switch (type) {
+    case 'tips': {
+      result.tips = parseTipsSection(body);
+      break;
+    }
+    case 'control': {
+      const control: ControlConfig = {
+        control: frontmatter.control || name,
+        tip: frontmatter.tip,
+        upArgs: frontmatter.upArgs,
+        downArgs: frontmatter.downArgs,
+      };
+      // Resolve relative script path
+      if (frontmatter.script) {
+        control.script = frontmatter.script.startsWith('./')
+          ? folderPath + '/' + frontmatter.script.slice(2)
+          : frontmatter.script;
+      }
+      result.controls = { [control.control]: control };
+      break;
+    }
+    default: {
+      // Prompt type — frontmatter fields become SourceConfig, body is promptText
+      const source: SourceConfig = { name };
+      if (frontmatter.match) source.match = frontmatter.match;
+      if (frontmatter.keywords) source.keywords = frontmatter.keywords;
+      if (frontmatter.classify) source.classify = frontmatter.classify;
+      if (frontmatter.priority) source.priority = frontmatter.priority;
+      if (frontmatter.enabled !== undefined) source.enabled = frontmatter.enabled;
+      if (frontmatter.model) source.model = frontmatter.model;
+      if (frontmatter.parser) source.parser = frontmatter.parser;
+      if (frontmatter.scope) source.scope = frontmatter.scope;
+
+      // Resolve promptPath relative to folder
+      if (frontmatter.promptPath) {
+        source.promptPath = frontmatter.promptPath.startsWith('./')
+          ? folderPath + '/' + frontmatter.promptPath.slice(2)
+          : frontmatter.promptPath;
+      }
+
+      // Body text (outside code blocks) is the prompt
+      const text = extractTextOutsideCodeBlocks(body);
+      if (text) source.promptText = text;
+
+      result.promptConfig = { sources: { [name]: source } };
+      break;
+    }
+  }
+
+  return result;
+}
+
+// ============================================================================
 // Validation
 // ============================================================================
 
