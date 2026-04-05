@@ -43,6 +43,7 @@ Restart Claude Code. Done.
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
 - **Cue-controls** — `volume` triggers system volume control
 - **Secondary display** — highlighted words show cue-tips
+- **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed
 
 ## How it works
 

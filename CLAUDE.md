@@ -140,6 +140,8 @@ This is the **only reliable way** to apply changes. It:
 
 After running setup.sh, **restart Claude Code** for changes to take effect.
 
+> **Note:** Editing `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/`, `controls/`) does **not** require a restart — they hot-reload within ~2 seconds on the next keystroke.
+
 ```bash
 # Re-apply patches only (after Claude Code updates, no source changes)
 cd ~/tweakcc

@@ -668,7 +668,7 @@ else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh"
 
   const fullCode = `
 globalThis._parentValue=${valueParam};
-if(!globalThis._cueControlOverrides)globalThis._cueControlOverrides=${controlOvrJson};
+if(!globalThis._cueControlOverrides){globalThis._cueControlOverrides=${controlOvrJson};globalThis._staticCueControlOverrides=${controlOvrJson};}
 globalThis._forceInputRefresh=function(){
 if(globalThis._refreshTimer)return;
 globalThis._refreshTimer=setTimeout(function(){

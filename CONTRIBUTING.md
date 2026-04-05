@@ -27,7 +27,7 @@ Examples:
 - "gonna" → 0:going to,will
 ````
 
-That's it. When a user types a word matching the pattern, the LLM will suggest formal alternatives. Test it by running `setup.sh` and restarting Claude Code.
+That's it. When a user types a word matching the pattern, the LLM will suggest formal alternatives. Test it by saving the file — config changes hot-reload within ~2 seconds on the next keystroke (no restart needed).
 
 For details on the config fields, see [SourceConfig fields](#sourceconfig-fields) below.
 

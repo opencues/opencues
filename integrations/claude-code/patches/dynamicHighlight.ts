@@ -98,7 +98,11 @@ export const writeCuesCoreInit = (
   // Uses cues-core's buildLookupMap() - no inline map building needed
   const cuesCoreInitCode = `
 ;(function(){
-if(globalThis._localCueMap&&globalThis._cueResolver)return;
+// Hot-reload config: track load timestamp and resolver generation counter
+globalThis._configLoadedAt=globalThis._configLoadedAt||0;
+globalThis._resolverGeneration=globalThis._resolverGeneration||0;
+globalThis._configReloading=globalThis._configReloading||false;
+// Load cues-core module once per process (not hot-reloadable)
 if(!globalThis._localCueMap){
 try{
 var _cuesPath=(process.env.HOME||"~")+"/.claude/node_modules/cues-core";
@@ -115,55 +119,68 @@ globalThis._localCueData=null;
 globalThis._localCueMap=null;
 }
 }
-// Load config files from project root: cues.md, blanks.md, controls.md (each optional)
-if(globalThis._cuesCore&&!globalThis._cuesMdLoaded){
+// Config reload function: parses cues.md/blanks.md/controls.md + folder configs,
+// rebuilds the resolver with new sources, and clears the analyzed-word cache.
+// Called at startup and re-called after CONFIG_TTL_MS (2s) on the next analysis trigger.
+globalThis._reloadCuesConfig=function(){
+if(!globalThis._cuesCore)return;
+globalThis._configReloading=true;
+var _applied=false;
 try{
-var _fs=${requireFuncName}("fs");var _cwd=process.cwd();
-var _ignoreWords=[];
+var _rfs=${requireFuncName}("fs");var _rcwd=process.cwd();
+var _ign=[],_newCuesMd=null,_newBlanksMd=null,_newCtrlOvr=Object.assign({},globalThis._staticCueControlOverrides||{});
 // cues.md (aliases: hints.md, tips.md) — tips + prompt config
-var _cuesPath=null;
-["cues.md","hints.md","tips.md"].some(function(f){var p=_cwd+"/"+f;if(_fs.existsSync(p)){_cuesPath=p;return true;}});
-if(_cuesPath){
-var _cuesCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_cuesPath,"utf8"));
-globalThis._cuesMdParsed=_cuesCfg;
-if(_cuesCfg.tips&&globalThis._localCueMap){var _m=globalThis._cuesCore.buildLookupMap(_cuesCfg.tips);_m.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}
-if(_cuesCfg.ignore){_ignoreWords=_ignoreWords.concat(_cuesCfg.ignore);}
-}
+["cues.md","hints.md","tips.md"].some(function(f){var p=_rcwd+"/"+f;if(_rfs.existsSync(p)){var _c=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(p,"utf8"));_newCuesMd=_c;if(_c.ignore){_ign=_ign.concat(_c.ignore);}return true;}});
 // controls.md — cue-controls (custom control overrides)
-var _ctrlPath=_cwd+"/controls.md";
-if(_fs.existsSync(_ctrlPath)){
-var _ctrlCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_ctrlPath,"utf8"));
-if(_ctrlCfg.controls){globalThis._cueControlOverrides=Object.assign(globalThis._cueControlOverrides||{},_ctrlCfg.controls);}
-if(_ctrlCfg.ignore){_ignoreWords=_ignoreWords.concat(_ctrlCfg.ignore);}
-}
-// blanks.md — blank-fill config (opt-in: blanks only work if file exists)
-var _blankPath=_cwd+"/blanks.md";
-if(_fs.existsSync(_blankPath)){
-var _blankCfg=globalThis._cuesCore.parseCuesMd(_fs.readFileSync(_blankPath,"utf8"));
-globalThis._blanksMdParsed=_blankCfg;
-if(_blankCfg.ignore){_ignoreWords=_ignoreWords.concat(_blankCfg.ignore);}
-if(_blankCfg.promptConfig){globalThis._blanksEnabled=true;}
-}
-if(_ignoreWords.length>0){globalThis._cuesIgnoreWords=new Set(_ignoreWords.map(function(w){return w.toLowerCase();}));}
-globalThis._cuesMdLoaded=true;
-}catch(_e1){}
-}
+var _rCtrlPath=_rcwd+"/controls.md";
+if(_rfs.existsSync(_rCtrlPath)){var _cc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rCtrlPath,"utf8"));if(_cc.controls)Object.assign(_newCtrlOvr,_cc.controls);if(_cc.ignore){_ign=_ign.concat(_cc.ignore);}}
+// blanks.md — blank-fill config
+var _rBlankPath=_rcwd+"/blanks.md";
+if(_rfs.existsSync(_rBlankPath)){var _bc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rBlankPath,"utf8"));_newBlanksMd=_bc;if(_bc.ignore){_ign=_ign.concat(_bc.ignore);}}
 // Folder-based config discovery (cues/, blanks/, controls/ directories)
-if(globalThis._cuesCore&&globalThis._cuesCore.discoverFolderConfigs){
-try{
-var _fsAdp={
-readFile:function(p){try{return _fs.readFileSync(p,"utf8");}catch(_e){return null;}},
-readDir:function(p){try{return _fs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_e){return null;}}
-};
-var _folderConfigs=globalThis._cuesCore.discoverFolderConfigs({basePath:_cwd,readFile:_fsAdp.readFile,readDir:_fsAdp.readDir});
-var _monoConfigs={cuesConfig:globalThis._cuesMdParsed||undefined,blanksConfig:globalThis._blanksMdParsed||undefined,controlOverrides:globalThis._cueControlOverrides||undefined,ignoreWords:globalThis._cuesIgnoreWords?Array.from(globalThis._cuesIgnoreWords):undefined};
-var _merged=globalThis._cuesCore.mergeConfigs(_monoConfigs,_folderConfigs);
-if(_merged.cuesConfig){globalThis._cuesMdParsed=_merged.cuesConfig;if(_merged.cuesConfig.tips&&globalThis._localCueMap){var _fm=globalThis._cuesCore.buildLookupMap(_merged.cuesConfig.tips);_fm.forEach(function(v,k){globalThis._localCueMap.set(k,v);});}}
-if(_merged.blanksConfig){globalThis._blanksMdParsed=_merged.blanksConfig;if(_merged.blanksConfig.promptConfig){globalThis._blanksEnabled=true;}}
-if(_merged.controlOverrides){globalThis._cueControlOverrides=Object.assign(globalThis._cueControlOverrides||{},_merged.controlOverrides);}
-if(_merged.ignoreWords&&_merged.ignoreWords.length>0){if(!globalThis._cuesIgnoreWords)globalThis._cuesIgnoreWords=new Set();_merged.ignoreWords.forEach(function(w){globalThis._cuesIgnoreWords.add(w.toLowerCase());});}
-}catch(_e2){}
+if(globalThis._cuesCore.discoverFolderConfigs){
+var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_e){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_e){return null;}}};
+var _rFolderCfgs=globalThis._cuesCore.discoverFolderConfigs({basePath:_rcwd,readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});
+var _rMono={cuesConfig:_newCuesMd||undefined,blanksConfig:_newBlanksMd||undefined,controlOverrides:Object.keys(_newCtrlOvr).length?_newCtrlOvr:undefined,ignoreWords:_ign.length?_ign:undefined};
+var _rMerged=globalThis._cuesCore.mergeConfigs(_rMono,_rFolderCfgs);
+_newCuesMd=_rMerged.cuesConfig||_newCuesMd;
+_newBlanksMd=_rMerged.blanksConfig||_newBlanksMd;
+if(_rMerged.controlOverrides)Object.assign(_newCtrlOvr,_rMerged.controlOverrides);
+if(_rMerged.ignoreWords&&_rMerged.ignoreWords.length)_ign=_rMerged.ignoreWords;
 }
+// Apply merged config atomically (all assignments after all parsing)
+globalThis._cuesMdParsed=_newCuesMd||null;
+globalThis._blanksMdParsed=_newBlanksMd||null;
+globalThis._cueControlOverrides=_newCtrlOvr;
+globalThis._blanksEnabled=!!(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig);
+// Rebuild localCueMap from scratch — ensures deleted tips are removed on reload
+if(globalThis._localCueData){
+var _newMap=globalThis._cuesCore.buildLookupMap(globalThis._localCueData);
+if(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.tips){var _tm=globalThis._cuesCore.buildLookupMap(globalThis._cuesMdParsed.tips);_tm.forEach(function(v,k){_newMap.set(k,v);});}
+globalThis._localCueMap=_newMap;
+}
+// Rebuild ignore words set
+if(_ign.length>0){globalThis._cuesIgnoreWords=new Set(_ign.map(function(w){return w.toLowerCase();}));}else{globalThis._cuesIgnoreWords=null;}
+_applied=true;
+globalThis._configLoadedAt=Date.now();
+}catch(_ce){}
+// Rebuild resolver only if config parse succeeded (keeps old resolver on parse error)
+if(_applied&&process.env.GROQ_API_KEY){
+try{
+var _rApiKey=process.env.GROQ_API_KEY;
+var _rEp="https://api.groq.com/openai/v1/chat/completions";
+var _rCuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
+var _rBlanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
+var _rDefaultMod=_rCuesPc.model||_rBlanksPc.model||"openai/gpt-oss-120b";
+var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod});
+globalThis._cueResolver=globalThis._cuesCore.createResolver(_rSources,{parallel:false,timeout:30000,continueOnError:true});
+globalThis._resolverGeneration=(globalThis._resolverGeneration||0)+1;
+// Clear analyzed cache — all visible words re-analyze against the new config
+globalThis._dynLastAnalyzed=[];
+}catch(_re){}
+}
+globalThis._configReloading=false;
+};
 // TTS configuration (speak.sh path + speech rate; per-tip "speak" flag controls which tips are read)
 globalThis._ttsRate=${config.ttsSpeed || 2};
 globalThis._ttsScript=${config.ttsScript ? `"${config.ttsScript}"` : 'null'};
@@ -200,20 +217,8 @@ setTimeout(function(){globalThis._httpAdapter.warmup("https://api.groq.com/opena
 }
 }catch(_e2){}
 }
-// CueResolver: unified pipeline for all modes (tips + grammar + math + factual)
-if(!globalThis._cueResolver&&globalThis._cuesCore&&process.env.GROQ_API_KEY){
-try{
-var _apiKey=process.env.GROQ_API_KEY;
-var _ep="https://api.groq.com/openai/v1/chat/completions";
-var _cuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
-var _blanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
-var _defaultMod=_cuesPc.model||_blanksPc.model||"openai/gpt-oss-120b";
-var _ha=globalThis._httpAdapter;
-// Build all sources from .md configs via generic ConfigSource + ClassifiedSourceGroup
-var _resolverSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:_ha,endpoint:_ep,apiKey:_apiKey,defaultModel:_defaultMod});
-globalThis._cueResolver=globalThis._cuesCore.createResolver(_resolverSources,{parallel:false,timeout:30000,continueOnError:true});
-}catch(_e6){globalThis._cueResolver=null;}
-}
+// Run initial config load now that the HTTP adapter is ready
+if(globalThis._cuesCore){globalThis._reloadCuesConfig();}
 // Cue-control check: returns true for words with built-in cycling behavior
 // (numbers increment/decrement, custom controls run scripts) — these bypass alt cycling and tips
 globalThis._isCueControl=function(_w){
@@ -470,6 +475,8 @@ export const writeAutoSubmitDebounced = (
   // Tier 2: Final pause (2s) - catches last word when user stops typing
   const autoSubmitCode = `
 (function(){
+// Hot-reload: re-parse config files if TTL expired and no LLM request in flight
+if(!globalThis._dynPending&&!globalThis._configReloading&&globalThis._reloadCuesConfig&&Date.now()-(globalThis._configLoadedAt||0)>2000){globalThis._reloadCuesConfig();}
 // Initialize ClaudeLog hints from config
 var _dynText=globalThis._hlText||"";
 var _curWords=_dynText.split(/\\s+/).filter(function(w){return w;});
@@ -681,9 +688,12 @@ try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolv
 globalThis._dynPending=true;
 globalThis._dynPollStart=Date.now();
 globalThis._dynSentWords=_sentWords;
+var _capturedGen=globalThis._resolverGeneration||0;
 var _ctx={text:_sentText,words:_sentWords,metadata:{targetIndices:_hasBlank?null:_needLlmIndices}};
 globalThis._cueResolver.resolve(_ctx).then(function(_resolved){
 try{
+// Discard stale results from a resolver that was rebuilt mid-flight
+if((globalThis._resolverGeneration||0)!==_capturedGen)return;
 var _elapsed=Date.now()-globalThis._dynPollStart;
 var _words=[];
 for(var _ri=0;_ri<_resolved.results.length;_ri++){

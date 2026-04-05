@@ -22,6 +22,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 12 | [Auto-Submit](auto-submit.md) | Automatic analysis as you type |
 | 13 | [Cursor Export](cursor-export.md) | Export cursor position for external tools |
 | 14 | [Secondary Display](secondary-display.md) | Show cue-tips in a secondary area |
+| 15 | [Hot-Reload Config](hot-reload-config.md) | Config file changes take effect without restart |
 
 ## Adding a new feature
 

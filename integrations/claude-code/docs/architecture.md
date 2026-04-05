@@ -318,9 +318,10 @@ PATCHES:
 
 INJECTS:
   ├── Startup IIFE:
-  │   ├── cues-core loading + tipsMap building
+  │   ├── cues-core loading + tipsMap building (once per process)
   │   ├── NodeHttpAdapter (keep-alive, Groq provider config)
-  │   ├── CueResolver (via buildSourcesFromConfig)
+  │   ├── _reloadCuesConfig() — parses all .md config + rebuilds resolver
+  │   │   (called at startup; re-called after 2s TTL on next analysis trigger)
   │   └── Shared _cycleAlt(dir) function (cue-controls, alts, linked, spans)
   ├── Input handler:
   │   ├── Three-tier trigger (space 50ms, pause 300ms, edit 50ms)
@@ -336,7 +337,11 @@ STATE (globalThis):
   • _cuesCore: cues-core module reference
   • _tipsMap: prebuilt hash map from tips file
   • _httpAdapter: NodeHttpAdapter instance (from cues-core)
-  • _cueResolver: CueResolver instance (from cues-core)
+  • _cueResolver: CueResolver instance (rebuilt on config reload)
+  • _reloadCuesConfig: config reload function (TTL-based hot-reload)
+  • _configLoadedAt: timestamp of last config load (0 = never)
+  • _configReloading: boolean (gates analysis during rebuild)
+  • _resolverGeneration: counter incremented on each resolver rebuild
   • _isCueControl: unified check for cue-controls (numbers + custom overrides)
   • _cycleAlt: shared cycling function (cue-controls first, then dynamic alts)
   • _dynDefs: parsed LLM response {words: [...]}
@@ -345,7 +350,7 @@ STATE (globalThis):
   • _dynDebounceTimer: timer reference (50ms)
   • _dynFinalPauseTimer: timer reference (300ms)
   • _dynSpans: span tracking for multi-word alts
-  • _dynLastAnalyzed: text at last analysis
+  • _dynLastAnalyzed: text at last analysis (cleared on config reload)
   • _dynUnderscoreContext: context for blank re-evaluation
 
 CONFIG:
@@ -435,10 +440,16 @@ HTTPS (via cues-core NodeHttpAdapter):
   └── api.groq.com/openai/v1/chat/completions  ← CueResolver sources
       (keep-alive agent, warmed on startup)
 
-READS (at startup):
+READS (at startup + on 2s TTL reload):
   │
-  └── ~/.claude/claude-code-tips.json         ← cues-core tips lookup
-      (parsed once, built into hash map)
+  ├── ~/.claude/claude-code-tips.json         ← cues-core tips lookup
+  │   (parsed once at startup, built into base hash map)
+  │
+  ├── {cwd}/cues.md (or hints.md / tips.md)   ← tips + prompt sources
+  ├── {cwd}/blanks.md                          ← blank-fill modes
+  ├── {cwd}/controls.md                        ← cue-control definitions
+  └── {cwd}/cues/, blanks/, controls/          ← folder-based configs
+      (all re-read on every TTL-triggered reload)
 
 SPAWNS (from cli.js):
   │
