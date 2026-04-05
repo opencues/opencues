@@ -266,7 +266,20 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
 2. Re-apply patches after config change
 3. Check `globalThis._cueControlOverrides` in browser console
 
+## Compiled Executables
+
+`setup.sh` auto-compiles `.cs` files in `patches/actions/` to `.exe` via the Windows .NET csc.exe compiler. This eliminates PowerShell cold-start overhead (~500ms → ~50ms).
+
+| Executable | Purpose | Reference |
+|------------|---------|-----------|
+| `VolCtl.exe` | Volume via SendInput API | `user32.dll` |
+| `BrightCtl.exe` | Brightness via powrprof.dll | `powrprof.dll` |
+| `SpeakCtl.exe` | TTS via System.Speech | `System.Speech.dll` |
+
+SpeakCtl.exe requires `/reference:System.Speech.dll` — setup.sh handles this with a special case for the `SpeakCtl` base name.
+
 ## Related
 
 - `config.md` — all configuration options
 - `systems-diagram.md` — architecture overview
+- `alternatives.md` — TTS details and external highlight preservation

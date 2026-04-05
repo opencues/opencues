@@ -631,8 +631,13 @@ if(_ttsWord&&_ttsWord.speak){
 if(globalThis._ttsTimer)clearTimeout(globalThis._ttsTimer);
 globalThis._ttsTimer=setTimeout(function(){
 var _ttsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
-var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");
-try{${requireFuncName}("child_process").spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"}).unref();}catch(_te){}
+var _cp=${requireFuncName}("child_process");
+// Kill previous TTS process
+if(globalThis._ttsPid){try{process.kill(globalThis._ttsPid);}catch(_ke){}}
+// Fast path: spawn SpeakCtl.exe directly (skip bash ~15ms)
+var _exePath=_ttsHome+"/.claude/actions/SpeakCtl.exe";
+try{if(${requireFuncName}("fs").existsSync(_exePath)){var _p=_cp.spawn(_exePath,[_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p.pid;_p.unref();}
+else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}
 },80);
 }}
 ` : '';

@@ -339,8 +339,11 @@ if(_ttsTip){
 if(globalThis._ttsTimer)clearTimeout(globalThis._ttsTimer);
 globalThis._ttsTimer=setTimeout(function(){
 var _ttsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
-var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");
-try{_reqFn("child_process").spawn("bash",[_ttsScript,_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"}).unref();}catch(_te){}
+var _cp=_reqFn("child_process");
+if(globalThis._ttsPid){try{process.kill(globalThis._ttsPid);}catch(_ke){}}
+var _exePath=_ttsHome+"/.claude/actions/SpeakCtl.exe";
+try{if(_reqFn("fs").existsSync(_exePath)){var _p=_cp.spawn(_exePath,[_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p.pid;_p.unref();}
+else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}
 },80);
 }}
 // Re-evaluate underscore if present

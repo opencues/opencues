@@ -75,6 +75,35 @@ Classification uses fast heuristics (regex/keywords from blanks.md) before falli
 
 **Underscore queuing:** State variables `_dynUnderscoreContext` and `_dynUnderscoreQueued` handle context changes during pending requests.
 
+## CC-Specific: Stale Partial-Word Alts (Resolved)
+
+When a user pauses mid-word (e.g., types "unkn" then pauses >300ms before finishing "unknown"), the final-pause timer sends the partial word to the LLM. If the full word's LLM results arrive later and merge with the stale partial results, the old merge order (start with OLD alts, append NEW) would preserve the partial "unkn" at alts[0], corrupting cycle alternatives.
+
+**Fix (dynamicHighlight.ts merge code):**
+1. Skip stale LLM results where `word` no longer matches current text at that index
+2. Merge NEW alts first, then add old alts — filtering out strict prefixes of the current word
+3. Set `currentAltIndex` to match the current word's position in merged alts
+
+## CC-Specific: Text-to-Speech (Per-Tip)
+
+Tips with `"speak": true` in cues.md/tips JSON are read aloud when navigated to or cycled. TTS is per-tip opt-in, not a global toggle.
+
+**Architecture:** Node.js spawns SpeakCtl.exe directly (fast path, ~50ms) or falls back to speak.sh → PowerShell → espeak-ng. 80ms debounce prevents speech spam during rapid navigation. Previous TTS process is killed via `globalThis._ttsPid` before starting new speech.
+
+**Trigger points:**
+- `wordHighlight.ts` export code — speaks cueTip on navigation (Ctrl+Alt+Left/Right)
+- `dynamicHighlight.ts` `_cycleAlt` — speaks altCueTip on cycling (Ctrl+Alt+Up/Down)
+
+**Data flow:** `speak` field in tips JSON → `CueWordEntry`/`CueSynonymGroup` → `LocalCueLookupResult` → `WordDef` → `_dynDefs.words[i].speak` → checked at TTS trigger points.
+
+**Config:** `ttsSpeed` (SAPI rate -10 to 10, default 2), `ttsScript` (custom script override).
+
+## CC-Specific: External Highlight Preservation
+
+Claude Code applies its own highlights (shimmer, color) to certain words (e.g., "ultrathink") via the `highlights` prop and `kP4` component. `kP4` splits text char-by-char with `text.split("")` for shimmer rendering. Our per-char ANSI wrapping (`\x1b[0m\x1b[1;97mu\x1b[0m`) breaks this — `split("")` fragments escape sequences into visible garbage.
+
+**Fix:** Store `A.highlights` in `globalThis._extHighlights` before `uu8()` runs. In the `renderedValue` function, skip ANSI highlight/dim for any word range overlapping an external highlight. The word remains navigable and cyclable — only the visual override is skipped.
+
 ## CC-Specific: Performance
 
 | Metric | Value |
@@ -96,6 +125,8 @@ tail -f /tmp/claude-llm-timing-*.txt /tmp/claude-auto-debug-*.txt
 |--------|---------|---------|
 | `enableDynamicHighlight` | `true` | Enable LLM/tips analysis |
 | `dynamicHighlightDebounceMs` | `0` | Debounce delay (0 = 50ms internal) |
+| `ttsSpeed` | `2` | SAPI speech rate (-10 to 10) |
+| `ttsScript` | `''` | Custom TTS script path (overrides SpeakCtl.exe + speak.sh) |
 
 Requires `enableWordHighlight: true` (master switch).
 
