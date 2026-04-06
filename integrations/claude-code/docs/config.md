@@ -17,7 +17,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `enableWordHighlight` | boolean | undefined | **YES** | Master switch — gates word highlight AND dynamic highlight patches |
 | `highlightMode` | `'numbers'\|'words'` | `'words'` | No | Which words are navigable |
 | `highlightColor` | `'white'\|'cyan'\|'yellow'\|'inverse'\|'underline'` | `'white'` | No | Highlight color |
-| `numberDimming` | boolean | `true` | No | Dim numbers in dark gray |
+| `numberDimming` | boolean | `true` | No | Dim step-pattern matches and control words in dark gray |
 | `highlightClearOnEscape` | boolean | `true` | No | Clear highlight on Escape |
 | `highlightExportEnabled` | boolean | `true` | No | Export state to JSON file |
 | `highlightExportPath` | string | PID-based at runtime | No | Export file path |

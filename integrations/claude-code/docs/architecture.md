@@ -100,11 +100,10 @@ User presses: Ctrl+Alt+Left
 │  │ case (key.leftArrow && key.ctrl && key.alt):             │ │
 │  │                                                          │ │
 │  │ 1. Get words from globalThis._hlText                     │ │
-│  │ 2. Filter to navigable words based on mode:              │ │
-│  │    • 'numbers': /^-?\d+(\.\d+)?$/                        │ │
-│  │    • 'words': all words                                  │ │
-│  │    • PLUS: cue-control overrides                         │ │
+│  │ 2. Filter to navigable words:                             │ │
+│  │    • _isCueControl(w): step patterns + control overrides │ │
 │  │    • PLUS: words with dynamic alts                       │ │
+│  │    • PLUS: tip words, span members                       │ │
 │  │ 3. Move to previous navigable word                       │ │
 │  │ 4. Store wordIndex in globalThis._hlState                │ │
 │  │ 5. Toggle invisible char to trigger re-render            │ │
@@ -128,19 +127,19 @@ User presses: Ctrl+Alt+Up (with "dogs" highlighted)
 │  │ 1. Check if word is custom cue-control (e.g., "volume")  │ │
 │  │    → If yes: spawn script, RETURN                        │ │
 │  │                                                          │ │
-│  │ 2. Check if word is number cue-control                    │ │
-│  │    → If yes: increment/decrement with floor, RETURN      │ │
+│  │ 2. Check if word matches step control pattern             │ │
+│  │    → If yes: increment/decrement per config, RETURN      │ │
 │  │                                                          │ │
 │  │ 3. Check if word has dynamic alts in _dynDefs            │ │
 │  │    → If yes: cycle to next alt, update linked words      │ │
 │  │    → Update text, RETURN                                 │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │                                                                │
-│  PATCHED BY: wordHighlight.ts (SECOND - number fallback)      │
+│  PATCHED BY: wordHighlight.ts (delegates to _cycleAlt)        │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 4. Check if word is number (fallback if _cycleAlt N/A)  │ │
-│  │    → Increment by 1 (track original for floor)           │ │
-│  │    → Update text, RETURN                                 │ │
+│  │ 4. Up/Down delegates to _cycleAlt (no duplicate logic)  │ │
+│  │    → Handles step controls, cue-controls, alt cycling   │ │
+│  │    → Returns result with text/offset for InputZone      │ │
 │  └──────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -162,7 +161,7 @@ Text ready to display: "The boy has 3 dogs"
 │  │ 2. Build highlight ranges (white) for selected word      │ │
 │  │    • If span selected: include span words                │ │
 │  │ 3. Build dim ranges (gray) for:                          │ │
-│  │    • Numbers (if numberDimming enabled)                  │ │
+│  │    • Step-pattern matches (if numberDimming enabled)     │ │
 │  │    • Cue-controls                                        │ │
 │  │    • Tip words (instant — checked via _localCueMap)      │ │
 │  │    • Words with dynamic alts (after LLM response)        │ │
@@ -267,7 +266,7 @@ DEPENDENCIES: None (standalone)
 ### wordHighlight.ts
 
 ```
-PURPOSE: Navigation, rendering, number/cue-control handling
+PURPOSE: Navigation, rendering, delegates Up/Down to _cycleAlt
 
 PATCHES:
   ├── Key handler (Ctrl+Alt+Left/Right/Up/Down)
@@ -278,8 +277,8 @@ PATCHES:
   └── Status line trigger export
 
 INJECTS:
-  ├── Navigation logic with mode-based filtering
-  ├── Number increment/decrement with floor tracking (fallback for _cycleAlt)
+  ├── Navigation logic with _isCueControl filtering
+  ├── Up/Down delegates to _cycleAlt (no duplicate logic)
   ├── globalThis._cueControlOverrides assignment (serialized from config)
   ├── ANSI rendering with highlight/dim ranges
   └── Invisible char toggle for re-render triggering
@@ -342,7 +341,8 @@ STATE (globalThis):
   • _configLoadedAt: timestamp of last config load (0 = never)
   • _configReloading: boolean (gates analysis during rebuild)
   • _resolverGeneration: counter incremented on each resolver rebuild
-  • _isCueControl: unified check for cue-controls (numbers + custom overrides)
+  • _isCueControl: unified check for cue-controls (step patterns + custom overrides)
+  • _stepPatterns: compiled step control regex patterns (rebuilt on config reload)
   • _cycleAlt: shared cycling function (cue-controls first, then dynamic alts)
   • _dynDefs: parsed LLM response {words: [...]}
   • _dynPending: boolean (resolver in progress)

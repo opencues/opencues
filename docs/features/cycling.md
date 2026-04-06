@@ -35,13 +35,29 @@ Script execution is debounced: rapid presses queue a single spawn after 50 ms wi
 
 Runs the control's script synchronously (`execSync`, 3 s timeout), then reads the new value from the control's state file (`/tmp/cue-control-<controlName>.txt`). The word in the input text is replaced with the value read from the file. The `blankFormat` field (`"integer"`, `"float"`, or `"string"`) determines how the value is stored in `_cueControlValues`.
 
-### 3. Number increment/decrement
+### 3. Step controls
 
-**Condition**: The word matches `/^-?\d+(\.\d+)?$/` AND there are no dynamic alternatives at this position (`_hasAltsCycle` is falsy). The alternatives check ensures that if a number has LLM-provided alts (e.g., from a blank fill-in), alt cycling (level 4) handles it instead.
+**Condition**: The word matches a `stepPattern` (from a control's `cue.md`) or a pattern auto-generated from `stepSuffixes` AND there are no dynamic alternatives at this position (`_hasAltsCycle` is falsy). The alternatives check ensures that if a value has LLM-provided alts (e.g., from a blank fill-in), alt cycling (level 4) handles it instead.
 
-- **Up** (`dir=1`): increments by 1, no upper limit
-- **Down** (`dir=-1`): decrements by 1, floored at the original value (see Number Floor Tracking below)
-- Integer vs. decimal is preserved: if the original word has no `.`, the result is `Math.round`; otherwise it stays a float
+Step controls are fully config-driven via `controls/` folder `cue.md` files. There is no hardcoded number behavior.
+
+- **Config fields**: `stepPattern`, `step`, `stepMin`, `stepMax`, `stepFormat`, `stepSuffix`, `stepSuffixes`, `stepScript`
+- **`stepSuffixes`**: space-separated suffixes (e.g., `f px em %`) — auto-generates patterns like `^\d+(\.\d+)?px$` for each suffix
+- **`stepSuffix`**: suffix stripped before arithmetic and re-appended after (e.g., `1.5f` → strip `f` → `1.5 + 0.5` → `2` → `2f`)
+- **`stepScript`**: escape hatch — script called with `(current_value, direction)` to compute next value, overrides arithmetic
+- **`stepMin`/`stepMax`**: explicit bounds — Down will not go below `stepMin`, Up will not go above `stepMax`
+- **`stepFormat`**: `integer` (rounds), `float` (preserves decimals), or auto (uses natural JS formatting)
+
+Example config (`controls/numbers/cue.md`):
+```yaml
+---
+type: control
+name: numbers
+stepSuffixes: f px em
+step: 0.5
+stepMin: 0
+---
+```
 
 ### 4. Alternative cycling
 
@@ -55,16 +71,16 @@ Runs the control's script synchronously (`execSync`, 3 s timeout), then reads th
 
 ---
 
-## Number Floor Tracking
+## Step Bounds
 
-The `originalNumbers` map in `globalThis._hlState` records the first-seen value of each number, keyed by word index. The floor is set lazily — only on the first Up or Down press, not when the word is highlighted.
+Step controls use explicit `stepMin` and `stepMax` fields for bounds rather than tracking original values.
 
-- **Down** cannot go below `originalNumbers[wordIndex]`
-- **Up** has no ceiling
-- The map persists across Left/Right navigation within the same activation session. Navigating away from a number and back preserves the floor.
-- The map is cleared when navigation deactivates (Escape, Right past last target, or text change).
+- **Down** cannot go below `stepMin` (if set)
+- **Up** cannot go above `stepMax` (if set)
+- Bounds are declarative — set in the control's `cue.md` frontmatter
+- No per-word state tracking is needed — bounds are global for the control
 
-Example: highlight `0`, press Up 4 times: 1, 2, 3, 4. Press Down 6 times: 3, 2, 1, 0, 0, 0 (floors at 0).
+Example: with `step: 0.5, stepMin: 0`, highlight `2f`, press Down 5 times: `1.5f`, `1f`, `0.5f`, `0f`, `0f` (floors at 0).
 
 ---
 
@@ -91,15 +107,15 @@ Linked groups are resolved and merged across sources by `CueResolver` in cues-co
 
 - `CueResult.alternatives` array provides the ordered list of replacements (`alts[0]` is always the original word)
 - `CueResult.linked` array contains indices of co-dependent words that must cycle together
-- Priority order is defined by the standard: cue-controls > control-blanks > numbers > alternative cycling
-- `CueResult.metadata.control` identifies custom cue-controls; `CueResult.metadata.isNumber` identifies number controls
+- Priority order is defined by the standard: cue-controls > control-blanks > step controls > alternative cycling
+- `CueResult.metadata.control` identifies custom cue-controls; `CueResult.metadata.stepControl` identifies step controls
 - Linked-word groups are resolved and merged across sources by the resolver
 
 ### Integration responsibilities
 
 - Perform the actual text replacement in the editor buffer when the user cycles
 - Maintain `currentAltIndex` per word and handle wrap-around (`alts.length`)
-- Track the floor value for number cue-controls (keyed by word position)
+- Enforce `stepMin`/`stepMax` bounds for step controls
 - Execute external scripts for custom cue-controls (path from control config)
 - When cycling a linked word, update ALL linked words' `currentAltIndex` and replace their text simultaneously
 - Map Up/Down (or equivalent) input events to cycle direction

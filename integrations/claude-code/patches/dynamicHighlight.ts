@@ -152,6 +152,11 @@ if(_rMerged.ignoreWords&&_rMerged.ignoreWords.length)_ign=_rMerged.ignoreWords;
 globalThis._cuesMdParsed=_newCuesMd||null;
 globalThis._blanksMdParsed=_newBlanksMd||null;
 globalThis._cueControlOverrides=_newCtrlOvr;
+// Build step patterns index for fast lookup during cycling
+var _newStepPats=[];Object.values(_newCtrlOvr).forEach(function(_sc){
+if(_sc.stepPattern){try{_newStepPats.push({re:new RegExp(_sc.stepPattern),ctrl:_sc});}catch(_e){}}
+if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(_sf){var _escaped=_sf.replace(/[^a-zA-Z0-9]/g,'\\$&');try{_newStepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_escaped+'$'),ctrl:Object.assign({},_sc,{stepSuffix:_sf,stepSuffixes:undefined})});}catch(_e){}});}
+});globalThis._stepPatterns=_newStepPats;
 globalThis._blanksEnabled=!!(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig);
 // Rebuild localCueMap from scratch — ensures deleted tips are removed on reload
 if(globalThis._localCueData){
@@ -222,8 +227,10 @@ if(globalThis._cuesCore){globalThis._reloadCuesConfig();}
 // Cue-control check: returns true for words with built-in cycling behavior
 // (numbers increment/decrement, custom controls run scripts) — these bypass alt cycling and tips
 globalThis._isCueControl=function(_w){
-var _numPat=/^-?\\d+(\\.\\d+)?$/;
-return _numPat.test(_w)||!!(globalThis._cueControlOverrides||{})[_w.toLowerCase()];
+if(!!(globalThis._cueControlOverrides||{})[_w.toLowerCase()])return true;
+var _sps=globalThis._stepPatterns||[];
+for(var _spi=0;_spi<_sps.length;_spi++){if(_sps[_spi].re.test(_w))return true;}
+return false;
 };
 // Shared cycling function: handles cue-controls, alt cycling, linked words, spans, underscore re-analysis
 // dir=1 for Up (next alt), dir=-1 for Down (prev alt)
@@ -294,28 +301,46 @@ if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_cbNewText,lenDiff:_cbNewVal.length-_curWord.length,wStart:_cbWStart,newLen:_cbNewVal.length};
 }
 }
-// Built-in cue-control: number increment/decrement
+// Step control: arithmetic or script-based increment/decrement for patterned values
 // Skip if this position has dynamic alternatives (e.g. blank fill-in result) — let alt cycling handle it
-var _numPat=/^-?\\d+(\\.\\d+)?$/;
 var _hasAltsCycle=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.alts&&w.alts.length>1;});
-if(_numPat.test(_curWord)&&!_hasAltsCycle){
-if(!globalThis._hlState.originalNumbers)globalThis._hlState.originalNumbers={};
-var _num=parseFloat(_curWord);
-if(globalThis._hlState.originalNumbers[_hlIdx]===undefined)globalThis._hlState.originalNumbers[_hlIdx]=_num;
-var _newNum=_num+_dir;
-if(_dir<0){var _orig=globalThis._hlState.originalNumbers[_hlIdx];if(_newNum<_orig)_newNum=_orig;}
-var _isInt=_curWord.indexOf(".")<0;
-var _newWord=_isInt?String(Math.round(_newNum)):String(_newNum);
+var _stepCtrl=null;
+var _spsC=globalThis._stepPatterns||[];
+for(var _spiC=0;_spiC<_spsC.length;_spiC++){if(_spsC[_spiC].re.test(_curWord)){_stepCtrl=_spsC[_spiC].ctrl;break;}}
+if(_stepCtrl&&!_hasAltsCycle){
+var _stStep=(_stepCtrl.step!=null)?_stepCtrl.step:1;
+var _stMin=(_stepCtrl.stepMin!=null)?_stepCtrl.stepMin:null;
+var _stMax=(_stepCtrl.stepMax!=null)?_stepCtrl.stepMax:null;
+var _stFmt=(_stepCtrl&&_stepCtrl.stepFormat)||null;
+var _stSuffix=(_stepCtrl&&_stepCtrl.stepSuffix)||"";
+var _stScript=(_stepCtrl&&_stepCtrl.stepScript)||null;
+var _stNewWord;
+if(_stScript){
+var _stHome=process.env.HOME||"/home/"+(process.env.USER||"root");
+var _stScriptPath=_stScript.replace(/^~/,_stHome);
+try{_stNewWord=_reqFn("child_process").execFileSync("bash",[_stScriptPath,String(_curWord),String(_dir)],{timeout:3000,encoding:"utf8"}).trim()||_curWord;}catch(_e){_stNewWord=_curWord;}
+}else{
+var _stRaw=(_stSuffix&&_curWord.endsWith(_stSuffix))?_curWord.slice(0,-_stSuffix.length):_curWord;
+var _stNum=parseFloat(_stRaw);
+var _stResult=_stNum+(_stStep*_dir);
+if(_stMin!=null&&_stResult<_stMin)_stResult=_stMin;
+if(_stMax!=null&&_stResult>_stMax)_stResult=_stMax;
+var _stFormatted;
+if(_stFmt==="integer"){_stFormatted=String(Math.round(_stResult));}
+else if(_stFmt==="float"){_stFormatted=String(_stResult);}
+else{_stFormatted=String(_stResult);}
+_stNewWord=_stFormatted+_stSuffix;
+}
 var _text=globalThis._hlText;
 var _wordPos=0;
 for(var _wi=0;_wi<_hlIdx;_wi++){_wordPos=_text.indexOf(_allW[_wi],_wordPos)+_allW[_wi].length;}
 var _wStart=_text.indexOf(_curWord,_wordPos);
 var _wEnd=_wStart+_curWord.length;
-var _newText=_text.slice(0,_wStart)+_newWord+_text.slice(_wEnd);
+var _newText=_text.slice(0,_wStart)+_stNewWord+_text.slice(_wEnd);
 globalThis._hlText=_newText;
 globalThis._hlState.text=_newText;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-return{text:_newText,lenDiff:_newWord.length-_curWord.length,wStart:_wStart,newLen:_newWord.length};
+return{text:_newText,lenDiff:_stNewWord.length-_curWord.length,wStart:_wStart,newLen:_stNewWord.length};
 }
 // Dynamic alt cycling
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
@@ -638,6 +663,21 @@ if(_sentWords.indexOf("_")>=0){
 globalThis._dynUnderscoreContext=_sentWords.filter(function(w){return w!=="_";}).join(" ");
 }
 
+// Inject step-controlled words into _dynDefs so they're highlighted and navigable
+var _spsInj=globalThis._stepPatterns||[];
+if(_spsInj.length>0){
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
+var _sentWords0=_sentText.split(/\\s+/).filter(function(w){return w;});
+_sentWords0.forEach(function(_sw0,_si0){
+for(var _spi0=0;_spi0<_spsInj.length;_spi0++){
+if(_spsInj[_spi0].re.test(_sw0)){
+var _existStep=globalThis._dynDefs.words.find(function(d){return d.index===_si0&&d.metadata&&d.metadata.stepControl;});
+if(!_existStep){globalThis._dynDefs.words.push({index:_si0,word:_sw0,alts:[_sw0],currentAltIndex:0,metadata:{stepControl:true,stepCtrl:_spsInj[_spi0].ctrl},source:'step',linked:null});}
+break;
+}
+}
+});
+}
 // LOCAL TIPS LOOKUP - uses cues-core functions for O(1) lookup
 // Skip cue-controls (numbers, custom controls) — they have built-in cycling, not tips
 var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
@@ -694,6 +734,8 @@ for(var _si=0;_si<_sentWords.length;_si++){
 var _sw=_sentWords[_si].toLowerCase();
 if(_ignSet&&_ignSet.has(_sw))continue;
 if(/^(the|a|an|to|is|was|of|and|in|on|at|for|it|its|be|am|are|were|been|has|had|have|do|did|does|not|but|or|if|so|no|my|we|he|she|me|us|them|this|that|with|from|by|as)$/.test(_sw))continue;
+// Skip cue-controls (numbers, step-pattern words) — they have built-in cycling, not LLM alts
+if(globalThis._isCueControl&&globalThis._isCueControl(_sentWords[_si]))continue;
 // Check if this index already has valid alts in _dynDefs
 var _hasAlts=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_si&&d.alts&&d.alts.length>1&&d.alts.indexOf(_sentWords[_si])>=0;});
 // Also skip if tips already covered this word
@@ -1069,15 +1111,15 @@ export const writeDynamicRendering = (
   oldFile: string,
   config: DynamicHighlightConfig = {}
 ): string | null => {
-  // Find the _numRanges pattern (_numPat only)
-  // Pattern: else if(_numPat.test(_w)){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
-  const numPattern = /else if\(_numPat\.test\(_w\)\)\{_numRanges\.push\(\{start:_wStart,end:_wStart\+_w\.length\}\);\}/;
+  // Find the _numRanges pattern (step patterns check)
+  // Pattern: else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})){_numRanges.push(...);}
+  const numPattern = /else if\(\(globalThis\._stepPatterns\|\|\[\]\)\.some\(function\(s\)\{return s\.re\.test\(_w\);\}\)\)\{_numRanges\.push\(\{start:_wStart,end:_wStart\+_w\.length\}\);\}/;
   const numMatch = oldFile.match(numPattern);
 
   if (numMatch && numMatch.index !== undefined) {
-    // Numbers mode: extend _numRanges to also dim control words and dynamic alt words
+    // Extend _numRanges to also dim control words, tips, and dynamic alt words
     // INSTANT TIPS: check _localCueMap directly in render — no waiting for analysis pipeline
-    const newNumCode = `else if(_numPat.test(_w)||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
+    const newNumCode = `else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
 }else if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});
 }else if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&((d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0)||(d.metadata&&d.metadata.controlName));});

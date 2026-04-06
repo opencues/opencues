@@ -133,6 +133,38 @@ A cue-control that opens a URL:
 xdg-open "https://docs.example.com" &
 ```
 
+## Adding a step control
+
+Step controls are a type of cue-control that increments/decrements values matching a pattern — no external script needed for arithmetic stepping.
+
+**`controls/units/cue.md`:**
+```yaml
+---
+type: control
+name: units
+stepSuffixes: px em rem f % vh vw
+step: 1
+stepMin: 0
+---
+```
+
+This makes `10px`, `2em`, `1.5f`, `50%`, etc. steppable. Each suffix auto-generates a regex pattern like `^\d+(\.\d+)?px$`.
+
+### Step control config fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `stepPattern` | string | Regex matching steppable values (alternative to `stepSuffixes`) |
+| `stepSuffixes` | string | Space-separated suffixes — auto-generates patterns per suffix |
+| `step` | number | Arithmetic step size (default: 1) |
+| `stepMin` | number | Floor — Down will not go below this |
+| `stepMax` | number | Ceiling — Up will not go above this |
+| `stepFormat` | string | Output format: `integer`, `float`, or auto |
+| `stepSuffix` | string | Single suffix to strip/re-append (use `stepSuffixes` for multiple) |
+| `stepScript` | string | Script called with `(current_value, direction)` — overrides arithmetic |
+
+Use separate control folders for different step sizes (e.g., `controls/units/` for step 1, `controls/fine-units/` for step 0.1).
+
 ## Checklist
 
 - [ ] Control folder created: `controls/{name}/cue.md` + script

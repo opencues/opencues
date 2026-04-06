@@ -71,7 +71,7 @@ The integration must:
 
 Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. A word is navigable if:
 - It has alternatives (`alts.length > 1`)
-- It's a number (built-in increment/decrement)
+- It matches a step control pattern (config-driven increment/decrement)
 - It's a cue-control word (in `_cueControlOverrides`)
 - It has `metadata.controlName` (control-bound blank — **exception: navigable with 1 alt**)
 - It's part of a multi-word span (navigable at the span's original index)
@@ -81,7 +81,7 @@ Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. A word is nav
 Up/Down at a navigable position cycles alternatives. Priority order:
 1. **Cue-control words** — run external script (debounced)
 2. **Control-bound blanks** — run script synchronously, read state file, update display
-3. **Number increment/decrement** — only if no alternatives exist at this position
+3. **Step control** — config-driven increment/decrement, only if no alternatives exist at this position
 4. **Alternative cycling** — cycle through `alternatives` array
 
 ### 6. Auto-submit (analysis trigger)
@@ -178,9 +178,9 @@ If the parser doesn't match the response format, it silently returns empty resul
 
 The `compute` parser evaluates arbitrary JavaScript via `new Function()`. This is a **security risk** in browser contexts. For Chrome extensions, prefer the `math` parser (which strips non-arithmetic characters before eval) or implement a sandboxed evaluator.
 
-### `parseAlternatives` skips number positions
+### `parseAlternatives` skips step control positions
 
-If a word at position N is a number (`/^-?\d+(\.\d+)?$/`), `parseAlternatives` silently skips it (line 135 of parsers.ts). The LLM may return alternatives for number positions, but they're dropped. Numbers get increment/decrement cycling instead.
+If a word at position N matches a step control pattern (checked via `_isCueControl`), the analysis pipeline skips it. The LLM is never called for step-controlled values — they get step control cycling instead.
 
 ### Control-bound blanks: only first `_` is bound
 

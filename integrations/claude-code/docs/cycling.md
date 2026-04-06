@@ -6,19 +6,20 @@ last_updated: 2026-04-04
 
 Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/features/linked-words.md), [9](../../../docs/features/multi-word-spans.md), [10](../../../docs/features/per-word-clearing.md). See those docs for the concepts.
 
-**Patch files:** `patches/wordHighlight.ts` (number fallback, rendering), `patches/dynamicHighlight.ts` (all cycling via `_cycleAlt`, cue-controls, LLM alts, spans, clearing)
+**Patch files:** `patches/wordHighlight.ts` (rendering, delegates Up/Down to `_cycleAlt`), `patches/dynamicHighlight.ts` (all cycling via `_cycleAlt`, cue-controls, step controls, LLM alts, spans, clearing)
 
 ## CC-Specific: Cycling Priority Implementation
 
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
 1. **Cue-control (custom)** → spawn `~/.claude/actions/{control}.sh`, return
-2. **Cue-control (number)** → increment/decrement with `originalNumbers` map, return
-3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
-4. **Tip-lookup fallback** → if word is in `_localCueMap` but not in `_dynDefs`, resolve alts on-the-fly from tips and populate `_dynDefs` (covers cases where eager lookup was skipped, e.g., during pending LLM calls)
-5. **Fall through** → no action
+2. **Control-bound blanks** → sync script call, replace blank value, return
+3. **Step control** → config-driven increment/decrement via `stepPattern`/`stepSuffixes`, return
+4. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
+5. **Tip-lookup fallback** → if word is in `_localCueMap` but not in `_dynDefs`, resolve alts on-the-fly from tips and populate `_dynDefs` (covers cases where eager lookup was skipped, e.g., during pending LLM calls)
+6. **Fall through** → no action
 
-`_isCueControl(word)` is the unified check for both types. It's used by the tips lookup and status line export to exclude cue-controls from tips/alts display.
+`_isCueControl(word)` is the unified check — it tests `_cueControlOverrides` (word controls) and `_stepPatterns` (step controls). Used by tips lookup and status line export to exclude cue-controls from tips/alts display.
 
 ## CC-Specific: Tips Protection from LLM
 

@@ -114,6 +114,22 @@ export interface ControlConfig {
   blankScript?: string;
   /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
   blankProximity?: number;
+  /** Regex pattern matching values that can be stepped (default: ^-?\d+(\.\d+)?$) */
+  stepPattern?: string;
+  /** Arithmetic step size for Up/Down (default: 1) */
+  step?: number;
+  /** Minimum value — Down will not go below this */
+  stepMin?: number;
+  /** Maximum value — Up will not go above this */
+  stepMax?: number;
+  /** Output format for stepped values: 'integer' | 'float' | 'string' (default: auto) */
+  stepFormat?: 'integer' | 'float' | 'string';
+  /** Suffix to strip before stepping and re-append after (e.g. 'px', 'em', 'f') */
+  stepSuffix?: string;
+  /** Multiple suffixes sharing this control's step settings (e.g. ['px', 'em', 'rem']) */
+  stepSuffixes?: string[];
+  /** Script called with (current_value, direction) to compute next value */
+  stepScript?: string;
 }
 
 export interface CuesMdConfig {
@@ -488,6 +504,14 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankTip?: string;
   blankScript?: string;
   blankProximity?: number;
+  stepPattern?: string;
+  step?: number;
+  stepMin?: number;
+  stepMax?: number;
+  stepFormat?: 'integer' | 'float' | 'string';
+  stepSuffix?: string;
+  stepSuffixes?: string;
+  stepScript?: string;
 }
 
 /**
@@ -541,6 +565,14 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankTip': fm.blankTip = value; break;
       case 'blankScript': fm.blankScript = value; break;
       case 'blankProximity': fm.blankProximity = parseInt(value, 10); break;
+      case 'stepPattern': fm.stepPattern = value; break;
+      case 'step': fm.step = parseFloat(value) || undefined; break;
+      case 'stepMin': fm.stepMin = parseFloat(value); break;
+      case 'stepMax': fm.stepMax = parseFloat(value); break;
+      case 'stepFormat': fm.stepFormat = value as 'integer' | 'float' | 'string'; break;
+      case 'stepSuffix': fm.stepSuffix = value; break;
+      case 'stepSuffixes': fm.stepSuffixes = value; break;
+      case 'stepScript': fm.stepScript = value; break;
     }
   }
 
@@ -598,7 +630,21 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankFormat !== undefined) control.blankFormat = frontmatter.blankFormat;
       if (frontmatter.blankTip !== undefined) control.blankTip = frontmatter.blankTip;
       if (frontmatter.blankProximity !== undefined) control.blankProximity = frontmatter.blankProximity;
+      if (frontmatter.stepPattern !== undefined) control.stepPattern = frontmatter.stepPattern;
+      if (frontmatter.step !== undefined) control.step = frontmatter.step;
+      if (frontmatter.stepMin !== undefined) control.stepMin = frontmatter.stepMin;
+      if (frontmatter.stepMax !== undefined) control.stepMax = frontmatter.stepMax;
+      if (frontmatter.stepFormat !== undefined) control.stepFormat = frontmatter.stepFormat;
+      if (frontmatter.stepSuffix !== undefined) control.stepSuffix = frontmatter.stepSuffix;
+      if (frontmatter.stepSuffixes !== undefined) {
+        control.stepSuffixes = frontmatter.stepSuffixes.split(/[\s,]+/).filter(s => s.length > 0);
+      }
       // Resolve relative script paths
+      if (frontmatter.stepScript) {
+        control.stepScript = frontmatter.stepScript.startsWith('./')
+          ? folderPath + '/' + frontmatter.stepScript.slice(2)
+          : frontmatter.stepScript;
+      }
       if (frontmatter.script) {
         control.script = frontmatter.script.startsWith('./')
           ? folderPath + '/' + frontmatter.script.slice(2)

@@ -19,10 +19,10 @@ Word navigation lets users move a highlight cursor between interactive words in 
 
 ## Navigation Targets
 
-A word is navigable if it passes the `filterCode` check. The base filter (from `wordHighlight.ts`) includes:
+A word is navigable if it passes the `filterCode` check. The base filter (from `wordHighlight.ts`) uses `_isCueControl(word)` which checks:
 
-- **Numbers** — matches the regex `/^-?\d+(\.\d+)?$/` (integers and decimals, optionally negative)
 - **Cue-control words** — present in `globalThis._cueControlOverrides` (a map of control keyword names)
+- **Step-pattern matches** — word matches any pattern in `globalThis._stepPatterns` (auto-generated from `stepSuffixes` or explicit `stepPattern` in control configs)
 
 The `dynamicHighlight.ts` patch (`writeDynamicNavigation`) extends this filter. After patching, a word at index `i` is also navigable if:
 
@@ -40,8 +40,8 @@ The combined filter pushes index `i` into `_targetIdx` if any of the above condi
 |-----|--------|
 | Ctrl+Alt+Left | Activate navigation (if inactive) or move highlight one target toward the start of the line |
 | Ctrl+Alt+Right | Move highlight one target toward the end of the line, or deactivate if already at the rightmost target |
-| Ctrl+Alt+Up | Increment highlighted number by 1 (no-op if the highlighted word is not a number) |
-| Ctrl+Alt+Down | Decrement highlighted number by 1, floored at the original value when the word was first navigated to |
+| Ctrl+Alt+Up | Step increment (config-driven via step controls) or cycle to next alternative |
+| Ctrl+Alt+Down | Step decrement (config-driven, bounded by `stepMin`) or cycle to previous alternative |
 | Escape | Clear highlight and reset `_hlState` |
 | Any text change | Clear highlight and reset `_hlState` (detected by comparing `_hlText !== _oldText`) |
 
@@ -61,11 +61,7 @@ All navigation state lives in `globalThis._hlState`, an object with these fields
 | `index` | number \| null | Position within the `_targetIdx` array (0 = rightmost target) |
 | `wordIndex` | number \| null | Actual index into the whitespace-split word array — computed as `_targetIdx[_targetIdx.length - 1 - index]` |
 | `text` | string | Snapshot of the input text when navigation was activated |
-| `originalNumbers` | `Record<number, number>` | Map of word index to the number's original value when first navigated to. Used by Down to floor the decrement — a number cannot go below its original value |
-
-The state is reset to `{active:false, index:null, wordIndex:null, text:"", originalNumbers:{}}` on Escape, on Right past the last target, or when the input text changes.
-
-The `originalNumbers` map persists across Left/Right navigation within the same activation — if you navigate away from a number and back, the floor is remembered.
+The state is reset to `{active:false, index:null, wordIndex:null, text:""}` on Escape, on Right past the last target, or when the input text changes.
 
 ---
 
@@ -74,7 +70,7 @@ The `originalNumbers` map persists across Left/Right navigation within the same 
 ### Standard (cues-core)
 
 - `WordDef` provides `index`, `word`, and `alts` for every word in the input
-- Navigation targets are words where `alts.length > 1`, numbers, cue-controls, or words with `metadata.controlName`
+- Navigation targets are words where `alts.length > 1`, step-pattern matches, cue-controls, or words with `metadata.controlName`
 - `CueResolver.analyze()` returns the full word list with classification already applied
 - No navigation state is tracked in cues-core; it only identifies which words are navigable
 
@@ -84,5 +80,5 @@ The `originalNumbers` map persists across Left/Right navigation within the same 
 - Filter the `WordDef[]` array to determine the ordered set of navigation targets
 - Track which word is currently focused (`highlightIndex` or equivalent)
 - Move the editor cursor or viewport to the focused word's position
-- Distinguish navigation targets by type (alt word, number, cue-control) if the UI treats them differently
+- Distinguish navigation targets by type (alt word, step control, cue-control) if the UI treats them differently
 - Communicate the focused word to the cycling and visual-cues subsystems

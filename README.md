@@ -31,7 +31,7 @@ Restart Claude Code. Done.
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Increment numbers, cycle alternatives |
+| Ctrl+Alt+Up/Down | Step controls (configurable increment), cycle alternatives |
 | Escape | Clear highlight |
 
 ### What you get
@@ -39,7 +39,7 @@ Restart Claude Code. Done.
 - **Navigation** — move between words with keyboard
 - **Visual cues** — words dim when alternatives are available
 - **Alternatives** — cycle through synonyms, opposites, creative suggestions
-- **Number cycling** — `42` → `43` → `44`
+- **Step controls** — config-driven value stepping with suffixes (`1.5f` → `2f` → `2.5f`, `10px` → `11px`)
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
 - **Cue-controls** — `volume` triggers system volume control
 - **Control-bound blanks** — type `change volume _` and the blank auto-populates with the actual system volume; cycle to change it in real time
@@ -156,7 +156,7 @@ Settings are in `~/.tweakcc/config.json`:
 | `enableWordHighlight` | `true` | Enable Ctrl+Alt+Arrow navigation |
 | `enableDynamicHighlight` | `true` | Enable LLM alternatives |
 | `highlightMode` | `"words"` | `"numbers"` or `"words"` |
-| `numberDimming` | `true` | Dim numbers in gray |
+| `numberDimming` | `true` | Dim step-pattern matches in gray |
 | `highlightExportEnabled` | `true` | Write highlight state JSON for status line |
 
 ## Updating

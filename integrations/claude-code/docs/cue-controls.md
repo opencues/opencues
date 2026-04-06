@@ -12,12 +12,13 @@ Cue-controls are words with built-in cycling behavior that bypasses the normal a
 
 ## Overview
 
-There are two kinds of cue-control:
+There are three kinds of cue-control:
 
 - **Custom cue-controls** — navigate to a word (like "volume") and press Ctrl+Alt+Up or Down to spawn an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
-- **Number cue-controls** — any word matching `/^-?\d+(\.\d+)?$/` automatically increments/decrements. See `cycling.md` for floor behavior.
+- **Control-bound blanks** — blank positions bound to a control via `blankKeywords`. The blank value is synced with the control's state file.
+- **Step controls** — words matching config-driven patterns (via `stepPattern` or `stepSuffixes`) are incremented/decremented by a configurable step size. Supports suffixes like `f`, `px`, `em`, `%`. See `cycling.md` for config fields.
 
-The unified check `globalThis._isCueControl(word)` identifies both types. It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-controls from tips/alts display.
+The unified check `globalThis._isCueControl(word)` identifies custom controls (via `_cueControlOverrides`) and step controls (via `_stepPatterns`). It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-controls from tips/alts display.
 
 ## How It Works
 
@@ -31,7 +32,7 @@ Press Ctrl+Alt+Up
 cue-control check (FIRST priority)
   → Word "volume" found in cueControlOverrides
   → Spawn: ~/.claude/actions/volume.sh up 5
-  → Return (skip normal number/cycling logic)
+  → Return (skip step control/cycling logic)
            ↓
 Volume increases
 ```
@@ -41,11 +42,12 @@ Volume increases
 Cue-controls are checked **FIRST** in `_cycleAlt()`, before any other logic:
 
 1. **Cue-control (custom)** → spawn script, return
-2. **Cue-control (number)** → increment/decrement, return
-3. **Alternatives** → cycle through alternatives
-4. **Linked words** → co-dependent words cycle together
+2. **Control-bound blanks** → sync script call, replace blank value, return
+3. **Step control** → config-driven increment/decrement, return
+4. **Alternatives** → cycle through alternatives
+5. **Linked words** → co-dependent words cycle together
 
-`_cycleAlt` is called from 4 locations (key handlers and raw sequence handlers for both Up and Down). `wordHighlight.ts` retains number handlers as fallback if `_cycleAlt` is not available.
+All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_cycleAlt` in `dynamicHighlight.ts`.
 
 ## Configuration
 
@@ -194,7 +196,7 @@ copy "$env:TEMP\n\nircmd.exe" C:\Windows\
 
 ## Visual Behavior
 
-cue-controls follow the same visual pattern as numbers:
+cue-controls follow the same visual pattern as step-controlled values:
 
 | State | Appearance |
 |-------|------------|

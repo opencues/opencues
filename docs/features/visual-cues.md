@@ -24,7 +24,7 @@ A word at index `_ni` is added to `_numRanges` (and therefore dimmed) if any of 
 
 | Condition | Check | Source |
 |-----------|-------|--------|
-| **Number** | `_numPat.test(_w)` where `_numPat = /^-?\d+(\.\d+)?$/` — integers and decimals, optionally negative | `wordHighlight.ts` base rendering |
+| **Step-pattern match** | `(globalThis._stepPatterns\|\|[]).some(s => s.re.test(_w))` — words matching any step control pattern from `controls/` configs | `wordHighlight.ts` base rendering |
 | **Cue-control** | `(globalThis._cueControlOverrides \|\| {})[_w.toLowerCase()]` — word is a registered control keyword | `writeDynamicRendering` |
 | **Tip word** | `globalThis._localCueMap.has(_w.toLowerCase())` — word exists in the local cue map (case-insensitive). Checked directly in the render loop for instant dimming without waiting for the analysis pipeline | `writeDynamicRendering` |
 | **Dynamic alternative** | `_dynDef` found where `d.alts.length > 1 && d.alts.indexOf(_w) >= 0` — the LLM returned multiple alternatives and the current word is among them | `writeDynamicRendering` |
@@ -82,7 +82,7 @@ The character loop applies styles in this order:
 ### Integration responsibilities
 
 - Render the three visual states using platform-appropriate styling (ANSI codes, CSS classes, editor decorations, etc.)
-- Apply dimmed state to all words where `alts.length > 1`, plus numbers, cue-controls, tip words, control-blanks, and span members
+- Apply dimmed state to all words where `alts.length > 1`, plus step-pattern matches, cue-controls, tip words, control-blanks, and span members
 - Apply highlighted state to the currently focused word and any span words (linked words share cycling but are rendered independently)
 - Update visual states in real time as the user navigates and as new analysis results arrive
 - Respect external highlight regions (e.g., host editor shimmer) by skipping visual overrides for those words

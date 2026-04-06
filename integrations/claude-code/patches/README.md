@@ -112,7 +112,7 @@ After installation:
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Increment numbers, cycle alternatives |
+| Ctrl+Alt+Up/Down | Step controls (configurable increment), cycle alternatives |
 | Escape | Clear highlight |
 
 Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.

@@ -4,7 +4,7 @@ last_updated: 2026-04-06
 
 # Cursor Position Preservation
 
-When a word changes length during cycling or number increment/decrement, the cursor position must adjust so the user's editing position does not jump. The system calculates a length delta and applies it conditionally based on where the replacement occurs relative to the cursor.
+When a word changes length during cycling or step control increment/decrement, the cursor position must adjust so the user's editing position does not jump. The system calculates a length delta and applies it conditionally based on where the replacement occurs relative to the cursor.
 
 ---
 
@@ -34,7 +34,7 @@ var _newOffset = _wStart < inputZone.offset
 | Replacement is **at or after** the cursor (`_wStart >= offset`) | Offset unchanged |
 
 This handles all cases:
-- **Number increment** (e.g., "9" -> "10"): `_lenDiff = 1`, cursor moves right by 1 if it was after the number
+- **Step increment** (e.g., "9" -> "10"): `_lenDiff = 1`, cursor moves right by 1 if it was after the word
 - **Alt cycling** (e.g., "dog" -> "puppy"): `_lenDiff = 2`, cursor moves right by 2 if it was after the word
 - **Shorter replacement** (e.g., "puppy" -> "cat"): `_lenDiff = -2`, cursor moves left by 2 if it was after the word
 - **Cursor at end of text**: The cursor is always after the replacement, so it tracks correctly as text grows or shrinks
