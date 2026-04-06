@@ -454,6 +454,9 @@ export function mergeWordDefs(
       if (!existingDef.source && newDef.source) {
         existingDef.source = newDef.source;
       }
+      if (!existingDef.metadata && newDef.metadata) {
+        existingDef.metadata = newDef.metadata;
+      }
     } else {
       // Add new definition
       result.push({ ...newDef });

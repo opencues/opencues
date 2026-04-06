@@ -12,7 +12,7 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 | **blanks.md** | Fill-in-the-blank modes with prompt + parser per mode | `### math` with `parser: compute` |
 | **controls.md** | Cue-controls — words that trigger external scripts | `"volume"` runs a volume control script |
 | **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
-| **controls/{name}/** | Self-contained control with colocated script | `controls/volume/cue.md` + `volume.sh` |
+| **controls/{name}/** | Self-contained control with colocated script + state | `controls/volume/cue.md` + `volume.sh` + `state.txt` |
 
 Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -42,6 +42,7 @@ Restart Claude Code. Done.
 - **Number cycling** — `42` → `43` → `44`
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
 - **Cue-controls** — `volume` triggers system volume control
+- **Control-bound blanks** — type `change volume _` and the blank auto-populates with the actual system volume; cycle to change it in real time
 - **Secondary display** — highlighted words show cue-tips
 - **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed
 
@@ -103,7 +104,8 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies.
 - **CueResolver** — orchestrates multiple sources, merges results
 - **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
 - **ClassifiedSourceGroup** — wraps blank modes with fast/LLM classification
-- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` → `CueSource[]`
+- **ControlBlankSource** — bridges blanks with cue-controls (auto-populate + cycling)
+- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + controls → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
 ### integrations/claude-code

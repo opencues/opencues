@@ -172,6 +172,9 @@ export interface WordDef {
 
   /** When true, tip is read aloud via TTS on navigation */
   speak?: boolean;
+
+  /** Arbitrary metadata (e.g., control binding info for control-bound blanks) */
+  metadata?: Record<string, unknown>;
 }
 
 /**

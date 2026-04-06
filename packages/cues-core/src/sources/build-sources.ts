@@ -19,15 +19,20 @@
  */
 
 import { CueSource, HttpAdapter } from '../types';
-import { CuesMdConfig, SourceConfig } from '../cues-md';
+import { CuesMdConfig, SourceConfig, ControlConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
 import { ClassifiedSourceGroup } from './classified-source-group';
+import { ControlBlankSource } from './control-blank-source';
 
 export interface BuildSourcesOptions {
   httpAdapter: HttpAdapter;
   endpoint: string;
   apiKey: string;
   defaultModel: string;
+  /** Merged control configs (for control-bound blanks) */
+  controls?: Record<string, ControlConfig>;
+  /** I/O adapter: reads current control value from state file (raw string) */
+  readControlState?: (controlName: string) => string | null;
 }
 
 /**
@@ -135,6 +140,22 @@ export function buildSourcesFromConfig(
         endpoint: options.endpoint,
         apiKey: options.apiKey,
         model: blanksConfig.promptConfig.model ?? options.defaultModel,
+      }));
+    }
+  }
+
+  // Control-bound blanks: controls with blankKeywords get a ControlBlankSource
+  if (options.controls && options.readControlState) {
+    const blankControls: Record<string, ControlConfig> = {};
+    for (const [name, ctrl] of Object.entries(options.controls)) {
+      if (ctrl.blankKeywords?.length) {
+        blankControls[name] = ctrl;
+      }
+    }
+    if (Object.keys(blankControls).length > 0) {
+      sources.push(new ControlBlankSource({
+        controls: blankControls,
+        readState: options.readControlState,
       }));
     }
   }

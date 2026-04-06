@@ -68,14 +68,15 @@ Create a script at `~/.claude/actions/{control}.sh` (or colocate it in the contr
 
 ```bash
 #!/bin/bash
-# ~/.claude/actions/volume.sh
-# Called as: bash ~/.claude/actions/volume.sh up 5
-#   $1 = direction ("up" or "down")
+# controls/volume/volume.sh
+# Called as: bash controls/volume/volume.sh up 5
+#   $1 = direction ("up", "down", or "get")
 #   $2 = amount (e.g., "5")
 
 DIRECTION="$1"
 AMOUNT="${2:-10}"
-STATE_FILE="/tmp/cue-control-volume.txt"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+STATE_FILE="${SCRIPT_DIR}/state.txt"
 
 # Read current state (default 50)
 CURRENT=50
@@ -97,10 +98,10 @@ my-system-command "$DIRECTION" "$AMOUNT" &
 
 ### Script conventions
 
-- **State file**: Read/write to `/tmp/cue-control-{control}.txt`. The CLI also reads this file to track current values, so write it immediately.
-- **State format**: A single integer (0-100).
-- **Non-blocking**: Background any slow system calls with `&`. The CLI spawns scripts with `detached: true, stdio: "ignore"` and doesn't wait for them.
-- **Debouncing**: The CLI debounces rapid keypresses (50ms), so your script won't be called on every single keypress during fast cycling.
+- **State file**: Read/write to `controls/{name}/state.txt` (colocated with `cue.md`). The CLI reads this file for auto-populate and value tracking, so write it immediately.
+- **State format**: A single value per line. Format depends on `blankFormat`: integer (default), float, or raw string.
+- **Non-blocking**: For word-based controls, background slow system calls with `&`. For control-bound blanks, the script runs synchronously so the state file is ready when the CLI reads it back.
+- **Debouncing**: Word-based controls are debounced (50ms). Control-bound blanks run synchronously per keypress.
 
 ## 3. How it works at runtime
 
@@ -134,8 +135,9 @@ xdg-open "https://docs.example.com" &
 
 ## Checklist
 
-- [ ] Control defined in `controls.md` under `## Controls`
-- [ ] Script exists at `~/.claude/actions/{control}.sh` (or custom `script` path)
+- [ ] Control folder created: `controls/{name}/cue.md` + script
 - [ ] Script is executable (`chmod +x`)
-- [ ] State file written to `/tmp/cue-control-{control}.txt` if stateful
-- [ ] Slow operations backgrounded with `&`
+- [ ] Script handles `get`, `up <amount>`, `down <amount>` commands
+- [ ] State file written to `controls/{name}/state.txt` if stateful
+- [ ] For control-bound blanks: `blankKeywords`, `blankStep`, `blankAutoPopulate` set in `cue.md`
+- [ ] Run `setup.sh` to rebuild

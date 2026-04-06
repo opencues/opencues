@@ -60,6 +60,8 @@ Cue-controls always trigger scripts — they don't have text alternatives. They 
 
 Defined in `controls.md`. See `docs/guides/adding-a-cue-control.md`.
 
+**Control-Bound Blank** — A blank (`_`) that is bound to a cue-control via `blankKeywords`. When the user types a keyword adjacent to an underscore (e.g., `volume _`), the blank auto-populates with the control's current value and cycling changes the actual system state. The keyword must be within `blankProximity` words of the `_` (default 0 = adjacent). This bridges blanks and cue-controls — the blank is how you enter the interaction, the control is what executes. Configured in `controls/{name}/cue.md` with `blankKeywords`, `blankStep`, `blankAutoPopulate`, `blankProximity`, `blankRange`, `blankFormat`, `blankScript`, and `blankTip`. See `docs/features/control-blanks.md`.
+
 ---
 
 ## Config Files

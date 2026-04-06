@@ -96,6 +96,24 @@ export interface ControlConfig {
   upArgs?: string[];
   downArgs?: string[];
   speak?: boolean;
+  /** Context words that bind a blank (_) to this control (e.g., ['volume', 'sound']) */
+  blankKeywords?: string[];
+  /** Increment/decrement step size when cycling a control-bound blank */
+  blankStep?: number;
+  /** When true, auto-fill the blank with the current control value on analysis */
+  blankAutoPopulate?: boolean;
+  /** Path to state file (auto-set to {controlFolder}/state.txt for folder-based controls) */
+  stateFile?: string;
+  /** Min/max range for clamping when cycling [min, max] (default: [0, 100]) */
+  blankRange?: [number, number];
+  /** Value format: integer (default), float, or string */
+  blankFormat?: 'integer' | 'float' | 'string';
+  /** Tip shown when the auto-populated value is highlighted (separate from word-control tip) */
+  blankTip?: string;
+  /** Script for blank get/set (separate from word-control script). Defaults to `script` if not set. */
+  blankScript?: string;
+  /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
+  blankProximity?: number;
 }
 
 export interface CuesMdConfig {
@@ -462,6 +480,14 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   upArgs?: string[];
   downArgs?: string[];
   speak?: boolean;
+  blankKeywords?: string;
+  blankStep?: number;
+  blankAutoPopulate?: boolean;
+  blankRange?: [number, number];
+  blankFormat?: 'integer' | 'float' | 'string';
+  blankTip?: string;
+  blankScript?: string;
+  blankProximity?: number;
 }
 
 /**
@@ -507,6 +533,14 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'upArgs': try { fm.upArgs = JSON.parse(value); } catch { /* ignore */ } break;
       case 'downArgs': try { fm.downArgs = JSON.parse(value); } catch { /* ignore */ } break;
       case 'speak': fm.speak = value === 'true'; break;
+      case 'blankKeywords': fm.blankKeywords = value; break;
+      case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
+      case 'blankAutoPopulate': fm.blankAutoPopulate = value === 'true'; break;
+      case 'blankRange': try { fm.blankRange = JSON.parse(value); } catch { /* ignore */ } break;
+      case 'blankFormat': fm.blankFormat = value as 'integer' | 'float' | 'string'; break;
+      case 'blankTip': fm.blankTip = value; break;
+      case 'blankScript': fm.blankScript = value; break;
+      case 'blankProximity': fm.blankProximity = parseInt(value, 10); break;
     }
   }
 
@@ -555,12 +589,28 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
         downArgs: frontmatter.downArgs,
         speak: frontmatter.speak,
       };
-      // Resolve relative script path
+      if (frontmatter.blankKeywords) {
+        control.blankKeywords = frontmatter.blankKeywords.split(',').map(k => k.trim().toLowerCase());
+      }
+      if (frontmatter.blankStep !== undefined) control.blankStep = frontmatter.blankStep;
+      if (frontmatter.blankAutoPopulate !== undefined) control.blankAutoPopulate = frontmatter.blankAutoPopulate;
+      if (frontmatter.blankRange !== undefined) control.blankRange = frontmatter.blankRange;
+      if (frontmatter.blankFormat !== undefined) control.blankFormat = frontmatter.blankFormat;
+      if (frontmatter.blankTip !== undefined) control.blankTip = frontmatter.blankTip;
+      if (frontmatter.blankProximity !== undefined) control.blankProximity = frontmatter.blankProximity;
+      // Resolve relative script paths
       if (frontmatter.script) {
         control.script = frontmatter.script.startsWith('./')
           ? folderPath + '/' + frontmatter.script.slice(2)
           : frontmatter.script;
       }
+      if (frontmatter.blankScript) {
+        control.blankScript = frontmatter.blankScript.startsWith('./')
+          ? folderPath + '/' + frontmatter.blankScript.slice(2)
+          : frontmatter.blankScript;
+      }
+      // Colocate state file with control folder
+      control.stateFile = folderPath + '/state.txt';
       result.controls = { [control.control]: control };
       break;
     }

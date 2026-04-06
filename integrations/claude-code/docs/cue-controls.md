@@ -277,20 +277,45 @@ The VBS helper files must be created manually — they are NOT auto-generated. T
 2. Re-apply patches after config change
 3. Check `globalThis._cueControlOverrides` in browser console
 
+## Control-Bound Blanks
+
+Control-bound blanks bridge blanks (`_`) with cue-controls. Typing `change volume _` auto-populates the blank with the current volume and cycling changes the actual system state.
+
+See `docs/features/control-blanks.md` for full configuration reference.
+
+### Implementation notes (Claude Code specific)
+
+**Auto-populate mechanism**: The resolver callback sets `globalThis._pendingAutoPopulate`. This is consumed in the render-cycle IIFE in `wordHighlight.ts` (not in the resolver callback) because `onChange` must be called from a fresh React render context — stale closure references from `setTimeout` or async callbacks don't update the input.
+
+**State file reads**: The `readControlState` callback reads the colocated `controls/{name}/state.txt`. Must use `${requireFuncName}("fs")`, never bare `require("fs")` — see `architecture.md` § Development Notes.
+
+**Cycling**: The cycling handler calculates the target value (current + blankStep, clamped to blankRange), then calls `blankScript set <value>` via `execSync`. Uses `metadata.blankScript` — separate from the word-control `script` which handles `up`/`down`. Word-based controls use debounced `spawn` with direction args (fire-and-forget). Blank-controls are value-based and synchronous.
+
+**Merge protection**: Grammar/LLM results cannot overwrite a control-blank WordDef (checked via `metadata.controlName`), but fresh control-blank results CAN replace stale ones.
+
+**Cache invalidation**: When `_` reappears in the text, all control-blank WordDefs are cleared and re-analysis is forced, ensuring a fresh value read.
+
 ## Compiled Executables
 
-`setup.sh` auto-compiles `.cs` files in `patches/actions/` to `.exe` via the Windows .NET csc.exe compiler. This eliminates PowerShell cold-start overhead (~500ms → ~50ms).
+`setup.sh` auto-compiles `.cs` files from both `patches/actions/` and `controls/*/` to `~/.claude/actions/` via the Windows .NET csc.exe compiler.
 
-| Executable | Purpose | Reference |
-|------------|---------|-----------|
-| `VolCtl.exe` | Volume via SendInput API | `user32.dll` |
-| `BrightCtl.exe` | Brightness via powrprof.dll | `powrprof.dll` |
-| `SpeakCtl.exe` | TTS via System.Speech | `System.Speech.dll` |
+| Executable | Source | Purpose |
+|------------|--------|---------|
+| `VolCtl.exe` | `controls/volume/VolCtl.cs` | Volume via Core Audio API (`get`, `set`) |
+| `BrightCtl.exe` | `patches/actions/BrightCtl.cs` | Brightness via powrprof.dll |
+| `SpeakCtl.exe` | `patches/actions/SpeakCtl.cs` | TTS via System.Speech |
+
+**VolCtl.exe** uses the Windows Core Audio API (via COM vtable calls) for:
+- `get` — queries actual system volume as 0-100 integer
+- `set <value>` — sets exact volume using `VolumeStepUp`/`VolumeStepDown`
+
+COM initialization uses `COINIT_APARTMENTTHREADED` with MTA fallback — required for reliable operation when spawned from Node.js child processes.
 
 SpeakCtl.exe requires `/reference:System.Speech.dll` — setup.sh handles this with a special case for the `SpeakCtl` base name.
 
 ## Related
 
+- `docs/features/control-blanks.md` — full control-bound blanks feature reference
 - `config.md` — all configuration options
-- `systems-diagram.md` — architecture overview
+- `architecture.md` — architecture overview + development notes
 - `alternatives.md` — TTS details and external highlight preservation

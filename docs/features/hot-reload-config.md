@@ -1,50 +1,63 @@
 ---
-last_updated: 2026-04-05
+last_updated: 2026-04-06
 ---
 
-# Feature 15: Hot-Reload Config
+# Hot-Reload Config
 
-Config file changes take effect within ~2 seconds, without restarting the integration.
+Config file changes take effect within ~2 seconds, without restarting the integration. All `.md` config files are polled via a TTL cache rather than file watchers.
 
-## Behaviour
+---
 
-All `.md` config files are watched via a TTL cache. When the TTL expires (2s), the next analysis trigger re-parses all config files and rebuilds the resolver. From the user's perspective: save a file, type a word, see the new config.
+## How It Works
 
-**What hot-reloads:**
+1. **At startup**, `_configLoadedAt = 0` and `_reloadCuesConfig()` runs immediately, parsing all config files and building the resolver
+2. **On every analysis pass** (when the user types), the auto-submit code checks: `Date.now() - _configLoadedAt > 2000` and `!_dynPending` and `!_configReloading`. If all conditions are met, `_reloadCuesConfig()` fires
+3. **`_reloadCuesConfig()`** sets `_configReloading = true`, then parses all config files into local variables:
+   - `cues.md` (tips, prompt sources, ignore list)
+   - `blanks.md` (blank-fill modes, classifier, parsers)
+   - `controls.md` (cue-control JSON block)
+   - `cues/{name}/cue.md` (folder-based word sources via `discoverFolderConfigs`)
+   - `controls/{name}/cue.md` (folder-based controls)
+4. **Atomic apply** — all parsed results are assigned to globals in a single block (`_cueControlOverrides`, `_localCueMap`, `_cuesIgnoreWords`, etc.). If parsing throws, the previous config is preserved (`_applied` stays false and the resolver rebuild is skipped)
+5. **Resolver rebuild** — `_cueResolver` is constructed from the new sources, `_resolverGeneration` is incremented, and `_dynLastAnalyzed` is cleared so all visible words re-analyze against the new config
+6. **`_configLoadedAt`** is set to `Date.now()`, restarting the 2-second TTL
+
+---
+
+## What Hot-Reloads
+
 - `cues.md` — tips, prompt sources, ignore list
 - `blanks.md` — blank-fill modes, parsers
 - `controls.md` — cue-control definitions
-- `cues/{name}/cue.md` — folder-based word sources
+- `cues/{name}/cue.md` — folder-based word sources (adding or removing a folder)
 - `controls/{name}/cue.md` — folder-based controls (adding or removing a folder)
 
-**What does not hot-reload:**
-- The cues-core module itself (loaded once at process start)
-- The HTTPS connection pool (NodeHttpAdapter — independent of config)
-- TTS speed/script path (set at patch-generation time from `~/.tweakcc/config.json`)
+The `_localCueMap` is rebuilt from scratch on every reload (not merged), so deleting a tip from `cues.md` removes it immediately.
 
-## Mechanics
+---
 
-The integration uses a TTL cache rather than file watchers:
+## What Requires Restart
 
-1. At startup, `_configLoadedAt = 0` and `_reloadCuesConfig()` runs immediately.
-2. On every analysis pass (when the user types), if `Date.now() - _configLoadedAt > 2000` and no LLM request is in flight, `_reloadCuesConfig()` fires.
-3. `_reloadCuesConfig()` sets `_configReloading = true`, parses all files into local variables, merges results, then applies atomically to globals — so a failed parse leaves the previous state intact.
-4. The resolver is rebuilt and `_resolverGeneration` is incremented. Any in-flight LLM response from the old resolver is discarded when it returns (generation mismatch).
-5. `_dynLastAnalyzed` is cleared so all visible words re-analyze against the new config.
+- **cues-core module** — loaded once at process start via `require()`, not reloadable
+- **HTTPS connection pool** — `NodeHttpAdapter` is independent of config
+- **TTS speed/script path** — set at patch-generation time from `~/.tweakcc/config.json`
+- **Patch code** — the injected JavaScript in `cli.js` is fixed at setup time
 
-## Guarantees
+---
 
-| Scenario | Result |
-|----------|--------|
-| File saved mid-LLM-call | In-flight result discarded; next trigger uses new config |
-| Parse error (broken YAML) | Previous config preserved; retried after next TTL |
-| Tip removed from cues.md | Removed from lookup map (rebuilt from scratch, not merged) |
-| New `cues/` folder added | Picked up on next reload |
-| `controls/` folder deleted | Control word no longer active after next reload |
-| Config edited during cycling | Cycling completes with old alts; next analysis uses new config |
+## Portability
 
-## Integration Notes
+### Standard (cues-core)
 
-- The 2s TTL only triggers when the user types. A config change while the user is idle takes effect on the first keystroke after 2s.
-- The `_configReloading` flag prevents concurrent analysis during the rebuild window.
-- The rebuild is synchronous and fast (~1–5ms for typical configs).
+- All parsers are stateless functions (`parseCuesMd`, `parseSingleCueMd`, `discoverFolderConfigs`) — call them at any time to get a fresh parse
+- No built-in caching, TTL, or file-watching mechanism
+- Resolver construction is cheap and can be rebuilt on every config change
+- A failed parse throws — the caller decides whether to keep the previous config or surface the error
+
+### Integration responsibilities
+
+- Implement a caching strategy (TTL polling, file watchers, storage events) to decide when to re-parse
+- Rebuild the resolver when config changes and increment a generation counter to discard stale in-flight results
+- Clear the analyzed-word cache so all visible words re-analyze against the new config
+- Guard against concurrent analysis during the config rebuild window (e.g., a reloading flag)
+- Choose an appropriate TTL or watch mechanism for the platform (file system events, polling interval, editor API hooks)

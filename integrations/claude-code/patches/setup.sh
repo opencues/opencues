@@ -245,12 +245,17 @@ cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/
 cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh 2>/dev/null || true
 
 # 7b. Compile cue-control .exe files on WSL (skip on native Linux)
+# Sources: patches/actions/*.cs AND controls/*/*.cs (colocated with control configs)
 if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
   CSC="/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe"
   WIN_USER=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n')
   WIN_TMP="/mnt/c/Users/$WIN_USER"
-  for CS_FILE in "$SCRIPT_DIR/actions/"*.cs; do
-    [ -f "$CS_FILE" ] || continue
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+  CS_FILES=()
+  for f in "$SCRIPT_DIR/actions/"*.cs "$REPO_ROOT/controls/"*/*.cs; do
+    [ -f "$f" ] && CS_FILES+=("$f")
+  done
+  for CS_FILE in "${CS_FILES[@]}"; do
     BASE=$(basename "$CS_FILE" .cs)
     EXE="$HOME/.claude/actions/${BASE}.exe"
     if [ ! -f "$EXE" ] || [ "$CS_FILE" -nt "$EXE" ]; then

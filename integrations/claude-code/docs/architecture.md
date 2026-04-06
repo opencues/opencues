@@ -473,3 +473,22 @@ SPAWNS (from cli.js):
 2. wordHighlight.ts      (standalone, foundation)
 3. dynamicHighlight.ts   (requires wordHighlight + cues-core npm module)
 ```
+
+---
+
+## Development Notes
+
+### `require()` in Patch Files
+
+Claude Code's `cli.js` is a bundled file where the standard Node.js `require` function is renamed by the bundler (e.g., to `$e`, `__require`, or similar). The patch `.ts` files are TypeScript templates that get compiled by tweakcc and injected into `cli.js` at runtime.
+
+**Never use bare `require()` in patch code.** It will silently fail — the bundler's shim either returns `undefined` or throws, which gets swallowed by any surrounding `try/catch`, making bugs extremely difficult to trace.
+
+| Context | Correct | Wrong |
+|---------|---------|-------|
+| Template strings (injected code blocks) | `${requireFuncName}("fs")` | `require("fs")` |
+| Inside `_cycleAlt` function | `_reqFn("moduleName")` | `require("moduleName")` |
+
+The `requireFuncName` variable is resolved at patch-apply time by `getRequireFuncName(oldFile)`, which finds the actual require function name in the bundled `cli.js`. The `_reqFn` parameter is the require function passed into `_cycleAlt` from the key handler scope.
+
+This applies to `dynamicHighlight.ts`, `wordHighlight.ts`, and any future patch `.ts` files that inject code into `cli.js`.

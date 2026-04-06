@@ -613,12 +613,16 @@ _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
 _hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null};
-if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
+var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
+if(_cbDw){
+// Control-bound blank: only show in status if blankTip is set
+if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;}
+}else if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
 var _caTip=_caOvr?_caOvr.tip||_caOvr.control:_caWord;
 _hlExport.cueTip=_caTip;
 }
-if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA){
+if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA&&!_cbDw){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
 }
@@ -690,6 +694,25 @@ ${inputZoneVar}=${inputZoneClass}.fromText(_zwsClean,${configVar},${inputZoneVar
 var _hlText=${valueParam}.replace(/[\\u200B\\u200C]/g,"");
 var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
+// Auto-populate: replace _ with control value when pending
+if(globalThis._pendingAutoPopulate){
+var _ap=globalThis._pendingAutoPopulate;
+var _apWords=_hlText.split(/\\s+/).filter(function(w){return w;});
+if(_ap.index<_apWords.length&&_apWords[_ap.index]==="_"){
+globalThis._pendingAutoPopulate=null;
+var _apPos=0;
+for(var _apj=0;_apj<_ap.index;_apj++){_apPos=_hlText.indexOf(_apWords[_apj],_apPos)+_apWords[_apj].length;}
+var _apStart=_hlText.indexOf("_",_apPos);
+if(_apStart>=0){
+var _apNew=_hlText.slice(0,_apStart)+_ap.value+_hlText.slice(_apStart+1);
+globalThis._hlText=_apNew;
+globalThis._dynLastAnalyzed=_apNew.split(/\\s+/).filter(function(w){return w;});
+globalThis._dynPrevWords=globalThis._dynLastAnalyzed.slice();
+${onChangeParam}(_apNew+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
+return;
+}
+}
+}
 if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){
 globalThis._hlState={active:false,index:null,wordIndex:null,text:"",originalNumbers:{}};

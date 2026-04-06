@@ -23,6 +23,11 @@ export {
 } from './sources/classified-source-group';
 
 export {
+  ControlBlankSource,
+  type ControlBlankSourceConfig,
+} from './sources/control-blank-source';
+
+export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,
 } from './sources/build-sources';

@@ -1,32 +1,105 @@
 ---
-last_updated: 2026-04-02
+last_updated: 2026-04-06
 ---
 
 # Word Cycling
 
-Replace the focused word with an alternative. Cycling is the **vertical** axis — once a word is selected via navigation (feature 1), cycling changes what that word is.
+Word cycling replaces the focused word with an alternative. It is the **vertical** axis of the system — once a word is selected via navigation (feature 1), Up/Down changes what that word is.
 
-- `currentAltIndex` tracks position in the cycle
-- Original word is always `alts[0]`
-- Wraps around: after the last alt, returns to `alts[0]`
+---
 
-**Cycling priority** (checked in order):
-1. **Cue-control** → trigger built-in behavior (numbers increment/decrement, custom controls run scripts). No tips, no LLM alts.
-2. **Alternatives** → cycle through alternatives from local/remote cues
-3. **Linked words** → co-dependent words cycle to the same index
+## How It Works
 
-### Cue-Controls
+1. **Press** Ctrl+Alt+Up or Ctrl+Alt+Down while a word is highlighted
+2. **Priority check**: The `_cycleAlt` function evaluates the highlighted word against a four-level priority chain (see Cycling Priority below). The first level that matches handles the press; the rest are skipped.
+3. **Text replacement**: The matched handler computes a new word, splices it into `globalThis._hlText` at the correct character offset, and returns `{text, lenDiff, wStart, newLen}` so the input zone can reposition the cursor.
+4. **State update**: `globalThis._hlState.text` is updated to match the new text. For level 4 (alternative cycling), the highlight export JSON is written to `/tmp/claude-highlight-state-<pid>.json` for the status line. Levels 1-3 call `_triggerStatusLineRefresh()` but do not write the export JSON.
 
-Cue-controls are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the secondary display. There are two kinds:
+---
 
-**Custom cue-controls** — trigger external scripts (e.g., "volume" → system volume control). See feature 11.
+## Cycling Priority
 
-**Number cue-controls** — increment/decrement numerals:
+The four levels are checked in order. The first match wins.
 
-- **Up**: increments by 1 (no upper limit): 0 → 1 → 2 → 3...
-- **Down**: decrements by 1, but never below the **floor**
-- The **floor** is the original value captured on first Up or Down press (not when highlighting)
-- Each number tracks its floor independently (keyed by position)
-- Navigating away and back preserves the floor
+### 1. Custom cue-controls
 
-Example: highlight `0`, press Up 4 times → 1 → 2 → 3 → 4. Press Down 6 times → 3 → 2 → 1 → 0 → 0 → 0 (floors at 0).
+**Condition**: `globalThis._cueControlOverrides[word.toLowerCase()]` exists.
+
+Triggers an external script (e.g., `volume.sh`). The script path comes from the control's config (`script`, `scriptPath`, or defaults to `~/.claude/actions/<controlName>.sh`). Up passes `upArgs` (default `["up"]`), Down passes `downArgs` (default `["down"]`). For in-memory value calculation, defaults are `['up','10']`/`['down','10']` (step of 10). For the spawned script args, defaults are `['up']`/`['down']`.
+
+Script execution is debounced: rapid presses queue a single spawn after 50 ms with the direction string (up/down), not the computed numeric value. The numeric value is tracked in-memory only. In-memory state (`globalThis._cueControlValues`) tracks the current value to avoid file I/O on the hot path. Returns `{refresh: true}` — no text replacement, the integration triggers a full input refresh instead.
+
+### 2. Control-bound blanks
+
+**Condition**: The word's `_dynDefs` entry has `metadata.control` set (a blank position bound to a control via `blankKeywords`).
+
+Runs the control's script synchronously (`execSync`, 3 s timeout), then reads the new value from the control's state file (`/tmp/cue-control-<controlName>.txt`). The word in the input text is replaced with the value read from the file. The `blankFormat` field (`"integer"`, `"float"`, or `"string"`) determines how the value is stored in `_cueControlValues`.
+
+### 3. Number increment/decrement
+
+**Condition**: The word matches `/^-?\d+(\.\d+)?$/` AND there are no dynamic alternatives at this position (`_hasAltsCycle` is falsy). The alternatives check ensures that if a number has LLM-provided alts (e.g., from a blank fill-in), alt cycling (level 4) handles it instead.
+
+- **Up** (`dir=1`): increments by 1, no upper limit
+- **Down** (`dir=-1`): decrements by 1, floored at the original value (see Number Floor Tracking below)
+- Integer vs. decimal is preserved: if the original word has no `.`, the result is `Math.round`; otherwise it stays a float
+
+### 4. Alternative cycling
+
+**Condition**: A `_dWord` entry exists in `globalThis._dynDefs.words` with `alts.length > 1`. If no entry exists but the word is in `globalThis._localCueMap` (tip-lookup fallback), a `_tipDef` is created on the fly and pushed into `_dynDefs.words`.
+
+- `currentAltIndex` tracks position in the alts array. `alts[0]` is always the original word.
+- Next index: `(currentAltIndex + dir + alts.length) % alts.length` — wraps in both directions.
+- **Span-aware replacement**: If the word is part of a multi-word span (tracked in `globalThis._dynSpans`), the replacement splices across all span positions. After replacement, `_dynSpans` is updated: multi-word results register entries for each sub-word; single-word results clear the span entries.
+- **TTS**: If `_dWord.speak` is true, the alt's tip is spoken via `SpeakCtl.exe` or `speak.sh` after an 80 ms debounce.
+- **Underscore re-analysis**: If `_` appears in the updated text and the surrounding context changed, a fresh LLM analysis is queued.
+
+---
+
+## Number Floor Tracking
+
+The `originalNumbers` map in `globalThis._hlState` records the first-seen value of each number, keyed by word index. The floor is set lazily — only on the first Up or Down press, not when the word is highlighted.
+
+- **Down** cannot go below `originalNumbers[wordIndex]`
+- **Up** has no ceiling
+- The map persists across Left/Right navigation within the same activation session. Navigating away from a number and back preserves the floor.
+- The map is cleared when navigation deactivates (Escape, Right past last target, or text change).
+
+Example: highlight `0`, press Up 4 times: 1, 2, 3, 4. Press Down 6 times: 3, 2, 1, 0, 0, 0 (floors at 0).
+
+---
+
+## Linked Word Cycling
+
+When a word definition has a `linked` array (indices of co-dependent words), cycling one word simultaneously updates all linked words to the same `currentAltIndex`.
+
+The linked-word update loop:
+
+1. Compute `_nextAlt` for the primary word
+2. For each index in `_dWord.linked`:
+   - Find the linked word's definition in `_dWords`
+   - If it has an alt at `_nextAlt`, set `_lDef.currentAltIndex = _nextAlt` and replace its text in the already-modified `_newText`
+   - Track replacements in `_updW` (a map of index to new word) so subsequent linked replacements use correct character offsets
+3. All replacements happen in a single pass before `_hlText` is finalized
+
+Linked groups are resolved and merged across sources by `CueResolver` in cues-core. The integration only needs to apply the indices it receives.
+
+---
+
+## Portability
+
+### Standard (cues-core)
+
+- `CueResult.alternatives` array provides the ordered list of replacements (`alts[0]` is always the original word)
+- `CueResult.linked` array contains indices of co-dependent words that must cycle together
+- Priority order is defined by the standard: cue-controls > control-blanks > numbers > alternative cycling
+- `CueResult.metadata.control` identifies custom cue-controls; `CueResult.metadata.isNumber` identifies number controls
+- Linked-word groups are resolved and merged across sources by the resolver
+
+### Integration responsibilities
+
+- Perform the actual text replacement in the editor buffer when the user cycles
+- Maintain `currentAltIndex` per word and handle wrap-around (`alts.length`)
+- Track the floor value for number cue-controls (keyed by word position)
+- Execute external scripts for custom cue-controls (path from control config)
+- When cycling a linked word, update ALL linked words' `currentAltIndex` and replace their text simultaneously
+- Map Up/Down (or equivalent) input events to cycle direction

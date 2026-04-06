@@ -31,13 +31,17 @@ opencues/
 │   ├── medical/cue.md             # Clinical terminology alternatives
 │   └── financial/cue.md           # Financial terminology alternatives
 │
-├── controls/                      # Folder-based cue-controls (colocated scripts)
+├── controls/                      # Folder-based cue-controls (colocated scripts + state)
 │   ├── volume/
-│   │   ├── cue.md                 # Control config (type: control, speak: true)
-│   │   └── volume.sh              # Script colocated with config
+│   │   ├── cue.md                 # Control config (type: control, blankKeywords, etc.)
+│   │   ├── volume.sh              # Word-control script: up/down via key presses
+│   │   ├── volume-blank.sh        # Blank-control script: get/set via Core Audio API
+│   │   ├── VolCtl.cs              # C# source for Windows Core Audio API (compiled by setup.sh)
+│   │   └── state.txt              # Runtime state (gitignored)
 │   └── brightness/
 │       ├── cue.md
-│       └── brightness.sh
+│       ├── brightness.sh
+│       └── state.txt              # Runtime state (gitignored)
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library
@@ -46,7 +50,7 @@ opencues/
 │       │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
 │       │   ├── discover.ts        # Folder-based config discovery
 │       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
-│       │   └── sources/           # ConfigSource, ClassifiedSourceGroup, parsers
+│       │   └── sources/           # ConfigSource, ClassifiedSourceGroup, ControlBlankSource, parsers
 │       ├── prompts/               # Prompt references + documentation
 │       │   ├── linked.txt         # Linked words prompt
 │       │   └── references/        # Prompt documentation
@@ -84,6 +88,7 @@ opencues/
 │   │   ├── adding-a-feature.md    # How to add a new feature
 │   │   ├── adding-an-integration.md # How to add a new editor integration
 │   │   ├── adding-a-cue-control.md # How to add a cue-control (external script trigger)
+│   │   ├── porting-to-new-integration.md # Porting guide: contracts, pitfalls, edge cases
 │   │   ├── parser-types.md        # Response parser types (alternatives, compute, answer, raw)
 │   │   └── llm-providers.md       # LLM provider setup & benchmarks
 │   └── prompt-design-learnings.md # Prompt engineering principles
@@ -148,6 +153,10 @@ cd ~/tweakcc
 CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
+
+---
+
+> **Important:** See `integrations/claude-code/docs/architecture.md` § "Development Notes" for critical patch development rules (e.g., never use bare `require()` in patch files).
 
 ---
 
