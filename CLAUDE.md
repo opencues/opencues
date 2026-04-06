@@ -38,10 +38,13 @@ opencues/
 │   │   ├── volume-blank.sh        # Blank-control script: get/set via Core Audio API
 │   │   ├── VolCtl.cs              # C# source for Windows Core Audio API (compiled by setup.sh)
 │   │   └── state.txt              # Runtime state (gitignored)
-│   └── brightness/
-│       ├── cue.md
-│       ├── brightness.sh
-│       └── state.txt              # Runtime state (gitignored)
+│   ├── brightness/
+│   │   ├── cue.md
+│   │   └── brightness.sh
+│   ├── numbers/
+│   │   └── cue.md                 # Step control (stepSuffixes: f, step: 0.5)
+│   └── affirmations/
+│       └── cue.md                 # List control (stepValues: ["I am strong", ...])
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library

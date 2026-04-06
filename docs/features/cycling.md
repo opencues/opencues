@@ -33,7 +33,22 @@ Script execution is debounced: rapid presses queue a single spawn after 50 ms wi
 
 **Condition**: The word's `_dynDefs` entry has `metadata.control` set (a blank position bound to a control via `blankKeywords`).
 
-Runs the control's script synchronously (`execSync`, 3 s timeout), then reads the new value from the control's state file (`/tmp/cue-control-<controlName>.txt`). The word in the input text is replaced with the value read from the file. The `blankFormat` field (`"integer"`, `"float"`, or `"string"`) determines how the value is stored in `_cueControlValues`.
+Two modes:
+
+- **Script-based** (default): Runs the control's script synchronously (`execSync`, 3 s timeout), then reads the new value from the control's state file. The `blankFormat` field determines how the value is stored in `_cueControlValues`.
+- **List-based** (`stepValues`): When the control has a `stepValues` array, the blank auto-populates with the first value and Up/Down cycles through the list via normal alternative cycling. Multi-word values are span-tracked automatically. No script is needed.
+
+Example list control (`controls/affirmations/cue.md`):
+```yaml
+---
+type: control
+name: affirmations
+blankKeywords: affirmation, affirm
+stepValues: ["I am strong", "I am brave", "I am worthy", "I am enough"]
+tip: Daily affirmations
+---
+```
+Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles through the list.
 
 ### 3. Step controls
 

@@ -272,7 +272,7 @@ return{refresh:true};
 }
 // Control-bound blank cycling: blank positions bound to a control via blankKeywords
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
-var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.controlName;});
+var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.controlName&&!w.metadata.listControl;});
 if(_cbDef){
 var _cbMeta=_cbDef.metadata;
 globalThis._cueControlTip=_cbDef.cueTip||"";

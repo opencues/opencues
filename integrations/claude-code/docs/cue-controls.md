@@ -17,6 +17,7 @@ There are three kinds of cue-control:
 - **Custom cue-controls** — navigate to a word (like "volume") and press Ctrl+Alt+Up or Down to spawn an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
 - **Control-bound blanks** — blank positions bound to a control via `blankKeywords`. The blank value is synced with the control's state file.
 - **Step controls** — words matching config-driven patterns (via `stepPattern` or `stepSuffixes`) are incremented/decremented by a configurable step size. Supports suffixes like `f`, `px`, `em`, `%`. See `cycling.md` for config fields.
+- **List controls** — control-bound blanks with `stepValues` that cycle through an ordered list of values. Type a keyword + `_`, the blank auto-populates with the first value, Up/Down cycles through the list. Multi-word values are span-tracked. No script needed.
 
 The unified check `globalThis._isCueControl(word)` identifies custom controls (via `_cueControlOverrides`) and step controls (via `_stepPatterns`). It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-controls from tips/alts display.
 

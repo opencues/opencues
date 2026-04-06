@@ -53,6 +53,7 @@ blankProximity: 0                    # max words between keyword and _ (optional
 | `blankTip` | string | *(none)* | Tip shown in status line when the auto-populated value is highlighted. Separate from the word-control `tip`. If omitted, nothing shows. |
 | `blankScript` | string | falls back to `script` | Script for blank `get`/`set` commands. Separate from the word-control `script` (which handles `up`/`down`). Allows two scripts with different APIs. |
 | `blankProximity` | number | `0` | Max words allowed between keyword and `_`. `0` means adjacent (`volume _`). `1` allows one word gap (`volume is _`). Higher values allow more distance. |
+| `stepValues` | JSON string[] | *(none)* | Ordered list of values to cycle through instead of script-based arithmetic. Auto-populates with first value. Multi-word values are span-tracked. No script needed. |
 
 ### Tips Behaviour
 

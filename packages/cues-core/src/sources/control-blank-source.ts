@@ -67,6 +67,23 @@ export class ControlBlankSource implements CueSource {
       return { results };
     }
 
+    // List-based cycling: stepValues provides ordered alternatives directly
+    if (matched.stepValues?.length) {
+      results.push({
+        wordIndex: blankIndex,
+        word: '_',
+        alternatives: matched.stepValues,
+        source: 'control-blank',
+        priority: this.priority,
+        cueTip: matched.blankTip ?? matched.tip,
+        metadata: {
+          controlName: matched.control,
+          listControl: true,
+        },
+      });
+      return { results };
+    }
+
     // Read current value — validation is format-aware
     const rawValue = this.readState(matched.control);
     if (rawValue === null || rawValue === '') {

@@ -130,6 +130,8 @@ export interface ControlConfig {
   stepSuffixes?: string[];
   /** Script called with (current_value, direction) to compute next value */
   stepScript?: string;
+  /** Ordered list of values to cycle through on a control-bound blank */
+  stepValues?: string[];
 }
 
 export interface CuesMdConfig {
@@ -512,6 +514,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   stepSuffix?: string;
   stepSuffixes?: string;
   stepScript?: string;
+  stepValues?: string[];
 }
 
 /**
@@ -573,6 +576,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'stepSuffix': fm.stepSuffix = value; break;
       case 'stepSuffixes': fm.stepSuffixes = value; break;
       case 'stepScript': fm.stepScript = value; break;
+      case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
     }
   }
 
@@ -639,6 +643,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.stepSuffixes !== undefined) {
         control.stepSuffixes = frontmatter.stepSuffixes.split(/[\s,]+/).filter(s => s.length > 0);
       }
+      if (frontmatter.stepValues !== undefined) control.stepValues = frontmatter.stepValues;
       // Resolve relative script paths
       if (frontmatter.stepScript) {
         control.stepScript = frontmatter.stepScript.startsWith('./')

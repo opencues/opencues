@@ -162,8 +162,26 @@ This makes `10px`, `2em`, `1.5f`, `50%`, etc. steppable. Each suffix auto-genera
 | `stepFormat` | string | Output format: `integer`, `float`, or auto |
 | `stepSuffix` | string | Single suffix to strip/re-append (use `stepSuffixes` for multiple) |
 | `stepScript` | string | Script called with `(current_value, direction)` — overrides arithmetic |
+| `stepValues` | string[] | Ordered list of values to cycle through on a control-bound blank (JSON array) |
 
 Use separate control folders for different step sizes (e.g., `controls/units/` for step 1, `controls/fine-units/` for step 0.1).
+
+## Adding a list control
+
+List controls cycle through an ordered set of values on a control-bound blank — no script, no arithmetic. Type a keyword + `_` and the blank auto-populates with the first value; Up/Down cycles through the list. Multi-word values are span-tracked automatically.
+
+**`controls/affirmations/cue.md`:**
+```yaml
+---
+type: control
+name: affirmations
+blankKeywords: affirmation, affirm
+stepValues: ["I am strong", "I am brave", "I am worthy", "I am enough"]
+tip: Daily affirmations
+---
+```
+
+Type `affirmation _` → blank fills with "I am strong". Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → wraps.
 
 ## Checklist
 

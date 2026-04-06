@@ -560,7 +560,7 @@ _hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cue
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
-if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;}
+if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;if(_cbDw.metadata&&_cbDw.metadata.listControl)_hlExport.listControl=true;}
 }else if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
 var _caTip=_caOvr?_caOvr.tip||_caOvr.control:_caWord;
@@ -628,6 +628,7 @@ var _tc=_hasB?"\\u200C":"\\u200B";
 ${onChangeParam}(_t+_tc);
 },16);
 };
+if(globalThis._pendingCursorOffset!=null){var _pcClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");if(_pcClean!==(globalThis._pendingCursorText||"")){globalThis._pendingCursorOffset=null;globalThis._pendingCursorText=null;}else{${inputZoneVar}=${inputZoneClass}.fromText(${inputZoneVar}.text,${configVar},globalThis._pendingCursorOffset);}}
 if(${inputZoneVar}.text.indexOf("\\u200B")>=0||${inputZoneVar}.text.indexOf("\\u200C")>=0){
 var _zwsClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");
 var _beforeC=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);
@@ -652,6 +653,15 @@ var _apNew=_hlText.slice(0,_apStart)+_ap.value+_hlText.slice(_apStart+1);
 globalThis._hlText=_apNew;
 globalThis._dynLastAnalyzed=_apNew.split(/\\s+/).filter(function(w){return w;});
 globalThis._dynPrevWords=globalThis._dynLastAnalyzed.slice();
+var _apWc=_ap.value.split(/\\s+/).length;
+if(_apWc>1&&globalThis._dynDefs&&globalThis._dynDefs.words){
+var _apDef=globalThis._dynDefs.words.find(function(d){return d.index===_ap.index;});
+if(_apDef){_apDef.spanLength=_apWc;_apDef.word=_ap.value;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _asi=0;_asi<_apWc;_asi++){globalThis._dynSpans[_ap.index+_asi]={originalIndex:_ap.index,spanLength:_apWc};}
+}}
+globalThis._pendingCursorOffset=_apStart+_ap.value.length;
+globalThis._pendingCursorText=_apNew;
 ${onChangeParam}(_apNew+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
 return;
 }

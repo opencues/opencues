@@ -13,7 +13,7 @@ Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/fe
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
 1. **Cue-control (custom)** → spawn `~/.claude/actions/{control}.sh`, return
-2. **Control-bound blanks** → sync script call, replace blank value, return
+2. **Control-bound blanks** → sync script call, replace blank value, return (skipped for list controls with `stepValues`)
 3. **Step control** → config-driven increment/decrement via `stepPattern`/`stepSuffixes`, return
 4. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
 5. **Tip-lookup fallback** → if word is in `_localCueMap` but not in `_dynDefs`, resolve alts on-the-fly from tips and populate `_dynDefs` (covers cases where eager lookup was skipped, e.g., during pending LLM calls)
