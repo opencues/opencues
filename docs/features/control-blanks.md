@@ -54,6 +54,7 @@ blankProximity: 0                    # max words between keyword and _ (optional
 | `blankScript` | string | falls back to `script` | Script for blank `get`/`set` commands. Separate from the word-control `script` (which handles `up`/`down`). Allows two scripts with different APIs. |
 | `blankProximity` | number | `0` | Max words allowed between keyword and `_`. `0` means adjacent (`volume _`). `1` allows one word gap (`volume is _`). Higher values allow more distance. |
 | `stepValues` | JSON string[] | *(none)* | Ordered list of values to cycle through instead of script-based arithmetic. Auto-populates with first value. Multi-word values are span-tracked. No script needed. |
+| `blankReadOnly` | boolean | `false` | If true, cycling (Up/Down) is disabled — display-only blank. Used for values fetched from external APIs (e.g., stock prices) where the user can view but not change the value. |
 
 ### Tips Behaviour
 
@@ -130,14 +131,14 @@ Used for auto-populate and blank cycling. Value-based API:
 
 | Command | Purpose | Example |
 |---------|---------|---------|
-| `get` | Return current value to stdout | `volume-blank.sh get` → `64` |
+| `get [keyword]` | Return current value to stdout | `volume-blank.sh get` → `64` |
 | `set <value>` | Set exact value | `volume-blank.sh set 70` |
 
-The `get` command queries the actual system state. The `set` command applies an exact target value. Runs synchronously (the cycling handler waits for it to finish).
+The `get` command queries the actual system state. An optional `keyword` argument is passed when the control matches by `blankKeywords` — this allows one script to serve multiple lookups (e.g., `stock-blank.sh get reddit` resolves "reddit" → ticker "RDDT" → fetch price). The `set` command applies an exact target value. Both run synchronously.
 
 If `blankScript` is not set, `script` is used for both — but it must then support `get`/`set` in addition to `up`/`down`.
 
-For `get`: the script should query the actual system state (e.g., `VolCtl.exe get` for Windows volume) and fall back to the state file if unavailable.
+If `state.txt` doesn't exist (first access), the system falls back to running `blankScript get [keyword]` to fetch the initial value. This enables API-calling controls that don't pre-populate state.
 
 ---
 
@@ -175,7 +176,7 @@ These are the core behaviours that any integration of control-bound blanks must 
 - `metadata.stateFile`: path to colocated state file
 - `cueTip`: from `blankTip` (or null)
 
-**State I/O**: The `readControlState` callback (injected by the integration) reads the state file and returns a raw string. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
+**State I/O**: The `readControlState(controlName, matchedKeyword?)` callback (injected by the integration) reads the state file and returns a raw string. If `state.txt` is missing, it falls back to running `blankScript get [matchedKeyword]`. The optional `matchedKeyword` parameter allows one script to serve multiple lookups. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
 
 **Tip isolation**: Control-bound blank positions must NOT show tips from grammar/LLM sources. Only `blankTip` (if set) should display. The `metadata.controlName` marker identifies these positions.
 
@@ -195,7 +196,7 @@ Any integration consuming cues-core needs to handle these for control-bound blan
 
 | Responsibility | What to implement |
 |----------------|-------------------|
-| **`readControlState` callback** | Read the colocated `state.txt` and return raw string. Passed to `buildSourcesFromConfig`. |
+| **`readControlState` callback** | Read the colocated `state.txt` and return raw string. On miss, fall back to running `blankScript get [keyword]`. Passed to `buildSourcesFromConfig`. |
 | **Auto-populate** | When the resolver returns a control-blank result, replace `_` in the displayed text with the value. Timing depends on the editor's render cycle. |
 | **Cycling** | On Up/Down at a control-blank position (identified by `metadata.controlName`), run the script with `upArgs`/`downArgs`, read new value from state file, update display. |
 | **Result filter** | Allow control-blank results through even with 1 alternative (normal filters require >1). |
@@ -223,6 +224,30 @@ Both scripts share `state.txt`. `VolCtl.exe` (compiled from `VolCtl.cs`) support
 - **`up`/`down`** — key-press simulation via `SendInput` (used by `volume.sh`)
 - **`get`** — query actual volume via Core Audio API (used by `volume-blank.sh`)
 - **`set <value>`** — step to exact target via `VolumeStepUp`/`VolumeStepDown` (used by `volume-blank.sh`)
+
+---
+
+## Example: Stock Prices (External API)
+
+A read-only control-blank that fetches stock prices from an external API. Demonstrates the `blankReadOnly`, `matchedKeyword`, and `tickers.json` mapping patterns.
+
+```
+controls/stocks/
+  cue.md              # Config: blankKeywords for company names + tickers
+  stock-blank.sh      # Blank-control: get <keyword> → resolve ticker → fetch price
+  tickers.json        # Keyword-to-ticker mapping (reddit → RDDT, nvidia → NVDA)
+```
+
+**Key design choices:**
+- **One folder for all stocks** — `blankKeywords` lists all known company names and tickers, `tickers.json` maps them to symbols
+- **`blankReadOnly: true`** — stock prices can't be changed, so cycling is disabled
+- **`blankProximity: 2`** — allows `Reddit Stock _` (keyword "reddit" is 2 words from `_`)
+- **`blankFormat: string`** — prices are text, not numbers to be incremented
+- **`matchedKeyword` pipeline** — `ControlBlankSource` captures which keyword triggered the match ("reddit") and passes it to `readControlState`, which passes it to the script as `get reddit`
+- **Shared cache** — reuses `/tmp/ccline/stock_*.json` from the statusline component for zero redundant API calls
+- **Graceful degradation** — without `FINNHUB_API_KEY`, the script returns nothing and the blank stays as `_`
+
+To add a new stock, add one entry to `tickers.json` and one keyword to `blankKeywords` in `cue.md`.
 
 ---
 

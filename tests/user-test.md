@@ -11,11 +11,12 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Ctrl+Alt+Up/Down — cycles through alternatives
 - [ ] Escape — clears highlight
 
-## Numbers
+## Step controls
 
-- [ ] Type `42` — navigate to it, Up increments to 43
-- [ ] Down decrements back to 42, floors at 42 (can't go below original)
-- [ ] Integer stays integer, decimal stays decimal (`3.14` → `4.14`)
+- [ ] Type `1.5f` — dimmed (dark gray), navigable
+- [ ] Navigate to it, Up — `2f`, Up — `2.5f`, Up — `3f` (step 0.5)
+- [ ] Down back to `0f` — floors at 0 (stepMin)
+- [ ] Plain numbers (`42`, `1.5`) should NOT dim or be navigable (no hardcoded number stepping)
 
 ## Blanks (fill-in-the-blank)
 
@@ -61,6 +62,22 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Type `volume _` — "volume" is word-control, number is blank-control
 - [ ] Cycle "volume" — volume changes via key presses (OSD)
 - [ ] Cycle the number — volume changes via exact set (no OSD)
+
+## List controls
+
+- [ ] `affirmation _` — blank auto-populates with "I am strong" (first value)
+- [ ] Cursor moves to end of populated value
+- [ ] Navigate to it — whole phrase highlighted as span
+- [ ] Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → wraps
+- [ ] Status line shows "Daily affirmations" (tip only, not the word)
+
+## Read-only API controls (stocks)
+
+- [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price (requires FINNHUB_API_KEY)
+- [ ] `NVDA _` — blank auto-populates with NVIDIA stock price
+- [ ] Navigate to the price, Up/Down — no-op (read-only, no change)
+- [ ] Status line shows "Stock price"
+- [ ] Without FINNHUB_API_KEY — blank stays as `_` (graceful degradation)
 
 ## Hot-reload
 

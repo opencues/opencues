@@ -13,8 +13,8 @@ import { ControlConfig } from '../cues-md';
 export interface ControlBlankSourceConfig {
   /** All controls that have blankKeywords defined */
   controls: Record<string, ControlConfig>;
-  /** I/O adapter: reads current value from state file as raw string */
-  readState: (controlName: string) => string | null;
+  /** I/O adapter: reads current value from state file (or script fallback) */
+  readState: (controlName: string, matchedKeyword?: string) => string | null;
 }
 
 export class ControlBlankSource implements CueSource {
@@ -22,7 +22,7 @@ export class ControlBlankSource implements CueSource {
   readonly priority = 95;
 
   private controls: Record<string, ControlConfig>;
-  private readState: (controlName: string) => string | null;
+  private readState: (controlName: string, matchedKeyword?: string) => string | null;
 
   constructor(config: ControlBlankSourceConfig) {
     this.controls = config.controls;
@@ -45,20 +45,22 @@ export class ControlBlankSource implements CueSource {
     // Find which control matches by scanning context words against blankKeywords
     const contextLower = context.words.map(w => w.toLowerCase());
     let matched: ControlConfig | undefined;
+    let matchedKeyword: string | undefined;
 
     for (const [, ctrl] of Object.entries(this.controls)) {
       if (!ctrl.blankKeywords?.length) continue;
       const proximity = ctrl.blankProximity ?? 0; // default: adjacent (0 words between)
 
-      const hit = ctrl.blankKeywords.some(kw => {
+      const hitKw = ctrl.blankKeywords.find(kw => {
         const kwIndex = contextLower.indexOf(kw);
         if (kwIndex === -1) return false;
         const gap = Math.abs(kwIndex - blankIndex) - 1; // words between them
         return gap <= proximity;
       });
 
-      if (hit) {
+      if (hitKw) {
         matched = ctrl;
+        matchedKeyword = hitKw;
         break;
       }
     }
@@ -85,7 +87,7 @@ export class ControlBlankSource implements CueSource {
     }
 
     // Read current value — validation is format-aware
-    const rawValue = this.readState(matched.control);
+    const rawValue = this.readState(matched.control, matchedKeyword);
     if (rawValue === null || rawValue === '') {
       return { results };
     }
@@ -125,6 +127,7 @@ export class ControlBlankSource implements CueSource {
         stateFile: matched.stateFile,
         blankRange: matched.blankRange ?? [0, 100],
         blankFormat: format,
+        blankReadOnly: matched.blankReadOnly,
       },
     });
 

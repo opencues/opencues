@@ -114,6 +114,8 @@ export interface ControlConfig {
   blankScript?: string;
   /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
   blankProximity?: number;
+  /** If true, cycling (Up/Down) is disabled — display-only blank */
+  blankReadOnly?: boolean;
   /** Regex pattern matching values that can be stepped (default: ^-?\d+(\.\d+)?$) */
   stepPattern?: string;
   /** Arithmetic step size for Up/Down (default: 1) */
@@ -506,6 +508,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankTip?: string;
   blankScript?: string;
   blankProximity?: number;
+  blankReadOnly?: boolean;
   stepPattern?: string;
   step?: number;
   stepMin?: number;
@@ -568,6 +571,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankTip': fm.blankTip = value; break;
       case 'blankScript': fm.blankScript = value; break;
       case 'blankProximity': fm.blankProximity = parseInt(value, 10); break;
+      case 'blankReadOnly': fm.blankReadOnly = value === 'true'; break;
       case 'stepPattern': fm.stepPattern = value; break;
       case 'step': fm.step = parseFloat(value) || undefined; break;
       case 'stepMin': fm.stepMin = parseFloat(value); break;
@@ -634,6 +638,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankFormat !== undefined) control.blankFormat = frontmatter.blankFormat;
       if (frontmatter.blankTip !== undefined) control.blankTip = frontmatter.blankTip;
       if (frontmatter.blankProximity !== undefined) control.blankProximity = frontmatter.blankProximity;
+      if (frontmatter.blankReadOnly !== undefined) control.blankReadOnly = frontmatter.blankReadOnly;
       if (frontmatter.stepPattern !== undefined) control.stepPattern = frontmatter.stepPattern;
       if (frontmatter.step !== undefined) control.step = frontmatter.step;
       if (frontmatter.stepMin !== undefined) control.stepMin = frontmatter.stepMin;

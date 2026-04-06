@@ -4,11 +4,12 @@ last_updated: 2026-04-06
 
 # Cue-Controls
 
-Cue-controls are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the secondary display (unless they have a `blankTip`). There are three kinds:
+Cue-controls are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the secondary display (unless they have a `blankTip`). There are four kinds:
 
 - **Custom cue-controls** — trigger external scripts instead of modifying text (e.g., "volume" runs a volume control script). Configured per-word with custom arguments for up/down directions.
 - **Step controls** — words matching config-driven patterns (via `stepPattern` or `stepSuffixes` in `controls/` folder `cue.md` files) are incremented/decremented by a configurable step size, bounded by `stepMin`/`stepMax`. Supports suffixes like `f`, `px`, `em`.
 - **List controls** — control-bound blanks with `stepValues` that cycle through an ordered list of values (e.g., affirmations, presets). No script needed — uses normal alt cycling. Multi-word values are span-tracked.
+- **Read-only controls** — control-bound blanks with `blankReadOnly: true` that fetch data from external APIs (e.g., stock prices via Finnhub). Auto-populate only, cycling disabled. The matched keyword is passed to the script for multi-lookup controls.
 
 Cue-controls are checked **first** in the cycling function (`_cycleAlt`) before any alternative or linked-word cycling.
 

@@ -177,7 +177,7 @@ var _rEp="https://api.groq.com/openai/v1/chat/completions";
 var _rCuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
 var _rBlanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
 var _rDefaultMod=_rCuesPc.model||_rBlanksPc.model||"openai/gpt-oss-120b";
-var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _sf2=_ctrl&&_ctrl.stateFile?_ctrl.stateFile:"/tmp/cue-control-"+_cn+".txt";try{var _sv=${requireFuncName}("fs").readFileSync(_sf2,"utf8").trim();return _sv||null;}catch(_e){return null;}}});
+var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn,_mkw){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _sf2=_ctrl&&_ctrl.stateFile?_ctrl.stateFile:"/tmp/cue-control-"+_cn+".txt";try{var _sv=${requireFuncName}("fs").readFileSync(_sf2,"utf8").trim();return _sv||null;}catch(_e){var _bs2=_ctrl&&(_ctrl.blankScript||_ctrl.script);if(_bs2){var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");try{var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome),"get"].concat(_mkw?[_mkw]:[]),{timeout:6000,encoding:"utf8"}).trim();return _bsOut||null;}catch(_e2){}}return null;}}});
 globalThis._cueResolver=globalThis._cuesCore.createResolver(_rSources,{parallel:false,timeout:30000,continueOnError:true});
 globalThis._resolverGeneration=(globalThis._resolverGeneration||0)+1;
 // Clear analyzed cache — all visible words re-analyze against the new config
@@ -275,6 +275,7 @@ if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.controlName&&!w.metadata.listControl;});
 if(_cbDef){
 var _cbMeta=_cbDef.metadata;
+if(_cbMeta.blankReadOnly)return null;
 globalThis._cueControlTip=_cbDef.cueTip||"";
 var _cbHome=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _cbRawScript=_cbMeta.blankScript||(_cbHome+"/.claude/actions/"+_cbMeta.controlName+".sh");

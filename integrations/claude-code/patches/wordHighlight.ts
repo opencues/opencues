@@ -560,7 +560,7 @@ _hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cue
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
-if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;if(_cbDw.metadata&&_cbDw.metadata.listControl)_hlExport.listControl=true;}
+if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;if(_cbDw.metadata&&_cbDw.metadata.listControl)_hlExport.listControl=true;if(_cbDw.metadata&&_cbDw.metadata.blankReadOnly)_hlExport.blankReadOnly=true;}
 }else if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
 var _caTip=_caOvr?_caOvr.tip||_caOvr.control:_caWord;

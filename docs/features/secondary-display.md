@@ -56,8 +56,8 @@ The `highlight-statusline.sh` script is a self-contained bash script that reads 
 **Display format:**
 - **Inactive:** `user@host:dir` (PS1-style prefix, colored with tput — always shown)
 - **Regular word:** `word (pos/total) - tip` where pos is `currentAltIndex + 1` and total is the alts array length
-- **Cue-control:** `word - tip` (no cycle position, since controls do not have an alternatives list)
-- **No tip:** The tip suffix is omitted
+- **Cue-control:** `tip` only — the word is already highlighted in the input, so repeating it is redundant
+- **No tip:** Output suppressed entirely
 
 The script suppresses output entirely for words that have neither alts nor a cue-control tip, so the status line stays clean.
 

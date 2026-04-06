@@ -183,11 +183,39 @@ tip: Daily affirmations
 
 Type `affirmation _` → blank fills with "I am strong". Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → wraps.
 
+## Adding a read-only API control
+
+Read-only controls fetch data from external APIs and display it in a blank. The user can view but not cycle the value.
+
+**`controls/stocks/cue.md`:**
+```yaml
+---
+name: stocks
+type: control
+control: stocks
+blankKeywords: reddit, rddt, nvidia, nvda, apple, aapl
+blankAutoPopulate: true
+blankFormat: string
+blankScript: ./stock-blank.sh
+blankTip: Stock price
+blankReadOnly: true
+blankProximity: 2
+---
+```
+
+**Key fields:**
+- `blankReadOnly: true` — disables cycling (Up/Down is a no-op)
+- `blankFormat: string` — value is text, not a number
+- `blankProximity: 2` — allows `Reddit Stock _` (keyword 2 words from blank)
+
+The script receives `get <keyword>` where `keyword` is the matched `blankKeywords` entry. A `tickers.json` mapping file resolves keywords to API parameters. See `controls/stocks/` for a complete example using the Finnhub API.
+
 ## Checklist
 
 - [ ] Control folder created: `controls/{name}/cue.md` + script
 - [ ] Script is executable (`chmod +x`)
-- [ ] Script handles `get`, `up <amount>`, `down <amount>` commands
+- [ ] Script handles `get [keyword]`, `up <amount>`, `down <amount>` commands as needed
 - [ ] State file written to `controls/{name}/state.txt` if stateful
-- [ ] For control-bound blanks: `blankKeywords`, `blankStep`, `blankAutoPopulate` set in `cue.md`
+- [ ] For control-bound blanks: `blankKeywords`, `blankAutoPopulate` set in `cue.md`
+- [ ] For read-only blanks: `blankReadOnly: true` set in `cue.md`
 - [ ] Run `setup.sh` to rebuild

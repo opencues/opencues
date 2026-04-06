@@ -43,8 +43,12 @@ opencues/
 │   │   └── brightness.sh
 │   ├── numbers/
 │   │   └── cue.md                 # Step control (stepSuffixes: f, step: 0.5)
-│   └── affirmations/
-│       └── cue.md                 # List control (stepValues: ["I am strong", ...])
+│   ├── affirmations/
+│   │   └── cue.md                 # List control (stepValues: ["I am strong", ...])
+│   └── stocks/
+│       ├── cue.md                 # Read-only API control (blankReadOnly, Finnhub)
+│       ├── stock-blank.sh         # Fetch script: get <keyword> → resolve ticker → price
+│       └── tickers.json           # Keyword-to-ticker mapping
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library

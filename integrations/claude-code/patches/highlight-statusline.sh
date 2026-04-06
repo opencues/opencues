@@ -44,20 +44,16 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
       # Show if word has alts OR is a cue-control with a tip
       if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_control" -a -n "$tip" ]; then
         echo ""
-        is_list_control=$(echo "$content" | grep -o '"listControl":true')
-      if [ -n "$is_list_control" ]; then
+        if [ -n "$is_cue_control" ]; then
           printf '%s' "$tip"
-          tip=""
-      elif [ -n "$is_cue_control" ]; then
-          printf '%s' "$word"
         else
           altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')
           altidx=${altidx:-0}
           altpos=$((altidx + 1))
           printf '%s (%d/%d)' "$word" "$altpos" "$altcount"
-        fi
-        if [ -n "$tip" ]; then
-          printf ' - %s' "$tip"
+          if [ -n "$tip" ]; then
+            printf ' - %s' "$tip"
+          fi
         fi
       fi
     fi
