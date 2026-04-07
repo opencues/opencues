@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-03
+last_updated: 2026-04-07
 ---
 
 # Adding a Cue-Control
@@ -208,7 +208,9 @@ blankProximity: 2
 - `blankFormat: string` — value is text, not a number
 - `blankProximity: 2` — allows `Reddit Stock _` (keyword 2 words from blank)
 
-The script receives `get <keyword>` where `keyword` is the matched `blankKeywords` entry. A `tickers.json` mapping file resolves keywords to API parameters. See `controls/stocks/` for a complete example using the Finnhub API.
+The script receives `get <keyword> [context words...]` where `keyword` is the matched `blankKeywords` entry, and context words are the other words from the input (excluding `_` and the keyword). A `tickers.json` mapping file resolves keywords to API parameters. See `controls/stocks/` for a complete example using the Finnhub API.
+
+For controls that need richer context (e.g., a location AND a time modifier), the script scans the context words. See `controls/weather/` for an example — the script extracts location (any city/country via geocoding) and time (`tomorrow`, `weekend`, `weekly`) from context words.
 
 ## Checklist
 

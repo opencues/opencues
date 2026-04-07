@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-01
+last_updated: 2026-04-07
 ---
 
 # Config — Claude Code

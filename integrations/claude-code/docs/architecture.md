@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-03-31
+last_updated: 2026-04-07
 ---
 
 # Architecture — Claude Code

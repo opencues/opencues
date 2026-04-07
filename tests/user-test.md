@@ -15,7 +15,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 - [ ] Type `1.5f` — dimmed (dark gray), navigable
 - [ ] Navigate to it, Up — `2f`, Up — `2.5f`, Up — `3f` (step 0.5)
-- [ ] Down back to `0f` — floors at 0 (stepMin)
+- [ ] Down back to `0f` — floors at 0 (`stepMin`)
 - [ ] Plain numbers (`42`, `1.5`) should NOT dim or be navigable (no hardcoded number stepping)
 
 ## Blanks (fill-in-the-blank)
@@ -73,11 +73,21 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Read-only API controls (stocks)
 
-- [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price (requires FINNHUB_API_KEY)
+- [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price (requires `FINNHUB_API_KEY`)
 - [ ] `NVDA _` — blank auto-populates with NVIDIA stock price
 - [ ] Navigate to the price, Up/Down — no-op (read-only, no change)
 - [ ] Status line shows "Stock price"
-- [ ] Without FINNHUB_API_KEY — blank stays as `_` (graceful degradation)
+- [ ] Without `FINNHUB_API_KEY` — blank stays as `_` (graceful degradation)
+
+## Read-only API controls (weather)
+
+- [ ] `London weather _` — blank auto-populates with current London weather (no API key needed)
+- [ ] `Tokyo forecast tomorrow _` — tomorrow's Tokyo forecast
+- [ ] `Uganda forecast weekend _` — weekend forecast for Uganda
+- [ ] `Kenya forecast weekly _` — 7-day forecast
+- [ ] `weather _` — defaults to London
+- [ ] Navigate to weather value, Up/Down — no-op (read-only)
+- [ ] `London weekly _` — does NOT trigger (no weather/forecast keyword)
 
 ## Hot-reload
 

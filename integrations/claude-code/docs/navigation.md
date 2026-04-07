@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-04-02
+last_updated: 2026-04-07
 ---
 
 # Navigation — Claude Code
 
 Implements features [1](../../../docs/features/navigation.md), [3](../../../docs/features/visual-cues.md), [4](../../../docs/features/cursor-preservation.md), [13](../../../docs/features/cursor-export.md). See those docs for the concepts.
 
-**Patch file:** `patches/wordHighlight.ts`
+**Patch files:** `patches/wordHighlight.ts` (navigation, rendering, key handlers)
 
 ## Keybindings
 

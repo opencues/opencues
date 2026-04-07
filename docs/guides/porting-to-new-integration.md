@@ -1,3 +1,7 @@
+---
+last_updated: 2026-04-07
+---
+
 # Porting OpenCues to a New Integration
 
 This guide documents the contract between cues-core and integrations, plus non-obvious behaviours and pitfalls discovered during the Claude Code implementation. Read this before building a Chrome extension, VS Code extension, or any new integration.

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-03-27
+last_updated: 2026-04-07
 ---
 
 # Cue-Controls — Claude Code

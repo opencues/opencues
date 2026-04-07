@@ -39,10 +39,12 @@ Restart Claude Code. Done.
 - **Navigation** — move between words with keyboard
 - **Visual cues** — words dim when alternatives are available
 - **Alternatives** — cycle through synonyms, opposites, creative suggestions
-- **Step controls** — config-driven value stepping with suffixes (`1.5f` → `2f` → `2.5f`, `10px` → `11px`)
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
 - **Cue-controls** — `volume` triggers system volume control
-- **Control-bound blanks** — type `change volume _` and the blank auto-populates with the actual system volume; cycle to change it in real time
+- **Control-bound blanks** — `volume _` auto-populates with actual system volume; cycle to change it
+- **Step controls** — `1.5f` → `2f` → `2.5f`, works with any suffix (`px`, `em`, `%`)
+- **List controls** — `affirmation _` cycles through "I am strong", "I am brave", ...
+- **API controls** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
 - **Secondary display** — highlighted words show cue-tips
 - **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed
 
@@ -236,7 +238,7 @@ grep "misc:" ~/tweakcc/src/defaultSettings.ts
 
 ## Extending blanks.md
 
-blanks.md ships with 10 blank modes: math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, and grammar. You can add your own.
+`blanks.md` ships with 10 blank modes: math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, and grammar. You can add your own.
 
 Each `### section` under `## Prompt` is a blank mode. The system picks which mode to use via a three-stage pipeline:
 
@@ -251,7 +253,7 @@ Each `### section` under `## Prompt` is a blank mode. The system picks which mod
 
 If you skip step 2, inputs that miss your fast-match keywords will silently fall to grammar instead of your new mode. The classifier won't know your mode exists.
 
-**Word sources** in cues.md are simpler — all word-scoped `alternatives`-parser sources get combined into a single LLM call automatically. Domain sources should include a `match` regex so the LLM only applies their instructions for matching words. Sources without `match` are treated as base instructions that apply to every word — make sure they don't contradict each other.
+**Word sources** in `cues.md` are simpler — all word-scoped `alternatives`-parser sources get combined into a single LLM call automatically. Domain sources should include a `match` regex so the LLM only applies their instructions for matching words. Sources without `match` are treated as base instructions that apply to every word — make sure they don't contradict each other.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full details and pitfalls.
 

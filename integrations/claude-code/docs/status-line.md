@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-03-31
+last_updated: 2026-04-07
 ---
 
 # Status Line — Claude Code
 
-Implements feature 14 from `docs/features/`: Status Display.
+Implements feature [14](../../../docs/features/secondary-display.md). See that doc for the concept.
 
-**Script:** `patches/highlight-statusline.sh`
+**Patch files:** `patches/highlight-statusline.sh` (status line script), `patches/wordHighlight.ts` (export JSON)
 
 Shows the highlighted word, tip text, and alternative count in Claude Code's status bar. Cue-controls show their tip text only. Alt-cycling words show word, position, and tip.
 
@@ -145,7 +145,7 @@ Set in `~/.tweakcc/config.json` under `misc`.
 
 - **Source:** `opencues/integrations/claude-code/patches/highlight-statusline.sh`
 - **Installed to:** `~/.claude/highlight-statusline.sh`
-- **Customise:** Edit the installed copy — it's a plain bash script
+- **Customise:** Edit the installed copy — it's a plain bash script.
 
 ## Related
 

@@ -176,7 +176,7 @@ These are the core behaviours that any integration of control-bound blanks must 
 - `metadata.stateFile`: path to colocated state file
 - `cueTip`: from `blankTip` (or null)
 
-**State I/O**: The `readControlState(controlName, matchedKeyword?)` callback (injected by the integration) reads the state file and returns a raw string. If `state.txt` is missing, it falls back to running `blankScript get [matchedKeyword]`. The optional `matchedKeyword` parameter allows one script to serve multiple lookups. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
+**State I/O**: The `readControlState(controlName, matchedKeyword?, contextWords?)` callback (injected by the integration) reads the state file and returns a raw string. If `state.txt` is missing, it falls back to running `blankScript get [matchedKeyword] [contextWords...]`. The optional `matchedKeyword` allows one script to serve multiple lookups; `contextWords` provides the full sentence context (minus `_` and keyword) for scripts that need location, time, or other parameters from the input. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
 
 **Tip isolation**: Control-bound blank positions must NOT show tips from grammar/LLM sources. Only `blankTip` (if set) should display. The `metadata.controlName` marker identifies these positions.
 
@@ -196,7 +196,7 @@ Any integration consuming cues-core needs to handle these for control-bound blan
 
 | Responsibility | What to implement |
 |----------------|-------------------|
-| **`readControlState` callback** | Read the colocated `state.txt` and return raw string. On miss, fall back to running `blankScript get [keyword]`. Passed to `buildSourcesFromConfig`. |
+| **`readControlState` callback** | Read the colocated `state.txt` and return raw string. On miss, fall back to running `blankScript get [keyword] [context...]`. Passed to `buildSourcesFromConfig`. |
 | **Auto-populate** | When the resolver returns a control-blank result, replace `_` in the displayed text with the value. Timing depends on the editor's render cycle. |
 | **Cycling** | On Up/Down at a control-blank position (identified by `metadata.controlName`), run the script with `upArgs`/`downArgs`, read new value from state file, update display. |
 | **Result filter** | Allow control-blank results through even with 1 alternative (normal filters require >1). |
@@ -211,6 +211,8 @@ For Claude Code's implementation of these, see `integrations/claude-code/docs/cu
 
 ## Example: Volume Control
 
+A script-based control-bound blank that reads and sets the system volume. Demonstrates the two-script pattern (word-control + blank-control) with shared state.
+
 ```
 controls/volume/
   cue.md              # Config: word-control + blank-control fields
@@ -220,10 +222,13 @@ controls/volume/
   state.txt           # Shared runtime state (gitignored)
 ```
 
-Both scripts share `state.txt`. `VolCtl.exe` (compiled from `VolCtl.cs`) supports:
-- **`up`/`down`** — key-press simulation via `SendInput` (used by `volume.sh`)
-- **`get`** — query actual volume via Core Audio API (used by `volume-blank.sh`)
-- **`set <value>`** — step to exact target via `VolumeStepUp`/`VolumeStepDown` (used by `volume-blank.sh`)
+**Key design choices:**
+- **Two scripts** — `volume.sh` for word-control (debounced, fire-and-forget), `volume-blank.sh` for blank-control (synchronous, exact value).
+- **Shared state file** — both scripts read/write `state.txt` for coordination.
+- **`blankStep: 6`** — each Up/Down press changes volume by 6.
+- **`blankAutoPopulate: true`** — `_` is replaced with the actual system volume.
+
+**Usage:** Type `volume _` → blank fills with current volume (e.g., `64`). Navigate to the number, Up/Down changes volume by 6.
 
 ---
 
@@ -239,15 +244,42 @@ controls/stocks/
 ```
 
 **Key design choices:**
-- **One folder for all stocks** — `blankKeywords` lists all known company names and tickers, `tickers.json` maps them to symbols
-- **`blankReadOnly: true`** — stock prices can't be changed, so cycling is disabled
-- **`blankProximity: 2`** — allows `Reddit Stock _` (keyword "reddit" is 2 words from `_`)
-- **`blankFormat: string`** — prices are text, not numbers to be incremented
-- **`matchedKeyword` pipeline** — `ControlBlankSource` captures which keyword triggered the match ("reddit") and passes it to `readControlState`, which passes it to the script as `get reddit`
-- **Shared cache** — reuses `/tmp/ccline/stock_*.json` from the statusline component for zero redundant API calls
-- **Graceful degradation** — without `FINNHUB_API_KEY`, the script returns nothing and the blank stays as `_`
+- **One folder for all stocks** — `blankKeywords` lists all known company names and tickers, `tickers.json` maps them to symbols.
+- **`blankReadOnly: true`** — stock prices can't be changed, so cycling is disabled.
+- **`blankProximity: 2`** — allows `Reddit Stock _` (keyword "reddit" is 2 words from `_`).
+- **`blankFormat: string`** — prices are text, not numbers to be incremented.
+- **`matchedKeyword` pipeline** — `ControlBlankSource` captures which keyword triggered the match ("reddit") and passes it to `readControlState`, which passes it to the script as `get reddit`.
+- **Shared cache** — reuses `/tmp/ccline/stock_*.json` from the statusline component for zero redundant API calls.
+- **Graceful degradation** — without `FINNHUB_API_KEY`, the script returns nothing and the blank stays as `_`.
 
-To add a new stock, add one entry to `tickers.json` and one keyword to `blankKeywords` in `cue.md`.
+**Usage:** Type `Reddit Stock _` → blank fills with current RDDT price. To add a new stock, add one entry to `tickers.json` and one keyword to `blankKeywords`.
+
+---
+
+## Example: Weather (Context-Driven API)
+
+A read-only control-blank that fetches weather for any city or country. Demonstrates the `contextWords` pipeline — the script receives the full sentence context and extracts both location and time modifier.
+
+```
+controls/weather/
+  cue.md              # Config: trigger keywords (weather, forecast, temp)
+  weather-blank.sh    # Blank-control: geocodes location, fetches from Open-Meteo API
+```
+
+**Key design choices:**
+- **Trigger keywords only** — `blankKeywords: weather, forecast, temp, temperature`. City/country names are NOT keywords — they're extracted from context by the script.
+- **Any location** — the script geocodes whatever location word it finds in context via Open-Meteo's geocoding API. Works for cities (`Tokyo`), countries (`Uganda`), or neighborhoods (`Highgate`).
+- **Time modifiers from context** — `tomorrow`, `weekend`, `weekly`/`7day` are detected from context words, not from `blankKeywords`. This means `forecast` is the trigger, and time/location are context.
+- **`contextWords` pipeline** — `readControlState` passes all context words (minus `_` and the matched keyword) as extra args to the script. The script scans them for location and time modifiers.
+- **Open-Meteo API** — free, no API key needed. Geocoding resolves any location, forecast API provides current + 7-day data.
+- **5-minute cache** — results cached per location + mode combination.
+
+**Usage:**
+- `London weather _` → `19°C Clear`
+- `Tokyo forecast tomorrow _` → `23°C Cloudy`
+- `Uganda forecast weekend _` → `Sat 31°C Overcast, Sun 31°C Overcast`
+- `Kenya forecast weekly _` → 7-day forecast
+- `weather _` → default city (London)
 
 ---
 

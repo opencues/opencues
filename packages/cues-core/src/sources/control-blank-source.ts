@@ -14,7 +14,7 @@ export interface ControlBlankSourceConfig {
   /** All controls that have blankKeywords defined */
   controls: Record<string, ControlConfig>;
   /** I/O adapter: reads current value from state file (or script fallback) */
-  readState: (controlName: string, matchedKeyword?: string) => string | null;
+  readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null;
 }
 
 export class ControlBlankSource implements CueSource {
@@ -22,7 +22,7 @@ export class ControlBlankSource implements CueSource {
   readonly priority = 95;
 
   private controls: Record<string, ControlConfig>;
-  private readState: (controlName: string, matchedKeyword?: string) => string | null;
+  private readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null;
 
   constructor(config: ControlBlankSourceConfig) {
     this.controls = config.controls;
@@ -87,7 +87,7 @@ export class ControlBlankSource implements CueSource {
     }
 
     // Read current value — validation is format-aware
-    const rawValue = this.readState(matched.control, matchedKeyword);
+    const rawValue = this.readState(matched.control, matchedKeyword, context.words);
     if (rawValue === null || rawValue === '') {
       return { results };
     }
