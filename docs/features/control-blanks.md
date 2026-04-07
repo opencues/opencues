@@ -269,7 +269,8 @@ controls/weather/
 **Key design choices:**
 - **Trigger keywords only** — `blankKeywords: weather, forecast, temp, temperature`. City/country names are NOT keywords — they're extracted from context by the script.
 - **Any location** — the script geocodes whatever location word it finds in context via Open-Meteo's geocoding API. Works for cities (`Tokyo`), countries (`Uganda`), or neighborhoods (`Highgate`).
-- **Time modifiers from context** — `tomorrow`, `weekend`, `weekly`/`7day` are detected from context words, not from `blankKeywords`. This means `forecast` is the trigger, and time/location are context.
+- **Reverse scan** — location is extracted by scanning context words from the end, skipping weather/time terms. In natural language the location is almost always the last meaningful word before `_` (e.g., "What is the weather in **London** _").
+- **Time modifiers from context** — `tomorrow`, `weekend`, `weekly`/`7day`/`days` are detected from context words, not from `blankKeywords`. This means `forecast` is the trigger, and time/location are context.
 - **`contextWords` pipeline** — `readControlState` passes all context words (minus `_` and the matched keyword) as extra args to the script. The script scans them for location and time modifiers.
 - **Open-Meteo API** — free, no API key needed. Geocoding resolves any location, forecast API provides current + 7-day data.
 - **5-minute cache** — results cached per location + mode combination.

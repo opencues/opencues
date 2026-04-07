@@ -17,7 +17,7 @@ CACHE_DIR="/tmp/opencues-weather"
 CACHE_MAX_AGE=300
 
 # Time/trigger words to skip when scanning for location
-SKIP_WORDS="weather forecast temp temperature tomorrow weekend weekly 7day week in the of for is"
+SKIP_WORDS="weather forecast temp temperature tomorrow weekend weekly 7day 7days 7 week day days next today tonight current now"
 
 # WMO weather code → description
 wmo_desc() {
@@ -37,16 +37,21 @@ case "$COMMAND" in
     KW_LOWER=$(echo "$KEYWORD" | tr '[:upper:]' '[:lower:]')
     mkdir -p "$CACHE_DIR"
 
-    # Extract location from context (skip trigger/time words)
+    # Extract location from context — scan from END (location is usually last meaningful word)
     LOCATION=""
+    WORDS_REVERSED=""
     for word in $CONTEXT_WORDS; do
+      WORDS_REVERSED="$word $WORDS_REVERSED"
+    done
+    for word in $WORDS_REVERSED; do
       w_lower=$(echo "$word" | tr '[:upper:]' '[:lower:]')
       skip=false
       for sw in $SKIP_WORDS; do
         [ "$w_lower" = "$sw" ] && skip=true && break
       done
       if ! $skip; then
-        [ -n "$LOCATION" ] && LOCATION="$LOCATION $word" || LOCATION="$word"
+        LOCATION="$word"
+        break
       fi
     done
     [ -z "$LOCATION" ] && LOCATION="$DEFAULT_LOCATION"
@@ -58,7 +63,7 @@ case "$COMMAND" in
       case "$w_lower" in
         tomorrow) MODE="tomorrow" ;;
         weekend|saturday|sunday) [ "$MODE" != "weekly" ] && MODE="weekend" ;;
-        weekly|7day|week) MODE="weekly" ;;
+        weekly|7day|7days|week|days|day) MODE="weekly" ;;
       esac
     done
 
