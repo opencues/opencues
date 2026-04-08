@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-07
+last_updated: 2026-04-08
 ---
 
 # Cue-Controls — Claude Code
@@ -12,12 +12,13 @@ Cue-controls are words with built-in cycling behavior that bypasses the normal a
 
 ## Overview
 
-There are five kinds of cue-control:
+There are six kinds of cue-control:
 
 - **Custom cue-controls** — navigate to a word (like "volume") and press Ctrl+Alt+Up or Down to spawn an external script instead of modifying the word. This enables controlling system functions directly from the Claude Code input.
-- **Control-bound blanks** — blank positions bound to a control via `blankKeywords`. The blank value is synced with the control's state file.
+- **Control-bound blanks** — blank positions bound to a control via `blankKeywords`. The blank auto-populates with the live value from `blankScript get` and syncs on each cycle.
 - **Step controls** — words matching config-driven patterns (via `stepPattern` or `stepSuffixes`) are incremented/decremented by a configurable step size. Supports suffixes like `f`, `px`, `em`, `%`. See `cycling.md` for config fields.
 - **List controls** — control-bound blanks with `stepValues` that cycle through an ordered list of values. Type a keyword + `_`, the blank auto-populates with the first value, Up/Down cycles through the list. Multi-word values are span-tracked. No script needed.
+- **Dynamic list controls** — control-bound blanks where `blankScript get` returns multiple lines. Each line becomes a cycling alternative, same as `stepValues` but populated from live data (e.g., `HN posts _` fetches RSS feed titles from Hacker News).
 - **Read-only controls** — control-bound blanks with `blankReadOnly: true` that fetch data from external APIs (e.g., stock prices). The blank auto-populates with the fetched value; cycling is disabled. The matched keyword is passed to the script for multi-lookup controls (e.g., `stock-blank.sh get reddit`).
 
 The unified check `globalThis._isCueControl(word)` identifies custom controls (via `_cueControlOverrides`) and step controls (via `_stepPatterns`). It's used by the tips lookup (`lookupMultiple` with `skipFn`) and the status line export to exclude cue-controls from tips/alts display.
@@ -86,6 +87,7 @@ All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_
 | `upArgs` | string[] | Arguments passed when Up is pressed |
 | `downArgs` | string[] | Arguments passed when Down is pressed |
 | `speak` | boolean? | Read the tip aloud via TTS when navigated to (default: false) |
+| `blankSuffix` | string? | Suffix appended to the displayed blank value (e.g. `%` shows `50%`). Stripped before arithmetic. |
 
 ### Script Resolution
 
@@ -107,15 +109,6 @@ See `docs/guides/adding-a-cue-control.md` for the full folder format.
 
 ## Script Implementation
 
-### Location
-
-```
-~/.claude/actions/
-├── volume.sh      # Volume control
-├── brightness.sh  # Brightness control (future)
-└── ...
-```
-
 ### Script Interface
 
 Scripts receive arguments as defined in config:
@@ -127,74 +120,24 @@ Scripts receive arguments as defined in config:
 ~/.claude/actions/volume.sh down 5
 ```
 
-### Volume Script (WSL Optimized)
+Scripts should also implement a `get` command — the integration calls it on navigation and ~200ms after each cycle to update the status line with the live value:
 
 ```bash
-#!/bin/bash
-# ~/.claude/actions/volume.sh
-# Usage: volume.sh <up|down> <percent>
-
-DIRECTION="$1"
-AMOUNT="${2:-5}"
-PRESSES=$((AMOUNT / 2))
-[[ $PRESSES -lt 1 ]] && PRESSES=1
-
-case "$DIRECTION" in
-  up)
-    if [[ -f /mnt/c/Windows/nircmd.exe ]]; then
-      # Instant - best option (~5ms)
-      /mnt/c/Windows/nircmd.exe changesysvolume $((AMOUNT * 655)) &
-    else
-      # VBScript fallback (~120ms)
-      for ((i=0; i<PRESSES; i++)); do
-        wscript.exe //nologo "C:\\Windows\\Temp\\volup.vbs" &
-      done
-    fi
-    ;;
-  down)
-    if [[ -f /mnt/c/Windows/nircmd.exe ]]; then
-      /mnt/c/Windows/nircmd.exe changesysvolume -$((AMOUNT * 655)) &
-    else
-      for ((i=0; i<PRESSES; i++)); do
-        wscript.exe //nologo "C:\\Windows\\Temp\\voldown.vbs" &
-      done
-    fi
-    ;;
-esac
+~/.claude/actions/volume.sh get
+# → "volume: 64%"
 ```
 
-### VBScript Helpers (Required for WSL without nircmd)
+If `get` returns empty or fails, the static `tip:` field is used as fallback.
 
-**You must create these files manually.** Without them, `wscript.exe` will fail with "cannot find script file". This is the most common setup issue on WSL.
+### Sync timing rules (WSL)
 
-```bash
-# From WSL:
-echo 'Set s=CreateObject("WScript.Shell"):s.SendKeys chr(175)' > /mnt/c/Windows/Temp/volup.vbs
-echo 'Set s=CreateObject("WScript.Shell"):s.SendKeys chr(174)' > /mnt/c/Windows/Temp/voldown.vbs
-```
+Word-control scripts are spawned detached (fire-and-forget) but `get` is called synchronously 200ms later. To avoid stale reads:
 
-Verify they exist:
-```bash
-cat /mnt/c/Windows/Temp/volup.vbs
-# Expected: Set s=CreateObject("WScript.Shell"):s.SendKeys chr(175)
-```
+1. **Do not background the exe with `&`** — the change must be applied before `get` fires.
+2. **Do not call the live-read function before up/down** — it costs ~200ms (.NET startup), pushing the total past the 200ms window.
+3. **The exe handles delta internally** — it reads current state, applies the delta, and exits only after the change is committed.
 
-## Performance
-
-| Method | Latency | Notes |
-|--------|---------|-------|
-| nircmd | ~5ms | Best - instant, no focus needed |
-| VBScript (wscript) | ~120ms | Good - needs Windows app focused |
-| PowerShell | ~1300ms | Slow - avoid |
-
-### Installing nircmd (Recommended)
-
-```powershell
-# Run in PowerShell as Admin:
-iwr "https://www.nirsoft.net/utils/nircmd-x64.zip" -Out "$env:TEMP\n.zip"
-Expand-Archive "$env:TEMP\n.zip" "$env:TEMP\n" -Force
-copy "$env:TEMP\n\nircmd.exe" C:\Windows\
-```
+See the sync pitfalls comment block in `controls/volume/volume.sh` for full details.
 
 ## Visual Behavior
 
@@ -213,34 +156,9 @@ cue-controls require `enableWordHighlight: true` in config. The `cueControlOverr
 
 ## Adding New cue-controls
 
-1. **Add to config** (`~/.tweakcc/config.json`):
-   ```json
-   "brightness": {
-     "control": "brightness",
-     "upArgs": ["up", "10"],
-     "downArgs": ["down", "10"]
-   }
-   ```
+Use the folder-based approach — create `controls/{name}/` with a `cue.md` and script. See `docs/guides/adding-a-cue-control.md` for the full walkthrough. The existing `controls/volume/` and `controls/brightness/` folders are canonical examples.
 
-2. **Create script** (`~/.claude/actions/brightness.sh`):
-   ```bash
-   #!/bin/bash
-   DIRECTION="$1"
-   AMOUNT="${2:-10}"
-   # Your brightness control logic here
-   ```
-
-3. **Make executable**:
-   ```bash
-   chmod +x ~/.claude/actions/brightness.sh
-   ```
-
-4. **Re-apply patches**:
-   ```bash
-   cd ~/tweakcc
-   npm run build
-   TWEAKCC_CC_INSTALLATION_PATH="..." node dist/index.mjs --apply
-   ```
+Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a compiled `.cs` executable.
 
 ## Troubleshooting
 
@@ -261,19 +179,15 @@ cue-controls require `enableWordHighlight: true` in config. The `cueControlOverr
    sed -i 's/\r$//' ~/.claude/actions/volume.sh
    ```
 
-### "Cannot find script file" Error (WSL)
+### Volume/Brightness Not Changing (WSL)
 
-The VBS helper files must be created manually — they are NOT auto-generated. This is the most common cause of volume not working on WSL. See **VBScript Helpers** section above for the creation commands.
-
-### Volume Not Changing (WSL)
-
-1. **Create VBS helpers first** — see above section
-2. **SendKeys requires focused Windows app** - click on a browser/app first
-3. **Install nircmd** for focus-independent control (bypasses VBS entirely)
-4. **Verify VBS helpers exist**:
+1. **Test the exe directly** from WSL:
    ```bash
-   ls -la /mnt/c/Windows/Temp/volup.vbs /mnt/c/Windows/Temp/voldown.vbs
+   ~/.claude/actions/VolCtl.exe up 10
+   ~/.claude/actions/BrightCtl.exe up 10
    ```
+2. **Check VolCtl.exe get returns a value** — if it returns 0 or empty on first call, that's the COM init delay (retry logic in volume.sh handles this automatically)
+3. **Verify setup.sh compiled the executables** — re-run `setup.sh` if the `.exe` files are missing
 
 ### cue-control Not Navigable
 
@@ -291,7 +205,7 @@ See `docs/features/control-blanks.md` for full configuration reference.
 
 **Auto-populate mechanism**: The resolver callback sets `globalThis._pendingAutoPopulate`. This is consumed in the render-cycle IIFE in `wordHighlight.ts` (not in the resolver callback) because `onChange` must be called from a fresh React render context — stale closure references from `setTimeout` or async callbacks don't update the input.
 
-**State file reads**: The `readControlState` callback reads the colocated `controls/{name}/state.txt`. Must use `${requireFuncName}("fs")`, never bare `require("fs")` — see `architecture.md` § Development Notes.
+**Live state reads**: The `readControlState` callback calls `blankScript get [keyword] [context...]` synchronously via `execFileSync`. Must use `${requireFuncName}("child_process")`, never bare `require()` — see `architecture.md` § Development Notes.
 
 **Cycling**: The cycling handler calculates the target value (current + blankStep, clamped to blankRange), then calls `blankScript set <value>` via `execSync`. Uses `metadata.blankScript` — separate from the word-control `script` which handles `up`/`down`. Word-based controls use debounced `spawn` with direction args (fire-and-forget). Blank-controls are value-based and synchronous.
 
@@ -305,15 +219,21 @@ See `docs/features/control-blanks.md` for full configuration reference.
 
 | Executable | Source | Purpose |
 |------------|--------|---------|
-| `VolCtl.exe` | `controls/volume/VolCtl.cs` | Volume via Core Audio API (`get`, `set`) |
-| `BrightCtl.exe` | `patches/actions/BrightCtl.cs` | Brightness via powrprof.dll |
+| `VolCtl.exe` | `controls/volume/VolCtl.cs` | Volume via Core Audio API (`get`, `set`, `up`, `down`) |
+| `BrightCtl.exe` | `patches/actions/BrightCtl.cs` | Brightness via powrprof.dll (`get`, `set`, `up`, `down`) |
 | `SpeakCtl.exe` | `patches/actions/SpeakCtl.cs` | TTS via System.Speech |
 
-**VolCtl.exe** uses the Windows Core Audio API (via COM vtable calls) for:
+**VolCtl.exe** uses the Windows Core Audio API (via COM vtable calls):
 - `get` — queries actual system volume as 0-100 integer
 - `set <value>` — sets exact volume using `VolumeStepUp`/`VolumeStepDown`
+- `up <amount>` / `down <amount>` — sends media key presses via `SendInput` (shows Windows OSD)
 
 COM initialization uses `COINIT_APARTMENTTHREADED` with MTA fallback — required for reliable operation when spawned from Node.js child processes.
+
+**BrightCtl.exe** uses `powrprof.dll` (native Windows power API, no PowerShell startup cost):
+- `get` — reads current brightness via `PowerReadACValueIndex` (0-100 integer)
+- `set <value>` — sets exact brightness via `PowerWriteACValueIndex` + `PowerSetActiveScheme`
+- `up <amount>` / `down <amount>` — reads current, applies delta, writes back in one call (~194ms total)
 
 SpeakCtl.exe requires `/reference:System.Speech.dll` — setup.sh handles this with a special case for the `SpeakCtl` base name.
 

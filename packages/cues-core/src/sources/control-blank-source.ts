@@ -13,7 +13,7 @@ import { ControlConfig } from '../cues-md';
 export interface ControlBlankSourceConfig {
   /** All controls that have blankKeywords defined */
   controls: Record<string, ControlConfig>;
-  /** I/O adapter: reads current value from state file (or script fallback) */
+  /** I/O adapter: calls blankScript get to read the current live value */
   readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null;
 }
 
@@ -52,10 +52,14 @@ export class ControlBlankSource implements CueSource {
       const proximity = ctrl.blankProximity ?? 0; // default: adjacent (0 words between)
 
       const hitKw = ctrl.blankKeywords.find(kw => {
-        const kwIndex = contextLower.indexOf(kw);
-        if (kwIndex === -1) return false;
-        const gap = Math.abs(kwIndex - blankIndex) - 1; // words between them
-        return gap <= proximity;
+        // Check all occurrences — the keyword nearest to _ matters, not the first
+        let idx = contextLower.indexOf(kw);
+        while (idx !== -1) {
+          const gap = Math.abs(idx - blankIndex) - 1;
+          if (gap <= proximity) return true;
+          idx = contextLower.indexOf(kw, idx + 1);
+        }
+        return false;
       });
 
       if (hitKw) {
@@ -71,10 +75,11 @@ export class ControlBlankSource implements CueSource {
 
     // List-based cycling: stepValues provides ordered alternatives directly
     if (matched.stepValues?.length) {
+      const alts = matched.blankDismissible ? [...matched.stepValues, '_'] : matched.stepValues;
       results.push({
         wordIndex: blankIndex,
         word: '_',
-        alternatives: matched.stepValues,
+        alternatives: alts,
         source: 'control-blank',
         priority: this.priority,
         cueTip: matched.blankTip ?? matched.tip,
@@ -90,6 +95,27 @@ export class ControlBlankSource implements CueSource {
     const rawValue = this.readState(matched.control, matchedKeyword, context.words);
     if (rawValue === null || rawValue === '') {
       return { results };
+    }
+
+    // Dynamic list: if script returns multiple lines, treat as list control
+    if (rawValue.includes('\n')) {
+      const lines = rawValue.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length > 0) {
+        const alts = matched.blankDismissible ? [...lines, '_'] : lines;
+        results.push({
+          wordIndex: blankIndex,
+          word: '_',
+          alternatives: alts,
+          source: 'control-blank',
+          priority: this.priority,
+          cueTip: matched.blankTip ?? matched.tip,
+          metadata: {
+            controlName: matched.control,
+            listControl: true,
+          },
+        });
+        return { results };
+      }
     }
 
     const format = matched.blankFormat ?? 'integer';
@@ -109,8 +135,9 @@ export class ControlBlankSource implements CueSource {
       ?? parseStepFromArgs(matched.downArgs)
       ?? 1;
 
+    const displayValue = matched.blankSuffix ? rawValue + matched.blankSuffix : rawValue;
     const alternatives = matched.blankAutoPopulate
-      ? [rawValue]
+      ? [displayValue]
       : ['_'];
 
     results.push({
@@ -124,10 +151,10 @@ export class ControlBlankSource implements CueSource {
         controlName: matched.control,
         blankScript: matched.blankScript ?? matched.script,
         blankStep: step,
-        stateFile: matched.stateFile,
         blankRange: matched.blankRange ?? [0, 100],
         blankFormat: format,
         blankReadOnly: matched.blankReadOnly,
+        blankSuffix: matched.blankSuffix,
       },
     });
 

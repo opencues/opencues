@@ -84,7 +84,7 @@ The status line script formats the display based on control type:
 | Alt-cycling word | `{word} ({N}/{total}) - {cueTip}` | `agents (1/3) - Spawn parallel workers` |
 | No tip | `{word} ({N}/{total})` | `happy (2/4)` |
 
-Cue-controls (custom controls, control-bound blanks, step controls, list controls, read-only controls) all show just the `cueTip` text — the word is already highlighted in the input so repeating it in the status line is redundant.
+Cue-controls (custom controls, control-bound blanks, step controls, list controls, dynamic list controls, read-only controls) all show just the `cueTip` text — the word is already highlighted in the input so repeating it in the status line is redundant.
 
 ## Tips Source
 

@@ -114,8 +114,7 @@ class VolCtl {
         IntPtr vtbl = Marshal.ReadIntPtr(pVol);
         IntPtr fn = Marshal.ReadIntPtr(vtbl, (diff > 0 ? 17 : 18) * IntPtr.Size);
         var step = (StepDel)Marshal.GetDelegateForFunctionPointer(fn, typeof(StepDel));
-        int steps = Math.Abs(diff) / 2;
-        if (steps < 1) steps = 1;
+        int steps = (Math.Abs(diff) + 1) / 2;  // ceiling division — rounds up
         for (int i = 0; i < steps; i++)
             step(pVol, IntPtr.Zero);
         return true;
@@ -144,13 +143,15 @@ class VolCtl {
         int amount = 0;
         int.TryParse(args.Length > 1 ? args[1] : "5", out amount);
         if (amount < 1) amount = 5;
-        int presses = amount / 2;
+        int presses = (amount + 1) / 2;
         if (presses < 1) presses = 1;
         ushort key = cmd == "up" ? VK_VOLUME_UP : VK_VOLUME_DOWN;
         for (int i = 0; i < presses; i++) {
             PressKey(key);
-            if (presses > 1 && i < presses - 1)
+            if (i < presses - 1)
                 Thread.Sleep(10);
         }
+        // Wait for audio system to process key events before exiting
+        Thread.Sleep(150);
     }
 }

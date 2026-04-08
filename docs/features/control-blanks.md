@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-04-08
 ---
 
 # Control-Bound Blanks
@@ -33,6 +33,7 @@ downArgs: ["down", "6"]
 blankKeywords: volume, sound, audio   # context words that trigger blank binding
 blankStep: 6                          # increment/decrement per cycle press
 blankAutoPopulate: true               # replace _ with current value automatically
+blankSuffix: %                        # suffix appended to displayed value — script always uses plain numbers
 blankScript: ./volume-blank.sh        # blank-control: get/set commands (optional — defaults to script)
 blankRange: [0, 100]                  # min/max for validation (optional — default: [0, 100])
 blankFormat: integer                  # integer | float | string (optional — default: integer)
@@ -55,6 +56,8 @@ blankProximity: 0                    # max words between keyword and _ (optional
 | `blankProximity` | number | `0` | Max words allowed between keyword and `_`. `0` means adjacent (`volume _`). `1` allows one word gap (`volume is _`). Higher values allow more distance. |
 | `stepValues` | JSON string[] | *(none)* | Ordered list of values to cycle through instead of script-based arithmetic. Auto-populates with first value. Multi-word values are span-tracked. No script needed. |
 | `blankReadOnly` | boolean | `false` | If true, cycling (Up/Down) is disabled — display-only blank. Used for values fetched from external APIs (e.g., stock prices) where the user can view but not change the value. |
+| `blankDismissible` | boolean | `false` | If true, `_` is appended as the last cycling option so the user can dismiss the value. Once dismissed, auto-populate will not re-fire until the text changes. |
+| `blankSuffix` | string | *(none)* | Suffix appended to the displayed value (e.g. `%` shows `50%`). Stripped before arithmetic, re-appended after cycling. The script always receives and returns plain numbers. |
 
 ### Tips Behaviour
 
@@ -96,17 +99,22 @@ The two changes arrive through different code paths:
 
 ### Keyword Matching
 
-The system scans words in the input (case-insensitive) against each control's `blankKeywords`, subject to `blankProximity`. The keyword must be within `blankProximity` words of the `_`. The first control with a matching keyword wins.
+The system scans words in the input (case-insensitive) against each control's `blankKeywords`, checking **all occurrences** of each keyword, subject to `blankProximity`. The keyword must be within `blankProximity` words of the `_` — if a keyword appears multiple times, any occurrence within range is sufficient. The first control with a matching keyword wins.
 
-Examples with `blankKeywords: volume, sound, audio` and `blankProximity: 0` (default):
-- `volume _` — matches (0 words between)
-- `set audio _` — no match (1 word "audio" is adjacent to `_`, but "set" is between... actually "audio" is at index 1, `_` is at index 2, gap = 0) — **matches**
-- `volume is _` — no match (1 word between "volume" and `_`, exceeds proximity 0)
+Gap = number of words strictly between the keyword and `_` (not counting either). Examples with `blankKeywords: volume, sound, audio`:
+
+With `blankProximity: 0` (default, adjacent only):
+- `volume _` — matches (gap = 0)
+- `set audio _` — matches (`audio` and `_` are adjacent, gap = 0; words before the keyword don't count)
+- `volume is _` — no match (gap = 1, exceeds limit)
 - `the _ is loud` — no match (no keyword present)
 
 With `blankProximity: 1`:
-- `volume is _` — matches (1 word between, within limit)
-- `volume was not _` — no match (2 words between, exceeds limit)
+- `volume is _` — matches (gap = 1, within limit)
+- `volume was not _` — no match (gap = 2, exceeds limit)
+
+Multiple occurrences — with `blankKeywords: weather` and `blankProximity: 0`:
+- `spanish weather 15°C is warmer than london weather _` — matches (the second `weather` is adjacent to `_`)
 
 ---
 
@@ -123,7 +131,7 @@ Used when the user navigates to the control word and cycles. Simple direction-ba
 | `up <amount>` | Increase by amount | `volume.sh up 6` |
 | `down <amount>` | Decrease by amount | `volume.sh down 6` |
 
-The script reads the state file, calculates the new value, writes it back, then applies the change (e.g., via key presses). Runs in the background (fire-and-forget).
+The script queries the current live value, calculates the new value, then applies the change (e.g., via key presses). Runs in the background (fire-and-forget).
 
 ### Blank-control script (`blankScript`)
 
@@ -138,24 +146,7 @@ The `get` command queries the actual system state. An optional `keyword` argumen
 
 If `blankScript` is not set, `script` is used for both — but it must then support `get`/`set` in addition to `up`/`down`.
 
-If `state.txt` doesn't exist (first access), the system falls back to running `blankScript get [keyword]` to fetch the initial value. This enables API-calling controls that don't pre-populate state.
-
----
-
-## State File
-
-Each folder-based control has a colocated state file at `controls/{name}/state.txt`. The file contains the current value as a single line — the format depends on `blankFormat`:
-
-| `blankFormat` | State file content | Example |
-|---------------|-------------------|---------|
-| `integer` | Single integer | `64` |
-| `float` | Decimal number | `3.14` |
-| `string` | Raw text | `#ff6600` |
-
-State files are gitignored (`controls/*/state.txt`). They are:
-- **Written** by the script after each `up`/`down` operation
-- **Read** by the auto-populate system to get the current value
-- **Read** by the cycling handler after script execution
+Auto-populate always calls `blankScript get` for the current value — no file caching. Scripts are expected to query the system directly.
 
 ---
 
@@ -173,10 +164,9 @@ These are the core behaviours that any integration of control-bound blanks must 
 - `metadata.controlName`: the control identifier
 - `metadata.blankScript`: resolved path to the blank script (falls back to `script`)
 - `metadata.blankStep`, `metadata.blankRange`, `metadata.blankFormat`: config-driven behaviour
-- `metadata.stateFile`: path to colocated state file
 - `cueTip`: from `blankTip` (or null)
 
-**State I/O**: The `readControlState(controlName, matchedKeyword?, contextWords?)` callback (injected by the integration) reads the state file and returns a raw string. If `state.txt` is missing, it falls back to running `blankScript get [matchedKeyword] [contextWords...]`. The optional `matchedKeyword` allows one script to serve multiple lookups; `contextWords` provides the full sentence context (minus `_` and keyword) for scripts that need location, time, or other parameters from the input. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
+**State I/O**: The `readControlState(controlName, matchedKeyword?, contextWords?)` callback (injected by the integration) calls `blankScript get [matchedKeyword] [contextWords...]` and returns the raw string output. The optional `matchedKeyword` allows one script to serve multiple lookups; `contextWords` provides the full sentence context (minus `_` and keyword) for scripts that need location, time, or other parameters from the input. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
 
 **Tip isolation**: Control-bound blank positions must NOT show tips from grammar/LLM sources. Only `blankTip` (if set) should display. The `metadata.controlName` marker identifies these positions.
 
@@ -187,7 +177,7 @@ These are the core behaviours that any integration of control-bound blanks must 
 | Component | File | Role |
 |-----------|------|------|
 | `ControlBlankSource` | `packages/cues-core/src/sources/control-blank-source.ts` | CueSource: keyword matching, state read, CueResult |
-| `ControlConfig` | `packages/cues-core/src/cues-md.ts` | All `blank*` fields + `stateFile` |
+| `ControlConfig` | `packages/cues-core/src/cues-md.ts` | All `blank*` fields |
 | `buildSourcesFromConfig` | `packages/cues-core/src/sources/build-sources.ts` | Wires ControlBlankSource when controls have `blankKeywords` |
 
 ### Integration responsibilities (what each editor must implement)
@@ -196,9 +186,9 @@ Any integration consuming cues-core needs to handle these for control-bound blan
 
 | Responsibility | What to implement |
 |----------------|-------------------|
-| **`readControlState` callback** | Read the colocated `state.txt` and return raw string. On miss, fall back to running `blankScript get [keyword] [context...]`. Passed to `buildSourcesFromConfig`. |
+| **`readControlState` callback** | Call `blankScript get [keyword] [context...]` and return the output. Passed to `buildSourcesFromConfig`. |
 | **Auto-populate** | When the resolver returns a control-blank result, replace `_` in the displayed text with the value. Timing depends on the editor's render cycle. |
-| **Cycling** | On Up/Down at a control-blank position (identified by `metadata.controlName`), run the script with `upArgs`/`downArgs`, read new value from state file, update display. |
+| **Cycling** | On Up/Down at a control-blank position (identified by `metadata.controlName`), run the script with `upArgs`/`downArgs`, then call `script get` to read the new live value and update display. |
 | **Result filter** | Allow control-blank results through even with 1 alternative (normal filters require >1). |
 | **Navigation** | Make control-blank positions navigable (they may have only 1 alt). |
 | **Dimming** | Dim control-blank positions to show they're interactive. |
@@ -219,16 +209,38 @@ controls/volume/
   volume.sh           # Word-control: up/down via key presses (fast, shows OSD)
   volume-blank.sh     # Blank-control: get/set via Core Audio API (exact)
   VolCtl.cs           # C# source for Windows Core Audio API (compiled by setup.sh)
-  state.txt           # Shared runtime state (gitignored)
 ```
 
 **Key design choices:**
 - **Two scripts** — `volume.sh` for word-control (debounced, fire-and-forget), `volume-blank.sh` for blank-control (synchronous, exact value).
-- **Shared state file** — both scripts read/write `state.txt` for coordination.
+- **Always live** — both scripts query the OS directly. No caching.
 - **`blankStep: 6`** — each Up/Down press changes volume by 6.
 - **`blankAutoPopulate: true`** — `_` is replaced with the actual system volume.
 
 **Usage:** Type `volume _` → blank fills with current volume (e.g., `64`). Navigate to the number, Up/Down changes volume by 6.
+
+---
+
+## Example: Brightness Control
+
+A script-based control-bound blank that reads and sets the system display brightness. Demonstrates the same two-script pattern as volume — word-control for key-press cycling, blank-control for exact get/set.
+
+```
+controls/brightness/
+  cue.md                # Config: word-control + blank-control fields
+  brightness.sh         # Word-control: up/down via BrightCtl.exe (native powrprof.dll)
+  brightness-blank.sh   # Blank-control: get/set via BrightCtl.exe
+  (BrightCtl.cs compiled to ~/.claude/actions/BrightCtl.exe by setup.sh)
+```
+
+**Key design choices:**
+- **Two scripts** — `brightness.sh` for word-control (debounced, fire-and-forget), `brightness-blank.sh` for blank-control (synchronous, exact value).
+- **Always live** — both scripts query the OS directly via `BrightCtl.exe get`. No caching.
+- **`blankStep: 10`** — each Up/Down press changes brightness by 10.
+- **`blankAutoPopulate: true`** — `_` is replaced with the actual system brightness.
+- **BrightCtl.exe `set` command** — blank-control uses `BrightCtl.exe set <value>` (exact value), matching the VolCtl.exe `set` convention.
+
+**Usage:** Type `brightness _` → blank fills with current brightness (e.g., `70`). Navigate to the number, Up/Down changes brightness by 10.
 
 ---
 
@@ -281,6 +293,26 @@ controls/weather/
 - `Uganda forecast weekend _` → `Sat 31°C Overcast, Sun 31°C Overcast`
 - `Kenya forecast weekly _` → 7-day forecast
 - `weather _` → default city (London)
+
+---
+
+## Example: Hacker News (Dynamic List from RSS)
+
+A dynamic list control that fetches live data and lets the user scroll through items. Demonstrates the **dynamic list** pattern — when `blankScript get` returns multiple lines, each line becomes a cycling alternative.
+
+```
+controls/hackernews/
+  cue.md              # Config: trigger keywords (hn, hackernews)
+  hn-blank.sh         # Blank-control: fetches RSS feed, returns one title per line
+```
+
+**Key design choices:**
+- **Dynamic list** — the script returns multiple lines (one per post title). `ControlBlankSource` detects multi-line output and treats each line as a cycling alternative, same as static `stepValues`.
+- **`blankDismissible: true`** — `_` is appended as the last alternative so the user can dismiss the list and return to a blank. A `_dismissedBlanks` tracker prevents auto-populate from re-firing on dismissed positions.
+- **RSS via hnrss.org** — fetches the frontpage RSS feed, parses titles with Python's `xml.etree`, returns up to 20 titles.
+- **5-minute cache** — avoids excessive API calls.
+
+**Usage:** Type `HN posts _` → auto-populates with the top post title. Up/Down scrolls through all posts. Cycle past the last post → `_` to dismiss.
 
 ---
 

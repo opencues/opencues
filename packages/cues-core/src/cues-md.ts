@@ -102,8 +102,6 @@ export interface ControlConfig {
   blankStep?: number;
   /** When true, auto-fill the blank with the current control value on analysis */
   blankAutoPopulate?: boolean;
-  /** Path to state file (auto-set to {controlFolder}/state.txt for folder-based controls) */
-  stateFile?: string;
   /** Min/max range for clamping when cycling [min, max] (default: [0, 100]) */
   blankRange?: [number, number];
   /** Value format: integer (default), float, or string */
@@ -116,6 +114,10 @@ export interface ControlConfig {
   blankProximity?: number;
   /** If true, cycling (Up/Down) is disabled — display-only blank */
   blankReadOnly?: boolean;
+  /** If true, `_` is appended as the last cycling option so the user can dismiss the value */
+  blankDismissible?: boolean;
+  /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
+  blankSuffix?: string;
   /** Regex pattern matching values that can be stepped (default: ^-?\d+(\.\d+)?$) */
   stepPattern?: string;
   /** Arithmetic step size for Up/Down (default: 1) */
@@ -509,6 +511,8 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankScript?: string;
   blankProximity?: number;
   blankReadOnly?: boolean;
+  blankDismissible?: boolean;
+  blankSuffix?: string;
   stepPattern?: string;
   step?: number;
   stepMin?: number;
@@ -572,6 +576,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankScript': fm.blankScript = value; break;
       case 'blankProximity': fm.blankProximity = parseInt(value, 10); break;
       case 'blankReadOnly': fm.blankReadOnly = value === 'true'; break;
+      case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
+      case 'blankSuffix': fm.blankSuffix = value; break;
       case 'stepPattern': fm.stepPattern = value; break;
       case 'step': fm.step = parseFloat(value) || undefined; break;
       case 'stepMin': fm.stepMin = parseFloat(value); break;
@@ -639,6 +645,8 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankTip !== undefined) control.blankTip = frontmatter.blankTip;
       if (frontmatter.blankProximity !== undefined) control.blankProximity = frontmatter.blankProximity;
       if (frontmatter.blankReadOnly !== undefined) control.blankReadOnly = frontmatter.blankReadOnly;
+      if (frontmatter.blankDismissible !== undefined) control.blankDismissible = frontmatter.blankDismissible;
+      if (frontmatter.blankSuffix !== undefined) control.blankSuffix = frontmatter.blankSuffix;
       if (frontmatter.stepPattern !== undefined) control.stepPattern = frontmatter.stepPattern;
       if (frontmatter.step !== undefined) control.step = frontmatter.step;
       if (frontmatter.stepMin !== undefined) control.stepMin = frontmatter.stepMin;
@@ -665,8 +673,6 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
           ? folderPath + '/' + frontmatter.blankScript.slice(2)
           : frontmatter.blankScript;
       }
-      // Colocate state file with control folder
-      control.stateFile = folderPath + '/state.txt';
       result.controls = { [control.control]: control };
       break;
     }

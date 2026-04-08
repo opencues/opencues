@@ -177,7 +177,7 @@ var _rEp="https://api.groq.com/openai/v1/chat/completions";
 var _rCuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
 var _rBlanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
 var _rDefaultMod=_rCuesPc.model||_rBlanksPc.model||"openai/gpt-oss-120b";
-var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn,_mkw,_ctx){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _sf2=_ctrl&&_ctrl.stateFile?_ctrl.stateFile:"/tmp/cue-control-"+_cn+".txt";try{var _sv=${requireFuncName}("fs").readFileSync(_sf2,"utf8").trim();return _sv||null;}catch(_e){var _bs2=_ctrl&&(_ctrl.blankScript||_ctrl.script);if(_bs2){var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");try{var _bsArgs=["get"].concat(_mkw?[_mkw]:[]).concat(_ctx?_ctx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_mkw||"").toLowerCase();}):[]); var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome)].concat(_bsArgs),{timeout:6000,encoding:"utf8"}).trim();return _bsOut||null;}catch(_e2){}}return null;}}});
+var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn,_mkw,_ctx){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _bs2=_ctrl&&(_ctrl.blankScript||_ctrl.script);if(!_bs2)return null;var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");var _bsArgs=["get"].concat(_mkw?[_mkw]:[]).concat(_ctx?_ctx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_mkw||"").toLowerCase();}):[]); try{var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome)].concat(_bsArgs),{timeout:6000,encoding:"utf8"}).trim();return _bsOut||null;}catch(_e){return null;}}});
 globalThis._cueResolver=globalThis._cuesCore.createResolver(_rSources,{parallel:false,timeout:30000,continueOnError:true});
 globalThis._resolverGeneration=(globalThis._resolverGeneration||0)+1;
 // Clear analyzed cache — all visible words re-analyze against the new config
@@ -202,7 +202,7 @@ try{
 var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
 var _fs=${requireFuncName}("fs");
 var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
-if(_ex.cueTip!==globalThis._cueControlTip){_ex.cueTip=globalThis._cueControlTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));}
+if(_ex.cueTip!==globalThis._cueControlTip){_ex.cueTip=globalThis._cueControlTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();}
 }catch(_ei){}
 },200);
 }
@@ -250,24 +250,32 @@ var _home=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _rawScript=_ad.script||_ad.scriptPath||(_home+"/.claude/actions/"+_ad.control+".sh");
 var _script=_rawScript.replace(/^~/,_home);
 var _args=["bash",_script].concat(_dir>0?_ad.upArgs||["up"]:_ad.downArgs||["down"]);
-// In-memory state: no file I/O on hot path after first press
-var _stateFile=_ad.stateFile||"/tmp/cue-control-"+_ad.control+".txt";
 var _dynTip=_ad.tip||_ad.control;
-if(!globalThis._cueControlValues)globalThis._cueControlValues={};
-var _curVal=globalThis._cueControlValues[_ad.control];
-if(_curVal==null){try{_curVal=parseInt(_reqFn("fs").readFileSync(_stateFile,"utf8").trim(),10);}catch(_e3){}}
-if(typeof _curVal==="number"&&!isNaN(_curVal)){
-var _dirArgs=_dir>0?(_ad.upArgs||["up","10"]):(_ad.downArgs||["down","10"]);
-var _amt=parseInt(_dirArgs[_dirArgs.length-1],10)||10;
-var _newVal=_dir>0?Math.min(100,_curVal+_amt):Math.max(0,_curVal-_amt);
-globalThis._cueControlValues[_ad.control]=_newVal;
-globalThis._cueControlTip=_dynTip;
-}else{globalThis._cueControlTip=_dynTip;}
+// Static tip fallback — live tip updated by script get after spawn
+if(!globalThis._cueControlTip)globalThis._cueControlTip=_dynTip;
 // Debounce spawn: rapid presses only fire script once with final value
 if(!globalThis._cueControlTimers)globalThis._cueControlTimers={};
 if(globalThis._cueControlTimers[_ad.control])clearTimeout(globalThis._cueControlTimers[_ad.control]);
 var _spawnArgs=_args.slice(0);
-globalThis._cueControlTimers[_ad.control]=setTimeout(function(){try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}},50);
+var _tipScript=_script;
+globalThis._cueControlTimers[_ad.control]=setTimeout(function(){
+try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}
+// After script applies the change, read live value and push directly to status line
+setTimeout(function(){
+try{
+var _lt=_reqFn("child_process").execSync("bash "+_tipScript+" get",{timeout:1000,encoding:"utf8"}).trim();
+if(_lt){
+globalThis._cueControlTip=_lt;
+var _ep2="/tmp/claude-highlight-state-"+process.pid+".json";
+var _fs2=_reqFn("fs");
+var _ex2=JSON.parse(_fs2.readFileSync(_ep2,"utf8"));
+_ex2.cueTip=_lt;_ex2.timestamp=Date.now();
+_fs2.writeFileSync(_ep2,JSON.stringify(_ex2));
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+}
+}catch(_e){}
+},200);
+},50);
 return{refresh:true};
 }
 // Control-bound blank cycling: blank positions bound to a control via blankKeywords
@@ -276,17 +284,20 @@ var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w
 if(_cbDef){
 var _cbMeta=_cbDef.metadata;
 if(_cbMeta.blankReadOnly)return null;
-globalThis._cueControlTip=_cbDef.cueTip||"";
+if(_cbDef.cueTip)globalThis._cueControlTip=_cbDef.cueTip;
 var _cbHome=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _cbRawScript=_cbMeta.blankScript||(_cbHome+"/.claude/actions/"+_cbMeta.controlName+".sh");
 var _cbScript=_cbRawScript.replace(/^~/,_cbHome);
 // Calculate target value, then call script with "set <value>" for exact control
 var _cbStep=_cbMeta.blankStep||1;
 var _cbRange=_cbMeta.blankRange||[0,100];
-var _cbCur=parseFloat(_curWord);if(isNaN(_cbCur))_cbCur=0;
+var _cbSuffix=_cbMeta.blankSuffix||"";
+var _cbCurStr=_cbSuffix&&_curWord.endsWith(_cbSuffix)?_curWord.slice(0,_curWord.length-_cbSuffix.length):_curWord;
+var _cbCur=parseFloat(_cbCurStr);if(isNaN(_cbCur))_cbCur=0;
 var _cbTarget=_dir>0?Math.min(_cbRange[1],_cbCur+_cbStep):Math.max(_cbRange[0],_cbCur-_cbStep);
-var _cbNewVal=String((_cbMeta.blankFormat||"integer")==="integer"?Math.round(_cbTarget):_cbTarget);
-try{_reqFn("child_process").execSync("bash "+_cbScript+" set "+_cbNewVal,{timeout:3000,stdio:"ignore"});}catch(_e){}
+var _cbNumStr=String((_cbMeta.blankFormat||"integer")==="integer"?Math.round(_cbTarget):_cbTarget);
+var _cbNewVal=_cbNumStr+_cbSuffix;
+try{_reqFn("child_process").execSync("bash "+_cbScript+" set "+_cbNumStr,{timeout:3000,stdio:"ignore"});}catch(_e){}
 var _cbText=globalThis._hlText;
 var _cbWordPos=0;
 for(var _cbWi=0;_cbWi<_hlIdx;_cbWi++){_cbWordPos=_cbText.indexOf(_allW[_cbWi],_cbWordPos)+_allW[_cbWi].length;}
@@ -365,6 +376,9 @@ var _nextAlt=(_curIdx+_dir+_dWord.alts.length)%_dWord.alts.length;
 _dWord.currentAltIndex=_nextAlt;
 var _newWord=_dWord.alts[_nextAlt];
 if(_newWord==null)return null;
+// Track dismissed blanks: when cycling to "_", prevent auto-populate from re-firing
+if(_newWord==="_"){if(!globalThis._dismissedBlanks)globalThis._dismissedBlanks={};globalThis._dismissedBlanks[_dIdx]=true;}
+else{if(globalThis._dismissedBlanks)delete globalThis._dismissedBlanks[_dIdx];}
 // Replace word in text (span-aware)
 var _spanLen=_dWord.spanLength||1;
 var _spanStart=_dIdx;
@@ -840,8 +854,9 @@ globalThis._dynDefs={words:_words,_model:"resolver",_auto:true};
 for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
 if(_apw.metadata&&_apw.metadata.controlName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
+if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
 globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0]};
-}
+}}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
 var _timingPath2="/tmp/claude-llm-timing-"+process.pid+".txt";

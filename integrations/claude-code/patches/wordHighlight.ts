@@ -561,11 +561,25 @@ var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.wo
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
 if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;if(_cbDw.metadata&&_cbDw.metadata.listControl)_hlExport.listControl=true;if(_cbDw.metadata&&_cbDw.metadata.blankReadOnly)_hlExport.blankReadOnly=true;}
+// Clear so returning to the word control triggers a fresh script get
+globalThis._cueControlTipWord=null;
 }else if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
 var _caTip=_caOvr?_caOvr.tip||_caOvr.control:_caWord;
+// On navigation to this word (index changed), call script get once and cache in _cueControlTip
+// On re-renders (same word, cycling), rely on _cueControlTip already set by dynamicHighlight interval
+var _navChanged=globalThis._cueControlTipWord!==_caWord;
+if(_navChanged){
+  globalThis._cueControlTipWord=_caWord;
+  if(_caOvr&&_caOvr.script){
+    try{var _liveTip=${requireFuncName}("child_process").execSync("bash "+_caOvr.script+" get",{timeout:2000,encoding:"utf8"}).trim();if(_liveTip)globalThis._cueControlTip=_liveTip;}
+    catch(_e){}
+  }
+}
+if(globalThis._cueControlTip)_caTip=globalThis._cueControlTip;
 _hlExport.cueTip=_caTip;
 }
+if(!_isCA&&!_cbDw)globalThis._cueControlTipWord=null;
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA&&!_cbDw){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}
@@ -573,6 +587,7 @@ if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||n
 }
 var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
 try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExport));}catch(_e){}
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // TTS: speak tip on navigation, cancel on deselect or word change
 // Check both _dynDefs (tips/LLM) and _cueControlOverrides (controls) for speak flag
 var _ttsShouldSpeak=false;
@@ -581,7 +596,8 @@ var _ttsWord=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs
 if(_ttsWord&&_ttsWord.speak){_ttsShouldSpeak=true;}
 else if(_hlExport.cueControl){var _ttsCtrl=(globalThis._cueControlOverrides||{})[(_hlExport.highlightedWord||"").toLowerCase()];if(_ttsCtrl&&_ttsCtrl.speak)_ttsShouldSpeak=true;}
 }
-var _ttsKey=_ttsShouldSpeak?(_idx+":"+_hlExport.cueTip):null;
+// For cue-controls, key on index only — tip content changes on every cycle (tip.txt) and must not re-trigger TTS
+var _ttsKey=_ttsShouldSpeak?(_hlExport.cueControl?String(_idx):(_idx+":"+_hlExport.cueTip)):null;
 if(_ttsKey!==globalThis._ttsLastKey){
 globalThis._ttsLastKey=_ttsKey;
 if(globalThis._ttsTimer){clearTimeout(globalThis._ttsTimer);globalThis._ttsTimer=null;}
@@ -670,6 +686,7 @@ return;
 if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){
 globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
+globalThis._dismissedBlanks=null;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }
 }${exportCode}

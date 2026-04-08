@@ -10,5 +10,6 @@ downArgs: ["down", "6"]
 blankKeywords: volume, vol, sound, audio
 blankStep: 6
 blankAutoPopulate: true
+blankSuffix: %
 blankScript: ./volume-blank.sh
 ---

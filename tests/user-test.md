@@ -33,14 +33,14 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 ## Control-bound blanks
 
 ### Auto-populate
-- [ ] `volume _` — `_` replaced with actual system volume number
-- [ ] Number is dimmed (gray)
+- [ ] `volume _` — `_` replaced with actual system volume (e.g. `50%`)
+- [ ] Value is dimmed (gray)
 - [ ] Status line empty (no `blankTip` set)
 
 ### Cycling
-- [ ] Navigate to the number, Up — increases by 6, actual volume changes
+- [ ] Navigate to the value, Up — increases by 6 (e.g. `50%` → `56%`), actual volume changes
 - [ ] Down — decreases by 6, actual volume changes
-- [ ] Displayed number matches actual system volume
+- [ ] Displayed value includes `%` suffix and matches actual system volume
 
 ### Keywords + proximity
 - [ ] `volume _` — matches (adjacent, proximity 0)
@@ -53,7 +53,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Clear input, type `volume _` again — gets fresh value, not cached
 
 ### Ownership model
-- [ ] `volume _` populates with e.g. "64"
+- [ ] `volume _` populates with e.g. "64%"
 - [ ] Delete "64", type `hello` — "hello" gets normal grammar alts, NOT stuck as control-blank
 - [ ] Clear entire input — no ghost control-blank positions
 - [ ] Type `the happy dog` — normal behaviour, no stale control-blank at any index
@@ -68,8 +68,9 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] `affirmation _` — blank auto-populates with "I am strong" (first value)
 - [ ] Cursor moves to end of populated value
 - [ ] Navigate to it — whole phrase highlighted as span
-- [ ] Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → wraps
+- [ ] Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → `_` (dismissible) → wraps
 - [ ] Status line shows "Daily affirmations" (tip only, not the word)
+- [ ] Cycle to `_` — blank is dismissed, auto-populate does NOT re-fire on next analysis
 
 ## Read-only API controls (stocks)
 

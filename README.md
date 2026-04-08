@@ -12,16 +12,21 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 | **blanks.md** | Fill-in-the-blank modes with prompt + parser per mode | `### math` with `parser: compute` |
 | **controls.md** | Cue-controls — words that trigger external scripts | `"volume"` runs a volume control script |
 | **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
-| **controls/{name}/** | Self-contained control with colocated script + state | `controls/volume/cue.md` + `volume.sh` + `state.txt` |
+| **controls/{name}/** | Self-contained control with colocated script | `controls/volume/cue.md` + `volume.sh` |
 
 Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Install (Claude Code)
 
+**Prerequisites:** Node.js 18+, Claude Code, a [Groq API key](https://console.groq.com) (free).
+
 ```bash
+# 1. Add your Groq key to ~/.bashrc (must be set before Claude Code starts)
+echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
+
+# 2. Clone and install
 git clone https://github.com/wkasekende/opencues ~/opencues
 ~/opencues/integrations/claude-code/patches/setup.sh
-export GROQ_API_KEY="your-key"  # add to ~/.bashrc
 ```
 
 Restart Claude Code. Done.
@@ -43,10 +48,13 @@ Restart Claude Code. Done.
 - **Cue-controls** — `volume` triggers system volume control
 - **Control-bound blanks** — `volume _` auto-populates with actual system volume; cycle to change it
 - **Step controls** — `1.5f` → `2f` → `2.5f`, works with any suffix (`px`, `em`, `%`)
-- **List controls** — `affirmation _` cycles through "I am strong", "I am brave", ...
+- **List controls** — `affirmation _` cycles through "I am strong", "I am brave", ... (cycle to `_` to dismiss)
+- **Dynamic list controls** — `HN posts _` fetches live Hacker News titles; Up/Down scrolls through them
 - **API controls** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
 - **Secondary display** — highlighted words show cue-tips
 - **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed
+
+> New to the terminology? See [docs/glossary.md](docs/glossary.md) for definitions of cues, blanks, controls, and sources.
 
 ## How it works
 
@@ -112,7 +120,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies.
 
 ### integrations/claude-code
 
-Integrates cues-core into Claude Code via [tweakcc](https://github.com/anthropics/tweakcc).
+Integrates cues-core into Claude Code via [tweakcc](https://github.com/Piebald-AI/tweakcc).
 
 - **patches/setup.sh** — one-command installer
 - **patches/wordHighlight.ts** — word navigation, number handling, ANSI rendering
@@ -213,9 +221,13 @@ In `~/.tweakcc/config.json`:
 
 ### Words don't turn gray
 
-1. Check API key: `echo $GROQ_API_KEY`
-2. Check cues-core: `node -e "require(process.env.HOME+'/.claude/node_modules/cues-core')"`
-3. Enable debug: `DEBUG=cues* claude`
+Work through these in order:
+
+1. **Did you restart Claude Code?** Patches only take effect after a restart.
+2. **Is the API key in `~/.bashrc`?** `export GROQ_API_KEY=...` in a terminal session is not enough — Claude Code won't see it unless it's in `~/.bashrc` (and you've started a new session since adding it). Check: `echo $GROQ_API_KEY`
+3. **Did setup.sh finish successfully?** It should print `Setup Complete`. If it printed `ERROR: Claude Code not found`, patches were never applied — install Claude Code first, then re-run `setup.sh`.
+4. **Check cues-core loaded:** `node -e "require(process.env.HOME+'/.claude/node_modules/cues-core')"`
+5. **Enable debug logging:** `DEBUG=cues* claude` — look for resolver output as you type.
 
 ### Syntax error after patching
 

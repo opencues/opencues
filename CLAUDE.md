@@ -36,8 +36,7 @@ opencues/
 │   │   ├── cue.md                 # Control config (type: control, blankKeywords, etc.)
 │   │   ├── volume.sh              # Word-control script: up/down via key presses
 │   │   ├── volume-blank.sh        # Blank-control script: get/set via Core Audio API
-│   │   ├── VolCtl.cs              # C# source for Windows Core Audio API (compiled by setup.sh)
-│   │   └── state.txt              # Runtime state (gitignored)
+│   │   └── VolCtl.cs              # C# source for Windows Core Audio API (compiled by setup.sh)
 │   ├── brightness/
 │   │   ├── cue.md
 │   │   └── brightness.sh
@@ -49,9 +48,12 @@ opencues/
 │   │   ├── cue.md                 # Read-only API control (blankReadOnly, Finnhub)
 │   │   ├── stock-blank.sh         # Fetch script: get <keyword> → resolve ticker → price
 │   │   └── tickers.json           # Keyword-to-ticker mapping
-│   └── weather/
-│       ├── cue.md                 # Read-only API control (Open-Meteo, context-driven)
-│       └── weather-blank.sh       # Fetch script: geocode + forecast (any city/country)
+│   ├── weather/
+│   │   ├── cue.md                 # Read-only API control (Open-Meteo, context-driven)
+│   │   └── weather-blank.sh       # Fetch script: geocode + forecast (any city/country)
+│   └── hackernews/
+│       ├── cue.md                 # Dynamic list control (blankDismissible, RSS feed)
+│       └── hn-blank.sh            # Fetch script: RSS → one title per line → scrollable list
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library
@@ -88,12 +90,12 @@ opencues/
 │
 ├── docs/                          # General documentation
 │   ├── overview.md                # System layers, API, interfaces, usage examples
-│   ├── features/                  # One file per feature concept (14 features)
+│   ├── features/                  # One file per feature concept (16 features)
 │   │   ├── README.md              # Feature index
 │   │   ├── navigation.md          # Feature 1: Word navigation
 │   │   ├── cycling.md             # Feature 2: Word cycling
-│   │   ├── ...                    # Features 3-14 (one file each)
-│   │   └── status-display.md      # Feature 14: Status display
+│   │   ├── ...                    # Features 3-15 (one file each)
+│   │   └── secondary-display.md   # Feature 14: Secondary display (status line)
 │   ├── guides/                    # Task-oriented how-tos
 │   │   ├── adding-a-feature.md    # How to add a new feature
 │   │   ├── adding-an-integration.md # How to add a new editor integration
@@ -134,7 +136,7 @@ The setup script:
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
 - **integrations/claude-code/docs/** — Claude Code implementation docs (8 files)
-- **docs/features/** — 14 feature concepts (one file each)
+- **docs/features/** — 16 feature concepts (one file each)
 
 ---
 

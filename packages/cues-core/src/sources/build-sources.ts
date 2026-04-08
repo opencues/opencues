@@ -31,7 +31,7 @@ export interface BuildSourcesOptions {
   defaultModel: string;
   /** Merged control configs (for control-bound blanks) */
   controls?: Record<string, ControlConfig>;
-  /** I/O adapter: reads current control value from state file (raw string) */
+  /** I/O adapter: calls blankScript get to read current live control value (raw string) */
   readControlState?: (controlName: string) => string | null;
 }
 

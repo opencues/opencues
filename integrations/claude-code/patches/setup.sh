@@ -17,6 +17,17 @@ NEEDS_TWEAKCC_BUILD=false
 
 echo "=== OpenCues Setup ==="
 
+# Check Node.js >= 18
+if ! command -v node &>/dev/null; then
+  echo "Error: Node.js is not installed. Please install Node.js 18 or later."
+  exit 1
+fi
+NODE_MAJOR=$(node -e "process.stdout.write(String(process.versions.node.split('.')[0]))")
+if [ "$NODE_MAJOR" -lt 18 ]; then
+  echo "Error: Node.js 18+ required (found $(node --version))."
+  exit 1
+fi
+
 # 1. Clone or reuse tweakcc
 if [ ! -d "$TWEAKCC_DIR" ]; then
   echo "Cloning tweakcc..."
@@ -292,12 +303,14 @@ if [ -n "$CLI_JS" ]; then
   else
     echo "Warning: Syntax check failed"
   fi
+  echo ""
+  echo "=== Setup Complete — restart Claude Code to activate ==="
 else
-  echo "Claude Code cli.js not found."
+  echo ""
+  echo "=== ERROR: Claude Code not found ==="
+  echo "cli.js was not found. Apply patches manually once Claude Code is installed:"
   echo "  cd $TWEAKCC_DIR"
   echo "  CLI_JS=\$(find ~/.claude -name 'cli.js' -path '*claude-code*' | head -1)"
   echo "  TWEAKCC_CC_INSTALLATION_PATH=\"\$CLI_JS\" node dist/index.mjs --apply"
+  exit 1
 fi
-
-echo ""
-echo "=== Setup Complete ==="

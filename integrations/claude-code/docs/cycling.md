@@ -13,13 +13,26 @@ Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/fe
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
 1. **Cue-control (custom)** → spawn `~/.claude/actions/{control}.sh`, return
-2. **Control-bound blanks** → sync script call, replace blank value, return (skipped for list controls with `stepValues`)
+2. **Control-bound blanks** → sync script call, replace blank value, return (skipped for list controls with `stepValues` or multi-line script output — those go through step 4)
 3. **Step control** → config-driven increment/decrement via `stepPattern`/`stepSuffixes`, return
 4. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
 5. **Tip-lookup fallback** → if word is in `_localCueMap` but not in `_dynDefs`, resolve alts on-the-fly from tips and populate `_dynDefs` (covers cases where eager lookup was skipped, e.g., during pending LLM calls)
 6. **Fall through** → no action
 
 `_isCueControl(word)` is the unified check — it tests `_cueControlOverrides` (word controls) and `_stepPatterns` (step controls). Used by tips lookup and status line export to exclude cue-controls from tips/alts display.
+
+## CC-Specific: Dynamic List Controls
+
+When `ControlBlankSource` calls `blankScript get` and the output contains multiple lines, each line becomes a cycling alternative — same as static `stepValues` but populated from live data (e.g., RSS feed titles from Hacker News). The resulting `WordDef` has `metadata.listControl: true` and goes through the normal alt cycling path (step 4), not the script-call path (step 2).
+
+## CC-Specific: Dismissible Blanks
+
+When a control has `blankDismissible: true`, `ControlBlankSource` appends `_` as the last alternative in both list controls (`stepValues`) and dynamic list controls. In `_cycleAlt`, when the user cycles to `_`:
+
+- `globalThis._dismissedBlanks[wordIndex] = true` is set
+- Auto-populate checks `_dismissedBlanks` before firing — dismissed positions are skipped
+
+Dismissed positions are cleared when the input text changes (`wordHighlight.ts` resets `globalThis._dismissedBlanks = null` on text change), so a new sentence re-triggers auto-populate normally.
 
 ## CC-Specific: Tips Protection from LLM
 

@@ -19,10 +19,11 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 9 | [Multi-Word Spans](multi-word-spans.md) | Alternatives that are multiple words |
 | 10 | [Per-Word Clearing](per-word-clearing.md) | Preserve alternatives when editing text |
 | 11 | [Cue-Controls](cue-controls.md) | Words that trigger external controls |
-| 12 | [Auto-Submit](auto-submit.md) | Automatic analysis as you type |
-| 13 | [Cursor Export](cursor-export.md) | Export cursor position for external tools |
-| 14 | [Secondary Display](secondary-display.md) | Show cue-tips in a secondary area |
-| 15 | [Hot-Reload Config](hot-reload-config.md) | Config file changes take effect without restart |
+| 12 | [Control Blanks](control-blanks.md) | Blanks bound to controls — auto-populate, step, list, read-only |
+| 13 | [Auto-Submit](auto-submit.md) | Automatic analysis as you type |
+| 14 | [Cursor Export](cursor-export.md) | Export cursor position for external tools |
+| 15 | [Secondary Display](secondary-display.md) | Show cue-tips in a secondary area |
+| 16 | [Hot-Reload Config](hot-reload-config.md) | Config file changes take effect without restart |
 
 ## Adding a new feature
 

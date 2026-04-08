@@ -35,8 +35,11 @@ Script execution is debounced: rapid presses queue a single spawn after 50 ms wi
 
 Two modes:
 
-- **Script-based** (default): Runs the control's script synchronously (`execSync`, 3 s timeout), then reads the new value from the control's state file. The `blankFormat` field determines how the value is stored in `_cueControlValues`.
+- **Script-based** (default): Runs the control's script synchronously (`execSync`, 3 s timeout) then calls `blankScript get` for the new live value. The `blankFormat` field determines how the value is parsed for display.
 - **List-based** (`stepValues`): When the control has a `stepValues` array, the blank auto-populates with the first value and Up/Down cycles through the list via normal alternative cycling. Multi-word values are span-tracked automatically. No script is needed.
+- **Dynamic list** (multi-line script output): When `blankScript get` returns multiple lines, each line becomes a cycling alternative. Same behavior as `stepValues` but populated from live data (e.g., RSS feeds, API results).
+
+All list-based controls (static `stepValues` and dynamic multi-line) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
 
 Example list control (`controls/affirmations/cue.md`):
 ```yaml
@@ -46,9 +49,10 @@ name: affirmations
 blankKeywords: affirmation, affirm
 stepValues: ["I am strong", "I am brave", "I am worthy", "I am enough"]
 tip: Daily affirmations
+blankDismissible: true
 ---
 ```
-Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles through the list.
+Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles through the list. Cycle past the last value → `_` to dismiss.
 
 ### 3. Step controls
 
