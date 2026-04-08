@@ -81,17 +81,17 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Read-only API controls (stocks)
 
-- [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price as `$133.44` (requires `FINNHUB_API_KEY`)
+- [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price (e.g. `$133.44`) (requires `FINNHUB_API_KEY`)
 - [ ] `NVDA _` — blank auto-populates with Nvidia stock price
 - [ ] Navigate to the price, Up/Down — no-op (read-only, no change)
 - [ ] Status line shows "Stock price"
 - [ ] Without `FINNHUB_API_KEY` — blank stays as `_` (graceful degradation)
 
 ### Keyword expansion
-- [ ] `Rddt stock _` → becomes `Reddit stock $133.44` (ticker expanded, blank filled, both in one pass)
-- [ ] `NVDA _` → becomes `Nvidia $...` (all-caps ticker also expands)
-- [ ] `Reddit stock _` → becomes `Reddit stock $133.44` (full name — no expansion needed, passes through)
-- [ ] `Msft _` → becomes `Microsoft $...`
+- [ ] `Rddt stock _` → `Reddit stock $133.44` (ticker expanded, blank filled, both in one pass)
+- [ ] `NVDA _` → `Nvidia $133.44` (all-caps ticker — case-insensitive expansion)
+- [ ] `Reddit stock _` → `Reddit stock $133.44` (full name — no expansion needed, passes through unchanged)
+- [ ] `Msft _` → `Microsoft $...` (spot-check another ticker)
 
 ## Read-only API controls (weather)
 
