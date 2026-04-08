@@ -29,6 +29,8 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Type `volume` — navigate to it, shows tip "system volume control"
 - [ ] Up/Down — actual volume changes, Windows OSD appears
 - [ ] TTS speaks the tip (if `speak: true` in config)
+- [ ] Type `brightness` — navigate to it, shows live tip e.g. "brightness: 70%"
+- [ ] Up/Down — actual screen brightness changes
 
 ## Control-bound blanks
 
@@ -57,6 +59,11 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Delete "64", type `hello` — "hello" gets normal grammar alts, NOT stuck as control-blank
 - [ ] Clear entire input — no ghost control-blank positions
 - [ ] Type `the happy dog` — normal behaviour, no stale control-blank at any index
+
+### Brightness blank
+- [ ] `brightness _` — blank auto-populates with actual screen brightness (e.g. `70`)
+- [ ] `bright _` — also matches
+- [ ] Navigate to value, Up/Down — brightness changes by 10, displayed value updates
 
 ### Both controls in same input
 - [ ] Type `volume _` — "volume" is word-control, number is blank-control
