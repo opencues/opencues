@@ -251,6 +251,7 @@ Type `HN posts _` → auto-populates with top post. Up/Down scrolls through all 
 - [ ] Script queries live system value (no file caching)
 - [ ] For control-bound blanks: `blankKeywords`, `blankAutoPopulate` set in `cue.md`
 - [ ] For read-only blanks: `blankReadOnly: true` set in `cue.md`
+- [ ] For keyword expansion: `blankKeywordExpansions.<keyword>: Display Name` set in `cue.md` (optional)
 - [ ] Restart Claude Code
 
 > **No need to run `setup.sh`** — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patch files in `integrations/claude-code/patches/`.

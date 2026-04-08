@@ -661,11 +661,24 @@ var _ap=globalThis._pendingAutoPopulate;
 var _apWords=_hlText.split(/\\s+/).filter(function(w){return w;});
 if(_ap.index<_apWords.length&&_apWords[_ap.index]==="_"){
 globalThis._pendingAutoPopulate=null;
+// Keyword expansion: replace typed shorthand with full display name before blank fill
+var _apBase=_hlText;
+if(_ap.keywordExpansion){
+var _ke=_ap.keywordExpansion;
+var _keW=_apBase.split(/\\s+/).filter(function(w){return w;});
+if(_ke.wordIndex<_keW.length){
+var _keP=0;
+for(var _kei=0;_kei<_ke.wordIndex;_kei++){_keP=_apBase.indexOf(_keW[_kei],_keP)+_keW[_kei].length;}
+var _keS=_apBase.indexOf(_keW[_ke.wordIndex],_keP);
+if(_keS>=0){_apBase=_apBase.slice(0,_keS)+_ke.expansion+_apBase.slice(_keS+_keW[_ke.wordIndex].length);}
+}
+}
+var _apBaseWords=_apBase.split(/\\s+/).filter(function(w){return w;});
 var _apPos=0;
-for(var _apj=0;_apj<_ap.index;_apj++){_apPos=_hlText.indexOf(_apWords[_apj],_apPos)+_apWords[_apj].length;}
-var _apStart=_hlText.indexOf("_",_apPos);
+for(var _apj=0;_apj<_ap.index;_apj++){_apPos=_apBase.indexOf(_apBaseWords[_apj],_apPos)+_apBaseWords[_apj].length;}
+var _apStart=_apBase.indexOf("_",_apPos);
 if(_apStart>=0){
-var _apNew=_hlText.slice(0,_apStart)+_ap.value+_hlText.slice(_apStart+1);
+var _apNew=_apBase.slice(0,_apStart)+_ap.value+_apBase.slice(_apStart+1);
 globalThis._hlText=_apNew;
 globalThis._dynLastAnalyzed=_apNew.split(/\\s+/).filter(function(w){return w;});
 globalThis._dynPrevWords=globalThis._dynLastAnalyzed.slice();

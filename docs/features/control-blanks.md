@@ -58,6 +58,7 @@ blankProximity: 0                    # max words between keyword and _ (optional
 | `blankReadOnly` | boolean | `false` | If true, cycling (Up/Down) is disabled — display-only blank. Used for values fetched from external APIs (e.g., stock prices) where the user can view but not change the value. |
 | `blankDismissible` | boolean | `false` | If true, `_` is appended as the last cycling option so the user can dismiss the value. Once dismissed, auto-populate will not re-fire until the text changes. |
 | `blankSuffix` | string | *(none)* | Suffix appended to the displayed value (e.g. `%` shows `50%`). Stripped before arithmetic, re-appended after cycling. The script always receives and returns plain numbers. |
+| `blankKeywordExpansions` | object | *(none)* | Map from keyword (lowercase) to display name. When a blank auto-populates, the matched keyword in the text is replaced with its expansion (e.g. `rddt` → `Reddit`). Supports dot-notation (`blankKeywordExpansions.rddt: Reddit`) or JSON (`blankKeywordExpansions: {"rddt":"Reddit"}`). |
 
 ### Tips Behaviour
 
@@ -260,11 +261,13 @@ controls/stocks/
 - **`blankReadOnly: true`** — stock prices can't be changed, so cycling is disabled.
 - **`blankProximity: 2`** — allows `Reddit Stock _` (keyword "reddit" is 2 words from `_`).
 - **`blankFormat: string`** — prices are text, not numbers to be incremented.
-- **`matchedKeyword` pipeline** — `ControlBlankSource` captures which keyword triggered the match ("reddit") and passes it to `readControlState`, which passes it to the script as `get reddit`.
-- **Shared cache** — reuses `/tmp/ccline/stock_*.json` from the statusline component for zero redundant API calls.
+- **`matchedKeyword` pipeline** — `ControlBlankSource` captures which keyword triggered the match ("rddt") and passes it to `readControlState`, which passes it to the script as `get rddt`.
+- **`blankKeywordExpansions`** — maps ticker abbreviations to display names (`rddt` → `Reddit`, `nvda` → `Nvidia`). When `Rddt stock _` auto-populates, "Rddt" is replaced with "Reddit" in the same pass.
+- **`$` prefix** — script outputs `$133.44` directly (string format, so no suffix stripping).
+- **Always live** — fetches directly from Finnhub API on every auto-populate. No caching.
 - **Graceful degradation** — without `FINNHUB_API_KEY`, the script returns nothing and the blank stays as `_`.
 
-**Usage:** Type `Reddit Stock _` → blank fills with current RDDT price. To add a new stock, add one entry to `tickers.json` and one keyword to `blankKeywords`.
+**Usage:** Type `Rddt stock _` → becomes `Reddit stock $133.44`. Type `Reddit Stock _` → becomes `Reddit stock $133.44` (full name passes through unchanged). To add a new stock, add one entry to `tickers.json` and one keyword to `blankKeywords`.
 
 ---
 

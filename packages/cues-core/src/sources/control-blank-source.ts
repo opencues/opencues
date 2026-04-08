@@ -46,27 +46,28 @@ export class ControlBlankSource implements CueSource {
     const contextLower = context.words.map(w => w.toLowerCase());
     let matched: ControlConfig | undefined;
     let matchedKeyword: string | undefined;
+    let matchedKeywordIndex = -1;
 
     for (const [, ctrl] of Object.entries(this.controls)) {
       if (!ctrl.blankKeywords?.length) continue;
       const proximity = ctrl.blankProximity ?? 0; // default: adjacent (0 words between)
 
-      const hitKw = ctrl.blankKeywords.find(kw => {
+      for (const kw of ctrl.blankKeywords) {
         // Check all occurrences — the keyword nearest to _ matters, not the first
         let idx = contextLower.indexOf(kw);
         while (idx !== -1) {
           const gap = Math.abs(idx - blankIndex) - 1;
-          if (gap <= proximity) return true;
+          if (gap <= proximity) {
+            matched = ctrl;
+            matchedKeyword = kw;
+            matchedKeywordIndex = idx;
+            break;
+          }
           idx = contextLower.indexOf(kw, idx + 1);
         }
-        return false;
-      });
-
-      if (hitKw) {
-        matched = ctrl;
-        matchedKeyword = hitKw;
-        break;
+        if (matched) break;
       }
+      if (matched) break;
     }
 
     if (!matched) {
@@ -140,6 +141,14 @@ export class ControlBlankSource implements CueSource {
       ? [displayValue]
       : ['_'];
 
+    // Keyword expansion: if config maps this keyword to a display name, pass it through
+    const expansion = matchedKeyword
+      ? matched.blankKeywordExpansions?.[matchedKeyword.toLowerCase()]
+      : undefined;
+    const keywordExpansion = expansion && matchedKeywordIndex >= 0
+      ? { keyword: context.words[matchedKeywordIndex], expansion, wordIndex: matchedKeywordIndex }
+      : undefined;
+
     results.push({
       wordIndex: blankIndex,
       word: '_',
@@ -155,6 +164,7 @@ export class ControlBlankSource implements CueSource {
         blankFormat: format,
         blankReadOnly: matched.blankReadOnly,
         blankSuffix: matched.blankSuffix,
+        ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
       },
     });
 

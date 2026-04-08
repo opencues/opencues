@@ -136,6 +136,8 @@ export interface ControlConfig {
   stepScript?: string;
   /** Ordered list of values to cycle through on a control-bound blank */
   stepValues?: string[];
+  /** Map from keyword (lowercase) to display expansion applied at auto-populate time (e.g. { rddt: "Reddit" }) */
+  blankKeywordExpansions?: Record<string, string>;
 }
 
 export interface CuesMdConfig {
@@ -522,6 +524,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   stepSuffixes?: string;
   stepScript?: string;
   stepValues?: string[];
+  blankKeywordExpansions?: Record<string, string>;
 }
 
 /**
@@ -587,6 +590,15 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'stepSuffixes': fm.stepSuffixes = value; break;
       case 'stepScript': fm.stepScript = value; break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
+      case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
+      default:
+        // Dot-notation: blankKeywordExpansions.rddt: Reddit
+        if (key.startsWith('blankKeywordExpansions.')) {
+          const subkey = key.slice('blankKeywordExpansions.'.length).toLowerCase();
+          if (!fm.blankKeywordExpansions) fm.blankKeywordExpansions = {};
+          fm.blankKeywordExpansions[subkey] = value;
+        }
+        break;
     }
   }
 
@@ -657,6 +669,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
         control.stepSuffixes = frontmatter.stepSuffixes.split(/[\s,]+/).filter(s => s.length > 0);
       }
       if (frontmatter.stepValues !== undefined) control.stepValues = frontmatter.stepValues;
+      if (frontmatter.blankKeywordExpansions !== undefined) control.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
       // Resolve relative script paths
       if (frontmatter.stepScript) {
         control.stepScript = frontmatter.stepScript.startsWith('./')

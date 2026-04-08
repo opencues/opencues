@@ -44,6 +44,7 @@ Cue-controls are checked **first** in the cycling function (`_cycleAlt`) before 
 | `blankRange` | [number, number] | `[0, 100]` | Min/max for validation during auto-populate (used by `ControlBlankSource`) |
 | `blankTip` | string | (none) | Tip shown when the auto-populated blank value is highlighted |
 | `blankSuffix` | string | (none) | Suffix appended to the displayed value (e.g. `%` shows `50%`). Stripped before arithmetic. Script always receives plain numbers. |
+| `blankKeywordExpansions` | object | (none) | Map from keyword (lowercase) to display name. When auto-populate fires, the matched keyword word is replaced with its expansion (e.g. `rddt` → `Reddit`). |
 
 Controls can be defined in two ways:
 - **`controls.md`** — a JSON code block mapping control names to `ControlConfig` objects

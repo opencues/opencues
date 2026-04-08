@@ -855,7 +855,7 @@ for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
 if(_apw.metadata&&_apw.metadata.controlName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
 if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
-globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0]};
+globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null};
 }}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
