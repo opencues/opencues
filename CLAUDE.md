@@ -23,6 +23,7 @@ opencues/
 ├── cues.md                        # OpenCues config (tips, prompts, ignore)
 ├── blanks.md                      # Blank-fill modes (math, factual, grammar, etc.)
 ├── controls.md                    # Cue-controls (can be empty if using folders)
+├── opencues.md                    # System state (settings, current values, tips)
 ├── README.md                      # Public readme with install instructions
 │
 ├── cues/                          # Folder-based word cue configs

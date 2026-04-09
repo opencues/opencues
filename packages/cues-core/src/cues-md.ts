@@ -138,6 +138,10 @@ export interface ControlConfig {
   stepValues?: string[];
   /** Map from keyword (lowercase) to display expansion applied at auto-populate time (e.g. { rddt: "Reddit" }) */
   blankKeywordExpansions?: Record<string, string>;
+  /** If true, blank auto-populates as two independent words: selector (word N) + satellite (word N+1) */
+  blankSatellite?: boolean;
+  /** Display separator between selector and satellite in the text (default: ' '). Script always outputs tab-delimited. */
+  blankSatelliteSeparator?: string;
 }
 
 export interface CuesMdConfig {
@@ -525,6 +529,8 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   stepScript?: string;
   stepValues?: string[];
   blankKeywordExpansions?: Record<string, string>;
+  blankSatellite?: boolean;
+  blankSatelliteSeparator?: string;
 }
 
 /**
@@ -591,6 +597,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'stepScript': fm.stepScript = value; break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
+      case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
+      case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -670,6 +678,8 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       }
       if (frontmatter.stepValues !== undefined) control.stepValues = frontmatter.stepValues;
       if (frontmatter.blankKeywordExpansions !== undefined) control.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
+      if (frontmatter.blankSatellite !== undefined) control.blankSatellite = frontmatter.blankSatellite;
+      if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
       // Resolve relative script paths
       if (frontmatter.stepScript) {
         control.stepScript = frontmatter.stepScript.startsWith('./')

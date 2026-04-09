@@ -206,7 +206,7 @@ See `docs/features/control-blanks.md` for the full spec. Key integration points:
 
 1. **`readControlState` callback** — passed to `buildSourcesFromConfig`. Calls `blankScript get [keyword] [context...]` and returns the raw string output. Validation is config-driven by `blankRange` and `blankFormat`.
 2. **Result filter exception** — control-blank results have only 1 alternative but must pass through (normal filter requires >1).
-3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown. Grammar/LLM tips cannot override positions with `metadata.controlName`.
+3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular control blanks. Selector/satellite blanks use the `tips:` block from `opencues.md` instead. Grammar/LLM tips cannot override any position with `metadata.controlName`. See `docs/features/tip-priority.md` for the full resolution order.
 4. **Two-script pattern** — `blankScript` (for `get`/`set`) is separate from `script` (for `up`/`down`). The blank cycling handler calculates the target value and calls `blankScript set <value>` synchronously. Falls back to `script` if `blankScript` is not set.
 5. **Cycling runs synchronously** — unlike word-based controls which debounce and spawn detached, control-bound blank cycling runs the script synchronously then calls `script get` for the new value before updating the display.
 6. **Ownership model (critical)** — `metadata.controlName` must only be cleared by user edits, never by LLM results. Two separate code paths:

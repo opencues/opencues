@@ -98,6 +98,31 @@ export class ControlBlankSource implements CueSource {
       return { results };
     }
 
+    // Selector+satellite: script always outputs tab-delimited ("<selector>\t<satellite>").
+    // blankSatelliteSeparator controls display only — what appears in the text (default: space).
+    if (matched.blankSatellite && rawValue.includes('\t')) {
+      const sepIdx = rawValue.indexOf('\t');
+      const selectorText = rawValue.slice(0, sepIdx).trim();
+      const satelliteText = rawValue.slice(sepIdx + 1).trim();
+      const displaySep = matched.blankSatelliteSeparator ?? ' ';
+      results.push({
+        wordIndex: blankIndex,
+        word: '_',
+        alternatives: [selectorText],
+        source: 'control-blank',
+        priority: this.priority,
+        cueTip: matched.blankTip ?? matched.tip,
+        metadata: {
+          controlName: matched.control,
+          blankScript: matched.blankScript ?? matched.script,
+          selectorControl: true,
+          satelliteValue: satelliteText,
+          displaySeparator: displaySep,
+        },
+      });
+      return { results };
+    }
+
     // Dynamic list: if script returns multiple lines, treat as list control
     if (rawValue.includes('\n')) {
       const lines = rawValue.split('\n').map(l => l.trim()).filter(l => l.length > 0);

@@ -1,10 +1,23 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-04-09
 ---
 
 # Secondary Display
 
-The secondary display shows cue-tip text and cycle position for the highlighted word outside the text input. It is separated from the input so that tips do not interfere with editing. Custom cue-controls (word-based) always appear in the status line with a fallback tip (the control name). Control-bound blanks only appear if `blankTip` is set — otherwise the status line shows nothing for the auto-populated value.
+The secondary display shows cue-tip text and cycle position for the highlighted word outside the text input. It is separated from the input so that tips do not interfere with editing.
+
+Tips come from several sources depending on the word type:
+
+| Word type | Tip source | Example |
+|---|---|---|
+| **Selector word** | `opencues.md` `tips:` block (setting-level line) | `voice-mode` → "Gates TTS globally" |
+| **Satellite word** | `opencues.md` `tips:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
+| **Control blank** | `blankTip` in the control's `cue.md` | `72` → "System volume" |
+| **Cue-control keyword** | Live script `get` output, falls back to `tip` in `cue.md` | `volume` → "85" |
+| **Local cue (JSON tips)** | `claude-code-tips.json` via instant lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
+| **LLM-analyzed word** | LLM response via cues-core resolver | `happy` → "glad, joyful, content" |
+
+See [Tip Priority](tip-priority.md) for the full resolution order and how the branches interact.
 
 ---
 
@@ -30,7 +43,7 @@ The JSON file (`_hlExport`) contains these fields:
 | `highlightedWord` | string \| null | The highlighted word's text |
 | `wordCount` | number | Total number of words in the input |
 | `originalNumber` | number \| null | Original value when a step-controlled word was first navigated to |
-| `cueTip` | string \| null | Tip text for the highlighted word (from local cues, LLM, or control config) |
+| `cueTip` | string \| null | Tip text for the highlighted word (source depends on word type — see table above) |
 | `altCueTips` | object \| null | Map of each alternative to its own tip (for per-alternative tip display during cycling) |
 | `alts` | string[] \| null | Alternatives list for the highlighted word |
 | `currentAltIndex` | number \| undefined | Position within the alternatives list (0-based). Only set when a word with alternatives is highlighted. `undefined` when inactive or the word has no alts. |
@@ -38,7 +51,7 @@ The JSON file (`_hlExport`) contains these fields:
 | `timestamp` | number | `Date.now()` when the export was written |
 | `_debug` | object | Debug info: word, isCA, cueControlTip, overrides keys, cueValues |
 
-**Tip resolution priority:** Control-bound blanks (`metadata.controlName` set) use `cueTip` from the `WordDef`. Custom cue-controls use `tip` from `_cueControlOverrides` (falling back to the control name). All other words use `cueTip` and `altCueTips` from `_dynDefs`.
+**Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, control blanks, cue-control keywords, local cues, LLM).
 
 ---
 
@@ -56,10 +69,13 @@ The `highlight-statusline.sh` script is a self-contained bash script that reads 
 **Display format:**
 - **Inactive:** `user@host:dir` (PS1-style prefix, colored with tput — always shown)
 - **Regular word:** `word (pos/total) - tip` where pos is `currentAltIndex + 1` and total is the alts array length
-- **Cue-control:** `tip` only — the word is already highlighted in the input, so repeating it is redundant
+- **Selector word:** `tip` only — shows the setting-level tip from `opencues.md` (displayed as cue-control)
+- **Satellite word:** `tip` only — shows the per-value tip from `opencues.md`, falls back to setting-level (displayed as cue-control)
+- **Cue-control keyword:** `tip` only — the word is already highlighted in the input, so repeating it is redundant
+- **Control blank:** `tip` only — only shown if `blankTip` is set in the control's config (displayed as cue-control)
 - **No tip:** Output suppressed entirely
 
-The script suppresses output entirely for words that have neither alts nor a cue-control tip, so the status line stays clean.
+The script suppresses output entirely for words that have neither alts nor a tip, so the status line stays clean.
 
 ---
 
@@ -70,7 +86,9 @@ The script suppresses output entirely for words that have neither alts nor a cue
 - `CueResult.cueTip` provides the primary tip text for the focused word
 - `CueResult.altCueTips` maps each alternative to its own tip, enabling per-alternative tip display during cycling
 - `WordDef.speak` flag indicates whether the tip should be read aloud via TTS
-- Custom cue-controls always appear with a fallback tip (the control name); control-bound blanks only appear if `blankTip` is set
+- Control blanks use `blankTip` from the control's config; suppressed if unset
+- Cue-control keywords use live script output with fallback to `tip` from config
+- Selector/satellite tips are read from the backing config file (`opencues.md` `tips:` block), not from static metadata
 
 ### Integration responsibilities
 
@@ -78,5 +96,6 @@ The script suppresses output entirely for words that have neither alts nor a cue
 - Render the current word name, cycle position (e.g., "2/4"), and cue-tip text
 - Switch the displayed tip when cycling to show the per-alternative tip from `altCueTips`
 - Execute TTS when `speak` is true, using a platform-appropriate speech engine
-- Show custom cue-controls with a fallback tip (the control name); suppress control-bound blanks unless `blankTip` is set
-- Isolate control-blank tips so they appear only when the control-blank word is focused
+- Implement the tip resolution branches: control-bound words (selector/satellite, then regular blanks), cue-control keywords, then general words (local cues, LLM) — see [Tip Priority](tip-priority.md)
+- For selector/satellite words, read tips from the backing config's `tips:` block and hot-reload them
+- Suppress the display when no tip resolves for a word

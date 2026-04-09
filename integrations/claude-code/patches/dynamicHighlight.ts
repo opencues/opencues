@@ -166,6 +166,56 @@ globalThis._localCueMap=_newMap;
 }
 // Rebuild ignore words set
 if(_ign.length>0){globalThis._cuesIgnoreWords=new Set(_ign.map(function(w){return w.toLowerCase();}));}else{globalThis._cuesIgnoreWords=null;}
+// Parse opencues.md for settings definitions (_openCuesSettings map)
+var _ocPath=_rcwd+"/opencues.md";
+try{
+if(_rfs.existsSync(_ocPath)){
+var _ocContent=_rfs.readFileSync(_ocPath,"utf8");
+var _ocSettings={};var _ocCurrent={};var _ocTips={};var _ocSatTips={};var _ocVersion=1;
+var _ocLines=_ocContent.split(/\\r?\\n/);
+var _inSet=false;var _inTips=false;var _inFm=false;var _curTipKey=null;
+for(var _oli=0;_oli<_ocLines.length;_oli++){
+var _ol=_ocLines[_oli];var _olT=_ol.trim();
+if(_olT==="---"){_inFm=!_inFm;continue;}
+if(!_inFm)continue;
+if(_olT==="settings:"){_inSet=true;_inTips=false;_curTipKey=null;continue;}
+if(_olT==="tips:"){_inTips=true;_inSet=false;_curTipKey=null;continue;}
+if((_inSet||_inTips)&&_olT&&_ol.length>0&&_ol.charAt(0)!==" "&&_ol.charAt(0)!=="\\t"){_inSet=false;_inTips=false;_curTipKey=null;}
+if(_inSet&&_olT){
+var _ci=_olT.indexOf(":");
+if(_ci>0){
+var _sk=_olT.slice(0,_ci).trim();
+var _sv=_olT.slice(_ci+1).trim();
+if(_sv.length>=2&&_sv.charAt(0)==="["&&_sv.charAt(_sv.length-1)==="]"){
+_ocSettings[_sk]=_sv.slice(1,-1).split(",").map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+}}}else if(_inTips&&_olT){
+// Detect indent depth: 2-space = selector tip, 4-space = satellite value tip
+var _tipIndent=0;for(var _tii=0;_tii<_ol.length;_tii++){if(_ol.charAt(_tii)===" ")_tipIndent++;else break;}
+var _ti=_olT.indexOf(":");
+if(_ti>0){var _tk=_olT.slice(0,_ti).trim();var _tv=_olT.slice(_ti+1).trim();
+if(_tipIndent>=4&&_curTipKey&&_tv){
+// Satellite value tip (deeper indent under current setting)
+if(!_ocSatTips[_curTipKey])_ocSatTips[_curTipKey]={};
+_ocSatTips[_curTipKey][_tk]=_tv;
+}else if(_tv){
+// Selector tip (setting-level line)
+_ocTips[_tk]=_tv;_curTipKey=_tk;
+}else{
+// Key with no value on same line — just set current key for children
+_curTipKey=_tk;
+}}
+}else if(_olT&&_ol.length>0&&_ol.charAt(0)!==" "&&_ol.charAt(0)!=="\\t"){
+// Top-level key:value → current values
+var _ci2=_olT.indexOf(":");
+if(_ci2>0){var _ck=_olT.slice(0,_ci2).trim();var _cv=_olT.slice(_ci2+1).trim();if(_ck==="version"){_ocVersion=parseInt(_cv,10)||1;}else if(_cv&&_ck!=="settings"&&_ck!=="tips")_ocCurrent[_ck]=_cv;}
+}
+}
+globalThis._openCuesSettings=_ocSettings;
+globalThis._openCuesCurrent=_ocCurrent;
+globalThis._openCuesTips=_ocTips;
+globalThis._openCuesSatTips=_ocSatTips;
+globalThis._openCuesVersion=_ocVersion;
+}}catch(_oce){}
 _applied=true;
 globalThis._configLoadedAt=Date.now();
 }catch(_ce){}
@@ -280,7 +330,7 @@ return{refresh:true};
 }
 // Control-bound blank cycling: blank positions bound to a control via blankKeywords
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
-var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.controlName&&!w.metadata.listControl;});
+var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.controlName&&!w.metadata.listControl&&!w.metadata.selectorWord&&!w.metadata.satelliteWord;});
 if(_cbDef){
 var _cbMeta=_cbDef.metadata;
 if(_cbMeta.blankReadOnly)return null;
@@ -311,6 +361,156 @@ var _cbFmt=_cbMeta.blankFormat||"integer";
 globalThis._cueControlValues[_cbMeta.controlName]=_cbFmt==="string"?_cbNewVal:(_cbFmt==="float"?parseFloat(_cbNewVal)||0:parseInt(_cbNewVal,10)||0);
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_cbNewText,lenDiff:_cbNewVal.length-_curWord.length,wStart:_cbWStart,newLen:_cbNewVal.length};
+}
+// Selector word: cycles setting names and updates satellite word (multi-word aware on both sides)
+var _selDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.selectorWord===true;});
+if(_selDef){
+var _ocSet=globalThis._openCuesSettings||{};
+var _ocKeys=Object.keys(_ocSet);
+if(_ocKeys.length===0)return null;
+var _curSetIdx=_ocKeys.indexOf(_selDef.metadata.currentSetting||_selDef.word||_curWord);
+var _nextSetIdx=(_curSetIdx+_dir+_ocKeys.length)%_ocKeys.length;
+var _nextSet=_ocKeys[_nextSetIdx];
+var _ocHome=process.env.HOME||"/home/"+(process.env.USER||"root");
+var _ocScr=(_selDef.metadata.blankScript||"").replace(/^~/,_ocHome);
+var _ocNewVal;
+try{_ocNewVal=_reqFn("child_process").execFileSync("bash",[_ocScr,"get",_nextSet],{timeout:3000,encoding:"utf8"}).trim();}catch(_e){_ocNewVal=(_ocSet[_nextSet]||[])[0]||"";}
+var _selText=globalThis._hlText;
+var _selAllW=_selText.split(/\\s+/).filter(function(w){return w;});
+// Old spans
+var _selOldSpan=_selDef.spanLength||1;
+var _satIdx=_selDef.metadata.childIndex;
+var _satDef=globalThis._dynDefs.words.find(function(w){return w.index===_satIdx;});
+var _satOldSpan=(_satDef&&_satDef.spanLength)||1;
+// Walk to the selector's first word position
+var _selPos=0;for(var _swi=0;_swi<_hlIdx;_swi++){if(_selAllW[_swi]==null)break;_selPos=_selText.indexOf(_selAllW[_swi],_selPos)+_selAllW[_swi].length;}
+if(_selAllW[_hlIdx]==null)return null;
+var _selWStart=_selText.indexOf(_selAllW[_hlIdx],_selPos);
+if(_selWStart<0)return null;
+// Walk through the selector's span
+var _selWEnd=_selWStart+_selAllW[_hlIdx].length;
+for(var _spk=1;_spk<_selOldSpan;_spk++){if(_selAllW[_hlIdx+_spk]==null)break;var _wp=_selText.indexOf(_selAllW[_hlIdx+_spk],_selWEnd);if(_wp<0)break;_selWEnd=_wp+_selAllW[_hlIdx+_spk].length;}
+// Walk through the satellite's span starting from end of selector
+var _satWEnd=_selWEnd;var _satWStartP=-1;
+for(var _sak=0;_sak<_satOldSpan;_sak++){if(_selAllW[_satIdx+_sak]==null)break;var _wp2=_selText.indexOf(_selAllW[_satIdx+_sak],_satWEnd);if(_wp2<0)break;if(_sak===0)_satWStartP=_wp2;_satWEnd=_wp2+_selAllW[_satIdx+_sak].length;}
+// Replace selector + separator + satellite with new selector + separator + new satellite
+var _cycSep=_selDef.metadata.separator||" ";
+var _newFullInsert=_nextSet+_cycSep+_ocNewVal;
+var _newSelText;
+if(_satWStartP>=0){
+_newSelText=_selText.slice(0,_selWStart)+_newFullInsert+_selText.slice(_satWEnd);
+}else{
+// Satellite not found in text — only replace the selector span
+_newSelText=_selText.slice(0,_selWStart)+_nextSet+_selText.slice(_selWEnd);
+}
+// Compute new word counts including separator tokens
+var _newFullWords=_newFullInsert.split(/\\s+/).filter(function(w){return w;});
+var _newSelWc=_nextSet.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _newSatWc=_ocNewVal?(_ocNewVal.split(/\\s+/).filter(function(w){return w;}).length||1):0;
+var _newSepWc=_newFullWords.length-_newSelWc-_newSatWc;
+// Old total includes any separator words between old selector and old satellite
+var _oldSepWc=_satIdx-(_hlIdx+_selOldSpan);if(_oldSepWc<0)_oldSepWc=0;
+var _oldEndIdx=_satIdx+_satOldSpan;
+var _downShift=(_newSelWc+_newSepWc+_newSatWc)-(_selOldSpan+_oldSepWc+_satOldSpan);
+if(_downShift!==0){
+// Shift WordDef indices at >= _oldEndIdx (but skip the selector and satellite themselves)
+globalThis._dynDefs.words.forEach(function(d){if(d.index>=_oldEndIdx&&d!==_selDef&&d!==_satDef)d.index+=_downShift;});
+globalThis._dynDefs.words.forEach(function(d){if(d.metadata){if(d.metadata.childIndex!=null&&d.metadata.childIndex>=_oldEndIdx&&d!==_selDef)d.metadata.childIndex+=_downShift;if(d.metadata.parentIndex!=null&&d.metadata.parentIndex>=_oldEndIdx&&d!==_satDef)d.metadata.parentIndex+=_downShift;}});
+}
+// Clear old selector and satellite span entries
+if(globalThis._dynSpans){
+for(var _csi=0;_csi<_selOldSpan;_csi++)delete globalThis._dynSpans[_hlIdx+_csi];
+for(var _cai=0;_cai<_satOldSpan;_cai++)delete globalThis._dynSpans[_satIdx+_cai];
+// Shift remaining span entries at key >= _oldEndIdx
+if(_downShift!==0){
+var _nspsSel={};Object.keys(globalThis._dynSpans).forEach(function(k){var ki=parseInt(k,10);_nspsSel[ki>=_oldEndIdx?ki+_downShift:ki]=globalThis._dynSpans[k];});globalThis._dynSpans=_nspsSel;
+}
+}
+// Update selector WordDef
+_selDef.word=_nextSet;_selDef.metadata.currentSetting=_nextSet;
+_selDef.cueTip=(globalThis._openCuesTips&&globalThis._openCuesTips[_nextSet])||null;delete _selDef.altCueTips;
+var _newSatIdx=_hlIdx+_newSelWc+_newSepWc;
+_selDef.metadata.childIndex=_newSatIdx;
+if(_newSelWc>1){
+_selDef.spanLength=_newSelWc;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _nsi2=0;_nsi2<_newSelWc;_nsi2++)globalThis._dynSpans[_hlIdx+_nsi2]={originalIndex:_hlIdx,spanLength:_newSelWc};
+}else{delete _selDef.spanLength;}
+// Update satellite WordDef (index moves if selector span changed length)
+if(_satDef){
+_satDef.index=_newSatIdx;
+_satDef.word=_ocNewVal;
+_satDef.alts=_ocSet[_nextSet]||[_ocNewVal];
+_satDef.currentAltIndex=(_satDef.alts||[]).indexOf(_ocNewVal);
+if(_satDef.currentAltIndex<0)_satDef.currentAltIndex=0;
+_satDef.cueTip=(globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_nextSet]&&globalThis._openCuesSatTips[_nextSet][_ocNewVal])||(globalThis._openCuesTips&&globalThis._openCuesTips[_nextSet])||null;delete _satDef.altCueTips;
+if(_newSatWc>1){
+_satDef.spanLength=_newSatWc;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _nsi3=0;_nsi3<_newSatWc;_nsi3++)globalThis._dynSpans[_newSatIdx+_nsi3]={originalIndex:_newSatIdx,spanLength:_newSatWc};
+}else{delete _satDef.spanLength;}
+}
+globalThis._hlText=_newSelText;globalThis._hlState.text=_newSelText;
+try{var _selExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_nextSet,wordCount:_newSelText.split(/\\s+/).filter(function(w){return w;}).length,cueTip:_selDef.cueTip||null,cueControl:!!_selDef.cueTip,alts:_ocKeys,currentAltIndex:_nextSetIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_selExp));}catch(_we){}
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+return{text:_newSelText,lenDiff:_newSelText.length-_selText.length,wStart:_selWStart,newLen:_nextSet.length};
+}
+// Satellite word: cycles current setting values and writes back to opencues.md (multi-word aware)
+var _satBound=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.satelliteWord===true;});
+if(_satBound){
+var _pIdx=_satBound.metadata.parentIndex;
+var _parDef=globalThis._dynDefs.words.find(function(w){return w.index===_pIdx;});
+var _curSetting=_parDef?_parDef.metadata.currentSetting:null;
+if(!_curSetting)return null;
+var _satOcSet=globalThis._openCuesSettings||{};
+var _satVals=_satOcSet[_curSetting]||[_satBound.word||_curWord];
+// Use the WordDef's joined text to look up in alts (handles multi-word values)
+var _satCurText=_satBound.word||_curWord;
+var _satCurIdx=_satVals.indexOf(_satCurText);
+if(_satCurIdx<0)_satCurIdx=0;
+var _satNextIdx=(_satCurIdx+_dir+_satVals.length)%_satVals.length;
+var _satNewVal=_satVals[_satNextIdx];
+var _satOcHome=process.env.HOME||"/home/"+(process.env.USER||"root");
+var _satOcScr=(_satBound.metadata.blankScript||"").replace(/^~/,_satOcHome);
+try{_reqFn("child_process").execFileSync("bash",[_satOcScr,"set",_curSetting,_satNewVal],{timeout:3000,encoding:"utf8"});}catch(_se){}
+if(!globalThis._openCuesCurrent)globalThis._openCuesCurrent={};
+globalThis._openCuesCurrent[_curSetting]=_satNewVal;
+var _satTxt=globalThis._hlText;
+var _satAllW=_satTxt.split(/\\s+/).filter(function(w){return w;});
+// Walk to satellite's origin position
+var _satP=0;for(var _swi2=0;_swi2<_hlIdx;_swi2++){if(_satAllW[_swi2]==null)break;_satP=_satTxt.indexOf(_satAllW[_swi2],_satP)+_satAllW[_swi2].length;}
+if(_satAllW[_hlIdx]==null)return null;
+var _satWS=_satTxt.indexOf(_satAllW[_hlIdx],_satP);
+if(_satWS<0)return null;
+// Walk through the satellite's span to find its end
+var _satOldSpan=_satBound.spanLength||1;
+var _satWE=_satWS+_satAllW[_hlIdx].length;
+for(var _sspk=1;_sspk<_satOldSpan;_sspk++){if(_satAllW[_hlIdx+_sspk]==null)break;var _swp=_satTxt.indexOf(_satAllW[_hlIdx+_sspk],_satWE);if(_swp<0)break;_satWE=_swp+_satAllW[_hlIdx+_sspk].length;}
+var _satNewTxt=_satTxt.slice(0,_satWS)+_satNewVal+_satTxt.slice(_satWE);
+// Compute new word count and shift downstream indices if changed
+var _newSatWc=_satNewVal.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _satOldEndIdx=_hlIdx+_satOldSpan;
+var _satDownShift=_newSatWc-_satOldSpan;
+if(_satDownShift!==0){
+globalThis._dynDefs.words.forEach(function(d){if(d.index>=_satOldEndIdx&&d!==_satBound)d.index+=_satDownShift;});
+globalThis._dynDefs.words.forEach(function(d){if(d.metadata){if(d.metadata.childIndex!=null&&d.metadata.childIndex>=_satOldEndIdx&&d!==_satBound)d.metadata.childIndex+=_satDownShift;if(d.metadata.parentIndex!=null&&d.metadata.parentIndex>=_satOldEndIdx)d.metadata.parentIndex+=_satDownShift;}});
+}
+// Update satellite span tracking
+if(globalThis._dynSpans){
+for(var _csi2=0;_csi2<_satOldSpan;_csi2++)delete globalThis._dynSpans[_hlIdx+_csi2];
+if(_satDownShift!==0){var _nspsSat={};Object.keys(globalThis._dynSpans).forEach(function(k){var ki=parseInt(k,10);_nspsSat[ki>=_satOldEndIdx?ki+_satDownShift:ki]=globalThis._dynSpans[k];});globalThis._dynSpans=_nspsSat;}
+}
+_satBound.word=_satNewVal;_satBound.currentAltIndex=_satNextIdx;
+_satBound.cueTip=(globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_curSetting]&&globalThis._openCuesSatTips[_curSetting][_satNewVal])||(globalThis._openCuesTips&&globalThis._openCuesTips[_curSetting])||null;delete _satBound.altCueTips;
+if(_newSatWc>1){
+_satBound.spanLength=_newSatWc;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _nsxi=0;_nsxi<_newSatWc;_nsxi++)globalThis._dynSpans[_hlIdx+_nsxi]={originalIndex:_hlIdx,spanLength:_newSatWc};
+}else{delete _satBound.spanLength;}
+globalThis._hlText=_satNewTxt;globalThis._hlState.text=_satNewTxt;
+try{var _satExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_satNewVal,wordCount:_satAllW.length,cueTip:_satBound.cueTip||null,cueControl:!!_satBound.cueTip,alts:_satVals,currentAltIndex:_satNextIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_satExp));}catch(_we){}
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+return{text:_satNewTxt,lenDiff:_satNewTxt.length-_satTxt.length,wStart:_satWS,newLen:_satNewVal.length};
 }
 }
 // Step control: arithmetic or script-based increment/decrement for patterned values
@@ -425,7 +625,7 @@ var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_n
 _reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // TTS: speak the alt tip when cycling (only for tips with speak:true)
-if(_dWord.speak){
+if(_dWord.speak&&!(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["voice-mode"]==="inactive")){
 var _ttsTip=(_dWord.altCueTips&&_dWord.altCueTips[_dWord.alts[_nextAlt]])||_dWord.cueTip||null;
 if(_ttsTip){
 if(globalThis._ttsTimer)clearTimeout(globalThis._ttsTimer);
@@ -855,7 +1055,7 @@ for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
 if(_apw.metadata&&_apw.metadata.controlName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
 if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
-globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null};
+globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.controlName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null};
 }}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
@@ -1135,15 +1335,22 @@ export const writeDynamicRendering = (
   if (numMatch && numMatch.index !== undefined) {
     // Extend _numRanges to also dim control words, tips, and dynamic alt words
     // INSTANT TIPS: check _localCueMap directly in render — no waiting for analysis pipeline
-    const newNumCode = `else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});
-}else if(globalThis._dynDefs&&globalThis._dynDefs.words){
+    const newNumCode = `else if((function(){
+// Keyword-context skip: while a selectorWord def is present, words to its left matching its control's blankKeywords are not dimmed (not shown as navigable)
+var _isCtxKw=false;
+if(globalThis._dynDefs&&globalThis._dynDefs.words){var _wL=_w.toLowerCase();for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.selectorWord&&_ni<_ckd.index){var _ckCtrl=(globalThis._cueControlOverrides||{})[_ckd.metadata.controlName];if(_ckCtrl&&_ckCtrl.blankKeywords){for(var _ckj=0;_ckj<_ckCtrl.blankKeywords.length;_ckj++){if(_ckCtrl.blankKeywords[_ckj]===_wL){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}}
+if(_isCtxKw)return false;
+if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
+if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&((d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0)||(d.metadata&&d.metadata.controlName));});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_ni];
 var _isInSpan=!!_spanInfo;
 var _isInHighlightedSpan=_spanInfo&&_spanInfo.originalIndex===_hlWordIdx;
-if((_dynDef||_isInSpan)&&_ni!==_hlWordIdx&&!_isInHighlightedSpan)_numRanges.push({start:_wStart,end:_wStart+_w.length});
-}`;
+if((_dynDef||_isInSpan)&&_ni!==_hlWordIdx&&!_isInHighlightedSpan){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
+}
+return false;
+})()){}`;
 
     return oldFile.replace(numPattern, newNumCode);
   }
@@ -1188,18 +1395,28 @@ for(var _wi=0;_wi<_minLen;_wi++){
 if(_oldW[_wi]!==_newW[_wi]){
 var _def=globalThis._dynDefs.words.find(function(d){return d.index===_wi;});
 if(_def){
-if(_def.alts&&_def.alts.indexOf(_newW[_wi])>=0){
+var _defSpan=_def.spanLength&&_def.spanLength>1?_def.spanLength:1;
+var _effectiveNew=_defSpan>1?_newW.slice(_wi,_wi+_defSpan).join(" "):_newW[_wi];
+if(_def.alts&&_def.alts.indexOf(_effectiveNew)>=0){
 // Word is in alts - valid cycle, update index
-_def.word=_newW[_wi];
-_def.currentAltIndex=_def.alts.indexOf(_newW[_wi]);
+_def.word=_effectiveNew;
+_def.currentAltIndex=_def.alts.indexOf(_effectiveNew);
 }else{
 // Word changed to something NOT in alts - clear alts
 // This handles mid-sentence insertion/deletion where indices shift
+var _clearedMeta=_def.metadata;
 _def.word=_newW[_wi];
 _def.alts=null;
 _def.currentAltIndex=0;
 delete _def.metadata;
 if(globalThis._dynSpans)delete globalThis._dynSpans[_wi];
+// Selector/satellite pair: clearing one side must also clear its partner
+if(_clearedMeta){
+var _pIdx=null;
+if(_clearedMeta.satelliteWord&&typeof _clearedMeta.parentIndex==="number")_pIdx=_clearedMeta.parentIndex;
+else if(_clearedMeta.selectorWord&&typeof _clearedMeta.childIndex==="number")_pIdx=_clearedMeta.childIndex;
+if(_pIdx!==null){var _pDef=globalThis._dynDefs.words.find(function(d){return d.index===_pIdx;});if(_pDef){_pDef.alts=null;_pDef.currentAltIndex=0;delete _pDef.metadata;if(globalThis._dynSpans)delete globalThis._dynSpans[_pIdx];}}
+}
 }
 }
 }
@@ -1208,7 +1425,17 @@ if(globalThis._dynSpans)delete globalThis._dynSpans[_wi];
 if(_newW.length<_oldW.length){
 for(var _ri=_newW.length;_ri<_oldW.length;_ri++){
 var _rdef=globalThis._dynDefs.words.find(function(d){return d.index===_ri;});
-if(_rdef){_rdef.alts=null;delete _rdef.metadata;}
+if(_rdef){
+var _rMeta=_rdef.metadata;
+_rdef.alts=null;delete _rdef.metadata;
+// Selector/satellite pair: removing one side clears its partner too
+if(_rMeta){
+var _rpIdx=null;
+if(_rMeta.satelliteWord&&typeof _rMeta.parentIndex==="number")_rpIdx=_rMeta.parentIndex;
+else if(_rMeta.selectorWord&&typeof _rMeta.childIndex==="number")_rpIdx=_rMeta.childIndex;
+if(_rpIdx!==null){var _rpDef=globalThis._dynDefs.words.find(function(d){return d.index===_rpIdx;});if(_rpDef){_rpDef.alts=null;_rpDef.currentAltIndex=0;delete _rpDef.metadata;if(globalThis._dynSpans)delete globalThis._dynSpans[_rpIdx];}}
+}
+}
 }
 }
 // Update _dynDefs word count marker
@@ -1271,7 +1498,10 @@ var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[i];
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==i;
 var _isSpanOriginal=_spanInfo&&_spanInfo.originalIndex===i;
 var _isInSpan=!!_spanInfo&&!_isNonOrigSpan;
-if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal||_isInSpan)&&!_isNonOrigSpan)${m.targetIdx}.push(i);
+// Keyword-context skip: while a selectorWord def exists, words to its left that match the control's blankKeywords are non-navigable
+var _isCtxKw=false;
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.selectorWord&&i<_ckd.index){var _ckCtrl=(globalThis._cueControlOverrides||{})[_ckd.metadata.controlName];if(_ckCtrl&&_ckCtrl.blankKeywords){for(var _ckj=0;_ckj<_ckCtrl.blankKeywords.length;_ckj++){if(_ckCtrl.blankKeywords[_ckj]===_wLow){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}}
+if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal||_isInSpan)&&!_isNonOrigSpan&&!_isCtxKw)${m.targetIdx}.push(i);
 });`;
 
     newFile = newFile.replace(m.full, newForEach);

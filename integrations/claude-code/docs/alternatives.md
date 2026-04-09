@@ -135,4 +135,5 @@ Requires `enableWordHighlight: true` (master switch).
 - `navigation.md` — keybindings and rendering
 - `cycling.md` — how Up/Down modifies words
 - `status-line.md` — tip display in status bar
+- `/docs/features/tip-priority.md` — full tip resolution order across all word types
 - `/docs/guides/llm-providers.md` — provider config and benchmarks

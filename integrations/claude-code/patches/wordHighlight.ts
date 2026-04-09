@@ -560,6 +560,17 @@ _hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cue
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
+// Selector/satellite words: read tips from opencues.md tips block (hot-reloadable)
+if(_cbDw.metadata&&(_cbDw.metadata.selectorWord||_cbDw.metadata.satelliteWord)){
+var _ownTip=null;
+var _ownSetting=_cbDw.metadata.selectorWord?_cbDw.metadata.currentSetting:null;
+if(_cbDw.metadata.satelliteWord){var _pSel=globalThis._dynDefs.words.find(function(d){return d.index===_cbDw.metadata.parentIndex;});if(_pSel&&_pSel.metadata)_ownSetting=_pSel.metadata.currentSetting;}
+if(_ownSetting){
+if(_cbDw.metadata.satelliteWord&&globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_ownSetting])_ownTip=globalThis._openCuesSatTips[_ownSetting][_cbDw.word]||null;
+if(!_ownTip&&globalThis._openCuesTips)_ownTip=globalThis._openCuesTips[_ownSetting]||null;
+}
+_cbDw.cueTip=_ownTip;delete _cbDw.altCueTips;
+}
 if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;if(_cbDw.metadata&&_cbDw.metadata.listControl)_hlExport.listControl=true;if(_cbDw.metadata&&_cbDw.metadata.blankReadOnly)_hlExport.blankReadOnly=true;}
 // Clear so returning to the word control triggers a fresh script get
 globalThis._cueControlTipWord=null;
@@ -591,7 +602,8 @@ if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // TTS: speak tip on navigation, cancel on deselect or word change
 // Check both _dynDefs (tips/LLM) and _cueControlOverrides (controls) for speak flag
 var _ttsShouldSpeak=false;
-if(_hlExport.cueTip){
+var _ttsVoiceOff=globalThis._openCuesCurrent&&globalThis._openCuesCurrent["voice-mode"]==="inactive";
+if(_hlExport.cueTip&&!_ttsVoiceOff){
 var _ttsWord=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_ttsWord&&_ttsWord.speak){_ttsShouldSpeak=true;}
 else if(_hlExport.cueControl){var _ttsCtrl=(globalThis._cueControlOverrides||{})[(_hlExport.highlightedWord||"").toLowerCase()];if(_ttsCtrl&&_ttsCtrl.speak)_ttsShouldSpeak=true;}
@@ -678,6 +690,62 @@ var _apPos=0;
 for(var _apj=0;_apj<_ap.index;_apj++){_apPos=_apBase.indexOf(_apBaseWords[_apj],_apPos)+_apBaseWords[_apj].length;}
 var _apStart=_apBase.indexOf("_",_apPos);
 if(_apStart>=0){
+if(_ap.satellite!=null){
+// Selector+satellite: insert selector + separator + satellite replacing the single _.
+// Separator is normalized to space-padded so all tokens are clean word boundaries.
+var _apSel=_ap.value;var _apSat=_ap.satellite;
+var _apSepRaw=(_ap.displaySeparator||"").replace(/[\\u0009]/g,"\\t");
+var _apSepTrim=_apSepRaw.replace(/^\\s+|\\s+$/g,"");
+var _apSepDisplay=_apSepTrim?(" "+_apSepTrim+" "):" ";
+var _apFullInsert=_apSel+_apSepDisplay+_apSat;
+var _apFullWords=_apFullInsert.split(/\\s+/).filter(function(w){return w;});
+var _apTotalWc=_apFullWords.length;
+var _apSelWc=_apSel.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _apSatWc=_apSat.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _apSepWc=_apTotalWc-_apSelWc-_apSatWc;
+// Replacing 1 underscore with _apTotalWc words. Downstream index shift:
+var _apShift=_apTotalWc-1;
+var _apNew=_apBase.slice(0,_apStart)+_apFullInsert+_apBase.slice(_apStart+1);
+globalThis._hlText=_apNew;
+globalThis._dynLastAnalyzed=_apNew.split(/\\s+/).filter(function(w){return w;});
+globalThis._dynPrevWords=globalThis._dynLastAnalyzed.slice();
+var _apN=_ap.index;var _apSatN=_apN+_apSelWc+_apSepWc;
+// Shift existing WordDefs at index > N by _apShift
+if(globalThis._dynDefs&&globalThis._dynDefs.words){
+globalThis._dynDefs.words.forEach(function(d){if(d.index>_apN)d.index+=_apShift;});
+globalThis._dynDefs.words.forEach(function(d){if(d.metadata){if(d.metadata.childIndex!=null&&d.metadata.childIndex>_apN)d.metadata.childIndex+=_apShift;if(d.metadata.parentIndex!=null&&d.metadata.parentIndex>_apN)d.metadata.parentIndex+=_apShift;}});
+}
+// Shift dynSpans keys > N by _apShift
+if(globalThis._dynSpans){var _nsps={};Object.keys(globalThis._dynSpans).forEach(function(k){var ki=parseInt(k,10);var sv=globalThis._dynSpans[k];_nsps[ki>_apN?ki+_apShift:ki]=sv;});globalThis._dynSpans=_nsps;}
+// Get selector + satellite values from _openCuesSettings
+var _apOcSet=globalThis._openCuesSettings||{};
+var _apSelVals=Object.keys(_apOcSet);if(_apSelVals.length===0)_apSelVals=[_apSel];
+var _apSatVals=_apOcSet[_apSel]||[_apSat];
+// Create selector WordDef at N (word field holds the joined multi-word text; spanLength if > 1)
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
+var _apExSel=globalThis._dynDefs.words.findIndex(function(d){return d.index===_apN;});
+var _apSelTip=(globalThis._openCuesTips&&globalThis._openCuesTips[_apSel])||null;
+var _apSelDef={index:_apN,word:_apSel,alts:_apSelVals,currentAltIndex:Math.max(0,_apSelVals.indexOf(_apSel)),source:"control-blank",cueTip:_apSelTip,metadata:{controlName:_ap.controlName,blankScript:_ap.blankScript,selectorWord:true,childIndex:_apSatN,currentSetting:_apSel,separator:_apSepDisplay}};
+if(_apSelWc>1){
+_apSelDef.spanLength=_apSelWc;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _sli=0;_sli<_apSelWc;_sli++){globalThis._dynSpans[_apN+_sli]={originalIndex:_apN,spanLength:_apSelWc};}
+}
+if(_apExSel>=0){globalThis._dynDefs.words[_apExSel]=_apSelDef;}else{globalThis._dynDefs.words.push(_apSelDef);}
+// Create satellite WordDef at N + selectorSpanLen + sepWc (word field holds joined text; spanLength if > 1)
+var _apSatTip=(globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_apSel]&&globalThis._openCuesSatTips[_apSel][_apSat])||(globalThis._openCuesTips&&globalThis._openCuesTips[_apSel])||null;
+var _apSatDef={index:_apSatN,word:_apSat,alts:_apSatVals,currentAltIndex:Math.max(0,_apSatVals.indexOf(_apSat)),source:"control-blank",cueTip:_apSatTip,metadata:{controlName:_ap.controlName,blankScript:_ap.blankScript,satelliteWord:true,parentIndex:_apN}};
+if(_apSatWc>1){
+_apSatDef.spanLength=_apSatWc;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _sxi=0;_sxi<_apSatWc;_sxi++){globalThis._dynSpans[_apSatN+_sxi]={originalIndex:_apSatN,spanLength:_apSatWc};}
+}
+globalThis._dynDefs.words.push(_apSatDef);
+globalThis._pendingCursorOffset=_apStart+_apSel.length+1+_apSat.length;
+globalThis._pendingCursorText=_apNew;
+${onChangeParam}(_apNew+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
+return;
+}
 var _apNew=_apBase.slice(0,_apStart)+_ap.value+_apBase.slice(_apStart+1);
 globalThis._hlText=_apNew;
 globalThis._dynLastAnalyzed=_apNew.split(/\\s+/).filter(function(w){return w;});

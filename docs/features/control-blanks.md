@@ -169,7 +169,7 @@ These are the core behaviours that any integration of control-bound blanks must 
 
 **State I/O**: The `readControlState(controlName, matchedKeyword?, contextWords?)` callback (injected by the integration) calls `blankScript get [matchedKeyword] [contextWords...]` and returns the raw string output. The optional `matchedKeyword` allows one script to serve multiple lookups; `contextWords` provides the full sentence context (minus `_` and keyword) for scripts that need location, time, or other parameters from the input. Validation is config-driven: `blankRange[0]` for numeric min, `blankFormat` for parsing.
 
-**Tip isolation**: Control-bound blank positions must NOT show tips from grammar/LLM sources. Only `blankTip` (if set) should display. The `metadata.controlName` marker identifies these positions.
+**Tip isolation**: Control-bound blank positions must NOT show tips from grammar/LLM sources. Only `blankTip` (if set) should display. The `metadata.controlName` marker identifies these positions. Selector/satellite blanks also have `metadata.controlName` but use the `opencues.md` `tips:` block instead of `blankTip` — see [Tip Priority](tip-priority.md).
 
 **Cache invalidation**: When `_` reappears at a position that previously had a control-blank value, the old WordDef must be cleared and the resolver must re-run to get a fresh value.
 
