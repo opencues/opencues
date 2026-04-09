@@ -178,33 +178,30 @@ for(var _oli=0;_oli<_ocLines.length;_oli++){
 var _ol=_ocLines[_oli];var _olT=_ol.trim();
 if(_olT==="---"){_inFm=!_inFm;continue;}
 if(!_inFm)continue;
-// Count leading spaces
-var _indent=0;for(var _idi=0;_idi<_ol.length;_idi++){if(_ol.charAt(_idi)===" ")_indent++;else break;}
+var _isIndented=_ol.length>0&&(_ol.charAt(0)===" "||_ol.charAt(0)==="\\t");
 if(_olT==="settings:"){_inSet=true;_curSetKey=null;_inValues=false;continue;}
-// Exit settings block on dedent to 0
-if(_inSet&&_olT&&_indent===0){_inSet=false;_curSetKey=null;_inValues=false;}
+// Exit settings block on non-indented line
+if(_inSet&&_olT&&!_isIndented){_inSet=false;_curSetKey=null;_inValues=false;}
 if(_inSet&&_olT){
 var _ci=_olT.indexOf(":");
 if(_ci>0){var _sk=_olT.slice(0,_ci).trim();var _sv=_olT.slice(_ci+1).trim();
-if(_indent<=2&&!_sv){
-// Setting name (2-space indent, no value): e.g. "  voice-mode:"
-_curSetKey=_sk;_inValues=false;
-}else if(_indent>=4&&_curSetKey&&_sk==="tip"&&_sv){
-// Selector tip: "    tip: Gates TTS globally"
+if(_sk==="tip"&&_sv&&_curSetKey){
+// Selector tip
 _ocTips[_curSetKey]=_sv;
-}else if(_indent>=4&&_curSetKey&&_sk==="values"){
-// Values sub-block opener: "    values:"
+}else if(_sk==="values"&&_curSetKey){
+// Values sub-block opener
 _inValues=true;
-}else if(_indent>=6&&_inValues&&_curSetKey&&_sv){
-// Value entry: "      active: TTS reads tips aloud"
+}else if(_inValues&&_curSetKey&&_sv){
+// Value entry inside values: block
 if(!_ocSettings[_curSetKey])_ocSettings[_curSetKey]=[];
 _ocSettings[_curSetKey].push(_sk);
 if(!_ocSatTips[_curSetKey])_ocSatTips[_curSetKey]={};
 _ocSatTips[_curSetKey][_sk]=_sv;
+}else if(!_sv){
+// Setting name (key with no value after colon)
+_curSetKey=_sk;_inValues=false;
 }
-// Exit values sub-block on dedent back to 4 (tip or new values:)
-if(_indent<=4&&_sk!=="values")_inValues=false;
-}}else if(_olT&&_indent===0){
+}}else if(_olT&&!_isIndented){
 // Top-level key:value → current values
 var _ci2=_olT.indexOf(":");
 if(_ci2>0){var _ck=_olT.slice(0,_ci2).trim();var _cv=_olT.slice(_ci2+1).trim();if(_ck==="version"){_ocVersion=parseInt(_cv,10)||1;}else if(_cv&&_ck!=="settings")_ocCurrent[_ck]=_cv;}

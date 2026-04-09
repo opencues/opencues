@@ -28,7 +28,7 @@ set_value() {
 }
 
 get_first_setting() {
-  awk '/^settings:/{f=1;next} f && /^  [a-z]/{sub(/:[[:space:]].*/, ""); sub(/^[[:space:]]+/, ""); print; exit}' "$OPENCUES_MD" 2>/dev/null
+  awk '/^settings:/{f=1;next} f && /^  [a-z]/{sub(/:.*/, ""); sub(/^[[:space:]]+/, ""); print; exit}' "$OPENCUES_MD" 2>/dev/null
 }
 
 case "$cmd" in

@@ -81,10 +81,12 @@ settings:
 ---
 ```
 
-- **Setting name** (2-space indent): declares the setting, no value on this line
-- **`tip:`** (4-space indent): selector tip shown when this setting is highlighted
-- **`values:`** (4-space indent): opens the valid-values block
-- **Value entries** (6-space indent): each value and its satellite tip (`value: tip text`)
+- **Setting name**: any indented line with a key and no value after the colon (e.g. `voice-mode:`)
+- **`tip:`**: reserved key — selector tip shown when this setting is highlighted
+- **`values:`**: reserved key — opens the valid-values block
+- **Value entries**: any line inside `values:` with a key and value (e.g. `active: TTS reads tips aloud`)
+
+Indentation depth does not matter — the parser detects structure by key names and whether a value is present after the colon, not by counting spaces.
 
 The parser hydrates two globals on every hot-reload cycle:
 
