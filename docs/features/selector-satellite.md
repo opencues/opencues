@@ -43,8 +43,18 @@ Either side of the pair — selector or satellite — may be a multi-word value.
 # In opencues.md:
 output-format: rich markdown
 settings:
-  output-format: [plain text, rich markdown, structured json]
-  display mode: [focus, split pane, zen]
+  output-format:
+    tip: Response format style
+    values:
+      plain text: Unformatted plain text output
+      rich markdown: Formatted markdown with styling
+      structured json: Machine-readable JSON output
+  display mode:
+    tip: Layout mode
+    values:
+      focus: Single-pane focused view
+      split pane: Side-by-side split layout
+      zen: Distraction-free minimal view
 ```
 
 Given this config, cycling the selector across settings produces:
@@ -106,36 +116,46 @@ The in-memory mirror update (step 4) is what makes cycling feel live — without
 
 Selector+satellite stores its state in a config file dedicated to OpenCues' own system state, separate from the user's cue config. This separation is structural, not cosmetic: the user's cue config is authored and rarely rewritten; the system state file is rewritten on every satellite cycle. Mixing them would mean the user's work gets touched on every bit-flip.
 
-The file mixes **three blocks** in its frontmatter:
+The frontmatter has **two sections**:
 
 ```yaml
 ---
+version: 1
 voice-mode: active             # ← wired: gates TTS globally
 debug-mode: off                # ← unwired: persists but no consumer yet
 tips-mode: on
 output-format: rich markdown   # ← multi-word value (satellite will be a span)
 display mode: focus            # ← multi-word key (selector will be a span)
 settings:
-  voice-mode: [active, inactive]
-  debug-mode: [on, off]
-  tips-mode: [on, off, minimal]
-  output-format: [plain text, rich markdown, structured json]
-  display mode: [focus, split pane, zen]
-tips:
-  voice-mode: Gates TTS globally
-    active: TTS reads tips aloud on navigation
-    inactive: TTS is silenced
-  debug-mode: Enable debug logging
-    on: Debug output emitted to console
-    off: Debug logging suppressed
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud on navigation
+      inactive: TTS is silenced
+  debug-mode:
+    tip: Enable debug logging output
+    values:
+      on: Debug output emitted to console
+      off: Debug logging suppressed
+  output-format:
+    tip: Response format style
+    values:
+      plain text: Unformatted plain text output
+      rich markdown: Formatted markdown with styling
+      structured json: Machine-readable JSON output
+  display mode:
+    tip: Layout mode
+    values:
+      focus: Single-pane focused view
+      split pane: Side-by-side split layout
+      zen: Distraction-free minimal view
 ---
 ```
 
 1. **Top-level keys** are the **live current values**. Cheap to read and write (a single `sed` line suffices). These are what runtime consumers read.
-2. **The `settings:` block** declares the **valid-value universe** per setting. The integration loads this at startup so it can cycle without shelling out for every keystroke.
-3. **The `tips:` block** declares tips shown in the secondary display. Setting-level lines (2-space indent) are shown on the selector; value-level lines (4-space indent) are shown on the satellite for that value, with the setting-level tip as fallback. See [Tip Priority](tip-priority.md) for how these interact with other tip sources.
+2. **The `settings:` block** declares each setting as a self-contained unit: its `tip:` (shown on the selector in the secondary display), and its `values:` (valid values, each with its own satellite tip). See [Tip Priority](tip-priority.md) for how these interact with other tip sources.
 
-The split is intentional: hot-path reads/writes touch only the top-level keys; cycling logic only needs to load the `settings:` block once per hot-reload; tips are read-only and hot-reload alongside settings.
+The split is intentional: hot-path reads/writes touch only the top-level keys; the `settings:` block is read-only and hot-reloaded for cycling and tip display.
 
 ### Script Contract
 

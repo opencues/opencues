@@ -12,16 +12,19 @@ Implements feature [17](../../../docs/features/selector-satellite.md). See that 
 
 ## CC-Specific: The `opencues.md` Parser
 
-`_reloadCuesConfig` grew a hand-rolled line walker that reads `opencues.md` from `process.cwd()` and hydrates two globals:
+`_reloadCuesConfig` grew a hand-rolled line walker that reads `opencues.md` from `process.cwd()` and hydrates globals from the unified `settings:` block:
 
 | Global | Type | Contents |
 |---|---|---|
-| `globalThis._openCuesSettings` | `Record<string, string[]>` | Valid-value lists keyed by setting name (from the `settings:` nested block). |
+| `globalThis._openCuesSettings` | `Record<string, string[]>` | Valid-value lists keyed by setting name (keys from `values:` sub-blocks). |
 | `globalThis._openCuesCurrent` | `Record<string, string>` | Current live values (from top-level frontmatter keys). |
+| `globalThis._openCuesTips` | `Record<string, string>` | Selector tips (from `tip:` lines). |
+| `globalThis._openCuesSatTips` | `Record<string, Record<string, string>>` | Per-value satellite tips (from value entries under `values:`). |
+| `globalThis._openCuesVersion` | `number` | Format version (from `version:` key). |
 
-Both hot-reload every ~2s on the standard config cycle. `_openCuesCurrent` additionally takes **immediate in-memory writes during satellite cycling** so changes apply before the disk round-trip.
+All hot-reload every ~2s on the standard config cycle. `_openCuesCurrent` additionally takes **immediate in-memory writes during satellite cycling** so changes apply before the disk round-trip.
 
-The parser is deliberately not a regex. An earlier version used `new RegExp("^---\\r?\\n([\\s\\S]*?)\\r?\\n---")` to extract the frontmatter, and the escape-sequence interactions between the TypeScript template literal, the patched `cli.js` string, and the JavaScript regex engine produced a pattern that silently failed to match any frontmatter at all. The replacement walks lines with a `_inFm` toggle on the `---` fence and a `_inSet` toggle on the `settings:` key. Top-level `key: value` lines outside the `settings:` block (and not the `settings` key itself) go into `_openCuesCurrent`; indented `key: [v1, v2, ...]` lines inside the block go into `_openCuesSettings`.
+The parser is deliberately not a regex. An earlier version used `new RegExp("^---\\r?\\n([\\s\\S]*?)\\r?\\n---")` to extract the frontmatter, and the escape-sequence interactions between the TypeScript template literal, the patched `cli.js` string, and the JavaScript regex engine produced a pattern that silently failed to match any frontmatter at all. The replacement walks lines with a `_inFm` toggle on the `---` fence. Inside `settings:`, it tracks three levels by indent depth: setting name (2-space, sets `_curSetKey`), `tip:`/`values:` (4-space), and value entries (6-space). Top-level `key: value` lines outside the `settings:` block go into `_openCuesCurrent`; `version:` is parsed separately.
 
 ## CC-Specific: Multi-Word Selector and Satellite
 
@@ -210,10 +213,11 @@ Because satellite cycling updates `_openCuesCurrent` in memory immediately, flip
 
 | Global | Populated by | Consumed by |
 |---|---|---|
-| `_openCuesSettings` | `_reloadCuesConfig` (hot-reload parse of `opencues.md` `settings:` block) | Selector cycling (key list), satellite alts derivation (values per key), auto-populate insertion (initial alts) |
+| `_openCuesSettings` | `_reloadCuesConfig` (keys from `values:` sub-blocks in `opencues.md` `settings:`) | Selector cycling (key list), satellite alts derivation (values per key), auto-populate insertion (initial alts) |
 | `_openCuesCurrent` | `_reloadCuesConfig` (parse of top-level keys) + immediate in-memory write on satellite cycle | Any runtime gate (TTS; future consumers) |
-| `_openCuesTips` | `_reloadCuesConfig` (parse of `opencues.md` `tips:` block, setting-level lines) | Selector tip display, satellite tip fallback |
-| `_openCuesSatTips` | `_reloadCuesConfig` (parse of `opencues.md` `tips:` block, value-level lines) | Per-value satellite tip display |
+| `_openCuesTips` | `_reloadCuesConfig` (`tip:` lines in `opencues.md` `settings:`) | Selector tip display, satellite tip fallback |
+| `_openCuesSatTips` | `_reloadCuesConfig` (value entries under `values:` in `opencues.md` `settings:`) | Per-value satellite tip display |
+| `_openCuesVersion` | `_reloadCuesConfig` (`version:` top-level key) | Format version marker |
 
 Tips are the single source for selector/satellite tip display. See [Tip Priority](../../../docs/features/tip-priority.md) for how they interact with other tip sources (control blanks, cue-control keywords, local cues, LLM).
 

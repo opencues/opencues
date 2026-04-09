@@ -173,41 +173,41 @@ if(_rfs.existsSync(_ocPath)){
 var _ocContent=_rfs.readFileSync(_ocPath,"utf8");
 var _ocSettings={};var _ocCurrent={};var _ocTips={};var _ocSatTips={};var _ocVersion=1;
 var _ocLines=_ocContent.split(/\\r?\\n/);
-var _inSet=false;var _inTips=false;var _inFm=false;var _curTipKey=null;
+var _inSet=false;var _inFm=false;var _curSetKey=null;var _inValues=false;
 for(var _oli=0;_oli<_ocLines.length;_oli++){
 var _ol=_ocLines[_oli];var _olT=_ol.trim();
 if(_olT==="---"){_inFm=!_inFm;continue;}
 if(!_inFm)continue;
-if(_olT==="settings:"){_inSet=true;_inTips=false;_curTipKey=null;continue;}
-if(_olT==="tips:"){_inTips=true;_inSet=false;_curTipKey=null;continue;}
-if((_inSet||_inTips)&&_olT&&_ol.length>0&&_ol.charAt(0)!==" "&&_ol.charAt(0)!=="\\t"){_inSet=false;_inTips=false;_curTipKey=null;}
+// Count leading spaces
+var _indent=0;for(var _idi=0;_idi<_ol.length;_idi++){if(_ol.charAt(_idi)===" ")_indent++;else break;}
+if(_olT==="settings:"){_inSet=true;_curSetKey=null;_inValues=false;continue;}
+// Exit settings block on dedent to 0
+if(_inSet&&_olT&&_indent===0){_inSet=false;_curSetKey=null;_inValues=false;}
 if(_inSet&&_olT){
 var _ci=_olT.indexOf(":");
-if(_ci>0){
-var _sk=_olT.slice(0,_ci).trim();
-var _sv=_olT.slice(_ci+1).trim();
-if(_sv.length>=2&&_sv.charAt(0)==="["&&_sv.charAt(_sv.length-1)==="]"){
-_ocSettings[_sk]=_sv.slice(1,-1).split(",").map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
-}}}else if(_inTips&&_olT){
-// Detect indent depth: 2-space = selector tip, 4-space = satellite value tip
-var _tipIndent=0;for(var _tii=0;_tii<_ol.length;_tii++){if(_ol.charAt(_tii)===" ")_tipIndent++;else break;}
-var _ti=_olT.indexOf(":");
-if(_ti>0){var _tk=_olT.slice(0,_ti).trim();var _tv=_olT.slice(_ti+1).trim();
-if(_tipIndent>=4&&_curTipKey&&_tv){
-// Satellite value tip (deeper indent under current setting)
-if(!_ocSatTips[_curTipKey])_ocSatTips[_curTipKey]={};
-_ocSatTips[_curTipKey][_tk]=_tv;
-}else if(_tv){
-// Selector tip (setting-level line)
-_ocTips[_tk]=_tv;_curTipKey=_tk;
-}else{
-// Key with no value on same line — just set current key for children
-_curTipKey=_tk;
-}}
-}else if(_olT&&_ol.length>0&&_ol.charAt(0)!==" "&&_ol.charAt(0)!=="\\t"){
+if(_ci>0){var _sk=_olT.slice(0,_ci).trim();var _sv=_olT.slice(_ci+1).trim();
+if(_indent<=2&&!_sv){
+// Setting name (2-space indent, no value): e.g. "  voice-mode:"
+_curSetKey=_sk;_inValues=false;
+}else if(_indent>=4&&_curSetKey&&_sk==="tip"&&_sv){
+// Selector tip: "    tip: Gates TTS globally"
+_ocTips[_curSetKey]=_sv;
+}else if(_indent>=4&&_curSetKey&&_sk==="values"){
+// Values sub-block opener: "    values:"
+_inValues=true;
+}else if(_indent>=6&&_inValues&&_curSetKey&&_sv){
+// Value entry: "      active: TTS reads tips aloud"
+if(!_ocSettings[_curSetKey])_ocSettings[_curSetKey]=[];
+_ocSettings[_curSetKey].push(_sk);
+if(!_ocSatTips[_curSetKey])_ocSatTips[_curSetKey]={};
+_ocSatTips[_curSetKey][_sk]=_sv;
+}
+// Exit values sub-block on dedent back to 4 (tip or new values:)
+if(_indent<=4&&_sk!=="values")_inValues=false;
+}}else if(_olT&&_indent===0){
 // Top-level key:value → current values
 var _ci2=_olT.indexOf(":");
-if(_ci2>0){var _ck=_olT.slice(0,_ci2).trim();var _cv=_olT.slice(_ci2+1).trim();if(_ck==="version"){_ocVersion=parseInt(_cv,10)||1;}else if(_cv&&_ck!=="settings"&&_ck!=="tips")_ocCurrent[_ck]=_cv;}
+if(_ci2>0){var _ck=_olT.slice(0,_ci2).trim();var _cv=_olT.slice(_ci2+1).trim();if(_ck==="version"){_ocVersion=parseInt(_cv,10)||1;}else if(_cv&&_ck!=="settings")_ocCurrent[_ck]=_cv;}
 }
 }
 globalThis._openCuesSettings=_ocSettings;

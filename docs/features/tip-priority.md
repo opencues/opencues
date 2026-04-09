@@ -64,31 +64,35 @@ When a word is cycled, the tip is updated inline within each cycling branch:
 
 ---
 
-## The `opencues.md` Tips Block
+## The `opencues.md` Settings Block
 
-Selector and satellite tips are defined in `opencues.md` alongside the settings they describe:
+Settings, valid values, and tips are defined together in `opencues.md` under a unified `settings:` block. Each setting is self-contained:
 
 ```yaml
 ---
+version: 1
 voice-mode: active
 settings:
-  voice-mode: [active, inactive]
-tips:
-  voice-mode: Gates TTS globally
-    active: TTS reads tips aloud on navigation
-    inactive: TTS is silenced
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud on navigation
+      inactive: TTS is silenced
 ---
 ```
 
-- **Setting-level line** (2-space indent): tip for the selector word, and fallback for any satellite value without its own tip
-- **Value-level line** (4-space indent): tip for a specific satellite value
+- **Setting name** (2-space indent): declares the setting, no value on this line
+- **`tip:`** (4-space indent): selector tip shown when this setting is highlighted
+- **`values:`** (4-space indent): opens the valid-values block
+- **Value entries** (6-space indent): each value and its satellite tip (`value: tip text`)
 
 The parser hydrates two globals on every hot-reload cycle:
 
 | Global | Type | Contents |
 |---|---|---|
-| `_openCuesTips` | `Record<string, string>` | Setting name to selector tip |
-| `_openCuesSatTips` | `Record<string, Record<string, string>>` | Setting name to { value: tip } |
+| `_openCuesTips` | `Record<string, string>` | Setting name to selector tip (from `tip:` lines) |
+| `_openCuesSatTips` | `Record<string, Record<string, string>>` | Setting name to { value: tip } (from value entries) |
+| `_openCuesSettings` | `Record<string, string[]>` | Setting name to list of valid values (keys from value entries) |
 
 Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openCuesTips[setting]` as fallback.
 
