@@ -43,27 +43,46 @@ export class ControlBlankSource implements CueSource {
     }
 
     // Find which control matches by scanning context words against blankKeywords
+    // Keywords can be multi-word phrases (e.g. "opencues settings") — matched as consecutive words
     const contextLower = context.words.map(w => w.toLowerCase());
     let matched: ControlConfig | undefined;
     let matchedKeyword: string | undefined;
     let matchedKeywordIndex = -1;
 
+    const findPhrase = (phrase: string, from: number): number => {
+      const parts = phrase.split(/\s+/);
+      if (parts.length === 1) {
+        return contextLower.indexOf(parts[0], from);
+      }
+      for (let i = from; i <= contextLower.length - parts.length; i++) {
+        let match = true;
+        for (let j = 0; j < parts.length; j++) {
+          if (contextLower[i + j] !== parts[j]) { match = false; break; }
+        }
+        if (match) return i;
+      }
+      return -1;
+    };
+
     for (const [, ctrl] of Object.entries(this.controls)) {
       if (!ctrl.blankKeywords?.length) continue;
-      const proximity = ctrl.blankProximity ?? 0; // default: adjacent (0 words between)
+      const proximity = ctrl.blankProximity ?? 0;
 
       for (const kw of ctrl.blankKeywords) {
-        // Check all occurrences — the keyword nearest to _ matters, not the first
-        let idx = contextLower.indexOf(kw);
+        const kwParts = kw.split(/\s+/);
+        const kwLen = kwParts.length;
+        let idx = findPhrase(kw, 0);
         while (idx !== -1) {
-          const gap = Math.abs(idx - blankIndex) - 1;
+          // For multi-word keywords, proximity is measured from the last word of the phrase to the blank
+          const endIdx = idx + kwLen - 1;
+          const gap = Math.abs(endIdx - blankIndex) - 1;
           if (gap <= proximity) {
             matched = ctrl;
             matchedKeyword = kw;
             matchedKeywordIndex = idx;
             break;
           }
-          idx = contextLower.indexOf(kw, idx + 1);
+          idx = findPhrase(kw, idx + 1);
         }
         if (matched) break;
       }
@@ -72,6 +91,26 @@ export class ControlBlankSource implements CueSource {
 
     if (!matched) {
       return { results };
+    }
+
+    // Collect keyword word positions within proximity of the blank (for blankClearKeywords)
+    // Multi-word keywords expand to all their constituent word indices
+    let matchedKeywordIndices: number[] = [];
+    if (matched.blankKeywords) {
+      const clearProximity = matched.blankProximity ?? 0;
+      for (const kw of matched.blankKeywords) {
+        const kwParts = kw.split(/\s+/);
+        const kwLen = kwParts.length;
+        let idx = findPhrase(kw, 0);
+        while (idx !== -1) {
+          const endIdx = idx + kwLen - 1;
+          if (endIdx !== blankIndex && Math.abs(endIdx - blankIndex) - 1 <= clearProximity) {
+            for (let k = 0; k < kwLen; k++) matchedKeywordIndices.push(idx + k);
+          }
+          idx = findPhrase(kw, idx + 1);
+        }
+      }
+      matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
     }
 
     // List-based cycling: stepValues provides ordered alternatives directly
@@ -87,6 +126,9 @@ export class ControlBlankSource implements CueSource {
         metadata: {
           controlName: matched.control,
           listControl: true,
+          blankClearKeywords: matched.blankClearKeywords || false,
+          blankClearOnEdit: matched.blankClearOnEdit || false,
+          blankKeywordIndices: matchedKeywordIndices,
         },
       });
       return { results };
@@ -118,6 +160,9 @@ export class ControlBlankSource implements CueSource {
           selectorControl: true,
           satelliteValue: satelliteText,
           displaySeparator: displaySep,
+          blankClearKeywords: matched.blankClearKeywords || false,
+          blankClearOnEdit: matched.blankClearOnEdit || false,
+          blankKeywordIndices: matchedKeywordIndices,
         },
       });
       return { results };
@@ -138,6 +183,9 @@ export class ControlBlankSource implements CueSource {
           metadata: {
             controlName: matched.control,
             listControl: true,
+            blankClearKeywords: matched.blankClearKeywords || false,
+            blankClearOnEdit: matched.blankClearOnEdit || false,
+            blankKeywordIndices: matchedKeywordIndices,
           },
         });
         return { results };
@@ -190,6 +238,9 @@ export class ControlBlankSource implements CueSource {
         blankReadOnly: matched.blankReadOnly,
         blankSuffix: matched.blankSuffix,
         ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
+        blankClearKeywords: matched.blankClearKeywords || false,
+        blankClearOnEdit: matched.blankClearOnEdit || false,
+        blankKeywordIndices: matchedKeywordIndices,
       },
     });
 

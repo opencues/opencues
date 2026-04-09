@@ -232,6 +232,7 @@ Tips are the single source for selector/satellite tip display. See [Tip Priority
 | `metadata.currentSetting: string` | selector | Authoritative logical state (which setting the selector represents). Distinct from `word`, which is the display text. Read by satellite cycling to know which setting to write. |
 | `metadata.selectorControl: true` | `CueResult` from `ControlBlankSource` | Internal handoff flag from the resolver to auto-populate. Converted to `selectorWord: true` on the runtime WordDef. |
 | `metadata.satelliteValue: string` | `CueResult` from `ControlBlankSource` | Carries the satellite's initial value through the resolver callback to `_pendingAutoPopulate`. |
+| `metadata.blankClearOnEdit: boolean` | both | If true, pair cleanup removes the spawned words from text (via `_pendingClearOnEdit`). |
 
 ## CC-Specific: New Fields on `ControlConfig` / `SingleCueFrontmatter`
 
@@ -239,3 +240,5 @@ Tips are the single source for selector/satellite tip display. See [Tip Priority
 |---|---|---|---|
 | `blankSatellite` | `boolean` | `false` | Signals that script output should be split into selector + satellite rather than treated as a single value. Parsed by `parseExtendedFrontmatter` and copied onto `ControlConfig` in `parseSingleCueMd`. |
 | `blankSatelliteSeparator` | `string` | `'\t'` (tab) | The delimiter between selector and satellite in the script's `get` output. Can be any string (single or multi-character). `ControlBlankSource` splits on the first occurrence via `rawValue.indexOf(satSep)`. Surrounding quotes are stripped during frontmatter parsing (`value.replace(/^['"\|['"]$/g, '')`). Common values: `'\t'`, `' \| '`, `' :: '`. |
+| `blankClearKeywords` | `boolean` | `false` | Remove keyword context words from text on auto-populate. Keywords can be multi-word phrases. |
+| `blankClearOnEdit` | `boolean` | `false` | Remove spawned selector/satellite words when user edits to something not in alts. Schedules removal via `globalThis._pendingClearOnEdit`. |

@@ -667,6 +667,28 @@ ${inputZoneVar}=${inputZoneClass}.fromText(_zwsClean,${configVar},${inputZoneVar
 var _hlText=${valueParam}.replace(/[\\u200B\\u200C]/g,"");
 var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
+// blankClearOnEdit: remove spawned words scheduled by pair cleanup
+if(globalThis._pendingClearOnEdit){
+var _pce=globalThis._pendingClearOnEdit;
+globalThis._pendingClearOnEdit=null;
+var _pceText=_hlText;var _pceWords=_pceText.split(/\\s+/).filter(function(w){return w;});
+for(var _pcei=0;_pcei<_pce.length;_pcei++){
+var _pceIdx=_pce[_pcei];if(_pceIdx>=_pceWords.length)continue;
+var _pceP=0;for(var _pcep=0;_pcep<_pceIdx;_pcep++){_pceP=_pceText.indexOf(_pceWords[_pcep],_pceP)+_pceWords[_pcep].length;}
+var _pceS=_pceText.indexOf(_pceWords[_pceIdx],_pceP);var _pceE=_pceS+_pceWords[_pceIdx].length;
+if(_pceE<_pceText.length&&_pceText.charAt(_pceE)===" ")_pceE++;
+else if(_pceS>0&&_pceText.charAt(_pceS-1)===" ")_pceS--;
+_pceText=_pceText.slice(0,_pceS)+_pceText.slice(_pceE);
+_pceWords.splice(_pceIdx,1);
+}
+if(_pceText!==_hlText){
+globalThis._hlText=_pceText;
+globalThis._dynLastAnalyzed=_pceText.split(/\\s+/).filter(function(w){return w;});
+globalThis._dynPrevWords=globalThis._dynLastAnalyzed.slice();
+${onChangeParam}(_pceText+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
+return;
+}
+}
 // Auto-populate: replace _ with control value when pending
 if(globalThis._pendingAutoPopulate){
 var _ap=globalThis._pendingAutoPopulate;
@@ -684,6 +706,26 @@ for(var _kei=0;_kei<_ke.wordIndex;_kei++){_keP=_apBase.indexOf(_keW[_kei],_keP)+
 var _keS=_apBase.indexOf(_keW[_ke.wordIndex],_keP);
 if(_keS>=0){_apBase=_apBase.slice(0,_keS)+_ke.expansion+_apBase.slice(_keS+_keW[_ke.wordIndex].length);}
 }
+}
+// Keyword clearing: remove keyword context words from text before blank fill
+if(_ap.blankClearKeywords&&_ap.blankKeywordIndices&&_ap.blankKeywordIndices.length>0){
+var _kcW=_apBase.split(/\\s+/).filter(function(w){return w;});
+var _kcIdxs=_ap.blankKeywordIndices.slice().sort(function(a,b){return b-a;});
+for(var _kci=0;_kci<_kcIdxs.length;_kci++){
+var _kcIdx=_kcIdxs[_kci];
+if(_kcIdx<_kcW.length&&_kcIdx!==_ap.index){
+// Find character position of this word
+var _kcP=0;for(var _kcj=0;_kcj<_kcIdx;_kcj++){_kcP=_apBase.indexOf(_kcW[_kcj],_kcP)+_kcW[_kcj].length;}
+var _kcS=_apBase.indexOf(_kcW[_kcIdx],_kcP);
+var _kcE=_kcS+_kcW[_kcIdx].length;
+// Remove word + adjacent whitespace
+if(_kcE<_apBase.length&&_apBase.charAt(_kcE)===" ")_kcE++;
+else if(_kcS>0&&_apBase.charAt(_kcS-1)===" ")_kcS--;
+_apBase=_apBase.slice(0,_kcS)+_apBase.slice(_kcE);
+_kcW.splice(_kcIdx,1);
+// Adjust blank index if keyword was before it
+if(_kcIdx<_ap.index)_ap.index--;
+}}
 }
 var _apBaseWords=_apBase.split(/\\s+/).filter(function(w){return w;});
 var _apPos=0;
@@ -725,7 +767,7 @@ var _apSatVals=_apOcSet[_apSel]||[_apSat];
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 var _apExSel=globalThis._dynDefs.words.findIndex(function(d){return d.index===_apN;});
 var _apSelTip=(globalThis._openCuesTips&&globalThis._openCuesTips[_apSel])||null;
-var _apSelDef={index:_apN,word:_apSel,alts:_apSelVals,currentAltIndex:Math.max(0,_apSelVals.indexOf(_apSel)),source:"control-blank",cueTip:_apSelTip,metadata:{controlName:_ap.controlName,blankScript:_ap.blankScript,selectorWord:true,childIndex:_apSatN,currentSetting:_apSel,separator:_apSepDisplay}};
+var _apSelDef={index:_apN,word:_apSel,alts:_apSelVals,currentAltIndex:Math.max(0,_apSelVals.indexOf(_apSel)),source:"control-blank",cueTip:_apSelTip,metadata:{controlName:_ap.controlName,blankScript:_ap.blankScript,selectorWord:true,childIndex:_apSatN,currentSetting:_apSel,separator:_apSepDisplay,blankClearOnEdit:_ap.blankClearOnEdit||false}};
 if(_apSelWc>1){
 _apSelDef.spanLength=_apSelWc;
 if(!globalThis._dynSpans)globalThis._dynSpans={};
@@ -734,7 +776,7 @@ for(var _sli=0;_sli<_apSelWc;_sli++){globalThis._dynSpans[_apN+_sli]={originalIn
 if(_apExSel>=0){globalThis._dynDefs.words[_apExSel]=_apSelDef;}else{globalThis._dynDefs.words.push(_apSelDef);}
 // Create satellite WordDef at N + selectorSpanLen + sepWc (word field holds joined text; spanLength if > 1)
 var _apSatTip=(globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_apSel]&&globalThis._openCuesSatTips[_apSel][_apSat])||(globalThis._openCuesTips&&globalThis._openCuesTips[_apSel])||null;
-var _apSatDef={index:_apSatN,word:_apSat,alts:_apSatVals,currentAltIndex:Math.max(0,_apSatVals.indexOf(_apSat)),source:"control-blank",cueTip:_apSatTip,metadata:{controlName:_ap.controlName,blankScript:_ap.blankScript,satelliteWord:true,parentIndex:_apN}};
+var _apSatDef={index:_apSatN,word:_apSat,alts:_apSatVals,currentAltIndex:Math.max(0,_apSatVals.indexOf(_apSat)),source:"control-blank",cueTip:_apSatTip,metadata:{controlName:_ap.controlName,blankScript:_ap.blankScript,satelliteWord:true,parentIndex:_apN,blankClearOnEdit:_ap.blankClearOnEdit||false}};
 if(_apSatWc>1){
 _apSatDef.spanLength=_apSatWc;
 if(!globalThis._dynSpans)globalThis._dynSpans={};

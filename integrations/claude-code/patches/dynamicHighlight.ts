@@ -1052,7 +1052,7 @@ for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
 if(_apw.metadata&&_apw.metadata.controlName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
 if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
-globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.controlName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null};
+globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.controlName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null};
 }}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
@@ -1413,6 +1413,16 @@ var _pIdx=null;
 if(_clearedMeta.satelliteWord&&typeof _clearedMeta.parentIndex==="number")_pIdx=_clearedMeta.parentIndex;
 else if(_clearedMeta.selectorWord&&typeof _clearedMeta.childIndex==="number")_pIdx=_clearedMeta.childIndex;
 if(_pIdx!==null){var _pDef=globalThis._dynDefs.words.find(function(d){return d.index===_pIdx;});if(_pDef){_pDef.alts=null;_pDef.currentAltIndex=0;delete _pDef.metadata;if(globalThis._dynSpans)delete globalThis._dynSpans[_pIdx];}}
+}
+// blankClearOnEdit: schedule removal of spawned words from text
+if(_clearedMeta&&_clearedMeta.blankClearOnEdit){
+var _ceRemove=[_wi];
+if(_pIdx!==null)_ceRemove.push(_pIdx);
+// Include separator words between selector and satellite
+if(_clearedMeta.selectorWord&&typeof _clearedMeta.childIndex==="number"){for(var _cei=_wi+1;_cei<_clearedMeta.childIndex;_cei++)_ceRemove.push(_cei);}
+else if(_clearedMeta.satelliteWord&&typeof _clearedMeta.parentIndex==="number"){for(var _cei2=_clearedMeta.parentIndex+1;_cei2<_wi;_cei2++)_ceRemove.push(_cei2);}
+_ceRemove.sort(function(a,b){return b-a;});
+globalThis._pendingClearOnEdit=_ceRemove;
 }
 }
 }

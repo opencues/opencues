@@ -215,9 +215,23 @@ Both sides revert to plain words. The keyword-context suppression (below) releas
 
 ---
 
-## Keyword-Context Suppression
+## Keyword-Context Handling
 
-The words that triggered the capture — e.g. `opencues` and `settings` in `opencues settings _` — should not themselves be navigable or visually styled as interactive while the selector+satellite pair is live. They are the context that invoked the control, not alternatives the user should cycle.
+The words that triggered the capture — e.g. `opencues` and `settings` in `opencues settings _` — can be handled in two ways:
+
+### Option 1: `blankClearKeywords: true` (removal)
+
+The keyword words are physically removed from the text during auto-populate. Only the resolved value remains:
+
+- `opencues settings _` → `voice-mode active`
+
+Keywords can be multi-word phrases in `blankKeywords` (e.g. `opencues settings` as one keyword entry). All constituent words are removed.
+
+When combined with `blankClearOnEdit: true`, editing the selector or satellite to something not in alts removes both spawned words from the text entirely.
+
+### Option 2: Dynamic suppression (default)
+
+When `blankClearKeywords` is not set, keywords remain in the text but are suppressed from navigation and visual dimming while the pair is live.
 
 The rule is evaluated dynamically on every render: **while a `selectorWord` exists anywhere in the text, any word to its left whose lowercase value matches an entry in the owning control's `blankKeywords` is suppressed from navigation and visual dimming.**
 

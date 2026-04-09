@@ -79,6 +79,49 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Status line shows "Daily affirmations" (tip only, not the word)
 - [ ] Cycle to `_` — blank is dismissed, auto-populate does NOT re-fire on next analysis
 
+## Selector + satellite blanks (OpenCues settings)
+
+### Auto-populate
+- [ ] `opencues settings _` — keywords cleared, only `voice-mode active` remains (`blankClearKeywords: true`)
+- [ ] Cursor lands at the end of the satellite word
+- [ ] `voice-mode` dims gray; `active` dims gray
+
+### Selector cycling (word N)
+- [ ] Navigate to `voice-mode`, Up — becomes `debug-mode`, satellite simultaneously becomes `off` (or whatever its current value is)
+- [ ] Up again — `tips-mode` + `on`
+- [ ] Up again — wraps back to `voice-mode` + `active`
+- [ ] Down cycles in reverse
+- [ ] Cycling the selector does NOT write to `opencues.md` (read-only navigation)
+
+### Satellite cycling (word N+1)
+- [ ] Navigate to the value word (`active`), Up — becomes `inactive`
+- [ ] Check `opencues.md` — the `voice-mode:` line is now `inactive` on disk
+- [ ] Down — back to `active`, `opencues.md` updates
+
+### Voice-mode wired to TTS
+- [ ] Flip satellite to `inactive` for `voice-mode`
+- [ ] Navigate to a word with a speak:true tip — NO TTS fires
+- [ ] Flip back to `active`
+- [ ] Navigate to the same tip word — TTS fires again
+- [ ] Effect is immediate (no restart, no hot-reload wait)
+
+### Pair cleanup — blankClearOnEdit
+- [ ] `opencues settings _` → resolves to `voice-mode active` (keywords already cleared)
+- [ ] Delete the satellite word (`active`) — both `voice-mode` and `active` are removed from text (`blankClearOnEdit: true`)
+- [ ] Re-type `opencues settings _` — re-expands cleanly
+
+### Pair cleanup from the other side
+- [ ] `opencues settings _` → resolves to `voice-mode active`
+- [ ] Type over `voice-mode` with `xyz` (something not in the selector alts)
+- [ ] Both `xyz` and `active` are removed from text (`blankClearOnEdit`)
+
+### Hot-reload of opencues.md
+- [ ] Edit `opencues.md`, change `voice-mode: active` to `voice-mode: inactive`, save
+- [ ] Wait ~2s and type a space in Claude Code
+- [ ] `opencues settings _` now auto-populates with `voice-mode inactive`
+- [ ] Add a new valid value under `settings: voice-mode: values:` — add `muted: TTS muted`
+- [ ] Save, wait ~2s, re-trigger — cycling the satellite now includes `muted`
+
 ## Read-only API controls (stocks)
 
 - [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price (e.g. `$133.44`) (requires `FINNHUB_API_KEY`)
@@ -88,9 +131,9 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Without `FINNHUB_API_KEY` — blank stays as `_` (graceful degradation)
 
 ### Keyword expansion
-- [ ] `Rddt stock _` → `Reddit stock $133.44` (ticker expanded, blank filled, both in one pass)
+- [ ] `rddt _` → `Reddit $133.44` (ticker expanded to display name, blank filled)
 - [ ] `NVDA _` → `Nvidia $133.44` (all-caps ticker — case-insensitive expansion)
-- [ ] `Reddit stock _` → `Reddit stock $133.44` (full name — no expansion needed, passes through unchanged)
+- [ ] `reddit stock _` → `Reddit stock $133.44` (multi-word keyword, full name — no expansion needed)
 - [ ] `Msft _` → `Microsoft $...` (spot-check another ticker)
 
 ## Read-only API controls (weather)

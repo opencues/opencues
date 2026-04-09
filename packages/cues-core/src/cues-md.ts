@@ -142,6 +142,10 @@ export interface ControlConfig {
   blankSatellite?: boolean;
   /** Display separator between selector and satellite in the text (default: ' '). Script always outputs tab-delimited. */
   blankSatelliteSeparator?: string;
+  /** If true, keyword context words are removed from text when blank auto-populates */
+  blankClearKeywords?: boolean;
+  /** If true, pair cleanup (selector/satellite edit) removes the spawned words from text */
+  blankClearOnEdit?: boolean;
 }
 
 export interface CuesMdConfig {
@@ -531,6 +535,8 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankKeywordExpansions?: Record<string, string>;
   blankSatellite?: boolean;
   blankSatelliteSeparator?: string;
+  blankClearKeywords?: boolean;
+  blankClearOnEdit?: boolean;
 }
 
 /**
@@ -599,6 +605,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
+      case 'blankClearKeywords': fm.blankClearKeywords = value === 'true'; break;
+      case 'blankClearOnEdit': fm.blankClearOnEdit = value === 'true'; break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -680,6 +688,8 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankKeywordExpansions !== undefined) control.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
       if (frontmatter.blankSatellite !== undefined) control.blankSatellite = frontmatter.blankSatellite;
       if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
+      if (frontmatter.blankClearKeywords !== undefined) control.blankClearKeywords = frontmatter.blankClearKeywords;
+      if (frontmatter.blankClearOnEdit !== undefined) control.blankClearOnEdit = frontmatter.blankClearOnEdit;
       // Resolve relative script paths
       if (frontmatter.stepScript) {
         control.stepScript = frontmatter.stepScript.startsWith('./')

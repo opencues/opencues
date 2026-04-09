@@ -2,10 +2,12 @@
 name: opencues
 type: control
 control: opencues
-blankKeywords: opencues, settings, config
+blankKeywords: opencues settings, config
 blankAutoPopulate: true
 blankFormat: string
 blankScript: ./opencues-blank.sh
 blankSatellite: true
 blankSatelliteSeparator: ' '
+blankClearKeywords: true
+blankClearOnEdit: true
 ---

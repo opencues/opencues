@@ -59,6 +59,8 @@ blankProximity: 0                    # max words between keyword and _ (optional
 | `blankDismissible` | boolean | `false` | If true, `_` is appended as the last cycling option so the user can dismiss the value. Once dismissed, auto-populate will not re-fire until the text changes. |
 | `blankSuffix` | string | *(none)* | Suffix appended to the displayed value (e.g. `%` shows `50%`). Stripped before arithmetic, re-appended after cycling. The script always receives and returns plain numbers. |
 | `blankKeywordExpansions` | object | *(none)* | Map from keyword (lowercase) to display name. When a blank auto-populates, the matched keyword in the text is replaced with its expansion (e.g. `rddt` → `Reddit`). Supports dot-notation (`blankKeywordExpansions.rddt: Reddit`) or JSON (`blankKeywordExpansions: {"rddt":"Reddit"}`). |
+| `blankClearKeywords` | boolean | `false` | If true, keyword context words are removed from the text when the blank auto-populates. Only the resolved value remains (e.g. `opencues settings _` → `voice-mode active`). Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword). |
+| `blankClearOnEdit` | boolean | `false` | If true, editing the auto-populated value to something not in alts removes the spawned words from the text entirely. For selector/satellite pairs, both the selector and satellite are removed. |
 
 ### Tips Behaviour
 
