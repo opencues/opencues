@@ -10,6 +10,8 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [ ] Add Discord invite link to README — after "Contributing" section
 - [x] Create Twitter/X account — [@openCues_](https://x.com/openCues_)
 - [x] Create Reddit — [r/OpenCues](https://www.reddit.com/r/OpenCues/) (private until launch)
+- [x] Contact email — hello@opencues.com
+- [ ] Website — opencues.com (not yet live)
 - [ ] Record demo GIF/video — 30s clip showing navigation, cycling, blanks, controls
 - [ ] Add demo GIF to README — below the tagline, before "The Standard"
 
