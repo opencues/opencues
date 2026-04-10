@@ -47,8 +47,8 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 ## Package Publishing (future)
 
 - [ ] Publish cues-core to npm — `@opencues/core` or similar
-- [ ] Add `package.json` version field — semantic versioning
-- [ ] Add `CHANGELOG.md` — track releases
+- [x] Add `package.json` version field — v0.1.0 (pre-release)
+- [x] Add `CHANGELOG.md` — v0.1.0 initial pre-release with all 18 features
 
 ## Pre-Launch Audit
 
