@@ -309,6 +309,7 @@ New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — c
 - [GitHub Discussions](https://github.com/opencues/opencues/discussions) — ideas, Q&A
 -->
 - [Twitter/X](https://x.com/openCues_) — announcements
+<!-- - [Reddit](https://www.reddit.com/r/OpenCues/) — community (private until launch) -->
 
 ## License
 
