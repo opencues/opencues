@@ -52,4 +52,4 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [x] Audit for secrets — no hardcoded keys found; `.claude/` with personal paths is not tracked
 - [ ] Review git history — squash or clean commits with sensitive data
 - [ ] Test clean install — clone on fresh machine, follow README exactly
-- [ ] Verify all doc links — no broken internal links in `docs/`
+- [x] Verify all doc links — zero broken links across 68 markdown files
