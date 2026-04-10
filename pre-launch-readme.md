@@ -17,14 +17,14 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 
 - [ ] Choose open-source license — currently proprietary (`LICENSE`). Switch to MIT/Apache 2.0/GPL
 - [ ] Update `LICENSE` file and README "License" section
-- [ ] Add `CODE_OF_CONDUCT.md` — Contributor Covenant or similar
+- [x] Add `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1
 - [x] Create `.github/ISSUE_TEMPLATE/` — bug report + feature request templates
 - [x] Create `.github/PULL_REQUEST_TEMPLATE.md`
 - [ ] Add GitHub Actions CI — at minimum: `npm run build` on PR for cues-core
 - [ ] Add README badges — license, build status, Discord, npm version
 - [x] Transfer repo or create org — now at `opencues/opencues` (private until launch)
 - [ ] Enable GitHub Discussions — for Q&A, ideas
-- [ ] Add `SECURITY.md` — responsible disclosure policy
+- [x] Add `SECURITY.md` — responsible disclosure policy
 
 ## README Improvements
 
