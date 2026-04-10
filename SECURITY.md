@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in OpenCues, please report it responsibly.
 
-**Do not open a public issue.** Instead, email **opencues@proton.me** with:
+**Do not open a public issue.** Instead, email **hello@opencues.com** with:
 
 - A description of the vulnerability
 - Steps to reproduce
