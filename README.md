@@ -3,6 +3,7 @@
 <!-- Badges: uncomment when ready
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Build](https://github.com/opencues/opencues/actions/workflows/ci.yml/badge.svg)](https://github.com/opencues/opencues/actions)
+[![GitHub](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 [![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE)
 -->
 
@@ -50,7 +51,7 @@ Integrations read these files via `cues-core` (the reference implementation in p
 echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
 
 # 2. Clone and install
-git clone https://github.com/wkasekende/opencues ~/opencues
+git clone https://github.com/opencues/opencues ~/opencues
 ~/opencues/integrations/claude-code/patches/setup.sh
 ```
 

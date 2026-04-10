@@ -15,7 +15,7 @@ Get OpenCues running in Claude Code in under 5 minutes.
 echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
 
 # Clone and install
-git clone https://github.com/wkasekende/opencues ~/opencues
+git clone https://github.com/opencues/opencues ~/opencues
 ~/opencues/integrations/claude-code/patches/setup.sh
 ```
 

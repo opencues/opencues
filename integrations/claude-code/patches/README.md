@@ -10,7 +10,7 @@ Custom patches for tweakcc that add LLM-powered word alternatives to Claude Code
 
 ```bash
 # 1. Clone opencues
-git clone https://github.com/wkasekende/opencues ~/opencues
+git clone https://github.com/opencues/opencues ~/opencues
 
 # 2. Run setup (clones tweakcc, patches everything, builds, applies)
 ~/opencues/integrations/claude-code/patches/setup.sh

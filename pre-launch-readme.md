@@ -22,7 +22,7 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [x] Create `.github/PULL_REQUEST_TEMPLATE.md`
 - [ ] Add GitHub Actions CI — at minimum: `npm run build` on PR for cues-core
 - [ ] Add README badges — license, build status, Discord, npm version
-- [ ] Transfer repo or create org — currently `wkasekende/opencues`, consider `opencues/opencues`
+- [x] Transfer repo or create org — now at `opencues/opencues` (private until launch)
 - [ ] Enable GitHub Discussions — for Q&A, ideas
 - [ ] Add `SECURITY.md` — responsible disclosure policy
 

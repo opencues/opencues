@@ -116,7 +116,7 @@ opencues/
 ## Quick Install (Claude Code)
 
 ```bash
-git clone https://github.com/wkasekende/opencues ~/opencues
+git clone https://github.com/opencues/opencues ~/opencues
 ~/opencues/integrations/claude-code/patches/setup.sh
 export GROQ_API_KEY="your-key"
 ```
