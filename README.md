@@ -1,6 +1,31 @@
 # OpenCues
 
+<!-- Badges: uncomment when ready
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build](https://github.com/opencues/opencues/actions/workflows/ci.yml/badge.svg)](https://github.com/opencues/opencues/actions)
+[![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE)
+-->
+
 An open standard for real-time guidance as you type. OpenCues works on top of any text input — LLM prompts, word processors, mobile keyboards — providing alternatives, suggestions, and context before you press enter. Define all behaviour in `.md` config files; integrations bring them to life.
+
+<!-- ![Demo](assets/demo.gif) -->
+
+## Why OpenCues?
+
+Most writing tools suggest after you submit. OpenCues suggests *while* you type — word by word, in real time. Navigate to any word, see alternatives, cycle through them, and keep typing. It's an open standard, not a product: define your cues in `.md` files, and any editor integration brings them to life.
+
+- **Editor-agnostic** — the standard lives in config files, not code
+- **Real-time** — suggestions appear as you type, not after
+- **Extensible** — add new word sources, blank modes, or hardware controls with just a config file
+- **Local-first** — runs on your machine, your API keys, your data
+
+## Supported Editors
+
+| Editor | Status | Integration |
+|--------|--------|-------------|
+| **Claude Code** | Available | via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches |
+| **VS Code** | Planned | Extension |
+| **Chrome** | Planned | Extension ([tracking](docs/guides/adding-an-integration.md)) |
 
 ## The Standard
 
@@ -278,6 +303,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:
 
 New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — cues, blanks, cue-controls, sources, parsers, and more.
 
+<!-- ## Community
+
+- [Discord](https://discord.gg/INVITE) — questions, feedback, feature requests
+- [GitHub Discussions](https://github.com/opencues/opencues/discussions) — ideas, Q&A
+- [Twitter/X](https://twitter.com/opencues) — announcements
+-->
+
 ## License
 
+<!-- TODO: Switch to open-source license before launch -->
 Proprietary. All rights reserved. See [LICENSE](LICENSE).

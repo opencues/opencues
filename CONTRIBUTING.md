@@ -1,6 +1,18 @@
 # Contributing to OpenCues
 
-OpenCues has three areas of contribution, each with different expectations.
+Thank you for your interest in OpenCues. This guide covers what you need to know to contribute.
+
+OpenCues has three areas of contribution, each with different expectations. Pick the one that fits — you don't need to understand the whole system to contribute a word source or blank mode.
+
+## Good first issues
+
+If you're new, look for issues labelled **`good first issue`** on GitHub. These are typically:
+
+- Adding a new word source to `cues.md` (no code changes)
+- Adding a new blank mode to `blanks.md` (config + prompt only)
+- Adding a new cue-control in `controls/{name}/` (config + shell script)
+- Fixing typos or improving docs
+- Adding test cases to `tests/user-test.md`
 
 ## Your first contribution
 
@@ -258,3 +270,14 @@ These issues were found during development and are worth knowing about:
 integrations/claude-code/patches/setup.sh
 # Then restart Claude Code
 ```
+
+---
+
+## Contributor expectations
+
+- **Keep PRs focused** — one feature or fix per PR. If you find something else to fix along the way, open a separate PR.
+- **Test manually** — run `setup.sh`, restart Claude Code, and verify your change works. Describe what you tested in the PR.
+- **Run the test suite** for cues-core changes: `cd packages/cues-core && npm test`
+- **Don't break hot-reload** — config file changes (`.md`) must not require a restart. Patch file changes (`.ts`) must not require re-running `setup.sh` more than once.
+- **Follow existing patterns** — look at how existing controls, sources, or features are built before starting something new.
+- **Docs matter** — if you add a config field, document it in the relevant feature doc and the config table. If you add a feature, add test cases to `tests/user-test.md`.
