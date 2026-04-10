@@ -711,6 +711,7 @@ if(_keS>=0){_apBase=_apBase.slice(0,_keS)+_ke.expansion+_apBase.slice(_keS+_keW[
 }
 }
 // Keyword clearing: remove keyword context words from text before blank fill
+var _apOrigIdx=_ap.index;
 if(_ap.blankClearKeywords&&_ap.blankKeywordIndices&&_ap.blankKeywordIndices.length>0){
 var _kcW=_apBase.split(/\\s+/).filter(function(w){return w;});
 var _kcIdxs=_ap.blankKeywordIndices.slice().sort(function(a,b){return b-a;});
@@ -729,6 +730,11 @@ _kcW.splice(_kcIdx,1);
 // Adjust blank index if keyword was before it
 if(_kcIdx<_ap.index)_ap.index--;
 }}
+}
+// After clearing, update WordDef index to match shifted blank position
+if(_apOrigIdx!==_ap.index&&globalThis._dynDefs&&globalThis._dynDefs.words){
+var _shiftDef=globalThis._dynDefs.words.find(function(d){return d.index===_apOrigIdx;});
+if(_shiftDef)_shiftDef.index=_ap.index;
 }
 var _apBaseWords=_apBase.split(/\\s+/).filter(function(w){return w;});
 var _apPos=0;
@@ -796,12 +802,14 @@ globalThis._hlText=_apNew;
 globalThis._dynLastAnalyzed=_apNew.split(/\\s+/).filter(function(w){return w;});
 globalThis._dynPrevWords=globalThis._dynLastAnalyzed.slice();
 var _apWc=_ap.value.split(/\\s+/).length;
-if(_apWc>1&&globalThis._dynDefs&&globalThis._dynDefs.words){
-var _apDef=globalThis._dynDefs.words.find(function(d){return d.index===_ap.index;});
-if(_apDef){_apDef.spanLength=_apWc;_apDef.word=_ap.value;
+if(_apWc>1){
 if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _asi=0;_asi<_apWc;_asi++){globalThis._dynSpans[_ap.index+_asi]={originalIndex:_ap.index,spanLength:_apWc};}
-}}
+}
+// Store consume-all alts directly from _pendingAutoPopulate data (no _dynDefs lookup)
+if(_ap.consumeAllAlts&&_ap.consumeAllAlts.length>1){
+globalThis._consumeAllAlts={index:_ap.index,alts:_ap.consumeAllAlts,currentAltIndex:0,spanLength:_apWc,cueTip:_ap.consumeAllTip||null,controlName:_ap.controlName||null};
+}
 globalThis._pendingCursorOffset=_apStart+_ap.value.length;
 globalThis._pendingCursorText=_apNew;
 ${onChangeParam}(_apNew+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
@@ -809,6 +817,7 @@ return;
 }
 }
 }
+if(_hlText!==_oldText&&globalThis._consumeAllAlts){var _caC=globalThis._consumeAllAlts;for(var _caCi=0;_caCi<(_caC.spanLength||1);_caCi++){if(globalThis._dynSpans)delete globalThis._dynSpans[_caC.index+_caCi];}if(globalThis._dynDefs&&globalThis._dynDefs.words){globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(d){return d.index<_caC.index||d.index>=_caC.index+(_caC.spanLength||1);});}globalThis._consumeAllAlts=null;}
 if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){
 globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
@@ -963,6 +972,7 @@ var _hlSpanLen=1;
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&_hlWordIdx>=0){
 var _hlDef=globalThis._dynDefs.words.find(function(d){return d.index===_hlWordIdx;});
 if(_hlDef&&_hlDef.spanLength)_hlSpanLen=_hlDef.spanLength;
+if(globalThis._consumeAllAlts&&globalThis._consumeAllAlts.index===_hlWordIdx&&globalThis._consumeAllAlts.spanLength>_hlSpanLen)_hlSpanLen=globalThis._consumeAllAlts.spanLength;
 }
 for(var _ni=0;_ni<_words.length;_ni++){
 var _w=_words[_ni];
@@ -985,6 +995,7 @@ _searchPos=_wStart+_w.length;
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&_hlWordIdx>=0){
 var _hlDef=globalThis._dynDefs.words.find(function(d){return d.index===_hlWordIdx;});
 if(_hlDef&&_hlDef.spanLength)_hlSpanLen=_hlDef.spanLength;
+if(globalThis._consumeAllAlts&&globalThis._consumeAllAlts.index===_hlWordIdx&&globalThis._consumeAllAlts.spanLength>_hlSpanLen)_hlSpanLen=globalThis._consumeAllAlts.spanLength;
 }
 if(_hlWordIdx>=0&&_hlWordIdx<_words.length){
 var _hlWord=_words[_hlWordIdx];

@@ -113,6 +113,17 @@ export class ControlBlankSource implements CueSource {
       matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
     }
 
+    // blankConsumeAll: expand keyword indices to include ALL non-blank words
+    // This causes the entire input to be cleared when the blank auto-populates
+    if (matched.blankConsumeAll) {
+      for (let i = 0; i < context.words.length; i++) {
+        if (i !== blankIndex && !matchedKeywordIndices.includes(i)) {
+          matchedKeywordIndices.push(i);
+        }
+      }
+      matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
+    }
+
     // List-based cycling: stepValues provides ordered alternatives directly
     if (matched.stepValues?.length) {
       const alts = matched.blankDismissible ? [...matched.stepValues, '_'] : matched.stepValues;

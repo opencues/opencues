@@ -254,6 +254,7 @@ Type `HN posts _` → auto-populates with top post. Up/Down scrolls through all 
 - [ ] For keyword expansion: `blankKeywordExpansions.<keyword>: Display Name` set in `cue.md` (optional)
 - [ ] For keyword clearing: `blankClearKeywords: true` to remove keywords from text on auto-populate (optional)
 - [ ] For edit clearing: `blankClearOnEdit: true` to remove spawned words when user edits them (optional)
+- [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true` to clear entire input on auto-populate. Requires dedicated cycling storage — see `docs/guides/creating-a-cue-type.md`
 - [ ] Restart Claude Code
 
 > **No need to run `setup.sh`** — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patch files in `integrations/claude-code/patches/`.

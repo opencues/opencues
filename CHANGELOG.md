@@ -5,6 +5,22 @@ All notable changes to OpenCues will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Prompt Improver control** (`controls/prompt/`) — consume-all blank control with two-step LLM pipeline. Extracts user prompt + conditions from surrounding text, generates 3 improved alternatives + original. First use of `blankConsumeAll`.
+- **`blankConsumeAll` config field** — expands blank resolution to clear the entire input (all non-blank positions), enabling multi-word result replacement. Parsed by cues-core and passed to the integration.
+- **First-party script config fields in `cue.md`** — `model`, `altCount`, `includeOriginal`, and body sections (e.g. `## Extract`, `## Transform`) parsed by cues-core into `ControlConfig`. The integration passes them to blank scripts as `CUES_MODEL`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_*` env vars — keeping scripts free of config parsing.
+- **Claude CLI provider support** — `prompt-blank.sh` detects `claude-*` model names and calls `claude -p` instead of the HTTP API, using existing Claude Code auth. Switch by setting `model: claude-sonnet-4-6` in `cue.md`.
+- **`setup.sh --clean` flag** — wipes `~/.claude/node_modules/cues-core` before reinstalling, removing stale files from old builds.
+- **Prompt improver benchmark** (`tests/benchmarks/prompt-improve.sh`) — 99 test cases across 6 categories (creative, technical, professional, research, edge). Automated intent check + verbatim-echo detection. Run per-category with `--category technical`.
+
+### Fixed
+- **`_consumeAllAlts` not clearing when highlight inactive** — cleanup was inside `if(_hlState.active)` guard. Moved unconditionally before the guard so it fires whether or not the highlight is active when the user edits.
+- **Stale `cueTip` persisting after clearing consume-all span** — after editing over the span, the old control-blank WordDef in `_dynDefs` (with `metadata.controlName`) blocked the `controlName` guard in the LLM merge path, so grammar re-analysis updated `alts` but left `cueTip` stale. Fixed by also removing those WordDefs from `_dynDefs` during cleanup.
+
+---
+
 ## [0.1.0] - 2026-04-10
 
 Initial pre-release. All core features implemented with a working Claude Code integration.
@@ -13,7 +29,7 @@ Initial pre-release. All core features implemented with a working Claude Code in
 
 #### Navigation & Interaction
 - **Feature 1: Navigation** — Ctrl+Alt+Left/Right moves between interactive words (cue-controls, step patterns, local tips, LLM alternatives, multi-word spans). Index-based targeting skips non-interactive words.
-- **Feature 2: Cycling** — Ctrl+Alt+Up/Down replaces the focused word through a four-tier priority: custom cue-controls → control-bound blanks → step controls → LLM alternatives. Linked words synchronize automatically.
+- **Feature 2: Cycling** — Ctrl+Alt+Up/Down replaces the focused word through a five-tier priority: custom cue-controls → control-bound blanks → step controls → consume-all alts → LLM alternatives. Linked words synchronize automatically.
 - **Feature 3: Visual Cues** — Real-time ANSI styling with three visual states: normal (white), dimmed (gray, has alternatives), highlighted (bold white, currently focused). Dimming appears within ~500ms of typing.
 - **Feature 4: Cursor Preservation** — Cursor offset adjusts automatically when a replaced word differs in length, keeping the editing position stable during cycling.
 
@@ -46,6 +62,7 @@ Initial pre-release. All core features implemented with a working Claude Code in
 - **Stocks** — Read-only API control fetching live stock prices from Finnhub (reddit, nvidia, apple, google, microsoft, amazon, tesla, meta)
 - **Weather** — Read-only API control fetching live weather from Open-Meteo (any city/country, today/tomorrow/weekend/weekly)
 - **Hacker News** — Dynamic list control fetching live HN front page titles via RSS
+- **Prompt Improver** — Consume-all control with two-step LLM (model + prompts in `cue.md`): extracts prompt/conditions, returns 3 improved versions + original as cycling alternatives. First control using `blankConsumeAll`.
 - **OpenCues Settings** — Selector+satellite control for live OpenCues configuration (voice-mode, debug-mode, tips-mode, output-format, display mode)
 
 ### Project
@@ -53,7 +70,7 @@ Initial pre-release. All core features implemented with a working Claude Code in
 - **cues-core** — Pure TypeScript library (resolver, config parser, HTTP adapter, 5 source types, 5 response parsers)
 - **Claude Code integration** — via tweakcc patches (wordHighlight.ts, dynamicHighlight.ts, cursorStateExport.ts)
 - **418 unit tests** across 6 test files + 390-sentence live benchmark
-- **18 feature concept docs** + 7 implementation guides + glossary
+- **19 feature concept docs** + 8 implementation guides + glossary
 - **8 Claude Code integration docs** covering all implementation details
 - GitHub org at `opencues/opencues`
 - Issue templates, PR template, CODE_OF_CONDUCT.md, SECURITY.md

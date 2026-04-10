@@ -151,6 +151,30 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Edit `cues.md` — changes take effect in ~2s without restart
 - [ ] Edit `controls/volume/cue.md` — changes take effect in ~2s without restart
 
+## Prompt improver (consume-all blank)
+
+### Auto-populate
+- [ ] `improve prompt _` — keywords cleared, entire input replaced with improved prompt (multi-word span)
+- [ ] Cursor lands at end of populated text
+- [ ] Whole span dims gray
+
+### Cycling alternatives
+- [ ] Navigate to the first word of the span, Up/Down — cycles through 3 improved versions + original prompt
+- [ ] Status line shows "Prompt improver" tip during cycling
+- [ ] Each cycle replaces the entire span (not just the first word)
+
+### Cleanup: typing over the span
+- [ ] After span is populated, delete it and type `hello my name is` — no stale span
+- [ ] Navigate to `hello` — shows grammar alternatives (e.g. "hi", "hey"), NOT prompt improver alternatives
+- [ ] Status line tip is empty or shows grammar tip, NOT "Prompt improver"
+- [ ] Same check after navigating away first (deactivating highlight), THEN typing — same result
+
+### Cleanup: opencues settings
+- [ ] `opencues settings _` → resolves to `voice-mode active`
+- [ ] Delete entire text, type `hello my name is`
+- [ ] Navigate to `hello` — shows grammar alternatives, NOT selector/satellite alts
+- [ ] Status line tip is empty, NOT a settings tip
+
 ## Edge cases
 
 - [ ] Type `_` alone — should trigger blanks (grammar mode), NOT control-blank

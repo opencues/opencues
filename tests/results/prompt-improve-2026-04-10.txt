@@ -1,0 +1,203 @@
+──────────────────────────────────────────────────────────────────────
+[creative]   Vague poem request
+  IN : write a poem about love
+
+  ALT1: Write a lyrical poem about love that captures a specific moment, using vivid sensory details and a consistent meter, aiming for 12‑16 lines  
+  ALT2: Compose a love poem from the perspective of an unexpected narrator (e.g., an inanimate object), employing a reflective tone and an ABAB rhyme scheme  
+  ALT3: Create a short love poem of exactly eight lines, focusing on the tension between joy and longing, with concrete imagery and a gentle, intimate voice
+
+  ✓  intent check passed ("poem" found)
+──────────────────────────────────────────────────────────────────────
+[creative]   Short story with implicit genre
+  IN : write a short story about a detective
+
+  ALT1: Write a short story (600‑800 words) about a detective in a 1920s city, narrated in third person with a suspenseful tone, focusing on a single puzzling case and a twist ending.  
+  ALT2: Compose a short detective story (500‑600 words) set in a modern urban environment, written from the detective’s first‑person perspective, emphasizing internal monologue, a key clue, and a resolution that subverts expectations.  
+  ALT3: Craft a concise (≈400‑word) noir‑style short story about a detective facing a personal dilemma while solving a theft, using crisp dialogue, atmospheric description, and a morally ambiguous conclusion.
+
+  ✓  intent check passed ("detective" found)
+──────────────────────────────────────────────────────────────────────
+[creative]   Creative with explicit style
+  IN : write a haiku about autumn
+
+  ALT1: Write a haiku about autumn that captures a single vivid sensory image, using seasonal language and a contemplative tone.  
+  ALT2: Compose a 5‑7‑5 haiku about autumn from the perspective of a falling leaf, emphasizing the transition and quiet melancholy.  
+  ALT3: Create a short haiku about autumn for a nature‑loving audience, highlighting crisp air and rustling leaves, ending with a resonant, reflective closing line.
+
+  ✓  intent check passed ("haiku" found)
+──────────────────────────────────────────────────────────────────────
+[creative]   Screenplay
+  IN : write a scene where two friends argue
+
+  ALT1: Write a vivid dialogue-driven scene of about 300 words where two long-time friends argue about a betrayal, set in a coffee shop, capturing their emotions through body language and subtext  
+  ALT2: Create a dramatic 5‑paragraph scene featuring two friends in a cramped apartment, arguing over a secret they both keep, using sharp, realistic dialogue and descriptive narration to convey tension  
+  ALT3: Compose a short stage script (dialogue only, with minimal stage directions) where two friends argue about a political disagreement, set in a park at dusk, emphasizing tone shifts from playful to heated
+
+  ✓  intent check passed ("scene" found)
+──────────────────────────────────────────────────────────────────────
+[technical]  Vague debug request
+  IN : help me fix my code
+
+  ALT1: Help me fix my code by providing the programming language, the relevant snippet, the exact error message or unexpected output, and the intended behavior so I can pinpoint the issue and supply a corrected version  
+  ALT2: Debug this function for me: include the full code, specify the language/framework, describe the symptom (error traceback or wrong output), and explain the expected result, and I will identify the cause and provide a working fix  
+  ALT3: Assist in troubleshooting my code: paste the code segment, indicate the language and environment, detail the error or unexpected result you see, and state what you want it to do, and I will locate the problem and rewrite the necessary parts
+
+  ✓  intent check passed ("code" found)
+──────────────────────────────────────────────────────────────────────
+[technical]  Language specified, task vague
+  IN : explain how Python works
+
+  ALT1: Provide a concise, beginner-friendly overview of how Python executes code, covering interpretation, bytecode compilation, and the role of the Python Virtual Machine in under 300 words.  
+  ALT2: Write a detailed technical explanation of Python's execution model for intermediate programmers, describing source parsing, abstract syntax tree generation, bytecode compilation, and runtime execution, using clear headings and bullet points.  
+  ALT3: Explain how Python works in a tutorial style aimed at developers transitioning from other languages, highlighting the interpreter loop, memory management, and standard library integration, with examples and a friendly tone.
+
+  ✓  intent check passed ("python" found)
+──────────────────────────────────────────────────────────────────────
+[technical]  Architecture question
+  IN : design a database for a blog
+
+  ALT1: Design a relational database schema for a multi‑author blog, including tables for users, posts, comments, categories, and tags, and provide the full SQL DDL statements with primary/foreign keys, indexes, and a brief ER diagram description.  
+  ALT2: Create a detailed database design for a blog platform that supports authors, drafts, published articles, comment threads, and tag taxonomy, delivering an entity‑relationship diagram summary and corresponding PostgreSQL CREATE TABLE scripts with constraints and indexing recommendations.  
+  ALT3: Develop a comprehensive blog database model for a web application, outlining tables, relationships, and data types for users, posts, media attachments, comments, and categories, and present the schema as Markdown‑formatted SQL statements and
+
+  ✓  intent check passed ("database" found)
+──────────────────────────────────────────────────────────────────────
+[technical]  Code review ask
+  IN : review my function and improve it
+
+  ALT1: Review my function by pasting the code and specifying its programming language, then identify any bugs, inefficiencies, or style issues and provide a refactored version that improves readability and performance.  
+  ALT2: Analyze the supplied function (include the code and language) for correctness, maintainability, and optimization, and return concrete suggestions along with a revised implementation that follows best practices.  
+  ALT3: Examine the given function (provide the code snippet and its language) to pinpoint logical errors or suboptimal patterns, and rewrite it to be more concise, robust, and idiomatic while explaining each change.
+
+  ✓  intent check passed ("function" found)
+──────────────────────────────────────────────────────────────────────
+[technical]  API integration
+  IN : show me how to call an API
+
+  ALT1: Provide a step‑by‑step tutorial on how to call a REST API, including constructing the request URL, setting headers, handling authentication, and parsing the JSON response, with example code in a language of your choice.  
+  ALT2: Explain how to call an API using curl: show the exact command syntax for GET and POST requests, how to include query parameters, headers, and authentication tokens, and describe how to interpret the returned data.  
+  ALT3: Write a concise guide for beginners on calling a web API, covering HTTP method selection, request formatting, error handling, and a short sample implementation in Python's requests library.
+
+  ✓  intent check passed ("api" found)
+──────────────────────────────────────────────────────────────────────
+[professional] Email request (no recipient context)
+  IN : write an email to my boss asking for a raise
+
+  ALT1: Write a professional email to my boss requesting a raise, highlighting two recent achievements, quantifying their impact, using a respectful and confident tone, and keeping the message under 180 words.  
+  ALT2: Draft a concise, polite email to my manager asking for a salary increase, including specific performance metrics, a brief justification, and proposing a short meeting to discuss, in a formal tone.  
+  ALT3: Compose a persuasive email to my supervisor for a raise, structured with an opening gratitude, a summary of contributions, a clear ask for a specific amount or percentage, and a courteous closing, limited to three short paragraphs.
+
+  ✓  intent check passed ("email" found)
+──────────────────────────────────────────────────────────────────────
+[professional] Meeting summary
+  IN : summarise the meeting notes
+
+  ALT1: Summarize the meeting notes into a concise bullet‑point list of key decisions, action items, and next steps, using a professional tone and keeping the total length under 200 words.  
+  ALT2: Provide a 150‑word narrative summary of the meeting notes that highlights the main topics discussed, conclusions reached, and responsibilities assigned, written in clear business language for team members.  
+  ALT3: Create a structured summary of the meeting notes with headings for agenda items, decisions made, and follow‑up tasks, limited to three short paragraphs and formatted for easy scanning by stakeholders.
+
+  ✓  intent check passed ("summar" found)
+──────────────────────────────────────────────────────────────────────
+[professional] Formal report
+  IN : write a report on our Q1 sales
+
+  ALT1: Write a concise 2‑page executive summary report on our Q1 sales, including total revenue, percentage growth versus Q4, top‑performing products, and key regional trends, presented with bullet points and charts for senior management  
+  ALT2: Prepare a detailed Q1 sales report for the marketing team, covering month‑by‑month sales figures, product category breakdown, customer segment analysis, and actionable insights, formatted as a PDF with tables, graphs, and a concluding recommendation section  
+  ALT3: Create a formal Q1 sales performance report aimed at investors, limited to 800 words, highlighting revenue, profit margin, YoY growth, major wins and challenges, using a professional tone and including an executive summary, data visualizations, and strategic recommendations
+
+  ✓  intent check passed ("report" found)
+──────────────────────────────────────────────────────────────────────
+[professional] Job application
+  IN : write a cover letter for a software engineer job
+
+  ALT1: Write a cover letter for a software engineer role at a mid‑size tech firm, 300‑350 words, professional tone, including an opening hook, two specific project achievements, and a closing statement expressing enthusiasm and a call to action  
+  ALT2: Draft a cover letter targeting a senior software engineer position at a startup, focusing on full‑stack experience and quantifiable impact (e.g., reduced latency by 30%), using concise, confident language, and formatted with a header, greeting, body paragraphs, and signature  
+  ALT3: Create a cover letter for an entry‑level software engineer job at a large corporation, 250‑300 words, friendly yet formal tone, highlighting relevant coursework, internship experience, and alignment with the company's mission, ending with a polite request for an interview
+
+  ✓  intent check passed ("cover letter" found)
+──────────────────────────────────────────────────────────────────────
+[research]   Broad topic
+  IN : explain climate change
+
+  ALT1: Provide a concise 300-word explanation of climate change for high school students, using clear examples, simple language, and a neutral tone.  
+  ALT2: Write a detailed 800-word article that explains the science, impacts, and mitigation strategies of climate change for a general adult audience, organized with headings and a balanced tone.  
+  ALT3: Create a slide‑deck outline of 10 bullet points that explains climate‑change fundamentals, key evidence, and policy implications for policymakers, using an authoritative yet accessible tone.
+
+  ✓  intent check passed ("climate" found)
+──────────────────────────────────────────────────────────────────────
+[research]   Comparison request
+  IN : compare React and Vue
+
+  ALT1: Write a 600‑word comparative analysis of React and Vue for web developers, organized with an introduction, a markdown table of key features (syntax, performance, ecosystem, learning curve), pros and cons for each, and a concluding recommendation in a neutral, professional tone.  
+  ALT2: Create a side‑by‑side markdown table comparing React and Vue across criteria such as component model, state management, tooling, community support, and typical use cases, followed by a brief 150‑word summary that highlights which framework suits different project sizes, aimed at intermediate front‑end engineers.  
+  ALT3: Draft a presentation outline of 10 slides that contrasts React and Vue, specifying slide titles, bullet points for each framework’s strengths,
+
+  ✓  intent check passed ("react" found)
+──────────────────────────────────────────────────────────────────────
+[research]   History question
+  IN : tell me about the French Revolution
+
+  ALT1: Provide a concise 300‑word overview of the French Revolution for a general audience, covering its main causes, key events, major figures, and lasting outcomes in an engaging, neutral tone.  
+  ALT2: Create a detailed chronological timeline of the French Revolution (1789‑1799) in bullet‑point format, listing pivotal dates, battles, political shifts, and their significance, suitable for a high‑school history project.  
+  ALT3: Write a 500‑word analytical essay on the social, political, and economic impacts of the French Revolution on modern Europe, using an academic tone, referencing at least three primary
+
+  ✓  intent check passed ("french revolution" found)
+──────────────────────────────────────────────────────────────────────
+[research]   How-to explanation
+  IN : explain machine learning
+
+  ALT1: Provide a clear, beginner-friendly explanation of machine learning that defines the core concept, outlines major algorithm families, and gives two real‑world examples in under 300 words.  
+  ALT2: Write a concise, technical overview of machine learning for a graduate‑level audience, including formal definitions, the three primary categories (supervised, unsupervised, reinforcement), and brief descriptions of representative algorithms, organized with headings.  
+  ALT3: Create an engaging step‑by‑step tutorial that explains machine learning fundamentals to high‑school students, using simple analogies and visual metaphors, and keep the total length to about 500 words.
+
+  ✓  intent check passed ("machine learning" found)
+──────────────────────────────────────────────────────────────────────
+[edge]       Already specific prompt
+  IN : write a 200-word product description for noise-cancelling headphones targeting remote workers
+
+  ALT1: Write a 200-word product description for noise‑cancelling headphones aimed at remote workers, opening with a relatable distraction scenario, highlighting three specific benefits (focus, comfort, battery life), and ending with a clear call to action in a professional yet engaging tone  
+  ALT2: Craft a concise 200-word product description for noise‑cancelling headphones for remote workers, using a benefit‑first structure that addresses common work‑from‑home challenges and maintains a friendly, persuasive tone throughout  
+  ALT3: Compose a 200-word product description targeting remote workers for noise‑cancelling headphones, featuring a hook about noisy home environments, bullet‑style benefit statements, and a closing invitation to purchase, written in a confident, solution‑oriented voice
+
+  ✓  intent check passed ("product description" found)
+──────────────────────────────────────────────────────────────────────
+[edge]       One-word prompt
+  IN : summarise
+
+  ALT1: Summarise the provided passage in about 150 words, highlighting the main arguments and conclusions in a clear, neutral tone.  
+  ALT2: Provide a concise summary of the given article in three bullet points, each capturing a core idea, written for a general audience.  
+  ALT3: Create a brief summary of the supplied material in under 200 characters, focusing on the essential information and using an objective tone.
+
+  ✓  intent check passed ("summar" found)
+──────────────────────────────────────────────────────────────────────
+[edge]       Prompt with conditions
+  IN : write a blog post about coffee improve prompt keep it under 500 words and casual tone
+
+  ALT1: Write a casual, under‑500‑word blog post about coffee that introduces its history, describes its taste, and offers simple brewing tips for everyday readers  
+  ALT2: Craft a conversational blog post on coffee, no more than 500 words, that shares personal anecdotes, highlights popular coffee varieties, and invites readers to try a new brew  
+  ALT3: Produce a relaxed‑tone blog entry about coffee, limited to 500 words, covering health benefits, favorite coffee rituals, and a quick guide to making a great cup at home
+
+  ✓  intent check passed ("blog" found)
+──────────────────────────────────────────────────────────────────────
+[edge]       Non-English intent keyword
+  IN : escribir un poema sobre el mar
+
+  ALT1: Escribe un poema sobre el mar que capture un momento específico del amanecer, usando imágenes sensoriales y un tono melancólico, con entre 12 y 16 versos.  
+  ALT2: Crea un poema sobre el mar desde la perspectiva de una gaviota que sobrevuela la costa, empleando metáforas marítimas y un ritmo libre, estructurado en al menos tres estrofas.  
+  ALT3: Redacta un poema breve (8‑10 líneas) sobre el mar que contraste la calma del horizonte con la fuerza de las olas, en tono contemplativo y con esquema de rima ABAB.
+
+  ✓  intent check passed ("poema" found)
+──────────────────────────────────────────────────────────────────────
+
+=== Results: 21/21 intent checks passed, 0 warnings, 0 failures ===
+
+Scoring rubric for manual review:
+  PASS  — specificity improved, meaning preserved
+  WARN  — specificity improved but meaning drifted OR no specificity gain
+  FAIL  — meaning changed significantly, output worse than input, or no output
+
+Key questions for each output:
+  1. Does the improved prompt still ask for the same thing as the original?
+  2. Did it add useful specificity (format, audience, constraints, scope)?
+  3. Did it invent constraints the user never implied?
+  4. Is each of the 3 alternatives meaningfully different?

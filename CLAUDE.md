@@ -52,9 +52,12 @@ opencues/
 │   ├── weather/
 │   │   ├── cue.md                 # Read-only API control (Open-Meteo, context-driven)
 │   │   └── weather-blank.sh       # Fetch script: geocode + forecast (any city/country)
-│   └── hackernews/
-│       ├── cue.md                 # Dynamic list control (blankDismissible, RSS feed)
-│       └── hn-blank.sh            # Fetch script: RSS → one title per line → scrollable list
+│   ├── hackernews/
+│   │   ├── cue.md                 # Dynamic list control (blankDismissible, RSS feed)
+│   │   └── hn-blank.sh            # Fetch script: RSS → one title per line → scrollable list
+│   └── prompt/
+│       ├── cue.md                 # Consume-all control (blankConsumeAll, two-step LLM)
+│       └── prompt-blank.sh        # Two-step LLM: extract prompt/conditions → improve → 3 alts
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library
@@ -107,7 +110,10 @@ opencues/
 │   └── prompt-design-learnings.md # Prompt engineering principles
 │
 └── tests/                         # Benchmarks & test data
+    ├── user-test.md               # Manual sanity checklist (run after code changes)
     ├── benchmarks/                # LLM accuracy benchmarks
+    │   ├── prompt-improve.sh      # Prompt improver benchmark (99 cases, --category filter)
+    │   └── ...                    # Word/blank/factual/math benchmarks
     └── results/                   # Benchmark results
 ```
 

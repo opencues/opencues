@@ -38,8 +38,9 @@ Two modes:
 - **Script-based** (default): Runs the control's script synchronously (`execSync`, 3 s timeout) then calls `blankScript get` for the new live value. The `blankFormat` field determines how the value is parsed for display.
 - **List-based** (`stepValues`): When the control has a `stepValues` array, the blank auto-populates with the first value and Up/Down cycles through the list via normal alternative cycling. Multi-word values are span-tracked automatically. No script is needed.
 - **Dynamic list** (multi-line script output): When `blankScript get` returns multiple lines, each line becomes a cycling alternative. Same behavior as `stepValues` but populated from live data (e.g., RSS feeds, API results).
+- **Consume-all** (`blankConsumeAll: true`): Clears the entire input and replaces it with a multi-word result. Cycling swaps the full text as a span. Requires dedicated cycling storage because the standard WordDef array is overwritten by analysis. See [Consume-All Blanks](consume-all-blanks.md).
 
-All list-based controls (static `stepValues` and dynamic multi-line) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
+All list-based controls (static `stepValues`, dynamic multi-line, and consume-all) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
 
 Example list control (`controls/affirmations/cue.md`):
 ```yaml
@@ -78,7 +79,13 @@ stepMin: 0
 ---
 ```
 
-### 4. Alternative cycling
+### 4. Consume-all cycling
+
+**Condition**: `globalThis._consumeAllAlts` exists AND the current word (resolved via span) matches `_consumeAllAlts.index`.
+
+Used by controls with `blankConsumeAll: true` that replace the entire input with multi-word cycling alternatives. Uses dedicated storage independent of `_dynDefs` because the standard WordDef array is overwritten by tips/grammar analysis. Span-aware: replaces the full span, updates `_dynSpans`, and prevents re-analysis by updating `_dynLastAnalyzed`/`_dynPrevWords`. Supports `blankDismissible` (cycling to `_` tracks dismissal). See [Consume-All Blanks](consume-all-blanks.md).
+
+### 5. Alternative cycling
 
 **Condition**: A `_dWord` entry exists in `globalThis._dynDefs.words` with `alts.length > 1`. If no entry exists but the word is in `globalThis._localCueMap` (tip-lookup fallback), a `_tipDef` is created on the fly and pushed into `_dynDefs.words`.
 

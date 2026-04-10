@@ -148,6 +148,20 @@ export interface ControlConfig {
   blankClearKeywords?: boolean;
   /** If true, pair cleanup (selector/satellite edit) removes the spawned words from text */
   blankClearOnEdit?: boolean;
+  /** If true, ALL non-blank word indices are added to blankKeywordIndices (clears entire input on auto-populate) */
+  blankConsumeAll?: boolean;
+  /** LLM model identifier for script-based LLM calls (e.g. 'openai/gpt-oss-120b') */
+  model?: string;
+  /** API endpoint URL for script-based LLM calls (default: Groq) */
+  apiUrl?: string;
+  /** Environment variable name holding the API key (default: GROQ_API_KEY) */
+  apiKeyEnv?: string;
+  /** Number of alternatives the script should return (default: 3) */
+  altCount?: number;
+  /** If true, include the original input as the last cycling alternative (default: true) */
+  includeOriginal?: boolean;
+  /** Named prompts parsed from ## sections in the cue.md body (e.g. { Extract: "...", Transform: "..." }) */
+  prompts?: Record<string, string>;
 }
 
 export interface CuesMdConfig {
@@ -540,6 +554,11 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankSatelliteSeparator?: string;
   blankClearKeywords?: boolean;
   blankClearOnEdit?: boolean;
+  blankConsumeAll?: boolean;
+  apiUrl?: string;
+  apiKeyEnv?: string;
+  altCount?: number;
+  includeOriginal?: boolean;
 }
 
 /**
@@ -611,6 +630,11 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
       case 'blankClearKeywords': fm.blankClearKeywords = value === 'true'; break;
       case 'blankClearOnEdit': fm.blankClearOnEdit = value === 'true'; break;
+      case 'blankConsumeAll': fm.blankConsumeAll = value === 'true'; break;
+      case 'apiUrl': case 'apiurl': fm.apiUrl = value; break;
+      case 'apiKeyEnv': case 'apikeyenv': fm.apiKeyEnv = value; break;
+      case 'altCount': case 'altcount': fm.altCount = parseInt(value, 10) || 3; break;
+      case 'includeOriginal': case 'includeoriginal': fm.includeOriginal = value === 'true'; break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -695,6 +719,26 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
       if (frontmatter.blankClearKeywords !== undefined) control.blankClearKeywords = frontmatter.blankClearKeywords;
       if (frontmatter.blankClearOnEdit !== undefined) control.blankClearOnEdit = frontmatter.blankClearOnEdit;
+      if (frontmatter.blankConsumeAll !== undefined) control.blankConsumeAll = frontmatter.blankConsumeAll;
+      if (frontmatter.model !== undefined) control.model = frontmatter.model;
+      if (frontmatter.apiUrl !== undefined) control.apiUrl = frontmatter.apiUrl;
+      if (frontmatter.apiKeyEnv !== undefined) control.apiKeyEnv = frontmatter.apiKeyEnv;
+      if (frontmatter.altCount !== undefined) control.altCount = frontmatter.altCount;
+      if (frontmatter.includeOriginal !== undefined) control.includeOriginal = frontmatter.includeOriginal;
+      // Parse ## sections from body as named prompts
+      const promptSections: Record<string, string> = {};
+      const sectionPattern = /^## (.+)$/gm;
+      let sMatch: RegExpExecArray | null;
+      const positions: { name: string; start: number }[] = [];
+      while ((sMatch = sectionPattern.exec(body)) !== null) {
+        positions.push({ name: sMatch[1].trim(), start: sMatch.index + sMatch[0].length });
+      }
+      for (let pi = 0; pi < positions.length; pi++) {
+        const end = pi + 1 < positions.length ? positions[pi + 1].start - positions[pi + 1].name.length - 4 : body.length;
+        const text = body.slice(positions[pi].start, end).trim();
+        if (text) promptSections[positions[pi].name] = text;
+      }
+      if (Object.keys(promptSections).length > 0) control.prompts = promptSections;
       // Resolve relative script paths
       if (frontmatter.stepScript) {
         control.stepScript = frontmatter.stepScript.startsWith('./')

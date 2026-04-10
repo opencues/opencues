@@ -26,6 +26,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 16 | [Hot-Reload Config](hot-reload-config.md) | Config file changes take effect without restart |
 | 17 | [Selector + Satellite Blanks](selector-satellite.md) | Single `_` becomes two linked words: selector picks a setting, satellite shows/writes its value |
 | 18 | [Tip Priority](tip-priority.md) | Which tip source wins when multiple sources match a word |
+| 19 | [Consume-All Blanks](consume-all-blanks.md) | Blanks that consume surrounding text and replace it with multi-word cycling alternatives |
 
 ## Adding a new feature
 

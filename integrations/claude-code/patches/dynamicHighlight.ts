@@ -224,7 +224,7 @@ var _rEp="https://api.groq.com/openai/v1/chat/completions";
 var _rCuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
 var _rBlanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
 var _rDefaultMod=_rCuesPc.model||_rBlanksPc.model||"openai/gpt-oss-120b";
-var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn,_mkw,_ctx){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _bs2=_ctrl&&(_ctrl.blankScript||_ctrl.script);if(!_bs2)return null;var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");var _bsArgs=["get"].concat(_mkw?[_mkw]:[]).concat(_ctx?_ctx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_mkw||"").toLowerCase();}):[]); try{var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome)].concat(_bsArgs),{timeout:6000,encoding:"utf8"}).trim();return _bsOut||null;}catch(_e){return null;}}});
+var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn,_mkw,_ctx){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _bs2=_ctrl&&(_ctrl.blankScript||_ctrl.script);if(!_bs2)return null;var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");var _bsArgs=["get"].concat(_mkw?[_mkw]:[]).concat(_ctx?_ctx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_mkw||"").toLowerCase();}):[]); var _bsEnv=Object.assign({},process.env);if(_ctrl.model)_bsEnv.CUES_MODEL=_ctrl.model;if(_ctrl.apiUrl)_bsEnv.CUES_API_URL=_ctrl.apiUrl;if(_ctrl.apiKeyEnv)_bsEnv.CUES_API_KEY_ENV=_ctrl.apiKeyEnv;if(_ctrl.altCount)_bsEnv.CUES_ALT_COUNT=String(_ctrl.altCount);if(_ctrl.includeOriginal!==undefined)_bsEnv.CUES_INCLUDE_ORIGINAL=String(_ctrl.includeOriginal);if(_ctrl.prompts){for(var _pk in _ctrl.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUpperCase().replace(/[^A-Z0-9]/g,"_")]=_ctrl.prompts[_pk];}}try{var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome)].concat(_bsArgs),{timeout:6000,encoding:"utf8",env:_bsEnv}).trim();return _bsOut||null;}catch(_e){return null;}}});
 globalThis._cueResolver=globalThis._cuesCore.createResolver(_rSources,{parallel:false,timeout:30000,continueOnError:true});
 globalThis._resolverGeneration=(globalThis._resolverGeneration||0)+1;
 // Clear analyzed cache — all visible words re-analyze against the new config
@@ -552,6 +552,41 @@ globalThis._hlState.text=_newText;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_newText,lenDiff:_stNewWord.length-_curWord.length,wStart:_wStart,newLen:_stNewWord.length};
 }
+// Consume-all cycling: dedicated storage for multi-word results (e.g., prompt improver)
+// Uses its own state so _dynDefs overwrites from tips/LLM analysis don't affect cycling
+if(globalThis._consumeAllAlts){
+var _ca=globalThis._consumeAllAlts;
+var _caSpan=globalThis._dynSpans&&globalThis._dynSpans[_hlIdx];
+var _caIdx=_caSpan?_caSpan.originalIndex:_hlIdx;
+if(_caIdx===_ca.index){
+var _caNext=(_ca.currentAltIndex+_dir+_ca.alts.length)%_ca.alts.length;
+_ca.currentAltIndex=_caNext;
+var _caNewWord=_ca.alts[_caNext];
+if(_caNewWord==null)return null;
+// Track dismissed blanks: cycling to "_" prevents auto-populate from re-firing
+if(_caNewWord==="_"){if(!globalThis._dismissedBlanks)globalThis._dismissedBlanks={};globalThis._dismissedBlanks[_caIdx]=true;}
+else{if(globalThis._dismissedBlanks)delete globalThis._dismissedBlanks[_caIdx];}
+var _caOldSpan=_ca.spanLength||1;
+var _caText=globalThis._hlText;
+var _caPos=0;for(var _cawi=0;_cawi<_caIdx;_cawi++){_caPos=_caText.indexOf(_allW[_cawi],_caPos)+_allW[_cawi].length;}
+var _caWS=_caText.indexOf(_allW[_caIdx],_caPos);if(_caWS<0)return null;
+var _caWE=_caWS;for(var _casi=0;_casi<_caOldSpan;_casi++){var _caSwI=_caText.indexOf(_allW[_caIdx+_casi],_caWE);if(_caSwI<0)break;_caWE=_caSwI+_allW[_caIdx+_casi].length;}
+var _caNewText=_caText.slice(0,_caWS)+_caNewWord+_caText.slice(_caWE);
+var _caNewWc=_caNewWord.split(/\\s+/).length;
+_ca.spanLength=_caNewWc;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+for(var _caSi=0;_caSi<_caOldSpan;_caSi++)delete globalThis._dynSpans[_caIdx+_caSi];
+for(var _caSj=0;_caSj<_caNewWc;_caSj++){globalThis._dynSpans[_caIdx+_caSj]={originalIndex:_caIdx,spanLength:_caNewWc};}
+globalThis._hlText=_caNewText;globalThis._hlState.text=_caNewText;
+// Prevent re-analysis from firing (matches what auto-populate does)
+var _caNewWords=_caNewText.split(/\\s+/).filter(function(w){return w;});
+globalThis._dynLastAnalyzed=_caNewWords;globalThis._dynPrevWords=_caNewWords.slice();
+// Keep highlight on span origin
+globalThis._hlState.wordIndex=_caIdx;
+try{var _caExp={active:true,highlightedWordIndex:_caIdx,highlightedWord:_caNewWord,wordCount:_caNewWords.length,cueTip:_ca.cueTip||null,alts:_ca.alts,currentAltIndex:_caNext,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_caExp));}catch(_we){}
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+return{text:_caNewText,lenDiff:_caNewWord.length-(_caWE-_caWS),wStart:_caWS,newLen:_caNewWord.length};
+}}
 // Dynamic alt cycling
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 var _dWords=globalThis._dynDefs.words;
@@ -1053,7 +1088,7 @@ for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
 if(_apw.metadata&&_apw.metadata.controlName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
 if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
-globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.controlName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null};
+globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.controlName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null,consumeAllAlts:_apw.alts.length>1?_apw.alts.slice():null,consumeAllTip:_apw.cueTip||null};
 }}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
@@ -1391,6 +1426,8 @@ var _minLen=Math.min(_oldW.length,_newW.length);
 // Check each position up to min length
 for(var _wi=0;_wi<_minLen;_wi++){
 if(_oldW[_wi]!==_newW[_wi]){
+// Skip positions covered by consume-all cycling (managed by _consumeAllAlts, not _dynDefs)
+if(globalThis._consumeAllAlts){var _caS=globalThis._consumeAllAlts;if(_wi>=_caS.index&&_wi<_caS.index+(_caS.spanLength||1))continue;}
 var _def=globalThis._dynDefs.words.find(function(d){return d.index===_wi;});
 if(_def){
 var _defSpan=_def.spanLength&&_def.spanLength>1?_def.spanLength:1;

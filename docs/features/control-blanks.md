@@ -61,6 +61,7 @@ blankProximity: 0                    # max words between keyword and _ (optional
 | `blankKeywordExpansions` | object | *(none)* | Map from keyword (lowercase) to display name. When a blank auto-populates, the matched keyword in the text is replaced with its expansion (e.g. `rddt` → `Reddit`). Supports dot-notation (`blankKeywordExpansions.rddt: Reddit`) or JSON (`blankKeywordExpansions: {"rddt":"Reddit"}`). |
 | `blankClearKeywords` | boolean | `false` | If true, keyword context words are removed from the text when the blank auto-populates. Only the resolved value remains (e.g. `opencues settings _` → `voice-mode active`). Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword). |
 | `blankClearOnEdit` | boolean | `false` | If true, editing the auto-populated value to something not in alts removes the spawned words from the text entirely. For selector/satellite pairs, both the selector and satellite are removed. |
+| `blankConsumeAll` | boolean | `false` | If true, ALL non-blank word indices are added to `blankKeywordIndices`. Combined with `blankClearKeywords: true`, this clears the entire input on auto-populate — not just keywords. Used for controls where the surrounding text is the input (e.g., a prompt to improve). See [Consume-All Blanks](consume-all-blanks.md). |
 
 ### Tips Behaviour
 
@@ -318,6 +319,26 @@ controls/hackernews/
 - **5-minute cache** — avoids excessive API calls.
 
 **Usage:** Type `HN posts _` → auto-populates with the top post title. Up/Down scrolls through all posts. Cycle past the last post → `_` to dismiss.
+
+---
+
+## Example: Prompt Improver (Consume-All with LLM)
+
+A consume-all control that uses the entire surrounding text as input to a two-step LLM process. Demonstrates the **consume-all** pattern — `blankConsumeAll: true` clears everything, and the script returns multiple improved versions to cycle through.
+
+```
+controls/prompt/
+  cue.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
+  prompt-blank.sh     # Two-step LLM: extract prompt/conditions → improve → 3 alts + original
+```
+
+**Key design choices:**
+- **`blankConsumeAll: true`** — expands `blankKeywordIndices` to include all non-blank positions. Combined with `blankClearKeywords`, this clears the original prompt text, activation keywords, and blank — leaving only the improved result.
+- **Two-step LLM script** — Step 1 extracts the prompt vs conditions from the activation keywords. Step 2 generates 3 improved versions. Returns newline-separated output (dynamic list pattern).
+- **Dedicated cycling storage** — uses `_consumeAllAlts` instead of `_dynDefs` because multi-word results at shifted indices collide with grammar WordDefs. See `docs/guides/creating-a-cue-type.md`.
+- **Original prompt as last alt** — the script includes the extracted original prompt (without activation keywords) as the final cycling option, so the user can always return to their original text.
+
+**Usage:** Type `write a poem about love improve prompt _` → entire text replaced with an improved prompt. Up/Down cycles through 3 improved versions + the original prompt. Supports optional conditions: `... improve prompt _ make it rhyme`.
 
 ---
 

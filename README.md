@@ -76,6 +76,7 @@ Restart Claude Code. Done.
 - **Step controls** — `1.5f` → `2f` → `2.5f`, works with any suffix (`px`, `em`, `%`)
 - **List controls** — `affirmation _` cycles through "I am strong", "I am brave", ... (cycle to `_` to dismiss)
 - **Dynamic list controls** — `HN posts _` fetches live Hacker News titles; Up/Down scrolls through them
+- **Prompt improver** — `improve prompt _` uses LLM to rewrite your prompt; cycle through 3 improved versions
 - **API controls** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
 - **Secondary display** — highlighted words show cue-tips
 - **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed

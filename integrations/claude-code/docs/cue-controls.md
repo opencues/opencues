@@ -237,9 +237,42 @@ COM initialization uses `COINIT_APARTMENTTHREADED` with MTA fallback — require
 
 SpeakCtl.exe requires `/reference:System.Speech.dll` — setup.sh handles this with a special case for the `SpeakCtl` base name.
 
+## CC-Specific: Consume-All Controls
+
+Controls with `blankConsumeAll: true` replace the entire input text with a multi-word result. The existing keyword-clearing logic handles the clearing — `blankConsumeAll` just expands `blankKeywordIndices` to include every non-blank position.
+
+**Cycling uses dedicated storage (`_consumeAllAlts`)** instead of `_dynDefs` because:
+- After clearing shifts the blank index, multiple WordDefs collide at index 0 (grammar + control-blank)
+- The tips-only fast path replaces `_dynDefs` entirely, losing the control-blank alts
+- Per-word clearing deletes `_dynSpans` entries when words change between cycles
+
+The alternatives flow through `_pendingAutoPopulate.consumeAllAlts` (set in the resolver callback) to `globalThis._consumeAllAlts` (set during auto-populate). The cycling path in `_cycleAlt` runs before dynamic alt cycling (priority 4 in the cycling order).
+
+State that must be updated after each cycle: `_hlText`, `_hlState.text`, `_hlState.wordIndex`, `_dynLastAnalyzed`, `_dynPrevWords`, `_dynSpans`, and `_consumeAllAlts.spanLength`. See `docs/guides/creating-a-cue-type.md` for the full rationale.
+
+**Config passthrough via env vars**: `readControlState` reads first-party fields from `ControlConfig` and passes them to the blank script as environment variables before `execFileSync`:
+
+| `cue.md` field | Env var | Description |
+|---|---|---|
+| `model` | `CUES_MODEL` | LLM model identifier |
+| `apiUrl` | `CUES_API_URL` | API endpoint URL |
+| `apiKeyEnv` | `CUES_API_KEY_ENV` | Name of env var holding the API key |
+| `altCount` | `CUES_ALT_COUNT` | Number of alternatives to return |
+| `includeOriginal` | `CUES_INCLUDE_ORIGINAL` | Whether to append original as last alt |
+| `prompts.Extract` | `CUES_PROMPT_EXTRACT` | Body section named `## Extract` |
+| `prompts.Transform` | `CUES_PROMPT_TRANSFORM` | Body section named `## Transform` |
+
+Body sections (`## SectionName`) in the `cue.md` body are parsed by cues-core into `control.prompts` and forwarded as `CUES_PROMPT_<SECTIONNAME>`. This keeps scripts free of config parsing — the single-parser principle.
+
+**Claude CLI provider**: If `model` starts with `claude-`, the script can use `claude -p` instead of the HTTP API (no API key required — uses existing Claude Code auth). The prompt improver script auto-detects this from `CUES_MODEL`.
+
+**Example:** The prompt improver (`controls/prompt/`) uses two-step LLM calls (model and prompts configured in `cue.md`) to extract the user's prompt from surrounding text, then improve it, returning 3 alternatives + the original.
+
 ## Related
 
 - `docs/features/control-blanks.md` — full control-bound blanks feature reference
+- `docs/features/consume-all-blanks.md` — consume-all blanks feature concept
+- `docs/guides/creating-a-cue-type.md` — implementation guide for new cue types with dedicated cycling
 - `config.md` — all configuration options
 - `architecture.md` — architecture overview + development notes
 - `alternatives.md` — TTS details and external highlight preservation

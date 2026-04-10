@@ -12,6 +12,7 @@ Cue-controls are words with built-in cycling behavior that bypasses the normal a
 - **List controls** — control-bound blanks with `stepValues` that cycle through an ordered list of values (e.g., affirmations). No script needed — uses normal alt cycling. Multi-word values are span-tracked.
 - **Dynamic list controls** — control-bound blanks where `blankScript get` returns multiple lines, each becoming a cycling alternative (e.g., RSS feed titles from Hacker News). Same cycling behavior as `stepValues` but populated from live data.
 - **Read-only controls** — control-bound blanks with `blankReadOnly: true` that fetch data from external APIs (e.g., stock prices via Finnhub). Auto-populate only, cycling disabled. The matched keyword is passed to the script for multi-lookup controls.
+- **Consume-all controls** — control-bound blanks with `blankConsumeAll: true` that clear the entire input and replace it with multi-word cycling alternatives (e.g., prompt improver). Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md).
 
 Cue-controls are checked **first** in the cycling function (`_cycleAlt`) before any alternative or linked-word cycling.
 
