@@ -307,8 +307,8 @@ New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — c
 
 - [Discord](https://discord.gg/INVITE) — questions, feedback, feature requests
 - [GitHub Discussions](https://github.com/opencues/opencues/discussions) — ideas, Q&A
-- [Twitter/X](https://twitter.com/opencues) — announcements
 -->
+- [Twitter/X](https://x.com/openCues_) — announcements
 
 ## License
 

@@ -8,7 +8,7 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 
 - [ ] Create Discord server — community hub for support, feedback, feature requests
 - [ ] Add Discord invite link to README — after "Contributing" section
-- [ ] Create Twitter/X account — for announcements, demos
+- [x] Create Twitter/X account — [@openCues_](https://x.com/openCues_)
 - [ ] Record demo GIF/video — 30s clip showing navigation, cycling, blanks, controls
 - [ ] Add demo GIF to README — below the tagline, before "The Standard"
 
