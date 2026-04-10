@@ -11,9 +11,19 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TWEAKCC_DIR="${1:-$HOME/tweakcc}"
 CUES_CORE="$SCRIPT_DIR/../../../packages/cues-core"
 NEEDS_TWEAKCC_BUILD=false
+CLEAN_INSTALL=false
+TWEAKCC_DIR=""
+
+for arg in "$@"; do
+  if [ "$arg" = "--clean" ]; then
+    CLEAN_INSTALL=true
+  elif [[ "$arg" != --* ]] && [ -z "$TWEAKCC_DIR" ]; then
+    TWEAKCC_DIR="$arg"
+  fi
+done
+TWEAKCC_DIR="${TWEAKCC_DIR:-$HOME/tweakcc}"
 
 echo "=== OpenCues Setup ==="
 
@@ -235,18 +245,27 @@ if [ -d "$CUES_CORE" ]; then
     echo "cues-core up to date"
   fi
 
+  if $CLEAN_INSTALL; then
+    echo "Clean installing cues-core..."
+    rm -rf ~/.claude/node_modules/cues-core
+  fi
   mkdir -p ~/.claude/node_modules/cues-core
   cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts ~/.claude/node_modules/cues-core/ 2>/dev/null || true
-  [ -d "$CUES_CORE/dist/sources" ] && cp -r "$CUES_CORE/dist/sources" ~/.claude/node_modules/cues-core/
-
-  cat > ~/.claude/node_modules/cues-core/package.json << 'EOF'
-{
-  "name": "cues-core",
-  "version": "1.0.0",
-  "main": "index.js",
-  "types": "index.d.ts"
-}
-EOF
+  # Copy standalone files not compiled by tsc (e.g. node-http-adapter.js)
+  [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" ~/.claude/node_modules/cues-core/
+  if [ -d "$CUES_CORE/dist/sources" ]; then
+    if $CLEAN_INSTALL; then
+      rm -rf ~/.claude/node_modules/cues-core/sources
+    fi
+    cp -r "$CUES_CORE/dist/sources" ~/.claude/node_modules/cues-core/
+  fi
+  # Write package.json with corrected paths (dist files are installed flat, not in dist/)
+  node -e "
+const pkg = JSON.parse(require('fs').readFileSync('$CUES_CORE/package.json', 'utf8'));
+pkg.main = 'index.js';
+pkg.types = 'index.d.ts';
+require('fs').writeFileSync(require('os').homedir() + '/.claude/node_modules/cues-core/package.json', JSON.stringify(pkg, null, 2));
+"
 fi
 
 # 7. Copy supporting files (cheap — always run)
