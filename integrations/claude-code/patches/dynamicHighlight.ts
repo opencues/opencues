@@ -310,6 +310,7 @@ try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:tr
 // After script applies the change, read live value and push directly to status line
 setTimeout(function(){
 try{
+if(globalThis._cueControlTipWord===null)return;
 var _lt=_reqFn("child_process").execSync("bash "+_tipScript+" get",{timeout:1000,encoding:"utf8"}).trim();
 if(_lt){
 globalThis._cueControlTip=_lt;

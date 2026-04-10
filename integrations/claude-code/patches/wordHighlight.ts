@@ -576,12 +576,15 @@ if(_cbDw.cueTip){_hlExport.cueControl=true;_hlExport.cueTip=_cbDw.cueTip;if(_cbD
 globalThis._cueControlTipWord=null;
 }else if(_isCA){_hlExport.cueControl=true;_hlExport.alts=[_hlWords[_idx]];_hlExport.currentAltIndex=0;
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
-var _caTip=_caOvr?_caOvr.tip||_caOvr.control:_caWord;
+var _caTip=null;
+if(_caOvr){_caTip=_caOvr.tip||_caOvr.control;}
+else{var _spsT=globalThis._stepPatterns||[];for(var _sptI=0;_sptI<_spsT.length;_sptI++){if(_spsT[_sptI].re.test(_hlWords[_idx]||"")){var _stc=_spsT[_sptI].ctrl;if(_stc.stepTip)_caTip=_stc.stepTip;break;}}}
 // On navigation to this word (index changed), call script get once and cache in _cueControlTip
 // On re-renders (same word, cycling), rely on _cueControlTip already set by dynamicHighlight interval
 var _navChanged=globalThis._cueControlTipWord!==_caWord;
 if(_navChanged){
   globalThis._cueControlTipWord=_caWord;
+  globalThis._cueControlTip=null;
   if(_caOvr&&_caOvr.script){
     try{var _liveTip=${requireFuncName}("child_process").execSync("bash "+_caOvr.script+" get",{timeout:2000,encoding:"utf8"}).trim();if(_liveTip)globalThis._cueControlTip=_liveTip;}
     catch(_e){}
@@ -590,7 +593,7 @@ if(_navChanged){
 if(globalThis._cueControlTip)_caTip=globalThis._cueControlTip;
 _hlExport.cueTip=_caTip;
 }
-if(!_isCA&&!_cbDw)globalThis._cueControlTipWord=null;
+if(!_isCA&&!_cbDw){globalThis._cueControlTipWord=null;globalThis._cueControlTip=null;}
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&!_isCA&&!_cbDw){
 var _dw=globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_dw){_hlExport.cueTip=_dw.cueTip||null;_hlExport.altCueTips=_dw.altCueTips||null;_hlExport.alts=_dw.alts||null;_hlExport.currentAltIndex=typeof _dw.currentAltIndex==="number"?_dw.currentAltIndex:0;}

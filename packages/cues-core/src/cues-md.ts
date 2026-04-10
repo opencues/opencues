@@ -136,6 +136,8 @@ export interface ControlConfig {
   stepScript?: string;
   /** Ordered list of values to cycle through on a control-bound blank */
   stepValues?: string[];
+  /** Tip text shown when a stepped word is selected (e.g. '±0.5f'). Omit to show nothing. */
+  stepTip?: string;
   /** Map from keyword (lowercase) to display expansion applied at auto-populate time (e.g. { rddt: "Reddit" }) */
   blankKeywordExpansions?: Record<string, string>;
   /** If true, blank auto-populates as two independent words: selector (word N) + satellite (word N+1) */
@@ -532,6 +534,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   stepSuffixes?: string;
   stepScript?: string;
   stepValues?: string[];
+  stepTip?: string;
   blankKeywordExpansions?: Record<string, string>;
   blankSatellite?: boolean;
   blankSatelliteSeparator?: string;
@@ -602,6 +605,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'stepSuffixes': fm.stepSuffixes = value; break;
       case 'stepScript': fm.stepScript = value; break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
+      case 'stepTip': fm.stepTip = value; break;
       case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
@@ -685,6 +689,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
         control.stepSuffixes = frontmatter.stepSuffixes.split(/[\s,]+/).filter(s => s.length > 0);
       }
       if (frontmatter.stepValues !== undefined) control.stepValues = frontmatter.stepValues;
+      if (frontmatter.stepTip !== undefined) control.stepTip = frontmatter.stepTip;
       if (frontmatter.blankKeywordExpansions !== undefined) control.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
       if (frontmatter.blankSatellite !== undefined) control.blankSatellite = frontmatter.blankSatellite;
       if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
