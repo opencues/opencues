@@ -83,9 +83,11 @@ opencues/
 │   │   └── actions/               # Scripts (volume.sh, speak.sh, SpeakCtl.cs)
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
+│   │   ├── cursor-positioning.md  # Cursor offset adjustment during blank fill
 │   │   ├── cycling.md             # Numbers, alts, linked, spans, clearing
 │   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
 │   │   ├── cue-controls.md         # Cue-controls + WSL guide
+│   │   ├── selector-satellite.md  # Selector + satellite blank controls
 │   │   ├── status-line.md         # Status line setup, format, disabling
 │   │   ├── config.md              # All config options
 │   │   ├── architecture.md        # Architecture + data flow diagrams

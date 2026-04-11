@@ -46,7 +46,7 @@ If your cue type fits one of these, you only need config changes. If not, you ma
 **Key state set during auto-populate:**
 - `globalThis._hlText` / `_dynLastAnalyzed` / `_dynPrevWords` — text tracking
 - `globalThis._dynSpans` — multi-word span entries
-- `globalThis._pendingCursorOffset` — where the cursor lands after replacement
+- `globalThis._pendingCursorTarget` / `_pendingCursorExpected` — cursor correction after replacement (see `integrations/claude-code/docs/cursor-positioning.md`)
 
 ### 4. Cycling (`dynamicHighlight.ts` → `_cycleAlt`)
 

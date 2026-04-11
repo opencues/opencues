@@ -539,6 +539,7 @@ export const writeWordHighlightClearOnTyping = (
 
   const valueParam = location.identifiers![1];    // A (value)
   const onChangeParam = location.identifiers![2]; // K (onChange)
+  const onOffsetChangeVar = location.identifiers![6]; // k (onOffsetChange)
   const inputZoneVar = location.identifiers![7];  // R
   const inputZoneClass = location.identifiers![8]; // i5
   const configVar = location.identifiers![9];     // G
@@ -659,7 +660,7 @@ var _tc=_hasB?"\\u200C":"\\u200B";
 ${onChangeParam}(_t+_tc);
 },16);
 };
-if(globalThis._pendingCursorOffset!=null){var _pcClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");if(_pcClean!==(globalThis._pendingCursorText||"")){globalThis._pendingCursorOffset=null;globalThis._pendingCursorText=null;}else{${inputZoneVar}=${inputZoneClass}.fromText(${inputZoneVar}.text,${configVar},globalThis._pendingCursorOffset);}}
+if(globalThis._pendingCursorTarget!=null){var _pcClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");var _pcBefore=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);var _pcZws=(_pcBefore.match(/[\\u200B\\u200C]/g)||[]).length;var _pcCur=${inputZoneVar}.offset-_pcZws;var _pcExp=globalThis._pendingCursorExpected;if(_pcExp!=null&&Math.abs(_pcCur-_pcExp)<=1){var _pcT=Math.min(globalThis._pendingCursorTarget,_pcClean.length);${inputZoneVar}=${inputZoneClass}.fromText(_pcClean,${configVar},_pcT);${onOffsetChangeVar}(_pcT);}globalThis._pendingCursorTarget=null;globalThis._pendingCursorExpected=null;}
 if(${inputZoneVar}.text.indexOf("\\u200B")>=0||${inputZoneVar}.text.indexOf("\\u200C")>=0){
 var _zwsClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");
 var _beforeC=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);
@@ -792,8 +793,7 @@ if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _sxi=0;_sxi<_apSatWc;_sxi++){globalThis._dynSpans[_apSatN+_sxi]={originalIndex:_apSatN,spanLength:_apSatWc};}
 }
 globalThis._dynDefs.words.push(_apSatDef);
-globalThis._pendingCursorOffset=_apStart+_apSel.length+1+_apSat.length;
-globalThis._pendingCursorText=_apNew;
+var _apCB1=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);var _apCZ1=(_apCB1.match(/[\\u200B\\u200C]/g)||[]).length;var _apCO1=${inputZoneVar}.offset-_apCZ1;globalThis._pendingCursorTarget=_apCO1>=_apStart?Math.max(_apCO1,_apStart+1)+(_apFullInsert.length-1):_apCO1;globalThis._pendingCursorExpected=_apCO1;
 ${onChangeParam}(_apNew+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
 return;
 }
@@ -810,8 +810,7 @@ for(var _asi=0;_asi<_apWc;_asi++){globalThis._dynSpans[_ap.index+_asi]={original
 if(_ap.consumeAllAlts&&_ap.consumeAllAlts.length>1){
 globalThis._consumeAllAlts={index:_ap.index,alts:_ap.consumeAllAlts,currentAltIndex:0,spanLength:_apWc,cueTip:_ap.consumeAllTip||null,controlName:_ap.controlName||null};
 }
-globalThis._pendingCursorOffset=_apStart+_ap.value.length;
-globalThis._pendingCursorText=_apNew;
+var _apCB2=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);var _apCZ2=(_apCB2.match(/[\\u200B\\u200C]/g)||[]).length;var _apCO2=${inputZoneVar}.offset-_apCZ2;globalThis._pendingCursorTarget=_apCO2>=_apStart?Math.max(_apCO2,_apStart+1)+(_ap.value.length-1):_apCO2;globalThis._pendingCursorExpected=_apCO2;
 ${onChangeParam}(_apNew+(_hlText.indexOf("\\u200B")>=0?"\\u200C":"\\u200B"));
 return;
 }

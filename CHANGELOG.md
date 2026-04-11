@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **`_consumeAllAlts` not clearing when highlight inactive** — cleanup was inside `if(_hlState.active)` guard. Moved unconditionally before the guard so it fires whether or not the highlight is active when the user edits.
 - **Stale `cueTip` persisting after clearing consume-all span** — after editing over the span, the old control-blank WordDef in `_dynDefs` (with `metadata.controlName`) blocked the `controlName` guard in the LLM merge path, so grammar re-analysis updated `alts` but left `cueTip` stale. Fixed by also removing those WordDefs from `_dynDefs` during cleanup.
+- **Cursor jumping during blank auto-populate** — `onChange` replaces the full input text, causing the cursor to land inside the filled value. Previous fix (`_pendingCursorOffset`) only updated the local `InputZone` without persisting via `onOffsetChange`, so the framework reverted it on the next render. New approach computes the correct target at insertion time using cursor delta, validates against expected stale position at render time, and persists via `onOffsetChange`.
 
 ---
 
