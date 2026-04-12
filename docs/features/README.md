@@ -28,6 +28,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 18 | [Tip Priority](tip-priority.md) | Which tip source wins when multiple sources match a word |
 | 19 | [Consume-All Blanks](consume-all-blanks.md) | Blanks that consume surrounding text and replace it with multi-word cycling alternatives |
 | 20 | [Consume-Context Blanks](consume-context-blanks.md) | Blanks that collapse keyword + context between keyword and blank, preserving surrounding text |
+| 21 | [Cursor Navigate](cursor-navigate.md) | Highlight automatically follows cursor to navigable words |
 
 ## Adding a new feature
 

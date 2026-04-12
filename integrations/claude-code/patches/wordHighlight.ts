@@ -204,9 +204,9 @@ const findInputStateHandlerLocation = (oldFile: string): LocationResult | null =
 
   // Find the return statement in the function
   const funcStart = match.index;
-  // Increased from 10000 to 30000 because the key handler and raw sequence patches
-  // inject code into VA (which is inside NV1), pushing the return statement further away
-  const searchSection = oldFile.slice(funcStart, funcStart + 30000);
+  // Increased from 10000 to 30000 to 60000 because each additional patch
+  // (key handler, raw sequence, clearOnTyping) injects code pushing the return further
+  const searchSection = oldFile.slice(funcStart, funcStart + 60000);
 
   const returnPattern = /return\{onInput:([$\w]+),renderedValue:/;
   const returnMatch = searchSection.match(returnPattern);
@@ -459,6 +459,7 @@ globalThis._hlState.index++;
 globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1-globalThis._hlState.index];
 }
 }
+globalThis._hlManualNav=true;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 var _pv=globalThis._parentValue||"";
 var _parentHasB=_pv.indexOf("\\u200B")>=0;
@@ -483,6 +484,7 @@ globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1-globalThis._hlState
 globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
 }
 }
+globalThis._hlManualNav=true;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 var _pv=globalThis._parentValue||"";
 var _parentHasB=_pv.indexOf("\\u200B")>=0;
@@ -660,7 +662,7 @@ var _tc=_hasB?"\\u200C":"\\u200B";
 ${onChangeParam}(_t+_tc);
 },16);
 };
-if(globalThis._pendingCursorTarget!=null){var _pcClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");var _pcBefore=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);var _pcZws=(_pcBefore.match(/[\\u200B\\u200C]/g)||[]).length;var _pcCur=${inputZoneVar}.offset-_pcZws;var _pcExp=globalThis._pendingCursorExpected;if(_pcExp!=null&&Math.abs(_pcCur-_pcExp)<=1){var _pcT=Math.min(globalThis._pendingCursorTarget,_pcClean.length);${inputZoneVar}=${inputZoneClass}.fromText(_pcClean,${configVar},_pcT);${onOffsetChangeVar}(_pcT);}globalThis._pendingCursorTarget=null;globalThis._pendingCursorExpected=null;}
+if(globalThis._pendingCursorTarget!=null){var _pcClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");var _pcBefore=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);var _pcZws=(_pcBefore.match(/[\\u200B\\u200C]/g)||[]).length;var _pcCur=${inputZoneVar}.offset-_pcZws;var _pcExp=globalThis._pendingCursorExpected;if(globalThis._forceCursorMove||(_pcExp!=null&&Math.abs(_pcCur-_pcExp)<=1)){var _pcT=Math.min(globalThis._pendingCursorTarget,_pcClean.length);${inputZoneVar}=${inputZoneClass}.fromText(_pcClean,${configVar},_pcT);${onOffsetChangeVar}(_pcT);}globalThis._pendingCursorTarget=null;globalThis._pendingCursorExpected=null;globalThis._forceCursorMove=false;}
 if(${inputZoneVar}.text.indexOf("\\u200B")>=0||${inputZoneVar}.text.indexOf("\\u200C")>=0){
 var _zwsClean=${inputZoneVar}.text.replace(/[\\u200B\\u200C]/g,"");
 var _beforeC=${inputZoneVar}.text.slice(0,${inputZoneVar}.offset);
@@ -834,9 +836,62 @@ if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){
 globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
 globalThis._dismissedBlanks=null;
+globalThis._hlManualNav=false;
+globalThis._cursorNavLastWordIdx=undefined;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }
-}${exportCode}
+}
+// Auto-navigate: highlight follows cursor to navigable words
+if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["cursor-navigate"]==="active"){
+var _cnClean=_hlText;
+var _cnOffset=(globalThis._mockCursorOffset!=null?globalThis._mockCursorOffset:${inputZoneVar}.offset);
+// Strip ZWC from offset count
+var _cnBefore=${inputZoneVar}.text.slice(0,_cnOffset);
+var _cnZwc=(_cnBefore.match(/[\\u200B\\u200C]/g)||[]).length;
+_cnOffset=_cnOffset-_cnZwc;
+var _cnWords=_cnClean.split(/\\s+/).filter(function(w){return w;});
+// Map cursor offset to word index
+var _cnWordIdx=-1;
+var _cnPos=0;
+for(var _cni=0;_cni<_cnWords.length;_cni++){
+var _cnWS=_cnClean.indexOf(_cnWords[_cni],_cnPos);
+var _cnWE=_cnWS+_cnWords[_cni].length;
+if(_cnOffset>=_cnWS&&_cnOffset<=_cnWE){_cnWordIdx=_cni;break;}
+_cnPos=_cnWE;
+}
+// Only act if cursor word changed
+if(_cnWordIdx!==globalThis._cursorNavLastWordIdx){
+globalThis._cursorNavLastWordIdx=_cnWordIdx;
+globalThis._hlManualNav=false;
+if(_cnWordIdx>=0){
+var _cnW=_cnWords[_cnWordIdx];var _cnWLow=_cnW.toLowerCase();
+var _cnNav=false;
+// Keyword context skip
+var _cnKw=false;
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cnki=0;_cnki<globalThis._dynDefs.words.length;_cnki++){var _cnkd=globalThis._dynDefs.words[_cnki];if(_cnkd&&_cnkd.metadata&&_cnkd.metadata.blankKeywordIndices){for(var _cnkj=0;_cnkj<_cnkd.metadata.blankKeywordIndices.length;_cnkj++){if(_cnkd.metadata.blankKeywordIndices[_cnkj]===_cnWordIdx){_cnKw=true;break;}}if(_cnKw)break;}}}
+if(!_cnKw){
+var _cnSpan=globalThis._dynSpans&&globalThis._dynSpans[_cnWordIdx];
+var _cnNonOrig=_cnSpan&&_cnSpan.originalIndex!==_cnWordIdx;
+if(!_cnNonOrig){
+if(globalThis._isCueControl&&globalThis._isCueControl(_cnW))_cnNav=true;
+if(!_cnNav&&globalThis._localCueMap&&globalThis._localCueMap.has(_cnWLow))_cnNav=true;
+if(!_cnNav&&globalThis._dynDefs&&globalThis._dynDefs.words){var _cnD=globalThis._dynDefs.words.find(function(d){return d.index===_cnWordIdx&&((d.alts&&d.alts.length>1)||(d.metadata&&d.metadata.controlName));});if(_cnD)_cnNav=true;}
+if(!_cnNav&&_cnSpan)_cnNav=true;
+}else{_cnNav=true;}// non-origin span → snap to origin
+}
+if(_cnNav){
+var _cnTarget=_cnWordIdx;
+if(globalThis._dynSpans&&globalThis._dynSpans[_cnWordIdx])_cnTarget=globalThis._dynSpans[_cnWordIdx].originalIndex;
+globalThis._hlState={active:true,index:0,wordIndex:_cnTarget,text:_hlText};
+}else if(!globalThis._hlManualNav){
+globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
+}
+}else if(!globalThis._hlManualNav){
+globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
+}
+}
+}
+${exportCode}
 })();
 `;
 
@@ -1188,6 +1243,7 @@ globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1-globalThis._hlState
 }
 }
 }
+globalThis._hlManualNav=true;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 var _pv=globalThis._parentValue||"";
 var _parentHasB=_pv.indexOf("\\u200B")>=0;
@@ -1211,6 +1267,7 @@ globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
 }
 }
 }
+globalThis._hlManualNav=true;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 var _pv2=globalThis._parentValue||"";
 var _parentHasB2=_pv2.indexOf("\\u200B")>=0;

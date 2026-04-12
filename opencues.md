@@ -3,6 +3,7 @@ version: 1
 voice-mode: active
 debug-mode: off
 tips-mode: minimal
+cursor-navigate: active
 output-format: rich markdown
 display mode: split pane
 settings:
@@ -28,6 +29,11 @@ settings:
       plain text: Unformatted plain text output
       rich markdown: Formatted markdown with styling
       structured json: Machine-readable JSON output
+  cursor-navigate:
+    tip: Auto-highlight word at cursor
+    values:
+      active: Highlight follows cursor to navigable words
+      inactive: Manual navigation only
   display mode:
     tip: Layout mode
     values:

@@ -720,7 +720,7 @@ const findInputStateHandlerLocation = (oldFile: string): LocationResult | null =
 
   // Find the return statement in the function
   const funcStart = match.index;
-  const searchSection = oldFile.slice(funcStart, funcStart + 30000);
+  const searchSection = oldFile.slice(funcStart, funcStart + 60000);
 
   const returnPattern = /return\{onInput:([$\w]+),renderedValue:/;
   const returnMatch = searchSection.match(returnPattern);
