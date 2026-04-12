@@ -832,6 +832,7 @@ return;
 }
 }
 if(_hlText!==_oldText&&globalThis._consumeAllAlts){var _caC=globalThis._consumeAllAlts;for(var _caCi=0;_caCi<(_caC.spanLength||1);_caCi++){if(globalThis._dynSpans)delete globalThis._dynSpans[_caC.index+_caCi];}if(globalThis._dynDefs&&globalThis._dynDefs.words){globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(d){return d.index<_caC.index||d.index>=_caC.index+(_caC.spanLength||1);});}globalThis._consumeAllAlts=null;}
+var _cnWasManual=globalThis._hlManualNav;
 if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){
 globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
@@ -842,7 +843,8 @@ if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }
 }
 // Auto-navigate: highlight follows cursor to navigable words
-if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["cursor-navigate"]==="active"){
+// Skip if previous highlight was from manual nav/cycling (text changed due to cycle, not typing)
+if(!_cnWasManual&&globalThis._openCuesCurrent&&globalThis._openCuesCurrent["cursor-navigate"]==="active"){
 var _cnClean=_hlText;
 var _cnOffset=(globalThis._mockCursorOffset!=null?globalThis._mockCursorOffset:${inputZoneVar}.offset);
 // Strip ZWC from offset count
@@ -859,8 +861,8 @@ var _cnWE=_cnWS+_cnWords[_cni].length;
 if(_cnOffset>=_cnWS&&_cnOffset<=_cnWE){_cnWordIdx=_cni;break;}
 _cnPos=_cnWE;
 }
-// Only act if cursor word changed
-if(_cnWordIdx!==globalThis._cursorNavLastWordIdx){
+// Re-evaluate if cursor word changed OR if on same word but highlight inactive (new data may have arrived)
+if(_cnWordIdx!==globalThis._cursorNavLastWordIdx||(_cnWordIdx>=0&&(!globalThis._hlState||!globalThis._hlState.active))){
 globalThis._cursorNavLastWordIdx=_cnWordIdx;
 globalThis._hlManualNav=false;
 if(_cnWordIdx>=0){
