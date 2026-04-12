@@ -3,6 +3,7 @@ name: hackernews
 type: control
 control: hackernews
 blankKeywords: hn, hackernews
+blankKeywordExpansions.hn: HackerNews
 blankAutoPopulate: true
 blankFormat: string
 blankScript: ./hn-blank.sh

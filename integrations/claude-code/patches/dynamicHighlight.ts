@@ -333,17 +333,19 @@ if(_cbDef){
 var _cbMeta=_cbDef.metadata;
 if(_cbMeta.blankReadOnly)return null;
 if(_cbDef.cueTip)globalThis._cueControlTip=_cbDef.cueTip;
+// Only do numeric stepping when blankStep or blankFormat is explicitly configured
+if(!_cbMeta.blankStep&&!_cbMeta.blankFormat)return null;
 var _cbHome=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _cbRawScript=_cbMeta.blankScript||(_cbHome+"/.claude/actions/"+_cbMeta.controlName+".sh");
 var _cbScript=_cbRawScript.replace(/^~/,_cbHome);
 // Calculate target value, then call script with "set <value>" for exact control
 var _cbStep=_cbMeta.blankStep||1;
-var _cbRange=_cbMeta.blankRange||[0,100];
 var _cbSuffix=_cbMeta.blankSuffix||"";
 var _cbCurStr=_cbSuffix&&_curWord.endsWith(_cbSuffix)?_curWord.slice(0,_curWord.length-_cbSuffix.length):_curWord;
 var _cbCur=parseFloat(_cbCurStr);if(isNaN(_cbCur))_cbCur=0;
-var _cbTarget=_dir>0?Math.min(_cbRange[1],_cbCur+_cbStep):Math.max(_cbRange[0],_cbCur-_cbStep);
-var _cbNumStr=String((_cbMeta.blankFormat||"integer")==="integer"?Math.round(_cbTarget):_cbTarget);
+var _cbTarget=_cbCur+(_cbStep*_dir);
+var _cbFmt=_cbMeta.blankFormat||"integer";
+var _cbNumStr=String(_cbFmt==="integer"?Math.round(_cbTarget):_cbTarget);
 var _cbNewVal=_cbNumStr+_cbSuffix;
 try{_reqFn("child_process").execSync("bash "+_cbScript+" set "+_cbNumStr,{timeout:3000,stdio:"ignore"});}catch(_e){}
 var _cbText=globalThis._hlText;
@@ -355,7 +357,6 @@ var _cbNewText=_cbText.slice(0,_cbWStart)+_cbNewVal+_cbText.slice(_cbWEnd);
 globalThis._hlText=_cbNewText;
 globalThis._hlState.text=_cbNewText;
 if(!globalThis._cueControlValues)globalThis._cueControlValues={};
-var _cbFmt=_cbMeta.blankFormat||"integer";
 globalThis._cueControlValues[_cbMeta.controlName]=_cbFmt==="string"?_cbNewVal:(_cbFmt==="float"?parseFloat(_cbNewVal)||0:parseInt(_cbNewVal,10)||0);
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_cbNewText,lenDiff:_cbNewVal.length-_curWord.length,wStart:_cbWStart,newLen:_cbNewVal.length};
@@ -1043,8 +1044,8 @@ var _curTextWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){retu
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
 for(var _mi2=0;_mi2<_words.length;_mi2++){
 var _nw2=_words[_mi2];
-// Skip stale results: if the word at this index no longer matches, discard
-if(_nw2.index<_curTextWords.length&&_nw2.word!==_curTextWords[_nw2.index])continue;
+// Skip stale results: if index is out of bounds or the word no longer matches, discard
+if(_nw2.index>=_curTextWords.length||_nw2.word!==_curTextWords[_nw2.index])continue;
 var _spanInfo2=globalThis._dynSpans&&globalThis._dynSpans[_nw2.index];
 if(_spanInfo2&&_spanInfo2.originalIndex!==_nw2.index){_nw2.alts=null;continue;}
 var _oldW2=globalThis._dynDefs.words.find(function(w){return w.index===_nw2.index;});
@@ -1369,9 +1370,10 @@ export const writeDynamicRendering = (
     // Extend _numRanges to also dim control words, tips, and dynamic alt words
     // INSTANT TIPS: check _localCueMap directly in render — no waiting for analysis pipeline
     const newNumCode = `else if((function(){
-// Keyword-context skip: while a selectorWord def is present, words to its left matching its control's blankKeywords are not dimmed (not shown as navigable)
+// Keyword-context skip: words at blank keyword indices are not navigable
+// Covers selectors (opencues), list controls (hackernews), and any blank with blankKeywordIndices
 var _isCtxKw=false;
-if(globalThis._dynDefs&&globalThis._dynDefs.words){var _wL=_w.toLowerCase();for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.selectorWord&&_ni<_ckd.index){var _ckCtrl=(globalThis._cueControlOverrides||{})[_ckd.metadata.controlName];if(_ckCtrl&&_ckCtrl.blankKeywords){for(var _ckj=0;_ckj<_ckCtrl.blankKeywords.length;_ckj++){if(_ckCtrl.blankKeywords[_ckj]===_wL){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===_ni){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
 if(_isCtxKw)return false;
 if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
 if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
@@ -1379,8 +1381,17 @@ if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&((d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0)||(d.metadata&&d.metadata.controlName));});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_ni];
 var _isInSpan=!!_spanInfo;
+var _isSpanOrigin=_spanInfo&&_spanInfo.originalIndex===_ni;
+var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==_ni;
 var _isInHighlightedSpan=_spanInfo&&_spanInfo.originalIndex===_hlWordIdx;
-if((_dynDef||_isInSpan)&&_ni!==_hlWordIdx&&!_isInHighlightedSpan){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
+if((_dynDef||_isInSpan)&&_ni!==_hlWordIdx&&!_isInHighlightedSpan&&!_isNonOrigSpan){
+if(_isSpanOrigin&&_spanInfo.spanLength>1){
+// Continuous range: walk through span words to find the end
+var _spanEnd=_wStart+_w.length;
+for(var _sdi=1;_sdi<_spanInfo.spanLength;_sdi++){var _sdw=_words[_ni+_sdi];if(_sdw){var _sds=_clean.indexOf(_sdw,_spanEnd);if(_sds>=0)_spanEnd=_sds+_sdw.length;}}
+_numRanges.push({start:_wStart,end:_spanEnd});
+}else{_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+return true;}
 }
 return false;
 })()){}`;
@@ -1543,9 +1554,9 @@ var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[i];
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==i;
 var _isSpanOriginal=_spanInfo&&_spanInfo.originalIndex===i;
 var _isInSpan=!!_spanInfo&&!_isNonOrigSpan;
-// Keyword-context skip: while a selectorWord def exists, words to its left that match the control's blankKeywords are non-navigable
+// Keyword-context skip: words at blank keyword indices are non-navigable
 var _isCtxKw=false;
-if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.selectorWord&&i<_ckd.index){var _ckCtrl=(globalThis._cueControlOverrides||{})[_ckd.metadata.controlName];if(_ckCtrl&&_ckCtrl.blankKeywords){for(var _ckj=0;_ckj<_ckCtrl.blankKeywords.length;_ckj++){if(_ckCtrl.blankKeywords[_ckj]===_wLow){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===i){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
 if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal||_isInSpan)&&!_isNonOrigSpan&&!_isCtxKw)${m.targetIdx}.push(i);
 });`;
 

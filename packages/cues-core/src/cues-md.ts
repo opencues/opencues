@@ -102,8 +102,6 @@ export interface ControlConfig {
   blankStep?: number;
   /** When true, auto-fill the blank with the current control value on analysis */
   blankAutoPopulate?: boolean;
-  /** Min/max range for clamping when cycling [min, max] (default: [0, 100]) */
-  blankRange?: [number, number];
   /** Value format: integer (default), float, or string */
   blankFormat?: 'integer' | 'float' | 'string';
   /** Tip shown when the auto-populated value is highlighted (separate from word-control tip) */
@@ -531,7 +529,6 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankKeywords?: string;
   blankStep?: number;
   blankAutoPopulate?: boolean;
-  blankRange?: [number, number];
   blankFormat?: 'integer' | 'float' | 'string';
   blankTip?: string;
   blankScript?: string;
@@ -607,7 +604,6 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankKeywords': fm.blankKeywords = value; break;
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
       case 'blankAutoPopulate': fm.blankAutoPopulate = value === 'true'; break;
-      case 'blankRange': try { fm.blankRange = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankFormat': fm.blankFormat = value as 'integer' | 'float' | 'string'; break;
       case 'blankTip': fm.blankTip = value; break;
       case 'blankScript': fm.blankScript = value; break;
@@ -696,7 +692,6 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       }
       if (frontmatter.blankStep !== undefined) control.blankStep = frontmatter.blankStep;
       if (frontmatter.blankAutoPopulate !== undefined) control.blankAutoPopulate = frontmatter.blankAutoPopulate;
-      if (frontmatter.blankRange !== undefined) control.blankRange = frontmatter.blankRange;
       if (frontmatter.blankFormat !== undefined) control.blankFormat = frontmatter.blankFormat;
       if (frontmatter.blankTip !== undefined) control.blankTip = frontmatter.blankTip;
       if (frontmatter.blankProximity !== undefined) control.blankProximity = frontmatter.blankProximity;

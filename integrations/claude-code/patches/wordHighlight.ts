@@ -732,10 +732,21 @@ _kcW.splice(_kcIdx,1);
 if(_kcIdx<_ap.index)_ap.index--;
 }}
 }
-// After clearing, update WordDef index to match shifted blank position
+// After clearing, shift ALL WordDef indices and metadata pointers
 if(_apOrigIdx!==_ap.index&&globalThis._dynDefs&&globalThis._dynDefs.words){
-var _shiftDef=globalThis._dynDefs.words.find(function(d){return d.index===_apOrigIdx;});
-if(_shiftDef)_shiftDef.index=_ap.index;
+var _kcRemovedSet={};for(var _kri=0;_kri<_ap.blankKeywordIndices.length;_kri++){_kcRemovedSet[_ap.blankKeywordIndices[_kri]]=true;}
+// Remove WordDefs at keyword indices BEFORE shifting (they're for removed words)
+globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(_kf){return !_kcRemovedSet[_kf.index];});
+var _kcShiftFor=function(_idx){var _s=0;for(var _ksi=0;_ksi<_ap.blankKeywordIndices.length;_ksi++){if(_ap.blankKeywordIndices[_ksi]<_idx&&_ap.blankKeywordIndices[_ksi]!==_apOrigIdx)_s++;}return _idx-_s;};
+for(var _kdi=0;_kdi<globalThis._dynDefs.words.length;_kdi++){
+var _kd=globalThis._dynDefs.words[_kdi];
+_kd.index=_kcShiftFor(_kd.index);
+if(_kd.metadata){
+if(typeof _kd.metadata.childIndex==="number")_kd.metadata.childIndex=_kcShiftFor(_kd.metadata.childIndex);
+if(typeof _kd.metadata.parentIndex==="number")_kd.metadata.parentIndex=_kcShiftFor(_kd.metadata.parentIndex);
+}}
+// Also shift span tracking
+if(globalThis._dynSpans){var _kcNewSpans={};Object.keys(globalThis._dynSpans).forEach(function(k){var ki=parseInt(k,10);if(!_kcRemovedSet[ki]){_kcNewSpans[_kcShiftFor(ki)]=globalThis._dynSpans[k];}});globalThis._dynSpans=_kcNewSpans;}
 }
 var _apBaseWords=_apBase.split(/\\s+/).filter(function(w){return w;});
 var _apPos=0;
@@ -805,6 +816,8 @@ var _apWc=_ap.value.split(/\\s+/).length;
 if(_apWc>1){
 if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _asi=0;_asi<_apWc;_asi++){globalThis._dynSpans[_ap.index+_asi]={originalIndex:_ap.index,spanLength:_apWc};}
+// Set spanLength on the WordDef so highlight rendering covers the full span
+if(globalThis._dynDefs&&globalThis._dynDefs.words){var _apDef=globalThis._dynDefs.words.find(function(d){return d.index===_ap.index;});if(_apDef)_apDef.spanLength=_apWc;}
 }
 // Store consume-all alts directly from _pendingAutoPopulate data (no _dynDefs lookup)
 if(_ap.consumeAllAlts&&_ap.consumeAllAlts.length>1){

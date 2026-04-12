@@ -124,6 +124,15 @@ export class ControlBlankSource implements CueSource {
       matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
     }
 
+    // Keyword expansion: if config maps this keyword to a display name, pass it through
+    // Computed early so all control paths (list, satellite, dynamic list, generic) can use it
+    const expansion = matchedKeyword
+      ? matched.blankKeywordExpansions?.[matchedKeyword.toLowerCase()]
+      : undefined;
+    const keywordExpansion = expansion && matchedKeywordIndex >= 0
+      ? { keyword: context.words[matchedKeywordIndex], expansion, wordIndex: matchedKeywordIndex }
+      : undefined;
+
     // List-based cycling: stepValues provides ordered alternatives directly
     if (matched.stepValues?.length) {
       const alts = matched.blankDismissible ? [...matched.stepValues, '_'] : matched.stepValues;
@@ -140,6 +149,7 @@ export class ControlBlankSource implements CueSource {
           blankClearKeywords: matched.blankClearKeywords || false,
           blankClearOnEdit: matched.blankClearOnEdit || false,
           blankKeywordIndices: matchedKeywordIndices,
+          ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         },
       });
       return { results };
@@ -174,6 +184,7 @@ export class ControlBlankSource implements CueSource {
           blankClearKeywords: matched.blankClearKeywords || false,
           blankClearOnEdit: matched.blankClearOnEdit || false,
           blankKeywordIndices: matchedKeywordIndices,
+          ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         },
       });
       return { results };
@@ -197,41 +208,32 @@ export class ControlBlankSource implements CueSource {
             blankClearKeywords: matched.blankClearKeywords || false,
             blankClearOnEdit: matched.blankClearOnEdit || false,
             blankKeywordIndices: matchedKeywordIndices,
+            ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
           },
         });
         return { results };
       }
     }
 
-    const format = matched.blankFormat ?? 'integer';
-    const [minVal] = matched.blankRange ?? [0, 100];
+    const format = matched.blankFormat;
 
-    // Validate based on format
-    if (format !== 'string') {
+    // Validate based on format — only reject non-numeric values when format is explicitly numeric
+    if (format && format !== 'string') {
       const numVal = Number(rawValue);
-      if (isNaN(numVal) || numVal < minVal) {
+      if (isNaN(numVal)) {
         return { results };
       }
     }
 
-    // Determine step size: explicit blankStep, or parse from upArgs/downArgs
+    // Determine step size: only when explicitly configured
     const step = matched.blankStep
       ?? parseStepFromArgs(matched.upArgs)
-      ?? parseStepFromArgs(matched.downArgs)
-      ?? 1;
+      ?? parseStepFromArgs(matched.downArgs);
 
     const displayValue = matched.blankSuffix ? rawValue + matched.blankSuffix : rawValue;
     const alternatives = matched.blankAutoPopulate
       ? [displayValue]
       : ['_'];
-
-    // Keyword expansion: if config maps this keyword to a display name, pass it through
-    const expansion = matchedKeyword
-      ? matched.blankKeywordExpansions?.[matchedKeyword.toLowerCase()]
-      : undefined;
-    const keywordExpansion = expansion && matchedKeywordIndex >= 0
-      ? { keyword: context.words[matchedKeywordIndex], expansion, wordIndex: matchedKeywordIndex }
-      : undefined;
 
     results.push({
       wordIndex: blankIndex,
@@ -243,9 +245,8 @@ export class ControlBlankSource implements CueSource {
       metadata: {
         controlName: matched.control,
         blankScript: matched.blankScript ?? matched.script,
-        blankStep: step,
-        blankRange: matched.blankRange ?? [0, 100],
-        blankFormat: format,
+        ...(step != null ? { blankStep: step } : {}),
+        ...(format ? { blankFormat: format } : {}),
         blankReadOnly: matched.blankReadOnly,
         blankSuffix: matched.blankSuffix,
         ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
