@@ -55,9 +55,12 @@ opencues/
 │   ├── hackernews/
 │   │   ├── cue.md                 # Dynamic list control (blankDismissible, RSS feed)
 │   │   └── hn-blank.sh            # Fetch script: RSS → one title per line → scrollable list
-│   └── prompt/
-│       ├── cue.md                 # Consume-all control (blankConsumeAll, two-step LLM)
-│       └── prompt-blank.sh        # Two-step LLM: extract prompt/conditions → improve → 3 alts
+│   ├── prompt/
+│   │   ├── cue.md                 # Consume-all control (blankConsumeAll, two-step LLM)
+│   │   └── prompt-blank.sh        # Two-step LLM: extract prompt/conditions → improve → 3 alts
+│   └── answer/
+│       ├── cue.md                 # Consume-context control (blankConsumeContext, factual lookup)
+│       └── answer-blank.sh        # LLM: keyword + context → answer (3 alternatives)
 │
 ├── packages/                      # Core packages
 │   └── cues-core/                 # LLM analysis library
@@ -96,7 +99,7 @@ opencues/
 │
 ├── docs/                          # General documentation
 │   ├── overview.md                # System layers, API, interfaces, usage examples
-│   ├── features/                  # One file per feature concept (16 features)
+│   ├── features/                  # One file per feature concept (20 features)
 │   │   ├── README.md              # Feature index
 │   │   ├── navigation.md          # Feature 1: Word navigation
 │   │   ├── cycling.md             # Feature 2: Word cycling
