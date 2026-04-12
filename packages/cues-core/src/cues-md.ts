@@ -146,6 +146,8 @@ export interface ControlConfig {
   blankClearKeywords?: boolean;
   /** If true, pair cleanup (selector/satellite edit) removes the spawned words from text */
   blankClearOnEdit?: boolean;
+  /** If true, words between keyword and blank are added to blankKeywordIndices (clears keyword + context, preserves surrounding text) */
+  blankConsumeContext?: boolean;
   /** If true, ALL non-blank word indices are added to blankKeywordIndices (clears entire input on auto-populate) */
   blankConsumeAll?: boolean;
   /** LLM model identifier for script-based LLM calls (e.g. 'openai/gpt-oss-120b') */
@@ -551,6 +553,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankSatelliteSeparator?: string;
   blankClearKeywords?: boolean;
   blankClearOnEdit?: boolean;
+  blankConsumeContext?: boolean;
   blankConsumeAll?: boolean;
   apiUrl?: string;
   apiKeyEnv?: string;
@@ -626,6 +629,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
       case 'blankClearKeywords': fm.blankClearKeywords = value === 'true'; break;
       case 'blankClearOnEdit': fm.blankClearOnEdit = value === 'true'; break;
+      case 'blankConsumeContext': fm.blankConsumeContext = value === 'true'; break;
       case 'blankConsumeAll': fm.blankConsumeAll = value === 'true'; break;
       case 'apiUrl': case 'apiurl': fm.apiUrl = value; break;
       case 'apiKeyEnv': case 'apikeyenv': fm.apiKeyEnv = value; break;
@@ -714,6 +718,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
       if (frontmatter.blankClearKeywords !== undefined) control.blankClearKeywords = frontmatter.blankClearKeywords;
       if (frontmatter.blankClearOnEdit !== undefined) control.blankClearOnEdit = frontmatter.blankClearOnEdit;
+      if (frontmatter.blankConsumeContext !== undefined) control.blankConsumeContext = frontmatter.blankConsumeContext;
       if (frontmatter.blankConsumeAll !== undefined) control.blankConsumeAll = frontmatter.blankConsumeAll;
       if (frontmatter.model !== undefined) control.model = frontmatter.model;
       if (frontmatter.apiUrl !== undefined) control.apiUrl = frontmatter.apiUrl;

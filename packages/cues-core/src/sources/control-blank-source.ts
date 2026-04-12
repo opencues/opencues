@@ -113,6 +113,22 @@ export class ControlBlankSource implements CueSource {
       matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
     }
 
+    // blankConsumeContext: expand keyword indices to include words BETWEEN keyword and blank
+    // "I think the word for love in Japanese _ is beautiful" → clears "word for love in Japanese"
+    // Surrounding text ("I think the", "is beautiful") is preserved
+    if (matched.blankConsumeContext) {
+      const kwStart = matchedKeywordIndex;
+      const kwEnd = kwStart + (matchedKeyword?.split(/\s+/).length ?? 1);
+      const rangeStart = Math.min(kwStart, blankIndex);
+      const rangeEnd = Math.max(kwEnd, blankIndex);
+      for (let i = rangeStart; i < rangeEnd; i++) {
+        if (i !== blankIndex && !matchedKeywordIndices.includes(i)) {
+          matchedKeywordIndices.push(i);
+        }
+      }
+      matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
+    }
+
     // blankConsumeAll: expand keyword indices to include ALL non-blank words
     // This causes the entire input to be cleared when the blank auto-populates
     if (matched.blankConsumeAll) {
