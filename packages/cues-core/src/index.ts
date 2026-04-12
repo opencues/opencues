@@ -51,6 +51,9 @@ export {
   lookupMultiple,
   formatAsWordDefs,
   mergeWordDefs,
+  cleanAlternatives,
+  convertCueResultsToWordDefs,
+  type MergeWordDefsOptions,
   type LocalCueLookupResult,
 } from './sources/local-cue-source';
 

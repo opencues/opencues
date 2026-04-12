@@ -423,16 +423,50 @@ export function formatAsWordDefs(
 }
 
 /**
+ * Options for mergeWordDefs.
+ */
+export interface MergeWordDefsOptions {
+  /**
+   * When true, merge alternatives from both existing and new defs (deduplicated).
+   * New alts come first, then unique old alts.
+   * When false (default), new fills gaps only — existing alts are preserved.
+   */
+  mergeAlts?: boolean;
+
+  /**
+   * When mergeAlts is true, filter old alts that are strict prefixes of the current word.
+   * Prevents stale partial-word alts from persisting after the word is completed.
+   * The current words array (split text) is needed for this check.
+   */
+  currentWords?: string[];
+
+  /**
+   * Skip merging into existing entries with this source (e.g., 'tips' to protect curated data).
+   */
+  protectSource?: string;
+
+  /**
+   * Skip merging into entries where existing has metadata.controlName but new doesn't.
+   * Prevents LLM results from overwriting control-blank positions.
+   */
+  protectControlName?: boolean;
+}
+
+/**
  * Merge new word definitions with existing ones.
  * New definitions fill in missing fields; existing non-null fields are preserved.
  *
+ * With options.mergeAlts=true, alternatives are combined (new first, then unique old).
+ *
  * @param existing - Existing WordDef array (may be empty)
  * @param newDefs - New WordDefs to merge in
+ * @param options - Merge options
  * @returns Merged array with all definitions
  */
 export function mergeWordDefs(
   existing: WordDef[],
-  newDefs: WordDef[]
+  newDefs: WordDef[],
+  options?: MergeWordDefsOptions,
 ): WordDef[] {
   // Clone existing to avoid mutation
   const result = existing.map((e) => ({ ...e }));
@@ -441,9 +475,41 @@ export function mergeWordDefs(
     const existingDef = result.find((e) => e.index === newDef.index);
 
     if (existingDef) {
-      // Merge: new fills in gaps, doesn't overwrite existing
-      if (!existingDef.alts && newDef.alts) {
-        existingDef.alts = newDef.alts;
+      // Skip protected sources (e.g., tips are curated)
+      if (options?.protectSource && existingDef.source === options.protectSource) {
+        continue;
+      }
+      // Skip control-name guard (LLM shouldn't overwrite control-blank)
+      if (options?.protectControlName &&
+          existingDef.metadata?.controlName &&
+          !newDef.metadata?.controlName) {
+        continue;
+      }
+
+      if (options?.mergeAlts && existingDef.alts && newDef.alts) {
+        // Merge alts: new first, then unique old (deduplicated)
+        const merged = [...newDef.alts];
+        for (const oa of existingDef.alts) {
+          if (merged.includes(oa)) continue;
+          // Filter stale prefix alts
+          if (options.currentWords) {
+            const cur = options.currentWords[newDef.index];
+            if (cur && oa.length < cur.length && cur.startsWith(oa)) continue;
+          }
+          merged.push(oa);
+        }
+        existingDef.alts = merged;
+        // Preserve currentAltIndex: match current word or keep existing
+        if (options.currentWords) {
+          const cur = options.currentWords[newDef.index];
+          const curIdx = cur ? merged.indexOf(cur) : -1;
+          existingDef.currentAltIndex = curIdx >= 0 ? curIdx : (existingDef.currentAltIndex ?? 0);
+        }
+      } else {
+        // Gap-fill: new fills missing fields only
+        if (!existingDef.alts && newDef.alts) {
+          existingDef.alts = newDef.alts;
+        }
       }
       if (!existingDef.cueTip && newDef.cueTip) {
         existingDef.cueTip = newDef.cueTip;
@@ -457,13 +523,80 @@ export function mergeWordDefs(
       if (!existingDef.metadata && newDef.metadata) {
         existingDef.metadata = newDef.metadata;
       }
+      if (newDef.linked && !existingDef.linked) {
+        existingDef.linked = newDef.linked;
+      }
+      if (newDef.speak && !existingDef.speak) {
+        existingDef.speak = newDef.speak;
+      }
     } else {
       // Add new definition
-      result.push({ ...newDef });
+      const clone = { ...newDef };
+      // Set currentAltIndex to match current word if possible
+      if (options?.currentWords && clone.alts) {
+        const cur = options.currentWords[clone.index];
+        const curIdx = cur ? clone.alts.indexOf(cur) : -1;
+        clone.currentAltIndex = curIdx >= 0 ? curIdx : 0;
+      }
+      result.push(clone);
     }
   }
 
   return result;
+}
+
+/**
+ * Clean alternatives: strip trailing punctuation and deduplicate.
+ * Useful for post-processing LLM-generated alternatives.
+ *
+ * @param alts - Raw alternatives from LLM
+ * @returns Cleaned and deduplicated alternatives
+ */
+export function cleanAlternatives(alts: string[]): string[] {
+  const result: string[] = [];
+  for (const a of alts) {
+    const clean = a.replace(/[.;:!?]+$/, '').trim();
+    if (clean && !result.includes(clean)) result.push(clean);
+  }
+  return result;
+}
+
+/**
+ * Convert CueResult[] (from resolver) to WordDef[] (for integration use).
+ * Applies alt cleaning (punctuation strip + dedupe) and field mapping.
+ *
+ * @param results - CueResult array from resolver.resolve()
+ * @param options - Conversion options
+ * @returns WordDef array ready for merging/cycling
+ */
+export function convertCueResultsToWordDefs(
+  results: CueResult[],
+  options?: { minAlts?: number },
+): WordDef[] {
+  const minAlts = options?.minAlts ?? 2;
+  const defs: WordDef[] = [];
+
+  for (const r of results) {
+    if (!r.alternatives || r.alternatives.length < minAlts) continue;
+
+    const alts = cleanAlternatives(r.alternatives);
+    if (alts.length === 0) continue;
+
+    const wdef: WordDef = {
+      index: r.wordIndex,
+      word: r.word,
+      alts,
+      currentAltIndex: 0,
+      source: (r.source || 'llm') as WordDef['source'],
+    };
+    if (r.cueTip) wdef.cueTip = r.cueTip;
+    if (r.altCueTips) wdef.altCueTips = r.altCueTips;
+    if (r.linked) wdef.linked = r.linked;
+    if (r.metadata) wdef.metadata = r.metadata;
+    defs.push(wdef);
+  }
+
+  return defs;
 }
 
 /**

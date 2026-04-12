@@ -9,4 +9,5 @@ blankScript: ./weather-blank.sh
 blankTip: Weather
 blankReadOnly: true
 blankProximity: 3
+blankClearKeywords: true
 ---

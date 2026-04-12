@@ -2,7 +2,7 @@
 version: 1
 voice-mode: active
 debug-mode: off
-tips-mode: off
+tips-mode: minimal
 output-format: rich markdown
 display mode: split pane
 settings:
