@@ -148,7 +148,7 @@ The setup script:
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
 - **integrations/claude-code/docs/** — Claude Code implementation docs (8 files)
-- **docs/features/** — 16 feature concepts (one file each)
+- **docs/features/** — 21 feature concepts (one file each)
 
 ---
 
@@ -189,6 +189,36 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 - **API Key**: `GROQ_API_KEY` for Groq (default provider)
 - **Debug**: `DEBUG=cues*` for debug logging
 - **Config**: `~/.tweakcc/config.json` for Claude Code settings
+
+---
+
+## Testing Harness (private)
+
+<!-- PRE-LAUNCH: This entire section and all references to opencues-auto MUST be removed
+     from this file AND scrubbed from git history before the repo goes public.
+     Use: git filter-repo --path-glob '*/CLAUDE.md' --replace-text <(echo 'opencues-auto==>REDACTED') -->
+
+A separate private repo (`~/.claude/opencues-auto/`) provides automated integration testing for the Claude Code integration. It is **not** part of the public opencues repo.
+
+**What it does:**
+- Injects text into a running Claude Code instance via file-based IPC
+- Moves the cursor, cycles alternatives, and reads highlight state — all programmatically
+- Runs test suites that verify cues, blanks, controls, cycling, transitions, and cursor-navigate
+
+**When to use it:**
+- After modifying `wordHighlight.ts` or `dynamicHighlight.ts` — run the test suites to catch regressions
+- After adding a new feature — write tests in opencues-auto to cover it
+- After `setup.sh` — re-run `install-harness.sh` then restart Claude Code before testing
+
+**Setup:** `~/.claude/opencues-auto/claude-code/testing/install-harness.sh` (after `setup.sh`)
+
+**Test suites:**
+- `test-cues.sh` — core: alts, tips, controls, blanks (14 tests)
+- `test-cues-transitions.sh` — state isolation between injects (7 tests)
+- `test-cues-cycling.sh` — Up/Down cycling (9 tests)
+- `test-cursor-navigate.sh` — cursor-navigate feature (15 tests)
+
+See `~/.claude/opencues-auto/CLAUDE.md` for full documentation.
 
 ---
 
