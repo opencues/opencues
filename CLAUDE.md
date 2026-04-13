@@ -147,6 +147,8 @@ The setup script:
 - **docs/overview.md** — System architecture, core interfaces, API usage
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
+  - **`adding-a-cue-control.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
+  - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs (8 files)
 - **docs/features/** — 21 feature concepts (one file each)
 

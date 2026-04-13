@@ -818,8 +818,11 @@ var _apWc=_ap.value.split(/\\s+/).length;
 if(_apWc>1){
 if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _asi=0;_asi<_apWc;_asi++){globalThis._dynSpans[_ap.index+_asi]={originalIndex:_ap.index,spanLength:_apWc};}
-// Set spanLength on the WordDef so highlight rendering covers the full span
-if(globalThis._dynDefs&&globalThis._dynDefs.words){var _apDef=globalThis._dynDefs.words.find(function(d){return d.index===_ap.index;});if(_apDef)_apDef.spanLength=_apWc;}
+// Set spanLength on the WordDef and update word to the resolved value
+if(globalThis._dynDefs&&globalThis._dynDefs.words){var _apDef=globalThis._dynDefs.words.find(function(d){return d.index===_ap.index;});if(_apDef){_apDef.spanLength=_apWc;_apDef.word=_ap.value;if(_apDef.alts&&_apDef.alts.indexOf(_ap.value)<0)_apDef.alts.unshift(_ap.value);}}
+}else{
+// Single-word value: update word to resolved value
+if(globalThis._dynDefs&&globalThis._dynDefs.words){var _apDef1=globalThis._dynDefs.words.find(function(d){return d.index===_ap.index;});if(_apDef1){_apDef1.word=_ap.value;if(_apDef1.alts&&_apDef1.alts.indexOf(_ap.value)<0)_apDef1.alts.unshift(_ap.value);}}
 }
 // Store consume-all alts directly from _pendingAutoPopulate data (no _dynDefs lookup)
 if(_ap.consumeAllAlts&&_ap.consumeAllAlts.length>1){
@@ -831,7 +834,7 @@ return;
 }
 }
 }
-if(_hlText!==_oldText&&globalThis._consumeAllAlts){var _caC=globalThis._consumeAllAlts;for(var _caCi=0;_caCi<(_caC.spanLength||1);_caCi++){if(globalThis._dynSpans)delete globalThis._dynSpans[_caC.index+_caCi];}if(globalThis._dynDefs&&globalThis._dynDefs.words){globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(d){return d.index<_caC.index||d.index>=_caC.index+(_caC.spanLength||1);});}globalThis._consumeAllAlts=null;}
+if(_hlText!==_oldText&&globalThis._consumeAllAlts){var _caC=globalThis._consumeAllAlts;var _caOW=_oldText.split(/\\s+/).filter(function(w){return w;});var _caNW=_hlText.split(/\\s+/).filter(function(w){return w;});var _caChanged=false;for(var _caCk=_caC.index;_caCk<_caC.index+(_caC.spanLength||1);_caCk++){if((_caOW[_caCk]||"")!==(_caNW[_caCk]||"")){_caChanged=true;break;}}if(_caChanged||_caNW.length<_caC.index+(_caC.spanLength||1)){for(var _caCi=0;_caCi<(_caC.spanLength||1);_caCi++){if(globalThis._dynSpans)delete globalThis._dynSpans[_caC.index+_caCi];}if(globalThis._dynDefs&&globalThis._dynDefs.words){globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(d){return d.index<_caC.index||d.index>=_caC.index+(_caC.spanLength||1);});}globalThis._consumeAllAlts=null;}}
 var _cnWasManual=globalThis._hlManualNav;
 if(globalThis._hlState&&globalThis._hlState.active){
 if(_hlText!==_oldText){

@@ -184,6 +184,25 @@ if (_hlText !== _oldText && globalThis._myGlobal) {
 
 This must run before (or independently of) the `_hlState.active` block. `_dismissedBlanks` and `_hlState` are cleared inside that block because they're only relevant when the highlight is active. Your global must clear unconditionally — if the user navigates away (deactivating the highlight) and then edits, `_hlState.active` is already false and the inner block never runs.
 
+**Invalidation is word-level, not character-level.** The cleanup check `_hlText !== _oldText` is true for any text change — including a trailing space. Before clearing your global, compare the words at the span's positions in old vs new text. Only clear if those specific words changed (or the text got shorter than the span). This prevents a trailing space or punctuation appended elsewhere from killing a valid resolved span.
+
+```javascript
+if (_hlText !== _oldText && globalThis._myGlobal) {
+  var _c = globalThis._myGlobal;
+  var _ow = _oldText.split(/\s+/).filter(function(w){return w;});
+  var _nw = _hlText.split(/\s+/).filter(function(w){return w;});
+  var _changed = false;
+  for (var _ci = _c.index; _ci < _c.index + (_c.spanLength || 1); _ci++) {
+    if ((_ow[_ci] || "") !== (_nw[_ci] || "")) { _changed = true; break; }
+  }
+  if (_changed || _nw.length < _c.index + (_c.spanLength || 1)) {
+    // clear spans, defs, global
+  }
+}
+```
+
+**`def.word` after auto-populate.** When the blank auto-populates, the WordDef in `_dynDefs` was created at `_` time, so `def.word = "_"`. The runtime patches `def.word` to the resolved value immediately after populate. This matters because the per-word invalidation check (`writeDynamicClearOnChange`) compares the current word in the buffer against `def.word` — if they don't match, the def is discarded. If you're storing state in `_dynDefs` (not a dedicated global), ensure `def.word` reflects the resolved value, not the keyword that triggered it. The runtime also calls `alts.unshift(resolvedValue)` so that `currentAltIndex=0` points to the correct displayed value.
+
 **Pitfall: stale `cueTip` after clearing.** When the blank originally resolved, a WordDef was created in `_dynDefs` with `metadata.controlName` and your `cueTip`. After clearing your global, this WordDef persists. The LLM merge path in `dynamicHighlight.ts` guards: `if(_oldW2.metadata.controlName && !_nw2.metadata.controlName) continue` — it skips grammar results for control-blank positions. So the fresh analysis of the user's new text updates the `alts` but the old `cueTip` is never overwritten. The user sees correct alternatives but the wrong tip label. Removing the WordDefs from `_dynDefs` during cleanup unblocks the guard so the next analysis populates cleanly.
 
 ### F. Rendering span length

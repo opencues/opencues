@@ -267,6 +267,18 @@ The control-blank cycling cascade has two paths, and a control must route to the
 | Multi-line script output | List cycling (automatic) | hackernews |
 | `blankReadOnly: true` only | No cycling (returns null) | stocks |
 
+### Span invalidation: only word changes kill the span
+
+For list/consume-all controls (`blankDismissible`, multi-line output), the resolved value is stored as a span covering one or more word positions. The runtime only invalidates this span when the **words at those positions change** — it does not invalidate on trailing spaces, punctuation appended elsewhere, or other non-word edits. This is intentional so the user can keep typing around a resolved blank without losing it.
+
+**Implication for custom controls:** if you're building a control that should survive normal typing, this behaviour is already there. If your control's resolved value should be cleared the moment the user edits *anywhere* in the line, use `blankClearOnEdit: true` instead.
+
+### `def.word` after auto-populate
+
+When a blank auto-populates, the WordDef was created at `_` time, so `def.word = "_"`. The runtime patches `def.word` to the resolved value immediately after populate so that per-word invalidation can correctly match the span. It also prepends the resolved value to `def.alts` (via `alts.unshift`) so that cycling starts from the correct position.
+
+**Implication for custom controls:** if you manually construct a WordDef outside of `ControlBlankSource` → auto-populate (e.g., in a custom integration), ensure `def.word` reflects the currently displayed value, not the keyword that triggered it. Otherwise the def will be silently discarded on the next keystroke.
+
 ## Checklist
 
 - [ ] Control folder created: `controls/{name}/cue.md` + script
