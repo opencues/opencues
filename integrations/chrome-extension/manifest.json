@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "OpenCues",
+  "version": "0.1.0",
+  "description": "LLM-powered word alternatives for text editors",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://api.groq.com/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "css": ["dist/content.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "dist/popup/popup.html"
+  }
+}

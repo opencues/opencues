@@ -1,0 +1,44 @@
+/* OpenCues — CSS Custom Highlight API styles */
+
+/* Selectable words (has alts) — darkest */
+::highlight(oc-dim) {
+  color: #555 !important;
+}
+
+/* Normal words — mid-tone */
+::highlight(oc-base) {
+  color: #999 !important;
+}
+
+/* Active word — brightest */
+::highlight(oc-active) {
+  color: #fff !important;
+}
+
+/* Status bar — fixed bottom-right corner */
+.oc-status-bar {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: 6px 12px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 99999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.15s, transform 0.15s;
+  pointer-events: none;
+  max-width: 400px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oc-status-bar--visible {
+  opacity: 1;
+  transform: translateY(0);
+}

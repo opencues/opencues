@@ -1,0 +1,15 @@
+{
+  "name": "opencues-chrome-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0",
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
+}

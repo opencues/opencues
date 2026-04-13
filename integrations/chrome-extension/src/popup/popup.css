@@ -1,0 +1,65 @@
+.popup {
+  width: 320px;
+  padding: 12px;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+h1 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+label {
+  display: block;
+  margin: 8px 0 2px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #555;
+}
+
+input[type="text"],
+input[type="password"],
+textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+  box-sizing: border-box;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+button {
+  margin-top: 12px;
+  width: 100%;
+  padding: 8px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+#status {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #16a34a;
+  text-align: center;
+}
