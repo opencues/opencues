@@ -141,6 +141,7 @@ Auto-populate (wordHighlight.ts)
 | `_dynPrevWords` | Same — must be updated alongside `_dynLastAnalyzed` |
 | `_dynSpans` | Old span entries linger → navigation/rendering breaks for new word count |
 | Your global's `spanLength` | Next cycle uses wrong span boundaries for text replacement |
+| `_dynDefs.words[idx].spanLength` | Rendering reads `_hlDef.spanLength` first — if stale and larger than your global's new span, the highlight spans the wrong number of words |
 
 Compare with **dynamic alt cycling** (Path 7): it only updates `_hlText`, `_hlState.text`, and `_dynSpans`. It does NOT update `_dynLastAnalyzed`/`_dynPrevWords`. It can skip these because its WordDef in `_dynDefs` is protected by `metadata.controlName` guards during the merge path. Your dedicated global doesn't have that protection — the analysis will overwrite `_dynDefs` and break your spans if you don't prevent it.
 
@@ -216,6 +217,20 @@ if (globalThis._myGlobal
     && globalThis._myGlobal.index === _hlWordIdx
     && globalThis._myGlobal.spanLength > _hlSpanLen) {
   _hlSpanLen = globalThis._myGlobal.spanLength;
+}
+```
+
+**Pitfall: `_hlDef.spanLength` outlives your global's span update.** The rendering code checks `_hlDef.spanLength` (from `_dynDefs`) BEFORE your global's `spanLength`. If your cycling changes the span size (e.g., from 2 words to 1), you must also update `_dynDefs.words[idx].spanLength` — otherwise the stale `_hlDef.spanLength` (larger) wins and the wrong number of words gets highlighted.
+
+After each cycle, sync back to `_dynDefs`:
+
+```javascript
+if (globalThis._dynDefs && globalThis._dynDefs.words) {
+  var _syncDef = globalThis._dynDefs.words.find(function(d) { return d.index === _caIdx; });
+  if (_syncDef) {
+    if (_caNewWc > 1) _syncDef.spanLength = _caNewWc;
+    else delete _syncDef.spanLength;
+  }
 }
 ```
 

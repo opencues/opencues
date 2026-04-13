@@ -575,6 +575,8 @@ var _caWE=_caWS;for(var _casi=0;_casi<_caOldSpan;_casi++){var _caSwI=_caText.ind
 var _caNewText=_caText.slice(0,_caWS)+_caNewWord+_caText.slice(_caWE);
 var _caNewWc=_caNewWord.split(/\\s+/).length;
 _ca.spanLength=_caNewWc;
+// Sync spanLength back to _dynDefs so rendering uses the new span (not the stale old value)
+if(globalThis._dynDefs&&globalThis._dynDefs.words){var _caDef=globalThis._dynDefs.words.find(function(d){return d.index===_caIdx;});if(_caDef){if(_caNewWc>1)_caDef.spanLength=_caNewWc;else delete _caDef.spanLength;}}
 if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _caSi=0;_caSi<_caOldSpan;_caSi++)delete globalThis._dynSpans[_caIdx+_caSi];
 for(var _caSj=0;_caSj<_caNewWc;_caSj++){globalThis._dynSpans[_caIdx+_caSj]={originalIndex:_caIdx,spanLength:_caNewWc};}
