@@ -1384,7 +1384,7 @@ var _isInSpan=!!_spanInfo;
 var _isSpanOrigin=_spanInfo&&_spanInfo.originalIndex===_ni;
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==_ni;
 var _isInHighlightedSpan=_spanInfo&&_spanInfo.originalIndex===_hlWordIdx;
-if((_dynDef||_isInSpan)&&_ni!==_hlWordIdx&&!_isInHighlightedSpan&&!_isNonOrigSpan){
+if((_dynDef||_isInSpan)&&_ni!==_hlWordIdx&&!_isInHighlightedSpan){
 if(_isSpanOrigin&&_spanInfo.spanLength>1){
 // Continuous range: walk through span words to find the end
 var _spanEnd=_wStart+_w.length;
