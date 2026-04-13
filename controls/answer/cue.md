@@ -2,7 +2,7 @@
 name: answer
 type: control
 control: answer
-blankKeywords: what is the word for
+blankKeywords: what is the word for, how to say
 blankConsumeContext: true
 blankClearKeywords: true
 blankAutoPopulate: true
