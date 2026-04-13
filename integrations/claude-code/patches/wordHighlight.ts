@@ -870,7 +870,7 @@ var _cnW=_cnWords[_cnWordIdx];var _cnWLow=_cnW.toLowerCase();
 var _cnNav=false;
 // Keyword context skip
 var _cnKw=false;
-if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cnki=0;_cnki<globalThis._dynDefs.words.length;_cnki++){var _cnkd=globalThis._dynDefs.words[_cnki];if(_cnkd&&_cnkd.metadata&&_cnkd.metadata.blankKeywordIndices){for(var _cnkj=0;_cnkj<_cnkd.metadata.blankKeywordIndices.length;_cnkj++){if(_cnkd.metadata.blankKeywordIndices[_cnkj]===_cnWordIdx){_cnKw=true;break;}}if(_cnKw)break;}}}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cnki=0;_cnki<globalThis._dynDefs.words.length;_cnki++){var _cnkd=globalThis._dynDefs.words[_cnki];if(_cnkd&&_cnkd.metadata&&_cnkd.metadata.blankKeywordIndices&&_cnkd.index!==_cnWordIdx){for(var _cnkj=0;_cnkj<_cnkd.metadata.blankKeywordIndices.length;_cnkj++){if(_cnkd.metadata.blankKeywordIndices[_cnkj]===_cnWordIdx){_cnKw=true;break;}}if(_cnKw)break;}}}
 if(!_cnKw){
 var _cnSpan=globalThis._dynSpans&&globalThis._dynSpans[_cnWordIdx];
 var _cnNonOrig=_cnSpan&&_cnSpan.originalIndex!==_cnWordIdx;

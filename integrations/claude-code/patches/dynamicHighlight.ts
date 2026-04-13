@@ -1373,7 +1373,7 @@ export const writeDynamicRendering = (
 // Keyword-context skip: words at blank keyword indices are not navigable
 // Covers selectors (opencues), list controls (hackernews), and any blank with blankKeywordIndices
 var _isCtxKw=false;
-if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===_ni){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices&&_ckd.index!==_ni){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===_ni){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
 if(_isCtxKw)return false;
 if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
 if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
@@ -1554,9 +1554,9 @@ var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[i];
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==i;
 var _isSpanOriginal=_spanInfo&&_spanInfo.originalIndex===i;
 var _isInSpan=!!_spanInfo&&!_isNonOrigSpan;
-// Keyword-context skip: words at blank keyword indices are non-navigable
+// Keyword-context skip: words at blank keyword indices are non-navigable (but not the def's own index)
 var _isCtxKw=false;
-if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===i){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices&&_ckd.index!==i){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===i){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
 if(((${m.condition})||_hasTipAlt||_hasDynAlt||_isSpanOriginal||_isInSpan)&&!_isNonOrigSpan&&!_isCtxKw)${m.targetIdx}.push(i);
 });`;
 

@@ -243,6 +243,30 @@ blankProximity: 3
 
 Type `HN posts _` → auto-populates with top post. Up/Down scrolls through all posts. Cycle past the last → `_` to dismiss.
 
+## Cycling pitfalls: numeric stepping vs list cycling
+
+The control-blank cycling cascade has two paths, and a control must route to the correct one:
+
+1. **Numeric stepping** — parses the displayed word as a number, adds/subtracts `blankStep`, calls `blankScript set <value>`. Used by volume, brightness.
+2. **List cycling** — cycles through `alts[]` array by index. Used by hackernews, affirmations, and any control with `blankDismissible: true`.
+
+**The routing rule:** if the control's metadata has `listControl: true`, it uses the list path. Otherwise it uses the numeric path.
+
+**The pitfall:** if a control returns a value that *looks* like a number (e.g., `10.9°C`) but isn't meant to be stepped, the numeric path will parse it and increment it (`10.9°C` → `11.9` → `12.9`). This happens when:
+- The control has `blankFormat: string` but NOT `listControl: true`
+- The value contains digits that `parseFloat()` can extract
+
+**The fix:** controls that return non-numeric string values AND have multiple alts (e.g., `blankDismissible: true`) must have `listControl: true` in their metadata. This is now automatic: `blankDismissible: true` in the config sets `listControl: true` on the WordDef's metadata in `ControlBlankSource`. But if you're manually constructing WordDefs for a custom control, remember to set it explicitly.
+
+**When to use each:**
+| Config | Cycling path | Example |
+|--------|-------------|---------|
+| `blankStep` or numeric `blankFormat` only | Numeric stepping | volume (`50%` → `56%`) |
+| `blankDismissible: true` | List cycling (automatic) | weather (`10°C Drizzle` ↔ `_`) |
+| `stepValues: [...]` | List cycling (automatic) | affirmations |
+| Multi-line script output | List cycling (automatic) | hackernews |
+| `blankReadOnly: true` only | No cycling (returns null) | stocks |
+
 ## Checklist
 
 - [ ] Control folder created: `controls/{name}/cue.md` + script

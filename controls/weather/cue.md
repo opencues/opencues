@@ -7,7 +7,7 @@ blankAutoPopulate: true
 blankFormat: string
 blankScript: ./weather-blank.sh
 blankTip: Weather
-blankReadOnly: true
+blankDismissible: true
 blankProximity: 3
 blankClearKeywords: true
 ---

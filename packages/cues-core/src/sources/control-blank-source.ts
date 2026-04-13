@@ -247,9 +247,10 @@ export class ControlBlankSource implements CueSource {
       ?? parseStepFromArgs(matched.downArgs);
 
     const displayValue = matched.blankSuffix ? rawValue + matched.blankSuffix : rawValue;
-    const alternatives = matched.blankAutoPopulate
+    const baseAlts = matched.blankAutoPopulate
       ? [displayValue]
       : ['_'];
+    const alternatives = matched.blankDismissible ? [...baseAlts, '_'] : baseAlts;
 
     results.push({
       wordIndex: blankIndex,
@@ -265,6 +266,7 @@ export class ControlBlankSource implements CueSource {
         ...(format ? { blankFormat: format } : {}),
         blankReadOnly: matched.blankReadOnly,
         blankSuffix: matched.blankSuffix,
+        ...(matched.blankDismissible ? { listControl: true, blankDismissible: true } : {}),
         ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         blankClearKeywords: matched.blankClearKeywords || false,
         blankClearOnEdit: matched.blankClearOnEdit || false,
