@@ -138,7 +138,7 @@ export class WordNavigator {
       navCtrl.get().then(val => {
         if (val) {
           this.engine.cueControlTip = val;
-          this.tts.speak(val);
+          if (!this.engine.isVoiceMuted()) this.tts.speak(val);
           this.notify();
         }
       });
@@ -225,7 +225,7 @@ export class WordNavigator {
       return;
     }
 
-    if (def?.metadata?.controlName && !(def.metadata as any).listControl && !(def.metadata as any).consumeAll) {
+    if (def?.metadata?.controlName && !(def.metadata as any).listControl && !(def.metadata as any).consumeAll && !(def.metadata as any).selectorWord && !(def.metadata as any).satelliteWord) {
       const controlName = def.metadata.controlName as string;
       const newValue = await this.engine.controlAction(controlName, direction);
       if (!newValue) { this.cycling = false; return; }

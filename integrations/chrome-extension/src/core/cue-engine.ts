@@ -205,6 +205,57 @@ export class CueEngine {
     return this.openCues.current['voice-mode'] === 'inactive';
   }
 
+  /**
+   * Synchronous per-word invalidation — called on every input event.
+   * Matches Claude Code's onChange per-word check (dynamicHighlight.ts:1435-1467).
+   * Detects edits to selector/satellite words and schedules blankClearOnEdit.
+   */
+  invalidateWordsSync(curWords: string[]): void {
+    if (this.lastAnalyzed.length === 0) return;
+    const minLen = Math.min(curWords.length, this.lastAnalyzed.length);
+    console.log('[OpenCues][invalidateSync] curWords:', curWords, 'lastAnalyzed:', this.lastAnalyzed, 'words:', this.words.map(w => ({ i: w.index, word: w.word, sel: (w.metadata as any)?.selectorWord, sat: (w.metadata as any)?.satelliteWord, coe: (w.metadata as any)?.blankClearOnEdit })));
+    for (let i = 0; i < minLen; i++) {
+      if (curWords[i] === this.lastAnalyzed[i]) continue;
+      // Skip consume-all positions
+      if (this.consumeAllAlts) {
+        const ca = this.consumeAllAlts;
+        if (i >= ca.index && i < ca.index + (ca.spanLength || 1)) continue;
+      }
+      const def = this.words.find(w => w.index === i);
+      if (!def) continue;
+      const spanLen = (def as any).spanLength || 1;
+      const effectiveNew = spanLen > 1 ? curWords.slice(i, i + spanLen).join(' ') : curWords[i];
+      if (def.alts && def.alts.includes(effectiveNew)) {
+        def.word = effectiveNew;
+        def.currentAltIndex = def.alts.indexOf(effectiveNew);
+      } else {
+        // Word NOT in alts — actual edit, clear this def
+        const clearedMeta = def.metadata;
+        def.word = curWords[i];
+        def.alts = null;
+        def.currentAltIndex = 0;
+        delete def.metadata;
+        delete this.spans[i];
+        // Pair cleanup
+        if (clearedMeta) {
+          let partnerIdx: number | null = null;
+          if ((clearedMeta as any).satelliteWord && typeof (clearedMeta as any).parentIndex === 'number')
+            partnerIdx = (clearedMeta as any).parentIndex;
+          else if ((clearedMeta as any).selectorWord && typeof (clearedMeta as any).childIndex === 'number')
+            partnerIdx = (clearedMeta as any).childIndex;
+          if (partnerIdx != null) {
+            const partner = this.words.find(w => w.index === partnerIdx);
+            if (partner) { partner.alts = null; partner.currentAltIndex = 0; delete partner.metadata; delete this.spans[partnerIdx]; }
+          }
+          if ((clearedMeta as any).blankClearOnEdit) {
+            this.scheduleClearOnEdit(i, { ...def, metadata: clearedMeta } as any);
+          }
+        }
+        this.notify();
+      }
+    }
+  }
+
   /** Synchronous instant tips lookup — call directly on input for zero-delay dimming */
   lookupTipsSync(text: string): boolean {
     if (!this.config || this.config.tipsMap.size === 0) return false;
@@ -674,17 +725,16 @@ export class CueEngine {
     const fullInsert = nextSet + sep + newSatVal;
     const newText = fullText.slice(0, selStart) + fullInsert + fullText.slice(satEnd);
 
-    // Update defs
-    meta.currentSetting = nextSet;
-    def.word = nextSet;
-
-    // Shift downstream indices
-    const newSelWc = nextSet.split(/\s+/).filter(w => w).length;
-    const newSatWc = newSatVal ? newSatVal.split(/\s+/).filter(w => w).length : 0;
-    const newSepWc = fullInsert.split(/\s+/).filter(w => w).length - newSelWc - newSatWc;
+    // Compute new word counts
+    const newSelWc = nextSet.split(/\s+/).filter(w => w).length || 1;
+    const newSatWc = newSatVal ? newSatVal.split(/\s+/).filter(w => w).length : 1;
+    const newFullWords = fullInsert.split(/\s+/).filter(w => w);
+    const newSepWc = newFullWords.length - newSelWc - newSatWc;
+    const oldSepWc = Math.max(0, satIdx - (wordIndex + selSpan));
     const oldEndIdx = satIdx + satSpan;
-    const downShift = (newSelWc + newSepWc + newSatWc) - (selSpan + (satIdx - (wordIndex + selSpan)) + satSpan);
+    const downShift = (newSelWc + newSepWc + newSatWc) - (selSpan + oldSepWc + satSpan);
 
+    // Shift downstream WordDef indices
     if (downShift !== 0) {
       for (const d of this.words) {
         if (d.index >= oldEndIdx && d !== def && d !== satDef) d.index += downShift;
@@ -694,12 +744,45 @@ export class CueEngine {
       }
     }
 
-    // Update satellite def
+    // Clear old spans for both selector and satellite
+    for (let i = 0; i < selSpan; i++) delete this.spans[wordIndex + i];
+    for (let i = 0; i < satSpan; i++) delete this.spans[satIdx + i];
+    // Shift remaining span keys >= oldEndIdx
+    if (downShift !== 0) {
+      const newSpans: Record<number, SpanInfo> = {};
+      for (const [k, v] of Object.entries(this.spans)) {
+        const ki = parseInt(k, 10);
+        newSpans[ki >= oldEndIdx ? ki + downShift : ki] = v;
+      }
+      this.spans = newSpans;
+    }
+
+    // Update selector WordDef
+    meta.currentSetting = nextSet;
+    def.word = nextSet;
+    def.cueTip = this.openCues.tips[nextSet] || undefined;
+    const newSatIdx = wordIndex + newSelWc + newSepWc;
+    meta.childIndex = newSatIdx;
+    if (newSelWc > 1) {
+      (def as any).spanLength = newSelWc;
+      for (let i = 0; i < newSelWc; i++) this.spans[wordIndex + i] = { originalIndex: wordIndex, spanLength: newSelWc };
+    } else {
+      delete (def as any).spanLength;
+    }
+
+    // Update satellite WordDef (index moves if selector span changed length)
     if (satDef) {
+      satDef.index = newSatIdx;
       satDef.word = newSatVal;
       satDef.alts = vals.length > 0 ? vals : [newSatVal];
       satDef.currentAltIndex = Math.max(0, vals.indexOf(newSatVal));
       satDef.cueTip = this.openCues.satTips[nextSet]?.[newSatVal] || this.openCues.tips[nextSet] || undefined;
+      if (newSatWc > 1) {
+        (satDef as any).spanLength = newSatWc;
+        for (let i = 0; i < newSatWc; i++) this.spans[newSatIdx + i] = { originalIndex: newSatIdx, spanLength: newSatWc };
+      } else {
+        delete (satDef as any).spanLength;
+      }
     }
 
     // Update current state (in-memory, immediate — gotcha #23)

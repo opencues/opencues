@@ -99,7 +99,7 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
     // Execute pending blankClearOnEdit removal (unconditional — outside highlight guard)
     if (engine?.pendingClearOnEdit) {
       const cleaned = engine.executeClearOnEdit(text);
-      if (cleaned) {
+      if (cleaned !== null) {
         replaceTargetText(target, cleaned);
         text = cleaned;
       }
@@ -108,6 +108,24 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
     const curWords = text.split(/\s+/).filter(w => w);
     const prevWords = lastInputText.split(/\s+/).filter(w => w);
     lastInputText = text;
+
+    // Instant per-word invalidation — synchronous, matches Claude Code onChange behavior
+    // Must run BEFORE tips lookup so cleared defs don't get re-added
+    engine?.invalidateWordsSync(curWords);
+
+    // Execute clearOnEdit immediately if invalidation just scheduled it
+    if (engine?.pendingClearOnEdit) {
+      const cleaned = engine.executeClearOnEdit(text);
+      if (cleaned !== null) {
+        replaceTargetText(target, cleaned);
+        text = cleaned;
+        lastInputText = text;
+        // Re-split after removal
+        const newWords = text.split(/\s+/).filter(w => w);
+        engine.invalidateAnalysis(newWords);
+        return; // text changed — let the next input event handle analysis
+      }
+    }
 
     // Instant tips lookup — synchronous, no debounce
     engine?.lookupTipsSync(text);
@@ -183,9 +201,12 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
     const { config: kwConfig, matchedKeyword, keywordIndices } = matched;
     const context = words.filter((_, idx) => idx !== blankIdx);
 
-    // Fetch value from control
-    const value = await engine.controlGet(kwConfig.controlName, matchedKeyword, context);
-    if (!value || value.length === 0) return;
+    // Fetch value from control (satellite controls read from openCues.settings instead)
+    let value = '';
+    if (!kwConfig.satellite) {
+      value = await engine.controlGet(kwConfig.controlName, matchedKeyword, context);
+      if (!value || value.length === 0) return;
+    }
 
     // --- Keyword expansion: replace shorthand with display name ---
     let workText = text;
@@ -241,7 +262,113 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
 
     let newText: string;
 
-    if (kwConfig.consumeAll) {
+    if (kwConfig.satellite) {
+      // --- Selector+satellite auto-populate (ported from wordHighlight.ts lines 758-812) ---
+      // Get selector value (first setting name) and satellite value (current value for that setting)
+      const selKeys = Object.keys(engine.openCues.settings);
+      const selVal = selKeys[0] || value;
+      const satVal = engine.openCues.current[selVal]
+        || (engine.openCues.settings[selVal]?.[0])
+        || '';
+
+      // Build separator: space-padded version of config separator, or just " "
+      const sepRaw = kwConfig.separator || '';
+      const sepTrim = sepRaw.trim();
+      const sepDisplay = sepTrim ? (' ' + sepTrim + ' ') : ' ';
+
+      const fullInsert = selVal + sepDisplay + satVal;
+      const fullWords = fullInsert.split(/\s+/).filter(w => w);
+      const totalWc = fullWords.length;
+      const selWc = selVal.split(/\s+/).filter(w => w).length || 1;
+      const satWc = satVal ? satVal.split(/\s+/).filter(w => w).length : 1;
+      const sepWc = totalWc - selWc - satWc;
+
+      // Replacing 1 underscore with totalWc words. Downstream index shift:
+      const apShift = totalWc - 1;
+      newText = workText.slice(0, uStart) + fullInsert + workText.slice(uStart + 1);
+
+      const apN = adjustedBlankIdx;
+      const apSatN = apN + selWc + sepWc;
+
+      // Shift existing WordDefs at index > apN by apShift
+      for (const d of engine.words) {
+        if (d.index > apN) d.index += apShift;
+        const dm = d.metadata as any;
+        if (dm?.childIndex != null && dm.childIndex > apN) dm.childIndex += apShift;
+        if (dm?.parentIndex != null && dm.parentIndex > apN) dm.parentIndex += apShift;
+      }
+
+      // Shift span keys > apN by apShift
+      const newSpans: Record<number, { originalIndex: number; spanLength: number }> = {};
+      for (const [k, v] of Object.entries(engine.spans)) {
+        const ki = parseInt(k, 10);
+        newSpans[ki > apN ? ki + apShift : ki] = v;
+      }
+      engine.spans = newSpans;
+
+      // Derive alts from openCues settings
+      const selAlts = selKeys.length > 0 ? selKeys : [selVal];
+      const satAlts = engine.openCues.settings[selVal] || [satVal];
+
+      // Create selector WordDef at apN
+      const selTip = engine.openCues.tips[selVal] || null;
+      const selDef = {
+        index: apN,
+        word: selVal,
+        alts: selAlts,
+        currentAltIndex: Math.max(0, selAlts.indexOf(selVal)),
+        source: 'control' as const,
+        cueTip: selTip,
+        metadata: {
+          controlName: kwConfig.controlName,
+          selectorWord: true,
+          childIndex: apSatN,
+          currentSetting: selVal,
+          separator: sepDisplay,
+          blankClearOnEdit: kwConfig.clearOnEdit,
+        },
+      };
+      if (selWc > 1) {
+        (selDef as any).spanLength = selWc;
+        for (let i = 0; i < selWc; i++) {
+          engine.spans[apN + i] = { originalIndex: apN, spanLength: selWc };
+        }
+      }
+
+      // Replace or insert selector def
+      const exSelIdx = engine.words.findIndex(d => d.index === apN);
+      if (exSelIdx >= 0) {
+        engine.words[exSelIdx] = selDef as any;
+      } else {
+        engine.words.push(selDef as any);
+      }
+
+      // Create satellite WordDef at apSatN
+      const satTip = (engine.openCues.satTips[selVal]?.[satVal])
+        || engine.openCues.tips[selVal]
+        || null;
+      const satDef = {
+        index: apSatN,
+        word: satVal,
+        alts: satAlts,
+        currentAltIndex: Math.max(0, satAlts.indexOf(satVal)),
+        source: 'control' as const,
+        cueTip: satTip,
+        metadata: {
+          controlName: kwConfig.controlName,
+          satelliteWord: true,
+          parentIndex: apN,
+          blankClearOnEdit: kwConfig.clearOnEdit,
+        },
+      };
+      if (satWc > 1) {
+        (satDef as any).spanLength = satWc;
+        for (let i = 0; i < satWc; i++) {
+          engine.spans[apSatN + i] = { originalIndex: apSatN, spanLength: satWc };
+        }
+      }
+      engine.words.push(satDef as any);
+    } else if (kwConfig.consumeAll) {
       // Consume-all: replace entire text with value, populate consumeAllAlts
       const alts = value.split('\n').filter(l => l.trim());
       if (alts.length === 0) return;
@@ -330,7 +457,8 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
 
     // Remove any stale def (LLM, tips, or old control) at the word immediately before the fill.
     // Skip for consume-all — entire text was replaced, no context word to clear.
-    if (!kwConfig.consumeAll && kwConfig.clearKeywords && adjustedBlankIdx > 0) {
+    // Skip for satellite — keyword clearing already handled above, no context word to clear.
+    if (!kwConfig.consumeAll && !kwConfig.satellite && kwConfig.clearKeywords && adjustedBlankIdx > 0) {
       const ctxIdx = adjustedBlankIdx - 1;
       engine.words = engine.words.filter(d => d.index !== ctxIdx);
       delete engine.spans[ctxIdx];

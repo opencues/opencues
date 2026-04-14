@@ -25,6 +25,12 @@ export interface ControlKeywordConfig {
   readOnly: boolean;
   /** Dismissible: adds "_" as a cycling option so user can dismiss the span */
   dismissible: boolean;
+  /** Selector+satellite control (opencues settings style) */
+  satellite: boolean;
+  /** Display separator between selector and satellite (default: " ") */
+  separator: string;
+  /** Remove spawned selector/satellite words when user edits to something not in alts */
+  clearOnEdit: boolean;
   /** Tip label shown in status bar when navigated to */
   tip?: string;
 }
@@ -48,6 +54,9 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     proximity: 1,
     readOnly: true,
     dismissible: false,
+    satellite: false,
+    separator: ' ',
+    clearOnEdit: false,
     tip: 'Stock price',
   },
   {
@@ -59,6 +68,9 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     proximity: 3,
     readOnly: true,
     dismissible: true,
+    satellite: false,
+    separator: ' ',
+    clearOnEdit: false,
     tip: 'Weather',
   },
   {
@@ -70,6 +82,9 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     proximity: 3,
     readOnly: true,
     dismissible: true,
+    satellite: false,
+    separator: ' ',
+    clearOnEdit: false,
     tip: 'Hacker News',
   },
   {
@@ -81,6 +96,9 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     proximity: 1,
     readOnly: false,
     dismissible: false,
+    satellite: false,
+    separator: ' ',
+    clearOnEdit: false,
     tip: 'Volume',
   },
   {
@@ -92,7 +110,24 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     proximity: 999, // consume-all uses entire text
     readOnly: false,
     dismissible: false,
+    satellite: false,
+    separator: ' ',
+    clearOnEdit: false,
     tip: 'Prompt improver',
+  },
+  {
+    controlName: 'opencues',
+    keywords: ['opencues settings', 'config'],
+    expansions: {},
+    clearKeywords: true,
+    consumeAll: false,
+    proximity: 1,
+    readOnly: false,
+    dismissible: false,
+    satellite: true,
+    separator: ' ',
+    clearOnEdit: true,
+    tip: 'OpenCues settings',
   },
 ];
 
