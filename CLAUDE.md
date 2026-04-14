@@ -189,8 +189,11 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ## Environment
 
 - **API Key**: `GROQ_API_KEY` for Groq (default provider)
+- **API Key**: `FINNHUB_API_KEY` for Finnhub (stock prices)
 - **Debug**: `DEBUG=cues*` for debug logging
 - **Config**: `~/.tweakcc/config.json` for Claude Code settings
+
+> **PRE-LAUNCH:** Rotate `GROQ_API_KEY` and `FINNHUB_API_KEY` before making the repo public. Keys are hardcoded in `integrations/chrome-extension/.env` (gitignored) for dev convenience.
 
 ---
 

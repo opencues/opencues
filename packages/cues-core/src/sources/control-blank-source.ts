@@ -64,6 +64,7 @@ export class ControlBlankSource implements CueSource {
       return -1;
     };
 
+    let bestGap = Infinity;
     for (const [, ctrl] of Object.entries(this.controls)) {
       if (!ctrl.blankKeywords?.length) continue;
       const proximity = ctrl.blankProximity ?? 0;
@@ -76,17 +77,15 @@ export class ControlBlankSource implements CueSource {
           // For multi-word keywords, proximity is measured from the last word of the phrase to the blank
           const endIdx = idx + kwLen - 1;
           const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (gap <= proximity) {
+          if (gap <= proximity && gap < bestGap) {
             matched = ctrl;
             matchedKeyword = kw;
             matchedKeywordIndex = idx;
-            break;
+            bestGap = gap;
           }
           idx = findPhrase(kw, idx + 1);
         }
-        if (matched) break;
       }
-      if (matched) break;
     }
 
     if (!matched) {

@@ -2,7 +2,7 @@
 name: stocks
 type: control
 control: stocks
-blankKeywords: reddit stock, rddt, nvidia stock, nvda, apple stock, aapl, google stock, googl, microsoft stock, msft, amazon stock, amzn, tesla stock, tsla, meta stock
+blankKeywords: reddit stock, reddit, rddt, nvidia stock, nvidia, nvda, apple stock, apple, aapl, google stock, google, googl, microsoft stock, microsoft, msft, amazon stock, amazon, amzn, tesla stock, tesla, tsla, meta stock, meta
 blankAutoPopulate: true
 blankFormat: string
 blankScript: ./stock-blank.sh
