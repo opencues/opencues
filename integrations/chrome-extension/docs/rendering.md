@@ -80,7 +80,26 @@ requestAnimationFrame(() => {
 
 This prevents the "white flash" where all text appears unstyled between the text change and highlight rebuild. The `requestAnimationFrame` ensures highlights are set after the browser processes the text mutation but before it paints to screen.
 
-**Key lesson learned:** Setting highlights synchronously after `textNode.data` change doesn't work — the browser schedules highlight invalidation asynchronously, so synchronous `highlights.set()` gets overridden. `requestAnimationFrame` defers to the right timing.
+**Key lesson learned:** Setting highlights synchronously after DOM text changes doesn't work — the browser schedules highlight invalidation asynchronously, so synchronous `highlights.set()` gets overridden. `requestAnimationFrame` defers to the right timing.
+
+### Blank fill (`execCommand`)
+
+The same issue applies when blank auto-populate replaces text via `document.execCommand('insertText')`. This changes the underlying text nodes, invalidating all existing `Range` objects. Highlights set synchronously after `execCommand` are silently discarded — the browser hasn't finished processing the DOM mutation yet.
+
+```typescript
+// Replace text in contenteditable
+document.execCommand('insertText', false, newText);
+
+// Clear stale highlights immediately (prevents flash of old state)
+renderer.clearStyles();
+
+// Rebuild AFTER the DOM settles — synchronous set would be discarded
+requestAnimationFrame(() => {
+  renderer.render(text, state, engine.words, engine.spans);
+});
+```
+
+**Rule of thumb:** Any operation that creates or replaces DOM text nodes (`textNode.data`, `execCommand`, `insertAdjacentText`) requires `requestAnimationFrame` before setting new CSS Custom Highlights. Synchronous `highlights.set()` after these operations will be overridden by the browser's internal range invalidation.
 
 ## What `::highlight()` Supports
 

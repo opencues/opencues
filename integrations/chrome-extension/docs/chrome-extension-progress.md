@@ -28,7 +28,7 @@ Tracking what has been manually verified in the Chrome extension integration.
 
 | # | Feature | Notes |
 |---|---------|-------|
-| 14 | Blanks | `2 + 2 = _` fills with `4` (math mode) |
+| 14 | Blanks | ✅ | `2 + 2 = _` fills with `4` |
 | 15 | Weather control | `London weather _` fills with current weather |
 | 16 | Stocks control | `AAPL _` fills with stock price (needs Finnhub key) |
 | 17 | Hackernews control | `hackernews _` fills with headlines, cycle through |

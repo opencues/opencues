@@ -26,8 +26,8 @@ export class WeatherControl implements BrowserControl {
   readonly readOnly = true;
 
   async get(keyword?: string, context?: string[]): Promise<string> {
-    // Extract location from keyword or context
-    const location = keyword || this.extractLocation(context) || 'London';
+    // Extract location from context (keyword is the trigger word like "weather", not a location)
+    const location = this.extractLocation(context) || 'London';
     const cacheKey = location.toLowerCase();
 
     const cached = cache.get(cacheKey);
@@ -41,7 +41,7 @@ export class WeatherControl implements BrowserControl {
       const geoData = await geoResp.json();
       if (!geoData.results?.length) return `Unknown location: ${location}`;
 
-      const { latitude, longitude, name, country } = geoData.results[0];
+      const { latitude, longitude } = geoData.results[0];
 
       // Step 2: Fetch current weather
       const wxResp = await fetch(
@@ -51,9 +51,8 @@ export class WeatherControl implements BrowserControl {
       const current = wxData.current;
 
       const temp = `${Math.round(current.temperature_2m)}°C`;
-      const desc = WMO_CODES[current.weather_code] || 'Unknown';
-      const wind = `${Math.round(current.wind_speed_10m)}km/h`;
-      const display = `${name}, ${country}: ${temp} ${desc} (${wind})`;
+      const desc = WMO_CODES[current.weather_code] || '';
+      const display = `${temp} ${desc}`.trim();
 
       cache.set(cacheKey, { result: display, ts: Date.now() });
       return display;
@@ -62,14 +61,19 @@ export class WeatherControl implements BrowserControl {
     }
   }
 
-  /** Try to extract a city name from surrounding context words */
+  /** Try to extract a city name from surrounding context words.
+   *  Scans from the end — location is usually the last meaningful word before the keyword.
+   *  Mirrors weather-blank.sh logic exactly. */
   private extractLocation(context?: string[]): string | null {
     if (!context?.length) return null;
-    // Filter out common non-location words and the blank placeholder
-    const skip = new Set(['weather', 'forecast', 'current', 'today', 'tomorrow', '_', 'in', 'for', 'the']);
-    const candidates = context.filter(w => !skip.has(w.toLowerCase()) && w.length > 2);
-    // Take the first capitalized word or longest candidate
-    const capitalized = candidates.find(w => /^[A-Z]/.test(w));
-    return capitalized || candidates[0] || null;
+    const skip = new Set([
+      'weather', 'forecast', 'temp', 'temperature',
+      'current', 'today', 'tonight', 'tomorrow', 'weekend',
+      'weekly', '7day', '7days', 'week', 'day', 'days', 'next', 'now', '_',
+    ]);
+    for (let i = context.length - 1; i >= 0; i--) {
+      if (!skip.has(context[i].toLowerCase())) return context[i];
+    }
+    return null;
   }
 }

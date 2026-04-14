@@ -25,8 +25,8 @@ export class StatusBar {
 
     const parts: string[] = [];
 
-    // Word and alternative index
-    if (wordDef.alts && wordDef.alts.length > 1) {
+    // Word and alternative index (skip for control-blanks — they show tip only)
+    if (wordDef.alts && wordDef.alts.length > 1 && !wordDef.metadata?.controlName) {
       const idx = (wordDef.currentAltIndex ?? 0) + 1;
       parts.push(`${idx}/${wordDef.alts.length}`);
     }

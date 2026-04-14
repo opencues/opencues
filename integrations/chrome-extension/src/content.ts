@@ -265,11 +265,65 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
       }
     } else {
       newText = workText.slice(0, uStart) + value + workText.slice(uStart + 1);
+
+      // Set up span + WordDef for multi-word blank result
+      const valueWc = value.split(/\s+/).filter(w => w).length;
+      if (valueWc >= 1) {
+        const blankAlts = kwConfig.dismissible ? [value, '_'] : [value];
+        const blankWordDef = {
+          index: adjustedBlankIdx,
+          word: value,
+          alts: blankAlts,
+          cueTip: kwConfig.tip || kwConfig.controlName,
+          currentAltIndex: 0,
+          source: 'control' as const,
+          metadata: {
+            controlName: kwConfig.controlName,
+            blankReadOnly: kwConfig.readOnly,
+            ...(kwConfig.dismissible && { listControl: true, blankDismissible: true }),
+          },
+        };
+        if (valueWc > 1) {
+          (blankWordDef as any).spanLength = valueWc;
+          for (let i = 0; i < valueWc; i++) {
+            engine.spans[adjustedBlankIdx + i] = { originalIndex: adjustedBlankIdx, spanLength: valueWc };
+          }
+        }
+        // Remove stale defs at ALL span-covered positions (not just origin)
+        // Prevents grammar alts from a pre-fill LLM call from persisting at span positions
+        const spanEnd = adjustedBlankIdx + valueWc;
+        engine.words = engine.words.filter(w => w.index < adjustedBlankIdx || w.index >= spanEnd);
+        engine.words.push(blankWordDef as any);
+      }
     }
+
+    // Invalidate any in-flight LLM call and update lastAnalyzed BEFORE DOM change
+    // Prevents stale LLM callback from overwriting lastAnalyzed and triggering re-analysis
+    engine.invalidateAnalysis(newText.split(/\s+/).filter(w => w));
 
     // Apply to DOM
     replaceTargetText(target, newText);
     lastInputText = newText;
+
+    // Remove any stale def (LLM, tips, or old control) at the word immediately before the fill.
+    if (kwConfig.clearKeywords && adjustedBlankIdx > 0) {
+      const ctxIdx = adjustedBlankIdx - 1;
+      engine.words = engine.words.filter(d => d.index !== ctxIdx);
+      delete engine.spans[ctxIdx];
+    }
+
+    // Render with updated defs — no auto-activation (matches Claude Code behavior).
+    // Deferred to rAF: execCommand DOM changes need a frame to settle before
+    // CSS Custom Highlight ranges stick reliably.
+    if (renderer && nav) {
+      renderer.clearStyles(); // prevent flash of stale highlights
+      requestAnimationFrame(() => {
+        if (renderer && nav && engine) {
+          renderer.render(lastInputText, nav.getState(), engine.words, engine.spans);
+          updateStatus(nav.getState());
+        }
+      });
+    }
     } finally { checkBlanksInFlight = false; }
   };
 
@@ -314,7 +368,9 @@ function replaceTargetText(target: HTMLElement, newText: string): void {
 
 /**
  * Match a blank (_) to a control by searching for keywords in proximity.
- * Multi-word keywords are matched by joining adjacent words.
+ * Multi-word keywords: proximity is measured from the LAST word of the phrase
+ * to the blank (matching cues-core control-blank-source.ts behavior).
+ * When multiple keywords match, the closest one wins.
  * Returns the matched config, keyword text, and keyword word indices.
  */
 function matchControlKeyword(
@@ -322,24 +378,23 @@ function matchControlKeyword(
   blankIdx: number,
   configs: ControlKeywordConfig[],
 ): { config: ControlKeywordConfig; matchedKeyword: string; keywordIndices: number[] } | null {
-  for (const cfg of configs) {
-    const lo = Math.max(0, blankIdx - cfg.proximity);
-    const hi = Math.min(words.length, blankIdx + cfg.proximity + 1);
+  let best: { config: ControlKeywordConfig; matchedKeyword: string; keywordIndices: number[]; gap: number } | null = null;
 
+  for (const cfg of configs) {
     for (const kw of cfg.keywords) {
       const kwWords = kw.split(/\s+/);
 
       if (kwWords.length === 1) {
-        // Single-word keyword
-        for (let i = lo; i < hi; i++) {
+        for (let i = 0; i < words.length; i++) {
           if (i === blankIdx) continue;
-          if (words[i].toLowerCase() === kw.toLowerCase()) {
-            return { config: cfg, matchedKeyword: words[i], keywordIndices: [i] };
+          if (words[i].toLowerCase() !== kw.toLowerCase()) continue;
+          const gap = Math.abs(i - blankIdx) - 1;
+          if (gap <= cfg.proximity && (best === null || gap < best.gap)) {
+            best = { config: cfg, matchedKeyword: words[i], keywordIndices: [i], gap };
           }
         }
       } else {
-        // Multi-word keyword (e.g. "improve prompt")
-        for (let i = lo; i <= hi - kwWords.length; i++) {
+        for (let i = 0; i <= words.length - kwWords.length; i++) {
           if (i === blankIdx) continue;
           let match = true;
           const indices: number[] = [];
@@ -352,13 +407,17 @@ function matchControlKeyword(
             indices.push(wi);
           }
           if (match) {
-            return { config: cfg, matchedKeyword: kw, keywordIndices: indices };
+            const endIdx = i + kwWords.length - 1;
+            const gap = Math.abs(endIdx - blankIdx) - 1;
+            if (gap <= cfg.proximity && (best === null || gap < best.gap)) {
+              best = { config: cfg, matchedKeyword: kw, keywordIndices: indices, gap };
+            }
           }
         }
       }
     }
   }
-  return null;
+  return best ? { config: best.config, matchedKeyword: best.matchedKeyword, keywordIndices: best.keywordIndices } : null;
 }
 
 /** Check if an element is a text input we should attach to */

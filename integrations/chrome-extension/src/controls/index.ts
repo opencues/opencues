@@ -23,6 +23,10 @@ export interface ControlKeywordConfig {
   proximity: number;
   /** Read-only control (no set/up/down) */
   readOnly: boolean;
+  /** Dismissible: adds "_" as a cycling option so user can dismiss the span */
+  dismissible: boolean;
+  /** Tip label shown in status bar when navigated to */
+  tip?: string;
 }
 
 /** Default keyword configs for built-in controls */
@@ -30,27 +34,32 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
   {
     controlName: 'stocks',
     keywords: [
-      'reddit stock', 'rddt', 'nvidia stock', 'nvda', 'apple stock', 'aapl',
-      'google stock', 'googl', 'microsoft stock', 'msft', 'amazon stock', 'amzn',
-      'tesla stock', 'tsla', 'meta stock', 'netflix stock', 'nflx', 'spotify stock', 'spot',
+      'reddit stock', 'reddit', 'rddt', 'nvidia stock', 'nvidia', 'nvda',
+      'apple stock', 'apple', 'aapl', 'google stock', 'google', 'googl',
+      'microsoft stock', 'microsoft', 'msft', 'amazon stock', 'amazon', 'amzn',
+      'tesla stock', 'tesla', 'tsla', 'meta stock', 'meta',
     ],
     expansions: {
       rddt: 'Reddit', nvda: 'Nvidia', aapl: 'Apple', googl: 'Alphabet',
-      msft: 'Microsoft', amzn: 'Amazon', tsla: 'Tesla',
+      msft: 'Microsoft', amzn: 'Amazon', tsla: 'Tesla', meta: 'Meta',
     },
     clearKeywords: false,
     consumeAll: false,
-    proximity: 2,
+    proximity: 1,
     readOnly: true,
+    dismissible: false,
+    tip: 'Stock price',
   },
   {
     controlName: 'weather',
     keywords: ['weather', 'forecast', 'temp', 'temperature'],
     expansions: {},
-    clearKeywords: false,
+    clearKeywords: true,
     consumeAll: false,
     proximity: 3,
     readOnly: true,
+    dismissible: true,
+    tip: 'Weather',
   },
   {
     controlName: 'hackernews',
@@ -58,8 +67,10 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     expansions: {},
     clearKeywords: false,
     consumeAll: false,
-    proximity: 1,
+    proximity: 3,
     readOnly: true,
+    dismissible: true,
+    tip: 'Hacker News',
   },
   {
     controlName: 'prompt',
@@ -69,6 +80,8 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     consumeAll: true,
     proximity: 999, // consume-all uses entire text
     readOnly: false,
+    dismissible: false,
+    tip: 'Prompt improver',
   },
 ];
 

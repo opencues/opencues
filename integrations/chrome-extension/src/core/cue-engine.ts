@@ -162,6 +162,15 @@ export class CueEngine {
     this.lastAnalyzed = [];
   }
 
+  /** Invalidate any in-flight LLM call and update lastAnalyzed.
+   *  Call after blank auto-populate to prevent stale results from overwriting control-blank defs. */
+  invalidateAnalysis(newWords: string[]): void {
+    this.resolverGeneration++;
+    this.lastAnalyzed = newWords;
+    this.pending = false;
+    this.pendingRetriggerText = null;
+  }
+
   onUpdate(fn: (words: WordDef[]) => void): () => void {
     this.listeners.push(fn);
     return () => { this.listeners = this.listeners.filter(l => l !== fn); };
@@ -358,6 +367,9 @@ export class CueEngine {
       if (existing?.metadata && ((existing.metadata as any).selectorWord || (existing.metadata as any).satelliteWord)) continue;
       // Skip control-bound words (managed by browser controls, not LLM)
       if (existing?.metadata?.controlName) continue;
+      // Skip span-covered positions — non-origin words in a span don't need individual LLM alts
+      const spanInfo = this.spans[i];
+      if (spanInfo && spanInfo.originalIndex !== i) continue;
       // Skip tips-handled words
       if (existing?.source === 'tips') continue;
       needLlm.push(i);

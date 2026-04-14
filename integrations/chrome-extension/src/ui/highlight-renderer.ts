@@ -81,10 +81,10 @@ export class HighlightRenderer {
     const domText = this.target.textContent || '';
     const words = domText.split(/\s+/).filter(w => w);
 
-    // Build set of word indices that have alts (for dimming)
+    // Build set of word indices that should be dimmed (alts or control-bound)
     const altIndices = new Set<number>();
     for (const d of wordDefs) {
-      if (d.alts && d.alts.length > 1) {
+      if ((d.alts && d.alts.length > 0) || d.metadata?.controlName) {
         altIndices.add(d.index);
         // Also add span-covered indices so non-origin span words get dimmed
         const spanLen = (d as any).spanLength || 1;
@@ -101,6 +101,8 @@ export class HighlightRenderer {
         }
       }
     }
+
+    console.log('[OpenCues][renderer] words:', words, 'altIndices:', [...altIndices]);
 
     const activeIdx = hlState.active ? hlState.wordIndex : null;
 

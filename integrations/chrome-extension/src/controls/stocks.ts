@@ -7,17 +7,16 @@ import type { BrowserControl } from './types';
  * Runs in content script; CORS-safe via service worker fallback.
  */
 
+/** Keyword → ticker map. Matches controls/stocks/tickers.json permutations. */
 const DEFAULT_TICKERS: Record<string, string> = {
-  aapl: 'AAPL', apple: 'AAPL',
-  goog: 'GOOGL', google: 'GOOGL',
-  msft: 'MSFT', microsoft: 'MSFT',
-  amzn: 'AMZN', amazon: 'AMZN',
-  tsla: 'TSLA', tesla: 'TSLA',
-  meta: 'META', facebook: 'META',
-  nvda: 'NVDA', nvidia: 'NVDA',
-  rddt: 'RDDT', reddit: 'RDDT',
-  nflx: 'NFLX', netflix: 'NFLX',
-  spot: 'SPOT', spotify: 'SPOT',
+  rddt: 'RDDT', reddit: 'RDDT', 'reddit stock': 'RDDT',
+  nvda: 'NVDA', nvidia: 'NVDA', 'nvidia stock': 'NVDA',
+  aapl: 'AAPL', apple: 'AAPL', 'apple stock': 'AAPL',
+  googl: 'GOOGL', google: 'GOOGL', 'google stock': 'GOOGL',
+  msft: 'MSFT', microsoft: 'MSFT', 'microsoft stock': 'MSFT',
+  amzn: 'AMZN', amazon: 'AMZN', 'amazon stock': 'AMZN',
+  tsla: 'TSLA', tesla: 'TSLA', 'tesla stock': 'TSLA',
+  meta: 'META', 'meta stock': 'META',
 };
 
 /** Cache: ticker → { price, timestamp } */
@@ -51,9 +50,8 @@ export class StocksControl implements BrowserControl {
       const resp = await this.fetchWithFallback(url);
       const data = JSON.parse(resp);
       const price = `$${data.c?.toFixed(2) ?? '?'}`;
-      const display = `${ticker}: ${price}`;
-      cache.set(ticker, { price: display, ts: Date.now() });
-      return display;
+      cache.set(ticker, { price, ts: Date.now() });
+      return price;
     } catch {
       return `${ticker}: error`;
     }

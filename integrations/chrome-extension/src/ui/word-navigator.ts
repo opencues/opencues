@@ -196,7 +196,7 @@ export class WordNavigator {
     const highlightedWord = words[this.state.wordIndex!];
     const def = this.engine.getWordDef(this.state.wordIndex);
     console.log(`[OpenCues] CYCLE: hlIdx=${this.state.wordIndex}, hlWord="${highlightedWord}", defIdx=${def?.index}, defWord="${def?.word}", text="${text}"`);
-    if (def?.metadata?.controlName) {
+    if (def?.metadata?.controlName && !(def.metadata as any).listControl) {
       const controlName = def.metadata.controlName as string;
       const tip = await this.engine.controlAction(controlName, direction);
       if (tip) this.tts.speak(tip);
@@ -288,9 +288,9 @@ export class WordNavigator {
       return;
     }
 
-    if (def.cueTip) {
+    if (def.speak && def.cueTip) {
       this.tts.speak(def.cueTip);
-    } else if (def.altCueTips) {
+    } else if (def.speak && def.altCueTips) {
       const idx = def.currentAltIndex ?? 0;
       const alt = def.alts?.[idx];
       if (alt && def.altCueTips[alt]) {
@@ -302,6 +302,12 @@ export class WordNavigator {
   clear(): void {
     this.state = { ...INITIAL_HIGHLIGHT_STATE };
     this.tts.cancel();
+    this.notify();
+  }
+
+  /** Programmatically activate highlight on a specific word index */
+  activateAt(wordIndex: number): void {
+    this.state = { active: true, index: 0, wordIndex };
     this.notify();
   }
 
