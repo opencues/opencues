@@ -366,7 +366,7 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
 function updateStatus(state: { active: boolean; wordIndex: number | null }): void {
   if (!statusBar || !engine) return;
   const def = state.wordIndex != null ? engine.getWordDef(state.wordIndex) : undefined;
-  statusBar.update(state as any, def);
+  statusBar.update(state as any, def, engine.cueControlTip);
 }
 
 function getText(el: HTMLElement): string {

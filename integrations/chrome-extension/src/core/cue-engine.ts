@@ -73,6 +73,9 @@ export class CueEngine {
   /** Word indices queued for blankClearOnEdit removal */
   pendingClearOnEdit: number[] | null = null;
 
+  /** Live cue-control tip (e.g. "94%" for volume) — shown in status bar */
+  cueControlTip: string | null = null;
+
   /** OpenCues settings state (from opencues.md) */
   openCues: OpenCuesState = { settings: {}, current: {}, tips: {}, satTips: {} };
 
@@ -184,6 +187,10 @@ export class CueEngine {
   isNavigable(word: string, index: number): boolean {
     const def = this.words.find(w => w.index === index);
     if (def?.alts && def.alts.length > 1) return true;
+    // Control-bound blank with step cycling (e.g. volume 100%)
+    if (def?.metadata?.controlName && !def.metadata.blankReadOnly) return true;
+    // Standalone cue-control word (e.g. "volume" → navigate + Up/Down adjusts)
+    if (this.controls.has(word.toLowerCase()) && !this.controls.get(word.toLowerCase())!.readOnly) return true;
     // Consume-all at this index
     if (this.consumeAllAlts?.index === index) return true;
     // Step pattern
@@ -206,6 +213,8 @@ export class CueEngine {
 
     const skipWords = new Set<string>();
     if (this.ignoreWords) this.ignoreWords.forEach(w => skipWords.add(w));
+    // Skip standalone cue-control words (e.g. "volume") — they cycle via controls, not tips
+    for (const [name] of this.controls) skipWords.add(name);
     for (const def of this.words) {
       if ((def.alts && def.alts.length > 0) || def.metadata?.controlName) {
         skipWords.add(curWords[def.index]?.toLowerCase());
@@ -227,6 +236,25 @@ export class CueEngine {
         return true;
       }
     }
+    // Create defs for standalone cue-control words (e.g. "volume") so renderer dims them
+    let controlDefsAdded = false;
+    for (let i = 0; i < curWords.length; i++) {
+      const ctrl = this.controls.get(curWords[i].toLowerCase());
+      if (ctrl && !this.words.find(w => w.index === i)) {
+        this.words.push({
+          index: i,
+          word: curWords[i],
+          alts: null,
+          cueTip: null,
+          currentAltIndex: 0,
+          source: 'control',
+          metadata: { controlName: ctrl.name },
+        } as any);
+        controlDefsAdded = true;
+      }
+    }
+    if (controlDefsAdded) { this.notify(); return true; }
+
     return false;
   }
 
@@ -370,6 +398,8 @@ export class CueEngine {
       const lower = curWords[i].toLowerCase();
       if (this.ignoreWords?.has(lower)) continue;
       if (FUNC_WORDS.test(lower)) continue;
+      // Skip standalone cue-control words (managed by controls, not LLM)
+      if (this.controls.has(lower)) continue;
       // Skip cue-controls (step-pattern words)
       if (this.isNavigable(curWords[i], i) && !this.words.find(w => w.index === i)?.alts) {
         // It's navigable via step pattern but has no alts — skip LLM

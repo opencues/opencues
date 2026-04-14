@@ -138,6 +138,28 @@ export function parseConfig(stored: StoredConfig): ParsedConfig {
     console.warn('[OpenCues] Failed to merge folder configs:', e);
   }
 
+  // Merge folder-based control configs (baked in at build time from controls/ directory)
+  // Each folder's cue.md adds a control to cuesMd.controls (used for step patterns, etc.)
+  try {
+    const controlFolders = __DEFAULT_CONTROL_FOLDERS__;
+    if (controlFolders && Object.keys(controlFolders).length > 0) {
+      if (!cuesMd.controls) cuesMd.controls = {};
+      for (const [name, content] of Object.entries(controlFolders)) {
+        if (cuesMd.controls[name]) continue; // don't overwrite existing
+        try {
+          const folderCfg = parseSingleCueMd(content);
+          if (folderCfg.controls) {
+            const ctrlKey = Object.keys(folderCfg.controls)[0] || name;
+            cuesMd.controls[ctrlKey] = folderCfg.controls[ctrlKey];
+          }
+        } catch { /* skip bad control config */ }
+      }
+      console.log('[OpenCues] Merged control folders:', Object.keys(cuesMd.controls));
+    }
+  } catch (e) {
+    console.warn('[OpenCues] Failed to merge control configs:', e);
+  }
+
   // Parse blanks.md content
   let blanksMd: CuesMdConfig | null = null;
   try {

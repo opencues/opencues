@@ -35,6 +35,22 @@ try {
   }
 } catch { /* no cues/ dir */ }
 
+// Also load folder-based control configs (controls/*.md)
+const controlFolders = {};
+const controlsDir = projectRoot + 'controls/';
+try {
+  const dirs = readdirSync(controlsDir, { withFileTypes: true });
+  for (const d of dirs) {
+    if (d.isDirectory()) {
+      const cueMd = readOr(controlsDir + d.name + '/cue.md', '');
+      if (cueMd) controlFolders[d.name] = cueMd;
+    }
+  }
+  if (Object.keys(controlFolders).length > 0) {
+    console.log('Loaded control folders:', Object.keys(controlFolders).join(', '));
+  }
+} catch { /* no controls/ dir */ }
+
 // Load tips JSON from Claude Code patches (same tips file used by both integrations)
 const tipsJsonPath = projectRoot + 'integrations/claude-code/patches/claude-code-tips.json';
 const defaultTipsJson = readOr(tipsJsonPath, '');
@@ -46,6 +62,7 @@ const envDefines = {
   '__DEFAULT_BLANKS_MD__': JSON.stringify(readOr(projectRoot + 'blanks.md', '')),
   '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'opencues.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
+  '__DEFAULT_CONTROL_FOLDERS__': JSON.stringify(controlFolders),
   '__DEFAULT_TIPS_JSON__': JSON.stringify(defaultTipsJson),
 };
 

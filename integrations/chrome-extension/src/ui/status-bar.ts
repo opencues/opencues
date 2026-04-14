@@ -17,8 +17,20 @@ export class StatusBar {
   }
 
   /** Update the status bar content */
-  update(hlState: HighlightState, wordDef?: WordDef): void {
-    if (!hlState.active || !wordDef) {
+  update(hlState: HighlightState, wordDef?: WordDef, cueControlTip?: string | null): void {
+    if (!hlState.active) {
+      this.hide();
+      return;
+    }
+
+    // Standalone cue-control word (e.g. "volume") — show live tip (overrides def tip)
+    if (cueControlTip) {
+      this.el.textContent = cueControlTip;
+      this.show();
+      return;
+    }
+
+    if (!wordDef) {
       this.hide();
       return;
     }

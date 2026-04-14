@@ -73,6 +73,17 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
     tip: 'Hacker News',
   },
   {
+    controlName: 'volume',
+    keywords: ['volume', 'vol', 'sound', 'audio'],
+    expansions: {},
+    clearKeywords: false,
+    consumeAll: false,
+    proximity: 1,
+    readOnly: false,
+    dismissible: false,
+    tip: 'Volume',
+  },
+  {
     controlName: 'prompt',
     keywords: ['improve prompt', 'enhance prompt', 'refine prompt'],
     expansions: {},

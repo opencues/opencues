@@ -130,6 +130,22 @@ export class WordNavigator {
     // Scroll active word into view
     this.scrollToWord(this.state.wordIndex!);
 
+    // Standalone cue-control: fetch live value for tip + TTS on first navigation
+    const navWord = words[this.state.wordIndex!];
+    const navCtrl = navWord && this.engine.controls.has(navWord.toLowerCase())
+      ? this.engine.controls.get(navWord.toLowerCase())! : null;
+    if (navCtrl) {
+      navCtrl.get().then(val => {
+        if (val) {
+          this.engine.cueControlTip = val;
+          this.tts.speak(val);
+          this.notify();
+        }
+      });
+    } else {
+      this.engine.cueControlTip = null;
+    }
+
     this.speakTip();
     this.notify();
   }
@@ -196,11 +212,51 @@ export class WordNavigator {
     const highlightedWord = words[this.state.wordIndex!];
     const def = this.engine.getWordDef(this.state.wordIndex);
     console.log(`[OpenCues] CYCLE: hlIdx=${this.state.wordIndex}, hlWord="${highlightedWord}", defIdx=${def?.index}, defWord="${def?.word}", text="${text}"`);
+    // Standalone cue-control word (e.g. "volume"): word stays, tip updates in status bar
+    // Distinguished from control-bound blanks (e.g. "100%") by the word matching a control name
+    const standaloneCtrl = highlightedWord && this.engine.controls.has(highlightedWord.toLowerCase())
+      ? this.engine.controls.get(highlightedWord.toLowerCase())! : null;
+    if (standaloneCtrl && !standaloneCtrl.readOnly) {
+      const newValue = await this.engine.controlAction(standaloneCtrl.name, direction);
+      // Read tip on first navigation (speak: true in config)
+      if (newValue) this.engine.cueControlTip = newValue;
+      this.notify();
+      this.cycling = false;
+      return;
+    }
+
     if (def?.metadata?.controlName && !(def.metadata as any).listControl && !(def.metadata as any).consumeAll) {
       const controlName = def.metadata.controlName as string;
-      const tip = await this.engine.controlAction(controlName, direction);
-      if (tip) this.tts.speak(tip);
-      this.notify();
+      const newValue = await this.engine.controlAction(controlName, direction);
+      if (!newValue) { this.cycling = false; return; }
+
+      // Replace word in text with new value
+      let wPos = 0;
+      for (let i = 0; i < this.state.wordIndex!; i++) { wPos = text.indexOf(words[i], wPos) + words[i].length; }
+      const wStart = text.indexOf(highlightedWord, wPos);
+      if (wStart < 0) { this.cycling = false; return; }
+      const newText = text.slice(0, wStart) + newValue + text.slice(wStart + highlightedWord.length);
+
+      // Update def
+      if (def) { def.word = newValue; }
+
+      // Update lastText + lastAnalyzed before DOM change
+      this.lastText = newText;
+      this.engine.invalidateAnalysis(newText.split(/\s+/).filter(w => w));
+
+      // Apply to DOM
+      if (!(this.target instanceof HTMLTextAreaElement) && !(this.target instanceof HTMLInputElement)) {
+        const textNode = this.target.firstChild as Text | null;
+        if (textNode && textNode.nodeType === Node.TEXT_NODE) textNode.data = newText;
+        else this.target.textContent = newText;
+      } else {
+        (this.target as HTMLInputElement).value = newText;
+      }
+
+      requestAnimationFrame(() => { if (this.onRender) this.onRender(); });
+      // No TTS on control cycling (matches Claude Code behavior)
+      this.notify(newText);
+      this.cycling = false;
       return;
     }
 

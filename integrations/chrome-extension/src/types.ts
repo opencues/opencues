@@ -30,6 +30,7 @@ declare const __FINNHUB_API_KEY__: string;
 declare const __DEFAULT_CUES_MD__: string;
 declare const __DEFAULT_BLANKS_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
+declare const __DEFAULT_CONTROL_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_TIPS_JSON__: string;
 
