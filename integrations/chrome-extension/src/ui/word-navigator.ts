@@ -196,7 +196,7 @@ export class WordNavigator {
     const highlightedWord = words[this.state.wordIndex!];
     const def = this.engine.getWordDef(this.state.wordIndex);
     console.log(`[OpenCues] CYCLE: hlIdx=${this.state.wordIndex}, hlWord="${highlightedWord}", defIdx=${def?.index}, defWord="${def?.word}", text="${text}"`);
-    if (def?.metadata?.controlName && !(def.metadata as any).listControl) {
+    if (def?.metadata?.controlName && !(def.metadata as any).listControl && !(def.metadata as any).consumeAll) {
       const controlName = def.metadata.controlName as string;
       const tip = await this.engine.controlAction(controlName, direction);
       if (tip) this.tts.speak(tip);

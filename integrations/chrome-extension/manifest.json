@@ -5,7 +5,11 @@
   "description": "LLM-powered word alternatives for text editors",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
-    "https://api.groq.com/*"
+    "https://api.groq.com/*",
+    "https://finnhub.io/*",
+    "https://hnrss.org/*",
+    "https://geocoding-api.open-meteo.com/*",
+    "https://api.open-meteo.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js",

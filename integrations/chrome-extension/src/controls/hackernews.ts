@@ -22,19 +22,19 @@ export class HackerNewsControl implements BrowserControl {
     }
 
     try {
-      const resp = await fetch('https://hnrss.org/frontpage?count=20');
-      const xml = await resp.text();
+      // Fetch top story IDs from official HN API (CORS-friendly)
+      const idsResp = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');
+      const ids: number[] = await idsResp.json();
 
-      // Parse RSS XML using DOMParser (replaces python/grep in bash version)
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(xml, 'text/xml');
-      const items = doc.querySelectorAll('item > title');
-
+      // Fetch first 20 story titles
       const titles: string[] = [];
-      items.forEach(item => {
-        const text = item.textContent?.trim();
-        if (text) titles.push(text);
-      });
+      const batch = ids.slice(0, 20);
+      const stories = await Promise.all(
+        batch.map(id => fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`).then(r => r.json()))
+      );
+      for (const story of stories) {
+        if (story?.title) titles.push(story.title);
+      }
 
       if (titles.length > 0) {
         cachedTitles = titles;
@@ -47,5 +47,22 @@ export class HackerNewsControl implements BrowserControl {
         ? cachedTitles.join('\n') // serve stale cache on error
         : 'HN: fetch error';
     }
+  }
+
+  private async fetchWithFallback(url: string): Promise<string> {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) return resp.text();
+    } catch { /* CORS blocked, try service worker */ }
+
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'api-request', url, method: 'GET' },
+        (response) => {
+          if (response?.ok) resolve(response.text);
+          else reject(new Error(response?.error || 'proxy failed'));
+        },
+      );
+    });
   }
 }

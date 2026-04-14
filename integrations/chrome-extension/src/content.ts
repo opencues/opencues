@@ -247,32 +247,55 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
       if (alts.length === 0) return;
       newText = alts[0]; // display first alternative
 
+      const wc = alts[0].split(/\s+/).filter(w => w).length;
+
       engine.consumeAllAlts = {
         index: 0,
         alts,
         currentAltIndex: 0,
-        spanLength: alts[0].split(/\s+/).filter(w => w).length,
+        spanLength: wc,
         cueTip: kwConfig.controlName,
         controlName: kwConfig.controlName,
       };
 
       // Set up spans for multi-word first alt
-      const wc = engine.consumeAllAlts.spanLength;
       if (wc > 1) {
         for (let i = 0; i < wc; i++) {
           engine.spans[i] = { originalIndex: 0, spanLength: wc };
         }
       }
+
+      // Create WordDef so renderer dims the span and per-word invalidation protects it.
+      // def.word = current alt text (first in alts) so invalidation finds it and keeps the def.
+      // WordDef for renderer dimming + per-word invalidation + LLM protection.
+      // controlName protects from LLM overwrite; cycling routed via consumeAllAlts in navigator.
+      const caDef = {
+        index: 0,
+        word: alts[0],
+        alts,
+        cueTip: kwConfig.tip || kwConfig.controlName,
+        currentAltIndex: 0,
+        source: 'control' as const,
+        metadata: { controlName: kwConfig.controlName, consumeAll: true },
+        ...(wc > 1 && { spanLength: wc }),
+      };
+      engine.words = [caDef as any];
     } else {
-      newText = workText.slice(0, uStart) + value + workText.slice(uStart + 1);
+      // Multi-line values are list alts (e.g. hackernews headlines): display first, cycle rest
+      const lines = value.split('\n').filter(l => l.trim());
+      const displayValue = lines[0] || value;
+
+      newText = workText.slice(0, uStart) + displayValue + workText.slice(uStart + 1);
 
       // Set up span + WordDef for multi-word blank result
-      const valueWc = value.split(/\s+/).filter(w => w).length;
+      const valueWc = displayValue.split(/\s+/).filter(w => w).length;
       if (valueWc >= 1) {
-        const blankAlts = kwConfig.dismissible ? [value, '_'] : [value];
+        const blankAlts = lines.length > 1
+          ? [...lines, ...(kwConfig.dismissible ? ['_'] : [])]
+          : (kwConfig.dismissible ? [displayValue, '_'] : [displayValue]);
         const blankWordDef = {
           index: adjustedBlankIdx,
-          word: value,
+          word: displayValue,
           alts: blankAlts,
           cueTip: kwConfig.tip || kwConfig.controlName,
           currentAltIndex: 0,
@@ -306,7 +329,8 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
     lastInputText = newText;
 
     // Remove any stale def (LLM, tips, or old control) at the word immediately before the fill.
-    if (kwConfig.clearKeywords && adjustedBlankIdx > 0) {
+    // Skip for consume-all — entire text was replaced, no context word to clear.
+    if (!kwConfig.consumeAll && kwConfig.clearKeywords && adjustedBlankIdx > 0) {
       const ctxIdx = adjustedBlankIdx - 1;
       engine.words = engine.words.filter(d => d.index !== ctxIdx);
       delete engine.spans[ctxIdx];

@@ -216,9 +216,16 @@ export class CueEngine {
       skipWords.size > 0 ? { skipFn: (w: string) => skipWords.has(w.toLowerCase()) } : undefined,
     );
     if (tipsResult.found.length > 0) {
-      this.words = mergeWordDefs(this.words, tipsResult.found);
-      this.notify();
-      return true;
+      // Filter out tips at span-covered non-origin positions (don't break multi-word spans)
+      const filtered = tipsResult.found.filter(d => {
+        const spanInfo = this.spans[d.index];
+        return !spanInfo || spanInfo.originalIndex === d.index;
+      });
+      if (filtered.length > 0) {
+        this.words = mergeWordDefs(this.words, filtered);
+        this.notify();
+        return true;
+      }
     }
     return false;
   }
@@ -239,12 +246,22 @@ export class CueEngine {
       this.dismissedBlanks.clear();
     }
 
-    // Unconditional consume-all cleanup on text change (gotcha #46 — outside hlState guard)
+    // Unconditional consume-all cleanup — only when words AT span positions change
+    // or text gets shorter than the span (gotcha #46, matches Claude Code wordHighlight.ts:837)
     if (this.consumeAllAlts && curWords.join(' ') !== this.lastAnalyzed.join(' ')) {
       const ca = this.consumeAllAlts;
-      for (let i = 0; i < (ca.spanLength || 1); i++) delete this.spans[ca.index + i];
-      this.words = this.words.filter(d => d.index < ca.index || d.index >= ca.index + (ca.spanLength || 1));
-      this.consumeAllAlts = null;
+      const caEnd = ca.index + (ca.spanLength || 1);
+      let spanChanged = curWords.length < caEnd;
+      if (!spanChanged) {
+        for (let i = ca.index; i < caEnd; i++) {
+          if ((this.lastAnalyzed[i] || '') !== (curWords[i] || '')) { spanChanged = true; break; }
+        }
+      }
+      if (spanChanged) {
+        for (let i = 0; i < (ca.spanLength || 1); i++) delete this.spans[ca.index + i];
+        this.words = this.words.filter(d => d.index < ca.index || d.index >= caEnd);
+        this.consumeAllAlts = null;
+      }
     }
 
     if (curWords.length === 0) {
@@ -771,6 +788,14 @@ export class CueEngine {
     for (let i = 0; i < oldSpan; i++) delete this.spans[caIdx + i];
     for (let i = 0; i < newWc; i++) this.spans[caIdx + i] = { originalIndex: caIdx, spanLength: newWc };
 
+    // Sync WordDef to match new alt (so renderer dims correctly and per-word invalidation protects it)
+    const caDef = this.words.find(w => w.index === caIdx);
+    if (caDef) {
+      caDef.word = newWord;
+      caDef.currentAltIndex = nextIdx;
+      (caDef as any).spanLength = newWc > 1 ? newWc : undefined;
+    }
+
     // Shift downstream indices if span length changed (BUG M)
     const caShift = newWc - oldSpan;
     if (caShift !== 0) {
@@ -866,6 +891,10 @@ export class CueEngine {
     const nwc = newWord.split(/\s+/).length;
     const spanShift = nwc - spanLen;
 
+    // Clean up old span entries beyond new span length
+    if (nwc < spanLen) {
+      for (let i = nwc; i < spanLen; i++) delete this.spans[wordIndex + i];
+    }
     if (nwc > 1) {
       (def as any).spanLength = nwc;
       for (let i = 0; i < nwc; i++) this.spans[wordIndex + i] = { originalIndex: wordIndex, spanLength: nwc };

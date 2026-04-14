@@ -64,7 +64,7 @@ const CONTROL_KEYWORDS: ControlKeywordConfig[] = [
   {
     controlName: 'hackernews',
     keywords: ['hackernews', 'hacker news', 'hn'],
-    expansions: {},
+    expansions: { hn: 'HackerNews' },
     clearKeywords: false,
     consumeAll: false,
     proximity: 3,
