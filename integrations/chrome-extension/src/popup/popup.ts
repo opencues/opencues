@@ -14,7 +14,9 @@ async function init(): Promise<void> {
 
   const ttsEnabled = document.getElementById('ttsEnabled') as HTMLInputElement;
   const ttsRate = document.getElementById('ttsRate') as HTMLInputElement;
-  ttsEnabled.checked = config.ttsEnabled;
+  // Sync TTS checkbox with voice-mode from opencues.md
+  const voiceActive = !config.opencuesMd?.includes('voice-mode: inactive');
+  ttsEnabled.checked = voiceActive;
   ttsRate.value = String(config.ttsRate);
 
   // Save handler
@@ -26,6 +28,13 @@ async function init(): Promise<void> {
     }
     update.ttsEnabled = ttsEnabled.checked;
     update.ttsRate = parseInt(ttsRate.value, 10) || 2;
+
+    // Sync TTS checkbox → voice-mode in opencues.md
+    const opencuesMd = (update.opencuesMd || '') as string;
+    const newVoiceMode = ttsEnabled.checked ? 'active' : 'inactive';
+    if (opencuesMd.includes('voice-mode:')) {
+      update.opencuesMd = opencuesMd.replace(/voice-mode:\s*\S+/, `voice-mode: ${newVoiceMode}`);
+    }
 
     await saveConfig(update);
 

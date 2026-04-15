@@ -205,6 +205,41 @@ export class CueEngine {
     return this.openCues.current['voice-mode'] === 'inactive';
   }
 
+  /** Persist openCues current state back to chrome.storage so popup reflects cycling changes */
+  persistOpenCuesState(): void {
+    try {
+      // Rebuild opencues.md frontmatter with updated current values
+      const lines: string[] = ['---', 'version: 1'];
+      for (const [key, val] of Object.entries(this.openCues.current)) {
+        lines.push(`${key}: ${val}`);
+      }
+      // Rebuild settings block
+      if (Object.keys(this.openCues.settings).length > 0) {
+        lines.push('settings:');
+        for (const [key, vals] of Object.entries(this.openCues.settings)) {
+          const tip = this.openCues.tips[key];
+          lines.push(`  ${key}:`);
+          if (tip) lines.push(`    tip: ${tip}`);
+          if (vals.length > 0) {
+            lines.push('    values:');
+            for (const v of vals) {
+              const satTip = this.openCues.satTips[key]?.[v] || '';
+              lines.push(`      ${v}: ${satTip}`);
+            }
+          }
+        }
+      }
+      lines.push('---');
+      const newMd = lines.join('\n');
+      // Write to storage (triggers onConfigChange → hot-reload)
+      chrome.storage.local.get('opencues_config', (result) => {
+        const stored = result['opencues_config'] || {};
+        stored.opencuesMd = newMd;
+        chrome.storage.local.set({ opencues_config: stored });
+      });
+    } catch { /* best-effort */ }
+  }
+
   /**
    * Synchronous per-word invalidation — called on every input event.
    * Matches Claude Code's onChange per-word check (dynamicHighlight.ts:1435-1467).
@@ -787,6 +822,7 @@ export class CueEngine {
 
     // Update current state (in-memory, immediate — gotcha #23)
     this.openCues.current[nextSet] = newSatVal;
+    this.persistOpenCuesState();
 
     return { newText, wStart: selStart, lenDiff: newText.length - fullText.length, wordDef: def };
   }
@@ -853,6 +889,9 @@ export class CueEngine {
 
     // Update current state (in-memory, immediate — gotcha #23)
     this.openCues.current[curSetting] = newVal;
+
+    // Persist to storage so popup reflects changes
+    this.persistOpenCuesState();
 
     return { newText, wStart, lenDiff: newText.length - fullText.length, wordDef: def };
   }
