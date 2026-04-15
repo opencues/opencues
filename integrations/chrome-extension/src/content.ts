@@ -589,7 +589,7 @@ async function init(): Promise<void> {
 
   const attachToFocused = (el: HTMLElement) => {
     if (el === currentTarget) return;
-    // Don't re-bootstrap if focusing the swapped contenteditable div
+    // Don't re-bootstrap if focusing the same target
     if (renderer && el === renderer.target) return;
     // If targetSelector is set and specific (not the default), only match it
     if (config.targetSelector && config.targetSelector !== '[contenteditable="true"]') {

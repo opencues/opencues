@@ -5,73 +5,17 @@ import type { SpanInfo } from '../core/cue-engine';
 const hasHighlightAPI = typeof CSS !== 'undefined' && 'highlights' in CSS;
 
 /**
- * Highlight renderer:
+ * Highlight renderer — CSS Custom Highlight API on contenteditable elements.
+ * Per-word coloring with zero DOM modification.
  *
- * Contenteditable: CSS Custom Highlight API — per-word coloring, zero DOM modification.
- * Textarea/Input: Swaps to a contenteditable div that inherits all computed styles.
- *   The original input is hidden. Value synced both ways.
+ * Textarea/input not supported — CSS Custom Highlight API only works on DOM text nodes.
+ * See docs/rendering.md for the full story.
  */
 export class HighlightRenderer {
   readonly target: HTMLElement;
-  /** If we swapped a form input, these track the swap */
-  private swappedInput: HTMLTextAreaElement | HTMLInputElement | null = null;
-  private swappedDiv: HTMLDivElement | null = null;
 
   constructor(target: HTMLElement) {
     this.target = target;
-  }
-
-  /** Replace input with contenteditable div, sync value both ways */
-  private swapInput(input: HTMLTextAreaElement | HTMLInputElement): HTMLDivElement {
-    const div = document.createElement('div');
-    div.contentEditable = 'true';
-    div.textContent = input.value;
-    div.spellcheck = input.spellcheck;
-
-    const isTextarea = input instanceof HTMLTextAreaElement;
-
-    // Capture exact dimensions and styles BEFORE hiding
-    const cs = getComputedStyle(input);
-    const rect = input.getBoundingClientRect();
-
-    // Copy visual styles
-    const copyProps = [
-      'font', 'font-family', 'font-size', 'font-weight', 'font-style',
-      'line-height', 'letter-spacing', 'word-spacing', 'text-align', 'text-indent',
-      'text-transform', 'color', 'background-color', 'background',
-      'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-      'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-      'border-radius', 'box-sizing', 'box-shadow',
-      'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-      'direction', 'text-decoration',
-    ];
-    for (const prop of copyProps) {
-      div.style.setProperty(prop, cs.getPropertyValue(prop));
-    }
-    // Use exact pixel dimensions from getBoundingClientRect to prevent layout shift
-    div.style.width = rect.width + 'px';
-    div.style.height = rect.height + 'px';
-    div.style.boxSizing = 'border-box';
-    div.style.display = isTextarea ? 'block' : 'inline-block';
-    div.style.whiteSpace = isTextarea ? 'pre-wrap' : 'nowrap';
-    div.style.overflowWrap = isTextarea ? 'break-word' : 'normal';
-    div.style.overflow = isTextarea ? 'auto' : 'hidden';
-    div.style.outline = cs.outline; // preserve original outline
-    div.style.cursor = 'text';
-
-    // Hide original, place div after it
-    input.style.display = 'none';
-    input.insertAdjacentElement('afterend', div);
-
-    // Sync div → input
-    div.addEventListener('input', () => {
-      input.value = div.textContent || '';
-    });
-
-    // Focus
-    if (document.activeElement === input) div.focus();
-
-    return div;
   }
 
   render(_text: string, hlState: HighlightState, wordDefs: WordDef[], spans?: Record<number, SpanInfo>): void {
@@ -177,12 +121,5 @@ export class HighlightRenderer {
 
   destroy(): void {
     this.clearStyles();
-    if (this.swappedInput && this.swappedDiv) {
-      this.swappedInput.value = this.swappedDiv.textContent || '';
-      this.swappedInput.style.display = '';
-      this.swappedDiv.remove();
-      this.swappedDiv = null;
-      this.swappedInput = null;
-    }
   }
 }

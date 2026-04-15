@@ -36,7 +36,7 @@ Tracking what has been manually verified in the Chrome extension integration.
 | 19 | Volume control | ✅ | Standalone "volume" word navigable + cyclable, blank "volume _" fills with %, tab audio via Web Audio GainNode |
 | 20 | Selector/satellite | ✅ | `opencues settings _` fills paired selector+satellite, multi-word spans, blankClearOnEdit collapses both on edit |
 | 21 | Hot-reload | ✅ | Popup save → chrome.storage.onChanged → re-bootstrap. TTS checkbox syncs with voice-mode. Cycling persists back to storage. |
-| 22 | Input swapping | Works on textarea (swapped to contenteditable) and native contenteditable |
+| 22 | Input swapping | N/A | Contenteditable only — textarea/input not supported (CSS Highlight API limitation). Dead swap code removed. |
 | 23 | CORS fallback | ✅ | Finnhub, Open-Meteo via host_permissions; HN uses Firebase API (CORS-friendly) |
 
 ## Bugs Fixed During Testing
