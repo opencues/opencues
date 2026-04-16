@@ -1028,19 +1028,78 @@ If `false`, check:
 
 ---
 
-## Step 18+ — TBD
+## Step 18 — Instantiate `CueResolver` with merged cues/blanks sources
 
-LLM sub-pipeline continuation. Rough ordering:
+**Goal:** `globalThis._cueResolver` is a live `CueResolver` after startup, populated with sources built from merged cwd + folder-discovered cues.md / blanks.md prompt configs. Step 19+ will call `.resolve()` on it.
 
-- **Instantiate `CueResolver`** — wrap `_httpAdapter` + source configs (prompt sources from cues-md, folder-discovered prompts, the classifier). Test structurally via `_debug.cueResolverLoaded`.
-- **Auto-submit debounce trigger** — after 500ms of typing pause, call `_cueResolver.resolve()` on the current input. No visible behaviour without the render-wrap step.
-- **Populate `_dynDefs` from resolver output** — LLM alternatives land on a global, ready for renderer + cycling.
-- **Dynamic render wrap** — tip-word faded display, alt substitution on cycle, span tracking for multi-word swaps.
-- **Clear-on-change** — edits invalidate `_dynDefs` entries.
+**Why this choice:** Second LLM-infra prereq. After Step 17's adapter, the resolver binds it to actual prompt sources via `buildSourcesFromConfig`. Splitting adapter-load (Step 17) and resolver-load (Step 18) keeps blame localised if a future cues-core release drifts on either API.
+
+**Exact change (three sub-edits in `wordHighlight.ts` `fullCode`):**
+
+1. **Capture `_parsedCues` as a named binding** (previously an inline expression) and parse cwd `blanks.md`:
+```js
+var _parsedCues=null;
+if(_rfs.existsSync(_cuesPath)){
+  _parsedCues=_cues.parseCuesMd(...);
+  if(_parsedCues&&_parsedCues.tips){...tips merge...}
+}
+var _blanksPath=process.cwd()+"/blanks.md";
+var _parsedBlanks=null;
+if(_rfs.existsSync(_blanksPath))_parsedBlanks=_cues.parseCuesMd(_rfs.readFileSync(_blanksPath,"utf8"));
+```
+
+2. **Merge + build sources + instantiate resolver** at the end of the inner config try (new inner try to isolate resolver errors from config-load errors):
+```js
+try{
+var _mergedDC=_cues.mergeConfigs({cuesConfig:_parsedCues||undefined,blanksConfig:_parsedBlanks||undefined},_folderCfgs);
+var _srcs=_cues.buildSourcesFromConfig(_mergedDC.cuesConfig,_mergedDC.blanksConfig,{httpAdapter:globalThis._httpAdapter,endpoint:"https://api.groq.com/openai/v1/chat/completions",apiKey:process.env.GROQ_API_KEY||"",defaultModel:"openai/gpt-oss-120b",controls:globalThis._cueControlOverrides});
+globalThis._cueResolver=new _cues.CueResolver(_srcs);
+globalThis._cueSourceCount=_srcs.length;
+}catch(_re){globalThis._cueResolver=null;globalThis._cueSourceCount=0;}
+```
+
+3. **Expose `cueResolverLoaded` + `cueSourceCount` in `_hlExport._debug`** — visible via state JSON without extra instrumentation.
+
+**Source-count expectation: 2.** `buildSourcesFromConfig` combines all word-scope alternatives prompts (grammar, legal, medical, financial from `~/opencues/cues/*/cue.md` + any inline cues.md word prompts) into ONE merged `ConfigSource`, and wraps any blanks sources + classifier into ONE `ClassifiedSourceGroup`. So the steady-state count is 2 for the current repo, not per-folder.
+
+**Not in scope for Step 18:**
+- Any actual `.resolve()` call (Step 19 — auto-submit trigger).
+- `readControlState` callback for control-bound blanks — requires sync-exec wiring to call `blankScript get`. Deferred until blank-fill step.
+- Per-source debug breakdown (`cueSources` list with names/priorities). Opportunity if debugging gets painful.
+- Error propagation when `GROQ_API_KEY` is missing. Resolver instantiates fine; calls from Step 19+ will fail loudly via `.resolve()`'s error channel.
+
+**Verification:**
+
+Restart, highlight any cue word, then:
+```bash
+cat /tmp/claude-highlight-state-<pid>.json | python3 -m json.tool | grep -E "cueResolver|cueSource|httpAdapter"
+```
+Expected:
+- `"httpAdapterLoaded": true`
+- `"cueResolverLoaded": true`
+- `"cueSourceCount": 2` (user setup) — will differ on other machines per cues/ folder contents.
+
+**Rollback:** Remove the resolver try block + blanks.md parse + debug fields. `_cueResolver` goes undefined; Step 17 still intact.
+
+**Peculiarities found during this step:** *None.* Worked first try (verified `cueResolverLoaded: true, cueSourceCount: 2`). Note the count = 2 is because `buildSourcesFromConfig` combines word-prompts rather than one-per-folder — future debugging that assumes "one source per folder" will be misleading. Document upstream if we refactor the builder.
+
+**Status: ✅ Done** (verified 2026-04-16)
+
+---
+
+## Step 19+ — TBD
+
+LLM sub-pipeline continuation:
+
+- **Auto-submit debounce trigger** — after 500ms typing pause on a cue-containing input, call `_cueResolver.resolve(context)` off the event loop; no UI change yet, but `_dynDefs` gets populated. Visible via `_debug.dynDefsCount` or state JSON dump of results.
+- **Populate `_dynDefs` from resolver output** — may fold into the trigger step or split depending on size.
+- **Dynamic render wrap** — tip-word faded display, alt substitution on Ctrl+Alt+Up/Down cycle, span tracking for multi-word swaps.
+- **Clear-on-change** — edits invalidate `_dynDefs` entries so stale alts don't linger.
+- **`readControlState` wiring** — so control-bound blanks can fetch their live value during blank-fill.
 - **Factor `_hlExport.cueTip` writes** — refactor for clean gating across sources.
-- **Implement `tips-mode: minimal` filtering** — design first (what's "essential"?).
+- **Implement `tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 17 is verified.
+Pick one after Step 18 is verified.
 
 ---
 

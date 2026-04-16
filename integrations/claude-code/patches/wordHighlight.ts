@@ -581,7 +581,7 @@ var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
-_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter};
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0};
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
@@ -695,12 +695,18 @@ var _parsedCtrl=_cues.parseCuesMd(_rfs.readFileSync(_ctrlPath,"utf8"));
 if(_parsedCtrl&&_parsedCtrl.controls)Object.assign(globalThis._cueControlOverrides,_parsedCtrl.controls);
 }
 var _cuesPath=process.cwd()+"/cues.md";
+var _parsedCues=null;
 if(_rfs.existsSync(_cuesPath)){
-var _parsedCues=_cues.parseCuesMd(_rfs.readFileSync(_cuesPath,"utf8"));
+_parsedCues=_cues.parseCuesMd(_rfs.readFileSync(_cuesPath,"utf8"));
 if(_parsedCues&&_parsedCues.tips){
 var _cwdMap=_cues.buildLookupMap(_parsedCues.tips);
 _cwdMap.forEach(function(v,k){globalThis._localCueMap.set(k,v);});
 }
+}
+var _blanksPath=process.cwd()+"/blanks.md";
+var _parsedBlanks=null;
+if(_rfs.existsSync(_blanksPath)){
+_parsedBlanks=_cues.parseCuesMd(_rfs.readFileSync(_blanksPath,"utf8"));
 }
 var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_fe){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_fe){return null;}}};
 var _folderCfgs=_cues.discoverFolderConfigs({basePath:process.cwd(),readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});
@@ -731,6 +737,12 @@ _ocCurrent[_ocKey]=_ocVal;
 }
 globalThis._openCuesCurrent=_ocCurrent;
 }
+try{
+var _mergedDC=_cues.mergeConfigs({cuesConfig:_parsedCues||undefined,blanksConfig:_parsedBlanks||undefined},_folderCfgs);
+var _srcs=_cues.buildSourcesFromConfig(_mergedDC.cuesConfig,_mergedDC.blanksConfig,{httpAdapter:globalThis._httpAdapter,endpoint:"https://api.groq.com/openai/v1/chat/completions",apiKey:process.env.GROQ_API_KEY||"",defaultModel:"openai/gpt-oss-120b",controls:globalThis._cueControlOverrides});
+globalThis._cueResolver=new _cues.CueResolver(_srcs);
+globalThis._cueSourceCount=_srcs.length;
+}catch(_re){globalThis._cueResolver=null;globalThis._cueSourceCount=0;}
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
 if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;};
