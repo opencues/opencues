@@ -931,19 +931,71 @@ Parses only top-level frontmatter `key: value` pairs inside the `---`/`---` deli
 
 ---
 
-## Step 16+ — TBD
+## Step 16 — Gate tip display + TTS on `tips-mode: off`
+
+**Goal:** Setting `tips-mode: off` in `opencues.md` suppresses all tip text in the statusline AND silences TTS, regardless of `voice-mode`. Setting it to any other value (`minimal`, `active`, etc.) restores both.
+
+**Why this choice:** Opencues.md had `tips-mode: minimal` declared as if it were a gate, but nothing was reading it. One consumer for a populated-but-unwired `_openCuesCurrent` key from Step 15.
+
+**Exact change — two write sites, both need the gate:**
+
+1. **Renderer (Step 2's cueTip assignment):**
+```diff
++ if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["tips-mode"]==="off")_caTip=null;
+  _hlExport.cueTip=_caTip;
+```
+
+2. **`_cycleAlt` deferred-read path (Step 10's inner setTimeout):**
+```diff
+  if(globalThis._cueControlTipWord==null)return;
++ if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["tips-mode"]==="off")return;
+  var _lt=_req("child_process").execSync("bash "+_script+" get",...);
+```
+
+**TTS gating for free:** Clearing `_caTip` before `_hlExport.cueTip=_caTip` means TTS (which reads `_hlExport.cueTip` as its gate) falls through silently. No separate TTS edit needed. Same mechanism carries `tips-mode: off` into the cycle path.
+
+**Not in scope for Step 16:**
+- Distinguishing `minimal` vs `active` — currently anything not `"off"` passes through. `opencues.md`'s docs suggest `minimal` should filter to "essential" tips; that filtering logic is deferred until we know what "essential" means (probably a tip-level flag like `essential: true`).
+- Hot-reload — requires restart (same contract as other opencues.md values).
+- Per-category tip gating (overrides vs step patterns vs tips dictionary).
+
+**Verification (round-trip):**
+
+1. Baseline (`tips-mode: minimal`): highlight `commit`/`volume`/`ultrathink` → tips show, TTS speaks where flagged.
+2. Flip to `tips-mode: off`, restart:
+   - Highlight `commit`/`volume`/`ultrathink` → **no tips, no TTS**.
+   - Ctrl+Alt+Up on `volume` → audio still changes, **no tip refresh**. Cycle subprocess still fires; only the display/speak is gated.
+3. Flip back to `minimal`, restart → tips + TTS return on both highlight and cycle.
+
+**Rollback:** Remove the two `_caTip=null` / `return` gate lines. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Multi-site write pattern.** `_hlExport.cueTip` is written from at least two independent paths — the renderer (Step 2) and `_cycleAlt`'s deferred read (Step 10). A gate at only one site leaks through the other. First-pass implementation gated only the renderer; user caught the leak via cycling volume. Second edit gated `_cycleAlt`. General lesson: before gating any `_hlExport` field, grep for every write-site. Worth factoring `_hlExport.cueTip` writes through a helper when a third source emerges (likely the LLM path).
+
+2. **Renderer gate silences TTS for free.** Clearing `_caTip` before `_hlExport.cueTip=_caTip` means TTS's `if(_hlExport.cueTip...)` guard naturally falls through. No separate TTS edit in the renderer path. Keeps the gate simple.
+
+3. **`minimal` is currently a no-op.** Anything not equal to `"off"` passes through. The opencues.md docs distinguish `active/minimal/off`, but the `minimal` distinction isn't implemented. Documented in "Not in scope" for future refinement.
+
+**Status: ✅ Done** (verified 2026-04-16: tips + TTS gated on `off`, return on `minimal`, cycle path respected via the second gate)
+
+---
+
+## Step 17+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
+- **Factor `_hlExport.cueTip` writes through a helper** — one write-site instead of two or three; supports future gates cleanly. Pure refactor, invisible.
+- **Implement `tips-mode: minimal` filtering** — needs design (what's "essential"? a per-tip flag?).
 - **List-control cycling** — requires span tracking; better done after blanks.
 - **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function.
-- **Parse cwd `blanks.md` on startup** (minimally, for `ignoreWords` / prompt persistence) — no visible change until consumer exists.
+- **Parse cwd `blanks.md` on startup**.
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
 - **Dynamic render wrap** (tip-word fade / alt substitution / spans).
 - **Clear-on-change**.
 
-Pick one after Step 15 is verified.
+Pick one after Step 16 is verified.
 
 ---
 

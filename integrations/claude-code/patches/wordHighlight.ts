@@ -617,6 +617,7 @@ if(_navChanged){
   }
 }
 if(globalThis._cueControlTip)_caTip=globalThis._cueControlTip;
+if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["tips-mode"]==="off")_caTip=null;
 _hlExport.cueTip=_caTip;
 }
 if(!_isCA&&!_cbDw){globalThis._cueControlTipWord=null;globalThis._cueControlTip=null;}
@@ -775,6 +776,7 @@ try{_req("child_process").spawn("bash",[_script].concat(_aargs),{detached:true,s
 setTimeout(function(){
 try{
 if(globalThis._cueControlTipWord==null)return;
+if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["tips-mode"]==="off")return;
 var _lt=_req("child_process").execSync("bash "+_script+" get",{timeout:1000,encoding:"utf8"}).trim();
 if(_lt){
 globalThis._cueControlTip=_lt;
