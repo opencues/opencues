@@ -581,7 +581,7 @@ var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
-_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null};
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter};
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
@@ -682,6 +682,11 @@ var _tipsC=${requireFuncName}("fs").readFileSync(_ccHome+"/.claude/claude-code-t
 var _td=_cues.parseLocalCueFile(_tipsC);
 globalThis._cuesCore=_cues;
 globalThis._localCueMap=_cues.buildLookupMap(_td);
+try{
+var _NodeHttpAdapter=${requireFuncName}(_ccHome+"/.claude/node_modules/cues-core/node-http-adapter").NodeHttpAdapter;
+globalThis._httpAdapter=new _NodeHttpAdapter({maxSockets:2,timeout:30000,providerOverrides:{}});
+if(process.env.GROQ_API_KEY)setTimeout(function(){try{globalThis._httpAdapter.warmup("https://api.groq.com/openai/v1/models",{Authorization:"Bearer "+process.env.GROQ_API_KEY});}catch(_we){}},1000);
+}catch(_ha){globalThis._httpAdapter=null;}
 try{
 var _rfs=${requireFuncName}("fs");
 var _ctrlPath=process.cwd()+"/controls.md";

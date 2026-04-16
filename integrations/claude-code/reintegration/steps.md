@@ -981,21 +981,66 @@ Parses only top-level frontmatter `key: value` pairs inside the `---`/`---` deli
 
 ---
 
-## Step 17+ — TBD
+## Step 17 — Instantiate `NodeHttpAdapter` on startup (LLM infra prereq)
 
-Deferred decomposition. Candidate next-step options, in rough order of size:
+**Goal:** First sub-step of the LLM pipeline. `globalThis._httpAdapter` is a live `NodeHttpAdapter` (keep-alive, connection pool, provider overrides) after startup. If `GROQ_API_KEY` is set in the env, a warmup GET to `https://api.groq.com/openai/v1/models` fires 1s after startup so the first real request lands on a warm socket.
 
-- **Factor `_hlExport.cueTip` writes through a helper** — one write-site instead of two or three; supports future gates cleanly. Pure refactor, invisible.
-- **Implement `tips-mode: minimal` filtering** — needs design (what's "essential"? a per-tip flag?).
-- **List-control cycling** — requires span tracking; better done after blanks.
-- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function.
-- **Parse cwd `blanks.md` on startup**.
-- **Auto-submit debounce**.
-- **LLM trigger → `_dynDefs`**.
-- **Dynamic render wrap** (tip-word fade / alt substitution / spans).
-- **Clear-on-change**.
+**Why this choice:** Every subsequent LLM-related step (auto-submit, `CueResolver.resolve()`, `_dynDefs` population) depends on an HTTP client. Splitting the adapter load into its own visible step keeps blame localised when something breaks on a future version (module path changes, constructor signature drift, etc.) — rather than being bundled into the resolver or trigger step.
 
-Pick one after Step 16 is verified.
+**Exact change (two parts, `wordHighlight.ts`):**
+
+1. Inside the `if(!globalThis._cuesCore){try{...}}` block, after `_localCueMap` is built:
+```js
+try{
+var _NodeHttpAdapter=${requireFuncName}(_ccHome+"/.claude/node_modules/cues-core/node-http-adapter").NodeHttpAdapter;
+globalThis._httpAdapter=new _NodeHttpAdapter({maxSockets:2,timeout:30000,providerOverrides:{}});
+if(process.env.GROQ_API_KEY)setTimeout(function(){try{globalThis._httpAdapter.warmup("https://api.groq.com/openai/v1/models",{Authorization:"Bearer "+process.env.GROQ_API_KEY});}catch(_we){}},1000);
+}catch(_ha){globalThis._httpAdapter=null;}
+```
+
+2. Append `httpAdapterLoaded:!!globalThis._httpAdapter` to the `_hlExport._debug` block so the state JSON makes success/failure observable without instrumenting further.
+
+**Not in scope for Step 17:**
+- Instantiating `CueResolver` (next sub-step; needs source configs wired).
+- Auto-submit debounce trigger (future).
+- Any actual LLM call at analysis time.
+- Warmup against non-Groq providers.
+
+**Verification:**
+
+Restart `claude-cues`. Highlight any cue word (`volume` works). Then:
+
+```bash
+cat /tmp/claude-highlight-state-<pid>.json | python3 -m json.tool | grep httpAdapter
+# Expected: "httpAdapterLoaded": true
+```
+
+If `false`, check:
+- `~/.claude/node_modules/cues-core/node-http-adapter.js` exists.
+- `cues-core/node-http-adapter` exports `NodeHttpAdapter`.
+- Constructor accepts `{maxSockets, timeout, providerOverrides}` (signature drift from cues-core updates).
+
+**Rollback:** Remove the two patch locations (the adapter `try` block + the `httpAdapterLoaded` debug field). No other files touched.
+
+**Peculiarities found during this step:** *None.* Worked first try (user confirmed `httpAdapterLoaded: true` via state JSON). Note: silent-failure-with-null fallback is intentional for Steps 18+ — they'll need to guard on `if(globalThis._httpAdapter)` before attempting LLM calls.
+
+**Status: ✅ Done** (verified 2026-04-16: state JSON shows `httpAdapterLoaded: true`)
+
+---
+
+## Step 18+ — TBD
+
+LLM sub-pipeline continuation. Rough ordering:
+
+- **Instantiate `CueResolver`** — wrap `_httpAdapter` + source configs (prompt sources from cues-md, folder-discovered prompts, the classifier). Test structurally via `_debug.cueResolverLoaded`.
+- **Auto-submit debounce trigger** — after 500ms of typing pause, call `_cueResolver.resolve()` on the current input. No visible behaviour without the render-wrap step.
+- **Populate `_dynDefs` from resolver output** — LLM alternatives land on a global, ready for renderer + cycling.
+- **Dynamic render wrap** — tip-word faded display, alt substitution on cycle, span tracking for multi-word swaps.
+- **Clear-on-change** — edits invalidate `_dynDefs` entries.
+- **Factor `_hlExport.cueTip` writes** — refactor for clean gating across sources.
+- **Implement `tips-mode: minimal` filtering** — design first (what's "essential"?).
+
+Pick one after Step 17 is verified.
 
 ---
 
