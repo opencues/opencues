@@ -423,13 +423,78 @@ Restart `claude-cues` (cwd must be `~/opencues`). Then:
 
 ---
 
-## Step 7+ — TBD
+## Step 7 — Parse cwd `cues.md` on startup
+
+**Goal:** Tips declared in a `cues.md` file at the cwd augment `_localCueMap` (populated in Step 5 from `~/.claude/claude-code-tips.json`). Cwd entries override tips.json entries on keyword collision.
+
+**Why this choice:** Direct mirror of Step 6's `parseCuesMd` + merge pattern, reusing the same `_rfs`, `_cues`, and outer try block. Validates that the "single parse-and-merge recipe" is reusable across config files — if Step 7 works identically to Step 6, we can apply the same shape to blanks.md (Step 8) and folder-config readers without re-discovery.
+
+**Exact change (appended inside Step 6's try body, before the closing `}catch(_cte){}`):**
+
+```js
+var _cuesPath=process.cwd()+"/cues.md";
+if(_rfs.existsSync(_cuesPath)){
+var _parsedCues=_cues.parseCuesMd(_rfs.readFileSync(_cuesPath,"utf8"));
+if(_parsedCues&&_parsedCues.tips){
+var _cwdMap=_cues.buildLookupMap(_parsedCues.tips);
+_cwdMap.forEach(function(v,k){globalThis._localCueMap.set(k,v);});
+}
+}
+```
+
+`_cwdMap.forEach(..._localCueMap.set)` semantics: cwd tips override tips.json entries for any keyword collision (latest `set` wins).
+
+**Not in scope for Step 7:**
+- `blanks.md` parsing (Step 8 candidate).
+- Folder-config discovery (`cues/`, `controls/`, `blanks/` subdirs).
+- Hot-reload — cues.md edits require restart.
+- `ignore:` list from cues.md (not plumbed through filter yet).
+- `promptConfig` section from cues.md (LLM-tuning, later).
+
+**Verification (requires a temporary test keyword):**
+
+A unique test entry has been added to `~/opencues/cues.md`:
+
+```json
+{
+  "id": "step7-test",
+  "words": {
+    "flurbletest7": {
+      "tip": "Temporary Step 7 verification keyword — revert after test",
+      "alts": ["flurbletest7"]
+    }
+  }
+}
+```
+
+Restart `claude-cues` **from inside `~/opencues`**. Then:
+
+1. Type `raise flurbletest7 now` + Ctrl+Alt+Left → only `flurbletest7` highlights. (Step 7 merged the entry into `_localCueMap` → `_isCueControl("flurbletest7")` returns true via Step 5's dual-source filter.)
+2. Type `commit this plan` → `commit` and `plan` still highlight (Step 5 tips.json entries still merged).
+3. Type `raise volume now` → `volume` still highlights (Step 2 + Step 6 path untouched).
+4. Type `abc 42 xyz` → `42` still dims (Step 3 regex).
+5. Revert the `step7-test` block from `cues.md` once verified.
+
+**Rollback:** Remove the appended cues.md block inside the try. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Cwd cues.md overrides tips.json on keyword collision.** This is an intentional contract (`Map.set()` last-write-wins, and the cwd load runs after the tips.json load), but it's silent — the user has no warning that a keyword they redefined in cues.md just shadowed a built-in. Document if we add user-facing error/info later. Matters most when debugging "why isn't my tip showing?" — check whether tips.json has a conflicting entry.
+
+2. **Shared inner `}catch(_cte){}` couples controls.md and cues.md failures.** Step 6's controls.md parse and Step 7's cues.md parse sit inside the same outer try body. A malformed controls.md will throw before cues.md is even read — users with both files may see silent cues.md failure if controls.md has a syntax error. Acceptable trade-off for step-size (separate try blocks would mean a bigger diff), but if this bites someone later, the fix is splitting them into independent try blocks at whatever step discovers the symptom.
+
+3. **Step 7 has a hard ordering dependency on Step 5.** The cues.md merge writes into `globalThis._localCueMap` which Step 5 initializes from tips.json. If Step 5's cues-core load fails (module missing, tips.json unreadable), `_localCueMap` is `null` and the Step 7 merge would crash — but the outer catch swallows it, leaving cues.md silently ignored. If we ever want cues.md to load independently of tips.json, Step 7 needs its own `_localCueMap = _localCueMap || new Map()` guard.
+
+**Status: ✅ Done** (verified 2026-04-16: all four tests pass, no regressions; cwd cues.md + tips.json coexist with cwd taking precedence)
+
+---
+
+## Step 8+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Parse cwd `cues.md` on startup** — same pattern as Step 6 but merges `parsed.tips` into `_localCueMap`. Test requires a contrived unique keyword (cues.md overlaps 128/128 with tips.json).
-- **Parse cwd `blanks.md` on startup** — blank-fill config. No observable effect until a blank-fill step lands.
-- **Folder-config discovery** (controls/, cues/, blanks/ subdirs).
+- **Parse cwd `blanks.md` on startup** — blank-fill config. No observable effect until a blank-fill step lands; may need bundling with a blank-consumer step.
+- **Folder-config discovery** (`controls/`, `cues/`, `blanks/` subdirs) — reuses cues-core's `discoverFolderConfigs`. Unlocks the real controls sitting in `~/opencues/controls/volume/`, `/brightness/`, etc.
 - **`_reloadCuesConfig` hot-reload** on keystroke — edits to controls.md / cues.md take effect within ~2s.
 - **Populate `_stepPatterns` from parsed controls; replace hardcoded number regex with `_stepPatterns` read** (decide bare-number dim handling per Step 3 gotcha #3).
 - **Auto-submit debounce**.
@@ -438,7 +503,7 @@ Deferred decomposition. Candidate next-step options, in rough order of size:
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 6 is verified.
+Pick one after Step 7 is verified.
 
 ---
 

@@ -687,6 +687,14 @@ if(_rfs.existsSync(_ctrlPath)){
 var _parsedCtrl=_cues.parseCuesMd(_rfs.readFileSync(_ctrlPath,"utf8"));
 if(_parsedCtrl&&_parsedCtrl.controls)Object.assign(globalThis._cueControlOverrides,_parsedCtrl.controls);
 }
+var _cuesPath=process.cwd()+"/cues.md";
+if(_rfs.existsSync(_cuesPath)){
+var _parsedCues=_cues.parseCuesMd(_rfs.readFileSync(_cuesPath,"utf8"));
+if(_parsedCues&&_parsedCues.tips){
+var _cwdMap=_cues.buildLookupMap(_parsedCues.tips);
+_cwdMap.forEach(function(v,k){globalThis._localCueMap.set(k,v);});
+}
+}
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
 if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
