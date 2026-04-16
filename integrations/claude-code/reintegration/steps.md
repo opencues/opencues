@@ -1302,16 +1302,78 @@ if(!_targetIdx.length)_allW.forEach(function(w,i){_targetIdx.push(i);});
 
 ---
 
-## Step 22+ — TBD
+## Step 22 — Debug logging gated on `opencues.md` `debug-mode`
+
+**Goal:** `debug-mode: on` in `opencues.md` opens a file log at `/tmp/claude-cues-debug-<pid>.log` with three categories of entries: startup config summary, auto-submit debounce fires, and LLM result counts. `off` silences writes entirely.
+
+**Why this choice:** Small, observable, and builds on Step 15's `_openCuesCurrent` plumbing. Gives a real runtime trace for diagnosing LLM/cycling issues without instrumenting ad-hoc in future sessions.
+
+**Exact change (four parts, `wordHighlight.ts` `fullCode`):**
+
+1. **`_debugLog` helper** — defined immediately after `_openCuesCurrent` assignment (so the helper exists if the opencues.md parse succeeded):
+
+```js
+globalThis._debugLog=function(_dMsg){if(!globalThis._openCuesCurrent||globalThis._openCuesCurrent["debug-mode"]!=="on")return;try{${requireFuncName}("fs").appendFileSync("/tmp/claude-cues-debug-"+process.pid+".log","["+new Date().toISOString()+"] "+_dMsg+"\\n");}catch(_dle){}};
+```
+
+2. **Startup log** — after CueResolver instantiation:
+
+```js
+if(globalThis._debugLog)globalThis._debugLog("startup: "+Object.keys(globalThis._cueControlOverrides||{}).length+" overrides, "+(globalThis._localCueMap?globalThis._localCueMap.size:0)+" tips, "+(globalThis._stepPatterns||[]).length+" stepPatterns, "+(globalThis._cueSourceCount||0)+" llm sources");
+```
+
+3. **Auto-submit log** — inside the debounce timer body:
+
+```js
+if(globalThis._debugLog)globalThis._debugLog("autoSubmit ["+_asWords.length+" words]: "+_asText);
+```
+
+4. **LLM result / error log** — inside `.then()` / `.catch()`:
+
+```js
+if(globalThis._debugLog)globalThis._debugLog("llm result: "+(_res.results||[]).length+" results, "+_newDefs.length+" wordDefs");
+// .catch()
+if(globalThis._debugLog)globalThis._debugLog("llm error: "+(_lre&&_lre.message||_lre));
+```
+
+**Not in scope for Step 22:**
+- Cycle-event logs (`_cycleAlt` decisions).
+- Blank-fill logs (no blank-fill yet).
+- Hot-reload of the flag (restart required — matches opencues.md contract).
+- Per-word resolver metrics (`_res.metrics`).
+- Rotating / truncating the log file.
+
+**Verification (from `~/opencues`):**
+
+1. Flip `opencues.md` → `debug-mode: on`. Restart.
+2. Startup line appears: `[ts] startup: N overrides, M tips, K stepPatterns, L llm sources`.
+3. Type `the cat sat`, pause 1s. Two more lines:
+   - `[ts] autoSubmit [3 words]: the cat sat`
+   - `[ts] llm result: N results, M wordDefs`
+4. Flip to `debug-mode: off`. Restart. Typing → no new log entries (file not touched).
+
+**Rollback:** Remove the four call sites and the `_debugLog` helper. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Template-literal under-escape crashed the patch.** First attempt used `\"` to wrap `_asText` with quotes in the log message: `"autoSubmit: \""+_asText+"\""`. In a TS template literal, `\"` collapses to `"` (no special meaning inside backticks), producing `"autoSubmit: ""+_asText+""` in `cli.js` — a syntax error where `""` is an empty string with no operator between it and `+_asText`. Claude Code crashed on module load. Fix: drop the quote-wrap, use `"autoSubmit ["+_asWords.length+" words]: "+_asText` format. To escape a literal `"` into cli.js from a template literal, need `\\\"` in source (backslash-backslash-quote) — same four-backslash convention as the regex-in-string issue from Step 9. This is the THIRD template-literal escape trap this re-integration has hit (bare-number regex in Step 3, RegExp string args in Step 9, now string-literal quotes here). Future rule: if it's going inside a JS string literal in cli.js, double-escape every special character in source.
+
+2. **Silent gate is correct.** `_debugLog` exits immediately when `debug-mode !== "on"` — no file handle, no I/O. Measured zero overhead in the off path. Users can leave the helper in place; toggle is cheap.
+
+**Status: ✅ Done** (verified 2026-04-17: startup + autoSubmit + llm-result lines logged; silenced on `off`)
+
+---
+
+## Step 23+ — TBD
 
 LLM/blank continuation:
 
 - **`readControlState` wiring** — control-bound blanks can read their live value during auto-populate.
-- **Blank-fill pipeline** — detect `_` placeholder, match nearby keyword, auto-populate. Large; decompose at step time into ~5-8 sub-steps (`_` detection → keyword match → stepValues fill → blankScript fill → spans → cycling → clearKeywords → dismissible).
+- **Blank-fill pipeline** — detect `_` placeholder, match nearby keyword, auto-populate. Large; decompose at step time.
 - **Factor `_hlExport.cueTip` writes** — still deferred refactor motivated by Step 16's peculiarity.
 - **Implement `tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 21 is verified.
+Pick one after Step 22 is verified.
 
 ---
 

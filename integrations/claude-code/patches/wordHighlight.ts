@@ -740,12 +740,14 @@ if(_ocKey==="settings")break;
 _ocCurrent[_ocKey]=_ocVal;
 }
 globalThis._openCuesCurrent=_ocCurrent;
+globalThis._debugLog=function(_dMsg){if(!globalThis._openCuesCurrent||globalThis._openCuesCurrent["debug-mode"]!=="on")return;try{${requireFuncName}("fs").appendFileSync("/tmp/claude-cues-debug-"+process.pid+".log","["+new Date().toISOString()+"] "+_dMsg+"\\n");}catch(_dle){}};
 }
 try{
 var _mergedDC=_cues.mergeConfigs({cuesConfig:_parsedCues||undefined,blanksConfig:_parsedBlanks||undefined},_folderCfgs);
 var _srcs=_cues.buildSourcesFromConfig(_mergedDC.cuesConfig,_mergedDC.blanksConfig,{httpAdapter:globalThis._httpAdapter,endpoint:"https://api.groq.com/openai/v1/chat/completions",apiKey:process.env.GROQ_API_KEY||"",defaultModel:"openai/gpt-oss-120b",controls:globalThis._cueControlOverrides});
 globalThis._cueResolver=new _cues.CueResolver(_srcs);
 globalThis._cueSourceCount=_srcs.length;
+if(globalThis._debugLog)globalThis._debugLog("startup: "+Object.keys(globalThis._cueControlOverrides||{}).length+" overrides, "+(globalThis._localCueMap?globalThis._localCueMap.size:0)+" tips, "+(globalThis._stepPatterns||[]).length+" stepPatterns, "+(globalThis._cueSourceCount||0)+" llm sources");
 }catch(_re){globalThis._cueResolver=null;globalThis._cueSourceCount=0;}
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
@@ -903,13 +905,15 @@ var _asWords=_asText.split(/\\s+/).filter(function(w){return w;});
 if(_asWords.length<2)return;
 var _gen=(globalThis._resolveGen=(globalThis._resolveGen||0)+1);
 globalThis._lastResolvedText=_asText;
+if(globalThis._debugLog)globalThis._debugLog("autoSubmit ["+_asWords.length+" words]: "+_asText);
 globalThis._cueResolver.resolve({text:_asText,words:_asWords,domain:"claude-code"}).then(function(_res){
 if(_gen!==globalThis._resolveGen)return;
 var _newDefs=globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[]);
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_newDefs);
+if(globalThis._debugLog)globalThis._debugLog("llm result: "+(_res.results||[]).length+" results, "+_newDefs.length+" wordDefs");
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
-}).catch(function(){});
+}).catch(function(_lre){if(globalThis._debugLog)globalThis._debugLog("llm error: "+(_lre&&_lre.message||_lre));});
 },500);
 }
 }
