@@ -595,21 +595,103 @@ Part 2 — extend the renderer's dim branch (`wordHighlight.ts` ~line 1123):
 
 ---
 
-## Step 10+ — TBD
+## Step 10 — `_cycleAlt` for script-backed cue-controls (Ctrl+Alt+Up/Down)
+
+**Goal:** Pressing `Ctrl+Alt+Up`/`Down` on a highlighted cue-control word that has both a `.script` and corresponding `upArgs`/`downArgs` spawns `bash <script> <...args>` as a detached process. On `volume`, audible level change; on `brightness`, the display brightens/dims. Fire-and-forget — no text substitution, no state update beyond clearing the tip cache so the next render fetches fresh state.
+
+**Why this choice:** Step 2 already injected the Ctrl+Alt+Up/Down handler that calls `globalThis._cycleAlt(dir, null, null, null, requireFn)`. The function was simply undefined, so every arrow press no-opped. Defining a minimal `_cycleAlt` completes the loop without touching the key dispatcher.
+
+**Exact change (one function definition appended right after `_isCueControl` in `wordHighlight.ts`'s `fullCode`):**
+
+```js
+if(!globalThis._cycleAlt)globalThis._cycleAlt=function(_dir,_a,_b,_c,_req){
+if(!globalThis._hlState||!globalThis._hlState.active)return null;
+var _wds=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
+var _wi=globalThis._hlState.wordIndex;
+if(_wi==null||_wi<0||_wi>=_wds.length)return null;
+var _lw=(_wds[_wi]||"").toLowerCase();
+var _ovr=(globalThis._cueControlOverrides||{})[_lw];
+if(!_ovr||!_ovr.script)return null;
+var _args=_dir>0?_ovr.upArgs:_ovr.downArgs;
+if(!_args||!_args.length)return null;
+if(!globalThis._cueControlTip)globalThis._cueControlTip=_ovr.tip||_ovr.control;
+if(!globalThis._cueControlTimers)globalThis._cueControlTimers={};
+var _ctrl=_ovr.control;var _script=_ovr.script;var _aargs=_args;
+if(globalThis._cueControlTimers[_ctrl])clearTimeout(globalThis._cueControlTimers[_ctrl]);
+globalThis._cueControlTimers[_ctrl]=setTimeout(function(){
+try{_req("child_process").spawn("bash",[_script].concat(_aargs),{detached:true,stdio:"ignore"}).unref();}catch(_e){}
+setTimeout(function(){
+try{
+if(globalThis._cueControlTipWord==null)return;
+var _lt=_req("child_process").execSync("bash "+_script+" get",{timeout:1000,encoding:"utf8"}).trim();
+if(_lt){
+globalThis._cueControlTip=_lt;
+var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
+var _fs=_req("fs");
+var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
+_ex.cueTip=_lt;_ex.timestamp=Date.now();
+_fs.writeFileSync(_ep,JSON.stringify(_ex));
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+}
+}catch(_e){}
+},200);
+},50);
+return {refresh:true};
+};
+```
+
+Shape mirrors `dynamicHighlight.ts:284-328` precisely: outer 50ms timer debounces rapid presses (holding Up collapses into a single spawn with final value), inner 200ms timer reads live state post-mutation and writes directly into the highlight-state JSON, then pokes Claude Code's debounced statusline via `_triggerStatusLineRefresh`. Returns `{refresh:true}` immediately so the input never blocks — this is what makes the keypress feel instant.
+
+**Not in scope for Step 10:**
+- Step-controls with numeric increment in the input text (`stepSuffixes` / `stepPattern` with `step`).
+- List-controls cycling through `stepValues`.
+- Read-only controls (`blankReadOnly`, API-backed).
+- Tip-alternatives cycling (needs LLM / `_dynDefs`).
+- Any control whose `script` is absent or whose `upArgs`/`downArgs` is missing — `_cycleAlt` returns `null` and key handler returns the InputZone unchanged.
+
+**Verification (from `~/opencues` after restart):**
+
+1. Type `raise volume now`, Ctrl+Alt+Left to highlight `volume`. Statusline shows current volume level.
+2. Press Ctrl+Alt+Up → audio volume rises 5%, statusline refreshes to new value.
+3. Press Ctrl+Alt+Down → audio volume drops 5%.
+4. Type `raise brightness now`, highlight `brightness`, Ctrl+Alt+Up/Down → display brightness changes (if `brightness.sh` is wired for the user's platform; no-op otherwise).
+5. Type `commit this plan`, highlight `commit`, Ctrl+Alt+Up → nothing happens (no script on tip-backed entries). Filter falls through cleanly; navigation via Left/Right still works.
+6. Prior steps unaffected: number dim, cue-control filter, tip filter all intact.
+
+**Rollback:** Remove the `_cycleAlt` definition. No other files touched; Step 2's key handler will resume no-op on Up/Down.
+
+**Peculiarities found during this step (two wrong attempts before the right one):**
+
+1. **First attempt — `spawn({detached:true}).unref()` introduced a silent UX regression.** User caught it: statusline stayed one cycle behind because the renderer's `execSync("get")` fired before the async spawn finished mutating system state. I had reflexively chosen fire-and-forget spawn without checking the old `dynamicHighlight.ts:284-328` design.
+
+2. **Second attempt — `execFileSync` made it WORSE, not better.** I then swapped to sync exec, reasoning "the old version must have been sync." This was also wrong: it blocked the keypress for 370ms+ (volume.sh runtime), so the input itself froze briefly on every Ctrl+Alt+Up. User's feedback ("still slow versus the original") forced me to actually read the old code. The old pattern isn't sync OR detached — it's **immediate return + debounced setTimeout(50ms) + inner setTimeout(200ms) for the live-read**. Keypress never blocks; the status-line update happens on a fast async pipeline.
+
+3. **Third attempt — full mirror of the old pattern.** Debounced setTimeout(50ms) per control name (so holding Up collapses into one spawn), inner setTimeout(200ms) that executes `bash <script> get` synchronously off the event loop, writes into the highlight-state JSON directly, and pokes the debounced statusline. This is what the user remembered as instant UX.
+
+4. **Lesson — for `_cycleAlt` specifically, "sync vs async" is the wrong framing.** The real question was "does the keypress path block or not?" Both async-spawn-only AND sync-exec-only block or fail differently. The old design was carefully three-layer: instant return → debounced spawn → deferred live read. Each layer had a reason. Recognise this pattern family ("input returns now, side effect debounces, read settles later") and copy it wholesale from `dynamicHighlight.ts` when re-integrating any step that runs system-mutation scripts.
+
+5. **Side detour — almost re-invoked `writeStatusLineTriggerExport` redundantly.** I hypothesised Step 2 was missing the trigger export, but `writeWordHighlight` already calls `writeStatusLineTriggerExport(content)` internally at `wordHighlight.ts:1486`. Adding a second invocation produced a doubled `globalThis._triggerStatusLineRefresh=k` assignment in cli.js (harmless — both assign the same value — but wasteful and confusing). Always check what orchestrator functions wrap before adding manual sub-patch calls to `index.ts`.
+
+**Status: ✅ Done** (verified 2026-04-16 after mirroring the old three-layer pattern; volume cycling feels native, matches user's muscle memory; prior steps intact)
+
+---
+
+## Step 11+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Upgrade `_isCueControl` to check `_stepPatterns`** — `42f` becomes navigable as a cue-control (currently dims but doesn't filter in navigation). Tiny diff, finishes the step-pattern story.
-- **`_reloadCuesConfig` hot-reload** on keystroke — wraps Step 5-9 into a re-runnable function; config edits take effect within ~2s without restart.
-- **Consume `_folderCfgs.ignoreWords`** — filter `_isCueControl` to skip ignore-listed words.
-- **Parse cwd `blanks.md` on startup** — no observable effect until blank-fill step.
+- **Upgrade `_isCueControl` to check `_stepPatterns`** — `42f` becomes navigable as a cue-control (currently dims but isn't filtered by Step 4 navigation). Tiny diff.
+- **Step-control cycling (numeric in-place increment)** — extends `_cycleAlt` to read `_stepPatterns` matches, apply `step` arithmetic, substitute the number in the input text.
+- **List-control cycling** — extends `_cycleAlt` to read `stepValues` array, advance index, substitute.
+- **`_reloadCuesConfig` hot-reload** on keystroke — wraps Step 5-9 config reads into a re-runnable function.
+- **Consume `_folderCfgs.ignoreWords`**.
+- **Parse cwd `blanks.md` on startup**.
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
-- **Ctrl+Alt+Up/Down cycling** — subprocess spawn per arrow press for control words with `upArgs`/`downArgs`.
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 9 is verified.
+Pick one after Step 10 is verified.
 
 ---
 

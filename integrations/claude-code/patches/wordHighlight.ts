@@ -707,6 +707,40 @@ globalThis._stepPatterns=_stepPats;
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
 if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
+if(!globalThis._cycleAlt)globalThis._cycleAlt=function(_dir,_a,_b,_c,_req){
+if(!globalThis._hlState||!globalThis._hlState.active)return null;
+var _wds=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
+var _wi=globalThis._hlState.wordIndex;
+if(_wi==null||_wi<0||_wi>=_wds.length)return null;
+var _lw=(_wds[_wi]||"").toLowerCase();
+var _ovr=(globalThis._cueControlOverrides||{})[_lw];
+if(!_ovr||!_ovr.script)return null;
+var _args=_dir>0?_ovr.upArgs:_ovr.downArgs;
+if(!_args||!_args.length)return null;
+if(!globalThis._cueControlTip)globalThis._cueControlTip=_ovr.tip||_ovr.control;
+if(!globalThis._cueControlTimers)globalThis._cueControlTimers={};
+var _ctrl=_ovr.control;var _script=_ovr.script;var _aargs=_args;
+if(globalThis._cueControlTimers[_ctrl])clearTimeout(globalThis._cueControlTimers[_ctrl]);
+globalThis._cueControlTimers[_ctrl]=setTimeout(function(){
+try{_req("child_process").spawn("bash",[_script].concat(_aargs),{detached:true,stdio:"ignore"}).unref();}catch(_e){}
+setTimeout(function(){
+try{
+if(globalThis._cueControlTipWord==null)return;
+var _lt=_req("child_process").execSync("bash "+_script+" get",{timeout:1000,encoding:"utf8"}).trim();
+if(_lt){
+globalThis._cueControlTip=_lt;
+var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
+var _fs=_req("fs");
+var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
+_ex.cueTip=_lt;_ex.timestamp=Date.now();
+_fs.writeFileSync(_ep,JSON.stringify(_ex));
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+}
+}catch(_e){}
+},200);
+},50);
+return {refresh:true};
+};
 globalThis._forceInputRefresh=function(){
 if(globalThis._refreshTimer)return;
 globalThis._refreshTimer=setTimeout(function(){
