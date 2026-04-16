@@ -680,6 +680,14 @@ var _tipsC=${requireFuncName}("fs").readFileSync(_ccHome+"/.claude/claude-code-t
 var _td=_cues.parseLocalCueFile(_tipsC);
 globalThis._cuesCore=_cues;
 globalThis._localCueMap=_cues.buildLookupMap(_td);
+try{
+var _rfs=${requireFuncName}("fs");
+var _ctrlPath=process.cwd()+"/controls.md";
+if(_rfs.existsSync(_ctrlPath)){
+var _parsedCtrl=_cues.parseCuesMd(_rfs.readFileSync(_ctrlPath,"utf8"));
+if(_parsedCtrl&&_parsedCtrl.controls)Object.assign(globalThis._cueControlOverrides,_parsedCtrl.controls);
+}
+}catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
 if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
 globalThis._forceInputRefresh=function(){

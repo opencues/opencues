@@ -361,13 +361,76 @@ Upgrade Step 4's `_isCueControl` to check both maps:
 
 ---
 
-## Step 6+ — TBD
+## Step 6 — Parse cwd `controls.md` on startup
+
+**Goal:** Cue-controls declared in a `controls.md` file at the cwd (e.g. `~/opencues/controls.md`) augment the static `_cueControlOverrides` populated by Step 2. No hot-reload — controls.md is read once at startup.
+
+**Why this choice (and why controls.md before cues.md):** Both files use the same `parseCuesMd` parser and the same merge-into-a-global pattern — mechanically symmetric. Split chosen to keep "one anchor, one test" per the runbook principle. Order swapped from intuition: `controls.md` goes first because the stock file is `{}` → any new entry is visibly additive. `cues.md` has near-100% overlap with `claude-code-tips.json` (128 of 128 words already covered by Step 5), so a clean test requires a contrived unique keyword — defer to Step 7 where the code path is already proven.
+
+**Exact change (appended to Step 5's try body, `wordHighlight.ts` `fullCode`):**
+
+```js
+try{
+var _rfs=${requireFuncName}("fs");
+var _ctrlPath=process.cwd()+"/controls.md";
+if(_rfs.existsSync(_ctrlPath)){
+var _parsedCtrl=_cues.parseCuesMd(_rfs.readFileSync(_ctrlPath,"utf8"));
+if(_parsedCtrl&&_parsedCtrl.controls)Object.assign(globalThis._cueControlOverrides,_parsedCtrl.controls);
+}
+}catch(_cte){}
+```
+
+Inner try/catch so a malformed controls.md doesn't tear down Step 5's already-loaded `_localCueMap`. Uses `Object.assign` into the existing `_cueControlOverrides` — cwd entries override matching static ones, static entries for keys absent from controls.md stay intact.
+
+**Not in scope for Step 6:**
+- `cues.md` parsing (Step 7 — needs contrived test word).
+- `blanks.md` parsing.
+- Folder-config discovery (`controls/`, `cues/`, `blanks/` subdirs).
+- Hot-reload — controls.md edits require restart.
+- `_stepPatterns` population (even if controls.md declares step-patterns, Step 3's hardcoded number regex still rules dim behaviour).
+
+**Verification (requires a temporary test entry in controls.md):**
+
+From `~/opencues`, edit `controls.md`'s `## Controls` block to add a test keyword — for example:
+
+```json
+{
+  "duck": {
+    "control": "volume",
+    "upArgs": ["up", "5"],
+    "downArgs": ["down", "5"]
+  }
+}
+```
+
+Restart `claude-cues` (cwd must be `~/opencues`). Then:
+
+1. Type `raise duck now` + Ctrl+Alt+Left → only `duck` highlights. (Step 6 merged the entry into `_cueControlOverrides` → `_isCueControl("duck")` returns true via Step 5's dual-source filter.)
+2. Type `raise volume now` → still works (`volume` still in `_cueControlOverrides` from Step 2 static config — `Object.assign` doesn't clobber unrelated keys).
+3. Type `commit this plan` → still works (Step 5 tip filter still active — cues-core load + `_localCueMap` untouched).
+4. Type `abc 42 xyz` → `42` still dims (Step 3 regex).
+5. Revert the test entry to `{}` once verified — keeps the repo clean.
+
+**Rollback:** Remove the inner try block from `wordHighlight.ts`. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Statusline shows `control` field as a fallback tip** when the override has no `tip` field. In `wordHighlight.ts:605`: `_caTip=_caOvr.tip||_caOvr.control`. Our test entry `{"duck":{"control":"volume",...}}` had no `tip`, so highlighting `duck` displayed `volume` in the statusline. Not a bug — it's the "keyword delegates to control X" hint. Add `"tip":"<custom text>"` to the override to customize. Worth knowing so future verification runs don't misread this as a mislabel.
+
+2. **`upArgs`/`downArgs` are inert data until cycling lands.** The override schema accepts them and Step 6 correctly merges them in, but no Step so far wires Ctrl+Alt+Up/Down handlers to consume them. User may expect volume to shift when pressing Up/Down on `duck` — it won't. That's Step N (cycling), not a Step 6 regression.
+
+**Status: ✅ Done** (verified 2026-04-16: all four tests pass, no regressions; statusline fallback behaviour documented)
+
+---
+
+## Step 7+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Parse `controls.md` / `cues.md` / `blanks.md` on startup** — one pass, no hot-reload, no folder discovery. Lets users author tips and cue-controls inline from the cwd.
+- **Parse cwd `cues.md` on startup** — same pattern as Step 6 but merges `parsed.tips` into `_localCueMap`. Test requires a contrived unique keyword (cues.md overlaps 128/128 with tips.json).
+- **Parse cwd `blanks.md` on startup** — blank-fill config. No observable effect until a blank-fill step lands.
 - **Folder-config discovery** (controls/, cues/, blanks/ subdirs).
-- **`_reloadCuesConfig` hot-reload** on keystroke.
+- **`_reloadCuesConfig` hot-reload** on keystroke — edits to controls.md / cues.md take effect within ~2s.
 - **Populate `_stepPatterns` from parsed controls; replace hardcoded number regex with `_stepPatterns` read** (decide bare-number dim handling per Step 3 gotcha #3).
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
@@ -375,7 +438,7 @@ Deferred decomposition. Candidate next-step options, in rough order of size:
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 5 is verified.
+Pick one after Step 6 is verified.
 
 ---
 
