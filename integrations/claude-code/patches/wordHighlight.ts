@@ -459,8 +459,11 @@ export const writeWordHighlightKeyHandler = (
   // Navigation filter: cue words when _isCueControl is defined; all words as fallback
   // _isCueControl is set by dynamicHighlight.ts after cues-core init
   const filterCode = `var _targetIdx=[];
-if(globalThis._isCueControl){_allW.forEach(function(w,i){if(globalThis._isCueControl(w))_targetIdx.push(i);});}
-else{_allW.forEach(function(w,i){_targetIdx.push(i);});}
+_allW.forEach(function(w,i){
+var _fLw=(w||"").toLowerCase();
+if(globalThis._isCueControl&&globalThis._isCueControl(w))_targetIdx.push(i);
+else if(globalThis._localCueMap&&globalThis._localCueMap.has(_fLw))_targetIdx.push(i);
+});
 if(!_targetIdx.length)_allW.forEach(function(w,i){_targetIdx.push(i);});`;
 
   // v2.1.110: injected as if-blocks BEFORE switch(O6.key){...}
@@ -745,7 +748,7 @@ globalThis._cueSourceCount=_srcs.length;
 }catch(_re){globalThis._cueResolver=null;globalThis._cueSourceCount=0;}
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
-if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;};
+if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;};
 if(!globalThis._cycleAlt)globalThis._cycleAlt=function(_dir,_a,_b,_c,_req){
 if(!globalThis._hlState||!globalThis._hlState.active)return null;
 var _wds=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
@@ -779,7 +782,36 @@ if(_stWStart<0)return null;
 var _stNewText=_stText.slice(0,_stWStart)+_stNewWord+_stText.slice(_stWStart+_curWord.length);
 globalThis._hlText=_stNewText;
 globalThis._hlState.text=_stNewText;
+globalThis._lastResolvedText=_stNewText;
 return {text:_stNewText,wStart:_stWStart,lenDiff:_stNewWord.length-_curWord.length};
+}
+if(globalThis._localCueMap&&!(_ovr&&_ovr.script)){
+var _dyn=globalThis._dynDefs=globalThis._dynDefs||{words:[]};
+var _dWord=_dyn.words.find(function(w){return w.index===_wi;});
+var _tipR=globalThis._localCueMap.get(_lw);
+if(_tipR&&_tipR.alternatives&&_tipR.alternatives.length>1){
+if(_dWord&&_dWord.source==="tips"){}
+else if(_dWord){_dWord.alts=_tipR.alternatives;_dWord.cueTip=_tipR.cueTip;_dWord.altCueTips=_tipR.altCueTips;_dWord.speak=_tipR.speak||false;_dWord.source="tips";_dWord.currentAltIndex=0;}
+else{var _tipDef={index:_wi,word:_wds[_wi],alts:_tipR.alternatives,cueTip:_tipR.cueTip,altCueTips:_tipR.altCueTips,speak:_tipR.speak||false,source:"tips",currentAltIndex:0};_dyn.words.push(_tipDef);_dWord=_tipDef;}
+}
+if(_dWord&&_dWord.alts&&_dWord.alts.length>1){
+var _curA=typeof _dWord.currentAltIndex==="number"?_dWord.currentAltIndex:0;
+var _nextA=(_curA+_dir+_dWord.alts.length)%_dWord.alts.length;
+_dWord.currentAltIndex=_nextA;
+var _newWord=_dWord.alts[_nextA];
+if(_newWord==null)return null;
+var _taText=globalThis._hlText||"";
+var _taCurWord=_wds[_wi];
+var _taWordPos=0;
+for(var _tawi=0;_tawi<_wi;_tawi++){_taWordPos=_taText.indexOf(_wds[_tawi],_taWordPos)+_wds[_tawi].length;}
+var _taWStart=_taText.indexOf(_taCurWord,_taWordPos);
+if(_taWStart<0)return null;
+var _taNewText=_taText.slice(0,_taWStart)+_newWord+_taText.slice(_taWStart+_taCurWord.length);
+globalThis._hlText=_taNewText;
+globalThis._hlState.text=_taNewText;
+globalThis._lastResolvedText=_taNewText;
+return {text:_taNewText,wStart:_taWStart,lenDiff:_newWord.length-_taCurWord.length};
+}
 }
 if(!_ovr||!_ovr.script)return null;
 var _args=_dir>0?_ovr.upArgs:_ovr.downArgs;
@@ -831,6 +863,36 @@ ${inputZoneVar}=${inputZoneClass}.fromText(_zwsClean,${configVar},${inputZoneVar
 var _hlText=${valueParam}.replace(/[\\u200B\\u200C]/g,"");
 var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
+if(_hlText!==_oldText&&globalThis._dynDefs&&globalThis._dynDefs.words){
+var _cocOld=_oldText.split(/\\s+/).filter(function(w){return w;});
+var _cocNew=_hlText.split(/\\s+/).filter(function(w){return w;});
+var _cocMin=Math.min(_cocOld.length,_cocNew.length);
+for(var _cwi=0;_cwi<_cocMin;_cwi++){
+if(_cocOld[_cwi]!==_cocNew[_cwi]){
+var _cdef=globalThis._dynDefs.words.find(function(d){return d.index===_cwi;});
+if(_cdef){
+if(_cdef.alts&&_cdef.alts.indexOf(_cocNew[_cwi])>=0){_cdef.word=_cocNew[_cwi];_cdef.currentAltIndex=_cdef.alts.indexOf(_cocNew[_cwi]);}
+else{_cdef.word=_cocNew[_cwi];_cdef.alts=null;_cdef.currentAltIndex=0;_cdef.cueTip=null;_cdef.altCueTips=null;_cdef.source=null;}
+}
+}
+}
+if(_cocNew.length<_cocOld.length){
+for(var _cri=_cocNew.length;_cri<_cocOld.length;_cri++){
+var _crdef=globalThis._dynDefs.words.find(function(d){return d.index===_cri;});
+if(_crdef){_crdef.alts=null;_crdef.currentAltIndex=0;_crdef.cueTip=null;_crdef.altCueTips=null;_crdef.source=null;}
+}
+}
+}
+if(globalThis._cuesCore&&globalThis._localCueMap&&globalThis._cuesCore.lookupMultiple){
+try{
+var _eagerWords=_hlText.split(/\\s+/).filter(function(w){return w;});
+var _eagerLookup=globalThis._cuesCore.lookupMultiple(_eagerWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl});
+if(_eagerLookup.found.length>0){
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
+globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_eagerLookup.found);
+}
+}catch(_eleE){}
+}
 if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
 var _asText=_hlText;
 if(_asText!==globalThis._lastResolvedText){
@@ -842,7 +904,9 @@ var _gen=(globalThis._resolveGen=(globalThis._resolveGen||0)+1);
 globalThis._lastResolvedText=_asText;
 globalThis._cueResolver.resolve({text:_asText,words:_asWords,domain:"claude-code"}).then(function(_res){
 if(_gen!==globalThis._resolveGen)return;
-globalThis._dynDefs={words:globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[])};
+var _newDefs=globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[]);
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
+globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_newDefs);
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }).catch(function(){});
 },500);

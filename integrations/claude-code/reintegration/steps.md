@@ -1152,19 +1152,152 @@ User observed statusline `1/N` format for both `cat` and `sat` in ~/opencues on 
 
 ---
 
-## Step 20+ — TBD
+## Step 20 — Tip-word cycling end-to-end (JIT injection + cycle + stale invalidation)
 
-LLM alt-display + cycling continuation:
+**Goal:** Highlighting a tip word (e.g. `commit`, `attribution`, `ultrathink`) shows `(1/N) - <tip>` format in the statusline. Ctrl+Alt+Up/Down cycles through the word's curated tip alternatives in place (text-splicing into the input). All N positions render consistently (no asymmetry between keyword-alts and alt-only-values). Subsequent LLM analysis never overwrites the tip cycle. Editing the text invalidates stale cycle state so the next sentence starts fresh.
 
-- **Merge `_dynDefs` into the renderer's `_isCA` branch** — so tip/cue-control words also show LLM-returned alts, not just their static tip. Smallest next win after Step 19.
-- **Alt-cycling in `_cycleAlt` for `_dynDefs` words** — Ctrl+Alt+Up/Down cycles `_dynDefs.words[idx].alts`, text-splicing the current alt into the input (mirror of Step 12's arithmetic splice).
-- **Tip-word visual dim (renderer wrap)** — tip-holder words render faded to signal "has alternatives" before Ctrl+Alt.
-- **Clear-on-change** — invalidate `_dynDefs` entries when text changes so stale alts don't persist.
-- **`readControlState` wiring** — control-bound blanks.
-- **Factor `_hlExport.cueTip` writes** — refactor for clean gating.
+**Why this step is big:** The plumbing for tip-word cycling straddles five code paths that all need to stay consistent. Getting any one wrong causes user-visible glitches — we iterated through three wrong intermediate states with user feedback before landing the final shape. Documenting the final state and the traps along the way so future version bumps can skip the wrong paths.
+
+**Final implementation (six intertwined changes in `wordHighlight.ts` `fullCode`):**
+
+**1. Narrow `_isCueControl`** — revert Step 5's over-extension. Tip words (`_localCueMap`) are NOT cue-controls anymore:
+```diff
+- if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;
++ if((globalThis._cueControlOverrides||{})[_low])return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;
+```
+
+**2. Navigation filter includes `_localCueMap`** — keeps tip words navigable via Ctrl+Alt+Left/Right even though they're no longer `_isCueControl`:
+```diff
+- if(globalThis._isCueControl){_allW.forEach(function(w,i){if(globalThis._isCueControl(w))_targetIdx.push(i);});}
+- else{_allW.forEach(function(w,i){_targetIdx.push(i);});}
++ _allW.forEach(function(w,i){
++   var _fLw=(w||"").toLowerCase();
++   if(globalThis._isCueControl&&globalThis._isCueControl(w))_targetIdx.push(i);
++   else if(globalThis._localCueMap&&globalThis._localCueMap.has(_fLw))_targetIdx.push(i);
++ });
+  if(!_targetIdx.length)_allW.forEach(function(w,i){_targetIdx.push(i);});
+```
+
+**3. Eager tip lookup on every keystroke** — populates `_dynDefs.words` with tip entries before the debounce/LLM fires, so highlighting a tip word shows `(1/N)` immediately. Mirrors original dynamicHighlight.ts:1133-1143:
+```js
+if(globalThis._cuesCore&&globalThis._localCueMap&&globalThis._cuesCore.lookupMultiple){
+try{
+var _eagerWords=_hlText.split(/\\s+/).filter(function(w){return w;});
+var _eagerLookup=globalThis._cuesCore.lookupMultiple(_eagerWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl});
+if(_eagerLookup.found.length>0){
+if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
+globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_eagerLookup.found);
+}
+}catch(_eleE){}
+}
+```
+
+**4. Clear-on-change invalidation** — when text changes, per-position check: if new word is in old alts → valid cycle (update index); else → clear alts. Positions past new length also cleared. Runs BEFORE eager lookup so stale entries are wiped first. Mirrors original writeDynamicClearOnChange:
+```js
+if(_hlText!==_oldText&&globalThis._dynDefs&&globalThis._dynDefs.words){
+var _cocOld=_oldText.split(/\\s+/).filter(function(w){return w;});
+var _cocNew=_hlText.split(/\\s+/).filter(function(w){return w;});
+var _cocMin=Math.min(_cocOld.length,_cocNew.length);
+for(var _cwi=0;_cwi<_cocMin;_cwi++){
+if(_cocOld[_cwi]!==_cocNew[_cwi]){
+var _cdef=globalThis._dynDefs.words.find(function(d){return d.index===_cwi;});
+if(_cdef){
+if(_cdef.alts&&_cdef.alts.indexOf(_cocNew[_cwi])>=0){_cdef.word=_cocNew[_cwi];_cdef.currentAltIndex=_cdef.alts.indexOf(_cocNew[_cwi]);}
+else{_cdef.word=_cocNew[_cwi];_cdef.alts=null;_cdef.currentAltIndex=0;_cdef.cueTip=null;_cdef.altCueTips=null;_cdef.source=null;}
+}
+}
+}
+if(_cocNew.length<_cocOld.length){
+for(var _cri=_cocNew.length;_cri<_cocOld.length;_cri++){
+var _crdef=globalThis._dynDefs.words.find(function(d){return d.index===_cri;});
+if(_crdef){_crdef.alts=null;_crdef.currentAltIndex=0;_crdef.cueTip=null;_crdef.altCueTips=null;_crdef.source=null;}
+}
+}
+}
+```
+
+**5. `_cycleAlt` tip-alt branch** — when cycling a word with a `_localCueMap` entry (and no script-backed override), overrides `_dWord` with tip data and cycles through `_tipR.alternatives` with wrap-around modulo. Text-splice the result into `_hlText`:
+```js
+if(globalThis._localCueMap&&!(_ovr&&_ovr.script)){
+var _dyn=globalThis._dynDefs=globalThis._dynDefs||{words:[]};
+var _dWord=_dyn.words.find(function(w){return w.index===_wi;});
+var _tipR=globalThis._localCueMap.get(_lw);
+if(_tipR&&_tipR.alternatives&&_tipR.alternatives.length>1){
+if(_dWord&&_dWord.source==="tips"){}
+else if(_dWord){_dWord.alts=_tipR.alternatives;_dWord.cueTip=_tipR.cueTip;_dWord.altCueTips=_tipR.altCueTips;_dWord.speak=_tipR.speak||false;_dWord.source="tips";_dWord.currentAltIndex=0;}
+else{var _tipDef={index:_wi,word:_wds[_wi],alts:_tipR.alternatives,cueTip:_tipR.cueTip,altCueTips:_tipR.altCueTips,speak:_tipR.speak||false,source:"tips",currentAltIndex:0};_dyn.words.push(_tipDef);_dWord=_tipDef;}
+}
+if(_dWord&&_dWord.alts&&_dWord.alts.length>1){
+var _curA=typeof _dWord.currentAltIndex==="number"?_dWord.currentAltIndex:0;
+var _nextA=(_curA+_dir+_dWord.alts.length)%_dWord.alts.length;
+_dWord.currentAltIndex=_nextA;
+var _newWord=_dWord.alts[_nextA];
+if(_newWord==null)return null;
+var _taText=globalThis._hlText||"";
+var _taCurWord=_wds[_wi];
+var _taWordPos=0;
+for(var _tawi=0;_tawi<_wi;_tawi++){_taWordPos=_taText.indexOf(_wds[_tawi],_taWordPos)+_wds[_tawi].length;}
+var _taWStart=_taText.indexOf(_taCurWord,_taWordPos);
+if(_taWStart<0)return null;
+var _taNewText=_taText.slice(0,_taWStart)+_newWord+_taText.slice(_taWStart+_taCurWord.length);
+globalThis._hlText=_taNewText;
+globalThis._hlState.text=_taNewText;
+globalThis._lastResolvedText=_taNewText;
+return {text:_taNewText,wStart:_taWStart,lenDiff:_newWord.length-_taCurWord.length};
+}
+}
+```
+
+Inserted BEFORE the `if(!_ovr||!_ovr.script)return null;` bail so tip words (which have no script override) don't early-return.
+
+**6. Step 19 LLM merge uses `mergeWordDefs` gap-fill** (not replacement) — preserves tip-source entries across subsequent LLM runs:
+```diff
+- globalThis._dynDefs={words:globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[])};
++ var _newDefs=globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[]);
++ if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
++ globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_newDefs);
+```
+
+**Also applied to Step 12 (arithmetic cycle):** added `globalThis._lastResolvedText=_stNewText;` after text-splice to prevent LLM re-firing on step-control arithmetic cycles.
+
+**Verification matrix:**
+
+- `commit this plan`: `commit`/`attribution`/`co-authored` all show `(N/3) - <tip>` consistently.
+- Cycle from `commit` through its 3 alts: stays on curated list, never shows LLM words.
+- After cycling, no new LLM request fires (`_lastResolvedText` kept current).
+- Clear input, retype `the cat sat`: each word navigates to its own LLM-populated alts (or none if LLM declined). `the` does NOT inherit `commit`'s alts.
+- `raise volume now`: `volume` still shows live audio level (script-override path unaffected; `_isCueControl` still true for volume).
+- `abc 42f xyz`: `42f` still cycles numeric (step-pattern path unaffected).
+
+**Peculiarities found during this step (iteration log):**
+
+1. **Step 5 was too broad.** I originally made `_isCueControl` return true for `_localCueMap` words. Consequence: tip words went through the `_isCA` renderer branch which unconditionally sets `alts=[word]` and `cueControl:true`. Statusline showed just the tip (no `(N/N)`) for tip-keywords but showed `(N/N)` for alt-only-values like `co-authored` that weren't in the map. User caught the asymmetry: "one of the words in commit had a (3/3) on co-authored in the tips [but the other bits don't]". Fix: narrow `_isCueControl` back to overrides + stepPatterns only. Tip words go through `_dynDefs` branch for consistent `(N/N)` display.
+
+2. **Mirror-the-baseline rule applied twice.** First wrong attempt: I proposed overlaying `_dynDefs` INTO the `_isCA` branch (displaying `(1/N)` for cue-controls). User asked "is that how it works on the original" — checking `418066f`'s code showed the original kept `_isCA` asymmetric (just static tip). Saved a detour. Second wrong attempt: I used `_dynDefs={words: newDefs}` replacement in Step 19; the original used `mergeWordDefs` gap-fill. Switched to gap-fill so tip-source entries survive LLM updates.
+
+3. **Stale `_dynDefs` across text changes.** Initial implementation invalidated nothing. User reported: "those positions are persisting when I have 'the cat sat' 'the' has alternatives from commit". The `_dynDefs.words` array is keyed by position, not content; stale entries survive text edits. Fix: per-position clear-on-change that checks "is the new word in the old alts?" — yes → valid cycle; no → clear.
+
+4. **LLM re-fired on every cycle.** Text-splice changed `_hlText`; clear-on-typing saw "new text" and debounced a fresh LLM call. Wasteful. Fix: `_cycleAlt` sets `_lastResolvedText = _taNewText` (and same for Step 12's step-arithmetic cycle) before returning, so the next render sees no change needing analysis.
+
+5. **Tips win over LLM on cycle.** If both LLM and tips populate a word, cycling a tip word should use the curated tip alts (matches original's `mergeWordDefs` gap-fill semantics + user's explicit "stays on local/defined alts not generated ones"). Step 20's `_cycleAlt` branch overrides `_dWord` with `_tipR` data whenever the word is in `_localCueMap` AND not a script-backed override. Resets `currentAltIndex=0` on the override so cycle starts cleanly.
+
+6. **Precedence in `_cycleAlt` must be: step-patterns → tip-alts → script-override bail.** Tip branch goes BEFORE the `if(!_ovr||!_ovr.script)return null;` bail because tip words have no script override; the bail would short-circuit them out. Step-patterns come first because the step branch returns for matches before reaching the tip branch.
+
+**Status: ✅ Done** (verified 2026-04-17: consistent `(N/N)` on all three tip positions; no LLM mixing; no cross-sentence leakage; prior steps unaffected)
+
+---
+
+## Step 21+ — TBD
+
+LLM/blank continuation:
+
+- **`readControlState` wiring** — control-bound blanks can read their live value during auto-populate.
+- **Blank-fill (Steps 13-scope from earlier pitch)** — detect `_` placeholder, match nearby keyword, auto-populate. Large; decompose at step time.
+- **Factor `_hlExport.cueTip` writes** — still deferred refactor motivated by Step 16's peculiarity.
 - **Implement `tips-mode: minimal` filtering** — design first.
+- **Dynamic render wrap** — tip-word fade / visual hint that a word has alternatives.
 
-Pick one after Step 19 is verified.
+Pick one after Step 20 is verified.
 
 ---
 
