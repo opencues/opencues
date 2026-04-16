@@ -216,38 +216,77 @@ Rendering patch injects a dim branch keyed on `globalThis._stepPatterns`. That a
 
 ---
 
-## Step 3 — `dynamicHighlight`: cues-core init
+## Principle for Step 3+
 
-**Goal:** Load cues-core at startup, build `_localCueMap` for instant tips lookup.
+**Each step must be the smallest diff over the previous step that produces a single visible, testable change.** No speculative wiring. No "while we're in here" additions. If a step needs infrastructure (cues-core, hot-reload, LLM), give it its own step first. Bigger steps → harder to debug when verification fails.
 
-**Note:** `writeCuesCoreInit` already finds its injection point successfully (confirmed during initial apply run — logged `cues-core initialized`). Just needs to be re-enabled without the failing sub-patches blocking it.
+Don't pre-plan all the way to the end — decompose the next step only, execute it, verify it, then plan the next. Steps below Step 3 are placeholders to be refined as we get there.
 
-**Status: 🔲 TODO**
-
----
-
-## Step 4 — `dynamicHighlight`: LLM analysis trigger
-
-**Goal:** Pause on a word → Groq API called → alternatives populated.
-
-**Sub-patches involved:**
-- `writeAutoSubmitDebounced` — needs input handler anchor (same `return{handleKeyDown:` as step 1, already fixed)
-
-**Status: 🔲 TODO**
+**Why the sizing matters beyond this re-integration:** this step list is the *runbook* for every future Claude Code version bump. When v2.1.111 (or v2.2.x) changes upstream internals, re-running Steps 1-N one at a time is how we localise the break — whichever step's regex/anchor stops matching is the one needing a fix. If a step bundles three changes, a failure forces us to untangle which of the three broke. So calibrate step size to "one anchor, one behavioural change, one test" — that's the unit we can re-verify against any version without guesswork.
 
 ---
 
-## Step 5 — `dynamicHighlight`: cycling + rendering + clear-on-change
+## Step 3 — Bare numbers dim in the input
 
-**Goal:** `Ctrl+Alt+Up`/`Down` cycles alternatives. Words with tips are dimmed. Typing a new word clears stale alts.
+**Goal:** When the user types `abc 42 xyz`, the `42` renders in dark gray while everything else renders normally. That is the only behavioural change over Step 2.
 
-**Sub-patches involved:**
-- `writeDynamicCycleHandlers`
-- `writeDynamicRawSequenceHandlers`
-- `writeDynamicRendering`
-- `writeDynamicClearOnChange`
+**Why this choice:** Step 2 already injected a `_numRanges`/dim code path in the renderer, but it reads `globalThis._stepPatterns` — which is empty without the cues-core IIFE. The simplest testable Step 3 is to swap that read for a hardcoded bare-number regex. No cues-core load, no config parsing, no `_reloadCuesConfig`, no `_isCueControl`. Just one-line swap in `wordHighlight.ts`.
 
-**Status: 🔲 TODO**
+**Exact change (single line, `wordHighlight.ts` ~line 1095):**
+
+```diff
+- else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
++ else if(/^-?\d+(\.\d+)?$/.test(_w)){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+```
+
+**Not in scope for Step 3** (each will be its own step later):
+- Loading cues-core.
+- Populating `_localCueMap` / `_cueControlOverrides` / `_isCueControl` / `_stepPatterns`.
+- Cue-control navigation filter (all words remain navigable, as in Step 2).
+- `_reloadCuesConfig`, folder-config discovery, hot-reload.
+- LLM triggers, cycling, rendering wrap, clear-on-change.
+
+**Verification:**
+1. Type `abc 42 xyz` in a fresh `claude-cues` session. `42` dims; `abc`/`xyz` render normally.
+2. Also try `3.14`, `-7`, `0`, `42.0` — all dim.
+3. `hello42` stays normal (regex is anchored, not substring).
+4. No regression on Step 1 (cursor JSON) or Step 2 (Ctrl+Alt navigation, Escape clear, typing clear).
+
+**Rollback:** Revert the one line in `wordHighlight.ts` to read `_stepPatterns`. No other files touched.
+
+**Gotchas found during this step:**
+
+1. **Template-literal backslash eats regex escapes.** The regex lives in a TypeScript template literal (`` ` ``) inside `wordHighlight.ts`. Single-escape (`\d`, `\.`) gets consumed by the template parser and lands in `cli.js` as bare `d` — matches nothing, silent failure. Source must be double-escaped: `\\d`, `\\.`. Applies to any regex injected into `cli.js` through a template literal — worth checking Steps 1 and 2 if they ever regress.
+
+2. **The dim render slot was already wired at Step 2.** `_numRanges.push(...)` lives in `wordHighlight.ts`'s renderer from Step 2 onwards, gated behind a read of `globalThis._stepPatterns`. Step 3 did NOT add a new render branch — it just swapped the condition that feeds `_numRanges`. Useful to remember: when "Step 2 works but nothing dims" is the symptom, it's because `_stepPatterns` is empty (the feed), not because the renderer is missing the dim path (the slot).
+
+3. **The original `controls/numbers/cue.md` uses `stepSuffixes: f`, NOT a bare-integer pattern.** Generated regex is `^-?\d+(\.\d+)?f$` — matches `42f`, not `42`. This means a future step that replaces the hardcoded regex with a live `_stepPatterns` read (candidate Step 7 below) will **regress bare-number dimming** unless:
+   - The user adds `stepPattern: ^-?\d+(\.\d+)?$` to some control, OR
+   - Step 7 keeps both code paths (hardcoded number regex + `_stepPatterns` lookup), OR
+   - We explicitly accept the regression (bare numbers stop dimming; only `42f`-style step-suffix words dim).
+   Decide which before executing Step 7.
+
+**Status: ✅ Done** (verified 2026-04-16: bare numbers dim, Steps 1-2 not regressed)
+
+---
+
+## Step 4+ — TBD
+
+Deferred decomposition. Candidate next-step options, in rough order of size:
+
+- **Load cues-core + populate `_localCueMap` only** (no reload fn, no overrides) — just enough to confirm cues-core loads cleanly on v2.1.110.
+- **Static `_cueControlOverrides` + `_isCueControl`** — hardcoded from the tweakcc config block; enables the navigation filter.
+- **Parse `controls.md` / `cues.md` / `blanks.md` on startup** — one pass, no hot-reload, no folder discovery.
+- **Folder-config discovery** (controls/, cues/, blanks/ subdirs).
+- **`_reloadCuesConfig` hot-reload** on keystroke.
+- **Replace hardcoded number regex with `_stepPatterns` read** once `_stepPatterns` is populated by the above.
+- **Auto-submit debounce**.
+- **LLM trigger → `_dynDefs`**.
+- **Ctrl+Alt+Up/Down cycling**.
+- **Dynamic render wrap** (tip dim, alt substitution, spans).
+- **Clear-on-change**.
+
+Pick one after Step 3 is verified.
 
 ---
 

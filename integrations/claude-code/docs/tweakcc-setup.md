@@ -204,20 +204,55 @@ import { writePatchesAppliedIndication } from './patchesAppliedIndication';
 
 ---
 
-### 3d. Comment out the Cues Patches block
+### 3d. Wire up the Cues Patches block (re-integration WIP)
 
-Find the `// --- Cues Patches ---` block near the bottom of `applyCustomization()` and comment it out. During re-integration, patches are re-enabled one at a time as each is verified working.
+Find the `// --- Cues Patches ---` block near the bottom of `applyCustomization()`. During re-integration, patches are enabled one at a time as each is verified against v2.1.110. Current state — Steps 1-3 enabled; Step 3 is just a hardcoded number-dim regex inside `wordHighlight.ts` (no cues-core IIFE yet), so no extra orchestration is needed here:
+
+```ts
+// Imports at the top of the file (writeDynamicHighlight stays imported for Steps 4+ but isn't called yet):
+import { writeCursorStateExport } from './cursorStateExport';
+import { writeWordHighlight } from './wordHighlight';
+import { writeDynamicHighlight } from './dynamicHighlight';
+```
 
 ```ts
 // --- Cues Patches ---
-// NOTE: Re-enable one at a time as each patch is verified for v2.1.110.
-// {
-//   let result: string | null;
-//   if (config.settings.misc?.enableCursorStateExport) { ... }
-//   if (config.settings.misc?.enableWordHighlight) { ... }
-//   if (config.settings.misc?.enableDynamicHighlight ...) { ... }
-// }
+{
+  let result: string | null;
+
+  // Step 1: cursorStateExport — verified working on v2.1.110
+  if (config.settings.misc?.enableCursorStateExport) {
+    const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
+    if ((result = writeCursorStateExport(content, exportPath))) content = result;
+  }
+
+  // Step 2 + Step 3: wordHighlight — navigation + bare-numbers dim
+  // (Step 3 is a one-line swap inside wordHighlight.ts: the _stepPatterns read
+  //  was replaced with a hardcoded /^-?\d+(\.\d+)?$/ — no orchestration here.)
+  if (config.settings.misc?.enableWordHighlight) {
+    const highlightConfig = {
+      enableWordHighlight: config.settings.misc.enableWordHighlight,
+      highlightColor: config.settings.misc.highlightColor,
+      highlightIndexFromLeft: config.settings.misc.highlightIndexFromLeft,
+      highlightWrap: config.settings.misc.highlightWrap,
+      highlightAutoScroll: config.settings.misc.highlightAutoScroll,
+      highlightClearOnEscape: config.settings.misc.highlightClearOnEscape,
+      highlightClearOnNavigation: config.settings.misc.highlightClearOnNavigation,
+      highlightWordPattern: config.settings.misc.highlightWordPattern,
+      highlightMode: config.settings.misc.highlightMode,
+      highlightExportEnabled: config.settings.misc.highlightExportEnabled,
+      highlightExportPath: config.settings.misc.highlightExportPath,
+      numberDimming: config.settings.misc.numberDimming,
+      cueControlOverrides: config.settings.misc.cueControlOverrides,
+    };
+    if ((result = writeWordHighlight(content, highlightConfig))) content = result;
+  }
+
+  // Steps 4+: dynamicHighlight / cues-core IIFE / LLM — still TODO, nothing wired.
+}
 ```
+
+**Escape-level gotcha** (burned once already): the Step 3 regex lives inside a TypeScript template literal (`` ` ``) in `wordHighlight.ts`. Use `\\d` / `\\.` in source — a single `\d` gets consumed by the template-literal parser and lands in `cli.js` as a bare `d`, which silently matches nothing.
 
 ---
 
