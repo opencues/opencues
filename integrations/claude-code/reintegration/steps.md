@@ -1443,20 +1443,89 @@ if(globalThis._debugLog&&_blankSlots.length>0)globalThis._debugLog("blankSlots: 
 
 ---
 
-## Step 24+ — TBD
+## Step 24 — Blank-fill sub-step 2: auto-populate `_` with `stepValues[0]`
+
+**Goal:** When a `_blankSlot` points at a control with `stepValues && blankAutoPopulate !== false`, the `_` gets auto-replaced with `stepValues[0]` in the input text. Visible UX for the first time — type `affirm _` → input becomes `affirm I am strong`.
+
+**Why this choice:** Simplest auto-populate source (array read, no subprocess), establishes the text-splice + input-refresh pattern that subsequent substeps (blankScript, readControlState) will reuse. Only touches list-controls like `affirmations`; script-backed fills (weather, stocks, hackernews, prompt) are untouched.
+
+**Exact change (one block in `wordHighlight.ts` `fullCode`, appended after the blank scanner):**
+
+```js
+if(_blankSlots.length>0&&globalThis._forceInputRefresh){
+var _apopText=_hlText;
+var _apopped=false;
+for(var _apsi=_blankSlots.length-1;_apsi>=0;_apsi--){
+var _apSlot=_blankSlots[_apsi];
+var _apCtrl=(globalThis._cueControlOverrides||{})[_apSlot.controlName];
+if(!_apCtrl||_apCtrl.blankAutoPopulate===false)continue;
+if(!_apCtrl.stepValues||!_apCtrl.stepValues.length)continue;
+var _apFill=_apCtrl.stepValues[0];
+var _apWordPos=0;
+for(var _apwi=0;_apwi<_apSlot.index;_apwi++){_apWordPos=_apopText.indexOf(_bwds[_apwi],_apWordPos)+_bwds[_apwi].length;}
+var _apUPos=_apopText.indexOf("_",_apWordPos);
+if(_apUPos<0)continue;
+_apopText=_apopText.slice(0,_apUPos)+_apFill+_apopText.slice(_apUPos+1);
+_apopped=true;
+}
+if(_apopped){
+globalThis._hlText=_apopText;
+if(globalThis._hlState)globalThis._hlState.text=_apopText;
+globalThis._lastResolvedText=_apopText;
+if(globalThis._debugLog)globalThis._debugLog("autoPopulate: "+_apopText);
+globalThis._forceInputRefresh();
+}
+}
+```
+
+**Key mechanics:**
+- Right-to-left iteration so earlier splices don't invalidate later positions.
+- Position walker finds the `_wordPos` for each blank index, then `indexOf("_", _wordPos)` pinpoints the character offset to splice.
+- `_lastResolvedText = _apopText` suppresses LLM re-trigger on the auto-populated text (otherwise the debounce would fire on `affirm I am strong`).
+- `_forceInputRefresh()` is Step 2's helper: schedules a 16ms `setTimeout` that calls `onChange(_hlText + ZWC)` → component re-renders with new value. Single-render flicker is imperceptible.
+- Once `_` is replaced, next render's scanner finds no `_` at that position → no re-populate. Natural idempotence.
+
+**Not in scope for Step 24:**
+- `blankScript get` auto-populate (weather, stocks, hackernews, prompt) — different async pattern.
+- Span tracking: multi-word fills like "I am strong" land in the input as 3 separate navigable words. They'll cycle as separate words (via Step 20 tip-cycle or LLM alts) rather than as a single blank. Span tracking + consume-all cycling needed to treat as one unit.
+- Cycling filled blanks through `stepValues` (would need JIT-inject into `_dynDefs` similar to Step 20's tip-alt branch).
+- `blankDismissible` append `_` as cycle option.
+- `blankClearKeywords` strip trigger words on fill.
+- `blankReadOnly` (display-only blanks).
+- `blankSatellite` / `blankConsumeAll` / `blankConsumeContext`.
+- Dismissed-blank tracking (re-typing `_` re-populates indefinitely).
+- Keyword expansions (`rddt` → `Reddit`).
+
+**Verification (verified 2026-04-17):**
+- `affirm _` → input becomes `affirm I am strong`. ✅
+- `improve prompt _` → stays (prompt has `blankScript`, no `stepValues`). ✅
+- `reddit stock _` → stays (stocks has `blankScript`). ✅
+- `the cat _ sat` → stays (no matching keyword). ✅
+- Debug log (with debug-mode: on) shows `autoPopulate: <new text>`.
+
+**Rollback:** Remove the auto-populate block. `_blankSlots` continues to populate for detection but no text mutation.
+
+**Peculiarities found during this step:** *None*. Worked first try. The `_forceInputRefresh` → 16ms onChange mechanism (from Step 2) carried auto-populate without extra plumbing. Right-to-left iteration prevented index-shift bugs that would have surfaced with two blanks.
+
+**Status: ✅ Done** (verified 2026-04-17)
+
+---
+
+## Step 25+ — TBD
 
 Blank-fill continuation:
 
-- **Auto-populate with `stepValues[0]`** — consume `_blankSlots`, replace `_` with `stepValues[0]` for controls that declare them (affirmations, list controls). Visible test. Would establish the text-splice pattern.
-- **Auto-populate via `blankScript get`** — for `weather`, `stocks`, `hackernews`, etc. Different async pattern (spawn script, wait, inject).
-- **Span tracking** — multi-word fill values (`"I am strong"`) need to track that 3 words belong to one blank.
-- **Cycling filled blanks** — Ctrl+Alt+Up/Down cycles through `stepValues` for a filled slot.
-- **`blankDismissible`** — append `_` as final cycle option so user can dismiss.
-- **`blankClearKeywords`** — on fill, strip the trigger keywords from the input.
-- **`readControlState` wiring** — so control-bound blanks (volume, brightness) can pre-populate with live value.
+- **Auto-populate via `blankScript get`** — for `weather`, `stocks`, `hackernews`. Async subprocess spawn; needs non-blocking flow (spawn → `_pendingFills[slotIdx]` → on completion refresh). Similar shape to Step 10's `_cycleAlt` debounce pattern.
+- **Span tracking** — multi-word fills (affirmations) currently land as separate navigable words. Track span for treating as single cycleable unit.
+- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` to cycle filled slots. Similar to Step 20's tip-alt branch but keyed on `_apCtrl.stepValues`.
+- **`blankDismissible`** — append `_` to the stepValues cycle list so user can cycle back to the blank.
+- **`blankClearKeywords`** — on fill, strip trigger keywords from input.
+- **`readControlState` wiring** — control-bound blanks (volume, brightness) auto-populate with live value via `blankScript get`.
 - **Keyword expansions** — `rddt` → `Reddit` at fill time.
+- **Factor `_hlExport.cueTip` writes** — still deferred refactor motivated by Step 16's peculiarity.
+- **Implement `tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 23 is verified.
+Pick one after Step 24 is verified.
 
 ---
 

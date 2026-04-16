@@ -927,6 +927,30 @@ if(_bfFound)_blankSlots.push(_bfFound);
 }
 globalThis._blankSlots=_blankSlots;
 if(globalThis._debugLog&&_blankSlots.length>0)globalThis._debugLog("blankSlots: "+_blankSlots.length+" detected");
+if(_blankSlots.length>0&&globalThis._forceInputRefresh){
+var _apopText=_hlText;
+var _apopped=false;
+for(var _apsi=_blankSlots.length-1;_apsi>=0;_apsi--){
+var _apSlot=_blankSlots[_apsi];
+var _apCtrl=(globalThis._cueControlOverrides||{})[_apSlot.controlName];
+if(!_apCtrl||_apCtrl.blankAutoPopulate===false)continue;
+if(!_apCtrl.stepValues||!_apCtrl.stepValues.length)continue;
+var _apFill=_apCtrl.stepValues[0];
+var _apWordPos=0;
+for(var _apwi=0;_apwi<_apSlot.index;_apwi++){_apWordPos=_apopText.indexOf(_bwds[_apwi],_apWordPos)+_bwds[_apwi].length;}
+var _apUPos=_apopText.indexOf("_",_apWordPos);
+if(_apUPos<0)continue;
+_apopText=_apopText.slice(0,_apUPos)+_apFill+_apopText.slice(_apUPos+1);
+_apopped=true;
+}
+if(_apopped){
+globalThis._hlText=_apopText;
+if(globalThis._hlState)globalThis._hlState.text=_apopText;
+globalThis._lastResolvedText=_apopText;
+if(globalThis._debugLog)globalThis._debugLog("autoPopulate: "+_apopText);
+globalThis._forceInputRefresh();
+}
+}
 if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
 var _asText=_hlText;
 if(_asText!==globalThis._lastResolvedText){
