@@ -540,21 +540,76 @@ Restart `claude-cues` from inside `~/opencues`. Then:
 
 ---
 
-## Step 9+ — TBD
+## Step 9 — Populate `_stepPatterns` and extend the dim renderer
+
+**Goal:** Control definitions with `stepPattern` or `stepSuffixes` (e.g. `controls/numbers/cue.md` → `stepSuffixes: f`) produce runtime regexes. Words matching those regexes dim alongside bare numbers. `42f` visibly dims; bare `42` still dims via the Step 3 hardcoded regex.
+
+**Why this choice:** Smallest additive diff that closes Step 3 gotcha #3. Two edits:
+1. After folder discovery, iterate `_cueControlOverrides` and build `_stepPatterns` (lift logic from the old `dynamicHighlight.ts` — proven regex-escape approach).
+2. In the renderer's dim branch, OR the step-pattern check alongside the hardcoded bare-number regex.
+
+Both paths coexist — no existing behaviour replaced, so bare numbers don't regress.
+
+**Exact change (two parts):**
+
+Part 1 — append inside Step 7's try body, after the folder-discovery merge:
+```js
+var _stepPats=[];
+Object.values(globalThis._cueControlOverrides||{}).forEach(function(_sc){
+if(_sc.stepPattern){try{_stepPats.push({re:new RegExp(_sc.stepPattern),ctrl:_sc});}catch(_spe){}}
+if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(_sf){var _esc=_sf.replace(/[^a-zA-Z0-9]/g,'\\\\$&');try{_stepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_esc+'$'),ctrl:_sc});}catch(_spe){}});}
+});
+globalThis._stepPatterns=_stepPats;
+```
+
+Part 2 — extend the renderer's dim branch (`wordHighlight.ts` ~line 1123):
+```diff
+- else if(/^-?\\d+(\\.\\d+)?$/.test(_w)){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
++ else if(/^-?\\d+(\\.\\d+)?$/.test(_w)||(globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+```
+
+**Not in scope for Step 9:**
+- Upgrading `_isCueControl` to recognize `_stepPatterns` matches (would make `42f` navigable as cue-control — deferred to future step).
+- Cycling (Up/Down) using step metadata.
+- Tip display for step-matched words (the status-line path at `wordHighlight.ts:606` already reads `_spsT[i].ctrl.stepTip`, so it'll kick in automatically when such a word is highlighted — but that's an inherited behaviour, not a new feature of this step).
+
+**Verification:** from `~/opencues`, restart `claude-cues` and then:
+
+1. Type `abc 42f xyz` → `42f` dims. (New: stepSuffixes from `controls/numbers/cue.md` registered.)
+2. Type `abc 42 xyz` → `42` still dims. (Step 3 hardcoded regex path intact.)
+3. Type `abc 3.5f xyz` → `3.5f` dims. (Decimal stepSuffix also matches.)
+4. Type `abc 42px xyz` → `42px` does NOT dim. (No `px` suffix declared in any control.)
+5. Prior steps unaffected: `commit this plan` (Step 5), `raise brightness now` (Step 8), `raise volume now`, all still work.
+
+**Rollback:** Remove the two changes. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Dim path is now dual-sourced.** Both the hardcoded bare-number regex AND `_stepPatterns` matches push into `_numRanges`. If a user later declares a catch-all `stepPattern: ^-?\d+(\.\d+)?$` for a control, bare numbers will match both — harmless (each word only dims once per render), but structurally redundant. If/when we finally retire the hardcoded regex, either add a catch-all stepPattern somewhere or accept that bare numbers need an explicit control declaration.
+
+2. **`_stepPatterns` is snapshot-on-startup.** Population sits inside the `if(!globalThis._cuesCore)` guard, so it only runs once per process. Editing a control's `stepSuffixes` after launch won't take effect until restart. Hot-reload (Step 10 candidate) will need to factor the population into the re-runnable function.
+
+3. **Regex escape pattern proven twice.** The `\\\\d+(\\\\.\\\\d+)?` source-level escape emitted clean `\\d+(\\.\\d+)?` in `cli.js` → correct regex at runtime. Combined with the Step 3 gotcha (template literal eats single backslashes), this confirms the "4 source backslashes for RegExp string args" convention. Reusable for any future injected regex construction.
+
+**Status: ✅ Done** (verified 2026-04-16: all 5 tests pass, no regressions)
+
+---
+
+## Step 10+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **`_reloadCuesConfig` hot-reload** on keystroke — wraps all Step 5-8 reads into a re-runnable function; edits to `controls.md` / `cues.md` / `controls/*/cue.md` take effect within ~2s without restart.
-- **Populate `_stepPatterns` from parsed controls; replace hardcoded number regex with `_stepPatterns` read** (decide bare-number dim handling per Step 3 gotcha #3).
-- **Consume `_folderCfgs.ignoreWords`** — filter `_isCueControl` to skip ignore-listed words. Depends on user having a real `ignore:` list in cues.md to test.
-- **Parse cwd `blanks.md` on startup** — blank-fill config. No observable effect until a blank-fill step lands.
+- **Upgrade `_isCueControl` to check `_stepPatterns`** — `42f` becomes navigable as a cue-control (currently dims but doesn't filter in navigation). Tiny diff, finishes the step-pattern story.
+- **`_reloadCuesConfig` hot-reload** on keystroke — wraps Step 5-9 into a re-runnable function; config edits take effect within ~2s without restart.
+- **Consume `_folderCfgs.ignoreWords`** — filter `_isCueControl` to skip ignore-listed words.
+- **Parse cwd `blanks.md` on startup** — no observable effect until blank-fill step.
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
-- **Ctrl+Alt+Up/Down cycling**.
+- **Ctrl+Alt+Up/Down cycling** — subprocess spawn per arrow press for control words with `upArgs`/`downArgs`.
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 8 is verified.
+Pick one after Step 9 is verified.
 
 ---
 
