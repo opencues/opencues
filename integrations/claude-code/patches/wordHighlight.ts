@@ -635,7 +635,7 @@ var _ttsVoiceOff=globalThis._openCuesCurrent&&globalThis._openCuesCurrent["voice
 if(_hlExport.cueTip&&!_ttsVoiceOff){
 var _ttsWord=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx;});
 if(_ttsWord&&_ttsWord.speak){_ttsShouldSpeak=true;}
-else if(_hlExport.cueControl){var _ttsCtrl=(globalThis._cueControlOverrides||{})[(_hlExport.highlightedWord||"").toLowerCase()];if(_ttsCtrl&&_ttsCtrl.speak)_ttsShouldSpeak=true;}
+else if(_hlExport.cueControl){var _ttsLw=(_hlExport.highlightedWord||"").toLowerCase();var _ttsCtrl=(globalThis._cueControlOverrides||{})[_ttsLw];if(_ttsCtrl&&_ttsCtrl.speak){_ttsShouldSpeak=true;}else if(globalThis._localCueMap){var _ttsLcm=globalThis._localCueMap.get(_ttsLw);if(_ttsLcm&&_ttsLcm.speak)_ttsShouldSpeak=true;}}
 }
 // For cue-controls, key on index only — tip content changes on every cycle (tip.txt) and must not re-trigger TTS
 var _ttsKey=_ttsShouldSpeak?(_hlExport.cueControl?String(_idx):(_idx+":"+_hlExport.cueTip)):null;

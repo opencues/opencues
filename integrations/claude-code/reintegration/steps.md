@@ -844,20 +844,55 @@ Any word in overrides AND localCueMap will display the override tip.
 
 ---
 
-## Step 14+ — TBD
+## Step 14 — TTS speak on tip highlight (`_localCueMap.speak`)
+
+**Goal:** Tip words with `"speak": true` in `claude-code-tips.json` or cwd `cues.md` (today: `ultrathink` and `Tab` via `~/opencues/cues.md`) speak their tip aloud when highlighted, matching the existing behaviour of script-backed controls like `volume`.
+
+**Why this choice:** Small, audible, purely additive. The TTS plumbing (debounce, spawn, cancel-on-deselect, SpeakCtl.exe fallback) was already injected by Step 2's renderer — what's missing is a single branch that checks `_localCueMap.speak` when the word didn't come from `_cueControlOverrides` or `_dynDefs`. User confirmed `volume` already speaks, so the speaker path is working; only the source-of-speak-flag needed widening.
+
+**Exact change (one line expanded to four, `wordHighlight.ts` in the TTS check block):**
+
+```diff
+- else if(_hlExport.cueControl){var _ttsCtrl=(globalThis._cueControlOverrides||{})[(_hlExport.highlightedWord||"").toLowerCase()];if(_ttsCtrl&&_ttsCtrl.speak)_ttsShouldSpeak=true;}
++ else if(_hlExport.cueControl){var _ttsLw=(_hlExport.highlightedWord||"").toLowerCase();var _ttsCtrl=(globalThis._cueControlOverrides||{})[_ttsLw];if(_ttsCtrl&&_ttsCtrl.speak){_ttsShouldSpeak=true;}else if(globalThis._localCueMap){var _ttsLcm=globalThis._localCueMap.get(_ttsLw);if(_ttsLcm&&_ttsLcm.speak)_ttsShouldSpeak=true;}}
+```
+
+Chain: `_dynDefs[idx].speak` (unwired, LLM step) → `_cueControlOverrides[word].speak` (Step 8 path — volume, brightness) → `_localCueMap[word].speak` (**new**: ultrathink, Tab, plus any cwd cues.md entry with the flag).
+
+**Not in scope for Step 14:**
+- Opting out of TTS via `globalThis._openCuesCurrent["voice-mode"]==="inactive"` — the check is in the code but `_openCuesCurrent` is only populated by an `opencues.md` parser we haven't wired. Today `_ttsVoiceOff` is always undefined/false. Opt-out requires wiring that parser (a future step).
+- `_dynDefs[idx].speak` — needs LLM.
+- TTS on alt-cycle (reading the new alternative aloud) — needs alt cycling.
+
+**Verification (from `~/opencues` after restart):**
+
+1. Type `type ultrathink now`, Ctrl+Alt+Left → highlights `ultrathink`, tip speaks aloud ("Add ultrathink to prompt for max reasoning").
+2. `raise volume now`, highlight `volume` → still speaks live audio level (override path unchanged).
+3. `commit this plan`, highlight `commit` → silent. `commit` has no `speak: true` flag in tips.json or cues.md. Confirms we're reading the flag, not speaking every tip.
+4. No regression on nav / dim / cycling / tip display.
+
+**Rollback:** Revert the one modified TTS-check line. No other files touched.
+
+**Peculiarities found during this step:** *None* — worked first try. Note: the three-source fallback chain (`_dynDefs` → `_cueControlOverrides` → `_localCueMap`) now mirrors the same precedence structure as Step 13's `_caTip` fallback. If we add a fourth source later (e.g. span metadata), both chains need the new branch — candidate for factoring when a fourth slot opens.
+
+**Status: ✅ Done** (verified 2026-04-16: `ultrathink` speaks, `volume` still speaks, `commit` silent)
+
+---
+
+## Step 15+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **TTS speak on tip highlight** — wire `_localCueMap.speak` / `_caOvr.speak` flags to the existing TTS plumbing in the renderer. Visible-audible test.
-- **List-control cycling** — requires span tracking (multi-word stepValues don't fit single-word highlight). Better done after blanks.
-- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function (previously scoped but deferred).
-- **Parse cwd `blanks.md` on startup** (minimally, just for ignoreWords and promptConfig persistence) — no visible change, defer until consumer exists.
+- **Parse `opencues.md` for `_openCuesCurrent`** — enables voice-mode opt-out (`_ttsVoiceOff`) and similar user-toggleable behaviour.
+- **List-control cycling** — requires span tracking; better done after blanks.
+- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function.
+- **Parse cwd `blanks.md` on startup** (minimally, for `ignoreWords` / prompt persistence) — no visible change until consumer exists.
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
 - **Dynamic render wrap** (tip-word fade / alt substitution / spans).
 - **Clear-on-change**.
 
-Pick one after Step 13 is verified.
+Pick one after Step 14 is verified.
 
 ---
 
