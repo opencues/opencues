@@ -489,21 +489,72 @@ Restart `claude-cues` **from inside `~/opencues`**. Then:
 
 ---
 
-## Step 8+ — TBD
+## Step 8 — Folder-config discovery for `controls/`
+
+**Goal:** Cue-controls defined as individual `controls/<name>/cue.md` files (the folder pattern used throughout `~/opencues/controls/`) augment `_cueControlOverrides`. Only `controls/` is consumed; `cues/` and `blanks/` folders are scanned but their output is ignored until the LLM/blanks steps land.
+
+**Why this choice:** The real cue-controls in the repo (`brightness`, `affirmations`, `numbers`, `stocks`, `weather`, `hackernews`, `prompt`, `answer`, `opencues`, plus folder-version `volume`) are sitting idle — Steps 1-7 only pick up the static tweakcc config plus anything in the mono `controls.md` (which is `{}`). This step unlocks them with no contrived test data.
+
+`discoverFolderConfigs` is a public cues-core API that takes I/O adapter functions and walks `cues/`, `blanks/`, `controls/` subdirs. We provide sync-fs adapters and consume only `.controlOverrides`.
+
+**Exact change (appended inside Step 7's try body, before the closing `}catch(_cte){}`):**
+
+```js
+var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_fe){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_fe){return null;}}};
+var _folderCfgs=_cues.discoverFolderConfigs({basePath:process.cwd(),readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});
+if(_folderCfgs.controlOverrides)Object.assign(globalThis._cueControlOverrides,_folderCfgs.controlOverrides);
+```
+
+`Object.assign` semantics: folder controls override both static tweakcc config AND cwd `controls.md` entries on key collision.
+
+**Not in scope for Step 8:**
+- Consuming `_folderCfgs.cuesConfig` (prompt sources for LLM, invisible until LLM step).
+- Consuming `_folderCfgs.blanksConfig` (blank-fill config, invisible until blank steps).
+- Consuming `_folderCfgs.ignoreWords` (ignore list for navigation filter — no consumer wired yet).
+- `_stepPatterns` population (`~/opencues/controls/numbers/cue.md` has `stepSuffixes: f` — Step 8 merges the entry but `_stepPatterns` stays empty until a future step).
+- Hot-reload — folder edits require restart.
+
+**Verification (uses real configs in `~/opencues/controls/`, no test data required):**
+
+Restart `claude-cues` from inside `~/opencues`. Then:
+
+1. Type `raise brightness now` + Ctrl+Alt+Left → only `brightness` highlights (from `controls/brightness/cue.md`).
+2. Type `say affirmations today` → only `affirmations` highlights (from `controls/affirmations/cue.md`).
+3. Type `raise volume now` → `volume` still highlights (folder version overwrites static; functionally equivalent, same control name).
+4. Type `commit this plan` → Step 5 tips still navigable.
+5. Type `abc 42 xyz` → `42` still dims (Step 3 hardcoded regex, unaffected by folder discovery).
+
+**Rollback:** Remove the three appended lines. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Controls with a `script` field fire real shell commands on highlight.** `~/opencues/controls/volume/cue.md` declares `script: ./volume.sh`. When Step 8 merges the volume override into `_cueControlOverrides`, the Step 2 renderer path at `wordHighlight.ts:613` (`execSync("bash "+_caOvr.script+" get",{timeout:2000,...})`) now has a real script to call — so highlighting `volume` queries the live audio level and the statusline shows the current percentage. This was invisible in Steps 6-7 because their test entries had no `script` field. Semantically correct, but worth knowing: **every Ctrl+Alt+Left/Right landing on a script-backed cue-control spawns a bash subprocess** with a 2s timeout. Budget accordingly when writing scripts (fast / cacheable preferred).
+
+2. **Folder discovery overrides static and mono-file `controls.md` entries on key collision.** `Object.assign` order: static (Step 2) → mono controls.md (Step 6) → folder `controls/<name>/cue.md` (Step 8). Last write wins. Functionally harmless when folder-version and static-version agree on the same control (e.g. `volume`), but if a user declares the same key twice with different scripts, the folder version silently clobbers the static one. Document as the resolution rule.
+
+3. **`cues/` and `blanks/` folder scans happen but are discarded.** `discoverFolderConfigs` always walks all three subdirs. We consume only `_folderCfgs.controlOverrides`. This means the cwd still pays the I/O cost of reading every `cues/<name>/cue.md` and (in future) `blanks/<name>/cue.md` at startup — wasted work until LLM/blank steps consume them. Acceptable tradeoff for API simplicity; revisit only if startup time becomes an issue.
+
+4. **Step 3 hardcoded number regex still reigns.** `controls/numbers/cue.md` declares `stepSuffixes: f` (would match `42f`) but `_stepPatterns` remains empty — Step 8 merges the control into `_cueControlOverrides` but doesn't populate step-pattern regexes. Bare `42` dims via Step 3's hardcoded regex; `42f` does NOT dim because no consumer reads the step-suffix metadata yet. Flagged as a deferred feature, not a regression.
+
+**Status: ✅ Done** (verified 2026-04-16: all 5 tests pass, no regressions; volume script fires on highlight as expected from Step 2 plumbing)
+
+---
+
+## Step 9+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Parse cwd `blanks.md` on startup** — blank-fill config. No observable effect until a blank-fill step lands; may need bundling with a blank-consumer step.
-- **Folder-config discovery** (`controls/`, `cues/`, `blanks/` subdirs) — reuses cues-core's `discoverFolderConfigs`. Unlocks the real controls sitting in `~/opencues/controls/volume/`, `/brightness/`, etc.
-- **`_reloadCuesConfig` hot-reload** on keystroke — edits to controls.md / cues.md take effect within ~2s.
+- **`_reloadCuesConfig` hot-reload** on keystroke — wraps all Step 5-8 reads into a re-runnable function; edits to `controls.md` / `cues.md` / `controls/*/cue.md` take effect within ~2s without restart.
 - **Populate `_stepPatterns` from parsed controls; replace hardcoded number regex with `_stepPatterns` read** (decide bare-number dim handling per Step 3 gotcha #3).
+- **Consume `_folderCfgs.ignoreWords`** — filter `_isCueControl` to skip ignore-listed words. Depends on user having a real `ignore:` list in cues.md to test.
+- **Parse cwd `blanks.md` on startup** — blank-fill config. No observable effect until a blank-fill step lands.
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
 - **Ctrl+Alt+Up/Down cycling**.
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 7 is verified.
+Pick one after Step 8 is verified.
 
 ---
 
