@@ -25,11 +25,11 @@ const findInputStateHandlerLocation = (oldFile: string): LocationResult | null =
   }
 
   // Find the return statement in the function
-  // Pattern: return{onInput:X,renderedValue:
+  // Pattern: return{handleKeyDown:X,renderedValue: (was onInput: pre-v2.1.110)
   const funcStart = match.index;
   const searchSection = oldFile.slice(funcStart, funcStart + 10000);
 
-  const returnPattern = /return\{onInput:([$\w]+),renderedValue:/;
+  const returnPattern = /return\{handleKeyDown:([$\w]+),renderedValue:/;
   const returnMatch = searchSection.match(returnPattern);
 
   if (!returnMatch || returnMatch.index === undefined) {

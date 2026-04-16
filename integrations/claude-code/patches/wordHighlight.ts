@@ -154,13 +154,13 @@ import { LocationResult, showDiff, getRequireFuncName, escapeIdent } from './ind
 /**
  * Find the key action dispatcher function.
  *
- * This function handles key events with a switch statement.
- * Pattern: function XXX(YY){switch(!0){case YY.escape:
+ * v2.1.110+: function t(O6,k6){switch(O6.key){case"escape":
+ * Injection point: BEFORE the switch, so we can prepend if-blocks.
  */
 const findKeyDispatcherLocation = (oldFile: string): LocationResult | null => {
-  // Find the function with switch(!0) for key handling
-  // Note: Don't escape ! - it's not a special regex character
-  const funcPattern = /\bfunction ([$\w]+)\(([$\w]+)\)\{switch\(!0\)\{case \2\.escape:/;
+  // Matches: function t(O6,k6){switch(O6.key){case"escape":
+  // Groups: [1]=funcName, [2]=eventParam (O6), [3]=keyParam (k6)
+  const funcPattern = /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{switch\(\2\.key\)\{case"escape":/;
   const match = oldFile.match(funcPattern);
 
   if (!match || match.index === undefined) {
@@ -168,19 +168,16 @@ const findKeyDispatcherLocation = (oldFile: string): LocationResult | null => {
     return null;
   }
 
-  // Find the position right after "switch(!0){"
-  const switchStartPos = oldFile.indexOf('switch(!0){', match.index);
-  if (switchStartPos === -1) {
-    console.error('patch: wordHighlight: failed to find switch statement');
-    return null;
-  }
+  // Inject BEFORE the switch — right after the opening { of the function
+  const funcBodyStart = match.index + `function ${match[1]}(${match[2]},${match[3]}){`.length;
 
   return {
-    startIndex: switchStartPos + 'switch(!0){'.length,
-    endIndex: switchStartPos + 'switch(!0){'.length,
+    startIndex: funcBodyStart,
+    endIndex: funcBodyStart,
     identifiers: [
-      match[1], // function name (VA)
-      match[2], // key param name (AA)
+      match[1], // function name (t)
+      match[2], // event param (O6)
+      match[3], // key param (k6)
     ],
   };
 };
@@ -208,7 +205,8 @@ const findInputStateHandlerLocation = (oldFile: string): LocationResult | null =
   // (key handler, raw sequence, clearOnTyping) injects code pushing the return further
   const searchSection = oldFile.slice(funcStart, funcStart + 60000);
 
-  const returnPattern = /return\{onInput:([$\w]+),renderedValue:/;
+  // v2.1.110+: return{handleKeyDown: (was onInput: pre-v2.1.110)
+  const returnPattern = /return\{handleKeyDown:([$\w]+),renderedValue:/;
   const returnMatch = searchSection.match(returnPattern);
 
   if (!returnMatch || returnMatch.index === undefined) {
@@ -220,17 +218,17 @@ const findInputStateHandlerLocation = (oldFile: string): LocationResult | null =
     startIndex: funcStart + returnMatch.index,
     endIndex: funcStart + returnMatch.index,
     identifiers: [
-      match[1],   // function name (NV1 or f31)
-      match[2],   // value param name (A)
+      match[1],   // function name (Dy8)
+      match[2],   // value param name (q)
       match[3],   // onChange param name (K)
-      match[4],   // externalOffset param name (j)
-      match[5],   // onOffsetChange param name (M)
-      match[6],   // T variable (assigned from externalOffset)
-      match[7],   // k variable (assigned from onOffsetChange)
-      match[8],   // R variable (InputZone instance)
-      match[9],   // InputZone class name (i5)
-      match[10],  // G variable (InputZone config)
-      returnMatch[1], // onInput function name (BA)
+      match[4],   // externalOffset param name (f)
+      match[5],   // onOffsetChange param name (v)
+      match[6],   // x variable (assigned from externalOffset)
+      match[7],   // B variable (assigned from onOffsetChange)
+      match[8],   // m variable (InputZone instance)
+      match[9],   // InputZone class name (cK)
+      match[10],  // P variable (columns — 2nd arg to fromText)
+      returnMatch[1], // handleKeyDown function name (z6)
     ],
   };
 };
@@ -310,9 +308,28 @@ const findRenderedValueLocation = (oldFile: string): LocationResult | null => {
     };
   }
 
-  // Try 4-parameter pattern first (v2.1.x)
+  // Try 5-parameter pattern (v2.1.110+): m.render(X,H,M,j6,G)
+  const pattern5 = /renderedValue:([$\w]+)\.render\(([$\w]+),([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)/;
+  let match = oldFile.match(pattern5);
+
+  if (match && match.index !== undefined) {
+    return {
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
+      identifiers: [
+        match[1], // InputZone variable (m)
+        match[2], // param1 (X)
+        match[3], // param2 (H)
+        match[4], // param3 (M)
+        match[5], // param4 (j6)
+        match[6], // param5 (G)
+      ],
+    };
+  }
+
+  // Try 4-parameter pattern (v2.1.x)
   const pattern4 = /renderedValue:([$\w]+)\.render\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)/;
-  let match = oldFile.match(pattern4);
+  match = oldFile.match(pattern4);
 
   if (match && match.index !== undefined) {
     return {
@@ -399,20 +416,21 @@ export const writeWordHighlightKeyHandler = (
     return null;
   }
 
-  const keyParam = location.identifiers![1];
+  const eventParam = location.identifiers![1]; // O6 — DOM-style keyboard event
   const requireFuncName = getRequireFuncName(oldFile);
 
-  // Find InputZone class name and config variable for fromText calls
+  // Find InputZone class name and columns variable for fromText calls
   // Needed to append invisible char at END of text (not at cursor position)
+  // v2.1.110: m=cK.fromText(q,P,x) — [1]=m, [2]=cK, [3]=q, [4]=P(cols), [5]=x
   const fromTextPattern = /([$\w]+)=([$\w]+)\.fromText\(([$\w]+),([$\w]+),([$\w]+)\)/;
   const fromTextMatch = oldFile.match(fromTextPattern);
   if (!fromTextMatch) {
     console.error('patch: wordHighlight: failed to find InputZone.fromText pattern for key handler');
     return null;
   }
-  const inputZoneVar = fromTextMatch[1];    // h (the InputZone instance)
-  const inputZoneClass = fromTextMatch[2]; // i5
-  const configVar = fromTextMatch[4];       // G
+  const inputZoneVar = fromTextMatch[1];   // m
+  const inputZoneClass = fromTextMatch[2]; // cK
+  const configVar = fromTextMatch[4];      // P (columns — 2nd arg to fromText)
 
   // Build navigation logic based on config
   const indexExpr = cfg.highlightIndexFromLeft
@@ -438,25 +456,28 @@ export const writeWordHighlightKeyHandler = (
   // Using R.insert() would insert at cursor, causing "cursor wall" bug.
   // Using fromText(R.text + char, G, R.offset) appends at end, preserving cursor.
   //
-  // Navigation filter: numbers + control words are always navigable
-  // Words with dynamic alts are added by dynamicHighlight.ts patch later
+  // Navigation filter: cue words when _isCueControl is defined; all words as fallback
+  // _isCueControl is set by dynamicHighlight.ts after cues-core init
   const filterCode = `var _targetIdx=[];
-_allW.forEach(function(w,i){if(globalThis._isCueControl&&globalThis._isCueControl(w))_targetIdx.push(i);});`;
+if(globalThis._isCueControl){_allW.forEach(function(w,i){if(globalThis._isCueControl(w))_targetIdx.push(i);});}
+else{_allW.forEach(function(w,i){_targetIdx.push(i);});}
+if(!_targetIdx.length)_allW.forEach(function(w,i){_targetIdx.push(i);});`;
 
-  // Left/Right handlers: navigate between cue-control and step-pattern targets
-  // Don't reset when navigating - the map persists so we remember originals across navigation
-  const keyHandlerCode = `case(${keyParam}.leftArrow&&${keyParam}.ctrl&&(${keyParam}.meta||${keyParam}.option||${keyParam}.alt)):return()=>{
+  // v2.1.110: injected as if-blocks BEFORE switch(O6.key){...}
+  // O6 is the DOM-style keyboard event: .key is string ("left","right",...), .ctrl/.meta/.alt are booleans
+  const keyHandlerCode = `if(${eventParam}.key==="left"&&${eventParam}.ctrl&&(${eventParam}.meta||${eventParam}.alt||${eventParam}.option)){
 if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
 
 var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w){return w}):[];
 ${filterCode}
-if(!_targetIdx.length)return ${inputZoneVar};
+if(_targetIdx.length){
 if(!globalThis._hlState.active){
 globalThis._hlState.active=true;globalThis._hlState.index=0;globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1];globalThis._hlState.text=globalThis._hlText;
 }else{
 if(globalThis._hlState.index<_targetIdx.length-1){
 globalThis._hlState.index++;
 globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1-globalThis._hlState.index];
+}
 }
 }
 globalThis._hlManualNav=true;
@@ -467,13 +488,13 @@ var _parentHasC=_pv.indexOf("\\u200C")>=0;
 if(_parentHasB){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200C",${configVar},${inputZoneVar}.offset);}
 else if(_parentHasC){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
 else{return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
-};
-case(${keyParam}.rightArrow&&${keyParam}.ctrl&&(${keyParam}.meta||${keyParam}.option||${keyParam}.alt)):return()=>{
+}
+if(${eventParam}.key==="right"&&${eventParam}.ctrl&&(${eventParam}.meta||${eventParam}.alt||${eventParam}.option)){
 if(!globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
 
 var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w){return w}):[];
 ${filterCode}
-if(!_targetIdx.length)return ${inputZoneVar};
+if(_targetIdx.length){
 if(!globalThis._hlState.active){
 globalThis._hlState.active=true;globalThis._hlState.index=0;globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1];globalThis._hlState.text=globalThis._hlText;
 }else{
@@ -484,6 +505,7 @@ globalThis._hlState.wordIndex=_targetIdx[_targetIdx.length-1-globalThis._hlState
 globalThis._hlState={active:false,index:null,wordIndex:null,text:""};
 }
 }
+}
 globalThis._hlManualNav=true;
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 var _pv=globalThis._parentValue||"";
@@ -492,19 +514,19 @@ var _parentHasC=_pv.indexOf("\\u200C")>=0;
 if(_parentHasB){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200C",${configVar},${inputZoneVar}.offset);}
 else if(_parentHasC){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
 else{return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
-};
-case(${keyParam}.upArrow&&${keyParam}.ctrl&&(${keyParam}.meta||${keyParam}.option||${keyParam}.alt)):return()=>{
+}
+if(${eventParam}.key==="up"&&${eventParam}.ctrl&&(${eventParam}.meta||${eventParam}.alt||${eventParam}.option)){
 var _r=globalThis._cycleAlt&&globalThis._cycleAlt(1,null,null,null,${requireFuncName});
 if(_r&&_r.refresh){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
 if(_r&&_r.text){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}
 return ${inputZoneVar};
-};
-case(${keyParam}.downArrow&&${keyParam}.ctrl&&(${keyParam}.meta||${keyParam}.option||${keyParam}.alt)):return()=>{
+}
+if(${eventParam}.key==="down"&&${eventParam}.ctrl&&(${eventParam}.meta||${eventParam}.alt||${eventParam}.option)){
 var _r=globalThis._cycleAlt&&globalThis._cycleAlt(-1,null,null,null,${requireFuncName});
 if(_r&&_r.refresh){return ${inputZoneClass}.fromText(${inputZoneVar}.text+"\\u200B",${configVar},${inputZoneVar}.offset);}
 if(_r&&_r.text){var _off=_r.wStart<${inputZoneVar}.offset?${inputZoneVar}.offset+_r.lenDiff:${inputZoneVar}.offset;return ${inputZoneClass}.fromText(_r.text,${configVar},_off);}
 return ${inputZoneVar};
-};
+}
 `;
 
   const newFile =
@@ -928,9 +950,12 @@ export const writeWordHighlightClearOnEscape = (
     return oldFile; // No change needed
   }
 
-  // Find the escape key case in the key dispatcher
-  // Pattern: case AA.escape:return()=>{...}
-  const escapePattern = /case ([$\w]+)\.escape:return\(\)=>\{/;
+  // Find the escape key case in the key dispatcher.
+  // v2.1.110+: case"escape":if(Z)return;return c(),m;
+  // Must anchor to the full dispatcher pattern — a bare /case"escape":/ also
+  // matches an earlier ANSI-sequence parser state machine, which is not where
+  // the user's escape keypress is handled.
+  const escapePattern = /case"escape":if\([$\w]+\)return;return [$\w]+\(\),[$\w]+;/;
   const match = oldFile.match(escapePattern);
 
   if (!match || match.index === undefined) {
@@ -938,8 +963,10 @@ export const writeWordHighlightClearOnEscape = (
     return null;
   }
 
-  // Inject clear code at the start of the escape handler
-  const insertPos = match.index + match[0].length;
+  const escapeCaseLen = 'case"escape":'.length;
+
+  // Inject clear code right after case"escape": (keeps the rest of the original branch intact)
+  const insertPos = match.index + escapeCaseLen;
   const clearCode = 'if(globalThis._hlState)globalThis._hlState={active:false,index:null,wordIndex:null,text:""};';
 
   const newFile =
@@ -992,6 +1019,10 @@ export const writeWordHighlightRendering = (
   if (isWrapped) {
     // Rainbow has wrapped it - use the entire wrapped IIFE
     renderCall = identifiers[0];
+  } else if (identifiers.length === 6) {
+    // 5 parameters (v2.1.110+): m.render(X,H,M,j6,G)
+    const inputZoneVar = identifiers[0];
+    renderCall = `${inputZoneVar}.render(${identifiers[1]},${identifiers[2]},${identifiers[3]},${identifiers[4]},${identifiers[5]})`;
   } else if (identifiers.length === 5) {
     // 4 parameters (v2.1.x)
     const inputZoneVar = identifiers[0];
@@ -1179,15 +1210,14 @@ export const writeWordHighlightRawSequence = (
   const requireFuncName = getRequireFuncName(oldFile);
 
   // Find the default case with the nested switch that handles raw sequences
-  // Pattern: default:return function(wA){switch(!0){case(wA==="\x1B[H"
-  // Note: In the file, \x1B is stored as literal characters (backslash-x-1-B)
-  // In regex, \\ matches a literal backslash, so \\x1B matches \x1B in the file
+  // v2.1.110+: this pattern no longer exists — raw sequences are handled differently
+  // This patch is now optional; if the pattern is missing we skip gracefully
   const defaultPattern = /default:return function\(([$\w]+)\)\{switch\(!0\)\{case\(\1==="\\x1B\[H"/;
   const match = oldFile.match(defaultPattern);
 
   if (!match || match.index === undefined) {
-    console.error('patch: wordHighlight: failed to find default case for raw sequences');
-    return null;
+    console.warn('patch: wordHighlight: raw sequence handler not found — skipping (terminal may use modifier keys instead)');
+    return oldFile;
   }
 
   const rawParam = match[1]; // wA

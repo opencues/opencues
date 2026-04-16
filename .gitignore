@@ -7,3 +7,6 @@ dist/
 .env.*.local
 *.key
 *.pem
+
+# tweakcc — local tool, not part of the public repo
+integrations/claude-code/tweakcc/

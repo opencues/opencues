@@ -15,6 +15,21 @@ This document provides context for Claude sessions working on this project.
 
 ---
 
+## Claude Installs
+
+Two Claude Code installs exist on this machine. **OpenCues work targets `claude-cues` only — never touch the native install.**
+
+| Command | Location | Version | Purpose |
+|---|---|---|---|
+| `claude-cues` | `~/local-claude-code` (local npm) | 2.1.110 (pegged) | OpenCues patches applied here |
+| `claude` | `~/.local/bin/claude` (native) | 2.1.110 | Clean/unpatched — development use |
+
+- `claude-cues` is the patched instance. All `setup.sh` runs and tweakcc patch applies target it.
+- `claude` is never patched. Use it for unaffected Claude Code sessions during development.
+- The version on `claude-cues` is pegged at **2.1.110** — do not upgrade it without verifying patch compatibility.
+
+---
+
 ## Repository Structure
 
 ```
@@ -136,7 +151,7 @@ The setup script:
 1. Clones tweakcc from upstream
 2. Copies and integrates patch files
 3. Builds cues-core → ~/.claude/node_modules/
-4. Applies patches to Claude Code
+4. Applies patches to `claude-cues` (`~/local-claude-code`) — not the native `claude` install
 
 ---
 
@@ -149,36 +164,48 @@ The setup script:
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
   - **`adding-a-cue-control.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
-- **integrations/claude-code/docs/** — Claude Code implementation docs (8 files)
+- **integrations/claude-code/docs/** — Claude Code implementation docs
+  - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
+- **integrations/claude-code/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
+- **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21 feature concepts (one file each)
+
+---
+
+## Re-integration Status
+
+> ⚠️ **ACTIVE RE-INTEGRATION** — The existing patches are outdated against the current Claude Code version. We are progressively re-implementing from scratch against `claude-cues` (v2.1.110). **Ignore all prior `setup.sh` and build instructions below** until re-integration is complete.
+
+**Current approach:** Start small — get a minimal patch working against the new version, verify it, then layer features back in incrementally. Do not attempt to apply the old patch files wholesale.
+
+**Target:** `claude-cues` (`~/local-claude-code`) only. The native `claude` install is never touched.
 
 ---
 
 ## Build Commands
 
-**After any change, use `setup.sh`** — it handles everything (build, copy, tweakcc rebuild, patch apply):
+> ⚠️ The instructions below describe the **pre-re-integration** workflow. They are preserved for reference but are **not currently operational**. Do not follow them until re-integration is complete.
+
+~~**After any change, use `setup.sh`**~~ — the setup.sh-based workflow is outdated pending re-integration.
 
 ```bash
+# OLD — do not use during re-integration
 integrations/claude-code/patches/setup.sh
 ```
 
-This is the **only reliable way** to apply changes. It:
-1. Copies patch `.ts` files to tweakcc and **rebuilds tweakcc** (compiles patches into `dist/`)
-2. Builds cues-core (`src/` → `dist/`) and copies to `~/.claude/node_modules/cues-core/`
-3. Applies compiled patches to Claude Code's `cli.js`
-
-**Do not** run `node dist/index.mjs --apply` directly after editing patch files — that uses the old compiled tweakcc output and your changes won't take effect.
-
-After running setup.sh, **restart Claude Code** for changes to take effect.
-
-> **Note:** Editing `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/`, `controls/`) does **not** require a restart — they hot-reload within ~2 seconds on the next keystroke.
+The script previously:
+1. Copied patch `.ts` files to tweakcc and rebuilt tweakcc (compiled patches into `dist/`)
+2. Built cues-core (`src/` → `dist/`) and copied to `~/.claude/node_modules/cues-core/`
+3. Applied compiled patches to `claude-cues` (`~/local-claude-code`) — never the native `claude` install
 
 ```bash
-# Re-apply patches only (after Claude Code updates, no source changes)
+# OLD — re-apply patches only (after Claude Code updates, no source changes)
 cd ~/tweakcc
-CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
+CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
+
+> **Note:** `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/`, `controls/`) hot-reload within ~2 seconds on the next keystroke — no restart needed (this will remain true post-re-integration).
 
 ---
 
