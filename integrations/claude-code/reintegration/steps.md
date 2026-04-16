@@ -1087,19 +1087,84 @@ Expected:
 
 ---
 
-## Step 19+ — TBD
+## Step 19 — Auto-submit debounce → `_cueResolver.resolve()` → `_dynDefs`
 
-LLM sub-pipeline continuation:
+**Goal:** Typing input with ≥2 words triggers an LLM analysis 500ms after the last keystroke. The result populates `globalThis._dynDefs.words` (WordDef[]) which the renderer's existing `_dynDefs` branch already reads (cli.js:1131, gated on `!_isCA && !_cbDw`). Non-cue-control words (the vast majority of everyday text) get cueTip + alts displayed in the statusline.
 
-- **Auto-submit debounce trigger** — after 500ms typing pause on a cue-containing input, call `_cueResolver.resolve(context)` off the event loop; no UI change yet, but `_dynDefs` gets populated. Visible via `_debug.dynDefsCount` or state JSON dump of results.
-- **Populate `_dynDefs` from resolver output** — may fold into the trigger step or split depending on size.
-- **Dynamic render wrap** — tip-word faded display, alt substitution on Ctrl+Alt+Up/Down cycle, span tracking for multi-word swaps.
-- **Clear-on-change** — edits invalidate `_dynDefs` entries so stale alts don't linger.
-- **`readControlState` wiring** — so control-bound blanks can fetch their live value during blank-fill.
-- **Factor `_hlExport.cueTip` writes** — refactor for clean gating across sources.
+**Why this choice:** First step where LLM actually fires. Closes the loop from Steps 17 (adapter) + 18 (resolver) + text-change detection (Step 2's clear-on-typing IIFE).
+
+**Exact change (two parts, `wordHighlight.ts` `fullCode`):**
+
+1. **Auto-submit block** inside clear-on-typing IIFE, immediately after `globalThis._hlText=_hlText;`:
+```js
+if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
+var _asText=_hlText;
+if(_asText!==globalThis._lastResolvedText){
+if(globalThis._autoSubmitTimer)clearTimeout(globalThis._autoSubmitTimer);
+globalThis._autoSubmitTimer=setTimeout(function(){
+var _asWords=_asText.split(/\\s+/).filter(function(w){return w;});
+if(_asWords.length<2)return;
+var _gen=(globalThis._resolveGen=(globalThis._resolveGen||0)+1);
+globalThis._lastResolvedText=_asText;
+globalThis._cueResolver.resolve({text:_asText,words:_asWords,domain:"claude-code"}).then(function(_res){
+if(_gen!==globalThis._resolveGen)return;
+globalThis._dynDefs={words:globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[])};
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+}).catch(function(){});
+},500);
+}
+}
+```
+
+2. **`dynDefsCount` in `_hlExport._debug`** for observability.
+
+**Gates:**
+- `_cueResolver` exists (Step 18).
+- `GROQ_API_KEY` env var set.
+- Text changed since last resolve (`_lastResolvedText` cache).
+- ≥2 words (arbitrary cheap filter).
+
+**Race handling:** `_resolveGen` monotonic counter. The `.then()` callback compares its captured generation to the current global; late responses from earlier text states are discarded.
+
+**Not in scope for Step 19:**
+- Showing LLM alts for cue-control words (`commit`, `plan`, `ultrathink`, etc.). The renderer's `_dynDefs` branch is gated on `!_isCA`, so tip words take the `_isCA` branch which sets `alts=[originalWord]`. Merging `_dynDefs` into the `_isCA` branch is a separate step.
+- Cycling LLM alts via Ctrl+Alt+Up/Down. `_cycleAlt` only handles cue-control overrides; alt-cycling for `_dynDefs` words is deferred.
+- Clear-on-change / staleness invalidation — `_dynDefs` persists until the next successful resolve. If a user edits text mid-response, the renderer shows stale alts briefly until the new resolve completes.
+- Cost controls / caching. Every text change within 500ms of the last keystroke fires a fresh Groq request.
+- Error surfacing. `.catch(function(){})` swallows everything. Debug via Groq logs or add a `_debug.lastResolveError` field.
+
+**Verification:**
+
+Restart `claude-cues` from `~/opencues`. Confirm `GROQ_API_KEY` is set.
+
+1. Type `the cat sat`. Pause ≥1 second (500ms debounce + LLM round-trip).
+2. Ctrl+Alt+Left to enter manual nav. All three words navigate via empty-targetIdx fallback.
+3. Land on `cat` → statusline shows `cat (1/N) - <tip>`. Same for `sat`. `the` may show or not depending on whether grammar prompt classifies it as a function word.
+4. State JSON: `_debug.dynDefsCount` > 0, `alts` array populated.
+
+User observed statusline `1/N` format for both `cat` and `sat` in ~/opencues on 2026-04-16 — LLM pipeline functional end-to-end.
+
+**Rollback:** Remove the auto-submit block + the `dynDefsCount` debug field. `_dynDefs` stays undefined; renderer `_dynDefs` branch never fires.
+
+**Peculiarities found during this step:** *None.* Worked first try. The generation counter + `.catch(()=>{})` pattern worked as designed — no crash on invalid input, stale responses discarded. Note: the absence of visible cycling/dim for LLM alts is intentional per the "not in scope" list; Step 20 adds renderer wrap.
+
+**Status: ✅ Done** (verified 2026-04-16)
+
+---
+
+## Step 20+ — TBD
+
+LLM alt-display + cycling continuation:
+
+- **Merge `_dynDefs` into the renderer's `_isCA` branch** — so tip/cue-control words also show LLM-returned alts, not just their static tip. Smallest next win after Step 19.
+- **Alt-cycling in `_cycleAlt` for `_dynDefs` words** — Ctrl+Alt+Up/Down cycles `_dynDefs.words[idx].alts`, text-splicing the current alt into the input (mirror of Step 12's arithmetic splice).
+- **Tip-word visual dim (renderer wrap)** — tip-holder words render faded to signal "has alternatives" before Ctrl+Alt.
+- **Clear-on-change** — invalidate `_dynDefs` entries when text changes so stale alts don't persist.
+- **`readControlState` wiring** — control-bound blanks.
+- **Factor `_hlExport.cueTip` writes** — refactor for clean gating.
 - **Implement `tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 18 is verified.
+Pick one after Step 19 is verified.
 
 ---
 

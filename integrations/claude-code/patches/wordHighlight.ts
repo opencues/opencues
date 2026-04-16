@@ -581,7 +581,7 @@ var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
-_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0};
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0,dynDefsCount:(globalThis._dynDefs&&globalThis._dynDefs.words)?globalThis._dynDefs.words.length:0};
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
@@ -831,6 +831,23 @@ ${inputZoneVar}=${inputZoneClass}.fromText(_zwsClean,${configVar},${inputZoneVar
 var _hlText=${valueParam}.replace(/[\\u200B\\u200C]/g,"");
 var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
+if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
+var _asText=_hlText;
+if(_asText!==globalThis._lastResolvedText){
+if(globalThis._autoSubmitTimer)clearTimeout(globalThis._autoSubmitTimer);
+globalThis._autoSubmitTimer=setTimeout(function(){
+var _asWords=_asText.split(/\\s+/).filter(function(w){return w;});
+if(_asWords.length<2)return;
+var _gen=(globalThis._resolveGen=(globalThis._resolveGen||0)+1);
+globalThis._lastResolvedText=_asText;
+globalThis._cueResolver.resolve({text:_asText,words:_asWords,domain:"claude-code"}).then(function(_res){
+if(_gen!==globalThis._resolveGen)return;
+globalThis._dynDefs={words:globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[])};
+if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
+}).catch(function(){});
+},500);
+}
+}
 // blankClearOnEdit: remove spawned words scheduled by pair cleanup
 if(globalThis._pendingClearOnEdit){
 var _pce=globalThis._pendingClearOnEdit;
