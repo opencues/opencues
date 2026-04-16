@@ -585,7 +585,7 @@ var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
-_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0,dynDefsCount:(globalThis._dynDefs&&globalThis._dynDefs.words)?globalThis._dynDefs.words.length:0};
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0,dynDefsCount:(globalThis._dynDefs&&globalThis._dynDefs.words)?globalThis._dynDefs.words.length:0,blankSlotsCount:(globalThis._blankSlots||[]).length};
 var _cbDw=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_idx&&d.metadata&&d.metadata.controlName;});
 if(_cbDw){
 // Control-bound blank: only show in status if blankTip is set
@@ -896,6 +896,37 @@ globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs
 }
 }catch(_eleE){}
 }
+var _blankSlots=[];
+if(globalThis._cueControlOverrides){
+var _bwds=_hlText.split(/\\s+/).filter(function(w){return w;});
+for(var _bi=0;_bi<_bwds.length;_bi++){
+if(_bwds[_bi]!=="_")continue;
+var _bfFound=null;
+for(var _bj=_bi-1;_bj>=0&&!_bfFound;_bj--){
+var _bOvrKeys=Object.keys(globalThis._cueControlOverrides);
+for(var _bok=0;_bok<_bOvrKeys.length&&!_bfFound;_bok++){
+var _boc=globalThis._cueControlOverrides[_bOvrKeys[_bok]];
+if(!_boc||!_boc.blankKeywords)continue;
+var _bprox=_boc.blankProximity;
+if(_bprox!=null&&(_bi-_bj-1)>_bprox)continue;
+for(var _bki=0;_bki<_boc.blankKeywords.length&&!_bfFound;_bki++){
+var _bkw=_boc.blankKeywords[_bki];
+var _bkwW=_bkw.split(" ");
+var _bkwS=_bj-_bkwW.length+1;
+if(_bkwS<0)continue;
+var _bMatch=true;
+for(var _bmi=0;_bmi<_bkwW.length;_bmi++){
+if((_bwds[_bkwS+_bmi]||"").toLowerCase()!==_bkwW[_bmi]){_bMatch=false;break;}
+}
+if(_bMatch)_bfFound={index:_bi,keyword:_bkw,controlName:_bOvrKeys[_bok],keywordStart:_bkwS,keywordEnd:_bj,proximity:_bi-_bj-1};
+}
+}
+}
+if(_bfFound)_blankSlots.push(_bfFound);
+}
+}
+globalThis._blankSlots=_blankSlots;
+if(globalThis._debugLog&&_blankSlots.length>0)globalThis._debugLog("blankSlots: "+_blankSlots.length+" detected");
 if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
 var _asText=_hlText;
 if(_asText!==globalThis._lastResolvedText){

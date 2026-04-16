@@ -1364,16 +1364,99 @@ if(globalThis._debugLog)globalThis._debugLog("llm error: "+(_lre&&_lre.message||
 
 ---
 
-## Step 23+ — TBD
+## Step 23 — Blank-fill sub-step 1: detect `_` + match `blankKeywords`
 
-LLM/blank continuation:
+**Goal:** Every keystroke scans `_hlText` for `_` positions, and for each, walks backward within `blankProximity` looking for a match against any control's `blankKeywords`. Matches land on `globalThis._blankSlots` as `{index, keyword, controlName, keywordStart, keywordEnd, proximity}`. No auto-populate; pure detection + observability.
 
-- **`readControlState` wiring** — control-bound blanks can read their live value during auto-populate.
-- **Blank-fill pipeline** — detect `_` placeholder, match nearby keyword, auto-populate. Large; decompose at step time.
-- **Factor `_hlExport.cueTip` writes** — still deferred refactor motivated by Step 16's peculiarity.
-- **Implement `tips-mode: minimal` filtering** — design first.
+**Why this choice:** First sub-step of the blank-fill sequence. Every downstream step (auto-populate with `stepValues[0]`, blank-script fetch, span tracking, cycling, dismiss, clear-keywords) needs a reliable `_blankSlots` feed. Splitting detection out keeps the downstream consumers simple and localises failures to the scanner if a match regresses on a future cues-md schema change.
 
-Pick one after Step 22 is verified.
+**Exact change (two parts, `wordHighlight.ts` `fullCode`):**
+
+1. **Blank-slot scanner** — inserted in clear-on-typing IIFE after eager tip lookup, before auto-submit:
+
+```js
+var _blankSlots=[];
+if(globalThis._cueControlOverrides){
+var _bwds=_hlText.split(/\\s+/).filter(function(w){return w;});
+for(var _bi=0;_bi<_bwds.length;_bi++){
+if(_bwds[_bi]!=="_")continue;
+var _bfFound=null;
+for(var _bj=_bi-1;_bj>=0&&!_bfFound;_bj--){
+var _bOvrKeys=Object.keys(globalThis._cueControlOverrides);
+for(var _bok=0;_bok<_bOvrKeys.length&&!_bfFound;_bok++){
+var _boc=globalThis._cueControlOverrides[_bOvrKeys[_bok]];
+if(!_boc||!_boc.blankKeywords)continue;
+var _bprox=_boc.blankProximity;
+if(_bprox!=null&&(_bi-_bj-1)>_bprox)continue;
+for(var _bki=0;_bki<_boc.blankKeywords.length&&!_bfFound;_bki++){
+var _bkw=_boc.blankKeywords[_bki];
+var _bkwW=_bkw.split(" ");
+var _bkwS=_bj-_bkwW.length+1;
+if(_bkwS<0)continue;
+var _bMatch=true;
+for(var _bmi=0;_bmi<_bkwW.length;_bmi++){
+if((_bwds[_bkwS+_bmi]||"").toLowerCase()!==_bkwW[_bmi]){_bMatch=false;break;}
+}
+if(_bMatch)_bfFound={index:_bi,keyword:_bkw,controlName:_bOvrKeys[_bok],keywordStart:_bkwS,keywordEnd:_bj,proximity:_bi-_bj-1};
+}
+}
+}
+if(_bfFound)_blankSlots.push(_bfFound);
+}
+}
+globalThis._blankSlots=_blankSlots;
+if(globalThis._debugLog&&_blankSlots.length>0)globalThis._debugLog("blankSlots: "+_blankSlots.length+" detected");
+```
+
+2. **`blankSlotsCount` in `_hlExport._debug`** for state-JSON observability.
+
+**Algorithm notes:**
+- For each `_`, walk backward word-by-word, checking each position for a possible keyword match.
+- Multi-word keywords (e.g. `"improve prompt"`) are checked by splitting the keyword by spaces and matching the `keywordWords.length` preceding words ending at position `_bj`.
+- `blankProximity` (number, optional): maximum words between the keyword end and `_`. `undefined` → no limit. `0` → keyword adjacent to `_`. Measured as `_bi - _bj - 1`.
+- First-match-wins within a walk; different `_` positions get independent matches.
+- Keyword expansions (`rddt` → `Reddit`) NOT honoured in this step — future consumer can apply them during fill.
+
+**Not in scope for Step 23:**
+- Auto-populating the blank with any fill value.
+- Span tracking (multi-word fill).
+- Cycling the filled value.
+- `blankDismissible` / `blankClearKeywords` / `blankReadOnly` / `blankAutoPopulate` flags.
+- `blankConsumeContext` / `blankConsumeAll` variants.
+- Keyword expansions.
+- `_isCueControl` / dim treatment for detected blanks (could follow in a later step).
+
+**Verification (all verified 2026-04-17):**
+
+| Input | Expected | Observed |
+|---|---|---|
+| `affirm _` | 1 (affirmations) | ✅ 1 |
+| `improve prompt _` | 1 (prompt, multi-word) | ✅ 1 |
+| `the cat _ sat` | 0 (no keyword before `_`) | ✅ 0 |
+| `affirm _ improve prompt _` | 2 | ✅ 2 |
+
+**Rollback:** Remove the scanner + the `blankSlotsCount` debug field. `_blankSlots` goes undefined. Any future blank-fill consumers would short-circuit.
+
+**Peculiarities found during this step:** *None.* First try; multi-word keyword detection worked without tweaks. Complexity is O(blanks × words × overrides × keywords × keyword-length) worst case, but in practice it's dozens of operations per keystroke — sub-millisecond.
+
+**Status: ✅ Done** (verified 2026-04-17)
+
+---
+
+## Step 24+ — TBD
+
+Blank-fill continuation:
+
+- **Auto-populate with `stepValues[0]`** — consume `_blankSlots`, replace `_` with `stepValues[0]` for controls that declare them (affirmations, list controls). Visible test. Would establish the text-splice pattern.
+- **Auto-populate via `blankScript get`** — for `weather`, `stocks`, `hackernews`, etc. Different async pattern (spawn script, wait, inject).
+- **Span tracking** — multi-word fill values (`"I am strong"`) need to track that 3 words belong to one blank.
+- **Cycling filled blanks** — Ctrl+Alt+Up/Down cycles through `stepValues` for a filled slot.
+- **`blankDismissible`** — append `_` as final cycle option so user can dismiss.
+- **`blankClearKeywords`** — on fill, strip the trigger keywords from the input.
+- **`readControlState` wiring** — so control-bound blanks (volume, brightness) can pre-populate with live value.
+- **Keyword expansions** — `rddt` → `Reddit` at fill time.
+
+Pick one after Step 23 is verified.
 
 ---
 
