@@ -673,6 +673,7 @@ else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh"
   const fullCode = `
 globalThis._parentValue=${valueParam};
 if(!globalThis._cueControlOverrides){globalThis._cueControlOverrides=${controlOvrJson};globalThis._staticCueControlOverrides=${controlOvrJson};}
+if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(globalThis._cueControlOverrides||{})[(_w||"").toLowerCase()];};
 globalThis._forceInputRefresh=function(){
 if(globalThis._refreshTimer)return;
 globalThis._refreshTimer=setTimeout(function(){

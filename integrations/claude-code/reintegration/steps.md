@@ -270,23 +270,64 @@ Don't pre-plan all the way to the end — decompose the next step only, execute 
 
 ---
 
-## Step 4+ — TBD
+## Step 4 — Navigation filter narrows to cue-control words
+
+**Goal:** When the input contains a cue-control word (e.g. `volume`), `Ctrl+Alt+Left/Right` highlights only that word, skipping normal words. When the input has no cue-control word, navigation behaves exactly as Step 2 (all words navigable).
+
+**Why this choice:** After Step 2, the full filter plumbing is already compiled into `cli.js`:
+- `globalThis._cueControlOverrides` populated from the tweakcc config (line 791 of patched `cli.js` — contains `{"volume":{"control":"volume",...}}` by default).
+- Navigation filter reads `globalThis._isCueControl` (lines 698, 725, 1019, 1044 of patched `cli.js`).
+- Defensive fallback: if `_isCueControl` filters to zero matches, all words become navigable (`if(!_targetIdx.length) ... all words`).
+
+The only missing piece is the function itself. Step 4 adds one line.
+
+**Exact change (single line inside `wordHighlight.ts` `fullCode`, right after `_cueControlOverrides` is set):**
+
+```js
+if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(globalThis._cueControlOverrides||{})[(_w||"").toLowerCase()];};
+```
+
+**Not in scope for Step 4:**
+- `_stepPatterns` check inside `_isCueControl` (a future step once step-patterns are populated).
+- Loading cues-core, parsing `controls.md`, folder discovery, hot-reload.
+- Any tip / LLM / rendering behaviour.
+
+**Verification:**
+1. Type `raise volume now` + Ctrl+Alt+Left → only `volume` highlights. `raise` and `now` are skipped.
+2. Type `the cat sat` + Ctrl+Alt+Left → all three words cycle as before (defensive fallback keeps navigation alive when no cue-control word is present).
+3. `/tmp/claude-highlight-state-<pid>.json` `_debug.isCA` flips `true` on `volume`, `false` on non-cue words (check via `_debug` dump).
+4. No regression on Steps 1-3 (cursor JSON, navigation, Escape clear, number dim).
+
+**Rollback:** Delete the one line from `wordHighlight.ts`'s `fullCode`. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Step 3's dim and Step 4's filter are independent code paths.** A word can dim (via Step 3's hardcoded number regex) without being a cue-control (via Step 4's `_isCueControl`). Test 3 (`abc 42 xyz`) confirms: all three words navigable (`42` is not in overrides → defensive fallback → all words navigable) but `42` still renders dim. This is expected and fine right now, but it means Step 7 (when we eventually swap the dim regex for `_stepPatterns`) will tighten the coupling — "dims" and "is cue-control" will both be driven by the same config. Anticipate the behavioural change.
+
+2. **Defensive `!_targetIdx.length` fallback is load-bearing.** Test 2 (`the cat sat` — no cue-control word present) navigates all three words. That only works because of the fallback in `wordHighlight.ts:464`: `if(!_targetIdx.length) _allW.forEach(...)`. Without it, sentences without any cue-control word would have zero navigable targets. Keep the fallback in every future filter iteration.
+
+3. **Minimal `_isCueControl` is `_cueControlOverrides`-only — does NOT check `_stepPatterns`.** The full IIFE version in `dynamicHighlight.ts` also returns true for words matching any `_stepPatterns`. When a future step populates `_stepPatterns`, this one-liner will need upgrading (otherwise step-pattern words like `42f` won't be recognized as cue-controls even though they dim). Flag this when sizing Step 7 / the cues-core init.
+
+**Status: ✅ Done** (verified 2026-04-16: all three tests pass, no regressions)
+
+---
+
+## Step 5+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Load cues-core + populate `_localCueMap` only** (no reload fn, no overrides) — just enough to confirm cues-core loads cleanly on v2.1.110.
-- **Static `_cueControlOverrides` + `_isCueControl`** — hardcoded from the tweakcc config block; enables the navigation filter.
+- **Load cues-core + populate `_localCueMap` only** (no reload fn, no overrides parsing) — just enough to confirm cues-core loads cleanly on v2.1.110.
 - **Parse `controls.md` / `cues.md` / `blanks.md` on startup** — one pass, no hot-reload, no folder discovery.
 - **Folder-config discovery** (controls/, cues/, blanks/ subdirs).
 - **`_reloadCuesConfig` hot-reload** on keystroke.
-- **Replace hardcoded number regex with `_stepPatterns` read** once `_stepPatterns` is populated by the above.
+- **Replace hardcoded number regex with `_stepPatterns` read** once `_stepPatterns` is populated by the above (decide the bare-number dim handling per Step 3 gotcha #3).
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
 - **Ctrl+Alt+Up/Down cycling**.
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 3 is verified.
+Pick one after Step 4 is verified.
 
 ---
 
