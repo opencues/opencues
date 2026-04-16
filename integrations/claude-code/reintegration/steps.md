@@ -312,22 +312,70 @@ if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(glo
 
 ---
 
-## Step 5+ — TBD
+## Step 5 — Load cues-core at startup, tip-having words are cue-controls
+
+**Goal:** Words present in `~/.claude/claude-code-tips.json` become navigable via the cue-control filter (in addition to the static `_cueControlOverrides` already picked up by Step 4). Other behaviour unchanged.
+
+**Why this choice:** `_isCueControl` is already the central filter consumer (Step 4). Combining "load cues-core + populate `_localCueMap`" with "extend `_isCueControl` to check the map" keeps this to a single anchor (the existing `fullCode` template literal in `writeWordHighlightClearOnTyping`). Separating them would leave the load observable only via a new debug export — not worth the extra edit.
+
+`writeWordHighlightClearOnTyping` already extracts `requireFuncName` (line 570), so `${requireFuncName}` templates in cleanly — no new infra.
+
+**Exact change (two parts, same template literal, `wordHighlight.ts`):**
+
+Insert cues-core load right after `_cueControlOverrides` init:
+```js
+if(!globalThis._cuesCore){try{
+var _ccHome=process.env.HOME||"~";
+var _cues=${requireFuncName}(_ccHome+"/.claude/node_modules/cues-core");
+var _tipsC=${requireFuncName}("fs").readFileSync(_ccHome+"/.claude/claude-code-tips.json","utf8");
+var _td=_cues.parseLocalCueFile(_tipsC);
+globalThis._cuesCore=_cues;
+globalThis._localCueMap=_cues.buildLookupMap(_td);
+}catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
+```
+
+Upgrade Step 4's `_isCueControl` to check both maps:
+```diff
+- if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(globalThis._cueControlOverrides||{})[(_w||"").toLowerCase()];};
++ if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
+```
+
+**Not in scope for Step 5:**
+- `_reloadCuesConfig` / hot-reload / folder-config discovery.
+- Parsing `cues.md` / `blanks.md` / `controls.md` from cwd.
+- `_stepPatterns` population (bare-number dim still uses hardcoded regex from Step 3).
+- LLM triggers, cycling, rendering wrap, clear-on-change.
+
+**Verification:**
+1. From a clean restart, type `commit this plan` + Ctrl+Alt+Left → only `commit` and `plan` highlight (both tips in `claude-code-tips.json`); `this` is skipped.
+2. Type `raise volume now` (Step 4 test) → `volume` still highlights alone. Static overrides still work.
+3. Type `abc 42 xyz` (Step 3 test) → `42` still dims. Number regex still fires.
+4. Type `the cat sat` (no tips, no overrides) → all three navigable (defensive fallback).
+5. If `~/.claude/node_modules/cues-core` is missing or `claude-code-tips.json` is unreadable, cues-core load silently falls back to null. Step 4 behaviour preserved exactly (static `_cueControlOverrides` path).
+
+**Rollback:** Remove the cues-core load block and revert `_isCueControl` to the Step 4 single-map version. One contiguous edit.
+
+**Peculiarities found during this step:** *None.* All four verification cases passed first try. No regex escapes in the injected code (avoided Step 3's template-literal gotcha), no anchor surprises, no version-specific issues. This suggests the "module-level require func + globalThis IIFE inside `fullCode`" pattern is robust — reuse it for future cues-core-adjacent steps (config parsing, `_reloadCuesConfig`) instead of re-inventing a new anchor in `dynamicHighlight.ts`.
+
+**Status: ✅ Done** (verified 2026-04-16: all four tests pass, no regressions)
+
+---
+
+## Step 6+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Load cues-core + populate `_localCueMap` only** (no reload fn, no overrides parsing) — just enough to confirm cues-core loads cleanly on v2.1.110.
-- **Parse `controls.md` / `cues.md` / `blanks.md` on startup** — one pass, no hot-reload, no folder discovery.
+- **Parse `controls.md` / `cues.md` / `blanks.md` on startup** — one pass, no hot-reload, no folder discovery. Lets users author tips and cue-controls inline from the cwd.
 - **Folder-config discovery** (controls/, cues/, blanks/ subdirs).
 - **`_reloadCuesConfig` hot-reload** on keystroke.
-- **Replace hardcoded number regex with `_stepPatterns` read** once `_stepPatterns` is populated by the above (decide the bare-number dim handling per Step 3 gotcha #3).
+- **Populate `_stepPatterns` from parsed controls; replace hardcoded number regex with `_stepPatterns` read** (decide bare-number dim handling per Step 3 gotcha #3).
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
 - **Ctrl+Alt+Up/Down cycling**.
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 4 is verified.
+Pick one after Step 5 is verified.
 
 ---
 

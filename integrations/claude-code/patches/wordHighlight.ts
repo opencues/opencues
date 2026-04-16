@@ -673,7 +673,15 @@ else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh"
   const fullCode = `
 globalThis._parentValue=${valueParam};
 if(!globalThis._cueControlOverrides){globalThis._cueControlOverrides=${controlOvrJson};globalThis._staticCueControlOverrides=${controlOvrJson};}
-if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(globalThis._cueControlOverrides||{})[(_w||"").toLowerCase()];};
+if(!globalThis._cuesCore){try{
+var _ccHome=process.env.HOME||"~";
+var _cues=${requireFuncName}(_ccHome+"/.claude/node_modules/cues-core");
+var _tipsC=${requireFuncName}("fs").readFileSync(_ccHome+"/.claude/claude-code-tips.json","utf8");
+var _td=_cues.parseLocalCueFile(_tipsC);
+globalThis._cuesCore=_cues;
+globalThis._localCueMap=_cues.buildLookupMap(_td);
+}catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
+if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
 globalThis._forceInputRefresh=function(){
 if(globalThis._refreshTimer)return;
 globalThis._refreshTimer=setTimeout(function(){
