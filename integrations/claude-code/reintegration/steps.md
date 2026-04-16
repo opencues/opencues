@@ -710,13 +710,94 @@ Order matters for cost, not correctness: cheapest (dict lookups) first, regex ar
 
 ---
 
-## Step 12+ — TBD
+## Step 12 — Step-control cycling (arithmetic in-place)
+
+**Goal:** Ctrl+Alt+Up/Down on a word that matches a step-pattern regex (e.g. `42f` via `stepSuffixes: f`) applies `step * direction` arithmetic, clamps to `stepMin`/`stepMax`, reformats per `stepFormat`, reattaches the suffix, and splices the new word back into the input text in place. `42f` → `42.5f` → `43f` on repeated Up; stops at `0f` on Down (numbers control's `stepMin: 0`).
+
+**Why this choice:** Closes the loop Step 11 teed up (`42f` is now cue-control-filterable but `_cycleAlt` no-ops on it). Smallest useful cycling extension — pure arithmetic, no subprocess, no debounce needed, mirrors `dynamicHighlight.ts:515-555` precisely.
+
+**Two changes in `wordHighlight.ts` `fullCode`:**
+
+**1. Fix `_stepPatterns` entries to carry `stepSuffix` singular** (Step 9 stored the raw control, which only has `stepSuffixes` plural):
+
+```diff
+- _stepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_esc+'$'),ctrl:_sc});
++ _stepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_esc+'$'),ctrl:Object.assign({},_sc,{stepSuffix:_sf})});
+```
+
+Latent bug from Step 9: the forEach over `stepSuffixes` pushed a fresh regex but shared the single parent ctrl object. Per-entry `stepSuffix` is needed by the cycling branch to strip/reattach the right suffix.
+
+**2. Insert step-pattern branch into `_cycleAlt`, BEFORE the script-branch bail** (`if(!_ovr||!_ovr.script)return null;`):
+
+```js
+var _spList=globalThis._stepPatterns||[];
+var _stepCtrl=null;
+for(var _spi=0;_spi<_spList.length;_spi++){if(_spList[_spi].re.test(_wds[_wi])){_stepCtrl=_spList[_spi].ctrl;break;}}
+if(_stepCtrl){
+var _stStep=(_stepCtrl.step!=null)?_stepCtrl.step:1;
+var _stMin=(_stepCtrl.stepMin!=null)?_stepCtrl.stepMin:null;
+var _stMax=(_stepCtrl.stepMax!=null)?_stepCtrl.stepMax:null;
+var _stFmt=_stepCtrl.stepFormat||null;
+var _stSuffix=_stepCtrl.stepSuffix||"";
+var _curWord=_wds[_wi];
+var _stRaw=(_stSuffix&&_curWord.endsWith(_stSuffix))?_curWord.slice(0,-_stSuffix.length):_curWord;
+var _stNum=parseFloat(_stRaw);
+if(isNaN(_stNum))return null;
+var _stResult=_stNum+(_stStep*_dir);
+if(_stMin!=null&&_stResult<_stMin)_stResult=_stMin;
+if(_stMax!=null&&_stResult>_stMax)_stResult=_stMax;
+var _stFormatted=(_stFmt==="integer")?String(Math.round(_stResult)):String(_stResult);
+var _stNewWord=_stFormatted+_stSuffix;
+var _stText=globalThis._hlText||"";
+var _stWordPos=0;
+for(var _stWli=0;_stWli<_wi;_stWli++){_stWordPos=_stText.indexOf(_wds[_stWli],_stWordPos)+_wds[_stWli].length;}
+var _stWStart=_stText.indexOf(_curWord,_stWordPos);
+if(_stWStart<0)return null;
+var _stNewText=_stText.slice(0,_stWStart)+_stNewWord+_stText.slice(_stWStart+_curWord.length);
+globalThis._hlText=_stNewText;
+globalThis._hlState.text=_stNewText;
+return {text:_stNewText,wStart:_stWStart,lenDiff:_stNewWord.length-_curWord.length};
+}
+```
+
+Return shape `{text, wStart, lenDiff}` matches the Step 2 key handler's text-substitution branch at `wordHighlight.ts:521` which reads exactly those fields.
+
+**Not in scope for Step 12:**
+- `stepScript` branch (old code supports an external script to compute the next value — no current control uses it).
+- List-control cycling (`stepValues` array).
+- Alt / LLM / consume-all cycling variants.
+- Cursor preservation after substitution for lengths that shift the caret past the word (key handler already handles this via `wStart < offset ? offset+lenDiff : offset`).
+
+**Verification (from `~/opencues` after restart):**
+
+1. `abc 42f xyz`, Ctrl+Alt+Left → `42f` highlights. Ctrl+Alt+Up → `abc 42.5f xyz`. Keep pressing → `43f`, `43.5f`, `44f`…
+2. Ctrl+Alt+Down many times → stops at `0f` (`stepMin: 0` clamp).
+3. `abc 42 xyz` (bare, no suffix) → `42` dims, Ctrl+Alt+Up no-op (no step pattern without `f`).
+4. `raise volume now` → Ctrl+Alt+Up still cycles audio (script branch still reachable — step branch checked first but doesn't match "volume").
+5. `commit this plan` → nav still works, Ctrl+Alt+Up no-op.
+
+**Rollback:** Remove the inserted step branch from `_cycleAlt` and revert the `Object.assign(...,{stepSuffix:_sf})` to plain `_sc`. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Step 9 had a latent bug.** `_stepPatterns` entries stored the raw control object with `stepSuffixes` (plural array) instead of a per-entry ctrl with `stepSuffix` (singular string). Step 9 worked anyway because only the `.re` field was consumed by the dim renderer. Surfaced now because cycling needs the singular suffix. Fixed in this step via `Object.assign({},_sc,{stepSuffix:_sf})` — same idiom as `dynamicHighlight.ts:158`. General lesson: when lifting proven code, lift the *exact* shape of the stored data, not just the generator expression; seemingly-equivalent simplifications hide latent requirements.
+
+2. **Branch ordering in `_cycleAlt` is load-bearing.** Step pattern check MUST precede `if(!_ovr||!_ovr.script)return null`. Step-pattern-matched words like `42f` are never in `_cueControlOverrides` (only the control name `"numbers"` is), so the script-branch bail would have early-returned before the step branch ran. One-line ordering bug would make the whole step silently no-op.
+
+3. **No debounce needed for arithmetic cycling.** Unlike Step 10's script cycling (50ms debounce to avoid spawn flood on key repeat), arithmetic is pure in-memory — per-keypress firing is cheap. Fast repeat feels snappy on `42f` → `42.5f` → `43f`.
+
+4. **Text-splice walking pattern will recur.** The `_wordPos` accumulator that walks through prior words to find the current word's start index is the same pattern consume-all cycling uses (`dynamicHighlight.ts:572`), and any future alt-swap / LLM-substitution step will need it again. Consider factoring if we add a third copy.
+
+**Status: ✅ Done** (verified 2026-04-16: arithmetic cycling works on `42f`, clamps at stepMin, prior steps intact)
+
+---
+
+## Step 13+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Step-control cycling (numeric in-place increment)** — extends `_cycleAlt` to read `_stepPatterns` matches, apply `step` arithmetic, substitute the number in the input text. ~20 lines. Visible: highlight `42f`, Ctrl+Alt+Up → becomes `42.5f` in the input.
-- **List-control cycling** — extends `_cycleAlt` to read `stepValues` array, advance index, substitute. Test via the `affirmations` control.
-- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function; edits take effect without restart.
+- **List-control cycling** — extends `_cycleAlt` with a branch for controls with `stepValues` arrays. Test via `controls/affirmations/cue.md`.
+- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function.
 - **Consume `_folderCfgs.ignoreWords`**.
 - **Parse cwd `blanks.md` on startup**.
 - **Auto-submit debounce**.
@@ -724,7 +805,7 @@ Deferred decomposition. Candidate next-step options, in rough order of size:
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 11 is verified.
+Pick one after Step 12 is verified.
 
 ---
 

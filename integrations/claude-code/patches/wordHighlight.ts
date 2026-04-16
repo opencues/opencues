@@ -701,7 +701,7 @@ if(_folderCfgs.controlOverrides)Object.assign(globalThis._cueControlOverrides,_f
 var _stepPats=[];
 Object.values(globalThis._cueControlOverrides||{}).forEach(function(_sc){
 if(_sc.stepPattern){try{_stepPats.push({re:new RegExp(_sc.stepPattern),ctrl:_sc});}catch(_spe){}}
-if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(_sf){var _esc=_sf.replace(/[^a-zA-Z0-9]/g,'\\\\$&');try{_stepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_esc+'$'),ctrl:_sc});}catch(_spe){}});}
+if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(_sf){var _esc=_sf.replace(/[^a-zA-Z0-9]/g,'\\\\$&');try{_stepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_esc+'$'),ctrl:Object.assign({},_sc,{stepSuffix:_sf})});}catch(_spe){}});}
 });
 globalThis._stepPatterns=_stepPats;
 }catch(_cte){}
@@ -714,6 +714,34 @@ var _wi=globalThis._hlState.wordIndex;
 if(_wi==null||_wi<0||_wi>=_wds.length)return null;
 var _lw=(_wds[_wi]||"").toLowerCase();
 var _ovr=(globalThis._cueControlOverrides||{})[_lw];
+var _spList=globalThis._stepPatterns||[];
+var _stepCtrl=null;
+for(var _spi=0;_spi<_spList.length;_spi++){if(_spList[_spi].re.test(_wds[_wi])){_stepCtrl=_spList[_spi].ctrl;break;}}
+if(_stepCtrl){
+var _stStep=(_stepCtrl.step!=null)?_stepCtrl.step:1;
+var _stMin=(_stepCtrl.stepMin!=null)?_stepCtrl.stepMin:null;
+var _stMax=(_stepCtrl.stepMax!=null)?_stepCtrl.stepMax:null;
+var _stFmt=_stepCtrl.stepFormat||null;
+var _stSuffix=_stepCtrl.stepSuffix||"";
+var _curWord=_wds[_wi];
+var _stRaw=(_stSuffix&&_curWord.endsWith(_stSuffix))?_curWord.slice(0,-_stSuffix.length):_curWord;
+var _stNum=parseFloat(_stRaw);
+if(isNaN(_stNum))return null;
+var _stResult=_stNum+(_stStep*_dir);
+if(_stMin!=null&&_stResult<_stMin)_stResult=_stMin;
+if(_stMax!=null&&_stResult>_stMax)_stResult=_stMax;
+var _stFormatted=(_stFmt==="integer")?String(Math.round(_stResult)):String(_stResult);
+var _stNewWord=_stFormatted+_stSuffix;
+var _stText=globalThis._hlText||"";
+var _stWordPos=0;
+for(var _stWli=0;_stWli<_wi;_stWli++){_stWordPos=_stText.indexOf(_wds[_stWli],_stWordPos)+_wds[_stWli].length;}
+var _stWStart=_stText.indexOf(_curWord,_stWordPos);
+if(_stWStart<0)return null;
+var _stNewText=_stText.slice(0,_stWStart)+_stNewWord+_stText.slice(_stWStart+_curWord.length);
+globalThis._hlText=_stNewText;
+globalThis._hlState.text=_stNewText;
+return {text:_stNewText,wStart:_stWStart,lenDiff:_stNewWord.length-_curWord.length};
+}
 if(!_ovr||!_ovr.script)return null;
 var _args=_dir>0?_ovr.upArgs:_ovr.downArgs;
 if(!_args||!_args.length)return null;
