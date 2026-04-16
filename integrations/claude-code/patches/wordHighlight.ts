@@ -705,6 +705,26 @@ if(_sc.stepPattern){try{_stepPats.push({re:new RegExp(_sc.stepPattern),ctrl:_sc}
 if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(_sf){var _esc=_sf.replace(/[^a-zA-Z0-9]/g,'\\\\$&');try{_stepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_esc+'$'),ctrl:Object.assign({},_sc,{stepSuffix:_sf})});}catch(_spe){}});}
 });
 globalThis._stepPatterns=_stepPats;
+var _ocPath=process.cwd()+"/opencues.md";
+if(_rfs.existsSync(_ocPath)){
+var _ocContent=_rfs.readFileSync(_ocPath,"utf8");
+var _ocCurrent={};
+var _ocLines=_ocContent.split(/\\r?\\n/);
+var _inFm=false;
+for(var _oli=0;_oli<_ocLines.length;_oli++){
+var _ol=_ocLines[_oli];
+var _olT=_ol.trim();
+if(_olT==="---"){_inFm=!_inFm;continue;}
+if(!_inFm||_ol.charAt(0)===" "||_ol.charAt(0)==="\\t")continue;
+var _ci=_olT.indexOf(":");
+if(_ci<=0)continue;
+var _ocKey=_olT.slice(0,_ci).trim();
+var _ocVal=_olT.slice(_ci+1).trim();
+if(_ocKey==="settings")break;
+_ocCurrent[_ocKey]=_ocVal;
+}
+globalThis._openCuesCurrent=_ocCurrent;
+}
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
 if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;};

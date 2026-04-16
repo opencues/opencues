@@ -879,11 +879,62 @@ Chain: `_dynDefs[idx].speak` (unwired, LLM step) → `_cueControlOverrides[word]
 
 ---
 
-## Step 15+ — TBD
+## Step 15 — Parse `opencues.md` frontmatter → `_openCuesCurrent` (voice-mode opt-out)
+
+**Goal:** Setting `voice-mode: inactive` in cwd `opencues.md` silences TTS globally. Setting it back to `active` (or any non-`"inactive"` value) re-enables TTS. The renderer's existing check `globalThis._openCuesCurrent && _openCuesCurrent["voice-mode"]==="inactive"` becomes functional.
+
+**Why this choice:** Small, directly testable opt-out that users can toggle without code. The renderer already reads the flag; we just need to populate it from the config file that's already in the repo (`~/opencues/opencues.md`).
+
+**Exact change** (inline frontmatter parser, appended inside Step 8's try body after `_stepPatterns` population):
+
+```js
+var _ocPath=process.cwd()+"/opencues.md";
+if(_rfs.existsSync(_ocPath)){
+var _ocContent=_rfs.readFileSync(_ocPath,"utf8");
+var _ocCurrent={};
+var _ocLines=_ocContent.split(/\\r?\\n/);
+var _inFm=false;
+for(var _oli=0;_oli<_ocLines.length;_oli++){
+var _ol=_ocLines[_oli];
+var _olT=_ol.trim();
+if(_olT==="---"){_inFm=!_inFm;continue;}
+if(!_inFm||_ol.charAt(0)===" "||_ol.charAt(0)==="\\t")continue;
+var _ci=_olT.indexOf(":");
+if(_ci<=0)continue;
+var _ocKey=_olT.slice(0,_ci).trim();
+var _ocVal=_olT.slice(_ci+1).trim();
+if(_ocKey==="settings")break;
+_ocCurrent[_ocKey]=_ocVal;
+}
+globalThis._openCuesCurrent=_ocCurrent;
+}
+```
+
+Parses only top-level frontmatter `key: value` pairs inside the `---`/`---` delimiters. Bails on `settings:` so the nested settings block is ignored.
+
+**Not in scope for Step 15:**
+- Parsing the `settings:` block (`_openCuesSettings`, `_openCuesTips`, `_openCuesSatTips`) — needed for a settings UI that isn't re-integrated.
+- Hot-reload — opencues.md edits require restart (same contract as controls.md, cues.md).
+- Consumers for other populated keys (`debug-mode`, `tips-mode`, `cursor-navigate`, `output-format`, `display mode`) — no downstream code reads these yet. Defensive wire-up; future steps that need them just read `globalThis._openCuesCurrent[<key>]`.
+
+**Verification (from `~/opencues` after restart):**
+
+1. **Baseline (`voice-mode: active`):** highlight `volume` → speaks live level (Step 14 path).
+2. **Flip to `voice-mode: inactive`, restart:** highlight `volume` → silent. Highlight `ultrathink` → silent. Statusline tips still display (Step 13 path unaffected — voice-mode only gates TTS, not tip text). Volume cycling (Ctrl+Alt+Up) still changes audio (script execution unaffected; only the speaker is gated).
+3. **Flip back to `active`, restart:** TTS returns for both volume and ultrathink.
+
+**Rollback:** Remove the appended parser block. No other files touched.
+
+**Peculiarities found during this step:** *None.* Worked first try; the `/\\r?\\n/` regex-in-template-literal convention (established Step 9) survived intact. Note: the strict `==="inactive"` check means setting `voice-mode: off` or `voice-mode: disabled` would NOT silence TTS — the documented values (per `opencues.md`'s own `settings:` section) are `active`/`inactive`. Intentional, but worth knowing if a user copies the `debug-mode: off` idiom.
+
+**Status: ✅ Done** (verified 2026-04-16: round-trip active→inactive→active confirmed)
+
+---
+
+## Step 16+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Parse `opencues.md` for `_openCuesCurrent`** — enables voice-mode opt-out (`_ttsVoiceOff`) and similar user-toggleable behaviour.
 - **List-control cycling** — requires span tracking; better done after blanks.
 - **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function.
 - **Parse cwd `blanks.md` on startup** (minimally, for `ignoreWords` / prompt persistence) — no visible change until consumer exists.
@@ -892,7 +943,7 @@ Deferred decomposition. Candidate next-step options, in rough order of size:
 - **Dynamic render wrap** (tip-word fade / alt substitution / spans).
 - **Clear-on-change**.
 
-Pick one after Step 14 is verified.
+Pick one after Step 15 is verified.
 
 ---
 
