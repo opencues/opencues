@@ -676,14 +676,47 @@ Shape mirrors `dynamicHighlight.ts:284-328` precisely: outer 50ms timer debounce
 
 ---
 
-## Step 11+ — TBD
+## Step 11 — `_isCueControl` recognises `_stepPatterns` matches
+
+**Goal:** Words matching a registered step-pattern regex (e.g. `42f` via `controls/numbers/cue.md` `stepSuffixes: f`) filter as cue-controls in Step 4's navigation. Step 9 made them dim; this step makes them navigable alone when the sentence has them.
+
+**Why this choice:** Smallest possible diff (one extra `||` branch in a single function). Closes the gap between "word dims" and "word is a cue-control for filtering purposes" that Step 9 left open intentionally.
+
+**Exact change (one line, `wordHighlight.ts` `fullCode`):**
+
+```diff
+- if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
++ if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;};
+```
+
+Order matters for cost, not correctness: cheapest (dict lookups) first, regex array iteration last.
+
+**Not in scope for Step 11:**
+- Actually cycling step-pattern-matched words (`_cycleAlt` still returns null for `42f` because there's no override keyed on `"42f"` — the override is keyed on the control name `"numbers"`). That's Step 12.
+- Step-control numeric arithmetic / text substitution.
+- Catch-all bare-number cue-control (`42` still takes the fallback-all-navigable path, which is fine).
+
+**Verification (from `~/opencues` after restart):**
+
+1. Type `abc 42f xyz` + Ctrl+Alt+Left → only `42f` highlights. (Before this step: all three navigated via the empty-targetIdx fallback.)
+2. Type `abc 42f xyz` + Ctrl+Alt+Up on `42f` → nothing happens. `_cycleAlt` bails at `if(!_ovr||!_ovr.script)` because `_cueControlOverrides["42f"]` is undefined. Graceful no-op; cursor and highlight preserved.
+3. Prior steps intact: `raise volume now`, `commit this plan`, `abc 42 xyz`, `raise brightness now`.
+
+**Rollback:** Remove the added `||` branch. No other files touched.
+
+**Peculiarities found during this step:** *None* — worked first try. Single regex-array iteration, no template-literal escape issues, no orchestration pitfalls. Confirms the `_isCueControl` function is now the single choke-point for cue-control membership logic; any future source (e.g. `_dynDefs` LLM words) will be added as another conditional branch here.
+
+**Status: ✅ Done** (verified 2026-04-16: all tests pass, no regressions)
+
+---
+
+## Step 12+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **Upgrade `_isCueControl` to check `_stepPatterns`** — `42f` becomes navigable as a cue-control (currently dims but isn't filtered by Step 4 navigation). Tiny diff.
-- **Step-control cycling (numeric in-place increment)** — extends `_cycleAlt` to read `_stepPatterns` matches, apply `step` arithmetic, substitute the number in the input text.
-- **List-control cycling** — extends `_cycleAlt` to read `stepValues` array, advance index, substitute.
-- **`_reloadCuesConfig` hot-reload** on keystroke — wraps Step 5-9 config reads into a re-runnable function.
+- **Step-control cycling (numeric in-place increment)** — extends `_cycleAlt` to read `_stepPatterns` matches, apply `step` arithmetic, substitute the number in the input text. ~20 lines. Visible: highlight `42f`, Ctrl+Alt+Up → becomes `42.5f` in the input.
+- **List-control cycling** — extends `_cycleAlt` to read `stepValues` array, advance index, substitute. Test via the `affirmations` control.
+- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function; edits take effect without restart.
 - **Consume `_folderCfgs.ignoreWords`**.
 - **Parse cwd `blanks.md` on startup**.
 - **Auto-submit debounce**.
@@ -691,7 +724,7 @@ Deferred decomposition. Candidate next-step options, in rough order of size:
 - **Dynamic render wrap** (tip dim, alt substitution, spans).
 - **Clear-on-change**.
 
-Pick one after Step 10 is verified.
+Pick one after Step 11 is verified.
 
 ---
 

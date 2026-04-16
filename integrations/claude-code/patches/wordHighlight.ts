@@ -706,7 +706,7 @@ if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(
 globalThis._stepPatterns=_stepPats;
 }catch(_cte){}
 }catch(_e){globalThis._cuesCore=null;globalThis._localCueMap=null;}}
-if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;return false;};
+if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){var _low=(_w||"").toLowerCase();if((globalThis._cueControlOverrides||{})[_low])return true;if(globalThis._localCueMap&&globalThis._localCueMap.has(_low))return true;if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);}))return true;return false;};
 if(!globalThis._cycleAlt)globalThis._cycleAlt=function(_dir,_a,_b,_c,_req){
 if(!globalThis._hlState||!globalThis._hlState.active)return null;
 var _wds=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
