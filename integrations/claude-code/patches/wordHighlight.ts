@@ -463,6 +463,7 @@ _allW.forEach(function(w,i){
 var _fLw=(w||"").toLowerCase();
 if(globalThis._isCueControl&&globalThis._isCueControl(w))_targetIdx.push(i);
 else if(globalThis._localCueMap&&globalThis._localCueMap.has(_fLw))_targetIdx.push(i);
+else if(globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===i&&d.alts&&d.alts.length>1;}))_targetIdx.push(i);
 });
 if(!_targetIdx.length)_allW.forEach(function(w,i){_targetIdx.push(i);});`;
 
@@ -1309,7 +1310,7 @@ if(_nw){var _ns=_clean.indexOf(_nw,_spanEnd);if(_ns>=0)_spanEnd=_ns+_nw.length;}
 _hlEnd=_spanEnd;
 }else{_hlEnd=_wStart+_w.length;}
 }
-else if(/^-?\\d+(\\.\\d+)?$/.test(_w)||(globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]||(_ni!==_hlWordIdx&&globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase()))||(_ni!==_hlWordIdx&&globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===_ni&&d.alts&&d.alts.length>1;}))){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
 _searchPos=_wStart+_w.length;
 }` : `var _hlSpanLen=1;
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&_hlWordIdx>=0){

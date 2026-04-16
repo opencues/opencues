@@ -226,47 +226,13 @@ Don't pre-plan all the way to the end — decompose the next step only, execute 
 
 ---
 
-## Step 3 — Bare numbers dim in the input
+## Step 3 — *REMOVED* (reverted 2026-04-17)
 
-**Goal:** When the user types `abc 42 xyz`, the `42` renders in dark gray while everything else renders normally. That is the only behavioural change over Step 2.
+Step 3 originally added a hardcoded bare-number dim regex (`^-?\d+(\.\d+)?$`) to the renderer. Reverted during Step 21 because bare numbers dimmed unconditionally but were NOT navigable via Ctrl+Alt (`_isCueControl` false, nav filter skipped them). Dim-without-selectability was confusing.
 
-**Why this choice:** Step 2 already injected a `_numRanges`/dim code path in the renderer, but it reads `globalThis._stepPatterns` — which is empty without the cues-core IIFE. The simplest testable Step 3 is to swap that read for a hardcoded bare-number regex. No cues-core load, no config parsing, no `_reloadCuesConfig`, no `_isCueControl`. Just one-line swap in `wordHighlight.ts`.
+**Resolution:** behaviour is now fully config-driven, matching the original. A user who wants bare-number dim + nav + cycle adds `stepPattern: ^-?\d+(\.\d+)?$` to a control (e.g. `~/opencues/controls/numbers/cue.md`). Step 9's `_stepPatterns` population picks it up and all three behaviours fire consistently.
 
-**Exact change (single line, `wordHighlight.ts` ~line 1095):**
-
-```diff
-- else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
-+ else if(/^-?\d+(\.\d+)?$/.test(_w)){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
-```
-
-**Not in scope for Step 3** (each will be its own step later):
-- Loading cues-core.
-- Populating `_localCueMap` / `_cueControlOverrides` / `_isCueControl` / `_stepPatterns`.
-- Cue-control navigation filter (all words remain navigable, as in Step 2).
-- `_reloadCuesConfig`, folder-config discovery, hot-reload.
-- LLM triggers, cycling, rendering wrap, clear-on-change.
-
-**Verification:**
-1. Type `abc 42 xyz` in a fresh `claude-cues` session. `42` dims; `abc`/`xyz` render normally.
-2. Also try `3.14`, `-7`, `0`, `42.0` — all dim.
-3. `hello42` stays normal (regex is anchored, not substring).
-4. No regression on Step 1 (cursor JSON) or Step 2 (Ctrl+Alt navigation, Escape clear, typing clear).
-
-**Rollback:** Revert the one line in `wordHighlight.ts` to read `_stepPatterns`. No other files touched.
-
-**Gotchas found during this step:**
-
-1. **Template-literal backslash eats regex escapes.** The regex lives in a TypeScript template literal (`` ` ``) inside `wordHighlight.ts`. Single-escape (`\d`, `\.`) gets consumed by the template parser and lands in `cli.js` as bare `d` — matches nothing, silent failure. Source must be double-escaped: `\\d`, `\\.`. Applies to any regex injected into `cli.js` through a template literal — worth checking Steps 1 and 2 if they ever regress.
-
-2. **The dim render slot was already wired at Step 2.** `_numRanges.push(...)` lives in `wordHighlight.ts`'s renderer from Step 2 onwards, gated behind a read of `globalThis._stepPatterns`. Step 3 did NOT add a new render branch — it just swapped the condition that feeds `_numRanges`. Useful to remember: when "Step 2 works but nothing dims" is the symptom, it's because `_stepPatterns` is empty (the feed), not because the renderer is missing the dim path (the slot).
-
-3. **The original `controls/numbers/cue.md` uses `stepSuffixes: f`, NOT a bare-integer pattern.** Generated regex is `^-?\d+(\.\d+)?f$` — matches `42f`, not `42`. This means a future step that replaces the hardcoded regex with a live `_stepPatterns` read (candidate Step 7 below) will **regress bare-number dimming** unless:
-   - The user adds `stepPattern: ^-?\d+(\.\d+)?$` to some control, OR
-   - Step 7 keeps both code paths (hardcoded number regex + `_stepPatterns` lookup), OR
-   - We explicitly accept the regression (bare numbers stop dimming; only `42f`-style step-suffix words dim).
-   Decide which before executing Step 7.
-
-**Status: ✅ Done** (verified 2026-04-16: bare numbers dim, Steps 1-2 not regressed)
+Step numbers ≥ 4 are kept as-is to preserve commit-message alignment with history. Any later step text that reads "42 still dims (Step 3 regex)" is historically accurate but no longer live — the reference is stale after this revert.
 
 ---
 
@@ -1287,17 +1253,65 @@ Inserted BEFORE the `if(!_ovr||!_ovr.script)return null;` bail so tip words (whi
 
 ---
 
-## Step 21+ — TBD
+## Step 21 — Visual dim consistency (cue-controls, tips, LLM) + Step 3 revert
+
+**Goal:** Words with alternatives render dim in the input as a visual hint that Ctrl+Alt+Left/Right can select them and Ctrl+Alt+Up/Down can cycle. Dim set covers: cue-control overrides, step-pattern matches, tip-dictionary entries, LLM-populated `_dynDefs` entries. Nav filter aligned with dim so every dimmed word is selectable.
+
+**Why this step:** After Step 20 the data was all live (tips cycle, LLM returns alts, overrides fire scripts) but nothing signaled visually which words were actionable. User had to guess. Mirrors the original `writeDynamicRendering` logic (dynamicHighlight.ts:1380-1381) minus the span/blank branches that aren't re-integrated yet.
+
+**Exact changes (two parts, `wordHighlight.ts`):**
+
+1. **Renderer dim branch** — extend the `_numRanges` OR-chain to include cue-controls, tip-map words (except when highlighted), and LLM-alt words (except when highlighted):
+
+```js
+else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]||(_ni!==_hlWordIdx&&globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase()))||(_ni!==_hlWordIdx&&globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===_ni&&d.alts&&d.alts.length>1;}))){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+```
+
+The `_ni!==_hlWordIdx` guard prevents visual conflict with the highlight styling on the active word; cue-control overrides get no guard (they always dim, highlight wins later in pipeline).
+
+2. **Nav filter aligned with dim** — extend Step 20's filter to also target `_dynDefs`-alt words, so LLM-discovered navigables are selectable:
+
+```js
+_allW.forEach(function(w,i){
+  var _fLw=(w||"").toLowerCase();
+  if(globalThis._isCueControl&&globalThis._isCueControl(w))_targetIdx.push(i);
+  else if(globalThis._localCueMap&&globalThis._localCueMap.has(_fLw))_targetIdx.push(i);
+  else if(globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===i&&d.alts&&d.alts.length>1;}))_targetIdx.push(i);
+});
+if(!_targetIdx.length)_allW.forEach(function(w,i){_targetIdx.push(i);});
+```
+
+3. **Step 3 revert** — remove the bare-number hardcoded regex (`^-?\\d+(\\.\\d+)?$`) from the renderer OR-chain. Step 3 is now documented as REMOVED (see above).
+
+**Verification:**
+- `raise volume now` → `volume` dims (override), highlight switches to white on nav.
+- `commit this plan` → `commit`, `plan` dim (tips); `this` normal. Nav selects only dimmed words.
+- `the cat sat` (wait ~1s for LLM) → `cat`, `sat` dim if LLM returned alts. Select + cycle.
+- `42f xyz xyz` (wait for LLM) → `42f` dims (stepPattern), `xyz` dims (LLM); all three selectable.
+- `abc 42 xyz` → `42` no longer dims (Step 3 reverted). Matches its non-selectable state. Consistent.
+
+**Peculiarities found during this step (three iteration loops):**
+
+1. **Dim-without-selectability asymmetry.** First pass only extended the renderer, forgot the nav filter. User caught it: `xyz` dimmed from LLM alts but Ctrl+Alt skipped it. The nav filter was still gated on `_isCueControl || _localCueMap` only. Fix: extend nav filter to also include `_dynDefs`-alt words so every dimmed word is selectable.
+
+2. **Bare-number dim without nav was a Step 3 inheritance.** User noticed `42` dims but can't select. Inherited from Step 3's hardcoded bare-number regex. Original dim was config-driven (only stepPatterns dimmed); Step 3 had added an unconditional regex to give "visual feedback" without requiring config. That turned into the same dim-without-selectability problem. Reverted Step 3 in this step. Users who want bare-number dim + nav + cycle add `stepPattern: ^-?\d+(\.\d+)?$` to a control.
+
+3. **Cue-control dim no-guard is intentional.** `volume` dims even when highlighted, but the highlight styling overrides it later in the render pipeline. The tip-map and `_dynDefs` branches use `_ni !== _hlWordIdx` to prevent the visual conflict; cue-controls don't because the override semantics differ (highlight re-asserts color).
+
+**Status: ✅ Done** (verified 2026-04-17: all dim categories align with nav, Step 3 revert clean)
+
+---
+
+## Step 22+ — TBD
 
 LLM/blank continuation:
 
 - **`readControlState` wiring** — control-bound blanks can read their live value during auto-populate.
-- **Blank-fill (Steps 13-scope from earlier pitch)** — detect `_` placeholder, match nearby keyword, auto-populate. Large; decompose at step time.
+- **Blank-fill pipeline** — detect `_` placeholder, match nearby keyword, auto-populate. Large; decompose at step time into ~5-8 sub-steps (`_` detection → keyword match → stepValues fill → blankScript fill → spans → cycling → clearKeywords → dismissible).
 - **Factor `_hlExport.cueTip` writes** — still deferred refactor motivated by Step 16's peculiarity.
 - **Implement `tips-mode: minimal` filtering** — design first.
-- **Dynamic render wrap** — tip-word fade / visual hint that a word has alternatives.
 
-Pick one after Step 20 is verified.
+Pick one after Step 21 is verified.
 
 ---
 
