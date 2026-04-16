@@ -603,7 +603,8 @@ globalThis._cueControlTipWord=null;
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
 var _caTip=null;
 if(_caOvr){_caTip=_caOvr.tip||_caOvr.control;}
-else{var _spsT=globalThis._stepPatterns||[];for(var _sptI=0;_sptI<_spsT.length;_sptI++){if(_spsT[_sptI].re.test(_hlWords[_idx]||"")){var _stc=_spsT[_sptI].ctrl;if(_stc.stepTip)_caTip=_stc.stepTip;break;}}}
+else if(globalThis._localCueMap){var _lcm=globalThis._localCueMap.get(_caWord);if(_lcm&&_lcm.cueTip)_caTip=_lcm.cueTip;}
+if(!_caTip){var _spsT=globalThis._stepPatterns||[];for(var _sptI=0;_sptI<_spsT.length;_sptI++){if(_spsT[_sptI].re.test(_hlWords[_idx]||"")){var _stc=_spsT[_sptI].ctrl;if(_stc.stepTip)_caTip=_stc.stepTip;break;}}}
 // On navigation to this word (index changed), call script get once and cache in _cueControlTip
 // On re-renders (same word, cycling), rely on _cueControlTip already set by dynamicHighlight interval
 var _navChanged=globalThis._cueControlTipWord!==_caWord;

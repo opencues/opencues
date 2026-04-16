@@ -792,20 +792,72 @@ Return shape `{text, wStart, lenDiff}` matches the Step 2 key handler's text-sub
 
 ---
 
-## Step 13+ — TBD
+## Step 13 — Tip text for `_localCueMap` words in the statusline
+
+**Goal:** When highlighting a word that exists in `claude-code-tips.json` or cwd `cues.md` (e.g. `commit`, `plan`, `debug`, `opus`), the status line shows that word's `cueTip` text. Before this step: `_isCA` was `true` for tip words (Step 5 made them cue-controls), but `_caTip` stayed `null` because the renderer only read tips from `_cueControlOverrides` and `_stepPatterns` — so the status line displayed nothing for half the cue-controls in the system.
+
+**Why this choice:** One-shot bug fix surfaced after ignoreWords (Step 13 attempt #1) was reverted. User confirmed the symptom directly: "it shows nothing" on highlighting `commit`. Three-line edit in the renderer's `_caTip` lookup chain — purely additive, doesn't touch existing override or stepPattern paths.
+
+**Exact change (renderer tip-lookup chain, `wordHighlight.ts` ~line 605):**
+
+```diff
+- if(_caOvr){_caTip=_caOvr.tip||_caOvr.control;}
+- else{var _spsT=globalThis._stepPatterns||[];for(var _sptI=0;_sptI<_spsT.length;_sptI++){if(_spsT[_sptI].re.test(_hlWords[_idx]||"")){var _stc=_spsT[_sptI].ctrl;if(_stc.stepTip)_caTip=_stc.stepTip;break;}}}
++ if(_caOvr){_caTip=_caOvr.tip||_caOvr.control;}
++ else if(globalThis._localCueMap){var _lcm=globalThis._localCueMap.get(_caWord);if(_lcm&&_lcm.cueTip)_caTip=_lcm.cueTip;}
++ if(!_caTip){var _spsT=globalThis._stepPatterns||[];for(var _sptI=0;_sptI<_spsT.length;_sptI++){if(_spsT[_sptI].re.test(_hlWords[_idx]||"")){var _stc=_spsT[_sptI].ctrl;if(_stc.stepTip)_caTip=_stc.stepTip;break;}}}
+```
+
+**Structural note:** the old shape was `if override ELSE stepPattern` — exclusive branches. New shape is `if override; else if localCueMap; if still empty, stepPattern`. The step-pattern check is no longer an `else` of override — it's a final fallback that runs when neither override nor `_localCueMap` produced a tip. This also fixes a latent gap where an override-less step-pattern word couldn't flow into stepTip (previously reached only when overrides were unavailable; still reaches now via the `if(!_caTip)` guard).
+
+**Resolution order** (most specific → least specific):
+1. `_cueControlOverrides[word]` → uses `.tip` or falls back to `.control` name.
+2. `_localCueMap[word]` → uses `.cueTip`.
+3. Any `_stepPatterns` regex matching the word → uses `.ctrl.stepTip`.
+
+Any word in overrides AND localCueMap will display the override tip.
+
+**Not in scope for Step 13:**
+- Tip-word *dimming* in the renderer (visual-faded rendering to signal "has alternatives"). Status line only.
+- `altCueTips` / alternatives display (needs cycling-alt step + LLM).
+- `_localCueMap.speak` flag for TTS.
+- `ignoreWords` plumbing (first attempt was invisible-in-current-state; reverted).
+
+**Verification (from `~/opencues` after restart):**
+
+1. `commit this plan` + Ctrl+Alt+Left → `commit` highlights, statusline shows its tip from `claude-code-tips.json`. Next Left → `plan` with a different tip.
+2. `raise volume now`, highlight `volume` → statusline still shows live audio level (override path runs first, unchanged).
+3. `abc 42f xyz`, highlight `42f` → statusline shows `±0.5f` (stepTip reached via the new `if(!_caTip)` guard).
+4. No regression on prior steps (nav, dim, cycling).
+
+**Rollback:** Revert the three renderer lines. No other files touched.
+
+**Peculiarities found during this step:**
+
+1. **Broken fallback chain (latent in Step 2).** The renderer used `if override else stepPattern` — exclusive branches. A tip word from `_localCueMap` would have `_isCA=true` (so `cueControl:true` flagged in the state JSON) but `_caTip=null` (no branch fetched its tip). The status line script checks both — no tip printed. This bug predated this session's re-integration but only became visible once Step 5 populated `_localCueMap`. Step 13 rewires the chain to a three-tier fallback with `if(!_caTip)` guards so adding future sources (LLM `_dynDefs`, span metadata) is one more `if` without restructuring.
+
+2. **Test case "`this` has no tip" was invalid.** I wrote a verification step to highlight `this` and confirm no tip — but `_isCueControl("this")` returns false, so `this` is never navigable in a sentence that contains any cue-control word (Step 4 filter). User caught it ("this cannot be highlighted remember its not in the loop"). Lesson: before writing verification cases for the renderer, mentally run the Step 4 filter — any test subject word must be selectable by Ctrl+Alt+Left/Right in the intended sentence, or the test plan is fiction.
+
+3. **`_ignoreWords` was a failed Step 13 attempt** (reverted in this commit series) — the ignore-list plumbing is invisible in the current re-integration state because none of the baseline `blanks.md ## Ignore` words (`Anthropic`, `Claude`, `OpenCues`, etc.) are in `_localCueMap` or `_cueControlOverrides`, so filtering them changes nothing. Ignore becomes useful only once LLM classification starts suggesting them as alternatives. Defer until LLM lands.
+
+**Status: ✅ Done** (verified 2026-04-16: `commit` shows tip, `volume` still shows live level, `42f` still shows stepTip, no regressions)
+
+---
+
+## Step 14+ — TBD
 
 Deferred decomposition. Candidate next-step options, in rough order of size:
 
-- **List-control cycling** — extends `_cycleAlt` with a branch for controls with `stepValues` arrays. Test via `controls/affirmations/cue.md`.
-- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function.
-- **Consume `_folderCfgs.ignoreWords`**.
-- **Parse cwd `blanks.md` on startup**.
+- **TTS speak on tip highlight** — wire `_localCueMap.speak` / `_caOvr.speak` flags to the existing TTS plumbing in the renderer. Visible-audible test.
+- **List-control cycling** — requires span tracking (multi-word stepValues don't fit single-word highlight). Better done after blanks.
+- **`_reloadCuesConfig` hot-reload** — wraps Step 5-9 config reads into a re-runnable function (previously scoped but deferred).
+- **Parse cwd `blanks.md` on startup** (minimally, just for ignoreWords and promptConfig persistence) — no visible change, defer until consumer exists.
 - **Auto-submit debounce**.
 - **LLM trigger → `_dynDefs`**.
-- **Dynamic render wrap** (tip dim, alt substitution, spans).
+- **Dynamic render wrap** (tip-word fade / alt substitution / spans).
 - **Clear-on-change**.
 
-Pick one after Step 12 is verified.
+Pick one after Step 13 is verified.
 
 ---
 
