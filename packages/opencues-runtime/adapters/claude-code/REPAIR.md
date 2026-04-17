@@ -76,15 +76,26 @@ either don't make it through or corrupt the screen.
 
 CC's `statusLine` config triggers a re-run on tool calls, permission changes,
 or whatever the React useEffect dependency array picks up. **Input-box state
-changes (typing, navigating, cycling) do NOT trigger a re-run.** So if a v2
-module updates its export file but the user only typed/navigated, the status
-line stays stale until the next tool call.
+changes (typing, navigating, cycling) do NOT trigger a re-run** by default.
+So if a v2 module updates its export file but the user only typed/navigated,
+the status line would stay stale until the next tool call.
 
-There are two viable workarounds:
+**v2 fix (Phase 4.5, current):** S6 seam captures CC's debounced refresh
+callback (`k=F$.useCallback(()=>{...setTimeout(...,300,Z,V)...},[V])`) and
+exposes it as `globalThis.__oc_refreshHostStatusline`. The patch's host
+bindings include a `refreshStatusline` closure that calls it. `Statusline`
+calls `refreshHook` after each successful `writeFile`, so the status line
+re-renders within ~300ms of any state change. No polling.
 
-**(a) `refreshInterval: 1` in `~/.claude/settings.json`** — currently used in
-Phase 4. Tells CC to poll the script every second. Simple, no patch
-changes, but ~1 fork/exec per second per CC session:
+S6 injection uses comma-operator-in-let to preserve the original
+declaration verbatim:
+```
+,k=F$.useCallback(...)        →   ,k=F$.useCallback(...),__oc_ts6=(globalThis.__oc_refreshHostStatusline=k)
+```
+
+**Fallback (when S6 misses):** S6 is OPTIONAL in the patch — a missing
+match logs a warning and continues. Statusline still works as long as
+the user adds `refreshInterval: 1` (or any value) to settings.json:
 ```json
 {
   "statusLine": {
@@ -94,15 +105,14 @@ changes, but ~1 fork/exec per second per CC session:
   }
 }
 ```
+This polls the script every second instead of event-driven. Simple
+fallback for any future CC version where the S6 shape drifts.
 
-**(b) S6 seam — capture CC's debounced refresh callback** — proper fix.
-Find the `useCallback` near the `statusLine?.refreshInterval` useEffect
-and bind its `setTimeout`-wrapping callback to a global. Statusline
-calls it after every export. Event-driven, no polling. Spec lists this as
-S6 in `refactor.md` §4.1; not yet implemented.
-
-For now: setup needs to add `refreshInterval: 1` to `settings.json` for
-the export to be visible. Document this in any user-facing setup guide.
+**Apply order matters** when adding new seams: S1, S3, S6 all inject at
+different positions in cli.js. The patch applies them in descending
+position order (S6 → S3 → S1 for v2.1.110) so each application leaves
+earlier indices valid. If you add S4 / S5 / S7 / S8, slot them into the
+same descending sort.
 
 ### 5. The host may keep the `value` prop in lock-step with our InputZone
 

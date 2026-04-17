@@ -14,8 +14,9 @@ Commits:
 - `74c2b94` — Docs: CLAUDE.md cues-core vs opencues-runtime layering.
 - `79a5c7e` — Phase 3: Cycling + ConfigLoader (visible word cycling).
 - `35df9cb` — Docs: REPAIR.md host-quirks + refactor-notes Phase 3 review.
-- (this+) Phase 4: Statusline export + `file-write` capability + the
-  `refreshInterval: 1` workaround for CC's event-driven statusline.
+- `fd34cd5` — Phase 4: Statusline export + `file-write` capability.
+- (this+) Phase 4.5: S6 seam — event-driven statusline refresh.
+  Removes the `refreshInterval: 1` polling workaround.
 
 **Repairing the integration when Claude Code bumps versions:**
 see `packages/opencues-runtime/adapters/claude-code/REPAIR.md` — scenarios
@@ -516,17 +517,78 @@ callback) is documented in REPAIR.md §Host quirks #4 as a follow-up.
 
 ---
 
+## Phase 4.5 — S6 seam (event-driven statusline refresh)
+
+**Goal:** Statusline updates immediately on navigation/cycling instead of
+polling once per second. Removes the `refreshInterval: 1` requirement
+from `~/.claude/settings.json`.
+
+### What to check
+
+1. **`packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`** —
+   `findStatusLineRefresh` predicate. Matches the React useCallback that
+   wraps a 300ms `setTimeout` to call the actual refresh function. 3
+   tests covering canonical shape, identifier rename, and no-match.
+
+2. **`packages/opencues-runtime/src/modules/statusline.ts`** — `Statusline`
+   ctor accepts an optional `refreshHook`. Called inside the `writeFile`
+   `.then()` so refresh fires only after the file is on disk (not before).
+
+3. **`adapters/claude-code/v2.1/boot.ts`** — `HostInfo.refreshStatusline`
+   is plumbed through to `Statusline`'s `refreshHook` option.
+
+4. **`integrations/claude-code/patches/opencuesRuntime.ts`** —
+   - Inline S6 detection (vendored copy of `seams.ts` predicate).
+   - **S6 is OPTIONAL** — if the regex misses, the patch logs a warning
+     and continues. Statusline still works in polling mode if the user
+     sets `refreshInterval` in settings.json. This means a future CC
+     bump won't break the patch over S6 alone.
+   - S6 injection appends `,__oc_ts6=(globalThis.__oc_refreshHostStatusline=k)`
+     to the matched `let` declaration (comma-operator trick to extend
+     the existing chain without disrupting it).
+   - `host.refreshStatusline` is a closure that calls
+     `globalThis.__oc_refreshHostStatusline` (no-op until the React
+     component containing S6 has rendered).
+   - **Apply order updated to descending positions** (S6 > S3 > S1 in
+     v2.1.110) so each injection leaves earlier indices valid.
+
+### Setup change
+
+`~/.claude/settings.json` no longer needs `refreshInterval`:
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/home/<user>/.claude/highlight-statusline.sh"
+  }
+}
+```
+
+### Live verified
+
+Status line updates within ~300ms (the host's debounce window) of any
+Ctrl+Alt+Left/Right or Ctrl+Alt+Up/Down. No polling, no stale state.
+
+### Known limitations / follow-ups
+
+- **`Statusline.refreshHook` is the only consumer of S6 today.** If
+  another module ever needs to trigger a host-side refresh, expose the
+  binding more generally (e.g. as an adapter method).
+- **S6's behaviour is `useCallback`-shape-specific.** If CC swaps to a
+  different debounce mechanism (e.g. a custom `Wn(callback, 300)` wrapper
+  or a hook), the regex needs updating. Keep one fixture per known
+  shape in `seams.test.ts` so regressions surface immediately.
+
+---
+
 ## Going forward (next phases)
 
-Phases 0–4 ship visible navigation + word cycling + statusline export on a
-live install. Open phases:
+Phases 0–4.5 ship visible navigation + word cycling + event-driven
+statusline export on a live install. Open phases:
 
 - **TTS on tip highlight** (~half day) — `spawn-process` capability,
   fire-and-forget `speak.sh` when the highlighted word has a `speak` flag
   in the cue map. Modular, no dependencies on other phases.
-- **S6 statusline-refresh seam** (~hour) — capture CC's debounced refresh
-  callback so Statusline triggers it after each export. Removes the
-  `refreshInterval: 1` polling workaround. See REPAIR.md §Host quirks #4.
 - **Cue-tip plumbing** (~hour) — pass ConfigLoader into Statusline so
   `cueTip` and `cueControl` populate from the cue map. Trivial follow-up
   to Phase 4.
