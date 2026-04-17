@@ -1949,19 +1949,82 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ---
 
-## Step 33+ — TBD
+## Step 33 — General span infrastructure + stepValues cycling + blankDismissible + statusline tip parity
 
-Cycling + polish continuation:
+**Goal:** Multi-word fills (`I am strong`, forecast, LLM improvement) behave as single units across navigation, highlighting, dimming, and cycling. `blankDismissible: true` lets users cycle back to `_`. Statusline shows the control's `blankTip`/`tip` (not `(N/M)` counter) for span fills. Parity with the original on all cross-cutting span behavior.
 
-- **Cycling filled blanks through `stepValues`** — affirmations. Needs span tracking.
-- **General span tracking** (`_dynSpans`) — infrastructure for multi-word cycling, selector/satellite (opencues), clear-on-change robustness.
-- **`blankDismissible`** — cycle back to `_`. Needs cycling first.
-- **"Revert-on-first-edit"** — UX rollback of prompt fill. Possible sub-feature if desired.
-- **`readControlState` resolver wiring** — architectural parity.
-- **Factor `_hlExport.cueTip` writes** — still deferred.
-- **`tips-mode: minimal` filtering** — design first.
+**Why a big step:** the user instructed "implement things as they are in the original." Span tracking, dismissibility, statusline tip format, and nav/render snapping are deeply interwoven — each piece alone produces broken UX. Shipping them together matches the original's semantics.
 
-Pick one after Step 32 is verified.
+**Changes (one commit, ~60 lines of wordHighlight.ts additions):**
+
+1. **Step 24 stepValues auto-populate** now builds `_consumeAllAlts` for any multi-value or dismissible control. Affirmations: `alts = [...stepValues, "_"]`. Span origin derived from `_slot.index` minus cleared-before count. `_dynSpans` populated per span position (keyed on absolute word index, value `{originalIndex, spanLength}`). `_dynDefs` entry at span origin carries `cueTip`, `alts`, `currentAltIndex`, `source: "control"` for statusline pickup.
+
+2. **Step 30 consume-all fill** (prompt improver): same pattern — `_dynSpans` populated for positions `[0 .. spanLength-1]`, `_dynDefs` entry at index 0 with `cueTip: blankTip`, `source: "control"`.
+
+3. **Step 25 non-consume-all blankScript fill** (weather, stocks, hackernews): fill origin found by char-offset of `_out` in `_nt` (robust to clearKeywords + expansion transforms). If fill is multi-word, populate `_dynSpans` + `_dynDefs` entry. No alts — these controls are read-only post-fill.
+
+4. **`_dismissedBlanks` tracking** — mirrored from dynamicHighlight.ts:568/616/1093. `_cycleAlt` consume-all branch sets/clears the flag when cycling to/from `_`. Auto-populate paths (Step 24 and 25) check it and skip if dismissed.
+
+5. **Navigation filter** extended to `_dynSpans`-aware: `if(_fSpan && _fSpan.originalIndex !== i) return;` — span-internal positions are skipped so each span counts as one nav stop. Fallback filter (all-words when `_targetIdx` empty) also honours the skip.
+
+6. **Renderer `_hlWordIdx` snap to span origin** — when highlight lands on any position within a `_consumeAllAlts` span, snap `_hlWordIdx` to the origin so the existing `_hlSpanLen > 1` extension covers the full span. Moved outside the `_dynDefs` guard so it fires even when `_dynDefs` is empty (affirmations: no LLM entries for `affirm`, but we still want span highlight).
+
+7. **Dim extended** to consume-all span positions (already had in Step 32). Combined with the snap above, span words render dim when not highlighted and span-as-unit highlighted when selected.
+
+8. **`source: "control"` routing** in the renderer's `_dynDefs` branch: when `_dw.source === "control"`, set `_hlExport.cueControl = true` and `_hlExport.alts = null`. Statusline script's `is_cue_control` branch fires → just tip prints ("Prompt improver", "Daily affirmations") instead of `(N/M) - tip` format. Distinguishes control-span fills from LLM-generic alt cycling.
+
+9. **LLM suppression during span**: in Step 19 auto-submit timer callback, early-return if `globalThis._consumeAllAlts` exists. Additionally, staleness check (`_asText !== globalThis._hlText`) aborts stale timers scheduled before a fill landed. Matches original's "span-ownership" semantics — LLM doesn't fight the curated fill.
+
+10. **Legacy consume-all invalidation gate fixed** (cli.js:1396, baked in by Step 2's wordHighlight): gate now uses `globalThis._hlText !== globalThis._lastResolvedText` (not local `_hlText`) since local `_hlText` is pre-fill at that codepath. Prevents the legacy check from nuking my just-set `_consumeAllAlts` on the same render.
+
+11. **Cross-session state hygiene**: clear-on-change at line 1027 now also filters `_dynDefs.words` entries in the invalidated span range, preventing stale `spanLength`-carrying entries from extending highlights into unrelated later input. Fixed user-reported bug where `abc 44.5f xyz` after a prompt-improver session highlighted all three words as one unit.
+
+**Verification (confirmed across 25 checklist items):**
+
+- `affirm _` → fills to `affirm I am strong`, span is one nav stop, highlights as unit, cycles through all affirmations + `_` dismiss, statusline shows `Daily affirmations`.
+- `improve prompt X _` → fills with LLM improvement, span is one unit, cycles through alts, statusline shows `Prompt improver`.
+- `weather _`, `weather in Paris _`, `rddt _`, `hn _` → multi-word fills navigate as single spans.
+- `what is the word for happy _` → `<answer>` alone.
+- Non-span words (LLM alts on `the cat sat`): still cycle individually with `(N/M) - tip` format.
+- After span dismiss or external edit, state invalidates cleanly; subsequent unrelated input doesn't inherit span highlight.
+- LLM auto-submit doesn't fire during active span.
+
+**Not in scope for Step 33:**
+- "Revert-on-first-edit" UX (backspace after fill restores original query).
+- `readControlState` resolver wiring (architectural parity — deferred).
+- Selector/satellite fills (opencues settings control).
+- `tips-mode: minimal` filtering semantics.
+- Factor `_hlExport.cueTip` writes.
+
+**Peculiarities / lessons learned during this step (multiple wrong iterations before convergence):**
+
+1. **Original's `_hlText` local vs `globalThis._hlText` pre/post-fill.** The legacy invalidation at cli.js:1396 compares the local `_hlText` (pre-fill input value) against `_oldText` (pre-fill globalThis value). After my Step 24/30 fill mutates `globalThis._hlText`, the legacy check still uses the local stale `_hlText`. My initial gate used local `_hlText !== _lastResolvedText` which was always true post-fill → gate failed → invalidation nuked state. Fix: use `globalThis._hlText !== globalThis._lastResolvedText` so the gate compares post-fill text against post-fill resolved text (they match after fill → invalidation skipped).
+
+2. **`_dynDefs` initialisation order.** Eager tip lookup only creates `_dynDefs = {words:[]}` when `lookup.found.length > 0`. For affirmations, none of the words are tips → `_dynDefs` stays null → my renderer snap inside `if(_dynDefs && _dynDefs.words && ...)` didn't fire. Moved the consume-all snap outside the guard so it runs regardless of LLM/tips state.
+
+3. **Statusline `is_cue_control` branch vs alts-counter.** The shell script uses two display formats: `is_cue_control && tip` prints tip alone; otherwise `word (N/M) - tip`. My initial `_dynDefs` span-origin entries included `alts`, which counted `(N/M)`. User wanted `Prompt improver` alone. Fix: `source: "control"` routes through `cueControl = true; alts = null` → statusline takes the tip-alone branch.
+
+4. **Stale `_dynDefs` bleeding into new input.** `_dynDefs.words` contained 13 entries for a 3-word input (leftovers from prior span sessions). One had `spanLength: N` at position 0 → renderer extended highlight across all 3 words even though current input had no spans. Fix: clear-on-change filter removes entries in the invalidated span range, so span-origin entries die with `_consumeAllAlts`.
+
+5. **Dismissibility needs per-index tracking + clear-on-external-edit.** Without `_dismissedBlanks`, cycling to `_` triggered auto-populate to re-fill immediately. Without clearing `_dismissedBlanks` alongside `_consumeAllAlts`, a dismissed flag survived into unrelated new input. Fix: track on `_cycleAlt`, null alongside `_consumeAllAlts` in clear-on-change.
+
+6. **Mirror-the-original principle validated twice more.** User called out "implement things as they are in the original" after I deviated with a one-line dismissible append that didn't address affirmations; and again on "no spans are being formed" when I'd built the `_consumeAllAlts` snap but not the general `_dynSpans` infrastructure. Each time, adopting the original's exact field shape (`_dynSpans[i] = {originalIndex, spanLength}`) + its invalidation flow produced correct behavior.
+
+**Status: ✅ Done** (verified 2026-04-17: full span + dismissible + statusline-tip parity across affirmations, prompt improver, weather, stocks, hackernews, answer)
+
+---
+
+## Step 34+ — TBD
+
+Remaining:
+
+- **"Revert-on-first-edit"** — backspace after fill restores pre-fill query.
+- **Selector/satellite** (opencues settings control) — two-slot span pattern.
+- **`readControlState` resolver wiring** — architectural parity for LLM-backed blanks.
+- **Factor `_hlExport.cueTip` writes** — one codepath consolidation.
+- **`tips-mode: minimal` filtering** — needs design.
+
+Pick one after Step 33 is verified.
 
 ---
 
