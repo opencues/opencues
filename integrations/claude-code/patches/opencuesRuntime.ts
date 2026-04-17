@@ -217,6 +217,11 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // TTS: speak.sh is the same script v1 used. ttsRate matches v1's default.
     `ttsScriptPath:(process.env.HOME||"~")+"/.claude/actions/speak.sh",` +
     `ttsRate:2,` +
+    // LLM resolver. Resolver only constructs if llmApiKey is set; otherwise
+    // the runtime stays static-cue-only. Endpoint + model match v1's defaults.
+    `llmApiKey:process.env.GROQ_API_KEY||undefined,` +
+    `llmEndpoint:process.env.OPENCUES_LLM_ENDPOINT||"https://api.groq.com/openai/v1/chat/completions",` +
+    `llmDefaultModel:process.env.OPENCUES_LLM_MODEL||"openai/gpt-oss-120b",` +
     // refreshStatusline calls the captured S6 useCallback (set by the
     // injection below) to trigger an immediate statusline re-render. Safe
     // no-op until S6 has run (which happens on the first React render of

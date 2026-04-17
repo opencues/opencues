@@ -18,9 +18,10 @@
 import type { HostAdapter, Unsubscribe } from '../adapter';
 import {
   buildLookupMap,
+  discoverFolderConfigs,
+  mergeConfigs,
   parseLocalCueFile,
   parseCuesMd,
-  parseSingleCueMd,
   type LocalCueLookupResult,
   type CuesMdConfig,
   type ControlConfig,
@@ -108,6 +109,10 @@ export interface LoadedConfig {
   readonly controlsConfig: CuesMdConfig | null;
   readonly blanksConfig: CuesMdConfig | null;
   readonly folderConfigs: DiscoveredConfigs | null;
+  /** cwd cues.md + folder cues/* merged. The resolver consumes this. */
+  readonly mergedCuesConfig: CuesMdConfig | null;
+  /** cwd blanks.md + folder blanks/* merged. The resolver consumes this. */
+  readonly mergedBlanksConfig: CuesMdConfig | null;
   /**
    * All words known to be navigable, lowercased. Union of:
    *   - cueMap keys (tip-having words)
@@ -144,6 +149,8 @@ export class ConfigLoader {
     controlsConfig: null,
     blanksConfig: null,
     folderConfigs: null,
+    mergedCuesConfig: null,
+    mergedBlanksConfig: null,
     navigableWords: new Set(),
     controlsByWord: new Map(),
     stepPatterns: [],
@@ -167,6 +174,8 @@ export class ConfigLoader {
   get controlsConfig(): CuesMdConfig | null { return this._config.controlsConfig; }
   get blanksConfig(): CuesMdConfig | null { return this._config.blanksConfig; }
   get folderConfigs(): DiscoveredConfigs | null { return this._config.folderConfigs; }
+  get mergedCuesConfig(): CuesMdConfig | null { return this._config.mergedCuesConfig; }
+  get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
   get controlsByWord(): ReadonlyMap<string, ControlEntry> { return this._config.controlsByWord; }
   get stepPatterns(): readonly StepPattern[] { return this._config.stepPatterns; }
@@ -272,6 +281,18 @@ export class ConfigLoader {
       folderConfigs = await this._discoverFolders(cwd);
     }
 
+    // Merged cues/blanks: cwd .md + folder-discovered LLM sources unioned via
+    // cues-core's mergeConfigs. Resolver consumes these so it can see prompts
+    // from both layers in one CueResolver build.
+    const mergedDiscovered = folderConfigs
+      ? mergeConfigs(
+          { cuesConfig: cuesConfig ?? undefined, blanksConfig: blanksConfig ?? undefined },
+          folderConfigs,
+        )
+      : { cuesConfig: cuesConfig ?? undefined, blanksConfig: blanksConfig ?? undefined };
+    const mergedCuesConfig = mergedDiscovered.cuesConfig ?? null;
+    const mergedBlanksConfig = mergedDiscovered.blanksConfig ?? null;
+
     // TODO Phase B+: merge folderConfigs.cuesConfig into cueMap (folder cues
     // become navigable via the same lookup). Not done yet because folder
     // configs use the LLM resolver shape, not the static-tip shape.
@@ -331,6 +352,8 @@ export class ConfigLoader {
       controlsConfig,
       blanksConfig,
       folderConfigs,
+      mergedCuesConfig,
+      mergedBlanksConfig,
       navigableWords,
       controlsByWord,
       stepPatterns,
@@ -359,10 +382,10 @@ export class ConfigLoader {
   }
 
   private async _discoverFolders(cwd: string): Promise<DiscoveredConfigs | null> {
-    // cues-core's discoverFolderConfigs takes sync read fns. Pre-walk async
-    // and feed it via a lookup table.
+    // cues-core's discoverFolderConfigs takes sync readFile/readDir callbacks.
+    // We pre-walk async (via adapter) and feed it through caches.
     if (!this.adapter.readDir) return null;
-    const cache = new Map<string, string | null>();
+    const fileCache = new Map<string, string | null>();
     const dirCache = new Map<string, readonly CoreDirEntry[] | null>();
 
     const prewalk = async (dir: string, depth: number): Promise<void> => {
@@ -376,7 +399,7 @@ export class ConfigLoader {
           await prewalk(full, depth + 1);
         } else if (e.name === 'cue.md') {
           const content = await this._safeReadFile(full);
-          cache.set(full, content);
+          fileCache.set(full, content);
         }
       }
     };
@@ -385,11 +408,12 @@ export class ConfigLoader {
       await prewalk(`${cwd}/${sub}`, 0);
     }
 
-    // Use cues-core directly with sync wrappers backed by the cache. cues-core's
-    // parseSingleCueMd does the per-folder parsing.
     try {
-      const folderConfigs = collectFolderConfigs(cwd, cache, dirCache);
-      return folderConfigs;
+      return discoverFolderConfigs({
+        basePath: cwd,
+        readFile: (path: string) => fileCache.has(path) ? fileCache.get(path) ?? null : null,
+        readDir: (path: string) => dirCache.has(path) ? (dirCache.get(path) ?? null) as CoreDirEntry[] | null : null,
+      });
     } catch (err) {
       this.adapter.log('warn', 'ConfigLoader: folder discovery failed', err);
       return null;
@@ -401,39 +425,3 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Collect parsed CuesMdConfigs from every cue.md found under cwd/cues|controls|blanks.
- * Sync — assumes the file/dir caches are pre-populated.
- */
-function collectFolderConfigs(
-  cwd: string,
-  fileCache: Map<string, string | null>,
-  dirCache: Map<string, readonly CoreDirEntry[] | null>,
-): DiscoveredConfigs {
-  const cuesConfig: CuesMdConfig | null = null;
-  const blanksConfig: CuesMdConfig | null = null;
-  const controlOverrides: Record<string, ReturnType<typeof parseSingleCueMd>['controls'] extends infer U ? U extends Record<string, infer V> ? V : never : never> = {};
-  const ignoreWords: string[] = [];
-
-  for (const [path, content] of fileCache.entries()) {
-    if (content === null || !path.endsWith('/cue.md')) continue;
-    const relativeFolder = path.replace(cwd + '/', '').replace(/\/cue\.md$/, '');
-    try {
-      const parsed = parseSingleCueMd(content, relativeFolder);
-      if (parsed.controls) {
-        for (const [k, v] of Object.entries(parsed.controls)) controlOverrides[k] = v;
-      }
-      if (parsed.ignore) ignoreWords.push(...parsed.ignore);
-    } catch {
-      // Skip unparseable cue.md
-    }
-  }
-  void dirCache; // currently only used for prewalk; kept for future merge logic
-
-  return {
-    cuesConfig: cuesConfig ?? undefined,
-    blanksConfig: blanksConfig ?? undefined,
-    controlOverrides: Object.keys(controlOverrides).length > 0 ? controlOverrides : undefined,
-    ignoreWords: ignoreWords.length > 0 ? ignoreWords : undefined,
-  };
-}

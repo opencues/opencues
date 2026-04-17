@@ -18,6 +18,7 @@ import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
+import { Resolver } from '../../../src/modules/resolver';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { applyDirectives } from '../../../src/render-directives';
@@ -52,6 +53,14 @@ export interface HostInfo {
   ttsScriptPath?: string;
   /** Optional: TTS rate (-10 to 10) passed as 2nd arg to the script. Defaults to 2. */
   ttsRate?: number;
+  /** Optional: LLM API key (e.g. GROQ_API_KEY). Resolver only runs when provided. */
+  llmApiKey?: string;
+  /** Optional: LLM endpoint URL. Defaults to Groq's chat completions endpoint. */
+  llmEndpoint?: string;
+  /** Optional: default LLM model name. */
+  llmDefaultModel?: string;
+  /** Optional: resolver debounce ms (defaults to 500). */
+  llmDebounceMs?: number;
   /** Optional: absolute path to the static cue tips JSON. */
   tipsPath?: string;
   /** Optional: absolute path for the statusline state-export JSON. */
@@ -242,6 +251,20 @@ export function boot(host: HostInfo): BootResult {
       rate: host.ttsRate !== undefined ? String(host.ttsRate) : undefined,
     });
     tts.subscribe();
+  }
+
+  // Resolver: LLM-driven cycle population. Only constructed when an API key
+  // is present. Subscribes once configLoader.load() resolves so the resolver
+  // can build sources from cuesConfig + blanksConfig.
+  if (host.llmApiKey) {
+    const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: host.llmApiKey,
+      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      debounceMs: host.llmDebounceMs ?? 500,
+    });
+    // Wait for first config load so resolver can see cues/blanks configs.
+    configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
   }
 
   // Fire-and-forget Runtime.create — capability validation + startup log.
