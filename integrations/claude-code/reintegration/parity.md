@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase 8 / Bucket C (commit `6534f8a`).
+**Last synced:** Phase 9 / Bucket D (commit `43f8775`).
 
 ---
 
@@ -35,10 +35,10 @@ just architecture.
 | 14 | TTS speak on tip highlight | ✓ | Phase 5 (commit `d52bc32`). spawn-process capability + `~/.claude/actions/speak.sh`. |
 | 15 | parse `opencues.md` → `_openCuesCurrent` | ✓ | Phase 6. parseOpenCuesMd extracts top-level scalars into OpenCuesState. |
 | 16 | gate tip / TTS on `tips-mode: off` | ✓ | Phase 6. Statusline gates on `tipsMode === 'off'`; TTS gates on `voiceMode === 'inactive'`. Live verified. |
-| 17 | NodeHttpAdapter | ○ | No HTTP wiring. |
-| 18 | CueResolver | ○ | No resolver. Cycling uses static alts only. |
-| 19 | auto-submit debounce → `resolve()` → `_dynDefs` | ○ | No debounce trigger; no LLM-driven DynDefs population. |
-| 20 | tip-word cycling end-to-end (JIT) | ◐ | Cycling works for static cues. JIT injection from LLM not wired. Stale invalidation also missing. |
+| 17 | NodeHttpAdapter | ✓ | Phase 9 (commit `43f8775`). Resolver lazy-loads NodeHttpAdapter from cues-core. |
+| 18 | CueResolver | ✓ | Phase 9. Resolver constructs CueResolver from merged cuesConfig + blanksConfig + folder cues/* prompts. |
+| 19 | auto-submit debounce → `resolve()` → `_dynDefs` | ✓ | Phase 9. onTextChange (user-source) → 500ms debounce → resolve → DynDefs populated. |
+| 20 | tip-word cycling end-to-end (JIT) | ✓ | Phase 9. LLM alts populate DynDefs; Cycling consumes via existing static-alt path. Stale-invalidation via generation counter; mid-cycle protection skips currentIndex>0 entries. |
 | 21 | visual dim consistency + Step 3 revert | ◐ | Phase 8. DimRender now dims navigable words. v1's "dim everything LLM-cycled" still pending — depends on D (LLM resolver). |
 | 22 | debug logging gated on `opencues.md` `debug-mode` | ◐ | DEBUG_OPENCUES env var works (file-based). No opencues.md gate. |
 | 23 | blank-fill: detect `_` + match `blankKeywords` | ○ | No blank-fill at all. |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 13 ✓, 5 ◐, 18 ○, 2 — out of 38 steps. (Phase 8 / Bucket C flipped Steps 10, 11, 12 ✓ and Steps 9, 21 ○→◐.)
+**Tally:** 17 ✓, 4 ◐, 15 ○, 2 — out of 38 steps. (Phase 9 / Bucket D flipped Steps 17, 18, 19, 20 ✓.)
 
 ---
 
@@ -149,7 +149,7 @@ Dependency-respecting:
 1. ~~**A — ConfigLoader expansion**~~ ✓ Phase 6 (`fa82625`).
 2. ~~**B — Nav cue filtering**~~ ✓ Phase 7 (`1cfc47f`).
 3. ~~**C — Step-pattern dim + step controls**~~ ✓ Phase 8 (`6534f8a`).
-4. **D — LLM resolver path** (~1 day). Restores LLM cycling.
+4. ~~**D — LLM resolver path**~~ ✓ Phase 9 (`43f8775`).
 5. **E — Blank-fill** (~3-4 days). Big chunk; tackle as 4-5 commits not one.
 6. **F — Span infrastructure** (~half day). Slot before E if parallel work
    suggests it; otherwise after.
