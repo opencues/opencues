@@ -19,6 +19,7 @@ import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
+import { BlankFill } from '../../../src/modules/blank-fill';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { applyDirectives } from '../../../src/render-directives';
@@ -233,6 +234,12 @@ export function boot(host: HostInfo): BootResult {
   dimRender.subscribe();
   const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
   cycling.subscribe();
+
+  // BlankFill: scans for `_` placeholders + matched control. E.1 is
+  // detection-only; E.2+ adds auto-populate behaviours.
+  const blankFill = new BlankFill(adapter, configLoader);
+  configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
+  void blankFill; // silence unused — referenced by future phases
 
   // Statusline only if the host advertised a path. Don't write to a default
   // location — that risks colliding with another opencues instance.

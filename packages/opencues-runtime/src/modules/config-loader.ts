@@ -178,6 +178,17 @@ export class ConfigLoader {
   get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
   get controlsByWord(): ReadonlyMap<string, ControlEntry> { return this._config.controlsByWord; }
+
+  /** Unique controls by name (lowercased). Sourced from folderConfigs +
+   *  controlsConfig. Useful when a consumer wants to iterate each control
+   *  once (BlankFill, etc.) rather than per-word. */
+  get controls(): ReadonlyMap<string, ControlConfig> {
+    const out = new Map<string, ControlConfig>();
+    for (const entry of this._config.controlsByWord.values()) {
+      out.set(entry.name, entry.control);
+    }
+    return out;
+  }
   get stepPatterns(): readonly StepPattern[] { return this._config.stepPatterns; }
 
   /**
