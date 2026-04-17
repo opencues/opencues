@@ -218,7 +218,7 @@ export function boot(host: HostInfo): BootResult {
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
   // Subscribe modules synchronously so the very first key dispatch is wired.
-  const navigation = new Navigation(adapter, hlState, dynDefs);
+  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader);
   navigation.subscribe();
   const dimRender = new DimRender(adapter, hlState, dynDefs);
   dimRender.subscribe();

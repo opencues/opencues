@@ -11,6 +11,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
+import type { ConfigLoader } from './config-loader';
 
 export interface WordSpan {
   readonly start: number;
@@ -28,6 +29,12 @@ export class Navigation {
     private adapter: HostAdapter,
     private hlState: HighlightState,
     private dynDefs: DynDefs,
+    /**
+     * Optional. When provided, navigation prefers cueMap-mapped words; falls
+     * back to all-words when no matches. Mirrors v1's nav filter from
+     * wordHighlight.ts:461.
+     */
+    private configLoader?: ConfigLoader,
   ) {}
 
   subscribe(): void {
@@ -75,7 +82,7 @@ export class Navigation {
    */
   private step(text: string, direction: 1 | -1): boolean {
     const words = splitWords(text);
-    const targets = words.map(w => w.index); // no filtering in Phase 1
+    const targets = this.computeTargets(words);
     if (targets.length === 0) return false;
 
     if (!this.hlState.active) {
@@ -106,6 +113,35 @@ export class Navigation {
     }
     this.adapter.forceRender();
     return true;
+  }
+
+  /**
+   * Decide which word indices should be navigable.
+   *
+   * Priority filter (mirrors v1 wordHighlight.ts:461):
+   *   1. Word lowercased is in cueMap (tip-having words).
+   *   2. DynDefs has an entry for that index (cycling state).
+   * Fallback: all whitespace-separated words.
+   *
+   * Exposed for unit testing.
+   */
+  computeTargets(words: readonly WordSpan[]): number[] {
+    if (!this.configLoader && this.dynDefs.size === 0) {
+      return words.map(w => w.index);
+    }
+    const navigable = this.configLoader?.navigableWords;
+    const filtered: number[] = [];
+    for (const w of words) {
+      const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
+      if (lc.length === 0) continue;
+      if (navigable?.has(lc)) {
+        filtered.push(w.index);
+      } else if (this.dynDefs.get(w.index)) {
+        filtered.push(w.index);
+      }
+    }
+    if (filtered.length > 0) return filtered;
+    return words.map(w => w.index);
   }
 }
 

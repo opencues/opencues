@@ -117,3 +117,63 @@ describe('Navigation', () => {
     expect(hlState.active).toBe(true);
   });
 });
+
+describe('Navigation cue filtering (Bucket B)', () => {
+  const TIPS = JSON.stringify({
+    domain: 't', version: 1,
+    concepts: [{ id: 'a', words: { volume: { tip: 'V', alts: [] }, brightness: { tip: 'B', alts: [] } } }],
+  });
+
+  async function setupWithCues(text: string) {
+    const { ConfigLoader } = await import('./config-loader');
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText(text);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const nav = new Navigation(adapter, hlState, dynDefs, loader);
+    nav.subscribe();
+    return { adapter, hlState, dynDefs, loader, nav };
+  }
+
+  it('Ctrl+Alt+Left lands on cue-mapped word, skipping non-mapped neighbours', async () => {
+    const { adapter, hlState } = await setupWithCues('raise volume now');
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.active).toBe(true);
+    expect(hlState.wordIndex).toBe(1); // "volume"
+  });
+
+  it('with two cue-mapped words, walks between them only', async () => {
+    const { adapter, hlState } = await setupWithCues('set volume and brightness now');
+    // splitWords gives: set(0) volume(1) and(2) brightness(3) now(4)
+    // cue-mapped indices: [1, 3]
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.wordIndex).toBe(3); // brightness (rightmost target)
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.wordIndex).toBe(1); // volume (next left target)
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.wordIndex).toBe(1); // clamps at first target
+  });
+
+  it('falls back to all words when no cue-mapped words present', async () => {
+    const { adapter, hlState } = await setupWithCues('alpha beta gamma');
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.active).toBe(true);
+    expect(hlState.wordIndex).toBe(2); // gamma — fallback to all words, rightmost
+  });
+
+  it('DynDefs entries also count as targets even without cueMap match', async () => {
+    const { adapter, hlState, dynDefs } = await setupWithCues('xyz unknown other');
+    // None of these are in cueMap. Pre-populate DynDefs entry for index 1.
+    dynDefs.set(1, {
+      originalWord: 'unknown',
+      alternatives: ['unknown', 'sub'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 11,
+    });
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.wordIndex).toBe(1); // unknown — DynDef makes it navigable
+  });
+});

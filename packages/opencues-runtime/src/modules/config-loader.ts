@@ -100,6 +100,16 @@ export interface LoadedConfig {
   readonly controlsConfig: CuesMdConfig | null;
   readonly blanksConfig: CuesMdConfig | null;
   readonly folderConfigs: DiscoveredConfigs | null;
+  /**
+   * All words known to be navigable, lowercased. Union of:
+   *   - cueMap keys (tip-having words)
+   *   - control names from folder discovery (`controls/X/cue.md` → "X")
+   *   - blankKeywords from each control (synonyms that trigger the same control)
+   *
+   * Navigation's filter uses this. Bigger than cueMap because controls
+   * declared in folders aren't necessarily mirrored in the tips JSON.
+   */
+  readonly navigableWords: ReadonlySet<string>;
 }
 
 export class ConfigLoader {
@@ -110,6 +120,7 @@ export class ConfigLoader {
     controlsConfig: null,
     blanksConfig: null,
     folderConfigs: null,
+    navigableWords: new Set(),
   };
   private _loaded = false;
   private _lastLoadAt = 0;
@@ -130,6 +141,7 @@ export class ConfigLoader {
   get controlsConfig(): CuesMdConfig | null { return this._config.controlsConfig; }
   get blanksConfig(): CuesMdConfig | null { return this._config.blanksConfig; }
   get folderConfigs(): DiscoveredConfigs | null { return this._config.folderConfigs; }
+  get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
   get loaded(): boolean { return this._loaded; }
   get config(): LoadedConfig { return this._config; }
 
@@ -214,6 +226,32 @@ export class ConfigLoader {
     // become navigable via the same lookup). Not done yet because folder
     // configs use the LLM resolver shape, not the static-tip shape.
 
+    // Build the navigable-words set: cueMap keys + folder-discovered control
+    // names + their blankKeywords synonyms. Lowercase, trimmed.
+    const navigableWords = new Set<string>();
+    for (const k of cueMap.keys()) navigableWords.add(k);
+    const addControl = (name: string, control: { blankKeywords?: readonly string[] | string }): void => {
+      navigableWords.add(name.toLowerCase());
+      const bk = control.blankKeywords;
+      if (typeof bk === 'string') {
+        for (const k of bk.split(',')) {
+          const t = k.trim().toLowerCase();
+          if (t) navigableWords.add(t);
+        }
+      } else if (Array.isArray(bk)) {
+        for (const k of bk) {
+          const t = String(k).trim().toLowerCase();
+          if (t) navigableWords.add(t);
+        }
+      }
+    };
+    for (const [name, ctrl] of Object.entries(folderConfigs?.controlOverrides ?? {})) {
+      addControl(name, ctrl as { blankKeywords?: readonly string[] | string });
+    }
+    for (const [name, ctrl] of Object.entries(controlsConfig?.controls ?? {})) {
+      addControl(name, ctrl as { blankKeywords?: readonly string[] | string });
+    }
+
     this._config = {
       cueMap,
       opencuesState,
@@ -221,6 +259,7 @@ export class ConfigLoader {
       controlsConfig,
       blanksConfig,
       folderConfigs,
+      navigableWords,
     };
     this.adapter.log('info', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,
