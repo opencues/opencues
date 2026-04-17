@@ -1,26 +1,27 @@
 // OpenCues v2 runtime patch — see refactor.md §10, §11.
 //
 // When opencuesRuntime === 'v2', this patch:
-//   1. Runs seam predicates against cli.js (S1 KeyDispatcher, S2 InputStateHandler,
-//      S3 RenderedValue).
-//   2. Fails loudly (returns null, caller logs) if any critical seam is missing.
-//   3. Injects two anchors:
-//      a) S1 body-start: a bootstrap that loads `opencues-runtime`, builds
-//         HostBindings, constructs the v2.1 adapter, calls Runtime.create(),
-//         subscribes Navigation + DimRender. Each key dispatch flows through
-//         the runtime's onKey handlers; consumed keys early-return a
-//         ZWS-toggled InputZone for re-render.
+//   1. Runs three seam predicates (S1 KeyDispatcher, S2 InputStateHandler,
+//      S3 RenderedValue). Fails loud if any miss — cli.js stays unmodified.
+//   2. Injects two anchors:
+//      a) S1 body-start: a tiny bootstrap that lazily require()s the v2.1
+//         adapter's boot.js and stores the result on globalThis.__oc.
+//         On every key dispatch, calls __oc.dispatchKey(...) and, if
+//         consumed + pending render, returns a rebuilt InputZone.
 //      b) S3 renderedValue expression: wraps the host's render output with
-//         applyRender(), which fires registered onRender handlers and applies
-//         their RenderDirectives (highlight, dim, override) via the runtime's
-//         applyDirectives helper.
+//         __oc.applyRender(...) (guarded; falls through until __oc exists).
 //
-// NOTE: The seam regexes below are a build-time vendored copy of
-// `packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`. The runtime
-// package is the source of truth. When bumping, mirror both files.
+// All wiring (adapter construction, module subscription, error capture,
+// ZWS toggle logic, applyDirectives) lives in opencues-runtime's
+// adapters/claude-code/v2.1/boot.ts. This file is intentionally minimal:
+// it knows the require var (host-specific), the boot.js path, and the
+// S1/S2/S3 binding names. That's it.
 //
-// The legacy v1 patch (wordHighlight.ts + dynamicHighlight.ts) is skipped
-// when v2 is active — the caller in ./index.ts branches on the flag.
+// NOTE: Seam regexes below are a build-time vendored copy of
+// `packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`. Source of
+// truth is the runtime package; mirror both when bumping.
+
+import { getRequireFuncName } from './helpers';
 
 interface SeamMatch {
   readonly startIndex: number;
@@ -28,6 +29,7 @@ interface SeamMatch {
   readonly bindings: Readonly<Record<string, string>>;
 }
 
+// ─── S1: KeyDispatcher ─────────────────────────────────────────────────
 const KEY_DISPATCHER_REGEX =
   /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{switch\(\2\.key\)\{case"escape":/;
 
@@ -42,6 +44,7 @@ function findKeyDispatcher(source: string): SeamMatch | null {
   };
 }
 
+// ─── S2: InputStateHandler ─────────────────────────────────────────────
 const INPUT_STATE_REGEX =
   /function ([$\w]+)\(\{value:([$\w]+),onChange:([$\w]+),[^}]+externalOffset:([$\w]+),onOffsetChange:([$\w]+)[^}]+\}\)\{[^}]*let ([$\w]+)=\4,([$\w]+)=\5,([$\w]+)=([$\w]+)\.fromText\(\2,([$\w]+),\6\)/;
 const RETURN_REGEX = /return\{handleKeyDown:([$\w]+),renderedValue:/;
@@ -114,8 +117,7 @@ function findRenderedValue(source: string): RenderedValueMatch | null {
 }
 
 /**
- * Apply the v2 bootstrap. Returns patched content on success, null on seam
- * miss. Caller logs; tweakcc's existing error path handles the rest.
+ * Apply the v2 patch. Returns patched content on success, null on miss.
  */
 export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const s1 = findKeyDispatcher(oldFile);
@@ -137,99 +139,54 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     return null;
   }
 
-  const b1 = s1!.bindings;
-  const b2 = s2!.bindings;
+  // cli.js is ESM-converted; bare `require` isn't defined. Use the
+  // createRequire-derived var that v1 patches also rely on.
+  const requireFn = getRequireFuncName(oldFile);
+  if (!requireFn) {
+    console.error('OpenCues v2 installer: failed to find createRequire function in cli.js. Aborting v2 patch.');
+    return null;
+  }
 
-  // Bootstrap: injected at the KeyDispatcher body-start (S1), which sits
-  // inside the InputStateHandler closure (S2) — so b2's locals
-  // (inputZoneVar, inputZoneClass, columnsVar) are in scope here.
-  //
-  // On first invocation: lazily require opencues-runtime, construct the v2.1
-  // adapter + Navigation, create the Runtime.
-  //
-  // On every invocation: dispatch the current key event through registered
-  // handlers. If a handler consumed AND forceRender was called, early-return
-  // a rebuilt InputZone with a toggled zero-width-char suffix — same
-  // mechanism as v1 — so React sees a changed value and re-renders.
-  const bootstrap =
-    `try{if(!globalThis.__oc){globalThis.__oc={keyHandlers:[],renderHandlers:[],textHandlers:[],pendingRender:false,failed:false};` +
+  const ev = s1!.bindings.eventParam;
+  const iz = s2!.bindings.inputZoneVar;
+  const izClass = s2!.bindings.inputZoneClass;
+  const cols = s2!.bindings.columnsVar;
+
+  // Single absolute path — boot.js handles all internal wiring.
+  const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/adapters/claude-code/v2.1/boot.js"`;
+
+  // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
+  const s1Bootstrap =
     `try{` +
-    `var __ocMod=require("opencues-runtime");` +
-    `var __ocAdapterMod=require("opencues-runtime/dist/adapters/claude-code/v2.1/adapter");` +
-    `var __ocNavMod=require("opencues-runtime/dist/src/modules/navigation");` +
-    `var __ocDimMod=require("opencues-runtime/dist/src/modules/dim-render");` +
-    `var __ocRdMod=require("opencues-runtime/dist/src/render-directives");` +
-    `var __ocStateMod=require("opencues-runtime/dist/src/state/highlight-state");` +
-    `var __ocDynDefsMod=require("opencues-runtime/dist/src/state/dyn-defs");` +
-    `globalThis.__oc.adapterMod=__ocAdapterMod;` +
-    `globalThis.__oc.rdMod=__ocRdMod;` +
-    `var __ocBindings={hostVersion:"2.1.x",cwd:process.cwd(),` +
-    `getText:function(){return globalThis.__oc._lastText||"";},` +
-    `getCursorOffset:function(){return globalThis.__oc._lastOffset||0;},` +
-    `setText:function(t){},setCursorOffset:function(o){},` +
-    `forceRender:function(){globalThis.__oc.pendingRender=true;},` +
-    `registerKeyHandler:function(cb){globalThis.__oc.keyHandlers.push(cb);return function(){var a=globalThis.__oc.keyHandlers;var i=a.indexOf(cb);if(i>=0)a.splice(i,1);};},` +
-    `registerRenderHandler:function(cb){globalThis.__oc.renderHandlers.push(cb);return function(){var a=globalThis.__oc.renderHandlers;var i=a.indexOf(cb);if(i>=0)a.splice(i,1);};},` +
-    `registerTextChangeHandler:function(cb){globalThis.__oc.textHandlers.push(cb);return function(){var a=globalThis.__oc.textHandlers;var i=a.indexOf(cb);if(i>=0)a.splice(i,1);};},` +
+    `if(!globalThis.__oc){` +
+    `try{globalThis.__oc=${requireFn}(${bootPath}).boot({` +
+    `hostVersion:"2.1.x",cwd:process.cwd(),` +
+    `getText:function(){return ${iz}.text;},` +
+    `getCursorOffset:function(){return ${iz}.offset;},` +
     `log:function(l,m,d){if(process.env.DEBUG_OPENCUES)console.error("[opencues]["+l+"] "+m,d||"");}` +
-    `};` +
-    `globalThis.__oc.adapter=new __ocAdapterMod.ClaudeCodeV21Adapter(__ocBindings);` +
-    `globalThis.__oc.hlState=new __ocStateMod.HighlightState();` +
-    `globalThis.__oc.dynDefs=new __ocDynDefsMod.DynDefs();` +
-    `__ocMod.Runtime.create(globalThis.__oc.adapter).then(function(rt){` +
-    `globalThis.__oc.runtime=rt;` +
-    `var nav=new __ocNavMod.Navigation(globalThis.__oc.adapter,globalThis.__oc.hlState,globalThis.__oc.dynDefs);` +
-    `nav.subscribe();globalThis.__oc.nav=nav;` +
-    `var dim=new __ocDimMod.DimRender(globalThis.__oc.adapter,globalThis.__oc.hlState,globalThis.__oc.dynDefs);` +
-    `dim.subscribe();globalThis.__oc.dim=dim;` +
-    `globalThis.__oc.applyRender=function(rendered,text,offset){` +
-    `if(typeof rendered!=="string")return rendered;` +
-    `var ctx={text:text||"",cursor:offset||0,externalHighlights:[]};` +
-    `var out=rendered;` +
-    `var handlers=globalThis.__oc.renderHandlers;` +
-    `for(var __ocRi=0;__ocRi<handlers.length;__ocRi++){` +
-    `try{var d=handlers[__ocRi](ctx);if(d)out=globalThis.__oc.rdMod.applyDirectives(out,d);}catch(__ocRe){}` +
+    `});}` +
+    `catch(__ocBe){console.error("[opencues] boot failed:",__ocBe&&__ocBe.stack||__ocBe);globalThis.__oc={failed:true};}` +
     `}` +
-    `return out;` +
-    `};` +
-    `}).catch(function(e){console.error("[opencues] runtime init failed:",e);globalThis.__oc.failed=true;});` +
-    `}catch(__ocBe){console.error("[opencues] bootstrap error:",__ocBe);globalThis.__oc.failed=true;}` +
-    `}}catch(__ocOe){}` +
-    // Dispatch the current key event through the runtime's key handlers.
-    `try{if(globalThis.__oc&&!globalThis.__oc.failed&&globalThis.__oc.keyHandlers&&globalThis.__oc.keyHandlers.length){` +
-    `globalThis.__oc._lastText=${b2.inputZoneVar}.text;` +
-    `globalThis.__oc._lastOffset=${b2.inputZoneVar}.offset;` +
-    `var __ocEv=${b1.eventParam};` +
-    `var __ocMods={ctrl:!!__ocEv.ctrl,alt:!!(__ocEv.alt||__ocEv.meta||__ocEv.option),shift:!!__ocEv.shift,meta:!!__ocEv.super};` +
-    `var __ocKeyEv={key:__ocEv.key,modifiers:__ocMods,text:${b2.inputZoneVar}.text,cursorOffset:${b2.inputZoneVar}.offset};` +
-    `var __ocConsumed=false;` +
-    `for(var __ocI=0;__ocI<globalThis.__oc.keyHandlers.length;__ocI++){` +
-    `try{if(globalThis.__oc.keyHandlers[__ocI](__ocKeyEv)){__ocConsumed=true;break;}}catch(__ocHe){}` +
+    `if(globalThis.__oc&&!globalThis.__oc.failed){` +
+    `if(globalThis.__oc.dispatchKey(${ev},${iz}.text,${iz}.offset)){` +
+    `if(globalThis.__oc.consumePendingRender()){` +
+    `try{return ${izClass}.fromText(globalThis.__oc.toggleRenderText(${iz}.text),${cols},${iz}.offset);}` +
+    `catch(__ocRe){return ${iz};}` +
     `}` +
-    `if(__ocConsumed){` +
-    `if(globalThis.__oc.pendingRender&&globalThis.__oc.adapterMod){` +
-    `globalThis.__oc.pendingRender=false;` +
-    `try{var __ocNextText=globalThis.__oc.adapterMod.toggleZeroWidth(${b2.inputZoneVar}.text);` +
-    `return ${b2.inputZoneClass}.fromText(__ocNextText,${b2.columnsVar},${b2.inputZoneVar}.offset);` +
-    `}catch(__ocTe){return ${b2.inputZoneVar};}` +
+    `return ${iz};` +
     `}` +
-    `return ${b2.inputZoneVar};` +
     `}` +
-    `}}catch(__ocDe){}`;
+    `}catch(__ocOe){console.error("[opencues] dispatch error:",__ocOe&&__ocOe.stack||__ocOe);}`;
 
-  // S3 wrapper: replace `renderedValue:<EXPR>` with a guarded applyRender call.
-  // applyRender is null until the runtime init promise resolves; the guard
-  // means we transparently fall back to the original render until then.
+  // S3 injection: wrap renderedValue. Guarded — passes through until __oc ready.
   const s3Wrapper =
     `(globalThis.__oc&&globalThis.__oc.applyRender` +
-    `?globalThis.__oc.applyRender(${s3!.expression},${s2!.bindings.inputZoneVar}.text,${s2!.bindings.inputZoneVar}.offset)` +
+    `?globalThis.__oc.applyRender(${s3!.expression},${iz}.text,${iz}.offset)` +
     `:${s3!.expression})`;
 
-  // Apply both injections. S1 sits inside the function body (S1.startIndex < S3.startIndex
-  // because S1 is body-start of handleKeyDown and S3 is later in the same closure).
-  // Apply highest-position first so earlier indices remain valid.
+  // Apply S3 first (later position, so S1 indices remain valid).
   let out = oldFile;
   out = out.slice(0, s3!.startIndex) + s3Wrapper + out.slice(s3!.endIndex);
-  out = out.slice(0, s1!.startIndex) + bootstrap + out.slice(s1!.endIndex);
+  out = out.slice(0, s1!.startIndex) + s1Bootstrap + out.slice(s1!.endIndex);
   return out;
 }
