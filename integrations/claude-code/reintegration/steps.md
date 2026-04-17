@@ -2138,7 +2138,27 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 **Deferred:** Architectural parity for LLM-backed *word* alternatives (not blanks). Already routed through the resolver; no change needed.
 
-Pick after Step 36 is verified end-to-end.
+---
+
+## Step 37 — Post-reintegration polish (three small items)
+
+After Step 36 landed, three residual items surfaced. Grouped here because none individually warrants its own full step.
+
+- **Step 37a — Drop `tips-mode: minimal` option.** The `minimal` value was listed in `opencues.md`'s `settings:` block but never had code support (only `on`/`off` are honoured downstream). With selector/satellite cycling live (Step 35), cycling `tips-mode` would land on `minimal` and produce a no-op state. Two edits to `opencues.md`: live setting `tips-mode: minimal` → `on`; drop the `minimal:` line from the `values:` list. Commit: `70942d4`.
+
+- **Step 37b — Wire the external-highlights producer against v2.1.110.** The renderer already consumed `globalThis._extHighlights` to suppress our ANSI over native shimmer/selection spans (e.g. `ultrathink`), but the producer injection's anchor (`/else X=Y.inverse;let Z=uu8\(/`) no longer matches any cli.js structure. Result: `_extHighlights` stayed empty; shimmer-covered words got corrupted when our highlight tried to overlay. New anchor targets the segment-render function's prop destructure: `/function [$\w]+\([$\w]+\)\{let [$\w]+=s\(\d+\),\{text:[$\w]+,highlights:([$\w]+)\}=[$\w]+,[$\w]+;/`. Inject `globalThis._extHighlights=<highlightsVar>||[];` AFTER the whole `let` statement's closing `;`. Array elements carry `{start, end, priority}` natively — no shape transform. Commit: `ef75924`.
+
+- **Step 37c — Clear `_extHighlights` on text change to kill stale ranges.** The ext-highlights array is refreshed on every `Nw4(q)` render. Between our text mutation (via `onChange + zws`) and the next render, the array can point to character ranges that now cover DIFFERENT words — those words become unselectable because the consumer suppresses our highlight on any overlap. Fix: in the text-change IIFE, `if(_hlText !== _oldText) globalThis._extHighlights = [];` so the window of stale state is zero. Commit: `264663e`.
+
+**Peculiarities found during Step 37:**
+
+1. **Anchor drift between CC versions is silent.** The old ext-highlights injection lived in the patch file but never matched in v2.1.110, so the feature looked "implemented" without running. Failed match produced no warning (by design — patches skip missing anchors). Lesson: for anchor-based injections we rely on working, add a build-time or startup assertion that the injection COUNT matches expectation. Flag for a future step.
+
+2. **Mid-`let` injection = silent syntax error.** First pass matched only up through `}=q,` and injected mid-declaration. Runtime parse fails silently (or patches to a broken state). Fix: always match through the `;` that closes the enclosing statement before injecting after. General rule for patching minified JS: respect statement boundaries even when the surrounding regex only needs the opening context.
+
+3. **Stale timing window is a one-line fix, not a new render-lifecycle hook.** First hunch was "we need to clear on every cycling call site." Actual fix is zero-clear on any text change in the IIFE — applies uniformly regardless of which mutator (our cycling, user typing, blank-fill consumer) triggered the change. Single point of invalidation > N-mutator-specific clears.
+
+**Rollback:** each sub-step is independent. 37a: restore `minimal` in `opencues.md`. 37b: delete the new injection block. 37c: delete the single IIFE line.
 
 ---
 
