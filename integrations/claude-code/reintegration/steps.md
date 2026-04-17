@@ -1779,7 +1779,6 @@ Applied to:
 
 **Not in scope for Step 29:**
 - `blankConsumeAll` — strips ALL non-blank words. Different range (`0 .. wordCount-1`, excluding blank). Simple extension but has edge cases with multi-word fills affecting "what's after the blank" semantics. Deferred.
-- Cycling filled blanks, span tracking, dismissible, resolver-wiring — still on the TBD list.
 
 **Peculiarities found during this step:** *None*. Clean 3-line extension of Step 27's clear-range logic. Worked first try.
 
@@ -2129,14 +2128,6 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 6. **Two passes of the resolver fire per blank-fill.** Pass 1 (text=`volume _`): ControlBlankSource emits control-blank, my code populates `_pendingAutoPopulate`, consumer fills text to `volume 18%`. Pass 2 (text=`volume 18%`): ControlBlankSource emits nothing (no `_`), but LLM sources emit word-alt results for `volume` and `18%`. This is what would clobber the control-blank dyndef without `protectControlName`. Intentional two-pass — the first creates the dyndef with metadata; the second is where protection kicks in.
 
 **Rollback:** 36a is additive — delete the `readControlState` option, the result-iteration block, and the backoff guard. 36b requires re-adding the inline IIFE (preserve the last-known-good commit SHA for reference) AND reverting the cues-core `minAlts` bypass (harmless without the patch but strictly speaking an upstream change too).
-
-**Risk notes:**
-- **Timing.** Inline runs synchronously on keystroke; resolver fires at ~500ms debounce. In 36a coexistence, inline usually wins, which masks resolver bugs. Mitigation: add a debug log when resolver-produced `_pendingAutoPopulate` actually applies (so we know it's exercised before we rip).
-- **Prompt-improver consume-all.** Current inline path has hand-written `_consumeAllAlts` staging. Need to verify resolver path produces identical `_pendingAutoPopulate.consumeAllAlts` array (multi-line split, first alt as `value`).
-- **Satellite detection.** ControlBlankSource splits on tab and emits `metadata.satelliteValue` + `metadata.displaySeparator`. Need to verify the `_pendingAutoPopulate` consumer's satellite branch reads those exactly.
-- **Env vars.** Our inline handler threaded `CUES_MODEL`, `CUES_API_URL`, `CUES_API_KEY_ENV`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_<NAME>` into the script env. `readControlState` callback must do the same — verify baseline implementation and match.
-
-**Deferred:** Architectural parity for LLM-backed *word* alternatives (not blanks). Already routed through the resolver; no change needed.
 
 ---
 
