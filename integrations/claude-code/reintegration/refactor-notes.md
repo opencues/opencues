@@ -15,8 +15,14 @@ Commits:
 - `79a5c7e` — Phase 3: Cycling + ConfigLoader (visible word cycling).
 - `35df9cb` — Docs: REPAIR.md host-quirks + refactor-notes Phase 3 review.
 - `fd34cd5` — Phase 4: Statusline export + `file-write` capability.
-- (this+) Phase 4.5: S6 seam — event-driven statusline refresh.
+- `a0a6f16` — Phase 4.5: S6 seam — event-driven statusline refresh.
   Removes the `refreshInterval: 1` polling workaround.
+- `4765ab9` — Docs: REPAIR.md S6 + Phase 4.5 review.
+- `65393f8` — Phase 4.6: cue-tip plumbing into Statusline (cueTip + altCueTips).
+- `d52bc32` — Phase 5: TTS on tip highlight (spawn-process capability).
+- (this+) Docs: `parity.md` — v1 → v2 step-by-step parity tracker.
+  Calls out the 27 of 38 v1 steps not yet ported and groups them
+  into effort buckets (A through I).
 
 **Repairing the integration when Claude Code bumps versions:**
 see `packages/opencues-runtime/adapters/claude-code/REPAIR.md` — scenarios
@@ -581,24 +587,19 @@ Ctrl+Alt+Left/Right or Ctrl+Alt+Up/Down. No polling, no stale state.
 
 ---
 
-## Going forward (next phases)
+## Going forward — see parity.md
 
-Phases 0–4.5 ship visible navigation + word cycling + event-driven
-statusline export on a live install. Open phases:
+Phases 0–5 ship the runtime spine + the most common path features
+(navigation, visible highlight, static cycling, statusline + tips, TTS).
+**That's about 4 of v1's 38 steps fully ported.** A lot of breadth is
+still missing — cue-controls, blank-fill (8 sub-steps), LLM resolver
+path, span infrastructure, selector/satellite, real ConfigLoader
+(currently only loads `claude-code-tips.json`, not `cues.md` /
+`controls.md` / `opencues.md`).
 
-- **TTS on tip highlight** (~half day) — `spawn-process` capability,
-  fire-and-forget `speak.sh` when the highlighted word has a `speak` flag
-  in the cue map. Modular, no dependencies on other phases.
-- **Cue-tip plumbing** (~hour) — pass ConfigLoader into Statusline so
-  `cueTip` and `cueControl` populate from the cue map. Trivial follow-up
-  to Phase 4.
-- **BlankFill** (multi-day, the big one) — fills `_`-style blanks via
-  cues-core's `Resolver`. Introduces:
-  - HTTP adapter wiring (NodeHttpAdapter from cues-core)
-  - Resolver lifecycle (debounced trigger, in-flight cancellation, dedup)
-  - Real `cues.md` / `controls.md` / `blanks.md` parsing
-  - Folder-based cue discovery (needs `readDir` on HostAdapter or a
-    manifest walk)
+The full audit + suggested order lives at
+`integrations/claude-code/reintegration/parity.md`.
 
 Reading order when picking up cold: `refactor.md` → this file → recent
-commits (`git log --oneline -10`) → `REPAIR.md` for the host quirks list.
+commits (`git log --oneline -10`) → `parity.md` for the v1 backlog →
+`REPAIR.md` for the host quirks list.
