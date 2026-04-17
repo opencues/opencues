@@ -58,6 +58,9 @@ export interface HostBindings {
   /** Register a text-change handler. Returns unsub. */
   registerTextChangeHandler(cb: (event: TextChangeEvent) => void): Unsubscribe;
 
+  /** Optional: read a file (absolute path). Resolves to null if missing. */
+  readFile?(path: string): Promise<string | null>;
+
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -115,9 +118,11 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
   }
   setCursorOffset(offset: number): void {
     if (this._disposed) return;
-    const text = this.getText();
-    const clamped = Math.max(0, Math.min(offset, text.length));
-    try { this.bindings.setCursorOffset(clamped); } catch (err) {
+    // The HostAdapter contract says we clamp to [0, text.length], but on
+    // Claude Code v2.1 bindings.getText is a closure over a long-gone
+    // InputStateHandler invocation — we cannot read live text here.
+    // Callers (e.g. Cycling) clamp against the text they're about to apply.
+    try { this.bindings.setCursorOffset(Math.max(0, offset)); } catch (err) {
       this.log('error', 'setCursorOffset failed', err);
     }
   }
@@ -154,7 +159,13 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
       kill: () => {},
     };
   }
-  async readFile(_path: string): Promise<string | null> { return null; }
+  async readFile(path: string): Promise<string | null> {
+    if (!this.bindings.readFile) return null;
+    try { return await this.bindings.readFile(path); } catch (err) {
+      this.log('error', 'readFile failed', err);
+      return null;
+    }
+  }
   async writeFile(_path: string, _content: string): Promise<void> {
     throw new AdapterUnsupportedError('file-write');
   }

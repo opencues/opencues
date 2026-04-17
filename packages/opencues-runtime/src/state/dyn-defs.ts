@@ -1,8 +1,14 @@
 export interface WordDef {
-  readonly word: string;
+  /** Original word as found in text at populate time. */
+  readonly originalWord: string;
+  /** List of cycle options. Index 0 is the original word; cycling rotates through all. */
   readonly alternatives: readonly string[];
-  readonly spanStart: number;
-  readonly spanEnd: number;
+  /** Which alternative is currently displayed. */
+  currentIndex: number;
+  /** Start offset of the current alt in the text. */
+  spanStart: number;
+  /** End offset (exclusive) of the current alt in the text. */
+  spanEnd: number;
 }
 
 export class DynDefs {

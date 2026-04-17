@@ -34,6 +34,10 @@ export class DimRender {
     if (!this.hlState.active || this.hlState.wordIndex === null) return null;
     if (!this.adapter.capabilities.includes('highlight-range')) return null;
 
+    // Stale-activation clearing happens via Navigation.onTextChange (which
+    // fires on user-source drift detected in boot's checkTextDrift). DimRender
+    // trusts hlState here — a runtime-driven text change (e.g. Cycling)
+    // should keep the highlight on the same word index, just at the new span.
     const words = splitWords(ctx.text);
     const target = words[this.hlState.wordIndex];
     if (!target) return null;

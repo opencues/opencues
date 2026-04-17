@@ -44,6 +44,25 @@ describe('DimRender.compute', () => {
   });
 });
 
+describe('DimRender trusts hlState across runtime-driven text changes', () => {
+  it('keeps highlighting after Cycling-style text replacement', () => {
+    const { hlState, dimRender } = setup('undo');
+    hlState.activate(0, 'undo');
+    // Cycling replaced "undo" with "/rewind" — same wordIndex, new span.
+    const out = dimRender.compute({ text: '/rewind', cursor: 0, externalHighlights: [] });
+    expect(out).toEqual({ highlight: { start: 0, end: 7 } });
+    expect(hlState.active).toBe(true);
+  });
+
+  it('returns null when wordIndex points past the new word list', () => {
+    const { hlState, dimRender } = setup('alpha beta');
+    hlState.activate(1, 'alpha beta');
+    // User deleted everything except "alpha"
+    const out = dimRender.compute({ text: 'alpha', cursor: 0, externalHighlights: [] });
+    expect(out).toBeNull();
+  });
+});
+
 describe('DimRender + render pipeline (integration)', () => {
   it('fireRender produces directives that paint the right word when applied', () => {
     const { adapter, hlState } = setup('alpha beta gamma');

@@ -156,6 +156,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/adapters/claude-code/v2.1/boot.js"`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
+  // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
   const s1Bootstrap =
     `try{` +
     `if(!globalThis.__oc){` +
@@ -163,20 +164,32 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `hostVersion:"2.1.x",cwd:process.cwd(),` +
     `getText:function(){return ${iz}.text;},` +
     `getCursorOffset:function(){return ${iz}.offset;},` +
-    `log:function(l,m,d){if(process.env.DEBUG_OPENCUES)console.error("[opencues]["+l+"] "+m,d||"");}` +
+    `readFile:function(p){return new Promise(function(res){try{${requireFn}("fs").readFile(p,"utf8",function(err,data){res(err?null:data);});}catch(__ocFe){res(null);}});},` +
+    // TUI swallows stderr — write to a file so debug output is recoverable.
+    // tail -f /tmp/opencues.log in a separate shell while reproducing.
+    `log:function(l,m,d){if(process.env.DEBUG_OPENCUES){try{${requireFn}("fs").appendFileSync("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n");}catch(__ocLe){}}}` +
     `});}` +
     `catch(__ocBe){console.error("[opencues] boot failed:",__ocBe&&__ocBe.stack||__ocBe);globalThis.__oc={failed:true};}` +
     `}` +
     `if(globalThis.__oc&&!globalThis.__oc.failed){` +
+    `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","dispatch in",{key:${ev}.key,ctrl:!!${ev}.ctrl,alt:!!${ev}.alt,meta:!!${ev}.meta,option:!!${ev}.option,shift:!!${ev}.shift,mtext:${iz}.text,moff:${iz}.offset});` +
     `if(globalThis.__oc.dispatchKey(${ev},${iz}.text,${iz}.offset)){` +
-    `if(globalThis.__oc.consumePendingRender()){` +
-    `try{return ${izClass}.fromText(globalThis.__oc.toggleRenderText(${iz}.text),${cols},${iz}.offset);}` +
-    `catch(__ocRe){return ${iz};}` +
+    // Pass fresh m.text/m.offset to consumePendingRender — the closure in
+    // boot's bindings.getText is stale across React re-renders (it captures
+    // m from a long-gone Dy8 invocation), so the runtime cannot read the
+    // current state on its own. The dispatch site always has fresh values.
+    `var __ocP=globalThis.__oc.consumePendingRender(${iz}.text,${iz}.offset);` +
+    `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","consumed, pending",__ocP);` +
+    `if(__ocP){` +
+    `try{var __ocIZ=${izClass}.fromText(__ocP.text,${cols},__ocP.cursor);` +
+    `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","returning IZ",{text:__ocIZ.text,offset:__ocIZ.offset});` +
+    `return __ocIZ;}` +
+    `catch(__ocRe){if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("error","IZ build err",__ocRe&&__ocRe.message||__ocRe);return ${iz};}` +
     `}` +
     `return ${iz};` +
     `}` +
     `}` +
-    `}catch(__ocOe){console.error("[opencues] dispatch error:",__ocOe&&__ocOe.stack||__ocOe);}`;
+    `}catch(__ocOe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("error","dispatch error",__ocOe&&__ocOe.stack||__ocOe);}`;
 
   // S3 injection: wrap renderedValue. Guarded — passes through until __oc ready.
   const s3Wrapper =

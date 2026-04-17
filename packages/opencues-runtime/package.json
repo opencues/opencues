@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "acorn": "^8.12.1",
-    "acorn-walk": "^8.3.3"
+    "acorn-walk": "^8.3.3",
+    "cues-core": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

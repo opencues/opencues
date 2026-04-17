@@ -8,7 +8,7 @@
 // globalThis._localCueMap etc.). Navigation targets all non-empty words. Cue
 // filtering returns in a later phase once DynDefs is populated.
 
-import type { HostAdapter, KeyEvent, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 
@@ -22,11 +22,12 @@ export interface WordSpan {
 export class Navigation {
   private _unsubLeft: Unsubscribe | null = null;
   private _unsubRight: Unsubscribe | null = null;
+  private _unsubText: Unsubscribe | null = null;
 
   constructor(
     private adapter: HostAdapter,
     private hlState: HighlightState,
-    private _dynDefs: DynDefs,
+    private dynDefs: DynDefs,
   ) {}
 
   subscribe(): void {
@@ -38,11 +39,25 @@ export class Navigation {
       { requireModifiers: ['ctrl', 'alt'], keys: ['right'] },
       e => this.onArrowRight(e),
     );
+    this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
   }
 
   unsubscribe(): void {
     if (this._unsubLeft) { this._unsubLeft(); this._unsubLeft = null; }
     if (this._unsubRight) { this._unsubRight(); this._unsubRight = null; }
+    if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+  }
+
+  /**
+   * User typing (or any text change we didn't initiate) clears the highlight
+   * and any cycling state. Otherwise the highlight visually drifts onto an
+   * unrelated word as the buffer mutates underneath.
+   */
+  onTextChange(event: TextChangeEvent): void {
+    if (event.source === 'runtime') return;
+    if (!this.hlState.active && this.dynDefs.size === 0) return;
+    this.hlState.deactivate();
+    this.dynDefs.clear();
   }
 
   onArrowLeft(event: KeyEvent): boolean {

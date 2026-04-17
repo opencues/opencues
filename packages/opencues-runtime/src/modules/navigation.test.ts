@@ -95,4 +95,25 @@ describe('Navigation', () => {
     expect(consumed).toBe(false);
     expect(hlState.active).toBe(false);
   });
+
+  it('user typing clears highlight + dynDefs', () => {
+    const { adapter, hlState, nav } = setup('alpha beta');
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.active).toBe(true);
+
+    // Simulate user typing — pushText fires onTextChange with source: 'user'
+    adapter.pushText('alpha betas');
+    expect(hlState.active).toBe(false);
+    void nav;
+  });
+
+  it('runtime-source text changes do NOT clear highlight', () => {
+    const { adapter, hlState } = setup('alpha beta');
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.active).toBe(true);
+
+    // setText (runtime source) — must not deactivate
+    adapter.setText('alpha betax');
+    expect(hlState.active).toBe(true);
+  });
 });

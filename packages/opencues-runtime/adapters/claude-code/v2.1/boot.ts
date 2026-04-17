@@ -14,6 +14,8 @@ import { Runtime } from '../../../src/runtime';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
+import { Cycling } from '../../../src/modules/cycling';
+import { ConfigLoader } from '../../../src/modules/config-loader';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { applyDirectives } from '../../../src/render-directives';
@@ -34,7 +36,11 @@ export interface HostInfo {
   getText(): string;
   /** Snapshot of the current cursor offset. */
   getCursorOffset(): number;
-  /** Optional logger. Defaults to a no-op unless DEBUG_OPENCUES is set. */
+  /** Optional: read a file. Used by ConfigLoader for the tips JSON. */
+  readFile?(path: string): Promise<string | null>;
+  /** Optional: absolute path to the static cue tips JSON. */
+  tipsPath?: string;
+  /** Optional logger. */
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -47,6 +53,14 @@ export interface RawKeyEvent {
   option?: boolean;
   shift?: boolean;
   super?: boolean;
+}
+
+/** What consumePendingRender returns when there's something to render. */
+export interface PendingRender {
+  /** Replacement text for the InputZone. */
+  readonly text: string;
+  /** Cursor offset to apply. */
+  readonly cursor: number;
 }
 
 export interface BootResult {
@@ -63,14 +77,17 @@ export interface BootResult {
   dispatchKey(rawEvent: RawKeyEvent, text: string, cursorOffset: number): boolean;
 
   /**
-   * Read-and-clear the pendingRender flag. The patch should call this after
-   * a consumed dispatchKey and, if true, return a freshly-built InputZone
-   * with `toggleRenderText(text)` to force a host re-render.
+   * Read-and-clear the pending render. Returns null if nothing pending.
+   * If a module called setText/setCursorOffset, those values come back here.
+   * If only forceRender (no text change), the text is the ZWS-toggled
+   * version of `currentText` (forces re-render without visible change).
+   *
+   * IMPORTANT: pass the host's *fresh* current text/cursor every call. The
+   * patch reads them at the dispatch site (e.g. `inputZoneVar.text`). Do
+   * NOT rely on bindings.getText() — host closures may be stale across
+   * React re-renders.
    */
-  consumePendingRender(): boolean;
-
-  /** Pure ZWS/ZWNJ toggle — host calls this when rebuilding the InputZone. */
-  toggleRenderText(text: string): string;
+  consumePendingRender(currentText: string, currentCursor: number): PendingRender | null;
 
   /**
    * Wrap a host-rendered string through every onRender handler, applying
@@ -85,7 +102,9 @@ export interface BootResult {
  *
  * Synchronous: subscriptions land before this function returns, so the
  * very first key dispatch after boot() is fully wired. Runtime.create is
- * called fire-and-forget for capability validation + startup logging only.
+ * fire-and-forget, used only for capability validation + startup logging.
+ * ConfigLoader.load() is also fire-and-forget — Cycling gracefully no-ops
+ * until the cue map is populated.
  */
 export function boot(host: HostInfo): BootResult {
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
@@ -97,12 +116,40 @@ export function boot(host: HostInfo): BootResult {
     }
   };
 
-  // Handler arrays + state owned by this boot. Adapter's HostBindings hooks
-  // into them so adapter.onKey/onRender/onTextChange feed these arrays.
+  // Handler arrays + render state owned by this boot.
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
   let pendingRender = false;
+  let pendingText: string | null = null;
+  let pendingCursor: number | null = null;
+  // Drift detection: lastSeenText is what we last observed during a dispatch
+  // or render. If the visible-character content changes between observations
+  // and we didn't initiate the change ourselves, fire a 'user' textChange.
+  let lastSeenText: string | null = null;
+  const ZW_RE = /[\u200B\u200C]+/g;
+  const visible = (s: string): string => s.replace(ZW_RE, '');
+  const checkTextDrift = (text: string, cursorOffset: number): void => {
+    if (lastSeenText === null) {
+      lastSeenText = text;
+      return;
+    }
+    if (text === lastSeenText) return;
+    if (visible(text) !== visible(lastSeenText)) {
+      const event: TextChangeEvent = {
+        text,
+        cursorOffset,
+        previousText: lastSeenText,
+        source: pendingText !== null ? 'runtime' : 'user',
+      };
+      for (const handler of textHandlers) {
+        try { handler(event); } catch (err) {
+          log('error', 'textChange handler error', err);
+        }
+      }
+    }
+    lastSeenText = text;
+  };
 
   const removeFrom = <T>(arr: T[], item: T): void => {
     const i = arr.indexOf(item);
@@ -114,8 +161,8 @@ export function boot(host: HostInfo): BootResult {
     cwd: host.cwd,
     getText: () => { try { return host.getText(); } catch { return ''; } },
     getCursorOffset: () => { try { return host.getCursorOffset(); } catch { return 0; } },
-    setText: () => { /* no-op for navigation+highlight */ },
-    setCursorOffset: () => { /* no-op for navigation+highlight */ },
+    setText: (text) => { pendingText = text; },
+    setCursorOffset: (offset) => { pendingCursor = offset; },
     forceRender: () => { pendingRender = true; },
     registerKeyHandler: (cb): Unsubscribe => {
       keyHandlers.push(cb);
@@ -129,6 +176,7 @@ export function boot(host: HostInfo): BootResult {
       textHandlers.push(cb);
       return () => removeFrom(textHandlers, cb);
     },
+    readFile: host.readFile,
     log,
   };
 
@@ -136,14 +184,21 @@ export function boot(host: HostInfo): BootResult {
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
 
+  // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
+  // map (returns false from step) until load resolves.
+  const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/claude-code-tips.json`;
+  const configLoader = new ConfigLoader(adapter, { tipsPath });
+  configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
+
   // Subscribe modules synchronously so the very first key dispatch is wired.
   const navigation = new Navigation(adapter, hlState, dynDefs);
   navigation.subscribe();
   const dimRender = new DimRender(adapter, hlState, dynDefs);
   dimRender.subscribe();
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
+  cycling.subscribe();
 
-  // Fire-and-forget Runtime.create — used only for capability validation +
-  // startup logging. Modules don't depend on its completion.
+  // Fire-and-forget Runtime.create — capability validation + startup log.
   Runtime.create(adapter).catch(err => {
     log('error', 'Runtime.create failed', err);
   });
@@ -157,6 +212,7 @@ export function boot(host: HostInfo): BootResult {
     failed: false,
 
     dispatchKey(rawEvent, text, cursorOffset) {
+      checkTextDrift(text, cursorOffset);
       const event = normaliseKeyEvent(rawEvent, text, cursorOffset);
       for (const handler of keyHandlers) {
         try {
@@ -171,32 +227,60 @@ export function boot(host: HostInfo): BootResult {
       return false;
     },
 
-    consumePendingRender() {
-      if (!pendingRender) return false;
+    consumePendingRender(currentText, currentCursor) {
+      if (!pendingRender) return null;
       pendingRender = false;
-      return true;
-    },
 
-    toggleRenderText(text) {
-      return toggleZeroWidth(text);
+      let result: PendingRender;
+      if (pendingText !== null || pendingCursor !== null) {
+        result = {
+          text: pendingText ?? currentText,
+          cursor: pendingCursor ?? currentCursor,
+        };
+        pendingText = null;
+        pendingCursor = null;
+      } else {
+        // No explicit text/cursor change — ZWS toggle to force re-render.
+        result = { text: toggleZeroWidth(currentText), cursor: currentCursor };
+      }
+      // Mark that we initiated this change so the next observed text matching
+      // it doesn't get flagged as user-typed drift.
+      lastSeenText = result.text;
+      return result;
     },
 
     applyRender(rendered, text, cursorOffset) {
+      checkTextDrift(text, cursorOffset);
       if (typeof rendered !== 'string') return rendered;
       if (renderHandlers.length === 0) return rendered;
+      const visibleText = rendered.replace(/\x1b\[[0-9;]*m/g, '');
       const ctx: RenderContext = {
-        text,
+        text: visibleText,
         cursor: cursorOffset,
         externalHighlights: [],
       };
       let out = rendered;
+      const debugDirectives: unknown[] = [];
       for (const handler of renderHandlers) {
         try {
           const directives = handler(ctx);
-          if (directives) out = applyDirectives(out, directives);
+          if (directives) {
+            debugDirectives.push(directives);
+            out = applyDirectives(out, directives);
+          }
         } catch (err) {
           log('error', 'render handler error', err);
         }
+      }
+      if (process.env.DEBUG_OPENCUES) {
+        log('debug', 'applyRender', {
+          textLen: text.length,
+          visibleLen: visibleText.length,
+          visiblePreview: visibleText.slice(0, 60),
+          hlActive: hlState.active,
+          hlWordIdx: hlState.wordIndex,
+          directives: debugDirectives,
+        });
       }
       return out;
     },
