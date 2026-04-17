@@ -813,6 +813,67 @@ globalThis._lastResolvedText=_caNewText;
 return {text:_caNewText,wStart:_caSpanStart,lenDiff:_caNewAlt.length-(_caSpanEnd-_caSpanStart)};
 }
 }
+if(globalThis._dynDefs&&globalThis._dynDefs.words){
+var _sdSel=globalThis._dynDefs.words.find(function(d){return d.index===_wi&&d.metadata&&d.metadata.selectorWord;});
+if(_sdSel){
+var _sdSettings=globalThis._openCuesSettings||{};
+var _sdNames=Object.keys(_sdSettings);
+if(!_sdNames.length)return null;
+var _sdCurName=_sdSel.metadata.currentSetting;
+var _sdCurI=_sdNames.indexOf(_sdCurName);
+if(_sdCurI<0)_sdCurI=0;
+var _sdNextI=(_sdCurI+_dir+_sdNames.length)%_sdNames.length;
+var _sdNewName=_sdNames[_sdNextI];
+var _sdNewValues=_sdSettings[_sdNewName]||[];
+var _sdNewCurVal=(globalThis._openCuesCurrent&&globalThis._openCuesCurrent[_sdNewName])||_sdNewValues[0]||"";
+if(!_sdNewCurVal)return null;
+var _sdSat=globalThis._dynDefs.words.find(function(d){return d.index===_sdSel.metadata.childIndex;});
+var _sdText=globalThis._hlText||"";
+var _sdSep=_sdSel.metadata.separator||" ";
+var _sdOldSel=_sdSel.word;
+var _sdOldSat=_sdSat?_sdSat.word:"";
+var _sdOldPair=_sdOldSel+_sdSep+_sdOldSat;
+var _sdPairStart=_sdText.indexOf(_sdOldPair);
+if(_sdPairStart<0)return null;
+var _sdNewPair=_sdNewName+_sdSep+_sdNewCurVal;
+var _sdNewText=_sdText.slice(0,_sdPairStart)+_sdNewPair+_sdText.slice(_sdPairStart+_sdOldPair.length);
+var _sdOldSelWc=_sdSel.spanLength||1;
+var _sdOldSatWc=_sdSat?(_sdSat.spanLength||1):1;
+var _sdSepWc=_sdSep.split(/\\s+/).filter(function(w){return w;}).length;
+var _sdNewSelWc=_sdNewName.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _sdNewSatWc=_sdNewCurVal.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _sdOldEnd=(_sdSat?_sdSat.index:_sdSel.index)+_sdOldSatWc-1;
+var _sdShift=(_sdNewSelWc+_sdSepWc+_sdNewSatWc)-(_sdOldSelWc+_sdSepWc+_sdOldSatWc);
+if(_sdShift!==0){
+globalThis._dynDefs.words.forEach(function(d){if(d.index>_sdOldEnd)d.index+=_sdShift;if(d.metadata){if(typeof d.metadata.childIndex==="number"&&d.metadata.childIndex>_sdOldEnd)d.metadata.childIndex+=_sdShift;if(typeof d.metadata.parentIndex==="number"&&d.metadata.parentIndex>_sdOldEnd)d.metadata.parentIndex+=_sdShift;}});
+if(globalThis._dynSpans){var _sdNspans={};Object.keys(globalThis._dynSpans).forEach(function(k){var _ki=parseInt(k,10);if(_ki>=_sdSel.index&&_ki<=_sdOldEnd)return;_sdNspans[_ki>_sdOldEnd?_ki+_sdShift:_ki]=globalThis._dynSpans[k];});globalThis._dynSpans=_sdNspans;}
+}else if(globalThis._dynSpans){Object.keys(globalThis._dynSpans).forEach(function(k){var _ki=parseInt(k,10);if(_ki>=_sdSel.index&&_ki<=_sdOldEnd)delete globalThis._dynSpans[_ki];});}
+var _sdNewSelIdx=_sdSel.index;
+var _sdNewSatIdx=_sdNewSelIdx+_sdNewSelWc+_sdSepWc;
+_sdSel.word=_sdNewName;
+_sdSel.metadata.currentSetting=_sdNewName;
+_sdSel.metadata.childIndex=_sdNewSatIdx;
+_sdSel.currentAltIndex=_sdNextI;
+_sdSel.spanLength=_sdNewSelWc;
+_sdSel.cueTip=(globalThis._openCuesTips&&globalThis._openCuesTips[_sdNewName])||null;
+if(_sdSat){
+_sdSat.word=_sdNewCurVal;
+_sdSat.index=_sdNewSatIdx;
+_sdSat.alts=_sdNewValues;
+_sdSat.currentAltIndex=Math.max(0,_sdNewValues.indexOf(_sdNewCurVal));
+_sdSat.metadata.parentIndex=_sdNewSelIdx;
+_sdSat.spanLength=_sdNewSatWc;
+_sdSat.cueTip=(globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_sdNewName]&&globalThis._openCuesSatTips[_sdNewName][_sdNewCurVal])||_sdSel.cueTip;
+}
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+if(_sdNewSelWc>1)for(var _sdSi=0;_sdSi<_sdNewSelWc;_sdSi++)globalThis._dynSpans[_sdNewSelIdx+_sdSi]={originalIndex:_sdNewSelIdx,spanLength:_sdNewSelWc};
+if(_sdNewSatWc>1)for(var _sdSxi=0;_sdSxi<_sdNewSatWc;_sdSxi++)globalThis._dynSpans[_sdNewSatIdx+_sdSxi]={originalIndex:_sdNewSatIdx,spanLength:_sdNewSatWc};
+globalThis._hlText=_sdNewText;
+if(globalThis._hlState)globalThis._hlState.text=_sdNewText;
+globalThis._lastResolvedText=_sdNewText;
+return {text:_sdNewText,wStart:_sdPairStart,lenDiff:_sdNewPair.length-_sdOldPair.length};
+}
+}
 var _spList=globalThis._stepPatterns||[];
 var _stepCtrl=null;
 for(var _spi=0;_spi<_spList.length;_spi++){if(_spList[_spi].re.test(_wds[_wi])){_stepCtrl=_spList[_spi].ctrl;break;}}
