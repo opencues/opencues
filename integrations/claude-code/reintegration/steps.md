@@ -1646,22 +1646,58 @@ if(_ctrl.prompts){for(var _pk in _ctrl.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUppe
 
 ---
 
-## Step 27+ — TBD
+## Step 27 — Blank-fill sub-step 5: `blankClearKeywords` strips matched keyword on fill
+
+**Goal:** When an auto-populated blank's control has `blankClearKeywords: true`, the matched keyword word(s) are removed from the input alongside the fill. Context words (between keyword and blank) are preserved — that's `blankConsumeContext`'s job, a later step.
+
+**Why this choice:** Small, visible UX win. Required for weather/answer/prompt controls to feel clean.
+
+**Two sites updated:**
+
+1. **stepValues path (Step 24):** switched from char-position splice to word-array reconstruction. `_apopClearSet` tracks keyword indices across all slots; final text built by filtering and joining. Cleaner + handles multi-slot cases natively.
+
+2. **blankScript callback path (Step 25):** after the spliced `_nt` is computed, re-split and rebuild dropping keyword positions.
+
+**Verification (confirmed 2026-04-17):**
+
+| Input | blankClearKeywords | Result |
+|---|---|---|
+| `weather _` | true | `<forecast>` (keyword stripped) |
+| `weather in Paris _` | true | `in Paris <forecast>` (keyword stripped, context kept) |
+| `affirm _` | false | `affirm I am strong` (no flag; keyword stays) |
+| `the cat _ sat` | n/a | no-op |
+
+**Not in scope for Step 27:** `blankConsumeContext`, `blankConsumeAll`, `blankKeywordExpansions`, cycling filled blanks, span tracking.
+
+`improve prompt _` and `answer _` declare `blankClearKeywords: true` but also need `blankConsumeAll` / `blankConsumeContext` to function end-to-end. User flagged explicitly: those controls won't work fully until their consume-mode is implemented.
+
+**Peculiarities found during this step:**
+
+1. **Word-array reconstruction replaced char-position splice.** Original used char-position math with adjacent-whitespace bookkeeping. Word-array (split → modify → join) is cleaner and handles multi-word fills trivially. Deliberate simplification over the original.
+
+2. **Callback-path timing assumes keyword precedes blank.** Step 25's async fill writes to `_hlText`, then we re-split to find keyword positions. If a future step introduces fills that shift preceding words, this assumption breaks. Current configs are all keyword-before-blank.
+
+3. **Semantic nuance: `blankClearKeywords` ≠ `blankConsumeContext`.** The latter also strips words between keyword and blank. Context preservation is per-spec but may look surprising (`weather in Paris _` → `in Paris 15°C`).
+
+**Status: ✅ Done** (verified 2026-04-17)
+
+---
+
+## Step 28+ — TBD
 
 Blank-fill continuation:
 
-- **`blankClearKeywords`** — on fill, strip trigger keyword(s) from input. For `weather in Paris _` → just the forecast remains (no `weather in Paris` prefix cluttering). Small, visible.
-- **`blankKeywordExpansions`** — stocks `rddt` → `Reddit` display transform at fill time (script output prefixed with expansion).
-- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` similar to Step 20's tip-alt branch.
-- **`blankDismissible`** — append `_` to cycle list so user can dismiss.
-- **Span tracking** — treat multi-word fill as single cycleable unit.
-- **`readControlState` wiring at resolver level** — for architectural parity, pass the callback into `buildSourcesFromConfig`. Unblocks blank-fill for resolver-backed sources.
-- **`blankConsumeContext`** (answer) — LLM-backed blanks via resolver path.
-- **`blankConsumeAll`** (prompt improver) — consume whole sentence + return multiple alts, dim the consumed range.
+- **`blankKeywordExpansions`** — stocks `rddt` → `Reddit` display transform at fill time (prepended to script output, e.g. `Reddit $180.50`). Small, visible.
+- **`blankConsumeContext`** (answer) — strip keyword + context words on fill. Small extension of `blankClearKeywords`.
+- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` similar to Step 20's tip-alt branch. Needs span tracking to be useful for multi-word fills.
+- **Span tracking** — treat multi-word fill as single cycleable unit. Prerequisite for multi-word cycle.
+- **`blankDismissible`** — append `_` to cycle list so user can dismiss. Needs cycling.
+- **`blankConsumeAll`** (prompt improver) — whole-sentence LLM call, consume everything except blank, return multiple alts, dim consumed range. Large; needs resolver architecture.
+- **`readControlState` resolver wiring** — for architectural parity and to unblock LLM-backed blank sources.
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 26 is verified.
+Pick one after Step 27 is verified.
 
 ---
 
