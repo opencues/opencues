@@ -34,15 +34,20 @@ reintegration still owns all features.
    - `testing/conformance.ts` — vitest suite that asserts the §2.3 invariants
      against any adapter factory.
 
-2. **Build + tests** — from `packages/opencues-runtime/`:
+2. **Build + tests** — from the repo root:
    ```bash
-   npm test     # → 47/47 passing
-   npm run build  # → clean dist/, no errors
+   npm install                            # root workspace resolver
+   npm run build --workspaces             # all four packages build clean
+   npm test --workspaces --if-present     # opencues-runtime: 47/47 passing
    ```
-   Note: install used `npm install --no-workspaces` inside the package dir
-   because the root workspace has a pre-existing `cues-core@^1.0.0` 404 that
-   blocks workspace resolution (cues-browser and cues-node pin a version that
-   doesn't exist). Not caused by this phase.
+   Or inside the package:
+   ```bash
+   cd packages/opencues-runtime && npm test && npm run build
+   ```
+   (The workspace was broken before `9b6099d` — cues-browser/cues-node
+   pinned `cues-core@^1.0.0` but cues-core is 0.1.0. Fixed by pinning
+   dependents to `"*"` plus a `types: ["node"]` scope on cues-node's
+   tsconfig to keep hoisted `@types/chrome` out of its compile.)
 
 3. **Conformance suite sanity** — `src/runtime.test.ts` feeds MockAdapter
    into `adapterConformanceSuite(...)`. Later phases + any new adapter
@@ -211,8 +216,8 @@ in tweakcc config; v1 remains default.
 ### Quick verification commands
 
 ```bash
-# Runtime package green
-cd packages/opencues-runtime && npm test
+# All workspaces green (from repo root)
+npm test --workspaces --if-present     # opencues-runtime: 47/47
 
 # Tweakcc still green (sanity — we changed nothing destructive)
 cd integrations/claude-code/tweakcc && npx vitest run
