@@ -16,6 +16,7 @@ import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
+import { Statusline } from '../../../src/modules/statusline';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { applyDirectives } from '../../../src/render-directives';
@@ -38,8 +39,12 @@ export interface HostInfo {
   getCursorOffset(): number;
   /** Optional: read a file. Used by ConfigLoader for the tips JSON. */
   readFile?(path: string): Promise<string | null>;
+  /** Optional: write a file. Used by Statusline for the export JSON. */
+  writeFile?(path: string, content: string): Promise<void>;
   /** Optional: absolute path to the static cue tips JSON. */
   tipsPath?: string;
+  /** Optional: absolute path for the statusline state-export JSON. */
+  statusFilePath?: string;
   /** Optional logger. */
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
@@ -177,6 +182,7 @@ export function boot(host: HostInfo): BootResult {
       return () => removeFrom(textHandlers, cb);
     },
     readFile: host.readFile,
+    writeFile: host.writeFile,
     log,
   };
 
@@ -197,6 +203,15 @@ export function boot(host: HostInfo): BootResult {
   dimRender.subscribe();
   const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
   cycling.subscribe();
+
+  // Statusline only if the host advertised a path. Don't write to a default
+  // location — that risks colliding with another opencues instance.
+  if (host.statusFilePath) {
+    const statusline = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: host.statusFilePath,
+    });
+    statusline.subscribe();
+  }
 
   // Fire-and-forget Runtime.create — capability validation + startup log.
   Runtime.create(adapter).catch(err => {

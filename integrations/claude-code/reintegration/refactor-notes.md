@@ -13,6 +13,9 @@ Commits:
 - `2b50157` — Docs: REPAIR.md with version-bump scenarios.
 - `74c2b94` — Docs: CLAUDE.md cues-core vs opencues-runtime layering.
 - `79a5c7e` — Phase 3: Cycling + ConfigLoader (visible word cycling).
+- `35df9cb` — Docs: REPAIR.md host-quirks + refactor-notes Phase 3 review.
+- (this+) Phase 4: Statusline export + `file-write` capability + the
+  `refreshInterval: 1` workaround for CC's event-driven statusline.
 
 **Repairing the integration when Claude Code bumps versions:**
 see `packages/opencues-runtime/adapters/claude-code/REPAIR.md` — scenarios
@@ -424,23 +427,116 @@ In claude-cues:
 
 ---
 
+## Phase 4 — Statusline export
+
+**Goal:** runtime writes `/tmp/claude-highlight-state-<pid>.json` on every
+state change. The existing `highlight-statusline.sh` consumer reads it
+and renders the highlighted word + alt index in CC's status line.
+
+### What to check
+
+1. **`packages/opencues-runtime/src/modules/statusline.ts`** — subscribes
+   `onRender`, builds payload (matches v1's shape: active, highlightedWord,
+   currentAltIndex, alts, wordCount, timestamp), dedups by content
+   (timestamp stripped before comparison), writes via `adapter.writeFile`.
+   ZWS chars stripped from words/alts so the consumer sees clean strings.
+   7 tests.
+
+2. **`adapters/claude-code/v2.1/adapter.ts`** — `writeFile` now bridges
+   to `bindings.writeFile` (was throwing `AdapterUnsupportedError`).
+   `file-write` added to V21_CAPABILITIES.
+
+3. **`adapters/claude-code/v2.1/boot.ts`** — constructs `Statusline` if
+   `host.statusFilePath` is set. Don't write to a default location to
+   avoid colliding with another opencues instance.
+
+4. **`integrations/claude-code/patches/opencuesRuntime.ts`** —
+   - `writeFile` callback (fs.writeFile via createRequire) added to host
+     bindings.
+   - `statusFilePath` set to `/tmp/claude-highlight-state-<process.pid>.json`
+     (matches v1's path so the existing consumer keeps working).
+
+5. **`integrations/claude-code/patches/highlight-statusline.sh`** —
+   - Process-tree walk now matches `^claude` OR `claude-code/cli\.js`
+     (handles both the native `claude` install and `node .../cli.js`
+     invocations like `claude-cues`).
+   - Cue info renders **inline** with a `|` separator instead of a
+     newline. CC v2.1.x only displays the first line of the status
+     command output; the prior multi-line layout looked empty.
+
+### How to test live
+
+```bash
+cd packages/opencues-runtime && npm run build
+cp -r dist ~/.claude/node_modules/opencues-runtime/
+# Ensure ~/.claude/settings.json has refreshInterval: 1 (see below)
+DEBUG_OPENCUES=1 claude-cues
+```
+
+Then: type `undo` → Ctrl+Alt+Left → status line shows
+`user@host:cwd | undo (1/1)`. Cycle with Ctrl+Alt+Up → updates within
+1 second to `| /rewind (2/4)`, etc.
+
+### **Required setup change** (host quirk #4 in REPAIR.md)
+
+Add `refreshInterval: 1` to `~/.claude/settings.json`:
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/home/<user>/.claude/highlight-statusline.sh",
+    "refreshInterval": 1
+  }
+}
+```
+
+Without this, CC only re-runs the script on host-driven events
+(tool calls, permission changes); typing/cycling don't trigger it, so
+the status line stays stale. **Phase 4 cannot be considered shipping
+without this config.** Future setup-script work should add it
+automatically. The proper fix (S6 seam to capture CC's debounced refresh
+callback) is documented in REPAIR.md §Host quirks #4 as a follow-up.
+
+### Known limitations / follow-ups
+
+- **Polling, not event-driven.** `refreshInterval: 1` polls the script
+  every second. CPU load is negligible (<5ms per invocation) but it's
+  not the architecturally clean answer. S6 seam (find the host's
+  debounced refresh callback, expose it to runtime, call it from
+  Statusline after each write) is the proper fix; deferred until needed.
+- **`cueTip` and `cueControl` fields are null/false.** Statusline doesn't
+  yet plumb the cue-map lookup. The script's tip-display path is dormant
+  until ConfigLoader → Statusline wiring lands. Trivial follow-up.
+- **`_debug` field absent.** v1 included a kitchen-sink `_debug` block
+  for the consumer to see runtime internals. Phase 4 omitted it; can
+  add if useful for debugging the harness.
+- **No multi-instance test.** Two simultaneous `claude-cues` should
+  write to different files (path is per-PID), but I haven't verified
+  the script picks the right PID when CC has spawned children.
+
+---
+
 ## Going forward (next phases)
 
-Phases 0–3 ship visible navigation + word cycling on a live install. The
-next major phase is **BlankFill** — fills `_`-style blanks via the cues-core
-`Resolver` (LLM-driven). It's bigger than Cycling because it introduces:
-- HTTP adapter wiring (NodeHttpAdapter from cues-core)
-- Resolver lifecycle (debounced trigger, in-flight cancellation, dedup)
-- Real `cues.md` / `controls.md` / `blanks.md` parsing (currently only
-  the JSON tips file is loaded)
-- Folder-based cue discovery (needs a `readDir` primitive on HostAdapter
-  or a manifest walk)
+Phases 0–4 ship visible navigation + word cycling + statusline export on a
+live install. Open phases:
 
-Smaller intermediate phases worth considering:
-- **Statusline export** (`writeFile` capability, exports `_hlExport` JSON
-  for the existing highlight-statusline.sh consumer). Easy & visible.
-- **TTS on tip highlight** (`spawn-process` capability, fire-and-forget
-  speak.sh). Modular, doesn't depend on BlankFill.
+- **TTS on tip highlight** (~half day) — `spawn-process` capability,
+  fire-and-forget `speak.sh` when the highlighted word has a `speak` flag
+  in the cue map. Modular, no dependencies on other phases.
+- **S6 statusline-refresh seam** (~hour) — capture CC's debounced refresh
+  callback so Statusline triggers it after each export. Removes the
+  `refreshInterval: 1` polling workaround. See REPAIR.md §Host quirks #4.
+- **Cue-tip plumbing** (~hour) — pass ConfigLoader into Statusline so
+  `cueTip` and `cueControl` populate from the cue map. Trivial follow-up
+  to Phase 4.
+- **BlankFill** (multi-day, the big one) — fills `_`-style blanks via
+  cues-core's `Resolver`. Introduces:
+  - HTTP adapter wiring (NodeHttpAdapter from cues-core)
+  - Resolver lifecycle (debounced trigger, in-flight cancellation, dedup)
+  - Real `cues.md` / `controls.md` / `blanks.md` parsing
+  - Folder-based cue discovery (needs `readDir` on HostAdapter or a
+    manifest walk)
 
 Reading order when picking up cold: `refactor.md` → this file → recent
 commits (`git log --oneline -10`) → `REPAIR.md` for the host quirks list.

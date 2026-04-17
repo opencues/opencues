@@ -61,6 +61,9 @@ export interface HostBindings {
   /** Optional: read a file (absolute path). Resolves to null if missing. */
   readFile?(path: string): Promise<string | null>;
 
+  /** Optional: write a file (absolute path). Overwrites if exists. */
+  writeFile?(path: string, content: string): Promise<void>;
+
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -73,6 +76,7 @@ export interface HostBindings {
  */
 const V21_CAPABILITIES: readonly Capability[] = [
   'file-read',
+  'file-write',
   'force-render',
   'render-override',
   'dim-ranges',
@@ -166,8 +170,12 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
       return null;
     }
   }
-  async writeFile(_path: string, _content: string): Promise<void> {
-    throw new AdapterUnsupportedError('file-write');
+  async writeFile(path: string, content: string): Promise<void> {
+    if (!this.bindings.writeFile) throw new AdapterUnsupportedError('file-write');
+    try { await this.bindings.writeFile(path, content); } catch (err) {
+      this.log('error', 'writeFile failed', err);
+      throw err;
+    }
   }
 
   // ─── Diagnostics ───────────────────────────────────────────────────────

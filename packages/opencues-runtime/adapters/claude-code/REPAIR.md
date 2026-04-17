@@ -72,7 +72,39 @@ tail -f /tmp/opencues.log
 Don't try to redirect `2>` from an interactive TUI session — the events
 either don't make it through or corrupt the screen.
 
-### 4. The host may keep the `value` prop in lock-step with our InputZone
+### 4. The statusLine command only re-runs on host-driven events, not input changes
+
+CC's `statusLine` config triggers a re-run on tool calls, permission changes,
+or whatever the React useEffect dependency array picks up. **Input-box state
+changes (typing, navigating, cycling) do NOT trigger a re-run.** So if a v2
+module updates its export file but the user only typed/navigated, the status
+line stays stale until the next tool call.
+
+There are two viable workarounds:
+
+**(a) `refreshInterval: 1` in `~/.claude/settings.json`** — currently used in
+Phase 4. Tells CC to poll the script every second. Simple, no patch
+changes, but ~1 fork/exec per second per CC session:
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "/home/<user>/.claude/highlight-statusline.sh",
+    "refreshInterval": 1
+  }
+}
+```
+
+**(b) S6 seam — capture CC's debounced refresh callback** — proper fix.
+Find the `useCallback` near the `statusLine?.refreshInterval` useEffect
+and bind its `setTimeout`-wrapping callback to a global. Statusline
+calls it after every export. Event-driven, no polling. Spec lists this as
+S6 in `refactor.md` §4.1; not yet implemented.
+
+For now: setup needs to add `refreshInterval: 1` to `settings.json` for
+the export to be visible. Document this in any user-facing setup guide.
+
+### 5. The host may keep the `value` prop in lock-step with our InputZone
 
 Returning `InputZone.fromText(newText, P, cursor)` from the
 `handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.

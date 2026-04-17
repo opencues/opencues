@@ -5,12 +5,16 @@
 # Install: Copy to ~/.claude/ and configure settings.json:
 #   { "statusLine": { "type": "command", "command": "/full/path/highlight-statusline.sh" } }
 
-# Find Claude Code PID by walking up the process tree
+# Find Claude Code PID by walking up the process tree.
+# Match either:
+#   - cmdline starting with `claude` (the native install or `claude-cues` shim)
+#   - cmdline containing `claude-code/cli.js` (when invoked as `node .../cli.js`,
+#     e.g. the local install used during integration development)
 CLAUDE_PID=""
 WALK_PID=$$
 while [ "$WALK_PID" != "1" ] && [ -n "$WALK_PID" ]; do
   CMDLINE=$(cat /proc/$WALK_PID/cmdline 2>/dev/null | tr '\0' ' ')
-  if echo "$CMDLINE" | grep -q "^claude"; then
+  if echo "$CMDLINE" | grep -qE '^claude|claude-code/cli\.js'; then
     CLAUDE_PID=$WALK_PID
     break
   fi
@@ -43,14 +47,16 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
       altcount=$(echo "$content" | sed -n 's/.*"alts":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | wc -l)
       # Show if word has alts OR is a cue-control with a tip
       if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_control" -a -n "$tip" ]; then
-        echo ""
+        # Inline (no newline) — CC v2.1.x renders only the first line of the
+        # status command output. Use a separator instead of a newline.
+        printf ' %s|%s ' "$YELLOW" "$RESET"
         if [ -n "$is_cue_control" ]; then
           printf '%s' "$tip"
         else
           altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')
           altidx=${altidx:-0}
           altpos=$((altidx + 1))
-          printf '%s (%d/%d)' "$word" "$altpos" "$altcount"
+          printf '%s%s%s (%d/%d)' "${BOLD}${CYAN}" "$word" "$RESET" "$altpos" "$altcount"
           if [ -n "$tip" ]; then
             printf ' - %s' "$tip"
           fi

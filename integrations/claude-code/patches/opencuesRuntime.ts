@@ -165,6 +165,10 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `getText:function(){return ${iz}.text;},` +
     `getCursorOffset:function(){return ${iz}.offset;},` +
     `readFile:function(p){return new Promise(function(res){try{${requireFn}("fs").readFile(p,"utf8",function(err,data){res(err?null:data);});}catch(__ocFe){res(null);}});},` +
+    `writeFile:function(p,c){return new Promise(function(res,rej){try{${requireFn}("fs").writeFile(p,c,"utf8",function(err){err?rej(err):res();});}catch(__ocWe){rej(__ocWe);}});},` +
+    // Statusline export path. Per-PID so two CC instances don't collide.
+    // Matches v1's path so the existing highlight-statusline.sh keeps working.
+    `statusFilePath:"/tmp/claude-highlight-state-"+process.pid+".json",` +
     // TUI swallows stderr — write to a file so debug output is recoverable.
     // tail -f /tmp/opencues.log in a separate shell while reproducing.
     `log:function(l,m,d){if(process.env.DEBUG_OPENCUES){try{${requireFn}("fs").appendFileSync("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n");}catch(__ocLe){}}}` +

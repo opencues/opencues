@@ -1,0 +1,114 @@
+import { describe, expect, it } from 'vitest';
+import { Statusline } from './statusline';
+import { HighlightState } from '../state/highlight-state';
+import { DynDefs } from '../state/dyn-defs';
+import { MockAdapter } from '../../testing/mock-adapter';
+
+function setup(text: string) {
+  const adapter = new MockAdapter();
+  adapter.pushText(text);
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const statusline = new Statusline(adapter, hlState, dynDefs, {
+    exportPath: '/tmp/test-statusline.json',
+  });
+  statusline.subscribe();
+  return { adapter, hlState, dynDefs, statusline };
+}
+
+describe('Statusline.buildPayload', () => {
+  it('returns active:false when highlight inactive', () => {
+    const { statusline } = setup('hello world');
+    const p = statusline.buildPayload({ text: 'hello world', cursor: 0, externalHighlights: [] });
+    expect(p.active).toBe(false);
+    expect(p.highlightedWord).toBeUndefined();
+    expect(typeof p.timestamp).toBe('number');
+  });
+
+  it('returns word + index for active highlight without DynDef', () => {
+    const { hlState, statusline } = setup('alpha beta gamma');
+    hlState.activate(1, 'alpha beta gamma');
+    const p = statusline.buildPayload({ text: 'alpha beta gamma', cursor: 0, externalHighlights: [] });
+    expect(p.active).toBe(true);
+    expect(p.highlightedWordIndex).toBe(1);
+    expect(p.highlightedWord).toBe('beta');
+    expect(p.alts).toEqual(['beta']);
+    expect(p.currentAltIndex).toBe(0);
+    expect(p.wordCount).toBe(3);
+  });
+
+  it('reflects current alt when DynDef populated by Cycling', () => {
+    const { hlState, dynDefs, statusline } = setup('undo');
+    hlState.activate(0, 'undo');
+    dynDefs.set(0, {
+      originalWord: 'undo',
+      alternatives: ['undo', '/rewind', 'revert'],
+      currentIndex: 1,
+      spanStart: 0,
+      spanEnd: 7,
+    });
+    const p = statusline.buildPayload({ text: '/rewind', cursor: 0, externalHighlights: [] });
+    expect(p.highlightedWord).toBe('/rewind');
+    expect(p.currentAltIndex).toBe(1);
+    expect(p.alts).toEqual(['undo', '/rewind', 'revert']);
+  });
+});
+
+describe('Statusline write behaviour', () => {
+  it('writes on first render with active state', async () => {
+    const { adapter, hlState } = setup('alpha beta');
+    hlState.activate(0, 'alpha beta');
+    adapter.fireRender();
+    // writeFile is async; wait a tick.
+    await new Promise(r => setImmediate(r));
+    const written = await adapter.readFile('/tmp/test-statusline.json');
+    expect(written).not.toBeNull();
+    const parsed = JSON.parse(written!);
+    expect(parsed.active).toBe(true);
+    expect(parsed.highlightedWord).toBe('alpha');
+  });
+
+  it('dedups consecutive identical-state renders', async () => {
+    const { adapter, hlState } = setup('alpha');
+    hlState.activate(0, 'alpha');
+    adapter.fireRender();
+    adapter.fireRender();
+    adapter.fireRender();
+    await new Promise(r => setImmediate(r));
+    // Only one writeFile call was made because subsequent renders had
+    // identical stable JSON.
+    const writeCalls = adapter.logs.filter(l => l.msg.includes('writeFile failed'));
+    expect(writeCalls).toHaveLength(0);
+  });
+
+  it('does not write when file-write capability absent', async () => {
+    const adapter = new MockAdapter({ capabilities: ['file-read'] });
+    adapter.pushText('alpha');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'alpha');
+    const sl = new Statusline(adapter, hlState, new DynDefs(), {
+      exportPath: '/tmp/x.json',
+    });
+    sl.subscribe();
+    adapter.fireRender();
+    await new Promise(r => setImmediate(r));
+    const written = await adapter.readFile('/tmp/x.json');
+    // file-read is on but file-write is off; writeFile would have rejected.
+    expect(written).toBeNull();
+  });
+
+  it('writes inactive payload after typing clears highlight', async () => {
+    const { adapter, hlState } = setup('alpha');
+    hlState.activate(0, 'alpha');
+    adapter.fireRender();
+    await new Promise(r => setImmediate(r));
+    let written = await adapter.readFile('/tmp/test-statusline.json');
+    expect(JSON.parse(written!).active).toBe(true);
+
+    hlState.deactivate();
+    adapter.fireRender();
+    await new Promise(r => setImmediate(r));
+    written = await adapter.readFile('/tmp/test-statusline.json');
+    expect(JSON.parse(written!).active).toBe(false);
+  });
+});
