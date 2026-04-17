@@ -1843,21 +1843,95 @@ globalThis._consumeAllAlts=_cAlts.length>1?{index:0,alts:_cAlts,currentAltIndex:
 
 ---
 
-## Step 31+ — TBD
+## Step 31 — Consume-all cycling (prompt improver Ctrl+Alt+Up/Down)
+
+**Goal:** Ctrl+Alt+Up/Down on a word within the consume-all range (positions `_ca.index..index+spanLength-1` after Step 30's fill) cycles through `_consumeAllAlts.alts`. Each press text-splices the consumed range with the next alt's full text, updates `spanLength` to the new alt's word count, and modulos the index for wrap-around.
+
+**Why this choice:** Smallest independent addition that unlocks prompt improver's remaining alternatives. `_consumeAllAlts` already carries its own `spanLength`, so no general span infrastructure needed.
+
+**Exact change (two parts, `wordHighlight.ts` `fullCode`):**
+
+1. **`_cycleAlt` consume-all branch** — inserted BEFORE the step-pattern / tip / script branches so it takes precedence when the highlight is within the consumed range:
+
+```js
+if(globalThis._consumeAllAlts){
+var _ca=globalThis._consumeAllAlts;
+var _caSpanLen=_ca.spanLength||1;
+if(_wi>=_ca.index&&_wi<_ca.index+_caSpanLen){
+var _caNextIdx=(_ca.currentAltIndex+_dir+_ca.alts.length)%_ca.alts.length;
+_ca.currentAltIndex=_caNextIdx;
+var _caNewAlt=_ca.alts[_caNextIdx];
+if(_caNewAlt==null)return null;
+var _caText=globalThis._hlText||"";
+var _caWordPos=0;
+for(var _cawi=0;_cawi<_ca.index;_cawi++){_caWordPos=_caText.indexOf(_wds[_cawi],_caWordPos)+_wds[_cawi].length;}
+var _caSpanStart=_caText.indexOf(_wds[_ca.index],_caWordPos);
+if(_caSpanStart<0)return null;
+var _caSpanEnd=_caSpanStart;
+for(var _casi=0;_casi<_caSpanLen;_casi++){
+var _caSpanW=_wds[_ca.index+_casi];
+if(_caSpanW==null)break;
+var _caSwI=_caText.indexOf(_caSpanW,_caSpanEnd);
+if(_caSwI<0)break;
+_caSpanEnd=_caSwI+_caSpanW.length;
+}
+var _caNewText=_caText.slice(0,_caSpanStart)+_caNewAlt+_caText.slice(_caSpanEnd);
+_ca.spanLength=_caNewAlt.split(/\\s+/).filter(function(w){return w;}).length;
+globalThis._hlText=_caNewText;
+if(globalThis._hlState)globalThis._hlState.text=_caNewText;
+globalThis._lastResolvedText=_caNewText;
+return {text:_caNewText,wStart:_caSpanStart,lenDiff:_caNewAlt.length-(_caSpanEnd-_caSpanStart)};
+}
+}
+```
+
+2. **Invalidation on external edit** — in clear-on-change, null `_consumeAllAlts` when the text changes AND wasn't set by a cycle:
+
+```js
+if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastResolvedText){globalThis._consumeAllAlts=null;}
+```
+
+**Distinguishing cycle vs. user edit:** cycle-driven text changes set `_lastResolvedText = _caNewText` before returning. If the next render's `_hlText` matches `_lastResolvedText`, it's from a cycle → keep `_consumeAllAlts`. If `_hlText` differs from `_lastResolvedText` (user typed a char, deleted, etc.), invalidate.
+
+**Verification (confirmed 2026-04-17):**
+- `improve prompt rewrite this to be more concise _` → first alt fills. Ctrl+Alt+Left (highlight any word in the fill), Ctrl+Alt+Up → swap to second alt. Repeat → third alt, original, first, … (4-way wrap with `includeOriginal: true`).
+- Ctrl+Alt+Down reverses.
+- Span length correctly updates between alts of different word counts.
+- Non-consume-all cycling still works: `volume` Up/Down, `42f` arithmetic, `commit` tip-cycle.
+- Typing a character post-cycle invalidates `_consumeAllAlts`; next Ctrl+Alt+Up falls through to normal cycling.
+
+**Not in scope for Step 31:**
+- **Dim on consumed range** — would be nice visual feedback ("this whole chunk is a cycleable unit") but requires renderer span marking.
+- **"Revert-on-first-edit"** — UX where backspace after fill restores the pre-fill query. Different feature; not in the original config schema.
+- **General span tracking** (`_dynSpans`) — needed for stepValues list cycling with multi-word alts and selector/satellite. Deferred.
+- **Cycling stepValues (affirmations)** — requires span tracking to cycle `I am strong` → `I am brave` as a 3-word unit.
+
+**Peculiarities found during this step:**
+
+1. **Span-finding loop re-indexes from `_caWordPos`.** The algorithm walks through preceding words to accumulate `_caWordPos`, then `indexOf(firstWordOfSpan, _caWordPos)` pinpoints the span start. Span end is found by walking through `_caSpanLen` words using incremental `indexOf`. Tolerates whitespace variance but assumes words appear in order (safe given they came from the same `_hlText` split).
+
+2. **Invalidation check uses `_lastResolvedText`, not a dedicated sentinel.** `_lastResolvedText` is shared with LLM-suppression logic (Step 19) and cycle-suppression (Steps 12, 20). All paths that mutate text should set it. If we add a future text-mutator that forgets, stale `_consumeAllAlts` could persist — flag for any future cycling branches to remember this invariant.
+
+3. **User clarified the meaning of "invalidation" during testing.** Initial framing implied "delete reverts the whole fill" (UX rollback), but implemented meaning is "stale `_consumeAllAlts` cleared so next cycle doesn't splice into edited text." Both valid interpretations; current implementation is the cleaner / more conservative one. Rollback is a possible future feature.
+
+**Status: ✅ Done** (verified 2026-04-17: cycling works bi-directionally, invalidation triggers on external edit)
+
+---
+
+## Step 32+ — TBD
 
 Cycling + polish continuation:
 
-- **Cycle `_consumeAllAlts`** — Ctrl+Alt+Up/Down on the consumed range (positions 0..spanLength-1 after fill) swaps through the stashed alts. Mirrors Step 12's text-splice pattern with multi-word span handling.
-- **Dim the consumed-range as a cycleable unit** — visual feedback that the span is active.
-- **Clear-on-change for `_consumeAllAlts`** — typing inside or outside the span invalidates the stashed alts.
-- **Cycling filled blanks through `stepValues`** — for affirmations, cycle through all 4 values after auto-populate.
-- **Span tracking** — treat multi-word fill as single cycleable unit (generalises consume-all and stepValues-list cycling).
-- **`blankDismissible`** — append `_` to cycle list so user can dismiss.
+- **Dim the consumed-range** — visual marker that the fill is cycleable.
+- **Cycling filled blanks through `stepValues`** — affirmations. Needs span tracking.
+- **General span tracking** (`_dynSpans`) — infrastructure for multi-word cycling, selector/satellite (opencues), clear-on-change robustness.
+- **`blankDismissible`** — cycle back to `_`. Needs cycling first.
+- **"Revert-on-first-edit"** — UX rollback of prompt fill. Possible Step 32 sub-feature if desired.
 - **`readControlState` resolver wiring** — architectural parity.
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 30 is verified.
+Pick one after Step 31 is verified.
 
 ---
 

@@ -759,6 +759,35 @@ var _wi=globalThis._hlState.wordIndex;
 if(_wi==null||_wi<0||_wi>=_wds.length)return null;
 var _lw=(_wds[_wi]||"").toLowerCase();
 var _ovr=(globalThis._cueControlOverrides||{})[_lw];
+if(globalThis._consumeAllAlts){
+var _ca=globalThis._consumeAllAlts;
+var _caSpanLen=_ca.spanLength||1;
+if(_wi>=_ca.index&&_wi<_ca.index+_caSpanLen){
+var _caNextIdx=(_ca.currentAltIndex+_dir+_ca.alts.length)%_ca.alts.length;
+_ca.currentAltIndex=_caNextIdx;
+var _caNewAlt=_ca.alts[_caNextIdx];
+if(_caNewAlt==null)return null;
+var _caText=globalThis._hlText||"";
+var _caWordPos=0;
+for(var _cawi=0;_cawi<_ca.index;_cawi++){_caWordPos=_caText.indexOf(_wds[_cawi],_caWordPos)+_wds[_cawi].length;}
+var _caSpanStart=_caText.indexOf(_wds[_ca.index],_caWordPos);
+if(_caSpanStart<0)return null;
+var _caSpanEnd=_caSpanStart;
+for(var _casi=0;_casi<_caSpanLen;_casi++){
+var _caSpanW=_wds[_ca.index+_casi];
+if(_caSpanW==null)break;
+var _caSwI=_caText.indexOf(_caSpanW,_caSpanEnd);
+if(_caSwI<0)break;
+_caSpanEnd=_caSwI+_caSpanW.length;
+}
+var _caNewText=_caText.slice(0,_caSpanStart)+_caNewAlt+_caText.slice(_caSpanEnd);
+_ca.spanLength=_caNewAlt.split(/\\s+/).filter(function(w){return w;}).length;
+globalThis._hlText=_caNewText;
+if(globalThis._hlState)globalThis._hlState.text=_caNewText;
+globalThis._lastResolvedText=_caNewText;
+return {text:_caNewText,wStart:_caSpanStart,lenDiff:_caNewAlt.length-(_caSpanEnd-_caSpanStart)};
+}
+}
 var _spList=globalThis._stepPatterns||[];
 var _stepCtrl=null;
 for(var _spi=0;_spi<_spList.length;_spi++){if(_spList[_spi].re.test(_wds[_wi])){_stepCtrl=_spList[_spi].ctrl;break;}}
@@ -866,6 +895,7 @@ ${inputZoneVar}=${inputZoneClass}.fromText(_zwsClean,${configVar},${inputZoneVar
 var _hlText=${valueParam}.replace(/[\\u200B\\u200C]/g,"");
 var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
+if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastResolvedText){globalThis._consumeAllAlts=null;}
 if(_hlText!==_oldText&&globalThis._dynDefs&&globalThis._dynDefs.words){
 var _cocOld=_oldText.split(/\\s+/).filter(function(w){return w;});
 var _cocNew=_hlText.split(/\\s+/).filter(function(w){return w;});
