@@ -873,6 +873,49 @@ if(globalThis._hlState)globalThis._hlState.text=_sdNewText;
 globalThis._lastResolvedText=_sdNewText;
 return {text:_sdNewText,wStart:_sdPairStart,lenDiff:_sdNewPair.length-_sdOldPair.length};
 }
+var _scSat=globalThis._dynDefs.words.find(function(d){return d.index===_wi&&d.metadata&&d.metadata.satelliteWord;});
+if(_scSat){
+var _scSel=globalThis._dynDefs.words.find(function(d){return d.index===_scSat.metadata.parentIndex;});
+if(!_scSel)return null;
+var _scSetting=_scSel.metadata.currentSetting;
+var _scValues=(globalThis._openCuesSettings&&globalThis._openCuesSettings[_scSetting])||[];
+if(!_scValues.length)return null;
+var _scCurVal=_scSat.word;
+var _scCurI=_scValues.indexOf(_scCurVal);
+if(_scCurI<0)_scCurI=0;
+var _scNextI=(_scCurI+_dir+_scValues.length)%_scValues.length;
+var _scNewVal=_scValues[_scNextI];
+if(!_scNewVal)return null;
+var _scText=globalThis._hlText||"";
+var _scOldVal=_scSat.word;
+var _scOldWc=_scSat.spanLength||1;
+var _scNewWc=_scNewVal.split(/\\s+/).filter(function(w){return w;}).length||1;
+var _scShift=_scNewWc-_scOldWc;
+var _scOldEnd=_scSat.index+_scOldWc-1;
+var _scSep=_scSel.metadata.separator||" ";
+var _scSelWord=_scSel.word;
+var _scOldPair=_scSelWord+_scSep+_scOldVal;
+var _scNewPair=_scSelWord+_scSep+_scNewVal;
+var _scPairStart=_scText.indexOf(_scOldPair);
+if(_scPairStart<0)return null;
+var _scNewText=_scText.slice(0,_scPairStart)+_scNewPair+_scText.slice(_scPairStart+_scOldPair.length);
+if(_scShift!==0){
+globalThis._dynDefs.words.forEach(function(d){if(d.index>_scOldEnd)d.index+=_scShift;if(d.metadata){if(typeof d.metadata.childIndex==="number"&&d.metadata.childIndex>_scOldEnd)d.metadata.childIndex+=_scShift;if(typeof d.metadata.parentIndex==="number"&&d.metadata.parentIndex>_scOldEnd)d.metadata.parentIndex+=_scShift;}});
+if(globalThis._dynSpans){var _scNspans={};Object.keys(globalThis._dynSpans).forEach(function(k){var _ki=parseInt(k,10);if(_ki>=_scSat.index&&_ki<=_scOldEnd)return;_scNspans[_ki>_scOldEnd?_ki+_scShift:_ki]=globalThis._dynSpans[k];});globalThis._dynSpans=_scNspans;}
+}else if(globalThis._dynSpans){Object.keys(globalThis._dynSpans).forEach(function(k){var _ki=parseInt(k,10);if(_ki>=_scSat.index&&_ki<=_scOldEnd)delete globalThis._dynSpans[_ki];});}
+_scSat.word=_scNewVal;
+_scSat.currentAltIndex=_scNextI;
+_scSat.spanLength=_scNewWc;
+_scSat.cueTip=(globalThis._openCuesSatTips&&globalThis._openCuesSatTips[_scSetting]&&globalThis._openCuesSatTips[_scSetting][_scNewVal])||_scSel.cueTip;
+if(!globalThis._dynSpans)globalThis._dynSpans={};
+if(_scNewWc>1)for(var _scSxi=0;_scSxi<_scNewWc;_scSxi++)globalThis._dynSpans[_scSat.index+_scSxi]={originalIndex:_scSat.index,spanLength:_scNewWc};
+if(globalThis._openCuesCurrent)globalThis._openCuesCurrent[_scSetting]=_scNewVal;
+if(_scSel.metadata.blankScript){var _scScript=(_scSel.metadata.blankScript||"").replace(/^~/,process.env.HOME||"");try{${requireFuncName}("child_process").spawn("bash",[_scScript,"set",_scSetting,_scNewVal],{detached:true,stdio:"ignore"}).unref();}catch(_sce){}}
+globalThis._hlText=_scNewText;
+if(globalThis._hlState)globalThis._hlState.text=_scNewText;
+globalThis._lastResolvedText=_scNewText;
+return {text:_scNewText,wStart:_scPairStart,lenDiff:_scNewPair.length-_scOldPair.length};
+}
 }
 var _spList=globalThis._stepPatterns||[];
 var _stepCtrl=null;
@@ -991,16 +1034,22 @@ if(_cocOld[_cwi]!==_cocNew[_cwi]){
 var _cdef=globalThis._dynDefs.words.find(function(d){return d.index===_cwi;});
 if(_cdef){
 if(_cdef.alts&&_cdef.alts.indexOf(_cocNew[_cwi])>=0){_cdef.word=_cocNew[_cwi];_cdef.currentAltIndex=_cdef.alts.indexOf(_cocNew[_cwi]);}
-else{_cdef.word=_cocNew[_cwi];_cdef.alts=null;_cdef.currentAltIndex=0;_cdef.cueTip=null;_cdef.altCueTips=null;_cdef.source=null;}
+else{_cdef.word=_cocNew[_cwi];_cdef.alts=null;_cdef.currentAltIndex=0;_cdef.cueTip=null;_cdef.altCueTips=null;_cdef.source=null;delete _cdef.metadata;delete _cdef.spanLength;}
 }
 }
 }
 if(_cocNew.length<_cocOld.length){
 for(var _cri=_cocNew.length;_cri<_cocOld.length;_cri++){
 var _crdef=globalThis._dynDefs.words.find(function(d){return d.index===_cri;});
-if(_crdef){_crdef.alts=null;_crdef.currentAltIndex=0;_crdef.cueTip=null;_crdef.altCueTips=null;_crdef.source=null;}
+if(_crdef){_crdef.alts=null;_crdef.currentAltIndex=0;_crdef.cueTip=null;_crdef.altCueTips=null;_crdef.source=null;delete _crdef.metadata;delete _crdef.spanLength;}
 }
 }
+}
+if(_hlText!==_oldText&&globalThis._dynDefs&&globalThis._dynDefs.words){
+var _spCocW=_hlText.split(/\\s+/).filter(function(w){return w;});
+var _spValidOrigins={};
+globalThis._dynDefs.words.forEach(function(_spD){if(_spD.spanLength&&_spD.spanLength>1){var _spChunks=[];for(var _spSi=0;_spSi<_spD.spanLength;_spSi++)_spChunks.push(_spCocW[_spD.index+_spSi]||"");if(_spChunks.join(" ")===_spD.word)_spValidOrigins[_spD.index]=true;else{_spD.alts=null;_spD.currentAltIndex=0;_spD.cueTip=null;_spD.altCueTips=null;_spD.source=null;delete _spD.metadata;delete _spD.spanLength;}}});
+if(globalThis._dynSpans)Object.keys(globalThis._dynSpans).forEach(function(k){var _sv=globalThis._dynSpans[k];if(!_sv||!_spValidOrigins[_sv.originalIndex])delete globalThis._dynSpans[k];});
 }
 if(globalThis._cuesCore&&globalThis._localCueMap&&globalThis._cuesCore.lookupMultiple){
 try{
@@ -1643,9 +1692,10 @@ export const writeWordHighlightRendering = (
   // Universal rendering — numbers dimmed, highlighted word + linked + spans in highlight color
   const numberRenderCode = numberDimmingEnabled ? `var _searchPos=0;
 var _hlSpanLen=1;
+if(globalThis._dynSpans&&_hlWordIdx>=0&&globalThis._dynSpans[_hlWordIdx]){var _hlSp=globalThis._dynSpans[_hlWordIdx];_hlWordIdx=_hlSp.originalIndex;_hlSpanLen=_hlSp.spanLength||1;}
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&_hlWordIdx>=0){
 var _hlDef=globalThis._dynDefs.words.find(function(d){return d.index===_hlWordIdx;});
-if(_hlDef&&_hlDef.spanLength)_hlSpanLen=_hlDef.spanLength;
+if(_hlDef&&_hlDef.spanLength&&_hlDef.spanLength>_hlSpanLen)_hlSpanLen=_hlDef.spanLength;
 }
 if(globalThis._consumeAllAlts&&_hlWordIdx>=0&&_hlWordIdx>=globalThis._consumeAllAlts.index&&_hlWordIdx<globalThis._consumeAllAlts.index+globalThis._consumeAllAlts.spanLength){_hlWordIdx=globalThis._consumeAllAlts.index;if(globalThis._consumeAllAlts.spanLength>_hlSpanLen)_hlSpanLen=globalThis._consumeAllAlts.spanLength;}
 for(var _ni=0;_ni<_words.length;_ni++){
@@ -1663,7 +1713,7 @@ if(_nw){var _ns=_clean.indexOf(_nw,_spanEnd);if(_ns>=0)_spanEnd=_ns+_nw.length;}
 _hlEnd=_spanEnd;
 }else{_hlEnd=_wStart+_w.length;}
 }
-else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]||(_ni!==_hlWordIdx&&globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase()))||(_ni!==_hlWordIdx&&globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===_ni&&d.alts&&d.alts.length>1;}))||(_ni!==_hlWordIdx&&globalThis._consumeAllAlts&&_ni>=globalThis._consumeAllAlts.index&&_ni<globalThis._consumeAllAlts.index+(globalThis._consumeAllAlts.spanLength||1))){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+else if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]||(_ni!==_hlWordIdx&&globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase()))||(_ni!==_hlWordIdx&&globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===_ni&&d.alts&&d.alts.length>1;}))||(_ni!==_hlWordIdx&&globalThis._dynSpans&&globalThis._dynSpans[_ni]&&globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(function(d){return d.index===globalThis._dynSpans[_ni].originalIndex&&((d.alts&&d.alts.length>1)||(d.metadata&&(d.metadata.selectorWord||d.metadata.satelliteWord)));}))||(_ni!==_hlWordIdx&&globalThis._consumeAllAlts&&_ni>=globalThis._consumeAllAlts.index&&_ni<globalThis._consumeAllAlts.index+(globalThis._consumeAllAlts.spanLength||1))){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
 _searchPos=_wStart+_w.length;
 }` : `var _hlSpanLen=1;
 if(globalThis._dynDefs&&globalThis._dynDefs.words&&_hlWordIdx>=0){
