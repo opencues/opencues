@@ -2,7 +2,7 @@
 version: 1
 voice-mode: active
 debug-mode: off
-tips-mode: minimal
+tips-mode: on
 cursor-navigate: inactive
 output-format: rich markdown
 display mode: split pane
@@ -22,7 +22,6 @@ settings:
     values:
       on: All tips shown
       off: Tips hidden
-      minimal: Only essential tips shown
   output-format:
     tip: Response format style
     values:
