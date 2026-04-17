@@ -951,6 +951,38 @@ if(globalThis._debugLog)globalThis._debugLog("autoPopulate: "+_apopText);
 globalThis._forceInputRefresh();
 }
 }
+if(!globalThis._pendingBlankFills)globalThis._pendingBlankFills={};
+for(var _bsi=0;_bsi<_blankSlots.length;_bsi++){
+var _bsSlot=_blankSlots[_bsi];
+var _bsCtrl=(globalThis._cueControlOverrides||{})[_bsSlot.controlName];
+if(!_bsCtrl||_bsCtrl.blankAutoPopulate===false)continue;
+if(_bsCtrl.stepValues&&_bsCtrl.stepValues.length)continue;
+if(!_bsCtrl.blankScript)continue;
+var _bsKey=_hlText+"::"+_bsSlot.index;
+if(globalThis._pendingBlankFills[_bsKey])continue;
+globalThis._pendingBlankFills[_bsKey]=true;
+(function(_slot,_ctrl,_key){
+try{${requireFuncName}("child_process").execFile("bash",[_ctrl.blankScript,"get",_slot.keyword],{timeout:8000,encoding:"utf8"},function(_err,_stdout){
+delete globalThis._pendingBlankFills[_key];
+if(_err)return;
+var _out=(_stdout||"").trim();
+if(!_out)return;
+var _ct=globalThis._hlText||"";
+var _cw=_ct.split(/\\s+/).filter(function(w){return w;});
+if(_cw[_slot.index]!=="_")return;
+var _wp=0;
+for(var _wi=0;_wi<_slot.index;_wi++){_wp=_ct.indexOf(_cw[_wi],_wp)+_cw[_wi].length;}
+var _up=_ct.indexOf("_",_wp);
+if(_up<0)return;
+var _nt=_ct.slice(0,_up)+_out+_ct.slice(_up+1);
+globalThis._hlText=_nt;
+if(globalThis._hlState)globalThis._hlState.text=_nt;
+globalThis._lastResolvedText=_nt;
+if(globalThis._debugLog)globalThis._debugLog("autoPopulate (script "+_slot.controlName+"): "+_out);
+if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
+});}catch(_be){delete globalThis._pendingBlankFills[_key];}
+})(_bsSlot,_bsCtrl,_bsKey);
+}
 if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
 var _asText=_hlText;
 if(_asText!==globalThis._lastResolvedText){

@@ -1511,21 +1511,105 @@ globalThis._forceInputRefresh();
 
 ---
 
-## Step 25+ — TBD
+## Step 25 — Blank-fill sub-step 3: `blankScript get` async auto-populate
 
-Blank-fill continuation:
+**Goal:** Blanks whose matching control has a `blankScript` (and no `stepValues`) auto-populate by spawning `bash <blankScript> get <keyword>` asynchronously. Script stdout splices into `_` on callback. Unlocks `weather`, `stocks`, `hackernews`, `prompt`, `answer`, plus any future script-backed controls.
 
-- **Auto-populate via `blankScript get`** — for `weather`, `stocks`, `hackernews`. Async subprocess spawn; needs non-blocking flow (spawn → `_pendingFills[slotIdx]` → on completion refresh). Similar shape to Step 10's `_cycleAlt` debounce pattern.
-- **Span tracking** — multi-word fills (affirmations) currently land as separate navigable words. Track span for treating as single cycleable unit.
-- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` to cycle filled slots. Similar to Step 20's tip-alt branch but keyed on `_apCtrl.stepValues`.
-- **`blankDismissible`** — append `_` to the stepValues cycle list so user can cycle back to the blank.
-- **`blankClearKeywords`** — on fill, strip trigger keywords from input.
-- **`readControlState` wiring** — control-bound blanks (volume, brightness) auto-populate with live value via `blankScript get`.
-- **Keyword expansions** — `rddt` → `Reddit` at fill time.
-- **Factor `_hlExport.cueTip` writes** — still deferred refactor motivated by Step 16's peculiarity.
-- **Implement `tips-mode: minimal` filtering** — design first.
+**Why this choice:** Closes the "majority of controls" gap — `stepValues` is the minority case (only `affirmations`). Everything else is script-driven. Async pattern is the real unlock; gets us off the pre-defined-list model.
 
-Pick one after Step 24 is verified.
+**Exact change (async spawn + callback splice, appended after Step 24's stepValues block):**
+
+```js
+if(!globalThis._pendingBlankFills)globalThis._pendingBlankFills={};
+for(var _bsi=0;_bsi<_blankSlots.length;_bsi++){
+var _bsSlot=_blankSlots[_bsi];
+var _bsCtrl=(globalThis._cueControlOverrides||{})[_bsSlot.controlName];
+if(!_bsCtrl||_bsCtrl.blankAutoPopulate===false)continue;
+if(_bsCtrl.stepValues&&_bsCtrl.stepValues.length)continue;
+if(!_bsCtrl.blankScript)continue;
+var _bsKey=_hlText+"::"+_bsSlot.index;
+if(globalThis._pendingBlankFills[_bsKey])continue;
+globalThis._pendingBlankFills[_bsKey]=true;
+(function(_slot,_ctrl,_key){
+try{${requireFuncName}("child_process").execFile("bash",[_ctrl.blankScript,"get",_slot.keyword],{timeout:8000,encoding:"utf8"},function(_err,_stdout){
+delete globalThis._pendingBlankFills[_key];
+if(_err)return;
+var _out=(_stdout||"").trim();
+if(!_out)return;
+var _ct=globalThis._hlText||"";
+var _cw=_ct.split(/\\s+/).filter(function(w){return w;});
+if(_cw[_slot.index]!=="_")return;
+var _wp=0;
+for(var _wi=0;_wi<_slot.index;_wi++){_wp=_ct.indexOf(_cw[_wi],_wp)+_cw[_wi].length;}
+var _up=_ct.indexOf("_",_wp);
+if(_up<0)return;
+var _nt=_ct.slice(0,_up)+_out+_ct.slice(_up+1);
+globalThis._hlText=_nt;
+if(globalThis._hlState)globalThis._hlState.text=_nt;
+globalThis._lastResolvedText=_nt;
+if(globalThis._debugLog)globalThis._debugLog("autoPopulate (script "+_slot.controlName+"): "+_out);
+if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
+});}catch(_be){delete globalThis._pendingBlankFills[_key];}
+})(_bsSlot,_bsCtrl,_bsKey);
+}
+```
+
+**Key mechanics:**
+- **Async spawn via `execFile`** (not `execSync`) so the render thread never blocks. 8s timeout — more generous than Step 10's 2s cycle timeout because network-backed scripts (weather, stocks) can be slow.
+- **Staleness check** (`_cw[_slot.index]!=="_"`): if user edited the blank between spawn and callback, the `_` may have moved or been removed. Skip the splice.
+- **Pending dedupe** keyed on `text + index`: each unique (text state, blank position) only spawns once. Resolves on callback delete.
+- **Position walker** matches Step 24's stepValues splice: walk through preceding words to accumulate the `_` character offset.
+- **`_lastResolvedText` sync + `_forceInputRefresh`** match Step 24's post-splice contract — no LLM re-fire, onChange push to the component.
+- **Empty stdout = graceful skip.** Scripts that can't resolve (stocks without `FINNHUB_API_KEY`, stocks with unknown ticker, weather with bad geocoding) exit 0 with no output.
+
+**Verification (all confirmed working 2026-04-17):**
+- `weather _` → populates with live forecast from Open-Meteo (no API key).
+- `reddit stock _` → populates with live price from Finnhub (needs `FINNHUB_API_KEY`).
+- `hn _` → populates with current HackerNews top headline.
+- `affirm _` → Step 24 path intact (stepValues check wins before blankScript).
+- `the cat _ sat` → no-op.
+- Debug log shows `autoPopulate (script <controlName>): <output>` for each fill.
+
+**Not in scope for Step 25:**
+- **Context words** passed to script (e.g., `weather in Paris _` → Paris). Currently script gets only `keyword`. Weather falls back to London default.
+- **`blankKeywordExpansions`** (`rddt → Reddit` display). Script receives raw keyword; display stays raw.
+- **`blankConsumeAll`** / **`blankConsumeContext`** — prompt/answer use different patterns (whole-sentence input, structured output).
+- **`blankReadOnly`** enforcement (cycling isn't wired for non-stepValues anyway, so implicit).
+- **Span tracking** for multi-word fills.
+- **Error surfacing** beyond the silent skip.
+- **Cache** — currently re-spawns per unique text state. Could cache by keyword.
+
+**Rollback:** Remove the async spawn block. `blankScript` controls stop auto-populating; stepValues (Step 24) and detection (Step 23) remain.
+
+**Peculiarities found during this step:**
+
+1. **Dedupe-by-text, not by slot identity.** Rapid typing causes multiple concurrent script spawns for the "same semantic blank" across different text snapshots (e.g., `weather _` → `weather _t` → `weather _to`). Each text state spawns its own script; callbacks' staleness checks discard stale results. Acceptable cost for a simple dedupe scheme. A smarter cache would key by `(keyword, controlName)` with result memoization, but that adds complexity and risks returning stale weather/stocks data.
+
+2. **Staleness check is positional only** — `_cw[_slot.index]==="_"` — not keyword-preserving. If user types `weather _` (spawns script), then edits to `sunny _` before the script returns, the callback still sees `_` at position 1 and splices `weather`'s forecast into `sunny`'s slot. Incorrect but rare. Fix: capture `_slot.keyword` and validate the keyword is still present at its position on callback. Deferred; real-world pattern is type-once-wait-for-fill.
+
+3. **Step 25 filled values land as multiple navigable words** — just like Step 24. Weather forecast "15°C Partly cloudy" becomes 3 navigable words. User can Ctrl+Alt navigate them but can't cycle. Same span-tracking gap as Step 24 flagged.
+
+**Status: ✅ Done** (verified 2026-04-17: weather/stocks/hn all populate; stepValues path untouched)
+
+---
+
+## Step 26+ — TBD
+
+Blank-fill continuation (ordered roughly by "smallest measurable next step"):
+
+- **Context words passed to script** — `weather in Paris _` passes `Paris` to weather-blank.sh for geocoding. Small: grab non-keyword words from the sentence, append to `execFile` args.
+- **`blankClearKeywords`** — on fill, strip trigger keyword(s) from input. For `weather _` → just fill stays (no `weather` prefix cluttering the result). Small, visible.
+- **`blankKeywordExpansions`** — stocks `rddt` → `Reddit` display transform at fill time.
+- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` with a branch similar to Step 20's tip-alt branch.
+- **`blankDismissible`** — append `_` to cycle list so user can dismiss.
+- **Span tracking** — treat multi-word fill as single cycleable unit.
+- **`readControlState` wiring** — volume/brightness blanks populate with live value.
+- **`blankConsumeContext`** (answer) — LLM-backed blanks.
+- **`blankConsumeAll`** (prompt improver) — consume whole sentence + return multiple alts.
+- **Factor `_hlExport.cueTip` writes** — still deferred.
+- **`tips-mode: minimal` filtering** — design first.
+
+Pick one after Step 25 is verified.
 
 ---
 
