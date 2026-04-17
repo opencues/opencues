@@ -2062,9 +2062,29 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 - **Step 35e — Satellite cycling + write-back** — `_cycleAlt` branch: on satellite, cycle `_openCuesSettings[currentSetting]`, call `script set <setting> <value>`, update `_openCuesCurrent[setting]` immediately (don't wait for disk round-trip). Test: Ctrl+Alt+Right on `active` → `inactive`; `_openCuesCurrent["voice-mode"] === "inactive"`.
 
-- **Step 35f — `blankClearOnEdit` verification** — the reactive clear code at `wordHighlight.ts:1137-1158` and `dynamicHighlight.ts:1468-1477` already exists; this sub-step verifies it fires once 35b's metadata carries `blankClearOnEdit: true`. Test: manually edit selector → partner satellite removed.
+- **Step 35f — `blankClearOnEdit` wiring + robust pair removal** — the reactive clear code consumer already existed in cli.js, but nothing in our reintegration set `_pendingClearOnEdit`. Wired it in three clear-paths (word-replacement, word-removal, broken-span invalidation). Initially used index-based splice; bugs surfaced during testing required a rewrite to char-range splicing. Test: manually edit selector → both selector and satellite removed, regardless of edit type.
 
 **Rollback:** each sub-step revertable independently. 35a is purely additive (new globals, no reads). 35b-35f layer on top.
+
+**Peculiarities found during Step 35:**
+
+1. **Dead-code revival from Step 34.** Step 34 dropped the `_cbDw` branch in `_hlExport` as dead code. Step 35c had to resurrect it verbatim once Step 35b started creating dyndefs with `metadata.controlName`. Validates the Step 34 memory note ("Revive when selector/satellite is wired") — keeping a revival pointer in `steps.md` made this trivial.
+
+2. **Baseline `blankKeyword` parsing splits only on comma.** `blankKeywords: opencues settings, config` yields `["opencues settings", "config"]` — so typing `opencues _` alone doesn't trigger. Caught during first test; documented inline. No code change — user must type a real keyword alias.
+
+3. **Renderer dim + highlight were not span-aware.** First pass only dimmed the word at `d.index`; inner words of a multi-word span (`mode` of `display mode`, `pane` of `split pane`) stayed normal. Required a `_dynSpans` redirect at the top of `numberRenderCode` to remap `_hlWordIdx` to span origin, plus an extra disjunct in the dim-decision checking if `_ni` is in `_dynSpans` with an origin dyndef that has either `alts.length>1` or selector/satellite metadata.
+
+4. **Stale `_dynSpans` and ghost dyndefs after text edit.** Text-change handler cleared `alts`/`cueTip`/`source` but left `metadata` and `spanLength` intact. Later highlights resurfaced selector/satellite tips on unrelated typed words (e.g. `34f` at the satellite position inherited `voice-mode` tip). Fix: capture `metadata` and `spanLength` into locals before deleting them, and invalidate the dyndef fully in all three clear-paths.
+
+5. **Broken-span invalidation also triggers `blankClearOnEdit`.** Editing an inner word of a multi-word span (e.g. `mode` in `display mode`) doesn't hit the `_cocMin` loop (there's no dyndef at that index). A span-validity check was needed — reconstruct `d.index..d.index+spanLength-1` from the new text and compare to `d.word`; on mismatch, fully invalidate AND queue the clearOnEdit if `metadata.blankClearOnEdit` was set.
+
+6. **`_pendingClearOnEdit` index-based splicing is fragile under space edits.** Baseline consumer splices `_pceWords` by old index. When the user inserts a space mid-word (`voice-mode` → `voice -mode`), the old indices `[1, 0]` no longer point to `active`/`voice-mode` in the new split — they point to `-mode` and `voice`. Splicing those two leaves `active` behind. Fix: capture `_oldText` and the pair's char range `[pairS, pairE)` at queue time; in the consumer, diff `_oldText` vs current `_hlText` to compute a new char range (`newS = min(commonPrefix, pairS)`, `newE = len - min(commonSuffix, oldLen - pairE)`) and splice THAT range — wipes the pair plus any user-typed chars inside it, regardless of how many new word boundaries the edit introduced.
+
+7. **Partner dyndef must be invalidated at queue time, not in the consumer.** If only one side of the pair triggered `blankClearOnEdit` (e.g. user edited only the satellite), the partner selector's dyndef retained `metadata.selectorWord`/`controlName` and hijacked tips on whatever word later landed at that index. Fix: at queue push, look up partner via `childIndex`/`parentIndex` and immediately clear its metadata + spanLength (and capture its old word for char-range computation).
+
+8. **`_hlState.wordIndex` stayed stale after pair removal.** Post-clear, the highlight cursor could sit on a now-invalid or shifted position, requiring multiple Ctrl+Alt presses to reach a valid word. Fix: in the consumer, if `_hlState.wordIndex` fell inside the removed range, snap to `0` (or `null` if empty); if after the range, subtract `removedCount`.
+
+9. **Cycling valid alts must NOT trigger clearOnEdit.** When the user types a value that IS in the satellite's alts list (e.g. `active` → `inactive` manually), the dyndef is UPDATED IN PLACE at line 1036. No metadata clear, no queue push. Important for mirroring baseline behaviour where manual typing of a valid alt is treated as equivalent to cycling.
 
 ---
 
