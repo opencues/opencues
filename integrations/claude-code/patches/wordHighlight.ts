@@ -1057,6 +1057,7 @@ ${inputZoneVar}=${inputZoneClass}.fromText(_zwsClean,${configVar},${inputZoneVar
 var _hlText=${valueParam}.replace(/[\\u200B\\u200C]/g,"");
 var _oldText=(globalThis._hlText||"").replace(/[\\u200B\\u200C]/g,"");
 globalThis._hlText=_hlText;
+if(_hlText!==_oldText)globalThis._extHighlights=[];
 if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastResolvedText){var _caClearC=globalThis._consumeAllAlts;if(globalThis._dynDefs&&globalThis._dynDefs.words){globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(d){return d.index<_caClearC.index||d.index>=_caClearC.index+(_caClearC.spanLength||1);});}globalThis._consumeAllAlts=null;globalThis._dismissedBlanks=null;globalThis._dynSpans=null;}
 var _pceQueue=[];
 if(_hlText!==_oldText&&globalThis._dynDefs&&globalThis._dynDefs.words){
