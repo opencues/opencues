@@ -588,7 +588,7 @@ var _idx=globalThis._hlState.wordIndex;
 _hlExport.highlightedWordIndex=_idx;
 _hlExport.highlightedWord=_hlWords[_idx]||null;
 var _isCA=globalThis._isCueControl&&globalThis._isCueControl(_hlWords[_idx]||"");
-_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0,dynDefsCount:(globalThis._dynDefs&&globalThis._dynDefs.words)?globalThis._dynDefs.words.length:0,blankSlotsCount:(globalThis._blankSlots||[]).length,dynSpansKeys:globalThis._dynSpans?Object.keys(globalThis._dynSpans):[],consumeAllAlts:globalThis._consumeAllAlts?{index:globalThis._consumeAllAlts.index,spanLength:globalThis._consumeAllAlts.spanLength,altsCount:globalThis._consumeAllAlts.alts.length,currentAltIndex:globalThis._consumeAllAlts.currentAltIndex}:null};
+_hlExport._debug={word:_hlWords[_idx],isCA:!!_isCA,cueControlTip:globalThis._cueControlTip||null,overrides:Object.keys(globalThis._cueControlOverrides||{}),cueValues:globalThis._cueControlValues||null,httpAdapterLoaded:!!globalThis._httpAdapter,cueResolverLoaded:!!globalThis._cueResolver,cueSourceCount:globalThis._cueSourceCount||0,dynDefsCount:(globalThis._dynDefs&&globalThis._dynDefs.words)?globalThis._dynDefs.words.length:0,blankSlotsCount:(globalThis._blankSlots||[]).length,dynSpansKeys:globalThis._dynSpans?Object.keys(globalThis._dynSpans):[],consumeAllAlts:globalThis._consumeAllAlts?{index:globalThis._consumeAllAlts.index,spanLength:globalThis._consumeAllAlts.spanLength,altsCount:globalThis._consumeAllAlts.alts.length,currentAltIndex:globalThis._consumeAllAlts.currentAltIndex}:null,openCuesSettings:globalThis._openCuesSettings?Object.keys(globalThis._openCuesSettings):null,openCuesCurrent:globalThis._openCuesCurrent||null,openCuesTips:globalThis._openCuesTips?Object.keys(globalThis._openCuesTips):null,openCuesSatTipsKeys:globalThis._openCuesSatTips?Object.keys(globalThis._openCuesSatTips):null};
 var _proj=null;
 if(_isCA){
 var _caWord=(_hlWords[_idx]||"").toLowerCase();var _caOvr=(globalThis._cueControlOverrides||{})[_caWord];
@@ -713,22 +713,35 @@ globalThis._stepPatterns=_stepPats;
 var _ocPath=process.cwd()+"/opencues.md";
 if(_rfs.existsSync(_ocPath)){
 var _ocContent=_rfs.readFileSync(_ocPath,"utf8");
-var _ocCurrent={};
+var _ocSettings={};var _ocCurrent={};var _ocTips={};var _ocSatTips={};var _ocVersion=1;
 var _ocLines=_ocContent.split(/\\r?\\n/);
-var _inFm=false;
+var _inFm=false;var _inSet=false;var _curSetKey=null;var _inValues=false;
 for(var _oli=0;_oli<_ocLines.length;_oli++){
-var _ol=_ocLines[_oli];
-var _olT=_ol.trim();
+var _ol=_ocLines[_oli];var _olT=_ol.trim();
 if(_olT==="---"){_inFm=!_inFm;continue;}
-if(!_inFm||_ol.charAt(0)===" "||_ol.charAt(0)==="\\t")continue;
+if(!_inFm)continue;
+var _isIndented=_ol.length>0&&(_ol.charAt(0)===" "||_ol.charAt(0)==="\\t");
+if(_olT==="settings:"){_inSet=true;_curSetKey=null;_inValues=false;continue;}
+if(_inSet&&_olT&&!_isIndented){_inSet=false;_curSetKey=null;_inValues=false;}
+if(_inSet&&_olT){
 var _ci=_olT.indexOf(":");
-if(_ci<=0)continue;
-var _ocKey=_olT.slice(0,_ci).trim();
-var _ocVal=_olT.slice(_ci+1).trim();
-if(_ocKey==="settings")break;
-_ocCurrent[_ocKey]=_ocVal;
+if(_ci>0){
+var _sk=_olT.slice(0,_ci).trim();var _sv=_olT.slice(_ci+1).trim();
+if(_sk==="tip"&&_sv&&_curSetKey){_ocTips[_curSetKey]=_sv;}
+else if(_sk==="values"&&_curSetKey){_inValues=true;}
+else if(_inValues&&_curSetKey&&_sv){if(!_ocSettings[_curSetKey])_ocSettings[_curSetKey]=[];_ocSettings[_curSetKey].push(_sk);if(!_ocSatTips[_curSetKey])_ocSatTips[_curSetKey]={};_ocSatTips[_curSetKey][_sk]=_sv;}
+else if(!_sv){_curSetKey=_sk;_inValues=false;}
 }
+}else if(_olT&&!_isIndented){
+var _ci2=_olT.indexOf(":");
+if(_ci2>0){var _ck=_olT.slice(0,_ci2).trim();var _cv=_olT.slice(_ci2+1).trim();if(_ck==="version"){_ocVersion=parseInt(_cv,10)||1;}else if(_cv&&_ck!=="settings")_ocCurrent[_ck]=_cv;}
+}
+}
+globalThis._openCuesSettings=_ocSettings;
 globalThis._openCuesCurrent=_ocCurrent;
+globalThis._openCuesTips=_ocTips;
+globalThis._openCuesSatTips=_ocSatTips;
+globalThis._openCuesVersion=_ocVersion;
 globalThis._debugLog=function(_dMsg){if(!globalThis._openCuesCurrent||globalThis._openCuesCurrent["debug-mode"]!=="on")return;try{${requireFuncName}("fs").appendFileSync("/tmp/claude-cues-debug-"+process.pid+".log","["+new Date().toISOString()+"] "+_dMsg+"\\n");}catch(_dle){}};
 }
 try{

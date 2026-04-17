@@ -2044,16 +2044,37 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ---
 
-## Step 35+ — TBD
+## Step 35 — Selector/satellite (multi-sub-step)
 
-Remaining:
+**Goal:** Restore the two-slot "settings control" pattern. User types a blank-keyword control (e.g. `settings _`); the backing script returns tab-separated `selector\tsatellite` (e.g. `voice-mode\tactive`); the patch spawns two navigable, metadata-bearing words. Ctrl+Alt+L/R on the selector cycles setting names; on the satellite, cycles values and writes back via `script set`.
 
-- **"Revert-on-first-edit"** — backspace after fill restores pre-fill query.
-- **Selector/satellite** (opencues settings control) — two-slot span pattern. Revives the `_cbDw` branch logic (now dropped) + wires `_pendingAutoPopulate`.
+**Why this choice:** Full baseline parity for the `opencues.md`-backed settings control. Also revives the `_cbDw` branch we dropped in Step 34 — tips for selector/satellite words come from `_openCuesTips`/`_openCuesSatTips` keyed by `metadata.currentSetting`.
+
+**Sub-steps:**
+
+- **Step 35a — `opencues.md` parser + globals** — parse frontmatter into `_openCuesSettings` (setting → values), `_openCuesCurrent` (setting → current value), `_openCuesTips` (setting → tip), `_openCuesSatTips` (setting → {value → tip}). Hot-reload on the keystroke cycle (same ~2s cadence as cues.md). No UX change. Test: globals inspectable via `_debug`.
+
+- **Step 35b — Dual-insertion on tab-separated script output** — in the blankScript response handler, if `_out` contains `\t` (or configured `blankSatelliteSeparator`), split and insert both words; create two dyndefs with `metadata.selectorWord`/`satelliteWord`/`controlName`/`parentIndex`/`childIndex`/`blankClearOnEdit`/`currentSetting`. Test: `settings _` → `voice-mode active`, metadata present on both.
+
+- **Step 35c — Revive `_cbDw` branch in `_hlExport`** — re-add selector/satellite tip lookup (dropped in Step 34): reads `_openCuesTips[currentSetting]` for selector, `_openCuesSatTips[currentSetting][value]` for satellite. Test: highlight selector/satellite → correct tip in statusline.
+
+- **Step 35d — Selector cycling** — `_cycleAlt` branch: on selector word, cycle setting names (keys of `_openCuesSettings`), call `script get <newName>` to fetch satellite, update both words + cross-refs. Test: Ctrl+Alt+Right on `voice-mode` → `debug-mode off`.
+
+- **Step 35e — Satellite cycling + write-back** — `_cycleAlt` branch: on satellite, cycle `_openCuesSettings[currentSetting]`, call `script set <setting> <value>`, update `_openCuesCurrent[setting]` immediately (don't wait for disk round-trip). Test: Ctrl+Alt+Right on `active` → `inactive`; `_openCuesCurrent["voice-mode"] === "inactive"`.
+
+- **Step 35f — `blankClearOnEdit` verification** — the reactive clear code at `wordHighlight.ts:1137-1158` and `dynamicHighlight.ts:1468-1477` already exists; this sub-step verifies it fires once 35b's metadata carries `blankClearOnEdit: true`. Test: manually edit selector → partner satellite removed.
+
+**Rollback:** each sub-step revertable independently. 35a is purely additive (new globals, no reads). 35b-35f layer on top.
+
+---
+
+## Step 36+ — TBD
+
+Remaining (reintegration items present in the original patches):
+
 - **`readControlState` resolver wiring** — architectural parity for LLM-backed blanks.
-- **`tips-mode: minimal` filtering** — needs design.
 
-Pick one after Step 34 is verified.
+Pick after Step 35 is verified end-to-end.
 
 ---
 
