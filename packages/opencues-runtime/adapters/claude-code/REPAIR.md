@@ -12,6 +12,77 @@ scenario that matches your symptom.
 
 ---
 
+## Host quirks (Claude Code v2.1) — read this before debugging anything
+
+Lessons learned the hard way during Phase 1–3 live testing. These shape
+several non-obvious decisions in `boot.ts` and the patch.
+
+### 1. `bindings.getText` / `bindings.getCursorOffset` are stale closures
+
+The patch supplies these as `function() { return m.text; }` where `m` is
+the `InputZone` local in the `InputStateHandler` (Dy8) closure. Each
+React re-render produces a NEW `Dy8` invocation with a NEW `m`. The
+callback we passed to `boot()` was created during the very first
+invocation — it forever points at that long-gone `m`.
+
+**Consequence:** the runtime cannot read the live host text via these
+bindings. In practice they return whatever was on screen at boot time —
+typically empty or one-character.
+
+**Convention:**
+- `consumePendingRender(currentText, currentCursor)` takes them as args.
+  The patch reads them at the dispatch site (e.g. `${iz}.text`) where
+  `m` is fresh.
+- `dispatchKey(rawEvent, text, offset)` takes them as args.
+- `applyRender(rendered, text, offset)` takes them as args.
+- `setCursorOffset` does NOT clamp via `getText` (the spec invariant
+  is violated on this host); callers (e.g. Cycling) clamp themselves
+  against the text they're about to apply.
+
+If you add a new module that needs the current text or cursor outside a
+key-event or render context, **plumb it through the dispatch path** —
+don't reach for `bindings.getText`.
+
+### 2. `m.render(...)` output may diverge from `m.text`
+
+`renderedValue` is `m.render(X,H,M,j6,G)`. It produces the visible
+string for the terminal. That visible string is NOT always equal to
+`m.text` (the underlying buffer): the host can pad, insert a cursor
+character, wrap by columns, etc.
+
+**Convention:** `applyRender` derives `ctx.text` from
+`rendered.replace(/\x1b\[[0-9;]*m/g, '')` — the visible content of the
+rendered string itself. That guarantees `DimRender`'s positions and
+`applyDirectives`'s ANSI insertions live in the same coordinate space.
+
+### 3. The TUI swallows stderr — log to a file
+
+Claude Code's Ink renderer captures stdout/stderr to compose the screen.
+`console.error` calls written from the bootstrap won't show up where you
+expect. The patch's `log` callback writes to `/tmp/opencues.log` via
+`fs.appendFileSync` (synchronous so a crash doesn't lose the trail).
+
+**To capture debug output:**
+```bash
+DEBUG_OPENCUES=1 claude-cues          # interactive, no redirect
+# in another shell:
+tail -f /tmp/opencues.log
+```
+
+Don't try to redirect `2>` from an interactive TUI session — the events
+either don't make it through or corrupt the screen.
+
+### 4. The host may keep the `value` prop in lock-step with our InputZone
+
+Returning `InputZone.fromText(newText, P, cursor)` from the
+`handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.
+We rely on this — `Cycling`'s text replacement propagates because the
+InputZone we return becomes the next `value`. If a future CC version
+breaks this assumption, cycling will visually flash but revert to the
+previous text. Look for this if cycling stops persisting.
+
+---
+
 ## Architecture in one paragraph
 
 The `tweakcc` patch (`integrations/claude-code/patches/opencuesRuntime.ts`)

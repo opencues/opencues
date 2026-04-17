@@ -9,9 +9,10 @@ Commits:
 - `3ea17ae` — Phase 1: Navigation module + v2.1 CC adapter + tweakcc v2 patch
 - `3c8d69e` — Phase 1 fix: forceRender wires through to ZWS toggle at KeyDispatcher return
 - `1d4d4d3` — Phase 2 (DimRender, reordered ahead of Cycling): visible navigation.
-  S3 seam, applyDirectives helper, DimRender module, bootstrap wraps
-  renderedValue.
-- (this+) Refactor: collapse v2 patch surface to single `boot.js` entry point.
+- `4cbfbd8` — Refactor: collapse v2 patch surface to single `boot.js` entry point.
+- `2b50157` — Docs: REPAIR.md with version-bump scenarios.
+- `74c2b94` — Docs: CLAUDE.md cues-core vs opencues-runtime layering.
+- `79a5c7e` — Phase 3: Cycling + ConfigLoader (visible word cycling).
 
 **Repairing the integration when Claude Code bumps versions:**
 see `packages/opencues-runtime/adapters/claude-code/REPAIR.md` — scenarios
@@ -331,16 +332,115 @@ moves left/right. That's the proof Phases 0 + 1 + 2 are intact end-to-end.
 
 ---
 
+## Phase 3 — Cycling + ConfigLoader (visible word cycling)
+
+**Goal:** Ctrl+Alt+Up/Down rotates the highlighted word through alternatives
+loaded from `~/.claude/claude-code-tips.json` at startup. Highlight follows
+the new word's length. Typing clears the highlight.
+
+### What to check
+
+1. **`packages/opencues-runtime/src/modules/config-loader.ts`** — reads the
+   tips JSON via `adapter.readFile` (not raw `fs`), parses with cues-core's
+   `parseLocalCueFile` + `buildLookupMap`. Graceful no-op on missing file
+   or parse failure (logs and leaves the map empty). 4 tests.
+
+2. **`packages/opencues-runtime/src/modules/cycling.ts`** — Ctrl+Alt+Up/Down
+   handler. Builds a `WordDef` on first cycle from `cueMap`; rotates with
+   wrap; replaces text; updates spans; clamps cursor against the new text
+   length itself (see Host quirks in REPAIR.md). 9 tests.
+
+3. **`packages/opencues-runtime/src/state/dyn-defs.ts`** — `WordDef` is now
+   mutable: `currentIndex` and `spanEnd` update as cycling progresses.
+
+4. **`packages/opencues-runtime/src/modules/navigation.ts`** — gained
+   `onTextChange` subscription. User-source drift deactivates `hlState`
+   AND clears `dynDefs` (so cycling starts fresh on the new text).
+
+5. **`packages/opencues-runtime/src/modules/dim-render.ts`** — the
+   stale-activation guard is gone. Highlight clearing now flows from
+   Navigation's `onTextChange` reaction, not a render-side check. This
+   was the bug that made cycling deactivate highlights immediately after
+   the text change.
+
+6. **`adapters/claude-code/v2.1/boot.ts`** — substantial rework:
+   - `consumePendingRender(currentText, currentCursor)` takes args. The
+     stale-closure issue (see REPAIR.md §Host quirks #1) means boot
+     cannot read live state from `bindings.getText`.
+   - `applyRender` derives `ctx.text` from the visible content of the
+     rendered string itself, guaranteeing position alignment with
+     `applyDirectives`'s ANSI walker.
+   - `checkTextDrift` compares visible-stripped text across calls and
+     fires `textChange` events with source `'user'` on drift. This is
+     what powers the highlight-clear-on-typing feature.
+   - Constructs `ConfigLoader` (kicks off async `load()`), `Cycling`.
+
+7. **`adapters/claude-code/v2.1/adapter.ts`** — `setCursorOffset` no
+   longer clamps via `getText` (would use stale text and force cursor=0
+   or =1). Caller responsibility now.
+
+8. **`integrations/claude-code/patches/opencuesRuntime.ts`** —
+   - Adds `readFile` callback to host bindings (uses `fs.readFile` via
+     `createRequire`).
+   - Passes fresh `m.text`/`m.offset` to `consumePendingRender`.
+   - `log` callback writes to `/tmp/opencues.log` via
+     `fs.appendFileSync` — TUI swallows stderr (REPAIR.md §Host quirks #3).
+   - Dispatch debug logs route through the host log under `DEBUG_OPENCUES`.
+
+### How to test live
+
+```bash
+cd packages/opencues-runtime && npm run build
+cp -r dist ~/.claude/node_modules/opencues-runtime/   # already-installed
+DEBUG_OPENCUES=1 claude-cues
+# in another shell: tail -f /tmp/opencues.log
+```
+
+In claude-cues:
+- Type `undo` → Ctrl+Alt+Left (highlight on `undo`) → Ctrl+Alt+Up (cycle to
+  `/rewind`, full word highlighted, cursor at end) → repeat to cycle through
+  `revert`, `rollback`, back to `undo`. Ctrl+Alt+Down reverses.
+- Type any character with the highlight active → highlight clears.
+- Try other cued words: `opus`, `fast`, `Tab`, `ultrathink` — see
+  `~/.claude/claude-code-tips.json` for the full set.
+
+### Known limitations / follow-ups
+
+- **Single-word cycling only.** Cycling treats each word in isolation. If a
+  cycle alternative contains a space (e.g. `deep thinking`), it'd insert
+  it as multiple "words" by `splitWords`'s contract. DimRender then
+  highlights only the first part. Multi-word cycling is a Phase 4+ concern.
+- **Cue map only loads at boot.** If you edit `claude-code-tips.json`
+  while claude-cues is running, the changes don't reload. Hot-reload is a
+  later ConfigLoader feature.
+- **No LLM-driven alts (yet).** Phase 4 (BlankFill) wires the cues-core
+  `Resolver` so words without static alts get LLM suggestions on demand.
+- **Span tracking on multi-word text is fragile.** If cycling word 0
+  expands the text, word 1+'s spans shift but the DynDefs cache for those
+  indices is stale until the user types (which clears it). Only matters
+  for back-to-back cycling on different words in the same buffer.
+- **Phase 3 introduced four `# Host quirks` items in REPAIR.md** — read
+  those before debugging anything Claude-Code-specific in the runtime.
+
+---
+
 ## Going forward (next phases)
 
-The next phase (Cycling) will:
-- Extend `HostBindings` with whatever the cycling UX needs (likely a hook
-  into the return-value of KeyDispatcher so Up/Down can return the rewritten
-  InputZone).
-- Introduce the S2-based bootstrap shim that owns text replacement, which
-  transitively fixes the forceRender gap above.
-- Port `globalThis._cycleAlt` from `wordHighlight.ts:525` onto the new
-  Cycling module, keeping the v1 cue resolver call intact.
+Phases 0–3 ship visible navigation + word cycling on a live install. The
+next major phase is **BlankFill** — fills `_`-style blanks via the cues-core
+`Resolver` (LLM-driven). It's bigger than Cycling because it introduces:
+- HTTP adapter wiring (NodeHttpAdapter from cues-core)
+- Resolver lifecycle (debounced trigger, in-flight cancellation, dedup)
+- Real `cues.md` / `controls.md` / `blanks.md` parsing (currently only
+  the JSON tips file is loaded)
+- Folder-based cue discovery (needs a `readDir` primitive on HostAdapter
+  or a manifest walk)
 
-Reading order when picking up again: `refactor.md` → this file → recent
-commits (`git log --oneline -5`).
+Smaller intermediate phases worth considering:
+- **Statusline export** (`writeFile` capability, exports `_hlExport` JSON
+  for the existing highlight-statusline.sh consumer). Easy & visible.
+- **TTS on tip highlight** (`spawn-process` capability, fire-and-forget
+  speak.sh). Modular, doesn't depend on BlankFill.
+
+Reading order when picking up cold: `refactor.md` → this file → recent
+commits (`git log --oneline -10`) → `REPAIR.md` for the host quirks list.
