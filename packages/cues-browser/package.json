@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "cues-core": "^1.0.0"
+    "cues-core": "*"
   },
   "keywords": [
     "cues",
