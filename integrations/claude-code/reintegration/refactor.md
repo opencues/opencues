@@ -941,3 +941,95 @@ All 11 sections are at v1.0. Changes during implementation become amendments to 
 3. Subsequent modules in order: Cycling → DimRender → BlankFill → Statusline → TTS.
 4. Flag flip after real-world use.
 5. Remove legacy patches.
+
+---
+
+## Resume here (for a fresh session)
+
+If a session is picking up this refactor mid-flight, read this section first.
+
+### What this is
+
+The plug-and-play rewrite of OpenCues' Claude Code integration. Replaces the 22-seam parasitic patch (reintegration Steps 0-37) with a thin adapter + fat runtime library. Spec above is locked v1.0 — do not deviate without updating the document.
+
+### How to resume
+
+Standard resume prompt:
+
+> *"Read `integrations/claude-code/reintegration/refactor.md` and execute Phase N. Commit between phases. Tell me when each phase is done and wait for me to verify before moving on."*
+
+Replace `Phase N` with the current target (e.g. "Phase 0 and Phase 1").
+
+### Where things live
+
+- **Spec (this file):** `integrations/claude-code/reintegration/refactor.md`
+- **Reintegration history (steps.md):** `integrations/claude-code/reintegration/steps.md` — the 37-step log of how the current (v1) patch came to be. Reference when you need to know what a feature does or why.
+- **Current patch (v1, to be replaced):** `integrations/claude-code/tweakcc/src/patches/wordHighlight.ts` — ~2100-line template literal. Contains the behaviour that the runtime must match.
+- **cues-core (stays as-is):** `packages/cues-core/` — resolver, sources, parsers. Runtime depends on it.
+- **Target locations for v2 code** (create these during Phase 0):
+  - `packages/opencues-runtime/` — the runtime library.
+  - `packages/opencues-runtime/adapters/claude-code/v2.1/` — the v2.1.x Claude Code adapter.
+  - `packages/opencues-runtime/testing/` — MockHostAdapter + conformance suite.
+
+### Dev workflow
+
+- **Build runtime:** `cd packages/opencues-runtime && npm run build` (scaffold will add this).
+- **Install to Claude user path:** `cp -r packages/opencues-runtime/dist/* ~/.claude/node_modules/opencues-runtime/` (after creating the target dir). Mirrors the existing cues-core pattern.
+- **Build + apply tweakcc:** `cd integrations/claude-code/tweakcc && npm run build:dev && CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1) && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply`
+- **Test:** User restarts `claude-cues`, exercises features, checks `/tmp/claude-highlight-state-<pid>.json` for `_debug` fields. For v2 runtime, expect new debug fields reflecting runtime module state.
+
+### Commit conventions
+
+- **Phase commits:** `feat: Phase <N> — <summary>` with a body describing what shipped and what rolled back (if any).
+- **Fixes during a phase:** normal `fix:` or `refactor:` commits. Fold into the phase commit via amend if unpushed, otherwise separate.
+- **Push after each phase completes** (user verifies before next phase).
+- **Design amendments:** if a discovery forces a spec change, commit the refactor.md edit separately (`docs: refactor.md — <section> amendment`) BEFORE the code change, so history shows the design shift first.
+
+### Phase 0 checklist (scaffold, ~1 day)
+
+- [ ] `packages/opencues-runtime/package.json` — name, version 0.1.0, dependencies (cues-core local, acorn for seam parsing).
+- [ ] `packages/opencues-runtime/tsconfig.json` — strict TS, emit to `dist/`.
+- [ ] `packages/opencues-runtime/src/index.ts` — re-export public API.
+- [ ] `packages/opencues-runtime/src/adapter.ts` — the full HostAdapter interface (copy from spec section 2.2 verbatim — types only, no impl).
+- [ ] `packages/opencues-runtime/src/runtime.ts` — empty Runtime class with `create()` factory, `dispose()`. Only validates interface version + required capabilities.
+- [ ] `packages/opencues-runtime/src/state/` — stub state classes (HighlightState, DynDefs, ConsumeAllState, DismissedBlanks). No logic yet; just fields and getters.
+- [ ] `packages/opencues-runtime/src/modules/` — empty module files (navigation.ts, cycling.ts, blank-fill.ts, dim-render.ts, tts.ts, statusline.ts, config-loader.ts). Each exports a class with a constructor taking `adapter: HostAdapter`.
+- [ ] `packages/opencues-runtime/testing/mock-adapter.ts` — MockHostAdapter implementing all methods over an in-memory text buffer. Exposes `fireKey`, `pushText`, `fireRender` helpers.
+- [ ] `packages/opencues-runtime/testing/conformance.ts` — conformance test suite (exports a function that takes an adapter factory and asserts all invariants from §2.3). Uses vitest.
+- [ ] Add a single vitest test at `packages/opencues-runtime/src/runtime.test.ts` that runs conformance against MockAdapter and verifies Runtime.create() succeeds.
+- [ ] Verify build + test pass: `npm run build && npm test` in the package dir.
+
+**No tweakcc changes in Phase 0.** No cli.js touched. Current reintegration still owns all runtime behaviour.
+
+Commit message: `feat: Phase 0 — opencues-runtime scaffold (HostAdapter types, MockAdapter, conformance suite)`.
+
+### Phase 1 checklist (navigation module, ~2 days)
+
+- [ ] Extract AST seam predicates for S1 (KeyDispatcher) and S2 (InputStateHandler) into `packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`. Use acorn. Reference the current regexes in `wordHighlight.ts:160-234` for what shapes to match.
+- [ ] Build the v2.1 adapter at `packages/opencues-runtime/adapters/claude-code/v2.1/adapter.ts` — implements HostAdapter methods minimally: enough to support navigation only (getText, setText, setCursorOffset, forceRender via ZWS toggle, onKey with filter for Ctrl+Alt arrows, onRender for dim/highlight, log).
+- [ ] Implement `Navigation` module at `packages/opencues-runtime/src/modules/navigation.ts`. Port the current filter + arrow-handling logic from `wordHighlight.ts` (the `filterCode` and key handlers near line 461 + 475). Use `adapter.onKey({requireModifiers: ['ctrl', 'alt'], keys: ['left','right']}, ...)`.
+- [ ] Unit tests at `src/modules/navigation.test.ts` against MockHostAdapter: simulate typing, fire key events, assert expected `setText` calls.
+- [ ] Add `opencuesRuntime: 'v1' | 'v2'` config option to tweakcc's config schema. Default `'v1'`.
+- [ ] Add a thin patch at `integrations/claude-code/tweakcc/src/patches/opencuesRuntime.ts` that, when `opencuesRuntime === 'v2'`:
+   1. Parses cli.js AST via acorn.
+   2. Runs the v2.1 adapter's seam predicates.
+   3. Fails loud if any critical seam is missing (reuse the `assertInjected` pattern from Step 37d).
+   4. Injects a bootstrap that loads `opencues-runtime` and the v2.1 adapter, then does `Runtime.create(adapter)`.
+- [ ] End-to-end: with `opencuesRuntime: 'v2'`, applying to `claude-cues` + restart → Ctrl+Alt+Left/Right navigates words identically to v1. v1 must still work with the flag set to `'v1'`.
+
+Commit message: `feat: Phase 1 — Navigation module + v2.1 Claude Code adapter (S1, S2 seams)`.
+
+### Known constraints when resuming
+
+- Node 22 in the dev environment. Use `npm` (not `pnpm`).
+- Tweakcc is a vendored npm package at `integrations/claude-code/tweakcc/`. It has its own `package.json` and builds via `npm run build:dev`.
+- `~/.claude/node_modules/` is the install location that CC's patched cli.js reads from. After any cues-core or opencues-runtime rebuild, copy `dist/*` into this path.
+- `claude-cues` is at `~/local-claude-code` — this is the patched install, don't confuse with the unpatched `claude` at `~/.local/bin/claude`.
+- Do not touch the native `claude` install. Only `claude-cues`.
+- Anchor-count assertions from Step 37d live in `writeWordHighlight`. New seam predicates in Phase 1+ should emit similar assertions (reuse the pattern).
+
+### If something blocks
+
+- Spec assumption turns out wrong → stop, update the relevant section in refactor.md (and commit the doc change first), then proceed.
+- CC version on the dev machine doesn't match v2.1.x → work against whatever's there; adapter band should match real CC version. Update the matrix in §11.3.
+- Resolver tests need real LLM → use a mock HTTP adapter in the conformance suite; real-LLM tests only in E2E layer (§9.1 Layer 3).
