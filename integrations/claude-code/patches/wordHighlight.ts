@@ -765,6 +765,7 @@ var _ovr=(globalThis._cueControlOverrides||{})[_lw];
 if(globalThis._consumeAllAlts){
 var _ca=globalThis._consumeAllAlts;
 var _caSpanLen=_ca.spanLength||1;
+var _caPrefix=_ca.prefixLen||0;
 if(_wi>=_ca.index&&_wi<_ca.index+_caSpanLen){
 var _caNextIdx=(_ca.currentAltIndex+_dir+_ca.alts.length)%_ca.alts.length;
 _ca.currentAltIndex=_caNextIdx;
@@ -773,12 +774,13 @@ if(_caNewAlt==null)return null;
 if(_caNewAlt==="_"){if(!globalThis._dismissedBlanks)globalThis._dismissedBlanks={};globalThis._dismissedBlanks[_ca.index]=true;}
 else if(globalThis._dismissedBlanks){delete globalThis._dismissedBlanks[_ca.index];}
 var _caText=globalThis._hlText||"";
+var _caFillIdx=_ca.index+_caPrefix;
 var _caWordPos=0;
-for(var _cawi=0;_cawi<_ca.index;_cawi++){_caWordPos=_caText.indexOf(_wds[_cawi],_caWordPos)+_wds[_cawi].length;}
-var _caSpanStart=_caText.indexOf(_wds[_ca.index],_caWordPos);
+for(var _cawi=0;_cawi<_caFillIdx;_cawi++){_caWordPos=_caText.indexOf(_wds[_cawi],_caWordPos)+_wds[_cawi].length;}
+var _caSpanStart=_caText.indexOf(_wds[_caFillIdx],_caWordPos);
 if(_caSpanStart<0)return null;
 var _caSpanEnd=_caSpanStart;
-for(var _casi=0;_casi<_caSpanLen;_casi++){
+for(var _casi=_caPrefix;_casi<_caSpanLen;_casi++){
 var _caSpanW=_wds[_ca.index+_casi];
 if(_caSpanW==null)break;
 var _caSwI=_caText.indexOf(_caSpanW,_caSpanEnd);
@@ -786,7 +788,8 @@ if(_caSwI<0)break;
 _caSpanEnd=_caSwI+_caSpanW.length;
 }
 var _caNewText=_caText.slice(0,_caSpanStart)+_caNewAlt+_caText.slice(_caSpanEnd);
-var _caNewSpanLen=_caNewAlt.split(/\\s+/).filter(function(w){return w;}).length;
+var _caFillWc=_caNewAlt.split(/\\s+/).filter(function(w){return w;}).length;
+var _caNewSpanLen=_caPrefix+_caFillWc;
 _ca.spanLength=_caNewSpanLen;
 if(globalThis._dynSpans){Object.keys(globalThis._dynSpans).forEach(function(k){var _dski=parseInt(k,10);if(_dski>=_ca.index)delete globalThis._dynSpans[_dski];});}
 if(_caNewSpanLen>1){if(!globalThis._dynSpans)globalThis._dynSpans={};for(var _caCycSi=0;_caCycSi<_caNewSpanLen;_caCycSi++)globalThis._dynSpans[_ca.index+_caCycSi]={originalIndex:_ca.index,spanLength:_caNewSpanLen};}
@@ -1064,6 +1067,10 @@ var _wp=0;
 for(var _wi=0;_wi<_slot.index;_wi++){_wp=_ct.indexOf(_cw[_wi],_wp)+_cw[_wi].length;}
 var _up=_ct.indexOf("_",_wp);
 if(_up<0)return;
+var _outLines=_out.split(/\\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+if(!_outLines.length)return;
+if(_ctrl.blankDismissible&&_outLines.indexOf("_")<0)_outLines.push("_");
+_out=_outLines[0];
 _nt=_ct.slice(0,_up)+_out+_ct.slice(_up+1);
 if(_ctrl.blankKeywordExpansions&&_ctrl.blankKeywordExpansions[_slot.keyword]){
 var _ntXW=_nt.split(/\\s+/).filter(function(w){return w;});
@@ -1088,7 +1095,7 @@ _nt=_ntKept.join(" ");
 if(!_ctrl.blankConsumeAll){
 var _fillWordsArr=_out.split(/\\s+/).filter(function(w){return w;});
 var _fillSpanLen=_fillWordsArr.length;
-if(_fillSpanLen>1){
+if(_fillSpanLen>1||_outLines.length>1||_ntCE===null){
 var _outStart=_nt.indexOf(_out);
 if(_outStart>=0){
 var _spanOrigin=0;var _scanPos=0;
@@ -1100,11 +1107,13 @@ if(_wScanS<0||_wScanS>=_outStart)break;
 _scanPos=_wScanS+_wordScan.length;
 _spanOrigin++;
 }
-if(!globalThis._dynSpans)globalThis._dynSpans={};
-for(var _dsi=0;_dsi<_fillSpanLen;_dsi++)globalThis._dynSpans[_spanOrigin+_dsi]={originalIndex:_spanOrigin,spanLength:_fillSpanLen};
+var _spanLen=_fillSpanLen;var _prefixLen=0;
+if(_ntCE===null&&_spanOrigin>_slot.keywordStart){_prefixLen=_spanOrigin-_slot.keywordStart;_spanLen=_spanOrigin+_fillSpanLen-_slot.keywordStart;_spanOrigin=_slot.keywordStart;}
+if(_spanLen>1){if(!globalThis._dynSpans)globalThis._dynSpans={};for(var _dsi=0;_dsi<_spanLen;_dsi++)globalThis._dynSpans[_spanOrigin+_dsi]={originalIndex:_spanOrigin,spanLength:_spanLen};}
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 globalThis._dynDefs.words=globalThis._dynDefs.words.filter(function(d){return d.index!==_spanOrigin;});
-globalThis._dynDefs.words.push({index:_spanOrigin,cueTip:_ctrl.blankTip||_ctrl.tip||null,spanLength:_fillSpanLen,source:"control"});
+globalThis._dynDefs.words.push({index:_spanOrigin,cueTip:_ctrl.blankTip||_ctrl.tip||null,alts:_outLines.length>1?_outLines:null,currentAltIndex:0,spanLength:_spanLen,source:"control"});
+if(_outLines.length>1)globalThis._consumeAllAlts={index:_spanOrigin,alts:_outLines,currentAltIndex:0,spanLength:_spanLen,prefixLen:_prefixLen};
 }
 }
 }
