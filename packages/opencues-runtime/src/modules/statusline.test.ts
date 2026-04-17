@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Statusline } from './statusline';
+import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { MockAdapter } from '../../testing/mock-adapter';
@@ -51,6 +52,87 @@ describe('Statusline.buildPayload', () => {
     expect(p.highlightedWord).toBe('/rewind');
     expect(p.currentAltIndex).toBe(1);
     expect(p.alts).toEqual(['undo', '/rewind', 'revert']);
+  });
+});
+
+describe('Statusline cue-tip plumbing', () => {
+  const TIPS = JSON.stringify({
+    domain: 'test',
+    version: 1,
+    concepts: [
+      {
+        id: 'g',
+        groups: [{
+          synonyms: ['undo', '/rewind', 'revert'],
+          alts: [],
+          tip: 'Undo a previous Claude action',
+        }],
+      },
+      {
+        id: 'h',
+        words: {
+          opus: { tip: 'Use the most capable model', alts: ['sonnet', 'haiku'] },
+        },
+      },
+    ],
+  });
+
+  async function setupWithTips(text: string) {
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText(text);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const statusline = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/test-statusline.json',
+    }, loader);
+    statusline.subscribe();
+    return { adapter, hlState, dynDefs, loader, statusline };
+  }
+
+  it('populates cueTip from cue map for non-cycled active word', async () => {
+    const { hlState, statusline } = await setupWithTips('opus');
+    hlState.activate(0, 'opus');
+    const p = statusline.buildPayload({ text: 'opus', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBe('Use the most capable model');
+  });
+
+  it('uses alt-specific tip when available, else primary', async () => {
+    const { hlState, dynDefs, statusline } = await setupWithTips('undo');
+    hlState.activate(0, 'undo');
+    dynDefs.set(0, {
+      originalWord: 'undo',
+      alternatives: ['undo', '/rewind', 'revert'],
+      currentIndex: 1,
+      spanStart: 0,
+      spanEnd: 7,
+    });
+    const p = statusline.buildPayload({ text: '/rewind', cursor: 0, externalHighlights: [] });
+    // The synonym group's tip is shared across all variants, so cueTip is the
+    // group tip even for the alt. altCueTips contains per-variant entries.
+    expect(p.cueTip).toBe('Undo a previous Claude action');
+    expect(p.altCueTips).toBeDefined();
+  });
+
+  it('cueTip is null for words not in the cue map', async () => {
+    const { hlState, statusline } = await setupWithTips('xyz');
+    hlState.activate(0, 'xyz');
+    const p = statusline.buildPayload({ text: 'xyz', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
+  });
+
+  it('cueTip is null when no ConfigLoader is supplied', () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('opus');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'opus');
+    const sl = new Statusline(adapter, hlState, new DynDefs(), {
+      exportPath: '/tmp/x.json',
+    });
+    const p = sl.buildPayload({ text: 'opus', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
+    expect(p.altCueTips).toBeNull();
   });
 });
 

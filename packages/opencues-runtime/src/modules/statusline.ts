@@ -12,6 +12,7 @@
 import type { HostAdapter, RenderContext, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
+import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -32,7 +33,10 @@ export interface StatuslinePayload {
   highlightedWord?: string;
   currentAltIndex?: number;
   alts?: readonly string[];
+  /** Tip for the currently-displayed word (alt-specific if available, else primary). */
   cueTip?: string | null;
+  /** Per-alt tips. Mirrors v1's altCueTips for consumers that want to preview. */
+  altCueTips?: Readonly<Record<string, string>> | null;
   cueControl?: boolean;
   wordCount?: number;
   timestamp: number;
@@ -47,6 +51,8 @@ export class Statusline {
     private hlState: HighlightState,
     private dynDefs: DynDefs,
     private options: StatuslineOptions,
+    /** Optional. When provided, cueTip + altCueTips are populated from the cue map. */
+    private configLoader?: ConfigLoader,
   ) {}
 
   subscribe(): void {
@@ -76,13 +82,29 @@ export class Statusline {
     }
     // Strip our zero-width-toggle noise so the consumer sees clean strings.
     const clean = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
+    const cleanHighlighted = clean(highlightedWord);
+
+    // Cue lookup: primary key is the original word (stable across cycling).
+    // For tip display, prefer altCueTips[currentDisplayedWord] over the
+    // primary cueTip — mirrors v1's behaviour where each alt can have its
+    // own tip text.
+    const lookupKey = clean(def?.originalWord ?? highlightedWord);
+    const lookup = this.configLoader?.lookup(lookupKey) ?? null;
+    let cueTip: string | null = null;
+    let altCueTips: Record<string, string> | null = null;
+    if (lookup) {
+      altCueTips = lookup.altCueTips ?? null;
+      cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
+    }
+
     return {
       active: true,
       highlightedWordIndex: wordIndex,
-      highlightedWord: clean(highlightedWord),
+      highlightedWord: cleanHighlighted,
       currentAltIndex: def?.currentIndex ?? 0,
-      alts: def ? def.alternatives.map(clean) : [clean(highlightedWord)],
-      cueTip: null,         // future: from cueMap lookup
+      alts: def ? def.alternatives.map(clean) : [cleanHighlighted],
+      cueTip,
+      altCueTips,
       cueControl: false,    // future: from controls.md
       wordCount: words.filter(w => clean(w.word).length > 0).length,
       timestamp: Date.now(),

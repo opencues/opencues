@@ -217,7 +217,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
-    });
+    }, configLoader);
     statusline.subscribe();
   }
 
