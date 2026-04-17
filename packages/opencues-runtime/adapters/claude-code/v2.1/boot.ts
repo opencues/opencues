@@ -17,12 +17,15 @@ import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
+import { TTS } from '../../../src/modules/tts';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   KeyEvent,
   LogLevel,
+  ProcessHandle,
+  ProcessSpec,
   RenderContext,
   RenderDirectives,
   TextChangeEvent,
@@ -41,6 +44,12 @@ export interface HostInfo {
   readFile?(path: string): Promise<string | null>;
   /** Optional: write a file. Used by Statusline for the export JSON. */
   writeFile?(path: string, content: string): Promise<void>;
+  /** Optional: spawn a child process. Used by TTS for fire-and-forget speak. */
+  spawnProcess?(spec: ProcessSpec): ProcessHandle;
+  /** Optional: absolute path to the TTS script (typically ~/.claude/actions/speak.sh). */
+  ttsScriptPath?: string;
+  /** Optional: TTS rate (-10 to 10) passed as 2nd arg to the script. Defaults to 2. */
+  ttsRate?: number;
   /** Optional: absolute path to the static cue tips JSON. */
   tipsPath?: string;
   /** Optional: absolute path for the statusline state-export JSON. */
@@ -190,6 +199,7 @@ export function boot(host: HostInfo): BootResult {
     },
     readFile: host.readFile,
     writeFile: host.writeFile,
+    spawnProcess: host.spawnProcess,
     log,
   };
 
@@ -219,6 +229,15 @@ export function boot(host: HostInfo): BootResult {
       refreshHook: host.refreshStatusline,
     }, configLoader);
     statusline.subscribe();
+  }
+
+  // TTS only when both spawn-process is available AND a script path was given.
+  if (host.ttsScriptPath && adapter.capabilities.includes('spawn-process')) {
+    const tts = new TTS(adapter, hlState, dynDefs, configLoader, {
+      scriptPath: host.ttsScriptPath,
+      rate: host.ttsRate !== undefined ? String(host.ttsRate) : undefined,
+    });
+    tts.subscribe();
   }
 
   // Fire-and-forget Runtime.create — capability validation + startup log.

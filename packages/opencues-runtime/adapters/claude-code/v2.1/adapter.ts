@@ -64,6 +64,9 @@ export interface HostBindings {
   /** Optional: write a file (absolute path). Overwrites if exists. */
   writeFile?(path: string, content: string): Promise<void>;
 
+  /** Optional: spawn a child process. Detached/fire-and-forget supported. */
+  spawnProcess?(spec: ProcessSpec): ProcessHandle;
+
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -77,6 +80,7 @@ export interface HostBindings {
 const V21_CAPABILITIES: readonly Capability[] = [
   'file-read',
   'file-write',
+  'spawn-process',
   'force-render',
   'render-override',
   'dim-ranges',
@@ -157,11 +161,20 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
   }
 
   // ─── I/O ───────────────────────────────────────────────────────────────
-  spawnProcess(_spec: ProcessSpec): ProcessHandle {
-    return {
-      result: Promise.reject(new AdapterUnsupportedError('spawn-process')),
-      kill: () => {},
-    };
+  spawnProcess(spec: ProcessSpec): ProcessHandle {
+    if (!this.bindings.spawnProcess) {
+      return {
+        result: Promise.reject(new AdapterUnsupportedError('spawn-process')),
+        kill: () => {},
+      };
+    }
+    try { return this.bindings.spawnProcess(spec); } catch (err) {
+      this.log('error', 'spawnProcess failed', err);
+      return {
+        result: Promise.reject(err),
+        kill: () => {},
+      };
+    }
   }
   async readFile(path: string): Promise<string | null> {
     if (!this.bindings.readFile) return null;

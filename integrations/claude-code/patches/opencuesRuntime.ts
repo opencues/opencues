@@ -202,9 +202,20 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `getCursorOffset:function(){return ${iz}.offset;},` +
     `readFile:function(p){return new Promise(function(res){try{${requireFn}("fs").readFile(p,"utf8",function(err,data){res(err?null:data);});}catch(__ocFe){res(null);}});},` +
     `writeFile:function(p,c){return new Promise(function(res,rej){try{${requireFn}("fs").writeFile(p,c,"utf8",function(err){err?rej(err):res();});}catch(__ocWe){rej(__ocWe);}});},` +
+    // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
+    // a ProcessHandle whose .result resolves on exit (or never, if detached).
+    `spawnProcess:function(spec){var __ocCp=${requireFn}("child_process");var __ocOpts={detached:!!spec.detached,stdio:"ignore",env:spec.env,cwd:spec.cwd};` +
+    `var __ocResolve;var __ocReject;var __ocP=new Promise(function(r,rj){__ocResolve=r;__ocReject=rj;});` +
+    `try{var __ocCh=__ocCp.spawn(spec.command,Array.from(spec.args||[]),__ocOpts);if(spec.detached)__ocCh.unref();` +
+    `if(!spec.detached){__ocCh.on("exit",function(code){__ocResolve({stdout:"",stderr:"",exitCode:code||0,timedOut:false});});__ocCh.on("error",__ocReject);}` +
+    `return{result:__ocP,kill:function(sig){try{__ocCh.kill(sig||"SIGTERM");}catch(_e){}}};}` +
+    `catch(__ocSpawnErr){return{result:Promise.reject(__ocSpawnErr),kill:function(){}};}},` +
     // Statusline export path. Per-PID so two CC instances don't collide.
     // Matches v1's path so the existing highlight-statusline.sh keeps working.
     `statusFilePath:"/tmp/claude-highlight-state-"+process.pid+".json",` +
+    // TTS: speak.sh is the same script v1 used. ttsRate matches v1's default.
+    `ttsScriptPath:(process.env.HOME||"~")+"/.claude/actions/speak.sh",` +
+    `ttsRate:2,` +
     // refreshStatusline calls the captured S6 useCallback (set by the
     // injection below) to trigger an immediate statusline re-render. Safe
     // no-op until S6 has run (which happens on the first React render of
