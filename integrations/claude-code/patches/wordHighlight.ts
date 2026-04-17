@@ -1737,6 +1737,30 @@ return _out;
     newFile = newFile.slice(0, insertAt) + extHlCode + newFile.slice(insertAt);
   }
 
+  // Anchor-count assertions: verify required injections landed. Failed
+  // regex matches earlier in this file log via console.error and fall
+  // through — so the patched cli.js can ship missing features silently.
+  // These explicit counts fail loudly at apply time when anchors drift
+  // across Claude Code versions.
+  const assertInjected = (needle: string, expected: number, label: string): void => {
+    const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    const actual = (newFile.match(re) || []).length;
+    if (actual < expected) {
+      throw new Error(
+        `patch: wordHighlight: anchor-count assertion FAILED for "${label}": ` +
+          `expected at least ${expected} occurrences of \`${needle}\` in patched cli.js, found ${actual}. ` +
+          `Likely cause: Claude Code version drift moved or renamed the injection site. ` +
+          `Re-check the relevant regex anchor against cli.js before shipping.`
+      );
+    }
+  };
+  assertInjected('globalThis._extHighlights=', 2, 'ext-highlights producer + consumer');
+  assertInjected('globalThis._pendingAutoPopulate', 3, 'blank-fill auto-populate');
+  assertInjected('globalThis._cueResolver', 3, 'resolver wiring');
+  assertInjected('globalThis._hlState', 30, 'highlight state (key handlers + renderer)');
+  assertInjected('_readControlState', 2, 'readControlState callback');
+  assertInjected('readControlState:', 1, 'buildSourcesFromConfig readControlState option');
+
   return newFile;
 };
 
