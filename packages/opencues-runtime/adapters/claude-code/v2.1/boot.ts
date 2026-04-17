@@ -45,6 +45,13 @@ export interface HostInfo {
   tipsPath?: string;
   /** Optional: absolute path for the statusline state-export JSON. */
   statusFilePath?: string;
+  /**
+   * Optional: trigger the host to re-display the statusline export.
+   * On CC v2.1, supplied by the patch as a closure that calls the captured
+   * `globalThis.__oc_refreshHostStatusline` (S6 seam). When present,
+   * Statusline calls this after every successful write.
+   */
+  refreshStatusline?(): void;
   /** Optional logger. */
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
@@ -209,6 +216,7 @@ export function boot(host: HostInfo): BootResult {
   if (host.statusFilePath) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
+      refreshHook: host.refreshStatusline,
     });
     statusline.subscribe();
   }

@@ -3,6 +3,7 @@ import {
   findKeyDispatcher,
   findInputStateHandler,
   findRenderedValue,
+  findStatusLineRefresh,
   runSeams,
   assertAllFound,
 } from './seams';
@@ -101,6 +102,31 @@ describe('S3 findRenderedValue', () => {
 
   it('returns null when nothing matches', () => {
     expect(findRenderedValue(`return{handleKeyDown:z6,onInput:m.render(X)}`)).toBeNull();
+  });
+});
+
+describe('S6 findStatusLineRefresh', () => {
+  it('matches the canonical v2.1.110 useCallback shape', () => {
+    const src = `let a=1,k=F$.useCallback(()=>{if(Z.current!==void 0)clearTimeout(Z.current);Z.current=setTimeout((m,h)=>{m.current=void 0,h()},300,Z,V)},[V]);F$.useEffect(()=>{},[]);`;
+    const match = findStatusLineRefresh(src);
+    expect(match).not.toBeNull();
+    expect(match!.bindings.callbackVar).toBe('k');
+    expect(match!.bindings.reactNs).toBe('F$');
+    expect(match!.bindings.timerRef).toBe('Z');
+    expect(match!.bindings.refreshFn).toBe('V');
+  });
+
+  it('tolerates renamed identifiers', () => {
+    const src = `let q1=R.useCallback(()=>{if(t.current!==void 0)clearTimeout(t.current);t.current=setTimeout((a,b)=>{a.current=void 0,b()},300,t,refresh)},[refresh])`;
+    const match = findStatusLineRefresh(src);
+    expect(match).not.toBeNull();
+    expect(match!.bindings.callbackVar).toBe('q1');
+    expect(match!.bindings.refreshFn).toBe('refresh');
+  });
+
+  it('returns null when no match', () => {
+    const src = `let k=R.useCallback(()=>{},[a])`;
+    expect(findStatusLineRefresh(src)).toBeNull();
   });
 });
 

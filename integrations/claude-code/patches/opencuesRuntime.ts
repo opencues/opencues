@@ -74,6 +74,30 @@ function findInputStateHandler(source: string): SeamMatch | null {
   };
 }
 
+// ─── S6: StatusLineRefreshDebounce ─────────────────────────────────────
+// Captures the React useCallback that triggers CC's debounced statusline
+// refresh. We append an assignment to the same `let` so the callback is
+// reachable from globalThis and the runtime can imperatively trigger a
+// refresh after every state-export write.
+const STATUSLINE_REFRESH_REGEX =
+  /([$\w]+)=([$\w]+)\.useCallback\(\(\)=>\{if\(([$\w]+)\.current!==void 0\)clearTimeout\(\3\.current\);\3\.current=setTimeout\(\([^)]+\)=>\{[^}]+\},300,\3,([$\w]+)\)\},\[\4\]\)/;
+
+interface StatusLineRefreshMatch {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly callbackVar: string;
+}
+
+function findStatusLineRefresh(source: string): StatusLineRefreshMatch | null {
+  const m = source.match(STATUSLINE_REFRESH_REGEX);
+  if (!m || m.index === undefined) return null;
+  return {
+    startIndex: m.index,
+    endIndex: m.index + m[0].length,
+    callbackVar: m[1],
+  };
+}
+
 // ─── S3: RenderedValue ─────────────────────────────────────────────────
 const RV_RAINBOW = /renderedValue:\(function\(\)\{/;
 const RV_5 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
@@ -152,6 +176,18 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const izClass = s2!.bindings.inputZoneClass;
   const cols = s2!.bindings.columnsVar;
 
+  // S6 is OPTIONAL — if missing, statusline still works as long as the user's
+  // ~/.claude/settings.json sets statusLine.refreshInterval. We log and
+  // continue rather than failing the whole patch.
+  const s6 = findStatusLineRefresh(oldFile);
+  if (!s6) {
+    console.warn(
+      'OpenCues v2 installer: S6 (StatusLineRefresh) not found. ' +
+      'Statusline will rely on settings.json statusLine.refreshInterval polling. ' +
+      'Update the regex to restore event-driven refresh on this CC version.',
+    );
+  }
+
   // Single absolute path — boot.js handles all internal wiring.
   const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/adapters/claude-code/v2.1/boot.js"`;
 
@@ -169,6 +205,11 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // Statusline export path. Per-PID so two CC instances don't collide.
     // Matches v1's path so the existing highlight-statusline.sh keeps working.
     `statusFilePath:"/tmp/claude-highlight-state-"+process.pid+".json",` +
+    // refreshStatusline calls the captured S6 useCallback (set by the
+    // injection below) to trigger an immediate statusline re-render. Safe
+    // no-op until S6 has run (which happens on the first React render of
+    // the component owning the callback).
+    `refreshStatusline:function(){try{if(globalThis.__oc_refreshHostStatusline)globalThis.__oc_refreshHostStatusline();}catch(__ocSe){}},` +
     // TUI swallows stderr — write to a file so debug output is recoverable.
     // tail -f /tmp/opencues.log in a separate shell while reproducing.
     `log:function(l,m,d){if(process.env.DEBUG_OPENCUES){try{${requireFn}("fs").appendFileSync("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n");}catch(__ocLe){}}}` +
@@ -201,8 +242,21 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `?globalThis.__oc.applyRender(${s3!.expression},${iz}.text,${iz}.offset)` +
     `:${s3!.expression})`;
 
-  // Apply S3 first (later position, so S1 indices remain valid).
+  // S6 injection: append `,<sink>=(globalThis.__oc_refreshHostStatusline=<callbackVar>)`
+  // to the same `let` declaration. This exposes CC's debounced statusline-
+  // refresh callback so the runtime can call it after each Statusline write.
+  // The original expression is preserved verbatim and the assignment runs as
+  // a side-effect of the new declarator.
+  const s6Replacement = s6
+    ? `${oldFile.slice(s6.startIndex, s6.endIndex)},__oc_ts6=(globalThis.__oc_refreshHostStatusline=${s6.callbackVar})`
+    : null;
+
+  // Apply in descending position order so each application leaves earlier
+  // indices valid. S6 > S3 > S1 in v2.1.110.
   let out = oldFile;
+  if (s6 && s6Replacement) {
+    out = out.slice(0, s6.startIndex) + s6Replacement + out.slice(s6.endIndex);
+  }
   out = out.slice(0, s3!.startIndex) + s3Wrapper + out.slice(s3!.endIndex);
   out = out.slice(0, s1!.startIndex) + s1Bootstrap + out.slice(s1!.endIndex);
   return out;

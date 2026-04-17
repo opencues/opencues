@@ -17,6 +17,13 @@ import { splitWords } from './navigation';
 export interface StatuslineOptions {
   /** Absolute path. Typically /tmp/claude-highlight-state-<pid>.json. */
   readonly exportPath: string;
+  /**
+   * Optional. Called after each successful export write — host-specific
+   * trigger to make the host re-read/redisplay the export immediately
+   * (e.g. on Claude Code, this calls the captured statusline-refresh
+   * useCallback). When absent, the host must poll on its own schedule.
+   */
+  readonly refreshHook?: () => void;
 }
 
 export interface StatuslinePayload {
@@ -93,8 +100,16 @@ export class Statusline {
     if (stableJson === this._lastJson) return;
     this._lastJson = stableJson;
     const json = JSON.stringify(payload);
-    this.adapter.writeFile(this.options.exportPath, json).catch(err => {
-      this.adapter.log('error', 'Statusline writeFile failed', err);
-    });
+    this.adapter.writeFile(this.options.exportPath, json)
+      .then(() => {
+        if (this.options.refreshHook) {
+          try { this.options.refreshHook(); } catch (err) {
+            this.adapter.log('error', 'Statusline refreshHook threw', err);
+          }
+        }
+      })
+      .catch(err => {
+        this.adapter.log('error', 'Statusline writeFile failed', err);
+      });
   }
 }

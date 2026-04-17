@@ -202,6 +202,44 @@ export function findRenderedValue(source: string): SeamMatch | null {
   return null;
 }
 
+// ─── S6: StatusLineRefreshDebounce ────────────────────────────────────────
+//
+// Shape: a `useCallback` inside the React component that owns the statusline
+// refresh. It clears any pending timer and sets a 300ms timeout that calls
+// the actual refresh function.
+//
+// In v2.1.110:
+//   k=F$.useCallback(()=>{
+//     if(Z.current!==void 0)clearTimeout(Z.current);
+//     Z.current=setTimeout((m,h)=>{m.current=void 0,h()},300,Z,V)
+//   },[V])
+//
+// Capturing `k` lets us imperatively trigger a statusline refresh from
+// runtime code (Statusline writes its export, then calls k() to make CC
+// re-run the statusLine command). Without this, the consumer relies on
+// CC's own infrequent refresh schedule or the `refreshInterval` polling
+// workaround.
+
+const STATUSLINE_REFRESH_REGEX =
+  /([$\w]+)=([$\w]+)\.useCallback\(\(\)=>\{if\(([$\w]+)\.current!==void 0\)clearTimeout\(\3\.current\);\3\.current=setTimeout\(\([^)]+\)=>\{[^}]+\},300,\3,([$\w]+)\)\},\[\4\]\)/;
+
+export function findStatusLineRefresh(source: string): SeamMatch | null {
+  const m = source.match(STATUSLINE_REFRESH_REGEX);
+  if (!m || m.index === undefined) return null;
+  const endIndex = m.index + m[0].length;
+  return {
+    startIndex: m.index,
+    endIndex,
+    bindings: {
+      callbackVar: m[1],
+      reactNs: m[2],
+      timerRef: m[3],
+      refreshFn: m[4],
+    },
+    method: 'regex',
+  };
+}
+
 // ─── Assertion helper — installer aggregates misses ───────────────────────
 
 export interface SeamResult {
