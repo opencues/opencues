@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase 7 / Bucket B (commit `1cfc47f`).
+**Last synced:** Phase 8 / Bucket C (commit `6534f8a`).
 
 ---
 
@@ -27,10 +27,10 @@ just architecture.
 | 6 | parse cwd `controls.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via cues-core's parseCuesMd. |
 | 7 | parse cwd `cues.md` | ✓ | Phase 6. ConfigLoader exposes `cuesConfig`. |
 | 8 | folder-config discovery for `controls/` | ✓ | Phase 6. readDir capability + cues-core's parseSingleCueMd-based walk. cues/, controls/, blanks/ all walked. |
-| 9 | `_stepPatterns` + dim renderer extension | ○ | DimRender only paints highlight. v1 dimmed all step-pattern matches (numbers etc.). |
-| 10 | `_cycleAlt` for script-backed cue-controls | ○ | Cycling only handles static-alt cycling. Script-backed controls (volume.sh up/down) not wired. |
-| 11 | `_isCueControl` recognises `_stepPatterns` | ◐ | Phase 7 covers control names + blankKeywords. _stepPatterns regex matching still depends on Step 9. |
-| 12 | step-control cycling (arithmetic in-place) | ○ | e.g. `0.5f` + Ctrl+Alt+Up → `1.0f`. Not implemented. |
+| 9 | `_stepPatterns` + dim renderer extension | ◐ | Phase 8: stepPatterns built per-control; DimRender dims navigable words. Number-only dim (no control word in text) still TBD if needed. |
+| 10 | `_cycleAlt` for script-backed cue-controls | ✓ | Phase 8 (commit `6534f8a`). Cycling.runScriptControl spawns control.script with up/downArgs, fire-and-forget. |
+| 11 | `_isCueControl` recognises `_stepPatterns` | ✓ | Phase 8. Navigation.computeTargets calls matchStepPattern; DimRender includes step-pattern matches in its dim set. |
+| 12 | step-control cycling (arithmetic in-place) | ✓ | Phase 8. Numeric (0.5f → 1.0f) + list (affirmation → "I am strong"). |
 | 13 | tip text in statusline | ✓ | Phase 4.6 (commit `65393f8`). cueTip + altCueTips populated from cue map. |
 | 14 | TTS speak on tip highlight | ✓ | Phase 5 (commit `d52bc32`). spawn-process capability + `~/.claude/actions/speak.sh`. |
 | 15 | parse `opencues.md` → `_openCuesCurrent` | ✓ | Phase 6. parseOpenCuesMd extracts top-level scalars into OpenCuesState. |
@@ -39,7 +39,7 @@ just architecture.
 | 18 | CueResolver | ○ | No resolver. Cycling uses static alts only. |
 | 19 | auto-submit debounce → `resolve()` → `_dynDefs` | ○ | No debounce trigger; no LLM-driven DynDefs population. |
 | 20 | tip-word cycling end-to-end (JIT) | ◐ | Cycling works for static cues. JIT injection from LLM not wired. Stale invalidation also missing. |
-| 21 | visual dim consistency + Step 3 revert | ○ | Depends on Step 9 + 4. |
+| 21 | visual dim consistency + Step 3 revert | ◐ | Phase 8. DimRender now dims navigable words. v1's "dim everything LLM-cycled" still pending — depends on D (LLM resolver). |
 | 22 | debug logging gated on `opencues.md` `debug-mode` | ◐ | DEBUG_OPENCUES env var works (file-based). No opencues.md gate. |
 | 23 | blank-fill: detect `_` + match `blankKeywords` | ○ | No blank-fill at all. |
 | 24 | blank-fill: auto-populate with `stepValues[0]` | ○ | |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 10 ✓, 4 ◐, 22 ○, 2 — out of 38 steps. (Phase 7 / Bucket B flipped Step 4 ✓ and Step 11 ○→◐.)
+**Tally:** 13 ✓, 5 ◐, 18 ○, 2 — out of 38 steps. (Phase 8 / Bucket C flipped Steps 10, 11, 12 ✓ and Steps 9, 21 ○→◐.)
 
 ---
 
@@ -148,7 +148,7 @@ Dependency-respecting:
 
 1. ~~**A — ConfigLoader expansion**~~ ✓ Phase 6 (`fa82625`).
 2. ~~**B — Nav cue filtering**~~ ✓ Phase 7 (`1cfc47f`).
-3. **C — Step-pattern dim + step controls** (~1.5 days). Visible features.
+3. ~~**C — Step-pattern dim + step controls**~~ ✓ Phase 8 (`6534f8a`).
 4. **D — LLM resolver path** (~1 day). Restores LLM cycling.
 5. **E — Blank-fill** (~3-4 days). Big chunk; tackle as 4-5 commits not one.
 6. **F — Span infrastructure** (~half day). Slot before E if parallel work
