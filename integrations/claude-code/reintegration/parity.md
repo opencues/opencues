@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase 5 (commit `d52bc32`).
+**Last synced:** Phase 6 / Bucket A (commit `fa82625`).
 
 ---
 
@@ -23,18 +23,18 @@ just architecture.
 | 2 | `wordHighlight` (full nav + highlight) | ◐ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the *core*. Missing: cue filtering (skipped, see Step 4); inverse highlight only (no configurable colour); no ZWS-stripping in display value (the InputZone keeps its ZWS noise). |
 | 3 | bare-number dim | — | REMOVED in v1 itself (reverted Step 21). Not porting. |
 | 4 | nav filter narrows to cue-control words | ○ | Navigation hits every whitespace token. Phase 1 explicitly punted. **Big UX gap** — typing "raise volume now" + Ctrl+Alt+Left should highlight only "volume", not "now". |
-| 5 | load cues-core, tip-having words = cue-controls | ◐ | ConfigLoader loads `claude-code-tips.json` only. v1 also primes `_localCueMap` and uses tip-presence as a navigability signal. |
-| 6 | parse cwd `controls.md` | ○ | Not loaded. |
-| 7 | parse cwd `cues.md` | ○ | Not loaded. |
-| 8 | folder-config discovery for `controls/` | ○ | No folder walk. Needs `readDir` primitive on HostAdapter or a manifest-walk workaround. |
+| 5 | load cues-core, tip-having words = cue-controls | ✓ | Phase 6 (commit `fa82625`). ConfigLoader loads tips JSON + cwd .md files + folder configs. Nav cue-control gating still pending Step 4. |
+| 6 | parse cwd `controls.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via cues-core's parseCuesMd. |
+| 7 | parse cwd `cues.md` | ✓ | Phase 6. ConfigLoader exposes `cuesConfig`. |
+| 8 | folder-config discovery for `controls/` | ✓ | Phase 6. readDir capability + cues-core's parseSingleCueMd-based walk. cues/, controls/, blanks/ all walked. |
 | 9 | `_stepPatterns` + dim renderer extension | ○ | DimRender only paints highlight. v1 dimmed all step-pattern matches (numbers etc.). |
 | 10 | `_cycleAlt` for script-backed cue-controls | ○ | Cycling only handles static-alt cycling. Script-backed controls (volume.sh up/down) not wired. |
 | 11 | `_isCueControl` recognises `_stepPatterns` | ○ | Depends on Step 9. |
 | 12 | step-control cycling (arithmetic in-place) | ○ | e.g. `0.5f` + Ctrl+Alt+Up → `1.0f`. Not implemented. |
 | 13 | tip text in statusline | ✓ | Phase 4.6 (commit `65393f8`). cueTip + altCueTips populated from cue map. |
 | 14 | TTS speak on tip highlight | ✓ | Phase 5 (commit `d52bc32`). spawn-process capability + `~/.claude/actions/speak.sh`. |
-| 15 | parse `opencues.md` → `_openCuesCurrent` | ○ | No opencues.md state. Voice-mode opt-out not implemented. |
-| 16 | gate tip / TTS on `tips-mode: off` | ○ | Depends on Step 15. |
+| 15 | parse `opencues.md` → `_openCuesCurrent` | ✓ | Phase 6. parseOpenCuesMd extracts top-level scalars into OpenCuesState. |
+| 16 | gate tip / TTS on `tips-mode: off` | ✓ | Phase 6. Statusline gates on `tipsMode === 'off'`; TTS gates on `voiceMode === 'inactive'`. Live verified. |
 | 17 | NodeHttpAdapter | ○ | No HTTP wiring. |
 | 18 | CueResolver | ○ | No resolver. Cycling uses static alts only. |
 | 19 | auto-submit debounce → `resolve()` → `_dynDefs` | ○ | No debounce trigger; no LLM-driven DynDefs population. |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 4 ✓, 5 ◐, 27 ○, 2 — out of 38 steps.
+**Tally:** 9 ✓, 3 ◐, 24 ○, 2 — out of 38 steps. (Phase 6 / Bucket A flipped 5 ○→✓ + 1 ◐→✓.)
 
 ---
 
@@ -66,15 +66,10 @@ just architecture.
 The not-started work clusters into bigger chunks. Some have hard dependencies
 on others.
 
-### A. Real ConfigLoader (foundation for almost everything)
-Steps **6, 7, 8, 15** + hot-reload (currently load-once-at-boot).
+### A. Real ConfigLoader ✓ SHIPPED (Phase 6, commit `fa82625`)
+Steps **5, 6, 7, 8, 15, 16** + hot-reload + readDir capability.
 
-What it unlocks: Steps 4, 9, 10–12, 16, 23–32, 35.
-
-Effort: **~1 day**. cues-core already does the parsing; ConfigLoader needs
-to call its `parseCuesMd` / `parseSingleCueMd` / `discoverFolderConfigs`
-for the `cwd` files and merge results. Folder discovery may need a
-`readDir` primitive on HostAdapter or a manifest read.
+What it unlocks: Steps 4, 9, 10–12, 23–32, 35.
 
 ### B. Nav cue filtering
 Step **4** (+ Step **11** if step-patterns are added at the same time).
@@ -151,7 +146,7 @@ debug-mode gate, post-reintegration cleanup analogues.
 
 Dependency-respecting:
 
-1. **A — ConfigLoader expansion** (~1 day). Unblocks everything else.
+1. ~~**A — ConfigLoader expansion**~~ ✓ Phase 6 (`fa82625`).
 2. **B — Nav cue filtering** (~half day). Big UX win, small code.
 3. **C — Step-pattern dim + step controls** (~1.5 days). Visible features.
 4. **D — LLM resolver path** (~1 day). Restores LLM cycling.
