@@ -1918,20 +1918,50 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ---
 
-## Step 32+ — TBD
+## Step 32 — Dim the consume-all range in the renderer
+
+**Goal:** While `_consumeAllAlts` is live, every word within `[index, index + spanLength)` renders dim (except the currently-highlighted word). Users see which chunk is a cycleable unit.
+
+**Why this choice:** Tiny additive diff, high UX value. Builds on Step 21's `_numRanges` dim infrastructure.
+
+**Exact change (one OR-clause in `wordHighlight.ts` renderer):**
+
+```diff
+  else if((globalThis._stepPatterns||[]).some(...)||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]||(_ni!==_hlWordIdx&&globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase()))||(_ni!==_hlWordIdx&&globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.some(...))
++ ||(_ni!==_hlWordIdx&&globalThis._consumeAllAlts&&_ni>=globalThis._consumeAllAlts.index&&_ni<globalThis._consumeAllAlts.index+(globalThis._consumeAllAlts.spanLength||1))
+  ){_numRanges.push({start:_wStart,end:_wStart+_w.length});}
+```
+
+`_ni!==_hlWordIdx` guard (same as tip-map + LLM branches) prevents visual conflict with the highlighted word.
+
+**Verification (confirmed 2026-04-17):**
+- Prompt fill → all words dim.
+- Highlight a word in the fill → that word normal (highlighted), rest stays dim.
+- Cycle → new alt's words dim, old ones gone (because `_hlText` changed; dim follows current span).
+- Edit → `_consumeAllAlts` invalidates → dim disappears.
+- Non-consume-all unchanged: volume, tips, step-patterns, LLM alts all retain their own dim paths.
+
+**Not in scope:** no new state introduced. Pure rendering hint over existing `_consumeAllAlts`.
+
+**Peculiarities:** *None*. Single OR-clause, worked first try.
+
+**Status: ✅ Done** (verified 2026-04-17)
+
+---
+
+## Step 33+ — TBD
 
 Cycling + polish continuation:
 
-- **Dim the consumed-range** — visual marker that the fill is cycleable.
 - **Cycling filled blanks through `stepValues`** — affirmations. Needs span tracking.
 - **General span tracking** (`_dynSpans`) — infrastructure for multi-word cycling, selector/satellite (opencues), clear-on-change robustness.
 - **`blankDismissible`** — cycle back to `_`. Needs cycling first.
-- **"Revert-on-first-edit"** — UX rollback of prompt fill. Possible Step 32 sub-feature if desired.
+- **"Revert-on-first-edit"** — UX rollback of prompt fill. Possible sub-feature if desired.
 - **`readControlState` resolver wiring** — architectural parity.
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 31 is verified.
+Pick one after Step 32 is verified.
 
 ---
 
