@@ -2133,7 +2133,7 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ## Step 37 — Post-reintegration polish (three small items)
 
-After Step 36 landed, three residual items surfaced. Grouped here because none individually warrants its own full step.
+After Step 36 landed, four residual items surfaced. Grouped here because none individually warrants its own full step.
 
 - **Step 37a — Drop `tips-mode: minimal` option.** The `minimal` value was listed in `opencues.md`'s `settings:` block but never had code support (only `on`/`off` are honoured downstream). With selector/satellite cycling live (Step 35), cycling `tips-mode` would land on `minimal` and produce a no-op state. Two edits to `opencues.md`: live setting `tips-mode: minimal` → `on`; drop the `minimal:` line from the `values:` list. Commit: `70942d4`.
 
@@ -2141,15 +2141,19 @@ After Step 36 landed, three residual items surfaced. Grouped here because none i
 
 - **Step 37c — Clear `_extHighlights` on text change to kill stale ranges.** The ext-highlights array is refreshed on every `Nw4(q)` render. Between our text mutation (via `onChange + zws`) and the next render, the array can point to character ranges that now cover DIFFERENT words — those words become unselectable because the consumer suppresses our highlight on any overlap. Fix: in the text-change IIFE, `if(_hlText !== _oldText) globalThis._extHighlights = [];` so the window of stale state is zero. Commit: `264663e`.
 
+- **Step 37d — Anchor-count assertions at `writeWordHighlight` exit.** Follow-up to peculiarity #1 below. Prior patches used `match(...) || (console.error + return null)` — a missed regex produced a patched cli.js with the feature silently absent, caught only when users reported a broken feature (as with 37b). Added an `assertInjected(needle, expected, label)` helper that counts occurrences of known markers in the patched text and throws at `--apply` time if any falls below its expected lower bound. Six markers asserted: `globalThis._extHighlights=` (≥2), `globalThis._pendingAutoPopulate` (≥3), `globalThis._cueResolver` (≥3), `globalThis._hlState` (≥30), `_readControlState` (≥2), `readControlState:` (≥1). Lower-bound semantics so future additions don't trip the alarm. Errors name the label and suggest CC version drift as the likely cause. Commit: `54cd358`. Doc hygiene pass (removed stale Step 29 TBD bullet and Step 36 risk/deferred notes) shipped alongside: commit `8c235f6`.
+
 **Peculiarities found during Step 37:**
 
-1. **Anchor drift between CC versions is silent.** The old ext-highlights injection lived in the patch file but never matched in v2.1.110, so the feature looked "implemented" without running. Failed match produced no warning (by design — patches skip missing anchors). Lesson: for anchor-based injections we rely on working, add a build-time or startup assertion that the injection COUNT matches expectation. Flag for a future step.
+1. **Anchor drift between CC versions is silent.** The old ext-highlights injection lived in the patch file but never matched in v2.1.110, so the feature looked "implemented" without running. Failed match produced no warning (by design — patches skip missing anchors). Addressed in 37d with `assertInjected` — any required injection that regresses below its lower bound now fails loudly at apply time.
 
 2. **Mid-`let` injection = silent syntax error.** First pass matched only up through `}=q,` and injected mid-declaration. Runtime parse fails silently (or patches to a broken state). Fix: always match through the `;` that closes the enclosing statement before injecting after. General rule for patching minified JS: respect statement boundaries even when the surrounding regex only needs the opening context.
 
 3. **Stale timing window is a one-line fix, not a new render-lifecycle hook.** First hunch was "we need to clear on every cycling call site." Actual fix is zero-clear on any text change in the IIFE — applies uniformly regardless of which mutator (our cycling, user typing, blank-fill consumer) triggered the change. Single point of invalidation > N-mutator-specific clears.
 
-**Rollback:** each sub-step is independent. 37a: restore `minimal` in `opencues.md`. 37b: delete the new injection block. 37c: delete the single IIFE line.
+4. **Assertion lower-bounds chosen by grep-counting current patched cli.js.** Hard-coding an exact `expected === actual` check would make every future feature addition trip the alarm. Using `actual >= expected` lets injections grow without breaking the gate; regressions (fewer than expected) still fail. Trade-off: silent over-injection wouldn't be caught, but that's a much rarer failure mode than anchor drift.
+
+**Rollback:** each sub-step is independent. 37a: restore `minimal` in `opencues.md`. 37b: delete the new injection block. 37c: delete the single IIFE line. 37d: delete the `assertInjected` block at end of `writeWordHighlight`.
 
 ---
 
