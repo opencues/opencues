@@ -1741,20 +1741,65 @@ _nt=_ntXKept.join(" ");
 
 ---
 
-## Step 29+ — TBD
+## Step 29 — Blank-fill sub-step 7: `blankConsumeContext` widens clear range through context
+
+**Goal:** `blankConsumeContext: true` extends the on-fill clear range from just the keyword words (`blankClearKeywords`) to also include words between the keyword and the blank. Typing `what is the word for happy _` → just `<answer>` (5 keyword words + 1 context word `happy` all stripped).
+
+**Why this choice:** Small, consistent extension of Step 27's range-based clear logic. Makes `answer` control usable. Pattern carries to any future consume-range semantics (like `blankConsumeAll`).
+
+**Exact change (two sites, unified clear-range computation):**
+
+Replaced the `blankClearKeywords`-only branch with a range selector that picks the widest applicable range:
+
+```js
+var _clearEnd = null;
+if (ctrl.blankConsumeContext) _clearEnd = slot.index - 1;
+else if (ctrl.blankClearKeywords) _clearEnd = slot.keywordEnd;
+if (_clearEnd !== null) { clear [slot.keywordStart .. _clearEnd] }
+```
+
+- `blankConsumeContext` → end at `slot.index - 1` (everything up to but not including the blank).
+- `blankClearKeywords` alone → end at `slot.keywordEnd` (just the keyword).
+- Neither → no clear.
+- If both are set, `blankConsumeContext` wins (wider range subsumes keyword).
+
+Applied to:
+- **stepValues path (Step 24):** in the word-array reconstruction loop, `_apopClearSet` gets the wider range.
+- **blankScript callback (Step 25):** post-splice word-array rebuild uses the same `_ntCE` selector.
+
+**Verification (confirmed 2026-04-17):**
+
+| Input | Config | Result |
+|---|---|---|
+| `what is the word for happy _` | answer: `blankConsumeContext`, `blankClearKeywords` | `<answer>` (all 6 words cleared) |
+| `how to say happy _` | answer | `<answer>` (3 kw + 1 context stripped) |
+| `weather in Paris _` | weather: `blankClearKeywords` only | `in Paris <forecast>` (context preserved) |
+| `affirm _` | no clear flags | `affirm I am strong` |
+| `rddt _` | stocks: no clear flags, has expansion | `Reddit $<price>` |
+
+**Not in scope for Step 29:**
+- `blankConsumeAll` — strips ALL non-blank words. Different range (`0 .. wordCount-1`, excluding blank). Simple extension but has edge cases with multi-word fills affecting "what's after the blank" semantics. Deferred.
+- Cycling filled blanks, span tracking, dismissible, resolver-wiring — still on the TBD list.
+
+**Peculiarities found during this step:** *None*. Clean 3-line extension of Step 27's clear-range logic. Worked first try.
+
+**Status: ✅ Done** (verified 2026-04-17)
+
+---
+
+## Step 30+ — TBD
 
 Blank-fill continuation:
 
-- **`blankConsumeContext`** (answer) — strip keyword + words between keyword and blank on fill. Small extension of `blankClearKeywords` with range widening.
-- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` similar to Step 20's tip-alt branch. Needs span tracking to be useful for multi-word fills.
-- **Span tracking** — treat multi-word fill as single cycleable unit. Prerequisite for multi-word cycle.
+- **`blankConsumeAll`** (prompt improver) — whole-sentence LLM call, consume everything except blank, return multiple alts, dim consumed range. Large; best after span tracking and resolver wiring.
+- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` with a branch similar to Step 20's tip-alt branch. For affirmations to be usable beyond just "I am strong".
+- **Span tracking** — treat multi-word fill as single cycleable unit. Prerequisite for multi-word cycle + clean clear-on-change.
 - **`blankDismissible`** — append `_` to cycle list so user can dismiss. Needs cycling.
-- **`blankConsumeAll`** (prompt improver) — whole-sentence LLM call, consume everything except blank, return multiple alts, dim consumed range. Large; needs resolver architecture.
 - **`readControlState` resolver wiring** — for architectural parity and to unblock LLM-backed blank sources.
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 28 is verified.
+Pick one after Step 29 is verified.
 
 ---
 
