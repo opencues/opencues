@@ -26,7 +26,7 @@ describe('DimRender.compute', () => {
     const { hlState, dimRender } = setup('alpha beta gamma');
     hlState.activate(1, 'alpha beta gamma');
     const out = dimRender.compute({ text: 'alpha beta gamma', cursor: 0, externalHighlights: [] });
-    expect(out).toEqual({ highlight: { start: 6, end: 10 } });
+    expect(out).toMatchObject({ highlight: { start: 6, end: 10 } });
   });
 
   it('returns null when wordIndex is out of bounds for the current text', () => {
@@ -50,7 +50,7 @@ describe('DimRender trusts hlState across runtime-driven text changes', () => {
     hlState.activate(0, 'undo');
     // Cycling replaced "undo" with "/rewind" — same wordIndex, new span.
     const out = dimRender.compute({ text: '/rewind', cursor: 0, externalHighlights: [] });
-    expect(out).toEqual({ highlight: { start: 0, end: 7 } });
+    expect(out).toMatchObject({ highlight: { start: 0, end: 7 } });
     expect(hlState.active).toBe(true);
   });
 

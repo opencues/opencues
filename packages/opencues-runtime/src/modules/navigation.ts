@@ -138,6 +138,10 @@ export class Navigation {
         filtered.push(w.index);
       } else if (this.dynDefs.get(w.index)) {
         filtered.push(w.index);
+      } else if (this.configLoader?.matchStepPattern(w.word)) {
+        // Step-pattern matches (e.g. "0.5f" → numbers control) are navigable
+        // even though they aren't a literal word in cueMap.
+        filtered.push(w.index);
       }
     }
     if (filtered.length > 0) return filtered;

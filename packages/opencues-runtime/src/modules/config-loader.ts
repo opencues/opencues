@@ -23,9 +23,17 @@ import {
   parseSingleCueMd,
   type LocalCueLookupResult,
   type CuesMdConfig,
+  type ControlConfig,
   type DiscoveredConfigs,
   type DirEntry as CoreDirEntry,
 } from 'cues-core';
+
+/** Pattern that matches words eligible for step-arithmetic cycling. */
+export interface StepPattern {
+  readonly regex: RegExp;
+  readonly control: ControlConfig;
+  readonly controlName: string;
+}
 
 export interface ConfigLoaderOptions {
   /** Absolute path to the tips JSON. */
@@ -110,6 +118,22 @@ export interface LoadedConfig {
    * declared in folders aren't necessarily mirrored in the tips JSON.
    */
   readonly navigableWords: ReadonlySet<string>;
+  /**
+   * Word → control map for fast control lookup during cycling.
+   * Includes both the control's own name (lowercased) AND every blankKeywords
+   * synonym → same Control entry.
+   */
+  readonly controlsByWord: ReadonlyMap<string, ControlEntry>;
+  /**
+   * Step-arithmetic patterns. Words matching any regex here cycle by step.
+   * Built per-control from `stepSuffixes` + `step`.
+   */
+  readonly stepPatterns: readonly StepPattern[];
+}
+
+export interface ControlEntry {
+  readonly name: string;
+  readonly control: ControlConfig;
 }
 
 export class ConfigLoader {
@@ -121,6 +145,8 @@ export class ConfigLoader {
     blanksConfig: null,
     folderConfigs: null,
     navigableWords: new Set(),
+    controlsByWord: new Map(),
+    stepPatterns: [],
   };
   private _loaded = false;
   private _lastLoadAt = 0;
@@ -142,6 +168,30 @@ export class ConfigLoader {
   get blanksConfig(): CuesMdConfig | null { return this._config.blanksConfig; }
   get folderConfigs(): DiscoveredConfigs | null { return this._config.folderConfigs; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
+  get controlsByWord(): ReadonlyMap<string, ControlEntry> { return this._config.controlsByWord; }
+  get stepPatterns(): readonly StepPattern[] { return this._config.stepPatterns; }
+
+  /**
+   * Look up a control by a word — checks the control's own name AND
+   * blankKeywords synonyms. Returns null if no match.
+   */
+  lookupControl(word: string): ControlEntry | null {
+    return this._config.controlsByWord.get(word.toLowerCase().replace(/[\u200B\u200C]/g, '')) ?? null;
+  }
+
+  /**
+   * Match a word against any registered step-pattern. Returns the matching
+   * pattern + the regex match (so callers can see what the captured numeric
+   * portion is) or null.
+   */
+  matchStepPattern(word: string): { pattern: StepPattern; match: RegExpMatchArray } | null {
+    const w = word.replace(/[\u200B\u200C]/g, '');
+    for (const p of this._config.stepPatterns) {
+      const m = w.match(p.regex);
+      if (m) return { pattern: p, match: m };
+    }
+    return null;
+  }
   get loaded(): boolean { return this._loaded; }
   get config(): LoadedConfig { return this._config; }
 
@@ -226,30 +276,52 @@ export class ConfigLoader {
     // become navigable via the same lookup). Not done yet because folder
     // configs use the LLM resolver shape, not the static-tip shape.
 
-    // Build the navigable-words set: cueMap keys + folder-discovered control
-    // names + their blankKeywords synonyms. Lowercase, trimmed.
+    // Build the navigable-words set + controlsByWord map + stepPatterns
+    // from cueMap keys, folder controls, and controls.md frontmatter.
     const navigableWords = new Set<string>();
+    const controlsByWord = new Map<string, ControlEntry>();
+    const stepPatterns: StepPattern[] = [];
     for (const k of cueMap.keys()) navigableWords.add(k);
-    const addControl = (name: string, control: { blankKeywords?: readonly string[] | string }): void => {
-      navigableWords.add(name.toLowerCase());
+
+    const addControl = (name: string, control: ControlConfig): void => {
+      const lcName = name.toLowerCase();
+      navigableWords.add(lcName);
+      controlsByWord.set(lcName, { name: lcName, control });
+      // Each blankKeyword maps to the same control entry.
       const bk = control.blankKeywords;
+      const synonyms: string[] = [];
       if (typeof bk === 'string') {
-        for (const k of bk.split(',')) {
+        for (const k of (bk as string).split(',')) {
           const t = k.trim().toLowerCase();
-          if (t) navigableWords.add(t);
+          if (t) synonyms.push(t);
         }
       } else if (Array.isArray(bk)) {
         for (const k of bk) {
           const t = String(k).trim().toLowerCase();
-          if (t) navigableWords.add(t);
+          if (t) synonyms.push(t);
         }
+      }
+      for (const syn of synonyms) {
+        navigableWords.add(syn);
+        controlsByWord.set(syn, { name: lcName, control });
+      }
+      // Step-arithmetic pattern: build regex from stepSuffixes.
+      if (control.step !== undefined) {
+        const suffixes = (control.stepSuffixes && control.stepSuffixes.length > 0)
+          ? control.stepSuffixes.map(s => escapeRegex(s)).join('|')
+          : '';
+        const suffixGroup = suffixes ? `(?:${suffixes})` : '';
+        const regex = suffixes
+          ? new RegExp(`^(-?\\d+(?:\\.\\d+)?)${suffixGroup}$`, 'i')
+          : new RegExp(`^(-?\\d+(?:\\.\\d+)?)$`);
+        stepPatterns.push({ regex, control, controlName: lcName });
       }
     };
     for (const [name, ctrl] of Object.entries(folderConfigs?.controlOverrides ?? {})) {
-      addControl(name, ctrl as { blankKeywords?: readonly string[] | string });
+      addControl(name, ctrl as ControlConfig);
     }
     for (const [name, ctrl] of Object.entries(controlsConfig?.controls ?? {})) {
-      addControl(name, ctrl as { blankKeywords?: readonly string[] | string });
+      addControl(name, ctrl as ControlConfig);
     }
 
     this._config = {
@@ -260,6 +332,8 @@ export class ConfigLoader {
       blanksConfig,
       folderConfigs,
       navigableWords,
+      controlsByWord,
+      stepPatterns,
     };
     this.adapter.log('info', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,
@@ -321,6 +395,10 @@ export class ConfigLoader {
       return null;
     }
   }
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**

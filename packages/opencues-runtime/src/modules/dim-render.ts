@@ -1,12 +1,16 @@
 // DimRender — computes RenderDirectives on every onRender event.
 //
-// Phase scope: paint a single highlight range covering the active word.
-// Cycling spans, number dimming, consume-all, and shimmer suppression land
-// in later phases as those modules ship.
+// Two visual layers:
+//   1. Dim ranges for every word that's a known cue / control / step-pattern
+//      match — visual hint that the word is navigable.
+//   2. Highlight range over the actively-selected word (overrides the dim).
+//
+// The host renders dim and highlight via applyDirectives in the bootstrap.
 
-import type { HostAdapter, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
+import type { HostAdapter, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
+import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
 
 export class DimRender {
@@ -16,6 +20,7 @@ export class DimRender {
     private adapter: HostAdapter,
     private hlState: HighlightState,
     private _dynDefs: DynDefs,
+    private configLoader?: ConfigLoader,
   ) {}
 
   subscribe(): void {
@@ -31,19 +36,38 @@ export class DimRender {
    * Exposed for unit testing without the subscribe pipeline.
    */
   compute(ctx: RenderContext): RenderDirectives | null {
-    if (!this.hlState.active || this.hlState.wordIndex === null) return null;
-    if (!this.adapter.capabilities.includes('highlight-range')) return null;
+    const hasHighlightCap = this.adapter.capabilities.includes('highlight-range');
+    const hasDimCap = this.adapter.capabilities.includes('dim-ranges');
 
-    // Stale-activation clearing happens via Navigation.onTextChange (which
-    // fires on user-source drift detected in boot's checkTextDrift). DimRender
-    // trusts hlState here — a runtime-driven text change (e.g. Cycling)
-    // should keep the highlight on the same word index, just at the new span.
     const words = splitWords(ctx.text);
-    const target = words[this.hlState.wordIndex];
-    if (!target) return null;
 
-    return {
-      highlight: { start: target.start, end: target.end },
-    };
+    // Dim ranges: every cue / control / step-pattern word that is NOT the
+    // currently-highlighted one. The highlight overlay takes priority on
+    // the active word so we don't dim it (would dim under inverse).
+    const dimRanges: Range[] = [];
+    if (hasDimCap && this.configLoader) {
+      const navigable = this.configLoader.navigableWords;
+      const activeIndex = this.hlState.active ? this.hlState.wordIndex : null;
+      for (const w of words) {
+        if (w.index === activeIndex) continue;
+        const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
+        if (lc.length === 0) continue;
+        if (navigable.has(lc) || this.configLoader.matchStepPattern(w.word)) {
+          dimRanges.push({ start: w.start, end: w.end });
+        }
+      }
+    }
+
+    // Highlight: the active word (overlaid).
+    let highlight: { start: number; end: number } | undefined;
+    if (hasHighlightCap && this.hlState.active && this.hlState.wordIndex !== null) {
+      const target = words[this.hlState.wordIndex];
+      if (target) {
+        highlight = { start: target.start, end: target.end };
+      }
+    }
+
+    if (!highlight && dimRanges.length === 0) return null;
+    return { highlight, dimRanges };
   }
 }
