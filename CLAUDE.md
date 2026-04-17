@@ -6,9 +6,34 @@ This document provides context for Claude sessions working on this project.
 
 **OpenCues** provides LLM-powered word alternatives for text editors. The core library analyzes text and suggests alternatives (synonyms, opposites, completions) that users can cycle through.
 
-**Architecture**:
-- **cues-core** — Pure TypeScript library for LLM analysis (prompts, resolver, HTTP adapter)
-- **Integrations** — Editor-specific implementations that use cues-core
+**Architecture** (two libraries + integrations):
+- **`cues-core`** — *what alternatives exist*. Pure TypeScript: parsers
+  (cues.md / controls.md / opencues.md / blanks.md), the LLM `Resolver`,
+  prompt templates, sources (ConfigSource, ControlBlankSource, etc.),
+  HTTP adapter. Given text + config, answers "what should we suggest for
+  this word?" Knows nothing about editors, key events, or rendering.
+- **`opencues-runtime`** — *how the user interacts with those alternatives*.
+  Host-agnostic: the `HostAdapter` contract, Navigation / Cycling /
+  DimRender / BlankFill modules, render-directive ANSI work, state
+  classes, and per-host adapter bands (Claude Code v2.1, future browser,
+  …). Knows nothing about LLMs. Will depend on `cues-core` from the
+  BlankFill phase onward — modules will receive a `Resolver` instance.
+- **Integrations** — Editor-specific glue. Claude Code's integration is
+  the `tweakcc` patch that injects a thin bootstrap into `cli.js`; that
+  bootstrap calls `opencues-runtime`'s `boot()` entry point.
+
+Roughly: `cues-core` is the brain, `opencues-runtime` is the nervous
+system, and each integration is a spinal-cord-shaped bridge between the
+host and the runtime.
+
+> **Pre-release rename:** these names will likely be revisited before
+> public release once the architecture is fully proven. Candidates so
+> far: `cues-core` → `opencues-core` for namespace consistency;
+> `opencues-runtime` may absorb the `adapters/` layer and become
+> something like `opencues-host-runtime` or split apart into a host-side
+> `opencues-runtime-bootstrap` (boot.ts) + host-agnostic `opencues-engine`.
+> Don't optimise package names until BlankFill is done — naming reads
+> better once we can see what each layer actually owns.
 
 **Current Integrations**:
 - **Claude Code** — via tweakcc patches (`integrations/claude-code/patches/`)
