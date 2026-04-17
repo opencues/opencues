@@ -2014,17 +2014,46 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ---
 
-## Step 34+ — TBD
+## Step 34 — Factor `_hlExport.cueTip` writes (one projection, one apply)
+
+**Goal:** Collapse the three scattered write paths in the statusline export block into a single `_proj` object with one final `for(_pk in _proj)_hlExport[_pk]=_proj[_pk]` apply. Preserves priority (`_isCA` > `_dynDefs` fallback) and state clears (`_cueControlTipWord`, `_cueControlTip`).
+
+**Why this choice:** Three write paths were independently mutating `_hlExport.{cueTip,altCueTips,alts,currentAltIndex,cueControl,listControl,blankReadOnly}`, with overlap resolution via late-apply ordering and a trailing "wipe-state" conditional (`if(!_isCA&&!_cbDw)`). Any future tweak had to touch 2-3 sites and reason about field overwrite order. Consolidating made the priority ladder explicit and cut the surface area for regression.
+
+**Change:** two branches build `_proj`, one apply.
+- `_isCA` — cue-control word → `{cueTip,cueControl:true,alts:[word],currentAltIndex:0}`, `tips-mode:off` suppression applied here.
+- else — clear `_cueControlTipWord`/`_cueControlTip`, then `_dynDefs` lookup → `{cueTip,altCueTips,alts: source==="control"?null:alts,currentAltIndex,[cueControl:true if source==="control"]}`.
+
+**Also dropped:** the `_cbDw` branch (dyndef lookup by `metadata.controlName`). It only matched selector/satellite entries, which are created inside the `_pendingAutoPopulate` block — and `_pendingAutoPopulate` is only set by `dynamicHighlight.ts` (not yet reintegrated). So the branch was dead. Revisit when selector/satellite is wired.
+
+**Not in scope for Step 34:**
+- Rewriting the selector/satellite dyndef construction block (lines ~1255-1290). Still dead code but self-contained; will be needed verbatim when selector/satellite is wired.
+- Unifying `tips-mode:off` suppression — currently only in `_isCA` branch. Matches original; `_dynDefs` entries are assumed to already respect the setting at write-time. Flag for design.
+
+**Rollback:** restore the three-branch structure (`_cbDw` / `_isCA` / `!_isCA&&!_cbDw` dynDefs fallback) and the trailing state-clear conditional. Each branch writes directly to `_hlExport` fields.
+
+**Peculiarities found during this step:**
+
+1. **Dead-code preservation reflex.** First pass kept the `_cbDw` branch as "anticipatory for Step 34+." User corrected: "we don't have selector/satellite tips yet." Per CLAUDE.md (don't design for hypothetical future requirements; if certain it's unused, delete), drop it. Lesson: during reintegration, dead code that references not-yet-ported patches is a trap — it obscures the real minimal surface. When in doubt, check every branch's trigger path is actually reachable in the current patch set before refactoring around it.
+
+2. **Two asymmetries in the original preserved intentionally.** `tips-mode:off` suppression lives in the `_isCA` branch only, not in the `_dynDefs` fallback. And `alts` field semantics differ: `_isCA` writes `[word]` (self-as-only-alt, signals "cycleable control"), `_dynDefs` fallback with `source==="control"` writes `null` (span is fixed, statusline takes cue-control path). These look inconsistent but the statusline script relies on exactly this shape. Don't "clean up" without verifying the downstream consumer.
+
+3. **State-clear location matters.** Original cleared `_cueControlTipWord`/`_cueControlTip` via `if(!_isCA&&!_cbDw)` AFTER the priority ladder. Moving it into the else-branch (before the `_dynDefs` lookup) keeps semantics — the lookup doesn't read these globals. But if any future branch in the else-side starts depending on the pre-clear state, this flip breaks. Flag for any change that adds reads of `_cueControlTip` in the fallback.
+
+**Status: ✅ Done** (verified 2026-04-17: volume/brightness tips, stepValues cycling, `hn`+headline shared tip, LLM alts all working after refactor)
+
+---
+
+## Step 35+ — TBD
 
 Remaining:
 
 - **"Revert-on-first-edit"** — backspace after fill restores pre-fill query.
-- **Selector/satellite** (opencues settings control) — two-slot span pattern.
+- **Selector/satellite** (opencues settings control) — two-slot span pattern. Revives the `_cbDw` branch logic (now dropped) + wires `_pendingAutoPopulate`.
 - **`readControlState` resolver wiring** — architectural parity for LLM-backed blanks.
-- **Factor `_hlExport.cueTip` writes** — one codepath consolidation.
 - **`tips-mode: minimal` filtering** — needs design.
 
-Pick one after Step 33 is verified.
+Pick one after Step 34 is verified.
 
 ---
 
