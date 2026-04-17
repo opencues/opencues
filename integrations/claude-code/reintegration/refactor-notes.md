@@ -8,9 +8,14 @@ Commits:
 - `3628458` — Phase 0: opencues-runtime scaffold
 - `3ea17ae` — Phase 1: Navigation module + v2.1 CC adapter + tweakcc v2 patch
 - `3c8d69e` — Phase 1 fix: forceRender wires through to ZWS toggle at KeyDispatcher return
-- (this) Phase 2 (DimRender, reordered ahead of Cycling): visible navigation.
+- `1d4d4d3` — Phase 2 (DimRender, reordered ahead of Cycling): visible navigation.
   S3 seam, applyDirectives helper, DimRender module, bootstrap wraps
   renderedValue.
+- (this+) Refactor: collapse v2 patch surface to single `boot.js` entry point.
+
+**Repairing the integration when Claude Code bumps versions:**
+see `packages/opencues-runtime/adapters/claude-code/REPAIR.md` — scenarios
+in increasing difficulty + diagnostic flow + what's never touched.
 
 ---
 
