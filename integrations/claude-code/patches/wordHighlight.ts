@@ -928,22 +928,22 @@ if(_bfFound)_blankSlots.push(_bfFound);
 globalThis._blankSlots=_blankSlots;
 if(globalThis._debugLog&&_blankSlots.length>0)globalThis._debugLog("blankSlots: "+_blankSlots.length+" detected");
 if(_blankSlots.length>0&&globalThis._forceInputRefresh){
-var _apopText=_hlText;
+var _apopWords=_bwds.slice();
+var _apopClearSet={};
 var _apopped=false;
 for(var _apsi=_blankSlots.length-1;_apsi>=0;_apsi--){
 var _apSlot=_blankSlots[_apsi];
 var _apCtrl=(globalThis._cueControlOverrides||{})[_apSlot.controlName];
 if(!_apCtrl||_apCtrl.blankAutoPopulate===false)continue;
 if(!_apCtrl.stepValues||!_apCtrl.stepValues.length)continue;
-var _apFill=_apCtrl.stepValues[0];
-var _apWordPos=0;
-for(var _apwi=0;_apwi<_apSlot.index;_apwi++){_apWordPos=_apopText.indexOf(_bwds[_apwi],_apWordPos)+_bwds[_apwi].length;}
-var _apUPos=_apopText.indexOf("_",_apWordPos);
-if(_apUPos<0)continue;
-_apopText=_apopText.slice(0,_apUPos)+_apFill+_apopText.slice(_apUPos+1);
+_apopWords[_apSlot.index]=_apCtrl.stepValues[0];
+if(_apCtrl.blankClearKeywords){for(var _apkc=_apSlot.keywordStart;_apkc<=_apSlot.keywordEnd;_apkc++)_apopClearSet[_apkc]=true;}
 _apopped=true;
 }
 if(_apopped){
+var _apopFinal=[];
+for(var _apfi=0;_apfi<_apopWords.length;_apfi++){if(!_apopClearSet[_apfi])_apopFinal.push(_apopWords[_apfi]);}
+var _apopText=_apopFinal.join(" ");
 globalThis._hlText=_apopText;
 if(globalThis._hlState)globalThis._hlState.text=_apopText;
 globalThis._lastResolvedText=_apopText;
@@ -991,6 +991,12 @@ for(var _wi=0;_wi<_slot.index;_wi++){_wp=_ct.indexOf(_cw[_wi],_wp)+_cw[_wi].leng
 var _up=_ct.indexOf("_",_wp);
 if(_up<0)return;
 var _nt=_ct.slice(0,_up)+_out+_ct.slice(_up+1);
+if(_ctrl.blankClearKeywords){
+var _ntW=_nt.split(/\\s+/).filter(function(w){return w;});
+var _ntKept=[];
+for(var _ntci=0;_ntci<_ntW.length;_ntci++){if(_ntci<_slot.keywordStart||_ntci>_slot.keywordEnd)_ntKept.push(_ntW[_ntci]);}
+_nt=_ntKept.join(" ");
+}
 globalThis._hlText=_nt;
 if(globalThis._hlState)globalThis._hlState.text=_nt;
 globalThis._lastResolvedText=_nt;
