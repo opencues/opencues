@@ -2114,7 +2114,21 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 - **Step 36b — Rip the inline blank-fill IIFE.** Remove the `_blankSlots` loop + `_pendingBlankFills` execFile spawn block. Keep: `_pendingClearOnEdit` consumer (downstream of either path), `_pendingAutoPopulate` consumer (downstream of resolver now), stepValues auto-populate (`_apopCycleSlot` block — this is a separate non-script path worth keeping inline until resolver supports it). Test end-to-end: volume/brightness/numbers (stepPattern), affirmations (stepValues), weather (blankScript scalar), stocks (scalar + keyword expansion), hackernews (multi-line alts), prompt improver (consumeAll), answer (consumeContext), opencues (selector/satellite). Verify: `_consumeAllAlts`, `_dynSpans`, dim rendering, statusline tips, `blankClearOnEdit`, cycling, `_dismissedBlanks` all still function.
 
-**Rollback:** 36a is additive — delete the `readControlState` option, the result-iteration block, and the backoff guard. 36b requires re-adding the inline IIFE (preserve the last-known-good commit SHA for reference).
+**Peculiarities found during Step 36b:**
+
+1. **`convertCueResultsToWordDefs` dropped single-alt control-blank results.** Default `minAlts: 2` filter made sense for LLM word-alt results (you need ≥2 to cycle) but silently discarded control-blank single-alt results (`["18%"]` from volume/brightness/stocks/etc.) — the alt IS the auto-populate value, not a cycle list. First fix was a second-pass hack in the patch. Better fix: native bypass in cues-core — `isControlBlank = !!r.metadata?.controlName` skips the minAlts check. Changed in `packages/cues-core/src/sources/local-cue-source.ts`.
+
+2. **`mergeWordDefs` needs `{protectControlName: true}` to be passed explicitly.** The option exists in cues-core (`local-cue-source.ts:483-487`) but defaults off. Without it, the debounced LLM pass over the filled text (e.g. `volume 18%`) generates word-alt dyndefs for `18%`, merges them in, and clobbers the control-blank metadata. Pass the option every time the resolver's output is merged.
+
+3. **Nav filter didn't treat `metadata.controlName` as navigable.** Filter at the keyHandlerCode level required `d.alts && d.alts.length > 1` to count a word as selectable. Control-blank scalars have single-alt, so `18%` was skipped during Ctrl+Alt+Left/Right. Baseline's equivalent at `dynamicHighlight.ts:1554` had a disjunct `(d.metadata && d.metadata.controlName)` — ported.
+
+4. **Cycling control-blanks needs a dedicated `_cycleAlt` branch, not step-patterns.** First pass registered a step-pattern from `blankSuffix + blankStep`, which handled text transitions (`18%` → `24%`) but NEVER invoked `blankScript set <value>` — so system volume didn't actually change. Baseline solution (`dynamicHighlight.ts:330-362`): a dedicated `_cbDef` lookup in `_cycleAlt` that reads `metadata.blankStep`/`blankFormat`/`blankSuffix` directly from the dyndef, spawns `bash <blankScript> set <numValue>` (fire-and-forget, `spawn + detached + unref`), and rewrites text. Ported verbatim.
+
+5. **cues-core scalar-blank `cueTip` lacked the `?? matched.tip` fallback** that selector/satellite/list cases already had. Volume's `tip: system volume control` wasn't surfacing on the filled `18%`. One-line fix in `control-blank-source.ts:262`.
+
+6. **Two passes of the resolver fire per blank-fill.** Pass 1 (text=`volume _`): ControlBlankSource emits control-blank, my code populates `_pendingAutoPopulate`, consumer fills text to `volume 18%`. Pass 2 (text=`volume 18%`): ControlBlankSource emits nothing (no `_`), but LLM sources emit word-alt results for `volume` and `18%`. This is what would clobber the control-blank dyndef without `protectControlName`. Intentional two-pass — the first creates the dyndef with metadata; the second is where protection kicks in.
+
+**Rollback:** 36a is additive — delete the `readControlState` option, the result-iteration block, and the backoff guard. 36b requires re-adding the inline IIFE (preserve the last-known-good commit SHA for reference) AND reverting the cues-core `minAlts` bypass (harmless without the patch but strictly speaking an upstream change too).
 
 **Risk notes:**
 - **Timing.** Inline runs synchronously on keystroke; resolver fires at ~500ms debounce. In 36a coexistence, inline usually wins, which masks resolver bugs. Mitigation: add a debug log when resolver-produced `_pendingAutoPopulate` actually applies (so we know it's exercised before we rip).

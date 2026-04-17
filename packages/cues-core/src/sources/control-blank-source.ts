@@ -259,7 +259,7 @@ export class ControlBlankSource implements CueSource {
       alternatives,
       source: 'control-blank',
       priority: this.priority,
-      cueTip: matched.blankTip,
+      cueTip: matched.blankTip ?? matched.tip,
       metadata: {
         controlName: matched.control,
         blankScript: matched.blankScript ?? matched.script,

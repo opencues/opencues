@@ -577,7 +577,12 @@ export function convertCueResultsToWordDefs(
   const defs: WordDef[] = [];
 
   for (const r of results) {
-    if (!r.alternatives || r.alternatives.length < minAlts) continue;
+    if (!r.alternatives) continue;
+    // Control-bound blanks are retained regardless of alt count — a single-alt
+    // result is the auto-populate value, not a cycle list, and its metadata
+    // (controlName, blankStep, blankScript, etc.) is load-bearing downstream.
+    const isControlBlank = !!(r.metadata && (r.metadata as { controlName?: unknown }).controlName);
+    if (!isControlBlank && r.alternatives.length < minAlts) continue;
 
     const alts = cleanAlternatives(r.alternatives);
     if (alts.length === 0) continue;
