@@ -1683,12 +1683,69 @@ if(_ctrl.prompts){for(var _pk in _ctrl.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUppe
 
 ---
 
-## Step 28+ — TBD
+## Step 28 — Blank-fill sub-step 6: `blankKeywordExpansions` display transform
+
+**Goal:** When the user types a short-form keyword (`rddt`, `nvda`, `hn`) and the blank auto-populates, the keyword gets replaced with its configured expansion (`Reddit`, `Nvidia`, `HackerNews`) in the final text. Fill value follows the expansion. Typing `rddt _` → `Reddit $180.50`.
+
+**Why this choice:** Small, visible UX polish. Makes stocks and hackernews outputs readable without requiring users to type the full name.
+
+**Exact change (two sites, `wordHighlight.ts` `fullCode`):**
+
+1. **stepValues path (Step 24):** inside the word-array reconstruction loop, if `_apCtrl.blankKeywordExpansions[_apSlot.keyword]` exists, write the expansion at `_apSlot.keywordStart` and mark subsequent keyword positions as "clear" (collapses multi-word keywords to the single expansion):
+
+```js
+if(_apCtrl.blankKeywordExpansions&&_apCtrl.blankKeywordExpansions[_apSlot.keyword]){
+_apopWords[_apSlot.keywordStart]=_apCtrl.blankKeywordExpansions[_apSlot.keyword];
+for(var _apke=_apSlot.keywordStart+1;_apke<=_apSlot.keywordEnd;_apke++)_apopClearSet[_apke]=true;
+}
+```
+
+Added before the `blankClearKeywords` clause so that if both are set, expansion is placed first then cleared (matches original behaviour; same net result).
+
+2. **blankScript callback path (Step 25):** after computing spliced `_nt` but before `blankClearKeywords`, re-split and rebuild dropping keyword positions in favour of the expansion:
+
+```js
+if(_ctrl.blankKeywordExpansions&&_ctrl.blankKeywordExpansions[_slot.keyword]){
+var _ntXW=_nt.split(/\\s+/).filter(function(w){return w;});
+var _ntXKept=[];
+for(var _ntxi=0;_ntxi<_ntXW.length;_ntxi++){
+if(_ntxi===_slot.keywordStart)_ntXKept.push(_ctrl.blankKeywordExpansions[_slot.keyword]);
+else if(_ntxi>_slot.keywordStart&&_ntxi<=_slot.keywordEnd)continue;
+else _ntXKept.push(_ntXW[_ntxi]);
+}
+_nt=_ntXKept.join(" ");
+}
+```
+
+**Lookup semantics:**
+- `_slot.keyword` is lowercased at parse time (blankKeywords list is lowercased by cues-md parser).
+- `blankKeywordExpansions.<subkey>` keys are also lowercased at parse (cues-md.ts:641).
+- So `_ctrl.blankKeywordExpansions[_slot.keyword]` is a direct lowercase→string lookup.
+- Expansions are defined PER-SHORTCODE. Multi-word keywords like `reddit stock` have no expansion key (users already typed the readable form).
+
+**Verification (confirmed 2026-04-17):**
+
+| Input | Expansion? | Result |
+|---|---|---|
+| `rddt _` | rddt → Reddit | `Reddit $<price>` |
+| `nvda _` | nvda → Nvidia | `Nvidia $<price>` |
+| `hn _` | hn → HackerNews | `HackerNews <headline>` |
+| `reddit stock _` | no key | `reddit stock $<price>` (unchanged) |
+| `weather _` | no expansion config | `<forecast>` (clearKeywords path alone) |
+
+**Not in scope for Step 28:** blankConsumeContext, blankConsumeAll, cycling filled blanks, span tracking, blankDismissible.
+
+**Peculiarities found during this step:** *None*. Straightforward extension of Step 27's word-array reconstruction. Expansion + clearKeywords compose naturally — if a control had both set, expansion would be placed then cleared (no-op net effect, matches original). No current configs combine them, but the code handles it cleanly.
+
+**Status: ✅ Done** (verified 2026-04-17)
+
+---
+
+## Step 29+ — TBD
 
 Blank-fill continuation:
 
-- **`blankKeywordExpansions`** — stocks `rddt` → `Reddit` display transform at fill time (prepended to script output, e.g. `Reddit $180.50`). Small, visible.
-- **`blankConsumeContext`** (answer) — strip keyword + context words on fill. Small extension of `blankClearKeywords`.
+- **`blankConsumeContext`** (answer) — strip keyword + words between keyword and blank on fill. Small extension of `blankClearKeywords` with range widening.
 - **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` similar to Step 20's tip-alt branch. Needs span tracking to be useful for multi-word fills.
 - **Span tracking** — treat multi-word fill as single cycleable unit. Prerequisite for multi-word cycle.
 - **`blankDismissible`** — append `_` to cycle list so user can dismiss. Needs cycling.
@@ -1697,7 +1754,7 @@ Blank-fill continuation:
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 27 is verified.
+Pick one after Step 28 is verified.
 
 ---
 
