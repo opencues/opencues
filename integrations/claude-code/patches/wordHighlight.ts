@@ -1720,14 +1720,19 @@ return _out;
     location.endIndex
   );
 
-  // Inject globalThis._extHighlights store in the parent function (R5)
-  // so our renderedValue can skip ANSI for words with external highlights (shimmer).
-  // Pattern: "else P=<chalk>.inverse;let X=uu8(" — inject before "let X=uu8("
-  const extHlPattern = /else ([$\w]+)=([$\w]+)\.inverse;let ([$\w]+)=uu8\(/;
+  // Inject globalThis._extHighlights store at the segment-rendering function
+  // (highlights destructure site) so our renderedValue can skip ANSI for words
+  // covered by native shimmer/selection spans. Elements already carry
+  // {start, end, priority} which is exactly what the consumer expects.
+  // Pattern (v2.1.110): "function <name>(<arg>){let <cache>=s(23),{text:<t>,highlights:<h>}=<arg>,<Y>;"
+  // Inject AFTER the whole `let ...;` declaration so we don't split it.
+  const extHlPattern =
+    /function [$\w]+\([$\w]+\)\{let [$\w]+=s\(\d+\),\{text:[$\w]+,highlights:([$\w]+)\}=[$\w]+,[$\w]+;/;
   const extHlMatch = newFile.match(extHlPattern);
   if (extHlMatch && extHlMatch.index !== undefined) {
-    const insertAt = extHlMatch.index + `else ${extHlMatch[1]}=${extHlMatch[2]}.inverse;`.length;
-    const extHlCode = `globalThis._extHighlights=A.highlights||[];`;
+    const insertAt = extHlMatch.index + extHlMatch[0].length;
+    const highlightsVar = extHlMatch[1];
+    const extHlCode = `globalThis._extHighlights=${highlightsVar}||[];`;
     newFile = newFile.slice(0, insertAt) + extHlCode + newFile.slice(insertAt);
   }
 
