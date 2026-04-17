@@ -1787,19 +1787,77 @@ Applied to:
 
 ---
 
-## Step 30+ — TBD
+## Step 30 — Blank-fill sub-step 8: `blankConsumeAll` (prompt improver)
 
-Blank-fill continuation:
+**Goal:** Controls with `blankConsumeAll: true` (only `prompt` in the current config) replace the ENTIRE input with the first line of the script's multi-line output. Remaining lines stash in `globalThis._consumeAllAlts` as alternative versions ready for future cycle-through.
 
-- **`blankConsumeAll`** (prompt improver) — whole-sentence LLM call, consume everything except blank, return multiple alts, dim consumed range. Large; best after span tracking and resolver wiring.
-- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` with a branch similar to Step 20's tip-alt branch. For affirmations to be usable beyond just "I am strong".
-- **Span tracking** — treat multi-word fill as single cycleable unit. Prerequisite for multi-word cycle + clean clear-on-change.
-- **`blankDismissible`** — append `_` to cycle list so user can dismiss. Needs cycling.
-- **`readControlState` resolver wiring** — for architectural parity and to unblock LLM-backed blank sources.
+**Why this choice:** Unlocks the prompt improver — the last major unimplemented feature of the original. Pipeline ends at "first alt replaces everything." Multi-alt cycling is Step 31+.
+
+**Exact change (blankScript callback path, `wordHighlight.ts`):**
+
+Short-circuit the normal splice-expansion-clear pipeline when `blankConsumeAll` is set:
+
+```js
+var _nt;
+if(_ctrl.blankConsumeAll){
+var _cAlts=_out.split(/\\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+if(!_cAlts.length)return;
+_nt=_cAlts[0];
+globalThis._consumeAllAlts=_cAlts.length>1?{index:0,alts:_cAlts,currentAltIndex:0,spanLength:_cAlts[0].split(/\\s+/).filter(function(w){return w;}).length}:null;
+}else{
+// existing: splice + expansion + clearKeywords/consumeContext
+...
+}
+```
+
+**Key mechanics:**
+- **Multi-line parse**: `_out.split(/\n/)` — each line is an alternative. Empty lines discarded. First line becomes the fill; rest stashed.
+- **No splice**: fill replaces everything, not just `_`. `_nt` is set directly to the first alt.
+- **No expansion / clearKeywords / consumeContext**: those operate on keyword/context ranges, but consume-all already erased everything. Short-circuit skips them.
+- **`_consumeAllAlts` stash**: captures `{index:0, alts, currentAltIndex:0, spanLength}`. `index:0` because after consume-all, the fill starts at word 0. `spanLength` = first alt's word count (needed when cycling to multi-word alternatives replaces the correct range).
+- **Staleness check unchanged**: if `_cw[_slot.index]!=="_"` at callback time, abort — user edited the blank position mid-LLM-call.
+
+**Prompt improver flow (end-to-end):**
+1. User types `improve prompt rewrite this to be more concise _`.
+2. Scanner detects blank + matches `improve prompt` keyword → `_blankSlots[0] = {controlName:"prompt", ...}`.
+3. Callback spawns `prompt-blank.sh get "improve prompt" <context words>` with env vars set (`CUES_MODEL=openai/gpt-oss-120b`, `CUES_PROMPT_EXTRACT=<from ## Extract>`, `CUES_PROMPT_TRANSFORM=<from ## Transform>`, `CUES_ALT_COUNT=3`, `CUES_INCLUDE_ORIGINAL=true`).
+4. Script does two LLM round-trips (extract → transform), outputs 4 lines (3 improved + 1 original).
+5. Callback parses, takes line 1 as the new text, stashes the other 3 as `_consumeAllAlts.alts`.
+6. `_forceInputRefresh()` pushes to input → user sees the first improved prompt.
+
+**Verification (confirmed 2026-04-17):**
+- `improve prompt rewrite this to be more concise _` → first alt replaces everything.
+- `enhance prompt write an email to my boss _` → first alt replaces everything.
+- `refine prompt summarise this article _` → first alt replaces everything.
+- Non-consume-all controls unchanged: `rddt _`, `weather in Paris _`, `what is the word for happy _`, `affirm _`.
+
+**Not in scope for Step 30:**
+- **Cycling through `_consumeAllAlts.alts`** — the data is staged but `_cycleAlt` doesn't have a branch for consume-all yet. Coming as Step 31.
+- **Dim on consumed range** — while the consume-all span is active, the filled words should render differently (dimmed / marked) to signal "cycleable". Needs the cycling step first to be meaningful.
+- **Clear-on-change invalidation** for consume-all state — typing anything after the fill should invalidate `_consumeAllAlts` so it doesn't try to cycle a stale span. Part of the cycling step.
+- **Keyword expansion + clearKeywords for consume-all**: skipped because everything's wiped. If a future control combines `blankConsumeAll` with an expansion (odd), the expansion is ignored.
+
+**Peculiarities found during this step:** *None*. The short-circuit structure was clean. Env-var parity from Step 26 paid off — `CUES_PROMPT_EXTRACT`/`_TRANSFORM` landed where prompt-blank.sh expected them without any further wiring.
+
+**Status: ✅ Done** (verified 2026-04-17: prompt improver produces improved versions end-to-end)
+
+---
+
+## Step 31+ — TBD
+
+Cycling + polish continuation:
+
+- **Cycle `_consumeAllAlts`** — Ctrl+Alt+Up/Down on the consumed range (positions 0..spanLength-1 after fill) swaps through the stashed alts. Mirrors Step 12's text-splice pattern with multi-word span handling.
+- **Dim the consumed-range as a cycleable unit** — visual feedback that the span is active.
+- **Clear-on-change for `_consumeAllAlts`** — typing inside or outside the span invalidates the stashed alts.
+- **Cycling filled blanks through `stepValues`** — for affirmations, cycle through all 4 values after auto-populate.
+- **Span tracking** — treat multi-word fill as single cycleable unit (generalises consume-all and stepValues-list cycling).
+- **`blankDismissible`** — append `_` to cycle list so user can dismiss.
+- **`readControlState` resolver wiring** — architectural parity.
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 29 is verified.
+Pick one after Step 30 is verified.
 
 ---
 
