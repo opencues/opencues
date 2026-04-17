@@ -71,6 +71,8 @@ export class Statusline {
     if (!this.hlState.active || this.hlState.wordIndex === null) {
       return { active: false, timestamp: Date.now() };
     }
+    // tips-mode: off → still expose word + alts but suppress tip text.
+    const tipsHidden = this.configLoader?.opencuesState.tipsMode === 'off';
     const wordIndex = this.hlState.wordIndex;
     const def = this.dynDefs.get(wordIndex);
     const words = splitWords(ctx.text);
@@ -92,7 +94,7 @@ export class Statusline {
     const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     let cueTip: string | null = null;
     let altCueTips: Record<string, string> | null = null;
-    if (lookup) {
+    if (lookup && !tipsHidden) {
       altCueTips = lookup.altCueTips ?? null;
       cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
     }

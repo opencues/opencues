@@ -201,6 +201,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `getText:function(){return ${iz}.text;},` +
     `getCursorOffset:function(){return ${iz}.offset;},` +
     `readFile:function(p){return new Promise(function(res){try{${requireFn}("fs").readFile(p,"utf8",function(err,data){res(err?null:data);});}catch(__ocFe){res(null);}});},` +
+    `readDir:function(p){return new Promise(function(res){try{${requireFn}("fs").readdir(p,{withFileTypes:true},function(err,entries){if(err){res(null);return;}res(entries.map(function(e){return{name:e.name,isDirectory:e.isDirectory()};}));});}catch(__ocDe){res(null);}});},` +
     `writeFile:function(p,c){return new Promise(function(res,rej){try{${requireFn}("fs").writeFile(p,c,"utf8",function(err){err?rej(err):res();});}catch(__ocWe){rej(__ocWe);}});},` +
     // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
     // a ProcessHandle whose .result resolves on exit (or never, if detached).

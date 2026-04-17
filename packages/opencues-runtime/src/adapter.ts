@@ -96,6 +96,11 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export const HOST_ADAPTER_INTERFACE_VERSION = 1;
 
+export interface DirEntry {
+  readonly name: string;
+  readonly isDirectory: boolean;
+}
+
 export interface HostAdapter {
   readonly interfaceVersion: number;
 
@@ -119,6 +124,12 @@ export interface HostAdapter {
   spawnProcess(spec: ProcessSpec): ProcessHandle;
   readFile(path: string): Promise<string | null>;
   writeFile(path: string, content: string): Promise<void>;
+  /**
+   * List directory entries (single level, no recursion). Optional —
+   * adapters whose host has no notion of directories return null.
+   * Covered by the `file-read` capability when present.
+   */
+  readDir?(path: string): Promise<readonly DirEntry[] | null>;
 
   log(level: LogLevel, msg: string, data?: unknown): void;
 

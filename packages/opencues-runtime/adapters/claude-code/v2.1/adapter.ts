@@ -61,6 +61,9 @@ export interface HostBindings {
   /** Optional: read a file (absolute path). Resolves to null if missing. */
   readFile?(path: string): Promise<string | null>;
 
+  /** Optional: list directory entries (absolute path). Resolves to null if missing. */
+  readDir?(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null>;
+
   /** Optional: write a file (absolute path). Overwrites if exists. */
   writeFile?(path: string, content: string): Promise<void>;
 
@@ -180,6 +183,13 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
     if (!this.bindings.readFile) return null;
     try { return await this.bindings.readFile(path); } catch (err) {
       this.log('error', 'readFile failed', err);
+      return null;
+    }
+  }
+  async readDir(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null> {
+    if (!this.bindings.readDir) return null;
+    try { return await this.bindings.readDir(path); } catch (err) {
+      this.log('error', 'readDir failed', err);
       return null;
     }
   }

@@ -122,6 +122,28 @@ describe('Statusline cue-tip plumbing', () => {
     expect(p.cueTip).toBeNull();
   });
 
+  it('cueTip is null when opencues.md sets tips-mode: off', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': TIPS,
+        '/proj/opencues.md': '---\ntips-mode: off\n---\n',
+      },
+    });
+    adapter.pushText('opus');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'opus');
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const sl = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/x.json',
+    }, loader);
+    const p = sl.buildPayload({ text: 'opus', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
+    expect(p.altCueTips).toBeNull();
+  });
+
   it('cueTip is null when no ConfigLoader is supplied', () => {
     const adapter = new MockAdapter();
     adapter.pushText('opus');

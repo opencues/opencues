@@ -108,6 +108,25 @@ describe('TTS', () => {
     expect(spawnSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('does not speak when opencues.md sets voice-mode: inactive', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': TIPS,
+        '/proj/opencues.md': '---\nvoice-mode: inactive\n---\n',
+      },
+    });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh' });
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    expect(tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).toBeNull();
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
   it('does not speak when spawn-process capability absent', async () => {
     const adapter = new MockAdapter({ capabilities: ['file-read'], files: { '/tips.json': TIPS } });
     adapter.pushText('ultrathink');

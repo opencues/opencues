@@ -52,6 +52,8 @@ export class TTS {
       return null;
     }
     if (!this.adapter.capabilities.includes('spawn-process')) return null;
+    // voice-mode: inactive → silence TTS globally (matches v1 Step 16).
+    if (this.configLoader.opencuesState.voiceMode === 'inactive') return null;
 
     const def = this.dynDefs.get(this.hlState.wordIndex);
     const words = splitWords(ctx.text);

@@ -176,6 +176,24 @@ export class MockAdapter implements HostAdapter {
     return this._files.has(path) ? (this._files.get(path) ?? null) : null;
   }
 
+  async readDir(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null> {
+    if (!this.capabilities.includes('file-read')) return null;
+    const prefix = path.endsWith('/') ? path : path + '/';
+    const direct = new Map<string, boolean>(); // name → isDirectory
+    for (const filePath of this._files.keys()) {
+      if (!filePath.startsWith(prefix)) continue;
+      const rest = filePath.slice(prefix.length);
+      const slash = rest.indexOf('/');
+      if (slash >= 0) {
+        direct.set(rest.slice(0, slash), true);
+      } else {
+        direct.set(rest, false);
+      }
+    }
+    if (direct.size === 0) return null;
+    return [...direct.entries()].map(([name, isDirectory]) => ({ name, isDirectory }));
+  }
+
   async writeFile(path: string, content: string): Promise<void> {
     if (!this.capabilities.includes('file-write')) {
       throw new AdapterUnsupportedError('file-write');

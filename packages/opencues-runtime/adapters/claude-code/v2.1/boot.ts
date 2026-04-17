@@ -40,8 +40,10 @@ export interface HostInfo {
   getText(): string;
   /** Snapshot of the current cursor offset. */
   getCursorOffset(): number;
-  /** Optional: read a file. Used by ConfigLoader for the tips JSON. */
+  /** Optional: read a file. Used by ConfigLoader for the tips JSON + cwd .md files. */
   readFile?(path: string): Promise<string | null>;
+  /** Optional: list directory entries. Used by ConfigLoader for folder discovery. */
+  readDir?(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null>;
   /** Optional: write a file. Used by Statusline for the export JSON. */
   writeFile?(path: string, content: string): Promise<void>;
   /** Optional: spawn a child process. Used by TTS for fire-and-forget speak. */
@@ -198,6 +200,7 @@ export function boot(host: HostInfo): BootResult {
       return () => removeFrom(textHandlers, cb);
     },
     readFile: host.readFile,
+    readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess,
     log,
@@ -211,6 +214,7 @@ export function boot(host: HostInfo): BootResult {
   // map (returns false from step) until load resolves.
   const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/claude-code-tips.json`;
   const configLoader = new ConfigLoader(adapter, { tipsPath });
+  configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
   // Subscribe modules synchronously so the very first key dispatch is wired.
