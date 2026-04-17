@@ -217,6 +217,26 @@ export function matchesFilter(event: KeyEvent, filter: KeyFilter | null): boolea
   return true;
 }
 
+/**
+ * Compute the zero-width-char-toggled text that forces React to re-render the
+ * input component without visibly changing content. Matches v1's mechanism
+ * (wordHighlight.ts ~line 495): strip any trailing ZWS/ZWNJ, then append the
+ * opposite of whatever was previously there. Callers pass the result to
+ * `InputZone.fromText(newText, columns, offset)` and return it from the
+ * KeyDispatcher.
+ *
+ * Pure function, no side effects — the toggle is derived from the input text
+ * itself, which React's render cycle keeps consistent with the parent's value.
+ */
+export function toggleZeroWidth(text: string): string {
+  const stripped = text.replace(/[\u200B\u200C]+$/, '');
+  // If the original ended with ZWS (\u200B), flip to ZWNJ (\u200C). Otherwise
+  // (ends with ZWNJ, or no trailing ZW chars at all) use ZWS. This mirrors
+  // v1's `if(_parentHasB) \u200C else \u200B` branching.
+  const endedWithZws = text.length > stripped.length && text.charCodeAt(stripped.length) === 0x200b;
+  return stripped + (endedWithZws ? '\u200c' : '\u200b');
+}
+
 export function normaliseKeyEvent(raw: {
   key?: string;
   ctrl?: boolean;

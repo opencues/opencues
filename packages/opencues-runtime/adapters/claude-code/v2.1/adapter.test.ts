@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent } from './adapter';
+import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import type { KeyEvent, RenderContext, RenderDirectives, TextChangeEvent, Unsubscribe } from '../../../src/adapter';
 
 class FakeBindings implements HostBindings {
@@ -132,5 +132,47 @@ describe('ClaudeCodeV21Adapter', () => {
     const a = new ClaudeCodeV21Adapter(new FakeBindings());
     await expect(a.readFile('/any/path')).resolves.toBeNull();
     await expect(a.writeFile('/x', 'y')).rejects.toThrow(/file-write/);
+  });
+});
+
+describe('toggleZeroWidth', () => {
+  const ZWS = '\u200b';
+  const ZWNJ = '\u200c';
+
+  it('adds ZWS when text has no trailing zero-width char', () => {
+    expect(toggleZeroWidth('hello')).toBe(`hello${ZWS}`);
+  });
+
+  it('flips ZWS to ZWNJ', () => {
+    expect(toggleZeroWidth(`hello${ZWS}`)).toBe(`hello${ZWNJ}`);
+  });
+
+  it('flips ZWNJ to ZWS', () => {
+    expect(toggleZeroWidth(`hello${ZWNJ}`)).toBe(`hello${ZWS}`);
+  });
+
+  it('strips accumulated trailing ZW chars before toggling', () => {
+    expect(toggleZeroWidth(`hello${ZWS}${ZWNJ}${ZWS}`)).toBe(`hello${ZWNJ}`);
+    expect(toggleZeroWidth(`hello${ZWNJ}${ZWS}${ZWNJ}`)).toBe(`hello${ZWS}`);
+  });
+
+  it('empty text yields a single ZWS', () => {
+    expect(toggleZeroWidth('')).toBe(ZWS);
+  });
+
+  it('preserves non-trailing ZW chars (text in the middle)', () => {
+    // If a ZW char is embedded mid-string, only trailing ones strip. Keeps
+    // the invariant that the toggle doesn't corrupt user text.
+    expect(toggleZeroWidth(`a${ZWS}b`)).toBe(`a${ZWS}b${ZWS}`);
+  });
+
+  it('successive toggles guarantee a different string each time', () => {
+    let t = 'navigating words';
+    const seen = new Set<string>();
+    for (let i = 0; i < 4; i += 1) {
+      t = toggleZeroWidth(t);
+      seen.add(t);
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(2); // alternates between two states
   });
 });

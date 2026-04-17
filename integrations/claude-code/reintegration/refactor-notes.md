@@ -137,12 +137,24 @@ in tweakcc config; v1 remains default.
    - Inlined seam regexes (NOT an import from opencues-runtime). **Source of
      truth is `seams.ts`; this is a build-time vendored copy.** If you bump
      the regexes, update both. See inline comment.
-   - Injects a bootstrap at the `KeyDispatcher` body start. The bootstrap:
-     - On first invocation, `require()`s opencues-runtime + the v2.1 adapter,
-       constructs `HostBindings`, creates the adapter, calls
-       `Runtime.create()`, subscribes Navigation.
-     - Every invocation: builds a KeyEvent from the current dispatcher's event
-       arg and runs it through `globalThis.__oc.keyHandlers`.
+   - Injects a bootstrap at the `KeyDispatcher` body start. The KeyDispatcher
+     sits inside the InputStateHandler closure (S2), so S2's locals
+     (`inputZoneVar`, `inputZoneClass`, `columnsVar`) are in scope at the
+     injection site — the bootstrap uses them to rebuild an InputZone.
+   - On first invocation: `require()`s opencues-runtime + v2.1 adapter +
+     Navigation + HighlightState + DynDefs, constructs `HostBindings`
+     (backed by `InputZone.text`/`.offset` at key-dispatch time), calls
+     `Runtime.create()`, subscribes Navigation.
+   - On every invocation: builds a KeyEvent from the current dispatcher's
+     event arg + InputZone snapshot, runs it through `globalThis.__oc.keyHandlers`.
+     If a handler consumed the event:
+     - if `pendingRender` is set → early-return
+       `InputZone.fromText(toggleZeroWidth(text), columns, offset)` —
+       React sees a changed string and re-renders.
+     - else → early-return the existing InputZone (prevents the host's
+       default switch from firing).
+   - `toggleZeroWidth` is a pure helper exported from the v2.1 adapter;
+     unit-tested (strip-then-toggle, preserves mid-string ZW chars).
    - `DEBUG_OPENCUES=1` env var enables `adapter.log` output to stderr.
    - Fails loud (returns null + `console.error`) when a seam is missing.
      Caller in `index.ts` skips the v2 path gracefully — cli.js stays
@@ -184,21 +196,12 @@ in tweakcc config; v1 remains default.
 
 ### Known limitations / follow-ups
 
-- **`forceRender` does not yet drive the host-side zero-width-space toggle.**
-  The adapter contract is satisfied from the runtime's POV (pendingRender is
-  flipped), but nothing returns the "re-rendered" InputZone from the
-  KeyDispatcher yet. This means that after a Ctrl+Alt+Left/Right, the highlight
-  state mutates internally but the user may not see an update until they
-  type. Extending the bootstrap with the S2 bindings (`inputZoneVar`,
-  `inputZoneClass`, `columnsVar`) and returning from the dispatcher when
-  `__ocConsumed && pendingRender` is the next step. Left for a Phase 1
-  follow-up or Phase 2 prelude.
-- **`getText` / `getCursorOffset`** in the bootstrap read
-  `globalThis._hlText` / `_hlOffset`, which **v2 does not populate**. The
-  KeyEvent's `.text` and `.cursorOffset` snapshot (populated from the same
-  globals) is what Navigation actually consumes, so navigation works off the
-  key event itself. When ConfigLoader or DimRender need the current buffer
-  outside a key context, we'll need to wire real bindings.
+- **Visual highlight painting is not wired.** Navigation mutates
+  `HighlightState` and forces a re-render (see below), but nothing paints
+  the highlighted word. That's S3 / DimRender territory (Phase 3 per spec
+  §10.2). On a live install today, Ctrl+Alt+Left/Right reliably updates
+  internal state and triggers a React re-render, but the word won't visibly
+  change colour until DimRender lands.
 - **No S2 AST fallback** — if v2.1.x minifier output shifts enough that the
   S2 regex stops matching, the installer fails loud (no crash) but needs a
   patch. Adding AST fallback is a stand-alone item.

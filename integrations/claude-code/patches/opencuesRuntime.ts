@@ -87,11 +87,19 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   }
 
   const b1 = s1!.bindings;
+  const b2 = s2!.bindings;
 
-  // Bootstrap: runs on every key dispatch. On first invocation, lazily loads
-  // opencues-runtime, builds HostBindings, constructs the adapter, creates the
-  // Runtime, subscribes Navigation. On every subsequent dispatch, feeds the
-  // key event through the adapter's registered handlers.
+  // Bootstrap: injected at the KeyDispatcher body-start (S1), which sits
+  // inside the InputStateHandler closure (S2) — so b2's locals
+  // (inputZoneVar, inputZoneClass, columnsVar) are in scope here.
+  //
+  // On first invocation: lazily require opencues-runtime, construct the v2.1
+  // adapter + Navigation, create the Runtime.
+  //
+  // On every invocation: dispatch the current key event through registered
+  // handlers. If a handler consumed AND forceRender was called, early-return
+  // a rebuilt InputZone with a toggled zero-width-char suffix — same
+  // mechanism as v1 — so React sees a changed value and re-renders.
   const bootstrap =
     `try{if(!globalThis.__oc){globalThis.__oc={keyHandlers:[],renderHandlers:[],textHandlers:[],pendingRender:false,failed:false};` +
     `try{` +
@@ -100,9 +108,10 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `var __ocNavMod=require("opencues-runtime/dist/src/modules/navigation");` +
     `var __ocStateMod=require("opencues-runtime/dist/src/state/highlight-state");` +
     `var __ocDynDefsMod=require("opencues-runtime/dist/src/state/dyn-defs");` +
+    `globalThis.__oc.adapterMod=__ocAdapterMod;` +
     `var __ocBindings={hostVersion:"2.1.x",cwd:process.cwd(),` +
-    `getText:function(){return (globalThis._hlText||"");},` +
-    `getCursorOffset:function(){return (globalThis._hlOffset||0);},` +
+    `getText:function(){return globalThis.__oc._lastText||"";},` +
+    `getCursorOffset:function(){return globalThis.__oc._lastOffset||0;},` +
     `setText:function(t){},setCursorOffset:function(o){},` +
     `forceRender:function(){globalThis.__oc.pendingRender=true;},` +
     `registerKeyHandler:function(cb){globalThis.__oc.keyHandlers.push(cb);return function(){var a=globalThis.__oc.keyHandlers;var i=a.indexOf(cb);if(i>=0)a.splice(i,1);};},` +
@@ -122,11 +131,23 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}}catch(__ocOe){}` +
     // Dispatch the current key event through the runtime's key handlers.
     `try{if(globalThis.__oc&&!globalThis.__oc.failed&&globalThis.__oc.keyHandlers&&globalThis.__oc.keyHandlers.length){` +
+    `globalThis.__oc._lastText=${b2.inputZoneVar}.text;` +
+    `globalThis.__oc._lastOffset=${b2.inputZoneVar}.offset;` +
     `var __ocEv=${b1.eventParam};` +
     `var __ocMods={ctrl:!!__ocEv.ctrl,alt:!!(__ocEv.alt||__ocEv.meta||__ocEv.option),shift:!!__ocEv.shift,meta:!!__ocEv.super};` +
-    `var __ocKeyEv={key:__ocEv.key,modifiers:__ocMods,text:(globalThis._hlText||""),cursorOffset:(globalThis._hlOffset||0)};` +
+    `var __ocKeyEv={key:__ocEv.key,modifiers:__ocMods,text:${b2.inputZoneVar}.text,cursorOffset:${b2.inputZoneVar}.offset};` +
+    `var __ocConsumed=false;` +
     `for(var __ocI=0;__ocI<globalThis.__oc.keyHandlers.length;__ocI++){` +
-    `try{if(globalThis.__oc.keyHandlers[__ocI](__ocKeyEv))break;}catch(__ocHe){}` +
+    `try{if(globalThis.__oc.keyHandlers[__ocI](__ocKeyEv)){__ocConsumed=true;break;}}catch(__ocHe){}` +
+    `}` +
+    `if(__ocConsumed){` +
+    `if(globalThis.__oc.pendingRender&&globalThis.__oc.adapterMod){` +
+    `globalThis.__oc.pendingRender=false;` +
+    `try{var __ocNextText=globalThis.__oc.adapterMod.toggleZeroWidth(${b2.inputZoneVar}.text);` +
+    `return ${b2.inputZoneClass}.fromText(__ocNextText,${b2.columnsVar},${b2.inputZoneVar}.offset);` +
+    `}catch(__ocTe){return ${b2.inputZoneVar};}` +
+    `}` +
+    `return ${b2.inputZoneVar};` +
     `}` +
     `}}catch(__ocDe){}`;
 
