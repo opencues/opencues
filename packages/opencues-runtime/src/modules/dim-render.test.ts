@@ -1,0 +1,78 @@
+import { describe, expect, it } from 'vitest';
+import { DimRender } from './dim-render';
+import { Navigation } from './navigation';
+import { HighlightState } from '../state/highlight-state';
+import { DynDefs } from '../state/dyn-defs';
+import { MockAdapter } from '../../testing/mock-adapter';
+import { applyDirectives } from '../render-directives';
+
+function setup(text: string) {
+  const adapter = new MockAdapter();
+  adapter.pushText(text);
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const dimRender = new DimRender(adapter, hlState, dynDefs);
+  dimRender.subscribe();
+  return { adapter, hlState, dynDefs, dimRender };
+}
+
+describe('DimRender.compute', () => {
+  it('returns null when highlight inactive', () => {
+    const { dimRender } = setup('hello world');
+    expect(dimRender.compute({ text: 'hello world', cursor: 0, externalHighlights: [] })).toBeNull();
+  });
+
+  it('returns highlight range covering the active word', () => {
+    const { hlState, dimRender } = setup('alpha beta gamma');
+    hlState.activate(1, 'alpha beta gamma');
+    const out = dimRender.compute({ text: 'alpha beta gamma', cursor: 0, externalHighlights: [] });
+    expect(out).toEqual({ highlight: { start: 6, end: 10 } });
+  });
+
+  it('returns null when wordIndex is out of bounds for the current text', () => {
+    const { hlState, dimRender } = setup('alpha');
+    hlState.activate(5, 'alpha'); // text only has 1 word
+    expect(dimRender.compute({ text: 'alpha', cursor: 0, externalHighlights: [] })).toBeNull();
+  });
+
+  it('honours capability gating — no highlight without highlight-range capability', () => {
+    const adapter = new MockAdapter({ capabilities: ['file-read'] });
+    const hlState = new HighlightState();
+    const dimRender = new DimRender(adapter, hlState, new DynDefs());
+    hlState.activate(0, 'alpha');
+    expect(dimRender.compute({ text: 'alpha', cursor: 0, externalHighlights: [] })).toBeNull();
+  });
+});
+
+describe('DimRender + render pipeline (integration)', () => {
+  it('fireRender produces directives that paint the right word when applied', () => {
+    const { adapter, hlState } = setup('alpha beta gamma');
+    hlState.activate(2, 'alpha beta gamma'); // gamma → start=11, end=16
+    const directives = adapter.fireRender();
+    expect(directives.length).toBe(1);
+    const out = applyDirectives('alpha beta gamma', directives[0]);
+    expect(out).toBe(`alpha beta \x1b[7mgamma\x1b[27m`);
+  });
+
+  it('Navigation + DimRender — Ctrl+Alt+Left activates and produces a highlight', () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('one two three');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+
+    const nav = new Navigation(adapter, hlState, dynDefs);
+    nav.subscribe();
+    const dim = new DimRender(adapter, hlState, dynDefs);
+    dim.subscribe();
+
+    expect(adapter.fireRender()).toEqual([]); // not active yet → null filtered
+
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.active).toBe(true);
+    expect(hlState.wordIndex).toBe(2); // three
+
+    const directives = adapter.fireRender();
+    expect(directives.length).toBe(1);
+    expect(directives[0].highlight).toEqual({ start: 8, end: 13 }); // "three"
+  });
+});

@@ -135,6 +135,73 @@ export function findInputStateHandler(source: string): SeamMatch | null {
   };
 }
 
+// ─── S3: RenderedValue ────────────────────────────────────────────────────
+//
+// Shape: renderedValue:VAR.render(args...)  inside the InputStateHandler return.
+// In v2.1.110 the call is `m.render(X,H,M,j6,G)` — 5 args. v2.1.x earlier
+// minor bumps shipped 4-arg or 3-arg variants. After Rainbow input wraps,
+// the shape becomes `renderedValue:(function(){ ... var _rv=m.render(...); ... })()`.
+// We capture the entire expression (positions only) so the patch can wrap
+// it in an applyRender() call.
+
+const RENDERED_VALUE_RAINBOW = /renderedValue:\(function\(\)\{/;
+const RENDERED_VALUE_5 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
+const RENDERED_VALUE_4 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
+const RENDERED_VALUE_3 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+)\)/;
+
+export function findRenderedValue(source: string): SeamMatch | null {
+  // 1) Rainbow-wrapped IIFE — paren-balanced scan to find the matching `)()`.
+  const rw = source.match(RENDERED_VALUE_RAINBOW);
+  if (rw && rw.index !== undefined) {
+    const exprStart = rw.index + 'renderedValue:'.length;
+    let depth = 0;
+    let i = exprStart;
+    for (; i < source.length; i += 1) {
+      const c = source.charAt(i);
+      if (c === '(') depth += 1;
+      else if (c === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          let endIdx = i + 1;
+          if (source.charAt(i + 1) === '(' && source.charAt(i + 2) === ')') endIdx = i + 3;
+          return {
+            startIndex: exprStart,
+            endIndex: endIdx,
+            bindings: { kind: 'rainbow', expression: source.slice(exprStart, endIdx) },
+            method: 'regex',
+          };
+        }
+      }
+    }
+    return null; // unbalanced
+  }
+
+  // 2) Plain VAR.render(...) variants. Try most-args first.
+  for (const [pat, kind] of [
+    [RENDERED_VALUE_5, 'render-5'],
+    [RENDERED_VALUE_4, 'render-4'],
+    [RENDERED_VALUE_3, 'render-3'],
+  ] as const) {
+    const m = source.match(pat);
+    if (m && m.index !== undefined) {
+      const exprStart = m.index + 'renderedValue:'.length;
+      const exprEnd = m.index + m[0].length;
+      return {
+        startIndex: exprStart,
+        endIndex: exprEnd,
+        bindings: {
+          kind,
+          renderVar: m[1],
+          renderArgs: m[2],
+          expression: source.slice(exprStart, exprEnd),
+        },
+        method: 'regex',
+      };
+    }
+  }
+  return null;
+}
+
 // ─── Assertion helper — installer aggregates misses ───────────────────────
 
 export interface SeamResult {

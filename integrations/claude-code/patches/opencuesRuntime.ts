@@ -1,12 +1,19 @@
 // OpenCues v2 runtime patch — see refactor.md §10, §11.
 //
 // When opencuesRuntime === 'v2', this patch:
-//   1. Runs seam predicates against cli.js (S1 KeyDispatcher, S2 InputStateHandler).
+//   1. Runs seam predicates against cli.js (S1 KeyDispatcher, S2 InputStateHandler,
+//      S3 RenderedValue).
 //   2. Fails loudly (returns null, caller logs) if any critical seam is missing.
-//   3. Injects a bootstrap that loads `opencues-runtime` + the v2.1 adapter,
-//      wires host bindings extracted from seam matches, then calls
-//      Runtime.create(adapter). Navigation (Phase 1) is the only module
-//      subscribed; later phases extend the bootstrap.
+//   3. Injects two anchors:
+//      a) S1 body-start: a bootstrap that loads `opencues-runtime`, builds
+//         HostBindings, constructs the v2.1 adapter, calls Runtime.create(),
+//         subscribes Navigation + DimRender. Each key dispatch flows through
+//         the runtime's onKey handlers; consumed keys early-return a
+//         ZWS-toggled InputZone for re-render.
+//      b) S3 renderedValue expression: wraps the host's render output with
+//         applyRender(), which fires registered onRender handlers and applies
+//         their RenderDirectives (highlight, dim, override) via the runtime's
+//         applyDirectives helper.
 //
 // NOTE: The seam regexes below are a build-time vendored copy of
 // `packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`. The runtime
@@ -64,17 +71,61 @@ function findInputStateHandler(source: string): SeamMatch | null {
   };
 }
 
+// ─── S3: RenderedValue ─────────────────────────────────────────────────
+const RV_RAINBOW = /renderedValue:\(function\(\)\{/;
+const RV_5 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
+const RV_4 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
+const RV_3 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+)\)/;
+
+interface RenderedValueMatch {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly expression: string;
+}
+
+function findRenderedValue(source: string): RenderedValueMatch | null {
+  const rw = source.match(RV_RAINBOW);
+  if (rw && rw.index !== undefined) {
+    const exprStart = rw.index + 'renderedValue:'.length;
+    let depth = 0;
+    for (let i = exprStart; i < source.length; i += 1) {
+      const c = source.charAt(i);
+      if (c === '(') depth += 1;
+      else if (c === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          let endIdx = i + 1;
+          if (source.charAt(i + 1) === '(' && source.charAt(i + 2) === ')') endIdx = i + 3;
+          return { startIndex: exprStart, endIndex: endIdx, expression: source.slice(exprStart, endIdx) };
+        }
+      }
+    }
+    return null;
+  }
+  for (const pat of [RV_5, RV_4, RV_3]) {
+    const m = source.match(pat);
+    if (m && m.index !== undefined) {
+      const exprStart = m.index + 'renderedValue:'.length;
+      const exprEnd = m.index + m[0].length;
+      return { startIndex: exprStart, endIndex: exprEnd, expression: source.slice(exprStart, exprEnd) };
+    }
+  }
+  return null;
+}
+
 /**
- * Apply the Phase 1 v2 bootstrap. Returns patched content on success, null
- * on seam miss. Caller logs; tweakcc's existing error path handles the rest.
+ * Apply the v2 bootstrap. Returns patched content on success, null on seam
+ * miss. Caller logs; tweakcc's existing error path handles the rest.
  */
 export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const s1 = findKeyDispatcher(oldFile);
   const s2 = findInputStateHandler(oldFile);
+  const s3 = findRenderedValue(oldFile);
 
   const missing: string[] = [];
   if (!s1) missing.push('S1 KeyDispatcher');
   if (!s2) missing.push('S2 InputStateHandler');
+  if (!s3) missing.push('S3 RenderedValue');
   if (missing.length > 0) {
     console.error(
       `OpenCues v2 installer: FAILED to find ${missing.length} critical seam(s):\n` +
@@ -106,9 +157,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `var __ocMod=require("opencues-runtime");` +
     `var __ocAdapterMod=require("opencues-runtime/dist/adapters/claude-code/v2.1/adapter");` +
     `var __ocNavMod=require("opencues-runtime/dist/src/modules/navigation");` +
+    `var __ocDimMod=require("opencues-runtime/dist/src/modules/dim-render");` +
+    `var __ocRdMod=require("opencues-runtime/dist/src/render-directives");` +
     `var __ocStateMod=require("opencues-runtime/dist/src/state/highlight-state");` +
     `var __ocDynDefsMod=require("opencues-runtime/dist/src/state/dyn-defs");` +
     `globalThis.__oc.adapterMod=__ocAdapterMod;` +
+    `globalThis.__oc.rdMod=__ocRdMod;` +
     `var __ocBindings={hostVersion:"2.1.x",cwd:process.cwd(),` +
     `getText:function(){return globalThis.__oc._lastText||"";},` +
     `getCursorOffset:function(){return globalThis.__oc._lastOffset||0;},` +
@@ -126,6 +180,18 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `globalThis.__oc.runtime=rt;` +
     `var nav=new __ocNavMod.Navigation(globalThis.__oc.adapter,globalThis.__oc.hlState,globalThis.__oc.dynDefs);` +
     `nav.subscribe();globalThis.__oc.nav=nav;` +
+    `var dim=new __ocDimMod.DimRender(globalThis.__oc.adapter,globalThis.__oc.hlState,globalThis.__oc.dynDefs);` +
+    `dim.subscribe();globalThis.__oc.dim=dim;` +
+    `globalThis.__oc.applyRender=function(rendered,text,offset){` +
+    `if(typeof rendered!=="string")return rendered;` +
+    `var ctx={text:text||"",cursor:offset||0,externalHighlights:[]};` +
+    `var out=rendered;` +
+    `var handlers=globalThis.__oc.renderHandlers;` +
+    `for(var __ocRi=0;__ocRi<handlers.length;__ocRi++){` +
+    `try{var d=handlers[__ocRi](ctx);if(d)out=globalThis.__oc.rdMod.applyDirectives(out,d);}catch(__ocRe){}` +
+    `}` +
+    `return out;` +
+    `};` +
     `}).catch(function(e){console.error("[opencues] runtime init failed:",e);globalThis.__oc.failed=true;});` +
     `}catch(__ocBe){console.error("[opencues] bootstrap error:",__ocBe);globalThis.__oc.failed=true;}` +
     `}}catch(__ocOe){}` +
@@ -151,5 +217,19 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}` +
     `}}catch(__ocDe){}`;
 
-  return oldFile.slice(0, s1!.startIndex) + bootstrap + oldFile.slice(s1!.endIndex);
+  // S3 wrapper: replace `renderedValue:<EXPR>` with a guarded applyRender call.
+  // applyRender is null until the runtime init promise resolves; the guard
+  // means we transparently fall back to the original render until then.
+  const s3Wrapper =
+    `(globalThis.__oc&&globalThis.__oc.applyRender` +
+    `?globalThis.__oc.applyRender(${s3!.expression},${s2!.bindings.inputZoneVar}.text,${s2!.bindings.inputZoneVar}.offset)` +
+    `:${s3!.expression})`;
+
+  // Apply both injections. S1 sits inside the function body (S1.startIndex < S3.startIndex
+  // because S1 is body-start of handleKeyDown and S3 is later in the same closure).
+  // Apply highest-position first so earlier indices remain valid.
+  let out = oldFile;
+  out = out.slice(0, s3!.startIndex) + s3Wrapper + out.slice(s3!.endIndex);
+  out = out.slice(0, s1!.startIndex) + bootstrap + out.slice(s1!.endIndex);
+  return out;
 }

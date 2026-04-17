@@ -1,4 +1,4 @@
-# Refactor notes — review checklist (Phase 0 & Phase 1)
+# Refactor notes — review checklist
 
 Companion to `refactor.md`. Points to inspect for each shipped phase. Each phase
 is on its own commit — revert a phase with `git reset --hard <prev-sha>` if
@@ -7,6 +7,10 @@ needed.
 Commits:
 - `3628458` — Phase 0: opencues-runtime scaffold
 - `3ea17ae` — Phase 1: Navigation module + v2.1 CC adapter + tweakcc v2 patch
+- `3c8d69e` — Phase 1 fix: forceRender wires through to ZWS toggle at KeyDispatcher return
+- (this) Phase 2 (DimRender, reordered ahead of Cycling): visible navigation.
+  S3 seam, applyDirectives helper, DimRender module, bootstrap wraps
+  renderedValue.
 
 ---
 
@@ -196,12 +200,8 @@ in tweakcc config; v1 remains default.
 
 ### Known limitations / follow-ups
 
-- **Visual highlight painting is not wired.** Navigation mutates
-  `HighlightState` and forces a re-render (see below), but nothing paints
-  the highlighted word. That's S3 / DimRender territory (Phase 3 per spec
-  §10.2). On a live install today, Ctrl+Alt+Left/Right reliably updates
-  internal state and triggers a React re-render, but the word won't visibly
-  change colour until DimRender lands.
+(Phase 2 below closes the visibility gap. Items here are now strictly about
+the navigation logic itself — same as before.)
 - **No S2 AST fallback** — if v2.1.x minifier output shifts enough that the
   S2 regex stops matching, the installer fails loud (no crash) but needs a
   patch. Adding AST fallback is a stand-alone item.
@@ -220,7 +220,7 @@ in tweakcc config; v1 remains default.
 
 ```bash
 # All workspaces green (from repo root)
-npm test --workspaces --if-present     # opencues-runtime: 47/47
+npm test --workspaces --if-present     # opencues-runtime: 79/79 after Phase 2
 
 # Tweakcc still green (sanity — we changed nothing destructive)
 cd integrations/claude-code/tweakcc && npx vitest run
@@ -228,12 +228,105 @@ cd integrations/claude-code/tweakcc && npx vitest run
 # Build artifacts present
 ls packages/opencues-runtime/dist/src/index.js \
    packages/opencues-runtime/dist/adapters/claude-code/v2.1/adapter.js \
-   packages/opencues-runtime/dist/src/modules/navigation.js
+   packages/opencues-runtime/dist/adapters/claude-code/v2.1/seams.js \
+   packages/opencues-runtime/dist/src/modules/navigation.js \
+   packages/opencues-runtime/dist/src/modules/dim-render.js \
+   packages/opencues-runtime/dist/src/render-directives.js
 ```
 
 ---
 
-## Going forward (Phase 2 prelude)
+## Phase 2 — DimRender (reordered ahead of Cycling)
+
+**Goal:** make the navigation that landed in Phase 1 actually visible.
+Spec §10.2 has Cycling as Phase 2 and DimRender as Phase 3 — we swapped them
+so each phase ships something a user can see.
+
+### What to check
+
+1. **`packages/opencues-runtime/src/render-directives.ts`** —
+   `applyDirectives(rendered, directives)`. Pure ANSI-aware string rewrite:
+   walks the input char-by-char, distinguishes visible chars from `\x1b[...m`
+   escapes, and inserts attribute codes (`\x1b[7m`/`\x1b[27m` for highlight,
+   `\x1b[2m`/`\x1b[22m` for dim) at the right visible positions. Existing
+   ANSI codes pass through untouched. `textOverride` short-circuits.
+   Tests at `render-directives.test.ts` (14 cases) cover plain text,
+   ANSI-styled, multi-range, ranges past end, empty ranges, ANSI-only input.
+
+2. **`packages/opencues-runtime/src/modules/dim-render.ts`** —
+   `DimRender.subscribe()` attaches an `onRender` handler.
+   `compute(ctx)` returns `{highlight: {start, end}}` for the active word
+   from `HighlightState`, or `null` if inactive / wordIndex out of range /
+   no `highlight-range` capability. Tests at `dim-render.test.ts` (6 cases),
+   including a Navigation+DimRender integration test that fires a key,
+   asserts the highlight directive lands on the right word.
+
+3. **S3 seam — `findRenderedValue`** in
+   `adapters/claude-code/v2.1/seams.ts`. Matches `renderedValue:VAR.render(...)`
+   in 3/4/5-arg variants AND the rainbow-wrapped IIFE
+   (`renderedValue:(function(){...})()`). For the rainbow case it does
+   paren-balancing to find the matching `})()`. Captures the *entire*
+   expression so the patch can wrap it. Tests in `seams.test.ts` cover
+   all four shapes plus the no-match case.
+
+4. **Bootstrap changes** —
+   `integrations/claude-code/patches/opencuesRuntime.ts`:
+   - Now requires three seams (S1, S2, **S3**); fails loud if any miss.
+   - The S1 bootstrap additionally requires `dim-render.js` and
+     `render-directives.js`, instantiates `DimRender`, subscribes it, and
+     installs `globalThis.__oc.applyRender(rendered, text, offset)`. That
+     function builds a `RenderContext`, runs every registered onRender
+     handler, and folds each non-null `RenderDirectives` through
+     `applyDirectives`.
+   - **Second injection at S3:** replaces the original `renderedValue:<EXPR>`
+     with `(globalThis.__oc&&globalThis.__oc.applyRender ?
+     globalThis.__oc.applyRender(<EXPR>, IZ.text, IZ.offset) : <EXPR>)`.
+     The guard means the host's render passes through unchanged until the
+     async runtime init resolves — no flicker, no race.
+   - Two-injection ordering: S3 first (later position, no shift), then S1.
+
+### How to opt-in (E2E, **still not yet run on live cli.js**)
+
+Same as Phase 1, plus rebuild the runtime so the new
+`render-directives.js` and `dim-render.js` are present in
+`~/.claude/node_modules/opencues-runtime/dist/`:
+
+```bash
+cd packages/opencues-runtime
+npm run build
+mkdir -p ~/.claude/node_modules/opencues-runtime
+cp -r package.json dist ~/.claude/node_modules/opencues-runtime/
+# then rebuild + apply tweakcc as in Phase 1's "How to opt-in"
+```
+
+Expected on `claude-cues` after restart with `opencuesRuntime: 'v2'`:
+**Ctrl+Alt+Left/Right shows the highlighted word in inverse video** as it
+moves left/right. That's the proof Phases 0 + 1 + 2 are intact end-to-end.
+
+### Known limitations / follow-ups
+
+- **Highlight colour is hard-coded to ANSI inverse (`\x1b[7m`).** v1 supported
+  configurable colours (cyan/yellow/underline). The DimRender module currently
+  ignores the `color` field of `HighlightRange` because applyDirectives only
+  emits inverse. Adding more colour mappings is a small follow-up — touches
+  `render-directives.ts` only.
+- **No cue filtering yet.** Same caveat as Phase 1: Navigation + DimRender
+  treat every whitespace-separated token as a target. Once DynDefs is
+  populated (BlankFill phase), filtering will land naturally because both
+  modules share `DynDefs`.
+- **Number dimming, span tracking, shimmer suppression** — all v1 features
+  that DimRender will eventually own. Phase 2 only paints the active word.
+- **applyDirectives algorithm choice:** insertion codes emit *just before*
+  the visible position they pertain to, ahead of any leading host ANSI for
+  that position. Visually equivalent to v1 (which buffered host ANSI and
+  discarded it under highlight); functionally simpler. If you see colour
+  bleed in practice, the algorithm in `render-directives.ts` is the place
+  to look.
+- **No live-install test yet** — same as Phase 1.
+
+---
+
+## Going forward (next phases)
 
 The next phase (Cycling) will:
 - Extend `HostBindings` with whatever the cycling UX needs (likely a hook

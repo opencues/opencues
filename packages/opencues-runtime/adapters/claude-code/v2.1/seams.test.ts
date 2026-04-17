@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findKeyDispatcher,
   findInputStateHandler,
+  findRenderedValue,
   runSeams,
   assertAllFound,
 } from './seams';
@@ -63,6 +64,43 @@ describe('S2 findInputStateHandler', () => {
       `function Dy8({value:q,onChange:K,a:1,externalOffset:f,onOffsetChange:v,b:2}){` +
       `let x=f,B=v,m=cK.fromText(q,P,x);return{onInput:q}}`;
     expect(findInputStateHandler(src)).toBeNull();
+  });
+});
+
+describe('S3 findRenderedValue', () => {
+  it('matches the canonical 5-arg v2.1.110 shape', () => {
+    const src = `return{handleKeyDown:z6,renderedValue:m.render(X,H,M,j6,G)}`;
+    const match = findRenderedValue(src);
+    expect(match).not.toBeNull();
+    expect(match!.bindings.kind).toBe('render-5');
+    expect(match!.bindings.renderVar).toBe('m');
+    expect(match!.bindings.expression).toBe('m.render(X,H,M,j6,G)');
+  });
+
+  it('matches 4-arg variant', () => {
+    const src = `return{handleKeyDown:z6,renderedValue:m.render(X,H,M,j6)}`;
+    const match = findRenderedValue(src);
+    expect(match).not.toBeNull();
+    expect(match!.bindings.kind).toBe('render-4');
+  });
+
+  it('matches 3-arg variant', () => {
+    const src = `return{handleKeyDown:z6,renderedValue:m.render(X,H,M)}`;
+    const match = findRenderedValue(src);
+    expect(match).not.toBeNull();
+    expect(match!.bindings.kind).toBe('render-3');
+  });
+
+  it('matches rainbow-wrapped IIFE with paren balancing', () => {
+    const src = `return{handleKeyDown:z6,renderedValue:(function(){var x=(1+(2));return x+1})(),other:1}`;
+    const match = findRenderedValue(src);
+    expect(match).not.toBeNull();
+    expect(match!.bindings.kind).toBe('rainbow');
+    expect(match!.bindings.expression).toBe('(function(){var x=(1+(2));return x+1})()');
+  });
+
+  it('returns null when nothing matches', () => {
+    expect(findRenderedValue(`return{handleKeyDown:z6,onInput:m.render(X)}`)).toBeNull();
   });
 });
 
