@@ -2,8 +2,8 @@
   "name": "opencues-runtime",
   "version": "0.1.0",
   "description": "Host-agnostic runtime for OpenCues. Hosts implement HostAdapter; runtime owns all feature logic.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

@@ -8,6 +8,11 @@
 // ADD TO misc: {} OBJECT:
 // ============================================================================
 
+// --- OpenCues Runtime Selector ---
+// v1 = legacy 22-seam patch (default, full feature set).
+// v2 = plug-and-play runtime (Phase 1+, navigation-only until later phases land).
+opencuesRuntime: 'v1' as const,
+
 // --- Cursor State Export ---
 enableCursorStateExport: true,
 cursorStateExportPath: '/tmp/claude-cursor-state.json',

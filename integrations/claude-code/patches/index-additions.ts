@@ -11,6 +11,7 @@
 import { writeCursorStateExport } from './cursorStateExport';
 import { writeWordHighlight } from './wordHighlight';
 import { writeDynamicHighlight } from './dynamicHighlight';
+import { writeOpenCuesRuntimeV2 } from './opencuesRuntime';
 
 // ============================================================================
 // STEP 2: ADD PATCH APPLICATION (inside applyCustomization function)
@@ -24,6 +25,15 @@ import { writeDynamicHighlight } from './dynamicHighlight';
 // The `config` parameter contains the user's settings.
 
 /*
+
+  // Branch on runtime version: v2 bypasses all v1 cues patches and injects a
+  // single bootstrap at the KeyDispatcher seam. v1 (default) runs the legacy
+  // 22-seam patch stack below. See refactor.md §10.
+  const runtimeVersion = config.settings.misc?.opencuesRuntime ?? 'v1';
+  if (runtimeVersion === 'v2') {
+    if ((result = writeOpenCuesRuntimeV2(content))) content = result;
+    else console.error('patch: opencues v2 bootstrap failed — see above.');
+  } else {
 
   // Apply cursor state export patch (if enabled)
   if (config.settings.misc?.enableCursorStateExport) {
@@ -65,6 +75,8 @@ import { writeDynamicHighlight } from './dynamicHighlight';
     };
     if ((result = writeDynamicHighlight(content, dynamicConfig))) content = result;
   }
+
+  } // end v1 runtime branch
 
 */
 

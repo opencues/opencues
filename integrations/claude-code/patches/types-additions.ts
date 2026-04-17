@@ -9,6 +9,11 @@
 // ADD TO MiscSettings INTERFACE:
 // ============================================================================
 
+// --- OpenCues Runtime Selector ---
+// v1 = legacy 22-seam patch (default). v2 = plug-and-play runtime (Phase 1+).
+// See integrations/claude-code/reintegration/refactor.md.
+opencuesRuntime?: 'v1' | 'v2';
+
 // --- Cursor State Export ---
 // Exports cursor position to a JSON file in real-time
 enableCursorStateExport?: boolean;

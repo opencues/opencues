@@ -1,15 +1,108 @@
-import type { HostAdapter } from '../adapter';
+// Navigation module — Phase 1.
+//
+// Ported from the v1 patch (wordHighlight.ts:461/475). Handles Ctrl+Alt+Left
+// and Ctrl+Alt+Right by walking the whitespace-separated word list from the
+// right-hand side and updating HighlightState.
+//
+// Phase 1 does NOT implement cue filtering (globalThis._isCueControl,
+// globalThis._localCueMap etc.). Navigation targets all non-empty words. Cue
+// filtering returns in a later phase once DynDefs is populated.
+
+import type { HostAdapter, KeyEvent, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 
+export interface WordSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly word: string;
+  readonly index: number;
+}
+
 export class Navigation {
+  private _unsubLeft: Unsubscribe | null = null;
+  private _unsubRight: Unsubscribe | null = null;
+
   constructor(
     private adapter: HostAdapter,
     private hlState: HighlightState,
-    private dynDefs: DynDefs,
-  ) {
-    void this.adapter;
-    void this.hlState;
-    void this.dynDefs;
+    private _dynDefs: DynDefs,
+  ) {}
+
+  subscribe(): void {
+    this._unsubLeft = this.adapter.onKey(
+      { requireModifiers: ['ctrl', 'alt'], keys: ['left'] },
+      e => this.onArrowLeft(e),
+    );
+    this._unsubRight = this.adapter.onKey(
+      { requireModifiers: ['ctrl', 'alt'], keys: ['right'] },
+      e => this.onArrowRight(e),
+    );
   }
+
+  unsubscribe(): void {
+    if (this._unsubLeft) { this._unsubLeft(); this._unsubLeft = null; }
+    if (this._unsubRight) { this._unsubRight(); this._unsubRight = null; }
+  }
+
+  onArrowLeft(event: KeyEvent): boolean {
+    return this.step(event.text, +1);
+  }
+
+  onArrowRight(event: KeyEvent): boolean {
+    return this.step(event.text, -1);
+  }
+
+  /**
+   * Step direction: +1 is "to the left" in the v1 patch convention (Ctrl+Alt+Left),
+   * −1 is "to the right" (Ctrl+Alt+Right). The v1 patch indexes from the
+   * rightmost word; we follow that to keep UX identical.
+   */
+  private step(text: string, direction: 1 | -1): boolean {
+    const words = splitWords(text);
+    const targets = words.map(w => w.index); // no filtering in Phase 1
+    if (targets.length === 0) return false;
+
+    if (!this.hlState.active) {
+      // First nav: activate on the rightmost target.
+      this.hlState.activate(targets[targets.length - 1], text);
+      this.adapter.forceRender();
+      return true;
+    }
+
+    this.hlState.setText(text);
+    const current = this.hlState.wordIndex;
+    const pos = current === null ? -1 : targets.indexOf(current);
+    // "position from the right" — matches v1's index-from-right walk.
+    const posFromRight = pos === -1 ? 0 : (targets.length - 1 - pos);
+
+    if (direction === 1) {
+      // Ctrl+Alt+Left: step left (higher posFromRight). No wrap.
+      const nextPosFromRight = Math.min(posFromRight + 1, targets.length - 1);
+      this.hlState.setWordIndex(targets[targets.length - 1 - nextPosFromRight]);
+    } else {
+      // Ctrl+Alt+Right: step right. If at rightmost (posFromRight === 0), deactivate.
+      if (posFromRight === 0) {
+        this.hlState.deactivate();
+      } else {
+        const nextPosFromRight = posFromRight - 1;
+        this.hlState.setWordIndex(targets[targets.length - 1 - nextPosFromRight]);
+      }
+    }
+    this.adapter.forceRender();
+    return true;
+  }
+}
+
+/** Whitespace-split word spans with byte offsets. */
+export function splitWords(text: string): WordSpan[] {
+  const spans: WordSpan[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  let index = 0;
+  while ((m = re.exec(text)) !== null) {
+    spans.push({ start: m.index, end: m.index + m[0].length, word: m[0], index });
+    index += 1;
+  }
+  return spans;
 }
