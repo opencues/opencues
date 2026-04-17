@@ -13,8 +13,9 @@ import { ControlConfig } from '../cues-md';
 export interface ControlBlankSourceConfig {
   /** All controls that have blankKeywords defined */
   controls: Record<string, ControlConfig>;
-  /** I/O adapter: calls blankScript get to read the current live value */
-  readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null;
+  /** I/O adapter: calls blankScript get to read the current live value.
+   * May return synchronously or a Promise — async implementations avoid blocking the event loop. */
+  readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 }
 
 export class ControlBlankSource implements CueSource {
@@ -22,7 +23,7 @@ export class ControlBlankSource implements CueSource {
   readonly priority = 95;
 
   private controls: Record<string, ControlConfig>;
-  private readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null;
+  private readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 
   constructor(config: ControlBlankSourceConfig) {
     this.controls = config.controls;
@@ -170,8 +171,9 @@ export class ControlBlankSource implements CueSource {
       return { results };
     }
 
-    // Read current value — validation is format-aware
-    const rawValue = this.readState(matched.control, matchedKeyword, context.words);
+    // Read current value — validation is format-aware.
+    // readState may be sync or async; Promise.resolve normalizes both.
+    const rawValue = await Promise.resolve(this.readState(matched.control, matchedKeyword, context.words));
     if (rawValue === null || rawValue === '') {
       return { results };
     }

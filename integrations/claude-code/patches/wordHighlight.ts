@@ -760,7 +760,8 @@ globalThis._debugLog=function(_dMsg){if(!globalThis._openCuesCurrent||globalThis
 }
 try{
 var _mergedDC=_cues.mergeConfigs({cuesConfig:_parsedCues||undefined,blanksConfig:_parsedBlanks||undefined},_folderCfgs);
-var _srcs=_cues.buildSourcesFromConfig(_mergedDC.cuesConfig,_mergedDC.blanksConfig,{httpAdapter:globalThis._httpAdapter,endpoint:"https://api.groq.com/openai/v1/chat/completions",apiKey:process.env.GROQ_API_KEY||"",defaultModel:"openai/gpt-oss-120b",controls:globalThis._cueControlOverrides});
+var _readControlState=function(_rcsCn,_rcsMkw,_rcsCtx){var _rcsCtrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_rcsCn];var _rcsBs=_rcsCtrl&&(_rcsCtrl.blankScript||_rcsCtrl.script);if(!_rcsBs)return Promise.resolve(null);var _rcsHome=process.env.HOME||"/home/"+(process.env.USER||"root");var _rcsArgs=["get"].concat(_rcsMkw?[_rcsMkw]:[]).concat(_rcsCtx?_rcsCtx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_rcsMkw||"").toLowerCase();}):[]);var _rcsEnv=Object.assign({},process.env);if(_rcsCtrl.model)_rcsEnv.CUES_MODEL=_rcsCtrl.model;if(_rcsCtrl.apiUrl)_rcsEnv.CUES_API_URL=_rcsCtrl.apiUrl;if(_rcsCtrl.apiKeyEnv)_rcsEnv.CUES_API_KEY_ENV=_rcsCtrl.apiKeyEnv;if(_rcsCtrl.altCount)_rcsEnv.CUES_ALT_COUNT=String(_rcsCtrl.altCount);if(_rcsCtrl.includeOriginal!==undefined)_rcsEnv.CUES_INCLUDE_ORIGINAL=String(_rcsCtrl.includeOriginal);if(_rcsCtrl.prompts){for(var _rcsPk in _rcsCtrl.prompts){_rcsEnv["CUES_PROMPT_"+_rcsPk.toUpperCase().replace(/[^A-Z0-9]/g,"_")]=_rcsCtrl.prompts[_rcsPk];}}return new Promise(function(_rcsRes){try{${requireFuncName}("child_process").execFile("bash",[_rcsBs.replace(/^~/,_rcsHome)].concat(_rcsArgs),{timeout:8000,encoding:"utf8",env:_rcsEnv},function(_rcsErr,_rcsOut){if(_rcsErr){_rcsRes(null);return;}var _rcsTrim=(_rcsOut||"").trim();_rcsRes(_rcsTrim||null);});}catch(_rcse){_rcsRes(null);}});};
+var _srcs=_cues.buildSourcesFromConfig(_mergedDC.cuesConfig,_mergedDC.blanksConfig,{httpAdapter:globalThis._httpAdapter,endpoint:"https://api.groq.com/openai/v1/chat/completions",apiKey:process.env.GROQ_API_KEY||"",defaultModel:"openai/gpt-oss-120b",controls:globalThis._cueControlOverrides,readControlState:_readControlState});
 globalThis._cueResolver=new _cues.CueResolver(_srcs);
 globalThis._cueSourceCount=_srcs.length;
 if(globalThis._debugLog)globalThis._debugLog("startup: "+Object.keys(globalThis._cueControlOverrides||{}).length+" overrides, "+(globalThis._localCueMap?globalThis._localCueMap.size:0)+" tips, "+(globalThis._stepPatterns||[]).length+" stepPatterns, "+(globalThis._cueSourceCount||0)+" llm sources");
@@ -1308,10 +1309,28 @@ globalThis._lastResolvedText=_asText;
 if(globalThis._debugLog)globalThis._debugLog("autoSubmit ["+_asWords.length+" words]: "+_asText);
 globalThis._cueResolver.resolve({text:_asText,words:_asWords,domain:"claude-code"}).then(function(_res){
 if(_gen!==globalThis._resolveGen)return;
-var _newDefs=globalThis._cuesCore.convertCueResultsToWordDefs(_res.results||[]);
+var _resResults=_res.results||[];
+if(!globalThis._pendingAutoPopulate){
+var _curT=globalThis._hlText||"";var _curW=_curT.split(/\\s+/).filter(function(w){return w;});
+for(var _rbi=0;_rbi<_resResults.length;_rbi++){
+var _rb=_resResults[_rbi];
+if(_rb.source!=="control-blank")continue;
+if(_rb.wordIndex==null||_rb.wordIndex>=_curW.length||_curW[_rb.wordIndex]!=="_")continue;
+if(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_rb.wordIndex])continue;
+if(globalThis._pendingBlankFills){var _rbHasInline=false;for(var _rbPk in globalThis._pendingBlankFills){if(_rbPk.indexOf("::"+_rb.wordIndex)>=0){_rbHasInline=true;break;}}if(_rbHasInline)continue;}
+var _rbM=_rb.metadata||{};
+var _rbAlts=_rb.alternatives||[];
+if(!_rbAlts.length)continue;
+globalThis._pendingAutoPopulate={index:_rb.wordIndex,value:_rbAlts[0],keywordExpansion:_rbM.blankKeywordExpansion||null,satellite:_rbM.satelliteValue||null,controlName:_rbM.controlName||null,blankScript:_rbM.blankScript||null,displaySeparator:_rbM.displaySeparator||null,blankClearKeywords:!!_rbM.blankClearKeywords,blankClearOnEdit:!!_rbM.blankClearOnEdit,blankKeywordIndices:_rbM.blankKeywordIndices||null,consumeAllAlts:_rbAlts.length>1?_rbAlts.slice():null,consumeAllTip:_rb.cueTip||null};
+if(globalThis._debugLog)globalThis._debugLog("resolver-driven autoPopulate: idx="+_rb.wordIndex+" ctrl="+(_rbM.controlName||"?")+" alts="+_rbAlts.length);
+if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
+break;
+}
+}
+var _newDefs=globalThis._cuesCore.convertCueResultsToWordDefs(_resResults);
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_newDefs);
-if(globalThis._debugLog)globalThis._debugLog("llm result: "+(_res.results||[]).length+" results, "+_newDefs.length+" wordDefs");
+if(globalThis._debugLog)globalThis._debugLog("llm result: "+_resResults.length+" results, "+_newDefs.length+" wordDefs");
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }).catch(function(_lre){if(globalThis._debugLog)globalThis._debugLog("llm error: "+(_lre&&_lre.message||_lre));});
 },500);

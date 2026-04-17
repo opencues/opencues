@@ -2088,13 +2088,43 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ---
 
-## Step 36+ — TBD
+## Step 36 — Resolver-driven blank-fill (`readControlState` wiring, rip inline IIFE)
 
-Remaining (reintegration items present in the original patches):
+**Goal:** Replace the inline `execFile`-spawn pipeline in `wordHighlight.ts` (roughly lines 1040-1295 today) with the resolver-driven path the baseline used. `CueResolver` + `ControlBlankSource` already live in `cues-core` and handle detection, matching, script invocation, and metadata emission for every blank mode we currently handle inline (keyword expansion, clearKeywords, consumeContext, consumeAll, satellite, dismissible, keyword matching by proximity).
 
-- **`readControlState` resolver wiring** — architectural parity for LLM-backed blanks.
+**Why this choice:** The inline IIFE is a ~200-line duplicate of `ControlBlankSource`. Keeping both paths means any future change to blank semantics has to be made twice, and the inline path can drift silently from cues-core. Centralising in the resolver also keeps the patch thin for future Claude Code version bumps — the heavier logic lives in a versioned npm package, not in a template literal against minified `cli.js`.
 
-Pick after Step 35 is verified end-to-end.
+**Key observation — the downstream consumer is already complete.** `_pendingAutoPopulate` consumer at `wordHighlight.ts:~1360-1499` (baked into cli.js from the baseline) already handles every case we need: keyword expansion, `blankKeywordIndices` clearing, selector/satellite insertion with `displaySeparator`, multi-word scalar fill, consume-all staging. The missing piece is populating `_pendingAutoPopulate` from resolver output instead of from the inline IIFE.
+
+**Sub-steps:**
+
+- **Step 36a — Wire `readControlState` + populate `_pendingAutoPopulate` from resolver.** Add the callback to `buildSourcesFromConfig` options so `ControlBlankSource` becomes functional. In the existing `_cueResolver.resolve(...)` `.then` callback (line ~1309), iterate results; for any with `source === "control-blank"` where the current text at `result.wordIndex` is still `_` and not in `_dismissedBlanks` and not in-flight in `_pendingBlankFills`, populate `_pendingAutoPopulate` from `result.metadata` (copy `controlName`, `blankScript`, `satelliteValue`, `displaySeparator`, `blankKeywordIndices`, `blankKeywordExpansion`, `blankClearKeywords`, `blankClearOnEdit`, `consumeAllAlts`). No rip yet — both paths coexist. Test: blanks still fill correctly across all controls; when resolver wins (in 36b), `_pendingAutoPopulate` shape matches what the inline path would have produced.
+
+**Peculiarities found during Step 36a:**
+
+1. **Sync `execFileSync` readState blocked the event loop.** First pass mirrored the baseline (`execFileSync` with 6s timeout). When the resolver fired at 500ms debounce, `ControlBlankSource.getCues()` called `readState` synchronously — freezing Node for ~400ms (weather), ~1s (stocks), ~5s (prompt-improver LLM). UI stalled. Fix: widened `ControlBlankSource.readState` type in cues-core to `string | null | Promise<string | null>`, changed `getCues()` to `await Promise.resolve(this.readState(...))`. Non-breaking — sync impls still work. Patch-side `_readControlState` now uses async `execFile` returning a Promise. Event loop stays free. Lesson: when reintegrating, don't blindly mirror the baseline's sync I/O just because the interface permits it — async is strictly better here.
+
+2. **Rebuilding cues-core isn't enough — must copy to `~/.claude/node_modules/cues-core/`.** The patch `require("cues-core")` resolves from Claude's `node_modules`, not from the monorepo's `dist/`. After each cues-core change: `npm run build` in `packages/cues-core`, then `cp -r dist/* ~/.claude/node_modules/cues-core/`. Forgot this initially and couldn't figure out why the change wasn't visible. Flag for Step 36b (we'll touch cues-core again if widening anything else).
+
+3. **Resolver's 500ms debounce naturally gives inline the win.** Inline spawns `execFile` on keystroke (async, non-blocking). Resolver fires at 500ms after typing stops. For fast scripts (weather 400ms), inline completes first; the resolver's `.then` callback sees text already filled and guard (`curW[wordIndex]!=="_"`) trips, backs off. Clean no-op when inline wins — exactly what coexistence needs.
+
+4. **`_pendingBlankFills` substring check for resolver backoff.** To detect in-flight inline fills, resolver-path iterates `_pendingBlankFills` keys and checks for substring `::<wordIndex>`. Naive — could false-positive if the text itself contains `::N` (unlikely in normal prose but possible in code). Acceptable for 36a; will be removed entirely in 36b when inline goes away.
+
+5. **Inline won every test scenario in 36a.** Debug log showed `autoPopulate (script weather): ...` every time, never `resolver-driven autoPopulate: ...`. That's the expected racing outcome given timing. To actually exercise the resolver path in 36a we'd have to artificially delay inline, which isn't worth it — 36b will exercise it for real.
+
+- **Step 36b — Rip the inline blank-fill IIFE.** Remove the `_blankSlots` loop + `_pendingBlankFills` execFile spawn block. Keep: `_pendingClearOnEdit` consumer (downstream of either path), `_pendingAutoPopulate` consumer (downstream of resolver now), stepValues auto-populate (`_apopCycleSlot` block — this is a separate non-script path worth keeping inline until resolver supports it). Test end-to-end: volume/brightness/numbers (stepPattern), affirmations (stepValues), weather (blankScript scalar), stocks (scalar + keyword expansion), hackernews (multi-line alts), prompt improver (consumeAll), answer (consumeContext), opencues (selector/satellite). Verify: `_consumeAllAlts`, `_dynSpans`, dim rendering, statusline tips, `blankClearOnEdit`, cycling, `_dismissedBlanks` all still function.
+
+**Rollback:** 36a is additive — delete the `readControlState` option, the result-iteration block, and the backoff guard. 36b requires re-adding the inline IIFE (preserve the last-known-good commit SHA for reference).
+
+**Risk notes:**
+- **Timing.** Inline runs synchronously on keystroke; resolver fires at ~500ms debounce. In 36a coexistence, inline usually wins, which masks resolver bugs. Mitigation: add a debug log when resolver-produced `_pendingAutoPopulate` actually applies (so we know it's exercised before we rip).
+- **Prompt-improver consume-all.** Current inline path has hand-written `_consumeAllAlts` staging. Need to verify resolver path produces identical `_pendingAutoPopulate.consumeAllAlts` array (multi-line split, first alt as `value`).
+- **Satellite detection.** ControlBlankSource splits on tab and emits `metadata.satelliteValue` + `metadata.displaySeparator`. Need to verify the `_pendingAutoPopulate` consumer's satellite branch reads those exactly.
+- **Env vars.** Our inline handler threaded `CUES_MODEL`, `CUES_API_URL`, `CUES_API_KEY_ENV`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_<NAME>` into the script env. `readControlState` callback must do the same — verify baseline implementation and match.
+
+**Deferred:** Architectural parity for LLM-backed *word* alternatives (not blanks). Already routed through the resolver; no change needed.
+
+Pick after Step 36 is verified end-to-end.
 
 ---
 
