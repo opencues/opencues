@@ -961,8 +961,24 @@ if(!_bsCtrl.blankScript)continue;
 var _bsKey=_hlText+"::"+_bsSlot.index;
 if(globalThis._pendingBlankFills[_bsKey])continue;
 globalThis._pendingBlankFills[_bsKey]=true;
-(function(_slot,_ctrl,_key){
-try{${requireFuncName}("child_process").execFile("bash",[_ctrl.blankScript,"get",_slot.keyword],{timeout:8000,encoding:"utf8"},function(_err,_stdout){
+var _ctxWords=[];
+for(var _cwi=0;_cwi<_bwds.length;_cwi++){
+if(_cwi>=_bsSlot.keywordStart&&_cwi<=_bsSlot.keywordEnd)continue;
+if(_cwi===_bsSlot.index)continue;
+_ctxWords.push(_bwds[_cwi]);
+}
+(function(_slot,_ctrl,_key,_ctx){
+try{
+var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
+var _bsPath=(_ctrl.blankScript||"").replace(/^~/,_bsHome);
+var _bsEnv=Object.assign({},process.env);
+if(_ctrl.model)_bsEnv.CUES_MODEL=_ctrl.model;
+if(_ctrl.apiUrl)_bsEnv.CUES_API_URL=_ctrl.apiUrl;
+if(_ctrl.apiKeyEnv)_bsEnv.CUES_API_KEY_ENV=_ctrl.apiKeyEnv;
+if(_ctrl.altCount)_bsEnv.CUES_ALT_COUNT=String(_ctrl.altCount);
+if(_ctrl.includeOriginal!==undefined)_bsEnv.CUES_INCLUDE_ORIGINAL=String(_ctrl.includeOriginal);
+if(_ctrl.prompts){for(var _pk in _ctrl.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUpperCase().replace(/[^A-Z0-9]/g,"_")]=_ctrl.prompts[_pk];}}
+${requireFuncName}("child_process").execFile("bash",[_bsPath,"get",_slot.keyword].concat(_ctx),{timeout:8000,encoding:"utf8",env:_bsEnv},function(_err,_stdout){
 delete globalThis._pendingBlankFills[_key];
 if(_err)return;
 var _out=(_stdout||"").trim();
@@ -981,7 +997,7 @@ globalThis._lastResolvedText=_nt;
 if(globalThis._debugLog)globalThis._debugLog("autoPopulate (script "+_slot.controlName+"): "+_out);
 if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
 });}catch(_be){delete globalThis._pendingBlankFills[_key];}
-})(_bsSlot,_bsCtrl,_bsKey);
+})(_bsSlot,_bsCtrl,_bsKey,_ctxWords);
 }
 if(globalThis._cueResolver&&process.env.GROQ_API_KEY){
 var _asText=_hlText;

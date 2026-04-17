@@ -1593,23 +1593,75 @@ if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
 
 ---
 
-## Step 26+ — TBD
+## Step 26 — Blank-fill sub-step 4: context words + env vars + `~` path (parity pass)
 
-Blank-fill continuation (ordered roughly by "smallest measurable next step"):
+**Goal:** Bring Step 25's `blankScript get` invocation up to parity with the original `readControlState` in `dynamicHighlight.ts:227`. Adds: context-words arg (non-keyword, non-blank words appended to the script call), environment variables (`CUES_MODEL`, `CUES_API_URL`, `CUES_API_KEY_ENV`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_<NAME>`), and `~` expansion in the script path.
 
-- **Context words passed to script** — `weather in Paris _` passes `Paris` to weather-blank.sh for geocoding. Small: grab non-keyword words from the sentence, append to `execFile` args.
-- **`blankClearKeywords`** — on fill, strip trigger keyword(s) from input. For `weather _` → just fill stays (no `weather` prefix cluttering the result). Small, visible.
-- **`blankKeywordExpansions`** — stocks `rddt` → `Reddit` display transform at fill time.
-- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` with a branch similar to Step 20's tip-alt branch.
+**Why this choice:** Step 25 shipped with an incomplete script-side contract. LLM-backed controls (prompt improver, answer) need env vars to know which model/API/prompt to use. Weather needs context for non-default locations. Without parity, half the configured controls would silently fall back to defaults or fail. User directly flagged: "This must have parity with the original since its complicated."
+
+**Exact change (inside Step 25's IIFE before `execFile` call):**
+
+1. Build context words by filtering `_bwds`: exclude positions `[_bsSlot.keywordStart.._bsSlot.keywordEnd]` and the blank at `_bsSlot.index`. (Step 26a, already added in Step 25 merge.)
+
+2. `~` expansion: `_bsPath = _ctrl.blankScript.replace(/^~/, $HOME)`.
+
+3. Build `_bsEnv` inheriting `process.env`, then per-control overrides:
+```js
+var _bsEnv=Object.assign({},process.env);
+if(_ctrl.model)_bsEnv.CUES_MODEL=_ctrl.model;
+if(_ctrl.apiUrl)_bsEnv.CUES_API_URL=_ctrl.apiUrl;
+if(_ctrl.apiKeyEnv)_bsEnv.CUES_API_KEY_ENV=_ctrl.apiKeyEnv;
+if(_ctrl.altCount)_bsEnv.CUES_ALT_COUNT=String(_ctrl.altCount);
+if(_ctrl.includeOriginal!==undefined)_bsEnv.CUES_INCLUDE_ORIGINAL=String(_ctrl.includeOriginal);
+if(_ctrl.prompts){for(var _pk in _ctrl.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUpperCase().replace(/[^A-Z0-9]/g,"_")]=_ctrl.prompts[_pk];}}
+```
+
+4. `execFile("bash", [_bsPath, "get", _slot.keyword].concat(_ctx), {timeout:8000, encoding:"utf8", env:_bsEnv}, callback)`.
+
+**Deliberate deviations from the original (each justified):**
+
+- **Async `execFile` (not sync `execFileSync`).** The original calls `readControlState` synchronously inside the resolver's source-query path. My implementation drives blank-fill directly from per-keystroke render, so sync would block the render thread for the script's full duration (up to 6-8s for network-backed scripts). Async + callback-refresh is the right tool for this driving context.
+
+- **Context filter by index range, not by string match.** Original filters `_ctx.filter(w => w!=="_" && w.toLowerCase() !== keyword.toLowerCase())`. Mine excludes `[keywordStart..keywordEnd]` and `index`. For single-word keywords these agree. For **multi-word keywords** (`"reddit stock"`), the original's string filter can't remove the individual `reddit` and `stock` words from context (it compares against the full phrase). Mine removes them correctly. Not matching a bug is deliberate.
+
+**Architectural note:** the original drives blank-fill through the resolver path (`buildSourcesFromConfig` passes `readControlState`; sources use it synchronously when producing alts for blank indices). My Step 25 deviates: spawns directly from the clear-on-typing IIFE. Parity on *script-side contract* (Step 26) was achieved — architectural parity (resolver-driven auto-populate) is a separate deferred refactor, tracked as a future step when `blankConsumeAll` / `blankConsumeContext` need full LLM source machinery.
+
+**Verification:**
+- `weather in Paris _` → Paris weather (context words reach geocoding).
+- `weather in Tokyo _` → Tokyo weather.
+- `weather _` → London default (empty context).
+- `reddit stock _` → unchanged (stocks ignores context/env).
+- `hn _` → unchanged.
+- Prompt/answer controls can now read their `CUES_MODEL` / `CUES_PROMPT_*` — not verified end-to-end in this step (no end-consumer yet; will confirm in a future step when we wire up prompt-improver or answer).
+
+**Rollback:** revert to Step 25's arg construction (drop env vars, path expansion stays or goes — harmless either way).
+
+**Peculiarities found during this step:**
+
+1. **User called out the need for parity explicitly**, which was the right catch. My Step 25 shipped without env vars and without `~` expansion — for weather/stocks/hn those were no-ops, but for prompt-improver and answer (which depend on `CUES_MODEL`, `CUES_PROMPT_classifier`, etc.) the scripts would have silently fallen back to defaults or failed. Lesson: when the original does a lot of setup per-invocation, verify the full setup landed, not just the minimum that makes one script work.
+
+2. **The original's context filter has a latent bug for multi-word keywords.** Since I already had an index-based filter in Step 25, mine is more correct. Mirror-the-baseline has limits — when the baseline has a known wart, don't copy the wart.
+
+**Status: ✅ Done** (verified 2026-04-17: parity on arg construction + env + path expansion; architectural parity deferred)
+
+---
+
+## Step 27+ — TBD
+
+Blank-fill continuation:
+
+- **`blankClearKeywords`** — on fill, strip trigger keyword(s) from input. For `weather in Paris _` → just the forecast remains (no `weather in Paris` prefix cluttering). Small, visible.
+- **`blankKeywordExpansions`** — stocks `rddt` → `Reddit` display transform at fill time (script output prefixed with expansion).
+- **Cycling filled blanks through `stepValues`** — extend `_cycleAlt` similar to Step 20's tip-alt branch.
 - **`blankDismissible`** — append `_` to cycle list so user can dismiss.
 - **Span tracking** — treat multi-word fill as single cycleable unit.
-- **`readControlState` wiring** — volume/brightness blanks populate with live value.
-- **`blankConsumeContext`** (answer) — LLM-backed blanks.
-- **`blankConsumeAll`** (prompt improver) — consume whole sentence + return multiple alts.
+- **`readControlState` wiring at resolver level** — for architectural parity, pass the callback into `buildSourcesFromConfig`. Unblocks blank-fill for resolver-backed sources.
+- **`blankConsumeContext`** (answer) — LLM-backed blanks via resolver path.
+- **`blankConsumeAll`** (prompt improver) — consume whole sentence + return multiple alts, dim the consumed range.
 - **Factor `_hlExport.cueTip` writes** — still deferred.
 - **`tips-mode: minimal` filtering** — design first.
 
-Pick one after Step 25 is verified.
+Pick one after Step 26 is verified.
 
 ---
 
