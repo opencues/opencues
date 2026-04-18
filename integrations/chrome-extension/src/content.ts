@@ -5,7 +5,7 @@ import { StatusBar } from './ui/status-bar';
 import { loadConfig, onConfigChange } from './adapters/chrome-storage-adapter';
 import { getControlKeywords, type ControlKeywordConfig } from './controls';
 import type { StoredConfig } from './types';
-import { startOpenCuesRuntime, publishTarget } from './opencues-bootstrap';
+import { startOpenCuesRuntime, publishTarget, notifyOpenCuesTextChange } from './opencues-bootstrap';
 
 /**
  * Content script entry point.
@@ -67,27 +67,15 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
   nav = new WordNavigator(target, engine, config.ttsRate);
   statusBar = new StatusBar();
 
-  // Synchronous render callback — called by navigator right after text change
-  // to rebuild highlights before the browser paints (prevents white flash)
-  nav.onRender = () => {
-    const state = nav!.getState();
-    renderer!.render('', state, engine!.words, engine!.spans);
-    updateStatus(state);
-  };
-
-  // Wire: engine updates → re-render highlights + status
-  // CSS Custom Highlight API doesn't modify DOM — safe to render during typing
-  engine.onUpdate(() => {
-    const state = nav!.getState();
-    renderer!.render(lastInputText, state, engine!.words, engine!.spans);
-    updateStatus(state);
-  });
-
-  // Wire: navigation state changes → re-render + status
-  nav.onChange((state, newText) => {
+  // CE.2+CE.3 — runtime owns rendering + key handling. The legacy
+  // renderer/nav are still constructed (so engine + cycling logic
+  // keep working until CE.4/CE.7+) but their render callbacks are
+  // wired to no-op. The runtime's CSS Highlight output via
+  // applyDirectives() is the only thing painting.
+  nav.onRender = () => { /* runtime renders via opencues-bootstrap */ };
+  engine.onUpdate(() => { /* runtime renders via opencues-bootstrap */ });
+  nav.onChange((_state, newText) => {
     if (newText) lastInputText = newText;
-    renderer!.render(lastInputText, state, engine!.words, engine!.spans);
-    updateStatus(state);
   });
 
   // Three-tier analysis trigger on input
@@ -96,6 +84,11 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
     if (nav?.cycling) return;
 
     let text = getText(target);
+
+    // CE.2+CE.3 — forward to runtime so DimRender / Statusline /
+    // BlankFill see the change. notifyOpenCuesTextChange also calls
+    // runtimeRender so the new highlights paint immediately.
+    notifyOpenCuesTextChange(text, 0, 'user');
 
     // Execute pending blankClearOnEdit removal (unconditional — outside highlight guard)
     if (engine?.pendingClearOnEdit) {

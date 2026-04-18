@@ -27,7 +27,8 @@
 // in a content-script context without changing observable behavior.
 
 import { boot, type BootResult } from 'opencues-runtime/dist/adapters/chrome/v1/boot';
-import type { LogLevel } from 'opencues-runtime/dist/src/adapter';
+import type { KeyEvent, LogLevel } from 'opencues-runtime/dist/src/adapter';
+import { applyDirectives, clearDirectives } from './runtime-renderer';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -157,9 +158,7 @@ export function startOpenCuesRuntime(): BootResult {
       if (cursor !== undefined) writeCursorOffset(cursor);
     },
     forceRender: () => {
-      // CE.3 wires this to the existing HighlightRenderer (or its
-      // replacement). For now: no-op. The existing engine.onUpdate
-      // path still drives renders via lastInputText reads.
+      runtimeRender();
     },
     readFile,
     writeFile,
@@ -180,4 +179,66 @@ export function notifyOpenCuesTextChange(
   source: 'user' | 'runtime' = 'user',
 ): void {
   bootResult?.notifyTextChange(text, cursorOffset, source);
+  // Re-render after every text change so DimRender's freshly-computed
+  // ranges (post-tip lookup, post-cycling) paint immediately.
+  runtimeRender();
 }
+
+/**
+ * Read current text + cursor from the focused target, ask the runtime
+ * for render directives, apply them via the CSS Highlight API. Called
+ * from forceRender (modules ask for re-paint) and after every text/key
+ * change.
+ */
+function runtimeRender(): void {
+  const target = currentTarget;
+  if (!target || !bootResult) return;
+  const text = target.textContent ?? '';
+  const cursor = readCursorOffset();
+  const directives = bootResult.collectRenderDirectives(text, cursor);
+  applyDirectives(target, directives);
+}
+
+/** Tear down runtime highlights — called when extension detaches. */
+export function clearRuntimeHighlights(): void {
+  clearDirectives();
+}
+
+/**
+ * Document-level keydown listener (capture phase). Fires before the
+ * existing WordNavigator's target listener, so consumed events get
+ * blocked via stopPropagation. Installed once per content-script load.
+ */
+function installKeyListener(): void {
+  document.addEventListener('keydown', (e) => {
+    if (!bootResult) return;
+    // Only handle events that touch the current target. This avoids
+    // hijacking keys on parts of the page outside our contenteditable.
+    const target = currentTarget;
+    if (!target) return;
+    const active = document.activeElement;
+    if (active !== target && !target.contains(active)) return;
+    const text = target.textContent ?? '';
+    const cursor = readCursorOffset();
+    const ev: KeyEvent = {
+      key: e.key.toLowerCase(),
+      modifiers: {
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        meta: e.metaKey,
+      },
+      text,
+      cursorOffset: cursor,
+    };
+    if (bootResult.dispatchKey(ev)) {
+      e.preventDefault();
+      e.stopPropagation();
+      runtimeRender();
+    }
+  }, true);
+}
+
+// Install once at module load. publishTarget gates which target the
+// listener acts on, so this is safe before any focus/attach.
+installKeyListener();
