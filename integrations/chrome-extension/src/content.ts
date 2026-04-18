@@ -20,7 +20,10 @@ import { startOpenCuesRuntime, publishTarget, notifyOpenCuesTextChange } from '.
 let engine: CueEngine | null = null;
 let renderer: HighlightRenderer | null = null;
 let nav: WordNavigator | null = null;
-let statusBar: StatusBar | null = null;
+// CE.6 — legacy StatusBar replaced by runtime-statusbar.ts driven by
+// the Statusline module's onSnapshot hook. Variable kept null so the
+// remaining ref sites are no-ops.
+const statusBar: { update: (...args: unknown[]) => void; destroy: () => void } | null = null;
 let domObserver: MutationObserver | null = null;
 let bodyObserver: MutationObserver | null = null;
 let abortController: AbortController | null = null;
@@ -38,7 +41,6 @@ function teardown(): void {
   abortController = null;
   nav?.destroy();
   renderer?.destroy();
-  statusBar?.destroy();
   domObserver?.disconnect();
   bodyObserver?.disconnect();
   engine?.clear();
@@ -48,7 +50,6 @@ function teardown(): void {
   checkBlanksInFlight = false;
   nav = null;
   renderer = null;
-  statusBar = null;
   domObserver = null;
   bodyObserver = null;
   engine = null;
@@ -65,7 +66,7 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
 
   renderer = new HighlightRenderer(target);
   nav = new WordNavigator(target, engine, config.ttsRate);
-  statusBar = new StatusBar();
+  // statusBar instance no longer constructed — runtime owns it (CE.6).
 
   // CE.2+CE.3 — runtime owns rendering + key handling. The legacy
   // renderer/nav are still constructed (so engine + cycling logic
@@ -485,10 +486,12 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
   if (lastInputText) engine.analyze(lastInputText);
 }
 
-function updateStatus(state: { active: boolean; wordIndex: number | null }): void {
-  if (!statusBar || !engine) return;
-  const def = state.wordIndex != null ? engine.getWordDef(state.wordIndex) : undefined;
-  statusBar.update(state as any, def, engine.cueControlTip);
+// CE.6 — runtime Statusline + statusSnapshotHook drive the floating
+// div via runtime-statusbar.applyStatuslinePayload. updateStatus is a
+// no-op kept so existing call sites compile during the migration; it
+// will be deleted in CE.9 cleanup.
+function updateStatus(_state: { active: boolean; wordIndex: number | null }): void {
+  /* runtime drives the statusbar */
 }
 
 function getText(el: HTMLElement): string {

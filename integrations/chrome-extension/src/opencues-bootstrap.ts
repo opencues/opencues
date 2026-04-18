@@ -29,6 +29,8 @@
 import { boot, type BootResult } from 'opencues-runtime/dist/adapters/chrome/v1/boot';
 import type { KeyEvent, LogLevel } from 'opencues-runtime/dist/src/adapter';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
+import { applyStatuslinePayload } from './runtime-statusbar';
+import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -47,6 +49,7 @@ const TIPS_KEY = `${STORAGE_PREFIX}/chrome-storage/.tips.json`;
 
 let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
+const speech = new WebSpeechAdapter();
 
 /** Called by content.ts when the focused contenteditable changes. */
 export function publishTarget(el: HTMLElement | null): void {
@@ -233,6 +236,10 @@ export function startOpenCuesRuntime(): BootResult {
     readDir,
     tipsPath: TIPS_KEY.slice(STORAGE_PREFIX.length),
     log,
+    // CE.6 — render statusline tip into the floating div.
+    statusSnapshotHook: (payload) => applyStatuslinePayload(payload as Parameters<typeof applyStatuslinePayload>[0]),
+    // CE.6 — TTS via Web Speech, gated on host providing the speak fn.
+    speakFn: (text, rate) => speech.speak(text, rate ? Number(rate) : 2),
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process
