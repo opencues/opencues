@@ -13,7 +13,7 @@ Phases shipped so far:
 | O.0 + O.1 (scaffold + boot) | `19723e1` | `095f4ff` | Live-test stub bindings work |
 | O.1 smoke + tests | `ac38791` | `19723e1` | 5 unit tests in adapter band |
 | O.2 (real prompt access) | `ad6ff0e` | `ac38791` | Holder pattern, Prompt patches |
-| O.3 Navigation | _pending_ | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
+| O.3 Navigation | `91e47f7` | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
 
 Each future entry below has the same shape. Most-recent-on-top.
 
@@ -21,7 +21,7 @@ Each future entry below has the same shape. Most-recent-on-top.
 
 ## O.3 — Navigation module
 
-**Commit:** _pending_
+**Commit:** `91e47f7`
 **Rollback to (prior):** `f4d088b`
 
 **Modules touched:**
