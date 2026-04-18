@@ -134,7 +134,13 @@ export class TTS {
     try {
       this.adapter.spawnProcess({
         command: 'bash',
-        args: [this.options.scriptPath, tip, this.options.rate ?? '2'],
+        // Path + rate precedence: opencues.md `tts-script:` /
+        // `tts-rate:` > host-supplied default > built-in fallback.
+        args: [
+          this.configLoader.opencuesState.settings.get('tts-script') ?? this.options.scriptPath,
+          tip,
+          this.configLoader.opencuesState.settings.get('tts-rate') ?? this.options.rate ?? '2',
+        ],
         detached: true,
       });
     } catch (err) {

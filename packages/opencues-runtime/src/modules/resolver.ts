@@ -107,11 +107,15 @@ export class Resolver {
       return;
     }
 
+    // Endpoint + model precedence: opencues.md `llm-endpoint:` /
+    // `llm-model:` > host-supplied default. Lets users switch providers
+    // without re-applying the patch.
+    const settings = this.configLoader.opencuesState.settings;
     const buildOpts = {
       httpAdapter: this._httpAdapter,
-      endpoint: this.options.endpoint,
+      endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       apiKey: this.options.apiKey,
-      defaultModel: this.options.defaultModel,
+      defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
       controls: this.configLoader.folderConfigs?.controlOverrides ?? {},
     };
     let sources: unknown[];
