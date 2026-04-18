@@ -39,12 +39,20 @@ export interface TTSOptions {
 
 export class TTS {
   private _unsub: Unsubscribe | null = null;
-  // Speak-once-per-navigation dedup. Stores the wordIndex we last spoke
-  // for; we only speak again when the user moves the highlight to a
-  // different word. Cycling alts keeps the wordIndex constant so it
-  // doesn't trigger speech (user requirement: cycling shouldn't read).
-  // Navigating away + back IS a wordIndex change → speaks again.
-  private _lastSpokenIndex: number | null = null;
+  // Speak-once-per-navigation dedup. We track the wordIndex we LAST
+  // SAW (not last spoke) so any change to a different index counts as
+  // a fresh navigation event — even if the intermediate word didn't
+  // produce speech (no tip / speak: false).
+  //
+  //   highlight idx 0 (speak)  → _lastSeenIndex = 0, fires
+  //   cycle (still idx 0)      → _lastSeenIndex unchanged, dedup blocks
+  //   highlight idx 1 (no tip) → _lastSeenIndex = 1, no speak (no tip)
+  //   highlight idx 0 (back)   → _lastSeenIndex was 1, now 0 → fires
+  //
+  // Tracking "spoken" instead of "seen" caused the regression where a
+  // mid-traversal word with no tip left the spoken-index pinned, so
+  // returning to the original word looked like a duplicate.
+  private _lastSeenIndex: number | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -72,7 +80,7 @@ export class TTS {
   /** Exposed for unit tests. Returns the spoken text (or null if no spawn). */
   maybeSpeak(ctx: RenderContext): string | null {
     if (!this.hlState.active || this.hlState.wordIndex === null) {
-      this._lastSpokenIndex = null;
+      this._lastSeenIndex = null;
       return null;
     }
     // Chrome (and other sandboxed hosts) advertise no spawn-process —
@@ -83,11 +91,13 @@ export class TTS {
     if (this.configLoader.opencuesState.voiceMode === 'inactive') return null;
 
     const wordIndex = this.hlState.wordIndex;
-    // Per-navigation dedup: only speak when the highlight is on a
-    // word we haven't spoken for THIS visit. Cycling Up/Down keeps
-    // wordIndex constant — no re-read. Navigating away then back
-    // changes wordIndex twice — speaks again on return.
-    if (this._lastSpokenIndex === wordIndex) return null;
+    // Per-navigation dedup: speak only on the render where wordIndex
+    // changes. Cycling on the same wordIndex stays silent. Always
+    // update _lastSeenIndex BEFORE bailing on missing tip / speak:false
+    // so a later return to that index is treated as a fresh visit.
+    const indexChanged = this._lastSeenIndex !== wordIndex;
+    this._lastSeenIndex = wordIndex;
+    if (!indexChanged) return null;
     const def = this.dynDefs.get(wordIndex);
     const words = splitWords(ctx.text);
     const target = words[wordIndex];
@@ -128,7 +138,7 @@ export class TTS {
       if (curAlt === '_') {
         // Mark this index as "visited" so re-render-on-cycle doesn't
         // retrigger; navigating away clears via the active-check above.
-        this._lastSpokenIndex = wordIndex;
+        /* index already tracked by _lastSeenIndex above */
         return null;
       }
       // Find the originating control by blankTip match.
@@ -147,13 +157,13 @@ export class TTS {
       if (!lookup || !lookup.speak) {
         // Mark visited so we don't re-check on every render of the same
         // word. Re-evaluated when wordIndex changes.
-        this._lastSpokenIndex = wordIndex;
+        /* index already tracked by _lastSeenIndex above */
         return null;
       }
       tip = lookup.altCueTips?.[displayed] ?? lookup.cueTip;
     }
 
-    this._lastSpokenIndex = wordIndex;
+    /* index already tracked by _lastSeenIndex above */
     if (!tip) return null;
 
     // Rate precedence: opencues.md `tts-rate:` > host-supplied default
