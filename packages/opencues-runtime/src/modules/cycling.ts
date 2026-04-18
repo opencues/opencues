@@ -18,6 +18,7 @@ import type { ConfigLoader, ControlEntry, StepPattern } from './config-loader';
 import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
+import type { SelectorSatelliteState } from '../state/selector-satellite';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -30,6 +31,7 @@ export class Cycling {
     private configLoader: ConfigLoader,
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
+    private selectorSatelliteState?: SelectorSatelliteState,
   ) {}
 
   subscribe(): void {
@@ -57,6 +59,13 @@ export class Cycling {
     const target = words[wordIndex];
     if (!target) return false;
 
+    // -1. Selector / satellite — opencues "settings" pattern (Step 35).
+    //     Highlight on selector cycles setting names; on satellite
+    //     cycles values. Both write back via the control's blankScript.
+    if (this.selectorSatelliteState?.current && this.cycleSelectorSatellite(event, words, wordIndex, direction)) {
+      return true;
+    }
+
     // 0. Span fill — takes precedence when the highlight falls within
     //    a consume-all span (prompt improver) or a multi-word stepValues
     //    span (affirmations). Cycles through the stashed alts.
@@ -83,6 +92,123 @@ export class Cycling {
 
     // 4. Plain cue word — fall through to original static-alts cycling.
     return this.cycleStaticAlts(event, target, wordIndex, direction);
+  }
+
+  // ─── Path -1: selector / satellite (Step 35 / G.b) ──────────────────
+
+  private cycleSelectorSatellite(
+    event: KeyEvent,
+    words: ReadonlyArray<{ word: string; start: number; end: number; index: number }>,
+    wordIndex: number,
+    direction: 1 | -1,
+  ): boolean {
+    const entry = this.selectorSatelliteState!.current!;
+    const selLen = Math.max(1, entry.selectorLength);
+    const satLen = Math.max(1, entry.satelliteLength);
+    const selEnd = entry.selectorIndex + selLen - 1;
+    const satEnd = entry.satelliteIndex + satLen - 1;
+    const isSelector = wordIndex >= entry.selectorIndex && wordIndex <= selEnd;
+    const isSatellite = wordIndex >= entry.satelliteIndex && wordIndex <= satEnd;
+    if (!isSelector && !isSatellite) return false;
+
+    const definitions = this.configLoader.opencuesState.definitions;
+    if (definitions.size === 0) return false;
+
+    const selStartWord = words[entry.selectorIndex];
+    const selEndWord = words[selEnd];
+    const satStartWord = words[entry.satelliteIndex];
+    const satEndWord = words[satEnd];
+    if (!selStartWord || !selEndWord || !satStartWord || !satEndWord) return false;
+
+    if (isSelector) {
+      const names = Array.from(definitions.keys());
+      const curIdx = names.indexOf(entry.currentSetting);
+      const nextIdx = ((curIdx + direction) % names.length + names.length) % names.length;
+      const nextSetting = names[nextIdx];
+      const nextDef = definitions.get(nextSetting);
+      const provisionalValue = nextDef?.valueOrder[0] ?? '';
+
+      const newText = spliceSelectorSatellite(event.text, selStartWord, selEndWord, satEndWord, nextSetting, provisionalValue, entry.separator);
+      const oldRegionStart = selStartWord.start;
+      const oldRegionEnd = satEndWord.end;
+      const newRegionEnd = selStartWord.start + nextSetting.length + entry.separator.length + provisionalValue.length;
+      const newCursor = preservedCursor(event.cursorOffset, oldRegionStart, oldRegionEnd, newRegionEnd, newText.length);
+
+      entry.currentSetting = nextSetting;
+      entry.currentValue = provisionalValue;
+      entry.selectorLength = Math.max(1, nextSetting.split(/\s+/).filter(Boolean).length);
+      entry.satelliteIndex = entry.selectorIndex + entry.selectorLength;
+      entry.satelliteLength = Math.max(1, provisionalValue.split(/\s+/).filter(Boolean).length);
+      this.selectorSatelliteState!.set(entry, newText);
+      this.adapter.setText(newText);
+      this.adapter.setCursorOffset(newCursor);
+      this.adapter.forceRender();
+
+      if (entry.scriptPath && this.adapter.capabilities.includes('spawn-process')) {
+        const handle = this.adapter.spawnProcess({
+          command: 'bash',
+          args: [entry.scriptPath, 'get', nextSetting],
+          timeoutMs: 4000,
+        });
+        handle.result.then(res => {
+          if (res.exitCode !== 0 || res.timedOut) return;
+          const fetched = res.stdout.split(/\n/)[0]?.trim();
+          if (!fetched || fetched === provisionalValue) return;
+          const cur = this.adapter.getText();
+          const cleaned = cur.replace(/[\u200B\u200C]/g, '');
+          const curWords = splitWords(cleaned);
+          const newSatEnd = entry.satelliteIndex + Math.max(1, entry.satelliteLength) - 1;
+          const ts = curWords[entry.satelliteIndex];
+          const te = curWords[newSatEnd];
+          if (!ts || !te) return;
+          const replaced = cleaned.slice(0, ts.start) + fetched + cleaned.slice(te.end);
+          entry.currentValue = fetched;
+          entry.satelliteLength = Math.max(1, fetched.split(/\s+/).filter(Boolean).length);
+          this.selectorSatelliteState!.set(entry, replaced);
+          // Don't move the cursor — the user already moved it (or didn't)
+          // synchronously; this is a background update.
+          if (this.adapter.pushText) this.adapter.pushText(replaced);
+          else { this.adapter.setText(replaced); this.adapter.forceRender(); }
+        }).catch(err => {
+          this.adapter.log('error', `Cycling: selector get failed for ${entry.controlName}`, err);
+        });
+      }
+      return true;
+    }
+
+    // Satellite cycle.
+    const def = definitions.get(entry.currentSetting);
+    if (!def || def.valueOrder.length === 0) return false;
+    const valIdx = def.valueOrder.indexOf(entry.currentValue);
+    const nextValIdx = ((valIdx + direction) % def.valueOrder.length + def.valueOrder.length) % def.valueOrder.length;
+    const nextValue = def.valueOrder[nextValIdx];
+
+    const newText = spliceSelectorSatellite(event.text, selStartWord, selEndWord, satEndWord, entry.currentSetting, nextValue, entry.separator);
+    const oldRegionStart = selStartWord.start;
+    const oldRegionEnd = satEndWord.end;
+    const newRegionEnd = selStartWord.start + entry.currentSetting.length + entry.separator.length + nextValue.length;
+    const newCursor = preservedCursor(event.cursorOffset, oldRegionStart, oldRegionEnd, newRegionEnd, newText.length);
+
+    entry.currentValue = nextValue;
+    entry.satelliteLength = Math.max(1, nextValue.split(/\s+/).filter(Boolean).length);
+    this.selectorSatelliteState!.set(entry, newText);
+    this.adapter.setText(newText);
+    this.adapter.setCursorOffset(newCursor);
+    this.adapter.forceRender();
+
+    if (entry.scriptPath && this.adapter.capabilities.includes('spawn-process')) {
+      try {
+        this.adapter.spawnProcess({
+          command: 'bash',
+          args: [entry.scriptPath, 'set', entry.currentSetting, nextValue],
+          detached: true,
+          timeoutMs: 4000,
+        });
+      } catch (err) {
+        this.adapter.log('error', `Cycling: satellite set failed for ${entry.controlName}`, err);
+      }
+    }
+    return true;
   }
 
   // ─── Path 0: span fill (consume-all + multi-word stepValues) ──────────
@@ -299,4 +425,50 @@ export class Cycling {
     this.adapter.forceRender();
     return true;
   }
+}
+
+/**
+ * Replace selector + separator + satellite in `text` using the current
+ * char positions of the two anchor words. Cleaner than a 5-arg slice
+ * call in two places.
+ */
+/**
+ * Cursor placement after a region [oldStart..oldEnd] in `oldText` is
+ * replaced with content ending at `newEnd` in `newText`:
+ *
+ *   - cursor before oldStart → unchanged.
+ *   - cursor past oldEnd → shifted by lenDiff so it stays at the same
+ *     "position relative to the right side".
+ *   - cursor inside [oldStart..oldEnd] → snapped to newEnd (end of the
+ *     replaced region in the new text).
+ */
+function preservedCursor(
+  oldCursor: number,
+  oldStart: number,
+  oldEnd: number,
+  newEnd: number,
+  newTextLength: number,
+): number {
+  let result: number;
+  if (oldCursor <= oldStart) result = oldCursor;
+  else if (oldCursor >= oldEnd) result = oldCursor + (newEnd - oldEnd);
+  else result = newEnd;
+  return Math.max(0, Math.min(result, newTextLength));
+}
+
+function spliceSelectorSatellite(
+  text: string,
+  selStartWord: { start: number; end: number },
+  selEndWord: { start: number; end: number },
+  satEndWord: { start: number; end: number },
+  newSelector: string,
+  newSatellite: string,
+  separator: string,
+): string {
+  void selEndWord; // signature consistency; range is [selStartWord.start..satEndWord.end]
+  return text.slice(0, selStartWord.start)
+    + newSelector
+    + separator
+    + newSatellite
+    + text.slice(satEndWord.end);
 }

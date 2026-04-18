@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase F.b (commit pending).
+**Last synced:** Phase G.b (commit pending).
 
 ---
 
@@ -53,11 +53,11 @@ just architecture.
 | 32 | dim the consume-all range | ✓ | Phase E.10. DimRender adds a contiguous dim covering the consume-all span (split around the active word so the highlight overlay wins). Bug surfaced + fixed: overlapping dim ranges (cue-word dim inside consume-all dim) needed coalescing in `applyDirectives` — without it, the inner range's DIM_OFF left a visual gap. See REPAIR.md #7. |
 | 33 | general span infrastructure + stepValues cycling + blankDismissible + statusline tip parity | ✓ | Phase F.a (foundation: rename, sync stepValues span, nav skip, full-span highlight) + F.b (blankDismissible appends `_`; DismissedBlanks blocks re-fill on dismissed slots; async multi-word/multi-line fills populate span; statusline span tip with cueControl=true). Live verified: affirmations + hackernews + weather + prompt improver all cycle as units, dismiss correctly, statusline shows `Daily affirmations` / `Hacker News` / `Weather` / `Prompt improver`. ConfigLoader.lookup falls back to controlsByWord so control words (`volume`, `brightness`) get their `tip:` from controls/* cue.md too. |
 | 34 | factor `_hlExport.cueTip` writes (one projection, one apply) | — | v2's Statusline already centralises the projection — Step 34 was a v1-specific cleanup, not needed in v2. |
-| 35 | selector/satellite (multi-sub-step) | ○ | opencues.md-state-driven cycling. Big. |
+| 35 | selector/satellite (multi-sub-step) | ◐ | Phase G.a: parser + dual-insert. Phase G.b: cycling (selector + satellite, both can be multi-word like "display mode" / "split pane"), statusline tip routing for selector vs satellite, span dim + highlight expansion to whole side, cursor preserved across cycles via preservedCursor helper. Live verified across all 6 settings. blankClearOnEdit (G.c) still pending — currently the pair stays even when user breaks the structure. |
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 28 ✓, 4 ◐, 4 ○, 2 — out of 38 steps. (Phase F.a + F.b completed Step 33; Bucket F done.)
+**Tally:** 28 ✓, 5 ◐, 3 ○, 2 — out of 38 steps. (Phase G.a + G.b moved Step 35 ○→◐.)
 
 ---
 

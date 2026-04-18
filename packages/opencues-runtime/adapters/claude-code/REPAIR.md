@@ -172,7 +172,33 @@ the active highlighted word stays bright (correct) but other random
 chunks revert to undimmed at exactly the positions where cue words
 appear inside the fill.
 
-### 8. Don't stack `\x1b[7m` (inverse) with `\x1b[2m` (dim) on the same chars
+### 8. `pushText` callers need to update `lastSeenText` themselves
+
+Found during Phase G.b (Step 35). `bindings.setText` records its
+argument in `pendingText`; `consumePendingRender` then drains it and
+sets `lastSeenText` so the next `applyRender → checkTextDrift` sees no
+diff and doesn't fire a 'user' textChange.
+
+`bindings.pushText` is a different path — it calls the host's
+`__oc_pushHostText` directly (which calls onChange + ZWS-toggles).
+There's no pendingText cycle, so checkTextDrift sees the new text
+differs from lastSeenText, finds pendingText is null, and fires a
+`source: 'user'` event. Navigation's onTextChange handler then
+deactivates the highlight (it interprets unsolicited text changes as
+typing).
+
+Symptom: when an async runtime path uses `pushText` (e.g. selector
+script-get callback updating the satellite), the highlight gets killed
+right after the update lands. User sees the highlight flash off.
+
+Fix: boot's `bindings.pushText` wraps the host call to update
+`lastSeenText` (and `lastSeenCursor` when given) BEFORE invoking the
+host. Then checkTextDrift sees a match → no event → highlight stays.
+
+If you reintroduce a direct `pushText: host.pushText` shortcut in
+boot.ts, expect this regression. The wrap is small but load-bearing.
+
+### 9. Don't stack `\x1b[7m` (inverse) with `\x1b[2m` (dim) on the same chars
 
 Found during Phase F.a (Step 33). When a multi-word span fill is active
 and the highlight covers the whole span, the natural temptation is to
@@ -188,7 +214,7 @@ across terminals. If a future feature genuinely needs both attributes
 on the same chars, test on at least: tmux + xterm, gnome-terminal,
 iTerm2.
 
-### 9. The host may keep the `value` prop in lock-step with our InputZone
+### 10. The host may keep the `value` prop in lock-step with our InputZone
 
 Returning `InputZone.fromText(newText, P, cursor)` from the
 `handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.

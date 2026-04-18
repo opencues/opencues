@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { Cycling } from './cycling';
 import { ConfigLoader } from './config-loader';
 import { Navigation } from './navigation';
@@ -6,6 +6,7 @@ import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
+import { SelectorSatelliteState } from '../state/selector-satellite';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({
@@ -208,6 +209,234 @@ describe('Cycling consume-all (Step 31)', () => {
     // Cycle 2→0: `_` → foo
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(dismissed.has(0)).toBe(false);
+  });
+
+  it('Phase G.b: cycling selector rotates setting names + spawns get script', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud
+      inactive: TTS silenced
+  debug-mode:
+    tip: Debug logging
+    values:
+      on: emit
+      off: silent
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'off\n', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    hlState.activate(0, 'voice-mode active'); // selector
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // Synchronous part: text now has the next setting name + first declared value.
+    expect(adapter.setTextCalls.at(-1)).toBe('debug-mode on');
+    expect(ss.current?.currentSetting).toBe('debug-mode');
+    // Async script `get debug-mode` was spawned.
+    expect(spawnSpy).toHaveBeenCalled();
+    expect(spawnSpy.mock.calls[0][0].args).toEqual(['/tmp/oc.sh', 'get', 'debug-mode']);
+  });
+
+  it('Phase G.b: cycling satellite rotates values + spawns set script', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: t
+    values:
+      active: a
+      inactive: i
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    hlState.activate(1, 'voice-mode active'); // satellite
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
+    expect(ss.current?.currentValue).toBe('inactive');
+    expect(spawnSpy.mock.calls[0][0].args).toEqual(['/tmp/oc.sh', 'set', 'voice-mode', 'inactive']);
+    expect(spawnSpy.mock.calls[0][0].detached).toBe(true);
+  });
+
+  it('Phase G.b: satellite cycle handles multi-word values (e.g. plain text → rich markdown)', async () => {
+    const OPENCUES_MD = `---
+output-format: plain text
+settings:
+  output-format:
+    tip: Format
+    values:
+      plain text: a
+      rich markdown: b
+      structured json: c
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('output-format plain text');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 2,
+      currentSetting: 'output-format',
+      currentValue: 'plain text',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'output-format plain text');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess');
+    hlState.activate(1, 'output-format plain text'); // first satellite word
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // Should replace the WHOLE "plain text" with "rich markdown".
+    expect(adapter.setTextCalls.at(-1)).toBe('output-format rich markdown');
+    expect(ss.current?.currentValue).toBe('rich markdown');
+    expect(ss.current?.satelliteLength).toBe(2);
+  });
+
+  it('Phase G.b: cycling from inside a multi-word satellite still triggers cycle', async () => {
+    const OPENCUES_MD = `---
+output-format: plain text
+settings:
+  output-format:
+    tip: Format
+    values:
+      plain text: a
+      structured json: b
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('output-format plain text');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 2,
+      currentSetting: 'output-format',
+      currentValue: 'plain text',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'output-format plain text');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    hlState.activate(2, 'output-format plain text'); // SECOND satellite word ("text")
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('output-format structured json');
+  });
+
+  it('Phase G.b: multi-word selector + satellite cycle as units (display mode case)', async () => {
+    const OPENCUES_MD = `---
+display mode: split pane
+settings:
+  display mode:
+    tip: Layout
+    values:
+      focus: f
+      split pane: s
+      zen: z
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('display mode split pane');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '',
+      selectorIndex: 0,
+      selectorLength: 2,
+      satelliteIndex: 2,
+      satelliteLength: 2,
+      currentSetting: 'display mode',
+      currentValue: 'split pane',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'display mode split pane');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    // Cycle satellite from "split pane" → "zen" (single word).
+    hlState.activate(2, 'display mode split pane'); // first satellite word
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('display mode zen');
+    expect(ss.current?.currentValue).toBe('zen');
+    expect(ss.current?.satelliteLength).toBe(1);
+    // Now satellite is single word; cycle again → "focus".
+    hlState.activate(2, 'display mode zen');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('display mode focus');
+    expect(ss.current?.satelliteLength).toBe(1);
   });
 
   it('does nothing when there is only one alternative', async () => {

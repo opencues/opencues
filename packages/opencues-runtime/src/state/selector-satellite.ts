@@ -19,10 +19,22 @@ export interface SelectorSatelliteEntry {
   readonly controlName: string;
   /** Absolute path to the control's blankScript (already ~-expanded). */
   readonly scriptPath: string;
-  /** Word index of the selector token in the host text. */
+  /** Word index of the FIRST word of the selector. */
   selectorIndex: number;
-  /** Word index of the satellite token (typically selectorIndex + 1). */
+  /**
+   * Word count of the selector. Usually 1 ("voice-mode"), but can be 2+
+   * for hyphen-less names like "display mode". Updated on each cycle
+   * to match the new setting name's word count.
+   */
+  selectorLength: number;
+  /** Word index of the FIRST word of the satellite (selectorIndex + selectorLength). */
   satelliteIndex: number;
+  /**
+   * Word count of the satellite. Often 1 ("active"), but can be 2+
+   * for values like "plain text", "rich markdown", "structured json".
+   * Updated on each cycle to match the new value's word count.
+   */
+  satelliteLength: number;
   /** Currently-displayed setting name. */
   currentSetting: string;
   /** Currently-displayed value for that setting. */

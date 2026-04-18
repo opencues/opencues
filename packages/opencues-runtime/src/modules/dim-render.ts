@@ -12,6 +12,7 @@ import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
+import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 
 export class DimRender {
@@ -23,6 +24,7 @@ export class DimRender {
     private _dynDefs: DynDefs,
     private configLoader?: ConfigLoader,
     private spanFillState?: SpanFillState,
+    private selectorSatelliteState?: SelectorSatelliteState,
   ) {}
 
   subscribe(): void {
@@ -80,9 +82,33 @@ export class DimRender {
       }
     }
 
+    // Phase G.b — selector + satellite dim. Both sides can be multi-word
+    // ("display mode" / "plain text"). Each side gets its own dim
+    // layer; highlight overlay on either side wins.
+    const ss = this.selectorSatelliteState?.current ?? null;
+    const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
+    const ssSatEnd = ss ? ss.satelliteIndex + Math.max(1, ss.satelliteLength) - 1 : 0;
+    const activeInSelector = ss !== null
+      && activeIndex !== null
+      && activeIndex >= ss.selectorIndex
+      && activeIndex <= ssSelEnd;
+    const activeInSatellite = ss !== null
+      && activeIndex !== null
+      && activeIndex >= ss.satelliteIndex
+      && activeIndex <= ssSatEnd;
+    if (hasDimCap && ss) {
+      const ss0 = words[ss.selectorIndex];
+      const ss1 = words[ssSelEnd];
+      const ts = words[ss.satelliteIndex];
+      const te = words[ssSatEnd];
+      if (ss0 && ss1 && !activeInSelector) dimRanges.push({ start: ss0.start, end: ss1.end });
+      if (ts && te && !activeInSatellite) dimRanges.push({ start: ts.start, end: te.end });
+    }
+
     // Highlight: the active word (overlaid). When the active word is
-    // inside a span fill, expand the highlight to cover the entire span
-    // — that's how the user sees a multi-word fill as one cycleable unit.
+    // inside a span fill OR a multi-word satellite, expand the
+    // highlight to cover the whole unit — that's how the user sees a
+    // multi-word value as one cycleable thing.
     let highlight: { start: number; end: number } | undefined;
     if (hasHighlightCap && this.hlState.active && this.hlState.wordIndex !== null) {
       if (activeInSpan && span) {
@@ -90,6 +116,16 @@ export class DimRender {
         const endWord = words[span.index + spanLen - 1];
         if (startWord && endWord) {
           highlight = { start: startWord.start, end: endWord.end };
+        }
+      } else if (activeInSelector && ss) {
+        const s0 = words[ss.selectorIndex];
+        const s1 = words[ssSelEnd];
+        if (s0 && s1) highlight = { start: s0.start, end: s1.end };
+      } else if (activeInSatellite && ss) {
+        const ts = words[ss.satelliteIndex];
+        const te = words[ssSatEnd];
+        if (ts && te) {
+          highlight = { start: ts.start, end: te.end };
         }
       } else {
         const target = words[this.hlState.wordIndex];

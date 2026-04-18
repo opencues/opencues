@@ -13,6 +13,7 @@ import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
+import type { SelectorSatelliteState } from '../state/selector-satellite';
 
 export interface WordSpan {
   readonly start: number;
@@ -42,6 +43,12 @@ export class Navigation {
      * fill counts as one nav stop, anchored on its origin.
      */
     private spanFillState?: SpanFillState,
+    /**
+     * Optional. Selector + satellite indices are forced into the nav
+     * target list so the user can step onto either word even if neither
+     * "voice-mode" nor "active" appears in cueMap.
+     */
+    private selectorSatelliteState?: SelectorSatelliteState,
   ) {}
 
   subscribe(): void {
@@ -164,7 +171,28 @@ export class Navigation {
       return words.map(w => w.index);
     })();
 
-    if (!span) return baseTargets;
+    // Phase G.b — force-include selector-start + satellite-start. Drop
+    // inner words of either side (multi-word selectors like "display
+    // mode" or values like "plain text" cycle as single units).
+    const ss = this.selectorSatelliteState?.current ?? null;
+    const withSelectorSatellite = (ins: number[]): number[] => {
+      if (!ss) return ins;
+      const selLen = Math.max(1, ss.selectorLength);
+      const satLen = Math.max(1, ss.satelliteLength);
+      const selEnd = ss.selectorIndex + selLen - 1;
+      const satEnd = ss.satelliteIndex + satLen - 1;
+      const isInner = (i: number): boolean =>
+        (i > ss.selectorIndex && i <= selEnd) ||
+        (i > ss.satelliteIndex && i <= satEnd);
+      const out = ins.filter(i => !isInner(i));
+      for (const idx of [ss.selectorIndex, ss.satelliteIndex]) {
+        if (!out.includes(idx) && words.some(w => w.index === idx)) out.push(idx);
+      }
+      out.sort((a, b) => a - b);
+      return out;
+    };
+
+    if (!span) return withSelectorSatellite(baseTargets);
 
     // Drop inner span positions; ensure origin is in the list.
     const out = baseTargets.filter(i => !isInsideSpan(i));
@@ -173,7 +201,7 @@ export class Navigation {
       out.push(span.index);
       out.sort((a, b) => a - b);
     }
-    return out;
+    return withSelectorSatellite(out);
   }
 }
 

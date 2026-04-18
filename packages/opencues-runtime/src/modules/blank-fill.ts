@@ -368,11 +368,15 @@ export class BlankFill {
         const scriptPath = control.blankScript
           ? (control.blankScript.startsWith('~') ? home + control.blankScript.slice(1) : control.blankScript)
           : '';
+        const selectorLength = Math.max(1, selectorRaw.split(/\s+/).filter(Boolean).length);
+        const satelliteLength = Math.max(1, satelliteRaw.split(/\s+/).filter(Boolean).length);
         this.selectorSatelliteState.set({
           controlName: slot.controlName,
           scriptPath,
           selectorIndex: startWord.index,
-          satelliteIndex: startWord.index + 1,
+          selectorLength,
+          satelliteIndex: startWord.index + selectorLength,
+          satelliteLength,
           currentSetting: selectorRaw,
           currentValue: satelliteRaw,
           separator: sep,

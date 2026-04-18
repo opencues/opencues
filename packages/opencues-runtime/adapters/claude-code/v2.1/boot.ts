@@ -232,7 +232,18 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess,
-    pushText: host.pushText,
+    // Wrap pushText so runtime-initiated async pushes (e.g. selector
+    // script-get callbacks) mark themselves as runtime — otherwise the
+    // next applyRender's checkTextDrift sees the new text differs from
+    // lastSeenText AND pendingText is null, fires a 'user' textChange,
+    // and Navigation deactivates the highlight.
+    pushText: host.pushText
+      ? (text: string, cursor?: number): void => {
+          lastSeenText = text;
+          if (typeof cursor === 'number') lastSeenCursor = cursor;
+          host.pushText!(text, cursor);
+        }
+      : undefined,
     log,
   };
 
@@ -251,11 +262,11 @@ export function boot(host: HostInfo): BootResult {
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
   // Subscribe modules synchronously so the very first key dispatch is wired.
-  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState);
+  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   navigation.subscribe();
-  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState);
+  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   dimRender.subscribe();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks);
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState);
   cycling.subscribe();
 
   // BlankFill: scans for `_` placeholders + matched control. Owns the
@@ -273,7 +284,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
-    }, configLoader, spanFillState);
+    }, configLoader, spanFillState, selectorSatelliteState);
     statusline.subscribe();
   }
 

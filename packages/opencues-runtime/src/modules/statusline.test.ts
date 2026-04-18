@@ -226,6 +226,96 @@ describe('Statusline write behaviour', () => {
     expect(p.currentAltIndex).toBe(0);
   });
 
+  it('Phase G.b: selector word emits setting-level tip', async () => {
+    const { SelectorSatelliteState } = await import('../state/selector-satellite');
+    const OPENCUES_MD = `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud
+      inactive: TTS silenced
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
+        '/proj/opencues.md': OPENCUES_MD,
+      },
+    });
+    adapter.pushText('voice-mode active');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const sl = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/x.json',
+    }, loader, undefined, ss);
+    hlState.activate(0, 'voice-mode active'); // selector
+    const p = sl.buildPayload({ text: 'voice-mode active', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBe('Gates TTS globally');
+    expect(p.cueControl).toBe(true);
+  });
+
+  it('Phase G.b: satellite word emits per-value tip', async () => {
+    const { SelectorSatelliteState } = await import('../state/selector-satellite');
+    const OPENCUES_MD = `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud
+      inactive: TTS silenced
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
+        '/proj/opencues.md': OPENCUES_MD,
+      },
+    });
+    adapter.pushText('voice-mode active');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const sl = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/x.json',
+    }, loader, undefined, ss);
+    hlState.activate(1, 'voice-mode active'); // satellite
+    const p = sl.buildPayload({ text: 'voice-mode active', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBe('TTS reads tips aloud');
+    expect(p.cueControl).toBe(true);
+  });
+
   it('Phase F.b: highlight outside the span uses cueMap (no span tip leakage)', async () => {
     const { SpanFillState } = await import('../state/span-fill');
     const adapter = new MockAdapter();

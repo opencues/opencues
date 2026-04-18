@@ -14,6 +14,7 @@ import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
+import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -60,6 +61,12 @@ export class Statusline {
      * like "13.9°C" or "Reddit"). Phase F.b.
      */
     private spanFillState?: SpanFillState,
+    /**
+     * Optional. Selector/satellite tip routing (Step 35 / Phase G.b):
+     * selector word shows the setting's `tip`; satellite shows the
+     * per-value tip from opencues.md `settings:` block.
+     */
+    private selectorSatelliteState?: SelectorSatelliteState,
   ) {}
 
   subscribe(): void {
@@ -92,6 +99,37 @@ export class Statusline {
     // Strip our zero-width-toggle noise so the consumer sees clean strings.
     const clean = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
     const cleanHighlighted = clean(highlightedWord);
+
+    // Phase G.b — selector/satellite takes priority over both span and
+    // cue lookup. Selector word emits the setting's `tip`; satellite
+    // emits the value-specific tip. cueControl=true so the consumer
+    // prints the tip alone.
+    const ss = this.selectorSatelliteState?.current ?? null;
+    const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
+    const ssSatEnd = ss ? ss.satelliteIndex + Math.max(1, ss.satelliteLength) - 1 : 0;
+    const ssOnSelector = ss !== null && wordIndex >= ss.selectorIndex && wordIndex <= ssSelEnd;
+    const ssInSatellite = ss !== null && wordIndex >= ss.satelliteIndex && wordIndex <= ssSatEnd;
+    if (ss && (ssOnSelector || ssInSatellite)) {
+      const def = this.configLoader?.opencuesState.definitions.get(ss.currentSetting);
+      let ssTip: string | null = null;
+      if (def) {
+        ssTip = ssOnSelector
+          ? def.tip ?? null
+          : def.valueTips.get(ss.currentValue) ?? null;
+      }
+      return {
+        active: true,
+        highlightedWordIndex: wordIndex,
+        highlightedWord: cleanHighlighted,
+        currentAltIndex: 0,
+        alts: [cleanHighlighted],
+        cueTip: tipsHidden ? null : ssTip,
+        altCueTips: null,
+        cueControl: true,
+        wordCount: words.filter(w => clean(w.word).length > 0).length,
+        timestamp: Date.now(),
+      };
+    }
 
     // Phase F.b — span fill takes priority. When the highlight is on
     // any word inside an active span, render the control's blankTip
