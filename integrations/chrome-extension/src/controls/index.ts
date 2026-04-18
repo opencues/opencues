@@ -2,7 +2,7 @@ import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
 // Hoisted to runtime — same classes, every host. Chrome's
 // src/controls/hackernews.ts + stocks.ts + weather.ts have been deleted.
-import { HackerNewsControl, StocksControl, WeatherControl } from 'opencues-runtime/dist/src/controls';
+import { AnswerControl, HackerNewsControl, StocksControl, WeatherControl } from 'opencues-runtime/dist/src/controls';
 import { PromptImproverControl, type PromptImproverConfig } from './prompt-improver';
 
 export type { BrowserControl } from './types';
@@ -153,6 +153,14 @@ export function createControls(options?: {
 
   if (options?.llmConfig) {
     controls.set('prompt', new PromptImproverControl(options.llmConfig));
+    // Same LLM credentials power the answer control — factual lookups,
+    // translations, definitions. AnswerControl is read-only + multi-line
+    // for cycling; degrades to "" without a key.
+    controls.set('answer', new AnswerControl({
+      apiKey: options.llmConfig.apiKey,
+      apiUrl: options.llmConfig.apiUrl,
+      model: options.llmConfig.model,
+    }));
   }
 
   return controls;

@@ -17,6 +17,7 @@ export { FetchHttpAdapter } from './http-adapter';
 export { HackerNewsControl } from './hackernews';
 export { StocksControl, type StocksControlOptions } from './stocks';
 export { WeatherControl, type WeatherControlOptions } from './weather';
+export { AnswerControl, type AnswerControlOptions } from './answer';
 
 /**
  * Build a controlInvoke handler that dispatches into the given registry.
