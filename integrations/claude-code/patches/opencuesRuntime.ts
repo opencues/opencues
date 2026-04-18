@@ -220,6 +220,10 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // Statusline export path. Per-PID so two CC instances don't collide.
     // Matches v1's path so the existing highlight-statusline.sh keeps working.
     `statusFilePath:"/tmp/claude-highlight-state-"+process.pid+".json",` +
+    // Cursor state export — single shared path matches v1; the
+    // opencues-auto harness reads this. Last-writer-wins is fine
+    // because the harness only drives one CC at a time.
+    `cursorStatePath:"/tmp/claude-cursor-state.json",` +
     // TTS: speak.sh is the same script v1 used. ttsRate matches v1's default.
     `ttsScriptPath:(process.env.HOME||"~")+"/.claude/actions/speak.sh",` +
     `ttsRate:2,` +

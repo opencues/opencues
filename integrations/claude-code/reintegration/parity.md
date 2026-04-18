@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase G.c (commit pending).
+**Last synced:** Phase I.1 (commit pending).
 
 ---
 
@@ -19,7 +19,7 @@ just architecture.
 | # | Title | v2 status | Where / notes |
 |---|---|---|---|
 | 0 | tweakcc setup | ✓ | `~/.tweakcc/cli.js.backup` exists; setup works. |
-| 1 | `cursorStateExport` | ○ | v2 doesn't write `/tmp/claude-cursor-state.json`. No consumer in v2 uses it yet but the harness (`opencues-auto`) does. |
+| 1 | `cursorStateExport` | ✓ | Phase I.1. New CursorStateExport module subscribes to onTextChange + initial state; writes JSON snapshot (text, cursorPosition, currentWord, atEnd, textLength, timestamp) to `cursorStatePath` after a 100ms debounce. ZWS stripped before measuring. Opt-in via host config; patch sets the path to `/tmp/claude-cursor-state.json` matching v1. Live verified. |
 | 2 | `wordHighlight` (full nav + highlight) | ◐ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the *core*. Missing: cue filtering (skipped, see Step 4); inverse highlight only (no configurable colour); no ZWS-stripping in display value (the InputZone keeps its ZWS noise). |
 | 3 | bare-number dim | — | REMOVED in v1 itself (reverted Step 21). Not porting. |
 | 4 | nav filter narrows to cue-control words | ✓ | Phase 7 (commit `1cfc47f`). Filter priority: cueMap → folder controls (incl. blankKeywords) → DynDefs → fallback all-words. |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 29 ✓, 4 ◐, 3 ○, 2 — out of 38 steps. (Phase G.c completed Step 35; Bucket G done.)
+**Tally:** 30 ✓, 4 ◐, 2 ○, 2 — out of 38 steps. (Phase I.1 completed Step 1.)
 
 ---
 

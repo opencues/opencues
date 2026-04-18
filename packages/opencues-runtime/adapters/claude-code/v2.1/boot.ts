@@ -20,6 +20,7 @@ import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { BlankFill } from '../../../src/modules/blank-fill';
+import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
@@ -71,6 +72,13 @@ export interface HostInfo {
   tipsPath?: string;
   /** Optional: absolute path for the statusline state-export JSON. */
   statusFilePath?: string;
+  /**
+   * Optional: absolute path for the cursor-state-export JSON
+   * (e.g. /tmp/claude-cursor-state.json). Consumed by the
+   * opencues-auto test harness; no in-tree consumer. When unset, the
+   * runtime doesn't write anything.
+   */
+  cursorStatePath?: string;
   /**
    * Optional: trigger the host to re-display the statusline export.
    * On CC v2.1, supplied by the patch as a closure that calls the captured
@@ -286,6 +294,13 @@ export function boot(host: HostInfo): BootResult {
       refreshHook: host.refreshStatusline,
     }, configLoader, spanFillState, selectorSatelliteState);
     statusline.subscribe();
+  }
+
+  // CursorStateExport — opt-in. The opencues-auto test harness reads
+  // the export to drive automated runs; no in-tree consumer.
+  if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
+    const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });
+    cse.subscribe();
   }
 
   // TTS only when both spawn-process is available AND a script path was given.
