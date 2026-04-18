@@ -119,3 +119,69 @@ describe('BlankFill detection (Step 23)', () => {
     expect(bf.slots[0].controlName).toBe('affirmations');
   });
 });
+
+describe('BlankFill auto-populate (Step 24)', () => {
+  function makeKeyEvent(text: string, cursor: number, key = '_') {
+    return {
+      key,
+      modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+      text,
+      cursorOffset: cursor,
+    };
+  }
+
+  it('replaces _ with stepValues[0] when control opts in', async () => {
+    const { adapter, bf } = await setup('affirm ');
+    const consumed = bf.onUnderscoreKey(makeKeyEvent('affirm ', 7));
+    expect(consumed).toBe(true);
+    // setText was called with the populated text
+    const setText = adapter.setTextCalls.at(-1);
+    expect(setText).toBe('affirm I am strong');
+    // Cursor lands at end of fill
+    expect(adapter.setCursorCalls.at(-1)).toBe(7 + 'I am strong'.length);
+  });
+
+  it('returns false (host inserts _ normally) when no matching keyword precedes', async () => {
+    const { adapter, bf } = await setup('the cat ');
+    const consumed = bf.onUnderscoreKey(makeKeyEvent('the cat ', 8));
+    expect(consumed).toBe(false);
+    expect(adapter.setTextCalls).toHaveLength(0);
+  });
+
+  it('returns false when control is script-backed (no stepValues)', async () => {
+    const { adapter, bf } = await setup('volume ');
+    const consumed = bf.onUnderscoreKey(makeKeyEvent('volume ', 7));
+    expect(consumed).toBe(false);
+    expect(adapter.setTextCalls).toHaveLength(0);
+  });
+
+  it('does not interfere when modifiers are pressed (e.g. Ctrl+_)', async () => {
+    const { adapter, bf } = await setup('affirm ');
+    const ev = makeKeyEvent('affirm ', 7);
+    ev.modifiers = { ctrl: true, alt: false, shift: false, meta: false };
+    expect(bf.onUnderscoreKey(ev)).toBe(false);
+    expect(adapter.setTextCalls).toHaveLength(0);
+  });
+
+  it('honours blankAutoPopulate: false on the control', async () => {
+    const NO_AUTO = `---
+type: control
+name: noauto
+blankKeywords: noauto
+stepValues: ["X"]
+blankAutoPopulate: false
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/noauto/cue.md': NO_AUTO },
+    });
+    adapter.pushText('noauto ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('noauto ', 7))).toBe(false);
+    expect(adapter.setTextCalls).toHaveLength(0);
+  });
+});

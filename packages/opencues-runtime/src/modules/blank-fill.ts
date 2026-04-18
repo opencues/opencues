@@ -8,8 +8,9 @@
 //
 // This module is detection-only in E.1. Auto-fill behaviours come in E.2+.
 
-import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
+import { splitWords } from './navigation';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -29,6 +30,7 @@ export interface BlankSlot {
 export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
   private _unsubText: Unsubscribe | null = null;
+  private _unsubKey: Unsubscribe | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -37,12 +39,18 @@ export class BlankFill {
 
   subscribe(): void {
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
+    // Auto-populate path (Step 24): intercept the '_' key BEFORE the host
+    // applies it. If the simulated insertion would create a fillable slot,
+    // we fill it ourselves and consume the keystroke. Otherwise return
+    // false and let the host insert '_' normally.
+    this._unsubKey = this.adapter.onKey({ keys: ['_'] }, e => this.onUnderscoreKey(e));
     // Also scan immediately in case text already has blanks at boot.
     this.scan(this.adapter.getText());
   }
 
   unsubscribe(): void {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+    if (this._unsubKey) { this._unsubKey(); this._unsubKey = null; }
   }
 
   /** Currently-detected slots (latest scan). */
@@ -64,6 +72,53 @@ export class BlankFill {
 
   private onTextChange(e: TextChangeEvent): void {
     this.scan(e.text);
+  }
+
+  /**
+   * Handler for the '_' key. Simulates the insertion that the host would
+   * make, scans the result, and if a fillable slot lands at the inserted
+   * position we replace '_' with the control's stepValues[0] in the same
+   * dispatch. Returns true to consume the key (host's default insert is
+   * skipped); false otherwise (host inserts '_' normally).
+   */
+  onUnderscoreKey(event: KeyEvent): boolean {
+    // Only intercept plain '_' presses (no nav modifiers etc.).
+    const m = event.modifiers;
+    if (m.ctrl || m.alt || m.meta) return false;
+
+    const insertedText =
+      event.text.slice(0, event.cursorOffset) +
+      '_' +
+      event.text.slice(event.cursorOffset);
+
+    // Find the word index of our just-inserted '_' in the simulated text.
+    // Only count it as a blank when it's surrounded by whitespace (or BOL/EOL).
+    const insertedWord = findUnderscoreAtChar(insertedText, event.cursorOffset);
+    if (!insertedWord) return false;
+
+    const slots = this.scan(insertedText);
+    const slot = slots.find(s => s.index === insertedWord.index);
+    if (!slot) return false;
+
+    const control = this.configLoader.controls.get(slot.controlName) as
+      | (Record<string, unknown> & { stepValues?: readonly string[]; blankAutoPopulate?: boolean })
+      | undefined;
+    if (!control) return false;
+    if (control.blankAutoPopulate === false) return false;
+    const stepValues = control.stepValues;
+    if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
+    const fillValue = stepValues[0];
+
+    const filled =
+      insertedText.slice(0, insertedWord.start) +
+      fillValue +
+      insertedText.slice(insertedWord.end);
+    const newCursor = insertedWord.start + fillValue.length;
+
+    this.adapter.setText(filled);
+    this.adapter.setCursorOffset(newCursor);
+    this.adapter.forceRender();
+    return true;
   }
 
   /** Walk backward from blankIdx looking for a control's blankKeywords match. */
@@ -101,4 +156,19 @@ export class BlankFill {
     }
     return null;
   }
+}
+
+/**
+ * Find the word in `text` containing the character at `charOffset` IF that
+ * character is the lone '_' word at its position. Returns null if the '_'
+ * is part of a larger word (e.g. `affirm_xyz`).
+ */
+function findUnderscoreAtChar(text: string, charOffset: number): { index: number; start: number; end: number } | null {
+  const words = splitWords(text);
+  for (const w of words) {
+    if (w.start <= charOffset && charOffset < w.end && w.word === '_') {
+      return { index: w.index, start: w.start, end: w.end };
+    }
+  }
+  return null;
 }
