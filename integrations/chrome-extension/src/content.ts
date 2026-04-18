@@ -11,7 +11,7 @@
 
 import { loadConfig, onConfigChange } from './adapters/chrome-storage-adapter';
 import {
-  startOpenCuesRuntime,
+  startOpenCues,
   publishTarget,
   clearRuntimeHighlights,
 } from './opencues-bootstrap';
@@ -28,7 +28,7 @@ async function init(): Promise<void> {
   // Boot the runtime with config from chrome.storage. The runtime
   // owns Navigation, Cycling, BlankFill, Resolver, Statusline, TTS,
   // CursorStateExport, plus all 6 state classes.
-  startOpenCuesRuntime({
+  startOpenCues({
     llmApiKey: config.apiKey,
     llmEndpoint: config.endpoint,
     llmDefaultModel: config.model,

@@ -308,7 +308,7 @@ function chromeControlInvoke(spec: ControlInvokeSpecLike): {
  * call returns the cached BootResult. Call once at content-script
  * load (after publishTarget has been hooked up).
  */
-export function startOpenCuesRuntime(opts: RuntimeStartOptions = {}): BootResult {
+export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   if (bootResult) return bootResult;
 
   // CE.8 — build the chrome control registry. The runtime's BlankFill

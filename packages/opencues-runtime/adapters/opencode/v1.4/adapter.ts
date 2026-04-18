@@ -148,6 +148,16 @@ export class OpenCodeV14Adapter implements HostAdapter {
     if (!this.bindings.spawnProcess) throw new Error('spawnProcess not supported');
     return this.bindings.spawnProcess(spec);
   }
+  /**
+   * Stub for interface parity with the chrome adapter band. OpenCode
+   * always has spawnProcess so BlankFill/Cycling never reach the
+   * controlInvoke fallback — but returning null here keeps the
+   * adapter shape symmetric and lets shared callers `?.` chain
+   * uniformly across hosts.
+   */
+  controlInvoke(): null {
+    return null;
+  }
   pushText(text: string, cursor?: number): void {
     this.bindings.pushText?.(text, cursor);
   }
