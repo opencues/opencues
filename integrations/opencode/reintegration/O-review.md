@@ -15,8 +15,45 @@ Phases shipped so far:
 | O.2 (real prompt access) | `ad6ff0e` | `ac38791` | Holder pattern, Prompt patches |
 | O.3 Navigation | `91e47f7` | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
 | O.4 DimRender (extmarks) | `db27817` | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
+| O.5 + O.6 ConfigLoader + Cycling | _pending_ | `6d57e3f` | Cycling subscribed, ConfigLoader loads tips |
 
 Each future entry below has the same shape. Most-recent-on-top.
+
+---
+
+## O.5 + O.6 — ConfigLoader + Cycling
+
+**Commit:** _pending_
+**Rollback to (prior):** `6d57e3f`
+
+**Modules touched:**
+- `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` — constructs ConfigLoader + Cycling; subscribes both. Navigation + DimRender now also receive configLoader so the cueMap-aware filter applies.
+- `integrations/opencode/patches/setup.sh` — installs `cues-core` into the fork's node_modules (ConfigLoader + Resolver depend on it).
+
+**What it does:**
+- ConfigLoader reads `~/.claude/claude-code-tips.json` (overridable via `host.tipsPath`) + cwd `cues.md`/`controls.md`/`blanks.md`/`opencues.md` + folder `cues/*/cue.md` + `controls/*/cue.md`.
+- After load, Navigation / DimRender filter to navigable words (cue map + control words + step patterns) instead of the all-words fallback.
+- Cycling subscribes Ctrl+Alt+Up/Down. Static-alts (path 4) + step-pattern (path 3) + script (path 1) + list (path 2) all wired.
+- Span/satellite/dismissed states wait for O.7 — those modules aren't constructed yet.
+
+**Live test:**
+1. Ensure `~/.claude/claude-code-tips.json` exists (the CC integration uses it; should already be populated).
+2. Re-run `setup.sh`; restart `bun run dev`.
+3. Type a known cue word (e.g. `volume`).
+4. Press Ctrl+Alt+Left → highlight on `volume` (single nav target).
+5. Press Ctrl+Alt+Up → cycle script-control fires (`volume.sh up 6` runs in background).
+6. Type `0.5f` → highlight via stepPattern; cycle adjusts by 0.5.
+
+**Expected:**
+- Cycling visible (text changes).
+- Static-alt cycling (e.g. `fast` → `quick`) only works if `tips.json` has alts for the word.
+
+**Peculiarities found:**
+- `cues-core` must be installed into the fork's node_modules. setup.sh now builds it (if missing) and copies dist + package.json. Same pattern as the runtime.
+- ConfigLoader's hot-reload depends on text-change events. Editing `opencues.md` doesn't trigger a reload until you type something in the prompt. Same as CC behavior.
+
+**Notes for the next step:**
+- O.7 wires the heavier modules: Statusline, Resolver, TTS, BlankFill + state classes. ConfigLoader + ControlValuesCache + DismissedBlanks + SpanFillState + SelectorSatelliteState all need construction.
 
 ---
 

@@ -13,6 +13,8 @@ import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
+import { Cycling } from '../../../src/modules/cycling';
+import { ConfigLoader } from '../../../src/modules/config-loader';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import type {
@@ -108,18 +110,29 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new OpenCodeV14Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Phase O.5+ — ConfigLoader (cueMap + folder cues + opencues.md).
+  // Loads asynchronously; modules tolerate empty config until ready.
+  const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/claude-code-tips.json`;
+  const configLoader = new ConfigLoader(adapter, { tipsPath });
+  configLoader.subscribe();
+  configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
+
   // Phase O.3 — Navigation. Same module as CC; host-agnostic.
-  // Ctrl+Alt+Left/Right walk navigable words (or all-words at this
-  // phase since ConfigLoader isn't wired yet).
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const navigation = new Navigation(adapter, hlState, dynDefs);
+  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader);
   navigation.subscribe();
 
   // Phase O.4 — DimRender. Subscribes to onRender; the patch fires
   // it via collectRenderDirectives + extmark application.
-  const dimRender = new DimRender(adapter, hlState, dynDefs);
+  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader);
   dimRender.subscribe();
+
+  // Phase O.5 — Cycling. Ctrl+Alt+Up/Down rotates static alts +
+  // step patterns + script controls. Span/satellite/dismissed states
+  // wait for O.7.
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
+  cycling.subscribe();
 
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {
     host: 'opencode',

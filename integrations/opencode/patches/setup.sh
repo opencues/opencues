@@ -40,14 +40,23 @@ cd "$OPENCUES_ROOT/packages/opencues-runtime"
 npm install --silent
 npm run build
 
-# 3. Wire opencues-runtime into the fork's node_modules.
-#    Bun resolves from the same node_modules as npm, so a directory
-#    copy is the simplest portable route.
+# 3a. Wire opencues-runtime into the fork's node_modules.
 echo "Installing opencues-runtime into fork..."
 DEST="$OPENCODE_DIR/node_modules/opencues-runtime"
 mkdir -p "$DEST"
 cp -r "$OPENCUES_ROOT/packages/opencues-runtime/dist" "$DEST/"
 cp "$OPENCUES_ROOT/packages/opencues-runtime/package.json" "$DEST/"
+
+# 3b. Wire cues-core (ConfigLoader + Resolver depend on it).
+if [[ ! -d "$OPENCUES_ROOT/packages/cues-core/dist" ]]; then
+  echo "Building cues-core..."
+  ( cd "$OPENCUES_ROOT/packages/cues-core" && npm install --silent && npm run build )
+fi
+echo "Installing cues-core into fork..."
+CUES_CORE_DEST="$OPENCODE_DIR/node_modules/cues-core"
+mkdir -p "$CUES_CORE_DEST"
+cp -r "$OPENCUES_ROOT/packages/cues-core/dist/"* "$CUES_CORE_DEST/"
+cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"
 
 # 4. Copy the bootstrap patch into the fork's TUI source.
 echo "Copying opencuesBootstrap.ts into fork..."
