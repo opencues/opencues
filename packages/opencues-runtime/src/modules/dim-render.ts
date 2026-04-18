@@ -46,20 +46,37 @@ export class DimRender {
     const words = splitWords(ctx.text);
 
     // Dim ranges: every cue / control / step-pattern word that is NOT the
-    // currently-highlighted one. The highlight overlay takes priority on
-    // the active word so we don't dim it (would dim under inverse).
+    // currently-highlighted one AND not inside an active span/satellite
+    // (those get whole-region highlight; individual cue dim there would
+    // appear as random word-fading inside an otherwise bright unit).
     const dimRanges: Range[] = [];
     const activeIndex = this.hlState.active ? this.hlState.wordIndex : null;
+    const span = this.spanFillState?.current ?? null;
+    const spanLen = span ? Math.max(1, span.spanLength) : 0;
+    const ss = this.selectorSatelliteState?.current ?? null;
+    const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
+    const ssSatEnd = ss ? ss.satelliteIndex + Math.max(1, ss.satelliteLength) - 1 : 0;
+    const activeInSpanRegion = span !== null && activeIndex !== null
+      && activeIndex >= span.index && activeIndex < span.index + spanLen;
+    const activeInSelector = ss !== null && activeIndex !== null
+      && activeIndex >= ss.selectorIndex && activeIndex <= ssSelEnd;
+    const activeInSatellite = ss !== null && activeIndex !== null
+      && activeIndex >= ss.satelliteIndex && activeIndex <= ssSatEnd;
+    const isInsideActiveBlock = (i: number): boolean => {
+      if (activeInSpanRegion && span && i >= span.index && i < span.index + spanLen) return true;
+      if (activeInSelector && ss && i >= ss.selectorIndex && i <= ssSelEnd) return true;
+      if (activeInSatellite && ss && i >= ss.satelliteIndex && i <= ssSatEnd) return true;
+      return false;
+    };
     if (hasDimCap && this.configLoader) {
       const navigable = this.configLoader.navigableWords;
       for (const w of words) {
         if (w.index === activeIndex) continue;
+        if (isInsideActiveBlock(w.index)) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
         // Step 21: DynDefs entries (LLM-resolved alts) also count as
-        // navigable, so they should dim too. Without this, a word the
-        // LLM resolver attached alts to renders un-dimmed and looks
-        // unrelated to the navigable set.
+        // navigable, so they should dim too.
         if (
           navigable.has(lc) ||
           this.configLoader.matchStepPattern(w.word) ||
@@ -72,17 +89,9 @@ export class DimRender {
 
     // Step 32 / Phase F.a — when a span fill is active, treat the whole
     // span as one block. If the active highlight isn't inside it, dim
-    // the whole span. If it IS inside, the highlight (below) extends to
-    // cover the entire span and we skip the dim layer to avoid stacking
-    // attributes (inverse + dim renders inconsistently across terminals).
-    const span = this.spanFillState?.current ?? null;
-    const spanLen = span ? Math.max(1, span.spanLength) : 0;
-    const activeInSpan = span !== null
-      && activeIndex !== null
-      && activeIndex >= span.index
-      && activeIndex < span.index + spanLen;
-
-    if (hasDimCap && span && !activeInSpan) {
+    // the whole span. If it IS inside, the highlight (below) covers it
+    // and we skip the dim layer (avoid stacking attributes).
+    if (hasDimCap && span && !activeInSpanRegion) {
       const startWord = words[span.index];
       const endWord = words[span.index + spanLen - 1];
       if (startWord && endWord) {
@@ -91,19 +100,7 @@ export class DimRender {
     }
 
     // Phase G.b — selector + satellite dim. Both sides can be multi-word
-    // ("display mode" / "plain text"). Each side gets its own dim
-    // layer; highlight overlay on either side wins.
-    const ss = this.selectorSatelliteState?.current ?? null;
-    const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
-    const ssSatEnd = ss ? ss.satelliteIndex + Math.max(1, ss.satelliteLength) - 1 : 0;
-    const activeInSelector = ss !== null
-      && activeIndex !== null
-      && activeIndex >= ss.selectorIndex
-      && activeIndex <= ssSelEnd;
-    const activeInSatellite = ss !== null
-      && activeIndex !== null
-      && activeIndex >= ss.satelliteIndex
-      && activeIndex <= ssSatEnd;
+    // ("display mode" / "plain text"). Each side gets its own dim layer.
     if (hasDimCap && ss) {
       const ss0 = words[ss.selectorIndex];
       const ss1 = words[ssSelEnd];
@@ -119,7 +116,7 @@ export class DimRender {
     // multi-word value as one cycleable thing.
     let highlight: { start: number; end: number } | undefined;
     if (hasHighlightCap && this.hlState.active && this.hlState.wordIndex !== null) {
-      if (activeInSpan && span) {
+      if (activeInSpanRegion && span) {
         const startWord = words[span.index];
         const endWord = words[span.index + spanLen - 1];
         if (startWord && endWord) {
