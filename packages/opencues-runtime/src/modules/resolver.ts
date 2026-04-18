@@ -187,6 +187,13 @@ export class Resolver {
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
       if (existing && existing.controlName) continue;
+      // Tip-having words own their own alternatives via the cueMap
+      // (claude-code-tips.json's hand-curated `alts` array). The LLM
+      // returning grammar synonyms for `ultrathink` etc. would silently
+      // override the curated list. Mirrors the legacy CC cue-engine's
+      // `skipFn: word => tipsMap.has(word)` filter on the LLM source.
+      const cueMapEntry = this.configLoader.lookup(target.word);
+      if (cueMapEntry && cueMapEntry.alternatives && cueMapEntry.alternatives.length > 1) continue;
       const alts = (r.alternatives ?? []).filter(a => a && a !== target.word);
       if (alts.length === 0) continue;
       const def: WordDef = {
