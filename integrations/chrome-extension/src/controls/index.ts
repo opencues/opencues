@@ -2,7 +2,9 @@ import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
 import { StocksControl } from './stocks';
 import { WeatherControl } from './weather';
-import { HackerNewsControl } from './hackernews';
+// HackerNewsControl now lives in the runtime — same class, every host.
+// chrome's old src/controls/hackernews.ts has been deleted.
+import { HackerNewsControl } from 'opencues-runtime/dist/src/controls/hackernews';
 import { PromptImproverControl, type PromptImproverConfig } from './prompt-improver';
 
 export type { BrowserControl } from './types';
