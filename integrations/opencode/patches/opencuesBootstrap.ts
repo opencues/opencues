@@ -11,10 +11,10 @@
 // Everything else lives in opencues-runtime — this file is just the
 // glue.
 
-import type { CliRenderer } from "@opentui/core"
-import type { TextareaRenderable } from "@opentui/core"
+import type { CliRenderer, TextareaRenderable } from "@opentui/core"
+import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
-import type { KeyEvent, LogLevel } from "opencues-runtime/dist/src/adapter"
+import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
 import { spawn as nodeSpawn } from "node:child_process"
@@ -28,6 +28,13 @@ export interface PromptInputAccess {
   cursor(): number
   /** Sets the textarea's cursor position. */
   setCursor(offset: number): void
+  /** Direct ref to the textarea (for extmarks API). O.4. */
+  textarea?: TextareaRenderable
+  /**
+   * SyntaxStyle instance from useTheme().syntax — needed to register
+   * "opencues-dim" + "opencues-highlight" styleIds. O.4.
+   */
+  syntax?: { registerStyle(name: string, def: any): number; getStyleId(name: string): number | null }
 }
 
 /**
@@ -126,9 +133,9 @@ export function startOpenCues(opts: {
 /** Forwards an OpenTUI useKeyboard event into the runtime. Returns true if consumed. */
 export function dispatchOpenCuesKey(evt: any): boolean {
   if (!bootResult) return false
-  // Pull live text + cursor from the published prompt access so
-  // Navigation can splitWords + activate the rightmost target.
   const access = __ocPromptHolder.current
+  const text = access?.read() ?? ""
+  const cursor = access?.cursor() ?? 0
   const e: KeyEvent = {
     key: normaliseKeyName(evt),
     modifiers: {
@@ -137,10 +144,13 @@ export function dispatchOpenCuesKey(evt: any): boolean {
       shift: !!evt.shift,
       meta: !!evt.meta,
     },
-    text: access?.read() ?? "",
-    cursorOffset: access?.cursor() ?? 0,
+    text,
+    cursorOffset: cursor,
   }
-  return bootResult.dispatchKey(e)
+  const consumed = bootResult.dispatchKey(e)
+  // Trigger render so nav-driven highlight changes paint.
+  if (consumed) triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor)
+  return consumed
 }
 
 /** Notify runtime of text changes from the prompt component. */
@@ -152,4 +162,69 @@ function normaliseKeyName(evt: any): string {
   if (evt.name) return String(evt.name).toLowerCase()
   if (evt.sequence) return String(evt.sequence)
   return ""
+}
+
+// ─── O.4: extmark applier ──────────────────────────────────────────────
+
+/** Track our own extmarks so we can remove them on the next render. */
+let ocOwnedExtmarks: number[] = []
+let ocStyleIdsCache: { dim?: number; highlight?: number; typeId?: number } = {}
+
+/**
+ * Called by the patched Prompt component on every onContentChange
+ * (and after our own setText). Pulls render directives from the
+ * runtime, clears our previous extmarks, and creates new ones for
+ * dim ranges + the active highlight.
+ */
+export function triggerOpenCuesRender(text: string, cursor: number): void {
+  if (!bootResult) return
+  const access = __ocPromptHolder.current
+  if (!access?.textarea || !access.syntax) return
+
+  const syntax = access.syntax
+  const textarea = access.textarea
+  if (textarea.isDestroyed) return
+
+  // Lazy-register styles + extmark type on first call.
+  if (ocStyleIdsCache.dim === undefined) {
+    ocStyleIdsCache.dim = syntax.getStyleId("opencues-dim") ?? syntax.registerStyle("opencues-dim", { dim: true })
+  }
+  if (ocStyleIdsCache.highlight === undefined) {
+    ocStyleIdsCache.highlight =
+      syntax.getStyleId("opencues-highlight")
+      ?? syntax.registerStyle("opencues-highlight", { fg: RGBA.fromValues(1, 1, 1, 1), bold: true })
+  }
+  if (ocStyleIdsCache.typeId === undefined) {
+    ocStyleIdsCache.typeId = textarea.extmarks.registerType("opencues")
+  }
+
+  // Clear previous extmarks before re-applying.
+  for (const id of ocOwnedExtmarks) {
+    try { (textarea.extmarks as any).remove?.(id) } catch { /* swallow */ }
+  }
+  ocOwnedExtmarks = []
+
+  const directiveSets = bootResult.collectRenderDirectives(text, cursor)
+  for (const directives of directiveSets) {
+    if (directives.dimRanges) {
+      for (const r of directives.dimRanges) {
+        const id = textarea.extmarks.create({
+          start: r.start,
+          end: r.end,
+          styleId: ocStyleIdsCache.dim,
+          typeId: ocStyleIdsCache.typeId,
+        })
+        ocOwnedExtmarks.push(id)
+      }
+    }
+    if (directives.highlight) {
+      const id = textarea.extmarks.create({
+        start: directives.highlight.start,
+        end: directives.highlight.end,
+        styleId: ocStyleIdsCache.highlight,
+        typeId: ocStyleIdsCache.typeId,
+      })
+      ocOwnedExtmarks.push(id)
+    }
+  }
 }

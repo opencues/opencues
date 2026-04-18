@@ -14,8 +14,45 @@ Phases shipped so far:
 | O.1 smoke + tests | `ac38791` | `19723e1` | 5 unit tests in adapter band |
 | O.2 (real prompt access) | `ad6ff0e` | `ac38791` | Holder pattern, Prompt patches |
 | O.3 Navigation | `91e47f7` | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
+| O.4 DimRender (extmarks) | _pending_ | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
 
 Each future entry below has the same shape. Most-recent-on-top.
+
+---
+
+## O.4 — DimRender via OpenTUI extmarks
+
+**Commit:** _pending_
+**Rollback to (prior):** `97fe5dd`
+
+**Modules touched:**
+- `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` — subscribes DimRender; new `collectRenderDirectives(text, cursor)` on BootResult.
+- `integrations/opencode/patches/opencuesBootstrap.ts` — `triggerOpenCuesRender` collects directives + applies extmarks. Lazy-registers `opencues-dim` (`{dim:true}`) + `opencues-highlight` (`{fg:white, bold:true}`) styles. PromptInputAccess gains `textarea` + `syntax` fields.
+- `integrations/opencode/patches/setup.sh` — Prompt patch publishes the textarea ref + `useTheme().syntax`; calls `triggerOpenCuesRender` from `onContentChange`. Bootstrap also fires it after every consumed keypress (so nav-driven highlight changes paint).
+
+**What it does:**
+DimRender's directives are translated to OpenTUI extmarks instead of inline ANSI. Each render: clear our previously-owned extmarks, then create new ones for `dimRanges` + `highlight`. Styles are registered lazily on first render so we don't depend on the theme system at boot.
+
+**Live test:**
+1. Re-run setup.sh; restart `bun run dev`.
+2. Type `volume brightness foo`.
+3. Press Ctrl+Alt+Left.
+4. **Expected:** `foo` (or whichever rightmost word) gets a bright-white highlight; other navigable words appear dimmed.
+5. Step left again — highlight moves to `brightness`, `volume` stays dim, `foo` un-dims (since it's now the active highlight target was rightmost; if cue map isn't loaded, ALL words are navigable so all dim).
+
+**Expected (without ConfigLoader yet):**
+- All-words fallback applies, so EVERY non-active word gets a dim extmark.
+- Highlight extmark on the active word.
+- If extmarks render visibly: O.4 done.
+- If extmarks don't appear: see Peculiarities below.
+
+**Peculiarities found:**
+- TextareaRenderable's `extmarks.remove(id)` may not exist (it's not in the .d.ts surface I checked). Code guards with `?.`. If the visible state shows STACKED highlights/dims (not cleared between renders), this is the cause — need a different cleanup strategy (perhaps `extmarks.clear()` filtered by typeId).
+- `useTheme().syntax` access requires being inside the SolidJS component tree. Patched into the textarea's `ref={...}` callback which runs inside the component — should work.
+- `RGBA.fromValues(1,1,1,1)` for white: extracted from `@opentui/core` exports. May fail at runtime if the constructor signature differs from what I guessed; check REPAIR.md for fallback.
+
+**Notes for the next step:**
+- O.5 wires Cycling. Same module as CC; subscribed in boot. Config loader still missing so cycling will need at least a basic alts source — defer until O.6.
 
 ---
 

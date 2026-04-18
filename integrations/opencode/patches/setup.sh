@@ -122,10 +122,9 @@ if 'publishPromptAccess' in src: sys.exit(0)
 # Add the import.
 src = src.replace(
   'import { useArgs } from "@tui/context/args"',
-  'import { useArgs } from "@tui/context/args"\nimport { publishPromptAccess, notifyOpenCuesTextChange } from "../../opencues"',
+  'import { useArgs } from "@tui/context/args"\nimport { publishPromptAccess, notifyOpenCuesTextChange, triggerOpenCuesRender } from "../../opencues"',
 )
-# Wire publish on textarea ref + onContentChange → notify runtime.
-# The textarea ref is at line ~1169: `ref={(r: TextareaRenderable) => { input = r ... }}`
+# Wire publish on textarea ref + onContentChange → notify + render trigger.
 src = src.replace(
   'ref={(r: TextareaRenderable) => {\n                input = r',
   '''ref={(r: TextareaRenderable) => {
@@ -138,16 +137,18 @@ src = src.replace(
                   },
                   cursor: () => input.cursorOffset ?? 0,
                   setCursor: (c) => { input.cursorOffset = c },
+                  textarea: input,
+                  syntax: useTheme().syntax as any,
                 })''',
 )
-# Forward onContentChange to OpenCues. The existing handler already runs;
-# we tack on a notify call.
+# Forward onContentChange + run extmark applier.
 src = src.replace(
   'onContentChange={() => {\n                const value = input.plainText\n                setStore("prompt", "input", value)',
   '''onContentChange={() => {
                 const value = input.plainText
                 setStore("prompt", "input", value)
-                notifyOpenCuesTextChange(value, input.cursorOffset ?? 0, "user")''',
+                notifyOpenCuesTextChange(value, input.cursorOffset ?? 0, "user")
+                triggerOpenCuesRender(value, input.cursorOffset ?? 0)''',
 )
 open(p, 'w').write(src)
 PY

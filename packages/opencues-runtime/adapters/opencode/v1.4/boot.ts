@@ -12,6 +12,7 @@
 import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { Navigation } from '../../../src/modules/navigation';
+import { DimRender } from '../../../src/modules/dim-render';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import type {
@@ -50,6 +51,12 @@ export interface BootResult {
   dispatchKey(event: KeyEvent): boolean;
   /** Call when the prompt input value changes (from onInput). */
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  /**
+   * O.4 — collect render directives from all subscribed handlers
+   * (DimRender + future modules). The patch turns the result into
+   * extmarks on the textarea.
+   */
+  collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
   /** Call to dispose the runtime (e.g. on TUI unmount). */
   dispose(): void;
 }
@@ -109,6 +116,11 @@ export function boot(host: HostInfo): BootResult {
   const navigation = new Navigation(adapter, hlState, dynDefs);
   navigation.subscribe();
 
+  // Phase O.4 — DimRender. Subscribes to onRender; the patch fires
+  // it via collectRenderDirectives + extmark application.
+  const dimRender = new DimRender(adapter, hlState, dynDefs);
+  dimRender.subscribe();
+
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {
     host: 'opencode',
     hostVersion: host.hostVersion,
@@ -134,6 +146,19 @@ export function boot(host: HostInfo): BootResult {
       for (const h of textHandlers) {
         try { h(event); } catch (err) { log('error', 'text handler threw', err); }
       }
+    },
+    collectRenderDirectives(text, cursor) {
+      const ctx: RenderContext = { text, cursor, externalHighlights: [] };
+      const out: RenderDirectives[] = [];
+      for (const h of renderHandlers) {
+        try {
+          const d = h(ctx);
+          if (d) out.push(d);
+        } catch (err) {
+          log('error', 'render handler threw', err);
+        }
+      }
+      return out;
     },
     dispose() {
       adapter.dispose();
