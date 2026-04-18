@@ -111,6 +111,28 @@ export function boot(host: HostInfo): BootResult {
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
 
+  // Drift guard: the patched prompt component is expected to call
+  // notifyTextChange on every onContentChange. If a future host edit
+  // bypasses that (e.g. someone moves the notify call into a conditional
+  // branch), text handlers would go blind. collectRenderDirectives runs
+  // on every render, so we compare the text it sees against lastSeenText
+  // and fire a synthetic 'user' textChange on drift.
+  let lastSeenText: string | null = null;
+  let lastSeenCursor = 0;
+  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+    const event: TextChangeEvent = {
+      text,
+      cursorOffset: cursor,
+      previousText: lastSeenText ?? '',
+      source,
+    };
+    for (const h of textHandlers) {
+      try { h(event); } catch (err) { log('error', 'text handler threw', err); }
+    }
+    lastSeenText = text;
+    lastSeenCursor = cursor;
+  };
+
   const removeFrom = <T>(arr: T[], item: T): void => {
     const i = arr.indexOf(item);
     if (i >= 0) arr.splice(i, 1);
@@ -237,17 +259,17 @@ export function boot(host: HostInfo): BootResult {
       return false;
     },
     notifyTextChange(text, cursorOffset, source) {
-      const event: TextChangeEvent = {
-        text,
-        cursorOffset,
-        previousText: '',
-        source,
-      };
-      for (const h of textHandlers) {
-        try { h(event); } catch (err) { log('error', 'text handler threw', err); }
-      }
+      fireTextChange(text, cursorOffset, source);
     },
     collectRenderDirectives(text, cursor) {
+      // Drift check: if text moved without a preceding notifyTextChange,
+      // synthesise a 'user' textChange so handlers don't miss the edit.
+      if (lastSeenText !== null && text !== lastSeenText) {
+        fireTextChange(text, cursor, 'user');
+      } else {
+        lastSeenText = text;
+        lastSeenCursor = cursor;
+      }
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
       const out: RenderDirectives[] = [];
       for (const h of renderHandlers) {
