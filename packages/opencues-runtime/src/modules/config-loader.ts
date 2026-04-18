@@ -245,6 +245,14 @@ export class ConfigLoader {
   private _lastLoadAt = 0;
   private _loadInFlight: Promise<void> | null = null;
   private _unsubText: Unsubscribe | null = null;
+  // Race guard: when applyOpenCuesScalar fires (cycling a satellite
+  // updates an opencues.md scalar in-memory), the host's controlInvoke
+  // also kicks off an ASYNC file write. Cycling.ts then calls setText
+  // which fires onTextChange → maybeReload, and if maybeReload reads
+  // the file BEFORE the async write lands, the in-memory update is
+  // overwritten by the stale file content. _suppressReloadUntil delays
+  // the next reload long enough for the write to settle.
+  private _suppressReloadUntil = 0;
 
   constructor(
     private adapter: HostAdapter,
@@ -310,6 +318,13 @@ export class ConfigLoader {
    * ~2s gap between cycle + reload.
    */
   applyOpenCuesScalar(key: string, value: string): void {
+    // Suppress the next ~2.5s of reloads. The cycling path that called
+    // us is about to call setText → onTextChange → maybeReload, and
+    // the in-flight controlInvoke set hasn't landed yet. Without this
+    // guard the reload reads stale file content and reverts our
+    // in-memory update (visible as "voice-mode flips back to active
+    // immediately").
+    this._suppressReloadUntil = Date.now() + 2500;
     const cur = this._config.opencuesState;
     const newSettings = new Map(cur.settings);
     newSettings.set(key, value);
@@ -371,6 +386,10 @@ export class ConfigLoader {
 
   /** Reload only if debounce window elapsed. */
   async maybeReload(): Promise<void> {
+    // Race guard set by applyOpenCuesScalar — see comment on
+    // _suppressReloadUntil. Lets the in-flight controlInvoke set's
+    // async file write complete before we read the file back.
+    if (Date.now() < this._suppressReloadUntil) return;
     const debounce = this.options.reloadDebounceMs ?? 2000;
     if (Date.now() - this._lastLoadAt < debounce) return;
     await this.load();
