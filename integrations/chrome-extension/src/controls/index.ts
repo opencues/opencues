@@ -11,6 +11,7 @@ import { VolumeControl } from './volume';
 import {
   AnswerControl,
   HackerNewsControl,
+  OpenCuesSettingsControl,
   PromptImproverControl,
   StocksControl,
   WeatherControl,
@@ -31,6 +32,15 @@ export function createControls(options?: {
   finnhubApiKey?: string;
   customTickers?: Record<string, string>;
   llmConfig?: PromptImproverConfig;
+  /**
+   * Optional opencues.md file accessors. When supplied, the
+   * `opencues settings _` selector/satellite control is registered.
+   * Chrome wires these to chrome.storage; without them the control
+   * stays unregistered and the keyword falls through to spawnProcess
+   * (which the chrome adapter resolves with exitCode 127).
+   */
+  opencuesMdReadFile?: () => Promise<string | null>;
+  opencuesMdWriteFile?: (content: string) => Promise<void>;
 }): Map<string, BrowserControl> {
   const controls = new Map<string, BrowserControl>();
 
@@ -51,6 +61,13 @@ export function createControls(options?: {
       apiKey: options.llmConfig.apiKey,
       apiUrl: options.llmConfig.apiUrl,
       model: options.llmConfig.model,
+    }));
+  }
+
+  if (options?.opencuesMdReadFile && options.opencuesMdWriteFile) {
+    controls.set('opencues', new OpenCuesSettingsControl({
+      readFile: options.opencuesMdReadFile,
+      writeFile: options.opencuesMdWriteFile,
     }));
   }
 

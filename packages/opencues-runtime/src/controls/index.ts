@@ -19,6 +19,7 @@ export { StocksControl, type StocksControlOptions } from './stocks';
 export { WeatherControl, type WeatherControlOptions } from './weather';
 export { AnswerControl, type AnswerControlOptions } from './answer';
 export { PromptImproverControl, type PromptImproverControlOptions } from './prompt-improver';
+export { OpenCuesSettingsControl, type OpenCuesSettingsControlOptions } from './opencues-settings';
 
 /**
  * Build a controlInvoke handler that dispatches into the given registry.

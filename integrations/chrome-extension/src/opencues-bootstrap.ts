@@ -270,6 +270,10 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       apiUrl: opts.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
     } : undefined,
+    // OpenCues settings selector/satellite (`opencues settings _`)
+    // reads/writes the seeded opencues.md in chrome.storage.
+    opencuesMdReadFile: () => readFile(`${ROOT}/opencues.md`),
+    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/opencues.md`, content),
   });
   controlInvoke = createControlInvoke(controls);
 

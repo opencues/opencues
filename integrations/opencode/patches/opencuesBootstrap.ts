@@ -16,7 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
 import { createSourceReclassifier } from "opencues-runtime/dist/src/boot-common"
-import { createControlInvoke, AnswerControl, HackerNewsControl, PromptImproverControl, StocksControl, WeatherControl, type Control } from "opencues-runtime/dist/src/controls"
+import { createControlInvoke, AnswerControl, HackerNewsControl, OpenCuesSettingsControl, PromptImproverControl, StocksControl, WeatherControl, type Control } from "opencues-runtime/dist/src/controls"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -80,12 +80,22 @@ const sourceReclassifier = createSourceReclassifier()
 // shell scripts (controls/<name>/*.sh) once every host has parity.
 // OS-level controls (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
+// Project-root opencues.md — same path the bash control read. cwd is set
+// in startOpenCues but we resolve here at module load too because the
+// settings control needs an accessor at construction time. Resolved
+// lazily on each call so a cwd flip (rare) is honoured.
+const opencuesMdPath = (): string => path.join(process.cwd(), "opencues.md")
+
 const controlsRegistry = new Map<string, Control>([
   ['hackernews', new HackerNewsControl()],
   ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
   ['weather', new WeatherControl()],
   ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
   ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
+  ['opencues', new OpenCuesSettingsControl({
+    readFile: async () => { try { return await fs.readFile(opencuesMdPath(), "utf8") } catch { return null } },
+    writeFile: async (content) => { await fs.writeFile(opencuesMdPath(), content, "utf8") },
+  })],
 ])
 const controlInvoke = createControlInvoke(controlsRegistry)
 
