@@ -89,9 +89,25 @@ export class BlankFill {
   private maybeRunScripts(text: string, slots: readonly BlankSlot[]): void {
     if (slots.length > 0) this.adapter.log('debug', `BlankFill: ${slots.length} slot(s) on text-change`, slots);
     if (!this.adapter.capabilities.includes('spawn-process')) return;
+
+    // Pre-split words for context extraction (used for every slot).
+    const cleaned = text.replace(/[\u200B\u200C]/g, '');
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    const home = process.env.HOME ?? '~';
+
     for (const slot of slots) {
       const control = this.configLoader.controls.get(slot.controlName) as
-        | (Record<string, unknown> & { stepValues?: readonly string[]; blankScript?: string; blankAutoPopulate?: boolean })
+        | (Record<string, unknown> & {
+            stepValues?: readonly string[];
+            blankScript?: string;
+            blankAutoPopulate?: boolean;
+            model?: string;
+            apiUrl?: string;
+            apiKeyEnv?: string;
+            altCount?: number;
+            includeOriginal?: boolean;
+            prompts?: Record<string, string>;
+          })
         | undefined;
       if (!control) continue;
       if (control.blankAutoPopulate === false) continue;
@@ -104,10 +120,38 @@ export class BlankFill {
       if (this._pendingScripts.has(dedupKey)) continue;
       this._pendingScripts.add(dedupKey);
 
-      this.adapter.log('debug', `BlankFill: spawn ${script} get ${slot.keyword}`);
+      // Context words: every word except the matched keyword span and the blank.
+      // Index-based filter (vs v1's string-match) handles multi-word keywords
+      // correctly — REPAIR.md / steps.md Step 26 deviation note.
+      const contextWords: string[] = [];
+      for (let wi = 0; wi < words.length; wi += 1) {
+        if (wi >= slot.keywordStart && wi <= slot.keywordEnd) continue;
+        if (wi === slot.index) continue;
+        contextWords.push(words[wi]);
+      }
+
+      // Expand ~ in script path.
+      const scriptPath = script.startsWith('~') ? home + script.slice(1) : script;
+
+      // Build per-control env. Inherits process.env.
+      const env: Record<string, string> = { ...process.env } as Record<string, string>;
+      if (control.model) env.CUES_MODEL = control.model;
+      if (control.apiUrl) env.CUES_API_URL = control.apiUrl;
+      if (control.apiKeyEnv) env.CUES_API_KEY_ENV = control.apiKeyEnv;
+      if (control.altCount !== undefined) env.CUES_ALT_COUNT = String(control.altCount);
+      if (control.includeOriginal !== undefined) env.CUES_INCLUDE_ORIGINAL = String(control.includeOriginal);
+      if (control.prompts) {
+        for (const [k, v] of Object.entries(control.prompts)) {
+          const envKey = 'CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+          env[envKey] = String(v);
+        }
+      }
+
+      this.adapter.log('debug', `BlankFill: spawn ${scriptPath} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(control) });
       const handle = this.adapter.spawnProcess({
         command: 'bash',
-        args: [script, 'get', slot.keyword],
+        args: [scriptPath, 'get', slot.keyword, ...contextWords],
+        env,
         timeoutMs: 8000,
       });
       handle.result.then(res => {
@@ -237,6 +281,22 @@ export class BlankFill {
     }
     return null;
   }
+}
+
+/** Debug helper — keys actually injected into the script env. */
+function extraEnvKeys(control: Record<string, unknown>): string[] {
+  const keys: string[] = [];
+  if (control.model) keys.push('CUES_MODEL');
+  if (control.apiUrl) keys.push('CUES_API_URL');
+  if (control.apiKeyEnv) keys.push('CUES_API_KEY_ENV');
+  if (control.altCount !== undefined) keys.push('CUES_ALT_COUNT');
+  if (control.includeOriginal !== undefined) keys.push('CUES_INCLUDE_ORIGINAL');
+  if (control.prompts && typeof control.prompts === 'object') {
+    for (const k of Object.keys(control.prompts as object)) {
+      keys.push('CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_'));
+    }
+  }
+  return keys;
 }
 
 /**

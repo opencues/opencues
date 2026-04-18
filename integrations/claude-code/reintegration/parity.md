@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase E.3 (commit `e5d26f3`).
+**Last synced:** Phase E.4 (commit pending).
 
 ---
 
@@ -44,7 +44,7 @@ just architecture.
 | 23 | blank-fill: detect `_` + match `blankKeywords` | ✓ | Phase E.1 (commit `fc124c0`). BlankFill scans onTextChange, walks backward looking for blankKeywords match (single + multi-word), records BlankSlots. Honours blankProximity. |
 | 24 | blank-fill: auto-populate with `stepValues[0]` | ✓ | Phase E.2 (commit `c3a3214`). onUnderscoreKey intercepts the '_' key, simulates insertion, fills with stepValues[0] when blankAutoPopulate isn't false. |
 | 25 | blank-fill: `blankScript get` async populate | ✓ | Phase E.3 (commit `e5d26f3`). Spawns `bash <script> get <keyword>` async via spawnProcess, splices stdout via the new pushText primitive. Dedupes by (text, slot.index). |
-| 26 | blank-fill: context words + env vars + `~` path | ○ | |
+| 26 | blank-fill: context words + env vars + `~` path | ✓ | Phase E.4. Context words = sibling words minus keyword-span and slot.index, passed as positional args. ~ → $HOME expansion at script invocation. CUES_MODEL/API_URL/API_KEY_ENV/ALT_COUNT/INCLUDE_ORIGINAL/PROMPT_* env vars from control config. Live verified: weather Paris vs London returned different forecasts. |
 | 27 | blank-fill: `blankClearKeywords` strips on fill | ○ | |
 | 28 | blank-fill: `blankKeywordExpansions` display | ○ | |
 | 29 | blank-fill: `blankConsumeContext` widens range | ○ | |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 20 ✓, 4 ◐, 12 ○, 2 — out of 38 steps. (Phase E.1-E.3 flipped Steps 23, 24, 25 ✓.)
+**Tally:** 21 ✓, 4 ◐, 11 ○, 2 — out of 38 steps. (Phase E.1-E.4 flipped Steps 23, 24, 25, 26 ✓.)
 
 ---
 

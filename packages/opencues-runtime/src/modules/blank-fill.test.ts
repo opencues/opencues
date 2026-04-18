@@ -188,6 +188,120 @@ blankScript: ./stocks.sh
     }));
   });
 
+  it('async path: passes context words (excluding keyword + blank)', async () => {
+    const SCRIPT_CTRL = `---
+type: control
+name: weather
+blankKeywords: weather
+blankScript: ./weather.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/weather/cue.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('weather in Paris _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // ['./weather.sh', 'get', 'weather', 'in', 'Paris']
+    expect(args.slice(2)).toEqual(['weather', 'in', 'Paris']);
+  });
+
+  it('async path: passes context words for multi-word keyword (index-based filter)', async () => {
+    const SCRIPT_CTRL = `---
+type: control
+name: stocks
+blankKeywords: reddit stock
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('reddit stock today _');
+    const args = spawnSpy.mock.calls[0][0].args;
+    // Both 'reddit' and 'stock' excluded (multi-word keyword); 'today' kept.
+    expect(args.slice(2)).toEqual(['reddit stock', 'today']);
+  });
+
+  it('async path: expands ~ in script path', async () => {
+    const SCRIPT_CTRL = `---
+type: control
+name: stocks
+blankKeywords: stock
+blankScript: ~/.claude/actions/stock.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('stock _');
+    const args = spawnSpy.mock.calls[0][0].args;
+    expect(args[0]).toBe(`${process.env.HOME ?? '~'}/.claude/actions/stock.sh`);
+    expect(args[0].startsWith('~')).toBe(false);
+  });
+
+  it('async path: builds CUES_* env vars from control config', async () => {
+    // cues-core's parseSingleCueMd reads `## Extract` / `## Transform`
+    // markdown sections into controls.X.prompts (NOT a YAML `prompts:` key).
+    const SCRIPT_CTRL = `---
+type: control
+name: prompt
+blankKeywords: prompt
+blankScript: ./prompt.sh
+model: openai/gpt-4
+apiUrl: https://example.com
+apiKeyEnv: TEST_KEY
+altCount: 3
+includeOriginal: true
+---
+
+## Classifier
+
+classify this
+
+## Alt-Gen
+
+generate alts
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('prompt _');
+    const env = spawnSpy.mock.calls[0][0].env;
+    expect(env).toBeDefined();
+    expect(env!.CUES_MODEL).toBe('openai/gpt-4');
+    expect(env!.CUES_API_URL).toBe('https://example.com');
+    expect(env!.CUES_API_KEY_ENV).toBe('TEST_KEY');
+    expect(env!.CUES_ALT_COUNT).toBe('3');
+    expect(env!.CUES_INCLUDE_ORIGINAL).toBe('true');
+    expect(env!.CUES_PROMPT_CLASSIFIER).toBe('classify this');
+    expect(env!.CUES_PROMPT_ALT_GEN).toBe('generate alts');
+  });
+
   it('async path: dedupes concurrent spawns for same (text, slot)', async () => {
     const SCRIPT_CTRL = `---
 type: control
