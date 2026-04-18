@@ -172,7 +172,23 @@ the active highlighted word stays bright (correct) but other random
 chunks revert to undimmed at exactly the positions where cue words
 appear inside the fill.
 
-### 8. The host may keep the `value` prop in lock-step with our InputZone
+### 8. Don't stack `\x1b[7m` (inverse) with `\x1b[2m` (dim) on the same chars
+
+Found during Phase F.a (Step 33). When a multi-word span fill is active
+and the highlight covers the whole span, the natural temptation is to
+ALSO emit a dim layer for the same range "for clarity." Some terminals
+render dim-on-inverse with reduced contrast (almost invisible), others
+render it with the dim showing through the inverse — neither is what
+users expect.
+
+DimRender suppresses the span dim layer when the active word is inside
+the span (the inverse highlight is already covering it as one block).
+If you re-introduce a dim layer there, expect inconsistent appearance
+across terminals. If a future feature genuinely needs both attributes
+on the same chars, test on at least: tmux + xterm, gnome-terminal,
+iTerm2.
+
+### 9. The host may keep the `value` prop in lock-step with our InputZone
 
 Returning `InputZone.fromText(newText, P, cursor)` from the
 `handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.

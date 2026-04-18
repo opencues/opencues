@@ -11,7 +11,7 @@ import type { HostAdapter, Range, RenderContext, RenderDirectives, Unsubscribe }
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
-import type { ConsumeAllState } from '../state/consume-all';
+import type { SpanFillState } from '../state/span-fill';
 import { splitWords } from './navigation';
 
 export class DimRender {
@@ -22,7 +22,7 @@ export class DimRender {
     private hlState: HighlightState,
     private _dynDefs: DynDefs,
     private configLoader?: ConfigLoader,
-    private consumeAllState?: ConsumeAllState,
+    private spanFillState?: SpanFillState,
   ) {}
 
   subscribe(): void {
@@ -60,37 +60,42 @@ export class DimRender {
       }
     }
 
-    // Step 32 — dim the consume-all span as a single block so the user
-    // sees the whole filled chunk is cycleable. Skip the active word
-    // (highlight overlay wins). One contiguous range per gap so the
-    // host can render through punctuation between words.
-    if (hasDimCap && this.consumeAllState?.current) {
-      const entry = this.consumeAllState.current;
-      const spanLen = entry.spanLength || 1;
-      const startWord = words[entry.index];
-      const endWord = words[entry.index + spanLen - 1];
+    // Step 32 / Phase F.a — when a span fill is active, treat the whole
+    // span as one block. If the active highlight isn't inside it, dim
+    // the whole span. If it IS inside, the highlight (below) extends to
+    // cover the entire span and we skip the dim layer to avoid stacking
+    // attributes (inverse + dim renders inconsistently across terminals).
+    const span = this.spanFillState?.current ?? null;
+    const spanLen = span ? Math.max(1, span.spanLength) : 0;
+    const activeInSpan = span !== null
+      && activeIndex !== null
+      && activeIndex >= span.index
+      && activeIndex < span.index + spanLen;
+
+    if (hasDimCap && span && !activeInSpan) {
+      const startWord = words[span.index];
+      const endWord = words[span.index + spanLen - 1];
       if (startWord && endWord) {
-        if (activeIndex !== null && activeIndex >= entry.index && activeIndex < entry.index + spanLen) {
-          // Active word splits the span into up to two pieces.
-          const active = words[activeIndex];
-          if (active && active.start > startWord.start) {
-            dimRanges.push({ start: startWord.start, end: active.start });
-          }
-          if (active && active.end < endWord.end) {
-            dimRanges.push({ start: active.end, end: endWord.end });
-          }
-        } else {
-          dimRanges.push({ start: startWord.start, end: endWord.end });
-        }
+        dimRanges.push({ start: startWord.start, end: endWord.end });
       }
     }
 
-    // Highlight: the active word (overlaid).
+    // Highlight: the active word (overlaid). When the active word is
+    // inside a span fill, expand the highlight to cover the entire span
+    // — that's how the user sees a multi-word fill as one cycleable unit.
     let highlight: { start: number; end: number } | undefined;
     if (hasHighlightCap && this.hlState.active && this.hlState.wordIndex !== null) {
-      const target = words[this.hlState.wordIndex];
-      if (target) {
-        highlight = { start: target.start, end: target.end };
+      if (activeInSpan && span) {
+        const startWord = words[span.index];
+        const endWord = words[span.index + spanLen - 1];
+        if (startWord && endWord) {
+          highlight = { start: startWord.start, end: endWord.end };
+        }
+      } else {
+        const target = words[this.hlState.wordIndex];
+        if (target) {
+          highlight = { start: target.start, end: target.end };
+        }
       }
     }
 

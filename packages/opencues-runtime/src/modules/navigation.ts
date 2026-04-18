@@ -12,6 +12,7 @@ import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../ada
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
+import type { SpanFillState } from '../state/span-fill';
 
 export interface WordSpan {
   readonly start: number;
@@ -35,6 +36,12 @@ export class Navigation {
      * wordHighlight.ts:461.
      */
     private configLoader?: ConfigLoader,
+    /**
+     * Optional. When a span fill is active, the inner positions of the span
+     * (everything past `entry.index`) are skipped — the whole multi-word
+     * fill counts as one nav stop, anchored on its origin.
+     */
+    private spanFillState?: SpanFillState,
   ) {}
 
   subscribe(): void {
@@ -121,31 +128,52 @@ export class Navigation {
    * Priority filter (mirrors v1 wordHighlight.ts:461):
    *   1. Word lowercased is in cueMap (tip-having words).
    *   2. DynDefs has an entry for that index (cycling state).
+   *   3. Step-pattern match (e.g. "0.5f").
    * Fallback: all whitespace-separated words.
+   *
+   * Step 33 layer: when a span fill is active, also force-add the span
+   * origin (so the span is always reachable even if its first word
+   * isn't in cueMap), and drop any inner span positions from the
+   * result so each multi-word span counts as exactly one nav stop.
    *
    * Exposed for unit testing.
    */
   computeTargets(words: readonly WordSpan[]): number[] {
-    if (!this.configLoader && this.dynDefs.size === 0) {
-      return words.map(w => w.index);
-    }
-    const navigable = this.configLoader?.navigableWords;
-    const filtered: number[] = [];
-    for (const w of words) {
-      const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
-      if (lc.length === 0) continue;
-      if (navigable?.has(lc)) {
-        filtered.push(w.index);
-      } else if (this.dynDefs.get(w.index)) {
-        filtered.push(w.index);
-      } else if (this.configLoader?.matchStepPattern(w.word)) {
-        // Step-pattern matches (e.g. "0.5f" → numbers control) are navigable
-        // even though they aren't a literal word in cueMap.
-        filtered.push(w.index);
+    const span = this.spanFillState?.current ?? null;
+    const isInsideSpan = (idx: number): boolean =>
+      span !== null && idx > span.index && idx < span.index + span.spanLength;
+
+    const baseTargets: number[] = (() => {
+      if (!this.configLoader && this.dynDefs.size === 0) {
+        return words.map(w => w.index);
       }
+      const navigable = this.configLoader?.navigableWords;
+      const filtered: number[] = [];
+      for (const w of words) {
+        const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
+        if (lc.length === 0) continue;
+        if (navigable?.has(lc)) {
+          filtered.push(w.index);
+        } else if (this.dynDefs.get(w.index)) {
+          filtered.push(w.index);
+        } else if (this.configLoader?.matchStepPattern(w.word)) {
+          filtered.push(w.index);
+        }
+      }
+      if (filtered.length > 0) return filtered;
+      return words.map(w => w.index);
+    })();
+
+    if (!span) return baseTargets;
+
+    // Drop inner span positions; ensure origin is in the list.
+    const out = baseTargets.filter(i => !isInsideSpan(i));
+    const spanOriginInWords = words.some(w => w.index === span.index);
+    if (spanOriginInWords && !out.includes(span.index)) {
+      out.push(span.index);
+      out.sort((a, b) => a - b);
     }
-    if (filtered.length > 0) return filtered;
-    return words.map(w => w.index);
+    return out;
   }
 }
 

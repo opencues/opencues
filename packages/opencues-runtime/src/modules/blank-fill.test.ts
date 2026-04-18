@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BlankFill, buildClearKeywordText, computeFillRange } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
-import { ConsumeAllState } from '../state/consume-all';
+import { SpanFillState } from '../state/span-fill';
 
 const TIPS = JSON.stringify({ concepts: [] });
 
@@ -683,7 +683,7 @@ blankClearKeywords: true
     });
     const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
     await loader.load();
-    const consumeAll = new ConsumeAllState();
+    const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
     bf.subscribe();
     vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
@@ -723,7 +723,7 @@ blankConsumeAll: true
     });
     const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
     await loader.load();
-    const consumeAll = new ConsumeAllState();
+    const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
     bf.subscribe();
     vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
@@ -734,6 +734,68 @@ blankConsumeAll: true
     await new Promise(r => setTimeout(r, 0));
     expect(adapter.getText()).toBe('lone improvement');
     expect(consumeAll.current).toBeNull();
+  });
+
+  it('Phase F.a: multi-word stepValues fill registers a SpanFillState entry', async () => {
+    const AFFIRM_F = `---
+type: control
+name: affirmations
+blankKeywords: affirm
+stepValues: ["I am strong", "I am brave"]
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/affirmations/cue.md': AFFIRM_F },
+    });
+    adapter.pushText('affirm ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const span = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, span);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey({
+      key: '_',
+      modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+      text: 'affirm ',
+      cursorOffset: 7,
+    })).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('affirm I am strong');
+    expect(span.current).toMatchObject({
+      index: 1,
+      alternatives: ['I am strong', 'I am brave'],
+      currentAltIndex: 0,
+      spanLength: 3,
+    });
+    expect(span.lastFilledText).toBe('affirm I am strong');
+  });
+
+  it('Phase F.a: single-stepValue fill does NOT register a span (no cycling needed)', async () => {
+    // Only one alt → cycling would be a no-op anyway.
+    const ONE = `---
+type: control
+name: lone
+blankKeywords: lone
+stepValues: ["only"]
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/lone/cue.md': ONE },
+    });
+    adapter.pushText('lone ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const span = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, span);
+    bf.subscribe();
+    bf.onUnderscoreKey({
+      key: '_',
+      modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+      text: 'lone ',
+      cursorOffset: 5,
+    });
+    expect(span.current).toBeNull();
   });
 
   it('Step 31 invalidation: user editing the consume-all text clears the stash', async () => {
@@ -751,7 +813,7 @@ blankConsumeAll: true
     });
     const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
     await loader.load();
-    const consumeAll = new ConsumeAllState();
+    const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
     bf.subscribe();
     vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
@@ -786,7 +848,7 @@ blankConsumeAll: true
     });
     const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
     await loader.load();
-    const consumeAll = new ConsumeAllState();
+    const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
     bf.subscribe();
     vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({

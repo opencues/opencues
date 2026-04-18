@@ -11,7 +11,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import type { ConsumeAllState } from '../state/consume-all';
+import type { SpanFillState } from '../state/span-fill';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -38,7 +38,7 @@ export class BlankFill {
   constructor(
     private adapter: HostAdapter,
     private configLoader: ConfigLoader,
-    private consumeAllState?: ConsumeAllState,
+    private spanFillState?: SpanFillState,
   ) {}
 
   subscribe(): void {
@@ -79,8 +79,8 @@ export class BlankFill {
     // current text doesn't match what we last filled (cycle or initial),
     // the user edited it — drop the stash so a stale alt isn't spliced
     // into newly-edited text.
-    if (this.consumeAllState && this.consumeAllState.current && e.text.replace(/[\u200B\u200C]/g, '') !== this.consumeAllState.lastFilledText) {
-      this.consumeAllState.clear();
+    if (this.spanFillState && this.spanFillState.current && e.text.replace(/[\u200B\u200C]/g, '') !== this.spanFillState.lastFilledText) {
+      this.spanFillState.clear();
     }
     const slots = this.scan(e.text);
     if (e.source === 'user') {
@@ -215,15 +215,15 @@ export class BlankFill {
       if (lines.length === 0) return;
       const newText = lines[0];
       const newCursor = newText.length;
-      if (this.consumeAllState && lines.length > 1) {
-        this.consumeAllState.set({
+      if (this.spanFillState && lines.length > 1) {
+        this.spanFillState.set({
           index: 0,
           alternatives: lines,
           currentAltIndex: 0,
           spanLength: newText.split(/\s+/).filter(Boolean).length,
         }, newText);
-      } else if (this.consumeAllState) {
-        this.consumeAllState.clear();
+      } else if (this.spanFillState) {
+        this.spanFillState.clear();
       }
       if (this.adapter.pushText) {
         this.adapter.pushText(newText, newCursor);
@@ -308,6 +308,27 @@ export class BlankFill {
       ? buildClearKeywordText(insertedText, slot, fillValue, expansion, clearEnd)
       : { newText: insertedText.slice(0, insertedWord.start) + fillValue + insertedText.slice(insertedWord.end),
           newCursor: insertedWord.start + fillValue.length };
+
+    // Step 33 / Phase F.a — when the fill or the alternative pool is
+    // multi-word, register a span so Cycling and DimRender can treat the
+    // whole fill as a single navigable, cycleable unit. Affirmations are
+    // the canonical case: stepValues[0] = "I am strong" doesn't cycle via
+    // path 2 (lookupControl on inner words returns nothing). Without a
+    // span entry, Ctrl+Alt+Up after the fill falls through to no-op.
+    if (this.spanFillState && stepValues.length > 1) {
+      const fillStart = newCursor - fillValue.length;
+      const newWords = splitWords(newText);
+      const startWord = newWords.find(w => w.start === fillStart);
+      if (startWord) {
+        const spanLength = fillValue.split(/\s+/).filter(Boolean).length;
+        this.spanFillState.set({
+          index: startWord.index,
+          alternatives: stepValues,
+          currentAltIndex: 0,
+          spanLength: Math.max(1, spanLength),
+        }, newText);
+      }
+    }
 
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);

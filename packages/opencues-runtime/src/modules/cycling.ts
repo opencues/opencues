@@ -16,7 +16,7 @@ import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, ControlEntry, StepPattern } from './config-loader';
 import { splitWords } from './navigation';
-import type { ConsumeAllState } from '../state/consume-all';
+import type { SpanFillState } from '../state/span-fill';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -27,7 +27,7 @@ export class Cycling {
     private hlState: HighlightState,
     private dynDefs: DynDefs,
     private configLoader: ConfigLoader,
-    private consumeAllState?: ConsumeAllState,
+    private spanFillState?: SpanFillState,
   ) {}
 
   subscribe(): void {
@@ -55,9 +55,10 @@ export class Cycling {
     const target = words[wordIndex];
     if (!target) return false;
 
-    // 0. Consume-all (prompt improver) — takes precedence when the highlight
-    //    falls within the consumed span. Cycles through the stashed alts.
-    if (this.consumeAllState?.current && this.cycleConsumeAll(event, words, wordIndex, direction)) {
+    // 0. Span fill — takes precedence when the highlight falls within
+    //    a consume-all span (prompt improver) or a multi-word stepValues
+    //    span (affirmations). Cycles through the stashed alts.
+    if (this.spanFillState?.current && this.cycleSpanFill(event, words, wordIndex, direction)) {
       return true;
     }
 
@@ -82,15 +83,15 @@ export class Cycling {
     return this.cycleStaticAlts(event, target, wordIndex, direction);
   }
 
-  // ─── Path 0: consume-all (prompt improver) ─────────────────────────────
+  // ─── Path 0: span fill (consume-all + multi-word stepValues) ──────────
 
-  private cycleConsumeAll(
+  private cycleSpanFill(
     event: KeyEvent,
     words: ReadonlyArray<{ word: string; start: number; end: number; index: number }>,
     wordIndex: number,
     direction: 1 | -1,
   ): boolean {
-    const entry = this.consumeAllState!.current!;
+    const entry = this.spanFillState!.current!;
     const spanLen = entry.spanLength || 1;
     if (wordIndex < entry.index || wordIndex >= entry.index + spanLen) return false;
 
@@ -116,7 +117,7 @@ export class Cycling {
     // matching lastFilledText and doesn't drop the entry.
     entry.currentAltIndex = nextIdx;
     entry.spanLength = nextAlt.split(/\s+/).filter(Boolean).length;
-    this.consumeAllState!.set(entry, newText);
+    this.spanFillState!.set(entry, newText);
 
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);

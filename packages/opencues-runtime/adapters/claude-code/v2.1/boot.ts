@@ -22,7 +22,7 @@ import { Resolver } from '../../../src/modules/resolver';
 import { BlankFill } from '../../../src/modules/blank-fill';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
-import { ConsumeAllState } from '../../../src/state/consume-all';
+import { SpanFillState } from '../../../src/state/span-fill';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   KeyEvent,
@@ -237,7 +237,7 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ClaudeCodeV21Adapter(bindings);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const consumeAllState = new ConsumeAllState();
+  const spanFillState = new SpanFillState();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
@@ -247,18 +247,19 @@ export function boot(host: HostInfo): BootResult {
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
   // Subscribe modules synchronously so the very first key dispatch is wired.
-  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader);
+  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState);
   navigation.subscribe();
-  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, consumeAllState);
+  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState);
   dimRender.subscribe();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, consumeAllState);
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState);
   cycling.subscribe();
 
   // BlankFill: scans for `_` placeholders + matched control. Owns the
   // detection + sync (stepValues) and async (blankScript) fill paths.
-  // E.8 adds the consume-all branch — needs ConsumeAllState as a writer
-  // so E.9's Cycling can read the stash.
-  const blankFill = new BlankFill(adapter, configLoader, consumeAllState);
+  // E.8 adds the consume-all branch — needs SpanFillState as a writer
+  // so E.9's Cycling can read the stash. F.a generalises the same state
+  // for multi-word stepValues fills (affirmations etc.).
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 

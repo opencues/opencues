@@ -4,7 +4,7 @@ import { ConfigLoader } from './config-loader';
 import { Navigation } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
-import { ConsumeAllState } from '../state/consume-all';
+import { SpanFillState } from '../state/span-fill';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({
@@ -114,7 +114,7 @@ describe('Cycling consume-all (Step 31)', () => {
     adapter.pushText(initialText);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const consumeAll = new ConsumeAllState();
+    const consumeAll = new SpanFillState();
     const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, consumeAll);

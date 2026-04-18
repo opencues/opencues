@@ -177,3 +177,41 @@ describe('Navigation cue filtering (Bucket B)', () => {
     expect(hlState.wordIndex).toBe(1); // unknown — DynDef makes it navigable
   });
 });
+
+describe('Navigation span-fill filter (Phase F.a / Step 33)', () => {
+  it('skips inner span positions; treats span as one nav stop', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    adapter.pushText('affirm I am strong');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const span = new SpanFillState();
+    span.set({ index: 1, alternatives: ['I am strong', 'I am brave'], currentAltIndex: 0, spanLength: 3 }, 'affirm I am strong');
+    const nav = new Navigation(adapter, hlState, dynDefs, undefined, span);
+    nav.subscribe();
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    // Without span: rightmost = "strong" at index 3. With span: spans collapse
+    // to the origin = index 1.
+    expect(hlState.wordIndex).toBe(1);
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    // Step left from origin: lands on "affirm" at index 0.
+    expect(hlState.wordIndex).toBe(0);
+  });
+
+  it('span origin is force-included even when not in cueMap', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText('foo bar baz qux');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const span = new SpanFillState();
+    span.set({ index: 1, alternatives: ['bar baz', 'other text'], currentAltIndex: 0, spanLength: 2 }, 'foo bar baz qux');
+    const nav = new Navigation(adapter, hlState, dynDefs, loader, span);
+    expect(nav.computeTargets(splitWords('foo bar baz qux'))).toEqual([0, 1, 3]);
+  });
+});
