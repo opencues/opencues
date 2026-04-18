@@ -302,6 +302,30 @@ export class ConfigLoader {
   get config(): LoadedConfig { return this._config; }
 
   /**
+   * Phase G.b/I.8 — apply an opencues.md scalar change in-memory before
+   * the next file-based hot-reload runs. The selector/satellite cycle
+   * spawns `script set <key> <value>` async (writes to disk), but TTS
+   * and Statusline read opencuesState immediately on the next render.
+   * Without this, TTS would speak using the stale voiceMode for the
+   * ~2s gap between cycle + reload.
+   */
+  applyOpenCuesScalar(key: string, value: string): void {
+    const cur = this._config.opencuesState;
+    const newSettings = new Map(cur.settings);
+    newSettings.set(key, value);
+    const get = (k: string, fallback: string): string => newSettings.get(k) ?? fallback;
+    const next = {
+      voiceMode: (get('voice-mode', 'active') === 'inactive' ? 'inactive' : 'active') as 'inactive' | 'active',
+      debugMode: (get('debug-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
+      tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
+      cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
+      settings: newSettings as ReadonlyMap<string, string>,
+      definitions: cur.definitions,
+    };
+    this._config = { ...this._config, opencuesState: next };
+  }
+
+  /**
    * Case-insensitive lookup. Falls back to controlsByWord when the word
    * isn't a tip-having entry but IS a control or blankKeyword — synthesises
    * a LocalCueLookupResult from the control's `tip` / `blankTip` so the

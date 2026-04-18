@@ -196,11 +196,17 @@ export class Cycling {
     entry.satelliteLength = Math.max(1, nextValue.split(/\s+/).filter(Boolean).length);
     entry.pairCharEnd = newRegionEnd;
     this.selectorSatelliteState!.set(entry, newText);
+    // Apply the change to opencuesState immediately so TTS / Statusline
+    // see the new setting without waiting for the next hot-reload.
+    this.configLoader.applyOpenCuesScalar(entry.currentSetting, nextValue);
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
 
     if (entry.scriptPath && this.adapter.capabilities.includes('spawn-process')) {
+      this.adapter.log('debug', `Cycling: satellite set ${entry.controlName}`, {
+        script: entry.scriptPath, setting: entry.currentSetting, value: nextValue,
+      });
       try {
         this.adapter.spawnProcess({
           command: 'bash',
@@ -211,6 +217,11 @@ export class Cycling {
       } catch (err) {
         this.adapter.log('error', `Cycling: satellite set failed for ${entry.controlName}`, err);
       }
+    } else {
+      this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.controlName}`, {
+        hasScriptPath: !!entry.scriptPath,
+        hasSpawnCap: this.adapter.capabilities.includes('spawn-process'),
+      });
     }
     return true;
   }
