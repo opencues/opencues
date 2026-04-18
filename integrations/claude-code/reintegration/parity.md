@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase I.3 (commit pending).
+**Last synced:** Phase I.4 (commit pending).
 
 ---
 
@@ -27,7 +27,7 @@ just architecture.
 | 6 | parse cwd `controls.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via cues-core's parseCuesMd. |
 | 7 | parse cwd `cues.md` | ✓ | Phase 6. ConfigLoader exposes `cuesConfig`. |
 | 8 | folder-config discovery for `controls/` | ✓ | Phase 6. readDir capability + cues-core's parseSingleCueMd-based walk. cues/, controls/, blanks/ all walked. |
-| 9 | `_stepPatterns` + dim renderer extension | ◐ | Phase 8: stepPatterns built per-control; DimRender dims navigable words. Number-only dim (no control word in text) still TBD if needed. |
+| 9 | `_stepPatterns` + dim renderer extension | ✓ | Phase 8 + Phase I.4 verification. DimRender dims standalone stepPattern matches (`0.5f` typed alone with no other cues still dims). Test added covering the no-cueMap-context case. |
 | 10 | `_cycleAlt` for script-backed cue-controls | ✓ | Phase 8 (commit `6534f8a`). Cycling.runScriptControl spawns control.script with up/downArgs, fire-and-forget. |
 | 11 | `_isCueControl` recognises `_stepPatterns` | ✓ | Phase 8. Navigation.computeTargets calls matchStepPattern; DimRender includes step-pattern matches in its dim set. |
 | 12 | step-control cycling (arithmetic in-place) | ✓ | Phase 8. Numeric (0.5f → 1.0f) + list (affirmation → "I am strong"). |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 32 ✓, 3 ◐, 1 ○, 2 — out of 38 steps. (Phase I.3 completed Step 21.)
+**Tally:** 33 ✓, 2 ◐, 1 ○, 2 — out of 38 steps. (Phase I.4 verified Step 9.)
 
 ---
 
