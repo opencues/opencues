@@ -24,6 +24,7 @@ import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
+import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   KeyEvent,
@@ -240,6 +241,7 @@ export function boot(host: HostInfo): BootResult {
   const dynDefs = new DynDefs();
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
+  const selectorSatelliteState = new SelectorSatelliteState();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
@@ -261,7 +263,7 @@ export function boot(host: HostInfo): BootResult {
   // E.8 adds the consume-all branch — needs SpanFillState as a writer
   // so E.9's Cycling can read the stash. F.a generalises the same state
   // for multi-word stepValues fills (affirmations etc.).
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks);
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 

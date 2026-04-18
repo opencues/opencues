@@ -4,6 +4,7 @@ import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
 import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
+import { SelectorSatelliteState } from '../state/selector-satellite';
 
 const TIPS = JSON.stringify({ concepts: [] });
 
@@ -951,6 +952,103 @@ blankScript: ./stocks.sh
     // Single-word, no alts, no dismissible → no span (regular cycling
     // doesn't apply to a fixed read-only price).
     expect(span.current).toBeNull();
+  });
+
+  it('Phase G.a: tab-separated stdout under blankSatellite splits into selector + satellite', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: opencues settings
+blankScript: ./oc.sh
+blankSatellite: true
+blankSatelliteSeparator: ' '
+blankClearKeywords: true
+blankClearOnEdit: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'voice-mode\tactive\n', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('opencues settings _');
+    await new Promise(r => setTimeout(r, 0));
+    // Keyword stripped, selector + satellite spliced with default ' '.
+    expect(adapter.getText()).toBe('voice-mode active');
+    expect(ss.current).toMatchObject({
+      controlName: 'opencues',
+      selectorIndex: 0,
+      satelliteIndex: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: true,
+    });
+  });
+
+  it('Phase G.a: respects custom blankSatelliteSeparator', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+blankSatelliteSeparator: '='
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'k\tv', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('cfg _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toContain('k=v');
+  });
+
+  it('Phase G.a: missing tab in stdout does NOT trigger satellite path', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'just-one-token', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('cfg _');
+    await new Promise(r => setTimeout(r, 0));
+    // Falls through to single-fill splice path; no satellite stash.
+    expect(ss.current).toBeNull();
+    expect(adapter.getText()).toContain('just-one-token');
   });
 
   it('Step 31 invalidation: user editing the consume-all text clears the stash', async () => {

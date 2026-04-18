@@ -13,6 +13,7 @@ import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
+import type { SelectorSatelliteState } from '../state/selector-satellite';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -41,6 +42,7 @@ export class BlankFill {
     private configLoader: ConfigLoader,
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
+    private selectorSatelliteState?: SelectorSatelliteState,
   ) {}
 
   subscribe(): void {
@@ -81,9 +83,14 @@ export class BlankFill {
     // current text doesn't match what we last filled (cycle or initial),
     // the user edited it — drop the stash AND any dismissed-blank flags
     // tied to the old span (their word indices are no longer meaningful).
-    if (this.spanFillState && this.spanFillState.current && e.text.replace(/[\u200B\u200C]/g, '') !== this.spanFillState.lastFilledText) {
+    const cleaned = e.text.replace(/[\u200B\u200C]/g, '');
+    if (this.spanFillState && this.spanFillState.current && cleaned !== this.spanFillState.lastFilledText) {
       this.spanFillState.clear();
       this.dismissedBlanks?.clear();
+    }
+    // Phase G.a — same idea for the selector/satellite stash.
+    if (this.selectorSatelliteState && this.selectorSatelliteState.current && cleaned !== this.selectorSatelliteState.lastFilledText) {
+      this.selectorSatelliteState.clear();
     }
     const slots = this.scan(e.text);
     if (e.source === 'user') {
@@ -202,6 +209,10 @@ export class BlankFill {
           blankConsumeContext?: boolean;
           blankConsumeAll?: boolean;
           blankDismissible?: boolean;
+          blankSatellite?: boolean;
+          blankSatelliteSeparator?: string;
+          blankClearOnEdit?: boolean;
+          blankScript?: string;
           blankTip?: string;
           tip?: string;
           blankKeywordExpansions?: Record<string, string>;
@@ -209,9 +220,19 @@ export class BlankFill {
       | undefined;
 
     // Staleness guard — if the user moved on or already filled the slot,
-    // drop the late callback. Applies to all three downstream paths
-    // (consume-all, range-clear, char-splice).
+    // drop the late callback. Applies to all downstream paths
+    // (selector/satellite, consume-all, range-clear, char-splice).
     if (!target || target.word !== '_') return;
+
+    // Phase G.a — selector/satellite fill. When the script returns a
+    // tab-separated `<setting>\t<value>` and the control declares
+    // blankSatellite, splice TWO words separated by blankSatelliteSeparator
+    // (default ' ') and stash the pair so cycling can write back via
+    // `script set` / `script get`.
+    if (control?.blankSatellite === true && fillValue.includes('\t')) {
+      this.applySatelliteFill(slot, control, fillValue, cleaned, target);
+      return;
+    }
 
     // Phase F.b — parse stdout into lines once. Both consume-all and
     // splice paths use line[0] as the visible fill; alternates stash if
@@ -296,6 +317,74 @@ export class BlankFill {
       }
     }
 
+    if (this.adapter.pushText) {
+      this.adapter.pushText(newText, newCursor);
+    } else {
+      this.adapter.setText(newText);
+      this.adapter.setCursorOffset(newCursor);
+      this.adapter.forceRender();
+    }
+  }
+
+  /**
+   * Phase G.a — splice `<selector><sep><satellite>` into the slot and
+   * stash a SelectorSatelliteEntry. Caller already verified blankSatellite
+   * + presence of \t. Honours `blankClearKeywords` (Step 27) on the
+   * keyword span.
+   */
+  private applySatelliteFill(
+    slot: BlankSlot,
+    control: {
+      blankClearKeywords?: boolean;
+      blankConsumeContext?: boolean;
+      blankSatellite?: boolean;
+      blankSatelliteSeparator?: string;
+      blankClearOnEdit?: boolean;
+      blankScript?: string;
+      blankKeywordExpansions?: Record<string, string>;
+    },
+    fillValue: string,
+    cleaned: string,
+    target: { start: number; end: number; word: string; index: number },
+  ): void {
+    const tabIdx = fillValue.indexOf('\t');
+    const selectorRaw = fillValue.slice(0, tabIdx).trim();
+    const satelliteRaw = fillValue.slice(tabIdx + 1).split('\n')[0].trim();
+    if (!selectorRaw || !satelliteRaw) return;
+    const sep = control.blankSatelliteSeparator || ' ';
+    const pair = `${selectorRaw}${sep}${satelliteRaw}`;
+    const { clearEnd, expansion } = computeFillRange(control, slot);
+    const { newText, newCursor } = clearEnd !== undefined || expansion != null
+      ? buildClearKeywordText(cleaned, slot, pair, expansion, clearEnd)
+      : { newText: cleaned.slice(0, target.start) + pair + cleaned.slice(target.end),
+          newCursor: target.start + pair.length };
+
+    if (this.selectorSatelliteState) {
+      const newWords = splitWords(newText);
+      const fillStart = newCursor - pair.length;
+      const startWord = newWords.find(w => w.start === fillStart);
+      if (startWord) {
+        const home = process.env.HOME ?? '~';
+        const scriptPath = control.blankScript
+          ? (control.blankScript.startsWith('~') ? home + control.blankScript.slice(1) : control.blankScript)
+          : '';
+        this.selectorSatelliteState.set({
+          controlName: slot.controlName,
+          scriptPath,
+          selectorIndex: startWord.index,
+          satelliteIndex: startWord.index + 1,
+          currentSetting: selectorRaw,
+          currentValue: satelliteRaw,
+          separator: sep,
+          clearOnEdit: control.blankClearOnEdit === true,
+        }, newText);
+      }
+    }
+    this.adapter.log('debug', `BlankFill: satellite ${slot.controlName}`, {
+      selector: selectorRaw,
+      satellite: satelliteRaw,
+      sep,
+    });
     if (this.adapter.pushText) {
       this.adapter.pushText(newText, newCursor);
     } else {

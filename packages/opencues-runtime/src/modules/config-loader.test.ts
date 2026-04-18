@@ -109,6 +109,41 @@ tips-mode: maybe
     expect(state.voiceMode).toBe('active'); // anything ≠ 'inactive' = active
     expect(state.tipsMode).toBe('on');      // anything ≠ 'off' = on
   });
+
+  it('Phase G.a: parses nested settings: block into definitions', () => {
+    const md = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud
+      inactive: TTS is silenced
+  debug-mode:
+    tip: Enable debug logging
+    values:
+      on: Debug output emitted
+      off: Debug logging suppressed
+---`;
+    const state = parseOpenCuesMd(md);
+    expect(state.definitions.size).toBe(2);
+    const vm = state.definitions.get('voice-mode');
+    expect(vm?.tip).toBe('Gates TTS globally');
+    expect(vm?.valueOrder).toEqual(['active', 'inactive']);
+    expect(vm?.valueTips.get('active')).toBe('TTS reads tips aloud');
+    expect(vm?.valueTips.get('inactive')).toBe('TTS is silenced');
+    const dm = state.definitions.get('debug-mode');
+    expect(dm?.valueOrder).toEqual(['on', 'off']);
+  });
+
+  it('Phase G.a: empty/missing settings: block produces empty definitions', () => {
+    const md = `---
+voice-mode: active
+---`;
+    const state = parseOpenCuesMd(md);
+    expect(state.definitions.size).toBe(0);
+  });
 });
 
 describe('ConfigLoader expanded — cwd .md files', () => {

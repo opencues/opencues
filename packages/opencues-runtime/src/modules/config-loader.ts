@@ -52,6 +52,16 @@ export interface ConfigLoaderOptions {
  *   - debugMode='on'        → enable extra logging
  *   - cursorNavigate='active' → auto-highlight word under cursor
  */
+/** A single named setting in the nested `settings:` block of opencues.md. */
+export interface OpenCuesSettingDef {
+  /** Setting-level tip (selector tip in the statusline). */
+  readonly tip?: string;
+  /** Allowed values for this setting, in declaration order. */
+  readonly valueOrder: readonly string[];
+  /** Per-value tip (satellite tip in the statusline). */
+  readonly valueTips: ReadonlyMap<string, string>;
+}
+
 export interface OpenCuesState {
   readonly voiceMode: 'active' | 'inactive';
   readonly debugMode: 'on' | 'off';
@@ -59,6 +69,13 @@ export interface OpenCuesState {
   readonly cursorNavigate: 'active' | 'inactive';
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
+  /**
+   * Parsed nested `settings:` block — the source of truth for selector/
+   * satellite cycling (Step 35). Empty when opencues.md has no settings
+   * block. Setting names appear in declaration order so cycling matches
+   * the document.
+   */
+  readonly definitions: ReadonlyMap<string, OpenCuesSettingDef>;
 }
 
 const DEFAULT_OPENCUES_STATE: OpenCuesState = {
@@ -67,12 +84,13 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   tipsMode: 'on',
   cursorNavigate: 'inactive',
   settings: new Map(),
+  definitions: new Map(),
 };
 
 /**
- * Parse opencues.md's top-level YAML frontmatter into a flat map of scalars.
- * Stops descending when it hits the nested `settings:` block (which is
- * documentation, not state).
+ * Parse opencues.md's frontmatter — top-level scalars (current values)
+ * AND the nested `settings:` block (definitions for selector/satellite
+ * cycling).
  *
  * Exported for unit testing.
  */
@@ -83,14 +101,11 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const settings = new Map<string, string>();
   for (const line of lines) {
     if (!line || line.startsWith('#')) continue;
-    // Stop at indented lines (nested) — we only care about top-level scalars.
     if (line.startsWith(' ') || line.startsWith('\t')) continue;
     const m = line.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):\s*(.*)$/);
     if (!m) continue;
     const key = m[1].trim();
     const rawValue = m[2].trim();
-    // Empty value = nested block on next lines (e.g. `settings:`).
-    // Skip — we only collect scalars.
     if (rawValue === '') continue;
     settings.set(key, rawValue);
   }
@@ -99,7 +114,78 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const debugMode = get('debug-mode', 'off') === 'on' ? 'on' : 'off';
   const tipsMode = get('tips-mode', 'on') === 'off' ? 'off' : 'on';
   const cursorNavigate = get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive';
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, settings };
+  const definitions = parseSettingsBlock(lines);
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, settings, definitions };
+}
+
+/**
+ * Walk the indented `settings:` block and pull out each setting's tip +
+ * declared values. Indent semantics: 2 spaces = setting name, 4 spaces =
+ * tip / `values:`, 6 spaces = a value entry. Tolerant of blank lines;
+ * stops at the next top-level (zero-indent) key.
+ */
+function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSettingDef> {
+  const out = new Map<string, OpenCuesSettingDef>();
+  let inBlock = false;
+  let currentSetting: string | null = null;
+  let currentTip: string | undefined;
+  let currentValueOrder: string[] = [];
+  let currentValueTips = new Map<string, string>();
+  let inValues = false;
+
+  const commit = (): void => {
+    if (currentSetting && (currentValueOrder.length > 0 || currentTip)) {
+      out.set(currentSetting, {
+        tip: currentTip,
+        valueOrder: currentValueOrder,
+        valueTips: currentValueTips,
+      });
+    }
+    currentSetting = null;
+    currentTip = undefined;
+    currentValueOrder = [];
+    currentValueTips = new Map();
+    inValues = false;
+  };
+
+  for (const raw of lines) {
+    if (!raw) continue;
+    if (!inBlock) {
+      if (/^settings:\s*$/.test(raw)) inBlock = true;
+      continue;
+    }
+    // A zero-indent line ends the block.
+    if (!raw.startsWith(' ') && !raw.startsWith('\t')) {
+      commit();
+      break;
+    }
+    const indent = raw.match(/^(\s*)/)?.[1].length ?? 0;
+    const trimmed = raw.trim();
+    if (indent === 2 && trimmed.endsWith(':')) {
+      // New setting name.
+      commit();
+      currentSetting = trimmed.slice(0, -1).trim();
+      continue;
+    }
+    if (indent === 4) {
+      const m = trimmed.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):\s*(.*)$/);
+      if (!m) continue;
+      const key = m[1].trim();
+      const value = m[2].trim();
+      if (key === 'tip') currentTip = value;
+      else if (key === 'values') inValues = true;
+      continue;
+    }
+    if (indent === 6 && inValues) {
+      const m = trimmed.match(/^([A-Za-z0-9][A-Za-z0-9_\- ]*?):\s*(.*)$/);
+      if (!m) continue;
+      const valueName = m[1].trim();
+      currentValueOrder.push(valueName);
+      currentValueTips.set(valueName, m[2].trim());
+    }
+  }
+  commit();
+  return out;
 }
 
 export interface LoadedConfig {
