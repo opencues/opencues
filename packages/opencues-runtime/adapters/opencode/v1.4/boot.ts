@@ -18,9 +18,13 @@ import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { TTS } from '../../../src/modules/tts';
+import { BlankFill } from '../../../src/modules/blank-fill';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { ControlValuesCache } from '../../../src/state/control-values';
+import { SpanFillState } from '../../../src/state/span-fill';
+import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
+import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import type {
   KeyEvent,
   LogLevel,
@@ -131,39 +135,49 @@ export function boot(host: HostInfo): BootResult {
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
-  // Phase O.3 — Navigation. Same module as CC; host-agnostic.
+  // State classes first (declared in dependency order).
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader);
+  const controlValues = new ControlValuesCache();
+  const spanFillState = new SpanFillState();
+  const dismissedBlanks = new DismissedBlanks();
+  const selectorSatelliteState = new SelectorSatelliteState();
+
+  // Phase O.3 + O.8 — Navigation, span/satellite-aware.
+  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   navigation.subscribe();
 
-  // Phase O.4 — DimRender. Subscribes to onRender; the patch fires
-  // it via collectRenderDirectives + extmark application.
-  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader);
+  // Phase O.4 + O.8 — DimRender, span/satellite-aware.
+  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   dimRender.subscribe();
 
-  // Phase O.5 — Cycling. Ctrl+Alt+Up/Down rotates static alts +
-  // step patterns + script controls. Span/satellite/dismissed states
-  // wait for O.8 (BlankFill phase).
-  const controlValues = new ControlValuesCache();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, undefined, undefined, undefined, controlValues);
+  // Phase O.5 + O.8 — Cycling. Full state set (span/dismissed/SS/control values).
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, controlValues);
   cycling.subscribe();
+
+  // Phase O.8 — BlankFill. The `_` keystroke kicks off auto-populate
+  // (sync stepValues) + async script fills (blankScript).
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs);
+  configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
 
   // Phase O.7 — Statusline (file-based, doesn't touch OpenCode's own
   // status bar). Opt-in via host.statusFilePath.
   if (host.statusFilePath) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
-    }, configLoader, undefined, undefined, controlValues);
+    }, configLoader, spanFillState, selectorSatelliteState, controlValues);
     statusline.subscribe();
   }
+
+  // TTS gets span + selector/satellite states for tip routing.
+  // (Reconstructed below to include them — see Phase O.7.)
 
   // Phase O.7 — TTS. Opt-in via host.ttsScriptPath + spawn-process cap.
   if (host.ttsScriptPath && adapter.capabilities.includes('spawn-process')) {
     const tts = new TTS(adapter, hlState, dynDefs, configLoader, {
       scriptPath: host.ttsScriptPath,
       rate: host.ttsRate !== undefined ? String(host.ttsRate) : undefined,
-    });
+    }, spanFillState, selectorSatelliteState);
     tts.subscribe();
   }
 

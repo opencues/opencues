@@ -17,8 +17,50 @@ Phases shipped so far:
 | O.4 DimRender (extmarks) | `db27817` | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
 | O.5 + O.6 ConfigLoader + Cycling | `da46931` | `6d57e3f` | Cycling subscribed, ConfigLoader loads tips |
 | O.7 Statusline + Resolver + TTS | `4078e94` | `0a1a9fd` | Middle layer wired; opt-in via host paths |
+| O.8 BlankFill + spans + selector | _pending_ | `f5324c9` | Full feature parity reached; `_` triggers blank fill |
 
 Each future entry below has the same shape. Most-recent-on-top.
+
+---
+
+## O.8 — BlankFill + spans + selector/satellite
+
+**Commit:** _pending_
+**Rollback to (prior):** `f5324c9`
+
+**Modules touched:**
+- `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` — constructs SpanFillState, DismissedBlanks, SelectorSatelliteState; threads them into Navigation, DimRender, Cycling, Statusline, TTS. Subscribes BlankFill (after ConfigLoader.load resolves).
+
+**What it does:**
+The full Bucket E + F + G feature set comes online:
+- `affirm _` → fills with stepValues; cycles I am strong → I am brave → ... (multi-word span).
+- `weather _` → script fill, suffix appended, dim+highlight as one block.
+- `improve prompt write a poem _` → consume-all (LLM-driven prompt improver if `GROQ_API_KEY` set).
+- `opencues settings _` → selector/satellite pair with cycling write-back to opencues.md.
+- `volume _` → numeric fill with `%` suffix; cycle adjusts via blankScript set.
+
+**Live test (full sweep):**
+1. `export GROQ_API_KEY=...` (only needed for prompt improver / answer / hackernews via LLM).
+2. Re-run setup.sh; restart `bun run dev`.
+3. Type `affirm _` → text becomes `affirm I am strong`. Ctrl+Alt+Left → highlight span. Ctrl+Alt+Up → cycles to next affirmation.
+4. Type `weather in Paris _` → `in Paris <forecast>` (clearKeyword + suffix appended).
+5. Type `volume _` → `volume 50%`; Ctrl+Alt+Up on `50%` → bumps system volume.
+6. Type `opencues settings _` → `voice-mode active`. Cycle satellite to inactive → opencues.md updated.
+7. Type `improve prompt write me a poem _` → first improved version replaces input.
+
+**Expected:**
+- All blank-fill flavors work (sync stepValues, async script, satellite, consume-all).
+- Statusline shows the right tip per context (span tip, selector/satellite tip, control word tip with live %).
+- TTS speaks `Daily affirmations` etc. when speak:true.
+
+**Peculiarities found:**
+- BlankFill subscribes AFTER `configLoader.load()` resolves (not synchronously) so the cueMap is populated when `_` is pressed. Same pattern as CC.
+- The `_` keystroke routes via `adapter.onKey({keys:['_']})` — verify OpenTUI's key.name matches `'_'` exactly. If not, add an alias.
+- All five blank-related state classes (SpanFillState, DismissedBlanks, SelectorSatelliteState, DynDefs, ControlValuesCache) are now constructed and threaded through. Order matters — declared before any module that needs them.
+
+**Notes:**
+- Bucket complete. Same feature parity as Claude Code v2.1 modulo the visual rendering layer (extmarks vs ANSI inserts).
+- If anything looks off live, the corresponding REPAIR.md entries (`adapters/claude-code/REPAIR.md` for general runtime quirks; `adapters/opencode/REPAIR.md` for OpenCode-specific) should help.
 
 ---
 
