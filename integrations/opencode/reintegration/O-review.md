@@ -14,7 +14,7 @@ Phases shipped so far:
 | O.1 smoke + tests | `ac38791` | `19723e1` | 5 unit tests in adapter band |
 | O.2 (real prompt access) | `ad6ff0e` | `ac38791` | Holder pattern, Prompt patches |
 | O.3 Navigation | `91e47f7` | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
-| O.4 DimRender (extmarks) | _pending_ | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
+| O.4 DimRender (extmarks) | `db27817` | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
 
 Each future entry below has the same shape. Most-recent-on-top.
 
@@ -22,7 +22,7 @@ Each future entry below has the same shape. Most-recent-on-top.
 
 ## O.4 — DimRender via OpenTUI extmarks
 
-**Commit:** _pending_
+**Commit:** `db27817`
 **Rollback to (prior):** `97fe5dd`
 
 **Modules touched:**
