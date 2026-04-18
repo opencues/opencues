@@ -770,6 +770,43 @@ blankClearKeywords: true
     });
   });
 
+  it('async path: dispatches via controlInvoke when control has no blankScript (runtime-hoisted control)', async () => {
+    // Hoisted runtime controls (HackerNewsControl, OpenCuesSettingsControl
+    // etc.) live without blankScript in their cue.md — the host's
+    // controlInvoke registry IS the implementation. Regression guard
+    // for "controls with no blankScript get silently skipped" — fires
+    // when something accidentally re-adds the early `if (!script)
+    // continue` gate.
+    const SCRIPTLESS_CTRL = `---
+type: control
+name: hn
+blankKeywords: hn
+blankAutoPopulate: true
+---
+`;
+    // Sandboxed-host caps: NO spawn-process. Forces the runtime to
+    // pick up the controlInvoke path or skip the slot entirely.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/hn/cue.md': SCRIPTLESS_CTRL },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'control-invoke',
+      ],
+    });
+    adapter.stubControlInvoke('hn:get', 'top story title\n');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    adapter.pushText('hn _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.controlInvokeCalls.length).toBe(1);
+    // Keyword stays (no blankClearKeywords) — `_` is replaced with stdout.
+    expect(adapter.getText()).toBe('hn top story title');
+  });
+
   it('async path: blankConsumeAll via controlInvoke replaces input and stashes alts (chrome path)', async () => {
     // Pins the chrome prompt-improver path: a sandboxed host
     // (controlInvoke, no spawnProcess) MUST get the same consume-all

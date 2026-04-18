@@ -156,7 +156,11 @@ export class BlankFill {
       // stepValues path is handled synchronously in onUnderscoreKey.
       if (Array.isArray(control.stepValues) && control.stepValues.length > 0) continue;
       const script = control.blankScript;
-      if (!script || typeof script !== 'string') continue;
+      const canControlInvoke = this.adapter.capabilities.includes('control-invoke');
+      // Need EITHER a shell script (legacy spawnProcess path) OR a
+      // controlInvoke-capable host (modern shared-runtime controls).
+      // Without either, no way to fetch the fill.
+      if (!script && !canControlInvoke) continue;
 
       const dedupKey = `${text}::${slot.index}`;
       if (this._pendingScripts.has(dedupKey)) continue;
@@ -172,8 +176,12 @@ export class BlankFill {
         contextWords.push(words[wi]);
       }
 
-      // Expand ~ in script path.
-      const scriptPath = script.startsWith('~') ? home + script.slice(1) : script;
+      // Expand ~ in script path. Empty when the control is
+      // controlInvoke-only (shared runtime control, no shell fallback);
+      // we just won't reach the spawnProcess branch below.
+      const scriptPath = script
+        ? (script.startsWith('~') ? home + script.slice(1) : script)
+        : '';
 
       // Build per-control env. Inherits process.env on Node hosts;
       // sandboxed hosts (Chrome content scripts) have no `process` global,
@@ -207,6 +215,13 @@ export class BlankFill {
         timeoutMs: 8000,
       }) ?? null;
       if (!handle) {
+        if (!script) {
+          // controlInvoke didn't recognise the control AND there's no
+          // shell fallback. Drop the dedup so a later state change can
+          // retry, and skip cleanly.
+          this._pendingScripts.delete(dedupKey);
+          continue;
+        }
         handle = this.adapter.spawnProcess({
           command: 'bash',
           args: [scriptPath, 'get', slot.keyword, ...contextWords],
