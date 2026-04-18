@@ -53,6 +53,24 @@ async function init(): Promise<void> {
     if (el) attachToFocused(el);
   });
 
+  // Mirror OpenCode's per-component lifecycle by clearing the runtime
+  // target when focus moves away from a contenteditable. Without this,
+  // currentTarget stays stale and runtime modules read from a detached
+  // or backgrounded element. relatedTarget being null OR a non-text
+  // input both count as "left the editor".
+  document.addEventListener('focusout', (e) => {
+    const evt = e as FocusEvent;
+    const next = evt.relatedTarget as HTMLElement | null;
+    if (!next || !isTextInput(next)) {
+      if (currentTarget) {
+        currentTarget = null;
+        publishTarget(null);
+        clearRuntimeHighlights();
+        clearStatusbar();
+      }
+    }
+  });
+
   if (document.activeElement && document.activeElement instanceof HTMLElement) {
     attachToFocused(document.activeElement);
   }

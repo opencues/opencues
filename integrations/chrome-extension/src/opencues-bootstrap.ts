@@ -53,6 +53,15 @@ let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
 const speech = new WebSpeechAdapter();
 
+// Mirrors OpenCode's `lastRuntimeSetText` (opencuesBootstrap.ts:72).
+// When the runtime calls setText/pushText, we stash the value here so the
+// next 'input' event from the contenteditable can be classified as
+// source='runtime' instead of 'user'. Without this, Navigation/Cycling/
+// BlankFill see their own writes as user edits and invalidate the
+// highlight + DynDefs mid-operation. Cleared after one match so a later
+// identical user edit isn't misclassified.
+let lastRuntimeSetText: string | null = null;
+
 /** Called by content.ts when the focused contenteditable changes. */
 export function publishTarget(el: HTMLElement | null): void {
   currentTarget = el;
@@ -114,6 +123,10 @@ function writeCursorOffset(offset: number): void {
 function writeText(text: string): void {
   const target = currentTarget;
   if (!target) return;
+  // Stash for the source-reclassification in notifyOpenCuesTextChange —
+  // the synthetic 'input' event this triggers must be tagged 'runtime'
+  // so Navigation/Cycling don't treat their own writes as user edits.
+  lastRuntimeSetText = text;
   // Use execCommand so the host page sees a synthetic input event —
   // matches what the existing engine does in WordNavigator.cycle.
   target.focus();
@@ -333,6 +346,9 @@ export function startOpenCuesRuntime(opts: RuntimeStartOptions = {}): BootResult
     setText: writeText,
     setCursorOffset: writeCursorOffset,
     pushText: (text, cursor) => {
+      // writeText already stashes lastRuntimeSetText. Cursor is set
+      // synchronously after so the input-event handler reads the
+      // post-fill caret position (matters for multi-word fills).
       writeText(text);
       if (cursor !== undefined) writeCursorOffset(cursor);
     },
@@ -371,16 +387,41 @@ export function startOpenCuesRuntime(opts: RuntimeStartOptions = {}): BootResult
   return bootResult;
 }
 
-/** Call from content.ts's input handler to forward text changes. */
+/** Call from content.ts's input handler to forward text changes.
+ *
+ * Two corrections applied vs the naive "always source='user', cursor=0"
+ * forwarder, mirroring OpenCode's notifyOpenCuesTextChange:
+ *
+ *   1. If the incoming text matches what the runtime just wrote
+ *      (lastRuntimeSetText), reclassify the source as 'runtime'.
+ *      Otherwise Navigation.onTextChange treats the write as a user
+ *      edit and clears the highlight + DynDefs. (One-shot — cleared
+ *      after match so a later identical user-typed text isn't
+ *      misclassified.)
+ *   2. Read the actual caret offset from the contenteditable instead
+ *      of trusting the caller-supplied cursor. Multi-word fills
+ *      (`"Hacker News"`, affirmations, etc.) need the post-fill caret
+ *      so subsequent cycles know where the cursor sits.
+ */
 export function notifyOpenCuesTextChange(
   text: string,
   cursorOffset: number,
   source: 'user' | 'runtime' = 'user',
 ): void {
-  bootResult?.notifyTextChange(text, cursorOffset, source);
-  // Re-render after every text change so DimRender's freshly-computed
-  // ranges (post-tip lookup, post-cycling) paint immediately.
-  runtimeRender();
+  let actualSource = source;
+  if (lastRuntimeSetText !== null && text === lastRuntimeSetText) {
+    actualSource = 'runtime';
+    lastRuntimeSetText = null;
+  }
+  const actualCursor = readCursorOffset() || cursorOffset;
+  bootResult?.notifyTextChange(text, actualCursor, actualSource);
+  // Render is intentionally NOT triggered here. Mirrors OpenCode
+  // (notifyOpenCuesTextChange:256) which leaves paint to whichever code
+  // path needed the change: dispatchKey triggers a render after
+  // consumed keys, and modules (BlankFill async fill, Resolver, etc.)
+  // call adapter.forceRender() — chrome's forceRender → runtimeRender —
+  // when they update state outside a key event. Auto-rendering here was
+  // redundant and could double-paint.
 }
 
 /**
