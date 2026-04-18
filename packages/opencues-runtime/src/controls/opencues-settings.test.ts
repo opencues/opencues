@@ -52,9 +52,11 @@ describe('OpenCuesSettingsControl', () => {
     expect(await ctl.get('not-a-setting')).toBe('voice-mode\tinactive');
   });
 
-  it('set(value, keyword) rewrites the matching line in opencues.md', async () => {
+  it('set(setting, value) rewrites the matching line in opencues.md', async () => {
+    // NB: arg order is (settingName, value) per the selector/satellite
+    // cycling convention — see opencues-settings.ts comment.
     const { ctl, storage } = makeControl(SAMPLE_MD);
-    await ctl.set('active', 'voice-mode');
+    await ctl.set('voice-mode', 'active');
     expect(storage.value).toContain('voice-mode: active');
     // Other lines untouched.
     expect(storage.value).toContain('debug-mode: off');
@@ -63,16 +65,16 @@ describe('OpenCuesSettingsControl', () => {
 
   it('set is a no-op when the setting line does not exist', async () => {
     const { ctl, storage, writes } = makeControl(SAMPLE_MD);
-    await ctl.set('whatever', 'unknown-key');
+    await ctl.set('unknown-key', 'whatever');
     expect(storage.value).toBe(SAMPLE_MD);
     // No-op skips writeFile entirely (avoids touching mtime when nothing
     // changed — popups + hot-reload watchers don't get false-positives).
     expect(writes).toBe(0);
   });
 
-  it('set is a no-op when keyword is missing', async () => {
+  it('set is a no-op when value is missing', async () => {
     const { ctl, writes } = makeControl(SAMPLE_MD);
-    await ctl.set('value');
+    await ctl.set('voice-mode');
     expect(writes).toBe(0);
   });
 
@@ -87,7 +89,7 @@ describe('OpenCuesSettingsControl', () => {
 
   it('preserves surrounding whitespace + frontmatter delimiters on set', async () => {
     const { ctl, storage } = makeControl(SAMPLE_MD);
-    await ctl.set('on', 'debug-mode');
+    await ctl.set('debug-mode', 'on');
     expect(storage.value.startsWith('---\n')).toBe(true);
     expect(storage.value.endsWith('---\n')).toBe(true);
   });

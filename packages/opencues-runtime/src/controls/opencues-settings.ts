@@ -52,11 +52,18 @@ export class OpenCuesSettingsControl implements Control {
     return `${first}\t${value}`;
   }
 
-  async set(value: string, keyword?: string): Promise<void> {
-    if (!keyword) return;
+  // NB: argument order intentionally differs from volume-like controls.
+  // The runtime's selector/satellite cycling path (Cycling.ts) calls
+  // `controlInvoke({action:'set', args:[setting, value]})` — setting
+  // FIRST, mirroring the legacy bash `script set <setting> <value>`.
+  // The Control interface lists `(value, keyword)` for the volume-like
+  // case; the labels here intentionally swap so the implementation
+  // reads correctly even though the dispatcher passes args positionally.
+  async set(settingName: string, value?: string): Promise<void> {
+    if (!settingName || value === undefined) return;
     const text = await this._read();
     if (!text) return;
-    const next = rewriteSetting(text, keyword, value);
+    const next = rewriteSetting(text, settingName, value);
     if (next !== text) await this._write(next);
   }
 }
