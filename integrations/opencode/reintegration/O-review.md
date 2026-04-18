@@ -17,7 +17,7 @@ Phases shipped so far:
 | O.4 DimRender (extmarks) | `db27817` | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
 | O.5 + O.6 ConfigLoader + Cycling | `da46931` | `6d57e3f` | Cycling subscribed, ConfigLoader loads tips |
 | O.7 Statusline + Resolver + TTS | `4078e94` | `0a1a9fd` | Middle layer wired; opt-in via host paths |
-| O.8 BlankFill + spans + selector | _pending_ | `f5324c9` | Full feature parity reached; `_` triggers blank fill |
+| O.8 BlankFill + spans + selector | `6fc4b24` | `f5324c9` | Full feature parity reached; `_` triggers blank fill |
 
 Each future entry below has the same shape. Most-recent-on-top.
 
@@ -25,7 +25,7 @@ Each future entry below has the same shape. Most-recent-on-top.
 
 ## O.8 — BlankFill + spans + selector/satellite
 
-**Commit:** _pending_
+**Commit:** `6fc4b24`
 **Rollback to (prior):** `f5324c9`
 
 **Modules touched:**
