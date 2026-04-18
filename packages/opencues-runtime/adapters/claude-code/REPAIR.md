@@ -153,7 +153,26 @@ If TTS or any other detached caller starts mysteriously hanging,
 double-check that `spec.detached` is making it through — the stdio
 mode hinges on it.
 
-### 7. The host may keep the `value` prop in lock-step with our InputZone
+### 7. Overlapping dim ranges need coalescing in `applyDirectives` (commit pending — Phase E.10)
+
+Multiple sources can produce dim ranges for the same render: cue/control
+words get individual dims, and the consume-all span (Step 32) gets a
+single contiguous dim covering the whole prompt-improver fill. When the
+two overlap (a cue word inside a consume-all span), naive insertion of
+`DIM_ON`/`DIM_OFF` boundaries emits a premature `DIM_OFF` at the inner
+range's end, leaving the rest of the outer range visually undimmed.
+
+Fix: `applyDirectives` now sorts and merges overlapping/adjacent dim
+ranges before generating insertion points. The same pattern would apply
+to highlight ranges if we ever start producing multiple, but DimRender
+currently emits at most one highlight per render.
+
+Symptom if the merge regresses: prompt-improver dim looks "patchy" —
+the active highlighted word stays bright (correct) but other random
+chunks revert to undimmed at exactly the positions where cue words
+appear inside the fill.
+
+### 8. The host may keep the `value` prop in lock-step with our InputZone
 
 Returning `InputZone.fromText(newText, P, cursor)` from the
 `handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.

@@ -87,4 +87,26 @@ describe('applyDirectives', () => {
     expect(applyDirectives('\x1b[31m\x1b[0m', { highlight: { start: 0, end: 0 } }))
       .toBe(`${INV_ON}${INV_OFF}\x1b[31m\x1b[0m`);
   });
+
+  it('coalesces overlapping dimRanges (no premature DIM_OFF gap)', () => {
+    // Without coalescing: cue dim [4,7] inside consume-all dim [0,11] would
+    // emit DIM_OFF at 7, leaving 7..11 undimmed.
+    const out = applyDirectives('aaaa bbb cc', {
+      dimRanges: [
+        { start: 0, end: 11 },
+        { start: 4, end: 7 },
+      ],
+    });
+    expect(out).toBe(`${DIM_ON}aaaa bbb cc${DIM_OFF}`);
+  });
+
+  it('merges adjacent dimRanges (touching edges)', () => {
+    const out = applyDirectives('abcdef', {
+      dimRanges: [
+        { start: 0, end: 3 },
+        { start: 3, end: 6 },
+      ],
+    });
+    expect(out).toBe(`${DIM_ON}abcdef${DIM_OFF}`);
+  });
 });

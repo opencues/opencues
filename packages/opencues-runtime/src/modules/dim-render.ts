@@ -11,6 +11,7 @@ import type { HostAdapter, Range, RenderContext, RenderDirectives, Unsubscribe }
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
+import type { ConsumeAllState } from '../state/consume-all';
 import { splitWords } from './navigation';
 
 export class DimRender {
@@ -21,6 +22,7 @@ export class DimRender {
     private hlState: HighlightState,
     private _dynDefs: DynDefs,
     private configLoader?: ConfigLoader,
+    private consumeAllState?: ConsumeAllState,
   ) {}
 
   subscribe(): void {
@@ -45,15 +47,40 @@ export class DimRender {
     // currently-highlighted one. The highlight overlay takes priority on
     // the active word so we don't dim it (would dim under inverse).
     const dimRanges: Range[] = [];
+    const activeIndex = this.hlState.active ? this.hlState.wordIndex : null;
     if (hasDimCap && this.configLoader) {
       const navigable = this.configLoader.navigableWords;
-      const activeIndex = this.hlState.active ? this.hlState.wordIndex : null;
       for (const w of words) {
         if (w.index === activeIndex) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
         if (navigable.has(lc) || this.configLoader.matchStepPattern(w.word)) {
           dimRanges.push({ start: w.start, end: w.end });
+        }
+      }
+    }
+
+    // Step 32 — dim the consume-all span as a single block so the user
+    // sees the whole filled chunk is cycleable. Skip the active word
+    // (highlight overlay wins). One contiguous range per gap so the
+    // host can render through punctuation between words.
+    if (hasDimCap && this.consumeAllState?.current) {
+      const entry = this.consumeAllState.current;
+      const spanLen = entry.spanLength || 1;
+      const startWord = words[entry.index];
+      const endWord = words[entry.index + spanLen - 1];
+      if (startWord && endWord) {
+        if (activeIndex !== null && activeIndex >= entry.index && activeIndex < entry.index + spanLen) {
+          // Active word splits the span into up to two pieces.
+          const active = words[activeIndex];
+          if (active && active.start > startWord.start) {
+            dimRanges.push({ start: startWord.start, end: active.start });
+          }
+          if (active && active.end < endWord.end) {
+            dimRanges.push({ start: active.end, end: endWord.end });
+          }
+        } else {
+          dimRanges.push({ start: startWord.start, end: endWord.end });
         }
       }
     }

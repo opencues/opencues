@@ -3,6 +3,7 @@ import { DimRender } from './dim-render';
 import { Navigation } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
+import { ConsumeAllState } from '../state/consume-all';
 import { MockAdapter } from '../../testing/mock-adapter';
 import { applyDirectives } from '../render-directives';
 
@@ -71,6 +72,47 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(directives.length).toBe(1);
     const out = applyDirectives('alpha beta gamma', directives[0]);
     expect(out).toBe(`alpha beta \x1b[7mgamma\x1b[27m`);
+  });
+
+  it('Step 32: dims the consume-all span as a single contiguous range', () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('Improved alpha bravo');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ca = new ConsumeAllState();
+    ca.set({ index: 0, alternatives: ['Improved alpha bravo', 'Other'], currentAltIndex: 0, spanLength: 3 }, 'Improved alpha bravo');
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, ca);
+    const out = dim.compute({ text: 'Improved alpha bravo', cursor: 0, externalHighlights: [] });
+    expect(out?.dimRanges).toEqual([{ start: 0, end: 20 }]);
+  });
+
+  it('Step 32: splits dim range around the active word inside the span', () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('Improved alpha bravo');
+    const hlState = new HighlightState();
+    hlState.activate(1, 'Improved alpha bravo');
+    const dynDefs = new DynDefs();
+    const ca = new ConsumeAllState();
+    ca.set({ index: 0, alternatives: ['Improved alpha bravo', 'Other'], currentAltIndex: 0, spanLength: 3 }, 'Improved alpha bravo');
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, ca);
+    const out = dim.compute({ text: 'Improved alpha bravo', cursor: 0, externalHighlights: [] });
+    // "Improved" (0-8), gap, then "bravo" (15-20). Active "alpha" at 9-14.
+    expect(out?.dimRanges).toEqual([
+      { start: 0, end: 9 },
+      { start: 14, end: 20 },
+    ]);
+    expect(out?.highlight).toEqual({ start: 9, end: 14 });
+  });
+
+  it('Step 32: no consume-all dim when state is empty', () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('hello world');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ca = new ConsumeAllState();
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, ca);
+    const out = dim.compute({ text: 'hello world', cursor: 0, externalHighlights: [] });
+    expect(out).toBeNull();
   });
 
   it('Navigation + DimRender — Ctrl+Alt+Left activates and produces a highlight', () => {

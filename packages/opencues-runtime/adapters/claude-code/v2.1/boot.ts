@@ -249,7 +249,7 @@ export function boot(host: HostInfo): BootResult {
   // Subscribe modules synchronously so the very first key dispatch is wired.
   const navigation = new Navigation(adapter, hlState, dynDefs, configLoader);
   navigation.subscribe();
-  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader);
+  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, consumeAllState);
   dimRender.subscribe();
   const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, consumeAllState);
   cycling.subscribe();
