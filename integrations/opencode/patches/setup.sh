@@ -170,6 +170,51 @@ else
   echo "prompt/index.tsx already patched."
 fi
 
+# Patch home footer (Phase O.12): render active tip between MCP status
+# and the flex spacer.
+FOOTER="$TUI_DIR/feature-plugins/home/footer.tsx"
+if [[ -f "$FOOTER" ]] && ! grep -q "opencuesTip" "$FOOTER"; then
+  echo "Patching home/footer.tsx (native tip display)..."
+  python3 - "$FOOTER" <<'PY'
+import sys
+p = sys.argv[1]
+src = open(p).read()
+if 'opencuesTip' in src: sys.exit(0)
+src = src.replace(
+  'import { Global } from "@/global"',
+  'import { Global } from "@/global"\nimport { opencuesTip } from "../../opencues"',
+)
+src = src.replace(
+  '''function View(props: { api: TuiPluginApi }) {
+  return (''',
+  '''function OpencuesTip(props: { api: TuiPluginApi }) {
+  const theme = () => props.api.theme.current
+  return (
+    <Show when={opencuesTip()}>
+      <text fg={theme().textMuted}>{opencuesTip()}</text>
+    </Show>
+  )
+}
+
+function View(props: { api: TuiPluginApi }) {
+  return (''',
+)
+src = src.replace(
+  '''      <Mcp api={props.api} />
+      <box flexGrow={1} />
+      <Version api={props.api} />''',
+  '''      <Mcp api={props.api} />
+      <box flexGrow={1} />
+      <OpencuesTip api={props.api} />
+      <Version api={props.api} />''',
+)
+open(p, 'w').write(src)
+PY
+else
+  [[ ! -f "$FOOTER" ]] && echo "home/footer.tsx not present (older OpenCode layout?); skipping native tip patch."
+  grep -q "opencuesTip" "$FOOTER" 2>/dev/null && echo "home/footer.tsx already patched."
+fi
+
 echo ""
 echo "✓ Setup complete."
 echo ""

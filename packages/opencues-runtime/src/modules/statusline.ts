@@ -19,7 +19,11 @@ import type { ControlValuesCache } from '../state/control-values';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
-  /** Absolute path. Typically /tmp/claude-highlight-state-<pid>.json. */
+  /**
+   * Absolute path. Typically /tmp/claude-highlight-state-<pid>.json.
+   * Empty string disables file export — useful when only onSnapshot is
+   * wired (host renders the tip in-process).
+   */
   readonly exportPath: string;
   /**
    * Optional. Called after each successful export write — host-specific
@@ -28,6 +32,13 @@ export interface StatuslineOptions {
    * useCallback). When absent, the host must poll on its own schedule.
    */
   readonly refreshHook?: () => void;
+  /**
+   * Optional. Called in-process with the freshly-built payload on every
+   * state change (deduped). Lets a host render the tip natively without
+   * having to tail the export file. Fires even when exportPath writes
+   * succeed — both sinks are driven by the same maybeWrite pass.
+   */
+  readonly onSnapshot?: (payload: StatuslinePayload) => void;
 }
 
 export interface StatuslinePayload {
@@ -274,6 +285,12 @@ export class Statusline {
     const stableJson = JSON.stringify(stable);
     if (stableJson === this._lastJson) return;
     this._lastJson = stableJson;
+    if (this.options.onSnapshot) {
+      try { this.options.onSnapshot(payload); } catch (err) {
+        this.adapter.log('error', 'Statusline onSnapshot threw', err);
+      }
+    }
+    if (!this.options.exportPath) return;
     const json = JSON.stringify(payload);
     this.adapter.writeFile(this.options.exportPath, json)
       .then(() => {

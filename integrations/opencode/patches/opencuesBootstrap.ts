@@ -15,9 +15,16 @@ import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
+import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
 import { spawn as nodeSpawn } from "node:child_process"
+
+// SolidJS signal carrying the active highlight's tip text. The patched
+// home footer subscribes via opencuesTip() — set on every Statusline
+// payload (deduped, so footer renders only flip when tip actually changes).
+const [opencuesTip, setOpencuesTip] = createSignal<string | null>(null)
+export { opencuesTip }
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
@@ -135,6 +142,11 @@ export function startOpenCues(opts: {
     tipsPath: path.join(process.env.HOME ?? "~", ".claude/claude-code-tips.json"),
     statusFilePath: `/tmp/claude-highlight-state-${process.pid}.json`,
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
+    // In-process statusline hook — feeds the active tip into the
+    // SolidJS signal the patched home footer reads.
+    statusSnapshotHook: (payload: any) => {
+      setOpencuesTip(payload?.cueTip ?? null)
+    },
     ttsScriptPath: path.join(process.env.HOME ?? "~", ".claude/actions/speak.sh"),
     ttsRate: 2,
     llmApiKey: process.env.GROQ_API_KEY,

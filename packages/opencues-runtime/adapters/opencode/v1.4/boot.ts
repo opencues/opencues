@@ -58,6 +58,12 @@ export interface HostInfo {
   /** Optional: statusline export path. */
   statusFilePath?: string;
   /**
+   * Optional: in-process callback fired with the statusline payload on
+   * every state change. Lets the OpenCode TUI render the tip natively
+   * (e.g. inside the home footer slot) without having to tail the file.
+   */
+  statusSnapshotHook?(payload: unknown): void;
+  /**
    * Optional: cursor-state-export JSON path. Used by the opencues-auto
    * test harness to drive automated runs.
    */
@@ -202,11 +208,15 @@ export function boot(host: HostInfo): BootResult {
   const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
 
-  // Phase O.7 — Statusline (file-based, doesn't touch OpenCode's own
-  // status bar). Opt-in via host.statusFilePath.
-  if (host.statusFilePath) {
+  // Phase O.7 — Statusline (file-based) + O.12 — in-process snapshot
+  // hook so the OpenCode footer can render the tip natively. Both sinks
+  // are opt-in; either or both can be wired.
+  if (host.statusFilePath || host.statusSnapshotHook) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
-      exportPath: host.statusFilePath,
+      exportPath: host.statusFilePath ?? '',
+      onSnapshot: host.statusSnapshotHook
+        ? (payload) => host.statusSnapshotHook!(payload)
+        : undefined,
     }, configLoader, spanFillState, selectorSatelliteState, controlValues);
     statusline.subscribe();
   }
