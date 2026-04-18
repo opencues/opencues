@@ -249,6 +249,28 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
+## Chrome Extension — Dev Workflow
+
+Chrome runs on Windows; this repo lives in WSL2. The unpacked extension Chrome
+loads from is on the Windows desktop, **not** the WSL build dir:
+
+- **Build (WSL)**: `/home/wilfred/opencues/integrations/chrome-extension/`
+- **Loaded by Chrome (Windows)**: `/mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/`
+
+After every `npm run build`, sync the fresh artefacts to the Windows path or
+Chrome will keep running the stale bundle (no errors, just no new behaviour):
+
+```bash
+cp -r integrations/chrome-extension/dist/* /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/dist/
+cp integrations/chrome-extension/manifest.json /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/manifest.json
+```
+
+Then reload the extension at `chrome://extensions` and hard-refresh the page.
+
+> Symptom that this step was skipped: `[opencues][info] OpenCues runtime starting (Chrome v1)` is missing from devtools console while legacy `[OpenCues] ...` lines still fire.
+
+---
+
 ## Testing Harness (private)
 
 <!-- PRE-LAUNCH: This entire section and all references to opencues-auto MUST be removed
