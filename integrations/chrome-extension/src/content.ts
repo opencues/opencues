@@ -30,7 +30,7 @@ async function init(): Promise<void> {
   // CursorStateExport, plus all 6 state classes.
   startOpenCues({
     llmApiKey: config.apiKey,
-    llmEndpoint: config.endpoint,
+    llmEndpoint: config.apiUrl,
     llmDefaultModel: config.model,
     finnhubApiKey: config.finnhubApiKey,
   });

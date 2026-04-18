@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.268",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "@anthropic-ai/sdk": "^0.39.0"

@@ -38,7 +38,8 @@ export async function resetConfig(): Promise<void> {
 export function onConfigChange(callback: (config: StoredConfig) => void): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes[STORAGE_KEY]) {
-      callback({ ...DEFAULT_CONFIG, ...changes[STORAGE_KEY].newValue });
+      const newValue = changes[STORAGE_KEY].newValue as Partial<StoredConfig> | undefined;
+      callback({ ...DEFAULT_CONFIG, ...(newValue ?? {}) });
     }
   });
 }

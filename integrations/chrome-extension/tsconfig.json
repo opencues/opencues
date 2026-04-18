@@ -6,15 +6,16 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "noEmit": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": ["chrome"],
     "paths": {
-      "cues-core": ["../../packages/cues-core/src/index.ts"],
-      "cues-core/*": ["../../packages/cues-core/src/*"],
-      "opencues-runtime/dist/adapters/chrome/v1/boot": ["../../packages/opencues-runtime/adapters/chrome/v1/boot.ts"],
-      "opencues-runtime/dist/src/adapter": ["../../packages/opencues-runtime/src/adapter.ts"]
+      "cues-core": ["../../packages/cues-core/dist/index.d.ts"],
+      "cues-core/*": ["../../packages/cues-core/dist/*"],
+      "opencues-runtime/dist/adapters/chrome/v1/boot": ["../../packages/opencues-runtime/dist/adapters/chrome/v1/boot.d.ts"],
+      "opencues-runtime/dist/src/adapter": ["../../packages/opencues-runtime/dist/src/adapter.d.ts"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "dist", "node_modules"]
 }
