@@ -239,7 +239,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `refreshStatusline:function(){try{if(globalThis.__oc_refreshHostStatusline)globalThis.__oc_refreshHostStatusline();}catch(__ocSe){}},` +
     // TUI swallows stderr — write to a file so debug output is recoverable.
     // tail -f /tmp/opencues.log in a separate shell while reproducing.
-    `log:function(l,m,d){if(process.env.DEBUG_OPENCUES){try{${requireFn}("fs").appendFileSync("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n");}catch(__ocLe){}}}` +
+    // Always-on log fn — runtime decides whether to emit (gated on env
+    // OR opencues.md `debug-mode: on`). See REPAIR.md / Step 22.
+    `log:function(l,m,d){try{${requireFn}("fs").appendFileSync("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n");}catch(__ocLe){}}` +
     `});}` +
     `catch(__ocBe){console.error("[opencues] boot failed:",__ocBe&&__ocBe.stack||__ocBe);globalThis.__oc={failed:true};}` +
     `}` +
@@ -249,17 +251,17 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // return path. K = onChange, B = onOffsetChange — both captured fresh
     // per-render via closure scope.
     `globalThis.__oc_pushHostText=function(__ocPt,__ocPc){try{var __ocPv=${iz}.text||"";var __ocPhasB=__ocPv.indexOf("\\u200B")>=0;var __ocPtc=__ocPhasB?"\\u200C":"\\u200B";${s2!.bindings.onChangeParam}(__ocPt+__ocPtc);if(typeof __ocPc==="number"&&${s2!.bindings.onOffsetChangeVar})${s2!.bindings.onOffsetChangeVar}(__ocPc);}catch(__ocPe){}};` +
-    `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","dispatch in",{key:${ev}.key,ctrl:!!${ev}.ctrl,alt:!!${ev}.alt,meta:!!${ev}.meta,option:!!${ev}.option,shift:!!${ev}.shift,mtext:${iz}.text,moff:${iz}.offset});` +
+    `if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","dispatch in",{key:${ev}.key,ctrl:!!${ev}.ctrl,alt:!!${ev}.alt,meta:!!${ev}.meta,option:!!${ev}.option,shift:!!${ev}.shift,mtext:${iz}.text,moff:${iz}.offset});` +
     `if(globalThis.__oc.dispatchKey(${ev},${iz}.text,${iz}.offset)){` +
     // Pass fresh m.text/m.offset to consumePendingRender — the closure in
     // boot's bindings.getText is stale across React re-renders (it captures
     // m from a long-gone Dy8 invocation), so the runtime cannot read the
     // current state on its own. The dispatch site always has fresh values.
     `var __ocP=globalThis.__oc.consumePendingRender(${iz}.text,${iz}.offset);` +
-    `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","consumed, pending",__ocP);` +
+    `if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","consumed, pending",__ocP);` +
     `if(__ocP){` +
     `try{var __ocIZ=${izClass}.fromText(__ocP.text,${cols},__ocP.cursor);` +
-    `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","returning IZ",{text:__ocIZ.text,offset:__ocIZ.offset});` +
+    `if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","returning IZ",{text:__ocIZ.text,offset:__ocIZ.offset});` +
     `return __ocIZ;}` +
     `catch(__ocRe){if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("error","IZ build err",__ocRe&&__ocRe.message||__ocRe);return ${iz};}` +
     `}` +

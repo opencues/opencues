@@ -153,10 +153,26 @@ export interface BootResult {
  * until the cue map is populated.
  */
 export function boot(host: HostInfo): BootResult {
+  // configLoader is constructed below; isDebugEnabled reads it lazily
+  // so opencues.md `debug-mode: on/off` toggles take effect on the
+  // next hot-reload without restart. opencues.md is the source of
+  // truth once loaded; DEBUG_OPENCUES env is a bootstrap fallback for
+  // logs fired before the first ConfigLoader.load resolves (and a
+  // dev-time override when no opencues.md exists).
+  let configLoaderRef: ConfigLoader | null = null;
+  const isDebugEnabled = (): boolean => {
+    if (configLoaderRef?.loaded) {
+      return configLoaderRef.opencuesState.debugMode === 'on';
+    }
+    return !!process.env.DEBUG_OPENCUES;
+  };
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
+    // Always pass through error/warn/info — they're not gated by debug.
+    // Debug-level only when explicitly enabled.
+    if (level === 'debug' && !isDebugEnabled()) return;
     if (host.log) {
       try { host.log(level, msg, data); } catch { /* swallow */ }
-    } else if (process.env.DEBUG_OPENCUES) {
+    } else if (isDebugEnabled()) {
       // eslint-disable-next-line no-console
       console.error(`[opencues][${level}] ${msg}`, data ?? '');
     }
@@ -266,6 +282,7 @@ export function boot(host: HostInfo): BootResult {
   // map (returns false from step) until load resolves.
   const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/claude-code-tips.json`;
   const configLoader = new ConfigLoader(adapter, { tipsPath });
+  configLoaderRef = configLoader; // wire isDebugEnabled to opencues.md
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
@@ -400,7 +417,7 @@ export function boot(host: HostInfo): BootResult {
           log('error', 'render handler error', err);
         }
       }
-      if (process.env.DEBUG_OPENCUES) {
+      if (isDebugEnabled()) {
         log('debug', 'applyRender', {
           textLen: text.length,
           visibleLen: visibleText.length,
