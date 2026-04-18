@@ -70,7 +70,10 @@ export class TTS {
       this._lastSpoken = null;
       return null;
     }
-    if (!this.adapter.capabilities.includes('spawn-process')) return null;
+    // Chrome (and other sandboxed hosts) advertise no spawn-process —
+    // they pass `speakFn` instead (Web Speech etc.). Accept either path;
+    // the speakFn-vs-spawn pick happens further down.
+    if (!this.adapter.capabilities.includes('spawn-process') && !this.options.speakFn) return null;
     // voice-mode: inactive → silence TTS globally (matches v1 Step 16).
     if (this.configLoader.opencuesState.voiceMode === 'inactive') return null;
 

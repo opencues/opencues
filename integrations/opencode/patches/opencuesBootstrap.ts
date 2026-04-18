@@ -80,11 +80,27 @@ const sourceReclassifier = createSourceReclassifier()
 // shell scripts (controls/<name>/*.sh) once every host has parity.
 // OS-level controls (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
-// Project-root opencues.md — same path the bash control read. cwd is set
-// in startOpenCues but we resolve here at module load too because the
-// settings control needs an accessor at construction time. Resolved
-// lazily on each call so a cwd flip (rare) is honoured.
-const opencuesMdPath = (): string => path.join(process.cwd(), "opencues.md")
+// Project-root opencues.md — same path the legacy bash control read.
+// Mirrors `git -C $SCRIPT_DIR rev-parse --show-toplevel` so the file is
+// found regardless of where opencode is launched from. Falls back to
+// $OPENCUES_ROOT env, then process.cwd(). Resolved lazily on each call
+// so cwd flips / git initialisation are picked up live.
+function findOpenCuesMdPath(): string {
+  // 1. Explicit env override (CI / container deploys).
+  if (process.env.OPENCUES_ROOT) {
+    return path.join(process.env.OPENCUES_ROOT, "opencues.md")
+  }
+  // 2. Walk up from this script file's location to find opencues.md.
+  //    The patched bootstrap lives at <opencode-cues>/packages/opencode/
+  //    src/cli/cmd/tui/feature-plugins/opencues/opencuesBootstrap.ts at
+  //    runtime, so we can't use __dirname reliably. Try a known
+  //    candidate: $HOME/opencues which is where the README install
+  //    instructions clone the project to.
+  const homeRoot = path.join(process.env.HOME ?? "~", "opencues", "opencues.md")
+  try { require("fs").accessSync(homeRoot); return homeRoot } catch { /* fall through */ }
+  // 3. Last resort: process.cwd(). Works when the user is `cd ~/opencues`.
+  return path.join(process.cwd(), "opencues.md")
+}
 
 const controlsRegistry = new Map<string, Control>([
   ['hackernews', new HackerNewsControl()],
@@ -93,8 +109,8 @@ const controlsRegistry = new Map<string, Control>([
   ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
   ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
   ['opencues', new OpenCuesSettingsControl({
-    readFile: async () => { try { return await fs.readFile(opencuesMdPath(), "utf8") } catch { return null } },
-    writeFile: async (content) => { await fs.writeFile(opencuesMdPath(), content, "utf8") },
+    readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), "utf8") } catch { return null } },
+    writeFile: async (content) => { await fs.writeFile(findOpenCuesMdPath(), content, "utf8") },
   })],
 ])
 const controlInvoke = createControlInvoke(controlsRegistry)
