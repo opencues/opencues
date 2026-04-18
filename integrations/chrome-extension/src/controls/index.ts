@@ -1,10 +1,9 @@
 import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
-import { StocksControl } from './stocks';
 import { WeatherControl } from './weather';
-// HackerNewsControl now lives in the runtime — same class, every host.
-// chrome's old src/controls/hackernews.ts has been deleted.
-import { HackerNewsControl } from 'opencues-runtime/dist/src/controls/hackernews';
+// Hoisted to runtime — same classes, every host. Chrome's
+// src/controls/hackernews.ts + stocks.ts have been deleted.
+import { HackerNewsControl, StocksControl } from 'opencues-runtime/dist/src/controls';
 import { PromptImproverControl, type PromptImproverConfig } from './prompt-improver';
 
 export type { BrowserControl } from './types';
@@ -146,7 +145,10 @@ export function createControls(options?: {
   const controls = new Map<string, BrowserControl>();
 
   controls.set('volume', new VolumeControl());
-  controls.set('stocks', new StocksControl(options?.finnhubApiKey, options?.customTickers));
+  controls.set('stocks', new StocksControl({
+    apiKey: options?.finnhubApiKey,
+    customTickers: options?.customTickers,
+  }));
   controls.set('weather', new WeatherControl());
   controls.set('hackernews', new HackerNewsControl());
 

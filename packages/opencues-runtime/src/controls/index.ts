@@ -15,6 +15,7 @@ import type { Control } from './types';
 export type { Control } from './types';
 export { FetchHttpAdapter } from './http-adapter';
 export { HackerNewsControl } from './hackernews';
+export { StocksControl, type StocksControlOptions } from './stocks';
 
 /**
  * Build a controlInvoke handler that dispatches into the given registry.
