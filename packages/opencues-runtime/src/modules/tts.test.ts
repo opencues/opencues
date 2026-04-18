@@ -188,4 +188,63 @@ describe('TTS', () => {
     expect(tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).toBeNull();
     expect(spawnSpy).not.toHaveBeenCalled();
   });
+
+  it('speakFn is preferred over spawnProcess when supplied', async () => {
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const speakFn = vi.fn();
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh', speakFn });
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    const result = tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
+    expect(result).toBe('Maximum reasoning');
+    expect(speakFn).toHaveBeenCalledWith('Maximum reasoning', '2');
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it('speakFn works without scriptPath (sandboxed host case)', async () => {
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const speakFn = vi.fn();
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn });
+    expect(tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).toBe('Maximum reasoning');
+    expect(speakFn).toHaveBeenCalled();
+  });
+
+  it('speakFn throws are logged and swallowed (does not break render loop)', async () => {
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const speakFn = vi.fn(() => { throw new Error('audio device gone'); });
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn });
+    const logSpy = vi.spyOn(adapter, 'log');
+    expect(() => tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] })).not.toThrow();
+    expect(logSpy).toHaveBeenCalledWith('error', expect.stringContaining('TTS speakFn threw'), expect.any(Error));
+  });
+
+  it('opencues.md tts-rate flows to speakFn (same precedence as spawn path)', async () => {
+    const adapter = new MockAdapter({
+      files: { '/tips.json': TIPS, '/proj/opencues.md': '---\ntts-rate: 5\n---\n' },
+      cwd: '/proj',
+    });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const speakFn = vi.fn();
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn, rate: '2' });
+    tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
+    expect(speakFn).toHaveBeenCalledWith('Maximum reasoning', '5');
+  });
 });

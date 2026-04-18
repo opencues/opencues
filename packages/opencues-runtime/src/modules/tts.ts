@@ -18,10 +18,23 @@ import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 
 export interface TTSOptions {
-  /** Absolute path to the TTS script. Typically ~/.claude/actions/speak.sh. */
-  readonly scriptPath: string;
-  /** Rate passed as 2nd arg. Defaults to '2'. */
+  /**
+   * Absolute path to the TTS script. Typically ~/.claude/actions/speak.sh.
+   * Optional when `speakFn` is supplied — sandboxed hosts (Chrome
+   * extension, browser-only TUIs) skip the script path entirely.
+   */
+  readonly scriptPath?: string;
+  /** Rate passed as 2nd arg / 2nd speakFn arg. Defaults to '2'. */
   readonly rate?: string;
+  /**
+   * Host-supplied speak function. When set, used INSTEAD of
+   * `adapter.spawnProcess(bash scriptPath tip rate)`. Lets hosts
+   * without shell access (Chrome extension → Web Speech, future
+   * browser/electron hosts) fulfil the same contract via native
+   * APIs. The function is fire-and-forget; throws are logged and
+   * swallowed so a flaky TTS path can't break the render loop.
+   */
+  readonly speakFn?: (text: string, rate?: string) => void;
 }
 
 export class TTS {
@@ -131,16 +144,26 @@ export class TTS {
     this._lastSpoken = dedupKey;
     if (!tip) return null;
 
+    // Rate precedence: opencues.md `tts-rate:` > host-supplied default
+    // > built-in fallback. Same precedence applies to script path
+    // (when going via spawnProcess).
+    const rate = this.configLoader.opencuesState.settings.get('tts-rate') ?? this.options.rate ?? '2';
+
+    // speakFn wins when supplied — sandboxed hosts can't spawn.
+    if (this.options.speakFn) {
+      try { this.options.speakFn(tip, rate); } catch (err) {
+        this.adapter.log('error', 'TTS speakFn threw', err);
+      }
+      return tip;
+    }
+
+    // Fall back to the bash + script path. Requires spawnProcess.
+    const scriptPath = this.configLoader.opencuesState.settings.get('tts-script') ?? this.options.scriptPath;
+    if (!scriptPath) return null;
     try {
       this.adapter.spawnProcess({
         command: 'bash',
-        // Path + rate precedence: opencues.md `tts-script:` /
-        // `tts-rate:` > host-supplied default > built-in fallback.
-        args: [
-          this.configLoader.opencuesState.settings.get('tts-script') ?? this.options.scriptPath,
-          tip,
-          this.configLoader.opencuesState.settings.get('tts-rate') ?? this.options.rate ?? '2',
-        ],
+        args: [scriptPath, tip, rate],
         detached: true,
       });
     } catch (err) {
