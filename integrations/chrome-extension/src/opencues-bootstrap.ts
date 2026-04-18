@@ -321,7 +321,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     customTickers: opts.customTickers,
     llmConfig: opts.llmApiKey ? {
       apiKey: opts.llmApiKey,
-      endpoint: opts.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      // PromptImproverConfig field is `apiUrl`, NOT `endpoint`. The
+      // mismatch left cfg.apiUrl undefined → fetch(undefined,...) threw
+      // → catch returned the original fullContext → consume-all replaced
+      // the buffer with the unchanged original ("improve prompt
+      // resolves to original word").
+      apiUrl: opts.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
     } : undefined,
   });
