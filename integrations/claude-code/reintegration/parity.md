@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase I.4 (commit pending).
+**Last synced:** Phase I.5 (commit pending).
 
 ---
 
@@ -54,10 +54,10 @@ just architecture.
 | 33 | general span infrastructure + stepValues cycling + blankDismissible + statusline tip parity | ✓ | Phase F.a (foundation: rename, sync stepValues span, nav skip, full-span highlight) + F.b (blankDismissible appends `_`; DismissedBlanks blocks re-fill on dismissed slots; async multi-word/multi-line fills populate span; statusline span tip with cueControl=true). Live verified: affirmations + hackernews + weather + prompt improver all cycle as units, dismiss correctly, statusline shows `Daily affirmations` / `Hacker News` / `Weather` / `Prompt improver`. ConfigLoader.lookup falls back to controlsByWord so control words (`volume`, `brightness`) get their `tip:` from controls/* cue.md too. |
 | 34 | factor `_hlExport.cueTip` writes (one projection, one apply) | — | v2's Statusline already centralises the projection — Step 34 was a v1-specific cleanup, not needed in v2. |
 | 35 | selector/satellite (multi-sub-step) | ✓ | Phase G.a (parser + dual-insert) + G.b (cycling + statusline tip + cursor preservation + multi-word both sides) + G.c (blankClearOnEdit + tolerate-edits-outside-pair). G.c uses two helpers: maybePreserveSatellitePair (common-prefix/suffix matching: edits before/after the pair shift positions instead of invalidating) and computeCleanupRange (when the pair IS touched and clearOnEdit:true, splice pair-plus-user-typed-chars-inside-it by min(prefix, pairStart)/min(suffix, oldTail) clamp, preserving surrounding text). |
-| 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
+| 36 | resolver-driven blank-fill (rip inline IIFE) | — | v1-specific architectural cleanup. The "inline IIFE" was v1's `wordHighlight.ts` blank-fill block stuffed into the patch source. v2's BlankFill is already a separate runtime module (`src/modules/blank-fill.ts`) that owns detection + sync stepValues + async script-spawn paths cleanly. v2's seam is BlankFill ↔ adapter.spawnProcess; v1's "resolver-driven" rewrite would route through CueResolver instead — a distinct architectural choice that v2 hasn't made (and doesn't need for parity). Marking — to reflect "design-intentionally omitted." |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 33 ✓, 2 ◐, 1 ○, 2 — out of 38 steps. (Phase I.4 verified Step 9.)
+**Tally:** 33 ✓, 2 ◐, 0 ○, 3 — out of 38 steps. (Phase I.5 marked Step 36 — design-intentionally omitted.)
 
 ---
 
