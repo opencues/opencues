@@ -13,6 +13,7 @@ import type { HostAdapter, RenderContext, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
+import type { SpanFillState } from '../state/span-fill';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -53,6 +54,12 @@ export class Statusline {
     private options: StatuslineOptions,
     /** Optional. When provided, cueTip + altCueTips are populated from the cue map. */
     private configLoader?: ConfigLoader,
+    /**
+     * Optional. When the highlight is on a span fill, the control's
+     * blankTip wins over cueMap lookup (which would miss filled words
+     * like "13.9°C" or "Reddit"). Phase F.b.
+     */
+    private spanFillState?: SpanFillState,
   ) {}
 
   subscribe(): void {
@@ -86,6 +93,30 @@ export class Statusline {
     const clean = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
     const cleanHighlighted = clean(highlightedWord);
 
+    // Phase F.b — span fill takes priority. When the highlight is on
+    // any word inside an active span, render the control's blankTip
+    // (e.g. "Daily affirmations", "Prompt improver") and treat the
+    // span as a single cycleable unit (cueControl=true so the shell
+    // consumer prints just the tip instead of "(N/M) - tip").
+    const span = this.spanFillState?.current ?? null;
+    const inSpan = span !== null
+      && wordIndex >= span.index
+      && wordIndex < span.index + Math.max(1, span.spanLength);
+    if (inSpan && span) {
+      return {
+        active: true,
+        highlightedWordIndex: wordIndex,
+        highlightedWord: cleanHighlighted,
+        currentAltIndex: span.currentAltIndex,
+        alts: span.alternatives.map(clean),
+        cueTip: tipsHidden ? null : span.blankTip ?? null,
+        altCueTips: null,
+        cueControl: true,
+        wordCount: words.filter(w => clean(w.word).length > 0).length,
+        timestamp: Date.now(),
+      };
+    }
+
     // Cue lookup: primary key is the original word (stable across cycling).
     // For tip display, prefer altCueTips[currentDisplayedWord] over the
     // primary cueTip — mirrors v1's behaviour where each alt can have its
@@ -99,6 +130,12 @@ export class Statusline {
       cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
     }
 
+    // When the highlighted word is a control or blankKeyword (volume,
+    // brightness, etc.), the consumer should print "tip alone" rather
+    // than "word (N/M) - tip". This mirrors v1's `cueControl=true`
+    // routing for control words.
+    const isControlWord = this.configLoader?.controlsByWord.get(lookupKey) != null;
+
     return {
       active: true,
       highlightedWordIndex: wordIndex,
@@ -107,7 +144,7 @@ export class Statusline {
       alts: def ? def.alternatives.map(clean) : [cleanHighlighted],
       cueTip,
       altCueTips,
-      cueControl: false,    // future: from controls.md
+      cueControl: isControlWord,
       wordCount: words.filter(w => clean(w.word).length > 0).length,
       timestamp: Date.now(),
     };

@@ -5,6 +5,7 @@ import { Navigation } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
+import { DismissedBlanks } from '../state/dismissed-blanks';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({
@@ -178,6 +179,35 @@ describe('Cycling consume-all (Step 31)', () => {
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(consumeAll.lastFilledText).toBe('Other version');
     expect(consumeAll.current).not.toBeNull();
+  });
+
+  it('Phase F.b: cycling to `_` adds slot to DismissedBlanks; cycling away removes it', async () => {
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText('foo');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const span = new SpanFillState();
+    const dismissed = new DismissedBlanks();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, span, dismissed);
+    cycling.subscribe();
+    span.set({
+      index: 0,
+      alternatives: ['foo', 'bar', '_'],
+      currentAltIndex: 0,
+      spanLength: 1,
+    }, 'foo');
+    hlState.activate(0, 'foo');
+    // Cycle 0→1: foo → bar (not `_`)
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(dismissed.has(0)).toBe(false);
+    // Cycle 1→2: bar → `_`
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(dismissed.has(0)).toBe(true);
+    // Cycle 2→0: `_` → foo
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(dismissed.has(0)).toBe(false);
   });
 
   it('does nothing when there is only one alternative', async () => {

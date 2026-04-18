@@ -12,6 +12,7 @@ import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../ada
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
+import type { DismissedBlanks } from '../state/dismissed-blanks';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -39,6 +40,7 @@ export class BlankFill {
     private adapter: HostAdapter,
     private configLoader: ConfigLoader,
     private spanFillState?: SpanFillState,
+    private dismissedBlanks?: DismissedBlanks,
   ) {}
 
   subscribe(): void {
@@ -75,12 +77,13 @@ export class BlankFill {
   }
 
   private onTextChange(e: TextChangeEvent): void {
-    // Step 31 invalidation: if the consume-all stash is live and the
+    // Step 31 / Phase F.b invalidation: if the span fill is live and the
     // current text doesn't match what we last filled (cycle or initial),
-    // the user edited it — drop the stash so a stale alt isn't spliced
-    // into newly-edited text.
+    // the user edited it — drop the stash AND any dismissed-blank flags
+    // tied to the old span (their word indices are no longer meaningful).
     if (this.spanFillState && this.spanFillState.current && e.text.replace(/[\u200B\u200C]/g, '') !== this.spanFillState.lastFilledText) {
       this.spanFillState.clear();
+      this.dismissedBlanks?.clear();
     }
     const slots = this.scan(e.text);
     if (e.source === 'user') {
@@ -105,6 +108,10 @@ export class BlankFill {
     const home = process.env.HOME ?? '~';
 
     for (const slot of slots) {
+      // Step 33 / Phase F.b — skip slots the user has dismissed by cycling
+      // the fill back to `_`. Without this, the script re-spawns immediately
+      // and the dismissal sticks for ~zero milliseconds.
+      if (this.dismissedBlanks?.has(slot.index)) continue;
       const control = this.configLoader.controls.get(slot.controlName) as
         | (Record<string, unknown> & {
             stepValues?: readonly string[];
@@ -194,6 +201,9 @@ export class BlankFill {
           blankClearKeywords?: boolean;
           blankConsumeContext?: boolean;
           blankConsumeAll?: boolean;
+          blankDismissible?: boolean;
+          blankTip?: string;
+          tip?: string;
           blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
@@ -203,24 +213,31 @@ export class BlankFill {
     // (consume-all, range-clear, char-splice).
     if (!target || target.word !== '_') return;
 
+    // Phase F.b — parse stdout into lines once. Both consume-all and
+    // splice paths use line[0] as the visible fill; alternates stash if
+    // the script returned multiple lines (hackernews) or the control is
+    // dismissible (so the user can cycle back to `_`).
+    const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    const primaryFill = lines[0];
+    const isDismissible = control?.blankDismissible === true;
+
     // Step 30 — consume-all short-circuits the splice/expand/clear pipeline.
-    // Multi-line stdout: line 1 replaces ALL text; remaining lines stash for
-    // Step 31 cycling. Skip if there's nothing to fill (defensive).
     if (control?.blankConsumeAll === true) {
-      const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
       this.adapter.log('debug', `BlankFill: consume-all ${slot.controlName}`, {
         altCount: lines.length,
-        firstAltLen: lines[0]?.length ?? 0,
+        firstAltLen: primaryFill.length,
       });
-      if (lines.length === 0) return;
-      const newText = lines[0];
+      const newText = primaryFill;
       const newCursor = newText.length;
-      if (this.spanFillState && lines.length > 1) {
+      const altsForSpan = isDismissible ? [...lines, '_'] : lines;
+      if (this.spanFillState && altsForSpan.length > 1) {
         this.spanFillState.set({
           index: 0,
-          alternatives: lines,
+          alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: newText.split(/\s+/).filter(Boolean).length,
+          blankTip: control?.blankTip ?? control?.tip,
         }, newText);
       } else if (this.spanFillState) {
         this.spanFillState.clear();
@@ -241,16 +258,43 @@ export class BlankFill {
       cleanedLen: cleaned.length,
       slotIndex: slot.index,
       targetWord: target.word,
-      fillValueLen: fillValue.length,
+      fillValueLen: primaryFill.length,
+      altCount: lines.length,
+      dismissible: isDismissible,
       hasPushText: !!this.adapter.pushText,
       clearEnd: clearEnd ?? null,
       expansion: expansion ?? null,
     });
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
-      ? buildClearKeywordText(cleaned, slot, fillValue, expansion, clearEnd)
-      : { newText: cleaned.slice(0, target.start) + fillValue + cleaned.slice(target.end),
-          newCursor: target.start + fillValue.length };
+      ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
+      : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
+          newCursor: target.start + primaryFill.length };
+
+    // Phase F.b — populate span for non-consume-all fills when there's
+    // anything cycleable to do: multi-word fill, multiple lines from
+    // the script, or blankDismissible. Index = post-fill word index of
+    // primaryFill's first word (re-derive from the new text since
+    // clear/expansion may have shifted positions).
+    if (this.spanFillState) {
+      const fillStart = newCursor - primaryFill.length;
+      const newWords = splitWords(newText);
+      const startWord = newWords.find(w => w.start === fillStart);
+      const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
+      const altsForSpan = isDismissible ? [...lines, '_'] : lines;
+      const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1;
+      if (startWord && wantsSpan) {
+        this.spanFillState.set({
+          index: startWord.index,
+          alternatives: altsForSpan,
+          currentAltIndex: 0,
+          spanLength: Math.max(1, fillWordCount),
+          blankTip: control?.blankTip ?? control?.tip,
+        }, newText);
+      } else {
+        this.spanFillState.clear();
+      }
+    }
 
     if (this.adapter.pushText) {
       this.adapter.pushText(newText, newCursor);
@@ -293,11 +337,15 @@ export class BlankFill {
           blankAutoPopulate?: boolean;
           blankClearKeywords?: boolean;
           blankConsumeContext?: boolean;
+          blankDismissible?: boolean;
+          blankTip?: string;
+          tip?: string;
           blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
     if (!control) return false;
     if (control.blankAutoPopulate === false) return false;
+    if (this.dismissedBlanks?.has(slot.index)) return false;
     const stepValues = control.stepValues;
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
@@ -310,12 +358,16 @@ export class BlankFill {
           newCursor: insertedWord.start + fillValue.length };
 
     // Step 33 / Phase F.a — when the fill or the alternative pool is
-    // multi-word, register a span so Cycling and DimRender can treat the
-    // whole fill as a single navigable, cycleable unit. Affirmations are
-    // the canonical case: stepValues[0] = "I am strong" doesn't cycle via
-    // path 2 (lookupControl on inner words returns nothing). Without a
-    // span entry, Ctrl+Alt+Up after the fill falls through to no-op.
-    if (this.spanFillState && stepValues.length > 1) {
+    // multi-word OR the control is dismissible, register a span so
+    // Cycling and DimRender can treat the whole fill as a single
+    // navigable, cycleable unit. Affirmations are the canonical case:
+    // stepValues[0] = "I am strong" doesn't cycle via path 2
+    // (lookupControl on inner words returns nothing). Without a span
+    // entry, Ctrl+Alt+Up after the fill falls through to no-op.
+    // Phase F.b: blankDismissible appends `_` so cycling can dismiss.
+    const dismissible = control.blankDismissible === true;
+    const altsForSpan = dismissible ? [...stepValues, '_'] : stepValues;
+    if (this.spanFillState && altsForSpan.length > 1) {
       const fillStart = newCursor - fillValue.length;
       const newWords = splitWords(newText);
       const startWord = newWords.find(w => w.start === fillStart);
@@ -323,9 +375,10 @@ export class BlankFill {
         const spanLength = fillValue.split(/\s+/).filter(Boolean).length;
         this.spanFillState.set({
           index: startWord.index,
-          alternatives: stepValues,
+          alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: Math.max(1, spanLength),
+          blankTip: control.blankTip ?? control.tip,
         }, newText);
       }
     }

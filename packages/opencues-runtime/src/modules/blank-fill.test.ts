@@ -3,6 +3,7 @@ import { BlankFill, buildClearKeywordText, computeFillRange } from './blank-fill
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
 import { SpanFillState } from '../state/span-fill';
+import { DismissedBlanks } from '../state/dismissed-blanks';
 
 const TIPS = JSON.stringify({ concepts: [] });
 
@@ -795,6 +796,160 @@ stepValues: ["only"]
       text: 'lone ',
       cursorOffset: 5,
     });
+    expect(span.current).toBeNull();
+  });
+
+  it('Phase F.b: blankDismissible appends `_` to span alternatives (sync stepValues)', async () => {
+    const DISMISS = `---
+type: control
+name: affirmations
+blankKeywords: affirm
+stepValues: ["I am strong", "I am brave"]
+blankDismissible: true
+blankTip: Daily affirmations
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/affirmations/cue.md': DISMISS },
+    });
+    adapter.pushText('affirm ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const span = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, span);
+    bf.subscribe();
+    bf.onUnderscoreKey({
+      key: '_',
+      modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+      text: 'affirm ',
+      cursorOffset: 7,
+    });
+    expect(span.current?.alternatives).toEqual(['I am strong', 'I am brave', '_']);
+    expect(span.current?.blankTip).toBe('Daily affirmations');
+  });
+
+  it('Phase F.b: dismissed slot blocks sync auto-populate on subsequent _ key', async () => {
+    const DISMISS = `---
+type: control
+name: a
+blankKeywords: a
+stepValues: ["x", "y"]
+blankDismissible: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/a/cue.md': DISMISS },
+    });
+    adapter.pushText('a ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const dismissed = new DismissedBlanks();
+    const bf = new BlankFill(adapter, loader, undefined, dismissed);
+    bf.subscribe();
+    dismissed.add(1); // pretend slot at word index 1 was just dismissed
+    const consumed = bf.onUnderscoreKey({
+      key: '_',
+      modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+      text: 'a ',
+      cursorOffset: 2,
+    });
+    // BlankFill returned false → host inserts `_` normally; no fill ran.
+    expect(consumed).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('Phase F.b: dismissed slot blocks async script spawn', async () => {
+    const SCRIPT = `---
+type: control
+name: weather
+blankKeywords: weather
+blankScript: ./weather.sh
+blankDismissible: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/weather/cue.md': SCRIPT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const dismissed = new DismissedBlanks();
+    const bf = new BlankFill(adapter, loader, undefined, dismissed);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    dismissed.add(1); // slot at index 1 dismissed
+    adapter.pushText('weather _');
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it('Phase F.b: async multi-line stdout populates span with all lines as alternatives', async () => {
+    const HN = `---
+type: control
+name: hackernews
+blankKeywords: hn
+blankScript: ./hn.sh
+blankDismissible: true
+blankTip: Hacker News
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/hackernews/cue.md': HN },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const span = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, span);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({
+        exitCode: 0,
+        stdout: 'first story title\nsecond story title\nthird story title\n',
+        stderr: '',
+        timedOut: false,
+      }),
+      kill: () => {},
+    }));
+    adapter.pushText('hn _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('hn first story title');
+    expect(span.current?.alternatives).toEqual([
+      'first story title',
+      'second story title',
+      'third story title',
+      '_', // dismissible appended
+    ]);
+    expect(span.current?.blankTip).toBe('Hacker News');
+    expect(span.current?.spanLength).toBe(3);
+  });
+
+  it('Phase F.b: async single-line non-dismissible single-word fill does NOT register span', async () => {
+    const STOCK = `---
+type: control
+name: stocks
+blankKeywords: stock
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': STOCK },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const span = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, span);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '$180.50', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('stock _');
+    await new Promise(r => setTimeout(r, 0));
+    // Single-word, no alts, no dismissible → no span (regular cycling
+    // doesn't apply to a fixed read-only price).
     expect(span.current).toBeNull();
   });
 

@@ -1,19 +1,28 @@
+/**
+ * Tracks slot positions where the user has cycled the fill back to `_`
+ * (Step 33 / blankDismissible). BlankFill.maybeRunScripts skips slots
+ * whose word index is dismissed so the script doesn't immediately
+ * re-fill what the user just dismissed.
+ *
+ * Cleared when the surrounding text changes such that the span is no
+ * longer valid (BlankFill.onTextChange clears alongside SpanFillState).
+ */
 export class DismissedBlanks {
-  private _positions = new Set<number>();
+  private _wordIndices = new Set<number>();
 
-  has(offset: number): boolean {
-    return this._positions.has(offset);
+  has(wordIndex: number): boolean {
+    return this._wordIndices.has(wordIndex);
   }
 
-  add(offset: number): void {
-    this._positions.add(offset);
+  add(wordIndex: number): void {
+    this._wordIndices.add(wordIndex);
   }
 
-  delete(offset: number): void {
-    this._positions.delete(offset);
+  delete(wordIndex: number): void {
+    this._wordIndices.delete(wordIndex);
   }
 
   clear(): void {
-    this._positions.clear();
+    this._wordIndices.clear();
   }
 }

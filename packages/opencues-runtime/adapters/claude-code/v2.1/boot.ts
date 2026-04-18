@@ -23,6 +23,7 @@ import { BlankFill } from '../../../src/modules/blank-fill';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
+import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   KeyEvent,
@@ -238,6 +239,7 @@ export function boot(host: HostInfo): BootResult {
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
   const spanFillState = new SpanFillState();
+  const dismissedBlanks = new DismissedBlanks();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
@@ -251,7 +253,7 @@ export function boot(host: HostInfo): BootResult {
   navigation.subscribe();
   const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState);
   dimRender.subscribe();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState);
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks);
   cycling.subscribe();
 
   // BlankFill: scans for `_` placeholders + matched control. Owns the
@@ -259,7 +261,7 @@ export function boot(host: HostInfo): BootResult {
   // E.8 adds the consume-all branch — needs SpanFillState as a writer
   // so E.9's Cycling can read the stash. F.a generalises the same state
   // for multi-word stepValues fills (affirmations etc.).
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState);
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
@@ -269,7 +271,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
-    }, configLoader);
+    }, configLoader, spanFillState);
     statusline.subscribe();
   }
 

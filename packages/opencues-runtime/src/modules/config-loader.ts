@@ -215,9 +215,36 @@ export class ConfigLoader {
   get loaded(): boolean { return this._loaded; }
   get config(): LoadedConfig { return this._config; }
 
-  /** Case-insensitive lookup. */
+  /**
+   * Case-insensitive lookup. Falls back to controlsByWord when the word
+   * isn't a tip-having entry but IS a control or blankKeyword — synthesises
+   * a LocalCueLookupResult from the control's `tip` / `blankTip` so the
+   * statusline shows e.g. "system volume control" when the user highlights
+   * `volume`. The control side wasn't in cueMap because controls.md and
+   * folder cue.md don't go through the tips JSON path.
+   */
   lookup(word: string): LocalCueLookupResult | null {
-    return this._config.cueMap.get(word.toLowerCase()) ?? null;
+    const lc = word.toLowerCase();
+    const fromTips = this._config.cueMap.get(lc);
+    if (fromTips) return fromTips;
+    const ctrl = this._config.controlsByWord.get(lc);
+    if (!ctrl) return null;
+    const c = ctrl.control as unknown as {
+      tip?: string;
+      blankTip?: string;
+      speak?: boolean;
+    };
+    const tipText = (typeof c.tip === 'string' && c.tip)
+      || (typeof c.blankTip === 'string' && c.blankTip)
+      || '';
+    if (!tipText) return null;
+    return {
+      word: lc,
+      cueTip: tipText,
+      alternatives: [lc],
+      source: 'tips',
+      ...(typeof c.speak === 'boolean' ? { speak: c.speak } : {}),
+    };
   }
 
   // ─── Hot-reload subscription ───────────────────────────────────────────

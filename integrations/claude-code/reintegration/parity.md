@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase F.a (commit pending).
+**Last synced:** Phase F.b (commit pending).
 
 ---
 
@@ -51,13 +51,13 @@ just architecture.
 | 30 | blank-fill: `blankConsumeAll` (prompt improver) | ✓ | Phase E.8. applyAsyncFill short-circuits the splice/expand/clear pipeline when control.blankConsumeAll. Multi-line stdout: line 1 replaces ALL text, remaining lines stash in ConsumeAllState (wired through boot). Live verified: `improve prompt`, `enhance prompt`, `refine prompt` all return improved versions. Cycling through the stash is E.9's job. |
 | 31 | consume-all cycling (prompt improver Ctrl+Alt+Up/Down) | ✓ | Phase E.9. Cycling.cycleConsumeAll inserted as path 0 (takes precedence over scripts/list/step-pattern/static when wordIndex falls inside the consumed span). Updates currentAltIndex+spanLength, splices new alt at the span char positions. ConsumeAllState gained lastFilledText for invalidation; BlankFill.onTextChange clears the stash when text drifts. Live verified: 4-way wrap with includeOriginal:true. |
 | 32 | dim the consume-all range | ✓ | Phase E.10. DimRender adds a contiguous dim covering the consume-all span (split around the active word so the highlight overlay wins). Bug surfaced + fixed: overlapping dim ranges (cue-word dim inside consume-all dim) needed coalescing in `applyDirectives` — without it, the inner range's DIM_OFF left a visual gap. See REPAIR.md #7. |
-| 33 | general span infrastructure + stepValues cycling + blankDismissible + statusline tip parity | ◐ | Phase F.a (foundation): renamed ConsumeAllState → SpanFillState; BlankFill populates span on multi-word stepValues fills (affirmations); Navigation skips inner span positions and force-includes the origin; DimRender extends highlight to whole span when active word is inside it (suppresses span dim to avoid inverse+dim stacking). Live verified: `affirm _` → `I am strong`, navigates as one stop, highlights as one block, cycles to `I am brave`. Phase F.b will add: blankDismissible, async multi-word fills, statusline span tip, hardened invalidation. |
+| 33 | general span infrastructure + stepValues cycling + blankDismissible + statusline tip parity | ✓ | Phase F.a (foundation: rename, sync stepValues span, nav skip, full-span highlight) + F.b (blankDismissible appends `_`; DismissedBlanks blocks re-fill on dismissed slots; async multi-word/multi-line fills populate span; statusline span tip with cueControl=true). Live verified: affirmations + hackernews + weather + prompt improver all cycle as units, dismiss correctly, statusline shows `Daily affirmations` / `Hacker News` / `Weather` / `Prompt improver`. ConfigLoader.lookup falls back to controlsByWord so control words (`volume`, `brightness`) get their `tip:` from controls/* cue.md too. |
 | 34 | factor `_hlExport.cueTip` writes (one projection, one apply) | — | v2's Statusline already centralises the projection — Step 34 was a v1-specific cleanup, not needed in v2. |
 | 35 | selector/satellite (multi-sub-step) | ○ | opencues.md-state-driven cycling. Big. |
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 27 ✓, 5 ◐, 4 ○, 2 — out of 38 steps. (Phase E.1-E.10 + F.a flipped Steps 23-32 ✓ and Step 33 ○→◐.)
+**Tally:** 28 ✓, 4 ◐, 4 ○, 2 — out of 38 steps. (Phase F.a + F.b completed Step 33; Bucket F done.)
 
 ---
 

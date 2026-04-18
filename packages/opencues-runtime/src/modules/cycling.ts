@@ -17,6 +17,7 @@ import { DynDefs, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, ControlEntry, StepPattern } from './config-loader';
 import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
+import type { DismissedBlanks } from '../state/dismissed-blanks';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -28,6 +29,7 @@ export class Cycling {
     private dynDefs: DynDefs,
     private configLoader: ConfigLoader,
     private spanFillState?: SpanFillState,
+    private dismissedBlanks?: DismissedBlanks,
   ) {}
 
   subscribe(): void {
@@ -118,6 +120,15 @@ export class Cycling {
     entry.currentAltIndex = nextIdx;
     entry.spanLength = nextAlt.split(/\s+/).filter(Boolean).length;
     this.spanFillState!.set(entry, newText);
+
+    // Phase F.b — if the user just cycled to `_`, mark the slot as
+    // dismissed so BlankFill doesn't immediately re-fill (script path)
+    // or auto-populate (sync path) on the next text-change. Cycling
+    // away from `_` clears the flag.
+    if (this.dismissedBlanks) {
+      if (nextAlt === '_') this.dismissedBlanks.add(entry.index);
+      else this.dismissedBlanks.delete(entry.index);
+    }
 
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);

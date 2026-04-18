@@ -201,6 +201,54 @@ describe('Statusline write behaviour', () => {
     expect(written).toBeNull();
   });
 
+  it('Phase F.b: span-fill highlight emits blankTip + cueControl=true', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    adapter.pushText('affirm I am strong');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const span = new SpanFillState();
+    span.set({
+      index: 1,
+      alternatives: ['I am strong', 'I am brave', '_'],
+      currentAltIndex: 0,
+      spanLength: 3,
+      blankTip: 'Daily affirmations',
+    }, 'affirm I am strong');
+    const sl = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/x.json',
+    }, undefined, span);
+    hlState.activate(2, 'affirm I am strong'); // "am" — inside span
+    const p = sl.buildPayload({ text: 'affirm I am strong', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBe('Daily affirmations');
+    expect(p.cueControl).toBe(true);
+    expect(p.alts).toEqual(['I am strong', 'I am brave', '_']);
+    expect(p.currentAltIndex).toBe(0);
+  });
+
+  it('Phase F.b: highlight outside the span uses cueMap (no span tip leakage)', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    adapter.pushText('foo I am strong');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const span = new SpanFillState();
+    span.set({
+      index: 1,
+      alternatives: ['I am strong'],
+      currentAltIndex: 0,
+      spanLength: 3,
+      blankTip: 'Daily affirmations',
+    }, 'foo I am strong');
+    const sl = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/x.json',
+    }, undefined, span);
+    hlState.activate(0, 'foo I am strong'); // "foo" — outside span
+    const p = sl.buildPayload({ text: 'foo I am strong', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
+    expect(p.cueControl).toBe(false);
+  });
+
   it('writes inactive payload after typing clears highlight', async () => {
     const { adapter, hlState } = setup('alpha');
     hlState.activate(0, 'alpha');
