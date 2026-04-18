@@ -75,9 +75,26 @@ src = src.replace(
   'import { render, TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"',
   'import { render, TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"' + inj,
 )
-# Insert a useKeyboard hook that forwards to OpenCues, after the existing one.
+# Insert OpenCues bootstrap + keyboard forwarder. Stub prompt access at
+# O.1 (just proves the seam fires); O.2 wires the real Prompt ref.
 hook = '''
-  // OpenCues keyboard forwarder.
+  // OpenCues bootstrap (Phase O.1 — stub prompt access).
+  const __ocRenderer = useRenderer()
+  onMount(() => {
+    let __ocText = ""
+    let __ocCursor = 0
+    startOpenCues({
+      renderer: __ocRenderer,
+      promptAccess: {
+        read: () => __ocText,
+        write: (t) => { __ocText = t },
+        cursor: () => __ocCursor,
+        setCursor: (c) => { __ocCursor = c },
+      },
+      cwd: process.cwd(),
+      hostVersion: "1.4.11",
+    })
+  })
   useKeyboard((evt) => {
     if (dispatchOpenCuesKey(evt)) {
       evt.preventDefault?.()
