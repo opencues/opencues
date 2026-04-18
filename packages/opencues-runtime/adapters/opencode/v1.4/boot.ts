@@ -88,7 +88,20 @@ export interface BootResult {
 }
 
 export function boot(host: HostInfo): BootResult {
+  // configLoader is constructed below; isDebugEnabled reads it lazily
+  // so opencues.md `debug-mode: on/off` hot-reloads without restart.
+  // DEBUG_OPENCUES env is a bootstrap fallback for logs fired before
+  // ConfigLoader.load resolves.
+  let configLoaderRef: ConfigLoader | null = null;
+  const isDebugEnabled = (): boolean => {
+    if (configLoaderRef?.loaded) {
+      return configLoaderRef.opencuesState.debugMode === 'on';
+    }
+    return !!process.env.DEBUG_OPENCUES;
+  };
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
+    // error/warn/info always flow through; debug is gated.
+    if (level === 'debug' && !isDebugEnabled()) return;
     if (host.log) {
       try { host.log(level, msg, data); } catch { /* swallow */ }
     }
@@ -138,6 +151,7 @@ export function boot(host: HostInfo): BootResult {
   // Loads asynchronously; modules tolerate empty config until ready.
   const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/claude-code-tips.json`;
   const configLoader = new ConfigLoader(adapter, { tipsPath });
+  configLoaderRef = configLoader; // wire isDebugEnabled to opencues.md
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
