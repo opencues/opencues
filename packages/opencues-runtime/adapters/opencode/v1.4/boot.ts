@@ -19,6 +19,7 @@ import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { TTS } from '../../../src/modules/tts';
 import { BlankFill } from '../../../src/modules/blank-fill';
+import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { ControlValuesCache } from '../../../src/state/control-values';
@@ -56,6 +57,11 @@ export interface HostInfo {
   tipsPath?: string;
   /** Optional: statusline export path. */
   statusFilePath?: string;
+  /**
+   * Optional: cursor-state-export JSON path. Used by the opencues-auto
+   * test harness to drive automated runs.
+   */
+  cursorStatePath?: string;
   /** Optional: TTS script path. */
   ttsScriptPath?: string;
   ttsRate?: string | number;
@@ -167,6 +173,13 @@ export function boot(host: HostInfo): BootResult {
       exportPath: host.statusFilePath,
     }, configLoader, spanFillState, selectorSatelliteState, controlValues);
     statusline.subscribe();
+  }
+
+  // CursorStateExport — opt-in. The opencues-auto test harness reads
+  // the export to drive automated runs; no in-tree consumer.
+  if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
+    const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });
+    cse.subscribe();
   }
 
   // TTS gets span + selector/satellite states for tip routing.
