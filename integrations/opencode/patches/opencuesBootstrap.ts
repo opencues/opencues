@@ -196,9 +196,28 @@ export function startOpenCues(opts: {
     statusFilePath: `/tmp/opencues-opencode-status-${process.pid}.json`,
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // In-process statusline hook — feeds the active tip into the
-    // SolidJS signal the patched home footer reads.
+    // SolidJS signal the patched home footer reads. Format matches
+    // Claude Code's statusline (highlight-statusline.sh:41-63):
+    //   - cueControl=true: <tip> alone
+    //   - alts.length > 1: "<word> (N/M) - <tip>"  (tip optional)
+    //   - else (no alts, no control): <tip> alone, or null
     statusSnapshotHook: (payload: any) => {
-      setOpencuesTip(payload?.cueTip ?? null)
+      if (!payload?.active) { setOpencuesTip(null); return }
+      const tip = payload?.cueTip as string | null | undefined
+      const word = payload?.highlightedWord as string | undefined
+      const alts = payload?.alts as readonly string[] | undefined
+      const cueControl = !!payload?.cueControl
+      if (cueControl) {
+        setOpencuesTip(tip ?? null)
+        return
+      }
+      if (alts && alts.length > 1 && word) {
+        const idx = (payload?.currentAltIndex ?? 0) + 1
+        const head = `${word} (${idx}/${alts.length})`
+        setOpencuesTip(tip ? `${head} - ${tip}` : head)
+        return
+      }
+      setOpencuesTip(tip ?? null)
     },
     ttsScriptPath: path.join(process.env.HOME ?? "~", ".claude/actions/speak.sh"),
     ttsRate: 2,

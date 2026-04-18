@@ -19,53 +19,53 @@ function ensureEl(): HTMLDivElement {
   el = document.createElement('div');
   el.className = 'oc-status-bar';
   el.setAttribute('aria-live', 'polite');
-  el.style.display = 'none';
   document.body.appendChild(el);
   return el;
 }
 
-/** Hide the bar — payload is "inactive" or empty. */
+/** Hide the bar — payload is "inactive" or empty. The base
+ *  `.oc-status-bar` rule has opacity:0 so dropping the visible
+ *  modifier is enough to fade it out. */
 function hide(): void {
-  if (el) el.style.display = 'none';
+  if (el) el.classList.remove('oc-status-bar--visible');
 }
 
 /** Show the bar with the given text. */
 function show(text: string): void {
   const div = ensureEl();
   div.textContent = text;
-  div.style.display = '';
+  div.classList.add('oc-status-bar--visible');
 }
 
-/** Render a runtime Statusline payload into the floating bar. */
+/** Render a runtime Statusline payload into the floating bar.
+ *
+ * Format mirrors CC's highlight-statusline.sh:
+ *   - cueControl=true        → "<tip>"            (tip alone)
+ *   - cycling alts (N>1)     → "<word> (N/M) - <tip>"  (or head when tipless)
+ *   - otherwise (no alts)    → tip alone, or hide
+ */
 export function applyStatuslinePayload(payload: StatuslinePayload): void {
   if (!payload.active) {
     hide();
     return;
   }
 
-  // Cue-control word (volume/brightness blank fill, span fill, etc.)
-  // — render the tip alone.
-  if (payload.cueControl && payload.cueTip) {
-    show(payload.cueTip);
+  const tip = payload.cueTip ?? null;
+
+  if (payload.cueControl) {
+    if (tip) { show(tip); } else { hide(); }
     return;
   }
 
-  const parts: string[] = [];
-
-  // Index/length for words with multiple alts.
-  if (payload.alts && payload.alts.length > 1) {
+  if (payload.alts && payload.alts.length > 1 && payload.highlightedWord) {
     const idx = (payload.currentAltIndex ?? 0) + 1;
-    parts.push(`${idx}/${payload.alts.length}`);
-  }
-
-  if (payload.cueTip) parts.push(payload.cueTip);
-
-  if (parts.length === 0) {
-    hide();
+    const head = `${payload.highlightedWord} (${idx}/${payload.alts.length})`;
+    show(tip ? `${head} - ${tip}` : head);
     return;
   }
 
-  show(parts.join(' '));
+  if (!tip) { hide(); return; }
+  show(tip);
 }
 
 /** Tear down the floating div — called when extension detaches. */
