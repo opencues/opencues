@@ -251,7 +251,7 @@ export function boot(host: HostInfo): BootResult {
   navigation.subscribe();
   const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader);
   dimRender.subscribe();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, consumeAllState);
   cycling.subscribe();
 
   // BlankFill: scans for `_` placeholders + matched control. Owns the

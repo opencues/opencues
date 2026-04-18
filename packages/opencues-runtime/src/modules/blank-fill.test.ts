@@ -736,6 +736,71 @@ blankConsumeAll: true
     expect(consumeAll.current).toBeNull();
   });
 
+  it('Step 31 invalidation: user editing the consume-all text clears the stash', async () => {
+    const PROMPT_CTRL = `---
+type: control
+name: prompt
+blankKeywords: improve prompt
+blankScript: ./prompt.sh
+blankConsumeAll: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const consumeAll = new ConsumeAllState();
+    const bf = new BlankFill(adapter, loader, consumeAll);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({
+        exitCode: 0,
+        stdout: 'first alt\nsecond alt\nthird alt',
+        stderr: '',
+        timedOut: false,
+      }),
+      kill: () => {},
+    }));
+    adapter.pushText('improve prompt foo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(consumeAll.current).not.toBeNull();
+    // User types something — text differs from lastFilledText.
+    adapter.pushText('first alt edited');
+    expect(consumeAll.current).toBeNull();
+  });
+
+  it('Step 31 invalidation: matching text (e.g. after a cycle) keeps the stash', async () => {
+    const PROMPT_CTRL = `---
+type: control
+name: prompt
+blankKeywords: improve prompt
+blankScript: ./prompt.sh
+blankConsumeAll: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const consumeAll = new ConsumeAllState();
+    const bf = new BlankFill(adapter, loader, consumeAll);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'first\nsecond', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('improve prompt foo _');
+    await new Promise(r => setTimeout(r, 0));
+    // Simulate Cycling updating lastFilledText then pushing matching text.
+    consumeAll.set(consumeAll.current, 'second');
+    adapter.pushText('second');
+    expect(consumeAll.current).not.toBeNull();
+  });
+
   it('honours blankAutoPopulate: false on the control', async () => {
     const NO_AUTO = `---
 type: control

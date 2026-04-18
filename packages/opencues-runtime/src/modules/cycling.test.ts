@@ -4,6 +4,7 @@ import { ConfigLoader } from './config-loader';
 import { Navigation } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
+import { ConsumeAllState } from '../state/consume-all';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({
@@ -104,5 +105,90 @@ describe('Cycling', () => {
     expect(hlState.wordIndex).toBe(1);
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(adapter.setTextCalls.at(-1)).toBe('big quick');
+  });
+});
+
+describe('Cycling consume-all (Step 31)', () => {
+  async function setupCa(initialText: string) {
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText(initialText);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const consumeAll = new ConsumeAllState();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, consumeAll);
+    cycling.subscribe();
+    return { adapter, hlState, consumeAll, cycling };
+  }
+
+  it('cycles forward through stashed alternatives', async () => {
+    const { adapter, hlState, consumeAll } = await setupCa('Improved one');
+    consumeAll.set({
+      index: 0,
+      alternatives: ['Improved one', 'Improved two version', 'Final three'],
+      currentAltIndex: 0,
+      spanLength: 2,
+    }, 'Improved one');
+    hlState.activate(0, 'Improved one');
+    expect(adapter.fireKey('up', { ctrl: true, alt: true })).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('Improved two version');
+    expect(consumeAll.current?.currentAltIndex).toBe(1);
+    expect(consumeAll.current?.spanLength).toBe(3);
+  });
+
+  it('cycles backward (Ctrl+Alt+Down)', async () => {
+    const { adapter, hlState, consumeAll } = await setupCa('Improved one');
+    consumeAll.set({
+      index: 0,
+      alternatives: ['Improved one', 'Improved two version', 'Final three'],
+      currentAltIndex: 0,
+      spanLength: 2,
+    }, 'Improved one');
+    hlState.activate(0, 'Improved one');
+    expect(adapter.fireKey('down', { ctrl: true, alt: true })).toBe(true);
+    // Wraps from 0 down to 2 (last alt)
+    expect(adapter.setTextCalls.at(-1)).toBe('Final three');
+    expect(consumeAll.current?.currentAltIndex).toBe(2);
+  });
+
+  it('only cycles when highlight is within the consumed span', async () => {
+    const { adapter, hlState, consumeAll } = await setupCa('Improved one outside word');
+    consumeAll.set({
+      index: 0,
+      alternatives: ['Improved one', 'Other version'],
+      currentAltIndex: 0,
+      spanLength: 2,
+    }, 'Improved one outside word');
+    // Word index 3 ("word") is outside the span [0, 2)
+    hlState.activate(3, 'Improved one outside word');
+    expect(adapter.fireKey('up', { ctrl: true, alt: true })).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('updates lastFilledText so post-cycle text changes do not invalidate', async () => {
+    const { adapter, hlState, consumeAll } = await setupCa('Improved one');
+    consumeAll.set({
+      index: 0,
+      alternatives: ['Improved one', 'Other version'],
+      currentAltIndex: 0,
+      spanLength: 2,
+    }, 'Improved one');
+    hlState.activate(0, 'Improved one');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(consumeAll.lastFilledText).toBe('Other version');
+    expect(consumeAll.current).not.toBeNull();
+  });
+
+  it('does nothing when there is only one alternative', async () => {
+    const { adapter, hlState, consumeAll } = await setupCa('Lone version');
+    consumeAll.set({
+      index: 0,
+      alternatives: ['Lone version'],
+      currentAltIndex: 0,
+      spanLength: 2,
+    }, 'Lone version');
+    hlState.activate(0, 'Lone version');
+    expect(adapter.fireKey('up', { ctrl: true, alt: true })).toBe(false);
   });
 });

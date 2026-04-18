@@ -16,6 +16,7 @@ import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, ControlEntry, StepPattern } from './config-loader';
 import { splitWords } from './navigation';
+import type { ConsumeAllState } from '../state/consume-all';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -26,6 +27,7 @@ export class Cycling {
     private hlState: HighlightState,
     private dynDefs: DynDefs,
     private configLoader: ConfigLoader,
+    private consumeAllState?: ConsumeAllState,
   ) {}
 
   subscribe(): void {
@@ -53,6 +55,12 @@ export class Cycling {
     const target = words[wordIndex];
     if (!target) return false;
 
+    // 0. Consume-all (prompt improver) — takes precedence when the highlight
+    //    falls within the consumed span. Cycles through the stashed alts.
+    if (this.consumeAllState?.current && this.cycleConsumeAll(event, words, wordIndex, direction)) {
+      return true;
+    }
+
     // 1. Script-backed control — spawn script, no text change.
     const control = this.configLoader.lookupControl(target.word);
     if (control && control.control.script) {
@@ -72,6 +80,48 @@ export class Cycling {
 
     // 4. Plain cue word — fall through to original static-alts cycling.
     return this.cycleStaticAlts(event, target, wordIndex, direction);
+  }
+
+  // ─── Path 0: consume-all (prompt improver) ─────────────────────────────
+
+  private cycleConsumeAll(
+    event: KeyEvent,
+    words: ReadonlyArray<{ word: string; start: number; end: number; index: number }>,
+    wordIndex: number,
+    direction: 1 | -1,
+  ): boolean {
+    const entry = this.consumeAllState!.current!;
+    const spanLen = entry.spanLength || 1;
+    if (wordIndex < entry.index || wordIndex >= entry.index + spanLen) return false;
+
+    const len = entry.alternatives.length;
+    if (len <= 1) return false;
+    const nextIdx = ((entry.currentAltIndex + direction) % len + len) % len;
+    const nextAlt = entry.alternatives[nextIdx];
+
+    // Span char positions: from start of the first span word to end of the
+    // last span word in the *current* text. If the user edited and the
+    // span moved, abort — invalidation should already have cleared this
+    // state, but defend anyway.
+    const spanStartWord = words[entry.index];
+    const spanEndWord = words[entry.index + spanLen - 1];
+    if (!spanStartWord || !spanEndWord) return false;
+
+    const before = event.text.slice(0, spanStartWord.start);
+    const after = event.text.slice(spanEndWord.end);
+    const newText = before + nextAlt + after;
+    const newCursor = spanStartWord.start + nextAlt.length;
+
+    // Update stash BEFORE setText so onTextChange's invalidator sees the
+    // matching lastFilledText and doesn't drop the entry.
+    entry.currentAltIndex = nextIdx;
+    entry.spanLength = nextAlt.split(/\s+/).filter(Boolean).length;
+    this.consumeAllState!.set(entry, newText);
+
+    this.adapter.setText(newText);
+    this.adapter.setCursorOffset(newCursor);
+    this.adapter.forceRender();
+    return true;
   }
 
   // ─── Path 1: script-backed ─────────────────────────────────────────────

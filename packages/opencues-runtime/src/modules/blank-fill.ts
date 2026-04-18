@@ -75,6 +75,13 @@ export class BlankFill {
   }
 
   private onTextChange(e: TextChangeEvent): void {
+    // Step 31 invalidation: if the consume-all stash is live and the
+    // current text doesn't match what we last filled (cycle or initial),
+    // the user edited it — drop the stash so a stale alt isn't spliced
+    // into newly-edited text.
+    if (this.consumeAllState && this.consumeAllState.current && e.text.replace(/[\u200B\u200C]/g, '') !== this.consumeAllState.lastFilledText) {
+      this.consumeAllState.clear();
+    }
     const slots = this.scan(e.text);
     if (e.source === 'user') {
       this.maybeRunScripts(e.text, slots);
@@ -214,7 +221,7 @@ export class BlankFill {
           alternatives: lines,
           currentAltIndex: 0,
           spanLength: newText.split(/\s+/).filter(Boolean).length,
-        });
+        }, newText);
       } else if (this.consumeAllState) {
         this.consumeAllState.clear();
       }

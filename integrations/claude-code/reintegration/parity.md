@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase E.8 (commit pending).
+**Last synced:** Phase E.9 (commit pending).
 
 ---
 
@@ -49,7 +49,7 @@ just architecture.
 | 28 | blank-fill: `blankKeywordExpansions` display | ✓ | Phase E.6. Same `buildClearKeywordText` helper extended with optional `expansion` param. When set (and clearKw is not), keyword span is replaced by the expansion at keywordStart. clearKw wins when both are present (matches v1's "same net result"). Live verified: `rddt _` → `Reddit $180.50`, `hn _` → `HackerNews <story>`. |
 | 29 | blank-fill: `blankConsumeContext` widens range | ✓ | Phase E.7. New `computeFillRange(control, slot)` derives `(clearEnd, expansion)` from the three flags. consumeContext sets clearEnd=`slot.index-1` (drops keyword + context); clearKeywords alone sets clearEnd=`keywordEnd`. consumeContext suppresses expansion (matches v1's "doesn't combine"). Live verified: `how to say happy _` → `<answer>`. |
 | 30 | blank-fill: `blankConsumeAll` (prompt improver) | ✓ | Phase E.8. applyAsyncFill short-circuits the splice/expand/clear pipeline when control.blankConsumeAll. Multi-line stdout: line 1 replaces ALL text, remaining lines stash in ConsumeAllState (wired through boot). Live verified: `improve prompt`, `enhance prompt`, `refine prompt` all return improved versions. Cycling through the stash is E.9's job. |
-| 31 | consume-all cycling (prompt improver Ctrl+Alt+Up/Down) | ○ | |
+| 31 | consume-all cycling (prompt improver Ctrl+Alt+Up/Down) | ✓ | Phase E.9. Cycling.cycleConsumeAll inserted as path 0 (takes precedence over scripts/list/step-pattern/static when wordIndex falls inside the consumed span). Updates currentAltIndex+spanLength, splices new alt at the span char positions. ConsumeAllState gained lastFilledText for invalidation; BlankFill.onTextChange clears the stash when text drifts. Live verified: 4-way wrap with includeOriginal:true. |
 | 32 | dim the consume-all range | ○ | |
 | 33 | general span infrastructure + stepValues cycling + blankDismissible + statusline tip parity | ○ | The big one — `_dynSpans` data model + everything that depends on it. |
 | 34 | factor `_hlExport.cueTip` writes (one projection, one apply) | — | v2's Statusline already centralises the projection — Step 34 was a v1-specific cleanup, not needed in v2. |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 25 ✓, 4 ◐, 7 ○, 2 — out of 38 steps. (Phase E.1-E.8 flipped Steps 23, 24, 25, 26, 27, 28, 29, 30 ✓.)
+**Tally:** 26 ✓, 4 ◐, 6 ○, 2 — out of 38 steps. (Phase E.1-E.9 flipped Steps 23, 24, 25, 26, 27, 28, 29, 30, 31 ✓.)
 
 ---
 
