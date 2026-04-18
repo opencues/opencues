@@ -16,7 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
 import { createSourceReclassifier } from "opencues-runtime/dist/src/boot-common"
-import { createControlInvoke, AnswerControl, HackerNewsControl, StocksControl, WeatherControl, type Control } from "opencues-runtime/dist/src/controls"
+import { createControlInvoke, AnswerControl, HackerNewsControl, PromptImproverControl, StocksControl, WeatherControl, type Control } from "opencues-runtime/dist/src/controls"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -85,6 +85,7 @@ const controlsRegistry = new Map<string, Control>([
   ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
   ['weather', new WeatherControl()],
   ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
+  ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
 ])
 const controlInvoke = createControlInvoke(controlsRegistry)
 

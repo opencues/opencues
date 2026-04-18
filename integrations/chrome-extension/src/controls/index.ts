@@ -1,12 +1,27 @@
 import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
 // Hoisted to runtime — same classes, every host. Chrome's
-// src/controls/hackernews.ts + stocks.ts + weather.ts have been deleted.
-import { AnswerControl, HackerNewsControl, StocksControl, WeatherControl } from 'opencues-runtime/dist/src/controls';
-import { PromptImproverControl, type PromptImproverConfig } from './prompt-improver';
+// src/controls/hackernews.ts + stocks.ts + weather.ts + prompt-improver.ts
+// have been deleted.
+import {
+  AnswerControl,
+  HackerNewsControl,
+  PromptImproverControl,
+  StocksControl,
+  WeatherControl,
+} from 'opencues-runtime/dist/src/controls';
 
 export type { BrowserControl } from './types';
-export { PromptImproverControl, type PromptImproverConfig } from './prompt-improver';
+// Re-exported from runtime so consumers (opencues-bootstrap.ts) keep
+// importing PromptImproverConfig from this module without churn.
+export { PromptImproverControl } from 'opencues-runtime/dist/src/controls';
+export type PromptImproverConfig = {
+  apiKey: string;
+  apiUrl: string;
+  model: string;
+  altCount?: number;
+  includeOriginal?: boolean;
+};
 
 /** Control keyword config for auto-populate matching */
 export interface ControlKeywordConfig {
@@ -162,6 +177,9 @@ export function createControls(options?: {
       model: options.llmConfig.model,
     }));
   }
+  // Note: deleted src/controls/prompt-improver.ts. The runtime class
+  // takes the same options shape (apiKey/apiUrl/model/altCount/
+  // includeOriginal) so the call site above is unchanged.
 
   return controls;
 }

@@ -18,6 +18,7 @@ export { HackerNewsControl } from './hackernews';
 export { StocksControl, type StocksControlOptions } from './stocks';
 export { WeatherControl, type WeatherControlOptions } from './weather';
 export { AnswerControl, type AnswerControlOptions } from './answer';
+export { PromptImproverControl, type PromptImproverControlOptions } from './prompt-improver';
 
 /**
  * Build a controlInvoke handler that dispatches into the given registry.
