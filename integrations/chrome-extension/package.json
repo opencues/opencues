@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && node esbuild.config.mjs",
+    "test": "vitest run",
+    "test:dev": "vitest",
+    "build": "npm run typecheck && npm test && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@types/chrome": "^0.0.268",
     "esbuild": "^0.21.0",
+    "jsdom": "^29.0.2",
     "typescript": "^5.4.0",
-    "@anthropic-ai/sdk": "^0.39.0"
+    "vitest": "^2.1.9"
   }
 }
