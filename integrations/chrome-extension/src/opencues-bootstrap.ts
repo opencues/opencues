@@ -275,6 +275,28 @@ export function clearRuntimeHighlights(): void {
 }
 
 /**
+ * Map a browser KeyboardEvent key string to the runtime's expected
+ * keys. Runtime uses 'up'/'down'/'left'/'right'/'escape' (OpenCode/CC
+ * naming). Browser uses 'ArrowUp'/'ArrowDown'/etc. + 'Escape'. Unknown
+ * keys pass through lowercased so single-char keys ('_', 'a', etc.)
+ * still match.
+ */
+function normaliseKey(k: string): string {
+  switch (k) {
+    case 'ArrowUp': return 'up';
+    case 'ArrowDown': return 'down';
+    case 'ArrowLeft': return 'left';
+    case 'ArrowRight': return 'right';
+    case 'Escape': return 'escape';
+    case 'Enter': return 'enter';
+    case 'Tab': return 'tab';
+    case 'Backspace': return 'backspace';
+    case ' ': return 'space';
+    default: return k.toLowerCase();
+  }
+}
+
+/**
  * Document-level keydown listener (capture phase). Fires before the
  * existing WordNavigator's target listener, so consumed events get
  * blocked via stopPropagation. Installed once per content-script load.
@@ -291,7 +313,7 @@ function installKeyListener(): void {
     const text = target.textContent ?? '';
     const cursor = readCursorOffset();
     const ev: KeyEvent = {
-      key: e.key.toLowerCase(),
+      key: normaliseKey(e.key),
       modifiers: {
         ctrl: e.ctrlKey,
         alt: e.altKey,
