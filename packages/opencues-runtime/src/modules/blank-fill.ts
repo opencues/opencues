@@ -181,9 +181,10 @@ export class BlankFill {
     const words = splitWords(cleaned);
     const target = words[slot.index];
     const control = this.configLoader.controls.get(slot.controlName) as
-      | { blankClearKeywords?: boolean }
+      | { blankClearKeywords?: boolean; blankKeywordExpansions?: Record<string, string> }
       | undefined;
     const clearKw = control?.blankClearKeywords === true;
+    const expansion = clearKw ? undefined : control?.blankKeywordExpansions?.[slot.keyword];
     this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.controlName}`, {
       currentTextLen: currentText.length,
       cleanedLen: cleaned.length,
@@ -192,11 +193,12 @@ export class BlankFill {
       fillValueLen: fillValue.length,
       hasPushText: !!this.adapter.pushText,
       clearKw,
+      expansion: expansion ?? null,
     });
     if (!target || target.word !== '_') return; // slot moved or filled — drop
 
-    const { newText, newCursor } = clearKw
-      ? buildClearKeywordText(cleaned, slot, fillValue)
+    const { newText, newCursor } = clearKw || expansion != null
+      ? buildClearKeywordText(cleaned, slot, fillValue, expansion)
       : { newText: cleaned.slice(0, target.start) + fillValue + cleaned.slice(target.end),
           newCursor: target.start + fillValue.length };
 
@@ -240,6 +242,7 @@ export class BlankFill {
           stepValues?: readonly string[];
           blankAutoPopulate?: boolean;
           blankClearKeywords?: boolean;
+          blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
     if (!control) return false;
@@ -248,8 +251,11 @@ export class BlankFill {
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
 
-    const { newText, newCursor } = control.blankClearKeywords === true
-      ? buildClearKeywordText(insertedText, slot, fillValue)
+    const clearKw = control.blankClearKeywords === true;
+    const expansion = clearKw ? undefined : control.blankKeywordExpansions?.[slot.keyword];
+
+    const { newText, newCursor } = clearKw || expansion != null
+      ? buildClearKeywordText(insertedText, slot, fillValue, expansion)
       : { newText: insertedText.slice(0, insertedWord.start) + fillValue + insertedText.slice(insertedWord.end),
           newCursor: insertedWord.start + fillValue.length };
 
@@ -313,25 +319,41 @@ function extraEnvKeys(control: Record<string, unknown>): string[] {
 }
 
 /**
- * Step 27 — word-array reconstruction that drops the keyword span
- * [keywordStart..keywordEnd] and replaces the slot.index entry with
- * fillValue. Words between keywordEnd and slot.index (context) are
- * preserved; that's blankConsumeContext's job (Step 29). Joining with
- * a single space collapses any whitespace runs around the cleared
- * positions — same trade-off v1 made when it switched off char-position
- * splice.
+ * Step 27 + 28 — word-array reconstruction that handles both keyword
+ * clearing and keyword expansion in one pass.
+ *
+ *   - The keyword span [keywordStart..keywordEnd] is always dropped.
+ *   - If `expansion` is given, it's placed at keywordStart in the output
+ *     (replacing the dropped keyword) — that's Step 28.
+ *   - If `expansion` is omitted, the keyword span vanishes — that's
+ *     Step 27's clear behaviour.
+ *   - The slot.index entry is replaced with `fillValue`.
+ *
+ * Words between keywordEnd and slot.index (context) are preserved here;
+ * widening the clear range to include them is blankConsumeContext's job
+ * (Step 29). Joining with a single space collapses any whitespace runs
+ * around the modified positions — same trade-off v1 made when it
+ * switched off char-position splice.
+ *
+ * If both blankClearKeywords and blankKeywordExpansions are set, the
+ * caller passes `expansion: undefined` (clear wins). Matches v1's "same
+ * net result" note.
  */
 export function buildClearKeywordText(
   text: string,
   slot: { index: number; keywordStart: number; keywordEnd: number },
   fillValue: string,
+  expansion?: string,
 ): { newText: string; newCursor: number } {
   const cleaned = text.replace(/[\u200B\u200C]/g, '');
   const words = cleaned.split(/\s+/).filter(Boolean);
   const out: string[] = [];
   let cursor = 0;
   for (let i = 0; i < words.length; i += 1) {
-    if (i >= slot.keywordStart && i <= slot.keywordEnd) continue;
+    if (i >= slot.keywordStart && i <= slot.keywordEnd) {
+      if (i === slot.keywordStart && expansion) out.push(expansion);
+      continue;
+    }
     if (i === slot.index) {
       out.push(fillValue);
       cursor = out.join(' ').length;

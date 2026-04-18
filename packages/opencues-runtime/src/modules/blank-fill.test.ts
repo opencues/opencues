@@ -145,6 +145,19 @@ describe('buildClearKeywordText helper (Step 27)', () => {
     const r = buildClearKeywordText('weather\u200B _', { index: 1, keywordStart: 0, keywordEnd: 0 }, 'x');
     expect(r.newText).toBe('x');
   });
+  it('Step 28: replaces single-word keyword with expansion when given', () => {
+    const r = buildClearKeywordText('rddt _', { index: 1, keywordStart: 0, keywordEnd: 0 }, '$180.50', 'Reddit');
+    expect(r.newText).toBe('Reddit $180.50');
+    expect(r.newCursor).toBe(14);
+  });
+  it('Step 28: collapses multi-word keyword span into single expansion entry', () => {
+    const r = buildClearKeywordText('big tech _', { index: 2, keywordStart: 0, keywordEnd: 1 }, '$100', 'BigTech');
+    expect(r.newText).toBe('BigTech $100');
+  });
+  it('Step 28: expansion preserves context words after keyword', () => {
+    const r = buildClearKeywordText('hn for today _', { index: 3, keywordStart: 0, keywordEnd: 0 }, 'Story', 'HackerNews');
+    expect(r.newText).toBe('HackerNews for today Story');
+  });
 });
 
 describe('BlankFill auto-populate (Step 24)', () => {
@@ -470,6 +483,78 @@ blankScript: ./weather.sh
     await new Promise(r => setTimeout(r, 0));
     // Keyword preserved; only `_` is replaced. Splice path keeps original spacing.
     expect(adapter.getText()).toBe('weather in Paris 15°C cloudy');
+  });
+
+  it('sync path: blankKeywordExpansions replaces short-form keyword with long form', async () => {
+    const EXP_CTRL = `---
+type: control
+name: greeting
+blankKeywords: hi
+stepValues: ["world"]
+blankKeywordExpansions.hi: Hello
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/greeting/cue.md': EXP_CTRL },
+    });
+    adapter.pushText('hi ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('hi ', 3))).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('Hello world');
+  });
+
+  it('sync path: blankClearKeywords wins when both clear + expansion are set', async () => {
+    const BOTH = `---
+type: control
+name: bye
+blankKeywords: bye
+stepValues: ["see ya"]
+blankClearKeywords: true
+blankKeywordExpansions.bye: Goodbye
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/bye/cue.md': BOTH },
+    });
+    adapter.pushText('bye ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('bye ', 4))).toBe(true);
+    // Goodbye is suppressed because clear wins.
+    expect(adapter.setTextCalls.at(-1)).toBe('see ya');
+  });
+
+  it('async path: blankKeywordExpansions applies after script result', async () => {
+    const EXP_CTRL = `---
+type: control
+name: stocks
+blankKeywords: rddt
+blankScript: ./stocks.sh
+blankKeywordExpansions.rddt: Reddit
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': EXP_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '$180.50', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('rddt _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('Reddit $180.50');
   });
 
   it('honours blankAutoPopulate: false on the control', async () => {
