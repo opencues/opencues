@@ -187,6 +187,14 @@ export class Resolver {
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
       if (existing && existing.controlName) continue;
+      // Already resolved — same word at the same index, fresh from a
+      // prior LLM pass. Without this, every subsequent text-change
+      // (typing the next word, adding a space) clobbers the existing
+      // DynDef with a new LLM result. Alts can differ slightly across
+      // runs, and each write triggers a forceRender → repaint flash.
+      // Only re-resolve if the word at this index actually changed
+      // (user deleted/replaced the word).
+      if (existing && existing.originalWord === target.word) continue;
       // Tip-having words own their own alternatives via the cueMap
       // (claude-code-tips.json's hand-curated `alts` array). The LLM
       // returning grammar synonyms for `ultrathink` etc. would silently

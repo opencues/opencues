@@ -89,7 +89,12 @@ describe('Resolver.resolveAndApply', () => {
     expect(def!.currentIndex).toBe(1);
   });
 
-  it('replaces DynDef entries when user is on currentIndex 0 (untouched)', async () => {
+  it('preserves DynDef entries for the same word at currentIndex 0', async () => {
+    // Resolver should NOT re-write a DynDef when the existing entry
+    // already covers the same originalWord. Re-writing on every text
+    // change caused alt-jitter (LLM responses vary slightly) and a
+    // repaint flash. Once a word is filled, treat as resolved until
+    // the user replaces it.
     const { dynDefs, resolver } = setupResolver([
       { wordIndex: 0, word: 'alpha', alternatives: ['alpha', 'fresh'] },
     ]);
@@ -101,7 +106,27 @@ describe('Resolver.resolveAndApply', () => {
       spanEnd: 5,
     });
     await resolver.resolveAndApply('alpha');
-    expect(dynDefs.get(0)!.alternatives).toEqual(['alpha', 'fresh']);
+    // Existing alts preserved — same word, currentIndex 0 → skip.
+    expect(dynDefs.get(0)!.alternatives).toEqual(['alpha', 'old']);
+  });
+
+  it('replaces DynDef entries when the word at the index has changed', async () => {
+    // User typed something different at this position — old DynDef no
+    // longer matches and should be replaced. Same-index but different
+    // originalWord = stale entry, allow overwrite.
+    const { dynDefs, resolver } = setupResolver([
+      { wordIndex: 0, word: 'beta', alternatives: ['beta', 'fresh'] },
+    ]);
+    dynDefs.set(0, {
+      originalWord: 'alpha',  // stale — text now has 'beta'
+      alternatives: ['alpha', 'old'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 5,
+    });
+    await resolver.resolveAndApply('beta');
+    expect(dynDefs.get(0)!.originalWord).toBe('beta');
+    expect(dynDefs.get(0)!.alternatives).toEqual(['beta', 'fresh']);
   });
 
   it('drops original-only results (no alts to cycle)', async () => {
