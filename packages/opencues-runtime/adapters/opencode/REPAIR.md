@@ -9,10 +9,10 @@ The runtime side is host-agnostic; the only band-specific code lives at:
 - `integrations/opencode/patches/opencuesBootstrap.ts`
 - `integrations/opencode/patches/setup.sh`
 
-## Live-fixes discovered during testing (O.2 → O.6)
+## Live-fixes discovered during testing (O.2 → O.7)
 
-Five bugs surfaced once we ran the patched fork in a real terminal.
-All five are folded into `integrations/opencode/patches/advance.sh`'s
+Seven bugs surfaced once we ran the patched fork in a real terminal.
+All seven are folded into `integrations/opencode/patches/advance.sh`'s
 fix block so every advance applies + verifies them. If you see any of
 the **symptoms** below, check the corresponding fix is still in place.
 
@@ -91,6 +91,40 @@ as the user typing).
 `notifyOpenCuesTextChange` checks if incoming text matches → re-tag
 `source: "runtime"` so Navigation skips the deactivate. Mirrors CC's
 `pendingText`/`lastSeenText` pattern (REPAIR.md #1 for CC).
+
+### LF-6. Resolver subscribed before ConfigLoader.load resolved (O.7)
+
+**File:** `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` —
+the `if (host.llmApiKey)` Resolver block.
+
+**Symptom:** `/tmp/opencues.log` shows `Resolver: no cuesConfig/blanksConfig,
+skipping build` repeatedly. LLM never fires even when `GROQ_API_KEY` set
+and `cues.md` / `blanks.md` parse fine.
+
+**Why:** the original block called `resolver.subscribe()` synchronously
+right after construction. ConfigLoader.load() is async — when Resolver's
+internal `rebuildResolver()` ran, `cuesConfig` and `blanksConfig` were
+still undefined, so it bailed without registering any sources.
+
+**Fix:** await ConfigLoader.load() before subscribing —
+`configLoader.load().then(() => resolver.subscribe())`. Mirrors CC v2.1's
+boot ordering. Same race exists for BlankFill (already done in O.8).
+
+### LF-7. setup.sh missed cues-core/node-http-adapter.js (O.7)
+
+**File:** `integrations/opencode/patches/setup.sh` — cues-core install block.
+
+**Symptom:** `Resolver: NodeHttpAdapter load failed ... Cannot find module
+'cues-core/node-http-adapter'`. LLM resolution silently dies even after
+LF-6 (Resolver builds successfully but every request errors out).
+
+**Why:** `node-http-adapter.js` is a hand-written CommonJS file that
+lives at the cues-core package root, NOT under `dist/`. The OpenCode
+setup only copied `dist/*` + `package.json`. CC's setup explicitly
+handles this standalone file (its setup.sh line ~254-255).
+
+**Fix:** add an explicit copy of `node-http-adapter.js` after the
+`dist/*` cp. Idempotent guard with `[ -f ... ] && cp`.
 
 ## Host quirks
 

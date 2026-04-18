@@ -189,7 +189,9 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs,
     });
-    resolver.subscribe();
+    // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
+    // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
+    configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
   }
 
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {

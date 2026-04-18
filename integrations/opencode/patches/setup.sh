@@ -57,6 +57,11 @@ CUES_CORE_DEST="$OPENCODE_DIR/node_modules/cues-core"
 mkdir -p "$CUES_CORE_DEST"
 cp -r "$OPENCUES_ROOT/packages/cues-core/dist/"* "$CUES_CORE_DEST/"
 cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"
+# Standalone files not compiled by tsc (e.g. node-http-adapter.js).
+# Resolver does `require('cues-core/node-http-adapter')` — without this
+# copy the require fails at runtime and LLM resolution silently dies.
+[ -f "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" ] && \
+  cp "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" "$CUES_CORE_DEST/"
 
 # 4. Copy the bootstrap patch into the fork's TUI source.
 echo "Copying opencuesBootstrap.ts into fork..."

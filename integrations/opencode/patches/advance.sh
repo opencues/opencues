@@ -45,6 +45,7 @@ git reset --hard "$TARGET"
 echo ""
 echo "Applying live-fixes (filter wrap, syntax(), extmarks.delete)..."
 ADAPTER="$OPENCUES_ROOT/packages/opencues-runtime/adapters/opencode/v1.4/adapter.ts"
+BOOT="$OPENCUES_ROOT/packages/opencues-runtime/adapters/opencode/v1.4/boot.ts"
 BOOTSTRAP="$SCRIPT_DIR/opencuesBootstrap.ts"
 SETUP="$SCRIPT_DIR/setup.sh"
 
@@ -123,6 +124,52 @@ PY
 fi
 
 
+# 6. Resolver must subscribe AFTER ConfigLoader.load resolves — otherwise
+#    rebuildResolver runs with no cuesConfig/blanksConfig and bails with
+#    "Resolver: no cuesConfig/blanksConfig, skipping build". Mirrors the
+#    CC v2.1 boot pattern. Only applies once Resolver is wired (≥ O.7).
+if grep -q "resolver.subscribe();" "$BOOT" && ! grep -q "configLoader.load().then(() => resolver.subscribe())" "$BOOT"; then
+python3 - "$BOOT" <<'PY'
+import sys
+p = sys.argv[1]
+src = open(p).read()
+old = '''    });
+    resolver.subscribe();
+  }'''
+new = '''    });
+    // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
+    // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
+    configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+  }'''
+if old in src:
+  src = src.replace(old, new)
+  open(p, 'w').write(src)
+PY
+fi
+
+# 7. setup.sh must also copy cues-core/node-http-adapter.js — it's a
+#    standalone CommonJS file at the cues-core package root (not under
+#    dist/), and Resolver does require('cues-core/node-http-adapter')
+#    at runtime. Without this copy, NodeHttpAdapter load fails and LLM
+#    resolution silently dies. Idempotent: only injects if absent.
+if ! grep -q "node-http-adapter.js" "$SETUP"; then
+python3 - "$SETUP" <<'PY'
+import sys
+p = sys.argv[1]
+src = open(p).read()
+old = 'cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"'
+new = '''cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"
+# Standalone files not compiled by tsc (e.g. node-http-adapter.js).
+# Resolver does `require('cues-core/node-http-adapter')` — without this
+# copy the require fails at runtime and LLM resolution silently dies.
+[ -f "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" ] && \\
+  cp "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" "$CUES_CORE_DEST/"'''
+if old in src and 'node-http-adapter.js' not in src:
+  src = src.replace(old, new)
+  open(p, 'w').write(src)
+PY
+fi
+
 # Sanity check: every fix MUST be present after the patches. If we
 # advance past a commit that introduced new patterns the sed/python
 # rules don't recognise, fail loudly instead of producing a silently-
@@ -148,10 +195,17 @@ verify "$SETUP" "useTheme().syntax() as any" "syntax() call (setup.sh)"
 verify "$BOOTSTRAP" "(textarea.extmarks as any).delete?.(id)" "extmarks.delete (opencuesBootstrap.ts)"
 verify "$SETUP" "process.env.OPENCUES_HOME" "cwd→OPENCUES_HOME (setup.sh)"
 verify "$BOOTSTRAP" "lastRuntimeSetText" "runtime-source tagging (opencuesBootstrap.ts)"
+# LF-6 only applies once Resolver is wired (O.7+). Skip verify on earlier phases.
+if grep -q "const resolver = new Resolver" "$BOOT"; then
+  verify "$BOOT" "configLoader.load().then(() => resolver.subscribe())" "resolver subscribe-after-load (boot.ts)"
+fi
+verify "$SETUP" "node-http-adapter.js" "cues-core node-http-adapter copy (setup.sh)"
 
 echo ""
-echo "Rebuilding opencues-runtime..."
-( cd "$OPENCUES_ROOT/packages/opencues-runtime" && npm run build )
+echo "Rebuilding opencues-runtime (clean — tsc incremental cache lies)..."
+( cd "$OPENCUES_ROOT/packages/opencues-runtime" \
+  && rm -rf dist \
+  && npm run build )
 echo ""
 echo "Reverting fork patches + reapplying..."
 ( cd "$OPENCODE_DIR" \
