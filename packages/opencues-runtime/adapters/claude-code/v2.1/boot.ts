@@ -22,6 +22,7 @@ import { Resolver } from '../../../src/modules/resolver';
 import { BlankFill } from '../../../src/modules/blank-fill';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
+import { ConsumeAllState } from '../../../src/state/consume-all';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   KeyEvent,
@@ -236,6 +237,7 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ClaudeCodeV21Adapter(bindings);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
+  const consumeAllState = new ConsumeAllState();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
@@ -252,9 +254,11 @@ export function boot(host: HostInfo): BootResult {
   const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
   cycling.subscribe();
 
-  // BlankFill: scans for `_` placeholders + matched control. E.1 is
-  // detection-only; E.2+ adds auto-populate behaviours.
-  const blankFill = new BlankFill(adapter, configLoader);
+  // BlankFill: scans for `_` placeholders + matched control. Owns the
+  // detection + sync (stepValues) and async (blankScript) fill paths.
+  // E.8 adds the consume-all branch — needs ConsumeAllState as a writer
+  // so E.9's Cycling can read the stash.
+  const blankFill = new BlankFill(adapter, configLoader, consumeAllState);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 

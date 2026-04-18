@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BlankFill, buildClearKeywordText, computeFillRange } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
+import { ConsumeAllState } from '../state/consume-all';
 
 const TIPS = JSON.stringify({ concepts: [] });
 
@@ -664,6 +665,75 @@ blankConsumeContext: true
     bf.subscribe();
     expect(bf.onUnderscoreKey(makeKeyEvent('how to say hello ', 17))).toBe(true);
     expect(adapter.setTextCalls.at(-1)).toBe('hi');
+  });
+
+  it('async path: blankConsumeAll replaces entire input with first stdout line', async () => {
+    const PROMPT_CTRL = `---
+type: control
+name: prompt
+blankKeywords: improve prompt
+blankScript: ./prompt.sh
+blankConsumeAll: true
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const consumeAll = new ConsumeAllState();
+    const bf = new BlankFill(adapter, loader, consumeAll);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({
+        exitCode: 0,
+        stdout: 'Improved version one\nImproved version two\nImproved version three\n',
+        stderr: '',
+        timedOut: false,
+      }),
+      kill: () => {},
+    }));
+    adapter.pushText('improve prompt write code _');
+    await new Promise(r => setTimeout(r, 0));
+    // First line replaces ALL — keyword/context all gone.
+    expect(adapter.getText()).toBe('Improved version one');
+    // Stash carries 3 alternatives starting at currentAltIndex 0.
+    expect(consumeAll.current).toMatchObject({
+      index: 0,
+      alternatives: ['Improved version one', 'Improved version two', 'Improved version three'],
+      currentAltIndex: 0,
+      spanLength: 3,
+    });
+  });
+
+  it('async path: blankConsumeAll with single-line stdout fills but does not stash', async () => {
+    const PROMPT_CTRL = `---
+type: control
+name: prompt
+blankKeywords: improve prompt
+blankScript: ./prompt.sh
+blankConsumeAll: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const consumeAll = new ConsumeAllState();
+    const bf = new BlankFill(adapter, loader, consumeAll);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'lone improvement', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('improve prompt foo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('lone improvement');
+    expect(consumeAll.current).toBeNull();
   });
 
   it('honours blankAutoPopulate: false on the control', async () => {

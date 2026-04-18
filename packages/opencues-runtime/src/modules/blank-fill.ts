@@ -11,6 +11,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
+import type { ConsumeAllState } from '../state/consume-all';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -37,6 +38,7 @@ export class BlankFill {
   constructor(
     private adapter: HostAdapter,
     private configLoader: ConfigLoader,
+    private consumeAllState?: ConsumeAllState,
   ) {}
 
   subscribe(): void {
@@ -184,21 +186,59 @@ export class BlankFill {
       | (Record<string, unknown> & {
           blankClearKeywords?: boolean;
           blankConsumeContext?: boolean;
+          blankConsumeAll?: boolean;
           blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
+
+    // Staleness guard — if the user moved on or already filled the slot,
+    // drop the late callback. Applies to all three downstream paths
+    // (consume-all, range-clear, char-splice).
+    if (!target || target.word !== '_') return;
+
+    // Step 30 — consume-all short-circuits the splice/expand/clear pipeline.
+    // Multi-line stdout: line 1 replaces ALL text; remaining lines stash for
+    // Step 31 cycling. Skip if there's nothing to fill (defensive).
+    if (control?.blankConsumeAll === true) {
+      const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
+      this.adapter.log('debug', `BlankFill: consume-all ${slot.controlName}`, {
+        altCount: lines.length,
+        firstAltLen: lines[0]?.length ?? 0,
+      });
+      if (lines.length === 0) return;
+      const newText = lines[0];
+      const newCursor = newText.length;
+      if (this.consumeAllState && lines.length > 1) {
+        this.consumeAllState.set({
+          index: 0,
+          alternatives: lines,
+          currentAltIndex: 0,
+          spanLength: newText.split(/\s+/).filter(Boolean).length,
+        });
+      } else if (this.consumeAllState) {
+        this.consumeAllState.clear();
+      }
+      if (this.adapter.pushText) {
+        this.adapter.pushText(newText, newCursor);
+      } else {
+        this.adapter.setText(newText);
+        this.adapter.setCursorOffset(newCursor);
+        this.adapter.forceRender();
+      }
+      return;
+    }
+
     const { clearEnd, expansion } = computeFillRange(control ?? {}, slot);
     this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.controlName}`, {
       currentTextLen: currentText.length,
       cleanedLen: cleaned.length,
       slotIndex: slot.index,
-      targetWord: target?.word ?? null,
+      targetWord: target.word,
       fillValueLen: fillValue.length,
       hasPushText: !!this.adapter.pushText,
       clearEnd: clearEnd ?? null,
       expansion: expansion ?? null,
     });
-    if (!target || target.word !== '_') return; // slot moved or filled — drop
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
       ? buildClearKeywordText(cleaned, slot, fillValue, expansion, clearEnd)
