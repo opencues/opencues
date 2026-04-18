@@ -16,6 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
 import { createSourceReclassifier } from "opencues-runtime/dist/src/boot-common"
+import { createControlInvoke, HackerNewsControl, type Control } from "opencues-runtime/dist/src/controls"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -73,6 +74,16 @@ let bootResult: BootResult | undefined
 // Shared helper from boot-common — keeps source-reclassification
 // behaviour identical across hosts. See boot-common.ts:createSourceReclassifier.
 const sourceReclassifier = createSourceReclassifier()
+
+// Controls registry — same TS implementations chrome uses, dispatched
+// via the shared createControlInvoke. Lets us drop the per-control
+// shell scripts (controls/<name>/*.sh) once every host has parity.
+// OS-level controls (volume, brightness) stay shell-bound on Node hosts
+// because the runtime classes don't ship them.
+const controlsRegistry = new Map<string, Control>([
+  ['hackernews', new HackerNewsControl()],
+])
+const controlInvoke = createControlInvoke(controlsRegistry)
 
 export function startOpenCues(opts: {
   renderer: CliRenderer
@@ -192,6 +203,11 @@ export function startOpenCues(opts: {
       return { result, kill: (sig?: string) => { try { child.kill(sig as any || "SIGTERM") } catch {} } }
     },
     log,
+    // Shared TS controls dispatched here. Anything not in the registry
+    // falls through to spawnProcess, so the legacy controls/<name>/*.sh
+    // scripts still run for OS controls (volume, brightness) and any
+    // control that hasn't been hoisted to runtime yet.
+    controlInvoke,
     tipsPath: path.join(process.env.HOME ?? "~", ".claude/claude-code-tips.json"),
     // Rename from claude-highlight-state-<pid>.json to opencode-<pid>.json
     // so the path visually disambiguates from a claude-cues instance

@@ -20,6 +20,7 @@ import type {
   Unsubscribe,
   ProcessSpec,
   ProcessHandle,
+  ControlInvokeSpec,
   DirEntry,
   LogLevel,
   Capability,
@@ -55,6 +56,14 @@ export interface OpenCodeBindings {
   writeFile?(path: string, content: string): Promise<void>;
   /** Optional spawn (Bun.spawn or node:child_process). */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
+  /**
+   * Optional host-native control dispatch. Same shape as chrome's
+   * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
+   * shared TS controls (HackerNewsControl, etc.) win over the legacy
+   * shell scripts in controls/. Returns null when the controlName
+   * isn't in the host's registry.
+   */
+  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
   /** Optional async text push — for fills that happen outside a key dispatch. */
   pushText?(text: string, cursor?: number): void;
   log?(level: LogLevel, msg: string, data?: unknown): void;
@@ -84,6 +93,7 @@ export class OpenCodeV14Adapter implements HostAdapter {
     this.cwd = bindings.cwd;
     const caps: Capability[] = [...OPENCODE_V14_CAPABILITIES];
     if (bindings.spawnProcess) caps.push('spawn-process');
+    if (bindings.controlInvoke) caps.push('control-invoke');
     this.capabilities = caps;
   }
 
@@ -149,14 +159,14 @@ export class OpenCodeV14Adapter implements HostAdapter {
     return this.bindings.spawnProcess(spec);
   }
   /**
-   * Stub for interface parity with the chrome adapter band. OpenCode
-   * always has spawnProcess so BlankFill/Cycling never reach the
-   * controlInvoke fallback — but returning null here keeps the
-   * adapter shape symmetric and lets shared callers `?.` chain
-   * uniformly across hosts.
+   * Forward to the host's controlInvoke binding when one is supplied
+   * (opencode now ships shared TS controls — HackerNewsControl etc. —
+   * via this path so they don't need a shell). Returns null when the
+   * binding isn't wired or the controlName isn't registered; runtime
+   * then falls through to spawnProcess for the legacy shell scripts.
    */
-  controlInvoke(): null {
-    return null;
+  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
+    return this.bindings.controlInvoke?.(spec) ?? null;
   }
   pushText(text: string, cursor?: number): void {
     this.bindings.pushText?.(text, cursor);

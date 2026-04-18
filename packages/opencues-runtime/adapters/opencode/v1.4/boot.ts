@@ -36,6 +36,16 @@ export interface HostInfo extends CommonHostInfo {
   spawnProcess?(spec: unknown): unknown;
   /** Optional: TTS script path. spawn-process must be available. */
   ttsScriptPath?: string;
+  /**
+   * Optional host-native control dispatch. Same shape as chrome's
+   * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
+   * shared TS controls (HackerNewsControl, etc.) win over the legacy
+   * shell scripts in controls/. Returns null when the controlName
+   * isn't in the host's registry; runtime then falls through to
+   * spawnProcess (still works for OS controls like volume/brightness).
+   */
+  controlInvoke?(spec: import('../../../src/adapter').ControlInvokeSpec):
+    import('../../../src/adapter').ProcessHandle | null;
 }
 
 export interface BootResult {
@@ -127,6 +137,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess as OpenCodeBindings['spawnProcess'],
+    controlInvoke: host.controlInvoke,
     pushText: host.pushText,
     log,
   };

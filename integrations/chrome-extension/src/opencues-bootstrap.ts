@@ -35,6 +35,7 @@ import type {
   ProcessResult,
 } from 'opencues-runtime/dist/src/adapter';
 import { createSourceReclassifier } from 'opencues-runtime/dist/src/boot-common';
+import { createControlInvoke } from 'opencues-runtime/dist/src/controls';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
@@ -251,57 +252,9 @@ export interface RuntimeStartOptions {
   customTickers?: Record<string, string>;
 }
 
-let controls: Map<string, BrowserControl> | null = null;
-
-/**
- * Translate a runtime ControlInvokeSpec into a browser control call.
- * Returns a ProcessHandle (result Promise + kill no-op) so the runtime
- * treats the response identically to a script's stdout. Returns null
- * if the requested control isn't registered — runtime then falls
- * through to spawnProcess (which the chrome adapter resolves with
- * exitCode 127, surfacing the gap visibly).
- *
- * Action mapping:
- *   - 'get' → control.get(args[0] as keyword, args.slice(1) as context)
- *   - 'set' → control.set?.(args[0], args[1])  (returns empty stdout)
- *   - 'up'  → control.up?.()                   (returns new value)
- *   - 'down'→ control.down?.()                 (returns new value)
- */
-function chromeControlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
-  if (!controls) return null;
-  const ctl = controls.get(spec.controlName);
-  if (!ctl) return null;
-  const run = async (): Promise<ProcessResult> => {
-    try {
-      let stdout = '';
-      switch (spec.action) {
-        case 'get': {
-          const keyword = spec.args[0];
-          const context = spec.args.slice(1) as string[];
-          stdout = await ctl.get(keyword, context);
-          break;
-        }
-        case 'set': {
-          if (ctl.set) await ctl.set(spec.args[0] ?? '', spec.args[1]);
-          break;
-        }
-        case 'up': {
-          if (ctl.up) stdout = await ctl.up();
-          break;
-        }
-        case 'down': {
-          if (ctl.down) stdout = await ctl.down();
-          break;
-        }
-      }
-      return { stdout, stderr: '', exitCode: 0, timedOut: false };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { stdout: '', stderr: msg, exitCode: 1, timedOut: false };
-    }
-  };
-  return { result: run(), kill: () => {} };
-}
+// Built lazily inside startOpenCues — needs opts. The dispatcher
+// (createControlInvoke) lives in the runtime so all hosts share it.
+let controlInvoke: ((spec: ControlInvokeSpec) => ProcessHandle | null) | null = null;
 
 /**
  * Construct the runtime if not already running. Idempotent — second
@@ -314,7 +267,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // CE.8 — build the chrome control registry. The runtime's BlankFill
   // + Cycling dispatch into this via controlInvoke. Prompt-improver
   // is opt-in via llmConfig.
-  controls = createControls({
+  const controls = createControls({
     finnhubApiKey: opts.finnhubApiKey,
     customTickers: opts.customTickers,
     llmConfig: opts.llmApiKey ? {
@@ -328,6 +281,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
     } : undefined,
   });
+  controlInvoke = createControlInvoke(controls);
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     const tag = `[opencues][${level}]`;
@@ -382,7 +336,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // hackernews / prompt-improver). Returns null for unknown
     // controls so spawnProcess fallback (which the chrome adapter
     // resolves with exitCode 127) takes over visibly.
-    controlInvoke: chromeControlInvoke,
+    controlInvoke: (spec) => controlInvoke?.(spec) ?? null,
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process

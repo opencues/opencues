@@ -29,6 +29,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { ControlValuesCache } from '../../../src/state/control-values';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
+  ControlInvokeSpec,
   KeyEvent,
   LogLevel,
   ProcessHandle,
@@ -55,6 +56,14 @@ export interface HostInfo {
   writeFile?(path: string, content: string): Promise<void>;
   /** Optional: spawn a child process. Used by TTS for fire-and-forget speak. */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
+  /**
+   * Optional host-native control dispatch. BlankFill + Cycling try this
+   * BEFORE spawnProcess so the shared TS controls (HackerNewsControl,
+   * etc. — see opencues-runtime/src/controls/) win over the legacy shell
+   * scripts in controls/. Returns null when the controlName isn't in
+   * the host's registry; runtime falls through to spawnProcess.
+   */
+  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
   /** Optional: async text push (calls captured onChange + onOffsetChange). */
   pushText?(text: string, cursor?: number): void;
   /** Optional: absolute path to the TTS script (typically ~/.claude/actions/speak.sh). */
@@ -257,6 +266,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess,
+    controlInvoke: host.controlInvoke,
     // Wrap pushText so runtime-initiated async pushes (e.g. selector
     // script-get callbacks) mark themselves as runtime — otherwise the
     // next applyRender's checkTextDrift sees the new text differs from

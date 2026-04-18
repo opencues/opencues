@@ -11,6 +11,7 @@ import {
   AdapterUnsupportedError,
   HOST_ADAPTER_INTERFACE_VERSION,
   type Capability,
+  type ControlInvokeSpec,
   type HostAdapter,
   type KeyEvent,
   type KeyFilter,
@@ -70,6 +71,13 @@ export interface HostBindings {
   /** Optional: spawn a child process. Detached/fire-and-forget supported. */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
 
+  /**
+   * Optional host-native control dispatch. Same shape as chrome's
+   * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess
+   * so shared TS controls win over the legacy shell scripts.
+   */
+  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
+
   /** Optional: async text push (calls captured onChange or equivalent). */
   pushText?(text: string, cursor?: number): void;
 
@@ -111,7 +119,15 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
   ) {
     this.hostVersion = bindings.hostVersion;
     this.cwd = bindings.cwd;
-    this.capabilities = capabilities;
+    // Merge in 'control-invoke' when the host wired a registry. Same
+    // pattern as the chrome adapter — runtime modules check this cap
+    // before trying controlInvoke (otherwise BlankFill skips the path
+    // and goes straight to spawnProcess for everything).
+    const merged: Capability[] = [...capabilities];
+    if (bindings.controlInvoke && !merged.includes('control-invoke')) {
+      merged.push('control-invoke');
+    }
+    this.capabilities = merged;
   }
 
   // ─── State reads ───────────────────────────────────────────────────────
@@ -189,6 +205,15 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
         kill: () => {},
       };
     }
+  }
+  /**
+   * Forward to the host's controlInvoke binding when wired. Returns null
+   * when the binding isn't present or the controlName isn't registered;
+   * BlankFill + Cycling then fall through to spawnProcess for the legacy
+   * shell scripts.
+   */
+  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
+    return this.bindings.controlInvoke?.(spec) ?? null;
   }
   async readFile(path: string): Promise<string | null> {
     if (!this.bindings.readFile) return null;
