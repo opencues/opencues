@@ -161,6 +161,23 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   if (path === `${ROOT}/controls`) {
     return Object.keys(__DEFAULT_CONTROL_FOLDERS__).map(name => ({ name, isDirectory: true }));
   }
+  // ConfigLoader's prewalk descends into each folder name and lists it
+  // again expecting a `cue.md` entry. Without this branch the discovery
+  // returns 0 controls and BlankFill never matches any keyword.
+  const cuesPrefix = `${ROOT}/cues/`;
+  const ctrlsPrefix = `${ROOT}/controls/`;
+  if (path.startsWith(cuesPrefix)) {
+    const folder = path.slice(cuesPrefix.length);
+    if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_CUE_FOLDERS__, folder)) {
+      return [{ name: 'cue.md', isDirectory: false }];
+    }
+  }
+  if (path.startsWith(ctrlsPrefix)) {
+    const folder = path.slice(ctrlsPrefix.length);
+    if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_CONTROL_FOLDERS__, folder)) {
+      return [{ name: 'cue.md', isDirectory: false }];
+    }
+  }
   return null;
 }
 
