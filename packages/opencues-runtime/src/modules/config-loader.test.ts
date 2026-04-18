@@ -241,4 +241,54 @@ describe('ConfigLoader hot-reload', () => {
     await new Promise(r => setImmediate(r));
     expect(adapter.logs.length).toBeGreaterThan(initial);
   });
+
+  it('applyOpenCuesScalar suppresses the next maybeReload (write-race guard)', async () => {
+    // Regression guard: cycling a satellite calls applyOpenCuesScalar
+    // (in-memory update) followed by an ASYNC controlInvoke set that
+    // writes the file. Cycling.ts then calls setText → onTextChange →
+    // maybeReload. If maybeReload reads the file BEFORE the async
+    // write lands, the in-memory update is reverted to the stale
+    // file value. applyOpenCuesScalar arms a 2.5s suppression window
+    // so the write has time to land.
+    const FILE_INACTIVE = `---\nvoice-mode: inactive\n---\n`;
+    const adapter = new MockAdapter({
+      files: { '/tips.json': '{"concepts":[]}', '/proj/opencues.md': FILE_INACTIVE },
+      cwd: '/proj',
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 0 });
+    await loader.load();
+    expect(loader.opencuesState.voiceMode).toBe('inactive');
+    // User cycles satellite → applyOpenCuesScalar fires.
+    loader.applyOpenCuesScalar('voice-mode', 'active');
+    expect(loader.opencuesState.voiceMode).toBe('active');
+    // Cycling.ts then calls setText → onTextChange → maybeReload.
+    // The async write hasn't landed yet, so file still says inactive.
+    // Without the suppression, maybeReload would read inactive and
+    // overwrite our in-memory 'active'.
+    await loader.maybeReload();
+    expect(loader.opencuesState.voiceMode).toBe('active');
+  });
+
+  it('reload resumes after the suppression window expires', async () => {
+    // The suppression is bounded — once the write has had time to
+    // land, hot-reload picks back up so future file edits propagate.
+    const FILE = `---\nvoice-mode: inactive\n---\n`;
+    const adapter = new MockAdapter({
+      files: { '/tips.json': '{"concepts":[]}', '/proj/opencues.md': FILE },
+      cwd: '/proj',
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 0 });
+    await loader.load();
+    loader.applyOpenCuesScalar('voice-mode', 'active');
+    // Simulate the file write completing + the user editing the file
+    // independently to a new value AFTER the suppression window.
+    await new Promise(r => setImmediate(r));
+    // Bypass time by reaching into the private field — wall-clock
+    // sleep would slow the test suite. Equivalent to "2.6s elapsed".
+    (loader as unknown as { _suppressReloadUntil: number })._suppressReloadUntil = Date.now() - 1;
+    await adapter.writeFile('/proj/opencues.md', `---\nvoice-mode: inactive\n---\n`);
+    await loader.maybeReload();
+    // File-driven reload took precedence post-suppression.
+    expect(loader.opencuesState.voiceMode).toBe('inactive');
+  });
 });

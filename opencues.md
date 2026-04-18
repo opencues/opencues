@@ -1,6 +1,6 @@
 ---
 version: 1
-voice-mode: inactive
+voice-mode: active
 debug-mode: off
 tips-mode: on
 cursor-navigate: inactive
