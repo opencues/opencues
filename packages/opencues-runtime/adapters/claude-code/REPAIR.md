@@ -25,23 +25,26 @@ React re-render produces a NEW `Dy8` invocation with a NEW `m`. The
 callback we passed to `boot()` was created during the very first
 invocation — it forever points at that long-gone `m`.
 
-**Consequence:** the runtime cannot read the live host text via these
-bindings. In practice they return whatever was on screen at boot time —
-typically empty or one-character.
+**Consequence:** `host.getText()` returns whatever was on screen at boot
+time — typically empty or one-character.
 
-**Convention:**
-- `consumePendingRender(currentText, currentCursor)` takes them as args.
-  The patch reads them at the dispatch site (e.g. `${iz}.text`) where
-  `m` is fresh.
-- `dispatchKey(rawEvent, text, offset)` takes them as args.
-- `applyRender(rendered, text, offset)` takes them as args.
-- `setCursorOffset` does NOT clamp via `getText` (the spec invariant
-  is violated on this host); callers (e.g. Cycling) clamp themselves
-  against the text they're about to apply.
+**Mitigation in v2 boot.ts (commit `e5d26f3` — Phase E.3):** the boot
+keeps a `lastSeenText` / `lastSeenCursor` pair that's updated on every
+dispatch + render via `checkTextDrift`. `bindings.getText` /
+`bindings.getCursorOffset` now route through these freshness-tracked
+locals, falling back to the host closure only before the first
+observation.
 
-If you add a new module that needs the current text or cursor outside a
-key-event or render context, **plumb it through the dispatch path** —
-don't reach for `bindings.getText`.
+So `adapter.getText()` IS reliable for code paths that run after at
+least one dispatch — which means **all async paths** (Resolver,
+BlankFill async fill, Statusline) get fresh text.
+
+The old guidance (pass text/cursor as args to `dispatchKey` /
+`consumePendingRender` / `applyRender`) still applies for the
+dispatch-time path because `lastSeenText` lags by one event there.
+
+`setCursorOffset` STILL doesn't clamp via getText (it can't easily reach
+boot's locals from the adapter), so callers clamp themselves.
 
 ### 2. `m.render(...)` output may diverge from `m.text`
 
@@ -114,7 +117,43 @@ position order (S6 → S3 → S1 for v2.1.110) so each application leaves
 earlier indices valid. If you add S4 / S5 / S7 / S8, slot them into the
 same descending sort.
 
-### 5. The host may keep the `value` prop in lock-step with our InputZone
+### 5. Async modules need `pushText` (commit `e5d26f3` — Phase E.3)
+
+`adapter.setText` only stores `pendingText`; it surfaces on the next
+`consumePendingRender` (called from the dispatch path). For async
+flows — `BlankFill`'s `blankScript get` results, future `Resolver`
+post-processing — there's no upcoming dispatch. The pending text would
+just sit there until the user happens to press another key.
+
+Solution: optional `HostAdapter.pushText(text, cursor?)`. The v2.1
+patch implements it by calling the captured `onChange` /
+`onOffsetChange` props directly — same mechanism as v1's
+`globalThis._forceInputRefresh`. Per-dispatch reassignment of
+`globalThis.__oc_pushHostText` keeps the captured callbacks fresh.
+
+The text is suffixed with a ZWS toggle so React's value-equality dedup
+doesn't suppress the re-render.
+
+Modules check `if (this.adapter.pushText) ...` and fall back to
+`setText + forceRender` otherwise — works on hosts where async push
+isn't supported, just delayed by one keystroke.
+
+### 6. `spawnProcess` `stdio` defaults block stdout (commit `e5d26f3`)
+
+The first version of the patch's `spawnProcess` used
+`stdio: "ignore"` for ALL spawns. Detached fire-and-forget (TTS) is
+fine with that, but anything that needs stdout (BlankFill async
+fills) saw `stdout: ""` on every result.
+
+Fix: the patch now uses `["ignore", "pipe", "pipe"]` for non-detached
+spawns and wires `stdout`/`stderr` `'data'` listeners + a setTimeout-
+backed timeout. Detached spawns keep `stdio: "ignore"`.
+
+If TTS or any other detached caller starts mysteriously hanging,
+double-check that `spec.detached` is making it through — the stdio
+mode hinges on it.
+
+### 7. The host may keep the `value` prop in lock-step with our InputZone
 
 Returning `InputZone.fromText(newText, P, cursor)` from the
 `handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.
