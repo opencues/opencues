@@ -420,13 +420,14 @@ export function notifyOpenCuesTextChange(
   }
   const actualCursor = readCursorOffset() || cursorOffset;
   bootResult?.notifyTextChange(text, actualCursor, actualSource);
-  // Render is intentionally NOT triggered here. Mirrors OpenCode
-  // (notifyOpenCuesTextChange:256) which leaves paint to whichever code
-  // path needed the change: dispatchKey triggers a render after
-  // consumed keys, and modules (BlankFill async fill, Resolver, etc.)
-  // call adapter.forceRender() — chrome's forceRender → runtimeRender —
-  // when they update state outside a key event. Auto-rendering here was
-  // redundant and could double-paint.
+  // Repaint after every text change. OpenCode skips this because its
+  // SolidJS reactive layer auto-paints when the textarea signal updates,
+  // so DimRender always sees the latest text via the next render frame.
+  // Chrome has no such reactive loop — without an explicit repaint,
+  // dim/highlight ranges stay stale until the user presses a navigation
+  // key. CSS Highlight API writes are cheap and idempotent so an extra
+  // paint per keystroke is fine.
+  runtimeRender();
 }
 
 /**
