@@ -25,7 +25,9 @@ import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
+import { TTS } from '../../../src/modules/tts';
 import { BlankFill } from '../../../src/modules/blank-fill';
+import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { ControlValuesCache } from '../../../src/state/control-values';
@@ -64,6 +66,20 @@ export interface HostInfo {
    * floating status-bar div from this.
    */
   statusSnapshotHook?(payload: unknown): void;
+  /**
+   * Optional: cursor-state-export JSON virtual path. Mirrors the
+   * OpenCode CursorStateExport wiring — useful for headless test
+   * harnesses that drive the extension via chrome.storage reads.
+   */
+  cursorStatePath?: string;
+  /**
+   * Optional: speak callback for the TTS module. Chrome extensions
+   * pass a Web Speech-backed function here; falling back to the
+   * spawn path is impossible in a content-script context.
+   */
+  speakFn?(text: string, rate?: string): void;
+  /** TTS speech rate. Defaults to '2'. */
+  ttsRate?: string | number;
   /** Optional: LLM resolver — only constructs when llmApiKey set. */
   llmApiKey?: string;
   llmEndpoint?: string;
@@ -197,12 +213,23 @@ export function boot(host: HostInfo): BootResult {
     statusline.subscribe();
   }
 
-  // CursorStateExport — no real consumer in-browser yet, so skip
-  // unless a future phase wires it to chrome.storage for automation.
+  // CursorStateExport — opt-in via host.cursorStatePath. Useful for
+  // test harnesses that drive the extension via chrome.storage reads.
+  if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
+    const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });
+    cse.subscribe();
+  }
 
-  // TTS — Chrome uses Web Speech via a separate adapter rather than
-  // the script-spawning TTS module. Phase CE.6 will route tips through
-  // the module with a hostFn-based speak instead of spawnProcess.
+  // TTS — opt-in via host.speakFn. Chrome routes tip → Web Speech via
+  // the runtime TTS module's speakFn option (no spawnProcess in a
+  // content-script context).
+  if (host.speakFn) {
+    const tts = new TTS(adapter, hlState, dynDefs, configLoader, {
+      speakFn: host.speakFn,
+      rate: host.ttsRate !== undefined ? String(host.ttsRate) : undefined,
+    }, spanFillState, selectorSatelliteState);
+    tts.subscribe();
+  }
 
   // Resolver — opt-in via llmApiKey. Chrome injects its own fetch-
   // based httpAdapter because NodeHttpAdapter (node:https) doesn't
