@@ -80,12 +80,17 @@ async function init(): Promise<void> {
   // onTextChange. Use a single document listener to avoid per-attach
   // wiring.
   document.addEventListener('input', () => {
-    const target = currentTarget;
-    if (!target) return;
-    const text = target.textContent ?? '';
-    // notifyOpenCuesTextChange isn't exported by index — we route
-    // text-changes through the runtime's bootstrap hook below.
-    runtimeNotify(text);
+    // execCommand fires the input event synchronously inside writeText,
+    // before writeText finishes stashing lastRuntimeSetText with the
+    // actual DOM textContent. Defer to a microtask so the stash lands
+    // first — guarantees source='runtime' classification works for
+    // runtime-driven writes regardless of DOM normalisation.
+    queueMicrotask(() => {
+      const target = currentTarget;
+      if (!target) return;
+      const text = target.textContent ?? '';
+      runtimeNotify(text);
+    });
   });
 
   // React to popup saves. The runtime's ConfigLoader hot-reloads from

@@ -770,6 +770,52 @@ blankClearKeywords: true
     });
   });
 
+  it('async path: blankConsumeAll via controlInvoke replaces input and stashes alts (chrome path)', async () => {
+    // Pins the chrome prompt-improver path: a sandboxed host
+    // (controlInvoke, no spawnProcess) MUST get the same consume-all
+    // behaviour as the shell-spawn path. Regression guard for
+    // "improve prompt resolves to original word" + "spans break on
+    // multi-word fills" — both happened when the runtime didn't reach
+    // the consume-all branch under controlInvoke routing.
+    const PROMPT_CTRL = `---
+type: control
+name: prompt
+blankKeywords: improve prompt
+blankScript: ./prompt.sh
+blankConsumeAll: true
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+    });
+    adapter.stubControlInvoke(
+      'prompt:get',
+      'Improved version one\nImproved version two\nImproved version three\n',
+    );
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const consumeAll = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, consumeAll);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('improve prompt write code _');
+    await new Promise(r => setTimeout(r, 0));
+    // Sandboxed host: controlInvoke wins, spawnProcess never called.
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(adapter.controlInvokeCalls.length).toBe(1);
+    // Buffer replaced with first alt.
+    expect(adapter.getText()).toBe('Improved version one');
+    // Span fill stashed with all three alts so cycling Up/Down rotates them.
+    expect(consumeAll.current).toMatchObject({
+      index: 0,
+      alternatives: ['Improved version one', 'Improved version two', 'Improved version three'],
+      currentAltIndex: 0,
+      spanLength: 3,
+    });
+  });
+
   it('async path: blankConsumeAll with single-line stdout fills but does not stash', async () => {
     const PROMPT_CTRL = `---
 type: control

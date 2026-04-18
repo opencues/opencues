@@ -53,13 +53,12 @@ let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
 const speech = new WebSpeechAdapter();
 
-// Mirrors OpenCode's `lastRuntimeSetText` (opencuesBootstrap.ts:72).
-// When the runtime calls setText/pushText, we stash the value here so the
-// next 'input' event from the contenteditable can be classified as
-// source='runtime' instead of 'user'. Without this, Navigation/Cycling/
-// BlankFill see their own writes as user edits and invalidate the
-// highlight + DynDefs mid-operation. Cleared after one match so a later
-// identical user edit isn't misclassified.
+// Mirrors OpenCode's `lastRuntimeSetText` (opencuesBootstrap.ts:72) — same
+// name, same semantics, same one-shot clear. Stashes the text the runtime
+// just wrote so the next 'input' event from the contenteditable is
+// reclassified as source='runtime'. Chrome's writeText updates the value
+// to target.textContent AFTER execCommand so DOM normalisation
+// (whitespace, newlines) doesn't break the comparison.
 let lastRuntimeSetText: string | null = null;
 
 /** Called by content.ts when the focused contenteditable changes. */
@@ -123,10 +122,6 @@ function writeCursorOffset(offset: number): void {
 function writeText(text: string): void {
   const target = currentTarget;
   if (!target) return;
-  // Stash for the source-reclassification in notifyOpenCuesTextChange —
-  // the synthetic 'input' event this triggers must be tagged 'runtime'
-  // so Navigation/Cycling don't treat their own writes as user edits.
-  lastRuntimeSetText = text;
   // Use execCommand so the host page sees a synthetic input event —
   // matches what the existing engine does in WordNavigator.cycle.
   target.focus();
@@ -137,6 +132,13 @@ function writeText(text: string): void {
   sel.removeAllRanges();
   sel.addRange(range);
   document.execCommand('insertText', false, text);
+  // Stash AFTER write — read back the actual DOM textContent. execCommand
+  // can normalise whitespace/newlines so target.textContent isn't always
+  // === text. The 'input' listener (deferred to a microtask in
+  // content.ts) compares against target.textContent so the match
+  // succeeds and source='runtime' classification works even when DOM
+  // normalisation altered the bytes.
+  lastRuntimeSetText = target.textContent ?? text;
 }
 
 /** chrome.storage.local-backed readFile. Path is the storage key suffix. */
