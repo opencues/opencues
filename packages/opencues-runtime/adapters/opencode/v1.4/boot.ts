@@ -15,8 +15,12 @@ import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
+import { Statusline } from '../../../src/modules/statusline';
+import { Resolver } from '../../../src/modules/resolver';
+import { TTS } from '../../../src/modules/tts';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
+import { ControlValuesCache } from '../../../src/state/control-values';
 import type {
   KeyEvent,
   LogLevel,
@@ -46,6 +50,16 @@ export interface HostInfo {
   log?(level: LogLevel, msg: string, data?: unknown): void;
   /** Optional: tips JSON path. */
   tipsPath?: string;
+  /** Optional: statusline export path. */
+  statusFilePath?: string;
+  /** Optional: TTS script path. */
+  ttsScriptPath?: string;
+  ttsRate?: string | number;
+  /** Optional: LLM resolver — only constructs when llmApiKey set. */
+  llmApiKey?: string;
+  llmEndpoint?: string;
+  llmDefaultModel?: string;
+  llmDebounceMs?: number;
 }
 
 export interface BootResult {
@@ -130,9 +144,39 @@ export function boot(host: HostInfo): BootResult {
 
   // Phase O.5 — Cycling. Ctrl+Alt+Up/Down rotates static alts +
   // step patterns + script controls. Span/satellite/dismissed states
-  // wait for O.7.
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader);
+  // wait for O.8 (BlankFill phase).
+  const controlValues = new ControlValuesCache();
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, undefined, undefined, undefined, controlValues);
   cycling.subscribe();
+
+  // Phase O.7 — Statusline (file-based, doesn't touch OpenCode's own
+  // status bar). Opt-in via host.statusFilePath.
+  if (host.statusFilePath) {
+    const statusline = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: host.statusFilePath,
+    }, configLoader, undefined, undefined, controlValues);
+    statusline.subscribe();
+  }
+
+  // Phase O.7 — TTS. Opt-in via host.ttsScriptPath + spawn-process cap.
+  if (host.ttsScriptPath && adapter.capabilities.includes('spawn-process')) {
+    const tts = new TTS(adapter, hlState, dynDefs, configLoader, {
+      scriptPath: host.ttsScriptPath,
+      rate: host.ttsRate !== undefined ? String(host.ttsRate) : undefined,
+    });
+    tts.subscribe();
+  }
+
+  // Phase O.7 — LLM Resolver. Opt-in via host.llmApiKey.
+  if (host.llmApiKey) {
+    const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: host.llmApiKey,
+      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      debounceMs: host.llmDebounceMs,
+    });
+    resolver.subscribe();
+  }
 
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {
     host: 'opencode',

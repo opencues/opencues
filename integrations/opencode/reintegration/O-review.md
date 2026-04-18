@@ -16,8 +16,47 @@ Phases shipped so far:
 | O.3 Navigation | `91e47f7` | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
 | O.4 DimRender (extmarks) | `db27817` | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
 | O.5 + O.6 ConfigLoader + Cycling | `da46931` | `6d57e3f` | Cycling subscribed, ConfigLoader loads tips |
+| O.7 Statusline + Resolver + TTS | _pending_ | `0a1a9fd` | Middle layer wired; opt-in via host paths |
 
 Each future entry below has the same shape. Most-recent-on-top.
+
+---
+
+## O.7 — Statusline + Resolver + TTS
+
+**Commit:** _pending_
+**Rollback to (prior):** `0a1a9fd`
+
+**Modules touched:**
+- `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` — adds Statusline + Resolver + TTS (all opt-in via host paths/keys); ControlValuesCache constructed and threaded into Cycling + Statusline.
+- `integrations/opencode/patches/opencuesBootstrap.ts` — passes `statusFilePath`, `ttsScriptPath`, `ttsRate`, `llmApiKey` (from `GROQ_API_KEY`), `llmEndpoint`, `llmDefaultModel` from env.
+
+**What it does:**
+- Statusline writes JSON snapshot to `/tmp/claude-highlight-state-<pid>.json` (matches CC) on every render. OpenCode's own status bar is left alone — users can `tail` the file or run a separate consumer.
+- Resolver kicks in when `GROQ_API_KEY` is set: 500ms debounce after text-change, populates DynDefs from cues-core's CueResolver. Cycling can then rotate LLM-resolved alts.
+- TTS speaks `cueTip` when active word has `speak: true`; reads `tts-rate` / `tts-script` from opencues.md (overrides patch defaults).
+
+**Live test:**
+1. `export GROQ_API_KEY=...`
+2. Re-run setup.sh; restart `bun run dev`.
+3. `tail -f /tmp/claude-highlight-state-*.json` in another terminal.
+4. Type `volume` → highlight, statusline JSON updates with `cueControl: true` + `cueTip: "system volume control"` + the live `volume.sh get` value.
+5. Type `the cat sat` → after ~500ms, words gain LLM alts; cycling them rotates through.
+6. If TTS script (`~/.claude/actions/speak.sh`) exists and the cue has `speak:true`, audio plays.
+
+**Expected:**
+- Statusline JSON updates per render.
+- Resolver "built with N sources" line in `/tmp/opencues.log`.
+- TTS only fires for `speak:true` cues.
+
+**Peculiarities found:**
+- Resolver early-returns with "no cuesConfig/blanksConfig, skipping build" if neither file is present in cwd. Matches CC behavior.
+- Statusline only writes when `host.statusFilePath` is set; default path uses `process.pid` so two TUIs don't clobber.
+- LLM env vars (`OPENCUES_LLM_ENDPOINT`, `OPENCUES_LLM_MODEL`) override patch defaults.
+
+**Notes for the next step:**
+- O.8 wires BlankFill + the four blank-related state classes (SpanFillState, SelectorSatelliteState, DismissedBlanks, ControlValuesCache already in place).
+- The `_` keystroke needs to route into BlankFill via `adapter.onKey({keys:['_']})` — check OpenTUI key event names match.
 
 ---
 

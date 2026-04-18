@@ -125,6 +125,12 @@ export function startOpenCues(opts: {
     },
     log,
     tipsPath: path.join(process.env.HOME ?? "~", ".claude/claude-code-tips.json"),
+    statusFilePath: `/tmp/claude-highlight-state-${process.pid}.json`,
+    ttsScriptPath: path.join(process.env.HOME ?? "~", ".claude/actions/speak.sh"),
+    ttsRate: 2,
+    llmApiKey: process.env.GROQ_API_KEY,
+    llmEndpoint: process.env.OPENCUES_LLM_ENDPOINT,
+    llmDefaultModel: process.env.OPENCUES_LLM_MODEL,
   })
 
   return bootResult
