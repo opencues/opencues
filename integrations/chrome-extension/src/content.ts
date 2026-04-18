@@ -5,6 +5,7 @@ import { StatusBar } from './ui/status-bar';
 import { loadConfig, onConfigChange } from './adapters/chrome-storage-adapter';
 import { getControlKeywords, type ControlKeywordConfig } from './controls';
 import type { StoredConfig } from './types';
+import { startOpenCuesRuntime, publishTarget } from './opencues-bootstrap';
 
 /**
  * Content script entry point.
@@ -582,6 +583,11 @@ function isTextInput(el: HTMLElement): boolean {
 /** Find and attach to the target element */
 async function init(): Promise<void> {
   console.log('[OpenCues] Content script loaded');
+  // Phase CE.1 — boot the opencues-runtime alongside the existing
+  // CueEngine. The runtime is dormant until content.ts forwards
+  // text/key events to it (CE.2+). This call only proves the boot
+  // path works inside a content-script context.
+  startOpenCuesRuntime();
   let config = await loadConfig();
 
   // Attach to whichever text input gets focus
@@ -598,6 +604,7 @@ async function init(): Promise<void> {
     if (!isTextInput(el)) return;
     console.log('[OpenCues] Attaching to', el.tagName, el.id || el.className || '');
     currentTarget = el;
+    publishTarget(el); // CE.1 — let the runtime read from this target
     bootstrap(el, config);
   };
 

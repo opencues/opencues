@@ -64,6 +64,11 @@ const envDefines = {
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_CONTROL_FOLDERS__': JSON.stringify(controlFolders),
   '__DEFAULT_TIPS_JSON__': JSON.stringify(defaultTipsJson),
+  // Stub Node globals the runtime modules reference. Content scripts
+  // have no `process`; these defines replace the lookups at bundle
+  // time so the bundled code reads literal '~' / '' / undefined.
+  'process.env.HOME': JSON.stringify('~'),
+  'process.env.DEBUG_OPENCUES': JSON.stringify(''),
 };
 
 const common = {
@@ -72,6 +77,13 @@ const common = {
   target: 'es2020',
   tsconfig: 'tsconfig.json',
   define: envDefines,
+  // The runtime's Resolver lazily requires cues-core/node-http-adapter.
+  // That module uses node:https — unresolvable in a browser bundle.
+  // Alias to a stub that throws so the runtime's existing try/catch
+  // falls through to the host-supplied httpAdapter (FetchHttpAdapter).
+  alias: {
+    'cues-core/node-http-adapter': new URL('./src/stubs/node-http-adapter-stub.ts', import.meta.url).pathname,
+  },
 };
 
 // Content script — IIFE (injected into page context)
