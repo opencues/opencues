@@ -170,6 +170,34 @@ if old in src and 'node-http-adapter.js' not in src:
 PY
 fi
 
+# 8. opencuesBootstrap.ts must expose pushText to the host. BlankFill
+#    relies on adapter.pushText to land async script results back into
+#    the textarea — without it scripts run, return data, and the value
+#    silently never appears. Mirrors setText plumbing + cursor reposition.
+if ! grep -q "pushText:" "$BOOTSTRAP"; then
+python3 - "$BOOTSTRAP" <<'PY'
+import sys
+p = sys.argv[1]
+src = open(p).read()
+old = '''    setText: (text) => { lastRuntimeSetText = text; opts.promptAccess.write(text) },
+    setCursorOffset: (offset) => opts.promptAccess.setCursor(offset),
+    forceRender: () => opts.renderer.requestRender(),'''
+new = '''    setText: (text) => { lastRuntimeSetText = text; opts.promptAccess.write(text) },
+    setCursorOffset: (offset) => opts.promptAccess.setCursor(offset),
+    // BlankFill needs pushText to deposit async script results back into
+    // the prompt. Same plumbing as setText + cursor reposition.
+    pushText: (text: string, cursor?: number) => {
+      lastRuntimeSetText = text
+      opts.promptAccess.write(text)
+      if (cursor !== undefined) opts.promptAccess.setCursor(cursor)
+    },
+    forceRender: () => opts.renderer.requestRender(),'''
+if old in src and 'pushText:' not in src:
+  src = src.replace(old, new)
+  open(p, 'w').write(src)
+PY
+fi
+
 # Sanity check: every fix MUST be present after the patches. If we
 # advance past a commit that introduced new patterns the sed/python
 # rules don't recognise, fail loudly instead of producing a silently-
@@ -200,6 +228,7 @@ if grep -q "const resolver = new Resolver" "$BOOT"; then
   verify "$BOOT" "configLoader.load().then(() => resolver.subscribe())" "resolver subscribe-after-load (boot.ts)"
 fi
 verify "$SETUP" "node-http-adapter.js" "cues-core node-http-adapter copy (setup.sh)"
+verify "$BOOTSTRAP" "pushText:" "pushText binding (opencuesBootstrap.ts)"
 
 echo ""
 echo "Rebuilding opencues-runtime (clean — tsc incremental cache lies)..."

@@ -9,10 +9,10 @@ The runtime side is host-agnostic; the only band-specific code lives at:
 - `integrations/opencode/patches/opencuesBootstrap.ts`
 - `integrations/opencode/patches/setup.sh`
 
-## Live-fixes discovered during testing (O.2 → O.7)
+## Live-fixes discovered during testing (O.2 → O.8)
 
-Seven bugs surfaced once we ran the patched fork in a real terminal.
-All seven are folded into `integrations/opencode/patches/advance.sh`'s
+Eight bugs surfaced once we ran the patched fork in a real terminal.
+All eight are folded into `integrations/opencode/patches/advance.sh`'s
 fix block so every advance applies + verifies them. If you see any of
 the **symptoms** below, check the corresponding fix is still in place.
 
@@ -125,6 +125,31 @@ handles this standalone file (its setup.sh line ~254-255).
 
 **Fix:** add an explicit copy of `node-http-adapter.js` after the
 `dist/*` cp. Idempotent guard with `[ -f ... ] && cp`.
+
+### LF-8. Bootstrap missed `pushText` binding → BlankFill silently dropped results (O.8)
+
+**File:** `integrations/opencode/patches/opencuesBootstrap.ts` — the
+`boot({...})` bindings object inside `startOpenCues`.
+
+**Symptom:** blank scripts run and return data (`BlankFill: script
+result for weather ... stdoutPreview:"16.6°C Partly cloudy"`), but the
+value never appears in the prompt. `affirmations` (sync stepValues)
+works because it routes through a different path; async scripts
+(weather/hn/stocks/answer/prompt) all silently no-op.
+
+**Why:** the runtime's BlankFill module calls
+`this.adapter.pushText(newText, newCursor)` to land async fill values.
+The bootstrap exposed `setText` but NOT `pushText`, so
+`bindings.pushText` was undefined → `adapter.pushText` called
+`this.bindings.pushText?.(...)` which silently no-oped. The BlankFill
+log still showed `hasPushText:true` because `!!this.adapter.pushText`
+is truthy — it's the method itself, not the underlying binding.
+
+**Fix:** add a `pushText` field to the bindings that mirrors `setText`
+(write + tag `lastRuntimeSetText`) plus an optional cursor reposition.
+After fill, SolidJS's `onContentChange` fires → `notifyOpenCuesTextChange`
+re-tags the change as `"runtime"` via the LF-5 sentinel, so Navigation
+doesn't clear highlight.
 
 ## Host quirks
 

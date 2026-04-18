@@ -91,6 +91,13 @@ export function startOpenCues(opts: {
     getCursorOffset: () => opts.promptAccess.cursor(),
     setText: (text) => { lastRuntimeSetText = text; opts.promptAccess.write(text) },
     setCursorOffset: (offset) => opts.promptAccess.setCursor(offset),
+    // BlankFill needs pushText to deposit async script results back into
+    // the prompt. Same plumbing as setText + cursor reposition.
+    pushText: (text: string, cursor?: number) => {
+      lastRuntimeSetText = text
+      opts.promptAccess.write(text)
+      if (cursor !== undefined) opts.promptAccess.setCursor(cursor)
+    },
     forceRender: () => opts.renderer.requestRender(),
     readFile: async (p: string) => {
       try { return await fs.readFile(p, "utf8") } catch { return null }
