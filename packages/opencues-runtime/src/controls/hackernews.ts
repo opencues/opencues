@@ -29,7 +29,11 @@ export class HackerNewsControl implements Control {
   private readonly _fetch: typeof fetch;
 
   constructor(opts: HackerNewsControlOptions = {}) {
-    this._fetch = opts.fetchFn ?? globalThis.fetch;
+    // Bind to globalThis when capturing the default. Browsers throw
+    // "Illegal invocation" on bare `fetch.call(undefined, ...)` because
+    // window.fetch needs window as its `this`. Tests can pass any
+    // function; bind is a no-op for vi.fn() spies.
+    this._fetch = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
   async get(): Promise<string> {

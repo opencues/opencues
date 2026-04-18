@@ -85,6 +85,30 @@ describe('HackerNewsControl', () => {
     expect(await ctl.get()).toBe('HN: fetch error');
   });
 
+  it('default fetch is bound to globalThis (no Illegal invocation)', async () => {
+    // Browsers throw "Illegal invocation" when window.fetch is called
+    // without window as `this`. Stub globalThis.fetch with a function
+    // that THROWS unless called with the correct `this` to prove the
+    // bind is in place.
+    const realFetch = globalThis.fetch;
+    let invocationContext: unknown = undefined;
+    (globalThis as { fetch: unknown }).fetch = function (this: unknown, _url: unknown) {
+      invocationContext = this;
+      return Promise.resolve({
+        ok: true,
+        json: async () => [],
+        text: async () => '[]',
+      } as Response);
+    };
+    try {
+      const ctl = new HackerNewsControl();
+      await ctl.get();
+      expect(invocationContext).toBe(globalThis);
+    } finally {
+      (globalThis as { fetch: typeof fetch }).fetch = realFetch;
+    }
+  });
+
   it('skips stories whose title is missing', async () => {
     const fetchFn = mockFetch({
       'topstories.json': [1, 2],
