@@ -78,7 +78,10 @@ describe('TTS', () => {
     expect(spawnSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('speaks again when cycling to a different alt', async () => {
+  it('does NOT re-speak when cycling alts on the same word', async () => {
+    // Per-navigation dedup: cycling Up/Down keeps wordIndex constant,
+    // so TTS stays silent. The user only hears the tip once per landing
+    // on the word, not once per displayed alt.
     const { hlState, dynDefs, tts, spawnSpy } = await setup('ultrathink');
     hlState.activate(0, 'ultrathink');
     dynDefs.set(0, {
@@ -90,10 +93,10 @@ describe('TTS', () => {
     });
     tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
     expect(spawnSpy).toHaveBeenCalledTimes(1);
-    // Cycle to "Tab"
+    // Cycle to "Tab" — wordIndex unchanged.
     dynDefs.get(0)!.currentIndex = 1;
     tts.maybeSpeak({ text: 'Tab', cursor: 0, externalHighlights: [] });
-    expect(spawnSpy).toHaveBeenCalledTimes(2);
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
   });
 
   it('resets dedup when highlight clears, allowing re-speak on next activate', async () => {

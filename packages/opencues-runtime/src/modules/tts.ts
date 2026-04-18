@@ -39,7 +39,12 @@ export interface TTSOptions {
 
 export class TTS {
   private _unsub: Unsubscribe | null = null;
-  private _lastSpoken: string | null = null;
+  // Speak-once-per-navigation dedup. Stores the wordIndex we last spoke
+  // for; we only speak again when the user moves the highlight to a
+  // different word. Cycling alts keeps the wordIndex constant so it
+  // doesn't trigger speech (user requirement: cycling shouldn't read).
+  // Navigating away + back IS a wordIndex change → speaks again.
+  private _lastSpokenIndex: number | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -67,7 +72,7 @@ export class TTS {
   /** Exposed for unit tests. Returns the spoken text (or null if no spawn). */
   maybeSpeak(ctx: RenderContext): string | null {
     if (!this.hlState.active || this.hlState.wordIndex === null) {
-      this._lastSpoken = null;
+      this._lastSpokenIndex = null;
       return null;
     }
     // Chrome (and other sandboxed hosts) advertise no spawn-process —
@@ -78,6 +83,11 @@ export class TTS {
     if (this.configLoader.opencuesState.voiceMode === 'inactive') return null;
 
     const wordIndex = this.hlState.wordIndex;
+    // Per-navigation dedup: only speak when the highlight is on a
+    // word we haven't spoken for THIS visit. Cycling Up/Down keeps
+    // wordIndex constant — no re-read. Navigating away then back
+    // changes wordIndex twice — speaks again on return.
+    if (this._lastSpokenIndex === wordIndex) return null;
     const def = this.dynDefs.get(wordIndex);
     const words = splitWords(ctx.text);
     const target = words[wordIndex];
@@ -92,7 +102,6 @@ export class TTS {
     // brightness" because cueMap has an entry for "display" that's
     // unrelated to the selector context.
     let tip: string | undefined;
-    let dedupKey: string;
     const span = this.spanFillState?.current ?? null;
     const ss = this.selectorSatelliteState?.current ?? null;
     const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
@@ -107,7 +116,6 @@ export class TTS {
       if (!ctrl || !(ctrl as { speak?: boolean }).speak) return null;
       const sdef = this.configLoader.opencuesState.definitions.get(ss!.currentSetting);
       tip = onSelector ? sdef?.tip : sdef?.valueTips.get(ss!.currentValue);
-      dedupKey = `ss::${ss!.currentSetting}::${onSelector ? '_sel' : ss!.currentValue}`;
     } else if (inSpan) {
       // Span TTS gated on the originating control's `speak`. Without
       // that gate, every multi-word fill would announce its blankTip
@@ -118,7 +126,9 @@ export class TTS {
       // Also suppress when current alt is `_` (dismissed).
       const curAlt = span!.alternatives[span!.currentAltIndex];
       if (curAlt === '_') {
-        this._lastSpoken = `span::${span!.index}::dismissed`;
+        // Mark this index as "visited" so re-render-on-cycle doesn't
+        // retrigger; navigating away clears via the active-check above.
+        this._lastSpokenIndex = wordIndex;
         return null;
       }
       // Find the originating control by blankTip match.
@@ -132,19 +142,18 @@ export class TTS {
       }
       if (!speakOK) return null;
       tip = span!.blankTip;
-      dedupKey = `span::${span!.index}::${span!.currentAltIndex}`;
     } else {
       const lookup = this.configLoader.lookup(original);
       if (!lookup || !lookup.speak) {
-        this._lastSpoken = `${original}::${displayed}`;
+        // Mark visited so we don't re-check on every render of the same
+        // word. Re-evaluated when wordIndex changes.
+        this._lastSpokenIndex = wordIndex;
         return null;
       }
       tip = lookup.altCueTips?.[displayed] ?? lookup.cueTip;
-      dedupKey = `${original}::${displayed}`;
     }
 
-    if (dedupKey === this._lastSpoken) return null;
-    this._lastSpoken = dedupKey;
+    this._lastSpokenIndex = wordIndex;
     if (!tip) return null;
 
     // Rate precedence: opencues.md `tts-rate:` > host-supplied default
