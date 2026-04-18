@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase E.6 (commit pending).
+**Last synced:** Phase E.7 (commit pending).
 
 ---
 
@@ -47,7 +47,7 @@ just architecture.
 | 26 | blank-fill: context words + env vars + `~` path | ✓ | Phase E.4. Context words = sibling words minus keyword-span and slot.index, passed as positional args. ~ → $HOME expansion at script invocation. CUES_MODEL/API_URL/API_KEY_ENV/ALT_COUNT/INCLUDE_ORIGINAL/PROMPT_* env vars from control config. Live verified: weather Paris vs London returned different forecasts. |
 | 27 | blank-fill: `blankClearKeywords` strips on fill | ✓ | Phase E.5. Word-array reconstruction in shared `buildClearKeywordText` helper used by both sync (stepValues) and async (blankScript) paths. Drops `[keywordStart..keywordEnd]`, replaces slot.index with fill value, preserves context words and trailing words. Live verified: `weather in Paris _` → `in Paris <forecast>`. |
 | 28 | blank-fill: `blankKeywordExpansions` display | ✓ | Phase E.6. Same `buildClearKeywordText` helper extended with optional `expansion` param. When set (and clearKw is not), keyword span is replaced by the expansion at keywordStart. clearKw wins when both are present (matches v1's "same net result"). Live verified: `rddt _` → `Reddit $180.50`, `hn _` → `HackerNews <story>`. |
-| 29 | blank-fill: `blankConsumeContext` widens range | ○ | |
+| 29 | blank-fill: `blankConsumeContext` widens range | ✓ | Phase E.7. New `computeFillRange(control, slot)` derives `(clearEnd, expansion)` from the three flags. consumeContext sets clearEnd=`slot.index-1` (drops keyword + context); clearKeywords alone sets clearEnd=`keywordEnd`. consumeContext suppresses expansion (matches v1's "doesn't combine"). Live verified: `how to say happy _` → `<answer>`. |
 | 30 | blank-fill: `blankConsumeAll` (prompt improver) | ○ | |
 | 31 | consume-all cycling (prompt improver Ctrl+Alt+Up/Down) | ○ | |
 | 32 | dim the consume-all range | ○ | |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 23 ✓, 4 ◐, 9 ○, 2 — out of 38 steps. (Phase E.1-E.6 flipped Steps 23, 24, 25, 26, 27, 28 ✓.)
+**Tally:** 24 ✓, 4 ◐, 8 ○, 2 — out of 38 steps. (Phase E.1-E.7 flipped Steps 23, 24, 25, 26, 27, 28, 29 ✓.)
 
 ---
 

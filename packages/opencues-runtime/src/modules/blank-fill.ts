@@ -181,10 +181,13 @@ export class BlankFill {
     const words = splitWords(cleaned);
     const target = words[slot.index];
     const control = this.configLoader.controls.get(slot.controlName) as
-      | { blankClearKeywords?: boolean; blankKeywordExpansions?: Record<string, string> }
+      | (Record<string, unknown> & {
+          blankClearKeywords?: boolean;
+          blankConsumeContext?: boolean;
+          blankKeywordExpansions?: Record<string, string>;
+        })
       | undefined;
-    const clearKw = control?.blankClearKeywords === true;
-    const expansion = clearKw ? undefined : control?.blankKeywordExpansions?.[slot.keyword];
+    const { clearEnd, expansion } = computeFillRange(control ?? {}, slot);
     this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.controlName}`, {
       currentTextLen: currentText.length,
       cleanedLen: cleaned.length,
@@ -192,13 +195,13 @@ export class BlankFill {
       targetWord: target?.word ?? null,
       fillValueLen: fillValue.length,
       hasPushText: !!this.adapter.pushText,
-      clearKw,
+      clearEnd: clearEnd ?? null,
       expansion: expansion ?? null,
     });
     if (!target || target.word !== '_') return; // slot moved or filled — drop
 
-    const { newText, newCursor } = clearKw || expansion != null
-      ? buildClearKeywordText(cleaned, slot, fillValue, expansion)
+    const { newText, newCursor } = clearEnd !== undefined || expansion != null
+      ? buildClearKeywordText(cleaned, slot, fillValue, expansion, clearEnd)
       : { newText: cleaned.slice(0, target.start) + fillValue + cleaned.slice(target.end),
           newCursor: target.start + fillValue.length };
 
@@ -242,6 +245,7 @@ export class BlankFill {
           stepValues?: readonly string[];
           blankAutoPopulate?: boolean;
           blankClearKeywords?: boolean;
+          blankConsumeContext?: boolean;
           blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
@@ -251,11 +255,10 @@ export class BlankFill {
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
 
-    const clearKw = control.blankClearKeywords === true;
-    const expansion = clearKw ? undefined : control.blankKeywordExpansions?.[slot.keyword];
+    const { clearEnd, expansion } = computeFillRange(control, slot);
 
-    const { newText, newCursor } = clearKw || expansion != null
-      ? buildClearKeywordText(insertedText, slot, fillValue, expansion)
+    const { newText, newCursor } = clearEnd !== undefined || expansion != null
+      ? buildClearKeywordText(insertedText, slot, fillValue, expansion, clearEnd)
       : { newText: insertedText.slice(0, insertedWord.start) + fillValue + insertedText.slice(insertedWord.end),
           newCursor: insertedWord.start + fillValue.length };
 
@@ -319,21 +322,54 @@ function extraEnvKeys(control: Record<string, unknown>): string[] {
 }
 
 /**
- * Step 27 + 28 — word-array reconstruction that handles both keyword
- * clearing and keyword expansion in one pass.
+ * Step 27/28/29 — derive the (clearEnd, expansion) pair that the helper
+ * loop will apply, given a control's flags. Lets callers stay short.
  *
- *   - The keyword span [keywordStart..keywordEnd] is always dropped.
+ *   - blankConsumeContext: clearEnd = slot.index - 1 (drop keyword +
+ *     anything between it and the blank).
+ *   - blankClearKeywords (alone): clearEnd = slot.keywordEnd (just the
+ *     keyword span).
+ *   - blankKeywordExpansions[keyword] (alone): no clear range widening
+ *     beyond the keyword span; expansion fills the start.
+ *   - Both clear flags + expansion: expansion is suppressed (clear wins).
+ */
+export function computeFillRange(
+  control: {
+    blankClearKeywords?: boolean;
+    blankConsumeContext?: boolean;
+    blankKeywordExpansions?: Record<string, string>;
+  },
+  slot: { index: number; keyword: string; keywordEnd: number },
+): { clearEnd: number | undefined; expansion: string | undefined } {
+  const consumeContext = control.blankConsumeContext === true;
+  const clearKw = control.blankClearKeywords === true;
+  let clearEnd: number | undefined;
+  if (consumeContext) clearEnd = slot.index - 1;
+  else if (clearKw) clearEnd = slot.keywordEnd;
+  const expansion = (clearKw || consumeContext)
+    ? undefined
+    : control.blankKeywordExpansions?.[slot.keyword];
+  return { clearEnd, expansion };
+}
+
+/**
+ * Steps 27 + 28 + 29 — word-array reconstruction that handles keyword
+ * clearing, keyword expansion, and consume-context in one pass.
+ *
+ *   - The range [keywordStart..clearEnd] is dropped (default clearEnd =
+ *     keywordEnd, which clears just the keyword span — Step 27). When
+ *     `clearEnd = slot.index - 1`, words between keyword and blank are
+ *     also dropped — that's Step 29's blankConsumeContext.
  *   - If `expansion` is given, it's placed at keywordStart in the output
- *     (replacing the dropped keyword) — that's Step 28.
- *   - If `expansion` is omitted, the keyword span vanishes — that's
- *     Step 27's clear behaviour.
+ *     (replacing the dropped keyword) — that's Step 28. Callers should
+ *     suppress `expansion` when consume-context is widening clearEnd to
+ *     the blank, since dropping context with an expansion still floating
+ *     at the start reads weirdly. v1 didn't combine the two; we follow.
  *   - The slot.index entry is replaced with `fillValue`.
  *
- * Words between keywordEnd and slot.index (context) are preserved here;
- * widening the clear range to include them is blankConsumeContext's job
- * (Step 29). Joining with a single space collapses any whitespace runs
- * around the modified positions — same trade-off v1 made when it
- * switched off char-position splice.
+ * Joining with a single space collapses any whitespace runs around the
+ * modified positions — same trade-off v1 made when it switched off
+ * char-position splice.
  *
  * If both blankClearKeywords and blankKeywordExpansions are set, the
  * caller passes `expansion: undefined` (clear wins). Matches v1's "same
@@ -344,13 +380,15 @@ export function buildClearKeywordText(
   slot: { index: number; keywordStart: number; keywordEnd: number },
   fillValue: string,
   expansion?: string,
+  clearEnd?: number,
 ): { newText: string; newCursor: number } {
   const cleaned = text.replace(/[\u200B\u200C]/g, '');
   const words = cleaned.split(/\s+/).filter(Boolean);
+  const end = clearEnd ?? slot.keywordEnd;
   const out: string[] = [];
   let cursor = 0;
   for (let i = 0; i < words.length; i += 1) {
-    if (i >= slot.keywordStart && i <= slot.keywordEnd) {
+    if (i >= slot.keywordStart && i <= end) {
       if (i === slot.keywordStart && expansion) out.push(expansion);
       continue;
     }

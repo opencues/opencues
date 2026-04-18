@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BlankFill, buildClearKeywordText } from './blank-fill';
+import { BlankFill, buildClearKeywordText, computeFillRange } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
 
@@ -157,6 +157,66 @@ describe('buildClearKeywordText helper (Step 27)', () => {
   it('Step 28: expansion preserves context words after keyword', () => {
     const r = buildClearKeywordText('hn for today _', { index: 3, keywordStart: 0, keywordEnd: 0 }, 'Story', 'HackerNews');
     expect(r.newText).toBe('HackerNews for today Story');
+  });
+  it('Step 29: clearEnd widens to slot.index-1 (consumes context)', () => {
+    const r = buildClearKeywordText(
+      'what is the word for happy _',
+      { index: 6, keywordStart: 0, keywordEnd: 4 },
+      'glad',
+      undefined,
+      5, // slot.index - 1
+    );
+    expect(r.newText).toBe('glad');
+  });
+  it('Step 29: trailing words after blank are kept', () => {
+    const r = buildClearKeywordText(
+      'how to say hi _ to her',
+      { index: 4, keywordStart: 0, keywordEnd: 2 },
+      'hello',
+      undefined,
+      3,
+    );
+    expect(r.newText).toBe('hello to her');
+  });
+});
+
+describe('computeFillRange (Step 29)', () => {
+  const slot = { index: 6, keyword: 'what is the word for', keywordEnd: 4 };
+  it('blankConsumeContext sets clearEnd = slot.index - 1', () => {
+    const r = computeFillRange({ blankConsumeContext: true }, slot);
+    expect(r).toEqual({ clearEnd: 5, expansion: undefined });
+  });
+  it('blankClearKeywords alone sets clearEnd = slot.keywordEnd', () => {
+    const r = computeFillRange({ blankClearKeywords: true }, slot);
+    expect(r).toEqual({ clearEnd: 4, expansion: undefined });
+  });
+  it('expansion only sets expansion, no clearEnd widening', () => {
+    const r = computeFillRange(
+      { blankKeywordExpansions: { 'what is the word for': 'WORD' } },
+      slot,
+    );
+    expect(r).toEqual({ clearEnd: undefined, expansion: 'WORD' });
+  });
+  it('blankConsumeContext suppresses expansion', () => {
+    const r = computeFillRange(
+      {
+        blankConsumeContext: true,
+        blankKeywordExpansions: { 'what is the word for': 'WORD' },
+      },
+      slot,
+    );
+    expect(r).toEqual({ clearEnd: 5, expansion: undefined });
+  });
+  it('clearKeywords + consumeContext together: consumeContext wins', () => {
+    const r = computeFillRange(
+      { blankClearKeywords: true, blankConsumeContext: true },
+      slot,
+    );
+    expect(r.clearEnd).toBe(5); // = slot.index - 1, not 4
+  });
+  it('no flags returns no-op range', () => {
+    const r = computeFillRange({}, slot);
+    expect(r).toEqual({ clearEnd: undefined, expansion: undefined });
   });
 });
 
@@ -555,6 +615,55 @@ blankKeywordExpansions.rddt: Reddit
     adapter.pushText('rddt _');
     await new Promise(r => setTimeout(r, 0));
     expect(adapter.getText()).toBe('Reddit $180.50');
+  });
+
+  it('async path: blankConsumeContext drops keyword and context words around the blank', async () => {
+    const ANSWER_CTRL = `---
+type: control
+name: answer
+blankKeywords: how to say
+blankScript: ./answer.sh
+blankConsumeContext: true
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/answer/cue.md': ANSWER_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'glad', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('how to say happy _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('glad');
+  });
+
+  it('sync path: blankConsumeContext drops keyword and context words around the blank', async () => {
+    const CTX_CTRL = `---
+type: control
+name: ctxsync
+blankKeywords: how to say
+stepValues: ["hi"]
+blankConsumeContext: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/ctxsync/cue.md': CTX_CTRL },
+    });
+    adapter.pushText('how to say hello ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('how to say hello ', 17))).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('hi');
   });
 
   it('honours blankAutoPopulate: false on the control', async () => {
