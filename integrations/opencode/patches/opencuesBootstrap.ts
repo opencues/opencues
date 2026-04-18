@@ -105,7 +105,19 @@ export function startOpenCues(opts: {
       opts.promptAccess.write(text)
       if (cursor !== undefined) opts.promptAccess.setCursor(cursor)
     },
-    forceRender: () => opts.renderer.requestRender(),
+    // forceRender on OpenCode means: re-fire OpenCues render handlers
+    // (DimRender, Statusline) so async state changes (Resolver alts,
+    // ControlValuesCache writes, etc.) paint without waiting for the
+    // next user keystroke. The OpenTUI request is layered on top so the
+    // visual buffer also refreshes.
+    forceRender: () => {
+      const access = __ocPromptHolder.current
+      if (access) {
+        try { triggerOpenCuesRender(access.read(), access.cursor()) }
+        catch { /* swallow */ }
+      }
+      opts.renderer.requestRender()
+    },
     readFile: async (p: string) => {
       try { return await fs.readFile(p, "utf8") } catch { return null }
     },

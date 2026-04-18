@@ -175,6 +175,7 @@ export class Resolver {
     // Stale check — a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;
 
+    let wrote = 0;
     for (const r of result.results) {
       const target = wordSpans[r.wordIndex];
       if (!target) continue;
@@ -196,6 +197,11 @@ export class Resolver {
         spanEnd: target.end,
       };
       this.dynDefs.set(r.wordIndex, def);
+      wrote++;
     }
+    // Force a paint so DimRender/Statusline pick up the new alts without
+    // waiting for the user's next keystroke. Hosts with no idle render
+    // loop (e.g. OpenCode's onContentChange-only path) need this.
+    if (wrote > 0) this.adapter.forceRender();
   }
 }
