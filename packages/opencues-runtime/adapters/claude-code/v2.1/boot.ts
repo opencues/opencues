@@ -325,7 +325,7 @@ export function boot(host: HostInfo): BootResult {
     const tts = new TTS(adapter, hlState, dynDefs, configLoader, {
       scriptPath: host.ttsScriptPath,
       rate: host.ttsRate !== undefined ? String(host.ttsRate) : undefined,
-    });
+    }, spanFillState, selectorSatelliteState);
     tts.subscribe();
   }
 
