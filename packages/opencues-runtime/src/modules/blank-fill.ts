@@ -101,6 +101,7 @@ export class BlankFill {
             stepValues?: readonly string[];
             blankScript?: string;
             blankAutoPopulate?: boolean;
+            blankClearKeywords?: boolean;
             model?: string;
             apiUrl?: string;
             apiKeyEnv?: string;
@@ -179,6 +180,10 @@ export class BlankFill {
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
     const target = words[slot.index];
+    const control = this.configLoader.controls.get(slot.controlName) as
+      | { blankClearKeywords?: boolean }
+      | undefined;
+    const clearKw = control?.blankClearKeywords === true;
     this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.controlName}`, {
       currentTextLen: currentText.length,
       cleanedLen: cleaned.length,
@@ -186,10 +191,15 @@ export class BlankFill {
       targetWord: target?.word ?? null,
       fillValueLen: fillValue.length,
       hasPushText: !!this.adapter.pushText,
+      clearKw,
     });
     if (!target || target.word !== '_') return; // slot moved or filled — drop
-    const newText = cleaned.slice(0, target.start) + fillValue + cleaned.slice(target.end);
-    const newCursor = target.start + fillValue.length;
+
+    const { newText, newCursor } = clearKw
+      ? buildClearKeywordText(cleaned, slot, fillValue)
+      : { newText: cleaned.slice(0, target.start) + fillValue + cleaned.slice(target.end),
+          newCursor: target.start + fillValue.length };
+
     if (this.adapter.pushText) {
       this.adapter.pushText(newText, newCursor);
     } else {
@@ -226,7 +236,11 @@ export class BlankFill {
     if (!slot) return false;
 
     const control = this.configLoader.controls.get(slot.controlName) as
-      | (Record<string, unknown> & { stepValues?: readonly string[]; blankAutoPopulate?: boolean })
+      | (Record<string, unknown> & {
+          stepValues?: readonly string[];
+          blankAutoPopulate?: boolean;
+          blankClearKeywords?: boolean;
+        })
       | undefined;
     if (!control) return false;
     if (control.blankAutoPopulate === false) return false;
@@ -234,13 +248,12 @@ export class BlankFill {
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
 
-    const filled =
-      insertedText.slice(0, insertedWord.start) +
-      fillValue +
-      insertedText.slice(insertedWord.end);
-    const newCursor = insertedWord.start + fillValue.length;
+    const { newText, newCursor } = control.blankClearKeywords === true
+      ? buildClearKeywordText(insertedText, slot, fillValue)
+      : { newText: insertedText.slice(0, insertedWord.start) + fillValue + insertedText.slice(insertedWord.end),
+          newCursor: insertedWord.start + fillValue.length };
 
-    this.adapter.setText(filled);
+    this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
     return true;
@@ -297,6 +310,36 @@ function extraEnvKeys(control: Record<string, unknown>): string[] {
     }
   }
   return keys;
+}
+
+/**
+ * Step 27 — word-array reconstruction that drops the keyword span
+ * [keywordStart..keywordEnd] and replaces the slot.index entry with
+ * fillValue. Words between keywordEnd and slot.index (context) are
+ * preserved; that's blankConsumeContext's job (Step 29). Joining with
+ * a single space collapses any whitespace runs around the cleared
+ * positions — same trade-off v1 made when it switched off char-position
+ * splice.
+ */
+export function buildClearKeywordText(
+  text: string,
+  slot: { index: number; keywordStart: number; keywordEnd: number },
+  fillValue: string,
+): { newText: string; newCursor: number } {
+  const cleaned = text.replace(/[\u200B\u200C]/g, '');
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let cursor = 0;
+  for (let i = 0; i < words.length; i += 1) {
+    if (i >= slot.keywordStart && i <= slot.keywordEnd) continue;
+    if (i === slot.index) {
+      out.push(fillValue);
+      cursor = out.join(' ').length;
+    } else {
+      out.push(words[i]);
+    }
+  }
+  return { newText: out.join(' '), newCursor: cursor };
 }
 
 /**

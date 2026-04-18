@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase E.4 (commit pending).
+**Last synced:** Phase E.5 (commit pending).
 
 ---
 
@@ -45,7 +45,7 @@ just architecture.
 | 24 | blank-fill: auto-populate with `stepValues[0]` | ✓ | Phase E.2 (commit `c3a3214`). onUnderscoreKey intercepts the '_' key, simulates insertion, fills with stepValues[0] when blankAutoPopulate isn't false. |
 | 25 | blank-fill: `blankScript get` async populate | ✓ | Phase E.3 (commit `e5d26f3`). Spawns `bash <script> get <keyword>` async via spawnProcess, splices stdout via the new pushText primitive. Dedupes by (text, slot.index). |
 | 26 | blank-fill: context words + env vars + `~` path | ✓ | Phase E.4. Context words = sibling words minus keyword-span and slot.index, passed as positional args. ~ → $HOME expansion at script invocation. CUES_MODEL/API_URL/API_KEY_ENV/ALT_COUNT/INCLUDE_ORIGINAL/PROMPT_* env vars from control config. Live verified: weather Paris vs London returned different forecasts. |
-| 27 | blank-fill: `blankClearKeywords` strips on fill | ○ | |
+| 27 | blank-fill: `blankClearKeywords` strips on fill | ✓ | Phase E.5. Word-array reconstruction in shared `buildClearKeywordText` helper used by both sync (stepValues) and async (blankScript) paths. Drops `[keywordStart..keywordEnd]`, replaces slot.index with fill value, preserves context words and trailing words. Live verified: `weather in Paris _` → `in Paris <forecast>`. |
 | 28 | blank-fill: `blankKeywordExpansions` display | ○ | |
 | 29 | blank-fill: `blankConsumeContext` widens range | ○ | |
 | 30 | blank-fill: `blankConsumeAll` (prompt improver) | ○ | |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 21 ✓, 4 ◐, 11 ○, 2 — out of 38 steps. (Phase E.1-E.4 flipped Steps 23, 24, 25, 26 ✓.)
+**Tally:** 22 ✓, 4 ◐, 10 ○, 2 — out of 38 steps. (Phase E.1-E.5 flipped Steps 23, 24, 25, 26, 27 ✓.)
 
 ---
 

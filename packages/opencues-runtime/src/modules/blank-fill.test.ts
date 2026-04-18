@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BlankFill } from './blank-fill';
+import { BlankFill, buildClearKeywordText } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
 
@@ -117,6 +117,33 @@ describe('BlankFill detection (Step 23)', () => {
     adapter.pushText('affirm _');
     expect(bf.slots).toHaveLength(1);
     expect(bf.slots[0].controlName).toBe('affirmations');
+  });
+});
+
+describe('buildClearKeywordText helper (Step 27)', () => {
+  it('drops single-word keyword and replaces blank', () => {
+    const r = buildClearKeywordText('weather _', { index: 1, keywordStart: 0, keywordEnd: 0 }, '15°C');
+    expect(r.newText).toBe('15°C');
+    expect(r.newCursor).toBe(4);
+  });
+  it('preserves context words between keyword and blank', () => {
+    const r = buildClearKeywordText('weather in Paris _', { index: 3, keywordStart: 0, keywordEnd: 0 }, '15°C');
+    expect(r.newText).toBe('in Paris 15°C');
+    expect(r.newCursor).toBe(13);
+  });
+  it('drops multi-word keyword span', () => {
+    const r = buildClearKeywordText('improve prompt _', { index: 2, keywordStart: 0, keywordEnd: 1 }, 'better');
+    expect(r.newText).toBe('better');
+    expect(r.newCursor).toBe(6);
+  });
+  it('keeps trailing words after the blank', () => {
+    const r = buildClearKeywordText('cheer _ today', { index: 1, keywordStart: 0, keywordEnd: 0 }, 'yay');
+    expect(r.newText).toBe('yay today');
+    expect(r.newCursor).toBe(3);
+  });
+  it('strips ZWS from input before splitting', () => {
+    const r = buildClearKeywordText('weather\u200B _', { index: 1, keywordStart: 0, keywordEnd: 0 }, 'x');
+    expect(r.newText).toBe('x');
   });
 });
 
@@ -322,6 +349,127 @@ blankScript: ./stocks.sh
     adapter.pushText('stock _');
     adapter.pushText('stock _'); // same text, no new spawn
     expect(spawnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('sync path: blankClearKeywords strips keyword from filled text (single-word keyword)', async () => {
+    const CLR_CTRL = `---
+type: control
+name: cheer
+blankKeywords: cheer
+stepValues: ["yay"]
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/cheer/cue.md': CLR_CTRL },
+    });
+    adapter.pushText('cheer ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('cheer ', 6))).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('yay');
+    expect(adapter.setCursorCalls.at(-1)).toBe(3);
+  });
+
+  it('sync path: blankClearKeywords preserves context words between keyword and blank', async () => {
+    const CLR_CTRL = `---
+type: control
+name: temp
+blankKeywords: weather
+stepValues: ["15°C"]
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/temp/cue.md': CLR_CTRL },
+    });
+    adapter.pushText('weather in Paris ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('weather in Paris ', 17))).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('in Paris 15°C');
+  });
+
+  it('sync path: blankClearKeywords drops both words of a multi-word keyword', async () => {
+    const CLR_CTRL = `---
+type: control
+name: greet
+blankKeywords: say hello
+stepValues: ["hi"]
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/greet/cue.md': CLR_CTRL },
+    });
+    adapter.pushText('say hello ');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    expect(bf.onUnderscoreKey(makeKeyEvent('say hello ', 10))).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe('hi');
+  });
+
+  it('async path: blankClearKeywords applies after script result splices in', async () => {
+    const CLR_CTRL = `---
+type: control
+name: weather
+blankKeywords: weather
+blankScript: ./weather.sh
+blankClearKeywords: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/weather/cue.md': CLR_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '15°C cloudy', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('weather in Paris _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    // Latest pushText call should reflect the cleared keyword.
+    expect(adapter.getText()).toBe('in Paris 15°C cloudy');
+  });
+
+  it('async path: no clear when blankClearKeywords is unset (existing behaviour preserved)', async () => {
+    const PLAIN = `---
+type: control
+name: weather2
+blankKeywords: weather
+blankScript: ./weather.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/weather2/cue.md': PLAIN },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '15°C cloudy', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('weather in Paris _');
+    await new Promise(r => setTimeout(r, 0));
+    // Keyword preserved; only `_` is replaced. Splice path keeps original spacing.
+    expect(adapter.getText()).toBe('weather in Paris 15°C cloudy');
   });
 
   it('honours blankAutoPopulate: false on the control', async () => {
