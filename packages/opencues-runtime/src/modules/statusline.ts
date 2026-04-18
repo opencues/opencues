@@ -15,6 +15,7 @@ import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
+import type { ControlValuesCache } from '../state/control-values';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -47,6 +48,8 @@ export interface StatuslinePayload {
 export class Statusline {
   private _unsub: Unsubscribe | null = null;
   private _lastJson = '';
+  private _inFlightFetches = new Set<string>();
+  private static readonly VALUE_CACHE_TTL_MS = 30_000;
 
   constructor(
     private adapter: HostAdapter,
@@ -67,6 +70,11 @@ export class Statusline {
      * per-value tip from opencues.md `settings:` block.
      */
     private selectorSatelliteState?: SelectorSatelliteState,
+    /**
+     * Optional. Per-control value cache shared with Cycling — Cycling
+     * invalidates after script up/down so the next render re-fetches.
+     */
+    private controlValues?: ControlValuesCache,
   ) {}
 
   subscribe(): void {
@@ -155,6 +163,25 @@ export class Statusline {
       };
     }
 
+    // Phase I.8 — control-attributed DynDef (volume/brightness blank
+    // fill at "50%"): suppress the statusline tip entirely. The value
+    // is already visible in the input ("50%") and the tip would be
+    // redundant ("system volume control 50%").
+    if (def?.controlName) {
+      return {
+        active: true,
+        highlightedWordIndex: wordIndex,
+        highlightedWord: cleanHighlighted,
+        currentAltIndex: 0,
+        alts: [cleanHighlighted],
+        cueTip: null,
+        altCueTips: null,
+        cueControl: true,
+        wordCount: words.filter(w => clean(w.word).length > 0).length,
+        timestamp: Date.now(),
+      };
+    }
+
     // Cue lookup: primary key is the original word (stable across cycling).
     // For tip display, prefer altCueTips[currentDisplayedWord] over the
     // primary cueTip — mirrors v1's behaviour where each alt can have its
@@ -172,7 +199,28 @@ export class Statusline {
     // brightness, etc.), the consumer should print "tip alone" rather
     // than "word (N/M) - tip". This mirrors v1's `cueControl=true`
     // routing for control words.
-    const isControlWord = this.configLoader?.controlsByWord.get(lookupKey) != null;
+    const ctrlEntry = this.configLoader?.controlsByWord.get(lookupKey);
+    const isControlWord = ctrlEntry != null;
+
+    // Phase I.8 — controls that ship a `script` (volume, brightness)
+    // already return statusline-formatted text from `script get`
+    // (e.g. "volume: 50%"). Lazy-fetch on first highlight; cache for
+    // 30s; use stdout verbatim as the tip. Cycling.runScriptControl
+    // invalidates the cache after up/down so the next render re-fetches.
+    if (ctrlEntry && !tipsHidden && this.controlValues) {
+      const ctrlAny = ctrlEntry.control as { script?: string };
+      if (ctrlAny.script) {
+        const cached = this.controlValues.get(ctrlEntry.name);
+        // Always show the cached value if we have one — even if stale,
+        // it beats showing the static cueMap default for the ~200ms
+        // until the refetch returns.
+        if (cached) cueTip = cached.value;
+        const needsFetch = !cached
+          || cached.stale
+          || (Date.now() - cached.at) >= Statusline.VALUE_CACHE_TTL_MS;
+        if (needsFetch) this.fetchControlValue(ctrlEntry.name, ctrlAny.script);
+      }
+    }
 
     return {
       active: true,
@@ -186,6 +234,34 @@ export class Statusline {
       wordCount: words.filter(w => clean(w.word).length > 0).length,
       timestamp: Date.now(),
     };
+  }
+
+  private fetchControlValue(controlName: string, script: string): void {
+    if (!this.adapter.capabilities.includes('spawn-process')) return;
+    if (!this.controlValues) return;
+    if (this._inFlightFetches.has(controlName)) return;
+    this._inFlightFetches.add(controlName);
+    const home = process.env.HOME ?? '~';
+    const scriptPath = script.startsWith('~') ? home + script.slice(1) : script;
+    try {
+      const handle = this.adapter.spawnProcess({
+        command: 'bash',
+        args: [scriptPath, 'get'],
+        timeoutMs: 4000,
+      });
+      handle.result.then(res => {
+        this._inFlightFetches.delete(controlName);
+        if (res.exitCode !== 0 || res.timedOut) return;
+        const value = res.stdout.split(/\n/)[0]?.trim();
+        if (!value) return;
+        this.controlValues!.set(controlName, value);
+        // Force a refresh so the next render picks up the new value.
+        this._lastJson = ''; // invalidate dedup
+        this.options.refreshHook?.();
+      }).catch(() => { this._inFlightFetches.delete(controlName); });
+    } catch {
+      this._inFlightFetches.delete(controlName);
+    }
   }
 
   private maybeWrite(ctx: RenderContext): void {

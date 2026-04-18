@@ -485,6 +485,10 @@ export class ConfigLoader {
           : new RegExp(`^(-?\\d+(?:\\.\\d+)?)$`);
         stepPatterns.push({ regex, control, controlName: lcName });
       }
+      // No global stepPattern for blankStep/blankSuffix-only controls
+      // (volume, brightness): they share a `%` suffix, so a global
+      // pattern would route ambiguously. Cycling routes via
+      // DynDef.controlName instead — see BlankFill (Phase I.8).
     };
     for (const [name, ctrl] of Object.entries(folderConfigs?.controlOverrides ?? {})) {
       addControl(name, ctrl as ControlConfig);

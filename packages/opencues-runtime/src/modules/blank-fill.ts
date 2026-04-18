@@ -14,6 +14,7 @@ import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
+import type { DynDefs } from '../state/dyn-defs';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -43,6 +44,7 @@ export class BlankFill {
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
+    private dynDefs?: DynDefs,
   ) {}
 
   subscribe(): void {
@@ -225,6 +227,7 @@ export class BlankFill {
           blankClearOnEdit?: boolean;
           blankScript?: string;
           blankTip?: string;
+          blankSuffix?: string;
           tip?: string;
           blankKeywordExpansions?: Record<string, string>;
         })
@@ -251,8 +254,14 @@ export class BlankFill {
     // dismissible (so the user can cycle back to `_`).
     const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
     if (lines.length === 0) return;
-    const primaryFill = lines[0];
+    let primaryFill = lines[0];
     const isDismissible = control?.blankDismissible === true;
+    // Append blankSuffix when the control declares one and the primary
+    // fill looks numeric (volume, brightness — script returns "50",
+    // displayed as "50%").
+    if (control?.blankSuffix && /^-?\d+(?:\.\d+)?$/.test(primaryFill)) {
+      primaryFill = primaryFill + control.blankSuffix;
+    }
 
     // Step 30 — consume-all short-circuits the splice/expand/clear pipeline.
     if (control?.blankConsumeAll === true) {
@@ -308,10 +317,10 @@ export class BlankFill {
     // the script, or blankDismissible. Index = post-fill word index of
     // primaryFill's first word (re-derive from the new text since
     // clear/expansion may have shifted positions).
+    const fillStart = newCursor - primaryFill.length;
+    const newWords = splitWords(newText);
+    const startWord = newWords.find(w => w.start === fillStart);
     if (this.spanFillState) {
-      const fillStart = newCursor - primaryFill.length;
-      const newWords = splitWords(newText);
-      const startWord = newWords.find(w => w.start === fillStart);
       const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
       const altsForSpan = isDismissible ? [...lines, '_'] : lines;
       const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1;
@@ -326,6 +335,21 @@ export class BlankFill {
       } else {
         this.spanFillState.clear();
       }
+    }
+
+    // Phase I.8 — when blankSuffix produced a numeric+unit fill (volume,
+    // brightness), attribute the resulting word to its source control
+    // via a DynDef. Cycling looks at this BEFORE matchStepPattern so
+    // sibling controls sharing the suffix don't ambiguously route.
+    if (this.dynDefs && startWord && control?.blankSuffix && primaryFill.endsWith(control.blankSuffix)) {
+      this.dynDefs.set(startWord.index, {
+        originalWord: primaryFill,
+        alternatives: [primaryFill],
+        currentIndex: 0,
+        spanStart: startWord.start,
+        spanEnd: startWord.end,
+        controlName: slot.controlName,
+      });
     }
 
     if (this.adapter.pushText) {

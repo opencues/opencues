@@ -9,6 +9,14 @@ export interface WordDef {
   spanStart: number;
   /** End offset (exclusive) of the current alt in the text. */
   spanEnd: number;
+  /**
+   * Optional control attribution. Set by BlankFill when the def came
+   * from a blank fill so cycling can route to the originating control's
+   * blankStep / blankScript instead of guessing via stepPattern (which
+   * is ambiguous when multiple controls share the same suffix, e.g.
+   * volume + brightness both use `%`).
+   */
+  readonly controlName?: string;
 }
 
 export class DynDefs {

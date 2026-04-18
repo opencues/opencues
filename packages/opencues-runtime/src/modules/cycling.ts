@@ -19,10 +19,13 @@ import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
+import type { ControlValuesCache } from '../state/control-values';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
   private _unsubDown: Unsubscribe | null = null;
+  /** Per-control debounce timers for script up/down (50ms coalesce). */
+  private _scriptTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private adapter: HostAdapter,
@@ -32,6 +35,7 @@ export class Cycling {
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
+    private controlValues?: ControlValuesCache,
   ) {}
 
   subscribe(): void {
@@ -82,6 +86,18 @@ export class Cycling {
     // 2. List control (stepValues) — rotate values in-place.
     if (control && control.control.stepValues && control.control.stepValues.length > 0) {
       return this.cycleListControl(event, target, control, direction);
+    }
+
+    // 3a. Blank-fill DynDef with controlName attribution (Phase I.8) —
+    //     volume/brightness `50%` cycles via the originating control's
+    //     blankStep/Suffix/Script. Checked BEFORE matchStepPattern so
+    //     sibling controls sharing a suffix don't ambiguously route.
+    const def = this.dynDefs.get(wordIndex);
+    if (def && def.controlName) {
+      const ctrl = this.configLoader.controls.get(def.controlName);
+      if (ctrl && this.cycleBlankStep(event, target, ctrl as ControlEntry['control'], def.controlName, direction)) {
+        return true;
+      }
     }
 
     // 3. Step-pattern numeric — arithmetic on the matched number.
@@ -284,20 +300,46 @@ export class Cycling {
     const c = entry.control;
     const args = direction === 1 ? c.upArgs ?? [] : c.downArgs ?? [];
     const scriptPath = c.script as string;
-    const spec: ProcessSpec = {
-      command: 'bash',
-      args: [scriptPath, ...args],
-      detached: true,
-    };
-    try {
-      this.adapter.spawnProcess(spec);
-    } catch (err) {
-      this.adapter.log('error', `Cycling: script spawn failed for ${entry.name}`, err);
-      return false;
-    }
-    // No text change — but trigger a render so downstream consumers
-    // (Statusline) can update timestamp / state.
-    this.adapter.forceRender();
+    // Debounce + post-spawn fetch — mirrors v1's wordHighlight.ts:1015.
+    // Holding Up key issues many key dispatches; without the debounce
+    // we'd spawn a script per dispatch. After the script settles
+    // (~200ms — per volume.sh / brightness.sh comments), fetch the
+    // actual new value via `script get` so statusline shows the real
+    // post-clamp number, not a guess.
+    const existing = this._scriptTimers.get(entry.name);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this._scriptTimers.delete(entry.name);
+      try {
+        this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, ...args],
+          detached: true,
+        });
+      } catch (err) {
+        this.adapter.log('error', `Cycling: script spawn failed for ${entry.name}`, err);
+        return;
+      }
+      // After ~200ms the OS-side change has settled — fetch new value.
+      setTimeout(() => {
+        if (!this.controlValues) return;
+        try {
+          const getHandle = this.adapter.spawnProcess({
+            command: 'bash',
+            args: [scriptPath, 'get'],
+            timeoutMs: 2000,
+          });
+          getHandle.result.then(res => {
+            if (res.exitCode !== 0 || res.timedOut) return;
+            const value = res.stdout.split(/\n/)[0]?.trim();
+            if (!value) return;
+            this.controlValues!.set(entry.name, value);
+            this.adapter.forceRender();
+          }).catch(() => { /* swallow */ });
+        } catch { /* swallow */ }
+      }, 200);
+    }, 50);
+    this._scriptTimers.set(entry.name, timer);
     return true;
   }
 
@@ -373,6 +415,79 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(clampedCursor);
     this.adapter.forceRender();
+    return true;
+  }
+
+  // ─── Path 3a: blank-fill DynDef route (volume / brightness) ───────────
+
+  private cycleBlankStep(
+    event: KeyEvent,
+    target: { word: string; start: number; end: number; index: number },
+    control: { blankStep?: number; blankSuffix?: string; blankScript?: string; stepMin?: number; stepMax?: number },
+    controlName: string,
+    direction: 1 | -1,
+  ): boolean {
+    if (control.blankStep === undefined) return false;
+    const suffix = control.blankSuffix ?? '';
+    const cleanWord = target.word.replace(/[\u200B\u200C]/g, '');
+    const numStr = suffix && cleanWord.endsWith(suffix)
+      ? cleanWord.slice(0, cleanWord.length - suffix.length)
+      : cleanWord;
+    const cur = parseFloat(numStr);
+    if (Number.isNaN(cur)) return false;
+    let next = cur + direction * control.blankStep;
+    if (control.stepMin !== undefined && next < control.stepMin) next = control.stepMin;
+    if (control.stepMax !== undefined && next > control.stepMax) next = control.stepMax;
+    // Clamp to 0..100 by default for percentage-style controls.
+    if (control.stepMin === undefined && next < 0) next = 0;
+    if (control.stepMax === undefined && next > 100) next = 100;
+    const decimals = (control.blankStep.toString().split('.')[1] ?? '').length;
+    const formatted = decimals > 0 ? next.toFixed(decimals) : String(Math.round(next));
+    const nextWord = formatted + suffix;
+
+    const before = event.text.slice(0, target.start);
+    const after = event.text.slice(target.end);
+    const newText = before + nextWord + after;
+    const lenDiff = nextWord.length - target.word.length;
+    const newCursor = event.cursorOffset <= target.start
+      ? event.cursorOffset
+      : event.cursorOffset >= target.end
+        ? event.cursorOffset + lenDiff
+        : target.start + nextWord.length;
+    const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
+
+    // Update the DynDef in-place so subsequent cycles see the new value.
+    const def = this.dynDefs.get(target.index);
+    if (def) {
+      this.dynDefs.set(target.index, {
+        ...def,
+        originalWord: nextWord,
+        spanStart: target.start,
+        spanEnd: target.start + nextWord.length,
+      });
+    }
+
+    this.adapter.setText(newText);
+    this.adapter.setCursorOffset(clampedCursor);
+    this.adapter.forceRender();
+
+    // Write back via script set <num> (no suffix — script expects raw number).
+    if (control.blankScript && this.adapter.capabilities.includes('spawn-process')) {
+      const home = process.env.HOME ?? '~';
+      const scriptPath = control.blankScript.startsWith('~')
+        ? home + control.blankScript.slice(1)
+        : control.blankScript;
+      try {
+        this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, 'set', formatted],
+          detached: true,
+          timeoutMs: 4000,
+        });
+      } catch (err) {
+        this.adapter.log('error', `Cycling: blankScript set failed for ${controlName}`, err);
+      }
+    }
     return true;
   }
 

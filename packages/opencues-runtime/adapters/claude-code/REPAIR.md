@@ -214,7 +214,64 @@ across terminals. If a future feature genuinely needs both attributes
 on the same chars, test on at least: tmux + xterm, gnome-terminal,
 iTerm2.
 
-### 10. The host may keep the `value` prop in lock-step with our InputZone
+### 10. Sibling controls sharing a suffix need DynDef attribution
+
+Volume + brightness both produce `<num>%` text after blank fill. A
+naive global stepPattern keyed on `^\d+%$` routes ambiguously — first
+matching control wins, so cycling `50%` from `volume _` could end up
+calling `brightness-blank.sh set`.
+
+Fix: BlankFill registers a DynDef carrying `controlName` for any
+numeric+suffix fill (Phase I.8). Cycling checks the DynDef BEFORE
+matchStepPattern (path 3a) so the originating control is always
+preferred over the regex match. Without the DynDef path,
+volume/brightness will silently cross-fire as soon as both are filled
+in the same input.
+
+Resolver also skips DynDefs with controlName so LLM alts don't
+clobber the attribution.
+
+### 11. Script-backed control values: debounce + post-spawn refetch
+
+Cycling a script-backed control (volume, brightness) faces two
+problems: holding Up issues a key dispatch per repeat (each would
+spawn the script), and `script up` doesn't echo the new value — we
+have to call `script get` separately to refresh the statusline.
+
+Pattern (mirrors v1 wordHighlight.ts:1015):
+
+1. 50ms debounce on the up/down spawn — coalesces a held key into one
+   write.
+2. After the spawn, schedule another 200ms timer.
+3. The 200ms timer fires `script get`, awaits stdout, writes to
+   ControlValuesCache, then calls `forceRender()` so Statusline picks
+   up the new value.
+
+The 200ms wait is the cost of the script's OS-side settle time
+(documented in volume.sh / brightness.sh). We tried optimistic update
++ reconcile but the user found the predicted value misleading when
+the OS clamped (e.g. capped at 100%); waiting for the real value is
+correct.
+
+ControlValuesCache also keeps stale values visible (instead of
+deleting on invalidate) so the statusline doesn't flash to the
+static cueMap default in the gap between cycle and refetch.
+
+### 12. `script get` is the source of truth for the statusline tip
+
+Volume / brightness have a `script` (e.g. volume.sh) and a separate
+`blankScript` (e.g. volume-blank.sh). Their `get` commands return
+DIFFERENT shapes:
+
+- `volume.sh get` → `volume: 50%` — formatted statusline text.
+- `volume-blank.sh get` → `50` — bare number for blank fill.
+
+Statusline must use the formatted output from `script get` (NOT
+blankScript), or it would have to know the format string per control.
+Cycling for the script-backed word case reads from `script`;
+BlankFill reads from `blankScript`.
+
+### 13. The host may keep the `value` prop in lock-step with our InputZone
 
 Returning `InputZone.fromText(newText, P, cursor)` from the
 `handleKeyDown` causes the host to re-render `Dy8` with `value=newText`.

@@ -177,6 +177,11 @@ export class Resolver {
       const existing = this.dynDefs.get(r.wordIndex);
       // Don't clobber a user mid-cycle on this word.
       if (existing && existing.currentIndex > 0) continue;
+      // Don't clobber control-attributed entries (volume/brightness blank
+      // fills, satellite cycles, etc.) — those route through their own
+      // cycling path and have a script set/get protocol the LLM alts
+      // would silently break.
+      if (existing && existing.controlName) continue;
       const alts = (r.alternatives ?? []).filter(a => a && a !== target.word);
       if (alts.length === 0) continue;
       const def: WordDef = {
