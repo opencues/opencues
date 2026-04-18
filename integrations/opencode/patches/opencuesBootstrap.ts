@@ -19,7 +19,7 @@ import * as path from "node:path"
 import * as fs from "node:fs/promises"
 import { spawn as nodeSpawn } from "node:child_process"
 
-interface PromptInputAccess {
+export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
   read(): string
   /** Updates the SolidJS store + the textarea ref. */
@@ -28,6 +28,30 @@ interface PromptInputAccess {
   cursor(): number
   /** Sets the textarea's cursor position. */
   setCursor(offset: number): void
+}
+
+/**
+ * Singleton holder. The Prompt component publishes its TextareaRenderable
+ * ref + setStore-bound writer here on mount. The bootstrap reads through
+ * this — that way we don't need to wait for Prompt to mount before
+ * starting the runtime.
+ */
+const __ocPromptHolder: { current: PromptInputAccess | null } = { current: null }
+;(globalThis as any).__ocPromptHolder = __ocPromptHolder
+
+/** Called by the patched Prompt component on textarea mount. */
+export function publishPromptAccess(access: PromptInputAccess | null): void {
+  __ocPromptHolder.current = access
+}
+
+/** Lazy promptAccess that reads from the holder. Safe before Prompt mounts. */
+export function holderBackedPromptAccess(): PromptInputAccess {
+  return {
+    read: () => __ocPromptHolder.current?.read() ?? "",
+    write: (t) => __ocPromptHolder.current?.write(t),
+    cursor: () => __ocPromptHolder.current?.cursor() ?? 0,
+    setCursor: (c) => __ocPromptHolder.current?.setCursor(c),
+  }
 }
 
 let bootResult: BootResult | undefined
