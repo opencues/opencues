@@ -32,6 +32,7 @@ import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
+import { createControls, type BrowserControl } from './controls';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -206,6 +207,70 @@ export interface RuntimeStartOptions {
   llmEndpoint?: string;
   llmDefaultModel?: string;
   llmDebounceMs?: number;
+  /** Finnhub API key for the stocks control. */
+  finnhubApiKey?: string;
+  /** Custom ticker map for the stocks control. */
+  customTickers?: Record<string, string>;
+}
+
+let controls: Map<string, BrowserControl> | null = null;
+
+interface ControlInvokeSpecLike {
+  controlName: string;
+  action: string;
+  args: readonly string[];
+  timeoutMs?: number;
+}
+
+/**
+ * Translate a runtime ControlInvokeSpec into a browser control call.
+ * Returns a ProcessHandle-shaped object (result Promise + kill no-op)
+ * so the runtime treats the response identically to a script's
+ * stdout. Returns null if the requested control isn't registered.
+ *
+ * Action mapping:
+ *   - 'get' → control.get(args[0] as keyword, args.slice(1) as context)
+ *   - 'set' → control.set?.(args[0], args[1])  (returns empty stdout)
+ *   - 'up'  → control.up?.()                   (returns new value)
+ *   - 'down'→ control.down?.()                 (returns new value)
+ */
+function chromeControlInvoke(spec: ControlInvokeSpecLike): {
+  result: Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }>;
+  kill: () => void;
+} | null {
+  if (!controls) return null;
+  const ctl = controls.get(spec.controlName);
+  if (!ctl) return null;
+  const run = async (): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> => {
+    try {
+      let stdout = '';
+      switch (spec.action) {
+        case 'get': {
+          const keyword = spec.args[0];
+          const context = spec.args.slice(1) as string[];
+          stdout = await ctl.get(keyword, context);
+          break;
+        }
+        case 'set': {
+          if (ctl.set) await ctl.set(spec.args[0] ?? '', spec.args[1]);
+          break;
+        }
+        case 'up': {
+          if (ctl.up) stdout = await ctl.up();
+          break;
+        }
+        case 'down': {
+          if (ctl.down) stdout = await ctl.down();
+          break;
+        }
+      }
+      return { stdout, stderr: '', exitCode: 0, timedOut: false };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { stdout: '', stderr: msg, exitCode: 1, timedOut: false };
+    }
+  };
+  return { result: run(), kill: () => {} };
 }
 
 /**
@@ -215,6 +280,19 @@ export interface RuntimeStartOptions {
  */
 export function startOpenCuesRuntime(opts: RuntimeStartOptions = {}): BootResult {
   if (bootResult) return bootResult;
+
+  // CE.8 — build the chrome control registry. The runtime's BlankFill
+  // + Cycling dispatch into this via controlInvoke. Prompt-improver
+  // is opt-in via llmConfig.
+  controls = createControls({
+    finnhubApiKey: opts.finnhubApiKey,
+    customTickers: opts.customTickers,
+    llmConfig: opts.llmApiKey ? {
+      apiKey: opts.llmApiKey,
+      endpoint: opts.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
+    } : undefined,
+  });
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     const tag = `[opencues][${level}]`;
@@ -261,6 +339,12 @@ export function startOpenCuesRuntime(opts: RuntimeStartOptions = {}): BootResult
     llmDefaultModel: opts.llmDefaultModel,
     llmDebounceMs: opts.llmDebounceMs,
     httpAdapter: opts.llmApiKey ? new FetchHttpAdapter() : undefined,
+    // CE.8 — controlInvoke routes blank-fill + cycle script calls to
+    // the chrome controls registry above (volume / stocks / weather /
+    // hackernews / prompt-improver). Returns null for unknown
+    // controls so spawnProcess fallback (which the chrome adapter
+    // resolves with exitCode 127) takes over visibly.
+    controlInvoke: (spec: unknown) => chromeControlInvoke(spec as ControlInvokeSpecLike),
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process

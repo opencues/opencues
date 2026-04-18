@@ -56,6 +56,13 @@ export interface HostInfo {
   readDir?(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null>;
   writeFile?(path: string, content: string): Promise<void>;
   pushText?(text: string, cursor?: number): void;
+  /**
+   * Host-native control dispatch. BlankFill + Cycling try this before
+   * spawnProcess. Chrome implementations typically dispatch to
+   * Web Audio (volume) / fetch() (stocks/weather/HN) / two-step LLM
+   * (prompt-improver) etc. Returns ProcessHandle or null.
+   */
+  controlInvoke?(spec: unknown): unknown;
   /** Optional logger — defaults to console.log with [opencues] prefix. */
   log?(level: LogLevel, msg: string, data?: unknown): void;
   /** Optional: tips JSON virtual path (chrome.storage key). */
@@ -167,6 +174,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     pushText: host.pushText,
+    controlInvoke: host.controlInvoke as ChromeBindings['controlInvoke'],
     log,
   };
 

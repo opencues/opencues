@@ -21,6 +21,7 @@
 // bands drifting in lockstep when the HostAdapter contract evolves.
 
 import type {
+  ControlInvokeSpec,
   HostAdapter,
   KeyEvent,
   KeyFilter,
@@ -79,6 +80,13 @@ export interface ChromeBindings {
    * setText + cursor reposition in one call. Matches the OpenCode band.
    */
   pushText?(text: string, cursor?: number): void;
+  /**
+   * Optional control dispatch for sandboxed hosts. BlankFill +
+   * Cycling try this BEFORE spawnProcess. Returns ProcessHandle for
+   * controls the host knows; null falls through to spawnProcess
+   * (which the chrome adapter resolves with exitCode 127).
+   */
+  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -108,7 +116,9 @@ export class ChromeV1Adapter implements HostAdapter {
     this.hostVersion = bindings.hostVersion;
     this.cwd = bindings.cwd;
     // spawn-process is NEVER advertised — Chrome extensions can't spawn.
-    this.capabilities = [...CHROME_V1_CAPABILITIES];
+    const caps: Capability[] = [...CHROME_V1_CAPABILITIES];
+    if (bindings.controlInvoke) caps.push('control-invoke');
+    this.capabilities = caps;
   }
 
   // ─── State reads ───────────────────────────────────────────────────────
@@ -167,6 +177,9 @@ export class ChromeV1Adapter implements HostAdapter {
   }
   writeFile(path: string, content: string): Promise<void> {
     return this.bindings.writeFile?.(path, content) ?? Promise.resolve();
+  }
+  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
+    return this.bindings.controlInvoke?.(spec) ?? null;
   }
   spawnProcess(_spec: ProcessSpec): ProcessHandle {
     // Chrome extensions cannot spawn. Return a rejected handle so

@@ -475,11 +475,12 @@ function bootstrap(target: HTMLElement, config: StoredConfig): void {
   };
 
   // Check for blanks on input with a longer debounce (500ms — wait for user to finish typing keyword)
-  target.addEventListener('input', () => {
-    if (nav?.cycling) return;
-    if (blankTimer) clearTimeout(blankTimer);
-    blankTimer = setTimeout(checkBlanks, 500);
-  }, { signal });
+  // CE.8 — runtime BlankFill subscribes to onTextChange and handles
+  // `_` keystrokes itself via controlInvoke (chrome controls dispatch
+  // in opencues-bootstrap.ts). The legacy checkBlanks debounce is no
+  // longer scheduled. checkBlanks function body is dead code; CE.9
+  // cleanup deletes it.
+  void checkBlanks; // keep TS happy until CE.9 deletes the function
 
   // Initial analysis
   lastInputText = getText(target);
@@ -588,6 +589,7 @@ async function init(): Promise<void> {
     llmApiKey: config.apiKey,
     llmEndpoint: config.endpoint,
     llmDefaultModel: config.model,
+    finnhubApiKey: config.finnhubApiKey,
   });
 
   // Attach to whichever text input gets focus
