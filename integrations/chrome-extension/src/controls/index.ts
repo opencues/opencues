@@ -1,9 +1,8 @@
 import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
-import { WeatherControl } from './weather';
 // Hoisted to runtime — same classes, every host. Chrome's
-// src/controls/hackernews.ts + stocks.ts have been deleted.
-import { HackerNewsControl, StocksControl } from 'opencues-runtime/dist/src/controls';
+// src/controls/hackernews.ts + stocks.ts + weather.ts have been deleted.
+import { HackerNewsControl, StocksControl, WeatherControl } from 'opencues-runtime/dist/src/controls';
 import { PromptImproverControl, type PromptImproverConfig } from './prompt-improver';
 
 export type { BrowserControl } from './types';

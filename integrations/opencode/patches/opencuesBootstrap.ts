@@ -16,7 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
 import { createSourceReclassifier } from "opencues-runtime/dist/src/boot-common"
-import { createControlInvoke, HackerNewsControl, StocksControl, type Control } from "opencues-runtime/dist/src/controls"
+import { createControlInvoke, HackerNewsControl, StocksControl, WeatherControl, type Control } from "opencues-runtime/dist/src/controls"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -83,6 +83,7 @@ const sourceReclassifier = createSourceReclassifier()
 const controlsRegistry = new Map<string, Control>([
   ['hackernews', new HackerNewsControl()],
   ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
+  ['weather', new WeatherControl()],
 ])
 const controlInvoke = createControlInvoke(controlsRegistry)
 
