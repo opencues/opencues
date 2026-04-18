@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BlankFill } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
@@ -161,6 +161,53 @@ describe('BlankFill auto-populate (Step 24)', () => {
     ev.modifiers = { ctrl: true, alt: false, shift: false, meta: false };
     expect(bf.onUnderscoreKey(ev)).toBe(false);
     expect(adapter.setTextCalls).toHaveLength(0);
+  });
+
+  it('async path: blankScript get is spawned for script-backed control with no stepValues', async () => {
+    const SCRIPT_CTRL = `---
+type: control
+name: stocks
+blankKeywords: stock, ticker
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('stock _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(spawnSpy).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'bash',
+      args: expect.arrayContaining(['get', 'stock']),
+    }));
+  });
+
+  it('async path: dedupes concurrent spawns for same (text, slot)', async () => {
+    const SCRIPT_CTRL = `---
+type: control
+name: stocks
+blankKeywords: stock
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('stock _');
+    adapter.pushText('stock _'); // same text, no new spawn
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
   });
 
   it('honours blankAutoPopulate: false on the control', async () => {

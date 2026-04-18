@@ -205,10 +205,16 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `writeFile:function(p,c){return new Promise(function(res,rej){try{${requireFn}("fs").writeFile(p,c,"utf8",function(err){err?rej(err):res();});}catch(__ocWe){rej(__ocWe);}});},` +
     // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
     // a ProcessHandle whose .result resolves on exit (or never, if detached).
-    `spawnProcess:function(spec){var __ocCp=${requireFn}("child_process");var __ocOpts={detached:!!spec.detached,stdio:"ignore",env:spec.env,cwd:spec.cwd};` +
+    `pushText:function(t,c){try{if(globalThis.__oc_pushHostText)globalThis.__oc_pushHostText(t,c);}catch(__ocXe){}},` +
+    `spawnProcess:function(spec){var __ocCp=${requireFn}("child_process");var __ocOpts={detached:!!spec.detached,stdio:spec.detached?"ignore":["ignore","pipe","pipe"],env:spec.env,cwd:spec.cwd};` +
     `var __ocResolve;var __ocReject;var __ocP=new Promise(function(r,rj){__ocResolve=r;__ocReject=rj;});` +
     `try{var __ocCh=__ocCp.spawn(spec.command,Array.from(spec.args||[]),__ocOpts);if(spec.detached)__ocCh.unref();` +
-    `if(!spec.detached){__ocCh.on("exit",function(code){__ocResolve({stdout:"",stderr:"",exitCode:code||0,timedOut:false});});__ocCh.on("error",__ocReject);}` +
+    `if(!spec.detached){var __ocStdout="";var __ocStderr="";var __ocTimedOut=false;var __ocTimeoutId=null;` +
+    `if(spec.timeoutMs){__ocTimeoutId=setTimeout(function(){__ocTimedOut=true;try{__ocCh.kill("SIGTERM");}catch(_e){}},spec.timeoutMs);}` +
+    `if(__ocCh.stdout)__ocCh.stdout.on("data",function(d){__ocStdout+=d.toString();});` +
+    `if(__ocCh.stderr)__ocCh.stderr.on("data",function(d){__ocStderr+=d.toString();});` +
+    `__ocCh.on("exit",function(code){if(__ocTimeoutId)clearTimeout(__ocTimeoutId);__ocResolve({stdout:__ocStdout,stderr:__ocStderr,exitCode:code||0,timedOut:__ocTimedOut});});` +
+    `__ocCh.on("error",__ocReject);}` +
     `return{result:__ocP,kill:function(sig){try{__ocCh.kill(sig||"SIGTERM");}catch(_e){}}};}` +
     `catch(__ocSpawnErr){return{result:Promise.reject(__ocSpawnErr),kill:function(){}};}},` +
     // Statusline export path. Per-PID so two CC instances don't collide.
@@ -234,6 +240,11 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `catch(__ocBe){console.error("[opencues] boot failed:",__ocBe&&__ocBe.stack||__ocBe);globalThis.__oc={failed:true};}` +
     `}` +
     `if(globalThis.__oc&&!globalThis.__oc.failed){` +
+    // Refresh global async-text-push handle each dispatch. Async modules
+    // (BlankFill, Resolver) call this to commit text outside the dispatch
+    // return path. K = onChange, B = onOffsetChange — both captured fresh
+    // per-render via closure scope.
+    `globalThis.__oc_pushHostText=function(__ocPt,__ocPc){try{var __ocPv=${iz}.text||"";var __ocPhasB=__ocPv.indexOf("\\u200B")>=0;var __ocPtc=__ocPhasB?"\\u200C":"\\u200B";${s2!.bindings.onChangeParam}(__ocPt+__ocPtc);if(typeof __ocPc==="number"&&${s2!.bindings.onOffsetChangeVar})${s2!.bindings.onOffsetChangeVar}(__ocPc);}catch(__ocPe){}};` +
     `if(process.env.DEBUG_OPENCUES&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","dispatch in",{key:${ev}.key,ctrl:!!${ev}.ctrl,alt:!!${ev}.alt,meta:!!${ev}.meta,option:!!${ev}.option,shift:!!${ev}.shift,mtext:${iz}.text,moff:${iz}.offset});` +
     `if(globalThis.__oc.dispatchKey(${ev},${iz}.text,${iz}.offset)){` +
     // Pass fresh m.text/m.offset to consumePendingRender — the closure in

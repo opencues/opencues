@@ -31,6 +31,8 @@ export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
   private _unsubText: Unsubscribe | null = null;
   private _unsubKey: Unsubscribe | null = null;
+  /** Dedup key (text + slot index) → in-flight script promise. */
+  private _pendingScripts = new Set<string>();
 
   constructor(
     private adapter: HostAdapter,
@@ -71,7 +73,86 @@ export class BlankFill {
   }
 
   private onTextChange(e: TextChangeEvent): void {
-    this.scan(e.text);
+    const slots = this.scan(e.text);
+    if (e.source === 'user') {
+      this.maybeRunScripts(e.text, slots);
+    }
+  }
+
+  /**
+   * Step 25 — for any blank slot whose control has a `blankScript` (and no
+   * `stepValues`, since stepValues path was already handled by E.2's
+   * onUnderscoreKey), spawn `bash <script> get <keyword>` async and splice
+   * stdout into the `_` position when the call returns. The pendingScripts
+   * dedupe stops repeated spawns for the same (text, slotIndex) pair.
+   */
+  private maybeRunScripts(text: string, slots: readonly BlankSlot[]): void {
+    if (slots.length > 0) this.adapter.log('debug', `BlankFill: ${slots.length} slot(s) on text-change`, slots);
+    if (!this.adapter.capabilities.includes('spawn-process')) return;
+    for (const slot of slots) {
+      const control = this.configLoader.controls.get(slot.controlName) as
+        | (Record<string, unknown> & { stepValues?: readonly string[]; blankScript?: string; blankAutoPopulate?: boolean })
+        | undefined;
+      if (!control) continue;
+      if (control.blankAutoPopulate === false) continue;
+      // stepValues path is handled synchronously in onUnderscoreKey.
+      if (Array.isArray(control.stepValues) && control.stepValues.length > 0) continue;
+      const script = control.blankScript;
+      if (!script || typeof script !== 'string') continue;
+
+      const dedupKey = `${text}::${slot.index}`;
+      if (this._pendingScripts.has(dedupKey)) continue;
+      this._pendingScripts.add(dedupKey);
+
+      this.adapter.log('debug', `BlankFill: spawn ${script} get ${slot.keyword}`);
+      const handle = this.adapter.spawnProcess({
+        command: 'bash',
+        args: [script, 'get', slot.keyword],
+        timeoutMs: 8000,
+      });
+      handle.result.then(res => {
+        this._pendingScripts.delete(dedupKey);
+        this.adapter.log('debug', `BlankFill: script result for ${slot.controlName}`, { exitCode: res.exitCode, timedOut: res.timedOut, stdoutLen: res.stdout?.length ?? 0, stdoutPreview: res.stdout?.slice(0, 80) });
+        if (res.exitCode !== 0 || res.timedOut) return;
+        const stdout = res.stdout.trim();
+        if (!stdout) return;
+        this.applyAsyncFill(slot, stdout);
+      }).catch(err => {
+        this._pendingScripts.delete(dedupKey);
+        this.adapter.log('error', `BlankFill: script promise rejected for ${slot.controlName}`, err);
+      });
+    }
+  }
+
+  /**
+   * Apply an async fill: re-read the host's text via getText, find the
+   * matching `_` at the slot's word index, splice stdout in. Push via
+   * adapter.pushText (calls onChange), since this runs outside any
+   * dispatch.
+   */
+  private applyAsyncFill(slot: BlankSlot, fillValue: string): void {
+    const currentText = this.adapter.getText();
+    const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
+    const words = splitWords(cleaned);
+    const target = words[slot.index];
+    this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.controlName}`, {
+      currentTextLen: currentText.length,
+      cleanedLen: cleaned.length,
+      slotIndex: slot.index,
+      targetWord: target?.word ?? null,
+      fillValueLen: fillValue.length,
+      hasPushText: !!this.adapter.pushText,
+    });
+    if (!target || target.word !== '_') return; // slot moved or filled — drop
+    const newText = cleaned.slice(0, target.start) + fillValue + cleaned.slice(target.end);
+    const newCursor = target.start + fillValue.length;
+    if (this.adapter.pushText) {
+      this.adapter.pushText(newText, newCursor);
+    } else {
+      this.adapter.setText(newText);
+      this.adapter.setCursorOffset(newCursor);
+      this.adapter.forceRender();
+    }
   }
 
   /**

@@ -50,6 +50,8 @@ export interface HostInfo {
   writeFile?(path: string, content: string): Promise<void>;
   /** Optional: spawn a child process. Used by TTS for fire-and-forget speak. */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
+  /** Optional: async text push (calls captured onChange + onOffsetChange). */
+  pushText?(text: string, cursor?: number): void;
   /** Optional: absolute path to the TTS script (typically ~/.claude/actions/speak.sh). */
   ttsScriptPath?: string;
   /** Optional: TTS rate (-10 to 10) passed as 2nd arg to the script. Defaults to 2. */
@@ -159,10 +161,14 @@ export function boot(host: HostInfo): BootResult {
   // Drift detection: lastSeenText is what we last observed during a dispatch
   // or render. If the visible-character content changes between observations
   // and we didn't initiate the change ourselves, fire a 'user' textChange.
+  // Also serves as the source-of-truth for bindings.getText — host.getText
+  // is a stale closure on this CC build (REPAIR.md §Host quirks #1).
   let lastSeenText: string | null = null;
+  let lastSeenCursor = 0;
   const ZW_RE = /[\u200B\u200C]+/g;
   const visible = (s: string): string => s.replace(ZW_RE, '');
   const checkTextDrift = (text: string, cursorOffset: number): void => {
+    lastSeenCursor = cursorOffset;
     if (lastSeenText === null) {
       lastSeenText = text;
       return;
@@ -192,8 +198,18 @@ export function boot(host: HostInfo): BootResult {
   const bindings: HostBindings = {
     hostVersion: host.hostVersion,
     cwd: host.cwd,
-    getText: () => { try { return host.getText(); } catch { return ''; } },
-    getCursorOffset: () => { try { return host.getCursorOffset(); } catch { return 0; } },
+    // Prefer boot's drift-tracked text (always fresh from the latest dispatch
+    // or render). Falls back to host.getText() before the first observation.
+    // Avoids the stale-closure issue where host.getText is bound to a long-
+    // gone Dy8 invocation.
+    getText: () => {
+      if (lastSeenText !== null) return lastSeenText;
+      try { return host.getText(); } catch { return ''; }
+    },
+    getCursorOffset: () => {
+      if (lastSeenText !== null) return lastSeenCursor;
+      try { return host.getCursorOffset(); } catch { return 0; }
+    },
     setText: (text) => { pendingText = text; },
     setCursorOffset: (offset) => { pendingCursor = offset; },
     forceRender: () => { pendingRender = true; },
@@ -213,6 +229,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess,
+    pushText: host.pushText,
     log,
   };
 

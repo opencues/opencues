@@ -116,6 +116,14 @@ export interface HostAdapter {
   setText(text: string): void;
   setCursorOffset(offset: number): void;
   forceRender(): void;
+  /**
+   * Async text push, bypassing the dispatch return path. Used by modules
+   * (BlankFill, Resolver) that need to commit text changes outside a key
+   * dispatch — the host must propagate the new value through whatever
+   * channel its own typing path uses (e.g. onChange callback). When the
+   * host can't satisfy this, the implementation may be a no-op.
+   */
+  pushText?(text: string, cursorOffset?: number): void;
 
   onKey(filter: KeyFilter | null, handler: (event: KeyEvent) => boolean): Unsubscribe;
   onTextChange(handler: (event: TextChangeEvent) => void): Unsubscribe;

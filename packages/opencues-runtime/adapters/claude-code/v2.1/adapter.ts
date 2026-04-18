@@ -70,6 +70,9 @@ export interface HostBindings {
   /** Optional: spawn a child process. Detached/fire-and-forget supported. */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
 
+  /** Optional: async text push (calls captured onChange or equivalent). */
+  pushText?(text: string, cursor?: number): void;
+
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -164,6 +167,14 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
   }
 
   // ─── I/O ───────────────────────────────────────────────────────────────
+  pushText(text: string, cursor?: number): void {
+    if (this._disposed) return;
+    if (!this.bindings.pushText) return;
+    try { this.bindings.pushText(text, cursor); } catch (err) {
+      this.log('error', 'pushText failed', err);
+    }
+  }
+
   spawnProcess(spec: ProcessSpec): ProcessHandle {
     if (!this.bindings.spawnProcess) {
       return {
