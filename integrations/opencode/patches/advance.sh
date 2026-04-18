@@ -218,17 +218,36 @@ verify() {
 }
 echo ""
 echo "Verifying live-fixes survived the advance..."
+# Each verify is gated on the feature it fixes being present at this commit.
+# Earlier phases legitimately don't have the target code — silently skipping
+# keeps the harness usable for walking history while still catching real rot.
 verify "$ADAPTER" "if (!filter) return this.bindings.registerKeyHandler(handler);" "filter wrap (adapter.ts)"
-verify "$SETUP" "useTheme().syntax() as any" "syntax() call (setup.sh)"
-verify "$BOOTSTRAP" "(textarea.extmarks as any).delete?.(id)" "extmarks.delete (opencuesBootstrap.ts)"
-verify "$SETUP" "process.env.OPENCUES_HOME" "cwd→OPENCUES_HOME (setup.sh)"
-verify "$BOOTSTRAP" "lastRuntimeSetText" "runtime-source tagging (opencuesBootstrap.ts)"
-# LF-6 only applies once Resolver is wired (O.7+). Skip verify on earlier phases.
+# LF-2 / LF-3 / LF-5 are for prompt+extmark code that lands in O.4 (prompt
+# patch in setup.sh; extmark applier + lastRuntimeSetText in bootstrap).
+if grep -q "publishPromptAccess" "$SETUP"; then
+  verify "$SETUP" "useTheme().syntax() as any" "syntax() call (setup.sh)"
+fi
+if grep -q "textarea.extmarks" "$BOOTSTRAP"; then
+  verify "$BOOTSTRAP" "(textarea.extmarks as any).delete?.(id)" "extmarks.delete (opencuesBootstrap.ts)"
+fi
+if grep -q "startOpenCues" "$SETUP"; then
+  verify "$SETUP" "process.env.OPENCUES_HOME" "cwd→OPENCUES_HOME (setup.sh)"
+fi
+if grep -q "notifyOpenCuesTextChange" "$BOOTSTRAP"; then
+  verify "$BOOTSTRAP" "lastRuntimeSetText" "runtime-source tagging (opencuesBootstrap.ts)"
+fi
+# LF-6 only applies once Resolver is wired (O.7+).
 if grep -q "const resolver = new Resolver" "$BOOT"; then
   verify "$BOOT" "configLoader.load().then(() => resolver.subscribe())" "resolver subscribe-after-load (boot.ts)"
 fi
-verify "$SETUP" "node-http-adapter.js" "cues-core node-http-adapter copy (setup.sh)"
-verify "$BOOTSTRAP" "pushText:" "pushText binding (opencuesBootstrap.ts)"
+# LF-7 needs cues-core install block (landed when ConfigLoader did, O.5).
+if grep -q "cues-core/dist" "$SETUP"; then
+  verify "$SETUP" "node-http-adapter.js" "cues-core node-http-adapter copy (setup.sh)"
+fi
+# LF-8 needs the bootstrap's boot() bindings object (from O.2).
+if grep -q "setText:" "$BOOTSTRAP"; then
+  verify "$BOOTSTRAP" "pushText:" "pushText binding (opencuesBootstrap.ts)"
+fi
 
 echo ""
 echo "Rebuilding opencues-runtime (clean — tsc incremental cache lies)..."
