@@ -5,7 +5,6 @@ control: prompt
 blankKeywords: improve prompt, enhance prompt, refine prompt
 blankAutoPopulate: true
 blankFormat: string
-blankScript: ./prompt-blank.sh
 blankClearKeywords: true
 blankConsumeAll: true
 blankTip: Prompt improver
@@ -15,6 +14,13 @@ model: openai/gpt-oss-120b
 altCount: 3
 includeOriginal: true
 ---
+
+> Dispatched by the shared runtime `PromptImproverControl`
+> (`packages/opencues-runtime/src/controls/prompt-improver.ts`). The two
+> system prompts below are duplicated inside the runtime class for now
+> — a future improvement is to plumb them from this cue.md so this is
+> the single source of truth. The legacy `prompt-blank.sh` was deleted
+> on 2026-04-18.
 
 ## Extract
 
