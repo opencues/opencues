@@ -13,7 +13,8 @@
       "cues-core": ["../../packages/cues-core/dist/index.d.ts"],
       "cues-core/*": ["../../packages/cues-core/dist/*"],
       "opencues-runtime/dist/adapters/chrome/v1/boot": ["../../packages/opencues-runtime/dist/adapters/chrome/v1/boot.d.ts"],
-      "opencues-runtime/dist/src/adapter": ["../../packages/opencues-runtime/dist/src/adapter.d.ts"]
+      "opencues-runtime/dist/src/adapter": ["../../packages/opencues-runtime/dist/src/adapter.d.ts"],
+      "opencues-runtime/dist/src/boot-common": ["../../packages/opencues-runtime/dist/src/boot-common.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

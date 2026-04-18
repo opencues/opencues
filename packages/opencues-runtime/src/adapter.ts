@@ -127,6 +127,53 @@ export interface DirEntry {
   readonly isDirectory: boolean;
 }
 
+/**
+ * Base shape of the HostInfo argument that each adapter band's `boot()`
+ * accepts. Hosts extend this with their own host-specific optional
+ * fields (chrome adds controlInvoke/speakFn/httpAdapter, opencode adds
+ * spawnProcess/ttsScriptPath, etc.).
+ *
+ * Why this exists: declaring HostInfo independently in each adapter
+ * caused field-name drift — `apiUrl` vs `endpoint`, `tipsPath` typo
+ * variants, etc. — that didn't surface until live testing because the
+ * bootstraps used `as any`-shaped casts to bridge them. Pinning the
+ * common subset here makes drift a tsc error.
+ */
+export interface CommonHostInfo {
+  readonly hostVersion: string;
+  readonly cwd: string;
+  getText(): string;
+  getCursorOffset(): number;
+  setText(text: string): void;
+  setCursorOffset(offset: number): void;
+  forceRender(): void;
+  readFile?(path: string): Promise<string | null>;
+  readDir?(path: string): Promise<readonly DirEntry[] | null>;
+  writeFile?(path: string, content: string): Promise<void>;
+  pushText?(text: string, cursor?: number): void;
+  log?(level: LogLevel, msg: string, data?: unknown): void;
+  /** Path / virtual key the runtime reads the tips JSON from. */
+  tipsPath?: string;
+  /** File path the Statusline module exports the JSON snapshot to.
+   *  Hosts that have no filesystem (chrome) leave this unset. */
+  statusFilePath?: string;
+  /** In-process callback fired with the statusline payload on every
+   *  state change. Mutually-optional with statusFilePath. */
+  statusSnapshotHook?(payload: unknown): void;
+  /** File path / virtual key for the cursor-state-export JSON. Used by
+   *  the headless test harness. */
+  cursorStatePath?: string;
+  /** TTS rate (defaults to 2). Both shells (script-based) and browser
+   *  (Web Speech) honour the same numeric scale. */
+  ttsRate?: string | number;
+  /** Optional LLM resolver fields. Resolver only constructs when
+   *  llmApiKey is set. */
+  llmApiKey?: string;
+  llmEndpoint?: string;
+  llmDefaultModel?: string;
+  llmDebounceMs?: number;
+}
+
 export interface HostAdapter {
   readonly interfaceVersion: number;
 

@@ -15,6 +15,7 @@ import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "opencues-runtime/dist/adapters/opencode/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "opencues-runtime/dist/src/adapter"
+import { createSourceReclassifier } from "opencues-runtime/dist/src/boot-common"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -69,7 +70,9 @@ export function holderBackedPromptAccess(): PromptInputAccess {
 }
 
 let bootResult: BootResult | undefined
-let lastRuntimeSetText: string | null = null
+// Shared helper from boot-common — keeps source-reclassification
+// behaviour identical across hosts. See boot-common.ts:createSourceReclassifier.
+const sourceReclassifier = createSourceReclassifier()
 
 export function startOpenCues(opts: {
   renderer: CliRenderer
@@ -96,12 +99,12 @@ export function startOpenCues(opts: {
     cwd: opts.cwd || process.cwd(),
     getText: () => opts.promptAccess.read(),
     getCursorOffset: () => opts.promptAccess.cursor(),
-    setText: (text) => { lastRuntimeSetText = text; opts.promptAccess.write(text) },
+    setText: (text) => { sourceReclassifier.markRuntimeWrite(text); opts.promptAccess.write(text) },
     setCursorOffset: (offset) => opts.promptAccess.setCursor(offset),
     // BlankFill needs pushText to deposit async script results back into
     // the prompt. Same plumbing as setText + cursor reposition.
     pushText: (text: string, cursor?: number) => {
-      lastRuntimeSetText = text
+      sourceReclassifier.markRuntimeWrite(text)
       opts.promptAccess.write(text)
       if (cursor !== undefined) opts.promptAccess.setCursor(cursor)
     },
@@ -254,11 +257,7 @@ export function dispatchOpenCuesKey(evt: any): boolean {
 
 /** Notify runtime of text changes from the prompt component. */
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
-  let actualSource = source
-  if (lastRuntimeSetText !== null && text === lastRuntimeSetText) {
-    actualSource = "runtime"
-    lastRuntimeSetText = null
-  }
+  const actualSource = sourceReclassifier.reclassify(text, source)
   bootResult?.notifyTextChange(text, cursor, actualSource)
 }
 

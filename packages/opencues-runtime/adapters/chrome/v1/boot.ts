@@ -24,8 +24,9 @@ import { Resolver } from '../../../src/modules/resolver';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
 import type {
+  CommonHostInfo,
   ControlInvokeSpec,
   KeyEvent,
   LogLevel,
@@ -36,61 +37,28 @@ import type {
   Unsubscribe,
 } from '../../../src/adapter';
 
-/** Minimal host info the Chrome content script supplies. */
-export interface HostInfo {
-  readonly hostVersion: string;
-  readonly cwd: string;
-  getText(): string;
-  getCursorOffset(): number;
-  setText(text: string): void;
-  setCursorOffset(offset: number): void;
-  forceRender(): void;
-  readFile?(path: string): Promise<string | null>;
-  readDir?(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null>;
-  writeFile?(path: string, content: string): Promise<void>;
-  pushText?(text: string, cursor?: number): void;
+/** Chrome host info — CommonHostInfo plus the sandboxed-host extensions
+ *  that don't apply to spawning hosts (opencode). */
+export interface HostInfo extends CommonHostInfo {
   /**
    * Host-native control dispatch. BlankFill + Cycling try this before
    * spawnProcess. Chrome implementations typically dispatch to
    * Web Audio (volume) / fetch() (stocks/weather/HN) / two-step LLM
-   * (prompt-improver) etc. Returns ProcessHandle or null when the
-   * controlName isn't recognised (the runtime then falls through to
-   * spawnProcess, which the chrome adapter resolves with exitCode 127).
+   * (prompt-improver). Returns ProcessHandle or null when the
+   * controlName isn't recognised (runtime falls through to spawnProcess,
+   * which the chrome adapter resolves with exitCode 127).
    */
   controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
-  /** Optional logger — defaults to console.log with [opencues] prefix. */
-  log?(level: LogLevel, msg: string, data?: unknown): void;
-  /** Optional: tips JSON virtual path (chrome.storage key). */
-  tipsPath?: string;
   /**
-   * Optional: in-process callback fired with the statusline payload on
-   * every state change. The content script renders the tip into its
-   * floating status-bar div from this.
-   */
-  statusSnapshotHook?(payload: unknown): void;
-  /**
-   * Optional: cursor-state-export JSON virtual path. Mirrors the
-   * OpenCode CursorStateExport wiring — useful for headless test
-   * harnesses that drive the extension via chrome.storage reads.
-   */
-  cursorStatePath?: string;
-  /**
-   * Optional: speak callback for the TTS module. Chrome extensions
-   * pass a Web Speech-backed function here; falling back to the
-   * spawn path is impossible in a content-script context.
+   * Speak callback for the TTS module. Chrome extensions pass a Web
+   * Speech-backed function here; falling back to the spawn path is
+   * impossible in a content-script context.
    */
   speakFn?(text: string, rate?: string): void;
-  /** TTS speech rate. Defaults to '2'. */
-  ttsRate?: string | number;
-  /** Optional: LLM resolver — only constructs when llmApiKey set. */
-  llmApiKey?: string;
-  llmEndpoint?: string;
-  llmDefaultModel?: string;
-  llmDebounceMs?: number;
   /**
-   * Optional: custom httpAdapter to inject into the Resolver. Chrome
-   * extensions can't use NodeHttpAdapter (no node:https); content
-   * scripts supply their own fetch()-based adapter here.
+   * Custom httpAdapter to inject into the Resolver. Chrome extensions
+   * can't use NodeHttpAdapter (no node:https); content scripts supply
+   * their own fetch()-based adapter here.
    */
   httpAdapter?: unknown;
 }
@@ -106,19 +74,14 @@ export function boot(host: HostInfo): BootResult {
   // Debug gating mirrors OpenCode's pattern — reads opencuesState.debugMode
   // lazily so the popup can flip it without restart.
   let configLoaderRef: ConfigLoader | null = null;
-  const isDebugEnabled = (): boolean => {
-    if (configLoaderRef?.loaded) {
-      return configLoaderRef.opencuesState.debugMode === 'on';
-    }
-    // No DEBUG_OPENCUES env in the browser — default off pre-load.
-    return false;
-  };
-  const log = (level: LogLevel, msg: string, data?: unknown): void => {
-    if (level === 'debug' && !isDebugEnabled()) return;
-    if (host.log) {
-      try { host.log(level, msg, data); } catch { /* swallow */ }
-    }
-  };
+  // Debug gating reads opencuesState.debugMode lazily so the popup/file
+  // edit can flip it without restart. No DEBUG_OPENCUES env fallback in
+  // the browser — pre-load default is off.
+  const log = createLogFunction({
+    sink: (level, msg, data) => host.log?.(level, msg, data),
+    isDebugEnabled: () => configLoaderRef?.loaded === true
+      && configLoaderRef.opencuesState.debugMode === 'on',
+  });
 
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];

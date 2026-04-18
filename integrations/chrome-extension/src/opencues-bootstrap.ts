@@ -34,6 +34,7 @@ import type {
   ProcessHandle,
   ProcessResult,
 } from 'opencues-runtime/dist/src/adapter';
+import { createSourceReclassifier } from 'opencues-runtime/dist/src/boot-common';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
@@ -59,13 +60,12 @@ let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
 const speech = new WebSpeechAdapter();
 
-// Mirrors OpenCode's `lastRuntimeSetText` (opencuesBootstrap.ts:72) — same
-// name, same semantics, same one-shot clear. Stashes the text the runtime
-// just wrote so the next 'input' event from the contenteditable is
-// reclassified as source='runtime'. Chrome's writeText updates the value
-// to target.textContent AFTER execCommand so DOM normalisation
-// (whitespace, newlines) doesn't break the comparison.
-let lastRuntimeSetText: string | null = null;
+// Source reclassifier — shared helper from boot-common. Stashes the text
+// the runtime just wrote so the next 'input' event from the
+// contenteditable is reclassified as source='runtime'. Chrome calls
+// markRuntimeWrite AFTER the execCommand insertText so the post-DOM
+// (potentially whitespace-normalised) text is what gets compared.
+const sourceReclassifier = createSourceReclassifier();
 
 /** Called by content.ts when the focused contenteditable changes. */
 export function publishTarget(el: HTMLElement | null): void {
@@ -141,10 +141,10 @@ function writeText(text: string): void {
   // Stash AFTER write — read back the actual DOM textContent. execCommand
   // can normalise whitespace/newlines so target.textContent isn't always
   // === text. The 'input' listener (deferred to a microtask in
-  // content.ts) compares against target.textContent so the match
-  // succeeds and source='runtime' classification works even when DOM
-  // normalisation altered the bytes.
-  lastRuntimeSetText = target.textContent ?? text;
+  // content.ts) compares against target.textContent via the reclassifier,
+  // so the match succeeds and source='runtime' classification works even
+  // when DOM normalisation altered the bytes.
+  sourceReclassifier.markRuntimeWrite(target.textContent ?? text);
 }
 
 /** chrome.storage.local-backed readFile. Path is the storage key suffix. */
@@ -351,9 +351,9 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     setText: writeText,
     setCursorOffset: writeCursorOffset,
     pushText: (text, cursor) => {
-      // writeText already stashes lastRuntimeSetText. Cursor is set
-      // synchronously after so the input-event handler reads the
-      // post-fill caret position (matters for multi-word fills).
+      // writeText already calls sourceReclassifier.markRuntimeWrite.
+      // Cursor is set synchronously after so the input-event handler
+      // reads the post-fill caret position (matters for multi-word fills).
       writeText(text);
       if (cursor !== undefined) writeCursorOffset(cursor);
     },
@@ -395,16 +395,14 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
 /** Call from content.ts's input handler to forward text changes.
  *
  * Two corrections applied vs the naive "always source='user', cursor=0"
- * forwarder, mirroring OpenCode's notifyOpenCuesTextChange:
+ * forwarder:
  *
- *   1. If the incoming text matches what the runtime just wrote
- *      (lastRuntimeSetText), reclassify the source as 'runtime'.
- *      Otherwise Navigation.onTextChange treats the write as a user
- *      edit and clears the highlight + DynDefs. (One-shot — cleared
- *      after match so a later identical user-typed text isn't
- *      misclassified.)
- *   2. Read the actual caret offset from the contenteditable instead
- *      of trusting the caller-supplied cursor. Multi-word fills
+ *   1. Use the shared sourceReclassifier — if the incoming text matches
+ *      what the runtime just wrote (markRuntimeWrite), the source flips
+ *      to 'runtime'. Otherwise Navigation.onTextChange treats the write
+ *      as a user edit and clears the highlight + DynDefs.
+ *   2. Read the actual caret offset from the contenteditable instead of
+ *      trusting the caller-supplied cursor. Multi-word fills
  *      (`"Hacker News"`, affirmations, etc.) need the post-fill caret
  *      so subsequent cycles know where the cursor sits.
  */
@@ -413,11 +411,7 @@ export function notifyOpenCuesTextChange(
   cursorOffset: number,
   source: 'user' | 'runtime' = 'user',
 ): void {
-  let actualSource = source;
-  if (lastRuntimeSetText !== null && text === lastRuntimeSetText) {
-    actualSource = 'runtime';
-    lastRuntimeSetText = null;
-  }
+  const actualSource = sourceReclassifier.reclassify(text, source);
   const actualCursor = readCursorOffset() || cursorOffset;
   bootResult?.notifyTextChange(text, actualCursor, actualSource);
   // Repaint after every text change. OpenCode skips this because its

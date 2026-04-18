@@ -16,8 +16,9 @@ import { Resolver } from '../../../src/modules/resolver';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
 import type {
+  CommonHostInfo,
   KeyEvent,
   LogLevel,
   RenderContext,
@@ -26,47 +27,15 @@ import type {
   Unsubscribe,
 } from '../../../src/adapter';
 
-/** Minimal host info the OpenCode-side patch supplies. */
-export interface HostInfo {
-  readonly hostVersion: string;
-  readonly cwd: string;
-  /** TextareaRenderable + SolidJS store accessors. */
-  getText(): string;
-  getCursorOffset(): number;
-  setText(text: string): void;
-  setCursorOffset(offset: number): void;
-  forceRender(): void;
-  /** Optional file I/O. Bun and node:fs both work. */
-  readFile?(path: string): Promise<string | null>;
-  readDir?(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null>;
-  writeFile?(path: string, content: string): Promise<void>;
+/** OpenCode host info — CommonHostInfo plus the spawn-based extensions
+ *  that don't apply to sandboxed hosts (chrome). */
+export interface HostInfo extends CommonHostInfo {
+  /** node:child_process.spawn shim — opencode supplies the real thing,
+   *  the runtime's spawnProcess capability check is gated on its
+   *  presence in the bindings. */
   spawnProcess?(spec: unknown): unknown;
-  pushText?(text: string, cursor?: number): void;
-  /** Optional logger — defaults to no-op. */
-  log?(level: LogLevel, msg: string, data?: unknown): void;
-  /** Optional: tips JSON path. */
-  tipsPath?: string;
-  /** Optional: statusline export path. */
-  statusFilePath?: string;
-  /**
-   * Optional: in-process callback fired with the statusline payload on
-   * every state change. Lets the OpenCode TUI render the tip natively
-   * (e.g. inside the home footer slot) without having to tail the file.
-   */
-  statusSnapshotHook?(payload: unknown): void;
-  /**
-   * Optional: cursor-state-export JSON path. Used by the opencues-auto
-   * test harness to drive automated runs.
-   */
-  cursorStatePath?: string;
-  /** Optional: TTS script path. */
+  /** Optional: TTS script path. spawn-process must be available. */
   ttsScriptPath?: string;
-  ttsRate?: string | number;
-  /** Optional: LLM resolver — only constructs when llmApiKey set. */
-  llmApiKey?: string;
-  llmEndpoint?: string;
-  llmDefaultModel?: string;
-  llmDebounceMs?: number;
 }
 
 export interface BootResult {
@@ -90,19 +59,15 @@ export function boot(host: HostInfo): BootResult {
   // DEBUG_OPENCUES env is a bootstrap fallback for logs fired before
   // ConfigLoader.load resolves.
   let configLoaderRef: ConfigLoader | null = null;
-  const isDebugEnabled = (): boolean => {
-    if (configLoaderRef?.loaded) {
-      return configLoaderRef.opencuesState.debugMode === 'on';
-    }
-    return !!process.env.DEBUG_OPENCUES;
-  };
-  const log = (level: LogLevel, msg: string, data?: unknown): void => {
-    // error/warn/info always flow through; debug is gated.
-    if (level === 'debug' && !isDebugEnabled()) return;
-    if (host.log) {
-      try { host.log(level, msg, data); } catch { /* swallow */ }
-    }
-  };
+  // Debug gating reads opencuesState.debugMode lazily so opencues.md
+  // `debug-mode: on/off` hot-reloads without restart. DEBUG_OPENCUES env
+  // is a bootstrap fallback for logs fired before ConfigLoader.load resolves.
+  const log = createLogFunction({
+    sink: (level, msg, data) => host.log?.(level, msg, data),
+    isDebugEnabled: () => configLoaderRef?.loaded === true
+      ? configLoaderRef.opencuesState.debugMode === 'on'
+      : !!process.env.DEBUG_OPENCUES,
+  });
 
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];

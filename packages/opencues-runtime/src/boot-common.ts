@@ -18,6 +18,78 @@
 // boot-common-specific test would mostly duplicate them.
 
 import type { HostAdapter, LogLevel } from './adapter';
+
+/* ─── Source reclassification helper ─────────────────────────────────────
+ *
+ * Both bootstraps need the same shape: stash the text the runtime just
+ * wrote, then reclassify the next text-change event as source='runtime'
+ * if its text matches the stash. One-shot — cleared after match so a
+ * later identical user-typed text isn't misclassified.
+ *
+ * Hosts call markRuntimeWrite(text) inside their setText/pushText, and
+ * reclassify(text, source) inside their notifyOpenCuesTextChange.
+ */
+export interface SourceReclassifier {
+  /** Stash text written by the runtime so the next input event flips
+   *  source to 'runtime'. Hosts whose write path normalises whitespace
+   *  (chrome's execCommand) should call this AFTER the write with the
+   *  actual post-DOM text. */
+  markRuntimeWrite(text: string): void;
+  /** Returns 'runtime' when the incoming text matches the last marked
+   *  runtime write, otherwise the proposed source. Clears the stash on
+   *  match. */
+  reclassify(text: string, proposedSource: 'user' | 'runtime'): 'user' | 'runtime';
+}
+
+export function createSourceReclassifier(): SourceReclassifier {
+  let lastRuntimeSetText: string | null = null;
+  return {
+    markRuntimeWrite(text: string): void {
+      lastRuntimeSetText = text;
+    },
+    reclassify(text: string, proposedSource: 'user' | 'runtime'): 'user' | 'runtime' {
+      if (lastRuntimeSetText !== null && text === lastRuntimeSetText) {
+        lastRuntimeSetText = null;
+        return 'runtime';
+      }
+      return proposedSource;
+    },
+  };
+}
+
+/* ─── Log factory ────────────────────────────────────────────────────────
+ *
+ * Both bootstraps build a log function that:
+ *  - gates 'debug' through `isDebugEnabled` (reads opencues.md
+ *    debug-mode lazily so a popup/file edit can toggle it without
+ *    restart),
+ *  - delegates everything else to a host-supplied sink (console on
+ *    chrome, fs.appendFileSync on opencode).
+ *
+ * This factory just composes those two pieces.
+ */
+export interface LogFactoryOptions {
+  /** Host-supplied sink. Errors thrown by the sink are swallowed so
+   *  flaky logging can't crash the runtime. */
+  readonly sink: (level: LogLevel, msg: string, data?: unknown) => void;
+  /** Lazy debug gate. Re-evaluated on every log call so opencues.md
+   *  hot-reloads pick up new debug-mode without restart. */
+  readonly isDebugEnabled?: () => boolean;
+}
+
+export function createLogFunction(
+  opts: LogFactoryOptions,
+): (level: LogLevel, msg: string, data?: unknown) => void {
+  const { sink, isDebugEnabled } = opts;
+  return (level, msg, data) => {
+    // No gate supplied = all levels pass through (caller opted out of
+    // gating). When supplied, debug is dropped unless the gate returns
+    // true. Re-evaluated per call so opencues.md hot-reloads pick up
+    // a flipped debug-mode without restart.
+    if (level === 'debug' && isDebugEnabled !== undefined && !isDebugEnabled()) return;
+    try { sink(level, msg, data); } catch { /* swallow */ }
+  };
+}
 import { ConfigLoader } from './modules/config-loader';
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
