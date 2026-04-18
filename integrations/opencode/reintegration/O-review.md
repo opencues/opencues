@@ -12,7 +12,7 @@ Phases shipped so far:
 |---|---|---|---|
 | O.0 + O.1 (scaffold + boot) | `19723e1` | `095f4ff` | Live-test stub bindings work |
 | O.1 smoke + tests | `ac38791` | `19723e1` | 5 unit tests in adapter band |
-| O.2 (real prompt access) | `a245e68` | `ac38791` | Holder pattern, Prompt patches |
+| O.2 (real prompt access) | `ad6ff0e` | `ac38791` | Holder pattern, Prompt patches |
 
 Each future entry below has the same shape. Most-recent-on-top.
 
@@ -20,7 +20,7 @@ Each future entry below has the same shape. Most-recent-on-top.
 
 ## O.2 — Real prompt access via singleton holder
 
-**Commit:** `a245e68`
+**Commit:** `ad6ff0e`
 **Rollback to (prior):** `ac38791`
 
 **Modules touched:**
