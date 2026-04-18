@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BlankFill, buildClearKeywordText, computeFillRange } from './blank-fill';
+import { BlankFill, buildClearKeywordText, computeCleanupRange, computeFillRange } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter } from '../../testing/mock-adapter';
 import { SpanFillState } from '../state/span-fill';
@@ -181,6 +181,36 @@ describe('buildClearKeywordText helper (Step 27)', () => {
     );
     expect(r.newText).toBe('hello to her');
   });
+});
+
+describe('computeCleanupRange helper (Phase G.c)', () => {
+  it('user edits inside the pair → wipe range covers the whole pair', () => {
+    const oldText = 'foo voice-mode active bar';
+    const newText = 'foo voicE-mode active bar'; // capital E at offset 8
+    const r = computeCleanupRange(oldText, newText, 4, 21);
+    // Min(prefix, pairStart) = min(8, 4) = 4. Min(suffix, oldTail) = min(16, 4) = 4.
+    expect(r).toEqual({ start: 4, end: newText.length - 4 });
+    // Splicing yields "foo  bar" — the pair's gone.
+    expect(newText.slice(0, r.start) + newText.slice(r.end)).toBe('foo  bar');
+  });
+  it('user inserts a space mid-selector (word boundary shift case)', () => {
+    const oldText = 'foo voice-mode active bar';
+    const newText = 'foo voice -mode active bar'; // space at offset 9
+    const r = computeCleanupRange(oldText, newText, 4, 21);
+    // Pair removed in spite of new word boundary.
+    expect(newText.slice(0, r.start) + newText.slice(r.end)).toBe('foo  bar');
+  });
+  it('user deletes some chars from the satellite', () => {
+    const oldText = 'foo voice-mode active bar';
+    const newText = 'foo voice-mode acti bar'; // dropped "ve"
+    const r = computeCleanupRange(oldText, newText, 4, 21);
+    expect(newText.slice(0, r.start) + newText.slice(r.end)).toBe('foo  bar');
+  });
+  // The helper isn't designed for the texts-match case — BlankFill's
+  // caller-side `cleaned !== lastFilledText` gate makes that path
+  // unreachable in production. The suffix loop's early exit when
+  // prefix consumes the whole text means a degenerate `{start:
+  // pairStart, end: newText.length}` would result; not asserting on it.
 });
 
 describe('computeFillRange (Step 29)', () => {
@@ -1020,6 +1050,174 @@ blankSatelliteSeparator: '='
     adapter.pushText('cfg _');
     await new Promise(r => setTimeout(r, 0));
     expect(adapter.getText()).toContain('k=v');
+  });
+
+  it('Phase G.c: editing inside the pair wipes both words when blankClearOnEdit:true', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+blankClearOnEdit: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'voice-mode\tactive', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('cfg _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('cfg voice-mode active');
+    expect(ss.current).not.toBeNull();
+    // User edits inside the pair (changes 'a' to 'A')
+    adapter.pushText('cfg voice-mode Active');
+    // Stash invalidated; pair spliced out by char range. Keyword stays
+    // because we didn't set blankClearKeywords on this control.
+    expect(ss.current).toBeNull();
+    expect(adapter.getText()).toBe('cfg ');
+  });
+
+  it('Phase G.c: appending a space after the pair preserves the stash + updates lastFilledText', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+blankClearOnEdit: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'voice-mode\tactive', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('cfg _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('cfg voice-mode active');
+    const before = ss.current;
+    expect(before).not.toBeNull();
+    // User adds a space at the end. Pair is intact.
+    adapter.pushText('cfg voice-mode active ');
+    expect(ss.current).not.toBeNull();
+    expect(ss.current?.pairCharStart).toBe(before!.pairCharStart);
+    expect(ss.current?.pairCharEnd).toBe(before!.pairCharEnd);
+    expect(adapter.getText()).toBe('cfg voice-mode active '); // unchanged by us
+  });
+
+  it('Phase G.c: prepending text before the pair preserves the stash + shifts positions', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'voice-mode\tactive', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('cfg _');
+    await new Promise(r => setTimeout(r, 0));
+    const beforeStart = ss.current!.pairCharStart;
+    // Prepend "hi " (3 chars)
+    adapter.pushText('hi cfg voice-mode active');
+    expect(ss.current).not.toBeNull();
+    expect(ss.current?.pairCharStart).toBe(beforeStart + 3);
+  });
+
+  it('Phase G.c: cleanup preserves text BEFORE and AFTER the pair', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+blankClearOnEdit: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'voice-mode\tactive', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    // Surround the keyword with text on both sides.
+    adapter.pushText('before cfg _ after');
+    await new Promise(r => setTimeout(r, 0));
+    // Keyword stays (no blankClearKeywords), pair filled.
+    expect(adapter.getText()).toBe('before cfg voice-mode active after');
+    // User edits inside pair (capital E).
+    adapter.pushText('before cfg voicE-mode active after');
+    // Pair removed; "before cfg " and " after" preserved.
+    expect(adapter.getText()).toBe('before cfg  after');
+    expect(ss.current).toBeNull();
+  });
+
+  it('Phase G.c: blankClearOnEdit:false leaves the broken pair in place', async () => {
+    const SAT = `---
+type: control
+name: opencues
+blankKeywords: cfg
+blankScript: ./oc.sh
+blankSatellite: true
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+    });
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const ss = new SelectorSatelliteState();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'k\tv', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('cfg _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('cfg k v');
+    adapter.pushText('cfg K v'); // user edited
+    // Stash invalidated; pair NOT cleaned up.
+    expect(ss.current).toBeNull();
+    expect(adapter.getText()).toBe('cfg K v');
   });
 
   it('Phase G.a: missing tab in stdout does NOT trigger satellite path', async () => {

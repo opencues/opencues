@@ -88,9 +88,20 @@ export class BlankFill {
       this.spanFillState.clear();
       this.dismissedBlanks?.clear();
     }
-    // Phase G.a — same idea for the selector/satellite stash.
+    // Phase G.a / G.c — selector/satellite stash. Tolerate edits OUTSIDE
+    // the pair (typing a space after, prepending text before): pair is
+    // preserved, positions updated. Only invalidate when the edit
+    // touches the pair itself; if blankClearOnEdit, splice the broken
+    // pair out by char range.
     if (this.selectorSatelliteState && this.selectorSatelliteState.current && cleaned !== this.selectorSatelliteState.lastFilledText) {
-      this.selectorSatelliteState.clear();
+      const entry = this.selectorSatelliteState.current;
+      const oldText = this.selectorSatelliteState.lastFilledText;
+      if (!this.maybePreserveSatellitePair(oldText, cleaned, entry)) {
+        this.selectorSatelliteState.clear();
+        if (entry.clearOnEdit) {
+          this.applyClearOnEdit(oldText, cleaned, entry.pairCharStart, entry.pairCharEnd);
+        }
+      }
     }
     const slots = this.scan(e.text);
     if (e.source === 'user') {
@@ -327,6 +338,79 @@ export class BlankFill {
   }
 
   /**
+   * Phase G.c — return true if the edit happened entirely OUTSIDE the
+   * pair's char range (so the pair text is intact in newText). Mutates
+   * the entry's char positions and word indices to match the new text
+   * and updates lastFilledText. Returns false when the pair was
+   * touched, leaving caller to invalidate.
+   */
+  private maybePreserveSatellitePair(
+    oldText: string,
+    newText: string,
+    entry: { pairCharStart: number; pairCharEnd: number; selectorIndex: number; selectorLength: number; satelliteIndex: number; satelliteLength: number },
+  ): boolean {
+    let prefix = 0;
+    while (prefix < oldText.length && prefix < newText.length && oldText[prefix] === newText[prefix]) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < oldText.length - prefix &&
+      suffix < newText.length - prefix &&
+      oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+    ) suffix += 1;
+
+    const intactAfter = prefix >= entry.pairCharEnd;
+    const intactBefore = suffix >= oldText.length - entry.pairCharStart;
+    if (!intactAfter && !intactBefore) return false;
+
+    if (!intactAfter && intactBefore) {
+      // Edit happened before the pair. Shift positions by the full
+      // length diff and re-derive word indices from the new char start.
+      const lenDiff = newText.length - oldText.length;
+      entry.pairCharStart += lenDiff;
+      entry.pairCharEnd += lenDiff;
+      const newWords = splitWords(newText);
+      const newSelectorWord = newWords.find(w => w.start === entry.pairCharStart);
+      if (!newSelectorWord) return false;
+      entry.selectorIndex = newSelectorWord.index;
+      entry.satelliteIndex = entry.selectorIndex + entry.selectorLength;
+    }
+    // intactAfter case: pair sits at the same chars + word indices in
+    // newText (text added/removed only after the pair). No mutation
+    // needed beyond updating lastFilledText.
+    this.selectorSatelliteState!.set(entry as any, newText);
+    return true;
+  }
+
+  /**
+   * Phase G.c — when a selector/satellite pair was edited and the
+   * control declared `blankClearOnEdit`, splice the (broken) pair out
+   * of the new text. Uses common-prefix/suffix matching against the
+   * last filled text, with a min-of-(prefix, pairStart) / min-of-
+   * (suffix, oldTail) clamp so the wipe always covers AT LEAST the
+   * original pair range — robust under space-insertion edits that
+   * shift word boundaries (v1 lesson).
+   */
+  private applyClearOnEdit(oldText: string, newText: string, pairStart: number, pairEnd: number): void {
+    const range = computeCleanupRange(oldText, newText, pairStart, pairEnd);
+    if (range.start >= range.end) return;
+    const cleaned = newText.slice(0, range.start) + newText.slice(range.end);
+    this.adapter.log('debug', 'BlankFill: applyClearOnEdit', {
+      pairStart,
+      pairEnd,
+      cleanupStart: range.start,
+      cleanupEnd: range.end,
+      newLen: cleaned.length,
+    });
+    if (this.adapter.pushText) {
+      this.adapter.pushText(cleaned, range.start);
+    } else {
+      this.adapter.setText(cleaned);
+      this.adapter.setCursorOffset(range.start);
+      this.adapter.forceRender();
+    }
+  }
+
+  /**
    * Phase G.a — splice `<selector><sep><satellite>` into the slot and
    * stash a SelectorSatelliteEntry. Caller already verified blankSatellite
    * + presence of \t. Honours `blankClearKeywords` (Step 27) on the
@@ -370,6 +454,8 @@ export class BlankFill {
           : '';
         const selectorLength = Math.max(1, selectorRaw.split(/\s+/).filter(Boolean).length);
         const satelliteLength = Math.max(1, satelliteRaw.split(/\s+/).filter(Boolean).length);
+        const pairCharStart = startWord.start;
+        const pairCharEnd = startWord.start + pair.length;
         this.selectorSatelliteState.set({
           controlName: slot.controlName,
           scriptPath,
@@ -381,6 +467,8 @@ export class BlankFill {
           currentValue: satelliteRaw,
           separator: sep,
           clearOnEdit: control.blankClearOnEdit === true,
+          pairCharStart,
+          pairCharEnd,
         }, newText);
       }
     }
@@ -614,6 +702,38 @@ export function buildClearKeywordText(
     }
   }
   return { newText: out.join(' '), newCursor: cursor };
+}
+
+/**
+ * Phase G.c — char-range diff for blankClearOnEdit cleanup. Computes
+ * the slice of `newText` that the user "broke" relative to oldText's
+ * pair range [pairStart..pairEnd]. The result is always ⊇ the
+ * original pair, even when the user's edit happened entirely outside
+ * the visual pair range — that's the v1 invariant ("wipe the pair plus
+ * any user-typed chars inside it").
+ */
+export function computeCleanupRange(
+  oldText: string,
+  newText: string,
+  pairStart: number,
+  pairEnd: number,
+): { start: number; end: number } {
+  let prefix = 0;
+  while (
+    prefix < oldText.length &&
+    prefix < newText.length &&
+    oldText[prefix] === newText[prefix]
+  ) prefix += 1;
+  let suffix = 0;
+  while (
+    suffix < oldText.length - prefix &&
+    suffix < newText.length - prefix &&
+    oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+  ) suffix += 1;
+  const start = Math.min(prefix, pairStart);
+  const oldTail = oldText.length - pairEnd;
+  const end = newText.length - Math.min(suffix, oldTail);
+  return { start, end };
 }
 
 /**

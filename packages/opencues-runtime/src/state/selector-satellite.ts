@@ -43,6 +43,15 @@ export interface SelectorSatelliteEntry {
   readonly separator: string;
   /** From control config — true means edits to either word remove the pair. */
   readonly clearOnEdit: boolean;
+  /**
+   * Char position of the selector's first char in `lastFilledText`.
+   * Tracked so the clearOnEdit cleanup (Phase G.c) can splice the pair
+   * out by char range — robust to whatever word boundaries an edit
+   * introduced. Updated on each cycle.
+   */
+  pairCharStart: number;
+  /** Char position immediately after the satellite in `lastFilledText`. */
+  pairCharEnd: number;
 }
 
 export class SelectorSatelliteState {

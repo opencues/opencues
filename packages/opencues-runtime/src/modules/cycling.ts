@@ -139,6 +139,8 @@ export class Cycling {
       entry.selectorLength = Math.max(1, nextSetting.split(/\s+/).filter(Boolean).length);
       entry.satelliteIndex = entry.selectorIndex + entry.selectorLength;
       entry.satelliteLength = Math.max(1, provisionalValue.split(/\s+/).filter(Boolean).length);
+      entry.pairCharStart = selStartWord.start;
+      entry.pairCharEnd = newRegionEnd;
       this.selectorSatelliteState!.set(entry, newText);
       this.adapter.setText(newText);
       this.adapter.setCursorOffset(newCursor);
@@ -164,6 +166,7 @@ export class Cycling {
           const replaced = cleaned.slice(0, ts.start) + fetched + cleaned.slice(te.end);
           entry.currentValue = fetched;
           entry.satelliteLength = Math.max(1, fetched.split(/\s+/).filter(Boolean).length);
+          entry.pairCharEnd = ts.start + fetched.length;
           this.selectorSatelliteState!.set(entry, replaced);
           // Don't move the cursor — the user already moved it (or didn't)
           // synchronously; this is a background update.
@@ -191,6 +194,7 @@ export class Cycling {
 
     entry.currentValue = nextValue;
     entry.satelliteLength = Math.max(1, nextValue.split(/\s+/).filter(Boolean).length);
+    entry.pairCharEnd = newRegionEnd;
     this.selectorSatelliteState!.set(entry, newText);
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
