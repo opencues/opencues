@@ -9,6 +9,89 @@ The runtime side is host-agnostic; the only band-specific code lives at:
 - `integrations/opencode/patches/opencuesBootstrap.ts`
 - `integrations/opencode/patches/setup.sh`
 
+## Live-fixes discovered during testing (O.2 → O.6)
+
+Five bugs surfaced once we ran the patched fork in a real terminal.
+All five are folded into `integrations/opencode/patches/advance.sh`'s
+fix block so every advance applies + verifies them. If you see any of
+the **symptoms** below, check the corresponding fix is still in place.
+
+### LF-1. Adapter `onKey` ignored its `KeyFilter` (O.3)
+
+**File:** `adapters/opencode/v1.4/adapter.ts` — `onKey()`.
+
+**Symptom:** can only type one character before keystrokes get swallowed.
+
+**Why:** without filter wrapping, every registered handler ran for
+every key. Navigation's "left" handler activated highlight on the
+first non-empty text, then `preventDefault()` blocked every
+subsequent keypress.
+
+**Fix:** wrap the handler so it only runs when `filter.keys` /
+`filter.requireModifiers` / `filter.forbidModifiers` all match.
+
+### LF-2. `useTheme().syntax` is a SolidJS memo, not the SyntaxStyle (O.4)
+
+**File:** `integrations/opencode/patches/setup.sh` — Prompt component
+patch.
+
+**Symptom:** `[trig] dim style err: syntax.getStyleId is not a function`.
+
+**Why:** `syntax` from `useTheme()` is a `createMemo(...)` accessor.
+You have to CALL it to get the SyntaxStyle instance. Easy to miss
+because TypeScript types it loosely via the proxy.
+
+**Fix:** `syntax: useTheme().syntax() as any` (note the `()`).
+
+### LF-3. Extmark removal is `.delete(id)`, not `.remove(id)` (O.4)
+
+**File:** `integrations/opencode/patches/opencuesBootstrap.ts` —
+`triggerOpenCuesRender`.
+
+**Symptom:** highlights/dims stack on every cycle — old extmarks
+never clear, you get a rainbow of overlapping styles.
+
+**Why:** I guessed `.remove(id)` from the v1 patch convention. The
+actual OpenTUI API is `.delete(id)` (returns boolean).
+
+**Fix:** swap to `.delete?.(id)`.
+
+### LF-4. ConfigLoader looked at the TUI's cwd, not OpenCues home (O.5/O.6)
+
+**File:** `integrations/opencode/patches/setup.sh` — `cwd:` line in the
+app.tsx bootstrap call.
+
+**Symptom:** Cycling on a known cue word (`volume`, `brightness`)
+returns `consumed=false`. cueMap appears empty even though
+`~/.claude/claude-code-tips.json` exists.
+
+**Why:** the bootstrap passed `process.cwd()`, which is the OpenCode
+fork directory (`~/opencode-cues`). That's not where the user keeps
+their `cues.md`, `controls/`, `cues/` folders. ConfigLoader loaded
+the tips JSON but missed all folder configs.
+
+**Fix:** `cwd: process.env.OPENCUES_HOME || "/home/wilfred/opencues"`.
+Users with a different layout set `OPENCUES_HOME` before launching.
+
+### LF-5. `setText`-driven changes were tagged `source: 'user'` (O.6)
+
+**File:** `integrations/opencode/patches/opencuesBootstrap.ts` —
+`notifyOpenCuesTextChange`.
+
+**Symptom:** highlight disappears when Cycling rotates text (`0.5f`
+→ `1.0f`, `ultrathink` → next alt). Visually, the active word
+flashes off after each cycle.
+
+**Why:** Cycling.setText → bootstrap's setText → SolidJS store update
+→ Prompt's `onContentChange` → `notifyOpenCuesTextChange("user")` →
+Navigation.onTextChange clears `hlState` (it interprets user changes
+as the user typing).
+
+**Fix:** module-scope `lastRuntimeSetText` set when we push;
+`notifyOpenCuesTextChange` checks if incoming text matches → re-tag
+`source: "runtime"` so Navigation skips the deactivate. Mirrors CC's
+`pendingText`/`lastSeenText` pattern (REPAIR.md #1 for CC).
+
 ## Host quirks
 
 ### 1. SolidJS reactivity vs imperative writes

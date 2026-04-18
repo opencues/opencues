@@ -101,7 +101,7 @@ hook = '''
     startOpenCues({
       renderer: __ocRenderer,
       promptAccess: holderBackedPromptAccess(),
-      cwd: process.cwd(),
+      cwd: process.env.OPENCUES_HOME || "/home/wilfred/opencues",
       hostVersion: "1.4.11",
     })
   })
@@ -147,7 +147,7 @@ src = src.replace(
                   cursor: () => input.cursorOffset ?? 0,
                   setCursor: (c) => { input.cursorOffset = c },
                   textarea: input,
-                  syntax: useTheme().syntax as any,
+                  syntax: useTheme().syntax() as any,
                 })''',
 )
 # Forward onContentChange + run extmark applier.

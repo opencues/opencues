@@ -62,6 +62,7 @@ export function holderBackedPromptAccess(): PromptInputAccess {
 }
 
 let bootResult: BootResult | undefined
+let lastRuntimeSetText: string | null = null
 
 export function startOpenCues(opts: {
   renderer: CliRenderer
@@ -88,7 +89,7 @@ export function startOpenCues(opts: {
     cwd: opts.cwd,
     getText: () => opts.promptAccess.read(),
     getCursorOffset: () => opts.promptAccess.cursor(),
-    setText: (text) => opts.promptAccess.write(text),
+    setText: (text) => { lastRuntimeSetText = text; opts.promptAccess.write(text) },
     setCursorOffset: (offset) => opts.promptAccess.setCursor(offset),
     forceRender: () => opts.renderer.requestRender(),
     readFile: async (p: string) => {
@@ -161,7 +162,12 @@ export function dispatchOpenCuesKey(evt: any): boolean {
 
 /** Notify runtime of text changes from the prompt component. */
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
-  bootResult?.notifyTextChange(text, cursor, source)
+  let actualSource = source
+  if (lastRuntimeSetText !== null && text === lastRuntimeSetText) {
+    actualSource = "runtime"
+    lastRuntimeSetText = null
+  }
+  bootResult?.notifyTextChange(text, cursor, actualSource)
 }
 
 function normaliseKeyName(evt: any): string {
@@ -206,7 +212,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
 
   // Clear previous extmarks before re-applying.
   for (const id of ocOwnedExtmarks) {
-    try { (textarea.extmarks as any).remove?.(id) } catch { /* swallow */ }
+    try { (textarea.extmarks as any).delete?.(id) } catch { /* swallow */ }
   }
   ocOwnedExtmarks = []
 

@@ -117,9 +117,15 @@ export class OpenCodeV14Adapter implements HostAdapter {
   }
 
   // ─── Events ────────────────────────────────────────────────────────────
-  onKey(_filter: KeyFilter | null, handler: (e: KeyEvent) => boolean): Unsubscribe {
-    // Filtering happens runtime-side in boot for now (CC pattern).
-    return this.bindings.registerKeyHandler(handler);
+  onKey(filter: KeyFilter | null, handler: (e: KeyEvent) => boolean): Unsubscribe {
+    if (!filter) return this.bindings.registerKeyHandler(handler);
+    const wrapped = (e: KeyEvent): boolean => {
+      if (filter.keys && filter.keys.length > 0 && !filter.keys.includes(e.key)) return false;
+      if (filter.requireModifiers) for (const m of filter.requireModifiers) if (!e.modifiers[m]) return false;
+      if (filter.forbidModifiers) for (const m of filter.forbidModifiers) if (e.modifiers[m]) return false;
+      return handler(e);
+    };
+    return this.bindings.registerKeyHandler(wrapped);
   }
   onTextChange(handler: (e: TextChangeEvent) => void): Unsubscribe {
     return this.bindings.registerTextChangeHandler(handler);
