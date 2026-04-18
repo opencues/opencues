@@ -21,7 +21,7 @@ export class DimRender {
   constructor(
     private adapter: HostAdapter,
     private hlState: HighlightState,
-    private _dynDefs: DynDefs,
+    private dynDefs: DynDefs,
     private configLoader?: ConfigLoader,
     private spanFillState?: SpanFillState,
     private selectorSatelliteState?: SelectorSatelliteState,
@@ -56,7 +56,15 @@ export class DimRender {
         if (w.index === activeIndex) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
-        if (navigable.has(lc) || this.configLoader.matchStepPattern(w.word)) {
+        // Step 21: DynDefs entries (LLM-resolved alts) also count as
+        // navigable, so they should dim too. Without this, a word the
+        // LLM resolver attached alts to renders un-dimmed and looks
+        // unrelated to the navigable set.
+        if (
+          navigable.has(lc) ||
+          this.configLoader.matchStepPattern(w.word) ||
+          this.dynDefs.get(w.index)
+        ) {
           dimRanges.push({ start: w.start, end: w.end });
         }
       }

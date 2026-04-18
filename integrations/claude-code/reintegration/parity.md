@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase I.2 (commit pending).
+**Last synced:** Phase I.3 (commit pending).
 
 ---
 
@@ -39,7 +39,7 @@ just architecture.
 | 18 | CueResolver | ✓ | Phase 9. Resolver constructs CueResolver from merged cuesConfig + blanksConfig + folder cues/* prompts. |
 | 19 | auto-submit debounce → `resolve()` → `_dynDefs` | ✓ | Phase 9. onTextChange (user-source) → 500ms debounce → resolve → DynDefs populated. |
 | 20 | tip-word cycling end-to-end (JIT) | ✓ | Phase 9. LLM alts populate DynDefs; Cycling consumes via existing static-alt path. Stale-invalidation via generation counter; mid-cycle protection skips currentIndex>0 entries. |
-| 21 | visual dim consistency + Step 3 revert | ◐ | Phase 8. DimRender now dims navigable words. v1's "dim everything LLM-cycled" still pending — depends on D (LLM resolver). |
+| 21 | visual dim consistency + Step 3 revert | ✓ | Phase 8 + Phase I.3. DimRender now dims navigable words AND words that have a DynDefs entry (LLM-resolved alts). Step 3 ("dim bare numbers") explicitly REMOVED in v1 — not porting. Live verifiable: type any cue or LLM-resolved word, it dims; type `42f`, it dims via stepPattern. |
 | 22 | debug logging gated on `opencues.md` `debug-mode` | ✓ | Phase I.2. boot.ts isDebugEnabled() reads configLoader.opencuesState.debugMode (source of truth once loaded); DEBUG_OPENCUES env is bootstrap fallback only (so toggling opencues.md beats a stale env var). Patch's host.log + dispatch logs no longer self-gate; runtime decides. Live verified: toggling debug-mode on/off in opencues.md takes effect on next ~2s hot-reload. |
 | 23 | blank-fill: detect `_` + match `blankKeywords` | ✓ | Phase E.1 (commit `fc124c0`). BlankFill scans onTextChange, walks backward looking for blankKeywords match (single + multi-word), records BlankSlots. Honours blankProximity. |
 | 24 | blank-fill: auto-populate with `stepValues[0]` | ✓ | Phase E.2 (commit `c3a3214`). onUnderscoreKey intercepts the '_' key, simulates insertion, fills with stepValues[0] when blankAutoPopulate isn't false. |
@@ -57,7 +57,7 @@ just architecture.
 | 36 | resolver-driven blank-fill (rip inline IIFE) | ○ | Depends on Steps 18 + 23-30. |
 | 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
 
-**Tally:** 31 ✓, 3 ◐, 2 ○, 2 — out of 38 steps. (Phase I.2 completed Step 22.)
+**Tally:** 32 ✓, 3 ◐, 1 ○, 2 — out of 38 steps. (Phase I.3 completed Step 21.)
 
 ---
 

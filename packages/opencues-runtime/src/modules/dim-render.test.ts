@@ -101,6 +101,30 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([]);
   });
 
+  it('Step 21: dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText('cat sat');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // Pretend the LLM resolver attached alts to "sat".
+    dynDefs.set(1, {
+      originalWord: 'sat',
+      alternatives: ['sat', 'rested'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 7,
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: 'cat sat', cursor: 0, externalHighlights: [] });
+    // "sat" is in DynDefs but not in cueMap → should still dim.
+    expect(out?.dimRanges).toEqual([{ start: 4, end: 7 }]);
+  });
+
   it('Step 32: no consume-all dim when state is empty', () => {
     const adapter = new MockAdapter();
     adapter.pushText('hello world');
