@@ -48,15 +48,3 @@ export const DEFAULT_CONFIG: StoredConfig = {
   finnhubApiKey: __FINNHUB_API_KEY__,
 };
 
-/** Word definition with highlight state */
-export interface HighlightState {
-  active: boolean;
-  index: number | null;
-  wordIndex: number | null;
-}
-
-export const INITIAL_HIGHLIGHT_STATE: HighlightState = {
-  active: false,
-  index: null,
-  wordIndex: null,
-};

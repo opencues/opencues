@@ -1,25 +1,11 @@
 /**
- * Background service worker.
- * Handles API requests that need to bypass CORS.
- * Manages extension lifecycle.
+ * Background service worker. Currently just a single install-log so the
+ * extension has the MV3 background entry it needs. The legacy
+ * `api-request` CORS-proxy listener was removed once all hoisted runtime
+ * controls switched to direct globalThis.fetch (HN/Finnhub/Open-Meteo
+ * all allow CORS, the LLM endpoints are POST + bearer-auth which don't
+ * trigger preflight gates from extension contexts).
  */
-
-// Forward API requests from content script if CORS blocks direct fetch
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'api-request') {
-    fetch(message.url, {
-      method: message.method || 'POST',
-      headers: message.headers || {},
-      body: message.body,
-    })
-      .then(r => r.text())
-      .then(text => sendResponse({ ok: true, text }))
-      .catch(err => sendResponse({ ok: false, error: err.message }));
-    return true; // async response
-  }
-});
-
-// Log extension activation
 chrome.runtime.onInstalled.addListener(() => {
   console.log('OpenCues extension installed');
 });

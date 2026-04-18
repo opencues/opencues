@@ -73,16 +73,6 @@ export function publishTarget(el: HTMLElement | null): void {
   currentTarget = el;
 }
 
-/** Inspect — returns the current target the bootstrap is reading from. */
-export function getCurrentTarget(): HTMLElement | null {
-  return currentTarget;
-}
-
-/** True once boot() has run. content.ts uses this for log gating. */
-export function isRuntimeStarted(): boolean {
-  return bootResult !== undefined;
-}
-
 /**
  * Read the caret offset (in plain-text characters) from the current
  * contenteditable. Returns 0 when no target or no selection.
