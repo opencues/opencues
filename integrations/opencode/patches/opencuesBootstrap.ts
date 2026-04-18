@@ -131,20 +131,58 @@ export function startOpenCues(opts: {
       await fs.writeFile(p, c)
     },
     spawnProcess: (spec: any) => {
-      const child = nodeSpawn(spec.command, spec.args, {
-        env: spec.env,
-        detached: !!spec.detached,
-        stdio: spec.detached ? "ignore" : ["ignore", "pipe", "pipe"],
-      })
+      // Synchronous nodeSpawn errors (bad command, ENOENT) need to
+      // resolve the result Promise so callers (TTS, BlankFill scripts)
+      // don't hang. Same for spec.input piped to stdin (was silently
+      // dropped). Timeout uses SIGTERM then SIGKILL after 1s.
+      const wantStdin = typeof spec.input === "string" && spec.input.length > 0
+      const stdio: any = spec.detached
+        ? "ignore"
+        : [wantStdin ? "pipe" : "ignore", "pipe", "pipe"]
+      let child: any
+      try {
+        child = nodeSpawn(spec.command, spec.args, {
+          env: spec.env,
+          cwd: spec.cwd,
+          detached: !!spec.detached,
+          stdio,
+        })
+      } catch (err: any) {
+        return {
+          result: Promise.resolve({
+            exitCode: 127,
+            stdout: "",
+            stderr: String(err?.message ?? err),
+            timedOut: false,
+          }),
+          kill: () => {},
+        }
+      }
+      if (wantStdin && child.stdin) {
+        try { child.stdin.write(spec.input); child.stdin.end() } catch {}
+      }
       let stdout = "", stderr = ""
-      child.stdout?.on("data", (d) => { stdout += d.toString() })
-      child.stderr?.on("data", (d) => { stderr += d.toString() })
+      child.stdout?.on("data", (d: Buffer) => { stdout += d.toString() })
+      child.stderr?.on("data", (d: Buffer) => { stderr += d.toString() })
       const result = new Promise<{ exitCode: number; stdout: string; stderr: string; timedOut: boolean }>((resolve) => {
         let timedOut = false
-        const timer = spec.timeoutMs ? setTimeout(() => { timedOut = true; child.kill("SIGTERM") }, spec.timeoutMs) : null
-        child.on("exit", (code) => {
+        let killer: NodeJS.Timeout | null = null
+        const timer = spec.timeoutMs
+          ? setTimeout(() => {
+              timedOut = true
+              try { child.kill("SIGTERM") } catch {}
+              killer = setTimeout(() => { try { child.kill("SIGKILL") } catch {} }, 1000)
+            }, spec.timeoutMs)
+          : null
+        const finish = (code: number | null): void => {
           if (timer) clearTimeout(timer)
+          if (killer) clearTimeout(killer)
           resolve({ exitCode: code ?? 0, stdout, stderr, timedOut })
+        }
+        child.on("exit", finish)
+        child.on("error", (err: any) => {
+          stderr += String(err?.message ?? err)
+          finish(127)
         })
       })
       if (spec.detached) child.unref()
