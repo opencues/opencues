@@ -19,21 +19,12 @@
 
 import { Runtime } from '../../../src/runtime';
 import { ChromeV1Adapter, type ChromeBindings } from './adapter';
-import { Navigation } from '../../../src/modules/navigation';
-import { DimRender } from '../../../src/modules/dim-render';
-import { Cycling } from '../../../src/modules/cycling';
-import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { TTS } from '../../../src/modules/tts';
-import { BlankFill } from '../../../src/modules/blank-fill';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
-import { HighlightState } from '../../../src/state/highlight-state';
-import { DynDefs } from '../../../src/state/dyn-defs';
-import { ControlValuesCache } from '../../../src/state/control-values';
-import { SpanFillState } from '../../../src/state/span-fill';
-import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
-import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
+import { ConfigLoader } from '../../../src/modules/config-loader';
+import { buildSharedRuntime } from '../../../src/boot-common';
 import type {
   ControlInvokeSpec,
   KeyEvent,
@@ -185,34 +176,17 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ChromeV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
-  // ConfigLoader — chrome.storage-backed. Same tipsPath pattern; the
-  // content script translates "~/.claude/claude-code-tips.json" (or
-  // whatever) into a storage key lookup.
+  // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
+  // all live in boot-common.ts so the chrome and opencode bands can't
+  // drift on subscription order or constructor args.
   const tipsPath = host.tipsPath ?? 'chrome:tips.json';
-  const configLoader = new ConfigLoader(adapter, { tipsPath });
-  configLoaderRef = configLoader;
-  configLoader.subscribe();
-  configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
+  const shared = buildSharedRuntime(adapter, { tipsPath, log });
+  configLoaderRef = shared.configLoader;
 
-  // State classes (declared in dependency order, same as OpenCode).
-  const hlState = new HighlightState();
-  const dynDefs = new DynDefs();
-  const controlValues = new ControlValuesCache();
-  const spanFillState = new SpanFillState();
-  const dismissedBlanks = new DismissedBlanks();
-  const selectorSatelliteState = new SelectorSatelliteState();
-
-  const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
-  navigation.subscribe();
-
-  const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
-  dimRender.subscribe();
-
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, controlValues);
-  cycling.subscribe();
-
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs);
-  configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
+  const {
+    configLoader, hlState, dynDefs,
+    spanFillState, selectorSatelliteState, controlValues,
+  } = shared;
 
   // Statusline — Chrome has no filesystem, so exportPath is '' (empty).
   // The snapshot hook delivers the payload to the content script, which
