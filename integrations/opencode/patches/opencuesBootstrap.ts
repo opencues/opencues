@@ -93,7 +93,7 @@ export function startOpenCues(opts: {
 
   bootResult = boot({
     hostVersion: opts.hostVersion,
-    cwd: opts.cwd,
+    cwd: opts.cwd || process.cwd(),
     getText: () => opts.promptAccess.read(),
     getCursorOffset: () => opts.promptAccess.cursor(),
     setText: (text) => { lastRuntimeSetText = text; opts.promptAccess.write(text) },
@@ -190,7 +190,10 @@ export function startOpenCues(opts: {
     },
     log,
     tipsPath: path.join(process.env.HOME ?? "~", ".claude/claude-code-tips.json"),
-    statusFilePath: `/tmp/claude-highlight-state-${process.pid}.json`,
+    // Rename from claude-highlight-state-<pid>.json to opencode-<pid>.json
+    // so the path visually disambiguates from a claude-cues instance
+    // writing to the same /tmp (both processes can run concurrently).
+    statusFilePath: `/tmp/opencues-opencode-status-${process.pid}.json`,
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // In-process statusline hook — feeds the active tip into the
     // SolidJS signal the patched home footer reads.

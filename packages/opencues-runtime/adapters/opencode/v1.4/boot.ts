@@ -249,7 +249,7 @@ export function boot(host: HostInfo): BootResult {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      debounceMs: host.llmDebounceMs,
+      debounceMs: host.llmDebounceMs ?? 500,
     });
     // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
     // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
