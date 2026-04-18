@@ -31,6 +31,7 @@ import type { KeyEvent, LogLevel } from 'opencues-runtime/dist/src/adapter';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
+import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -196,11 +197,23 @@ async function seedDefaults(): Promise<void> {
 }
 
 /**
+ * Optional runtime config the content script can supply at boot time.
+ * All fields optional — runtime modules degrade gracefully (Resolver
+ * stays dormant without llmApiKey, etc.).
+ */
+export interface RuntimeStartOptions {
+  llmApiKey?: string;
+  llmEndpoint?: string;
+  llmDefaultModel?: string;
+  llmDebounceMs?: number;
+}
+
+/**
  * Construct the runtime if not already running. Idempotent — second
  * call returns the cached BootResult. Call once at content-script
  * load (after publishTarget has been hooked up).
  */
-export function startOpenCuesRuntime(): BootResult {
+export function startOpenCuesRuntime(opts: RuntimeStartOptions = {}): BootResult {
   if (bootResult) return bootResult;
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
@@ -240,6 +253,14 @@ export function startOpenCuesRuntime(): BootResult {
     statusSnapshotHook: (payload) => applyStatuslinePayload(payload as Parameters<typeof applyStatuslinePayload>[0]),
     // CE.6 — TTS via Web Speech, gated on host providing the speak fn.
     speakFn: (text, rate) => speech.speak(text, rate ? Number(rate) : 2),
+    // CE.7 — Resolver only constructs when llmApiKey is set. Pass our
+    // FetchHttpAdapter so the runtime doesn't try to load the
+    // node-http-adapter stub that throws.
+    llmApiKey: opts.llmApiKey,
+    llmEndpoint: opts.llmEndpoint,
+    llmDefaultModel: opts.llmDefaultModel,
+    llmDebounceMs: opts.llmDebounceMs,
+    httpAdapter: opts.llmApiKey ? new FetchHttpAdapter() : undefined,
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process

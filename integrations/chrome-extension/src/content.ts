@@ -579,12 +579,16 @@ function isTextInput(el: HTMLElement): boolean {
 /** Find and attach to the target element */
 async function init(): Promise<void> {
   console.log('[OpenCues] Content script loaded');
-  // Phase CE.1 — boot the opencues-runtime alongside the existing
-  // CueEngine. The runtime is dormant until content.ts forwards
-  // text/key events to it (CE.2+). This call only proves the boot
-  // path works inside a content-script context.
-  startOpenCuesRuntime();
   let config = await loadConfig();
+  // CE.1+CE.7 — boot the opencues-runtime with LLM config from
+  // chrome.storage. The runtime owns key dispatch + rendering +
+  // statusline + tts + resolver. The legacy CueEngine still drives
+  // BlankFill until CE.8.
+  startOpenCuesRuntime({
+    llmApiKey: config.apiKey,
+    llmEndpoint: config.endpoint,
+    llmDefaultModel: config.model,
+  });
 
   // Attach to whichever text input gets focus
   let currentTarget: HTMLElement | null = null;
