@@ -120,7 +120,12 @@ export class BlankFill {
    */
   private maybeRunScripts(text: string, slots: readonly BlankSlot[]): void {
     if (slots.length > 0) this.adapter.log('debug', `BlankFill: ${slots.length} slot(s) on text-change`, slots);
-    if (!this.adapter.capabilities.includes('spawn-process')) return;
+    // Chrome (and other sandboxed hosts) advertise 'control-invoke' instead
+    // of 'spawn-process'. Either is enough to dispatch a fill; we try
+    // controlInvoke first below and only fall through to spawnProcess if
+    // the host returns null.
+    if (!this.adapter.capabilities.includes('spawn-process')
+        && !this.adapter.capabilities.includes('control-invoke')) return;
 
     // Pre-split words for context extraction (used for every slot).
     const cleaned = text.replace(/[\u200B\u200C]/g, '');
@@ -170,8 +175,14 @@ export class BlankFill {
       // Expand ~ in script path.
       const scriptPath = script.startsWith('~') ? home + script.slice(1) : script;
 
-      // Build per-control env. Inherits process.env.
-      const env: Record<string, string> = { ...process.env } as Record<string, string>;
+      // Build per-control env. Inherits process.env on Node hosts;
+      // sandboxed hosts (Chrome content scripts) have no `process` global,
+      // so `typeof` guard avoids ReferenceError. controlInvoke ignores env
+      // there anyway — only spawnProcess paths consume it.
+      const baseEnv: Record<string, string> = (typeof process !== 'undefined' && process.env)
+        ? process.env as Record<string, string>
+        : {};
+      const env: Record<string, string> = { ...baseEnv };
       if (control.model) env.CUES_MODEL = control.model;
       if (control.apiUrl) env.CUES_API_URL = control.apiUrl;
       if (control.apiKeyEnv) env.CUES_API_KEY_ENV = control.apiKeyEnv;
