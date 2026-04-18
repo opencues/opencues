@@ -27,7 +27,13 @@
 // in a content-script context without changing observable behavior.
 
 import { boot, type BootResult } from 'opencues-runtime/dist/adapters/chrome/v1/boot';
-import type { KeyEvent, LogLevel } from 'opencues-runtime/dist/src/adapter';
+import type {
+  ControlInvokeSpec,
+  KeyEvent,
+  LogLevel,
+  ProcessHandle,
+  ProcessResult,
+} from 'opencues-runtime/dist/src/adapter';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
@@ -247,18 +253,13 @@ export interface RuntimeStartOptions {
 
 let controls: Map<string, BrowserControl> | null = null;
 
-interface ControlInvokeSpecLike {
-  controlName: string;
-  action: string;
-  args: readonly string[];
-  timeoutMs?: number;
-}
-
 /**
  * Translate a runtime ControlInvokeSpec into a browser control call.
- * Returns a ProcessHandle-shaped object (result Promise + kill no-op)
- * so the runtime treats the response identically to a script's
- * stdout. Returns null if the requested control isn't registered.
+ * Returns a ProcessHandle (result Promise + kill no-op) so the runtime
+ * treats the response identically to a script's stdout. Returns null
+ * if the requested control isn't registered — runtime then falls
+ * through to spawnProcess (which the chrome adapter resolves with
+ * exitCode 127, surfacing the gap visibly).
  *
  * Action mapping:
  *   - 'get' → control.get(args[0] as keyword, args.slice(1) as context)
@@ -266,14 +267,11 @@ interface ControlInvokeSpecLike {
  *   - 'up'  → control.up?.()                   (returns new value)
  *   - 'down'→ control.down?.()                 (returns new value)
  */
-function chromeControlInvoke(spec: ControlInvokeSpecLike): {
-  result: Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }>;
-  kill: () => void;
-} | null {
+function chromeControlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
   if (!controls) return null;
   const ctl = controls.get(spec.controlName);
   if (!ctl) return null;
-  const run = async (): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> => {
+  const run = async (): Promise<ProcessResult> => {
     try {
       let stdout = '';
       switch (spec.action) {
@@ -384,7 +382,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // hackernews / prompt-improver). Returns null for unknown
     // controls so spawnProcess fallback (which the chrome adapter
     // resolves with exitCode 127) takes over visibly.
-    controlInvoke: (spec: unknown) => chromeControlInvoke(spec as ControlInvokeSpecLike),
+    controlInvoke: chromeControlInvoke,
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process

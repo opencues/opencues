@@ -35,8 +35,10 @@ import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import type {
+  ControlInvokeSpec,
   KeyEvent,
   LogLevel,
+  ProcessHandle,
   RenderContext,
   RenderDirectives,
   TextChangeEvent,
@@ -60,9 +62,11 @@ export interface HostInfo {
    * Host-native control dispatch. BlankFill + Cycling try this before
    * spawnProcess. Chrome implementations typically dispatch to
    * Web Audio (volume) / fetch() (stocks/weather/HN) / two-step LLM
-   * (prompt-improver) etc. Returns ProcessHandle or null.
+   * (prompt-improver) etc. Returns ProcessHandle or null when the
+   * controlName isn't recognised (the runtime then falls through to
+   * spawnProcess, which the chrome adapter resolves with exitCode 127).
    */
-  controlInvoke?(spec: unknown): unknown;
+  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
   /** Optional logger — defaults to console.log with [opencues] prefix. */
   log?(level: LogLevel, msg: string, data?: unknown): void;
   /** Optional: tips JSON virtual path (chrome.storage key). */
@@ -174,7 +178,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     pushText: host.pushText,
-    controlInvoke: host.controlInvoke as ChromeBindings['controlInvoke'],
+    controlInvoke: host.controlInvoke,
     log,
   };
 
