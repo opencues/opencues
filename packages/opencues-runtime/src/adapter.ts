@@ -66,6 +66,31 @@ export interface ProcessSpec {
   readonly input?: string;
 }
 
+/**
+ * Host-native control invocation. Sandboxed hosts (Chrome extension,
+ * browser-only TUIs) can't spawn processes to run `volume.sh up` or
+ * `weather-blank.sh get`. `controlInvoke` lets them fulfil the same
+ * contract via their native API layer — Web Audio for volume,
+ * fetch() for stocks/weather/HN, etc.
+ *
+ * BlankFill + Cycling check `adapter.controlInvoke` BEFORE
+ * `spawnProcess`; hosts that return null fall through to the spawn
+ * path. Hosts that return a ProcessHandle take ownership of the call
+ * and the returned stdout is interpreted identically to a script's
+ * stdout (same exitCode/timedOut semantics).
+ */
+export interface ControlInvokeSpec {
+  /** Control name as declared in controls/<name>/cue.md (e.g. "volume"). */
+  readonly controlName: string;
+  /** Action verb — typically "get" / "set" / "up" / "down" but arbitrary. */
+  readonly action: string;
+  /** Action args. For "get" on a blank: [keyword, ...contextWords]. */
+  readonly args: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly timeoutMs?: number;
+  readonly input?: string;
+}
+
 export interface ProcessHandle {
   readonly result: Promise<ProcessResult>;
   kill(signal?: 'SIGTERM' | 'SIGKILL'): void;
@@ -85,6 +110,7 @@ export type Capability =
   | 'highlight-range'
   | 'selection'
   | 'spawn-process'
+  | 'control-invoke'
   | 'file-read'
   | 'file-write'
   | 'force-render'
@@ -130,6 +156,13 @@ export interface HostAdapter {
   onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
 
   spawnProcess(spec: ProcessSpec): ProcessHandle;
+  /**
+   * Host-native control invocation. Optional — when present, BlankFill
+   * + Cycling try it BEFORE spawnProcess, falling through to the spawn
+   * path if this returns null. Covered by the `control-invoke`
+   * capability when present.
+   */
+  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
   readFile(path: string): Promise<string | null>;
   writeFile(path: string, content: string): Promise<void>;
   /**

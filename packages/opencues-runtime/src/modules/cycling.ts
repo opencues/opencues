@@ -11,7 +11,7 @@
 // Each path updates DynDefs as needed so subsequent cycles continue from
 // the right state.
 
-import type { HostAdapter, KeyEvent, ProcessSpec, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, ProcessHandle, ProcessSpec, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, ControlEntry, StepPattern } from './config-loader';
@@ -37,6 +37,37 @@ export class Cycling {
     private selectorSatelliteState?: SelectorSatelliteState,
     private controlValues?: ControlValuesCache,
   ) {}
+
+  /**
+   * Try host-native control invocation first; fall back to spawning
+   * the configured script. Sandboxed hosts (Chrome) implement
+   * controlInvoke; CLI hosts (OpenCode, CC) typically don't and rely
+   * on the spawn path. Returns null when neither path is viable
+   * (no controlInvoke + no spawn capability + no scriptPath).
+   */
+  private invokeOrSpawn(
+    controlName: string,
+    action: string,
+    args: readonly string[],
+    scriptPath: string | undefined,
+    options: { detached?: boolean; timeoutMs?: number } = {},
+  ): ProcessHandle | null {
+    const native = this.adapter.controlInvoke?.({
+      controlName,
+      action,
+      args,
+      timeoutMs: options.timeoutMs,
+    });
+    if (native) return native;
+    if (!scriptPath) return null;
+    if (!this.adapter.capabilities.includes('spawn-process')) return null;
+    return this.adapter.spawnProcess({
+      command: 'bash',
+      args: [scriptPath, action, ...args],
+      detached: options.detached,
+      timeoutMs: options.timeoutMs,
+    });
+  }
 
   subscribe(): void {
     this._unsubUp = this.adapter.onKey(
@@ -162,12 +193,8 @@ export class Cycling {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
 
-      if (entry.scriptPath && this.adapter.capabilities.includes('spawn-process')) {
-        const handle = this.adapter.spawnProcess({
-          command: 'bash',
-          args: [entry.scriptPath, 'get', nextSetting],
-          timeoutMs: 4000,
-        });
+      const handle = this.invokeOrSpawn(entry.controlName, 'get', [nextSetting], entry.scriptPath, { timeoutMs: 4000 });
+      if (handle) {
         handle.result.then(res => {
           if (res.exitCode !== 0 || res.timedOut) return;
           const fetched = res.stdout.split(/\n/)[0]?.trim();
@@ -219,25 +246,26 @@ export class Cycling {
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
 
-    if (entry.scriptPath && this.adapter.capabilities.includes('spawn-process')) {
-      this.adapter.log('debug', `Cycling: satellite set ${entry.controlName}`, {
-        script: entry.scriptPath, setting: entry.currentSetting, value: nextValue,
-      });
-      try {
-        this.adapter.spawnProcess({
-          command: 'bash',
-          args: [entry.scriptPath, 'set', entry.currentSetting, nextValue],
-          detached: true,
-          timeoutMs: 4000,
+    this.adapter.log('debug', `Cycling: satellite set ${entry.controlName}`, {
+      script: entry.scriptPath, setting: entry.currentSetting, value: nextValue,
+    });
+    try {
+      const handle = this.invokeOrSpawn(
+        entry.controlName,
+        'set',
+        [entry.currentSetting, nextValue],
+        entry.scriptPath,
+        { detached: true, timeoutMs: 4000 },
+      );
+      if (!handle) {
+        this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.controlName}`, {
+          hasScriptPath: !!entry.scriptPath,
+          hasSpawnCap: this.adapter.capabilities.includes('spawn-process'),
+          hasControlInvoke: !!this.adapter.controlInvoke,
         });
-      } catch (err) {
-        this.adapter.log('error', `Cycling: satellite set failed for ${entry.controlName}`, err);
       }
-    } else {
-      this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.controlName}`, {
-        hasScriptPath: !!entry.scriptPath,
-        hasSpawnCap: this.adapter.capabilities.includes('spawn-process'),
-      });
+    } catch (err) {
+      this.adapter.log('error', `Cycling: satellite set failed for ${entry.controlName}`, err);
     }
     return true;
   }
@@ -296,9 +324,15 @@ export class Cycling {
   // ─── Path 1: script-backed ─────────────────────────────────────────────
 
   private runScriptControl(entry: ControlEntry, direction: 1 | -1): boolean {
-    if (!this.adapter.capabilities.includes('spawn-process')) return false;
+    // Hosts without spawn-process AND without controlInvoke can't drive
+    // the script. Sandboxed hosts that implement controlInvoke handle
+    // both the up/down and the post-fetch via their native API.
+    if (!this.adapter.capabilities.includes('spawn-process') && !this.adapter.controlInvoke) return false;
     const c = entry.control;
     const args = direction === 1 ? c.upArgs ?? [] : c.downArgs ?? [];
+    // First arg is the action (e.g. "up"); remainder are extra args.
+    const action = args[0] ?? (direction === 1 ? 'up' : 'down');
+    const restArgs = args.slice(1);
     const scriptPath = c.script as string;
     // Debounce + post-spawn fetch — mirrors v1's wordHighlight.ts:1015.
     // Holding Up key issues many key dispatches; without the debounce
@@ -311,24 +345,17 @@ export class Cycling {
     const timer = setTimeout(() => {
       this._scriptTimers.delete(entry.name);
       try {
-        this.adapter.spawnProcess({
-          command: 'bash',
-          args: [scriptPath, ...args],
-          detached: true,
-        });
+        this.invokeOrSpawn(entry.name, action, restArgs, scriptPath, { detached: true });
       } catch (err) {
-        this.adapter.log('error', `Cycling: script spawn failed for ${entry.name}`, err);
+        this.adapter.log('error', `Cycling: script invoke failed for ${entry.name}`, err);
         return;
       }
       // After ~200ms the OS-side change has settled — fetch new value.
       setTimeout(() => {
         if (!this.controlValues) return;
         try {
-          const getHandle = this.adapter.spawnProcess({
-            command: 'bash',
-            args: [scriptPath, 'get'],
-            timeoutMs: 2000,
-          });
+          const getHandle = this.invokeOrSpawn(entry.name, 'get', [], scriptPath, { timeoutMs: 2000 });
+          if (!getHandle) return;
           getHandle.result.then(res => {
             if (res.exitCode !== 0 || res.timedOut) return;
             const value = res.stdout.split(/\n/)[0]?.trim();
@@ -471,22 +498,17 @@ export class Cycling {
     this.adapter.setCursorOffset(clampedCursor);
     this.adapter.forceRender();
 
-    // Write back via script set <num> (no suffix — script expects raw number).
-    if (control.blankScript && this.adapter.capabilities.includes('spawn-process')) {
-      const home = process.env.HOME ?? '~';
-      const scriptPath = control.blankScript.startsWith('~')
-        ? home + control.blankScript.slice(1)
-        : control.blankScript;
-      try {
-        this.adapter.spawnProcess({
-          command: 'bash',
-          args: [scriptPath, 'set', formatted],
-          detached: true,
-          timeoutMs: 4000,
-        });
-      } catch (err) {
-        this.adapter.log('error', `Cycling: blankScript set failed for ${controlName}`, err);
-      }
+    // Write back via script set <num> (no suffix — script expects raw
+    // number). Sandboxed hosts route through controlInvoke; CLI hosts
+    // spawn the configured blankScript.
+    const home = process.env.HOME ?? '~';
+    const scriptPath = control.blankScript?.startsWith('~')
+      ? home + control.blankScript.slice(1)
+      : control.blankScript;
+    try {
+      this.invokeOrSpawn(controlName, 'set', [formatted], scriptPath, { detached: true, timeoutMs: 4000 });
+    } catch (err) {
+      this.adapter.log('error', `Cycling: blankScript set failed for ${controlName}`, err);
     }
     return true;
   }

@@ -451,3 +451,100 @@ settings:
     expect(adapter.fireKey('up', { ctrl: true, alt: true })).toBe(false);
   });
 });
+
+describe('Cycling controlInvoke (sandboxed-host path)', () => {
+  it('selector cycle prefers controlInvoke when host implements it', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud
+      inactive: TTS silenced
+  debug-mode:
+    tip: Debug logging
+    values:
+      on: emit
+      off: silent
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('voice-mode active');
+    // Host stubs controlInvoke for the selector get; spawn must NOT be hit.
+    adapter.stubControlInvoke('opencues:get', 'off\n');
+    const hlState = new HighlightState();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
+    cycling.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    hlState.activate(0, 'voice-mode active');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // controlInvoke was called for the selector get; spawnProcess wasn't.
+    const getCall = adapter.controlInvokeCalls.find(c => c.action === 'get');
+    expect(getCall).toBeDefined();
+    expect(getCall!.controlName).toBe('opencues');
+    expect(getCall!.args).toEqual(['debug-mode']);
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls through to spawnProcess when host returns null from controlInvoke', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: t
+    values:
+      active: a
+      inactive: i
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+    });
+    adapter.pushText('voice-mode active');
+    // No stub registered → controlInvoke returns null → spawnProcess used.
+    const hlState = new HighlightState();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      controlName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
+    cycling.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'a\n', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    hlState.activate(0, 'voice-mode active');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(spawnSpy).toHaveBeenCalled();
+  });
+});

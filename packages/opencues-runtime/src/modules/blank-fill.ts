@@ -184,13 +184,25 @@ export class BlankFill {
         }
       }
 
-      this.adapter.log('debug', `BlankFill: spawn ${scriptPath} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(control) });
-      const handle = this.adapter.spawnProcess({
-        command: 'bash',
-        args: [scriptPath, 'get', slot.keyword, ...contextWords],
+      this.adapter.log('debug', `BlankFill: invoke ${slot.controlName} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(control), scriptPath });
+      // Try host-native control invocation first (Chrome, Electron,
+      // anything without shell access). Fall through to spawnProcess
+      // when the host returns null or doesn't implement controlInvoke.
+      let handle = this.adapter.controlInvoke?.({
+        controlName: slot.controlName,
+        action: 'get',
+        args: [slot.keyword, ...contextWords],
         env,
         timeoutMs: 8000,
-      });
+      }) ?? null;
+      if (!handle) {
+        handle = this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, 'get', slot.keyword, ...contextWords],
+          env,
+          timeoutMs: 8000,
+        });
+      }
       handle.result.then(res => {
         this._pendingScripts.delete(dedupKey);
         this.adapter.log('debug', `BlankFill: script result for ${slot.controlName}`, { exitCode: res.exitCode, timedOut: res.timedOut, stdoutLen: res.stdout?.length ?? 0, stdoutPreview: res.stdout?.slice(0, 80) });

@@ -2,6 +2,7 @@ import {
   AdapterUnsupportedError,
   HOST_ADAPTER_INTERFACE_VERSION,
   type Capability,
+  type ControlInvokeSpec,
   type HostAdapter,
   type KeyEvent,
   type KeyFilter,
@@ -81,6 +82,14 @@ export class MockAdapter implements HostAdapter {
   readonly setTextCalls: string[] = [];
   readonly setCursorCalls: number[] = [];
   forceRenderCalls = 0;
+  /** Captured controlInvoke specs for assertions. */
+  readonly controlInvokeCalls: ControlInvokeSpec[] = [];
+  /**
+   * Per-control mock returns. Set via stubControlInvoke; when set, the
+   * matching spec resolves to the supplied stdout. controlName + action
+   * pair is the lookup key (e.g. "volume:up", "weather:get").
+   */
+  private _controlInvokeStubs = new Map<string, string>();
 
   constructor(opts: MockAdapterOptions = {}) {
     this.hostName = opts.hostName ?? 'mock';
@@ -169,6 +178,31 @@ export class MockAdapter implements HostAdapter {
       timedOut: false,
     };
     return { result: Promise.resolve(result), kill: () => {} };
+  }
+
+  /**
+   * Register a stub return for a controlInvoke call. Matched on
+   * `${controlName}:${action}`. Use `*:action` to match any control,
+   * `controlName:*` to match any action. Tests that don't stub get
+   * controlInvoke=undefined behaviour (BlankFill/Cycling fall through
+   * to spawnProcess as if controlInvoke wasn't implemented).
+   */
+  stubControlInvoke(key: string, stdout: string): void {
+    this._controlInvokeStubs.set(key, stdout);
+  }
+
+  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
+    this.controlInvokeCalls.push(spec);
+    if (this._controlInvokeStubs.size === 0) return null;
+    const exact = `${spec.controlName}:${spec.action}`;
+    const match = this._controlInvokeStubs.get(exact)
+      ?? this._controlInvokeStubs.get(`*:${spec.action}`)
+      ?? this._controlInvokeStubs.get(`${spec.controlName}:*`);
+    if (match === undefined) return null;
+    return {
+      result: Promise.resolve({ stdout: match, stderr: '', exitCode: 0, timedOut: false }),
+      kill: () => {},
+    };
   }
 
   async readFile(path: string): Promise<string | null> {

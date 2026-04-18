@@ -321,6 +321,36 @@ blankScript: ./stocks.sh
     }));
   });
 
+  it('async path: controlInvoke is preferred over spawnProcess when host implements it', async () => {
+    const SCRIPT_CTRL = `---
+type: control
+name: stocks
+blankKeywords: stock, ticker
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+    });
+    // Sandboxed host returns the value via controlInvoke; spawn should
+    // never be hit.
+    adapter.stubControlInvoke('stocks:get', '$201.66\n');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('stock _');
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(adapter.controlInvokeCalls.length).toBe(1);
+    expect(adapter.controlInvokeCalls[0]).toMatchObject({
+      controlName: 'stocks',
+      action: 'get',
+      args: ['stock'],
+    });
+  });
+
   it('async path: passes context words (excluding keyword + blank)', async () => {
     const SCRIPT_CTRL = `---
 type: control
