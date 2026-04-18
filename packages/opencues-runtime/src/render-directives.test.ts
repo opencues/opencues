@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyDirectives } from './render-directives';
 
-const INV_ON = '\x1b[7m';
-const INV_OFF = '\x1b[27m';
+const INV_ON = '\x1b[97m';
+const INV_OFF = '\x1b[39m';
 const DIM_ON = '\x1b[2m';
 const DIM_OFF = '\x1b[22m';
 

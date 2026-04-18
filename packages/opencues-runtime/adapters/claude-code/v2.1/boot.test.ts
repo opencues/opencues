@@ -86,7 +86,7 @@ describe('boot()', () => {
     const result = boot(host);
     result.dispatchKey({ key: 'left', ctrl: true, alt: true }, host.getText(), 0); // activate gamma
     const out = result.applyRender('alpha beta gamma', host.getText(), 0);
-    expect(out).toBe('alpha beta \x1b[7mgamma\x1b[27m');
+    expect(out).toBe('alpha beta \x1b[97mgamma\x1b[39m');
   });
 
   it('applyRender pass-through when no handlers consumed (inactive state)', () => {
@@ -142,6 +142,6 @@ describe('boot()', () => {
     result.dispatchKey({ key: 'left', ctrl: true, alt: true }, host.getText(), 0); // two
     expect(result.hlState.wordIndex).toBe(1);
     const out = result.applyRender('one two three', host.getText(), 0);
-    expect(out).toBe('one \x1b[7mtwo\x1b[27m three');
+    expect(out).toBe('one \x1b[97mtwo\x1b[39m three');
   });
 });

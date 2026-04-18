@@ -71,7 +71,7 @@ describe('DimRender + render pipeline (integration)', () => {
     const directives = adapter.fireRender();
     expect(directives.length).toBe(1);
     const out = applyDirectives('alpha beta gamma', directives[0]);
-    expect(out).toBe(`alpha beta \x1b[7mgamma\x1b[27m`);
+    expect(out).toBe(`alpha beta \x1b[97mgamma\x1b[39m`);
   });
 
   it('Step 32: dims the consume-all span as a single contiguous range', () => {

@@ -30,8 +30,11 @@ function coalesceRanges(input: readonly Range[]): MutRange[] {
   return out;
 }
 
-const ANSI_INVERSE_ON = '\x1b[7m';
-const ANSI_INVERSE_OFF = '\x1b[27m';
+// Highlight = bright white foreground (not inverse video — inverse on
+// some terminals washes out the dim layer underneath, and the user
+// prefers "dim everything else, active is bright"). Reset = default fg.
+const ANSI_INVERSE_ON = '\x1b[97m';
+const ANSI_INVERSE_OFF = '\x1b[39m';
 const ANSI_DIM_ON = '\x1b[2m';
 const ANSI_DIM_OFF = '\x1b[22m';
 

@@ -10,7 +10,7 @@ just architecture.
 - `○` — not started
 - `—` — explicitly skipped (REMOVED in v1, or design-intentionally omitted)
 
-**Last synced:** Phase I.6 (commit pending).
+**Last synced:** Phase I.7 (commit pending).
 
 ---
 
@@ -20,7 +20,7 @@ just architecture.
 |---|---|---|---|
 | 0 | tweakcc setup | ✓ | `~/.tweakcc/cli.js.backup` exists; setup works. |
 | 1 | `cursorStateExport` | ✓ | Phase I.1. New CursorStateExport module subscribes to onTextChange + initial state; writes JSON snapshot (text, cursorPosition, currentWord, atEnd, textLength, timestamp) to `cursorStatePath` after a 100ms debounce. ZWS stripped before measuring. Opt-in via host config; patch sets the path to `/tmp/claude-cursor-state.json` matching v1. Live verified. |
-| 2 | `wordHighlight` (full nav + highlight) | ✓ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the core. Cue filtering moved to Step 4 ✓. Two intentional v2 deviations from v1: (a) inverse-only highlight (no configurable colour) — keeps the rendering contract minimal; users wanting colour can add a host capability later. (b) ZWS chars stay in the InputZone display — they render zero-width in terminal so they're invisible to users; stripping would require reconstructing the InputZone every render (see REPAIR.md #5/#7 for why ZWS toggling is load-bearing). Both deviations cosmetic, not functional. |
+| 2 | `wordHighlight` (full nav + highlight) | ✓ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the core. Cue filtering moved to Step 4 ✓. Highlight uses bright white foreground (`\x1b[97m`); dim uses `\x1b[2m` — the active word stays bright and others fade, which reads better than inverse video on most terminals. ZWS chars stay in the InputZone display: they render zero-width in terminal so they're invisible to users; stripping would require reconstructing the InputZone every render (see REPAIR.md for why ZWS toggling is load-bearing). |
 | 3 | bare-number dim | — | REMOVED in v1 itself (reverted Step 21). Not porting. |
 | 4 | nav filter narrows to cue-control words | ✓ | Phase 7 (commit `1cfc47f`). Filter priority: cueMap → folder controls (incl. blankKeywords) → DynDefs → fallback all-words. |
 | 5 | load cues-core, tip-having words = cue-controls | ✓ | Phase 6 (commit `fa82625`). ConfigLoader loads tips JSON + cwd .md files + folder configs. Nav cue-control gating still pending Step 4. |
@@ -55,9 +55,9 @@ just architecture.
 | 34 | factor `_hlExport.cueTip` writes (one projection, one apply) | — | v2's Statusline already centralises the projection — Step 34 was a v1-specific cleanup, not needed in v2. |
 | 35 | selector/satellite (multi-sub-step) | ✓ | Phase G.a (parser + dual-insert) + G.b (cycling + statusline tip + cursor preservation + multi-word both sides) + G.c (blankClearOnEdit + tolerate-edits-outside-pair). G.c uses two helpers: maybePreserveSatellitePair (common-prefix/suffix matching: edits before/after the pair shift positions instead of invalidating) and computeCleanupRange (when the pair IS touched and clearOnEdit:true, splice pair-plus-user-typed-chars-inside-it by min(prefix, pairStart)/min(suffix, oldTail) clamp, preserving surrounding text). |
 | 36 | resolver-driven blank-fill (rip inline IIFE) | — | v1-specific architectural cleanup. The "inline IIFE" was v1's `wordHighlight.ts` blank-fill block stuffed into the patch source. v2's BlankFill is already a separate runtime module (`src/modules/blank-fill.ts`) that owns detection + sync stepValues + async script-spawn paths cleanly. v2's seam is BlankFill ↔ adapter.spawnProcess; v1's "resolver-driven" rewrite would route through CueResolver instead — a distinct architectural choice that v2 hasn't made (and doesn't need for parity). Marking — to reflect "design-intentionally omitted." |
-| 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ◐ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2. |
+| 37 | post-reintegration polish (extHighlights cleanup, anchor-count assertions, doc hygiene) | ✓ | Anchor-count assertion analogue: v2's `assertAllFound` (commit `3ea17ae`). v1's extHighlights cleanup is N/A in v2 (we never had that quirk). Doc hygiene: parity.md and REPAIR.md kept current through Phases E.1–I.7 — every shipped phase flips its row + adds a peculiarity entry where one was found. |
 
-**Tally:** 34 ✓, 1 ◐, 0 ○, 3 — out of 38 steps. (Phase I.6 promoted Step 2 to ✓ — remaining ◐ items are intentional v2 design choices.)
+**Tally:** 35 ✓, 0 ◐, 0 ○, 3 — out of 38 steps. (Phase I.7 promoted Steps 2 + 37 with bright-white highlight.)
 
 ---
 
