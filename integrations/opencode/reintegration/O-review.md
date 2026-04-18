@@ -16,7 +16,7 @@ Phases shipped so far:
 | O.3 Navigation | `91e47f7` | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
 | O.4 DimRender (extmarks) | `db27817` | `97fe5dd` | Highlight + dim render via OpenTUI extmarks |
 | O.5 + O.6 ConfigLoader + Cycling | `da46931` | `6d57e3f` | Cycling subscribed, ConfigLoader loads tips |
-| O.7 Statusline + Resolver + TTS | _pending_ | `0a1a9fd` | Middle layer wired; opt-in via host paths |
+| O.7 Statusline + Resolver + TTS | `4078e94` | `0a1a9fd` | Middle layer wired; opt-in via host paths |
 
 Each future entry below has the same shape. Most-recent-on-top.
 
@@ -24,7 +24,7 @@ Each future entry below has the same shape. Most-recent-on-top.
 
 ## O.7 — Statusline + Resolver + TTS
 
-**Commit:** _pending_
+**Commit:** `4078e94`
 **Rollback to (prior):** `0a1a9fd`
 
 **Modules touched:**
