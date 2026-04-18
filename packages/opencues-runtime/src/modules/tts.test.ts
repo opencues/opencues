@@ -127,6 +127,55 @@ describe('TTS', () => {
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
+  it('opencues.md `tts-rate:` overrides options.rate', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': TIPS,
+        '/proj/opencues.md': '---\ntts-rate: 7\n---\n',
+      },
+    });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, {
+      scriptPath: '/speak.sh',
+      rate: '2', // host default — should be overridden
+    });
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
+    expect(spawnSpy.mock.calls[0][0].args).toEqual(['/speak.sh', 'Maximum reasoning', '7']);
+  });
+
+  it('opencues.md `tts-script:` overrides options.scriptPath', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': TIPS,
+        '/proj/opencues.md': '---\ntts-script: /custom/say.sh\n---\n',
+      },
+    });
+    adapter.pushText('ultrathink');
+    const hlState = new HighlightState();
+    hlState.activate(0, 'ultrathink');
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/default/speak.sh' });
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
+    expect(spawnSpy.mock.calls[0][0].args[0]).toBe('/custom/say.sh');
+  });
+
+  it('falls back to options.rate when opencues.md has no `tts-rate:`', async () => {
+    const { hlState, tts, spawnSpy } = await setup('ultrathink');
+    hlState.activate(0, 'ultrathink');
+    tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
+    // setup() doesn't set rate option → fallback to '2'
+    expect(spawnSpy.mock.calls[0][0].args[2]).toBe('2');
+  });
+
   it('does not speak when spawn-process capability absent', async () => {
     const adapter = new MockAdapter({ capabilities: ['file-read'], files: { '/tips.json': TIPS } });
     adapter.pushText('ultrathink');

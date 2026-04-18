@@ -138,4 +138,60 @@ describe('Resolver.resolveAndApply', () => {
     expect(dyn.get(0)?.alternatives).toContain('stale'); // p2 also returned 'stale' in this setup
     void dynDefs;
   });
+
+  it('opencues.md `llm-endpoint:` and `llm-model:` override options', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/tips.json': TIPS,
+        '/proj/cues.md': CUES_MD,
+        '/proj/opencues.md': '---\nllm-endpoint: https://other.example.com/v1\nllm-model: openai/custom-model\n---\n',
+      },
+    });
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+
+    let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
+    const fakeFactory = (_c: unknown, _b: unknown, opts: unknown): unknown[] => {
+      capturedOpts = opts as { endpoint?: string; defaultModel?: string };
+      return [{}];
+    };
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'https://patch-default.example.com',
+      apiKey: 'k',
+      defaultModel: 'patch-default-model',
+      httpAdapter: {},
+      resolverFactory: fakeFactory,
+    });
+    resolver.rebuildResolver();
+    expect(capturedOpts?.endpoint).toBe('https://other.example.com/v1');
+    expect(capturedOpts?.defaultModel).toBe('openai/custom-model');
+  });
+
+  it('falls back to options.endpoint/defaultModel when opencues.md has no overrides', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/cues.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    await loader.load();
+    let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'https://patch-default.example.com',
+      apiKey: 'k',
+      defaultModel: 'patch-default-model',
+      httpAdapter: {},
+      resolverFactory: (_c, _b, opts) => {
+        capturedOpts = opts as { endpoint?: string; defaultModel?: string };
+        return [{}];
+      },
+    });
+    resolver.rebuildResolver();
+    expect(capturedOpts?.endpoint).toBe('https://patch-default.example.com');
+    expect(capturedOpts?.defaultModel).toBe('patch-default-model');
+  });
 });
