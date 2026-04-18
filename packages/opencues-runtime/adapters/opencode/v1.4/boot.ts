@@ -11,6 +11,9 @@
 
 import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
+import { Navigation } from '../../../src/modules/navigation';
+import { HighlightState } from '../../../src/state/highlight-state';
+import { DynDefs } from '../../../src/state/dyn-defs';
 import type {
   KeyEvent,
   LogLevel,
@@ -97,6 +100,14 @@ export function boot(host: HostInfo): BootResult {
 
   const adapter = new OpenCodeV14Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
+
+  // Phase O.3 — Navigation. Same module as CC; host-agnostic.
+  // Ctrl+Alt+Left/Right walk navigable words (or all-words at this
+  // phase since ConfigLoader isn't wired yet).
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const navigation = new Navigation(adapter, hlState, dynDefs);
+  navigation.subscribe();
 
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {
     host: 'opencode',

@@ -13,10 +13,45 @@ Phases shipped so far:
 | O.0 + O.1 (scaffold + boot) | `19723e1` | `095f4ff` | Live-test stub bindings work |
 | O.1 smoke + tests | `ac38791` | `19723e1` | 5 unit tests in adapter band |
 | O.2 (real prompt access) | `ad6ff0e` | `ac38791` | Holder pattern, Prompt patches |
+| O.3 Navigation | _pending_ | `f4d088b` | Ctrl+Alt+Left/Right activates highlight |
 
 Each future entry below has the same shape. Most-recent-on-top.
 
 ---
+
+## O.3 — Navigation module
+
+**Commit:** _pending_
+**Rollback to (prior):** `f4d088b`
+
+**Modules touched:**
+- `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` — constructs HighlightState + DynDefs; subscribes Navigation.
+- `integrations/opencode/patches/opencuesBootstrap.ts` — `dispatchOpenCuesKey` now reads text + cursor from the holder so the KeyEvent has populated `text`/`cursorOffset` (Navigation.step needs these).
+
+**What it does:**
+Navigation now subscribes during boot. Ctrl+Alt+Left activates the rightmost word; subsequent presses step left. Ctrl+Alt+Right reverses. With nothing else wired, the rendered text doesn't change YET — DimRender (O.4) is what makes the highlight visible.
+
+**Live test:**
+1. Re-run setup.sh; restart `bun run dev`.
+2. Type `alpha beta gamma` in the prompt input.
+3. Press Ctrl+Alt+Left.
+4. Watch `/tmp/opencues.log` — no specific log per highlight (could add later), but `forceRender` should fire.
+
+**Expected:**
+- Pressing the nav keys should be CONSUMED (the textarea's own cursor should NOT move). This is the primary visible signal at O.3.
+- If the textarea cursor moves anyway, `evt.preventDefault()` from the patched useKeyboard isn't blocking OpenTUI's internal handler — see REPAIR.md #3.
+
+**Peculiarities found:**
+- KeyEvent must carry `text` + `cursorOffset` for Navigation.step. We populate from the holder in `dispatchOpenCuesKey`. Empty/wrong values silently skip Navigation.
+- Navigation falls back to all-words filtering until ConfigLoader provides cueMap (O.6). At O.3, EVERY word is navigable.
+
+**Notes for the next step:**
+- O.4 hits the OpenTUI rendering question. We need to either (a) wrap the textarea's display string with ANSI dim/highlight codes (if OpenTUI passes them through) or (b) use OpenTUI's extmarks API to attach style ranges (more idiomatic).
+- Look at `input.extmarks.registerType("prompt-part")` in prompt/index.tsx — that's the API we may need.
+
+---
+
+## O.x — TEMPLATE
 
 ## O.2 — Real prompt access via singleton holder
 

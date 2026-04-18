@@ -126,6 +126,9 @@ export function startOpenCues(opts: {
 /** Forwards an OpenTUI useKeyboard event into the runtime. Returns true if consumed. */
 export function dispatchOpenCuesKey(evt: any): boolean {
   if (!bootResult) return false
+  // Pull live text + cursor from the published prompt access so
+  // Navigation can splitWords + activate the rightmost target.
+  const access = __ocPromptHolder.current
   const e: KeyEvent = {
     key: normaliseKeyName(evt),
     modifiers: {
@@ -134,8 +137,8 @@ export function dispatchOpenCuesKey(evt: any): boolean {
       shift: !!evt.shift,
       meta: !!evt.meta,
     },
-    text: "",
-    cursorOffset: 0,
+    text: access?.read() ?? "",
+    cursorOffset: access?.cursor() ?? 0,
   }
   return bootResult.dispatchKey(e)
 }

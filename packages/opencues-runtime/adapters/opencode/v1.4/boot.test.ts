@@ -77,6 +77,27 @@ describe('OpenCode v1.4 boot()', () => {
     expect(caps).not.toContain('spawn-process');
   });
 
+  it('Phase O.3: Navigation subscribed — Ctrl+Alt+Left consumed when text has words', () => {
+    let text = 'alpha beta gamma';
+    let cursor = 0;
+    const result = boot({
+      hostVersion: '1.4.11',
+      cwd: '/proj',
+      getText: () => text,
+      getCursorOffset: () => cursor,
+      setText: (t) => { text = t; },
+      setCursorOffset: (c) => { cursor = c; },
+      forceRender: () => {},
+    });
+    const consumed = result.dispatchKey({
+      key: 'left',
+      modifiers: { ctrl: true, alt: true, shift: false, meta: false },
+      text,
+      cursorOffset: cursor,
+    });
+    expect(consumed).toBe(true);
+  });
+
   it('opt-in spawn-process when host supplies spawnProcess', () => {
     const log = vi.fn();
     boot({
