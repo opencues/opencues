@@ -151,6 +151,45 @@ After fill, SolidJS's `onContentChange` fires → `notifyOpenCuesTextChange`
 re-tags the change as `"runtime"` via the LF-5 sentinel, so Navigation
 doesn't clear highlight.
 
+## Drift guard is observe-only
+
+`boot.ts` tracks `lastSeenText`/`lastSeenCursor` to give
+`notifyTextChange` events an accurate `previousText`. It does NOT
+synthesise text-change events when `collectRenderDirectives` sees text
+differing from `lastSeenText`. The reason is timing: Cycling's control
+path (`cycleControl`) runs `setText` then `forceRender` synchronously,
+both before SolidJS flushes `onContentChange`. The bootstrap's
+`forceRender` calls `triggerOpenCuesRender` immediately, which reads
+the new text from the textarea ref while `lastSeenText` still holds
+the pre-cycle value. A synthetic `'user'` textChange there clears the
+highlight and the next Resolver pass pollutes the now-unattributed
+word with LLM alts.
+
+If you want defence against a future host edit that bypasses
+`notifyOpenCuesTextChange`, add an explicit warning log at drift
+detection — never an event fire.
+
+## Async-update render contract
+
+OpenCode's prompt only re-runs OpenCues render handlers on a real
+text change (via the patched `onContentChange`). Async runtime state
+changes (LLM Resolver writing to `dynDefs`, ControlValuesCache
+refreshes, etc.) don't naturally trigger that path — they need an
+explicit `adapter.forceRender()` to schedule a paint.
+
+The runtime side calls `forceRender()` after every async write that
+should affect rendering (Resolver after `dynDefs.set`, BlankFill,
+Cycling). The OpenCode bootstrap turns each `forceRender()` into a
+`triggerOpenCuesRender(currentText, currentCursor)` (which re-fires
+DimRender + Statusline render handlers and rewrites extmarks) plus an
+OpenTUI `requestRender()`.
+
+If async cues stop appearing without a keystroke, check both ends:
+- Does the relevant module call `adapter.forceRender()` after its
+  state mutation?
+- Is the bootstrap's `forceRender` binding still routing through
+  `triggerOpenCuesRender` (not just `requestRender`)?
+
 ## Host quirks
 
 ### 1. SolidJS reactivity vs imperative writes

@@ -117,12 +117,15 @@ export function boot(host: HostInfo): BootResult {
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
 
-  // Drift guard: the patched prompt component is expected to call
-  // notifyTextChange on every onContentChange. If a future host edit
-  // bypasses that (e.g. someone moves the notify call into a conditional
-  // branch), text handlers would go blind. collectRenderDirectives runs
-  // on every render, so we compare the text it sees against lastSeenText
-  // and fire a synthetic 'user' textChange on drift.
+  // Text observation tracking. Used to populate `previousText` on
+  // notifyTextChange events. We do NOT synthesise text-change events
+  // when collectRenderDirectives sees drift — the bootstrap can't
+  // reliably tell user-typed drift apart from a runtime-initiated
+  // setText/pushText that hasn't yet flowed through SolidJS's
+  // onContentChange (Cycling.cycleControl → setText → forceRender all
+  // run synchronously, before onContentChange fires). Synthesising
+  // 'user' there clears the highlight and the next Resolver pass
+  // pollutes the now-unattributed word with LLM alts.
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
   const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
@@ -272,14 +275,11 @@ export function boot(host: HostInfo): BootResult {
       fireTextChange(text, cursorOffset, source);
     },
     collectRenderDirectives(text, cursor) {
-      // Drift check: if text moved without a preceding notifyTextChange,
-      // synthesise a 'user' textChange so handlers don't miss the edit.
-      if (lastSeenText !== null && text !== lastSeenText) {
-        fireTextChange(text, cursor, 'user');
-      } else {
-        lastSeenText = text;
-        lastSeenCursor = cursor;
-      }
+      // Observe-only — never synthesise textChange here (see comment by
+      // lastSeenText declaration). Cycling.cycleControl + forceRender
+      // race onContentChange and would otherwise look like user drift.
+      lastSeenText = text;
+      lastSeenCursor = cursor;
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
       const out: RenderDirectives[] = [];
       for (const h of renderHandlers) {
