@@ -7,7 +7,17 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
-const HOSTS = ['cc', 'oc', 'chrome'];
+const HOST_ALIASES = {
+  'claude-code': 'cc',
+  'claudecode':  'cc',
+  'claude':      'cc',
+  'cc':          'cc',
+  'opencode':    'oc',
+  'oc':          'oc',
+  'chrome':      'chrome',
+};
+const HOSTS = ['claude-code', 'opencode', 'chrome'];
+const HOST_FOLDERS = ['cc', 'oc', 'chrome'];
 
 module.exports = function uninstall(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -22,25 +32,25 @@ module.exports = function uninstall(argv, ctx) {
   }
 
   if (!target) {
-    console.error('opencues uninstall: missing <host>. One of: cc, oc, chrome, --all');
+    console.error(`opencues uninstall: missing <host>. One of: ${HOSTS.join(', ')}, --all`);
     console.error('Run `opencues uninstall --help` for details.\n');
     process.exit(2);
   }
 
-  const hosts = target === '--all' ? HOSTS : [target];
-  for (const h of hosts) {
-    if (!HOSTS.includes(h)) {
-      console.error(`opencues uninstall: unknown host "${h}". Known: ${HOSTS.join(', ')}, --all`);
-      process.exit(2);
-    }
+  const folders = target === '--all'
+    ? HOST_FOLDERS
+    : [HOST_ALIASES[target]];
+  if (folders[0] === undefined) {
+    console.error(`opencues uninstall: unknown host "${target}". Known: ${HOSTS.join(', ')}, --all`);
+    process.exit(2);
   }
 
   let exitCode = 0;
-  for (const h of hosts) {
-    if (hosts.length > 1) console.log(`\n=== uninstalling @opencues/${h} ===\n`);
-    const installer = path.join(ctx.REPO_ROOT, 'integrations', h, 'bin', 'install.cjs');
+  for (const folder of folders) {
+    if (folders.length > 1) console.log(`\n=== uninstalling @opencues/${folder} ===\n`);
+    const installer = path.join(ctx.REPO_ROOT, 'integrations', folder, 'bin', 'install.cjs');
     if (!fs.existsSync(installer)) {
-      console.error(`opencues uninstall: installer not found for "${h}" (expected ${installer})`);
+      console.error(`opencues uninstall: installer not found for "${folder}" (expected ${installer})`);
       exitCode = 1;
       continue;
     }

@@ -11,7 +11,21 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
-const HOSTS = ['cc', 'oc', 'chrome'];
+// Map every recognised host name to its folder code under integrations/.
+// Descriptive forms ('claude-code', 'opencode') are the primary user-facing
+// names — what `--help` documents. Short codes ('cc', 'oc') are accepted
+// aliases for power users / typing speed.
+const HOST_ALIASES = {
+  'claude-code': 'cc',
+  'claudecode':  'cc',
+  'claude':      'cc',
+  'cc':          'cc',
+  'opencode':    'oc',
+  'oc':          'oc',
+  'chrome':      'chrome',
+};
+const HOSTS = ['claude-code', 'opencode', 'chrome'];     // canonical names
+const HOST_FOLDERS = ['cc', 'oc', 'chrome'];             // resolved folders for --all
 
 module.exports = function install(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
@@ -28,23 +42,24 @@ module.exports = function install(argv, ctx) {
   }
 
   if (!target) {
-    console.error('opencues install: missing <host>. One of: cc, oc, chrome, --all');
+    console.error(`opencues install: missing <host>. One of: ${HOSTS.join(', ')}, --all`);
     console.error('Run `opencues install --help` for details.\n');
     process.exit(2);
   }
 
-  const hosts = target === '--all' ? HOSTS : [target];
-  for (const h of hosts) {
-    if (!HOSTS.includes(h)) {
-      console.error(`opencues install: unknown host "${h}". Known: ${HOSTS.join(', ')}, --all`);
-      process.exit(2);
-    }
+  // Resolve descriptive name → folder code; --all expands to all folders.
+  const folders = target === '--all'
+    ? HOST_FOLDERS
+    : [HOST_ALIASES[target]];
+  if (folders[0] === undefined) {
+    console.error(`opencues install: unknown host "${target}". Known: ${HOSTS.join(', ')}, --all`);
+    process.exit(2);
   }
 
   let exitCode = 0;
-  for (const h of hosts) {
-    if (hosts.length > 1) console.log(`\n=== installing @opencues/${h} ===\n`);
-    const code = runHostInstaller(h, 'install', passthrough, ctx);
+  for (const folder of folders) {
+    if (folders.length > 1) console.log(`\n=== installing @opencues/${folder} ===\n`);
+    const code = runHostInstaller(folder, 'install', passthrough, ctx);
     if (code !== 0) exitCode = code;
   }
   process.exit(exitCode);
@@ -67,19 +82,19 @@ function printHelp(ctx) {
   console.log('its per-integration installer (see integrations/<host>/bin/install.cjs).');
   console.log('');
   console.log('Hosts:');
-  console.log('  cc            Claude Code — patches cli.js via tweakcc');
-  console.log('  oc            OpenCode — patches an OpenCode 1.4.x fork');
+  console.log('  claude-code   Patches Claude Code\'s cli.js via tweakcc       (aliases: claudecode, claude, cc)');
+  console.log('  opencode      Patches an OpenCode 1.4.x fork                 (alias: oc)');
   console.log('  chrome        Chrome MV3 extension');
   console.log('  --all         Install all three');
   console.log('');
   console.log('Common flags (passed through to the per-host installer):');
-  console.log('  --target <path>   Host install path (cli.js for cc, fork dir for oc, etc.)');
+  console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode)');
   console.log('  --dry-run         Print plan, do not execute');
-  console.log('  --clean           (cc only) wipe install dir before reinstalling');
+  console.log('  --clean           (claude-code only) wipe install dir before reinstalling');
   console.log('  --no-build        (chrome only) skip build, use existing dist/');
   console.log('');
   console.log('Examples:');
-  console.log('  opencues install cc');
-  console.log('  opencues install cc --target ~/local-claude-code/.../cli.js');
+  console.log('  opencues install claude-code');
+  console.log('  opencues install claude-code --target ~/local-claude-code/.../cli.js');
   console.log('  opencues install --all --dry-run');
 }

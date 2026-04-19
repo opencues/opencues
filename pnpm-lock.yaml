@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      opencues:
+        specifier: workspace:*
+        version: link:packages/opencues-cli
       turbo:
         specifier: ^2.9.6
         version: 2.9.6
