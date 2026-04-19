@@ -189,13 +189,13 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   }
 
   // Single absolute path — boot.js handles all internal wiring.
-  const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/@opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
+  const bootPath = `(process.env.HOME||"~")+"/.claude/opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
   // The hoisted control classes (HackerNews / Stocks / Weather / Answer /
   // PromptImprover / OpenCuesSettings) live in the runtime's controls
   // package. We require it lazily inside the bootstrap so older runtime
   // installs (without controls/) still load — controlInvoke just stays
   // null in that case and BlankFill falls back to spawnProcess.
-  const controlsPath = `(process.env.HOME||"~")+"/.claude/node_modules/@opencues/runtime/dist/src/controls/index.js"`;
+  const controlsPath = `(process.env.HOME||"~")+"/.claude/opencues/runtime/dist/src/controls/index.js"`;
   // Project-root opencues.md — same path the legacy bash control read.
   // Resolved at call time so cwd flips are picked up live. Mirrors
   // opencode/patches/opencuesBootstrap.ts:findOpenCuesMdPath.
@@ -255,7 +255,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // because the harness only drives one CC at a time.
     `cursorStatePath:"/tmp/claude-cursor-state.json",` +
     // TTS: speak.sh is the same script v1 used. ttsRate matches v1's default.
-    `ttsScriptPath:(process.env.HOME||"~")+"/.claude/actions/speak.sh",` +
+    `ttsScriptPath:(process.env.HOME||"~")+"/.claude/opencues/actions/speak.sh",` +
     `ttsRate:2,` +
     // LLM resolver. Resolver only constructs if llmApiKey is set; otherwise
     // the runtime stays static-cue-only. Endpoint + model match v1's defaults.

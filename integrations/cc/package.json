@@ -10,7 +10,8 @@
     "opencues-cc": "./bin/install.cjs"
   },
   "scripts": {
-    "dev-install": "node bin/install.cjs"
+    "dev-install": "node bin/install.cjs install",
+    "dev-uninstall": "node bin/install.cjs uninstall"
   },
   "files": [
     "bin/",

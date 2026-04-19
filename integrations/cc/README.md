@@ -29,9 +29,9 @@ pnpm --filter @opencues/cc dev-install -- \
 
 The installer:
 1. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
-2. Installs them to `~/.claude/node_modules/@opencues/{core,runtime}/`
+2. Installs both under **one dir**: `~/.claude/opencues/`
 3. Builds tweakcc with the patches under `patches/`
-4. Applies patches to the detected `cli.js`
+4. Applies patches to the detected `cli.js` (backup at `~/.claude/opencues/tweakcc-state/cli.js.backup`)
 
 > **Future:** post-publish, the same script runs as `npx @opencues/cc`. Same flags, same behaviour.
 
@@ -46,7 +46,7 @@ After install, restart `claude-cues` (or whichever Claude CLI you patched) and t
 | Type `5f`, position cursor on it, Ctrl+Alt+Up | Numeric cycling: `5f → 5.5f → 6f` |
 | Type `voice-mode active`, cycle Up | Selector/satellite + `@opencues/runtime` settings control |
 | Type `weather _ paris` | LLM/HTTP control: fills with current Paris weather |
-| Cycle any cyclable word | TTS announces the cycled value (uses `~/.claude/actions/speak.sh`) |
+| Cycle any cyclable word | TTS announces the cycled value (uses `~/.claude/opencues/actions/speak.sh`) |
 | Verify highlighted word shows tip in the status bar | Statusline export → `highlight-statusline.sh` |
 
 If any of these fail, tail `/tmp/opencues.log` in another shell — the runtime writes diagnostics there regardless of whether the TUI swallows stderr.
@@ -69,27 +69,38 @@ pnpm --filter @opencues/cc dev-install    # rebuilds + redeploys
 
 ## What gets installed where
 
-| Path | Contents |
-|---|---|
-| `~/.claude/node_modules/@opencues/core/` | Built `@opencues/core` (CueResolver, parsers, sources) |
-| `~/.claude/node_modules/@opencues/runtime/` | Built `@opencues/runtime` (Navigation, Cycling, BlankFill, controls/) |
-| `~/.claude/claude-code-tips.json` | Pre-computed word alternatives (read by ConfigLoader) |
-| `~/.claude/actions/` | OS-bound scripts (`speak.sh`, `volume.sh`, `brightness.sh`, plus `.exe` shims compiled from `.cs` on WSL) |
-| `~/.claude/highlight-statusline.sh` | Status-line script (wire via `/statusline` in CC) |
-| `<cli.js>` | Patched in-place; tweakcc keeps a `.backup` next to it |
+**Everything @opencues/cc owns lives under one dir:**
+
+```
+~/.claude/opencues/
+├── core/                 built @opencues/core (CueResolver, parsers, sources)
+├── runtime/              built @opencues/runtime (Navigation, Cycling, BlankFill, controls/)
+├── tips.json             pre-computed word tips (read by ConfigLoader)
+├── statusline.sh         status-line script (wire via /statusline)
+├── actions/              OS-bound scripts (speak.sh, brightness.sh) + WSL .exe shims
+└── tweakcc-state/        tweakcc's config + cli.js.backup
+                          (redirected from ~/.tweakcc/ via TWEAKCC_CONFIG_DIR)
+```
+
+Plus `<cli.js>` itself is patched in place. Backup lives inside `~/.claude/opencues/tweakcc-state/`.
+
+**Runtime state** (NOT created by install — appears when CC runs):
+- `/tmp/opencues.log`
+- `/tmp/claude-highlight-state-<pid>.json`
+- `/tmp/claude-cursor-state.json`
+
+These are runtime IPC files; OS rotates `/tmp/`.
 
 ---
 
 ## Removing
 
-Restore the original `cli.js` from the backup tweakcc kept:
-
 ```bash
-cp ~/.tweakcc/cli.js.backup \
-   ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
-rm -rf ~/.claude/node_modules/@opencues
-rm -rf ~/.claude/actions ~/.claude/claude-code-tips.json ~/.claude/highlight-statusline.sh
+pnpm --filter @opencues/cc dev-uninstall -- \
+  --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
 ```
+
+Reverts `cli.js` from the backup in `~/.claude/opencues/tweakcc-state/`, then removes `~/.claude/opencues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
 
 ---
 

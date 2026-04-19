@@ -1,82 +1,248 @@
 #!/usr/bin/env node
-// @opencues/oc installer.
+// @opencues/oc CLI — install / uninstall.
 //
 // Usage:
-//   From a clone (today):  pnpm --filter @opencues/oc dev-install
-//                          node integrations/oc/bin/install.js
-//   Post-publish:          npx @opencues/oc
+//   opencues-oc                         # install (default; clones fork if missing)
+//   opencues-oc install
+//   opencues-oc uninstall               # roll back to pre-install state
 //
-// Flags:
+// Common flags:
 //   --target <path>   Path to opencode fork dir (default: $HOME/opencode-cues)
-//   --help            Print this and exit
+//   --dry-run         Print the plan, don't execute
+//   --help            Show usage
 //
-// Today this delegates to patches/setup.sh (which clones the opencode fork
-// at the pinned version, builds source, copies runtime + core into the
-// fork's node_modules, applies bootstrap patches via sed/python). Post-
-// publish, the same wrapper resolves built artefacts from the npm
-// package's dist/ instead of building from source.
+// Today this runs from a clone via `pnpm --filter @opencues/oc dev-install`.
+// Post-publish (Stage 8) it becomes the bin entry for `npx @opencues/oc`.
 
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
-const args = parseArgs(process.argv.slice(2));
-if (args.help) { printHelp(); process.exit(0); }
+const HOME = os.homedir();
+const DEFAULT_FORK = path.join(HOME, 'opencode-cues');
 
-console.log(`${pkg.name} v${pkg.version} — ${pkg.description}`);
-console.log(`Compatible with: ${formatCompat(pkg.compatibility)}`);
-console.log();
+// All paths relative to the opencode fork dir. Single source of truth
+// for blast radius — install + uninstall + dry-run all read from here.
+function pathsForFork(fork) {
+  const tuiDir = path.join(fork, 'packages', 'opencode', 'src', 'cli', 'cmd', 'tui');
+  return {
+    // Whole-directory removals on uninstall.
+    dirs: [
+      path.join(fork, 'node_modules', '@opencues', 'core'),
+      path.join(fork, 'node_modules', '@opencues', 'runtime'),
+    ],
+    // Files we copied in (single removal).
+    files: [path.join(tuiDir, 'opencues.ts')],
+    // Files we patched in place (uninstall reverts via `git checkout --`
+    // since the fork is a git repo).
+    patched: [
+      path.join(tuiDir, 'app.tsx'),
+      path.join(tuiDir, 'component', 'prompt', 'index.tsx'),
+      path.join(tuiDir, 'feature-plugins', 'home', 'footer.tsx'),
+    ],
+  };
+}
+
+const { command, args, unknown } = parseArgv(process.argv.slice(2));
+warnUnknownFlags(unknown);
+if (args.help || command === 'help') { printHelp(); process.exit(0); }
+
+printBanner();
 
 const isClone = fs.existsSync(path.join(REPO_ROOT, 'pnpm-workspace.yaml'));
 if (!isClone) {
-  console.error('Published-package install path is not implemented yet (Stage 8 ships it).');
-  console.error('For now, install from a clone:');
-  console.error('  git clone https://github.com/opencues/opencues');
-  console.error('  pnpm install');
-  console.error('  pnpm --filter @opencues/oc dev-install');
+  console.error(
+    '\nPublished-package install path is not implemented yet (Stage 8 ships it).\n' +
+    'For now, install from a clone:\n' +
+    '  git clone https://github.com/opencues/opencues\n' +
+    '  pnpm install\n' +
+    '  pnpm --filter @opencues/oc dev-install\n',
+  );
   process.exit(1);
 }
 
-// patches/setup.sh accepts an optional opencode-dir argument.
-const setupSh = path.join(PKG_DIR, 'patches/setup.sh');
-const setupArgs = args.target ? [args.target] : [];
-const result = spawnSync(setupSh, setupArgs, { stdio: 'inherit' });
-
-if (result.status !== 0) {
-  console.error(`\n${pkg.name} install failed (setup.sh exited ${result.status}).`);
-  process.exit(result.status || 1);
+if (command === 'install') {
+  doInstall();
+} else if (command === 'uninstall') {
+  doUninstall();
+} else {
+  console.error(`Unknown command: ${command}\n`);
+  printHelp();
+  process.exit(1);
 }
 
-console.log(`\n${pkg.name} install complete.`);
-console.log('cd into the opencode fork and run `bun install && bun run dev`.');
+// --- INSTALL --------------------------------------------------------------
+
+function doInstall() {
+  const fork = args.target || DEFAULT_FORK;
+  console.log(`Target opencode fork: ${fork}`);
+  const paths = pathsForFork(fork);
+
+  if (args.dryRun) {
+    console.log('\n[dry-run] Would clone sst/opencode (if missing) at pinned SHA into target.');
+    console.log('[dry-run] Would build @opencues/{core,runtime} via turbo.');
+    console.log('[dry-run] Would install to:');
+    for (const p of paths.dirs) console.log(`  ${p}/`);
+    console.log('[dry-run] Would copy bootstrap to:');
+    for (const p of paths.files) console.log(`  ${p}`);
+    console.log('[dry-run] Would patch in place:');
+    for (const p of paths.patched) console.log(`  ${p}`);
+    return;
+  }
+
+  // Delegate to setup.sh. It accepts an optional fork-dir argument.
+  const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
+  const result = spawnSync(setupSh, [fork], { stdio: 'inherit' });
+  if (result.status !== 0) {
+    console.error(`\n${pkg.name} install failed (setup.sh exited ${result.status}).`);
+    process.exit(result.status || 1);
+  }
+
+  console.log(`\n${pkg.name} install complete.`);
+  console.log('Run the patched fork:');
+  console.log(`  cd ${fork} && bun install && bun run dev`);
+  console.log('To roll back: pnpm --filter @opencues/oc dev-uninstall');
+}
+
+// --- UNINSTALL ------------------------------------------------------------
+
+function doUninstall() {
+  const fork = args.target || DEFAULT_FORK;
+  if (!fs.existsSync(fork)) {
+    console.log(`No opencode fork at ${fork} — nothing to uninstall.`);
+    return;
+  }
+  const paths = pathsForFork(fork);
+
+  // Check the fork is a git repo (so we can revert patched files).
+  const isGitRepo = fs.existsSync(path.join(fork, '.git'));
+
+  const plan = {
+    revert: paths.patched.filter(p => fs.existsSync(p)),
+    rmFiles: paths.files.filter(p => fs.existsSync(p)),
+    rmDirs: paths.dirs.filter(p => fs.existsSync(p)),
+  };
+
+  console.log(`Target opencode fork: ${fork}`);
+  console.log('Uninstall plan:');
+  if (isGitRepo) {
+    for (const p of plan.revert) console.log(`  git checkout -- ${path.relative(fork, p)}`);
+  } else {
+    console.log(`  WARNING: ${fork} is not a git repo — cannot revert patched files`);
+    console.log(`           you'll need to restore them manually:`);
+    for (const p of plan.revert) console.log(`             ${p}`);
+  }
+  for (const p of plan.rmFiles) console.log(`  rm ${p}`);
+  for (const p of plan.rmDirs) console.log(`  rm -rf ${p}`);
+  if (!plan.revert.length && !plan.rmFiles.length && !plan.rmDirs.length) {
+    console.log('  (no installed paths found — appears clean)');
+  }
+  console.log(`\nNote: this leaves the opencode fork itself in place. To remove it entirely:`);
+  console.log(`  rm -rf ${fork}`);
+
+  if (args.dryRun) {
+    console.log('\n[dry-run] Nothing executed.');
+    return;
+  }
+
+  console.log('');
+  // 1. git checkout the patched files.
+  if (isGitRepo) {
+    for (const p of plan.revert) {
+      const rel = path.relative(fork, p);
+      const r = spawnSync('git', ['checkout', '--', rel], { cwd: fork, stdio: 'inherit' });
+      if (r.status === 0) console.log(`  reverted ${rel}`);
+      else console.warn(`  git checkout failed for ${rel} (exit ${r.status}); skipping`);
+    }
+  }
+  // 2. Remove the bootstrap copy.
+  for (const p of plan.rmFiles) {
+    fs.rmSync(p, { force: true });
+    console.log(`  removed ${p}`);
+  }
+  // 3. Remove our node_modules entries.
+  for (const p of plan.rmDirs) {
+    fs.rmSync(p, { recursive: true, force: true });
+    console.log(`  removed ${p}/`);
+  }
+  rmdirIfEmpty(path.join(fork, 'node_modules', '@opencues'));
+
+  console.log(`\n${pkg.name} uninstall complete.`);
+}
 
 // --- helpers --------------------------------------------------------------
 
-function parseArgs(argv) {
-  const out = { help: false };
-  for (let i = 0; i < argv.length; i++) {
+function rmdirIfEmpty(dir) {
+  try {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+  } catch { /* ignore */ }
+}
+
+function parseArgv(argv) {
+  const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'help']);
+  const out = { command: 'install', args: { help: false, dryRun: false }, unknown: [] };
+  let i = 0;
+  if (argv[i] && !argv[i].startsWith('-')) {
+    if (KNOWN_COMMANDS.has(argv[i])) { out.command = argv[i]; i++; }
+    else { out.unknown.push(argv[i]); i++; }
+  }
+  for (; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--help' || a === '-h') out.help = true;
-    else if (a === '--target') out.target = argv[++i];
+    if (a === '--') continue; // pnpm/npm separator — skip silently
+    if (a === '--help' || a === '-h') out.args.help = true;
+    else if (a === '--dry-run') out.args.dryRun = true;
+    else if (a === '--target') out.args.target = argv[++i];
+    else out.unknown.push(a);
   }
   return out;
 }
 
-function formatCompat(c) {
-  if (!c || typeof c !== 'object') return '(unspecified)';
-  return Object.entries(c).map(([host, ver]) => `${host} ${ver}`).join(', ');
+function warnUnknownFlags(unknown) {
+  if (!unknown.length) return;
+  console.warn(`WARNING: ignoring unknown argument(s): ${unknown.join(' ')}`);
+  console.warn(`Known commands: install, uninstall, help`);
+  console.warn(`Known flags:    --target <path>, --dry-run, --help`);
+  console.warn('');
+}
+
+function printBanner() {
+  console.log(`${pkg.name} v${pkg.version} — ${pkg.description}`);
+  if (pkg.compatibility) {
+    const compatStr = Object.entries(pkg.compatibility).map(([h, v]) => `${h} ${v}`).join(', ');
+    console.log(`Compatible with: ${compatStr}`);
+  }
 }
 
 function printHelp() {
-  console.log(`${pkg.name} v${pkg.version}`);
+  printBanner();
   console.log('');
-  console.log('Usage: opencues-oc [--target <opencode-fork-dir>]');
+  console.log('Commands:');
+  console.log('  install (default)   Clone opencode fork (if missing), build runtime, patch fork in place');
+  console.log('  uninstall           git checkout the 3 patched files, rm bootstrap copy, rm node_modules entries');
+  console.log('  help                Show this message');
   console.log('');
-  console.log('  --target <path>   Path to opencode fork (default: $HOME/opencode-cues)');
-  console.log('  --help            Show this message');
+  console.log('Flags:');
+  console.log('  --target <path>     Path to opencode fork (default: $HOME/opencode-cues)');
+  console.log('  --dry-run           Print the plan; do not execute');
+  console.log('  --help              Show this message');
+  console.log('');
+  console.log('Blast radius:');
+  console.log('  Cloned (if missing):');
+  console.log('    <fork>/  — full opencode fork at pinned SHA');
+  console.log('  Files installed inside the fork:');
+  console.log('    <fork>/node_modules/@opencues/core/');
+  console.log('    <fork>/node_modules/@opencues/runtime/');
+  console.log('    <fork>/packages/opencode/src/cli/cmd/tui/opencues.ts  (bootstrap copy)');
+  console.log('  Modified in place inside the fork (revertable via git checkout):');
+  console.log('    <fork>/packages/opencode/src/cli/cmd/tui/app.tsx');
+  console.log('    <fork>/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx');
+  console.log('    <fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx');
+  console.log('  Repo state (no host pollution):');
+  console.log('    packages/*/dist/, .turbo/  (build cache, gitignored)');
 }

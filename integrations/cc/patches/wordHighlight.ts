@@ -684,13 +684,13 @@ globalThis._parentValue=${valueParam};
 if(!globalThis._cueControlOverrides){globalThis._cueControlOverrides=${controlOvrJson};globalThis._staticCueControlOverrides=${controlOvrJson};}
 if(!globalThis._cuesCore){try{
 var _ccHome=process.env.HOME||"~";
-var _cues=${requireFuncName}(_ccHome+"/.claude/node_modules/@opencues/core");
+var _cues=${requireFuncName}(_ccHome+"/.claude/opencues/core");
 var _tipsC=${requireFuncName}("fs").readFileSync(_ccHome+"/.claude/claude-code-tips.json","utf8");
 var _td=_cues.parseLocalCueFile(_tipsC);
 globalThis._cuesCore=_cues;
 globalThis._localCueMap=_cues.buildLookupMap(_td);
 try{
-var _NodeHttpAdapter=${requireFuncName}(_ccHome+"/.claude/node_modules/@opencues/core/node-http-adapter").NodeHttpAdapter;
+var _NodeHttpAdapter=${requireFuncName}(_ccHome+"/.claude/opencues/core/node-http-adapter").NodeHttpAdapter;
 globalThis._httpAdapter=new _NodeHttpAdapter({maxSockets:2,timeout:30000,providerOverrides:{}});
 if(process.env.GROQ_API_KEY)setTimeout(function(){try{globalThis._httpAdapter.warmup("https://api.groq.com/openai/v1/models",{Authorization:"Bearer "+process.env.GROQ_API_KEY});}catch(_we){}},1000);
 }catch(_ha){globalThis._httpAdapter=null;}

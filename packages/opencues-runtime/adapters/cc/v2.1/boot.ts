@@ -292,7 +292,7 @@ export function boot(host: HostInfo): BootResult {
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
-  const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/claude-code-tips.json`;
+  const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/opencues/tips.json`;
   const configLoader = new ConfigLoader(adapter, { tipsPath });
   configLoaderRef = configLoader; // wire isDebugEnabled to opencues.md
   configLoader.subscribe(); // hot-reload on text-change drift

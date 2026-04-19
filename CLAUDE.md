@@ -204,8 +204,8 @@ integrations/cc/patches/setup.sh
 
 The script:
 1. Copies patch `.ts` files (`cursorStateExport.ts`, `wordHighlight.ts`, `dynamicHighlight.ts`, `opencuesRuntime.ts`) to tweakcc and rebuilds it (compiles patches into `dist/`)
-2. Builds `@opencues/core` and copies to `~/.claude/node_modules/@opencues/core/`
-3. Builds `@opencues/runtime` and rsyncs `dist/` to `~/.claude/node_modules/@opencues/runtime/` (since commit `2ae362e`)
+2. Builds `@opencues/core` and copies to `~/.claude/opencues/core/`
+3. Builds `@opencues/runtime` and rsyncs `dist/` to `~/.claude/opencues/runtime/`. Tips JSON, statusline script, and OS action scripts also go under `~/.claude/opencues/`. tweakcc's own config + `cli.js.backup` redirect there too via `TWEAKCC_CONFIG_DIR`. Single dir = clean uninstall.
 4. Applies compiled patches to `claude-cues` (`~/local-claude-code`)
 
 To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):

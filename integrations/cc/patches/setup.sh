@@ -17,6 +17,14 @@ NEEDS_TWEAKCC_BUILD=false
 CLEAN_INSTALL=false
 TWEAKCC_DIR=""
 
+# Single-dir install root. Everything @opencues/cc owns lives here so
+# uninstall is `rm -rf $OC_INSTALL_ROOT` + tweakcc revert. tweakcc's own
+# config + cli.js.backup are redirected here too via TWEAKCC_CONFIG_DIR
+# (tweakcc respects this env var; see tweakcc/src/tests/tweakccConfigDir.test.ts).
+OC_INSTALL_ROOT="$HOME/.claude/opencues"
+export TWEAKCC_CONFIG_DIR="$OC_INSTALL_ROOT/tweakcc-state"
+mkdir -p "$OC_INSTALL_ROOT" "$TWEAKCC_CONFIG_DIR"
+
 for arg in "$@"; do
   if [ "$arg" = "--clean" ]; then
     CLEAN_INSTALL=true
@@ -247,43 +255,43 @@ if [ -d "$CUES_CORE" ]; then
     echo "cues-core up to date"
   fi
 
-  # Cleanup legacy install path from before the @opencues scope rename
-  # (Stage 4 of the repo restructure). Safe to run repeatedly.
-  if [ -d ~/.claude/node_modules/cues-core ]; then
-    echo "Removing legacy ~/.claude/node_modules/cues-core (pre-rename install)..."
-    rm -rf ~/.claude/node_modules/cues-core
-  fi
+  # Cleanup legacy install paths from before consolidation:
+  # - cues-core (pre-Stage-4a rename)
+  # - @opencues/core under node_modules (pre-Stage-6'-consolidation)
+  for legacy in ~/.claude/node_modules/cues-core ~/.claude/node_modules/@opencues/core; do
+    if [ -d "$legacy" ]; then
+      echo "Removing legacy $legacy ..."
+      rm -rf "$legacy"
+    fi
+  done
+  # Tidy the empty @opencues parent dir (best effort).
+  rmdir ~/.claude/node_modules/@opencues 2>/dev/null || true
 
   if $CLEAN_INSTALL; then
     echo "Clean installing @opencues/core..."
-    rm -rf ~/.claude/node_modules/@opencues/core
+    rm -rf "$OC_INSTALL_ROOT/core"
   fi
-  mkdir -p ~/.claude/node_modules/@opencues/core
-  cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts ~/.claude/node_modules/@opencues/core/ 2>/dev/null || true
+  mkdir -p "$OC_INSTALL_ROOT/core"
+  cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts "$OC_INSTALL_ROOT/core/" 2>/dev/null || true
   # Copy standalone files not compiled by tsc (e.g. node-http-adapter.js)
-  [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" ~/.claude/node_modules/@opencues/core/
+  [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" "$OC_INSTALL_ROOT/core/"
   if [ -d "$CUES_CORE/dist/sources" ]; then
     if $CLEAN_INSTALL; then
-      rm -rf ~/.claude/node_modules/@opencues/core/sources
+      rm -rf "$OC_INSTALL_ROOT/core/sources"
     fi
-    cp -r "$CUES_CORE/dist/sources" ~/.claude/node_modules/@opencues/core/
+    cp -r "$CUES_CORE/dist/sources" "$OC_INSTALL_ROOT/core/"
   fi
   # Write package.json with corrected paths (dist files are installed flat, not in dist/)
   node -e "
 const pkg = JSON.parse(require('fs').readFileSync('$CUES_CORE/package.json', 'utf8'));
 pkg.main = 'index.js';
 pkg.types = 'index.d.ts';
-require('fs').writeFileSync(require('os').homedir() + '/.claude/node_modules/@opencues/core/package.json', JSON.stringify(pkg, null, 2));
+require('fs').writeFileSync('$OC_INSTALL_ROOT/core/package.json', JSON.stringify(pkg, null, 2));
 "
 fi
 
-# 6b. Build + install @opencues/runtime alongside @opencues/core. The
-#     Claude Code patch loads the runtime via
-#     ~/.claude/node_modules/@opencues/runtime/. Without this step, BlankFill
-#     control dispatch (hackernews / stocks / weather / answer / prompt /
-#     opencues) silently fails because the hoisted control classes (post the
-#     controls hoist refactor) live inside the runtime's dist/src/controls
-#     directory.
+# 6b. Build + install @opencues/runtime under $OC_INSTALL_ROOT/runtime/.
+#     The patched cli.js loads from there (see opencuesRuntime.ts).
 if [ -d "$OC_RUNTIME" ]; then
   NEWEST_SRC=$(find "$OC_RUNTIME/src" "$OC_RUNTIME/adapters" -name '*.ts' -newer "$OC_RUNTIME/dist/src/index.js" 2>/dev/null | head -1)
   if [ ! -f "$OC_RUNTIME/dist/src/index.js" ] || [ -n "$NEWEST_SRC" ]; then
@@ -295,36 +303,42 @@ if [ -d "$OC_RUNTIME" ]; then
     echo "@opencues/runtime up to date"
   fi
 
-  # Cleanup legacy install path from before the @opencues scope rename.
-  if [ -d ~/.claude/node_modules/opencues-runtime ]; then
-    echo "Removing legacy ~/.claude/node_modules/opencues-runtime (pre-rename install)..."
-    rm -rf ~/.claude/node_modules/opencues-runtime
-  fi
+  # Cleanup legacy install paths from before consolidation.
+  for legacy in ~/.claude/node_modules/opencues-runtime ~/.claude/node_modules/@opencues/runtime; do
+    if [ -d "$legacy" ]; then
+      echo "Removing legacy $legacy ..."
+      rm -rf "$legacy"
+    fi
+  done
+  rmdir ~/.claude/node_modules/@opencues 2>/dev/null || true
 
   if $CLEAN_INSTALL; then
     echo "Clean installing @opencues/runtime..."
-    rm -rf ~/.claude/node_modules/@opencues/runtime
+    rm -rf "$OC_INSTALL_ROOT/runtime"
   fi
-  # The runtime's directory layout (dist/src + dist/adapters) is non-trivial;
-  # cleanest install is rsync of the whole tree, then drop a slimmed
-  # package.json with the same main path the source declares.
-  mkdir -p ~/.claude/node_modules/@opencues/runtime/dist
-  # Use rsync if present; else cp -r (mirrors recursively, removes deleted files
-  # only via rsync's --delete which we set to keep stale .js out).
+  mkdir -p "$OC_INSTALL_ROOT/runtime/dist"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$OC_RUNTIME/dist/" ~/.claude/node_modules/@opencues/runtime/dist/
+    rsync -a --delete "$OC_RUNTIME/dist/" "$OC_INSTALL_ROOT/runtime/dist/"
   else
-    rm -rf ~/.claude/node_modules/@opencues/runtime/dist
-    cp -r "$OC_RUNTIME/dist" ~/.claude/node_modules/@opencues/runtime/dist
+    rm -rf "$OC_INSTALL_ROOT/runtime/dist"
+    cp -r "$OC_RUNTIME/dist" "$OC_INSTALL_ROOT/runtime/dist"
   fi
-  cp "$OC_RUNTIME/package.json" ~/.claude/node_modules/@opencues/runtime/package.json
+  cp "$OC_RUNTIME/package.json" "$OC_INSTALL_ROOT/runtime/package.json"
 fi
 
-# 7. Copy supporting files (cheap — always run)
-cp "$SCRIPT_DIR/claude-code-tips.json" ~/.claude/ 2>/dev/null || true
-mkdir -p ~/.claude/actions
-cp "$SCRIPT_DIR/actions/"* ~/.claude/actions/ 2>/dev/null && chmod +x ~/.claude/actions/*.sh 2>/dev/null || true
-cp "$SCRIPT_DIR/highlight-statusline.sh" ~/.claude/ 2>/dev/null && chmod +x ~/.claude/highlight-statusline.sh 2>/dev/null || true
+# 7. Copy supporting files into $OC_INSTALL_ROOT (cheap — always run).
+#    Cleanup of legacy ~/.claude/{claude-code-tips.json, highlight-statusline.sh,
+#    actions/<our files>} is best-effort — only files we know we shipped.
+[ -f ~/.claude/claude-code-tips.json ] && rm ~/.claude/claude-code-tips.json
+[ -f ~/.claude/highlight-statusline.sh ] && rm ~/.claude/highlight-statusline.sh
+for f in speak.sh brightness.sh brightness-set.ps1 BrightCtl.cs BrightCtl.exe SpeakCtl.cs SpeakCtl.exe; do
+  [ -f ~/.claude/actions/"$f" ] && rm ~/.claude/actions/"$f"
+done
+
+cp "$SCRIPT_DIR/claude-code-tips.json" "$OC_INSTALL_ROOT/tips.json" 2>/dev/null || true
+mkdir -p "$OC_INSTALL_ROOT/actions"
+cp "$SCRIPT_DIR/actions/"* "$OC_INSTALL_ROOT/actions/" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/actions/"*.sh 2>/dev/null || true
+cp "$SCRIPT_DIR/highlight-statusline.sh" "$OC_INSTALL_ROOT/statusline.sh" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/statusline.sh" 2>/dev/null || true
 
 # 7b. Compile cue-control .exe files on WSL (skip on native Linux)
 # Sources: patches/actions/*.cs AND controls/*/*.cs (colocated with control configs)
@@ -339,7 +353,7 @@ if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
   done
   for CS_FILE in "${CS_FILES[@]}"; do
     BASE=$(basename "$CS_FILE" .cs)
-    EXE="$HOME/.claude/actions/${BASE}.exe"
+    EXE="$OC_INSTALL_ROOT/actions/${BASE}.exe"
     if [ ! -f "$EXE" ] || [ "$CS_FILE" -nt "$EXE" ]; then
       cp "$CS_FILE" "$WIN_TMP/${BASE}.cs"
       CSC_ARGS="/nologo /optimize"
