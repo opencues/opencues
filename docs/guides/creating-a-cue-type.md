@@ -249,12 +249,17 @@ control: prompt
 blankKeywords: improve prompt, enhance prompt, refine prompt
 blankAutoPopulate: true
 blankFormat: string
-blankScript: ./prompt-blank.sh
 blankClearKeywords: true
 blankConsumeAll: true
 blankTip: Prompt improver
 ---
 ```
+
+> **Note:** the original implementation was a `prompt-blank.sh` shell
+> script. During the controls hoist refactor it became
+> [`PromptImproverControl`](../../packages/opencues-runtime/src/controls/prompt-improver.ts)
+> in `@opencues/runtime`. The `cue.md` no longer references a script;
+> dispatch goes through the host's `controlInvoke` registry.
 
 ### New config field: `blankConsumeAll`
 
@@ -293,14 +298,14 @@ globalThis._consumeAllAlts = {
 | `dynamicHighlight.ts` | Consume-all cycling path in `_cycleAlt` (before dynamic alt cycling), `consumeAllAlts`/`consumeAllTip` fields in `_pendingAutoPopulate` (in resolver callback), per-word clearing skip (in `writeDynamicClearOnChange`) |
 | `wordHighlight.ts` | `_consumeAllAlts` storage from `_pendingAutoPopulate` (in simple value auto-populate path), span highlight from `_consumeAllAlts` (in both render paths), WordDef index shift after keyword clearing |
 
-### Script (`controls/prompt/prompt-blank.sh`)
+### Implementation (`PromptImproverControl`)
 
-Two-step LLM calls (model + prompts read from `cue.md`, defaults to Groq with `openai/gpt-oss-120b`):
+Two-step LLM pipeline inside the runtime class:
 1. **Extract:** Separate prompt from activation keywords and conditions
 2. **Improve:** Generate 3 improved versions (newline-separated → dynamic list pattern)
 3. **Original prompt:** Appended as the last line so the user can cycle back to their original text (without activation keywords)
 
-Must complete within 6 seconds (`execFileSync` timeout). Post-processes output to guarantee exactly 3 clean improved lines + 1 original. The script reads all config from `cue.md` — no hardcoded prompts, model, or API endpoint.
+Source: [`packages/opencues-runtime/src/controls/prompt-improver.ts`](../../packages/opencues-runtime/src/controls/prompt-improver.ts).
 
 ---
 

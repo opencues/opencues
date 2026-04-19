@@ -83,22 +83,12 @@ opencues/
 │   │   └── cue.md                 # Step control (stepSuffixes: f, step: 0.5)
 │   ├── affirmations/
 │   │   └── cue.md                 # List control (stepValues: ["I am strong", ...])
-│   ├── stocks/
-│   │   ├── cue.md                 # Read-only API control (blankReadOnly, Finnhub)
-│   │   ├── stock-blank.sh         # Fetch script: get <keyword> → resolve ticker → price
-│   │   └── tickers.json           # Keyword-to-ticker mapping
-│   ├── weather/
-│   │   ├── cue.md                 # Read-only API control (Open-Meteo, context-driven)
-│   │   └── weather-blank.sh       # Fetch script: geocode + forecast (any city/country)
-│   ├── hackernews/
-│   │   ├── cue.md                 # Dynamic list control (blankDismissible, RSS feed)
-│   │   └── hn-blank.sh            # Fetch script: RSS → one title per line → scrollable list
-│   ├── prompt/
-│   │   ├── cue.md                 # Consume-all control (blankConsumeAll, two-step LLM)
-│   │   └── prompt-blank.sh        # Two-step LLM: extract prompt/conditions → improve → 3 alts
-│   └── answer/
-│       ├── cue.md                 # Consume-context control (blankConsumeContext, factual lookup)
-│       └── answer-blank.sh        # LLM: keyword + context → answer (3 alternatives)
+│   ├── stocks/cue.md              # Read-only API control (Finnhub) — impl: @opencues/runtime StocksControl
+│   ├── weather/cue.md             # Read-only API control (Open-Meteo) — impl: @opencues/runtime WeatherControl
+│   ├── hackernews/cue.md          # Dynamic list control (RSS) — impl: @opencues/runtime HackerNewsControl
+│   ├── prompt/cue.md              # Consume-all control (two-step LLM) — impl: @opencues/runtime PromptImproverControl
+│   ├── answer/cue.md              # Consume-context control (factual LLM) — impl: @opencues/runtime AnswerControl
+│   └── opencues/cue.md            # Selector/satellite settings — impl: @opencues/runtime OpenCuesSettingsControl
 │
 ├── packages/                      # Core packages (publish as @opencues/*)
 │   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core

@@ -248,97 +248,49 @@ controls/brightness/
 
 ---
 
-## Example: Stock Prices (External API)
+## LLM/HTTP controls — implemented as TS classes in the runtime
 
-A read-only control-blank that fetches stock prices from an external API. Demonstrates the `blankReadOnly`, `matchedKeyword`, and `tickers.json` mapping patterns.
+The original `stocks`, `weather`, `hackernews`, `prompt` (improver), `answer`, and
+`opencues` (settings) controls were shell scripts (`stock-blank.sh`,
+`hn-blank.sh`, etc.) that hosts spawned via `controlInvoke` → `spawnProcess`.
+During the controls hoist refactor, all six were ported to TypeScript classes
+inside `@opencues/runtime` so the chrome extension (which can't `spawn` from
+a content script) could use them too. The shell scripts were deleted; the
+runtime classes are now the source of truth across all hosts.
 
-```
-controls/stocks/
-  cue.md              # Config: blankKeywords for company names + tickers
-  stock-blank.sh      # Blank-control: get <keyword> → resolve ticker → fetch price
-  tickers.json        # Keyword-to-ticker mapping (reddit → RDDT, nvidia → NVDA)
-```
+| Control | Class | Purpose |
+|---|---|---|
+| `stocks` | [`StocksControl`](../../packages/opencues-runtime/src/controls/stocks.ts) | Finnhub price lookup (`Reddit stock _` → `$133.44`) |
+| `weather` | [`WeatherControl`](../../packages/opencues-runtime/src/controls/weather.ts) | Open-Meteo geocode + forecast (`London weather _` → `19°C Clear`) |
+| `hackernews` | [`HackerNewsControl`](../../packages/opencues-runtime/src/controls/hackernews.ts) | RSS fetch → dynamic list of post titles |
+| `prompt` | [`PromptImproverControl`](../../packages/opencues-runtime/src/controls/prompt-improver.ts) | Two-step LLM: extract → improve, returns 3 alts (consume-all pattern) |
+| `answer` | [`AnswerControl`](../../packages/opencues-runtime/src/controls/answer.ts) | LLM keyword + context → 3 candidate answers |
+| `opencues` | [`OpenCuesSettingsControl`](../../packages/opencues-runtime/src/controls/opencues-settings.ts) | Read/write `opencues.md` scalars (selector/satellite settings) |
 
-**Key design choices:**
-- **One folder for all stocks** — `blankKeywords` lists all known company names and tickers, `tickers.json` maps them to symbols.
-- **`blankReadOnly: true`** — stock prices can't be changed, so cycling is disabled.
-- **`blankProximity: 2`** — allows `Reddit Stock _` (keyword "reddit" is 2 words from `_`).
-- **`blankFormat: string`** — prices are text, not numbers to be incremented.
-- **`matchedKeyword` pipeline** — `ControlBlankSource` captures which keyword triggered the match ("rddt") and passes it to `readControlState`, which passes it to the script as `get rddt`.
-- **`blankKeywordExpansions`** — maps ticker abbreviations to display names (`rddt` → `Reddit`, `nvda` → `Nvidia`). When `Rddt stock _` auto-populates, "Rddt" is replaced with "Reddit" in the same pass.
-- **`$` prefix** — script outputs `$133.44` directly (string format, so no suffix stripping).
-- **Always live** — fetches directly from Finnhub API on every auto-populate. No caching.
-- **Graceful degradation** — without `FINNHUB_API_KEY`, the script returns nothing and the blank stays as `_`.
+Each host integration assembles a `Map<string, Control>` and passes it to
+`createControlInvoke()` which becomes the host's `controlInvoke` binding. See
+`integrations/oc/patches/opencuesBootstrap.ts` (lines 105-116) and
+`integrations/cc/patches/opencuesRuntime.ts` (the `controlInvoke:` block) for
+the wiring pattern.
 
-**Usage:** Type `Rddt stock _` → becomes `Reddit stock $133.44`. Type `Reddit Stock _` → becomes `Reddit stock $133.44` (full name passes through unchanged). To add a new stock, add one entry to `tickers.json` and one keyword to `blankKeywords`.
+The `controls/<name>/cue.md` config files for these stay where they are —
+they declare keywords, formats, and behaviour. The `cue.md` no longer points
+at a shell script (no `script:` / `blankScript:` field for hoisted controls);
+the host's `controlInvoke` handles dispatch by name.
 
----
+**Adding a new LLM/HTTP control:** add a class to
+`packages/opencues-runtime/src/controls/`, export it from `index.ts`, and
+register it in each host's controls map. See [adding-a-cue-control.md](../guides/adding-a-cue-control.md).
 
-## Example: Weather (Context-Driven API)
+## OS-level controls — still shell scripts
 
-A read-only control-blank that fetches weather for any city or country. Demonstrates the `contextWords` pipeline — the script receives the full sentence context and extracts both location and time modifier.
-
-```
-controls/weather/
-  cue.md              # Config: trigger keywords (weather, forecast, temp)
-  weather-blank.sh    # Blank-control: geocodes location, fetches from Open-Meteo API
-```
-
-**Key design choices:**
-- **Trigger keywords only** — `blankKeywords: weather, forecast, temp, temperature`. City/country names are NOT keywords — they're extracted from context by the script.
-- **Any location** — the script geocodes whatever location word it finds in context via Open-Meteo's geocoding API. Works for cities (`Tokyo`), countries (`Uganda`), or neighborhoods (`Highgate`).
-- **Reverse scan** — location is extracted by scanning context words from the end, skipping weather/time terms. In natural language the location is almost always the last meaningful word before `_` (e.g., "What is the weather in **London** _").
-- **Time modifiers from context** — `tomorrow`, `weekend`, `weekly`/`7day`/`days` are detected from context words, not from `blankKeywords`. This means `forecast` is the trigger, and time/location are context.
-- **`contextWords` pipeline** — `readControlState` passes all context words (minus `_` and the matched keyword) as extra args to the script. The script scans them for location and time modifiers.
-- **Open-Meteo API** — free, no API key needed. Geocoding resolves any location, forecast API provides current + 7-day data.
-- **5-minute cache** — results cached per location + mode combination.
-
-**Usage:**
-- `London weather _` → `19°C Clear`
-- `Tokyo forecast tomorrow _` → `23°C Cloudy`
-- `Uganda forecast weekend _` → `Sat 31°C Overcast, Sun 31°C Overcast`
-- `Kenya forecast weekly _` → 7-day forecast
-- `weather _` → default city (London)
-
----
-
-## Example: Hacker News (Dynamic List from RSS)
-
-A dynamic list control that fetches live data and lets the user scroll through items. Demonstrates the **dynamic list** pattern — when `blankScript get` returns multiple lines, each line becomes a cycling alternative.
-
-```
-controls/hackernews/
-  cue.md              # Config: trigger keywords (hn, hackernews)
-  hn-blank.sh         # Blank-control: fetches RSS feed, returns one title per line
-```
-
-**Key design choices:**
-- **Dynamic list** — the script returns multiple lines (one per post title). `ControlBlankSource` detects multi-line output and treats each line as a cycling alternative, same as static `stepValues`.
-- **`blankDismissible: true`** — `_` is appended as the last alternative so the user can dismiss the list and return to a blank. A `_dismissedBlanks` tracker prevents auto-populate from re-firing on dismissed positions.
-- **RSS via hnrss.org** — fetches the frontpage RSS feed, parses titles with Python's `xml.etree`, returns up to 20 titles.
-- **5-minute cache** — avoids excessive API calls.
-
-**Usage:** Type `HN posts _` → auto-populates with the top post title. Up/Down scrolls through all posts. Cycle past the last post → `_` to dismiss.
-
----
-
-## Example: Prompt Improver (Consume-All with LLM)
-
-A consume-all control that uses the entire surrounding text as input to a two-step LLM process. Demonstrates the **consume-all** pattern — `blankConsumeAll: true` clears everything, and the script returns multiple improved versions to cycle through.
-
-```
-controls/prompt/
-  cue.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
-  prompt-blank.sh     # Two-step LLM: extract prompt/conditions → improve → 3 alts + original
-```
-
-**Key design choices:**
-- **`blankConsumeAll: true`** — expands `blankKeywordIndices` to include all non-blank positions. Combined with `blankClearKeywords`, this clears the original prompt text, activation keywords, and blank — leaving only the improved result.
-- **Two-step LLM script** — Step 1 extracts the prompt vs conditions from the activation keywords. Step 2 generates 3 improved versions. Returns newline-separated output (dynamic list pattern).
-- **Dedicated cycling storage** — uses `_consumeAllAlts` instead of `_dynDefs` because multi-word results at shifted indices collide with grammar WordDefs. See `docs/guides/creating-a-cue-type.md`.
-- **Original prompt as last alt** — the script includes the extracted original prompt (without activation keywords) as the final cycling option, so the user can always return to their original text.
-
-**Usage:** Type `write a poem about love improve prompt _` → entire text replaced with an improved prompt. Up/Down cycles through 3 improved versions + the original prompt. Supports optional conditions: `... improve prompt _ make it rhyme`.
+`volume` and `brightness` continue to ship as `.sh` files (with `.cs` →
+`.exe` shims for WSL). They wrap platform-specific OS APIs (`amixer`,
+`AppleScript`, `pactl`, Windows Core Audio) — there's no portable
+JavaScript replacement, so a TS class would just be `child_process.spawn`
+boilerplate around the same shell calls. Hosts that can spawn processes
+(CC, OC) call them via `spawnProcess`; the chrome extension simply doesn't
+support them.
 
 ---
 

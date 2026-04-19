@@ -187,11 +187,21 @@ blankDismissible: true
 
 Type `affirmation _` → blank fills with "I am strong". Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → `_` to dismiss.
 
-## Adding a read-only API control
+## Adding an LLM/HTTP control
 
-Read-only controls fetch data from external APIs and display it in a blank. The user can view but not cycle the value.
+Controls that fetch data from web APIs or call LLMs are implemented as **TypeScript classes inside `@opencues/runtime`** (post the controls hoist refactor). Examples already in the runtime: `StocksControl`, `WeatherControl`, `HackerNewsControl`, `AnswerControl`, `PromptImproverControl`, `OpenCuesSettingsControl`.
 
-**`controls/stocks/cue.md`:**
+This applies to both read-only API controls (e.g. stocks, weather) and dynamic list controls (e.g. Hacker News titles). The shape:
+
+1. **Add a class** to `packages/opencues-runtime/src/controls/<name>.ts` implementing the `Control` interface from `./types`. Typically you implement `get(keyword, contextWords) → Promise<string>` (and optionally `set(value, keyword)` if it's writable). Return newline-separated output for dynamic lists.
+2. **Export it** from `packages/opencues-runtime/src/controls/index.ts`.
+3. **Register it** in each host's controls map:
+   - CC: `integrations/cc/patches/opencuesRuntime.ts` — add a `__ocReg.set("<name>", new __ocCtl.YourControl({ ... }))` line in the `controlInvoke:` factory block
+   - OC: `integrations/oc/patches/opencuesBootstrap.ts:105-116` — add to `controlsRegistry`
+   - Chrome: `integrations/chrome/src/controls/index.ts`
+4. **Add the control's `cue.md`** under `controls/<name>/cue.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. — same as before. The `blankScript:` field is **omitted** for hoisted controls; the host's `controlInvoke` dispatches by control name.
+
+**Example `cue.md` (no blankScript field):**
 ```yaml
 ---
 name: stocks
@@ -200,48 +210,17 @@ control: stocks
 blankKeywords: reddit, rddt, nvidia, nvda, apple, aapl
 blankAutoPopulate: true
 blankFormat: string
-blankScript: ./stock-blank.sh
 blankTip: Stock price
 blankReadOnly: true
 blankProximity: 2
 ---
 ```
 
-**Key fields:**
-- `blankReadOnly: true` — disables cycling (Up/Down is a no-op)
-- `blankFormat: string` — value is text, not a number
-- `blankProximity: 2` — allows `Reddit Stock _` (keyword 2 words from blank)
+`@opencues/runtime`'s `BlankFill` module sees the cue.md, looks up `controlInvoke('stocks', { action: 'get', args: [keyword, ...contextWords] })`, the host's registry resolves `'stocks'` to the `StocksControl` instance, and the class's `get()` returns the price.
 
-The script receives `get <keyword> [context words...]` where `keyword` is the matched `blankKeywords` entry, and context words are the other words from the input (excluding `_` and the keyword). A `tickers.json` mapping file resolves keywords to API parameters. See `controls/stocks/` for a complete example using the Finnhub API.
+For dynamic list controls (Hacker News pattern): the class returns multiple newline-separated lines, the runtime treats each as a cycling alternative. Add `blankDismissible: true` to the cue.md to append `_` as the last option (lets users dismiss back to a blank).
 
-For controls that need richer context (e.g., a location AND a time modifier), the script scans the context words. See `controls/weather/` for an example — the script extracts location (any city/country via geocoding) and time (`tomorrow`, `weekend`, `weekly`) from context words.
-
-## Adding a dynamic list control
-
-Dynamic list controls fetch live data and let the user scroll through items. The key pattern: if `blankScript get` returns **multiple lines**, each line becomes a cycling alternative — same as `stepValues` but populated from a script.
-
-**`controls/hackernews/cue.md`:**
-```yaml
----
-name: hackernews
-type: control
-control: hackernews
-blankKeywords: hn, hackernews
-blankAutoPopulate: true
-blankFormat: string
-blankScript: ./hn-blank.sh
-blankTip: Hacker News
-blankReadOnly: true
-blankDismissible: true
-blankProximity: 3
----
-```
-
-**Key fields:**
-- `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the list.
-- The script returns one title per line — `ControlBlankSource` splits on newlines and creates alternatives.
-
-Type `HN posts _` → auto-populates with top post. Up/Down scrolls through all posts. Cycle past the last → `_` to dismiss.
+For OS-level controls (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the cue.md (`controls/volume/volume.sh` etc.) and `cue.md` declares `blankScript: ./volume-blank.sh` as before.
 
 ## Cycling pitfalls: numeric stepping vs list cycling
 

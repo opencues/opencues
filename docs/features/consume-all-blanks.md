@@ -74,14 +74,21 @@ An integration implementing consume-all blanks must:
 ```
 controls/prompt/
   cue.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
-  prompt-blank.sh     # Two-step LLM: extract prompt/conditions → improve → 3 alts + original
+                      # Implementation: @opencues/runtime PromptImproverControl
+                      # (packages/opencues-runtime/src/controls/prompt-improver.ts)
 ```
+
+The implementation is a TypeScript class in `@opencues/runtime` (post the
+controls hoist refactor). It performs a two-step LLM pass: extract
+prompt/conditions from the activation keywords, then generate 3 improved
+versions. Returns newline-separated output, which the consume-all pipeline
+treats as cycling alternatives.
 
 **Usage:**
 - `write a poem about love improve prompt _` → improved prompt (3 alternatives + original to cycle)
 - `improve prompt _ write a poem about love make it rhyme` → improved prompt respecting conditions
 - Cycle past last improved version → original prompt text (without activation keywords)
 
-**Original prompt preservation:** The script includes the extracted original prompt (minus activation keywords) as the last cycling alternative. This lets the user always get back to their original text without dismissing to `_`. The extraction step already separates the prompt from keywords, so the original is available at no extra cost.
+**Original prompt preservation:** The class includes the extracted original prompt (minus activation keywords) as the last cycling alternative. This lets the user always get back to their original text without dismissing to `_`. The extraction step already separates the prompt from keywords, so the original is available at no extra cost.
 
 See `docs/guides/creating-a-cue-type.md` for the full implementation walkthrough.

@@ -1,156 +1,119 @@
 # OpenCues Chrome Extension
 
-LLM-powered word alternatives for `contenteditable` elements in Chrome. Works on Google Docs, Notion, Slack, ChatGPT, and any web app that uses `contenteditable` divs for text input.
+`@opencues/chrome` — an MV3 extension that adds real-time word alternatives, blanks, and cue-controls to any `contenteditable` on the web. Renders via the CSS Custom Highlight API; no DOM mutation, no caret disruption.
 
-## Build
+| Field | Value |
+|---|---|
+| Version | 0.1.0 |
+| Compatible with | Chrome 121+ (CSS Custom Highlight API) |
+| Source | `integrations/chrome/` |
+| Runtime | `@opencues/core`, `@opencues/runtime` (workspace-linked via `pnpm` symlinks) |
+
+---
+
+## Install (from a clone)
 
 ```bash
-cd integrations/chrome-extension
-npm install
-npm run build
+git clone https://github.com/opencues/opencues
+cd opencues
+pnpm install
+pnpm --filter @opencues/chrome dev-install
 ```
 
-This produces `dist/` with:
-- `content.js` + `content.css` — injected into pages
-- `background.js` — service worker (CORS proxy)
-- `popup/` — extension popup UI
+This builds the extension and prints the path to load as an unpacked extension. By default the load path is `integrations/chrome/` itself — works on macOS / Linux / native Windows where Chrome and the build directory share a filesystem.
 
-## Install in Chrome
+### WSL → Windows Chrome
 
-1. Open `chrome://extensions/`
-2. Enable **Developer mode** (top right toggle)
+Chrome runs on Windows; the build runs in WSL. Use `--target` to deploy the built extension to a path Chrome can see:
+
+```bash
+pnpm --filter @opencues/chrome dev-install -- \
+  --target /mnt/c/Users/USERNAME/Desktop/opencues-chrome
+```
+
+Re-run the same command after each rebuild — the deploy step copies `dist/` + `manifest.json` to the target. Then click the reload button on the extension card at `chrome://extensions`.
+
+---
+
+## Load in Chrome
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (top right)
 3. Click **Load unpacked**
-4. Select the `integrations/chrome-extension` folder (the one with `manifest.json`)
+4. Select the path the installer printed
 5. The extension icon appears in the toolbar
+
+---
 
 ## Configure
 
 Click the extension icon to open the popup:
 
 | Field | Required | Description |
-|-------|----------|-------------|
+|---|---|---|
 | **API Key** | Yes | Groq API key (`gsk_...`) for LLM word alternatives |
 | **Model** | No | Default: `openai/gpt-oss-120b` (Groq) |
 | **API URL** | No | Default: `https://api.groq.com/openai/v1/chat/completions` |
 | **Finnhub API Key** | No | For stock price lookups. Free at [finnhub.io](https://finnhub.io) |
 | **Target Selector** | Yes | CSS selector for the input element. Default: `[contenteditable="true"]` |
-| **cues.md** | No | Paste your cues.md content (word sources, prompts, controls) |
-| **blanks.md** | No | Paste your blanks.md content (blank-fill modes) |
-| **opencues.md** | No | Paste your opencues.md content (settings, current values) |
-| **Tips JSON** | No | Paste your tips JSON (pre-computed word alternatives) |
-| **TTS** | No | Enable text-to-speech for cueTips (uses Web Speech API) |
-| **Rate** | No | TTS speech rate (1-5, default 2) |
+| **cues.md / blanks.md / opencues.md** | No | Paste config content; otherwise the bake-time defaults are used |
+| **Tips JSON** | No | Pre-computed word alternatives |
+| **TTS** | No | Enable text-to-speech (Web Speech API); `Rate` 1–5, default 2 |
 
-Click **Save**. The extension reloads automatically on the active page.
+Click **Save**. The extension reinitializes on the active page.
 
-## Usage
+---
 
-### Target Element
+## Verify
 
-The extension attaches to the first element matching your **Target Selector**. Default is any `contenteditable="true"` div. For a specific element, use an ID selector like `#my-editor`.
+| Test | Expected |
+|---|---|
+| Click into a `contenteditable` div, type a few words | Words with alternatives get a slightly darker mid-tone |
+| Ctrl+Alt+Right | Highlights the next navigable word in bright white |
+| Ctrl+Alt+Up on a numeric like `5f` | Cycles `5f → 5.5f → 6f` |
+| Type `weather _ paris` | `_` fills with current Paris weather |
+| Type `improve prompt write a poem _` | After ~2s, full text is replaced with an improved version; cycle for 3 alts + original |
+| `chrome://extensions` console shows `[opencues][info] OpenCues runtime starting (Chrome v1)` | Bootstrap booted |
 
-If the target doesn't exist when the page loads, the extension watches for it via MutationObserver (works with SPAs that lazy-load editors).
+If you see legacy `[OpenCues] ...` logs but **no** `[opencues][info] OpenCues runtime starting` line, you loaded a stale bundle — re-run `dev-install` (and re-deploy via `--target` if applicable).
 
-### Word Analysis
+---
 
-As you type, the extension analyzes your text:
-- **Instant**: Words matching tips JSON get alternatives immediately (dotted underline)
-- **50ms after space**: Completed word sent to LLM for alternatives
-- **300ms after pause**: Final word analyzed
-- **50ms after edit**: Changed word re-analyzed
+## Update workflow
 
-Words with alternatives appear **darker** (`#555`), normal words are mid-gray (`#999`), and the active word is **bright white** (`#fff`). This uses the CSS Custom Highlight API — no DOM modification, no cursor disruption.
+```bash
+cd opencues
+git pull
+pnpm install                              # picks up dep changes
+pnpm --filter @opencues/chrome dev-install   # rebuilds + redeploys
+# Reload the extension card at chrome://extensions
+```
 
-### Navigation
+For continuous development, `pnpm --filter @opencues/chrome watch` runs esbuild in watch mode (no test/typecheck). Pair it with a separate copy step or just point Chrome directly at `integrations/chrome/`.
 
-| Key | Action |
-|-----|--------|
-| **Ctrl+Alt+Right** | Navigate to next word with alternatives |
-| **Ctrl+Alt+Left** | Navigate to previous word with alternatives |
-| **Ctrl+Alt+Up** | Cycle to next alternative |
-| **Ctrl+Alt+Down** | Cycle to previous alternative |
-| **Escape** | Clear highlight |
+---
 
-The highlighted word appears in **bright white**. Linked words (e.g., "boy"↔"his") cycle together.
+## What this extension cannot do
 
-### Status Bar
+- **Native `<input>` / `<textarea>`** — the CSS Custom Highlight API can't reach into form-control internals (Chromium UA shadow DOM doesn't expose Text nodes to scripts). The extension only attaches to `contenteditable` elements. A "mirror div" workaround is possible but not currently implemented.
+- **Lexical-managed editors (e.g., Reddit's comment composer)** — Lexical's controlled-DOM model rejects external mutations. Highlights will appear, but cycling won't change the underlying text. A page-world Lexical bridge is possible but adds significant complexity; not currently implemented.
+- **tiptap / ProseMirror editors** work fully; the runtime renders highlights through the Highlight API and uses a post-reconcile `requestAnimationFrame` to keep Range objects pointed at the editor's reconciled Text nodes.
 
-When a word is highlighted, a floating status bar appears in the bottom-right corner showing:
-- Alternative index (e.g., "2/4")
-- cueTip (contextual hint about the word)
+---
 
-### Number Cycling
+## Removing
 
-Numbers matching step patterns (from controls config) cycle arithmetically:
-- Ctrl+Alt+Up increments by step amount
-- Ctrl+Alt+Down decrements
-- Clamped to min/max bounds
+```bash
+# Disable / remove via chrome://extensions
+# Then optionally:
+rm -rf integrations/chrome/dist
+rm -rf /mnt/c/Users/USERNAME/Desktop/opencues-chrome   # if you used --target
+```
 
-### Blank Auto-Populate
+---
 
-Type `_` near a control keyword to trigger auto-populate:
+## See also
 
-| Example | Control | Result |
-|---------|---------|--------|
-| `stocks aapl _` | Stocks | `_` → `AAPL: $186.43` |
-| `weather London _` | Weather | `_` → `London, GB: 18°C Partly cloudy (12km/h)` |
-| `hackernews _` | Hacker News | `_` → top HN title |
-| `improve prompt write a poem _` | Prompt Improver | Entire text → 3 improved versions (cycle with Up/Down) |
-
-The prompt improver uses `blankConsumeAll` — it replaces the full text with the first improved version. Cycle through alternatives with Ctrl+Alt+Up/Down. Editing clears the consume-all state.
-
-### Selector/Satellite (opencues.md)
-
-If you paste opencues.md content with settings definitions, selector/satellite word pairs appear in the text. Cycling a selector changes the setting name; cycling a satellite changes the value. Changes are in-memory only (don't persist to opencues.md).
-
-## What to Test
-
-### Basic Flow
-1. Open a page with a contenteditable div (or set your target selector)
-2. Type a few words and wait ~500ms
-3. Words with alternatives should show dotted underlines
-4. Press Ctrl+Alt+Right — first navigable word highlights in blue
-5. Press Ctrl+Alt+Up — word cycles to next alternative
-6. Press Escape — highlight clears
-7. Type more — highlight auto-clears on typing
-
-### Linked Words
-1. Type "the boy has his dog" and wait for analysis
-2. Navigate to "boy" (if it has alts)
-3. Cycle Up — "boy" → "girl" and "his" → "her" should update together
-
-### Number Stepping
-1. Configure a step pattern in cues.md (e.g., `stepSuffixes: ["%"]`)
-2. Type "50%" and navigate to it
-3. Ctrl+Alt+Up → "51%" (or whatever step is configured)
-
-### Stock Prices
-1. Set Finnhub API key in popup
-2. Type "stocks aapl _"
-3. Wait ~1 second — `_` should be replaced with "AAPL: $xxx.xx"
-
-### Weather
-1. Type "weather London _"
-2. Wait ~1 second — `_` replaced with weather info
-
-### Prompt Improver
-1. Ensure API key is set
-2. Type "improve prompt write a poem _"
-3. Wait ~2-3 seconds (two LLM calls)
-4. Entire text replaces with first improved prompt
-5. Ctrl+Alt+Up/Down cycles through 3 alternatives + original
-6. Type anything — consume-all clears, normal editing resumes
-
-### Config Hot-Reload
-1. Open popup, change API key or cues.md
-2. Click Save
-3. Extension should reinitialize on the page without refresh
-
-## Troubleshooting
-
-- **No color changes on text**: The element must be `contenteditable`. Native `<textarea>` and `<input>` elements are not supported (browser limitation — the Highlight API can't style their internal text). Check DevTools console for `[OpenCues]` logs.
-- **Ctrl+Alt+Arrow does nothing**: Make sure the contenteditable element has focus. Check console for `[OpenCues] Attaching to` log.
-- **Blank not filling**: Check if the keyword is in the control's keyword list (see `controls/index.ts`). Check console for fetch errors.
-- **Extension not loading**: Check `chrome://extensions/` for errors. Rebuild with `npm run build`.
-- **White flash when cycling**: This can occur briefly as text changes and highlights rebuild. The extension uses `requestAnimationFrame` to minimize this.
-- **Wrong word cycling**: If the highlighted word doesn't match what cycles, try navigating away and back. This can happen if the text was edited externally.
+- [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — repo layout + stage tracker
+- [`integrations/chrome/docs/rendering.md`](docs/rendering.md) — CSS Custom Highlight API + reconciliation strategy
+- [`integrations/chrome/src/runtime-renderer.ts`](src/runtime-renderer.ts) — the actual paint logic (~120 lines, well-commented)

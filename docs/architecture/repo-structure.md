@@ -170,7 +170,7 @@ expecting a normal Node setup, pnpm is the safer default.
 | 4b | Re-deploy `~/.claude/node_modules/@opencues/*` via setup.sh; verify CC end-to-end | done (smoke-tested: cycling, voice-mode toggle, weather blank, TTS, statusline) |
 | 5 | Add Turborepo build orchestration | done (this commit) |
 | 6′ | Installer scaffolding for all three (no publish) — `bin/install.cjs` + `bin` field; works as `pnpm --filter X dev-install` today, becomes `npx @opencues/X` post-publish | done (this commit) |
-| 7 | Per-integration READMEs (cc/oc/chrome) + stale-paths sweep in `docs/features/*` | pending |
+| 7 | Per-integration READMEs (cc/oc/chrome) + stale-paths sweep in `docs/features/*` | done (this commit) |
 | 8 | Changesets + GitHub Actions release pipeline + actual `npm publish` | deferred — waits for explicit release decision |
 
 Each stage is committed separately. To roll back any stage: `git revert
