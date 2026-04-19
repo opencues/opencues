@@ -1,7 +1,13 @@
-// Pins the dedup behaviour of applyDirectives — calling it twice with
-// the same (text, dimRanges, highlightRanges) tuple should NOT recreate
-// the CSS Highlight objects. Without this, every keystroke flickered
-// because we tore down + rebuilt three Highlights from scratch.
+// Pins applyDirectives behaviour:
+//   1. Each call writes oc-dim + oc-active (no oc-base — that's the
+//      .oc-attached CSS class on the element).
+//   2. NO dedup: every call re-walks the DOM and re-sets both
+//      highlights, even when inputs match the previous call. Reason:
+//      tiptap/PM editors reconcile the DOM on a microtask after our
+//      writeText, replacing the Text nodes our previously-built Ranges
+//      pointed at. Dedup would let the post-cycle render short-circuit
+//      and leave stale Ranges in place. We pay one DOM walk per render
+//      and stay correct.
 //
 // Runs in jsdom; we shim the CSS Highlight API with a counting Map so
 // the test can assert how many .set calls actually fired.
@@ -15,14 +21,6 @@ interface CountingHighlights extends Map<string, unknown> {
 }
 
 function installHighlightShim(): CountingHighlights {
-  // jsdom doesn't ship the CSS Highlight API. Stub the lot:
-  // - globalThis.Highlight constructor (ranges in, ignored)
-  // - globalThis.CSS object with a writable `highlights` Map
-  // The runtime-renderer's `hasHighlightAPI` check looks for
-  // `'highlights' in CSS`, so the shim must satisfy that BEFORE the
-  // module under test is loaded. Vitest's beforeEach runs after import,
-  // so we set up the shim once per test and re-import is unnecessary
-  // because applyDirectives reads CSS.highlights at call time.
   (globalThis as unknown as { Highlight: unknown }).Highlight =
     class { constructor(..._r: unknown[]) { /* no-op */ } };
   if (!(globalThis as unknown as { CSS?: unknown }).CSS) {
@@ -46,7 +44,7 @@ function makeTarget(text: string): HTMLElement {
   return el;
 }
 
-describe('runtime-renderer applyDirectives dedup', () => {
+describe('runtime-renderer applyDirectives', () => {
   let highlights: CountingHighlights;
 
   beforeEach(() => {
@@ -55,73 +53,63 @@ describe('runtime-renderer applyDirectives dedup', () => {
     clearDirectives();
   });
 
-  it('first call sets all three highlight buckets', () => {
+  it('first call sets oc-dim + oc-active (no oc-base — handled by .oc-attached CSS)', () => {
+    const target = makeTarget('hello world');
+    applyDirectives(target, [{
+      dimRanges: [{ start: 0, end: 5 }],
+      highlight: { start: 6, end: 11 },
+    }]);
+    expect(highlights.setCalls).toBe(2);
+    expect(highlights.has('oc-base')).toBe(false);
+    expect(highlights.has('oc-dim')).toBe(true);
+    expect(highlights.has('oc-active')).toBe(true);
+  });
+
+  it('identical second call ALSO writes — no dedup (post-reconcile re-walk must always run)', () => {
     const target = makeTarget('hello world');
     const dir: RenderDirectives = {
       dimRanges: [{ start: 0, end: 5 }],
       highlight: { start: 6, end: 11 },
     };
     applyDirectives(target, [dir]);
-    // 3 set calls: oc-base, oc-dim, oc-active.
-    expect(highlights.setCalls).toBe(3);
+    expect(highlights.setCalls).toBe(2);
+    applyDirectives(target, [dir]);
+    // Pinned: every call re-sets both highlights so post-reconcile
+    // re-walks always rebuild Ranges against the current Text nodes.
+    expect(highlights.setCalls).toBe(4);
   });
 
-  it('second call with identical input is a no-op', () => {
-    const target = makeTarget('hello world');
-    const dir: RenderDirectives = {
-      dimRanges: [{ start: 0, end: 5 }],
-      highlight: { start: 6, end: 11 },
-    };
-    applyDirectives(target, [dir]);
-    expect(highlights.setCalls).toBe(3);
-    applyDirectives(target, [dir]);
-    // No additional set calls — dedup hit.
-    expect(highlights.setCalls).toBe(3);
-  });
-
-  it('different dim range invalidates the cache', () => {
+  it('different dim range — re-walk + re-set (2 buckets per call)', () => {
     const target = makeTarget('hello world');
     applyDirectives(target, [{ dimRanges: [{ start: 0, end: 5 }] }]);
     applyDirectives(target, [{ dimRanges: [{ start: 6, end: 11 }] }]);
-    // Two distinct paint passes.
-    expect(highlights.setCalls).toBe(6);
+    expect(highlights.setCalls).toBe(4);
   });
 
-  it('different text content invalidates the cache', () => {
-    const target = makeTarget('hello');
-    applyDirectives(target, [{ dimRanges: [{ start: 0, end: 5 }] }]);
-    target.textContent = 'goodbye';
-    applyDirectives(target, [{ dimRanges: [{ start: 0, end: 5 }] }]);
-    expect(highlights.setCalls).toBe(6);
-  });
-
-  it('different highlight range invalidates the cache', () => {
-    const target = makeTarget('alpha bravo');
-    applyDirectives(target, [{ highlight: { start: 0, end: 5 } }]);
-    applyDirectives(target, [{ highlight: { start: 6, end: 11 } }]);
-    expect(highlights.setCalls).toBe(6);
-  });
-
-  it('switching target invalidates the cache', () => {
-    const a = makeTarget('alpha');
-    const b = makeTarget('alpha');
-    applyDirectives(a, [{ dimRanges: [{ start: 0, end: 5 }] }]);
-    applyDirectives(b, [{ dimRanges: [{ start: 0, end: 5 }] }]);
-    // Even with identical content/ranges, target identity counts.
-    expect(highlights.setCalls).toBe(6);
-  });
-
-  it('clearDirectives resets the cache so the next paint runs', () => {
-    const target = makeTarget('hello');
-    const dir: RenderDirectives = { dimRanges: [{ start: 0, end: 5 }] };
+  it('SAME-LENGTH text change with SAME ranges still re-walks (regression: 8.5f → 9.0f)', () => {
+    // Cycling 8.5f → 9.0f keeps text length at 22 chars and offsets
+    // identical, but DOM Text nodes get replaced by tiptap's
+    // reconciliation. With dedup off, every call re-walks, so the new
+    // Ranges land on the new Text nodes.
+    const target = makeTarget('voice-mode active 8.5f');
+    const dir: RenderDirectives = {
+      dimRanges: [{ start: 0, end: 10 }, { start: 11, end: 17 }, { start: 18, end: 22 }],
+      highlight: { start: 18, end: 22 },
+    };
     applyDirectives(target, [dir]);
-    expect(highlights.setCalls).toBe(3);
+    expect(highlights.setCalls).toBe(2);
+    target.textContent = 'voice-mode active 9.0f';
+    applyDirectives(target, [dir]);
+    expect(highlights.setCalls).toBe(4);
+  });
+
+  it('clearDirectives drops oc-dim + oc-active from the map', () => {
+    const target = makeTarget('hello');
+    applyDirectives(target, [{ dimRanges: [{ start: 0, end: 5 }] }]);
+    expect(highlights.has('oc-dim')).toBe(true);
+    expect(highlights.has('oc-active')).toBe(true);
     clearDirectives();
-    // Re-install shim — clearDirectives also calls .delete on the
-    // highlights map; shim doesn't track deletes, but next applyDirectives
-    // should re-set all three.
-    highlights = installHighlightShim();
-    applyDirectives(target, [dir]);
-    expect(highlights.setCalls).toBe(3);
+    expect(highlights.has('oc-dim')).toBe(false);
+    expect(highlights.has('oc-active')).toBe(false);
   });
 });

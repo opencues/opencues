@@ -115,27 +115,33 @@ function writeCursorOffset(offset: number): void {
   }
 }
 
-/** Replace the current target's text via execCommand selectAll + insertText. */
+/** Replace the current target's text via direct textContent assignment.
+ *
+ *  Previous attempt: execCommand('insertText'). That fires a synthetic
+ *  input event that tiptap/PM editors handle by reconciling the DOM —
+ *  replacing the Text nodes execCommand just inserted with their own.
+ *  Direct textContent skips the input-event path, but tiptap's
+ *  MutationObserver still reconciles on the next microtask.
+ *
+ *  Either way, the editor's reconciliation runs AFTER our synchronous
+ *  forceRender in the same task. So we schedule a follow-up render on
+ *  the next animation frame: by then the microtask drain has run,
+ *  tiptap has reconciled, and the re-walk lands on tiptap's Text
+ *  nodes — Ranges valid, no flash. See `runtimeRender` for the
+ *  rAF-paired follow-up. */
 function writeText(text: string): void {
   const target = currentTarget;
   if (!target) return;
-  // Use execCommand so the host page sees a synthetic input event —
-  // matches what the existing engine does in WordNavigator.cycle.
   target.focus();
-  const range = document.createRange();
-  range.selectNodeContents(target);
-  const sel = window.getSelection();
-  if (!sel) return;
-  sel.removeAllRanges();
-  sel.addRange(range);
-  document.execCommand('insertText', false, text);
-  // Stash AFTER write — read back the actual DOM textContent. execCommand
-  // can normalise whitespace/newlines so target.textContent isn't always
-  // === text. The 'input' listener (deferred to a microtask in
-  // content.ts) compares against target.textContent via the reclassifier,
-  // so the match succeeds and source='runtime' classification works even
-  // when DOM normalisation altered the bytes.
-  sourceReclassifier.markRuntimeWrite(target.textContent ?? text);
+  target.textContent = text;
+  // Caret is wiped by textContent assignment; the runtime calls
+  // setCursorOffset(cursor) right after this for cycle/blank fills.
+  sourceReclassifier.markRuntimeWrite(text);
+  // Schedule a post-reconciliation re-render. The current synchronous
+  // task continues to the runtime's forceRender (sync, walks DOM as
+  // it stands now); on the next frame, after tiptap's MO microtask
+  // has reconciled, we re-walk and Ranges land on the new nodes.
+  schedulePostReconcileRender();
 }
 
 /** chrome.storage.local-backed readFile. Path is the storage key suffix. */
@@ -387,6 +393,25 @@ function runtimeRender(): void {
   applyDirectives(target, directives);
 }
 
+/**
+ * Queue exactly one re-render on the next animation frame. Called after
+ * writeText so that — by the time it fires — the editor's MutationObserver
+ * microtask has run and reconciled the DOM. The re-walk inside
+ * runtimeRender then picks up the editor's Text nodes (not ours) and the
+ * Highlight Ranges land on live nodes.
+ *
+ * Coalesced via a single rAF id so multiple writeTexts in the same task
+ * (rare, but possible during span/blank fills) collapse to one frame.
+ */
+let _postReconcileRafId: number | null = null;
+function schedulePostReconcileRender(): void {
+  if (_postReconcileRafId !== null) return;
+  _postReconcileRafId = requestAnimationFrame(() => {
+    _postReconcileRafId = null;
+    runtimeRender();
+  });
+}
+
 /** Tear down runtime highlights — called when extension detaches. */
 export function clearRuntimeHighlights(): void {
   clearDirectives();
@@ -444,7 +469,8 @@ function installKeyListener(): void {
     if (bootResult.dispatchKey(ev)) {
       e.preventDefault();
       e.stopPropagation();
-      runtimeRender();
+      // No render here — runtime modules (Cycling, Navigation, etc.)
+      // call forceRender themselves when they want a repaint.
     }
   }, true);
 }

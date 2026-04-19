@@ -1,13 +1,21 @@
 /* OpenCues — CSS Custom Highlight API styles */
 
+/* Default mid-tone colour applied to the WHOLE attached contenteditable
+   via plain CSS — not through the Highlight API. Reason: during text
+   mutation (cycling, blank-fill, paste) the editor's reconciliation
+   can momentarily replace text nodes that an oc-base Highlight Range
+   pointed at. While that Range is dead, the page's raw text colour
+   bleeds through (visible as "all white" / "lost colour" flash on
+   every cycle). Anchoring the default colour to the contenteditable
+   element itself paints it the instant new text appears, before any
+   JS runs — no gap. oc-dim and oc-active then OVERLAY specific words. */
+.oc-attached {
+  color: #999 !important;
+}
+
 /* Selectable words (has alts) — darkest */
 ::highlight(oc-dim) {
   color: #555 !important;
-}
-
-/* Normal words — mid-tone */
-::highlight(oc-base) {
-  color: #999 !important;
 }
 
 /* Active word — brightest */

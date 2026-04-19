@@ -44,7 +44,16 @@ async function init(): Promise<void> {
     }
     if (!isTextInput(el)) return;
     console.log('[OpenCues] Attaching to', el.tagName, el.id || el.className || '');
+    // Drop the class from any previous target before tagging the new one
+    // so the page is free of stale .oc-attached styling if focus moved
+    // between contenteditables without going through focusout.
+    if (currentTarget) currentTarget.classList.remove('oc-attached');
     currentTarget = el;
+    // Default mid-tone colour (see content.css). Anchored to the element
+    // so the browser paints it the instant text appears — eliminates the
+    // Highlight-API gap that previously caused "all white" flashes during
+    // cycling / reconciliation.
+    el.classList.add('oc-attached');
     publishTarget(el);
   };
 
@@ -63,6 +72,7 @@ async function init(): Promise<void> {
     const next = evt.relatedTarget as HTMLElement | null;
     if (!next || !isTextInput(next)) {
       if (currentTarget) {
+        currentTarget.classList.remove('oc-attached');
         currentTarget = null;
         publishTarget(null);
         clearRuntimeHighlights();
