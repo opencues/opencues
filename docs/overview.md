@@ -15,7 +15,7 @@ OpenCues has three types of interaction: **Cues** (system indicates alternatives
 The architecture has two layers:
 
 1. **Config Standard** (`cues.md`, `blanks.md`, `controls.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
-2. **Core Library** (`cues-core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
+2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
 
 Integrations (Claude Code, future editors) use cues-core to load the config standard and provide the UI layer.
 
@@ -406,15 +406,15 @@ cues-core is used directly from the injected cli.js code (no shell scripts). The
 Run the test suite:
 
 ```bash
-cd ~/opencues/packages/cues-core
+cd ~/opencues/packages/opencues-core
 npm run build
 npm run test
 ```
 
 ## Future Extensions
 
-1. **VS Code Extension**: Use `cues-core` with VS Code decoration API
-2. **Web Application**: Use `cues-core` directly with any web framework (the chrome extension under `integrations/chrome-extension/` is the reference)
+1. **VS Code Extension**: Use `@opencues/core` with VS Code decoration API
+2. **Web Application**: Use `@opencues/core` directly with any web framework (the chrome extension under `integrations/chrome/` is the reference)
 3. **Database Source**: Implement `CueSource` for database-backed cues
 4. **Real-time Sync**: Use file watchers or WebSocket for live updates
 5. **Analytics**: Track which cues are most useful via metrics

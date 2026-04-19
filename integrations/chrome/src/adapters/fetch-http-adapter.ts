@@ -1,4 +1,4 @@
-import type { HttpAdapter } from 'cues-core';
+import type { HttpAdapter } from '@opencues/core';
 
 /**
  * Browser fetch()-based HTTP adapter for cues-core.

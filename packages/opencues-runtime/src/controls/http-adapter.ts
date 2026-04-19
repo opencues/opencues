@@ -8,7 +8,7 @@
 // Hosts that need a different transport (Node http2, fetch with custom
 // agents, mock for tests) can still implement HttpAdapter themselves.
 
-import type { HttpAdapter } from 'cues-core';
+import type { HttpAdapter } from '@opencues/core';
 
 export class FetchHttpAdapter implements HttpAdapter {
   async post(url: string, body: string, headers: Record<string, string>): Promise<string> {

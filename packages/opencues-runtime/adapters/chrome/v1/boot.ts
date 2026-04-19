@@ -214,7 +214,7 @@ export function boot(host: HostInfo): BootResult {
     },
     collectRenderDirectives(text, cursor) {
       // Observe-only: update lastSeenText/Cursor without synthesising
-      // events. See adapters/opencode/REPAIR.md "Drift guard" for why
+      // events. See adapters/oc/REPAIR.md "Drift guard" for why
       // synthetic fires break runtime-initiated text writes.
       lastSeenText = text;
       lastSeenCursor = cursor;

@@ -105,7 +105,7 @@ globalThis._configReloading=globalThis._configReloading||false;
 // Load cues-core module once per process (not hot-reloadable)
 if(!globalThis._localCueMap){
 try{
-var _cuesPath=(process.env.HOME||"~")+"/.claude/node_modules/cues-core";
+var _cuesPath=(process.env.HOME||"~")+"/.claude/node_modules/@opencues/core";
 var _cues=${requireFuncName}(_cuesPath);
 var _tipsPath=(process.env.HOME||"~")+"/.claude/claude-code-tips.json";
 var _tipsContent=${requireFuncName}("fs").readFileSync(_tipsPath,"utf8");
@@ -257,7 +257,7 @@ if(_ex.cueTip!==globalThis._cueControlTip){_ex.cueTip=globalThis._cueControlTip;
 // NodeHttpAdapter: keep-alive + Groq provider config (reasoning_effort, max_tokens)
 if(!globalThis._httpAdapter){
 try{
-var _NodeHttpAdapter=${requireFuncName}((process.env.HOME||"~")+"/.claude/node_modules/cues-core/node-http-adapter").NodeHttpAdapter;
+var _NodeHttpAdapter=${requireFuncName}((process.env.HOME||"~")+"/.claude/node_modules/@opencues/core/node-http-adapter").NodeHttpAdapter;
 globalThis._httpAdapter=new _NodeHttpAdapter({
 maxSockets:2,
 timeout:30000,

@@ -42,26 +42,26 @@ npm run build
 
 # 3a. Wire opencues-runtime into the fork's node_modules.
 echo "Installing opencues-runtime into fork..."
-DEST="$OPENCODE_DIR/node_modules/opencues-runtime"
+DEST="$OPENCODE_DIR/node_modules/@opencues/runtime"
 mkdir -p "$DEST"
 cp -r "$OPENCUES_ROOT/packages/opencues-runtime/dist" "$DEST/"
 cp "$OPENCUES_ROOT/packages/opencues-runtime/package.json" "$DEST/"
 
 # 3b. Wire cues-core (ConfigLoader + Resolver depend on it).
-if [[ ! -d "$OPENCUES_ROOT/packages/cues-core/dist" ]]; then
+if [[ ! -d "$OPENCUES_ROOT/packages/opencues-core/dist" ]]; then
   echo "Building cues-core..."
-  ( cd "$OPENCUES_ROOT/packages/cues-core" && npm install --silent && npm run build )
+  ( cd "$OPENCUES_ROOT/packages/opencues-core" && npm install --silent && npm run build )
 fi
 echo "Installing cues-core into fork..."
-CUES_CORE_DEST="$OPENCODE_DIR/node_modules/cues-core"
+CUES_CORE_DEST="$OPENCODE_DIR/node_modules/@opencues/core"
 mkdir -p "$CUES_CORE_DEST"
-cp -r "$OPENCUES_ROOT/packages/cues-core/dist/"* "$CUES_CORE_DEST/"
-cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"
+cp -r "$OPENCUES_ROOT/packages/opencues-core/dist/"* "$CUES_CORE_DEST/"
+cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$CUES_CORE_DEST/"
 # Standalone files not compiled by tsc (e.g. node-http-adapter.js).
-# Resolver does `require('cues-core/node-http-adapter')` — without this
+# Resolver does `require('@opencues/core/node-http-adapter')` — without this
 # copy the require fails at runtime and LLM resolution silently dies.
-[ -f "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" ] && \
-  cp "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" "$CUES_CORE_DEST/"
+[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ] && \
+  cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CUES_CORE_DEST/"
 
 # 4. Copy the bootstrap patch into the fork's TUI source.
 echo "Copying opencuesBootstrap.ts into fork..."

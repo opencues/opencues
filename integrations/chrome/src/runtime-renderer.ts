@@ -12,7 +12,7 @@
 // text (to match the runtime's offset coordinate system) and mapped
 // back to DOM Range objects via a TreeWalker.
 
-import type { RenderDirectives } from 'opencues-runtime/dist/src/adapter';
+import type { RenderDirectives } from '@opencues/runtime/dist/src/adapter';
 
 const hasHighlightAPI = typeof CSS !== 'undefined' && 'highlights' in CSS;
 

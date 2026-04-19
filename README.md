@@ -41,7 +41,7 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 | **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
 | **controls/{name}/** | Self-contained control with colocated script | `controls/volume/cue.md` + `volume.sh` |
 
-Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Install
 
@@ -51,7 +51,7 @@ Integrations read these files via `cues-core` (the reference implementation in p
 |---|---|---|
 | **Claude Code** | clone + `integrations/cc/scripts/setup.sh` (current path; `npx @opencues/cc` planned) | Patches Claude Code's `cli.js` via tweakcc; installs runtime to `~/.claude/node_modules/` |
 | **OpenCode** | clone + `integrations/oc/patches/setup.sh` | Patches an OpenCode 1.4.x fork; runtime is loaded inline |
-| **Chrome** | clone + `integrations/chrome/` → `npm run build` → load unpacked | MV3 extension; see [chrome README](integrations/chrome-extension/README.md) for the build → load workflow |
+| **Chrome** | clone + `integrations/chrome/` → `npm run build` → load unpacked | MV3 extension; see [chrome README](integrations/chrome/README.md) for the build → load workflow |
 
 For Claude Code:
 
@@ -61,7 +61,7 @@ echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
 
 # 2. Clone and install
 git clone https://github.com/opencues/opencues ~/opencues
-~/opencues/integrations/claude-code/patches/setup.sh
+~/opencues/integrations/cc/patches/setup.sh
 ```
 
 Restart Claude Code. Done.
@@ -105,13 +105,13 @@ Restart Claude Code. Done.
 │                       OpenCues                               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  packages/cues-core/          Runtime module                │
+│  packages/opencues-core/          Runtime module                │
 │  ├── resolver.ts              CueResolver orchestration     │
 │  ├── cues-md.ts               Config parser (cues/blanks.md)│
 │  ├── node-http-adapter.ts     HTTPS with keep-alive         │
 │  └── sources/                 ConfigSource, parsers...      │
 │                                                             │
-│  integrations/claude-code/patches/       Claude Code integration       │
+│  integrations/cc/patches/       Claude Code integration       │
 │  ├── setup.sh                 One-command installer         │
 │  ├── wordHighlight.ts         Navigation + rendering        │
 │  ├── dynamicHighlight.ts      LLM integration + cycling     │
@@ -135,7 +135,7 @@ Restart Claude Code. Done.
 │  • Word highlight rendering (ANSI codes)                    │
 │  • Keyboard handlers (Ctrl+Alt+Arrow)                       │
 │  • LLM call on keystroke (debounced)                        │
-│  • require("~/.claude/node_modules/cues-core")              │
+│  • require("~/.claude/node_modules/@opencues/core")              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -160,7 +160,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies.
 - **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + controls → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
-### integrations/claude-code
+### integrations/cc
 
 Integrates cues-core into Claude Code via [tweakcc](https://github.com/Piebald-AI/tweakcc).
 
@@ -186,7 +186,7 @@ agents (1/3) - Spawn parallel workers via Task tool
 
 **Disable:** Run `/statusline` again and clear the command.
 
-See [status line docs](integrations/claude-code/docs/status-line.md) for details.
+See [status line docs](integrations/cc/docs/status-line.md) for details.
 
 ## Configuration
 
@@ -225,7 +225,7 @@ When OpenCues updates:
 
 ```bash
 cd ~/opencues && git pull
-~/opencues/integrations/claude-code/patches/setup.sh
+~/opencues/integrations/cc/patches/setup.sh
 ```
 
 ## Removing
@@ -241,7 +241,7 @@ cp ~/.tweakcc/cli.js.backup $(find ~/.claude -name "cli.js" -path "*claude-code*
 ```bash
 rm ~/.claude/claude-code-tips.json
 rm ~/.claude/highlight-statusline.sh
-rm -rf ~/.claude/node_modules/cues-core
+rm -rf ~/.claude/node_modules/@opencues/core
 rm -rf ~/.claude/actions
 ```
 
@@ -268,7 +268,7 @@ Work through these in order:
 1. **Did you restart Claude Code?** Patches only take effect after a restart.
 2. **Is the API key in `~/.bashrc`?** `export GROQ_API_KEY=...` in a terminal session is not enough — Claude Code won't see it unless it's in `~/.bashrc` (and you've started a new session since adding it). Check: `echo $GROQ_API_KEY`
 3. **Did setup.sh finish successfully?** It should print `Setup Complete`. If it printed `ERROR: Claude Code not found`, patches were never applied — install Claude Code first, then re-run `setup.sh`.
-4. **Check cues-core loaded:** `node -e "require(process.env.HOME+'/.claude/node_modules/cues-core')"`
+4. **Check cues-core loaded:** `node -e "require(process.env.HOME+'/.claude/node_modules/@opencues/core')"`
 5. **Enable debug logging:** `DEBUG=cues* claude` — look for resolver output as you type.
 
 ### Syntax error after patching
@@ -278,7 +278,7 @@ Work through these in order:
 cp ~/.tweakcc/cli.js.backup $(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
 
 # Re-run setup
-~/opencues/integrations/claude-code/patches/setup.sh
+~/opencues/integrations/cc/patches/setup.sh
 ```
 
 ### setup.sh fails to patch

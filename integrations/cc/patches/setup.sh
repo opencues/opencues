@@ -11,7 +11,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CUES_CORE="$SCRIPT_DIR/../../../packages/cues-core"
+CUES_CORE="$SCRIPT_DIR/../../../packages/opencues-core"
 OC_RUNTIME="$SCRIPT_DIR/../../../packages/opencues-runtime"
 NEEDS_TWEAKCC_BUILD=false
 CLEAN_INSTALL=false
@@ -247,32 +247,39 @@ if [ -d "$CUES_CORE" ]; then
     echo "cues-core up to date"
   fi
 
-  if $CLEAN_INSTALL; then
-    echo "Clean installing cues-core..."
+  # Cleanup legacy install path from before the @opencues scope rename
+  # (Stage 4 of the repo restructure). Safe to run repeatedly.
+  if [ -d ~/.claude/node_modules/cues-core ]; then
+    echo "Removing legacy ~/.claude/node_modules/cues-core (pre-rename install)..."
     rm -rf ~/.claude/node_modules/cues-core
   fi
-  mkdir -p ~/.claude/node_modules/cues-core
-  cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts ~/.claude/node_modules/cues-core/ 2>/dev/null || true
+
+  if $CLEAN_INSTALL; then
+    echo "Clean installing @opencues/core..."
+    rm -rf ~/.claude/node_modules/@opencues/core
+  fi
+  mkdir -p ~/.claude/node_modules/@opencues/core
+  cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts ~/.claude/node_modules/@opencues/core/ 2>/dev/null || true
   # Copy standalone files not compiled by tsc (e.g. node-http-adapter.js)
-  [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" ~/.claude/node_modules/cues-core/
+  [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" ~/.claude/node_modules/@opencues/core/
   if [ -d "$CUES_CORE/dist/sources" ]; then
     if $CLEAN_INSTALL; then
-      rm -rf ~/.claude/node_modules/cues-core/sources
+      rm -rf ~/.claude/node_modules/@opencues/core/sources
     fi
-    cp -r "$CUES_CORE/dist/sources" ~/.claude/node_modules/cues-core/
+    cp -r "$CUES_CORE/dist/sources" ~/.claude/node_modules/@opencues/core/
   fi
   # Write package.json with corrected paths (dist files are installed flat, not in dist/)
   node -e "
 const pkg = JSON.parse(require('fs').readFileSync('$CUES_CORE/package.json', 'utf8'));
 pkg.main = 'index.js';
 pkg.types = 'index.d.ts';
-require('fs').writeFileSync(require('os').homedir() + '/.claude/node_modules/cues-core/package.json', JSON.stringify(pkg, null, 2));
+require('fs').writeFileSync(require('os').homedir() + '/.claude/node_modules/@opencues/core/package.json', JSON.stringify(pkg, null, 2));
 "
 fi
 
-# 6b. Build + install opencues-runtime alongside cues-core. The Claude
-#     Code patch loads the runtime via ~/.claude/node_modules/opencues-runtime/
-#     (same location convention as cues-core). Without this step, BlankFill
+# 6b. Build + install @opencues/runtime alongside @opencues/core. The
+#     Claude Code patch loads the runtime via
+#     ~/.claude/node_modules/@opencues/runtime/. Without this step, BlankFill
 #     control dispatch (hackernews / stocks / weather / answer / prompt /
 #     opencues) silently fails because the hoisted control classes (post the
 #     controls hoist refactor) live inside the runtime's dist/src/controls
@@ -280,31 +287,37 @@ fi
 if [ -d "$OC_RUNTIME" ]; then
   NEWEST_SRC=$(find "$OC_RUNTIME/src" "$OC_RUNTIME/adapters" -name '*.ts' -newer "$OC_RUNTIME/dist/src/index.js" 2>/dev/null | head -1)
   if [ ! -f "$OC_RUNTIME/dist/src/index.js" ] || [ -n "$NEWEST_SRC" ]; then
-    echo "Building opencues-runtime..."
+    echo "Building @opencues/runtime..."
     cd "$OC_RUNTIME"
     npm run build --silent 2>/dev/null || npm run build
     cd "$TWEAKCC_DIR"
   else
-    echo "opencues-runtime up to date"
+    echo "@opencues/runtime up to date"
+  fi
+
+  # Cleanup legacy install path from before the @opencues scope rename.
+  if [ -d ~/.claude/node_modules/opencues-runtime ]; then
+    echo "Removing legacy ~/.claude/node_modules/opencues-runtime (pre-rename install)..."
+    rm -rf ~/.claude/node_modules/opencues-runtime
   fi
 
   if $CLEAN_INSTALL; then
-    echo "Clean installing opencues-runtime..."
-    rm -rf ~/.claude/node_modules/opencues-runtime
+    echo "Clean installing @opencues/runtime..."
+    rm -rf ~/.claude/node_modules/@opencues/runtime
   fi
   # The runtime's directory layout (dist/src + dist/adapters) is non-trivial;
   # cleanest install is rsync of the whole tree, then drop a slimmed
   # package.json with the same main path the source declares.
-  mkdir -p ~/.claude/node_modules/opencues-runtime/dist
+  mkdir -p ~/.claude/node_modules/@opencues/runtime/dist
   # Use rsync if present; else cp -r (mirrors recursively, removes deleted files
   # only via rsync's --delete which we set to keep stale .js out).
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$OC_RUNTIME/dist/" ~/.claude/node_modules/opencues-runtime/dist/
+    rsync -a --delete "$OC_RUNTIME/dist/" ~/.claude/node_modules/@opencues/runtime/dist/
   else
-    rm -rf ~/.claude/node_modules/opencues-runtime/dist
-    cp -r "$OC_RUNTIME/dist" ~/.claude/node_modules/opencues-runtime/dist
+    rm -rf ~/.claude/node_modules/@opencues/runtime/dist
+    cp -r "$OC_RUNTIME/dist" ~/.claude/node_modules/@opencues/runtime/dist
   fi
-  cp "$OC_RUNTIME/package.json" ~/.claude/node_modules/opencues-runtime/package.json
+  cp "$OC_RUNTIME/package.json" ~/.claude/node_modules/@opencues/runtime/package.json
 fi
 
 # 7. Copy supporting files (cheap — always run)

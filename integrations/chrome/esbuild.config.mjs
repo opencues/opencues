@@ -77,12 +77,12 @@ const common = {
   target: 'es2020',
   tsconfig: 'tsconfig.json',
   define: envDefines,
-  // The runtime's Resolver lazily requires cues-core/node-http-adapter.
+  // The runtime's Resolver lazily requires @opencues/core/node-http-adapter.
   // That module uses node:https — unresolvable in a browser bundle.
   // Alias to a stub that throws so the runtime's existing try/catch
   // falls through to the host-supplied httpAdapter (FetchHttpAdapter).
   alias: {
-    'cues-core/node-http-adapter': new URL('./src/stubs/node-http-adapter-stub.ts', import.meta.url).pathname,
+    '@opencues/core/node-http-adapter': new URL('./src/stubs/node-http-adapter-stub.ts', import.meta.url).pathname,
   },
 };
 

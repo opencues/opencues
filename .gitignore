@@ -9,4 +9,4 @@ dist/
 *.pem
 
 # tweakcc — local tool, not part of the public repo
-integrations/claude-code/tweakcc/
+integrations/cc/tweakcc/

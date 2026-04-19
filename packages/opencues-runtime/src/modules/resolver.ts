@@ -89,7 +89,7 @@ export class Resolver {
         try {
           // Lazy require so tests without cues-core/node-http-adapter still load.
           // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { NodeHttpAdapter } = require('cues-core/node-http-adapter');
+          const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
           this._httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
         } catch (err) {
           this.adapter.log('error', 'Resolver: NodeHttpAdapter load failed', err);
@@ -101,7 +101,7 @@ export class Resolver {
     let cuesCore: CuesCoreLike;
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      cuesCore = require('cues-core');
+      cuesCore = require('@opencues/core');
     } catch (err) {
       this.adapter.log('error', 'Resolver: cues-core load failed', err);
       return;

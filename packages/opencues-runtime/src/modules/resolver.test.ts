@@ -42,7 +42,7 @@ function setupResolver(scriptedResults: MockResult[]) {
   const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
 
   // Inject a mock resolver factory so we don't load real cues-core sources.
-  // The Resolver class still calls require('cues-core').createResolver, so we
+  // The Resolver class still calls require('@opencues/core').createResolver, so we
   // shadow that via a fake httpAdapter and a synthetic factory: we provide
   // resolverFactory to short-circuit buildSourcesFromConfig + return fake
   // sources. createResolver then runs but resolve() goes through cues-core.

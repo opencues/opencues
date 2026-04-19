@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
-import type { RenderDirectives } from 'opencues-runtime/dist/src/adapter';
+import type { RenderDirectives } from '@opencues/runtime/dist/src/adapter';
 
 interface CountingHighlights extends Map<string, unknown> {
   setCalls: number;

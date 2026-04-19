@@ -12,7 +12,16 @@ importers:
         specifier: ^5.3.0
         version: 5.9.3
 
-  integrations/chrome-extension:
+  integrations/cc: {}
+
+  integrations/chrome:
+    dependencies:
+      '@opencues/core':
+        specifier: workspace:*
+        version: link:../../packages/opencues-core
+      '@opencues/runtime':
+        specifier: workspace:*
+        version: link:../../packages/opencues-runtime
     devDependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
@@ -33,23 +42,21 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@25.6.0)(jsdom@29.0.2)
 
-  integrations/claude-code: {}
+  integrations/oc: {}
 
-  integrations/opencode: {}
-
-  packages/cues-core: {}
+  packages/opencues-core: {}
 
   packages/opencues-runtime:
     dependencies:
+      '@opencues/core':
+        specifier: workspace:*
+        version: link:../opencues-core
       acorn:
         specifier: ^8.12.1
         version: 8.16.0
       acorn-walk:
         specifier: ^8.3.3
         version: 8.3.5
-      cues-core:
-        specifier: workspace:*
-        version: link:../cues-core
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -1122,7 +1129,7 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 25.6.0
+      '@types/node': 22.19.17
       form-data: 4.0.5
 
   '@types/node@18.19.130':
@@ -1136,6 +1143,7 @@ snapshots:
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
+    optional: true
 
   '@vitest/expect@2.1.9':
     dependencies:
@@ -1522,7 +1530,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@7.19.2: {}
+  undici-types@7.19.2:
+    optional: true
 
   undici@7.25.0: {}
 

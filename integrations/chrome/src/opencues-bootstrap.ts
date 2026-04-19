@@ -26,16 +26,16 @@
 // dormant — exactly what we want for CE.1: prove the boot path works
 // in a content-script context without changing observable behavior.
 
-import { boot, type BootResult } from 'opencues-runtime/dist/adapters/chrome/v1/boot';
+import { boot, type BootResult } from '@opencues/runtime/dist/adapters/chrome/v1/boot';
 import type {
   ControlInvokeSpec,
   KeyEvent,
   LogLevel,
   ProcessHandle,
   ProcessResult,
-} from 'opencues-runtime/dist/src/adapter';
-import { createSourceReclassifier } from 'opencues-runtime/dist/src/boot-common';
-import { createControlInvoke } from 'opencues-runtime/dist/src/controls';
+} from '@opencues/runtime/dist/src/adapter';
+import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
+import { createControlInvoke } from '@opencues/runtime/dist/src/controls';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';

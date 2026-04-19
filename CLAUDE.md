@@ -7,38 +7,30 @@ This document provides context for Claude sessions working on this project.
 **OpenCues** provides LLM-powered word alternatives for text editors. The core library analyzes text and suggests alternatives (synonyms, opposites, completions) that users can cycle through.
 
 **Architecture** (two libraries + integrations):
-- **`cues-core`** — *what alternatives exist*. Pure TypeScript: parsers
+- **`@opencues/core`** — *what alternatives exist*. Pure TypeScript: parsers
   (cues.md / controls.md / opencues.md / blanks.md), the LLM `Resolver`,
   prompt templates, sources (ConfigSource, ControlBlankSource, etc.),
   HTTP adapter. Given text + config, answers "what should we suggest for
   this word?" Knows nothing about editors, key events, or rendering.
-- **`opencues-runtime`** — *how the user interacts with those alternatives*.
+- **`@opencues/runtime`** — *how the user interacts with those alternatives*.
   Host-agnostic: the `HostAdapter` contract, Navigation / Cycling /
   DimRender / BlankFill modules, render-directive ANSI work, state
   classes, and per-host adapter bands (Claude Code v2.1, future browser,
-  …). Knows nothing about LLMs. Will depend on `cues-core` from the
+  …). Knows nothing about LLMs. Will depend on `@opencues/core` from the
   BlankFill phase onward — modules will receive a `Resolver` instance.
 - **Integrations** — Editor-specific glue. Claude Code's integration is
   the `tweakcc` patch that injects a thin bootstrap into `cli.js`; that
-  bootstrap calls `opencues-runtime`'s `boot()` entry point.
+  bootstrap calls `@opencues/runtime`'s `boot()` entry point.
 
-Roughly: `cues-core` is the brain, `opencues-runtime` is the nervous
+Roughly: `@opencues/core` is the brain, `@opencues/runtime` is the nervous
 system, and each integration is a spinal-cord-shaped bridge between the
 host and the runtime.
 
-> **Pre-release rename:** these names will likely be revisited before
-> public release once the architecture is fully proven. Candidates so
-> far: `cues-core` → `opencues-core` for namespace consistency;
-> `opencues-runtime` may absorb the `adapters/` layer and become
-> something like `opencues-host-runtime` or split apart into a host-side
-> `opencues-runtime-bootstrap` (boot.ts) + host-agnostic `opencues-engine`.
-> Don't optimise package names until BlankFill is done — naming reads
-> better once we can see what each layer actually owns.
 
 **Current Integrations**:
-- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.110+ via tweakcc
-- **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.4.x; runtime loaded inline
-- **Chrome** (`integrations/chrome-extension/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
+- **Claude Code** (`integrations/cc/`) — patches Claude Code 2.1.110+ via tweakcc
+- **OpenCode** (`integrations/oc/`) — patches OpenCode 1.4.x; runtime loaded inline
+- **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 
 > Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of
 > the repo restructure. See `docs/architecture/repo-structure.md` for the
@@ -108,20 +100,27 @@ opencues/
 │       ├── cue.md                 # Consume-context control (blankConsumeContext, factual lookup)
 │       └── answer-blank.sh        # LLM: keyword + context → answer (3 alternatives)
 │
-├── packages/                      # Core packages
-│   └── cues-core/                 # LLM analysis library
-│       ├── src/
-│       │   ├── resolver.ts        # CueResolver orchestration
-│       │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
-│       │   ├── discover.ts        # Folder-based config discovery
-│       │   ├── node-http-adapter.ts  # HTTPS with keep-alive
-│       │   └── sources/           # ConfigSource, ClassifiedSourceGroup, ControlBlankSource, parsers
-│       ├── prompts/               # Prompt references + documentation
-│       │   ├── linked.txt         # Linked words prompt
-│       │   └── references/        # Prompt documentation
+├── packages/                      # Core packages (publish as @opencues/*)
+│   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core
+│   │   ├── src/
+│   │   │   ├── resolver.ts        # CueResolver orchestration
+│   │   │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
+│   │   │   ├── discover.ts        # Folder-based config discovery
+│   │   │   ├── node-http-adapter.ts  # HTTPS with keep-alive
+│   │   │   └── sources/           # ConfigSource, ClassifiedSourceGroup, ControlBlankSource, parsers
+│   │   ├── prompts/               # Prompt references + documentation
+│   │   │   ├── linked.txt         # Linked words prompt
+│   │   │   └── references/        # Prompt documentation
+│   │   └── dist/                  # Built output
+│   └── opencues-runtime/          # Host-agnostic runtime — publishes as @opencues/runtime
+│       ├── src/                   # Modules: Navigation, Cycling, BlankFill, etc.
+│       ├── adapters/              # Per-host adapter bands
+│       │   ├── cc/v2.1/           # Claude Code 2.1.x adapter
+│       │   ├── oc/v1.4/           # OpenCode 1.4.x adapter
+│       │   └── chrome/v1/         # Chrome extension adapter
 │       └── dist/                  # Built output
 │
-├── integrations/claude-code/      # Claude Code integration
+├── integrations/cc/      # Claude Code integration (@opencues/cc)
 │   ├── patches/                   # tweakcc patches + installer
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
 │   │   ├── cursorStateExport.ts   # Cursor position → JSON
@@ -174,7 +173,7 @@ opencues/
 
 ```bash
 git clone https://github.com/opencues/opencues ~/opencues
-~/opencues/integrations/claude-code/patches/setup.sh
+~/opencues/integrations/cc/patches/setup.sh
 export GROQ_API_KEY="your-key"
 ```
 
@@ -195,10 +194,10 @@ The setup script:
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
   - **`adding-a-cue-control.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
-- **integrations/claude-code/docs/** — Claude Code implementation docs
+- **integrations/cc/docs/** — Claude Code implementation docs
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
-- **integrations/claude-code/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
-- **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
+- **integrations/cc/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
+- **integrations/cc/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21 feature concepts (one file each)
 
 ---
@@ -207,22 +206,22 @@ The setup script:
 
 **Target:** `claude-cues` (`~/local-claude-code`) only. The native `claude` install is never touched.
 
-After any change to a Claude Code patch source or to `cues-core` / `opencues-runtime`, run:
+After any change to a Claude Code patch source or to `@opencues/core` / `@opencues/runtime`, run:
 
 ```bash
-integrations/claude-code/patches/setup.sh
+integrations/cc/patches/setup.sh
 ```
 
 The script:
 1. Copies patch `.ts` files (`cursorStateExport.ts`, `wordHighlight.ts`, `dynamicHighlight.ts`, `opencuesRuntime.ts`) to tweakcc and rebuilds it (compiles patches into `dist/`)
-2. Builds `cues-core` and copies to `~/.claude/node_modules/cues-core/`
-3. Builds `opencues-runtime` and rsyncs `dist/` to `~/.claude/node_modules/opencues-runtime/` (since commit `2ae362e`)
+2. Builds `@opencues/core` and copies to `~/.claude/node_modules/@opencues/core/`
+3. Builds `@opencues/runtime` and rsyncs `dist/` to `~/.claude/node_modules/@opencues/runtime/` (since commit `2ae362e`)
 4. Applies compiled patches to `claude-cues` (`~/local-claude-code`)
 
 To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):
 
 ```bash
-cd integrations/claude-code/tweakcc
+cd integrations/cc/tweakcc
 CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
@@ -231,7 +230,7 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
-> **Important:** See `integrations/claude-code/docs/architecture.md` § "Development Notes" for critical patch development rules (e.g., never use bare `require()` in patch files).
+> **Important:** See `integrations/cc/docs/architecture.md` § "Development Notes" for critical patch development rules (e.g., never use bare `require()` in patch files).
 
 ---
 
@@ -242,7 +241,7 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 - **Debug**: `DEBUG=cues*` for debug logging
 - **Config**: `~/.tweakcc/config.json` for Claude Code settings
 
-> **PRE-LAUNCH:** Rotate `GROQ_API_KEY` and `FINNHUB_API_KEY` before making the repo public. Keys are hardcoded in `integrations/chrome-extension/.env` (gitignored) for dev convenience.
+> **PRE-LAUNCH:** Rotate `GROQ_API_KEY` and `FINNHUB_API_KEY` before making the repo public. Keys are hardcoded in `integrations/chrome/.env` (gitignored) for dev convenience.
 
 ---
 
@@ -282,15 +281,15 @@ maybeReload (write-race guard)` and the resume-after-window companion.
 Chrome runs on Windows; this repo lives in WSL2. The unpacked extension Chrome
 loads from is on the Windows desktop, **not** the WSL build dir:
 
-- **Build (WSL)**: `/home/wilfred/opencues/integrations/chrome-extension/`
+- **Build (WSL)**: `/home/wilfred/opencues/integrations/chrome/`
 - **Loaded by Chrome (Windows)**: `/mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/`
 
 After every `npm run build`, sync the fresh artefacts to the Windows path or
 Chrome will keep running the stale bundle (no errors, just no new behaviour):
 
 ```bash
-cp -r integrations/chrome-extension/dist/* /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/dist/
-cp integrations/chrome-extension/manifest.json /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/manifest.json
+cp -r integrations/chrome/dist/* /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/dist/
+cp integrations/chrome/manifest.json /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/manifest.json
 ```
 
 Then reload the extension at `chrome://extensions` and hard-refresh the page.

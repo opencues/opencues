@@ -149,7 +149,7 @@ fi
 
 # 7. setup.sh must also copy cues-core/node-http-adapter.js — it's a
 #    standalone CommonJS file at the cues-core package root (not under
-#    dist/), and Resolver does require('cues-core/node-http-adapter')
+#    dist/), and Resolver does require('@opencues/core/node-http-adapter')
 #    at runtime. Without this copy, NodeHttpAdapter load fails and LLM
 #    resolution silently dies. Idempotent: only injects if absent.
 if ! grep -q "node-http-adapter.js" "$SETUP"; then
@@ -157,13 +157,13 @@ python3 - "$SETUP" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-old = 'cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"'
-new = '''cp "$OPENCUES_ROOT/packages/cues-core/package.json" "$CUES_CORE_DEST/"
+old = 'cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$CUES_CORE_DEST/"'
+new = '''cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$CUES_CORE_DEST/"
 # Standalone files not compiled by tsc (e.g. node-http-adapter.js).
-# Resolver does `require('cues-core/node-http-adapter')` — without this
+# Resolver does `require('@opencues/core/node-http-adapter')` — without this
 # copy the require fails at runtime and LLM resolution silently dies.
-[ -f "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" ] && \\
-  cp "$OPENCUES_ROOT/packages/cues-core/node-http-adapter.js" "$CUES_CORE_DEST/"'''
+[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ] && \\
+  cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CUES_CORE_DEST/"'''
 if old in src and 'node-http-adapter.js' not in src:
   src = src.replace(old, new)
   open(p, 'w').write(src)
@@ -259,7 +259,7 @@ echo "Reverting fork patches + reapplying..."
 ( cd "$OPENCODE_DIR" \
   && git checkout packages/opencode/src/cli/cmd/tui/app.tsx packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx 2>/dev/null \
   && rm -f packages/opencode/src/cli/cmd/tui/opencues.ts \
-  && rm -rf node_modules/opencues-runtime/dist node_modules/cues-core )
+  && rm -rf node_modules/@opencues/runtime/dist node_modules/@opencues/core )
 "$SCRIPT_DIR/setup.sh" "$OPENCODE_DIR"
 echo ""
 echo "✓ Now at $(git log --oneline -1)"

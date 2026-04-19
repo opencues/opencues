@@ -161,16 +161,17 @@ expecting a normal Node setup, pnpm is the safer default.
 
 ## Stage tracker
 
-| Stage | Goal | Status | Commit |
-|---|---|---|---|
-| 1 | Document target architecture; reconcile top-level docs | in progress | (this commit) |
-| 2 | Per-integration `package.json` with version + compat metadata | pending | — |
-| 3 | Adopt pnpm workspaces | pending | — |
-| 4 | Rename packages + integrations to `@opencues/*` scope, opaque codes | pending | — |
-| 5 | Add Turborepo build orchestration | pending | — |
-| 6 | `npx @opencues/cc` installer | pending | — |
-| 7 | Same for OC + Chrome | pending | — |
-| 8 | Changesets + GitHub Actions release pipeline | pending | — |
+| Stage | Goal | Status |
+|---|---|---|
+| 1 | Document target architecture; reconcile top-level docs | done (`865cfd4`) |
+| 2 | Per-integration `package.json` with version + compat metadata | done (`3886cb4`) |
+| 3 | Adopt pnpm workspaces | done |
+| 4a | Rename packages + integrations to `@opencues/*` scope, opaque codes (source only) | done (this commit) |
+| 4b | Re-deploy `~/.claude/node_modules/@opencues/*` via setup.sh; verify CC + OC end-to-end | pending |
+| 5 | Add Turborepo build orchestration | pending |
+| 6 | `npx @opencues/cc` installer | pending |
+| 7 | Same for OC + Chrome | pending |
+| 8 | Changesets + GitHub Actions release pipeline | pending |
 
 Each stage is committed separately. To roll back any stage: `git revert
 <commit>`. The intermediate stages all leave the repo in a buildable

@@ -258,7 +258,7 @@ export function assertAllFound(results: readonly SeamResult[]): void {
       `OpenCues v2 installer: FAILED to find ${missing.length} critical seam(s):\n` +
         missing.map(id => `  - ${id}`).join('\n') +
         `\nLikely cause: unsupported Claude Code version. Add a matching adapter band under ` +
-        `packages/opencues-runtime/adapters/claude-code/ or pin claude-cues to a supported version.`,
+        `packages/opencues-runtime/adapters/cc/ or pin claude-cues to a supported version.`,
     );
   }
 }

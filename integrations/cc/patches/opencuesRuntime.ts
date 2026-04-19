@@ -13,12 +13,12 @@
 //
 // All wiring (adapter construction, module subscription, error capture,
 // ZWS toggle logic, applyDirectives) lives in opencues-runtime's
-// adapters/claude-code/v2.1/boot.ts. This file is intentionally minimal:
+// adapters/cc/v2.1/boot.ts. This file is intentionally minimal:
 // it knows the require var (host-specific), the boot.js path, and the
 // S1/S2/S3 binding names. That's it.
 //
 // NOTE: Seam regexes below are a build-time vendored copy of
-// `packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`. Source of
+// `packages/opencues-runtime/adapters/cc/v2.1/seams.ts`. Source of
 // truth is the runtime package; mirror both when bumping.
 
 import { getRequireFuncName } from './helpers';
@@ -157,7 +157,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
       `OpenCues v2 installer: FAILED to find ${missing.length} critical seam(s):\n` +
         missing.map(id => `  - ${id}`).join('\n') +
         `\nLikely cause: unsupported Claude Code version. Check ` +
-        `packages/opencues-runtime/adapters/claude-code/ for a matching adapter ` +
+        `packages/opencues-runtime/adapters/cc/ for a matching adapter ` +
         `band or pin claude-cues to a supported version.`,
     );
     return null;
@@ -189,13 +189,13 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   }
 
   // Single absolute path — boot.js handles all internal wiring.
-  const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/adapters/claude-code/v2.1/boot.js"`;
+  const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/@opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
   // The hoisted control classes (HackerNews / Stocks / Weather / Answer /
   // PromptImprover / OpenCuesSettings) live in the runtime's controls
   // package. We require it lazily inside the bootstrap so older runtime
   // installs (without controls/) still load — controlInvoke just stays
   // null in that case and BlankFill falls back to spawnProcess.
-  const controlsPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/src/controls/index.js"`;
+  const controlsPath = `(process.env.HOME||"~")+"/.claude/node_modules/@opencues/runtime/dist/src/controls/index.js"`;
   // Project-root opencues.md — same path the legacy bash control read.
   // Resolved at call time so cwd flips are picked up live. Mirrors
   // opencode/patches/opencuesBootstrap.ts:findOpenCuesMdPath.

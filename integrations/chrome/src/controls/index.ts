@@ -15,10 +15,10 @@ import {
   PromptImproverControl,
   StocksControl,
   WeatherControl,
-} from 'opencues-runtime/dist/src/controls';
+} from '@opencues/runtime/dist/src/controls';
 
 export type { BrowserControl } from './types';
-export { PromptImproverControl } from 'opencues-runtime/dist/src/controls';
+export { PromptImproverControl } from '@opencues/runtime/dist/src/controls';
 export type PromptImproverConfig = {
   apiKey: string;
   apiUrl: string;

@@ -27,7 +27,7 @@ import {
   type ControlConfig,
   type DiscoveredConfigs,
   type DirEntry as CoreDirEntry,
-} from 'cues-core';
+} from '@opencues/core';
 
 /** Pattern that matches words eligible for step-arithmetic cycling. */
 export interface StepPattern {
