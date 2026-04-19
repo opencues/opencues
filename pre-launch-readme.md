@@ -22,7 +22,7 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [x] Add `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1
 - [x] Create `.github/ISSUE_TEMPLATE/` — bug report + feature request templates
 - [x] Create `.github/PULL_REQUEST_TEMPLATE.md`
-- [ ] Add GitHub Actions CI — at minimum: `npm run build` on PR for cues-core
+- [ ] Add GitHub Actions CI — at minimum: `pnpm build` + `pnpm test` on PR (turbo caches across packages). Part of **Stage 8** of the repo re-org — see [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md#stage-tracker).
 - [ ] Add README badges — license, build status, Discord, npm version
 - [x] Transfer repo or create org — now at `opencues/opencues` (private until launch)
 - [ ] Enable GitHub Discussions — for Q&A, ideas
@@ -44,11 +44,20 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [x] Review `CONTRIBUTING.md` for open-source — added "good first issues" section + contributor expectations
 - [ ] Add architecture diagram image — replace ASCII art with SVG/PNG
 
-## Package Publishing (future)
+## Package Publishing — Stage 8 of the repo re-org
 
-- [ ] Publish cues-core to npm — `@opencues/core` or similar
-- [x] Add `package.json` version field — v0.1.0 (pre-release)
-- [x] Add `CHANGELOG.md` — v0.1.0 initial pre-release with all 18 features
+See [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md) for the target shape. Most of the structural work (scoped names, per-integration `package.json` with version + compatibility metadata, `bin` entries, install scripts) is already done — Stage 8 wires the actual publish pipeline on top.
+
+- [x] Adopt `@opencues/*` npm scope (Stage 4a)
+- [x] Per-integration `package.json` with `version` + `compatibility` (Stage 2)
+- [x] `bin/install.cjs` + `bin` field in each integration (Stage 6′) — works as `pnpm --filter @opencues/X dev-install` today; becomes `npx @opencues/X` post-publish without code changes
+- [x] `files: [...]` whitelist in each integration's `package.json` to control what gets bundled (Stage 6′)
+- [ ] **Stage 8 — Choose Changesets vs hand-managed versions.** Changesets is mainstream (shadcn/ui uses it) but adds overhead for a small project. Hand-managed `npm version patch` per integration works fine until automated changelogs become valuable.
+- [ ] **Stage 8 — Set up GitHub Actions release workflow** with OIDC publish to npm (no token management). Triggered by changeset version PR merge OR by manual `pnpm release`.
+- [ ] **Stage 8 — Drop `private: true`** from each integration's `package.json` and from `@opencues/core` / `@opencues/runtime`. Run `pnpm publish --access public` (first time) for each scoped package.
+- [ ] **Stage 8 — Update top-level README** to lead with `npx @opencues/cc` (and `oc`/`chrome`) as the primary install path; current `pnpm --filter ... dev-install` becomes the contributor fallback.
+- [x] Add `package.json` version field — v0.1.0 (pre-release) across all packages
+- [x] Add `CHANGELOG.md` — v0.1.0 initial pre-release with all 18 features (per-package CHANGELOGs land with Changesets in Stage 8)
 
 ## Pre-Launch Audit
 
