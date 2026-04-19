@@ -1,0 +1,22 @@
+{
+  "name": "opencues",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues — single-command front door for installing, configuring, and launching OpenCues across all editor integrations.",
+  "bin": {
+    "opencues": "./bin/cli.cjs"
+  },
+  "scripts": {
+    "_": "node bin/cli.cjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "packages/opencues-cli"
+  }
+}

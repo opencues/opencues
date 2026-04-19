@@ -47,6 +47,8 @@ importers:
 
   integrations/oc: {}
 
+  packages/opencues-cli: {}
+
   packages/opencues-core: {}
 
   packages/opencues-runtime:
