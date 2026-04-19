@@ -293,7 +293,16 @@ export function boot(host: HostInfo): BootResult {
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
   const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/opencues/tips.json`;
-  const configLoader = new ConfigLoader(adapter, { tipsPath });
+  // Search paths in priority order. Project-level `.opencues/` wins on
+  // name conflicts; user-level `~/.opencues/` is the global default.
+  // OPENCUES_HOME env var takes top priority for power users / CI.
+  const HOME = process.env.HOME ?? '~';
+  const configSearchPaths = [
+    ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
+    `${host.cwd}/.opencues`,
+    `${HOME}/.opencues`,
+  ];
+  const configLoader = new ConfigLoader(adapter, { tipsPath, configSearchPaths });
   configLoaderRef = configLoader; // wire isDebugEnabled to opencues.md
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));

@@ -41,6 +41,22 @@ export interface ConfigLoaderOptions {
   readonly tipsPath: string;
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
+  /**
+   * Directories searched for .md configs and `cues/*` / `controls/*`
+   * folders, in priority order. Earlier entries win on name conflicts.
+   *
+   * Convention (host-agnostic, mirrors `.editorconfig` / `.npmrc`):
+   *   - project-level: `<cwd>/.opencues`
+   *   - user-level:    `~/.opencues`
+   *
+   * When unset, falls back to `[adapter.cwd]` for backwards compat.
+   *
+   * Missing directories are silently skipped — a user with no
+   * `~/.opencues` and no `.opencues` in their cwd just gets bake-time
+   * defaults (chrome) or empty config (CC/OC) and the runtime degrades
+   * gracefully.
+   */
+  readonly configSearchPaths?: readonly string[];
 }
 
 /**
@@ -411,18 +427,34 @@ export class ConfigLoader {
   // ─── Internals ─────────────────────────────────────────────────────────
 
   private async _loadOnce(): Promise<void> {
-    const cwd = this.adapter.cwd;
+    // Search paths in priority order — project first, user-level fallback.
+    // Falls back to [adapter.cwd] when configSearchPaths isn't set so old
+    // adapter bands keep working unchanged.
+    const searchPaths = this.options.configSearchPaths ?? [this.adapter.cwd];
 
-    // Fan out the I/O. None of these depend on each other.
-    const [tips, cuesMd, controlsMd, blanksMd, opencuesMd] = await Promise.all([
+    // Fan out tips read + per-path .md reads. Each path contributes 4 .md
+    // files (cues, controls, blanks, opencues), so total promises =
+    // 1 + 4 * searchPaths.length.
+    const allReads = await Promise.all([
       this._safeReadFile(this.options.tipsPath),
-      this._safeReadFile(`${cwd}/cues.md`),
-      this._safeReadFile(`${cwd}/controls.md`),
-      this._safeReadFile(`${cwd}/blanks.md`),
-      this._safeReadFile(`${cwd}/opencues.md`),
+      ...searchPaths.flatMap(p => [
+        this._safeReadFile(`${p}/cues.md`),
+        this._safeReadFile(`${p}/controls.md`),
+        this._safeReadFile(`${p}/blanks.md`),
+        this._safeReadFile(`${p}/opencues.md`),
+      ]),
     ]);
+    const tips = allReads[0];
+    const perPath = searchPaths.map((_, i) => ({
+      cuesMd: allReads[1 + i * 4],
+      controlsMd: allReads[2 + i * 4],
+      blanksMd: allReads[3 + i * 4],
+      opencuesMd: allReads[4 + i * 4],
+    }));
 
-    // Tips JSON → primary cueMap.
+    // Tips JSON → primary cueMap (single source — no merge across paths
+    // for tips today; can extend later if a per-project tips override
+    // becomes useful).
     const cueMap = new Map<string, LocalCueLookupResult>();
     if (tips !== null) {
       try {
@@ -433,24 +465,44 @@ export class ConfigLoader {
       }
     }
 
-    // Frontmatter parses.
-    const cuesConfig = this._safeParseCuesMd(cuesMd, 'cues.md');
-    const controlsConfig = this._safeParseCuesMd(controlsMd, 'controls.md');
-    const blanksConfig = this._safeParseCuesMd(blanksMd, 'blanks.md');
+    // Per-path .md parses. Project (index 0) is highest priority; user
+    // (index 1+) is fallback. We fold from LOW to HIGH so the high-priority
+    // path is the second arg of the final mergeConfigs call (which makes
+    // it win on name conflicts — see discover.ts mergeOneCuesMdConfig).
+    const cuesConfig = this._mergeConfigsAcrossPaths(
+      perPath.map(p => this._safeParseCuesMd(p.cuesMd, 'cues.md')),
+    );
+    const controlsConfig = this._mergeConfigsAcrossPaths(
+      perPath.map(p => this._safeParseCuesMd(p.controlsMd, 'controls.md')),
+    );
+    const blanksConfig = this._mergeConfigsAcrossPaths(
+      perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
+    );
 
-    // opencues.md state.
-    const opencuesState = opencuesMd !== null ? parseOpenCuesMd(opencuesMd) : DEFAULT_OPENCUES_STATE;
+    // opencues.md state — single state object; project file wins entirely
+    // (no merging of in-memory state across files).
+    const opencuesMdContent = perPath.map(p => p.opencuesMd).find(c => c !== null) ?? null;
+    const opencuesState = opencuesMdContent !== null ? parseOpenCuesMd(opencuesMdContent) : DEFAULT_OPENCUES_STATE;
 
-    // Folder discovery for cues/* and controls/*. Async-walk; if readDir is
-    // missing, skip gracefully.
+    // Folder discovery: walk each search path, then merge with project-
+    // precedence (same fold-low-to-high rule as .md configs).
     let folderConfigs: DiscoveredConfigs | null = null;
     if (this.adapter.readDir) {
-      folderConfigs = await this._discoverFolders(cwd);
+      const perPathFolders: DiscoveredConfigs[] = [];
+      for (const p of searchPaths) {
+        const fc = await this._discoverFolders(p);
+        if (fc) perPathFolders.push(fc);
+      }
+      // Fold reverse so higher-priority paths overlay lower-priority.
+      for (let i = perPathFolders.length - 1; i >= 0; i--) {
+        folderConfigs = folderConfigs
+          ? mergeConfigs(folderConfigs, perPathFolders[i])
+          : perPathFolders[i];
+      }
     }
 
-    // Merged cues/blanks: cwd .md + folder-discovered LLM sources unioned via
-    // cues-core's mergeConfigs. Resolver consumes these so it can see prompts
-    // from both layers in one CueResolver build.
+    // Merge .md configs with folder configs via cues-core's mergeConfigs
+    // (folders win — same as before).
     const mergedDiscovered = folderConfigs
       ? mergeConfigs(
           { cuesConfig: cuesConfig ?? undefined, blanksConfig: blanksConfig ?? undefined },
@@ -534,6 +586,29 @@ export class ConfigLoader {
       tipsMode: opencuesState.tipsMode,
       debugMode: opencuesState.debugMode,
     })}`);
+  }
+
+  /**
+   * Fold an array of CuesMdConfig (one per search path, in priority order
+   * with index 0 = highest) into a single merged config. The highest-priority
+   * config wins on name conflicts.
+   *
+   * Implementation note: cues-core's `mergeConfigs(a, b)` makes `b` win.
+   * To make project (index 0) win we fold from low-priority (last index)
+   * to high-priority (index 0), so project ends up as the final `b`.
+   */
+  private _mergeConfigsAcrossPaths(configs: readonly (CuesMdConfig | null)[]): CuesMdConfig | null {
+    let result: CuesMdConfig | null = null;
+    for (let i = configs.length - 1; i >= 0; i--) {
+      const c = configs[i];
+      if (!c) continue;
+      if (!result) { result = c; continue; }
+      // Wrap each as DiscoveredConfigs so we can reuse mergeConfigs's
+      // existing per-section merge rules.
+      const merged = mergeConfigs({ cuesConfig: result }, { cuesConfig: c });
+      result = merged.cuesConfig ?? result;
+    }
+    return result;
   }
 
   private async _safeReadFile(path: string): Promise<string | null> {

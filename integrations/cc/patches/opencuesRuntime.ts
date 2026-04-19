@@ -199,9 +199,15 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // Project-root opencues.md — same path the legacy bash control read.
   // Resolved at call time so cwd flips are picked up live. Mirrors
   // opencode/patches/opencuesBootstrap.ts:findOpenCuesMdPath.
+  // Project-level wins if a .opencues/opencues.md exists; otherwise user-level.
+  // Resolved at call time so cwd flips are picked up live. Mirrors
+  // ConfigLoader's search-path precedence + the OC bootstrap's
+  // findOpenCuesMdPath shape.
   const opencuesMdPathExpr =
-    `(process.env.OPENCUES_ROOT?(process.env.OPENCUES_ROOT+"/opencues.md"):` +
-    `((process.env.HOME||"~")+"/opencues/opencues.md"))`;
+    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/opencues.md"):` +
+    `(${requireFn}("fs").existsSync(process.cwd()+"/.opencues/opencues.md")?` +
+    `(process.cwd()+"/.opencues/opencues.md"):` +
+    `((process.env.HOME||"~")+"/.opencues/opencues.md")))`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.

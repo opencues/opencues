@@ -235,6 +235,33 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
+## Config search paths — project-level + user-level
+
+ConfigLoader reads `.md` configs and `cues/*` / `controls/*` folders from a
+**search path list**, in priority order. Earlier entries win on name conflicts
+(cue source name, blank mode name, control name).
+
+Default chain (CC + OC adapters):
+
+```
+$OPENCUES_HOME           ← env override (top priority; for CI / power users)
+<cwd>/.opencues          ← project-level (cd into your project)
+~/.opencues              ← user-level (global defaults)
+```
+
+The convention mirrors `.editorconfig` / `.npmrc` / `.claude/skills/` — opaque
+host-neutral dir at the project root. Missing dirs are silently skipped; the
+runtime degrades gracefully.
+
+A user with no `.opencues/` anywhere gets bake-time defaults (chrome) or
+empty config (CC/OC) — not a crash. Hot-reload polls every search path on
+every keystroke (same `maybeReload` mechanism as before).
+
+The OpenCuesSettingsControl read/write of `opencues.md` follows the same
+precedence: project file wins, else user file (auto-created on first write).
+
+---
+
 ## Hoisted-control writes vs ConfigLoader hot-reload
 
 Selector/satellite cycling (e.g. `opencues settings` flipping

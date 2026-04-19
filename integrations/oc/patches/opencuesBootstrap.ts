@@ -93,13 +93,12 @@ function findOpenCuesMdPath(): string {
   // 2. Walk up from this script file's location to find opencues.md.
   //    The patched bootstrap lives at <opencode-cues>/packages/opencode/
   //    src/cli/cmd/tui/feature-plugins/opencues/opencuesBootstrap.ts at
-  //    runtime, so we can't use __dirname reliably. Try a known
-  //    candidate: $HOME/opencues which is where the README install
-  //    instructions clone the project to.
-  const homeRoot = path.join(process.env.HOME ?? "~", "opencues", "opencues.md")
-  try { require("fs").accessSync(homeRoot); return homeRoot } catch { /* fall through */ }
-  // 3. Last resort: process.cwd(). Works when the user is `cd ~/opencues`.
-  return path.join(process.cwd(), "opencues.md")
+  //    runtime, so we can't use __dirname reliably.
+  // 2. Project-level: <cwd>/.opencues/opencues.md
+  const projectFile = path.join(process.cwd(), ".opencues", "opencues.md")
+  try { require("fs").accessSync(projectFile); return projectFile } catch { /* fall through */ }
+  // 3. User-level: ~/.opencues/opencues.md (auto-created on first write).
+  return path.join(process.env.HOME ?? "~", ".opencues", "opencues.md")
 }
 
 const controlsRegistry = new Map<string, Control>([
