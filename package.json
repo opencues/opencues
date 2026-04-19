@@ -2,15 +2,19 @@
   "name": "opencues",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "build": "npm run build --workspaces",
-    "test": "npm run test --workspaces --if-present",
-    "clean": "rm -rf packages/*/dist"
+    "build": "pnpm -r build",
+    "test": "pnpm -r --parallel --if-present test",
+    "typecheck": "pnpm -r --parallel --if-present typecheck",
+    "clean": "rm -rf packages/*/dist integrations/chrome-extension/dist"
   },
   "devDependencies": {
     "typescript": "^5.3.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

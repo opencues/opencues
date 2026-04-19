@@ -1,0 +1,18 @@
+# pnpm workspace declaration. Replaces the `workspaces` field that
+# previously lived in the root package.json (npm-style; pnpm warns
+# about it). Each entry is a glob pattern matching package roots.
+#
+# packages/*      — internal libraries (cues-core, opencues-runtime,
+#                   plus the unimplemented cues-browser/cues-node
+#                   scaffolding which is kept in the workspace for
+#                   discoverability but isn't currently built)
+# integrations/*  — host-specific glue. Each is its own release unit
+#                   per docs/architecture/repo-structure.md
+#
+# tweakcc lives under integrations/claude-code/tweakcc/ but is a
+# vendored upstream tree, not an OpenCues package. The glob doesn't
+# match it (it's not at integrations/<name>/).
+
+packages:
+  - "packages/*"
+  - "integrations/*"
