@@ -21,7 +21,7 @@ const readOr = (path, fallback) => { try { return readFileSync(path, 'utf8'); } 
 
 // Also load folder-based cue configs (cues/*.md)
 const cuesFolders = {};
-const cuesDir = projectRoot + 'cues/';
+const cuesDir = projectRoot + '.opencues/cues/';
 try {
   const dirs = readdirSync(cuesDir, { withFileTypes: true });
   for (const d of dirs) {
@@ -37,7 +37,7 @@ try {
 
 // Also load folder-based control configs (controls/*.md)
 const controlFolders = {};
-const controlsDir = projectRoot + 'controls/';
+const controlsDir = projectRoot + '.opencues/controls/';
 try {
   const dirs = readdirSync(controlsDir, { withFileTypes: true });
   for (const d of dirs) {
@@ -52,15 +52,15 @@ try {
 } catch { /* no controls/ dir */ }
 
 // Load tips JSON from Claude Code patches (same tips file used by both integrations)
-const tipsJsonPath = projectRoot + 'integrations/claude-code/patches/claude-code-tips.json';
+const tipsJsonPath = projectRoot + 'integrations/cc/patches/claude-code-tips.json';
 const defaultTipsJson = readOr(tipsJsonPath, '');
 
 const envDefines = {
   '__GROQ_API_KEY__': JSON.stringify(envVars['GROQ_API_KEY'] || ''),
   '__FINNHUB_API_KEY__': JSON.stringify(envVars['FINNHUB_API_KEY'] || ''),
-  '__DEFAULT_CUES_MD__': JSON.stringify(readOr(projectRoot + 'cues.md', '')),
-  '__DEFAULT_BLANKS_MD__': JSON.stringify(readOr(projectRoot + 'blanks.md', '')),
-  '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'opencues.md', '')),
+  '__DEFAULT_CUES_MD__': JSON.stringify(readOr(projectRoot + '.opencues/cues.md', '')),
+  '__DEFAULT_BLANKS_MD__': JSON.stringify(readOr(projectRoot + '.opencues/blanks.md', '')),
+  '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + '.opencues/opencues.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_CONTROL_FOLDERS__': JSON.stringify(controlFolders),
   '__DEFAULT_TIPS_JSON__': JSON.stringify(defaultTipsJson),

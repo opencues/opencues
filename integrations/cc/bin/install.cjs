@@ -239,13 +239,14 @@ function doUninstall() {
 
 function doSeedConfigs() {
   const userConfigDir = path.join(HOME, '.opencues');
+  const repoConfigDir = path.join(REPO_ROOT, '.opencues');
   const sources = listConfigSources();
 
   console.log(`Seeding user-level configs to: ${userConfigDir}/`);
-  console.log(`Sources (from repo root): ${REPO_ROOT}\n`);
+  console.log(`Sources: ${repoConfigDir}\n`);
 
   const seedPlan = sources.map(s => ({
-    src: path.join(REPO_ROOT, s),
+    src: path.join(repoConfigDir, s),
     dst: path.join(userConfigDir, s),
     exists: false,
     willCopy: false,
@@ -277,7 +278,7 @@ function doSeedConfigs() {
       fs.copyFileSync(e.src, e.dst);
     }
     copied++;
-    console.log(`  copied ${e.src.replace(REPO_ROOT + '/', '')}`);
+    console.log(`  copied ${path.relative(REPO_ROOT, e.src)}`);
   }
 
   console.log(`\nSeeded ${copied} configs, skipped ${skipped} (already present).`);
@@ -286,8 +287,10 @@ function doSeedConfigs() {
 }
 
 function listConfigSources() {
-  // Files + dirs at the repo root that ConfigLoader expects under
-  // ~/.opencues/. Order is informational only — copy is independent.
+  // Files + dirs inside <repo>/.opencues/ that ConfigLoader expects
+  // under ~/.opencues/. Names here are relative to the .opencues/ root
+  // — both source (`<REPO>/.opencues/<name>`) and dest (`~/.opencues/<name>`)
+  // share the same suffix. Order is informational only.
   return ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
 }
 
@@ -314,9 +317,9 @@ function listActionFileBasenames() {
       if (f.endsWith('.cs')) out.push(f.replace(/\.cs$/, '.exe'));
     }
   }
-  // controls/*/*.cs — also compiled to ~/.claude/actions/<basename>.exe
-  // by setup.sh's WSL .exe block (e.g. controls/volume/VolCtl.cs → VolCtl.exe).
-  const controlsDir = path.resolve(REPO_ROOT, 'controls');
+  // .opencues/controls/*/*.cs — compiled to ~/.claude/opencues/actions/<basename>.exe
+  // by setup.sh's WSL .exe block (e.g. .opencues/controls/volume/VolCtl.cs → VolCtl.exe).
+  const controlsDir = path.resolve(REPO_ROOT, '.opencues', 'controls');
   if (fs.existsSync(controlsDir)) {
     for (const sub of fs.readdirSync(controlsDir)) {
       const subDir = path.join(controlsDir, sub);

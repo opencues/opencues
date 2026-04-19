@@ -58,37 +58,35 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 ```
 opencues/
 ├── CLAUDE.md                      # THIS FILE - project overview
-├── cues.md                        # OpenCues config (tips, prompts, ignore)
-├── blanks.md                      # Blank-fill modes (math, factual, grammar, etc.)
-├── controls.md                    # Cue-controls (can be empty if using folders)
-├── opencues.md                    # System state (settings, current values, tips)
 ├── README.md                      # Public readme with install instructions
 │
-├── cues/                          # Folder-based word cue configs
-│   ├── grammar/cue.md             # Base word alternatives
-│   ├── legal/cue.md               # Legal terminology alternatives
-│   ├── medical/cue.md             # Clinical terminology alternatives
-│   └── financial/cue.md           # Financial terminology alternatives
-│
-├── controls/                      # Folder-based cue-controls (colocated scripts + state)
-│   ├── volume/
-│   │   ├── cue.md                 # Control config (type: control, blankKeywords, etc.)
-│   │   ├── volume.sh              # Word-control script: up/down via key presses
-│   │   ├── volume-blank.sh        # Blank-control script: get/set via Core Audio API
-│   │   └── VolCtl.cs              # C# source for Windows Core Audio API (compiled by setup.sh)
-│   ├── brightness/
-│   │   ├── cue.md
-│   │   └── brightness.sh
-│   ├── numbers/
-│   │   └── cue.md                 # Step control (stepSuffixes: f, step: 0.5)
-│   ├── affirmations/
-│   │   └── cue.md                 # List control (stepValues: ["I am strong", ...])
-│   ├── stocks/cue.md              # Read-only API control (Finnhub) — impl: @opencues/runtime StocksControl
-│   ├── weather/cue.md             # Read-only API control (Open-Meteo) — impl: @opencues/runtime WeatherControl
-│   ├── hackernews/cue.md          # Dynamic list control (RSS) — impl: @opencues/runtime HackerNewsControl
-│   ├── prompt/cue.md              # Consume-all control (two-step LLM) — impl: @opencues/runtime PromptImproverControl
-│   ├── answer/cue.md              # Consume-context control (factual LLM) — impl: @opencues/runtime AnswerControl
-│   └── opencues/cue.md            # Selector/satellite settings — impl: @opencues/runtime OpenCuesSettingsControl
+├── .opencues/                     # Repo's OWN OpenCues config (project-level by convention)
+│   ├── cues.md                    # OpenCues config (tips, prompts, ignore)
+│   ├── blanks.md                  # Blank-fill modes (math, factual, grammar, etc.)
+│   ├── controls.md                # Cue-controls (can be empty if using folders)
+│   ├── opencues.md                # System state (settings, current values, tips)
+│   ├── cues/                      # Folder-based word cue configs
+│   │   ├── grammar/cue.md         # Base word alternatives
+│   │   ├── legal/cue.md           # Legal terminology alternatives
+│   │   ├── medical/cue.md         # Clinical terminology alternatives
+│   │   └── financial/cue.md       # Financial terminology alternatives
+│   └── controls/                  # Folder-based cue-controls (colocated scripts + state)
+│       ├── volume/
+│       │   ├── cue.md
+│       │   ├── volume.sh          # Word-control script: up/down via key presses
+│       │   ├── volume-blank.sh    # Blank-control script: get/set via Core Audio API
+│       │   └── VolCtl.cs          # C# source for Windows Core Audio API (compiled by setup.sh)
+│       ├── brightness/
+│       │   ├── cue.md
+│       │   └── brightness.sh
+│       ├── numbers/cue.md         # Step control (stepSuffixes: f, step: 0.5)
+│       ├── affirmations/cue.md    # List control
+│       ├── stocks/cue.md          # impl: @opencues/runtime StocksControl
+│       ├── weather/cue.md         # impl: @opencues/runtime WeatherControl
+│       ├── hackernews/cue.md      # impl: @opencues/runtime HackerNewsControl
+│       ├── prompt/cue.md          # impl: @opencues/runtime PromptImproverControl
+│       ├── answer/cue.md          # impl: @opencues/runtime AnswerControl
+│       └── opencues/cue.md        # impl: @opencues/runtime OpenCuesSettingsControl
 │
 ├── packages/                      # Core packages (publish as @opencues/*)
 │   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core

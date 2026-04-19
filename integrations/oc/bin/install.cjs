@@ -183,13 +183,14 @@ function doUninstall() {
 function doSeedConfigs() {
   const HOME = require('node:os').homedir();
   const userConfigDir = path.join(HOME, '.opencues');
+  const repoConfigDir = path.join(REPO_ROOT, '.opencues');
   const sources = ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
 
   console.log(`Seeding user-level configs to: ${userConfigDir}/`);
-  console.log(`Sources (from repo root): ${REPO_ROOT}\n`);
+  console.log(`Sources: ${repoConfigDir}\n`);
 
   const seedPlan = sources.map(s => ({
-    src: path.join(REPO_ROOT, s),
+    src: path.join(repoConfigDir, s),
     dst: path.join(userConfigDir, s),
     exists: fs.existsSync(path.join(userConfigDir, s)),
   }));
@@ -211,7 +212,7 @@ function doSeedConfigs() {
     if (fs.statSync(e.src).isDirectory()) copyDir(e.src, e.dst);
     else { fs.mkdirSync(path.dirname(e.dst), { recursive: true }); fs.copyFileSync(e.src, e.dst); }
     copied++;
-    console.log(`  copied ${e.src.replace(REPO_ROOT + '/', '')}`);
+    console.log(`  copied ${path.relative(REPO_ROOT, e.src)}`);
   }
 
   console.log(`\nSeeded ${copied} configs, skipped ${skipped} (already present).`);
