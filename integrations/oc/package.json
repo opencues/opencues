@@ -11,7 +11,8 @@
   },
   "scripts": {
     "dev-install": "node bin/install.cjs install",
-    "dev-uninstall": "node bin/install.cjs uninstall"
+    "dev-uninstall": "node bin/install.cjs uninstall",
+    "seed-configs": "node bin/install.cjs seed-configs"
   },
   "files": [
     "bin/",

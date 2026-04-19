@@ -86,6 +86,8 @@ if (command === 'install') {
   doInstall();
 } else if (command === 'uninstall') {
   doUninstall();
+} else if (command === 'seed-configs') {
+  doSeedConfigs();
 } else {
   console.error(`Unknown command: ${command}\n`);
   printHelp();
@@ -233,6 +235,72 @@ function doUninstall() {
   console.log('To fully remove the cloned repo: rm -rf <opencues-clone-dir>');
 }
 
+// --- SEED CONFIGS ---------------------------------------------------------
+
+function doSeedConfigs() {
+  const userConfigDir = path.join(HOME, '.opencues');
+  const sources = listConfigSources();
+
+  console.log(`Seeding user-level configs to: ${userConfigDir}/`);
+  console.log(`Sources (from repo root): ${REPO_ROOT}\n`);
+
+  const seedPlan = sources.map(s => ({
+    src: path.join(REPO_ROOT, s),
+    dst: path.join(userConfigDir, s),
+    exists: false,
+    willCopy: false,
+  }));
+
+  for (const entry of seedPlan) {
+    if (!fs.existsSync(entry.src)) continue;
+    entry.exists = fs.existsSync(entry.dst);
+    entry.willCopy = !entry.exists; // never overwrite user edits
+  }
+
+  console.log('Seed plan:');
+  for (const e of seedPlan) {
+    if (!fs.existsSync(e.src)) console.log(`  (no source) ${e.src}`);
+    else if (e.exists) console.log(`  SKIP (target exists) ${e.dst}`);
+    else console.log(`  COPY ${e.src} → ${e.dst}`);
+  }
+  if (args.dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
+
+  console.log('');
+  fs.mkdirSync(userConfigDir, { recursive: true });
+  let copied = 0, skipped = 0;
+  for (const e of seedPlan) {
+    if (!fs.existsSync(e.src) || e.exists) { if (e.exists) skipped++; continue; }
+    if (fs.statSync(e.src).isDirectory()) {
+      copyDir(e.src, e.dst);
+    } else {
+      fs.mkdirSync(path.dirname(e.dst), { recursive: true });
+      fs.copyFileSync(e.src, e.dst);
+    }
+    copied++;
+    console.log(`  copied ${e.src.replace(REPO_ROOT + '/', '')}`);
+  }
+
+  console.log(`\nSeeded ${copied} configs, skipped ${skipped} (already present).`);
+  console.log('Edit any of these to change global defaults; hot-reload picks up on the next keystroke.');
+  console.log('For project-specific overrides, create <project>/.opencues/ in your project root.');
+}
+
+function listConfigSources() {
+  // Files + dirs at the repo root that ConfigLoader expects under
+  // ~/.opencues/. Order is informational only — copy is independent.
+  return ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
+}
+
+function copyDir(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dst, entry.name);
+    if (entry.isDirectory()) copyDir(s, d);
+    else fs.copyFileSync(s, d);
+  }
+}
+
 // --- helpers --------------------------------------------------------------
 
 function listActionFileBasenames() {
@@ -312,7 +380,7 @@ function parseArgv(argv) {
   // First non-flag positional = command. Default 'install'.
   const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean']);
   const VALUE_FLAGS = new Set(['--target']);
-  const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'help']);
+  const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'seed-configs', 'help']);
   const out = { command: 'install', args: { help: false, dryRun: false, clean: false }, unknown: [] };
   let i = 0;
   if (argv[i] && !argv[i].startsWith('-')) {
@@ -356,8 +424,9 @@ function printHelp() {
   printBanner();
   console.log('');
   console.log('Commands:');
-  console.log('  install (default)   Build, install runtime to ~/.claude/node_modules/, patch cli.js');
+  console.log('  install (default)   Build, install runtime to ~/.claude/opencues/, patch cli.js');
   console.log('  uninstall           Revert cli.js + remove all installed paths');
+  console.log('  seed-configs        Copy repo defaults to ~/.opencues/ (skips files that exist)');
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');

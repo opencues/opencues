@@ -53,6 +53,59 @@ If any of these fail, tail `/tmp/opencues.log` in another shell — the runtime 
 
 ---
 
+## Configuration — where your `.md` files live
+
+OpenCues reads configs from **one or more `.opencues/` directories** in priority order:
+
+| Source | Location | Purpose |
+|---|---|---|
+| `$OPENCUES_HOME` env var | wherever you set it | Top-priority override (CI / power users / dotfiles repo) |
+| Project-level | `<cwd>/.opencues/` | Per-project overrides — cd into your project, those configs apply |
+| User-level | `~/.opencues/` | Global defaults — apply everywhere unless overridden |
+
+Project-level wins on name conflicts (cue source name, blank mode name, control name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
+
+**Each directory has the same shape:**
+```
+.opencues/
+├── cues.md          word sources + LLM prompts
+├── blanks.md        blank-fill modes
+├── controls.md      cue-control declarations
+├── opencues.md      settings / state (voice-mode, tips-mode, etc.)
+├── cues/            folder-based cue sources (one folder per source)
+│   └── <name>/cue.md
+└── controls/        folder-based control configs
+    └── <name>/cue.md
+```
+
+**Seed `~/.opencues/` from the repo's defaults:**
+
+```bash
+pnpm --filter @opencues/cc seed-configs
+```
+
+Idempotent — copies any file that doesn't already exist at the destination, skips files you've already created. Preview first with `-- --dry-run`.
+
+**Per-project example:**
+
+```bash
+mkdir -p ~/projects/legal-review/.opencues/cues/legal-doc
+cat > ~/projects/legal-review/.opencues/cues/legal-doc/cue.md <<'EOF'
+---
+match: \b(plaintiff|defendant|tort|estoppel)\b
+---
+Suggest formal legal alternatives, prefer Latin terminology where appropriate.
+EOF
+
+cd ~/projects/legal-review
+claude-cues
+# .opencues/cues/legal-doc/cue.md is now active alongside ~/.opencues defaults
+```
+
+The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.) follows the same precedence: project file wins, else user file (auto-created on first write).
+
+---
+
 ## Update workflow
 
 ```bash
