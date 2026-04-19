@@ -1,0 +1,18 @@
+{
+  "name": "@opencues/cc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues for Claude Code — patches Claude Code's CLI via tweakcc to add real-time word alternatives, blanks, and cue-controls.",
+  "compatibility": {
+    "claude-code": "2.1.110 - 2.1.x"
+  },
+  "scripts": {
+    "dev-install": "patches/setup.sh",
+    "_comment": "End-user installer (npx @opencues/cc) and proper bin entry land in Stage 6. Today, install is via patches/setup.sh from a clone."
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "integrations/claude-code"
+  }
+}

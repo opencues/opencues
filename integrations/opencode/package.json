@@ -1,0 +1,18 @@
+{
+  "name": "@opencues/oc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues for OpenCode — patches an OpenCode TUI fork to add real-time word alternatives, blanks, and cue-controls.",
+  "compatibility": {
+    "opencode": "1.4.x"
+  },
+  "scripts": {
+    "dev-install": "patches/setup.sh",
+    "_comment": "End-user installer (npx @opencues/oc) lands in Stage 7. Today, install is via patches/setup.sh from a clone against an OpenCode 1.4.x fork."
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "integrations/opencode"
+  }
+}
