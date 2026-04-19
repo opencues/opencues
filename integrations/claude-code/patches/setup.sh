@@ -12,6 +12,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CUES_CORE="$SCRIPT_DIR/../../../packages/cues-core"
+OC_RUNTIME="$SCRIPT_DIR/../../../packages/opencues-runtime"
 NEEDS_TWEAKCC_BUILD=false
 CLEAN_INSTALL=false
 TWEAKCC_DIR=""
@@ -53,18 +54,19 @@ else
 fi
 
 # 2. Copy patch files (always — cheap, ensures latest)
+PATCH_FILES=(cursorStateExport.ts wordHighlight.ts dynamicHighlight.ts opencuesRuntime.ts)
 PATCH_CHANGED=false
-for f in cursorStateExport.ts wordHighlight.ts dynamicHighlight.ts; do
+for f in "${PATCH_FILES[@]}"; do
   if ! cmp -s "$SCRIPT_DIR/$f" "$TWEAKCC_DIR/src/patches/$f" 2>/dev/null; then
     PATCH_CHANGED=true
     break
   fi
 done
 if $PATCH_CHANGED; then
-  cp "$SCRIPT_DIR/cursorStateExport.ts" "$TWEAKCC_DIR/src/patches/"
-  cp "$SCRIPT_DIR/wordHighlight.ts" "$TWEAKCC_DIR/src/patches/"
-  cp "$SCRIPT_DIR/dynamicHighlight.ts" "$TWEAKCC_DIR/src/patches/"
-  echo "Copied patch files"
+  for f in "${PATCH_FILES[@]}"; do
+    cp "$SCRIPT_DIR/$f" "$TWEAKCC_DIR/src/patches/"
+  done
+  echo "Copied patch files (${#PATCH_FILES[@]})"
   NEEDS_TWEAKCC_BUILD=true
 else
   echo "Patch files unchanged"
@@ -266,6 +268,43 @@ pkg.main = 'index.js';
 pkg.types = 'index.d.ts';
 require('fs').writeFileSync(require('os').homedir() + '/.claude/node_modules/cues-core/package.json', JSON.stringify(pkg, null, 2));
 "
+fi
+
+# 6b. Build + install opencues-runtime alongside cues-core. The Claude
+#     Code patch loads the runtime via ~/.claude/node_modules/opencues-runtime/
+#     (same location convention as cues-core). Without this step, BlankFill
+#     control dispatch (hackernews / stocks / weather / answer / prompt /
+#     opencues) silently fails because the hoisted control classes (post the
+#     controls hoist refactor) live inside the runtime's dist/src/controls
+#     directory.
+if [ -d "$OC_RUNTIME" ]; then
+  NEWEST_SRC=$(find "$OC_RUNTIME/src" "$OC_RUNTIME/adapters" -name '*.ts' -newer "$OC_RUNTIME/dist/src/index.js" 2>/dev/null | head -1)
+  if [ ! -f "$OC_RUNTIME/dist/src/index.js" ] || [ -n "$NEWEST_SRC" ]; then
+    echo "Building opencues-runtime..."
+    cd "$OC_RUNTIME"
+    npm run build --silent 2>/dev/null || npm run build
+    cd "$TWEAKCC_DIR"
+  else
+    echo "opencues-runtime up to date"
+  fi
+
+  if $CLEAN_INSTALL; then
+    echo "Clean installing opencues-runtime..."
+    rm -rf ~/.claude/node_modules/opencues-runtime
+  fi
+  # The runtime's directory layout (dist/src + dist/adapters) is non-trivial;
+  # cleanest install is rsync of the whole tree, then drop a slimmed
+  # package.json with the same main path the source declares.
+  mkdir -p ~/.claude/node_modules/opencues-runtime/dist
+  # Use rsync if present; else cp -r (mirrors recursively, removes deleted files
+  # only via rsync's --delete which we set to keep stale .js out).
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$OC_RUNTIME/dist/" ~/.claude/node_modules/opencues-runtime/dist/
+  else
+    rm -rf ~/.claude/node_modules/opencues-runtime/dist
+    cp -r "$OC_RUNTIME/dist" ~/.claude/node_modules/opencues-runtime/dist
+  fi
+  cp "$OC_RUNTIME/package.json" ~/.claude/node_modules/opencues-runtime/package.json
 fi
 
 # 7. Copy supporting files (cheap — always run)

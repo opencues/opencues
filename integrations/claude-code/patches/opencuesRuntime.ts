@@ -190,6 +190,18 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
 
   // Single absolute path — boot.js handles all internal wiring.
   const bootPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/adapters/claude-code/v2.1/boot.js"`;
+  // The hoisted control classes (HackerNews / Stocks / Weather / Answer /
+  // PromptImprover / OpenCuesSettings) live in the runtime's controls
+  // package. We require it lazily inside the bootstrap so older runtime
+  // installs (without controls/) still load — controlInvoke just stays
+  // null in that case and BlankFill falls back to spawnProcess.
+  const controlsPath = `(process.env.HOME||"~")+"/.claude/node_modules/opencues-runtime/dist/src/controls/index.js"`;
+  // Project-root opencues.md — same path the legacy bash control read.
+  // Resolved at call time so cwd flips are picked up live. Mirrors
+  // opencode/patches/opencuesBootstrap.ts:findOpenCuesMdPath.
+  const opencuesMdPathExpr =
+    `(process.env.OPENCUES_ROOT?(process.env.OPENCUES_ROOT+"/opencues.md"):` +
+    `((process.env.HOME||"~")+"/opencues/opencues.md"))`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
@@ -217,6 +229,24 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `__ocCh.on("error",__ocReject);}` +
     `return{result:__ocP,kill:function(sig){try{__ocCh.kill(sig||"SIGTERM");}catch(_e){}}};}` +
     `catch(__ocSpawnErr){return{result:Promise.reject(__ocSpawnErr),kill:function(){}};}},` +
+    // controlInvoke routes BlankFill / Cycling control dispatches to the
+    // hoisted runtime classes. Wrapped in try/catch so a missing controls
+    // module on legacy installs degrades gracefully (BlankFill falls back
+    // to spawnProcess for that name). Lazily-built registry — avoid
+    // constructing classes that need API keys we don't have.
+    `controlInvoke:(function(){try{` +
+    `var __ocCtl=${requireFn}(${controlsPath});var __ocReg=new Map();` +
+    `__ocReg.set("hackernews",new __ocCtl.HackerNewsControl());` +
+    `__ocReg.set("stocks",new __ocCtl.StocksControl({apiKey:process.env.FINNHUB_API_KEY}));` +
+    `__ocReg.set("weather",new __ocCtl.WeatherControl());` +
+    `if(process.env.GROQ_API_KEY){__ocReg.set("answer",new __ocCtl.AnswerControl({apiKey:process.env.GROQ_API_KEY}));__ocReg.set("prompt",new __ocCtl.PromptImproverControl({apiKey:process.env.GROQ_API_KEY}));}` +
+    `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
+    `__ocReg.set("opencues",new __ocCtl.OpenCuesSettingsControl({` +
+    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
+    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
+    `}));` +
+    `return __ocCtl.createControlInvoke(__ocReg);` +
+    `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","controlInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
     // Statusline export path. Per-PID so two CC instances don't collide.
     // Matches v1's path so the existing highlight-statusline.sh keeps working.
     `statusFilePath:"/tmp/claude-highlight-state-"+process.pid+".json",` +
