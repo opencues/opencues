@@ -6,13 +6,20 @@
   "compatibility": {
     "opencode": "1.4.x"
   },
-  "scripts": {
-    "dev-install": "patches/setup.sh",
-    "_comment": "End-user installer (npx @opencues/oc) lands in Stage 7. Today, install is via patches/setup.sh from a clone against an OpenCode 1.4.x fork."
+  "bin": {
+    "opencues-oc": "./bin/install.cjs"
   },
+  "scripts": {
+    "dev-install": "node bin/install.cjs"
+  },
+  "files": [
+    "bin/",
+    "patches/",
+    "README.md"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/opencues/opencues",
-    "directory": "integrations/opencode"
+    "directory": "integrations/oc"
   }
 }

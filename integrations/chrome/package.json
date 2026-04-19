@@ -7,12 +7,16 @@
     "chrome": ">=121"
   },
   "type": "module",
+  "bin": {
+    "opencues-chrome": "./bin/install.cjs"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:dev": "vitest",
     "build": "npm run typecheck && npm test && node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs --watch"
+    "watch": "node esbuild.config.mjs --watch",
+    "dev-install": "node bin/install.cjs"
   },
   "dependencies": {
     "@opencues/core": "workspace:*",

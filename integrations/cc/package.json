@@ -6,13 +6,20 @@
   "compatibility": {
     "claude-code": "2.1.110 - 2.1.x"
   },
-  "scripts": {
-    "dev-install": "patches/setup.sh",
-    "_comment": "End-user installer (npx @opencues/cc) and proper bin entry land in Stage 6. Today, install is via patches/setup.sh from a clone."
+  "bin": {
+    "opencues-cc": "./bin/install.cjs"
   },
+  "scripts": {
+    "dev-install": "node bin/install.cjs"
+  },
+  "files": [
+    "bin/",
+    "patches/",
+    "README.md"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/opencues/opencues",
-    "directory": "integrations/claude-code"
+    "directory": "integrations/cc"
   }
 }
