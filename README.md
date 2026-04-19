@@ -22,11 +22,12 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 
 ## Supported Editors
 
-| Editor | Status | Integration |
-|--------|--------|-------------|
-| **Claude Code** | Available | via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches |
-| **VS Code** | Planned | Extension |
-| **Chrome** | Planned | Extension ([tracking](docs/guides/adding-an-integration.md)) |
+| Editor | Status | Integration | Compatible with |
+|--------|--------|-------------|-----------------|
+| **Claude Code** | Available | `integrations/cc/` (via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches) | Claude Code 2.1.110+ |
+| **OpenCode** | Available | `integrations/oc/` (TUI patches) | OpenCode 1.4.x |
+| **Chrome** | Beta | `integrations/chrome/` (MV3 extension) | Chrome 121+ |
+| **VS Code** | Planned | Extension | — |
 
 ## The Standard
 
@@ -42,9 +43,17 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 
 Integrations read these files via `cues-core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Install (Claude Code)
+## Install
 
-**Prerequisites:** Node.js 18+, Claude Code, a [Groq API key](https://console.groq.com) (free).
+**Prerequisites:** Node.js 18+, a [Groq API key](https://console.groq.com) (free), plus the host editor you want to integrate with.
+
+| Integration | End-user install | What it does |
+|---|---|---|
+| **Claude Code** | clone + `integrations/cc/scripts/setup.sh` (current path; `npx @opencues/cc` planned) | Patches Claude Code's `cli.js` via tweakcc; installs runtime to `~/.claude/node_modules/` |
+| **OpenCode** | clone + `integrations/oc/patches/setup.sh` | Patches an OpenCode 1.4.x fork; runtime is loaded inline |
+| **Chrome** | clone + `integrations/chrome/` → `npm run build` → load unpacked | MV3 extension; see [chrome README](integrations/chrome-extension/README.md) for the build → load workflow |
+
+For Claude Code:
 
 ```bash
 # 1. Add your Groq key to ~/.bashrc (must be set before Claude Code starts)
@@ -56,6 +65,12 @@ git clone https://github.com/opencues/opencues ~/opencues
 ```
 
 Restart Claude Code. Done.
+
+> **Where this is heading:** the per-integration installers are currently
+> shell scripts run from a clone. The repo is mid-migration to a normal
+> open-source layout where each integration is installable via
+> `npx @opencues/<host>`. See [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md)
+> for the target shape and current stage.
 
 ## Features
 

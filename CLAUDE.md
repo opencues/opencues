@@ -36,7 +36,13 @@ host and the runtime.
 > better once we can see what each layer actually owns.
 
 **Current Integrations**:
-- **Claude Code** — via tweakcc patches (`integrations/claude-code/patches/`)
+- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.110+ via tweakcc
+- **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.4.x; runtime loaded inline
+- **Chrome** (`integrations/chrome-extension/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
+
+> Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of
+> the repo restructure. See `docs/architecture/repo-structure.md` for the
+> target layout + stage tracker.
 
 ---
 
@@ -197,40 +203,31 @@ The setup script:
 
 ---
 
-## Re-integration Status
-
-> ⚠️ **ACTIVE RE-INTEGRATION** — The existing patches are outdated against the current Claude Code version. We are progressively re-implementing from scratch against `claude-cues` (v2.1.110). **Ignore all prior `setup.sh` and build instructions below** until re-integration is complete.
-
-**Current approach:** Start small — get a minimal patch working against the new version, verify it, then layer features back in incrementally. Do not attempt to apply the old patch files wholesale.
+## Build Commands
 
 **Target:** `claude-cues` (`~/local-claude-code`) only. The native `claude` install is never touched.
 
----
-
-## Build Commands
-
-> ⚠️ The instructions below describe the **pre-re-integration** workflow. They are preserved for reference but are **not currently operational**. Do not follow them until re-integration is complete.
-
-~~**After any change, use `setup.sh`**~~ — the setup.sh-based workflow is outdated pending re-integration.
+After any change to a Claude Code patch source or to `cues-core` / `opencues-runtime`, run:
 
 ```bash
-# OLD — do not use during re-integration
 integrations/claude-code/patches/setup.sh
 ```
 
-The script previously:
-1. Copied patch `.ts` files to tweakcc and rebuilt tweakcc (compiled patches into `dist/`)
-2. Built cues-core (`src/` → `dist/`) and copied to `~/.claude/node_modules/cues-core/`
-3. Applied compiled patches to `claude-cues` (`~/local-claude-code`) — never the native `claude` install
+The script:
+1. Copies patch `.ts` files (`cursorStateExport.ts`, `wordHighlight.ts`, `dynamicHighlight.ts`, `opencuesRuntime.ts`) to tweakcc and rebuilds it (compiles patches into `dist/`)
+2. Builds `cues-core` and copies to `~/.claude/node_modules/cues-core/`
+3. Builds `opencues-runtime` and rsyncs `dist/` to `~/.claude/node_modules/opencues-runtime/` (since commit `2ae362e`)
+4. Applies compiled patches to `claude-cues` (`~/local-claude-code`)
+
+To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):
 
 ```bash
-# OLD — re-apply patches only (after Claude Code updates, no source changes)
-cd ~/tweakcc
+cd integrations/claude-code/tweakcc
 CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
 
-> **Note:** `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/`, `controls/`) hot-reload within ~2 seconds on the next keystroke — no restart needed (this will remain true post-re-integration).
+> **Note:** `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/`, `controls/`) hot-reload within ~2 seconds on the next keystroke — no restart needed.
 
 ---
 
