@@ -168,7 +168,7 @@ expecting a normal Node setup, pnpm is the safer default.
 | 3 | Adopt pnpm workspaces | done |
 | 4a | Rename packages + integrations to `@opencues/*` scope, opaque codes (source only) | done (`e731f03`) |
 | 4b | Re-deploy `~/.claude/node_modules/@opencues/*` via setup.sh; verify CC end-to-end | done (smoke-tested: cycling, voice-mode toggle, weather blank, TTS, statusline) |
-| 5 | Add Turborepo build orchestration | pending |
+| 5 | Add Turborepo build orchestration | done (this commit) |
 | 6 | `npx @opencues/cc` installer | pending |
 | 7 | Same for OC + Chrome | pending |
 | 8 | Changesets + GitHub Actions release pipeline | pending |
