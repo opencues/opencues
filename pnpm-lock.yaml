@@ -37,27 +37,7 @@ importers:
 
   integrations/opencode: {}
 
-  packages/cues-browser:
-    dependencies:
-      cues-core:
-        specifier: workspace:*
-        version: link:../cues-core
-    devDependencies:
-      '@types/chrome':
-        specifier: ^0.1.38
-        version: 0.1.40
-
   packages/cues-core: {}
-
-  packages/cues-node:
-    dependencies:
-      cues-core:
-        specifier: workspace:*
-        version: link:../cues-core
-    devDependencies:
-      '@types/node':
-        specifier: ^25.5.0
-        version: 25.6.0
 
   packages/opencues-runtime:
     dependencies:
@@ -431,9 +411,6 @@ packages:
 
   '@types/chrome@0.0.268':
     resolution: {integrity: sha512-7N1QH9buudSJ7sI8Pe4mBHJr5oZ48s0hcanI9w3wgijAlv1OZNUZve9JR4x42dn5lJ5Sm87V1JNfnoh10EnQlA==}
-
-  '@types/chrome@0.1.40':
-    resolution: {integrity: sha512-UnfyRAe8ORu9HSuTH0EqyOEUin3JrWW9Nl/gDXezNfTUrfIoxw+WRZgKOxGz0t5BnjbfXBnS2eCYfW2PxH1wcA==}
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -1129,11 +1106,6 @@ snapshots:
     optional: true
 
   '@types/chrome@0.0.268':
-    dependencies:
-      '@types/filesystem': 0.0.36
-      '@types/har-format': 1.2.16
-
-  '@types/chrome@0.1.40':
     dependencies:
       '@types/filesystem': 0.0.36
       '@types/har-format': 1.2.16

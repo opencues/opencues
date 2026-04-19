@@ -19,7 +19,6 @@ The architecture has two layers:
 
 Integrations (Claude Code, future editors) use cues-core to load the config standard and provide the UI layer.
 
-> **Planned**: `cues-node` and `cues-browser` adapter packages exist as scaffolding for future platform-specific adapters (storage, HTTP, config loading).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -71,10 +70,7 @@ npm run build
 │   │   │       ├── classified-source-group.ts # ClassifiedSourceGroup
 │   │   │       ├── build-sources.ts     # buildSourcesFromConfig factory
 │   │   │       └── parsers.ts           # Response parsers
-│   │   └── dist/               # Compiled output
-│   │
-│   ├── cues-node/              # Node.js adapters (scaffolding — not yet implemented)
-│   └── cues-browser/           # Browser adapters (scaffolding — not yet implemented)
+│       └── dist/               # Compiled output
 │
 └── package.json                # Workspace root
 ```
@@ -186,7 +182,7 @@ const result = await resolver.resolve(context);
 ### Browser Usage (Chrome Extension)
 
 ```typescript
-// Browser integration example (cues-browser adapter is planned scaffolding)
+// Browser integration example
 import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'cues-core';
 
 // Load tips and config
@@ -418,7 +414,7 @@ npm run test
 ## Future Extensions
 
 1. **VS Code Extension**: Use `cues-core` with VS Code decoration API
-2. **Web Application**: Use `cues-browser` with any web framework
+2. **Web Application**: Use `cues-core` directly with any web framework (the chrome extension under `integrations/chrome-extension/` is the reference)
 3. **Database Source**: Implement `CueSource` for database-backed cues
 4. **Real-time Sync**: Use file watchers or WebSocket for live updates
 5. **Analytics**: Track which cues are most useful via metrics
