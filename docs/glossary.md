@@ -78,7 +78,7 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **controls.md** — Cue-controls config. Defines words that trigger external scripts. Contains `## Controls` with JSON configuration. Controls can also be folder-based: `controls/{name}/cue.md` with a colocated script.
 
-**opencues.md** — OpenCues system state file (version 1). Stores selector/satellite settings in YAML frontmatter: top-level keys are live current values, and a unified `settings:` block declares each setting with its `tip:`, `values:`, and per-value tips. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
+**opencues.md** — OpenCues system state file (version 1). Lives at user-level ONLY (`~/.opencues/opencues.md`; overridable with `$OPENCUES_HOME`). Stores selector/satellite settings in YAML frontmatter: top-level keys are live current values, and a unified `settings:` block declares each setting with its `tip:`, `values:`, and per-value tips. The schema is owned by the OpenCues runtime — not by users or projects — so a single voice-mode / tips-mode / debug-mode value applies across every integration. Auto-managed by `OpenCuesSettingsControl`; `opencues init` does not scaffold it. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
 
 **Folder-based config** — An alternative to monolithic `.md` files. Each cue is a self-contained folder with a `cue.md` file (YAML frontmatter for config, body for prompt) and optional colocated scripts. Folders in `cues/`, `blanks/`, `controls/` are auto-discovered. Folder configs merge with monolithic files — folders win on name conflict.
 

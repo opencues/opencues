@@ -64,7 +64,7 @@ opencues/
 │   ├── cues.md                    # OpenCues config (tips, prompts, ignore)
 │   ├── blanks.md                  # Blank-fill modes (math, factual, grammar, etc.)
 │   ├── controls.md                # Cue-controls (can be empty if using folders)
-│   ├── opencues.md                # System state (settings, current values, tips)
+│   │                              # (opencues.md is user-level only — ~/.opencues/opencues.md)
 │   ├── cues/                      # Folder-based word cue configs
 │   │   ├── grammar/cue.md         # Base word alternatives
 │   │   ├── legal/cue.md           # Legal terminology alternatives
@@ -265,8 +265,20 @@ A user with no `.opencues/` anywhere gets bake-time defaults (chrome) or
 empty config (CC/OC) — not a crash. Hot-reload polls every search path on
 every keystroke (same `maybeReload` mechanism as before).
 
-The OpenCuesSettingsControl read/write of `opencues.md` follows the same
-precedence: project file wins, else user file (auto-created on first write).
+The OpenCuesSettingsControl read/write of `opencues.md` is a special
+case: it is user-level only. `opencues.md` holds system-wide settings
+(voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is
+owned by the OpenCues runtime. A single value applies across every
+integration, so projects cannot override it. The file lives at
+`~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set)
+and is auto-created on first write.
+
+- `opencues init` does NOT scaffold `opencues.md` — neither at
+  project nor user level.
+- `opencues seed-configs` (no flag) copies it to `~/.opencues/`;
+  `seed-configs --project` skips it.
+- `ConfigLoader._loadOnce` reads it only from the last search path
+  (the user-level entry).
 
 ---
 
