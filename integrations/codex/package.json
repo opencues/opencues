@@ -1,0 +1,29 @@
+{
+  "name": "@opencues/codex",
+  "version": "0.0.1",
+  "private": true,
+  "description": "OpenCues for OpenAI Codex (Rust TUI). Patches the codex-rs TUI via a JSON-RPC bridge to a Node-side @opencues/runtime daemon.",
+  "compatibility": {
+    "codex-rs": "0.x  (pinned via integrations/codex/patches/setup.sh)"
+  },
+  "bin": {
+    "opencues-codex": "./bin/install.cjs"
+  },
+  "scripts": {
+    "dev-install": "node bin/install.cjs install",
+    "dev-uninstall": "node bin/install.cjs uninstall",
+    "seed-configs": "node bin/install.cjs seed-configs"
+  },
+  "files": [
+    "bin/",
+    "patches/",
+    "docs/",
+    "README.md",
+    "HANDOFF.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "integrations/codex"
+  }
+}
