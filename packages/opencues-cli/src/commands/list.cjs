@@ -15,9 +15,13 @@ module.exports = function list(argv, ctx) {
     argv.includes('--controls') ? 'control' :
     null;
 
-  let parseCuesMd;
+  let parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList;
   try {
-    parseCuesMd = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js')).parseCuesMd;
+    const core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
+    parseCuesMd = core.parseCuesMd;
+    parseSingleCueMd = core.parseSingleCueMd;
+    inferHostCompat = core.inferHostCompat;
+    formatHostList = core.formatHostList;
   } catch (err) {
     console.error('opencues list: failed to load @opencues/core (run `pnpm build`):', err.message);
     process.exit(1);
@@ -31,10 +35,15 @@ module.exports = function list(argv, ctx) {
     path.join(HOME, '.opencues'),
   ].filter(Boolean).filter(p => fs.existsSync(p));
 
+  const tools = { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList };
   const results = { cue: [], blank: [], control: [] };
   for (const dir of paths) {
-    collect(dir, parseCuesMd, results);
+    collect(dir, tools, results);
   }
+
+  // Compute host-compat column width so the right column aligns.
+  const allItems = [].concat(results.cue, results.blank, results.control);
+  const maxHostLen = allItems.reduce((m, it) => Math.max(m, (it.hosts || '').length), 0);
 
   for (const kind of ['cue', 'blank', 'control']) {
     if (onlyKind && onlyKind !== kind) continue;
@@ -42,25 +51,28 @@ module.exports = function list(argv, ctx) {
     console.log(`\n${kind.toUpperCase()}S (${items.length}):`);
     if (items.length === 0) { console.log('  (none)'); continue; }
     for (const it of items) {
-      console.log(`  ${it.name.padEnd(20)} ← ${it.source}`);
+      const hostMarker = it.hosts ? `[${it.hosts.padEnd(maxHostLen)}]  ` : '';
+      console.log(`  ${it.name.padEnd(20)} ${hostMarker}← ${it.source}`);
     }
   }
 };
 
-function collect(dir, parseCuesMd, results) {
+function collect(dir, tools, results) {
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList } = tools;
+
   for (const [filename, kind] of [['cues.md', 'cue'], ['blanks.md', 'blank'], ['controls.md', 'control']]) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {
       const parsed = parseCuesMd(fs.readFileSync(p, 'utf8'));
       if (parsed && parsed.promptConfig && parsed.promptConfig.sources) {
-        for (const name of Object.keys(parsed.promptConfig.sources)) {
-          results[kind].push({ name, source: p });
+        for (const [name, src] of Object.entries(parsed.promptConfig.sources)) {
+          results[kind].push({ name, source: p, hosts: hostsLabel(src, inferHostCompat, formatHostList) });
         }
       }
       if (parsed && parsed.controls) {
-        for (const name of Object.keys(parsed.controls)) {
-          results.control.push({ name, source: p });
+        for (const [name, ctl] of Object.entries(parsed.controls)) {
+          results.control.push({ name, source: p, hosts: hostsLabel(ctl, inferHostCompat, formatHostList) });
         }
       }
     } catch { /* validate command surfaces parse errors */ }
@@ -71,9 +83,22 @@ function collect(dir, parseCuesMd, results) {
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const cueMd = path.join(sub, entry.name, 'cue.md');
-      if (fs.existsSync(cueMd)) results[kind].push({ name: entry.name, source: cueMd });
+      if (!fs.existsSync(cueMd)) continue;
+      let hosts = '';
+      try {
+        const parsed = parseSingleCueMd(fs.readFileSync(cueMd, 'utf8'), path.dirname(cueMd));
+        hosts = hostsLabel(parsed.frontmatter, inferHostCompat, formatHostList);
+      } catch { /* fall through; show no marker */ }
+      results[kind].push({ name: entry.name, source: cueMd, hosts });
     }
   }
+}
+
+// Format the host-compat result for one entry. Returns the joined host
+// string ("all", "claude-code, opencode, codex", etc.).
+function hostsLabel(input, inferHostCompat, formatHostList) {
+  const r = inferHostCompat(input || {});
+  return formatHostList(r.hosts);
 }
 
 function printHelp() {
