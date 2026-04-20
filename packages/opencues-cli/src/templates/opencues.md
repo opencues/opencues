@@ -45,7 +45,7 @@ cursor-navigate: inactive
 # Uncomment to override the integration's built-in defaults.
 #
 # tts-rate: 2
-# tts-script: ~/.claude/opencues/actions/speak.sh
+# tts-script: ~/.opencues/scripts/speak.sh
 # llm-model: openai/gpt-oss-120b
 # llm-endpoint: https://api.groq.com/openai/v1/chat/completions
 
