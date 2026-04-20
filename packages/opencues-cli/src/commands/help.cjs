@@ -40,6 +40,11 @@ module.exports = function help(argv, ctx) {
   console.log('  run <host>              Launch the patched host (claude-code | opencode | chrome)');
   console.log('  which                   Print every relevant path (installs, configs, logs)');
   console.log('  version                 Print CLI version + per-integration versions/compat');
+  console.log('  doctor                  Cross-host diagnostics + suggested fixes');
+  console.log('  list                    List every defined cue / blank / control with source path');
+  console.log('  show <name>             Print full config for one cue / blank / control by name');
+  console.log('  edit <file>             Open ~/.opencues/<file>.md in $EDITOR');
+  console.log('  logs [--tail]           Show /tmp/opencues.log (last 50 lines, or follow with --tail)');
   console.log('  help [<command>]        Show help. With <command>: that subcommand\'s help.');
   console.log('');
   console.log('Per-host details:');
