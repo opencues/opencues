@@ -697,7 +697,7 @@ TTS is a process spawn. `TTS` module calls `adapter.spawnProcess(speakCommand)` 
 
 ### 7.4 Statusline file path
 
-Runtime writes `/tmp/claude-highlight-state-${pid}.json` — except runtime can't know PID in an adapter-agnostic way. Adapter exposes PID? Too Node-specific.
+Runtime writes `/tmp/opencues-highlight-state-${pid}.json` — except runtime can't know PID in an adapter-agnostic way. Adapter exposes PID? Too Node-specific.
 
 **Decision:** runtime config carries a `statusFilePathFn: (pid) => string` (or a fixed path). Adapter exposes `process.pid` via a capability extension if needed. For v1, the Claude Code adapter hardcodes the path pattern.
 
@@ -976,7 +976,7 @@ Replace `Phase N` with the current target (e.g. "Phase 0 and Phase 1").
 - **Build runtime:** `cd packages/opencues-runtime && npm run build` (scaffold will add this).
 - **Install to Claude user path:** `cp -r packages/opencues-runtime/dist/* ~/.claude/node_modules/opencues-runtime/` (after creating the target dir). Mirrors the existing cues-core pattern.
 - **Build + apply tweakcc:** `cd integrations/claude-code/tweakcc && npm run build:dev && CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1) && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply`
-- **Test:** User restarts `claude-cues`, exercises features, checks `/tmp/claude-highlight-state-<pid>.json` for `_debug` fields. For v2 runtime, expect new debug fields reflecting runtime module state.
+- **Test:** User restarts `claude-cues`, exercises features, checks `/tmp/opencues-highlight-state-<pid>.json` for `_debug` fields. For v2 runtime, expect new debug fields reflecting runtime module state.
 
 ### Commit conventions
 

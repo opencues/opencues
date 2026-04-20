@@ -12,7 +12,7 @@
 import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
 
 export interface CursorStateExportOptions {
-  /** Absolute path. Typically /tmp/claude-cursor-state.json. */
+  /** Absolute path. Typically /tmp/opencues-cursor-state.json. */
   readonly exportPath: string;
   /** Debounce in ms (default 100). */
   readonly debounceMs?: number;

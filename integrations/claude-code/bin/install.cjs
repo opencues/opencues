@@ -426,6 +426,6 @@ function printHelp() {
   console.log('    packages/*/dist/, .turbo/  build cache');
   console.log('  Runtime state (NOT created by install — appears when CC runs):');
   console.log('    /tmp/opencues.log');
-  console.log('    /tmp/claude-highlight-state-<pid>.json');
-  console.log('    /tmp/claude-cursor-state.json');
+  console.log('    /tmp/opencues-highlight-state-<pid>.json');
+  console.log('    /tmp/opencues-cursor-state.json');
 }

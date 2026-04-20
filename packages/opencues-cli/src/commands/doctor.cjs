@@ -135,7 +135,7 @@ module.exports = function doctor(argv, ctx) {
   // ── Runtime IPC files ─────────────────────────────────────────────────
   console.log('## Runtime IPC (created when CC/OC actually runs)');
   ok('/tmp/opencues.log',                       fs.existsSync('/tmp/opencues.log'));
-  const cursorState = '/tmp/claude-cursor-state.json';
+  const cursorState = '/tmp/opencues-cursor-state.json';
   ok(cursorState,                                fs.existsSync(cursorState));
   console.log('');
 

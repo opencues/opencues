@@ -395,7 +395,7 @@ const DEFAULT_CONFIG: Required<WordHighlightConfig> = {
   highlightWordPattern: 'whitespace',
   highlightMode: 'words',  // deprecated — always navigates all words with alts
   highlightExportEnabled: true,
-  highlightExportPath: '/tmp/claude-highlight-state.json',
+  highlightExportPath: '/tmp/opencues-highlight-state.json',
   numberDimming: true,  // dim all numbers in input (dark gray)
   cueControlOverrides: {},
 };
@@ -633,7 +633,7 @@ if(_dw){_proj={cueTip:_dw.cueTip||null,altCueTips:_dw.altCueTips||null,alts:_dw.
 }
 if(_proj){for(var _pk in _proj)_hlExport[_pk]=_proj[_pk];}
 }
-var _hlExportPath="/tmp/claude-highlight-state-"+process.pid+".json";
+var _hlExportPath="/tmp/opencues-highlight-state-"+process.pid+".json";
 try{${requireFuncName}("fs").writeFileSync(_hlExportPath,JSON.stringify(_hlExport));}catch(_e){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // TTS: speak tip on navigation, cancel on deselect or word change
@@ -1023,7 +1023,7 @@ if(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["tips-mode"]==="off"
 var _lt=_req("child_process").execSync("bash "+_script+" get",{timeout:1000,encoding:"utf8"}).trim();
 if(_lt){
 globalThis._cueControlTip=_lt;
-var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
+var _ep="/tmp/opencues-highlight-state-"+process.pid+".json";
 var _fs=_req("fs");
 var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
 _ex.cueTip=_lt;_ex.timestamp=Date.now();

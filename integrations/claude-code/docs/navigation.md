@@ -50,12 +50,12 @@ Configurable via `highlightColor`: white (default), cyan (`\x1b[1;96m`), yellow 
 
 ## File Exports
 
-**Cursor state** → `/tmp/claude-cursor-state.json` (debounced 100ms):
+**Cursor state** → `/tmp/opencues-cursor-state.json` (debounced 100ms):
 ```json
 {"text":"hello world","cursorPosition":6,"currentWord":"world","atEnd":false,"textLength":11,"timestamp":1705500000000}
 ```
 
-**Highlight state** → `/tmp/claude-highlight-state-{PID}.json` (sync, on every navigation):
+**Highlight state** → `/tmp/opencues-highlight-state-{PID}.json` (sync, on every navigation):
 ```json
 {"active":true,"highlightedWord":"agents","cueTip":"Spawn parallel workers...","alts":["agents","swarm","background"],"currentAltIndex":0,"altCueTips":{"agents":"...","swarm":"..."}}
 ```

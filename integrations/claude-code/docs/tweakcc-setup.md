@@ -74,7 +74,7 @@ At the top of the `misc:` block in `DEFAULT_SETTINGS`, add:
 misc: {
   // --- Cues Patches ---
   enableCursorStateExport: true,
-  cursorStateExportPath: '/tmp/claude-cursor-state.json',
+  cursorStateExportPath: '/tmp/opencues-cursor-state.json',
   enableWordHighlight: true,
   highlightColor: 'white',
   highlightIndexFromLeft: false,
@@ -85,7 +85,7 @@ misc: {
   highlightWordPattern: 'whitespace',
   highlightMode: 'words',
   highlightExportEnabled: true,
-  highlightExportPath: '/tmp/claude-highlight-state.json',
+  highlightExportPath: '/tmp/opencues-highlight-state.json',
   numberDimming: true,
   enableDynamicHighlight: true,
   dynamicHighlightScriptPath: '~/.claude/llm-analyze.sh',
@@ -222,7 +222,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
 
   // Step 1: cursorStateExport — verified working on v2.1.110
   if (config.settings.misc?.enableCursorStateExport) {
-    const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
+    const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/opencues-cursor-state.json';
     if ((result = writeCursorStateExport(content, exportPath))) content = result;
   }
 

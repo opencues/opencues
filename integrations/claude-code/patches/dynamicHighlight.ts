@@ -246,7 +246,7 @@ var _ws=(globalThis._hlText||"").split(/\s+/).filter(function(w){return w;});
 var _wrd=_ws[globalThis._hlState.wordIndex]||"";
 if(!globalThis._isCueControl||!globalThis._isCueControl(_wrd))return;
 try{
-var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
+var _ep="/tmp/opencues-highlight-state-"+process.pid+".json";
 var _fs=${requireFuncName}("fs");
 var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
 if(_ex.cueTip!==globalThis._cueControlTip){_ex.cueTip=globalThis._cueControlTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();}
@@ -314,7 +314,7 @@ if(globalThis._cueControlTipWord===null)return;
 var _lt=_reqFn("child_process").execSync("bash "+_tipScript+" get",{timeout:1000,encoding:"utf8"}).trim();
 if(_lt){
 globalThis._cueControlTip=_lt;
-var _ep2="/tmp/claude-highlight-state-"+process.pid+".json";
+var _ep2="/tmp/opencues-highlight-state-"+process.pid+".json";
 var _fs2=_reqFn("fs");
 var _ex2=JSON.parse(_fs2.readFileSync(_ep2,"utf8"));
 _ex2.cueTip=_lt;_ex2.timestamp=Date.now();
@@ -450,7 +450,7 @@ for(var _nsi3=0;_nsi3<_newSatWc;_nsi3++)globalThis._dynSpans[_newSatIdx+_nsi3]={
 }else{delete _satDef.spanLength;}
 }
 globalThis._hlText=_newSelText;globalThis._hlState.text=_newSelText;
-try{var _selExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_nextSet,wordCount:_newSelText.split(/\\s+/).filter(function(w){return w;}).length,cueTip:_selDef.cueTip||null,cueControl:!!_selDef.cueTip,alts:_ocKeys,currentAltIndex:_nextSetIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_selExp));}catch(_we){}
+try{var _selExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_nextSet,wordCount:_newSelText.split(/\\s+/).filter(function(w){return w;}).length,cueTip:_selDef.cueTip||null,cueControl:!!_selDef.cueTip,alts:_ocKeys,currentAltIndex:_nextSetIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_selExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_newSelText,lenDiff:_newSelText.length-_selText.length,wStart:_selWStart,newLen:_nextSet.length};
 }
@@ -507,7 +507,7 @@ if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _nsxi=0;_nsxi<_newSatWc;_nsxi++)globalThis._dynSpans[_hlIdx+_nsxi]={originalIndex:_hlIdx,spanLength:_newSatWc};
 }else{delete _satBound.spanLength;}
 globalThis._hlText=_satNewTxt;globalThis._hlState.text=_satNewTxt;
-try{var _satExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_satNewVal,wordCount:_satAllW.length,cueTip:_satBound.cueTip||null,cueControl:!!_satBound.cueTip,alts:_satVals,currentAltIndex:_satNextIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_satExp));}catch(_we){}
+try{var _satExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_satNewVal,wordCount:_satAllW.length,cueTip:_satBound.cueTip||null,cueControl:!!_satBound.cueTip,alts:_satVals,currentAltIndex:_satNextIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_satExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_satNewTxt,lenDiff:_satNewTxt.length-_satTxt.length,wStart:_satWS,newLen:_satNewVal.length};
 }
@@ -586,7 +586,7 @@ var _caNewWords=_caNewText.split(/\\s+/).filter(function(w){return w;});
 globalThis._dynLastAnalyzed=_caNewWords;globalThis._dynPrevWords=_caNewWords.slice();
 // Keep highlight on span origin
 globalThis._hlState.wordIndex=_caIdx;
-try{var _caExp={active:true,highlightedWordIndex:_caIdx,highlightedWord:_caNewWord,wordCount:_caNewWords.length,cueTip:_ca.cueTip||null,alts:_ca.alts,currentAltIndex:_caNext,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_caExp));}catch(_we){}
+try{var _caExp={active:true,highlightedWordIndex:_caIdx,highlightedWord:_caNewWord,wordCount:_caNewWords.length,cueTip:_ca.cueTip||null,alts:_ca.alts,currentAltIndex:_caNext,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_caExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_caNewText,lenDiff:_caNewWord.length-(_caWE-_caWS),wStart:_caWS,newLen:_caNewWord.length};
 }}
@@ -658,7 +658,7 @@ globalThis._hlState.text=_newText;
 // Write highlight export immediately so status line has fresh data
 try{var _cWords=_newText.split(/\\s+/).filter(function(w){return w});
 var _cExp={active:true,highlightedWordIndex:_dIdx,highlightedWord:_dWord.alts[_nextAlt],wordCount:_cWords.length,cueTip:_dWord.cueTip||null,altCueTips:_dWord.altCueTips||null,alts:_dWord.alts,currentAltIndex:_nextAlt,timestamp:Date.now()};
-_reqFn("fs").writeFileSync("/tmp/claude-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
+_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_cExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 // TTS: speak the alt tip when cycling (only for tips with speak:true)
 if(_dWord.speak&&!(globalThis._openCuesCurrent&&globalThis._openCuesCurrent["voice-mode"]==="inactive")){

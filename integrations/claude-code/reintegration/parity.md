@@ -19,7 +19,7 @@ just architecture.
 | # | Title | v2 status | Where / notes |
 |---|---|---|---|
 | 0 | tweakcc setup | ✓ | `~/.tweakcc/cli.js.backup` exists; setup works. |
-| 1 | `cursorStateExport` | ✓ | Phase I.1. New CursorStateExport module subscribes to onTextChange + initial state; writes JSON snapshot (text, cursorPosition, currentWord, atEnd, textLength, timestamp) to `cursorStatePath` after a 100ms debounce. ZWS stripped before measuring. Opt-in via host config; patch sets the path to `/tmp/claude-cursor-state.json` matching v1. Live verified. |
+| 1 | `cursorStateExport` | ✓ | Phase I.1. New CursorStateExport module subscribes to onTextChange + initial state; writes JSON snapshot (text, cursorPosition, currentWord, atEnd, textLength, timestamp) to `cursorStatePath` after a 100ms debounce. ZWS stripped before measuring. Opt-in via host config; patch sets the path to `/tmp/opencues-cursor-state.json` matching v1. Live verified. |
 | 2 | `wordHighlight` (full nav + highlight) | ✓ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the core. Cue filtering moved to Step 4 ✓. Highlight uses bright white foreground (`\x1b[97m`); dim uses `\x1b[2m` — the active word stays bright and others fade, which reads better than inverse video on most terminals. ZWS chars stay in the InputZone display: they render zero-width in terminal so they're invisible to users; stripping would require reconstructing the InputZone every render (see REPAIR.md for why ZWS toggling is load-bearing). |
 | 3 | bare-number dim | — | REMOVED in v1 itself (reverted Step 21). Not porting. |
 | 4 | nav filter narrows to cue-control words | ✓ | Phase 7 (commit `1cfc47f`). Filter priority: cueMap → folder controls (incl. blankKeywords) → DynDefs → fallback all-words. |

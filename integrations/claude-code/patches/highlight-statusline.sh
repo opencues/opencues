@@ -21,7 +21,7 @@ while [ "$WALK_PID" != "1" ] && [ -n "$WALK_PID" ]; do
   WALK_PID=$(awk '{print $4}' /proc/$WALK_PID/stat 2>/dev/null)
 done
 
-HIGHLIGHT_FILE="/tmp/claude-highlight-state-${CLAUDE_PID:-unknown}.json"
+HIGHLIGHT_FILE="/tmp/opencues-highlight-state-${CLAUDE_PID:-unknown}.json"
 
 # PS1-style prefix
 BOLD=$(tput bold 2>/dev/null)

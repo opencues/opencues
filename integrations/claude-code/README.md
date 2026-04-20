@@ -139,8 +139,8 @@ Plus `<cli.js>` itself is patched in place. Backup lives inside `~/.claude/openc
 
 **Runtime state** (NOT created by install — appears when CC runs):
 - `/tmp/opencues.log`
-- `/tmp/claude-highlight-state-<pid>.json`
-- `/tmp/claude-cursor-state.json`
+- `/tmp/opencues-highlight-state-<pid>.json`
+- `/tmp/opencues-cursor-state.json`
 
 These are runtime IPC files; OS rotates `/tmp/`.
 

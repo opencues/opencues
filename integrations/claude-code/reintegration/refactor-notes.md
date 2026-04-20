@@ -436,7 +436,7 @@ In claude-cues:
 
 ## Phase 4 — Statusline export
 
-**Goal:** runtime writes `/tmp/claude-highlight-state-<pid>.json` on every
+**Goal:** runtime writes `/tmp/opencues-highlight-state-<pid>.json` on every
 state change. The existing `highlight-statusline.sh` consumer reads it
 and renders the highlighted word + alt index in CC's status line.
 
@@ -460,7 +460,7 @@ and renders the highlighted word + alt index in CC's status line.
 4. **`integrations/claude-code/patches/opencuesRuntime.ts`** —
    - `writeFile` callback (fs.writeFile via createRequire) added to host
      bindings.
-   - `statusFilePath` set to `/tmp/claude-highlight-state-<process.pid>.json`
+   - `statusFilePath` set to `/tmp/opencues-highlight-state-<process.pid>.json`
      (matches v1's path so the existing consumer keeps working).
 
 5. **`integrations/claude-code/patches/highlight-statusline.sh`** —

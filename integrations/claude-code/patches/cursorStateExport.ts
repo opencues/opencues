@@ -63,7 +63,7 @@ const findInputStateHandlerLocation = (oldFile: string): LocationResult | null =
  */
 export const writeCursorStateExport = (
   oldFile: string,
-  exportPath: string = '/tmp/claude-cursor-state.json'
+  exportPath: string = '/tmp/opencues-cursor-state.json'
 ): string | null => {
   const location = findInputStateHandlerLocation(oldFile);
   if (!location) {

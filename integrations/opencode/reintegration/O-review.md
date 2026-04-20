@@ -74,14 +74,14 @@ The full Bucket E + F + G feature set comes online:
 - `integrations/opencode/patches/opencuesBootstrap.ts` — passes `statusFilePath`, `ttsScriptPath`, `ttsRate`, `llmApiKey` (from `GROQ_API_KEY`), `llmEndpoint`, `llmDefaultModel` from env.
 
 **What it does:**
-- Statusline writes JSON snapshot to `/tmp/claude-highlight-state-<pid>.json` (matches CC) on every render. OpenCode's own status bar is left alone — users can `tail` the file or run a separate consumer.
+- Statusline writes JSON snapshot to `/tmp/opencues-highlight-state-<pid>.json` (matches CC) on every render. OpenCode's own status bar is left alone — users can `tail` the file or run a separate consumer.
 - Resolver kicks in when `GROQ_API_KEY` is set: 500ms debounce after text-change, populates DynDefs from cues-core's CueResolver. Cycling can then rotate LLM-resolved alts.
 - TTS speaks `cueTip` when active word has `speak: true`; reads `tts-rate` / `tts-script` from opencues.md (overrides patch defaults).
 
 **Live test:**
 1. `export GROQ_API_KEY=...`
 2. Re-run setup.sh; restart `bun run dev`.
-3. `tail -f /tmp/claude-highlight-state-*.json` in another terminal.
+3. `tail -f /tmp/opencues-highlight-state-*.json` in another terminal.
 4. Type `volume` → highlight, statusline JSON updates with `cueControl: true` + `cueTip: "system volume control"` + the live `volume.sh get` value.
 5. Type `the cat sat` → after ~500ms, words gain LLM alts; cycling them rotates through.
 6. If TTS script (`~/.claude/actions/speak.sh`) exists and the cue has `speak:true`, audio plays.

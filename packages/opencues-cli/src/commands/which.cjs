@@ -46,8 +46,8 @@ module.exports = function which(argv, ctx) {
     ]],
     ['Runtime IPC files (created when CC/OC actually runs)', [
       ['Debug log',                  '/tmp/opencues.log'],
-      ['Statusline IPC',             '/tmp/claude-highlight-state-<pid>.json'],
-      ['Cursor state IPC',           '/tmp/claude-cursor-state.json'],
+      ['Statusline IPC',             '/tmp/opencues-highlight-state-<pid>.json'],
+      ['Cursor state IPC',           '/tmp/opencues-cursor-state.json'],
     ]],
   ];
 

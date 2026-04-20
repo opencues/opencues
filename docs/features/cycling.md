@@ -13,7 +13,7 @@ Word cycling replaces the focused word with an alternative. It is the **vertical
 1. **Press** Ctrl+Alt+Up or Ctrl+Alt+Down while a word is highlighted
 2. **Priority check**: The `_cycleAlt` function evaluates the highlighted word against a four-level priority chain (see Cycling Priority below). The first level that matches handles the press; the rest are skipped.
 3. **Text replacement**: The matched handler computes a new word, splices it into `globalThis._hlText` at the correct character offset, and returns `{text, lenDiff, wStart, newLen}` so the input zone can reposition the cursor.
-4. **State update**: `globalThis._hlState.text` is updated to match the new text. For level 4 (alternative cycling), the highlight export JSON is written to `/tmp/claude-highlight-state-<pid>.json` for the status line. Levels 1-3 call `_triggerStatusLineRefresh()` but do not write the export JSON.
+4. **State update**: `globalThis._hlState.text` is updated to match the new text. For level 4 (alternative cycling), the highlight export JSON is written to `/tmp/opencues-highlight-state-<pid>.json` for the status line. Levels 1-3 call `_triggerStatusLineRefresh()` but do not write the export JSON.
 
 ---
 

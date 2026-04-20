@@ -2,7 +2,7 @@
 // for an external consumer (e.g. integrations/claude-code/patches/highlight-statusline.sh).
 //
 // The shape mirrors what v1's wordHighlight.ts wrote to
-// /tmp/claude-highlight-state-<pid>.json so the existing shell consumer
+// /tmp/opencues-highlight-state-<pid>.json so the existing shell consumer
 // keeps working unchanged. Phase 4 covers the navigation+cycling subset of
 // fields; LLM/blank/control fields land as their modules ship.
 //
@@ -20,7 +20,7 @@ import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
   /**
-   * Absolute path. Typically /tmp/claude-highlight-state-<pid>.json.
+   * Absolute path. Typically /tmp/opencues-highlight-state-<pid>.json.
    * Empty string disables file export — useful when only onSnapshot is
    * wired (host renders the tip in-process).
    */

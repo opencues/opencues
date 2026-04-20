@@ -53,7 +53,7 @@ TTS is per-tip opt-in via the `speak: true` flag on individual tip entries or co
 | Option | Type | Default | Required? | Purpose |
 |--------|------|---------|-----------|---------|
 | `enableCursorStateExport` | boolean | undefined | No | Export cursor position to JSON |
-| `cursorStateExportPath` | string | `'/tmp/claude-cursor-state.json'` | No | Export file path |
+| `cursorStateExportPath` | string | `'/tmp/opencues-cursor-state.json'` | No | Export file path |
 
 ### Rainbow Input
 

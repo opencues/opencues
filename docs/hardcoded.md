@@ -84,7 +84,7 @@ Features and values that are hardcoded in patch code or cues-core rather than dr
 - **Note:** Integration-specific — different editors have different key systems
 
 ### File paths
-- **What:** TTS script (`~/.claude/opencues/actions/speak.sh`), highlight export (`/tmp/claude-highlight-state-{pid}.json`)
+- **What:** TTS script (`~/.claude/opencues/actions/speak.sh`), highlight export (`/tmp/opencues-highlight-state-{pid}.json`)
 - **Where:** `dynamicHighlight.ts`, `wordHighlight.ts`
 - **Note:** Could be in `~/.tweakcc/config.json`
 

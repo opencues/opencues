@@ -51,7 +51,7 @@ Each step is verified before proceeding to the next.
 
 ## Step 1 — `cursorStateExport`
 
-**Goal:** On every keystroke, write `{text, cursorPosition, currentWord, atEnd, timestamp}` to `/tmp/claude-cursor-state.json`.
+**Goal:** On every keystroke, write `{text, cursorPosition, currentWord, atEnd, timestamp}` to `/tmp/opencues-cursor-state.json`.
 
 **What broke:**
 The return statement inside the input handler (`Dy8`) changed:
@@ -63,7 +63,7 @@ The return statement inside the input handler (`Dy8`) changed:
 **Re-enabled in `index.ts`:**
 ```ts
 if (config.settings.misc?.enableCursorStateExport) {
-  const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
+  const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/opencues-cursor-state.json';
   if ((result = writeCursorStateExport(content, exportPath))) content = result;
 }
 ```
@@ -71,7 +71,7 @@ if (config.settings.misc?.enableCursorStateExport) {
 **Verification:**
 Start `claude-cues`, type text, move cursor onto a word:
 ```bash
-cat /tmp/claude-cursor-state.json
+cat /tmp/opencues-cursor-state.json
 # {"text":"testing the system","cursorPosition":37,"currentWord":"system","atEnd":false,...}
 ```
 
@@ -81,7 +81,7 @@ cat /tmp/claude-cursor-state.json
 
 ## Step 2 — `wordHighlight`: full navigation + highlight
 
-**Goal:** `Ctrl+Alt+Left`/`Right` navigates between words with visual highlight. Escape and typing clear it. State exported to `/tmp/claude-highlight-state-<pid>.json`.
+**Goal:** `Ctrl+Alt+Left`/`Right` navigates between words with visual highlight. Escape and typing clear it. State exported to `/tmp/opencues-highlight-state-<pid>.json`.
 
 ### Sub-patches & status
 
@@ -203,8 +203,8 @@ Rendering patch injects a dim branch keyed on `globalThis._stepPatterns`. That a
 5. Typing while active → highlight clears, state export `active:false`.
 6. Multi-line input works across lines.
 7. Cursor position is preserved throughout (no cursor jumps from navigation).
-8. `/tmp/claude-highlight-state-<pid>.json` updates live: `{active, highlightedWordIndex, highlightedWord, wordCount, ...}`.
-9. `/tmp/claude-cursor-state.json` (Step 1) still updates on every keystroke.
+8. `/tmp/opencues-highlight-state-<pid>.json` updates live: `{active, highlightedWordIndex, highlightedWord, wordCount, ...}`.
+9. `/tmp/opencues-cursor-state.json` (Step 1) still updates on every keystroke.
 
 ### Rollback notes
 
@@ -261,7 +261,7 @@ if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(glo
 **Verification:**
 1. Type `raise volume now` + Ctrl+Alt+Left → only `volume` highlights. `raise` and `now` are skipped.
 2. Type `the cat sat` + Ctrl+Alt+Left → all three words cycle as before (defensive fallback keeps navigation alive when no cue-control word is present).
-3. `/tmp/claude-highlight-state-<pid>.json` `_debug.isCA` flips `true` on `volume`, `false` on non-cue words (check via `_debug` dump).
+3. `/tmp/opencues-highlight-state-<pid>.json` `_debug.isCA` flips `true` on `volume`, `false` on non-cue words (check via `_debug` dump).
 4. No regression on Steps 1-3 (cursor JSON, navigation, Escape clear, number dim).
 
 **Rollback:** Delete the one line from `wordHighlight.ts`'s `fullCode`. No other files touched.
@@ -592,7 +592,7 @@ if(globalThis._cueControlTipWord==null)return;
 var _lt=_req("child_process").execSync("bash "+_script+" get",{timeout:1000,encoding:"utf8"}).trim();
 if(_lt){
 globalThis._cueControlTip=_lt;
-var _ep="/tmp/claude-highlight-state-"+process.pid+".json";
+var _ep="/tmp/opencues-highlight-state-"+process.pid+".json";
 var _fs=_req("fs");
 var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
 _ex.cueTip=_lt;_ex.timestamp=Date.now();
@@ -977,7 +977,7 @@ if(process.env.GROQ_API_KEY)setTimeout(function(){try{globalThis._httpAdapter.wa
 Restart `claude-cues`. Highlight any cue word (`volume` works). Then:
 
 ```bash
-cat /tmp/claude-highlight-state-<pid>.json | python3 -m json.tool | grep httpAdapter
+cat /tmp/opencues-highlight-state-<pid>.json | python3 -m json.tool | grep httpAdapter
 # Expected: "httpAdapterLoaded": true
 ```
 
@@ -1038,7 +1038,7 @@ globalThis._cueSourceCount=_srcs.length;
 
 Restart, highlight any cue word, then:
 ```bash
-cat /tmp/claude-highlight-state-<pid>.json | python3 -m json.tool | grep -E "cueResolver|cueSource|httpAdapter"
+cat /tmp/opencues-highlight-state-<pid>.json | python3 -m json.tool | grep -E "cueResolver|cueSource|httpAdapter"
 ```
 Expected:
 - `"httpAdapterLoaded": true`

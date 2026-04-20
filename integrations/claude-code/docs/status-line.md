@@ -38,7 +38,7 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 
 | Step | Component | Action |
 |------|-----------|--------|
-| 1 | wordHighlight.ts | Writes `/tmp/claude-highlight-state-{PID}.json` |
+| 1 | wordHighlight.ts | Writes `/tmp/opencues-highlight-state-{PID}.json` |
 | 2 | dynamicHighlight.ts | Also writes on Up/Down cycling (fresh `currentAltIndex`) |
 | 3 | Both patches | Call `_triggerStatusLineRefresh()` (300ms debounce) |
 | 4 | Claude Code | Spawns `highlight-statusline.sh` |
@@ -121,7 +121,7 @@ Words with tips get instant alternatives (~0ms). Words without tips get LLM alte
 
 ## Multi-Instance
 
-Each Claude Code instance uses its PID in the file path: `/tmp/claude-highlight-state-{PID}.json`. The status line script walks up the process tree to find the correct PID.
+Each Claude Code instance uses its PID in the file path: `/tmp/opencues-highlight-state-{PID}.json`. The status line script walks up the process tree to find the correct PID.
 
 **Process name gotcha:** Claude Code's cmdline is `claude`, not `node cli.js`. The script greps for `^claude` in `/proc/{PID}/cmdline`.
 

@@ -192,7 +192,7 @@ let content = fs.readFileSync('$DEFAULTS_FILE', 'utf8');
 const additions = \`
     // --- Cues Patches ---
     enableCursorStateExport: true,
-    cursorStateExportPath: '/tmp/claude-cursor-state.json',
+    cursorStateExportPath: '/tmp/opencues-cursor-state.json',
     enableWordHighlight: true,
     highlightColor: 'white',
     highlightIndexFromLeft: false,
@@ -203,7 +203,7 @@ const additions = \`
     highlightWordPattern: 'whitespace',
     highlightMode: 'words',
     highlightExportEnabled: true,
-    highlightExportPath: '/tmp/claude-highlight-state.json',
+    highlightExportPath: '/tmp/opencues-highlight-state.json',
     numberDimming: true,
     enableDynamicHighlight: true,
     dynamicHighlightScriptPath: '~/.claude/llm-analyze.sh',
@@ -249,7 +249,7 @@ const patchCode = \`
   {
     let result: string | null;
     if (config.settings.misc?.enableCursorStateExport) {
-      const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
+      const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/opencues-cursor-state.json';
       if ((result = writeCursorStateExport(content, exportPath))) content = result;
     }
 

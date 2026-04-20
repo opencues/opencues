@@ -61,7 +61,7 @@ User types: "The boy has 3 dogs"
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │ • Extracts cursor position, current word, text length    │ │
 │  │ • Debounces writes (100ms)                               │ │
-│  │ • Async writes to /tmp/claude-cursor-state.json          │ │
+│  │ • Async writes to /tmp/opencues-cursor-state.json          │ │
 │  └──────────────────────────────────────────────────────────┘ │
 │                                                                │
 │  PATCHED BY: wordHighlight.ts (clear on typing)               │
@@ -248,7 +248,7 @@ PATCHES:
   └── Input handler (before return statement)
 
 INJECTS:
-  └── Async debounced write to /tmp/claude-cursor-state.json
+  └── Async debounced write to /tmp/opencues-cursor-state.json
 
 OUTPUT FILE:
   {
@@ -423,10 +423,10 @@ DEPENDENCIES:
 
 WRITES (from cli.js):
   │
-  ├── /tmp/claude-cursor-state.json          ← cursorStateExport.ts
+  ├── /tmp/opencues-cursor-state.json          ← cursorStateExport.ts
   │   (debounced, async)
   │
-  ├── /tmp/claude-highlight-state-{PID}.json ← wordHighlight.ts
+  ├── /tmp/opencues-highlight-state-{PID}.json ← wordHighlight.ts
   │   (sync, on navigation)
   │
   ├── /tmp/claude-llm-timing-{PID}.txt       ← dynamicHighlight.ts

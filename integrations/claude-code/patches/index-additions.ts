@@ -37,7 +37,7 @@ import { writeOpenCuesRuntimeV2 } from './opencuesRuntime';
 
   // Apply cursor state export patch (if enabled)
   if (config.settings.misc?.enableCursorStateExport) {
-    const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/claude-cursor-state.json';
+    const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/opencues-cursor-state.json';
     if ((result = writeCursorStateExport(content, exportPath))) content = result;
   }
 

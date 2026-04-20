@@ -15,7 +15,7 @@ opencuesRuntime: 'v1' as const,
 
 // --- Cursor State Export ---
 enableCursorStateExport: true,
-cursorStateExportPath: '/tmp/claude-cursor-state.json',
+cursorStateExportPath: '/tmp/opencues-cursor-state.json',
 
 // --- Word Highlight Navigation ---
 enableWordHighlight: true,
@@ -28,7 +28,7 @@ highlightClearOnNavigation: false,
 highlightWordPattern: 'whitespace',
 highlightMode: 'numbers',  // 'words' = all words, 'numbers' = only numeric tokens
 highlightExportEnabled: true,
-highlightExportPath: '/tmp/claude-highlight-state.json',
+highlightExportPath: '/tmp/opencues-highlight-state.json',
 numberDimming: true,  // dim all numbers in input (dark gray)
 
 // --- Dynamic Highlight (LLM-based word analysis) ---
@@ -68,7 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
     // --- ADD THESE FIELDS ---
     enableCursorStateExport: true,
-    cursorStateExportPath: '/tmp/claude-cursor-state.json',
+    cursorStateExportPath: '/tmp/opencues-cursor-state.json',
     enableWordHighlight: true,
     highlightColor: 'white',
     highlightIndexFromLeft: false,
@@ -79,7 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
     highlightWordPattern: 'whitespace',
     highlightMode: 'numbers',
     highlightExportEnabled: true,
-    highlightExportPath: '/tmp/claude-highlight-state.json',
+    highlightExportPath: '/tmp/opencues-highlight-state.json',
     numberDimming: true,
   },
 

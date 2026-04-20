@@ -84,7 +84,7 @@ export interface HostInfo {
   statusFilePath?: string;
   /**
    * Optional: absolute path for the cursor-state-export JSON
-   * (e.g. /tmp/claude-cursor-state.json). Consumed by the
+   * (e.g. /tmp/opencues-cursor-state.json). Consumed by the
    * opencues-auto test harness; no in-tree consumer. When unset, the
    * runtime doesn't write anything.
    */
