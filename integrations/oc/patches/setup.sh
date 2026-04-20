@@ -33,12 +33,11 @@ else
   cd "$OPENCODE_DIR"
 fi
 
-# 2. Build opencues-runtime.
+# 2. Build opencues-runtime via pnpm (the repo is a pnpm workspace; npm
+#    install would fail on the workspace:* protocol).
 echo ""
 echo "Building opencues-runtime..."
-cd "$OPENCUES_ROOT/packages/opencues-runtime"
-npm install --silent
-npm run build
+( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/runtime build )
 
 # 3a. Wire opencues-runtime into the fork's node_modules.
 echo "Installing opencues-runtime into fork..."
@@ -50,7 +49,7 @@ cp "$OPENCUES_ROOT/packages/opencues-runtime/package.json" "$DEST/"
 # 3b. Wire cues-core (ConfigLoader + Resolver depend on it).
 if [[ ! -d "$OPENCUES_ROOT/packages/opencues-core/dist" ]]; then
   echo "Building cues-core..."
-  ( cd "$OPENCUES_ROOT/packages/opencues-core" && npm install --silent && npm run build )
+  ( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/core build )
 fi
 echo "Installing cues-core into fork..."
 CUES_CORE_DEST="$OPENCODE_DIR/node_modules/@opencues/core"
