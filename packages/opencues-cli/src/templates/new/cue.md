@@ -30,9 +30,9 @@ parser: alternatives
 # keywords:  comma-separated — instant trigger (OR'd with match:)
 #
 # Examples:
-#   match: \b[a-z]{4,}\b            # 4+ letter lowercase words only
-#   match: \b(TODO|FIXME|XXX)\b     # flag comment markers
-#   keywords: if, while, for        # programming keywords
+#   match: \b[a-z]{4,}\b                        # 4+ letter lowercase words only
+#   match: \b(happy|sad|angry|excited)\b        # specific words of interest
+#   keywords: therefore, however, moreover      # formal connectors
 
 # match: \b[a-z]{4,}\b
 # keywords: foo, bar

@@ -31,26 +31,26 @@ version: 1
 # ```json
 # [
 #   {
-#     "id": "project-vocab",
+#     "id": "tone",
 #     "words": {
-#       "API": {
-#         "tip": "Prefer 'endpoint' for external-facing; 'API' internally",
-#         "alts": ["endpoint", "interface", "service"],
+#       "happy": {
+#         "tip": "Consider a warmer word for personal contexts",
+#         "alts": ["glad", "cheerful", "content"],
 #         "speak": false
 #       },
-#       "TODO": {
-#         "tip": "Avoid in final code — file a ticket instead",
-#         "alts": ["FIXME", "NOTE", "XXX"]
+#       "important": {
+#         "tip": "Often vague — try a more specific word",
+#         "alts": ["critical", "essential", "key"]
 #       }
 #     }
 #   },
 #   {
-#     "id": "naming-synonyms",
+#     "id": "house-style",
 #     "groups": [
 #       {
-#         "synonyms": ["user", "customer", "client", "account"],
-#         "tip": "Team convention: always 'user' in code, 'customer' in UI copy",
-#         "alts": ["user", "customer", "client", "account"]
+#         "synonyms": ["quick", "fast", "rapid", "swift"],
+#         "tip": "House style: prefer 'quick' in plain prose, 'rapid' in formal writing",
+#         "alts": ["quick", "fast", "rapid", "swift"]
 #       }
 #     ]
 #   }
@@ -63,13 +63,13 @@ version: 1
 #
 # Words the runtime should NEVER suggest alternatives for. Plain list,
 # one per line under `## Ignore`. Useful for proper nouns, branded
-# terms, code keywords.
+# terms, or any word you want left untouched.
 
 # ## Ignore
 #
-# MyCompanyName
-# TypeScript
-# PostgreSQL
+# OpenCues
+# London
+# Anthropic
 
 # ─────────────────────────────────────────────────────────────────────
 # SECTION 3: LLM-backed cue sources
@@ -122,14 +122,15 @@ version: 1
 # surrounding sentence context. Output as a comma-separated list.
 # Example: "happy" → "joyful, pleased, content"
 
-# ### code-ident
+# ### formal
 #
 # ```yaml
 # parser: alternatives
 # priority: 60
-# match: \b[a-z][a-zA-Z0-9]*\b
-# tip: "code identifier alternatives"
+# keywords: therefore, however, moreover, furthermore
+# tip: "more formal alternatives"
 # ```
 #
-# Suggest 3 alternative variable/function names that are idiomatic for
-# this codebase and fit the context. Keep camelCase. Output comma-separated.
+# Suggest 3 alternatives in a more formal register that preserve the
+# meaning and fit the surrounding sentence. Output comma-separated.
+# Example: "however" → "nevertheless, conversely, that said"
