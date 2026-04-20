@@ -147,11 +147,52 @@ For per-host details (paths it touches, uninstall, troubleshooting): see each in
 
 ## Requirements
 
-| Requirement | Check |
-|-------------|-------|
+OpenCues is a patch layer — each integration attaches to a host that
+you run separately. The only universal requirements are Node.js (for
+the `opencues` CLI) and an LLM API key; everything else depends on
+which editor you're patching.
+
+### As a user (installing an integration)
+
+| Universal | Check |
+|-----------|-------|
 | Node.js 18+ | `node --version` |
-| Claude Code | `which claude` |
-| Groq API key | [console.groq.com](https://console.groq.com) |
+| Groq API key (or any OpenAI-compatible provider) | set `GROQ_API_KEY` or use `opencues set-key groq` |
+
+Per integration — these are the HOST's requirements, which you would
+need whether or not you used OpenCues:
+
+| Integration | What you need first | Check |
+|-------------|---------------------|-------|
+| `claude-code` | Claude Code CLI 2.1.110+ on PATH | `claude --version` |
+| `opencode`    | OpenCode fork checkout + [bun](https://bun.sh/) | `bun --version` |
+| `codex`       | codex-rs checkout + [Rust toolchain](https://rustup.rs/) | `cargo --version` |
+| `chrome`      | Chrome 121+ | `chrome://version` |
+
+A Claude-Code-only user never needs bun or Rust. An OpenCode user needs
+bun because OpenCode itself is a bun app, not because OpenCues requires it.
+
+### As a developer (working on OpenCues)
+
+| Universal | Check |
+|-----------|-------|
+| Node.js 18+ | `node --version` |
+| pnpm 8+ | `pnpm --version` |
+| Git | `git --version` |
+| Groq API key (for LLM smoke tests in `tests/`) | `echo $GROQ_API_KEY` |
+
+Only if you're modifying the patches for a specific integration:
+
+| Touching... | Extra tool |
+|-------------|-----------|
+| `integrations/oc/` patches | bun |
+| `integrations/codex/` crates | Rust toolchain (1.75+) |
+| `integrations/chrome/` extension | (none — pure TS/rollup) |
+| `integrations/cc/` patches | (none — pure TS via tweakcc) |
+
+Run `pnpm install && pnpm build` once after cloning; then work on each
+integration's patches using the per-integration README under
+`integrations/<host>/`.
 
 ## Packages
 

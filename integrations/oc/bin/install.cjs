@@ -86,6 +86,21 @@ function doInstall() {
   console.log(`Target opencode fork: ${fork}`);
   const paths = pathsForFork(fork);
 
+  // Pre-flight bun. OpenCode itself is a bun app — without it, `bun
+  // install` inside the fork will fail partway through setup.sh. Catch
+  // it upfront so the user gets a clean error rather than a cryptic
+  // mid-install exit.
+  const bunCheck = spawnSync('which', ['bun'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (bunCheck.status !== 0) {
+    const msg = args.dryRun
+      ? '\nWARNING: bun is not on PATH. A real install would fail here — OpenCode needs bun.'
+      : '\nERROR: bun is not on PATH. OpenCode itself is a bun app, so opencues install cannot proceed.';
+    console.error(msg);
+    console.error('Install bun: curl -fsSL https://bun.sh/install | bash  (or https://bun.sh/)');
+    console.error('Then re-run: opencues install opencode' + (args.target ? ` --target ${args.target}` : ''));
+    if (!args.dryRun) process.exit(127);
+  }
+
   if (args.dryRun) {
     console.log('\n[dry-run] Would clone sst/opencode (if missing) at pinned SHA into target.');
     console.log('[dry-run] Would build @opencues/{core,runtime} via turbo.');
