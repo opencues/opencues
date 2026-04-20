@@ -144,8 +144,19 @@ function writeText(text: string): void {
   schedulePostReconcileRender();
 }
 
-/** chrome.storage.local-backed readFile. Path is the storage key suffix. */
+/**
+ * Read a config file. Resolution order:
+ *   1. Bundled dist/configs/<path> — what `opencues sync chrome` wrote
+ *   2. chrome.storage.local — writable state (e.g. popup edits)
+ *   3. null — caller falls back to bake-time defaults
+ *
+ * Runtime paths look like `/chrome-storage/cues.md` or
+ * `/chrome-storage/cues/grammar/cue.md`; we strip the ROOT prefix and
+ * try it as a bundle asset first.
+ */
 async function readFile(path: string): Promise<string | null> {
+  const bundled = await readBundledConfig(path);
+  if (bundled !== null) return bundled;
   const key = STORAGE_PREFIX + path;
   try {
     const result = await chrome.storage.local.get(key);
@@ -154,6 +165,41 @@ async function readFile(path: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// Cache the bundle's index.json. If no index is present (sync never
+// run), cache the absence so we don't hammer chrome.runtime.getURL.
+let _bundleIndexCache: { files: Set<string>; loaded: boolean } | null = null;
+async function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
+  if (_bundleIndexCache) return _bundleIndexCache;
+  _bundleIndexCache = { files: new Set(), loaded: false };
+  try {
+    const url = chrome.runtime.getURL('dist/configs/index.json');
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.files)) {
+        _bundleIndexCache.files = new Set(data.files.map(String));
+        _bundleIndexCache.loaded = true;
+      }
+    }
+  } catch { /* bundle not present — fall back to bake-time */ }
+  return _bundleIndexCache;
+}
+
+// Read a synced file out of dist/configs/. Path is the runtime's
+// canonical form (starts with ROOT). Returns null if not in the bundle.
+async function readBundledConfig(runtimePath: string): Promise<string | null> {
+  if (!runtimePath.startsWith(ROOT + '/')) return null;
+  const rel = runtimePath.slice(ROOT.length + 1); // e.g. "cues/grammar/cue.md"
+  const idx = await getBundleIndex();
+  if (!idx.loaded || !idx.files.has(rel)) return null;
+  try {
+    const url = chrome.runtime.getURL(`dist/configs/${rel}`);
+    const res = await fetch(url);
+    if (res.ok) return await res.text();
+  } catch { /* ignore */ }
+  return null;
 }
 
 /** chrome.storage.local-backed writeFile. */
@@ -173,6 +219,12 @@ async function writeFile(path: string, content: string): Promise<void> {
  * from the project's cues/* and controls/* directories.
  */
 async function readDir(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null> {
+  // Try the bundled index.json first — "what did `opencues sync chrome`
+  // actually put there?" — and fall back to the bake-time folder maps
+  // for extensions booted without a prior sync.
+  const bundled = await readBundledDir(path);
+  if (bundled) return bundled;
+
   if (path === `${ROOT}/cues`) {
     return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({ name, isDirectory: true }));
   }
@@ -197,6 +249,33 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
     }
   }
   return null;
+}
+
+// Synthesise a readDir result from the bundled index.json file list.
+// Returns null if no bundle is present or the path has no matches.
+async function readBundledDir(runtimePath: string): Promise<readonly { name: string; isDirectory: boolean }[] | null> {
+  if (!runtimePath.startsWith(ROOT + '/') && runtimePath !== ROOT) return null;
+  const prefix = runtimePath === ROOT ? '' : runtimePath.slice(ROOT.length + 1);
+  const idx = await getBundleIndex();
+  if (!idx.loaded) return null;
+
+  const base = prefix ? prefix + '/' : '';
+  const childFiles = new Set<string>();
+  const childDirs = new Set<string>();
+  for (const f of idx.files) {
+    if (!f.startsWith(base)) continue;
+    const rest = f.slice(base.length);
+    if (!rest) continue;
+    const slash = rest.indexOf('/');
+    if (slash === -1) childFiles.add(rest);
+    else childDirs.add(rest.slice(0, slash));
+  }
+  if (childFiles.size === 0 && childDirs.size === 0) return null;
+
+  const out: { name: string; isDirectory: boolean }[] = [];
+  for (const d of childDirs) out.push({ name: d, isDirectory: true });
+  for (const f of childFiles) out.push({ name: f, isDirectory: false });
+  return out;
 }
 
 /**
