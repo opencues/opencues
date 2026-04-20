@@ -93,6 +93,26 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env.HOME ?? "~", ".opencues", "opencues.md")
 }
 
+// Resolve the TTS script across all known install layouts. OpenCode
+// doesn't install its own speak.sh — it piggybacks on whichever
+// location the CC integration (or a prior install of it) deployed.
+// Fall back to the legacy path so even a fresh opencode-only user
+// without CC still gets a "defined" script path (the TTS runtime
+// silently no-ops if the file doesn't exist).
+function resolveTtsScript(): string {
+  const home = process.env.HOME ?? "~"
+  const candidates = [
+    path.join(home, ".claude/opencues/scripts/speak.sh"),
+    path.join(home, ".claude/opencues/actions/speak.sh"),
+    path.join(home, ".claude/actions/speak.sh"),
+  ]
+  const fsSync = require("node:fs") as typeof import("node:fs")
+  for (const p of candidates) {
+    if (fsSync.existsSync(p)) return p
+  }
+  return candidates[0] // best-guess default (newest path)
+}
+
 const controlsRegistry = new Map<string, Control>([
   ['hackernews', new HackerNewsControl()],
   ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
@@ -259,7 +279,10 @@ export function startOpenCues(opts: {
       }
       setOpencuesTip(tip ?? null)
     },
-    ttsScriptPath: path.join(process.env.HOME ?? "~", ".claude/actions/speak.sh"),
+    // Resolve TTS script across all known install layouts. OpenCode
+    // doesn't ship its own speak.sh — it piggybacks on whichever
+    // location the CC integration (or a past install of it) deployed.
+    ttsScriptPath: resolveTtsScript(),
     ttsRate: 2,
     llmApiKey: process.env.GROQ_API_KEY,
     llmEndpoint: process.env.OPENCUES_LLM_ENDPOINT,

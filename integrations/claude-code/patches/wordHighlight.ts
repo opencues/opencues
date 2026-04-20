@@ -657,7 +657,7 @@ var _ttsHome=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _cp=${requireFuncName}("child_process");
 var _exePath=_ttsHome+"/.claude/actions/SpeakCtl.exe";
 try{if(${requireFuncName}("fs").existsSync(_exePath)){var _p=_cp.spawn(_exePath,[_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p.pid;_p.unref();}
-else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}
+else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/opencues/scripts/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_hlExport.cueTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}
 },80);
 }}
 ` : '';

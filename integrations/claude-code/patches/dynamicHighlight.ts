@@ -671,7 +671,7 @@ var _cp=_reqFn("child_process");
 if(globalThis._ttsPid){try{process.kill(globalThis._ttsPid);}catch(_ke){}}
 var _exePath=_ttsHome+"/.claude/actions/SpeakCtl.exe";
 try{if(_reqFn("fs").existsSync(_exePath)){var _p=_cp.spawn(_exePath,[_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p.pid;_p.unref();}
-else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/actions/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}
+else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/opencues/scripts/speak.sh");var _p2=_cp.spawn("bash",[_ttsScript,_ttsTip,String(globalThis._ttsRate||2)],{detached:true,stdio:"ignore"});globalThis._ttsPid=_p2.pid;_p2.unref();}}catch(_te){}
 },80);
 }}
 // Re-evaluate underscore if present
@@ -695,7 +695,7 @@ export interface DynamicHighlightConfig {
   enableDynamicHighlight?: boolean;
   dynamicHighlightDebounceMs?: number;  // Debounce delay in ms (default 0 = 50ms internal)
   ttsSpeed?: number;         // SAPI speech rate, -10 to 10 (default 2)
-  ttsScript?: string;        // Custom TTS script path (default ~/.claude/actions/speak.sh)
+  ttsScript?: string;        // Custom TTS script path (default ~/.claude/opencues/scripts/speak.sh)
 }
 
 const DEFAULT_CONFIG: Required<DynamicHighlightConfig> = {

@@ -13,17 +13,41 @@
 # 3. BrightCtl.exe up/down reads+applies the delta internally via powrprof.dll,
 #    so the process exits only after the change is committed.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRECTION="$1"
 AMOUNT="${2:-10}"
+
+# Resolve an OS helper by trying every known location in priority order:
+#   1. Colocated with this script (future-proof / portable pack layouts)
+#   2. ~/.claude/opencues/scripts/  (post-rename CC install location)
+#   3. ~/.claude/opencues/actions/  (pre-rename CC install — widespread)
+#   4. ~/.claude/actions/           (pre-consolidation legacy)
+# Prints the resolved path or empty string.
+find_helper() {
+  local name="$1"
+  local candidates=(
+    "${SCRIPT_DIR}/${name}"
+    "${HOME}/.claude/opencues/scripts/${name}"
+    "${HOME}/.claude/opencues/actions/${name}"
+    "${HOME}/.claude/actions/${name}"
+  )
+  for p in "${candidates[@]}"; do
+    [ -f "$p" ] && echo "$p" && return 0
+  done
+  return 1
+}
+
+BRIGHT_CTL="$(find_helper BrightCtl.exe || true)"
+BRIGHT_SET_PS1="$(find_helper brightness-set.ps1 || true)"
 
 # Live read: query actual system brightness
 # Retries once on 0/empty — BrightCtl.exe can return empty on first call (.NET init delay)
 get_brightness() {
-  if [ -f "${HOME}/.claude/actions/BrightCtl.exe" ]; then
-    ACTUAL=$("${HOME}/.claude/actions/BrightCtl.exe" get 2>/dev/null | tr -dc '0-9')
+  if [ -n "$BRIGHT_CTL" ]; then
+    ACTUAL=$("$BRIGHT_CTL" get 2>/dev/null | tr -dc '0-9')
     if [ -z "$ACTUAL" ] || [ "$ACTUAL" = "0" ]; then
       sleep 0.1
-      ACTUAL=$("${HOME}/.claude/actions/BrightCtl.exe" get 2>/dev/null | tr -dc '0-9')
+      ACTUAL=$("$BRIGHT_CTL" get 2>/dev/null | tr -dc '0-9')
     fi
     [ -n "$ACTUAL" ] && [ "$ACTUAL" != "0" ] && echo "$ACTUAL" && return
   fi
@@ -47,8 +71,8 @@ case "$DIRECTION" in
 esac
 
 # Apply — BrightCtl.exe handles get+delta+set internally (fast, no PowerShell needed)
-if [ -f "${HOME}/.claude/actions/BrightCtl.exe" ]; then
-  "${HOME}/.claude/actions/BrightCtl.exe" "$DIRECTION" "$AMOUNT"
+if [ -n "$BRIGHT_CTL" ]; then
+  "$BRIGHT_CTL" "$DIRECTION" "$AMOUNT"
 elif command -v brightnessctl &>/dev/null; then
   CURRENT=$(brightnessctl get 2>/dev/null)
   MAX=$(brightnessctl max 2>/dev/null)
@@ -66,5 +90,5 @@ elif [ -f /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]; then
     up)   NEW=$((CURRENT + AMOUNT)); [ "$NEW" -gt 100 ] && NEW=100 ;;
     down) NEW=$((CURRENT - AMOUNT)); [ "$NEW" -lt 0 ] && NEW=0 ;;
   esac
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${HOME}/.claude/actions/brightness-set.ps1" "$NEW"
+  [ -n "$BRIGHT_SET_PS1" ] && powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$BRIGHT_SET_PS1" "$NEW"
 fi

@@ -13,17 +13,35 @@
 #    Thread.Sleep(150) inside VolCtl.exe waits for Windows to process the events
 #    before the process exits — keeping everything within the 200ms window.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRECTION="$1"
 AMOUNT="${2:-5}"
+
+# Resolve an OS helper by trying every known location in priority order.
+# See brightness.sh for the full rationale on the multiple paths.
+find_helper() {
+  local name="$1"
+  local candidates=(
+    "${SCRIPT_DIR}/${name}"
+    "${HOME}/.claude/opencues/scripts/${name}"
+    "${HOME}/.claude/opencues/actions/${name}"
+    "${HOME}/.claude/actions/${name}"
+  )
+  for p in "${candidates[@]}"; do
+    [ -f "$p" ] && echo "$p" && return 0
+  done
+  return 1
+}
+VOL_CTL="$(find_helper VolCtl.exe || true)"
 
 # Live read: query actual system volume
 # Retries once on 0/empty — VolCtl.exe can return 0 on first call (COM init delay)
 get_volume() {
-  if [ -f "${HOME}/.claude/actions/VolCtl.exe" ]; then
-    ACTUAL=$("${HOME}/.claude/actions/VolCtl.exe" get 2>/dev/null | tr -dc '0-9')
+  if [ -n "$VOL_CTL" ]; then
+    ACTUAL=$("$VOL_CTL" get 2>/dev/null | tr -dc '0-9')
     if [ -z "$ACTUAL" ] || [ "$ACTUAL" = "0" ]; then
       sleep 0.1
-      ACTUAL=$("${HOME}/.claude/actions/VolCtl.exe" get 2>/dev/null | tr -dc '0-9')
+      ACTUAL=$("$VOL_CTL" get 2>/dev/null | tr -dc '0-9')
     fi
     [ -n "$ACTUAL" ] && [ "$ACTUAL" != "0" ] && echo "$ACTUAL" && return
   fi
@@ -38,8 +56,8 @@ case "$DIRECTION" in
 esac
 
 # Apply via key presses (fast, shows Windows OSD)
-if [ -f "${HOME}/.claude/actions/VolCtl.exe" ]; then
-  "${HOME}/.claude/actions/VolCtl.exe" "$DIRECTION" "$AMOUNT"
+if [ -n "$VOL_CTL" ]; then
+  "$VOL_CTL" "$DIRECTION" "$AMOUNT"
 elif [[ -f /mnt/c/Windows/nircmd.exe ]]; then
   case "$DIRECTION" in
     up)   /mnt/c/Windows/nircmd.exe changesysvolume $((AMOUNT * 655)) ;;
