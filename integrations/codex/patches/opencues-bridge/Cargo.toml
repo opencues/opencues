@@ -1,0 +1,22 @@
+[package]
+name = "opencues-bridge"
+version = "0.0.1"
+edition = "2021"
+description = "OpenCues bridge for codex-rs — spawns the Node-side @opencues/runtime daemon and marshals JSON-RPC events."
+license = "UNLICENSED"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# tokio is intentionally optional — we use std::process::Command + a
+# simple background thread for the read loop. Keeping the dep surface
+# tiny avoids version conflicts with codex-rs's own tokio.
+
+[lib]
+name = "opencues_bridge"
+path = "src/lib.rs"
+
+[[bin]]
+name = "opencues-bridge-smoke"
+path = "src/bin/smoke.rs"
