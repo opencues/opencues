@@ -41,14 +41,25 @@ module.exports = function validate(argv, ctx) {
   // contract, not a conflict. So we track names per source file.
   const seen = { cue: new Map(), blank: new Map(), control: new Map() };
 
+  // Track every word-alts source we see across all search paths so we
+  // can report the post-merge default-source picture (rather than per
+  // path — what matters is the EFFECTIVE config the runtime sees).
+  const wordAltSources = []; // [{file, name, hasMatch, hasKeywords, priority}]
+
   for (const { label, dir } of searchPaths) {
     if (!fs.existsSync(dir)) {
       warnings.push(`${label} dir does not exist: ${dir}`);
       continue;
     }
     console.log(`Checking ${label}-level: ${dir}`);
-    walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames }, seen, errors, warnings);
+    walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames }, seen, errors, warnings, wordAltSources);
   }
+
+  // Default-source sanity for word-alts (per the routing rules in
+  // docs/features/word-alt-routing.md). Same precedence ConfigLoader
+  // applies — folder cues + monolithic merged, project wins over user
+  // — already reflected in the collection above.
+  checkDefaultSources(wordAltSources, errors, warnings);
 
   // Report.
   console.log('');
@@ -61,8 +72,24 @@ module.exports = function validate(argv, ctx) {
   if (strict && warnings.length > 0) process.exit(1);
 };
 
-function walkConfigDir(dir, label, tools, seen, errors, warnings) {
+function walkConfigDir(dir, label, tools, seen, errors, warnings, wordAltSources) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames } = tools;
+  // Helper: record a word-alts source so we can later check the default
+  // picture across the whole effective config. Only counts entries that
+  // would actually go into the RoutedWordSourceGroup.
+  const noteWordAlts = (name, src, file) => {
+    if (!wordAltSources) return;
+    const parser = src?.parser ?? 'alternatives';
+    const scope = src?.scope ?? 'words';
+    if (parser !== 'alternatives' || scope !== 'words') return;
+    if (src?.enabled === false) return;
+    wordAltSources.push({
+      file, name,
+      hasMatch: !!src?.match,
+      hasKeywords: !!src?.keywords,
+      priority: src?.priority ?? 50,
+    });
+  };
   // Top-level .md files (cues.md, blanks.md, controls.md). Duplicates
   // WITHIN one file = error. opencues.md uses a different schema; we
   // just check it's readable.
@@ -95,6 +122,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings) {
           namesInThisFile.add(name);
           seen[kind].set(name, p);
           checkHostCompat(p, name, src, inferHostCompat, unknownHostNames, errors, warnings);
+          if (kind === 'cue') noteWordAlts(name, src, p);
         }
       }
       if (parsed && parsed.controls) {
@@ -134,6 +162,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings) {
         const folderParsed = parseSingleCueMd(content, path.dirname(cueMd));
         seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
         checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings);
+        if (kind === 'cue') noteWordAlts(entry.name, folderParsed.frontmatter, cueMd);
         // Sanity: if cue.md declares a script, check it exists + executable.
         const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
         if (scriptMatch) {
@@ -153,6 +182,63 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings) {
       } catch (err) {
         errors.push(`${cueMd}: parse failed — ${err.message}`);
       }
+    }
+  }
+}
+
+// Default-source sanity for word-alts, per docs/features/word-alt-routing.md:
+//
+//   - Sources WITHOUT match: AND WITHOUT keywords: are "default" sources.
+//     They catch any word that doesn't hit a domain rule.
+//   - Sources WITH either rule are "domain" sources.
+//
+// Two states worth surfacing:
+//
+//   1. Zero defaults across the merged config. Any word that doesn't
+//      match a domain regex/keyword produces no cue → not navigable.
+//      That's intentional for some opt-in projects (legal-only, etc.)
+//      so we report as INFO not WARN/ERROR.
+//
+//   2. Multiple defaults at the same priority. The runtime currently
+//      first-registered-wins on ties; deterministic but invisible to
+//      the user. Surface so authors can pick a winning priority.
+function checkDefaultSources(wordAltSources, errors, warnings) {
+  if (wordAltSources.length === 0) return; // no word-alts → nothing to say
+  // De-dup by source name. ConfigLoader merges across paths (project +
+  // user) so the runtime sees one source per name. Without this the
+  // validator would emit a false-positive "4 grammar defaults at
+  // priority 50" when the user just has the same source seeded at both
+  // levels.
+  const byName = new Map();
+  for (const s of wordAltSources) {
+    const cur = byName.get(s.name);
+    if (!cur || s.priority > cur.priority) byName.set(s.name, s);
+  }
+  const merged = [...byName.values()];
+  const defaults = merged.filter(s => !s.hasMatch && !s.hasKeywords);
+  if (defaults.length === 0) {
+    warnings.push(
+      'no default word-alt cue source — words that don\'t match any ' +
+      `domain rule (match:/keywords:) won't be navigable. ${merged.length} ` +
+      'domain source(s) seen. If this is intentional (opt-in project), ignore.'
+    );
+    return;
+  }
+  // Group defaults by priority and warn on ties.
+  const byPriority = new Map();
+  for (const d of defaults) {
+    const list = byPriority.get(d.priority) ?? [];
+    list.push(d);
+    byPriority.set(d.priority, list);
+  }
+  for (const [priority, list] of byPriority) {
+    if (list.length > 1) {
+      const names = list.map(d => d.name).join(', ');
+      warnings.push(
+        `${list.length} default cue sources at priority ${priority}: ${names}. ` +
+        'Tiebreak is first-registered-wins; bump one\'s priority to make ' +
+        'the choice deterministic.'
+      );
     }
   }
 }
