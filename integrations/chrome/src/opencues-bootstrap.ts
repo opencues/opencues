@@ -422,7 +422,38 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // sink (no onSnapshot), so it sits dormant.
   });
 
+  startVersionPoll(bootResult);
   return bootResult;
+}
+
+// Poll configs/.version every few seconds. When the hash changes,
+// invalidate the bundle index cache + call reloadConfig() so the
+// runtime re-reads everything. Lets `opencues sync chrome --watch`
+// drive live config changes into already-open tabs without a page
+// refresh.
+const VERSION_POLL_MS = 2500;
+let _lastKnownVersion: string | null = null;
+function startVersionPoll(bootResult: BootResult): void {
+  const tick = async () => {
+    try {
+      const url = chrome.runtime.getURL('dist/configs/.version');
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) return;
+      const version = (await res.text()).trim();
+      if (_lastKnownVersion === null) {
+        _lastKnownVersion = version;
+        return;
+      }
+      if (version !== _lastKnownVersion) {
+        _lastKnownVersion = version;
+        _bundleIndexCache = null;          // force index.json re-fetch
+        await bootResult.reloadConfig();   // re-read every source
+      }
+    } catch { /* bundle absent / offline — next tick tries again */ }
+  };
+  // Kick once after boot to seed _lastKnownVersion, then poll.
+  void tick();
+  setInterval(tick, VERSION_POLL_MS);
 }
 
 /** Call from content.ts's input handler to forward text changes.

@@ -67,6 +67,14 @@ export interface BootResult {
   dispatchKey(event: KeyEvent): boolean;
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
+  /**
+   * Re-read configs from disk (or chrome.storage, whichever the adapter
+   * backs readFile/readDir with). Used by the chrome extension to
+   * hot-reload on `opencues sync chrome` — polls `dist/configs/.version`
+   * and calls this when the hash changes. Returns a promise that
+   * resolves when the reload completes.
+   */
+  reloadConfig(): Promise<void>;
   dispose(): void;
 }
 
@@ -229,6 +237,12 @@ export function boot(host: HostInfo): BootResult {
         }
       }
       return out;
+    },
+    async reloadConfig() {
+      // ConfigLoader.load() re-reads every search path, re-parses, and
+      // fires onTextChange-style re-renders downstream. Used by the
+      // chrome extension's .version polling loop.
+      await shared.configLoader.load();
     },
     dispose() {
       adapter.dispose();
