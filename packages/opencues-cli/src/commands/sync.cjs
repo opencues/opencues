@@ -1,0 +1,307 @@
+// `opencues sync <host>` — push the local .opencues/ configs into a
+// host that doesn't read the filesystem on its own.
+//
+// Today this only matters for chrome (browser content scripts can't
+// read ~/.opencues/). CC/OC/codex have native ConfigLoader hot-reload
+// and don't need a sync step.
+//
+// Default sync sources (mirroring ConfigLoader precedence):
+//   1. $OPENCUES_HOME if set
+//   2. <cwd>/.opencues/   (project-level)
+//   3. ~/.opencues/        (user-level)
+// Project wins on name conflicts. Override via --user / --project /
+// --pack <name> / --source <path>.
+//
+// Filter: entries whose host-compat (auto-detected from script:
+// extension or declared via on-host:/not-on-host: frontmatter) excludes
+// chrome are dropped. See docs/features/host-compat.md.
+
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const crypto = require('node:crypto');
+
+const HOSTS = ['chrome'];   // sync is chrome-only today
+
+module.exports = function sync(argv, ctx) {
+  if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+
+  let host = null;
+  const flags = { user: false, project: false, dryRun: false, watch: false };
+  let pack = null;
+  let source = null;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--user') flags.user = true;
+    else if (a === '--project') flags.project = true;
+    else if (a === '--dry-run') flags.dryRun = true;
+    else if (a === '--watch') flags.watch = true;
+    else if (a === '--pack') pack = argv[++i];
+    else if (a === '--source') source = argv[++i];
+    else if (!a.startsWith('-') && !host) host = a;
+  }
+
+  if (!host) {
+    console.error(`opencues sync: missing <host>. Hosts: ${HOSTS.join(', ')}`);
+    console.error('Run `opencues sync --help` for details.\n');
+    process.exit(2);
+  }
+  if (!HOSTS.includes(host)) {
+    console.error(`opencues sync: unsupported host "${host}". Supported today: ${HOSTS.join(', ')}`);
+    console.error('CC/OC/codex hot-reload natively from ~/.opencues/ — no sync needed.');
+    process.exit(2);
+  }
+
+  if (flags.watch) {
+    console.error('--watch is implemented in a follow-up commit. Skipping for now.');
+    process.exit(2);
+  }
+
+  syncChrome({ flags, pack, source }, ctx);
+};
+
+function syncChrome({ flags, pack, source }, ctx) {
+  const core = loadCore(ctx);
+  const sources = resolveSources({ flags, pack, source });
+  if (sources.length === 0) {
+    console.error('opencues sync chrome: no sources resolved. Try --user, --project, --pack <name>, or --source <path>.');
+    process.exit(1);
+  }
+  const distConfigs = path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist', 'configs');
+
+  console.log(`Syncing to ${distConfigs}/`);
+  for (const s of sources) console.log(`  source: ${s.label.padEnd(8)} ${s.dir}`);
+  console.log('');
+
+  // Collect every relevant file across sources, lower-priority first.
+  // Higher-priority overlays — same-name folders / files overwrite.
+  const plan = [];
+  let dropped = 0;
+  for (const s of sources) {
+    walkSource(s.dir, core, (entry) => {
+      if (!entry.compat.hosts.includes('chrome')) {
+        dropped++;
+        return;
+      }
+      plan.push({ src: entry.absPath, dst: path.join(distConfigs, entry.relPath) });
+    });
+  }
+
+  // Resolve same-relPath collisions by keeping the LAST occurrence
+  // (sources are ordered low-to-high priority).
+  const byDst = new Map();
+  for (const p of plan) byDst.set(p.dst, p);
+  const finalPlan = [...byDst.values()];
+
+  if (flags.dryRun) {
+    console.log(`[dry-run] Would copy ${finalPlan.length} file(s) (skip ${dropped} non-chrome):`);
+    for (const p of finalPlan) console.log(`  ${path.relative(distConfigs, p.dst).padEnd(40)} ← ${p.src}`);
+    return;
+  }
+
+  // Wipe existing dist/configs/ to ensure removed files don't linger.
+  if (fs.existsSync(distConfigs)) fs.rmSync(distConfigs, { recursive: true, force: true });
+  fs.mkdirSync(distConfigs, { recursive: true });
+
+  let copied = 0;
+  const summary = { cue: 0, blank: 0, control: 0 };
+  for (const p of finalPlan) {
+    fs.mkdirSync(path.dirname(p.dst), { recursive: true });
+    fs.copyFileSync(p.src, p.dst);
+    copied++;
+    // Categorise for the summary line.
+    const rel = path.relative(distConfigs, p.dst);
+    if (rel.startsWith('cues') || rel === 'cues.md') summary.cue++;
+    else if (rel.startsWith('blanks') || rel === 'blanks.md') summary.blank++;
+    else if (rel.startsWith('controls') || rel === 'controls.md') summary.control++;
+  }
+
+  // Bump .version so the extension can detect changes via polling.
+  // Use content hash to avoid re-triggering on no-op syncs.
+  const versionPath = path.join(distConfigs, '.version');
+  fs.writeFileSync(versionPath, computeVersion(distConfigs));
+
+  console.log(`Synced ${copied} file(s):`);
+  console.log(`  ${summary.cue} cue dir(s)/file(s)`);
+  console.log(`  ${summary.blank} blank dir(s)/file(s)`);
+  console.log(`  ${summary.control} control dir(s)/file(s)`);
+  if (dropped > 0) {
+    console.log(`Skipped ${dropped} entry(ies) flagged as non-chrome (see opencues list for hosts).`);
+  }
+  console.log(`Version: ${fs.readFileSync(versionPath, 'utf8')}`);
+}
+
+// Resolve which .opencues/ dirs to read from based on flags.
+function resolveSources({ flags, pack, source }) {
+  if (source) {
+    const abs = path.resolve(source);
+    return [{ label: 'custom', dir: abs }];
+  }
+  if (pack) {
+    const HOME = os.homedir();
+    const candidates = [
+      path.join(process.cwd(), '.opencues', 'packs', pack),
+      path.join(HOME, '.opencues', 'packs', pack),
+    ];
+    const found = candidates.find(p => fs.existsSync(p));
+    if (!found) {
+      console.error(`opencues sync chrome: pack "${pack}" not found in ${candidates.join(' or ')}`);
+      process.exit(1);
+    }
+    return [{ label: 'pack', dir: found }];
+  }
+  // Default chain. Project (low priority) goes first so user (high
+  // priority) overlays — wait, we want project to WIN (matches
+  // ConfigLoader). So order = [user (low), project (high)].
+  const sources = [];
+  const HOME = os.homedir();
+  if (process.env.OPENCUES_HOME) {
+    sources.push({ label: 'env', dir: process.env.OPENCUES_HOME });
+    return sources.filter(s => fs.existsSync(s.dir));
+  }
+  if (!flags.project) {
+    const userDir = path.join(HOME, '.opencues');
+    if (fs.existsSync(userDir)) sources.push({ label: 'user', dir: userDir });
+  }
+  if (!flags.user) {
+    const projectDir = path.join(process.cwd(), '.opencues');
+    if (fs.existsSync(projectDir)) sources.push({ label: 'project', dir: projectDir });
+  }
+  return sources;
+}
+
+// Walk a single .opencues/ dir, calling cb(entry) for each chrome-relevant
+// file. entry = { absPath, relPath, compat }.
+function walkSource(dir, core, cb) {
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
+
+  // Top-level files: cues.md / blanks.md / controls.md. These are
+  // monolithic — host-compat applies per-section, so we either include
+  // the whole file or rebuild it from the chrome-compatible subset.
+  // Today: include whole file if ANY section is chrome-compatible.
+  // Folder-based configs (next loop) get per-entry filtering.
+  for (const filename of ['cues.md', 'blanks.md', 'controls.md']) {
+    const p = path.join(dir, filename);
+    if (!fs.existsSync(p)) continue;
+    try {
+      const parsed = parseCuesMd(fs.readFileSync(p, 'utf8'));
+      const sources = (parsed?.promptConfig?.sources) || {};
+      const controls = parsed?.controls || {};
+      const all = [...Object.values(sources), ...Object.values(controls)];
+      const hasChromeCompat = all.length === 0 ||
+        all.some(e => inferHostCompat(e || {}).hosts.includes('chrome'));
+      if (hasChromeCompat) {
+        cb({ absPath: p, relPath: filename, compat: { hosts: ['chrome'] } });
+      }
+    } catch { /* skip on parse error */ }
+  }
+
+  // Folder-based: cues/<name>/cue.md, blanks/<name>/cue.md, controls/<name>/cue.md
+  // Per-entry compat filter; copy the WHOLE folder when included.
+  for (const subdir of ['cues', 'blanks', 'controls']) {
+    const sub = path.join(dir, subdir);
+    if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
+    for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const folderPath = path.join(sub, entry.name);
+      const cueMd = path.join(folderPath, 'cue.md');
+      if (!fs.existsSync(cueMd)) continue;
+      try {
+        const parsed = parseSingleCueMd(fs.readFileSync(cueMd, 'utf8'), folderPath);
+        const compat = inferHostCompat(parsed.frontmatter || {});
+        if (!compat.hosts.includes('chrome')) {
+          // Still emit ONE entry so the caller can count it as dropped.
+          // Don't walk the folder — those files would also be dropped.
+          cb({ absPath: cueMd, relPath: path.join(subdir, entry.name, 'cue.md'), compat });
+        } else {
+          // Walk every file in the folder so colocated assets (README.md,
+          // sub-prompts, JSON manifests) come along. Skip script files
+          // (they wouldn't run in chrome anyway and just bloat the bundle).
+          walkFolder(folderPath, (file) => {
+            const isScript = /\.(sh|bash|ps1|bat|cmd|exe|py|rb|pl|cs)$/i.test(file);
+            if (isScript) return;
+            const rel = path.join(subdir, entry.name, path.relative(folderPath, file));
+            cb({ absPath: file, relPath: rel, compat });
+          });
+        }
+      } catch { /* skip on parse error */ }
+    }
+  }
+
+  // opencues.md is system-wide, runtime-owned — skip from sync entirely.
+}
+
+function walkFolder(dir, cb) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkFolder(full, cb);
+    else cb(full);
+  }
+}
+
+function computeVersion(rootDir) {
+  // Hash of every relPath + content. Stable across machines so a no-op
+  // sync (re-run with same inputs) doesn't bump the version and trigger
+  // pointless reloads in the extension.
+  const h = crypto.createHash('sha256');
+  const files = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === '.version') continue;
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else files.push(f);
+    }
+  };
+  walk(rootDir);
+  files.sort();
+  for (const f of files) {
+    h.update(path.relative(rootDir, f));
+    h.update('\0');
+    h.update(fs.readFileSync(f));
+  }
+  return h.digest('hex').slice(0, 16) + '\n';
+}
+
+function loadCore(ctx) {
+  try {
+    return require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
+  } catch (err) {
+    console.error('opencues sync: failed to load @opencues/core (run `pnpm build`):', err.message);
+    process.exit(1);
+  }
+}
+
+function printHelp() {
+  console.log('opencues sync <host> [options]');
+  console.log('');
+  console.log('Push your local .opencues/ configs into a host that can\'t read the');
+  console.log('filesystem on its own (today: chrome). CC/OC/codex hot-reload from');
+  console.log('~/.opencues/ natively — no sync needed.');
+  console.log('');
+  console.log('Hosts:');
+  console.log('  chrome      Bundle into integrations/chrome/dist/configs/');
+  console.log('');
+  console.log('Sources (mutually exclusive; default = user + project merged):');
+  console.log('  --user            Only sync ~/.opencues/');
+  console.log('  --project         Only sync <cwd>/.opencues/');
+  console.log('  --pack <name>     Sync only ~/.opencues/packs/<name>/ (or <cwd>/...)');
+  console.log('  --source <path>   Sync from an arbitrary directory');
+  console.log('');
+  console.log('Flags:');
+  console.log('  --watch           Re-sync on filesystem change (loop, Ctrl+C to stop)');
+  console.log('  --dry-run         Print plan; do not copy');
+  console.log('  --help            Show this message');
+  console.log('');
+  console.log('Filter: entries with `not-on-host: chrome` (or auto-detected as');
+  console.log('subprocess-only via .sh / .ps1 / etc. script extensions) are skipped.');
+  console.log('See docs/features/host-compat.md for the full spec.');
+  console.log('');
+  console.log('Examples:');
+  console.log('  opencues sync chrome                    # default user + project');
+  console.log('  opencues sync chrome --pack demo-pack   # one pack only');
+  console.log('  opencues sync chrome --dry-run          # preview the plan');
+}

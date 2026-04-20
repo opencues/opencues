@@ -41,6 +41,7 @@ module.exports = function help(argv, ctx) {
   console.log('');
   console.log('Run / inspect:');
   console.log('  run <host>              Launch the patched host (claude-code | opencode | codex | chrome)');
+  console.log('  sync <host>             Bundle .opencues/ into a host that doesn\'t auto-discover (chrome)');
   console.log('  which                   Print every relevant path (installs, configs, logs)');
   console.log('  version                 Print CLI version + per-integration versions/compat');
   console.log('  doctor                  Cross-host diagnostics + suggested fixes');

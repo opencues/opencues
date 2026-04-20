@@ -23,6 +23,7 @@ const COMMANDS = {
   init:           () => require('../src/commands/init.cjs'),
   new:            () => require('../src/commands/new.cjs'),
   run:            () => require('../src/commands/run.cjs'),
+  sync:           () => require('../src/commands/sync.cjs'),
   validate:       () => require('../src/commands/validate.cjs'),
   import:         () => require('../src/commands/import.cjs'),
   doctor:         () => require('../src/commands/doctor.cjs'),
