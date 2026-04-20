@@ -29,17 +29,20 @@ module.exports = function sync(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let host = null;
-  const flags = { user: false, project: false, dryRun: false, watch: false };
+  const flags = { user: false, project: false, dryRun: false, watch: false, wsl: false };
   let pack = null;
   let source = null;
+  let target = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--user') flags.user = true;
     else if (a === '--project') flags.project = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--watch') flags.watch = true;
+    else if (a === '--wsl') flags.wsl = true;
     else if (a === '--pack') pack = argv[++i];
     else if (a === '--source') source = argv[++i];
+    else if (a === '--target') target = argv[++i];
     else if (!a.startsWith('-') && !host) host = a;
   }
 
@@ -54,12 +57,12 @@ module.exports = function sync(argv, ctx) {
     process.exit(2);
   }
 
+  const opts = { flags, pack, source, target };
   if (flags.watch) {
-    syncChromeWatch({ flags, pack, source }, ctx);
+    syncChromeWatch(opts, ctx);
     return;
   }
-
-  syncChrome({ flags, pack, source }, ctx);
+  syncChrome(opts, ctx);
 };
 
 // Run an initial sync, then watch every source dir for changes and
@@ -143,14 +146,28 @@ function readVersion(distConfigs) {
   catch { return ''; }
 }
 
-function syncChrome({ flags, pack, source }, ctx) {
+function syncChrome({ flags, pack, source, target }, ctx) {
   const core = loadCore(ctx);
   const sources = resolveSources({ flags, pack, source });
   if (sources.length === 0) {
     console.error('opencues sync chrome: no sources resolved. Try --user, --project, --pack <name>, or --source <path>.');
     process.exit(1);
   }
-  const distConfigs = path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist', 'configs');
+
+  // Resolve where to write. Order: --target > --wsl > in-repo dist.
+  const repoConfigs = path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist', 'configs');
+  let extraTarget = null;
+  if (target) extraTarget = path.resolve(target, 'dist', 'configs');
+  else if (flags.wsl) {
+    const wslPath = resolveWslDeployPath();
+    if (!wslPath) {
+      console.error('--wsl requires running under WSL with /mnt/c/ accessible.');
+      console.error('Use --target <chrome-install-path> for a non-WSL chrome install.');
+      process.exit(1);
+    }
+    extraTarget = path.join(wslPath, 'dist', 'configs');
+  }
+  const distConfigs = repoConfigs;
 
   console.log(`Syncing to ${distConfigs}/`);
   for (const s of sources) console.log(`  source: ${s.label.padEnd(8)} ${s.dir}`);
@@ -215,7 +232,42 @@ function syncChrome({ flags, pack, source }, ctx) {
   if (dropped > 0) {
     console.log(`Skipped ${dropped} entry(ies) flagged as non-chrome (see opencues list for hosts).`);
   }
-  console.log(`Version: ${fs.readFileSync(versionPath, 'utf8')}`);
+  console.log(`Version: ${fs.readFileSync(versionPath, 'utf8').trim()}`);
+
+  // Mirror to the deploy target if --wsl / --target was passed. The
+  // chrome extension running from <target>/dist/ reads dist/configs/
+  // via chrome.runtime.getURL — so the mirror has to be 1:1.
+  if (extraTarget) {
+    if (fs.existsSync(extraTarget)) fs.rmSync(extraTarget, { recursive: true, force: true });
+    fs.mkdirSync(extraTarget, { recursive: true });
+    copyDirSync(distConfigs, extraTarget);
+    console.log(`Mirrored to ${extraTarget}`);
+  }
+}
+
+function copyDirSync(src, dst) {
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dst, entry.name);
+    if (entry.isDirectory()) { fs.mkdirSync(d, { recursive: true }); copyDirSync(s, d); }
+    else fs.copyFileSync(s, d);
+  }
+}
+
+// Same WSL detection + Windows username + path used by `opencues
+// install chrome --wsl` (integrations/chrome/bin/install.cjs).
+function resolveWslDeployPath() {
+  if (!isWsl()) return null;
+  const probe = require('node:child_process').spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (probe.status !== 0) return null;
+  const winUser = String(probe.stdout).trim().replace(/\r$/, '');
+  if (!winUser) return null;
+  return `/mnt/c/Users/${winUser}/AppData/Local/opencues-chrome`;
+}
+function isWsl() {
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+  try { return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8')); }
+  catch { return false; }
 }
 
 // Resolve which .opencues/ dirs to read from based on flags.
@@ -396,9 +448,13 @@ function printHelp() {
   console.log('  --source <path>   Sync from an arbitrary directory');
   console.log('');
   console.log('Flags:');
-  console.log('  --watch           Re-sync on filesystem change (loop, Ctrl+C to stop)');
-  console.log('  --dry-run         Print plan; do not copy');
-  console.log('  --help            Show this message');
+  console.log('  --watch              Re-sync on filesystem change (loop, Ctrl+C to stop)');
+  console.log('  --dry-run            Print plan; do not copy');
+  console.log('  --target <path>      Also mirror dist/configs/ to <path>/dist/configs/');
+  console.log('                       (the chrome install dir — `opencues which` shows it)');
+  console.log('  --wsl                Mirror to the WSL Windows-side install location');
+  console.log('                       (/mnt/c/Users/<u>/AppData/Local/opencues-chrome/)');
+  console.log('  --help               Show this message');
   console.log('');
   console.log('Filter: entries with `not-on-host: chrome` (or auto-detected as');
   console.log('subprocess-only via .sh / .ps1 / etc. script extensions) are skipped.');
