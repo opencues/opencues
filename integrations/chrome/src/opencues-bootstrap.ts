@@ -161,7 +161,10 @@ async function readFile(path: string): Promise<string | null> {
   try {
     const result = await chrome.storage.local.get(key);
     const v = result[key];
-    return typeof v === 'string' ? v : null;
+    if (typeof v !== 'string') return null;
+    // Empty strings break parsers (JSON.parse('') → SyntaxError). Treat
+    // them as "no content" so ConfigLoader can fall through to defaults.
+    return v.length > 0 ? v : null;
   } catch {
     return null;
   }

@@ -52,8 +52,11 @@ try {
 } catch { /* no controls/ dir */ }
 
 // Load tips JSON from Claude Code patches (same tips file used by both integrations)
-const tipsJsonPath = projectRoot + 'integrations/cc/patches/claude-code-tips.json';
-const defaultTipsJson = readOr(tipsJsonPath, '');
+const tipsJsonPath = projectRoot + 'integrations/claude-code/patches/claude-code-tips.json';
+// Fall back to empty-object JSON (not "") so ConfigLoader's JSON.parse
+// succeeds even when the tips file is missing — the parser treats an
+// empty object as "no tips configured" rather than throwing.
+const defaultTipsJson = readOr(tipsJsonPath, '{}');
 
 const envDefines = {
   '__GROQ_API_KEY__': JSON.stringify(envVars['GROQ_API_KEY'] || ''),
