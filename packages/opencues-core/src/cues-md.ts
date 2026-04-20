@@ -162,6 +162,18 @@ export interface ControlConfig {
   includeOriginal?: boolean;
   /** Named prompts parsed from ## sections in the cue.md body (e.g. { Extract: "...", Transform: "..." }) */
   prompts?: Record<string, string>;
+  /**
+   * Explicit host allow-list. When set, takes precedence over auto-detection.
+   * Use the canonical host names: claude-code, opencode, codex, chrome.
+   * See @opencues/core's `inferHostCompat()` for the resolution rules.
+   */
+  onHost?: string[];
+  /**
+   * Explicit host deny-list. Removes hosts from the auto-detected (or
+   * on-host) set. Useful for marking a control as "not chrome" when the
+   * auto-detection (script: extension) didn't catch it.
+   */
+  notOnHost?: string[];
 }
 
 export interface CuesMdConfig {
@@ -189,6 +201,26 @@ export interface CuesMdConfig {
 // ============================================================================
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+
+/**
+ * Parse a YAML host list value. Accepts:
+ *   on-host: [chrome, opencode]      (JSON array)
+ *   on-host: chrome, opencode         (comma-separated)
+ *   on-host: chrome                   (single host)
+ * Returns the raw strings — `inferHostCompat()` does the validation +
+ * lowercasing + filtering. Keeping unknown names here lets the validator
+ * point them out by their original spelling.
+ */
+function parseHostList(value: string): string[] {
+  const v = value.trim();
+  if (v.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch { /* fall through to comma-split */ }
+  }
+  return v.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
 
 function parseFrontmatter(content: string): { frontmatter: CuesMdFrontmatter; body: string } {
   const match = content.match(FRONTMATTER_RE);
@@ -559,6 +591,10 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   apiKeyEnv?: string;
   altCount?: number;
   includeOriginal?: boolean;
+  /** Explicit host allow-list (takes precedence over auto-detection from script: extension). */
+  onHost?: string[];
+  /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
+  notOnHost?: string[];
 }
 
 /**
@@ -635,6 +671,10 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'apiKeyEnv': case 'apikeyenv': fm.apiKeyEnv = value; break;
       case 'altCount': case 'altcount': fm.altCount = parseInt(value, 10) || 3; break;
       case 'includeOriginal': case 'includeoriginal': fm.includeOriginal = value === 'true'; break;
+      // Host-compat overrides. Accept both hyphenated (canonical YAML) and
+      // camelCase forms. Try JSON-array first; fall back to comma-separated.
+      case 'on-host': case 'onHost': fm.onHost = parseHostList(value); break;
+      case 'not-on-host': case 'notOnHost': fm.notOnHost = parseHostList(value); break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {

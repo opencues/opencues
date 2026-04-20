@@ -84,3 +84,15 @@ export {
   type DirEntry,
 } from './discover';
 
+// Host-compat: which integrations a cue/blank/control runs on
+export {
+  inferHostCompat,
+  unknownHostNames,
+  formatHostList,
+  HOSTS,
+  NATIVE_HOSTS,
+  type Host,
+  type HostCompatInput,
+  type HostCompatResult,
+} from './host-compat';
+
