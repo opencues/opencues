@@ -32,6 +32,13 @@ module.exports = function which(argv, ctx) {
       ['Default fork dir',           path.join(HOME, 'opencode-cues')],
       ['(actual fork install lives at <fork>/node_modules/@opencues/{core,runtime}/ + 3 patched .tsx files)', ''],
     ]],
+    ['Codex install state (per fork)', [
+      ['Default fork dir',           path.join(HOME, 'codex-cues')],
+      ['Bridge crate',               path.join(HOME, 'codex-cues', 'codex-rs', 'opencues-bridge')],
+      ['Launch helper',              path.join(HOME, 'codex-cues', 'run-codex-cues.sh')],
+      ['Daemon source',              path.join(ctx.REPO_ROOT, 'packages/opencues-runtime/dist/adapters/codex/v1/daemon.js')],
+      ['(TUI patches: pre-alpha — see integrations/codex/HANDOFF.md)', ''],
+    ]],
     ['Chrome state', [
       ['Repo build output',          path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist')],
       ['Manifest',                   path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'manifest.json')],

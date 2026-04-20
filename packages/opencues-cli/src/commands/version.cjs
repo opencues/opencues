@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const HOSTS = ['cc', 'oc', 'chrome'];
+const HOSTS = ['cc', 'oc', 'codex', 'chrome'];
 
 module.exports = function version(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

@@ -14,9 +14,10 @@ const { spawnSync } = require('node:child_process');
 const HOST_ALIASES = {
   'claude-code': 'cc', 'claudecode': 'cc', 'claude': 'cc', 'cc': 'cc',
   'opencode':    'oc', 'oc':         'oc',
+  'codex':       'codex',
   'chrome':      'chrome',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome'];
+const HOSTS = ['claude-code', 'opencode', 'codex', 'chrome'];
 
 module.exports = function run(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -42,6 +43,7 @@ module.exports = function run(argv, ctx) {
 
   if (folder === 'cc')     return runCC(passthrough);
   if (folder === 'oc')     return runOC(passthrough, argv);
+  if (folder === 'codex')  return runCodex(passthrough, argv);
   if (folder === 'chrome') return runChrome();
 };
 
@@ -89,6 +91,30 @@ function runOC(passthrough, fullArgv) {
   process.exit(result.status ?? 0);
 }
 
+function runCodex(passthrough, fullArgv) {
+  const targetIdx = fullArgv.indexOf('--target');
+  const fork = (targetIdx >= 0 && fullArgv[targetIdx + 1])
+    || process.env.CODEX_CUES_DIR
+    || path.join(os.homedir(), 'codex-cues');
+
+  const launchHelper = path.join(fork, 'run-codex-cues.sh');
+  if (!fs.existsSync(launchHelper)) {
+    console.error(`opencues run codex: launch helper missing at ${launchHelper}`);
+    console.error('Install first: opencues install codex');
+    console.error('NOTE: codex integration is pre-alpha. The infrastructure is in place,');
+    console.error('but TUI patches that wire OpenCues into the chat composer are not yet');
+    console.error('implemented. See integrations/codex/HANDOFF.md.');
+    process.exit(1);
+  }
+
+  // Drop --target if it was passed; it's ours, not codex's.
+  const cleaned = passthrough.filter((a, i, arr) => a !== '--target' && arr[i - 1] !== '--target');
+
+  console.log(`Launching ${launchHelper}...`);
+  const result = spawnSync(launchHelper, cleaned, { stdio: 'inherit' });
+  process.exit(result.status ?? 0);
+}
+
 function runChrome() {
   console.log('Chrome extensions are loaded by Chrome itself, not by opencues.');
   console.log('');
@@ -108,11 +134,12 @@ function printHelp() {
   console.log('Hosts:');
   console.log('  claude-code   exec the patched CC binary (claude-cues or claude)');
   console.log('  opencode      cd into the fork dir + bun run dev');
+  console.log('  codex         exec the codex launch helper (sets OPENCUES_DAEMON_PATH + cargo run)');
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
   console.log('');
   console.log('Flags:');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');
-  console.log('  --target <path>   (opencode only) opencode fork dir (default: $HOME/opencode-cues)');
+  console.log('  --target <path>   (opencode | codex) fork dir (default: $HOME/opencode-cues, $HOME/codex-cues)');
   console.log('');
   console.log('Examples:');
   console.log('  opencues run claude-code');

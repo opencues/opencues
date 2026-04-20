@@ -10,7 +10,7 @@ const COMMANDS = [
   'set-key', 'check-keys', 'update', 'debug', 'completion',
   'which', 'version', 'help',
 ];
-const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'chrome'];
+const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'codex', 'chrome'];
 const KINDS = ['cue', 'blank', 'control'];
 const FILES = ['cues', 'blanks', 'controls', 'opencues'];
 

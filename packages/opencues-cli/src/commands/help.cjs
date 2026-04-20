@@ -26,7 +26,7 @@ module.exports = function help(argv, ctx) {
   console.log('Usage: opencues <command> [options]');
   console.log('');
   console.log('Setup:');
-  console.log('  install <host>          Install a host integration (claude-code|opencode|chrome|--all)');
+  console.log('  install <host>          Install a host integration (claude-code|opencode|codex|chrome|--all)');
   console.log('  uninstall <host>        Roll back an installation');
   console.log('  seed-configs            Copy repo defaults into ~/.opencues/');
   console.log('  update                  Pull, rebuild, redeploy installed integrations');
@@ -40,7 +40,7 @@ module.exports = function help(argv, ctx) {
   console.log('  import <source>         Download a community config pack (gist/github/url/local)');
   console.log('');
   console.log('Run / inspect:');
-  console.log('  run <host>              Launch the patched host (claude-code | opencode | chrome)');
+  console.log('  run <host>              Launch the patched host (claude-code | opencode | codex | chrome)');
   console.log('  which                   Print every relevant path (installs, configs, logs)');
   console.log('  version                 Print CLI version + per-integration versions/compat');
   console.log('  doctor                  Cross-host diagnostics + suggested fixes');
@@ -53,9 +53,10 @@ module.exports = function help(argv, ctx) {
   console.log('  help [<command>]        Show help. With <command>: that subcommand\'s help.');
   console.log('');
   console.log('Per-host details:');
-  console.log('  cc      OpenCues for Claude Code (patches cli.js via tweakcc)');
-  console.log('  oc      OpenCues for OpenCode (patches a fork)');
-  console.log('  chrome  OpenCues Chrome MV3 extension');
+  console.log('  claude-code  OpenCues for Claude Code (patches cli.js via tweakcc)');
+  console.log('  opencode     OpenCues for OpenCode (patches a TS fork)');
+  console.log('  codex        OpenCues for OpenAI Codex (Rust TUI; pre-alpha — see HANDOFF.md)');
+  console.log('  chrome       OpenCues Chrome MV3 extension');
   console.log('');
   console.log('Configs:');
   console.log('  Project-level: <cwd>/.opencues/');

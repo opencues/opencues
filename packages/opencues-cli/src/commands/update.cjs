@@ -58,6 +58,10 @@ function detectInstalled(HOME, REPO_ROOT) {
   if (fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime'))) {
     out.push({ host: 'opencode',    folder: 'oc', evidence: `${ocFork}/node_modules/@opencues/runtime exists` });
   }
+  const codexFork = path.join(HOME, 'codex-cues');
+  if (fs.existsSync(path.join(codexFork, 'codex-rs/opencues-bridge'))) {
+    out.push({ host: 'codex',       folder: 'codex', evidence: `${codexFork}/codex-rs/opencues-bridge exists` });
+  }
   if (fs.existsSync(path.join(REPO_ROOT, 'integrations/chrome/dist/content.js'))) {
     out.push({ host: 'chrome', folder: 'chrome', evidence: 'integrations/chrome/dist/content.js exists' });
   }

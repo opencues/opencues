@@ -48,19 +48,9 @@ function doInstall() {
   const fork = args.target || DEFAULT_FORK;
   console.log(`Target codex fork: ${fork}`);
 
-  // Pre-flight: cargo on PATH.
-  const cargo = spawnSync('cargo', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-  if (cargo.status !== 0) {
-    console.error('\nopencues-codex install: cargo not found on PATH.');
-    console.error('Install rust + cargo (https://rustup.rs) and re-run:');
-    console.error('  curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh');
-    console.error('  source "$HOME/.cargo/env"');
-    process.exit(127);
-  }
-  console.log(`cargo: ${cargo.stdout.toString().trim()}`);
-
   if (args.dryRun) {
     console.log('\n[dry-run] Would:');
+    console.log(`  verify cargo is on PATH (rustup install if missing)`);
     console.log(`  clone openai/codex into ${fork} (if missing) at pinned SHA`);
     console.log(`  pnpm --filter @opencues/runtime build`);
     console.log(`  copy patches/opencues-bridge/ into ${fork}/codex-rs/opencues-bridge/`);
@@ -70,8 +60,27 @@ function doInstall() {
     return;
   }
 
+  // Pre-flight: cargo on PATH (also looks at the default rustup install
+  // location, since shells that don't source ~/.cargo/env still find it).
+  const cargo = spawnSync('cargo', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const cargoEnv = path.join(HOME, '.cargo', 'env');
+  if (cargo.status !== 0 && !fs.existsSync(cargoEnv)) {
+    console.error('\nopencues-codex install: cargo not found on PATH.');
+    console.error('Install rust + cargo (https://rustup.rs) and re-run:');
+    console.error('  curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh');
+    console.error('  source "$HOME/.cargo/env"');
+    process.exit(127);
+  }
+  if (cargo.status === 0) console.log(`cargo: ${cargo.stdout.toString().trim()}`);
+
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
-  const result = spawnSync(setupSh, [fork], { stdio: 'inherit' });
+  // Source ~/.cargo/env if cargo wasn't on PATH but rustup is installed,
+  // so the spawned setup.sh sees cargo too.
+  const env = cargo.status === 0 ? process.env : {
+    ...process.env,
+    PATH: `${path.join(HOME, '.cargo', 'bin')}:${process.env.PATH || ''}`,
+  };
+  const result = spawnSync(setupSh, [fork], { stdio: 'inherit', env });
   if (result.status !== 0) {
     console.error(`\n${pkg.name} install failed (setup.sh exited ${result.status}).`);
     process.exit(result.status || 1);

@@ -14,10 +14,11 @@ const HOST_ALIASES = {
   'cc':          'cc',
   'opencode':    'oc',
   'oc':          'oc',
+  'codex':       'codex',
   'chrome':      'chrome',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome'];
-const HOST_FOLDERS = ['cc', 'oc', 'chrome'];
+const HOSTS = ['claude-code', 'opencode', 'codex', 'chrome'];
+const HOST_FOLDERS = ['cc', 'oc', 'codex', 'chrome'];
 
 module.exports = function uninstall(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

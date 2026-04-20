@@ -90,6 +90,28 @@ module.exports = function doctor(argv, ctx) {
   }
   console.log('');
 
+  // ── Codex (Rust) ──────────────────────────────────────────────────────
+  console.log('## OpenAI Codex (codex)');
+  const codexFork = path.join(HOME, 'codex-cues');
+  const codexBridge = path.join(codexFork, 'codex-rs/opencues-bridge');
+  const codexLauncher = path.join(codexFork, 'run-codex-cues.sh');
+  const codexDaemon = path.join(ctx.REPO_ROOT, 'packages/opencues-runtime/dist/adapters/codex/v1/daemon.js');
+  const cargoCheck = spawnSync('cargo', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  ok(`cargo on PATH`, cargoCheck.status === 0);
+  if (cargoCheck.status !== 0) {
+    findings.push({ sev: 'info', msg: 'codex needs cargo (Rust toolchain)', fix: 'curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh' });
+  }
+  if (fs.existsSync(codexFork)) {
+    ok(`fork at ${codexFork}`, true);
+    ok(`bridge crate`, fs.existsSync(codexBridge));
+    ok(`launch helper`, fs.existsSync(codexLauncher));
+  } else {
+    bad(`fork at ${codexFork}`, false);
+    findings.push({ sev: 'info', msg: 'Codex not installed', fix: 'opencues install codex (pre-alpha — see integrations/codex/HANDOFF.md)' });
+  }
+  ok(`daemon entry built`, fs.existsSync(codexDaemon));
+  console.log('');
+
   // ── Chrome ────────────────────────────────────────────────────────────
   console.log('## Chrome');
   const chromeDist = path.join(ctx.REPO_ROOT, 'integrations/chrome/dist');

@@ -22,10 +22,11 @@ const HOST_ALIASES = {
   'cc':          'cc',
   'opencode':    'oc',
   'oc':          'oc',
+  'codex':       'codex',
   'chrome':      'chrome',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome'];     // canonical names
-const HOST_FOLDERS = ['cc', 'oc', 'chrome'];             // resolved folders for --all
+const HOSTS = ['claude-code', 'opencode', 'codex', 'chrome'];     // canonical names
+const HOST_FOLDERS = ['cc', 'oc', 'codex', 'chrome'];             // resolved folders for --all
 
 module.exports = function install(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
@@ -84,8 +85,9 @@ function printHelp(ctx) {
   console.log('Hosts:');
   console.log('  claude-code   Patches Claude Code\'s cli.js via tweakcc       (aliases: claudecode, claude, cc)');
   console.log('  opencode      Patches an OpenCode 1.4.x fork                 (alias: oc)');
+  console.log('  codex         Patches OpenAI Codex (Rust TUI) — pre-alpha, see HANDOFF.md');
   console.log('  chrome        Chrome MV3 extension');
-  console.log('  --all         Install all three');
+  console.log('  --all         Install all four');
   console.log('');
   console.log('Common flags (passed through to the per-host installer):');
   console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode)');
