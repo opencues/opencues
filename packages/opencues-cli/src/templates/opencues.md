@@ -1,16 +1,97 @@
 ---
-# Project OpenCues state — overrides user-level ~/.opencues/opencues.md
-# on a key-by-key basis. Project file wins entirely if present.
+version: 1
 
-# voiceMode: active | inactive    # silence TTS when 'inactive'
-# tipsMode: on | off              # hide tips in statusline when 'off'
-# debugMode: on | off             # extra logging to /tmp/opencues.log
-# cursorNavigate: active | inactive   # auto-highlight word under cursor
+# ─────────────────────────────────────────────────────────────────────
+# opencues.md — project state + settings
+# ─────────────────────────────────────────────────────────────────────
+#
+# This file lives at both user- (~/.opencues/) and project-level
+# (<cwd>/.opencues/). Project wins entirely when present (NOT merged
+# key-by-key — unlike cues.md/blanks.md/controls.md).
+#
+# Two sections:
+#   TOP-LEVEL SCALARS — current values. Cycled by selector/satellite
+#                       navigation ("voice-mode active" → Up cycles to
+#                       "inactive"). The runtime writes updates back
+#                       into this file when the user cycles.
+#   SETTINGS BLOCK   — declarations + per-value tips for the selector/
+#                      satellite system. Describes what each setting
+#                      means; the scalar above is the current value.
+#
+# ─────────────────────────────────────────────────────────────────────
+# STANDARD SCALARS
+# ─────────────────────────────────────────────────────────────────────
+#
+# voice-mode:       active | inactive       gates TTS globally
+# tips-mode:        on | off                hides tips in statusline
+# debug-mode:       on | off                extra logging → /tmp/opencues.log
+# cursor-navigate:  active | inactive       auto-highlight word at cursor
+#
+# Custom scalars can be added — any `<name>: <value>` pair that has a
+# matching entry in `settings:` below becomes a navigable selector.
 
-# settings:
-#   <name>:
-#     tip: "selector tip in statusline"
-#     values:
-#       <value-1>: "satellite tip for value-1"
-#       <value-2>: "satellite tip for value-2"
+voice-mode: active
+tips-mode: on
+debug-mode: off
+cursor-navigate: inactive
+
+# Example custom scalars (uncomment + add matching settings block entries):
+# output-format: rich markdown
+# display-mode: split pane
+
+# ─────────────────────────────────────────────────────────────────────
+# OPTIONAL OVERRIDES
+# ─────────────────────────────────────────────────────────────────────
+# Uncomment to override the integration's built-in defaults.
+#
+# tts-rate: 2
+# tts-script: ~/.claude/opencues/actions/speak.sh
+# llm-model: openai/gpt-oss-120b
+# llm-endpoint: https://api.groq.com/openai/v1/chat/completions
+
+# ─────────────────────────────────────────────────────────────────────
+# SETTINGS BLOCK — per-scalar tips + value enumeration
+# ─────────────────────────────────────────────────────────────────────
+#
+# Shape:
+#   settings:
+#     <scalar-name>:
+#       tip: <string>          selector tip shown when the setting's
+#                              current value is highlighted
+#       values:
+#         <value>: <tip>       each value becomes a cycleable option;
+#                              satellite tip shown when that value is highlighted
+#
+# The order of keys in `values:` determines the cycle order.
+# Cycling past the last value wraps to the first.
+
+settings:
+  voice-mode:
+    tip: Gates TTS globally
+    values:
+      active: TTS reads tips aloud on navigation
+      inactive: TTS is silenced
+  tips-mode:
+    tip: Controls tip display level
+    values:
+      on: All tips shown in statusline
+      off: Tips hidden
+  debug-mode:
+    tip: Enable debug logging output
+    values:
+      on: Debug output emitted to /tmp/opencues.log
+      off: Debug logging suppressed
+  cursor-navigate:
+    tip: Auto-highlight word at cursor
+    values:
+      active: Highlight follows cursor to navigable words
+      inactive: Manual navigation only (Ctrl+Alt+arrows)
+
+  # Example custom setting — uncomment the matching scalar above to activate:
+  # output-format:
+  #   tip: Response format style
+  #   values:
+  #     plain text: Unformatted plain text output
+  #     rich markdown: Formatted markdown with styling
+  #     structured json: Machine-readable JSON output
 ---

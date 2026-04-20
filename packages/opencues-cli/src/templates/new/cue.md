@@ -1,17 +1,74 @@
 ---
+# ─────────────────────────────────────────────────────────────────────
 # Cue source: {{NAME}}
 # Created by `opencues new cue {{NAME}}`.
+# ─────────────────────────────────────────────────────────────────────
 #
-# Required fields:
-#   parser: alternatives | compute | answer | raw
+# A folder-based cue source. The runtime merges this with
+# monolithic cues.md; folder wins on name conflicts.
 #
-# Common optional fields:
-#   match: <regex>      — only fire on words matching (instant; LLM skipped)
-#   keywords: a, b, c   — instant trigger via keyword (faster than match)
-#   priority: 50        — higher wins on merge conflicts (default: 50)
-#   model: <name>       — override LLM model for this source
+# ─────────────────────────────────────────────────────────────────────
+# REQUIRED FIELD
+# ─────────────────────────────────────────────────────────────────────
+# parser:  alternatives | compute | answer | raw
+#
+#   alternatives — comma-separated options the user cycles through
+#                  e.g. "happy, joyful, content"
+#   compute      — LLM returns COMPUTE=<js-expr>, runtime evaluates
+#                  e.g. COMPUTE=50*1.20 → "60"
+#   answer       — LLM returns ANSWER=<text>, displayed verbatim
+#                  e.g. ANSWER=Paris
+#   raw          — LLM's raw string is the output (no parsing)
+
 parser: alternatives
+
+# ─────────────────────────────────────────────────────────────────────
+# TRIGGERS (at least one recommended; if both omitted, source runs on
+# every word in document scope)
+# ─────────────────────────────────────────────────────────────────────
+# match:     regex — only fires when the highlighted word matches
+# keywords:  comma-separated — instant trigger (OR'd with match:)
+#
+# Examples:
+#   match: \b[a-z]{4,}\b            # 4+ letter lowercase words only
+#   match: \b(TODO|FIXME|XXX)\b     # flag comment markers
+#   keywords: if, while, for        # programming keywords
+
+# match: \b[a-z]{4,}\b
+# keywords: foo, bar
+
+# ─────────────────────────────────────────────────────────────────────
+# PRIORITY + MERGE
+# ─────────────────────────────────────────────────────────────────────
+# priority: number (default 50)
+#   Higher priority wins on merge conflicts between this source and
+#   others (e.g. the monolithic cues.md ### section with same name).
+#   Project-level always wins over user-level regardless of priority.
+
 priority: 50
+
+# ─────────────────────────────────────────────────────────────────────
+# SCOPE
+# ─────────────────────────────────────────────────────────────────────
+# scope: word | document
+#   word     — runs per highlighted word (default; most sources)
+#   document — runs once for the whole input (rare; e.g. consume-all
+#              blanks, summarisation sources)
+
+# scope: word
+
+# ─────────────────────────────────────────────────────────────────────
+# OPTIONAL FIELDS
+# ─────────────────────────────────────────────────────────────────────
+# model:   override LLM model for this source only (e.g. "openai/gpt-oss-120b")
+# tip:     statusline tip shown when a cued word is highlighted
+# speak:   bool — read tip via TTS on navigation (default false)
+
+# model: openai/gpt-oss-120b
+# tip: "alternative word suggestions"
+# speak: false
 ---
 Suggest 3 alternatives for the highlighted word, considering the
 surrounding sentence context. Output as a comma-separated list.
+
+Example: "happy" → "joyful, pleased, content"
