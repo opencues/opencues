@@ -8,7 +8,7 @@ Implements feature [17](../../../docs/features/selector-satellite.md). See that 
 
 **Patch files:** `patches/dynamicHighlight.ts` (config parser, cycling paths, `_pendingAutoPopulate` extension, render-pass suppression, pair-cleanup cascade, TTS cycling gate), `patches/wordHighlight.ts` (auto-populate insertion branch, TTS navigation gate)
 
-**Cues-core changes:** `packages/cues-core/src/sources/control-blank-source.ts` (satellite branch), `packages/cues-core/src/cues-md.ts` (`blankSatellite` field on `ControlConfig` + `SingleCueFrontmatter`)
+**Cues-core changes:** `packages/opencues-core/src/sources/control-blank-source.ts` (satellite branch), `packages/opencues-core/src/cues-md.ts` (`blankSatellite` field on `ControlConfig` + `SingleCueFrontmatter`)
 
 ## CC-Specific: The `opencues.md` Parser
 
@@ -28,7 +28,7 @@ The parser is deliberately not a regex. An earlier version used `new RegExp("^--
 
 ## CC-Specific: Multi-Word Selector and Satellite
 
-Either half can be multi-word. The cues-core source (`ControlBlankSource`) splits on the first **tab character** rather than a space, so script output like `"output-format\tplain text"` parses correctly into `selectorText = "output-format"` + `satelliteText = "plain text"`. A setting key with spaces in YAML — e.g. `"high quality": [fast, slow]` — also works because the YAML parser splits on `:` not whitespace.
+Either half can be multi-word. The opencues-core source (`ControlBlankSource`) splits on the first **tab character** rather than a space, so script output like `"output-format\tplain text"` parses correctly into `selectorText = "output-format"` + `satelliteText = "plain text"`. A setting key with spaces in YAML — e.g. `"high quality": [fast, slow]` — also works because the YAML parser splits on `:` not whitespace.
 
 Each half is represented as a WordDef whose `word` field holds the **joined text** (e.g. `"plain text"`, including internal spaces) and whose `spanLength` is set to the word count when > 1. `_dynSpans` is populated for every position in the span, with `originalIndex` pointing at the span's first index. This is the same span infrastructure used by multi-word LLM alternatives (e.g. `"Jeff Bezos"`) — selector+satellite rides on top of it.
 

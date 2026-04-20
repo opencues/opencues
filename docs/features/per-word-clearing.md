@@ -40,7 +40,7 @@ Stale detection also applies when LLM results return after a delay. The merge lo
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - Results are keyed by word index — the library has no built-in persistence across edits
 - Each call to the resolver is independent; it does not track previous results

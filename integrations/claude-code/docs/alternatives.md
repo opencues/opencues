@@ -50,7 +50,7 @@ Hash map built at startup in `globalThis._localCueMap`. See feature 6 for the tw
 ## CC-Specific: CueResolver Initialisation
 
 IIFE injected at startup in cli.js:
-- Loads cues-core module → `globalThis._cuesCore`
+- Loads opencues-core module → `globalThis._cuesCore`
 - Parses tips file → `globalThis._localCueMap`
 - Creates NodeHttpAdapter (HTTPS keep-alive, Groq provider config) → `globalThis._httpAdapter`
 - Loads config from cues.md, blanks.md, controls.md

@@ -1,6 +1,6 @@
 # Hardcoded Features
 
-Features and values that are hardcoded in patch code or cues-core rather than driven by `.md` config files. Each should eventually be configurable.
+Features and values that are hardcoded in patch code or opencues-core rather than driven by `.md` config files. Each should eventually be configurable.
 
 ---
 
@@ -13,7 +13,7 @@ Features and values that are hardcoded in patch code or cues-core rather than dr
 
 ### Blank marker character
 - **What:** `_` is the blank placeholder
-- **Where:** Hardcoded throughout cues-core and patches (~20 locations)
+- **Where:** Hardcoded throughout opencues-core and patches (~20 locations)
 - **Proposed:** `blanks.md` frontmatter `blankMarker: _`
 
 ### Number-to-word conversion

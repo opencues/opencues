@@ -150,7 +150,7 @@ Integrations bring OpenCues into specific editors or tools. See `docs/guides/add
 The minimal integration:
 
 ```typescript
-import { createResolver, buildSourcesFromConfig, parseCuesMd } from 'cues-core';
+import { createResolver, buildSourcesFromConfig, parseCuesMd } from 'opencues-core';
 
 const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
 const blanksCfg = fs.existsSync('blanks.md')
@@ -169,7 +169,7 @@ Place your integration in `integrations/<editor>/` with:
 - `docs/` for editor-specific documentation
 - `tests/` for integration tests
 
-## 3. Contributing to cues-core
+## 3. Contributing to opencues-core
 
 The core library is pure TypeScript with no I/O dependencies.
 
@@ -184,7 +184,7 @@ pnpm build
 ### Running tests
 
 ```bash
-pnpm --filter @opencues/core test        # cues-core unit tests
+pnpm --filter @opencues/core test        # opencues-core unit tests
 pnpm --filter @opencues/runtime test     # runtime tests (350)
 pnpm test                                # all packages, via turbo
 ```
@@ -212,7 +212,7 @@ GROQ_API_KEY=xxx pnpm --filter @opencues/core test
 The benchmark runs 390 real sentences through the full pipeline with live LLM calls and saves results for comparison:
 
 ```bash
-GROQ_API_KEY=xxx npx tsx tests/benchmarks/cues-core-benchmark.ts
+GROQ_API_KEY=xxx npx tsx tests/benchmarks/opencues-core-benchmark.ts
 ```
 
 Results are saved to `tests/results/cuescore-{model}-{timestamp}.json`. Compare runs to detect regressions.
@@ -235,7 +235,7 @@ Current categories benchmarked (30 tests each): word-adj, word-verb, word-noun, 
 
 ### Architecture: combining vs classifying
 
-cues-core uses two strategies for multi-source inputs. Understanding this is critical when adding sources.
+opencues-core uses two strategies for multi-source inputs. Understanding this is critical when adding sources.
 
 **Words (combining)**: All word-scoped `alternatives`-parser sources from `cues.md` are merged into a **single LLM call** at build time. Domain prompts (grammar, legal, medical, financial) become conditional sections in one combined prompt. This is because domains can overlap — "the contract covers the diagnosis" needs grammar, legal, AND medical alternatives in the same response.
 
@@ -251,7 +251,7 @@ If you add a new `### section` to `cues.md`, it gets combined automatically — 
 
 These issues were found during development and are worth knowing about:
 
-**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. The classifier now checks both fields and uses `max_tokens: 200`. ConfigSource uses `max_tokens: 800` for alternatives. Both `ConfigSource` and `ClassifiedSourceGroup` now include `reasoning_effort: "low"` in their request bodies — this is a Groq-specific field that non-Groq providers ignore. This ensures cues-core works correctly out of the box without requiring the integration's HTTP adapter to inject provider overrides.
+**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. The classifier now checks both fields and uses `max_tokens: 200`. ConfigSource uses `max_tokens: 800` for alternatives. Both `ConfigSource` and `ClassifiedSourceGroup` now include `reasoning_effort: "low"` in their request bodies — this is a Groq-specific field that non-Groq providers ignore. This ensures opencues-core works correctly out of the box without requiring the integration's HTTP adapter to inject provider overrides.
 
 **The classifier reasoning field echoes the full prompt.** When checking the reasoning field for `MODE=GRAMMAR`, the reasoning text contains the classifier prompt which lists ALL mode names. Matching bare mode names (e.g., `raw.includes('MATH')`) would always hit the first entry. Only match the `MODE=X` pattern in reasoning.
 

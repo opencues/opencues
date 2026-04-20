@@ -4,7 +4,7 @@ last_updated: 2026-03-31
 
 # LLM Providers
 
-LLM provider configuration and benchmarks for cues-core.
+LLM provider configuration and benchmarks for opencues-core.
 
 ## Quick Start
 
@@ -88,12 +88,12 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-l
 | Historical Events | 100% |
 | **Overall** | **100%** |
 
-## cues-core Integration
+## opencues-core Integration
 
-All LLM calls go through cues-core's `NodeHttpAdapter`:
+All LLM calls go through opencues-core's `NodeHttpAdapter`:
 
 ```typescript
-import { NodeHttpAdapter, ConfigSource, parseCuesMd } from 'cues-core';
+import { NodeHttpAdapter, ConfigSource, parseCuesMd } from 'opencues-core';
 
 const httpAdapter = new NodeHttpAdapter({
   providerOverrides: {

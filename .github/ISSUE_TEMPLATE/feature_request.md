@@ -14,7 +14,7 @@ How you'd like it to work.
 
 **Which layer does this affect?**
 - [ ] The standard (config files — cues.md, blanks.md, controls)
-- [ ] cues-core (TypeScript library)
+- [ ] opencues-core (TypeScript library)
 - [ ] Claude Code integration (patches)
 - [ ] New integration (specify editor)
 - [ ] Documentation

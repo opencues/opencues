@@ -17,7 +17,7 @@
  * 4. Words with alternatives turn gray (dimmed)
  * 5. Ctrl+Alt+Up/Down cycles through alternatives
  *
- * ## Sources (via cues-core CueResolver)
+ * ## Sources (via opencues-core CueResolver)
  *
  * - ConfigSource (scope:words) — word alternatives from cues.md (grammar, legal, medical, etc.)
  * - ClassifiedSourceGroup (scope:blanks) — blank fill-in from blanks.md (math, factual, grammar)
@@ -35,7 +35,7 @@
  * - globalThis._dynDefs — word definitions with alts, tips, linked indices
  * - globalThis._dynPending — true while LLM request in flight
  * - globalThis._dynSpans — multi-word alternative tracking
- * - globalThis._cueResolver — CueResolver instance (from cues-core)
+ * - globalThis._cueResolver — CueResolver instance (from opencues-core)
  * - globalThis._localCueMap — hash map for instant tips lookup
  * - globalThis._cycleAlt — shared cycling function (control words, alts, spans)
  *
@@ -46,8 +46,8 @@
 import { LocationResult, showDiff, getRequireFuncName, escapeIdent } from './index';
 
 /**
- * Initialize cues-core at startup.
- * Loads cues-core once and stores in globalThis for instant (~0.3ms) lookups.
+ * Initialize opencues-core at startup.
+ * Loads opencues-core once and stores in globalThis for instant (~0.3ms) lookups.
  * This eliminates the 575ms bash/node spawn overhead per lookup.
  */
 export const writeCuesCoreInit = (
@@ -75,7 +75,7 @@ export const writeCuesCoreInit = (
     const requireVarMatch = oldFile.match(requireVarPattern);
 
     if (!requireVarMatch || requireVarMatch.index === undefined) {
-      console.error('patch: dynamicHighlight: failed to find require var statement for cues-core init injection');
+      console.error('patch: dynamicHighlight: failed to find require var statement for opencues-core init injection');
       return null;
     }
 
@@ -93,16 +93,16 @@ export const writeCuesCoreInit = (
     insertPos = scanPos + 1; // after the semicolon
   }
 
-  // Initialize cues-core at startup
+  // Initialize opencues-core at startup
   // Load the module, parse tips file, and build a hash map for O(1) lookups
-  // Uses cues-core's buildLookupMap() - no inline map building needed
+  // Uses opencues-core's buildLookupMap() - no inline map building needed
   const cuesCoreInitCode = `
 ;(function(){
 // Hot-reload config: track load timestamp and resolver generation counter
 globalThis._configLoadedAt=globalThis._configLoadedAt||0;
 globalThis._resolverGeneration=globalThis._resolverGeneration||0;
 globalThis._configReloading=globalThis._configReloading||false;
-// Load cues-core module once per process (not hot-reloadable)
+// Load opencues-core module once per process (not hot-reloadable)
 if(!globalThis._localCueMap){
 try{
 var _cuesPath=(process.env.HOME||"~")+"/.claude/opencues/core";
@@ -929,7 +929,7 @@ break;
 }
 });
 }
-// LOCAL TIPS LOOKUP - uses cues-core functions for O(1) lookup
+// LOCAL TIPS LOOKUP - uses opencues-core functions for O(1) lookup
 // Skip cue-controls (numbers, custom controls) — they have built-in cycling, not tips
 var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
 
@@ -1588,14 +1588,14 @@ export const writeDynamicHighlight = (
   let content = oldFile;
   let result: string | null;
 
-  // 0. Initialize cues-core at startup for instant tips lookup (~0.3ms vs 575ms)
+  // 0. Initialize opencues-core at startup for instant tips lookup (~0.3ms vs 575ms)
   result = writeCuesCoreInit(content, config);
   if (!result) {
-    console.log('patch: dynamicHighlight: cues-core init failed (will fall back to shell script)');
+    console.log('patch: dynamicHighlight: opencues-core init failed (will fall back to shell script)');
     // Don't fail - shell script still works, just slower
   } else {
     content = result;
-    console.log('patch: dynamicHighlight: cues-core initialized (instant tips lookup)');
+    console.log('patch: dynamicHighlight: opencues-core initialized (instant tips lookup)');
   }
 
   // wink-pos-tagger removed — blank classification handled by ClassifiedSourceGroup

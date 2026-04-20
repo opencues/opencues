@@ -1,5 +1,5 @@
 /**
- * cues-core/discover.ts
+ * opencues-core/discover.ts
  *
  * Folder-based config discovery. Scans cues/, blanks/, controls/ directories
  * for individual cue.md files and merges them into CuesMdConfig objects.

@@ -218,7 +218,7 @@ Rendering patch injects a dim branch keyed on `globalThis._stepPatterns`. That a
 
 ## Principle for Step 3+
 
-**Each step must be the smallest diff over the previous step that produces a single visible, testable change.** No speculative wiring. No "while we're in here" additions. If a step needs infrastructure (cues-core, hot-reload, LLM), give it its own step first. Bigger steps → harder to debug when verification fails.
+**Each step must be the smallest diff over the previous step that produces a single visible, testable change.** No speculative wiring. No "while we're in here" additions. If a step needs infrastructure (opencues-core, hot-reload, LLM), give it its own step first. Bigger steps → harder to debug when verification fails.
 
 Don't pre-plan all the way to the end — decompose the next step only, execute it, verify it, then plan the next. Steps below Step 3 are placeholders to be refined as we get there.
 
@@ -255,7 +255,7 @@ if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(glo
 
 **Not in scope for Step 4:**
 - `_stepPatterns` check inside `_isCueControl` (a future step once step-patterns are populated).
-- Loading cues-core, parsing `controls.md`, folder discovery, hot-reload.
+- Loading opencues-core, parsing `controls.md`, folder discovery, hot-reload.
 - Any tip / LLM / rendering behaviour.
 
 **Verification:**
@@ -272,27 +272,27 @@ if(!globalThis._isCueControl)globalThis._isCueControl=function(_w){return !!(glo
 
 2. **Defensive `!_targetIdx.length` fallback is load-bearing.** Test 2 (`the cat sat` — no cue-control word present) navigates all three words. That only works because of the fallback in `wordHighlight.ts:464`: `if(!_targetIdx.length) _allW.forEach(...)`. Without it, sentences without any cue-control word would have zero navigable targets. Keep the fallback in every future filter iteration.
 
-3. **Minimal `_isCueControl` is `_cueControlOverrides`-only — does NOT check `_stepPatterns`.** The full IIFE version in `dynamicHighlight.ts` also returns true for words matching any `_stepPatterns`. When a future step populates `_stepPatterns`, this one-liner will need upgrading (otherwise step-pattern words like `42f` won't be recognized as cue-controls even though they dim). Flag this when sizing Step 7 / the cues-core init.
+3. **Minimal `_isCueControl` is `_cueControlOverrides`-only — does NOT check `_stepPatterns`.** The full IIFE version in `dynamicHighlight.ts` also returns true for words matching any `_stepPatterns`. When a future step populates `_stepPatterns`, this one-liner will need upgrading (otherwise step-pattern words like `42f` won't be recognized as cue-controls even though they dim). Flag this when sizing Step 7 / the opencues-core init.
 
 **Status: ✅ Done** (verified 2026-04-16: all three tests pass, no regressions)
 
 ---
 
-## Step 5 — Load cues-core at startup, tip-having words are cue-controls
+## Step 5 — Load opencues-core at startup, tip-having words are cue-controls
 
 **Goal:** Words present in `~/.claude/claude-code-tips.json` become navigable via the cue-control filter (in addition to the static `_cueControlOverrides` already picked up by Step 4). Other behaviour unchanged.
 
-**Why this choice:** `_isCueControl` is already the central filter consumer (Step 4). Combining "load cues-core + populate `_localCueMap`" with "extend `_isCueControl` to check the map" keeps this to a single anchor (the existing `fullCode` template literal in `writeWordHighlightClearOnTyping`). Separating them would leave the load observable only via a new debug export — not worth the extra edit.
+**Why this choice:** `_isCueControl` is already the central filter consumer (Step 4). Combining "load opencues-core + populate `_localCueMap`" with "extend `_isCueControl` to check the map" keeps this to a single anchor (the existing `fullCode` template literal in `writeWordHighlightClearOnTyping`). Separating them would leave the load observable only via a new debug export — not worth the extra edit.
 
 `writeWordHighlightClearOnTyping` already extracts `requireFuncName` (line 570), so `${requireFuncName}` templates in cleanly — no new infra.
 
 **Exact change (two parts, same template literal, `wordHighlight.ts`):**
 
-Insert cues-core load right after `_cueControlOverrides` init:
+Insert opencues-core load right after `_cueControlOverrides` init:
 ```js
 if(!globalThis._cuesCore){try{
 var _ccHome=process.env.HOME||"~";
-var _cues=${requireFuncName}(_ccHome+"/.claude/node_modules/cues-core");
+var _cues=${requireFuncName}(_ccHome+"/.claude/node_modules/opencues-core");
 var _tipsC=${requireFuncName}("fs").readFileSync(_ccHome+"/.claude/claude-code-tips.json","utf8");
 var _td=_cues.parseLocalCueFile(_tipsC);
 globalThis._cuesCore=_cues;
@@ -317,11 +317,11 @@ Upgrade Step 4's `_isCueControl` to check both maps:
 2. Type `raise volume now` (Step 4 test) → `volume` still highlights alone. Static overrides still work.
 3. Type `abc 42 xyz` (Step 3 test) → `42` still dims. Number regex still fires.
 4. Type `the cat sat` (no tips, no overrides) → all three navigable (defensive fallback).
-5. If `~/.claude/node_modules/cues-core` is missing or `claude-code-tips.json` is unreadable, cues-core load silently falls back to null. Step 4 behaviour preserved exactly (static `_cueControlOverrides` path).
+5. If `~/.claude/node_modules/opencues-core` is missing or `claude-code-tips.json` is unreadable, opencues-core load silently falls back to null. Step 4 behaviour preserved exactly (static `_cueControlOverrides` path).
 
-**Rollback:** Remove the cues-core load block and revert `_isCueControl` to the Step 4 single-map version. One contiguous edit.
+**Rollback:** Remove the opencues-core load block and revert `_isCueControl` to the Step 4 single-map version. One contiguous edit.
 
-**Peculiarities found during this step:** *None.* All four verification cases passed first try. No regex escapes in the injected code (avoided Step 3's template-literal gotcha), no anchor surprises, no version-specific issues. This suggests the "module-level require func + globalThis IIFE inside `fullCode`" pattern is robust — reuse it for future cues-core-adjacent steps (config parsing, `_reloadCuesConfig`) instead of re-inventing a new anchor in `dynamicHighlight.ts`.
+**Peculiarities found during this step:** *None.* All four verification cases passed first try. No regex escapes in the injected code (avoided Step 3's template-literal gotcha), no anchor surprises, no version-specific issues. This suggests the "module-level require func + globalThis IIFE inside `fullCode`" pattern is robust — reuse it for future opencues-core-adjacent steps (config parsing, `_reloadCuesConfig`) instead of re-inventing a new anchor in `dynamicHighlight.ts`.
 
 **Status: ✅ Done** (verified 2026-04-16: all four tests pass, no regressions)
 
@@ -373,7 +373,7 @@ Restart `claude-cues` (cwd must be `~/opencues`). Then:
 
 1. Type `raise duck now` + Ctrl+Alt+Left → only `duck` highlights. (Step 6 merged the entry into `_cueControlOverrides` → `_isCueControl("duck")` returns true via Step 5's dual-source filter.)
 2. Type `raise volume now` → still works (`volume` still in `_cueControlOverrides` from Step 2 static config — `Object.assign` doesn't clobber unrelated keys).
-3. Type `commit this plan` → still works (Step 5 tip filter still active — cues-core load + `_localCueMap` untouched).
+3. Type `commit this plan` → still works (Step 5 tip filter still active — opencues-core load + `_localCueMap` untouched).
 4. Type `abc 42 xyz` → `42` still dims (Step 3 regex).
 5. Revert the test entry to `{}` once verified — keeps the repo clean.
 
@@ -449,7 +449,7 @@ Restart `claude-cues` **from inside `~/opencues`**. Then:
 
 2. **Shared inner `}catch(_cte){}` couples controls.md and cues.md failures.** Step 6's controls.md parse and Step 7's cues.md parse sit inside the same outer try body. A malformed controls.md will throw before cues.md is even read — users with both files may see silent cues.md failure if controls.md has a syntax error. Acceptable trade-off for step-size (separate try blocks would mean a bigger diff), but if this bites someone later, the fix is splitting them into independent try blocks at whatever step discovers the symptom.
 
-3. **Step 7 has a hard ordering dependency on Step 5.** The cues.md merge writes into `globalThis._localCueMap` which Step 5 initializes from tips.json. If Step 5's cues-core load fails (module missing, tips.json unreadable), `_localCueMap` is `null` and the Step 7 merge would crash — but the outer catch swallows it, leaving cues.md silently ignored. If we ever want cues.md to load independently of tips.json, Step 7 needs its own `_localCueMap = _localCueMap || new Map()` guard.
+3. **Step 7 has a hard ordering dependency on Step 5.** The cues.md merge writes into `globalThis._localCueMap` which Step 5 initializes from tips.json. If Step 5's opencues-core load fails (module missing, tips.json unreadable), `_localCueMap` is `null` and the Step 7 merge would crash — but the outer catch swallows it, leaving cues.md silently ignored. If we ever want cues.md to load independently of tips.json, Step 7 needs its own `_localCueMap = _localCueMap || new Map()` guard.
 
 **Status: ✅ Done** (verified 2026-04-16: all four tests pass, no regressions; cwd cues.md + tips.json coexist with cwd taking precedence)
 
@@ -461,7 +461,7 @@ Restart `claude-cues` **from inside `~/opencues`**. Then:
 
 **Why this choice:** The real cue-controls in the repo (`brightness`, `affirmations`, `numbers`, `stocks`, `weather`, `hackernews`, `prompt`, `answer`, `opencues`, plus folder-version `volume`) are sitting idle — Steps 1-7 only pick up the static tweakcc config plus anything in the mono `controls.md` (which is `{}`). This step unlocks them with no contrived test data.
 
-`discoverFolderConfigs` is a public cues-core API that takes I/O adapter functions and walks `cues/`, `blanks/`, `controls/` subdirs. We provide sync-fs adapters and consume only `.controlOverrides`.
+`discoverFolderConfigs` is a public opencues-core API that takes I/O adapter functions and walks `cues/`, `blanks/`, `controls/` subdirs. We provide sync-fs adapters and consume only `.controlOverrides`.
 
 **Exact change (appended inside Step 7's try body, before the closing `}catch(_cte){}`):**
 
@@ -958,7 +958,7 @@ Parses only top-level frontmatter `key: value` pairs inside the `---`/`---` deli
 1. Inside the `if(!globalThis._cuesCore){try{...}}` block, after `_localCueMap` is built:
 ```js
 try{
-var _NodeHttpAdapter=${requireFuncName}(_ccHome+"/.claude/node_modules/cues-core/node-http-adapter").NodeHttpAdapter;
+var _NodeHttpAdapter=${requireFuncName}(_ccHome+"/.claude/node_modules/opencues-core/node-http-adapter").NodeHttpAdapter;
 globalThis._httpAdapter=new _NodeHttpAdapter({maxSockets:2,timeout:30000,providerOverrides:{}});
 if(process.env.GROQ_API_KEY)setTimeout(function(){try{globalThis._httpAdapter.warmup("https://api.groq.com/openai/v1/models",{Authorization:"Bearer "+process.env.GROQ_API_KEY});}catch(_we){}},1000);
 }catch(_ha){globalThis._httpAdapter=null;}
@@ -982,9 +982,9 @@ cat /tmp/opencues-highlight-state-<pid>.json | python3 -m json.tool | grep httpA
 ```
 
 If `false`, check:
-- `~/.claude/node_modules/cues-core/node-http-adapter.js` exists.
-- `cues-core/node-http-adapter` exports `NodeHttpAdapter`.
-- Constructor accepts `{maxSockets, timeout, providerOverrides}` (signature drift from cues-core updates).
+- `~/.claude/node_modules/opencues-core/node-http-adapter.js` exists.
+- `opencues-core/node-http-adapter` exports `NodeHttpAdapter`.
+- Constructor accepts `{maxSockets, timeout, providerOverrides}` (signature drift from opencues-core updates).
 
 **Rollback:** Remove the two patch locations (the adapter `try` block + the `httpAdapterLoaded` debug field). No other files touched.
 
@@ -998,7 +998,7 @@ If `false`, check:
 
 **Goal:** `globalThis._cueResolver` is a live `CueResolver` after startup, populated with sources built from merged cwd + folder-discovered cues.md / blanks.md prompt configs. Step 19+ will call `.resolve()` on it.
 
-**Why this choice:** Second LLM-infra prereq. After Step 17's adapter, the resolver binds it to actual prompt sources via `buildSourcesFromConfig`. Splitting adapter-load (Step 17) and resolver-load (Step 18) keeps blame localised if a future cues-core release drifts on either API.
+**Why this choice:** Second LLM-infra prereq. After Step 17's adapter, the resolver binds it to actual prompt sources via `buildSourcesFromConfig`. Splitting adapter-load (Step 17) and resolver-load (Step 18) keeps blame localised if a future opencues-core release drifts on either API.
 
 **Exact change (three sub-edits in `wordHighlight.ts` `fullCode`):**
 
@@ -2089,9 +2089,9 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 ## Step 36 — Resolver-driven blank-fill (`readControlState` wiring, rip inline IIFE)
 
-**Goal:** Replace the inline `execFile`-spawn pipeline in `wordHighlight.ts` (roughly lines 1040-1295 today) with the resolver-driven path the baseline used. `CueResolver` + `ControlBlankSource` already live in `cues-core` and handle detection, matching, script invocation, and metadata emission for every blank mode we currently handle inline (keyword expansion, clearKeywords, consumeContext, consumeAll, satellite, dismissible, keyword matching by proximity).
+**Goal:** Replace the inline `execFile`-spawn pipeline in `wordHighlight.ts` (roughly lines 1040-1295 today) with the resolver-driven path the baseline used. `CueResolver` + `ControlBlankSource` already live in `opencues-core` and handle detection, matching, script invocation, and metadata emission for every blank mode we currently handle inline (keyword expansion, clearKeywords, consumeContext, consumeAll, satellite, dismissible, keyword matching by proximity).
 
-**Why this choice:** The inline IIFE is a ~200-line duplicate of `ControlBlankSource`. Keeping both paths means any future change to blank semantics has to be made twice, and the inline path can drift silently from cues-core. Centralising in the resolver also keeps the patch thin for future Claude Code version bumps — the heavier logic lives in a versioned npm package, not in a template literal against minified `cli.js`.
+**Why this choice:** The inline IIFE is a ~200-line duplicate of `ControlBlankSource`. Keeping both paths means any future change to blank semantics has to be made twice, and the inline path can drift silently from opencues-core. Centralising in the resolver also keeps the patch thin for future Claude Code version bumps — the heavier logic lives in a versioned npm package, not in a template literal against minified `cli.js`.
 
 **Key observation — the downstream consumer is already complete.** `_pendingAutoPopulate` consumer at `wordHighlight.ts:~1360-1499` (baked into cli.js from the baseline) already handles every case we need: keyword expansion, `blankKeywordIndices` clearing, selector/satellite insertion with `displaySeparator`, multi-word scalar fill, consume-all staging. The missing piece is populating `_pendingAutoPopulate` from resolver output instead of from the inline IIFE.
 
@@ -2101,9 +2101,9 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 **Peculiarities found during Step 36a:**
 
-1. **Sync `execFileSync` readState blocked the event loop.** First pass mirrored the baseline (`execFileSync` with 6s timeout). When the resolver fired at 500ms debounce, `ControlBlankSource.getCues()` called `readState` synchronously — freezing Node for ~400ms (weather), ~1s (stocks), ~5s (prompt-improver LLM). UI stalled. Fix: widened `ControlBlankSource.readState` type in cues-core to `string | null | Promise<string | null>`, changed `getCues()` to `await Promise.resolve(this.readState(...))`. Non-breaking — sync impls still work. Patch-side `_readControlState` now uses async `execFile` returning a Promise. Event loop stays free. Lesson: when reintegrating, don't blindly mirror the baseline's sync I/O just because the interface permits it — async is strictly better here.
+1. **Sync `execFileSync` readState blocked the event loop.** First pass mirrored the baseline (`execFileSync` with 6s timeout). When the resolver fired at 500ms debounce, `ControlBlankSource.getCues()` called `readState` synchronously — freezing Node for ~400ms (weather), ~1s (stocks), ~5s (prompt-improver LLM). UI stalled. Fix: widened `ControlBlankSource.readState` type in opencues-core to `string | null | Promise<string | null>`, changed `getCues()` to `await Promise.resolve(this.readState(...))`. Non-breaking — sync impls still work. Patch-side `_readControlState` now uses async `execFile` returning a Promise. Event loop stays free. Lesson: when reintegrating, don't blindly mirror the baseline's sync I/O just because the interface permits it — async is strictly better here.
 
-2. **Rebuilding cues-core isn't enough — must copy to `~/.claude/node_modules/cues-core/`.** The patch `require("cues-core")` resolves from Claude's `node_modules`, not from the monorepo's `dist/`. After each cues-core change: `npm run build` in `packages/cues-core`, then `cp -r dist/* ~/.claude/node_modules/cues-core/`. Forgot this initially and couldn't figure out why the change wasn't visible. Flag for Step 36b (we'll touch cues-core again if widening anything else).
+2. **Rebuilding opencues-core isn't enough — must copy to `~/.claude/node_modules/opencues-core/`.** The patch `require("opencues-core")` resolves from Claude's `node_modules`, not from the monorepo's `dist/`. After each opencues-core change: `npm run build` in `packages/opencues-core`, then `cp -r dist/* ~/.claude/node_modules/opencues-core/`. Forgot this initially and couldn't figure out why the change wasn't visible. Flag for Step 36b (we'll touch opencues-core again if widening anything else).
 
 3. **Resolver's 500ms debounce naturally gives inline the win.** Inline spawns `execFile` on keystroke (async, non-blocking). Resolver fires at 500ms after typing stops. For fast scripts (weather 400ms), inline completes first; the resolver's `.then` callback sees text already filled and guard (`curW[wordIndex]!=="_"`) trips, backs off. Clean no-op when inline wins — exactly what coexistence needs.
 
@@ -2115,19 +2115,19 @@ if(_hlText!==_oldText&&globalThis._consumeAllAlts&&_hlText!==globalThis._lastRes
 
 **Peculiarities found during Step 36b:**
 
-1. **`convertCueResultsToWordDefs` dropped single-alt control-blank results.** Default `minAlts: 2` filter made sense for LLM word-alt results (you need ≥2 to cycle) but silently discarded control-blank single-alt results (`["18%"]` from volume/brightness/stocks/etc.) — the alt IS the auto-populate value, not a cycle list. First fix was a second-pass hack in the patch. Better fix: native bypass in cues-core — `isControlBlank = !!r.metadata?.controlName` skips the minAlts check. Changed in `packages/cues-core/src/sources/local-cue-source.ts`.
+1. **`convertCueResultsToWordDefs` dropped single-alt control-blank results.** Default `minAlts: 2` filter made sense for LLM word-alt results (you need ≥2 to cycle) but silently discarded control-blank single-alt results (`["18%"]` from volume/brightness/stocks/etc.) — the alt IS the auto-populate value, not a cycle list. First fix was a second-pass hack in the patch. Better fix: native bypass in opencues-core — `isControlBlank = !!r.metadata?.controlName` skips the minAlts check. Changed in `packages/opencues-core/src/sources/local-cue-source.ts`.
 
-2. **`mergeWordDefs` needs `{protectControlName: true}` to be passed explicitly.** The option exists in cues-core (`local-cue-source.ts:483-487`) but defaults off. Without it, the debounced LLM pass over the filled text (e.g. `volume 18%`) generates word-alt dyndefs for `18%`, merges them in, and clobbers the control-blank metadata. Pass the option every time the resolver's output is merged.
+2. **`mergeWordDefs` needs `{protectControlName: true}` to be passed explicitly.** The option exists in opencues-core (`local-cue-source.ts:483-487`) but defaults off. Without it, the debounced LLM pass over the filled text (e.g. `volume 18%`) generates word-alt dyndefs for `18%`, merges them in, and clobbers the control-blank metadata. Pass the option every time the resolver's output is merged.
 
 3. **Nav filter didn't treat `metadata.controlName` as navigable.** Filter at the keyHandlerCode level required `d.alts && d.alts.length > 1` to count a word as selectable. Control-blank scalars have single-alt, so `18%` was skipped during Ctrl+Alt+Left/Right. Baseline's equivalent at `dynamicHighlight.ts:1554` had a disjunct `(d.metadata && d.metadata.controlName)` — ported.
 
 4. **Cycling control-blanks needs a dedicated `_cycleAlt` branch, not step-patterns.** First pass registered a step-pattern from `blankSuffix + blankStep`, which handled text transitions (`18%` → `24%`) but NEVER invoked `blankScript set <value>` — so system volume didn't actually change. Baseline solution (`dynamicHighlight.ts:330-362`): a dedicated `_cbDef` lookup in `_cycleAlt` that reads `metadata.blankStep`/`blankFormat`/`blankSuffix` directly from the dyndef, spawns `bash <blankScript> set <numValue>` (fire-and-forget, `spawn + detached + unref`), and rewrites text. Ported verbatim.
 
-5. **cues-core scalar-blank `cueTip` lacked the `?? matched.tip` fallback** that selector/satellite/list cases already had. Volume's `tip: system volume control` wasn't surfacing on the filled `18%`. One-line fix in `control-blank-source.ts:262`.
+5. **opencues-core scalar-blank `cueTip` lacked the `?? matched.tip` fallback** that selector/satellite/list cases already had. Volume's `tip: system volume control` wasn't surfacing on the filled `18%`. One-line fix in `control-blank-source.ts:262`.
 
 6. **Two passes of the resolver fire per blank-fill.** Pass 1 (text=`volume _`): ControlBlankSource emits control-blank, my code populates `_pendingAutoPopulate`, consumer fills text to `volume 18%`. Pass 2 (text=`volume 18%`): ControlBlankSource emits nothing (no `_`), but LLM sources emit word-alt results for `volume` and `18%`. This is what would clobber the control-blank dyndef without `protectControlName`. Intentional two-pass — the first creates the dyndef with metadata; the second is where protection kicks in.
 
-**Rollback:** 36a is additive — delete the `readControlState` option, the result-iteration block, and the backoff guard. 36b requires re-adding the inline IIFE (preserve the last-known-good commit SHA for reference) AND reverting the cues-core `minAlts` bypass (harmless without the patch but strictly speaking an upstream change too).
+**Rollback:** 36a is additive — delete the `readControlState` option, the result-iteration block, and the backoff guard. 36b requires re-adding the inline IIFE (preserve the last-known-good commit SHA for reference) AND reverting the opencues-core `minAlts` bypass (harmless without the patch but strictly speaking an upstream change too).
 
 ---
 

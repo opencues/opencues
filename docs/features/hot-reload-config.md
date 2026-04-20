@@ -40,7 +40,7 @@ The `_localCueMap` is rebuilt from scratch on every reload (not merged), so dele
 
 ## What Requires Restart
 
-- **cues-core module** — loaded once at process start via `require()`, not reloadable
+- **opencues-core module** — loaded once at process start via `require()`, not reloadable
 - **HTTPS connection pool** — `NodeHttpAdapter` is independent of config
 - **TTS speed/script path** — set at patch-generation time from `~/.tweakcc/config.json`
 - **Patch code** — the injected JavaScript in `cli.js` is fixed at setup time
@@ -49,7 +49,7 @@ The `_localCueMap` is rebuilt from scratch on every reload (not merged), so dele
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - All parsers are stateless functions (`parseCuesMd`, `parseSingleCueMd`, `discoverFolderConfigs`) — call them at any time to get a fresh parse
 - No built-in caching, TTL, or file-watching mechanism

@@ -147,8 +147,8 @@ if old in src:
 PY
 fi
 
-# 7. setup.sh must also copy cues-core/node-http-adapter.js — it's a
-#    standalone CommonJS file at the cues-core package root (not under
+# 7. setup.sh must also copy opencues-core/node-http-adapter.js — it's a
+#    standalone CommonJS file at the opencues-core package root (not under
 #    dist/), and Resolver does require('@opencues/core/node-http-adapter')
 #    at runtime. Without this copy, NodeHttpAdapter load fails and LLM
 #    resolution silently dies. Idempotent: only injects if absent.
@@ -240,9 +240,9 @@ fi
 if grep -q "const resolver = new Resolver" "$BOOT"; then
   verify "$BOOT" "configLoader.load().then(() => resolver.subscribe())" "resolver subscribe-after-load (boot.ts)"
 fi
-# LF-7 needs cues-core install block (landed when ConfigLoader did, O.5).
-if grep -q "cues-core/dist" "$SETUP"; then
-  verify "$SETUP" "node-http-adapter.js" "cues-core node-http-adapter copy (setup.sh)"
+# LF-7 needs opencues-core install block (landed when ConfigLoader did, O.5).
+if grep -q "opencues-core/dist" "$SETUP"; then
+  verify "$SETUP" "node-http-adapter.js" "opencues-core node-http-adapter copy (setup.sh)"
 fi
 # LF-8 needs the bootstrap's boot() bindings object (from O.2).
 if grep -q "setText:" "$BOOTSTRAP"; then

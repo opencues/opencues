@@ -1,5 +1,5 @@
 /**
- * cues-core/sources/config-source.ts
+ * opencues-core/sources/config-source.ts
  *
  * Generic config-driven CueSource. Each ### section in a .md file
  * (cues.md, blanks.md) becomes one ConfigSource instance.

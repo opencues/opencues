@@ -37,9 +37,9 @@ Separately from cursor state, the system should export the current highlight sta
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
-- cues-core has no cursor awareness — this feature is entirely integration-specific
+- opencues-core has no cursor awareness — this feature is entirely integration-specific
 - The library operates on text strings and word indices; it never tracks cursor position
 - No file I/O or event-emission facilities are provided by the core library
 

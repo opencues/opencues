@@ -53,11 +53,11 @@ This is a selector/satellite setting — it can be toggled via `opencues setting
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
-- cues-core has no cursor awareness — cursor-navigate is entirely integration-specific
+- opencues-core has no cursor awareness — cursor-navigate is entirely integration-specific
 - The navigability criteria (cue-control, local cues, LLM alts, spans) are the same as manual navigation
-- cues-core provides `WordDef` classification; the integration decides how to map cursor position to word index
+- opencues-core provides `WordDef` classification; the integration decides how to map cursor position to word index
 
 ### Integration responsibilities
 

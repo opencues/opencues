@@ -25,7 +25,7 @@ pnpm exec opencues install codex --dry-run
 # → does NOT require cargo to be on PATH (the dry-run skips pre-flight)
 
 pnpm exec opencues run codex
-# → error message: "launch helper missing at $HOME/codex-cues/run-codex-cues.sh"
+# → error message: "launch helper missing at $HOME/codex-cues/launch.sh"
 # → suggests `opencues install codex` first, mentions pre-alpha + HANDOFF.md
 
 pnpm exec opencues uninstall codex --dry-run
@@ -75,7 +75,7 @@ pnpm exec opencues install codex
 # → adds to workspace
 # → cargo build --release for the bridge crate (slow first time)
 # → smoke-tests the bridge
-# → drops $HOME/codex-cues/run-codex-cues.sh
+# → drops $HOME/codex-cues/launch.sh
 
 pnpm exec opencues uninstall codex
 # → reverts Cargo.toml workspace addition via git checkout

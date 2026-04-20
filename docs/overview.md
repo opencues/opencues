@@ -17,7 +17,7 @@ The architecture has two layers:
 1. **Config Standard** (`cues.md`, `blanks.md`, `controls.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
 2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
 
-Integrations (Claude Code, future editors) use cues-core to load the config standard and provide the UI layer.
+Integrations (Claude Code, future editors) use opencues-core to load the config standard and provide the UI layer.
 
 
 ```
@@ -68,7 +68,7 @@ See the top-level [README.md](../README.md) for the full quickstart.
 ```
 ~/opencues/
 ├── packages/
-│   ├── cues-core/              # Pure TypeScript, no I/O
+│   ├── opencues-core/              # Pure TypeScript, no I/O
 │   │   ├── src/
 │   │   │   ├── types.ts        # Interfaces
 │   │   │   ├── resolver.ts     # CueResolver
@@ -134,7 +134,7 @@ interface CueSource {
 ### Basic Usage (Node.js)
 
 ```typescript
-import { CueResolver, LocalCueSource, parseLocalCueFile } from 'cues-core';
+import { CueResolver, LocalCueSource, parseLocalCueFile } from 'opencues-core';
 import * as fs from 'fs';
 
 // Load tips from file
@@ -168,7 +168,7 @@ console.log(result.results);
 ### Multiple Sources
 
 ```typescript
-import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'cues-core';
+import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'opencues-core';
 
 // Tips source (high priority, instant)
 const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
@@ -191,7 +191,7 @@ const result = await resolver.resolve(context);
 
 ```typescript
 // Browser integration example
-import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'cues-core';
+import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'opencues-core';
 
 // Load tips and config
 const tipsData = parseLocalCueFile(tipsJson);
@@ -379,7 +379,7 @@ class MyCustomSource implements CueSource {
 For simple use cases, use the pure function directly:
 
 ```typescript
-import { lookupWord, parseLocalCueFile, LocalCueData } from 'cues-core';
+import { lookupWord, parseLocalCueFile, LocalCueData } from 'opencues-core';
 
 const data: LocalCueData = parseLocalCueFile(jsonContent);
 
@@ -394,7 +394,7 @@ if (result) {
 
 ## Integration with dynamicHighlight.ts
 
-cues-core is used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch loads `.md` config files and builds all sources via `buildSourcesFromConfig()`:
+opencues-core is used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch loads `.md` config files and builds all sources via `buildSourcesFromConfig()`:
 
 ```typescript
 // In dynamicHighlight.ts writeCuesCoreInit:
@@ -407,7 +407,7 @@ cues-core is used directly from the injected cli.js code (no shell scripts). The
 // 5. createResolver([...sources]) → globalThis._cueResolver
 ```
 
-> **HISTORICAL NOTE**: An earlier migration example showed wrapping cues-core inside `llm-analyze-auto.sh`. That script-based approach is no longer used; all calls are inline.
+> **HISTORICAL NOTE**: An earlier migration example showed wrapping opencues-core inside `llm-analyze-auto.sh`. That script-based approach is no longer used; all calls are inline.
 
 ## Testing
 
@@ -416,7 +416,7 @@ Run the test suite:
 ```bash
 cd ~/opencues
 pnpm test                                # all packages via turbo
-pnpm --filter @opencues/core test        # cues-core only
+pnpm --filter @opencues/core test        # opencues-core only
 pnpm --filter @opencues/runtime test     # runtime only
 ```
 
@@ -430,7 +430,7 @@ pnpm --filter @opencues/runtime test     # runtime only
 
 ## Migration from Existing System
 
-The migration to cues-core is complete:
+The migration to opencues-core is complete:
 
 1. Existing cue source JSON format is fully supported
 2. All LLM calls go through CueResolver + NodeHttpAdapter (no more bash scripts)

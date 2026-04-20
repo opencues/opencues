@@ -2,7 +2,7 @@
 //
 // Subscribes onTextChange (user-source only). After a quiet period
 // (debounceMs, default 500), builds a CueContext from the current text
-// and calls cues-core's resolver with merged sources from cuesConfig +
+// and calls opencues-core's resolver with merged sources from cuesConfig +
 // blanksConfig. Resolved results populate DynDefs so Cycling can rotate
 // LLM-suggested alternatives on Ctrl+Alt+Up/Down.
 //
@@ -87,7 +87,7 @@ export class Resolver {
         this._httpAdapter = this.options.httpAdapter;
       } else {
         try {
-          // Lazy require so tests without cues-core/node-http-adapter still load.
+          // Lazy require so tests without opencues-core/node-http-adapter still load.
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
           this._httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
@@ -103,7 +103,7 @@ export class Resolver {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       cuesCore = require('@opencues/core');
     } catch (err) {
-      this.adapter.log('error', 'Resolver: cues-core load failed', err);
+      this.adapter.log('error', 'Resolver: opencues-core load failed', err);
       return;
     }
 

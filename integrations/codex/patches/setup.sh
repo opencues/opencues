@@ -11,7 +11,7 @@
 #   4. Add opencues-bridge to <fork>/codex-rs/Cargo.toml workspace members
 #   5. Build the bridge crate with cargo (does NOT yet build full codex TUI —
 #      that happens once the TUI patches land; see HANDOFF.md)
-#   6. Drop a launch helper at <fork>/run-codex-cues.sh
+#   6. Drop a launch helper at <fork>/launch.sh
 #
 # Pinned upstream version: see PINNED_SHA below.
 
@@ -94,7 +94,7 @@ echo "Smoke test (spawns daemon, sends text-change, exits)..."
 cargo run -q --release --bin opencues-bridge-smoke -- "$DAEMON_JS" 2>&1 | tail -15
 
 # 6. Drop a launch helper at the fork root.
-LAUNCH_HELPER="$FORK_DIR/run-codex-cues.sh"
+LAUNCH_HELPER="$FORK_DIR/launch.sh"
 cat > "$LAUNCH_HELPER" <<EOF
 #!/usr/bin/env bash
 # Launch helper for opencues-patched codex.

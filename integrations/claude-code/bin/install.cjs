@@ -52,7 +52,7 @@ const INSTALLED_PATHS = {
   // Legacy paths from prior install layouts — removed on every install
   // and uninstall regardless of whether this install created them.
   legacy: [
-    path.join(CLAUDE_DIR, 'node_modules', 'cues-core'),
+    path.join(CLAUDE_DIR, 'node_modules', 'opencues-core'),
     path.join(CLAUDE_DIR, 'node_modules', 'opencues-runtime'),
     path.join(CLAUDE_DIR, 'node_modules', '@opencues', 'core'),
     path.join(CLAUDE_DIR, 'node_modules', '@opencues', 'runtime'),

@@ -23,10 +23,10 @@ just architecture.
 | 2 | `wordHighlight` (full nav + highlight) | ✓ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the core. Cue filtering moved to Step 4 ✓. Highlight uses bright white foreground (`\x1b[97m`); dim uses `\x1b[2m` — the active word stays bright and others fade, which reads better than inverse video on most terminals. ZWS chars stay in the InputZone display: they render zero-width in terminal so they're invisible to users; stripping would require reconstructing the InputZone every render (see REPAIR.md for why ZWS toggling is load-bearing). |
 | 3 | bare-number dim | — | REMOVED in v1 itself (reverted Step 21). Not porting. |
 | 4 | nav filter narrows to cue-control words | ✓ | Phase 7 (commit `1cfc47f`). Filter priority: cueMap → folder controls (incl. blankKeywords) → DynDefs → fallback all-words. |
-| 5 | load cues-core, tip-having words = cue-controls | ✓ | Phase 6 (commit `fa82625`). ConfigLoader loads tips JSON + cwd .md files + folder configs. Nav cue-control gating still pending Step 4. |
-| 6 | parse cwd `controls.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via cues-core's parseCuesMd. |
+| 5 | load opencues-core, tip-having words = cue-controls | ✓ | Phase 6 (commit `fa82625`). ConfigLoader loads tips JSON + cwd .md files + folder configs. Nav cue-control gating still pending Step 4. |
+| 6 | parse cwd `controls.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via opencues-core's parseCuesMd. |
 | 7 | parse cwd `cues.md` | ✓ | Phase 6. ConfigLoader exposes `cuesConfig`. |
-| 8 | folder-config discovery for `controls/` | ✓ | Phase 6. readDir capability + cues-core's parseSingleCueMd-based walk. cues/, controls/, blanks/ all walked. |
+| 8 | folder-config discovery for `controls/` | ✓ | Phase 6. readDir capability + opencues-core's parseSingleCueMd-based walk. cues/, controls/, blanks/ all walked. |
 | 9 | `_stepPatterns` + dim renderer extension | ✓ | Phase 8 + Phase I.4 verification. DimRender dims standalone stepPattern matches (`0.5f` typed alone with no other cues still dims). Test added covering the no-cueMap-context case. |
 | 10 | `_cycleAlt` for script-backed cue-controls | ✓ | Phase 8 (commit `6534f8a`). Cycling.runScriptControl spawns control.script with up/downArgs, fire-and-forget. |
 | 11 | `_isCueControl` recognises `_stepPatterns` | ✓ | Phase 8. Navigation.computeTargets calls matchStepPattern; DimRender includes step-pattern matches in its dim set. |
@@ -35,7 +35,7 @@ just architecture.
 | 14 | TTS speak on tip highlight | ✓ | Phase 5 (commit `d52bc32`). spawn-process capability + `~/.claude/actions/speak.sh`. |
 | 15 | parse `opencues.md` → `_openCuesCurrent` | ✓ | Phase 6. parseOpenCuesMd extracts top-level scalars into OpenCuesState. |
 | 16 | gate tip / TTS on `tips-mode: off` | ✓ | Phase 6. Statusline gates on `tipsMode === 'off'`; TTS gates on `voiceMode === 'inactive'`. Live verified. |
-| 17 | NodeHttpAdapter | ✓ | Phase 9 (commit `43f8775`). Resolver lazy-loads NodeHttpAdapter from cues-core. |
+| 17 | NodeHttpAdapter | ✓ | Phase 9 (commit `43f8775`). Resolver lazy-loads NodeHttpAdapter from opencues-core. |
 | 18 | CueResolver | ✓ | Phase 9. Resolver constructs CueResolver from merged cuesConfig + blanksConfig + folder cues/* prompts. |
 | 19 | auto-submit debounce → `resolve()` → `_dynDefs` | ✓ | Phase 9. onTextChange (user-source) → 500ms debounce → resolve → DynDefs populated. |
 | 20 | tip-word cycling end-to-end (JIT) | ✓ | Phase 9. LLM alts populate DynDefs; Cycling consumes via existing static-alt path. Stale-invalidation via generation counter; mid-cycle protection skips currentIndex>0 entries. |
@@ -98,7 +98,7 @@ Steps **17, 18, 19, 20**.
 What it unlocks: cycling words that aren't in the static cue map; tip-word
 JIT injection.
 
-Effort: **~1 day**. cues-core already has `CueResolver`, `NodeHttpAdapter`,
+Effort: **~1 day**. opencues-core already has `CueResolver`, `NodeHttpAdapter`,
 `createResolver`. Wire them into a new `Resolver` runtime module that
 debounces text changes and populates DynDefs from results. ConfigLoader (A)
 should be done first so the resolver has merged sources to work with.

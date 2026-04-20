@@ -303,22 +303,22 @@ fi
 end_step
 
 begin_step "Building @opencues/{core,runtime}"
-# 6. Build cues-core (skip if dist is newer than src)
+# 6. Build opencues-core (skip if dist is newer than src)
 if [ -d "$CUES_CORE" ]; then
   NEWEST_SRC=$(find "$CUES_CORE/src" -name '*.ts' -newer "$CUES_CORE/dist/index.js" 2>/dev/null | head -1)
   if [ ! -f "$CUES_CORE/dist/index.js" ] || [ -n "$NEWEST_SRC" ]; then
-    echo "Building cues-core..."
+    echo "Building opencues-core..."
     cd "$CUES_CORE"
     npm run build --silent 2>/dev/null || npm run build
     cd "$TWEAKCC_DIR"
   else
-    echo "cues-core up to date"
+    echo "opencues-core up to date"
   fi
 
   # Cleanup legacy install paths from before consolidation:
-  # - cues-core (pre-Stage-4a rename)
+  # - opencues-core (pre-Stage-4a rename)
   # - @opencues/core under node_modules (pre-Stage-6'-consolidation)
-  for legacy in ~/.claude/node_modules/cues-core ~/.claude/node_modules/@opencues/core; do
+  for legacy in ~/.claude/node_modules/opencues-core ~/.claude/node_modules/@opencues/core; do
     if [ -d "$legacy" ]; then
       echo "Removing legacy $legacy ..."
       rm -rf "$legacy"

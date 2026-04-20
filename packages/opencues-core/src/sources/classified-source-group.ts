@@ -1,5 +1,5 @@
 /**
- * cues-core/sources/classified-source-group.ts
+ * opencues-core/sources/classified-source-group.ts
  *
  * Wraps multiple ConfigSource children (blank modes) and picks one
  * per input via fast heuristics or LLM classifier fallback.

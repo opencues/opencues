@@ -262,7 +262,7 @@ State that must be updated after each cycle: `_hlText`, `_hlState.text`, `_hlSta
 | `prompts.Extract` | `CUES_PROMPT_EXTRACT` | Body section named `## Extract` |
 | `prompts.Transform` | `CUES_PROMPT_TRANSFORM` | Body section named `## Transform` |
 
-Body sections (`## SectionName`) in the `cue.md` body are parsed by cues-core into `control.prompts` and forwarded as `CUES_PROMPT_<SECTIONNAME>`. This keeps scripts free of config parsing — the single-parser principle.
+Body sections (`## SectionName`) in the `cue.md` body are parsed by opencues-core into `control.prompts` and forwarded as `CUES_PROMPT_<SECTIONNAME>`. This keeps scripts free of config parsing — the single-parser principle.
 
 **Claude CLI provider**: If `model` starts with `claude-`, the script can use `claude -p` instead of the HTTP API (no API key required — uses existing Claude Code auth). The prompt improver script auto-detects this from `CUES_MODEL`.
 

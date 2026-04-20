@@ -72,7 +72,7 @@ The character loop applies styles in this order:
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `WordDef.alts` length determines whether a word is navigable (dimmed vs. normal)
 - `metadata.control` identifies control-blanks, which are dimmed even with only 1 alt (the 1-alt exception)

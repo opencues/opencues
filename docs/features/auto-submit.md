@@ -57,7 +57,7 @@ This prevents false triggers from rapid typing. If the user types "hel" then qui
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - The resolver is stateless — it accepts text and word indices, returns results, and has no opinion on when it is called
 - No built-in debounce, timer, or text-change detection

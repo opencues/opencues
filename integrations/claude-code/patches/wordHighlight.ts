@@ -457,7 +457,7 @@ export const writeWordHighlightKeyHandler = (
   // Using fromText(R.text + char, G, R.offset) appends at end, preserving cursor.
   //
   // Navigation filter: cue words when _isCueControl is defined; all words as fallback
-  // _isCueControl is set by dynamicHighlight.ts after cues-core init
+  // _isCueControl is set by dynamicHighlight.ts after opencues-core init
   const filterCode = `var _targetIdx=[];
 _allW.forEach(function(w,i){
 var _fLw=(w||"").toLowerCase();

@@ -56,7 +56,7 @@ function doInstall() {
     console.log(`  copy patches/opencues-bridge/ into ${fork}/codex-rs/opencues-bridge/`);
     console.log(`  add opencues-bridge to ${fork}/codex-rs/Cargo.toml workspace members`);
     console.log(`  cargo build --release in ${fork}/codex-rs/  (slow first time, ~5 min)`);
-    console.log(`  drop launch-helper at ${fork}/run-codex-cues.sh`);
+    console.log(`  drop launch-helper at ${fork}/launch.sh`);
     return;
   }
 
@@ -107,7 +107,7 @@ function doUninstall() {
   const isGitRepo = fs.existsSync(path.join(fork, '.git'));
   const bridgeDir = path.join(fork, 'codex-rs', 'opencues-bridge');
   const cargoToml = path.join(fork, 'codex-rs', 'Cargo.toml');
-  const launchHelper = path.join(fork, 'run-codex-cues.sh');
+  const launchHelper = path.join(fork, 'launch.sh');
 
   console.log('Uninstall plan:');
   if (isGitRepo) {

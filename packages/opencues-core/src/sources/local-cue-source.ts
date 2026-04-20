@@ -1,5 +1,5 @@
 /**
- * cues-core/sources/tips-file.ts
+ * opencues-core/sources/tips-file.ts
  *
  * Tips file source - loads cues from a JSON tips file.
  * This is a pure TypeScript implementation with no I/O dependencies.

@@ -186,7 +186,7 @@ The legacy `integrations/claude-code/patches/setup.sh` direct invocation still w
 ## Key References
 
 - **README.md** — Features, install, configuration, troubleshooting
-- **CONTRIBUTING.md** — How to extend the standard, build integrations, modify cues-core
+- **CONTRIBUTING.md** — How to extend the standard, build integrations, modify opencues-core
 - **docs/overview.md** — System architecture, core interfaces, API usage
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)

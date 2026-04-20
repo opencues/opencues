@@ -41,12 +41,12 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 | Optional | Cue-Controls (11) | Platform-specific external triggers |
 | Optional | Cursor Export (13) | For external tool integration |
 
-## Using cues-core
+## Using opencues-core
 
-Every integration uses the same cues-core library:
+Every integration uses the same opencues-core library:
 
 ```typescript
-import { buildSourcesFromConfig, createResolver, parseCuesMd, NodeHttpAdapter } from 'cues-core';
+import { buildSourcesFromConfig, createResolver, parseCuesMd, NodeHttpAdapter } from 'opencues-core';
 
 // 1. Set up HTTP adapter
 const httpAdapter = new NodeHttpAdapter({
@@ -80,7 +80,7 @@ for (const cue of result.results) {
 For local cues:
 
 ```typescript
-import { parseLocalCueFile, buildLookupMap, lookupMultiple } from 'cues-core';
+import { parseLocalCueFile, buildLookupMap, lookupMultiple } from 'opencues-core';
 
 const tipsData = parseLocalCueFile(tipsJsonString);
 const tipsMap = buildLookupMap(tipsData);
@@ -117,7 +117,7 @@ Implements feature 1 from `docs/features/navigation.md`.
 
 - [ ] Directory created at `integrations/my-editor/`
 - [ ] Implements required features (1, 2, 3, 7, 12)
-- [ ] Uses cues-core for LLM/local cue logic
+- [ ] Uses opencues-core for LLM/local cue logic
 - [ ] Docs reference feature numbers from `docs/features/`
 - [ ] Tests cover core functionality
 - [ ] README.md with install instructions

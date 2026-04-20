@@ -206,7 +206,7 @@ import { writePatchesAppliedIndication } from './patchesAppliedIndication';
 
 ### 3d. Wire up the Cues Patches block (re-integration WIP)
 
-Find the `// --- Cues Patches ---` block near the bottom of `applyCustomization()`. During re-integration, patches are enabled one at a time as each is verified against v2.1.110. Current state — Steps 1-3 enabled; Step 3 is just a hardcoded number-dim regex inside `wordHighlight.ts` (no cues-core IIFE yet), so no extra orchestration is needed here:
+Find the `// --- Cues Patches ---` block near the bottom of `applyCustomization()`. During re-integration, patches are enabled one at a time as each is verified against v2.1.110. Current state — Steps 1-3 enabled; Step 3 is just a hardcoded number-dim regex inside `wordHighlight.ts` (no opencues-core IIFE yet), so no extra orchestration is needed here:
 
 ```ts
 // Imports at the top of the file (writeDynamicHighlight stays imported for Steps 4+ but isn't called yet):
@@ -248,7 +248,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
     if ((result = writeWordHighlight(content, highlightConfig))) content = result;
   }
 
-  // Steps 4+: dynamicHighlight / cues-core IIFE / LLM — still TODO, nothing wired.
+  // Steps 4+: dynamicHighlight / opencues-core IIFE / LLM — still TODO, nothing wired.
 }
 ```
 

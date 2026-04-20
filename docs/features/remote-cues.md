@@ -57,7 +57,7 @@ The result is a single `SourceConfig` with `name: 'grammar'`, `scope: 'words'`, 
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `ConfigSource` wraps each LLM source with priority, scope filtering (`words` or `blanks`), and response parsing
 - Five parser types handle different response formats: `alternatives`, `math`, `compute`, `answer`, and `raw`
@@ -68,7 +68,7 @@ The result is a single `SourceConfig` with `name: 'grammar'`, `scope: 'words'`, 
 ### Integration responsibilities
 
 - Provide an `HttpAdapter` implementation for the platform (HTTPS with keep-alive, timeouts, error handling)
-- Manage API keys (environment variables, config files, or credential stores) and pass them to cues-core
+- Manage API keys (environment variables, config files, or credential stores) and pass them to opencues-core
 - Handle network errors and timeouts gracefully (e.g., show stale results, retry, or degrade to local-only)
 - Wire the resolver's async results into the UI update loop so alternatives appear when ready
 - Respect the targeted optimisation by not clearing valid alternatives unnecessarily between analysis runs

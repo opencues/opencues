@@ -41,7 +41,7 @@ package does without naming-coupling.
 ```
 opencues/
 ├── packages/                    # Reusable libraries (lockstep versioned)
-│   ├── opencues-core/           # was: cues-core (rename in Stage 4)
+│   ├── opencues-core/           # was: opencues-core (rename in Stage 4)
 │   │                            # publishes as @opencues/core
 │   └── opencues-runtime/        # publishes as @opencues/runtime
 │       └── adapters/

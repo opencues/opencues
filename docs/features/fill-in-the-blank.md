@@ -82,7 +82,7 @@ For `math`, `compute`, and `answer` parsers, the result is always a single alter
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `ClassifiedSourceGroup` uses fast heuristics followed by LLM classification to detect blank type (math, factual, grammar)
 - Sources with `scope: 'blanks'` activate only when `_` is present in the input

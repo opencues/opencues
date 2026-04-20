@@ -4,7 +4,7 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 
 ---
 
-## 1. cues-core Source
+## 1. opencues-core Source
 
 ### Blank-Only Files (clean extraction)
 

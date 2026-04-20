@@ -75,7 +75,7 @@ The full Bucket E + F + G feature set comes online:
 
 **What it does:**
 - Statusline writes JSON snapshot to `/tmp/opencues-highlight-state-<pid>.json` (matches CC) on every render. OpenCode's own status bar is left alone — users can `tail` the file or run a separate consumer.
-- Resolver kicks in when `GROQ_API_KEY` is set: 500ms debounce after text-change, populates DynDefs from cues-core's CueResolver. Cycling can then rotate LLM-resolved alts.
+- Resolver kicks in when `GROQ_API_KEY` is set: 500ms debounce after text-change, populates DynDefs from opencues-core's CueResolver. Cycling can then rotate LLM-resolved alts.
 - TTS speaks `cueTip` when active word has `speak: true`; reads `tts-rate` / `tts-script` from opencues.md (overrides patch defaults).
 
 **Live test:**
@@ -109,7 +109,7 @@ The full Bucket E + F + G feature set comes online:
 
 **Modules touched:**
 - `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` — constructs ConfigLoader + Cycling; subscribes both. Navigation + DimRender now also receive configLoader so the cueMap-aware filter applies.
-- `integrations/opencode/patches/setup.sh` — installs `cues-core` into the fork's node_modules (ConfigLoader + Resolver depend on it).
+- `integrations/opencode/patches/setup.sh` — installs `opencues-core` into the fork's node_modules (ConfigLoader + Resolver depend on it).
 
 **What it does:**
 - ConfigLoader reads `~/.claude/claude-code-tips.json` (overridable via `host.tipsPath`) + cwd `cues.md`/`controls.md`/`blanks.md`/`opencues.md` + folder `cues/*/cue.md` + `controls/*/cue.md`.
@@ -130,7 +130,7 @@ The full Bucket E + F + G feature set comes online:
 - Static-alt cycling (e.g. `fast` → `quick`) only works if `tips.json` has alts for the word.
 
 **Peculiarities found:**
-- `cues-core` must be installed into the fork's node_modules. setup.sh now builds it (if missing) and copies dist + package.json. Same pattern as the runtime.
+- `opencues-core` must be installed into the fork's node_modules. setup.sh now builds it (if missing) and copies dist + package.json. Same pattern as the runtime.
 - ConfigLoader's hot-reload depends on text-change events. Editing `opencues.md` doesn't trigger a reload until you type something in the prompt. Same as CC behavior.
 
 **Notes for the next step:**

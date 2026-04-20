@@ -1,18 +1,18 @@
 /**
- * cues-core benchmark — runs real sentences through the full pipeline
+ * opencues-core benchmark — runs real sentences through the full pipeline
  * with live LLM calls and saves results for comparison.
  *
  * Usage:
- *   GROQ_API_KEY=xxx npx tsx tests/benchmarks/cues-core-benchmark.ts
+ *   GROQ_API_KEY=xxx npx tsx tests/benchmarks/opencues-core-benchmark.ts
  *
  * Results saved to: tests/results/cuescore-{model}-{timestamp}.json
  */
 
-import { buildSourcesFromConfig, combineWordSources } from '../../packages/cues-core/src/sources/build-sources';
-import { ClassifiedSourceGroup } from '../../packages/cues-core/src/sources/classified-source-group';
-import { createResolver } from '../../packages/cues-core/src/resolver';
-import { parseCuesMd } from '../../packages/cues-core/src/cues-md';
-import { HttpAdapter, CueContext, CueResult } from '../../packages/cues-core/src/types';
+import { buildSourcesFromConfig, combineWordSources } from '../../packages/opencues-core/src/sources/build-sources';
+import { ClassifiedSourceGroup } from '../../packages/opencues-core/src/sources/classified-source-group';
+import { createResolver } from '../../packages/opencues-core/src/resolver';
+import { parseCuesMd } from '../../packages/opencues-core/src/cues-md';
+import { HttpAdapter, CueContext, CueResult } from '../../packages/opencues-core/src/types';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,7 +36,7 @@ const agent = new https.Agent({ keepAlive: true, maxSockets: 2 });
 const httpAdapter: HttpAdapter = {
   post: (url: string, body: string, headers: Record<string, string>) =>
     new Promise((resolve, reject) => {
-      // cues-core sets reasoning_effort internally — no adapter overrides needed
+      // opencues-core sets reasoning_effort internally — no adapter overrides needed
       const u = new URL(url);
       const req = https.request({
         hostname: u.hostname,
@@ -668,7 +668,7 @@ async function runTest(tc: TestCase): Promise<TestResult> {
 }
 
 async function main() {
-  console.log(`\nOpenCues cues-core benchmark`);
+  console.log(`\nOpenCues opencues-core benchmark`);
   console.log(`Model: ${MODEL}`);
   console.log(`Tests: ${ALL_TESTS.length}`);
   console.log(`Endpoint: ${ENDPOINT}`);

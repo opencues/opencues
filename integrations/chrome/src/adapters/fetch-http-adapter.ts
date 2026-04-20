@@ -1,7 +1,7 @@
 import type { HttpAdapter } from '@opencues/core';
 
 /**
- * Browser fetch()-based HTTP adapter for cues-core.
+ * Browser fetch()-based HTTP adapter for opencues-core.
  * Replaces NodeHttpAdapter for Chrome extension use.
  */
 export class FetchHttpAdapter implements HttpAdapter {
@@ -32,7 +32,7 @@ export class FetchHttpAdapter implements HttpAdapter {
 
       // Normalize space-separated INDEX:alts to pipe-separated
       // Some models return "1:a,b 2:c,d" instead of "1:a,b|2:c,d"
-      // Insert | before space-separated INDEX: patterns so cues-core's parser handles them
+      // Insert | before space-separated INDEX: patterns so opencues-core's parser handles them
       if (raw && /\d+\s*[:=]/.test(raw)) {
         const normalized = raw.replace(/\s+(\d+\s*[:=])/g, '|$1');
         if (normalized !== raw) {

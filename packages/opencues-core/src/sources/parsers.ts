@@ -1,5 +1,5 @@
 /**
- * cues-core/sources/parsers.ts
+ * opencues-core/sources/parsers.ts
  *
  * Response parsers for LLM output. Each parser extracts structured
  * results from a specific LLM response format.

@@ -123,13 +123,13 @@ The linked-word update loop:
    - Track replacements in `_updW` (a map of index to new word) so subsequent linked replacements use correct character offsets
 3. All replacements happen in a single pass before `_hlText` is finalized
 
-Linked groups are resolved and merged across sources by `CueResolver` in cues-core. The integration only needs to apply the indices it receives.
+Linked groups are resolved and merged across sources by `CueResolver` in opencues-core. The integration only needs to apply the indices it receives.
 
 ---
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `CueResult.alternatives` array provides the ordered list of replacements (`alts[0]` is always the original word)
 - `CueResult.linked` array contains indices of co-dependent words that must cycle together

@@ -177,7 +177,7 @@ With regex, each new mode requires handling overlaps with ALL existing modes. Wi
 
 ## Integration
 
-Classification is handled by `ClassifiedSourceGroup` in cues-core. It reads modes from `blanks.md`, tries fast heuristics (regex/keywords), and falls back to the LLM classifier prompt if needed. All prompts come from `blanks.md` — no external files.
+Classification is handled by `ClassifiedSourceGroup` in opencues-core. It reads modes from `blanks.md`, tries fast heuristics (regex/keywords), and falls back to the LLM classifier prompt if needed. All prompts come from `blanks.md` — no external files.
 
 ```typescript
 // All handled automatically by buildSourcesFromConfig()

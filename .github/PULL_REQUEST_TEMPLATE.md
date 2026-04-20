@@ -5,7 +5,7 @@
 ## Type of change
 
 - [ ] Config change (cues.md, blanks.md, controls)
-- [ ] cues-core change (TypeScript library)
+- [ ] opencues-core change (TypeScript library)
 - [ ] Integration change (patches, editor-specific code)
 - [ ] Documentation
 - [ ] New feature
@@ -17,7 +17,7 @@
 
 - [ ] Ran `setup.sh` and restarted Claude Code
 - [ ] Tested manually (describe what you typed/did)
-- [ ] Ran `npm test` in `packages/cues-core` (if cues-core change)
+- [ ] Ran `npm test` in `packages/opencues-core` (if opencues-core change)
 
 ## Notes
 

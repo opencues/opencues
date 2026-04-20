@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Prompt Improver control** (`controls/prompt/`) — consume-all blank control with two-step LLM pipeline. Extracts user prompt + conditions from surrounding text, generates 3 improved alternatives + original. First use of `blankConsumeAll`.
-- **`blankConsumeAll` config field** — expands blank resolution to clear the entire input (all non-blank positions), enabling multi-word result replacement. Parsed by cues-core and passed to the integration.
-- **First-party script config fields in `cue.md`** — `model`, `altCount`, `includeOriginal`, and body sections (e.g. `## Extract`, `## Transform`) parsed by cues-core into `ControlConfig`. The integration passes them to blank scripts as `CUES_MODEL`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_*` env vars — keeping scripts free of config parsing.
+- **`blankConsumeAll` config field** — expands blank resolution to clear the entire input (all non-blank positions), enabling multi-word result replacement. Parsed by opencues-core and passed to the integration.
+- **First-party script config fields in `cue.md`** — `model`, `altCount`, `includeOriginal`, and body sections (e.g. `## Extract`, `## Transform`) parsed by opencues-core into `ControlConfig`. The integration passes them to blank scripts as `CUES_MODEL`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_*` env vars — keeping scripts free of config parsing.
 - **Claude CLI provider support** — `prompt-blank.sh` detects `claude-*` model names and calls `claude -p` instead of the HTTP API, using existing Claude Code auth. Switch by setting `model: claude-sonnet-4-6` in `cue.md`.
-- **`setup.sh --clean` flag** — wipes `~/.claude/node_modules/cues-core` before reinstalling, removing stale files from old builds.
+- **`setup.sh --clean` flag** — wipes `~/.claude/node_modules/opencues-core` before reinstalling, removing stale files from old builds.
 - **Prompt improver benchmark** (`tests/benchmarks/prompt-improve.sh`) — 99 test cases across 6 categories (creative, technical, professional, research, edge). Automated intent check + verbatim-echo detection. Run per-category with `--category technical`.
 
 ### Fixed
@@ -68,7 +68,7 @@ Initial pre-release. All core features implemented with a working Claude Code in
 
 ### Project
 
-- **cues-core** — Pure TypeScript library (resolver, config parser, HTTP adapter, 5 source types, 5 response parsers)
+- **opencues-core** — Pure TypeScript library (resolver, config parser, HTTP adapter, 5 source types, 5 response parsers)
 - **Claude Code integration** — via tweakcc patches (wordHighlight.ts, dynamicHighlight.ts, cursorStateExport.ts)
 - **418 unit tests** across 6 test files + 390-sentence live benchmark
 - **19 feature concept docs** + 8 implementation guides + glossary

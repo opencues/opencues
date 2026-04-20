@@ -1,5 +1,5 @@
 /**
- * cues-core/cues-md.ts
+ * opencues-core/cues-md.ts
  *
  * Parser for cues.md config files.
  * Pure TypeScript — no I/O dependencies.

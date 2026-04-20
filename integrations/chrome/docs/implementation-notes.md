@@ -112,9 +112,9 @@ Matches Claude Code exactly (dynamicHighlight.ts `_cycleAlt`):
 - **blankClearOnEdit**: Executed on next input event, unconditionally
 - **All state**: Cleared on `engine.clear()` (called by `teardown()`)
 
-## cues-core Integration
+## opencues-core Integration
 
-### Functions used from cues-core
+### Functions used from opencues-core
 
 | Function | Used for |
 |----------|----------|
@@ -129,11 +129,11 @@ Matches Claude Code exactly (dynamicHighlight.ts `_cycleAlt`):
 | `parseLocalCueFile()` | Parse tips JSON |
 | `validateLocalCueData()` | Validate tips JSON structure |
 
-### Extension-specific logic (not in cues-core)
+### Extension-specific logic (not in opencues-core)
 
 - Cycling state machine (priority order, linked words, spans, index shifting)
-- opencues.md parser (line-by-line walker — cues-core doesn't parse this format)
-- Keyword matching for blank auto-populate (cues-core's `ControlBlankSource` uses bash)
+- opencues.md parser (line-by-line walker — opencues-core doesn't parse this format)
+- Keyword matching for blank auto-populate (opencues-core's `ControlBlankSource` uses bash)
 - DOM rendering (CSS classes on spans)
 - Cursor management (Selection/Range API)
 

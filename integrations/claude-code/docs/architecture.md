@@ -79,7 +79,7 @@ User types: "The boy has 3 dogs"
 │  │ • If 300ms passes with no typing → final pause trigger   │ │
 │  │ • Per-word clearing: changed words have alts cleared     │ │
 │  │ • When timer fires → targeted index optimization:        │ │
-│  │   - cues-core O(1) tips lookup first                     │ │
+│  │   - opencues-core O(1) tips lookup first                     │ │
 │  │   - Only sends words lacking alts to LLM (re-indexed)    │ │
 │  │   - Stores index map for unmapping on return              │ │
 │  └──────────────────────────────────────────────────────────┘ │
@@ -200,7 +200,7 @@ Text ready to display: "The boy has 3 dogs"
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    TIPS LOOKUP + TARGETED INDEX                             │
 │                                                                             │
-│  1. cues-core lookupMultiple() — O(1) tips lookup for all words            │
+│  1. opencues-core lookupMultiple() — O(1) tips lookup for all words            │
 │     → Words with tips get instant alts (merged immediately)                │
 │  2. Check which indices already have valid alts in _dynDefs                 │
 │  3. Skip function words (the, a, to, is, etc.)                             │
@@ -211,7 +211,7 @@ Text ready to display: "The boy has 3 dogs"
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    CueResolver.resolve() (cues-core)                        │
+│                    CueResolver.resolve() (opencues-core)                        │
 │                                                                             │
 │  Filters sources by supports():                                            │
 │    ConfigSource (scope:words) → non-blank words (from cues.md)            │
@@ -306,10 +306,10 @@ DEPENDENCIES: None (foundation for dynamicHighlight)
 ### dynamicHighlight.ts
 
 ```
-PURPOSE: LLM-based word analysis and cycling via cues-core
+PURPOSE: LLM-based word analysis and cycling via opencues-core
 
 PATCHES:
-  ├── Startup IIFE (load cues-core, create NodeHttpAdapter + CueResolver)
+  ├── Startup IIFE (load opencues-core, create NodeHttpAdapter + CueResolver)
   ├── Input handler (auto-submit trigger, tips lookup, resolver call)
   ├── 4× key handlers (Up/Down × case/raw — delegates to shared _cycleAlt)
   ├── Rendering extension (dim words with alts)
@@ -317,7 +317,7 @@ PATCHES:
 
 INJECTS:
   ├── Startup IIFE:
-  │   ├── cues-core loading + tipsMap building (once per process)
+  │   ├── opencues-core loading + tipsMap building (once per process)
   │   ├── NodeHttpAdapter (keep-alive, Groq provider config)
   │   ├── _reloadCuesConfig() — parses all .md config + rebuilds resolver
   │   │   (called at startup; re-called after 2s TTL on next analysis trigger)
@@ -333,9 +333,9 @@ INJECTS:
   └── Underscore (blank) handling with context tracking
 
 STATE (globalThis):
-  • _cuesCore: cues-core module reference
+  • _cuesCore: opencues-core module reference
   • _tipsMap: prebuilt hash map from tips file
-  • _httpAdapter: NodeHttpAdapter instance (from cues-core)
+  • _httpAdapter: NodeHttpAdapter instance (from opencues-core)
   • _cueResolver: CueResolver instance (rebuilt on config reload)
   • _reloadCuesConfig: config reload function (TTL-based hot-reload)
   • _configLoadedAt: timestamp of last config load (0 = never)
@@ -358,7 +358,7 @@ CONFIG:
   • dynamicHighlightDebounceMs: number
 
 EXTERNAL DEPENDENCIES:
-  • cues-core (npm module — prompts, sources, resolver, adapter)
+  • opencues-core (npm module — prompts, sources, resolver, adapter)
 
 READS (from wordHighlight.ts):
   • globalThis._hlState, _hlText, _parentValue
@@ -367,7 +367,7 @@ READS (from wordHighlight.ts):
 
 DEPENDENCIES:
   • REQUIRES wordHighlight.ts (extends its key handlers, reads its globalThis vars)
-  • REQUIRES cues-core (npm module)
+  • REQUIRES opencues-core (npm module)
   • REQUIRES GROQ_API_KEY environment variable
 ```
 
@@ -435,14 +435,14 @@ WRITES (from cli.js):
   └── /tmp/claude-auto-debug-{PID}.txt       ← dynamicHighlight.ts
       (trigger/resolver logs)
 
-HTTPS (via cues-core NodeHttpAdapter):
+HTTPS (via opencues-core NodeHttpAdapter):
   │
   └── api.groq.com/openai/v1/chat/completions  ← CueResolver sources
       (keep-alive agent, warmed on startup)
 
 READS (at startup + on 2s TTL reload):
   │
-  ├── ~/.claude/opencues/tips.json         ← cues-core tips lookup
+  ├── ~/.claude/opencues/tips.json         ← opencues-core tips lookup
   │   (parsed once at startup, built into base hash map)
   │
   ├── {cwd}/cues.md (or hints.md / tips.md)   ← tips + prompt sources
@@ -465,13 +465,13 @@ SPAWNS (from cli.js):
 |------|------------------|
 | `cursorStateExport.ts` | Writes cursor position to JSON on each keystroke |
 | `wordHighlight.ts` | Navigation + rendering + numbers + controls |
-| `dynamicHighlight.ts` | cues-core wiring + trigger + cycling + spans |
+| `dynamicHighlight.ts` | opencues-core wiring + trigger + cycling + spans |
 
 **Dependency order:**
 ```
 1. cursorStateExport.ts  (standalone)
 2. wordHighlight.ts      (standalone, foundation)
-3. dynamicHighlight.ts   (requires wordHighlight + cues-core npm module)
+3. dynamicHighlight.ts   (requires wordHighlight + opencues-core npm module)
 ```
 
 ---

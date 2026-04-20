@@ -1,4 +1,4 @@
-// Bundle-time stub for cues-core/node-http-adapter — that module uses
+// Bundle-time stub for opencues-core/node-http-adapter — that module uses
 // node:https which esbuild can't resolve in a browser bundle. The
 // runtime's Resolver.rebuildResolver() wraps the require in try/catch
 // and falls back to the host-supplied httpAdapter (FetchHttpAdapter

@@ -107,7 +107,7 @@ function runCodex(passthrough, fullArgv) {
     || process.env.CODEX_CUES_DIR
     || path.join(os.homedir(), 'codex-cues');
 
-  const launchHelper = path.join(fork, 'run-codex-cues.sh');
+  const launchHelper = path.join(fork, 'launch.sh');
   if (!fs.existsSync(launchHelper)) {
     console.error(`opencues run codex: launch helper missing at ${launchHelper}`);
     console.error('Install first: opencues install codex');

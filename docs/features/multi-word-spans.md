@@ -64,11 +64,11 @@ Dimming also respects spans: a word at index `_ni` is dimmed if it is in a span 
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - Alternatives are returned as plain strings; multi-word alternatives contain spaces
 - Word indices in results always refer to the original (pre-replacement) positions
-- cues-core does not track span state -- it only provides the alternatives
+- opencues-core does not track span state -- it only provides the alternatives
 
 ### Integration responsibilities
 

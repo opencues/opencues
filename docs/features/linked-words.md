@@ -67,12 +67,12 @@ All linked replacements happen in the same pass before the text is committed to 
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `CueResult.linked` array on each word contains indices of all co-dependent words
 - The resolver merges `linked` arrays from multiple sources (e.g., LLM-detected gender + number agreement)
 - Linked relationships are symmetric: if word A links to B, word B links to A
-- The linked words prompt is a standard cues-core prompt that detects semantic relationships automatically
+- The linked words prompt is a standard opencues-core prompt that detects semantic relationships automatically
 
 ### Integration responsibilities
 

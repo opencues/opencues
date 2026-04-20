@@ -2,9 +2,9 @@
 //
 // Loads:
 //   - tips JSON                           (~/.claude/claude-code-tips.json)
-//   - cwd cues.md / controls.md / blanks.md  (frontmatter parsed by cues-core)
+//   - cwd cues.md / controls.md / blanks.md  (frontmatter parsed by opencues-core)
 //   - ~/.opencues/opencues.md              (user-level only — system settings owned by the runtime)
-//   - cwd cues/* and controls/* folders  (per-folder cue.md via cues-core's discoverFolderConfigs)
+//   - cwd cues/* and controls/* folders  (per-folder cue.md via opencues-core's discoverFolderConfigs)
 //
 // Exposes:
 //   - cueMap     — primary lookup (tips JSON + folder cues merged)
@@ -510,7 +510,7 @@ export class ConfigLoader {
       }
     }
 
-    // Merge .md configs with folder configs via cues-core's mergeConfigs
+    // Merge .md configs with folder configs via opencues-core's mergeConfigs
     // (folders win — same as before).
     const mergedDiscovered = folderConfigs
       ? mergeConfigs(
@@ -602,7 +602,7 @@ export class ConfigLoader {
    * with index 0 = highest) into a single merged config. The highest-priority
    * config wins on name conflicts.
    *
-   * Implementation note: cues-core's `mergeConfigs(a, b)` makes `b` win.
+   * Implementation note: opencues-core's `mergeConfigs(a, b)` makes `b` win.
    * To make project (index 0) win we fold from low-priority (last index)
    * to high-priority (index 0), so project ends up as the final `b`.
    */
@@ -637,7 +637,7 @@ export class ConfigLoader {
   }
 
   private async _discoverFolders(cwd: string): Promise<DiscoveredConfigs | null> {
-    // cues-core's discoverFolderConfigs takes sync readFile/readDir callbacks.
+    // opencues-core's discoverFolderConfigs takes sync readFile/readDir callbacks.
     // We pre-walk async (via adapter) and feed it through caches.
     if (!this.adapter.readDir) return null;
     const fileCache = new Map<string, string | null>();

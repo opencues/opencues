@@ -18,7 +18,7 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 | 4 | Control blank | `72` after `volume` | "System volume" | Control's `cue.md` `blankTip` field |
 | 5 | Cue-control keyword | `volume` (the trigger word) | "85" (live reading) | Script `get` output; falls back to `tip` in `cue.md` |
 | 6 | Local cue (JSON tips) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `claude-code-tips.json` via `_localCueMap` |
-| 7 | LLM-analyzed word | `happy` | "glad, joyful, content" | LLM response via cues-core resolver |
+| 7 | LLM-analyzed word | `happy` | "glad, joyful, content" | LLM response via opencues-core resolver |
 
 ---
 
@@ -102,7 +102,7 @@ Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openC
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `CueResult.cueTip` carries the primary tip for any word
 - `CueResult.altCueTips` maps each alternative to its own tip (for per-alt display during cycling)

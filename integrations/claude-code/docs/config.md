@@ -38,7 +38,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `ttsSpeed` | number | `2` | No | SAPI speech rate for TTS (-10 to 10) |
 | `ttsScript` | string | `''` | No | Custom TTS script path (overrides SpeakCtl.exe + speak.sh) |
 
-> **Note:** Auto-submit is now always on (no `dynamicHighlightAutoSubmit` toggle). LLM calls go through cues-core's CueResolver and NodeHttpAdapter, not external scripts (no `dynamicHighlightScriptPath`).
+> **Note:** Auto-submit is now always on (no `dynamicHighlightAutoSubmit` toggle). LLM calls go through opencues-core's CueResolver and NodeHttpAdapter, not external scripts (no `dynamicHighlightScriptPath`).
 
 ### Text-to-Speech
 

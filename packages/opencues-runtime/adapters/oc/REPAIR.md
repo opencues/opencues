@@ -110,16 +110,16 @@ still undefined, so it bailed without registering any sources.
 `configLoader.load().then(() => resolver.subscribe())`. Mirrors CC v2.1's
 boot ordering. Same race exists for BlankFill (already done in O.8).
 
-### LF-7. setup.sh missed cues-core/node-http-adapter.js (O.7)
+### LF-7. setup.sh missed opencues-core/node-http-adapter.js (O.7)
 
-**File:** `integrations/opencode/patches/setup.sh` — cues-core install block.
+**File:** `integrations/opencode/patches/setup.sh` — opencues-core install block.
 
 **Symptom:** `Resolver: NodeHttpAdapter load failed ... Cannot find module
-'cues-core/node-http-adapter'`. LLM resolution silently dies even after
+'opencues-core/node-http-adapter'`. LLM resolution silently dies even after
 LF-6 (Resolver builds successfully but every request errors out).
 
 **Why:** `node-http-adapter.js` is a hand-written CommonJS file that
-lives at the cues-core package root, NOT under `dist/`. The OpenCode
+lives at the opencues-core package root, NOT under `dist/`. The OpenCode
 setup only copied `dist/*` + `package.json`. CC's setup explicitly
 handles this standalone file (its setup.sh line ~254-255).
 

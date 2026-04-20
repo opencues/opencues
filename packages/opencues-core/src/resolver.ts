@@ -1,5 +1,5 @@
 /**
- * cues-core/resolver.ts
+ * opencues-core/resolver.ts
  *
  * CueResolver - orchestrates multiple cue sources to produce merged results.
  */

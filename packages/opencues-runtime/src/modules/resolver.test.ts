@@ -41,11 +41,11 @@ function setupResolver(scriptedResults: MockResult[]) {
   const dynDefs = new DynDefs();
   const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
 
-  // Inject a mock resolver factory so we don't load real cues-core sources.
+  // Inject a mock resolver factory so we don't load real opencues-core sources.
   // The Resolver class still calls require('@opencues/core').createResolver, so we
   // shadow that via a fake httpAdapter and a synthetic factory: we provide
   // resolverFactory to short-circuit buildSourcesFromConfig + return fake
-  // sources. createResolver then runs but resolve() goes through cues-core.
+  // sources. createResolver then runs but resolve() goes through opencues-core.
   // For unit testing, easier to bypass entirely by injecting a pre-built
   // resolver. We do that by setting Resolver._resolver after construction.
   const resolver = new Resolver(adapter, hlState, dynDefs, loader, {

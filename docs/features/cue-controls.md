@@ -94,7 +94,7 @@ esac
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `ControlConfig` type defines all control fields: `control`, `tip`, `script`, `upArgs`, `downArgs`, `speak`, and blank-related fields
 - `parseSingleCueMd` parses `cue.md` frontmatter into a typed `ControlConfig`

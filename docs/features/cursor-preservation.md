@@ -45,7 +45,7 @@ The same logic applies in both the Up (increment/next-alt) and Down (decrement/p
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - Returns word indices and replacement text — no cursor logic
 - Alternatives include the full replacement string, so the integration can compute length deltas

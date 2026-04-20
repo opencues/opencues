@@ -16,7 +16,7 @@
 
 ### Non-goals
 
-- **Not rewriting cues-core.** Resolver, sources, control-blank logic stay as they are. They're already platform-agnostic.
+- **Not rewriting opencues-core.** Resolver, sources, control-blank logic stay as they are. They're already platform-agnostic.
 - **Not solving CC API plugin model.** Upstreaming a plugin hook to Anthropic is a downstream goal after this refactor; we don't wait for it.
 - **Not supporting arbitrary hosts in v1.** Interface is designed to allow other editors, but we only build a Claude Code adapter in the first implementation.
 - **Not regressing current features.** Every reintegrated feature (through Step 37) must still work after migration. No dropping capabilities for architectural purity.
@@ -512,12 +512,12 @@ packages/opencues-runtime/src/
 |---|---|---|
 | `Runtime` | Bootstrap; wires modules; holds adapter | All modules |
 | `Navigation` | `_hlState.wordIndex` transitions; emits cursor moves | `HighlightState`, adapter |
-| `Cycling` | Alt/step/selector/satellite cycling logic | `HighlightState`, `DynDefs`, cues-core resolver, adapter |
-| `BlankFill` | Blank detection, auto-populate via resolver, pending-fill consumer | `DynDefs`, cues-core resolver, `ConsumeAll`, `DismissedBlanks`, adapter |
+| `Cycling` | Alt/step/selector/satellite cycling logic | `HighlightState`, `DynDefs`, opencues-core resolver, adapter |
+| `BlankFill` | Blank detection, auto-populate via resolver, pending-fill consumer | `DynDefs`, opencues-core resolver, `ConsumeAll`, `DismissedBlanks`, adapter |
 | `DimRender` | On every `onRender`, compute `RenderDirectives` from current state | `HighlightState`, `DynDefs`, `ConsumeAll`, adapter |
 | `TTS` | Spawn speak.sh on tip highlight | Adapter |
 | `Statusline` | On state change, serialise and write `_hlExport` JSON | `HighlightState`, `DynDefs`, adapter |
-| `ConfigLoader` | Parse cues/controls/opencues configs at startup + hot-reload | cues-core parsers, adapter |
+| `ConfigLoader` | Parse cues/controls/opencues configs at startup + hot-reload | opencues-core parsers, adapter |
 
 ### 5.3 Inter-module communication
 
@@ -615,7 +615,7 @@ class ConfigLoader {
       this.adapter.readFile(`${cwd}/opencues.md`),
       this.adapter.readFile(`${cwd}/blanks.md`),
     ]);
-    // Parse via cues-core parsers (pure functions, no I/O)
+    // Parse via opencues-core parsers (pure functions, no I/O)
     return {
       cues: cues ? parseCuesMd(cues) : null,
       controls: controls ? parseCuesMd(controls) : null,
@@ -634,7 +634,7 @@ class ConfigLoader {
 
 Key points:
 - **All filesystem access goes through the adapter.** Runtime never imports `fs`.
-- **Parsing is pure.** `parseCuesMd`, `parseOpenCuesMd` are cues-core functions. Testable without I/O.
+- **Parsing is pure.** `parseCuesMd`, `parseOpenCuesMd` are opencues-core functions. Testable without I/O.
 - **Folder discovery** (walking `controls/*/cue.md`) needs a `readDir` primitive — **TBD for interface v2** if the use case grows; for v1, the adapter emits a pre-walked list or runtime reads a manifest file.
 
 ### 6.2 Hot reload
@@ -665,7 +665,7 @@ Selector/satellite cycling writes back to `opencues.md` to persist the setting c
 - Option A: Runtime calls `adapter.spawnProcess({command: "bash", args: [scriptPath, "set", setting, value]})`. Script writes to disk. Same as today.
 - Option B: Runtime calls `adapter.writeFile("opencues.md", newContent)` directly after computing the updated frontmatter.
 
-Decision: **Option A for v1.** Preserves the current script contract. Runtime doesn't own opencues.md format. Future: if we want to remove the script dependency, migrate to Option B with a cues-core YAML writer.
+Decision: **Option A for v1.** Preserves the current script contract. Runtime doesn't own opencues.md format. Future: if we want to remove the script dependency, migrate to Option B with a opencues-core YAML writer.
 
 ---
 
@@ -681,7 +681,7 @@ Decision: **Option A for v1.** Preserves the current script contract. Runtime do
 
 ### 7.2 HTTP adapter split
 
-The runtime makes LLM calls. We keep the existing `HttpAdapter` interface from cues-core (it's already platform-neutral). Runtime construction takes both:
+The runtime makes LLM calls. We keep the existing `HttpAdapter` interface from opencues-core (it's already platform-neutral). Runtime construction takes both:
 
 ```typescript
 const runtime = await Runtime.create(adapter, {
@@ -879,7 +879,7 @@ Each phase's patch work is reversible. `tweakcc config set opencuesRuntime v1 &&
 ```
 opencues/
 ├── packages/
-│   ├── cues-core/              # unchanged
+│   ├── opencues-core/              # unchanged
 │   └── opencues-runtime/       # new
 │       ├── src/
 │       ├── adapters/
@@ -896,7 +896,7 @@ opencues/
 
 ### 11.2 NPM publishing
 
-- `cues-core` — stays as-is, internal.
+- `opencues-core` — stays as-is, internal.
 - `opencues-runtime` — published to npm (public or private registry). Versioned semver.
 - Adapters ship bundled with the runtime package (not separate packages) — they're tightly coupled and version-locked.
 
@@ -919,7 +919,7 @@ User-facing:
 
 Under the hood:
 1. Clone/update tweakcc.
-2. Build cues-core and opencues-runtime, install to `~/.claude/node_modules/`.
+2. Build opencues-core and opencues-runtime, install to `~/.claude/node_modules/`.
 3. Detect CC version in claude-cues install.
 4. Route to matching adapter (e.g. `adapters/claude-code/v2.1/`).
 5. Run tweakcc with config pointing to that adapter.
@@ -965,7 +965,7 @@ Replace `Phase N` with the current target (e.g. "Phase 0 and Phase 1").
 - **Spec (this file):** `integrations/claude-code/reintegration/refactor.md`
 - **Reintegration history (steps.md):** `integrations/claude-code/reintegration/steps.md` — the 37-step log of how the current (v1) patch came to be. Reference when you need to know what a feature does or why.
 - **Current patch (v1, to be replaced):** `integrations/claude-code/tweakcc/src/patches/wordHighlight.ts` — ~2100-line template literal. Contains the behaviour that the runtime must match.
-- **cues-core (stays as-is):** `packages/cues-core/` — resolver, sources, parsers. Runtime depends on it.
+- **opencues-core (stays as-is):** `packages/opencues-core/` — resolver, sources, parsers. Runtime depends on it.
 - **Target locations for v2 code** (create these during Phase 0):
   - `packages/opencues-runtime/` — the runtime library.
   - `packages/opencues-runtime/adapters/claude-code/v2.1/` — the v2.1.x Claude Code adapter.
@@ -974,7 +974,7 @@ Replace `Phase N` with the current target (e.g. "Phase 0 and Phase 1").
 ### Dev workflow
 
 - **Build runtime:** `cd packages/opencues-runtime && npm run build` (scaffold will add this).
-- **Install to Claude user path:** `cp -r packages/opencues-runtime/dist/* ~/.claude/node_modules/opencues-runtime/` (after creating the target dir). Mirrors the existing cues-core pattern.
+- **Install to Claude user path:** `cp -r packages/opencues-runtime/dist/* ~/.claude/node_modules/opencues-runtime/` (after creating the target dir). Mirrors the existing opencues-core pattern.
 - **Build + apply tweakcc:** `cd integrations/claude-code/tweakcc && npm run build:dev && CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1) && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply`
 - **Test:** User restarts `claude-cues`, exercises features, checks `/tmp/opencues-highlight-state-<pid>.json` for `_debug` fields. For v2 runtime, expect new debug fields reflecting runtime module state.
 
@@ -987,7 +987,7 @@ Replace `Phase N` with the current target (e.g. "Phase 0 and Phase 1").
 
 ### Phase 0 checklist (scaffold, ~1 day)
 
-- [ ] `packages/opencues-runtime/package.json` — name, version 0.1.0, dependencies (cues-core local, acorn for seam parsing).
+- [ ] `packages/opencues-runtime/package.json` — name, version 0.1.0, dependencies (opencues-core local, acorn for seam parsing).
 - [ ] `packages/opencues-runtime/tsconfig.json` — strict TS, emit to `dist/`.
 - [ ] `packages/opencues-runtime/src/index.ts` — re-export public API.
 - [ ] `packages/opencues-runtime/src/adapter.ts` — the full HostAdapter interface (copy from spec section 2.2 verbatim — types only, no impl).
@@ -1023,7 +1023,7 @@ Commit message: `feat: Phase 1 — Navigation module + v2.1 Claude Code adapter 
 
 - Node 22 in the dev environment. Use `npm` (not `pnpm`).
 - Tweakcc is a vendored npm package at `integrations/claude-code/tweakcc/`. It has its own `package.json` and builds via `npm run build:dev`.
-- `~/.claude/node_modules/` is the install location that CC's patched cli.js reads from. After any cues-core or opencues-runtime rebuild, copy `dist/*` into this path.
+- `~/.claude/node_modules/` is the install location that CC's patched cli.js reads from. After any opencues-core or opencues-runtime rebuild, copy `dist/*` into this path.
 - `claude-cues` is at `~/claude-code-cues` — this is the patched install, don't confuse with the unpatched `claude` at `~/.local/bin/claude`.
 - Do not touch the native `claude` install. Only `claude-cues`.
 - Anchor-count assertions from Step 37d live in `writeWordHighlight`. New seam predicates in Phase 1+ should emit similar assertions (reuse the pattern).

@@ -422,7 +422,7 @@ blankScript: ~/.claude/actions/stock.sh
   });
 
   it('async path: builds CUES_* env vars from control config', async () => {
-    // cues-core's parseSingleCueMd reads `## Extract` / `## Transform`
+    // opencues-core's parseSingleCueMd reads `## Extract` / `## Transform`
     // markdown sections into controls.X.prompts (NOT a YAML `prompts:` key).
     const SCRIPT_CTRL = `---
 type: control

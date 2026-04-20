@@ -135,7 +135,7 @@ clones + applies. Same as CC.
 
 ## What we avoid porting
 
-- The resolver (cues-core) stays Node/TS — works as-is.
+- The resolver (opencues-core) stays Node/TS — works as-is.
 - ConfigLoader parses .md files — works as-is.
 - All state classes (HighlightState, SpanFillState, ControlValuesCache,
   DynDefs, DismissedBlanks, SelectorSatelliteState) — work as-is.

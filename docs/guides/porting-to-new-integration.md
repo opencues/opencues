@@ -4,13 +4,13 @@ last_updated: 2026-04-07
 
 # Porting OpenCues to a New Integration
 
-This guide documents the contract between cues-core and integrations, plus non-obvious behaviours and pitfalls discovered during the Claude Code implementation. Read this before building a Chrome extension, VS Code extension, or any new integration.
+This guide documents the contract between opencues-core and integrations, plus non-obvious behaviours and pitfalls discovered during the Claude Code implementation. Read this before building a Chrome extension, VS Code extension, or any new integration.
 
 ---
 
-## What cues-core provides (portable)
+## What opencues-core provides (portable)
 
-cues-core is pure TypeScript with no I/O dependencies. It provides:
+opencues-core is pure TypeScript with no I/O dependencies. It provides:
 
 - **Config parsing** — `parseCuesMd()`, `parseSingleCueMd()`, `discoverFolderConfigs()`
 - **Source building** — `buildSourcesFromConfig()` returns `CueSource[]` from parsed configs
@@ -50,7 +50,7 @@ Integrations convert `CueResult` to their internal word definition format (Claud
 
 ### 1. HTTP adapter
 
-cues-core's `ConfigSource` needs an HTTP adapter for LLM calls:
+opencues-core's `ConfigSource` needs an HTTP adapter for LLM calls:
 
 ```typescript
 interface HttpAdapter {
@@ -196,7 +196,7 @@ When `_` reappears at a position that previously had a control-bound value, the 
 
 ### Hot-reload is integration-specific
 
-cues-core's parsers are stateless — call `parseCuesMd()` any time to re-parse. The caching/TTL logic (how often to re-read `.md` files) is entirely the integration's responsibility. Claude Code uses a 2-second TTL. A Chrome extension might use file watchers, storage events, or manual refresh.
+opencues-core's parsers are stateless — call `parseCuesMd()` any time to re-parse. The caching/TTL logic (how often to re-read `.md` files) is entirely the integration's responsibility. Claude Code uses a 2-second TTL. A Chrome extension might use file watchers, storage events, or manual refresh.
 
 ---
 

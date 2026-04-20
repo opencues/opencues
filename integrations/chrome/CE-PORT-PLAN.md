@@ -48,11 +48,11 @@ clean inside a content-script context.
   removal yet — both run in parallel).
 
 **Risks:**
-- Bundling: `cues-core` lives in `packages/cues-core/`. The extension
+- Bundling: `opencues-core` lives in `packages/opencues-core/`. The extension
   already imports it via the workspace; adding `opencues-runtime`
   should follow the same pattern. Confirm the dist files are pure ES
   modules (no `node:fs` imports) — already audited; only the resolver's
-  optional `cues-core/node-http-adapter` is Node-only and is gated.
+  optional `opencues-core/node-http-adapter` is Node-only and is gated.
 - Polyfill: `process.env` is referenced by some modules' default
   fallbacks. esbuild already does build-time defines for the existing
   code; extend the same to `process.env.HOME`, `process.env.DEBUG_OPENCUES`
@@ -222,7 +222,7 @@ Resolver module. The existing `FetchHttpAdapter` is passed via
 - Test the LLM endpoint (Groq) returns alts via the runtime path —
   parser format may differ slightly; the existing
   `FetchHttpAdapter` does some normalization (space → pipe in
-  index-prefixed responses) that the runtime expects in cues-core.
+  index-prefixed responses) that the runtime expects in opencues-core.
 
 **Live test:** Type "the cat sat on a mat", pause ~500ms, see dim
 appear on the cue words. Cycle one and verify alt comes from LLM.

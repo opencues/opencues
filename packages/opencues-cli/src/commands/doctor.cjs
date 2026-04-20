@@ -94,7 +94,7 @@ module.exports = function doctor(argv, ctx) {
   console.log('## OpenAI Codex (codex)');
   const codexFork = path.join(HOME, 'codex-cues');
   const codexBridge = path.join(codexFork, 'codex-rs/opencues-bridge');
-  const codexLauncher = path.join(codexFork, 'run-codex-cues.sh');
+  const codexLauncher = path.join(codexFork, 'launch.sh');
   const codexDaemon = path.join(ctx.REPO_ROOT, 'packages/opencues-runtime/dist/adapters/codex/v1/daemon.js');
   const cargoCheck = spawnSync('cargo', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
   ok(`cargo on PATH`, cargoCheck.status === 0);

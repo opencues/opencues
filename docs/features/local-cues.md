@@ -112,7 +112,7 @@ Additionally, the integration layer (`dynamicHighlight.ts`) enforces this at mer
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `LocalCueSource` implements `CueSource` with `lookupWords()` for batch word lookup via the `getCues()` method
 - `buildLookupMap()` constructs an O(1) hash map from the tips data at load time

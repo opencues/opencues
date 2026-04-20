@@ -11,7 +11,7 @@ Commits:
 - `1d4d4d3` — Phase 2 (DimRender, reordered ahead of Cycling): visible navigation.
 - `4cbfbd8` — Refactor: collapse v2 patch surface to single `boot.js` entry point.
 - `2b50157` — Docs: REPAIR.md with version-bump scenarios.
-- `74c2b94` — Docs: CLAUDE.md cues-core vs opencues-runtime layering.
+- `74c2b94` — Docs: CLAUDE.md opencues-core vs opencues-runtime layering.
 - `79a5c7e` — Phase 3: Cycling + ConfigLoader (visible word cycling).
 - `35df9cb` — Docs: REPAIR.md host-quirks + refactor-notes Phase 3 review.
 - `fd34cd5` — Phase 4: Statusline export + `file-write` capability.
@@ -65,7 +65,7 @@ reintegration still owns all features.
    cd packages/opencues-runtime && npm test && npm run build
    ```
    (The workspace was broken before `9b6099d` — cues-browser/cues-node
-   pinned `cues-core@^1.0.0` but cues-core is 0.1.0. Fixed by pinning
+   pinned `opencues-core@^1.0.0` but opencues-core is 0.1.0. Fixed by pinning
    dependents to `"*"` plus a `types: ["node"]` scope on cues-node's
    tsconfig to keep hoisted `@types/chrome` out of its compile.)
 
@@ -351,7 +351,7 @@ the new word's length. Typing clears the highlight.
 ### What to check
 
 1. **`packages/opencues-runtime/src/modules/config-loader.ts`** — reads the
-   tips JSON via `adapter.readFile` (not raw `fs`), parses with cues-core's
+   tips JSON via `adapter.readFile` (not raw `fs`), parses with opencues-core's
    `parseLocalCueFile` + `buildLookupMap`. Graceful no-op on missing file
    or parse failure (logs and leaves the map empty). 4 tests.
 
@@ -423,7 +423,7 @@ In claude-cues:
 - **Cue map only loads at boot.** If you edit `claude-code-tips.json`
   while claude-cues is running, the changes don't reload. Hot-reload is a
   later ConfigLoader feature.
-- **No LLM-driven alts (yet).** Phase 4 (BlankFill) wires the cues-core
+- **No LLM-driven alts (yet).** Phase 4 (BlankFill) wires the opencues-core
   `Resolver` so words without static alts get LLM suggestions on demand.
 - **Span tracking on multi-word text is fragile.** If cycling word 0
   expands the text, word 1+'s spans shift but the DynDefs cache for those

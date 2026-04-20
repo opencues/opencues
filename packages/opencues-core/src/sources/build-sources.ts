@@ -1,5 +1,5 @@
 /**
- * cues-core/sources/build-sources.ts
+ * opencues-core/sources/build-sources.ts
  *
  * Factory that creates CueSource[] from parsed .md configs.
  * Single entry point — replaces manual source construction in integrations.

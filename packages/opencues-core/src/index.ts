@@ -1,5 +1,5 @@
 /**
- * cues-core
+ * opencues-core
  *
  * Core OpenCues library - pure TypeScript with no I/O dependencies.
  * Platform-specific functionality is provided via adapters.

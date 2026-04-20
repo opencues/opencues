@@ -19,7 +19,7 @@ OpenCues runs locally on your machine. The main security-relevant areas are:
 
 - **Shell script execution** — cue-controls execute bash scripts via `execFileSync`. Scripts are defined in config files authored by the repo owner, not by end users or external input.
 - **LLM API calls** — requests are sent to the configured provider (Groq by default) with your API key. No data is sent to OpenCues servers (there are none).
-- **Config file parsing** — `.md` config files are parsed by cues-core. The `compute` parser uses `Function()` for arithmetic — this is documented and opt-in per blank mode.
+- **Config file parsing** — `.md` config files are parsed by opencues-core. The `compute` parser uses `Function()` for arithmetic — this is documented and opt-in per blank mode.
 
 ## Supported Versions
 

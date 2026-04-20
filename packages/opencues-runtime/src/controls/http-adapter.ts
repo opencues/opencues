@@ -1,4 +1,4 @@
-// Fetch-based HttpAdapter for cues-core's Resolver.
+// Fetch-based HttpAdapter for opencues-core's Resolver.
 //
 // Works on every host that has globalThis.fetch — Node 18+ ships it
 // natively, browsers have always had it. Replaces the per-host adapters

@@ -46,7 +46,7 @@ Add a row to `docs/features/README.md`:
 | 15 | [My Feature](my-feature.md) | Brief description |
 ```
 
-## 3. Implement in cues-core (if needed)
+## 3. Implement in opencues-core (if needed)
 
 If the feature needs new LLM logic, sources, or data types:
 
@@ -65,6 +65,6 @@ For other integrations: follow `adding-an-integration.md` for the integration's 
 
 - [ ] Feature concept doc in `docs/features/`
 - [ ] Feature index updated in `docs/features/README.md`
-- [ ] cues-core changes (if needed)
+- [ ] opencues-core changes (if needed)
 - [ ] At least one integration implements it
 - [ ] Integration doc references the feature number

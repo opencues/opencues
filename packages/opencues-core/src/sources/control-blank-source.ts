@@ -1,5 +1,5 @@
 /**
- * cues-core/sources/control-blank-source.ts
+ * opencues-core/sources/control-blank-source.ts
  *
  * CueSource that bridges blanks (_) with cue-controls.
  * When context words match a control's blankKeywords, the blank is bound

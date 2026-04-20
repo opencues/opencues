@@ -67,12 +67,12 @@ The state is reset to `{active:false, index:null, wordIndex:null, text:""}` on E
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `WordDef` provides `index`, `word`, and `alts` for every word in the input
 - Navigation targets are words where `alts.length > 1`, step-pattern matches, cue-controls, or words with `metadata.controlName`
 - `CueResolver.analyze()` returns the full word list with classification already applied
-- No navigation state is tracked in cues-core; it only identifies which words are navigable
+- No navigation state is tracked in opencues-core; it only identifies which words are navigable
 
 ### Integration responsibilities
 

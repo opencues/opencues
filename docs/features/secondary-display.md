@@ -15,7 +15,7 @@ Tips come from several sources depending on the word type:
 | **Control blank** | `blankTip` in the control's `cue.md` | `72` → "System volume" |
 | **Cue-control keyword** | Live script `get` output, falls back to `tip` in `cue.md` | `volume` → "85" |
 | **Local cue (JSON tips)** | `claude-code-tips.json` via instant lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
-| **LLM-analyzed word** | LLM response via cues-core resolver | `happy` → "glad, joyful, content" |
+| **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
 
 See [Tip Priority](tip-priority.md) for the full resolution order and how the branches interact.
 
@@ -81,7 +81,7 @@ The script suppresses output entirely for words that have neither alts nor a tip
 
 ## Portability
 
-### Standard (cues-core)
+### Standard (opencues-core)
 
 - `CueResult.cueTip` provides the primary tip text for the focused word
 - `CueResult.altCueTips` maps each alternative to its own tip, enabling per-alternative tip display during cycling

@@ -87,8 +87,8 @@ const sourceReclassifier = createSourceReclassifier()
 // OpenCuesSettingsControl.
 function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
-  if (process.env.OPENCUES_ROOT) {
-    return path.join(process.env.OPENCUES_ROOT, "opencues.md")
+  if (process.env.OPENCUES_HOME) {
+    return path.join(process.env.OPENCUES_HOME, "opencues.md")
   }
   return path.join(process.env.HOME ?? "~", ".opencues", "opencues.md")
 }

@@ -158,7 +158,7 @@ Auto-populate always calls `blankScript get` for the current value — no file c
 
 ### Standard (portable — any integration must implement)
 
-These are the core behaviours that any integration of control-bound blanks must implement. They are defined by cues-core and the config format, not by any specific editor.
+These are the core behaviours that any integration of control-bound blanks must implement. They are defined by opencues-core and the config format, not by any specific editor.
 
 **Detection**: `ControlBlankSource` (priority 95) scans context words against `blankKeywords`. Priority 95 is higher than blanks `ClassifiedSourceGroup` (90) and grammar (75), ensuring control keywords match before the blank is classified as MATH or FACTUAL.
 
@@ -176,7 +176,7 @@ These are the core behaviours that any integration of control-bound blanks must 
 
 **Cache invalidation**: When `_` reappears at a position that previously had a control-blank value, the old WordDef must be cleared and the resolver must re-run to get a fresh value.
 
-#### Core components (in cues-core)
+#### Core components (in opencues-core)
 
 | Component | File | Role |
 |-----------|------|------|
@@ -186,7 +186,7 @@ These are the core behaviours that any integration of control-bound blanks must 
 
 ### Integration responsibilities (what each editor must implement)
 
-Any integration consuming cues-core needs to handle these for control-bound blanks:
+Any integration consuming opencues-core needs to handle these for control-bound blanks:
 
 | Responsibility | What to implement |
 |----------------|-------------------|
