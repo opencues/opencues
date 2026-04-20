@@ -348,6 +348,9 @@ Per-feature gates live in `~/.tweakcc/config.json` under `misc.*` (e.g. `enableW
 
 ## Troubleshooting
 
+See [FAQ.md](FAQ.md) for common questions on install, uninstall, where
+things live, and per-integration paths.
+
 ### Diagnostics
 
 ```bash
