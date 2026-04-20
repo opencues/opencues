@@ -119,7 +119,7 @@ function doInstall() {
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const result = spawnSync(setupSh, [fork], { stdio: 'inherit' });
   if (result.status !== 0) {
-    console.error(`\nInstall failed. To roll back: pnpm --filter @opencues/opencode dev-uninstall`);
+    console.error(`\nInstall failed. To roll back: ${launchCommand()} uninstall opencode`);
     process.exit(result.status || 1);
   }
 }
@@ -308,4 +308,12 @@ function printHelp() {
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx');
   console.log('  Repo state (no host pollution):');
   console.log('    packages/*/dist/, .turbo/  (build cache, gitignored)');
+}
+
+// Prefer the short "opencues" form when the binary is on PATH (published,
+// aliased, or wrapper-shimmed); fall back to the always-works-from-a-clone
+// form. Used in user-facing hint messages.
+function launchCommand() {
+  const probe = spawnSync('command', ['-v', 'opencues'], { stdio: ['ignore', 'pipe', 'ignore'], shell: true });
+  return probe.status === 0 ? 'opencues' : 'pnpm exec opencues';
 }

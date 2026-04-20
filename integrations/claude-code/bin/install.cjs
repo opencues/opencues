@@ -131,7 +131,7 @@ function doInstall() {
     process.exit(2);
   }
   if (result.status !== 0) {
-    console.error('\nInstall failed. To roll back: pnpm --filter @opencues/claude-code dev-uninstall');
+    console.error(`\nInstall failed. To roll back: ${launchCommand()} uninstall claude-code`);
     process.exit(result.status || 1);
   }
   // Success — setup.sh already printed "Done. Restart Claude Code to
@@ -428,4 +428,11 @@ function printHelp() {
   console.log('    /tmp/opencues.log');
   console.log('    /tmp/opencues-highlight-state-<pid>.json');
   console.log('    /tmp/opencues-cursor-state.json');
+}
+
+// Prefer the short "opencues" form when the binary is on PATH; fall back
+// to the always-works-from-a-clone form. Used in user-facing hint messages.
+function launchCommand() {
+  const probe = spawnSync('command', ['-v', 'opencues'], { stdio: ['ignore', 'pipe', 'ignore'], shell: true });
+  return probe.status === 0 ? 'opencues' : 'pnpm exec opencues';
 }

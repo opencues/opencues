@@ -245,4 +245,10 @@ run_step "Installing runtime + core into fork" install_into_fork
 run_step "Patching fork (3 files + bootstrap)" patch_fork
 
 echo ""
-echo "Done. Launch with: pnpm exec opencues run opencode"
+# Prefer the short form if `opencues` is on PATH; otherwise fall back
+# to `pnpm exec` which always works from inside the clone.
+if command -v opencues &>/dev/null; then
+  echo "Done. Launch with: opencues run opencode"
+else
+  echo "Done. Launch with: pnpm exec opencues run opencode"
+fi

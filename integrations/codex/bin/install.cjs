@@ -92,7 +92,15 @@ function doInstall() {
   console.log('See integrations/codex/HANDOFF.md for what remains.');
   console.log('');
   console.log('To run the patched TUI (after HANDOFF items land):');
-  console.log(`  pnpm exec opencues run codex`);
+  console.log(`  ${launchCommand()} run codex`);
+}
+
+// Prefer the short "opencues" form when the binary is on PATH
+// (published, aliased, or wrapper-shimmed); fall back to the
+// always-works-from-a-clone form otherwise.
+function launchCommand() {
+  const probe = spawnSync('command', ['-v', 'opencues'], { stdio: ['ignore', 'pipe', 'ignore'], shell: true });
+  return probe.status === 0 ? 'opencues' : 'pnpm exec opencues';
 }
 
 // --- UNINSTALL ------------------------------------------------------------

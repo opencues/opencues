@@ -117,7 +117,11 @@ echo "  - Wire the bridge into codex-rs/tui/src/bottom_pane/chat_composer.rs"
 echo "  - Apply via setup.sh's STEP 4 (TODO marker)"
 echo ""
 echo "To run codex (once TUI patches land):"
-echo "  pnpm exec opencues run codex"
+if command -v opencues &>/dev/null; then
+  echo "  opencues run codex"
+else
+  echo "  pnpm exec opencues run codex"
+fi
 
 # TODO STEP 4: in-place TUI patches via Python sed (mirrors integrations/opencode/patches/setup.sh).
 # Patch points:

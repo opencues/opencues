@@ -102,10 +102,19 @@ function doInstall() {
   console.log(`         click "Load unpacked", select:`);
   console.log(`         ${loadPath}`);
   console.log('');
-  console.log(`To reload after future builds: pnpm --filter @opencues/chrome dev-install ${args.target ? '-- --target ' + args.target : ''}`);
+  const oc = launchCommand();
+  const tgt = args.target ? ` --target ${args.target}` : '';
+  console.log(`To reload after future builds: ${oc} install chrome${tgt}`);
   console.log(`         (then click the reload button on the extension card)`);
   console.log('');
-  console.log('To roll back: pnpm --filter @opencues/chrome dev-uninstall' + (args.target ? ' -- --target ' + args.target : ''));
+  console.log(`To roll back: ${oc} uninstall chrome${tgt}`);
+}
+
+// Prefer the short "opencues" form when the binary is on PATH; fall back
+// to the always-works-from-a-clone form. Used in user-facing hint messages.
+function launchCommand() {
+  const probe = spawnSync('command', ['-v', 'opencues'], { stdio: ['ignore', 'pipe', 'ignore'], shell: true });
+  return probe.status === 0 ? 'opencues' : 'pnpm exec opencues';
 }
 
 // --- UNINSTALL ------------------------------------------------------------
