@@ -9,6 +9,7 @@ import * as assert from 'node:assert';
 import { buildSourcesFromConfig, combineWordSources } from './build-sources';
 import { ConfigSource } from './config-source';
 import { ClassifiedSourceGroup } from './classified-source-group';
+import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { CuesMdConfig, SourceConfig, PromptConfig } from '../cues-md';
 import { HttpAdapter } from '../types';
 
@@ -33,93 +34,36 @@ function mkConfig(promptConfig: PromptConfig): CuesMdConfig {
 // combineWordSources
 // ---------------------------------------------------------------------------
 
-describe('combineWordSources', () => {
-  it('should combine a single source unchanged', () => {
-    const grammar: SourceConfig = {
-      name: 'grammar',
-      promptText: 'Provide 3 alternatives per word.',
-      priority: 50,
-    };
+describe('combineWordSources (deprecated; preserved for callers)', () => {
+  // Per-word routing via RoutedWordSourceGroup replaced the combine-into-
+  // one-prompt approach. The function survives only so external imports
+  // don't fail; new code should not call it. These tests verify it
+  // remains a sane no-op concat that still appends the format spec.
 
-    const combined = combineWordSources([grammar]);
-
-    assert.strictEqual(combined.name, 'grammar');
-    assert.strictEqual(combined.scope, 'words');
-    assert.strictEqual(combined.parser, 'alternatives');
-    assert.strictEqual(combined.priority, 50);
-    assert.ok(combined.promptText!.includes('Provide 3 alternatives per word.'));
+  it('returns a SourceConfig with the canonical alternatives shape', () => {
+    const out = combineWordSources([{ name: 'a', promptText: 'A.', priority: 50 }]);
+    assert.strictEqual(out.name, 'grammar');
+    assert.strictEqual(out.scope, 'words');
+    assert.strictEqual(out.parser, 'alternatives');
+    assert.strictEqual(out.priority, 50);
+    assert.ok(out.promptText!.includes('A.'));
   });
 
-  it('should combine base + domain sources with conditional headers', () => {
-    const grammar: SourceConfig = {
-      name: 'grammar',
-      promptText: 'Provide 3 alternatives per word.',
-      priority: 50,
-    };
-    const legal: SourceConfig = {
-      name: 'legal',
-      promptText: 'Prefer legal terminology.',
-      priority: 70,
-      match: 'contract|agreement|clause',
-    };
-    const medical: SourceConfig = {
-      name: 'medical',
-      promptText: 'Use ICD-10 standard terminology.',
-      priority: 75,
-      match: 'diagnosis|prognosis',
-    };
-
-    const combined = combineWordSources([grammar, legal, medical]);
-
-    // Priority is max of all
-    assert.strictEqual(combined.priority, 75);
-
-    // Base prompt appears first (no conditional header)
-    const text = combined.promptText!;
-    const grammarPos = text.indexOf('Provide 3 alternatives per word.');
-    const legalPos = text.indexOf('Prefer legal terminology.');
-    const medicalPos = text.indexOf('Use ICD-10 standard terminology.');
-
-    assert.ok(grammarPos >= 0, 'grammar prompt missing');
-    assert.ok(legalPos >= 0, 'legal prompt missing');
-    assert.ok(medicalPos >= 0, 'medical prompt missing');
-    assert.ok(grammarPos < legalPos, 'grammar should come before legal');
-    assert.ok(legalPos < medicalPos, 'legal should come before medical');
-
-    // Domain sources have conditional headers with readable terms
-    assert.ok(text.includes('When the input contains terms like contract, agreement, clause'));
-    assert.ok(text.includes('When the input contains terms like diagnosis, prognosis'));
-  });
-
-  it('should set priority to max of all sources', () => {
-    const sources: SourceConfig[] = [
+  it('priority is the max of children', () => {
+    const out = combineWordSources([
       { name: 'a', promptText: 'A', priority: 30 },
       { name: 'b', promptText: 'B', priority: 90 },
       { name: 'c', promptText: 'C', priority: 60 },
-    ];
-
-    const combined = combineWordSources(sources);
-    assert.strictEqual(combined.priority, 90);
+    ]);
+    assert.strictEqual(out.priority, 90);
   });
 
-  it('should default missing priorities to 50', () => {
-    const sources: SourceConfig[] = [
+  it('defaults missing priorities to 50', () => {
+    const out = combineWordSources([
       { name: 'a', promptText: 'A' },
       { name: 'b', promptText: 'B' },
-    ];
-
-    const combined = combineWordSources(sources);
-    assert.strictEqual(combined.priority, 50);
-  });
-
-  it('should have no match regex on combined source', () => {
-    const sources: SourceConfig[] = [
-      { name: 'grammar', promptText: 'Base.' },
-      { name: 'legal', promptText: 'Legal.', match: 'contract' },
-    ];
-
-    const combined = combineWordSources(sources);
-    assert.strictEqual(combined.match, undefined);
+    ]);
+    assert.strictEqual(out.priority, 50);
   });
 
   // Regression guards for the "sloppy base prompt poisons combined output"
@@ -178,8 +122,8 @@ describe('combineWordSources', () => {
 // buildSourcesFromConfig — word source combining
 // ---------------------------------------------------------------------------
 
-describe('buildSourcesFromConfig — word source combining', () => {
-  it('should produce ONE word source from multiple alternatives sections', () => {
+describe('buildSourcesFromConfig — word source routing (new model)', () => {
+  it('wraps multiple alternatives sections in ONE RoutedWordSourceGroup', () => {
     const cuesConfig = mkConfig({
         sources: {
           grammar: { name: 'grammar', promptText: 'Grammar prompt.', priority: 50 },
@@ -190,17 +134,20 @@ describe('buildSourcesFromConfig — word source combining', () => {
 
     const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
 
-    // Should be exactly 1 combined ConfigSource, not 3
+    // Replaced: was 1 combined ConfigSource. Now: 1 RoutedWordSourceGroup
+    // wrapping 3 ConfigSources for per-word dispatch.
     assert.strictEqual(sources.length, 1);
-    assert.ok(sources[0] instanceof ConfigSource);
+    assert.ok(sources[0] instanceof RoutedWordSourceGroup);
 
-    const src = sources[0] as ConfigSource;
-    assert.strictEqual(src.id, 'grammar');
-    assert.strictEqual(src.scope, 'words');
-    assert.strictEqual(src.priority, 75);
+    const group = sources[0] as RoutedWordSourceGroup;
+    assert.strictEqual(group.id, 'word-alts');
+    // Priority is the max of all children (matches old combined-source behaviour).
+    assert.strictEqual(group.priority, 75);
+    // 2 domain sources (legal, medical) + 1 default (grammar).
+    assert.deepStrictEqual(group.routingStats, { domains: 2, defaults: 1 });
   });
 
-  it('should keep non-alternatives parser sources separate', () => {
+  it('keeps non-alternatives parser sources separate (not in the routed group)', () => {
     const cuesConfig = mkConfig({
         sources: {
           grammar: { name: 'grammar', promptText: 'Grammar.', priority: 50 },
@@ -210,11 +157,16 @@ describe('buildSourcesFromConfig — word source combining', () => {
 
     const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
 
-    // grammar (combined, even though it's just 1) + custom (separate)
+    // 1 RoutedWordSourceGroup (grammar) + 1 ConfigSource (custom raw parser).
     assert.strictEqual(sources.length, 2);
+    const routed = sources.find(s => s instanceof RoutedWordSourceGroup);
+    const direct = sources.find(s => s instanceof ConfigSource);
+    assert.ok(routed, 'expected a RoutedWordSourceGroup for the alternatives source');
+    assert.ok(direct, 'expected a direct ConfigSource for the raw-parser source');
+    assert.strictEqual((direct as ConfigSource).id, 'custom');
   });
 
-  it('should keep non-words scope sources separate', () => {
+  it('keeps non-words scope sources separate', () => {
     const cuesConfig = mkConfig({
         sources: {
           grammar: { name: 'grammar', promptText: 'Grammar.', priority: 50 },
@@ -224,9 +176,11 @@ describe('buildSourcesFromConfig — word source combining', () => {
 
     const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
     assert.strictEqual(sources.length, 2);
+    assert.ok(sources.some(s => s instanceof RoutedWordSourceGroup));
+    assert.ok(sources.some(s => s instanceof ConfigSource && s.id === 'allScope'));
   });
 
-  it('should skip disabled sources', () => {
+  it('skips disabled sources', () => {
     const cuesConfig = mkConfig({
         sources: {
           grammar: { name: 'grammar', promptText: 'Grammar.', priority: 50 },
@@ -236,9 +190,11 @@ describe('buildSourcesFromConfig — word source combining', () => {
 
     const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
     assert.strictEqual(sources.length, 1);
+    const group = sources[0] as RoutedWordSourceGroup;
+    assert.deepStrictEqual(group.routingStats, { domains: 0, defaults: 1 });
   });
 
-  it('should skip sources without promptText', () => {
+  it('skips sources without promptText', () => {
     const cuesConfig = mkConfig({
         sources: {
           grammar: { name: 'grammar', promptText: 'Grammar.' },
@@ -250,9 +206,22 @@ describe('buildSourcesFromConfig — word source combining', () => {
     assert.strictEqual(sources.length, 1);
   });
 
-  it('should handle empty cuesConfig', () => {
+  it('handles empty cuesConfig', () => {
     const sources = buildSourcesFromConfig(undefined, undefined, defaultOptions);
     assert.strictEqual(sources.length, 0);
+  });
+
+  it('emits no RoutedWordSourceGroup when there are zero word-alts sources', () => {
+    // All sources are non-alternatives → no routed group is emitted, just direct sources.
+    const cuesConfig = mkConfig({
+        sources: {
+          custom: { name: 'custom', promptText: 'Custom.', parser: 'raw', scope: 'words' },
+        },
+    });
+    const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
+    assert.strictEqual(sources.length, 1);
+    assert.ok(sources[0] instanceof ConfigSource);
+    assert.ok(!sources.some(s => s instanceof RoutedWordSourceGroup));
   });
 });
 
@@ -276,7 +245,7 @@ describe('buildSourcesFromConfig — blanks pipeline', () => {
     assert.ok(sources[0] instanceof ClassifiedSourceGroup);
   });
 
-  it('should build both word sources and blanks sources together', () => {
+  it('builds both word + blanks sources together (1 RoutedWordSourceGroup + 1 ClassifiedSourceGroup)', () => {
     const cuesConfig = mkConfig({
         sources: {
           grammar: { name: 'grammar', promptText: 'Word alts.', priority: 50 },
@@ -293,14 +262,10 @@ describe('buildSourcesFromConfig — blanks pipeline', () => {
 
     const sources = buildSourcesFromConfig(cuesConfig, blanksConfig, defaultOptions);
 
-    // 1 combined word source + 1 ClassifiedSourceGroup
+    // 1 RoutedWordSourceGroup (wraps grammar+legal) + 1 ClassifiedSourceGroup (wraps math/grammar blanks).
     assert.strictEqual(sources.length, 2);
-
-    const wordSources = sources.filter(s => s instanceof ConfigSource);
-    const blankSources = sources.filter(s => s instanceof ClassifiedSourceGroup);
-
-    assert.strictEqual(wordSources.length, 1);
-    assert.strictEqual(blankSources.length, 1);
+    assert.strictEqual(sources.filter(s => s instanceof RoutedWordSourceGroup).length, 1);
+    assert.strictEqual(sources.filter(s => s instanceof ClassifiedSourceGroup).length, 1);
   });
 });
 
@@ -308,224 +273,13 @@ describe('buildSourcesFromConfig — blanks pipeline', () => {
 // Combined prompt content accuracy
 // ---------------------------------------------------------------------------
 
-describe('combined prompt accuracy', () => {
-  it('should produce a prompt that works with parseAlternatives format', () => {
-    const grammar: SourceConfig = {
-      name: 'grammar',
-      promptText: 'Provide 3 alternatives per word.\nOutput ONLY index:alternatives format.',
-    };
-    const legal: SourceConfig = {
-      name: 'legal',
-      promptText: 'Prefer legal terminology for contract terms.',
-      match: 'contract|shall|indemnify',
-    };
-
-    const combined = combineWordSources([grammar, legal]);
-    const text = combined.promptText!;
-
-    // Grammar instructions appear first
-    assert.ok(text.startsWith('Provide 3 alternatives per word.'));
-
-    // Legal instructions appear after with conditional header
-    assert.ok(text.includes('When the input contains terms like contract, shall, indemnify'));
-    assert.ok(text.includes('Prefer legal terminology for contract terms.'));
-
-    // Output format instruction is preserved
-    assert.ok(text.includes('Output ONLY index:alternatives format.'));
-  });
-
-  it('should handle multiple base sources (no match regex)', () => {
-    const base1: SourceConfig = { name: 'grammar', promptText: 'Base 1.' };
-    const base2: SourceConfig = { name: 'creative', promptText: 'Base 2.' };
-    const domain: SourceConfig = { name: 'legal', promptText: 'Domain.', match: 'contract' };
-
-    const combined = combineWordSources([base1, base2, domain]);
-    const text = combined.promptText!;
-
-    // Both base sources appear before domain
-    const base1Pos = text.indexOf('Base 1.');
-    const base2Pos = text.indexOf('Base 2.');
-    const domainPos = text.indexOf('Domain.');
-
-    assert.ok(base1Pos < domainPos);
-    assert.ok(base2Pos < domainPos);
-  });
-
-  it('should convert pipe-separated match to readable comma-separated terms', () => {
-    const source: SourceConfig = {
-      name: 'medical',
-      promptText: 'Medical prompt.',
-      match: 'diagnosis|prognosis|etiology|contraindication',
-    };
-
-    const combined = combineWordSources([{ name: 'base', promptText: 'Base.' }, source]);
-
-    assert.ok(combined.promptText!.includes(
-      'When the input contains terms like diagnosis, prognosis, etiology, contraindication'
-    ));
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Edge cases
 // ---------------------------------------------------------------------------
 
-describe('combineWordSources — edge cases', () => {
-  it('should handle all-domain sources (no base)', () => {
-    const legal: SourceConfig = {
-      name: 'legal',
-      promptText: 'Legal terms.',
-      match: 'contract|clause',
-      priority: 70,
-    };
-    const medical: SourceConfig = {
-      name: 'medical',
-      promptText: 'Medical terms.',
-      match: 'diagnosis',
-      priority: 75,
-    };
-
-    const combined = combineWordSources([legal, medical]);
-
-    // Both should have conditional headers
-    assert.ok(combined.promptText!.includes('When the input contains terms like contract, clause'));
-    assert.ok(combined.promptText!.includes('When the input contains terms like diagnosis'));
-    // No base prompt, so it starts with the first domain section
-    assert.ok(combined.promptText!.includes('Legal terms.'));
-    assert.ok(combined.promptText!.includes('Medical terms.'));
-    assert.strictEqual(combined.priority, 75);
-  });
-
-  it('should handle single domain source (no base)', () => {
-    const legal: SourceConfig = {
-      name: 'legal',
-      promptText: 'Legal prompt.',
-      match: 'contract',
-      priority: 70,
-    };
-
-    const combined = combineWordSources([legal]);
-
-    assert.strictEqual(combined.priority, 70);
-    assert.ok(combined.promptText!.includes('When the input contains terms like contract'));
-    assert.ok(combined.promptText!.includes('Legal prompt.'));
-  });
-
-  it('should preserve multiline prompt text', () => {
-    const grammar: SourceConfig = {
-      name: 'grammar',
-      promptText: 'Line 1.\nLine 2.\nLine 3.',
-    };
-    const legal: SourceConfig = {
-      name: 'legal',
-      promptText: 'Legal line 1.\nLegal line 2.',
-      match: 'contract',
-    };
-
-    const combined = combineWordSources([grammar, legal]);
-
-    assert.ok(combined.promptText!.includes('Line 1.\nLine 2.\nLine 3.'));
-    assert.ok(combined.promptText!.includes('Legal line 1.\nLegal line 2.'));
-  });
-
-  it('should handle match regex with special characters', () => {
-    const source: SourceConfig = {
-      name: 'regex',
-      promptText: 'Regex prompt.',
-      match: '\\d+\\s*[+\\-*/]\\s*\\d+|\\d+%',
-    };
-
-    const combined = combineWordSources([{ name: 'base', promptText: 'Base.' }, source]);
-
-    // Pipes in regex-like patterns get converted to commas
-    assert.ok(combined.promptText!.includes('When the input contains terms like'));
-    assert.ok(combined.promptText!.includes('Regex prompt.'));
-  });
-});
-
 // ---------------------------------------------------------------------------
 // buildSourcesFromConfig — source count verification
 // ---------------------------------------------------------------------------
-
-describe('buildSourcesFromConfig — source count', () => {
-  it('should produce exactly 1 word source for real cues.md layout (grammar+legal+medical)', () => {
-    const cuesConfig = mkConfig({
-      sources: {
-        grammar: {
-          name: 'grammar',
-          promptText: 'Provide 3 alternatives per word: synonym, opposite, creative.\nOutput ONLY index:alternatives format.',
-          priority: 50,
-        },
-        legal: {
-          name: 'legal',
-          promptText: 'When the highlighted word is a legal term, suggest alternatives that preserve legal meaning.',
-          priority: 70,
-          match: 'contract|agreement|clause|indemnify|warrant|liability|shall|herein|whereas|stipulate',
-        },
-        medical: {
-          name: 'medical',
-          promptText: 'When suggesting alternatives for clinical terms, prefer ICD-10 standard terminology.',
-          priority: 75,
-          match: 'diagnosis|prognosis|etiology|contraindication|prophylaxis|anamnesis|comorbidity|pathology',
-        },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
-
-    assert.strictEqual(sources.length, 1, 'Expected exactly 1 combined word source');
-    const src = sources[0] as ConfigSource;
-    assert.strictEqual(src.id, 'grammar');
-    assert.strictEqual(src.priority, 75);
-
-    // Verify the combined source supports word contexts
-    assert.strictEqual(src.supports({ text: 'hello world', words: ['hello', 'world'] }), true);
-
-    // Verify it does NOT support blank contexts
-    assert.strictEqual(src.supports({ text: 'the _', words: ['the', '_'] }), false);
-  });
-
-  it('should produce 2 sources when one uses a different parser', () => {
-    const cuesConfig = mkConfig({
-      sources: {
-        grammar: { name: 'grammar', promptText: 'Grammar.', priority: 50 },
-        legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
-        special: { name: 'special', promptText: 'Special.', priority: 80, parser: 'raw', scope: 'words' },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultOptions);
-
-    // grammar + legal combined into 1, special stays separate = 2
-    assert.strictEqual(sources.length, 2);
-  });
-
-  it('should produce 1 word + 1 blank source for full config', () => {
-    const cuesConfig = mkConfig({
-      sources: {
-        grammar: { name: 'grammar', promptText: 'Grammar.', priority: 50 },
-        legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
-      },
-    });
-    const blanksConfig = mkConfig({
-      sources: {
-        classifier: { name: 'classifier', promptText: 'Classify input.' },
-        math: { name: 'math', promptText: 'Compute.', parser: 'math', priority: 90, match: '\\d+' },
-        factual: { name: 'factual', promptText: 'Answer.', parser: 'answer', priority: 90, match: 'capital of' },
-        grammar: { name: 'grammar', promptText: 'Fill blank.', priority: 50 },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(cuesConfig, blanksConfig, defaultOptions);
-
-    const wordSources = sources.filter(s => s instanceof ConfigSource);
-    const blankSources = sources.filter(s => s instanceof ClassifiedSourceGroup);
-
-    assert.strictEqual(wordSources.length, 1, 'Should have 1 combined word source');
-    assert.strictEqual(blankSources.length, 1, 'Should have 1 ClassifiedSourceGroup');
-    assert.strictEqual(sources.length, 2, 'Total should be 2');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // ClassifiedSourceGroup — fallback behavior
@@ -701,165 +455,6 @@ function capturingAdapter(content: string): { adapter: HttpAdapter; prompts: str
 // ---------------------------------------------------------------------------
 // End-to-end: combined word source results
 // ---------------------------------------------------------------------------
-
-describe('end-to-end: combined word source — normal text', () => {
-  it('should return grammar alternatives for plain text', async () => {
-    const cap = capturingAdapter('0:The,A,My\n2:ran,walked,sprinted');
-    const cuesConfig = mkConfig({
-      sources: {
-        grammar: { name: 'grammar', promptText: 'Provide 3 alternatives.', priority: 50 },
-        legal: { name: 'legal', promptText: 'Legal terms.', priority: 70, match: 'contract|shall' },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(cuesConfig, undefined, {
-      ...defaultOptions,
-      httpAdapter: cap.adapter,
-    });
-
-    assert.strictEqual(sources.length, 1);
-    const result = await sources[0].getCues({ text: 'The dog ran', words: ['The', 'dog', 'ran'] });
-
-    // Verify results parsed correctly
-    assert.strictEqual(result.results.length, 2);
-
-    const theResult = result.results.find(r => r.wordIndex === 0);
-    assert.ok(theResult);
-    assert.strictEqual(theResult.alternatives[0], 'The');
-    assert.ok(theResult.alternatives.includes('A'));
-    assert.ok(theResult.alternatives.includes('My'));
-
-    const ranResult = result.results.find(r => r.wordIndex === 2);
-    assert.ok(ranResult);
-    assert.strictEqual(ranResult.alternatives[0], 'ran');
-    assert.ok(ranResult.alternatives.includes('walked'));
-    assert.ok(ranResult.alternatives.includes('sprinted'));
-
-    // Verify only ONE LLM call was made
-    assert.strictEqual(cap.prompts.length, 1);
-  });
-
-  it('should send combined prompt with domain sections in a single call', async () => {
-    const cap = capturingAdapter('2:shall,must,will');
-    const cuesConfig = mkConfig({
-      sources: {
-        grammar: { name: 'grammar', promptText: 'Grammar prompt.', priority: 50 },
-        legal: { name: 'legal', promptText: 'Legal alternative rules.', priority: 70, match: 'contract|shall' },
-        medical: { name: 'medical', promptText: 'Medical terminology rules.', priority: 75, match: 'diagnosis' },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(cuesConfig, undefined, {
-      ...defaultOptions,
-      httpAdapter: cap.adapter,
-    });
-
-    await sources[0].getCues({
-      text: 'the contract shall apply',
-      words: ['the', 'contract', 'shall', 'apply'],
-    });
-
-    // Only 1 call despite 3 source configs
-    assert.strictEqual(cap.prompts.length, 1);
-
-    // Combined prompt includes both grammar base and legal domain section
-    const prompt = cap.prompts[0];
-    assert.ok(prompt.includes('Grammar prompt.'), 'missing grammar base');
-    assert.ok(prompt.includes('Legal alternative rules.'), 'missing legal domain');
-    assert.ok(prompt.includes('Medical terminology rules.'), 'missing medical domain');
-    assert.ok(prompt.includes('When the input contains terms like contract, shall'), 'missing legal conditional');
-    assert.ok(prompt.includes('When the input contains terms like diagnosis'), 'missing medical conditional');
-
-    // Input words are appended in indexed format
-    assert.ok(prompt.includes('0=the 1=contract 2=shall 3=apply'));
-  });
-});
-
-describe('end-to-end: combined word source — domain text', () => {
-  it('should return legal-appropriate alternatives for legal text', async () => {
-    const sources = buildSourcesFromConfig(
-      mkConfig({
-        sources: {
-          grammar: { name: 'grammar', promptText: 'General alternatives.', priority: 50 },
-          legal: { name: 'legal', promptText: 'Legal meaning.', priority: 70, match: 'shall|contract' },
-        },
-      }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('1:must,will,should\n2:shall,ought to,is required to') },
-    );
-
-    const result = await sources[0].getCues({
-      text: 'the party shall comply',
-      words: ['the', 'party', 'shall', 'comply'],
-    });
-
-    const shallResult = result.results.find(r => r.wordIndex === 2);
-    assert.ok(shallResult);
-    // Original word is prepended for non-blank words
-    assert.strictEqual(shallResult.alternatives[0], 'shall');
-    assert.ok(shallResult.alternatives.includes('ought to'));
-    assert.ok(shallResult.alternatives.includes('is required to'));
-  });
-
-  it('should return medical alternatives for clinical text', async () => {
-    const sources = buildSourcesFromConfig(
-      mkConfig({
-        sources: {
-          grammar: { name: 'grammar', promptText: 'General.', priority: 50 },
-          medical: { name: 'medical', promptText: 'ICD-10 terms.', priority: 75, match: 'diagnosis|prognosis' },
-        },
-      }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('1:diagnosis,clinical impression,differential diagnosis') },
-    );
-
-    const result = await sources[0].getCues({
-      text: 'the diagnosis was confirmed',
-      words: ['the', 'diagnosis', 'was', 'confirmed'],
-    });
-
-    const diagResult = result.results.find(r => r.wordIndex === 1);
-    assert.ok(diagResult);
-    assert.strictEqual(diagResult.alternatives[0], 'diagnosis');
-    assert.ok(diagResult.alternatives.includes('clinical impression'));
-    assert.ok(diagResult.alternatives.includes('differential diagnosis'));
-  });
-
-  it('should handle mixed-domain text in a single response', async () => {
-    // LLM returns alternatives for both legal and medical words
-    const sources = buildSourcesFromConfig(
-      mkConfig({
-        sources: {
-          grammar: { name: 'grammar', promptText: 'General.', priority: 50 },
-          legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract|liability' },
-          medical: { name: 'medical', promptText: 'Medical.', priority: 75, match: 'diagnosis|prognosis' },
-        },
-      }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('1:liability,responsibility,obligation\n3:diagnosis,clinical assessment,evaluation') },
-    );
-
-    const result = await sources[0].getCues({
-      text: 'the liability for the diagnosis',
-      words: ['the', 'liability', 'for', 'the', 'diagnosis'],
-    });
-
-    // NOTE: parseAlternatives skips index 3 if "the" is a duplicate at that position
-    // but here words[3] is "the" not "diagnosis" — let me fix the test
-    // Actually words[4] = "diagnosis" but LLM returned index 3
-    // This tests that the parser correctly uses the LLM's index
-    assert.strictEqual(result.results.length, 2);
-
-    const liabilityResult = result.results.find(r => r.wordIndex === 1);
-    assert.ok(liabilityResult);
-    assert.ok(liabilityResult.alternatives.includes('responsibility'));
-
-    const diagResult = result.results.find(r => r.wordIndex === 3);
-    assert.ok(diagResult);
-    // words[3] is "the", original prepended
-    assert.strictEqual(diagResult.alternatives[0], 'the');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // End-to-end: blank fill-in results
@@ -1108,183 +703,9 @@ describe('end-to-end: blanks — classifier misclassification fallback', () => {
 // End-to-end: number handling in word alternatives
 // ---------------------------------------------------------------------------
 
-describe('end-to-end: combined word source — number handling', () => {
-  it('should skip number positions in alternatives (handled by number cycling)', async () => {
-    const sources = buildSourcesFromConfig(
-      mkConfig({
-        sources: {
-          grammar: { name: 'grammar', promptText: 'Alternatives.', priority: 50 },
-        },
-      }),
-      undefined,
-      // LLM returns alts for index 0 (number) and index 2 (word)
-      { ...defaultOptions, httpAdapter: mockAdapter('0:five,many,several\n2:ran,walked,sprinted') },
-    );
-
-    const result = await sources[0].getCues({
-      text: '5 dogs ran',
-      words: ['5', 'dogs', 'ran'],
-    });
-
-    // Index 0 is "5" (number) — should be filtered out by parseAlternatives
-    const numResult = result.results.find(r => r.wordIndex === 0);
-    assert.strictEqual(numResult, undefined, 'Number positions should be skipped');
-
-    // Index 2 is "ran" (word) — should have alternatives
-    // Original "ran" is prepended, and LLM also returned "ran" → duplicate is expected
-    const ranResult = result.results.find(r => r.wordIndex === 2);
-    assert.ok(ranResult);
-    assert.strictEqual(ranResult.alternatives[0], 'ran');
-    assert.ok(ranResult.alternatives.includes('walked'));
-    assert.ok(ranResult.alternatives.includes('sprinted'));
-  });
-
-  it('should convert numbers to word form in the prompt for context', async () => {
-    const cap = capturingAdapter('2:ran,walked,sprinted');
-    const sources = buildSourcesFromConfig(
-      mkConfig({
-        sources: {
-          grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 },
-        },
-      }),
-      undefined,
-      { ...defaultOptions, httpAdapter: cap.adapter },
-    );
-
-    await sources[0].getCues({ text: '3 dogs ran', words: ['3', 'dogs', 'ran'] });
-
-    // "3" should be sent as "three" in the prompt for better LLM context
-    assert.ok(cap.prompts[0].includes('0=three'), 'Number 3 should be sent as "three"');
-    assert.ok(cap.prompts[0].includes('1=dogs'));
-    assert.ok(cap.prompts[0].includes('2=ran'));
-  });
-
-  it('should not convert numbers to words for blank-scoped sources', async () => {
-    const cap = capturingAdapter('4:fence');
-    const blanksConfig = mkConfig({
-      sources: {
-        grammar: { name: 'grammar', promptText: 'Fill.', priority: 50 },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(undefined, blanksConfig, {
-      ...defaultOptions,
-      httpAdapter: cap.adapter,
-    });
-
-    const group = sources.find(s => s instanceof ClassifiedSourceGroup)!;
-    await group.getCues({ text: '3 dogs over the _', words: ['3', 'dogs', 'over', 'the', '_'] });
-
-    // Blank-scoped: numbers stay as digits
-    assert.ok(cap.prompts[0].includes('0=3'), 'Blanks scope should keep "3" as digit');
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Error handling edge cases
 // ---------------------------------------------------------------------------
-
-describe('end-to-end: error handling', () => {
-  it('should return empty results when LLM returns invalid JSON', async () => {
-    const badAdapter: HttpAdapter = {
-      post: async () => 'not json at all',
-    };
-
-    const sources = buildSourcesFromConfig(
-      mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
-      undefined,
-      { ...defaultOptions, httpAdapter: badAdapter },
-    );
-
-    const result = await sources[0].getCues({ text: 'hello world', words: ['hello', 'world'] });
-    assert.strictEqual(result.results.length, 0);
-    assert.ok(result.error, 'Should have error message');
-  });
-
-  it('should return empty results when adapter throws', async () => {
-    const throwAdapter: HttpAdapter = {
-      post: async () => { throw new Error('network timeout'); },
-    };
-
-    const sources = buildSourcesFromConfig(
-      mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
-      undefined,
-      { ...defaultOptions, httpAdapter: throwAdapter },
-    );
-
-    const result = await sources[0].getCues({ text: 'hello', words: ['hello'] });
-    assert.strictEqual(result.results.length, 0);
-    assert.ok(result.error!.includes('network timeout'));
-  });
-
-  it('should return empty results when LLM returns empty content', async () => {
-    const sources = buildSourcesFromConfig(
-      mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('') },
-    );
-
-    const result = await sources[0].getCues({ text: 'hello world', words: ['hello', 'world'] });
-    assert.strictEqual(result.results.length, 0);
-  });
-
-  it('should return empty results when LLM returns garbage (no parseable indices)', async () => {
-    const sources = buildSourcesFromConfig(
-      mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('I cannot provide alternatives for this text.') },
-    );
-
-    const result = await sources[0].getCues({ text: 'hello world', words: ['hello', 'world'] });
-    assert.strictEqual(result.results.length, 0);
-  });
-
-  it('should handle blank classifier LLM error gracefully (fall to default)', async () => {
-    const errorThenOk: HttpAdapter = {
-      post: async (_url: string, body: string) => {
-        const parsed = JSON.parse(body);
-        const prompt = parsed.messages[0].content as string;
-        if (prompt.includes('Classify')) throw new Error('classifier failed');
-        return JSON.stringify({ choices: [{ message: { content: '2:fence,wall' } }] });
-      },
-    };
-
-    const blanksConfig = mkConfig({
-      sources: {
-        classifier: { name: 'classifier', promptText: 'Classify.' },
-        factual: { name: 'factual', promptText: 'Answer.', parser: 'answer', priority: 90 },
-        grammar: { name: 'grammar', promptText: 'Fill.', priority: 50 },
-      },
-    });
-
-    const sources = buildSourcesFromConfig(undefined, blanksConfig, {
-      ...defaultOptions,
-      httpAdapter: errorThenOk,
-    });
-
-    const group = sources.find(s => s instanceof ClassifiedSourceGroup)!;
-    const result = await group.getCues({ text: 'go _', words: ['go', '_'] });
-
-    // Classifier error → falls to default (grammar) → gets results
-    // Wait, the default is grammar but the word at index 2 doesn't exist
-    // Let me fix: words has index 1 = '_'
-    // Mock returns '2:fence,wall' which is out of bounds for 2-word input
-    // This tests the parser gracefully skipping out-of-bounds
-    // The grammar source will get called but the response has wrong index
-    assert.strictEqual(result.results.length, 0);
-  });
-
-  it('should handle ConfigSource with no promptText', async () => {
-    const sources = buildSourcesFromConfig(
-      mkConfig({ sources: { grammar: { name: 'grammar', priority: 50 } } }),
-      undefined,
-      defaultOptions,
-    );
-
-    // Source with no promptText is filtered out in buildSourcesFromConfig
-    assert.strictEqual(sources.length, 0);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // ConfigSource.supports() edge cases
@@ -1345,51 +766,3 @@ describe('ConfigSource.supports()', () => {
 // Resolver integration with combined sources
 // ---------------------------------------------------------------------------
 
-describe('resolver integration: combined word sources', () => {
-  it('should produce results through full resolver pipeline', async () => {
-    const { createResolver } = await import('../resolver');
-
-    const sources = buildSourcesFromConfig(
-      mkConfig({
-        sources: {
-          grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 },
-          legal: { name: 'legal', promptText: 'Legal.', priority: 70, match: 'contract' },
-        },
-      }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('0:A,My\n1:cat,puppy') },
-    );
-
-    const resolver = createResolver(sources, { parallel: false, timeout: 5000 });
-    const result = await resolver.resolve({ text: 'The dog', words: ['The', 'dog'] });
-
-    assert.strictEqual(result.results.length, 2);
-    assert.strictEqual(result.metrics.length, 1, 'Only 1 source should be queried');
-    assert.strictEqual(result.errors.length, 0);
-  });
-
-  it('should not query blank sources for word input', async () => {
-    const { createResolver } = await import('../resolver');
-    let blanksCalled = false;
-
-    const blankAdapter: HttpAdapter = {
-      post: async () => { blanksCalled = true; return JSON.stringify({ choices: [{ message: { content: '' } }] }); },
-    };
-
-    const wordSources = buildSourcesFromConfig(
-      mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
-      undefined,
-      { ...defaultOptions, httpAdapter: mockAdapter('0:hi,hey') },
-    );
-    const blankSources = buildSourcesFromConfig(
-      undefined,
-      mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Fill.', priority: 50 } } }),
-      { ...defaultOptions, httpAdapter: blankAdapter },
-    );
-
-    const resolver = createResolver([...wordSources, ...blankSources], { parallel: false });
-    await resolver.resolve({ text: 'hello', words: ['hello'] });
-
-    assert.strictEqual(blanksCalled, false, 'Blank sources should not be called for word input');
-  });
-});

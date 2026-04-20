@@ -22,6 +22,7 @@ import { CueSource, HttpAdapter } from '../types';
 import { CuesMdConfig, SourceConfig, ControlConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
 import { ClassifiedSourceGroup } from './classified-source-group';
+import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { ControlBlankSource } from './control-blank-source';
 
 export interface BuildSourcesOptions {
@@ -37,34 +38,21 @@ export interface BuildSourcesOptions {
 }
 
 /**
- * Combine word-scoped alternatives sources into a single ConfigSource.
- * Base sources (no match regex) go first, domain sources get conditional headers.
- * Result: ONE LLM call instead of N sequential calls.
+ * @deprecated Removed in favour of RoutedWordSourceGroup (per-word
+ * routing instead of "combine all into one prompt"). The combine model
+ * had two structural problems: (1) cross-contamination — a sloppy or
+ * hijacking prompt poisoned all other sources; (2) it scaled poorly
+ * past 5+ sources as the combined prompt grew and confused the LLM.
+ *
+ * Kept as a no-op export only so external callers don't fail to
+ * import. New code should not use it.
  */
 export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
-  const base = srcs.filter(s => !s.match);
-  const domain = srcs.filter(s => !!s.match);
-
-  const parts: string[] = [];
-  for (const s of base) {
-    parts.push(s.promptText!);
-  }
-  for (const s of domain) {
-    const terms = s.match!.replace(/\|/g, ', ');
-    parts.push(
-      `\nWhen the input contains terms like ${terms}:\n` +
-      s.promptText!
-    );
-  }
-  // Reinforce output format at the end — UNCONDITIONALLY. The
-  // alternatives parser only accepts INDEX:alt1,alt2,alt3 form, so any
-  // sloppy or hijacking base-source prompt that omits / overrides the
-  // format would silently produce unparseable responses. Appending the
-  // spec last makes it the LAST instruction the LLM sees and gives the
-  // parser something to work with regardless of which sources are
-  // active.
+  // Trivial degenerate behaviour for any holdout caller — concat the
+  // prompts, append the format spec, and return. Same shape the old
+  // function emitted but no longer used by buildSourcesFromConfig.
+  const parts = srcs.map(s => s.promptText ?? '');
   parts.push('\nOutput ONLY index:alternatives format (e.g. 1:alt1,alt2,alt3).');
-
   return {
     name: 'grammar',
     scope: 'words',
@@ -77,11 +65,16 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
 /**
  * Build CueSource[] from parsed cues.md and blanks.md configs.
  *
- * - cues.md word-scoped alternatives ### sections → combined into ONE ConfigSource
- * - cues.md other ### sections → individual ConfigSource instances
- * - blanks.md ### sections → ClassifiedSourceGroup (scope: blanks)
- *   - ### classifier → group's classifier prompt
- *   - other ### sections → child ConfigSource instances
+ * - cues.md word-scoped alternatives ### sections → one ConfigSource
+ *   each, all wrapped in ONE RoutedWordSourceGroup. The group routes
+ *   each highlighted word to one child source via match/keywords/
+ *   priority/default and dispatches one LLM call per source group
+ *   (parallel). See routed-word-source-group.ts for the full rules.
+ * - cues.md other ### sections (non-default scope/parser) → individual
+ *   ConfigSource instances (not routed; called directly by the resolver).
+ * - blanks.md ### sections → ClassifiedSourceGroup (scope: blanks).
+ *   - ### classifier → group's classifier prompt.
+ *   - other ### sections → child ConfigSource instances.
  */
 export function buildSourcesFromConfig(
   cuesConfig: CuesMdConfig | undefined,
@@ -90,9 +83,11 @@ export function buildSourcesFromConfig(
 ): CueSource[] {
   const sources: CueSource[] = [];
 
-  // From cues.md: combine word-scoped alternatives sources into one LLM call
+  // From cues.md: collect all word-scope alternatives sources into one
+  // RoutedWordSourceGroup. Other sources (different scope/parser) stay
+  // individual ConfigSource instances.
   if (cuesConfig?.promptConfig?.sources) {
-    const wordAltSources: SourceConfig[] = [];
+    const wordAltSources: ConfigSource[] = [];
 
     for (const [, srcCfg] of Object.entries(cuesConfig.promptConfig.sources)) {
       if (srcCfg.enabled === false || !srcCfg.promptText) continue;
@@ -100,9 +95,12 @@ export function buildSourcesFromConfig(
       const parser = srcCfg.parser ?? 'alternatives';
 
       if (scope === 'words' && parser === 'alternatives') {
-        wordAltSources.push(srcCfg);
+        wordAltSources.push(new ConfigSource({
+          sourceConfig: { ...srcCfg, scope },
+          ...options,
+        }));
       } else {
-        // Non-combinable sources stay individual
+        // Non-routable sources (different scope or parser) stay direct.
         sources.push(new ConfigSource({
           sourceConfig: { ...srcCfg, scope },
           ...options,
@@ -111,10 +109,7 @@ export function buildSourcesFromConfig(
     }
 
     if (wordAltSources.length > 0) {
-      sources.push(new ConfigSource({
-        sourceConfig: combineWordSources(wordAltSources),
-        ...options,
-      }));
+      sources.push(new RoutedWordSourceGroup({ sources: wordAltSources }));
     }
   }
 
