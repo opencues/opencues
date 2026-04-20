@@ -262,7 +262,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
 TWEAKCC=~/opencues/integrations/claude-code/tweakcc
 cd $TWEAKCC && npm run build
 
-CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
+CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node $TWEAKCC/dist/index.mjs --apply
 ```
 
@@ -273,19 +273,19 @@ The only acceptable warning is system prompt conflicts (upstream markdown versio
 
 ## 7. Target install reminder
 
-All tweakcc operations target `claude-cues` (`~/local-claude-code`) only.
+All tweakcc operations target `claude-cues` (`~/claude-code-cues`) only.
 Never point `TWEAKCC_CC_INSTALLATION_PATH` at the native `~/.local/bin/claude` install.
 
 ---
 
-## 8. Pin the Claude Code version in `~/local-claude-code`
+## 8. Pin the Claude Code version in `~/claude-code-cues`
 
 The re-integration patches are anchored to regex patterns in `claude-code@2.1.110`'s
 minified `cli.js`. A caret range (`^2.1.110`) will drift to newer minors on
 `npm install` and break the patches silently. Pin it exactly:
 
 ```json
-// ~/local-claude-code/package.json
+// ~/claude-code-cues/package.json
 {
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.110"
@@ -296,8 +296,8 @@ minified `cli.js`. A caret range (`^2.1.110`) will drift to newer minors on
 Then reinstall cleanly:
 
 ```bash
-cd ~/local-claude-code && rm -rf node_modules package-lock.json && npm install
+cd ~/claude-code-cues && rm -rf node_modules package-lock.json && npm install
 ```
 
-Verify: `wc -l ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js`
+Verify: `wc -l ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js`
 should report **17634** for v2.1.110.

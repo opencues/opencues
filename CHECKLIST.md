@@ -512,7 +512,7 @@ pnpm exec opencues uninstall --all --dry-run
 
 **Live install (only if you actually want to install):**
 ```bash
-pnpm exec opencues install claude-code --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 # → goes through full install pipeline
 # → at the end: ~/.claude/opencues/ should exist with core/, runtime/, tips.json,
 #   statusline.sh, actions/, patch-state/

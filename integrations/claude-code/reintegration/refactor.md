@@ -975,7 +975,7 @@ Replace `Phase N` with the current target (e.g. "Phase 0 and Phase 1").
 
 - **Build runtime:** `cd packages/opencues-runtime && npm run build` (scaffold will add this).
 - **Install to Claude user path:** `cp -r packages/opencues-runtime/dist/* ~/.claude/node_modules/opencues-runtime/` (after creating the target dir). Mirrors the existing cues-core pattern.
-- **Build + apply tweakcc:** `cd integrations/claude-code/tweakcc && npm run build:dev && CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1) && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply`
+- **Build + apply tweakcc:** `cd integrations/claude-code/tweakcc && npm run build:dev && CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1) && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply`
 - **Test:** User restarts `claude-cues`, exercises features, checks `/tmp/opencues-highlight-state-<pid>.json` for `_debug` fields. For v2 runtime, expect new debug fields reflecting runtime module state.
 
 ### Commit conventions
@@ -1024,7 +1024,7 @@ Commit message: `feat: Phase 1 — Navigation module + v2.1 Claude Code adapter 
 - Node 22 in the dev environment. Use `npm` (not `pnpm`).
 - Tweakcc is a vendored npm package at `integrations/claude-code/tweakcc/`. It has its own `package.json` and builds via `npm run build:dev`.
 - `~/.claude/node_modules/` is the install location that CC's patched cli.js reads from. After any cues-core or opencues-runtime rebuild, copy `dist/*` into this path.
-- `claude-cues` is at `~/local-claude-code` — this is the patched install, don't confuse with the unpatched `claude` at `~/.local/bin/claude`.
+- `claude-cues` is at `~/claude-code-cues` — this is the patched install, don't confuse with the unpatched `claude` at `~/.local/bin/claude`.
 - Do not touch the native `claude` install. Only `claude-cues`.
 - Anchor-count assertions from Step 37d live in `writeWordHighlight`. New seam predicates in Phase 1+ should emit similar assertions (reuse the pattern).
 

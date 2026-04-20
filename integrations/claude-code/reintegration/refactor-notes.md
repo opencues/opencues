@@ -207,7 +207,7 @@ in tweakcc config; v1 remains default.
    ```bash
    cd integrations/claude-code/tweakcc
    npm run build:dev
-   CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
+   CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
    TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
    ```
 4. Restart `claude-cues` and verify Ctrl+Alt+Left/Right navigates words

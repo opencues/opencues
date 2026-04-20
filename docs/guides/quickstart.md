@@ -28,7 +28,7 @@ pnpm exec opencues install claude-code
 
 Restart Claude Code.
 
-> If your `claude` binary is at a non-standard path (e.g. WSL `claude-cues` at `~/local-claude-code/`), pass it explicitly: `pnpm exec opencues install claude-code --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js`
+> If your `claude` binary is at a non-standard path (e.g. WSL `claude-cues` at `~/claude-code-cues/`), pass it explicitly: `pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js`
 
 ## 3. Try it
 

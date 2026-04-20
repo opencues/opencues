@@ -96,6 +96,6 @@ function printHelp(ctx) {
   console.log('');
   console.log('Examples:');
   console.log('  opencues install claude-code');
-  console.log('  opencues install claude-code --target ~/local-claude-code/.../cli.js');
+  console.log('  opencues install claude-code --target ~/claude-code-cues/.../cli.js');
   console.log('  opencues install --all --dry-run');
 }

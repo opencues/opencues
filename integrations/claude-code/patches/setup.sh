@@ -449,7 +449,7 @@ begin_step "Applying patches to cli.js"
 # the two common install paths.
 CLI_JS="${OPENCUES_CC_TARGET:-}"
 if [ -z "$CLI_JS" ]; then
-  CLI_JS=$(find ~/.claude ~/local-claude-code -name "cli.js" -path "*claude-code*" 2>/dev/null | head -1)
+  CLI_JS=$(find ~/.claude ~/claude-code-cues -name "cli.js" -path "*claude-code*" 2>/dev/null | head -1)
 fi
 if [ -n "$CLI_JS" ]; then
   TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
@@ -464,7 +464,7 @@ else
   # whether to try --target fallback or report the error.
   end_step
   echo "" >&4
-  echo "NOTE: cli.js not found under ~/.claude/ or ~/local-claude-code/." >&4
+  echo "NOTE: cli.js not found under ~/.claude/ or ~/claude-code-cues/." >&4
   echo "Pass --target /path/to/cli.js to opencues install claude-code, or install" >&4
   echo "Claude Code first and re-run." >&4
   exit 2

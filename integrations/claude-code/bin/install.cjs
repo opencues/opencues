@@ -114,7 +114,7 @@ function doInstall() {
 
   // Delegate to setup.sh — it handles the full pipeline (build core +
   // runtime, install, build tweakcc, apply patches via OPENCUES_CC_TARGET
-  // when present, else its own find under ~/.claude / ~/local-claude-code).
+  // when present, else its own find under ~/.claude / ~/claude-code-cues).
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const tweakccDir = path.join(PKG_DIR, 'tweakcc');
   const setupArgs = [];
@@ -310,7 +310,7 @@ function tryAutoDetectCli() {
   // Common locations. Order: standard npm install → claude-cues local install.
   const candidates = [
     path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
-    path.join(HOME, 'local-claude-code', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    path.join(HOME, 'claude-code-cues', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
   ];
   for (const c of candidates) if (fs.existsSync(c)) return c;
   return null;

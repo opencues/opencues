@@ -59,7 +59,7 @@ module.exports = function doctor(argv, ctx) {
   // Detect cli.js patches.
   const cliCandidates = [
     path.join(HOME, '.claude/node_modules/@anthropic-ai/claude-code/cli.js'),
-    path.join(HOME, 'local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js'),
+    path.join(HOME, 'claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js'),
   ];
   for (const cli of cliCandidates) {
     if (!fs.existsSync(cli)) continue;

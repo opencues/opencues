@@ -44,7 +44,7 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 
 | Command | Location | Version | Purpose |
 |---|---|---|---|
-| `claude-cues` | `~/local-claude-code` (local npm) | 2.1.110 (pegged) | OpenCues patches applied here |
+| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.110 (pegged) | OpenCues patches applied here |
 | `claude` | `~/.local/bin/claude` (native) | 2.1.110 | Clean/unpatched — development use |
 
 - `claude-cues` is the patched instance. All `setup.sh` runs and tweakcc patch applies target it.
@@ -169,14 +169,14 @@ The setup script:
 1. Clones tweakcc from upstream into `integrations/claude-code/tweakcc/`
 2. Copies + integrates patch files
 3. Builds `@opencues/core` + `@opencues/runtime`, installs everything under `~/.claude/opencues/` (single dir; uninstall is `rm -rf`)
-4. Applies patches to `claude-cues` (`~/local-claude-code`) — not the native `claude` install
+4. Applies patches to `claude-cues` (`~/claude-code-cues`) — not the native `claude` install
 
 **Recommended invocation** (the repo's `opencues` CLI wraps this):
 
 ```bash
 pnpm exec opencues install claude-code
 # or, if cli.js lives at a non-standard path:
-pnpm exec opencues install claude-code --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
 The legacy `integrations/claude-code/patches/setup.sh` direct invocation still works for contributors hacking on the patches.
@@ -202,7 +202,7 @@ The legacy `integrations/claude-code/patches/setup.sh` direct invocation still w
 
 ## Build Commands
 
-**Target:** `claude-cues` (`~/local-claude-code`) only. The native `claude` install is never touched.
+**Target:** `claude-cues` (`~/claude-code-cues`) only. The native `claude` install is never touched.
 
 After any change to a Claude Code patch source or to `@opencues/core` / `@opencues/runtime`, run:
 
@@ -214,13 +214,13 @@ The script:
 1. Copies patch `.ts` files (`cursorStateExport.ts`, `wordHighlight.ts`, `dynamicHighlight.ts`, `opencuesRuntime.ts`) to tweakcc and rebuilds it (compiles patches into `dist/`)
 2. Builds `@opencues/core` and copies to `~/.claude/opencues/core/`
 3. Builds `@opencues/runtime` and rsyncs `dist/` to `~/.claude/opencues/runtime/`. Tips JSON, statusline script, and OS action scripts also go under `~/.claude/opencues/`. tweakcc's own config + `cli.js.backup` redirect there too via `TWEAKCC_CONFIG_DIR`. Single dir = clean uninstall.
-4. Applies compiled patches to `claude-cues` (`~/local-claude-code`)
+4. Applies compiled patches to `claude-cues` (`~/claude-code-cues`)
 
 To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):
 
 ```bash
 cd integrations/claude-code/tweakcc
-CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
+CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
 

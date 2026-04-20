@@ -30,7 +30,7 @@ The `opencues install claude-code` command runs `setup.sh` (this directory) unde
    - `tips.json`, `statusline.sh`, `actions/` — supporting files
    - `patch-state/` — tweakcc config + `cli.js.backup` (via `TWEAKCC_CONFIG_DIR` override)
 6. Builds tweakcc with the patches compiled in
-7. Applies the patches to the detected `cli.js` (auto-finds under `~/.claude` or `~/local-claude-code`; explicit path via `--target`)
+7. Applies the patches to the detected `cli.js` (auto-finds under `~/.claude` or `~/claude-code-cues`; explicit path via `--target`)
 
 ## Contents of this directory
 
@@ -66,7 +66,7 @@ integrations/claude-code/patches/setup.sh ~/opencues/integrations/claude-code/tw
 If your Claude Code install is at a non-standard path (e.g. WSL `claude-cues`):
 
 ```bash
-CLI_JS=/home/$USER/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+CLI_JS=/home/$USER/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 TWEAKCC_CONFIG_DIR=~/.claude/opencues/patch-state \
   TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" \
   node ~/opencues/integrations/claude-code/tweakcc/dist/index.mjs --apply

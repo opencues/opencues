@@ -20,11 +20,11 @@ pnpm install
 pnpm --filter @opencues/claude-code dev-install
 ```
 
-If your `claude` CLI lives at a non-standard path (e.g. you use [`claude-cues`](../../CLAUDE.md#claude-installs) at `~/local-claude-code/`):
+If your `claude` CLI lives at a non-standard path (e.g. you use [`claude-cues`](../../CLAUDE.md#claude-installs) at `~/claude-code-cues/`):
 
 ```bash
 pnpm --filter @opencues/claude-code dev-install -- \
-  --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+  --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
 The installer:
@@ -150,7 +150,7 @@ These are runtime IPC files; OS rotates `/tmp/`.
 
 ```bash
 pnpm --filter @opencues/claude-code dev-uninstall -- \
-  --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+  --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
 Reverts `cli.js` from the backup in `~/.claude/opencues/patch-state/`, then removes `~/.claude/opencues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.

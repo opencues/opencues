@@ -1,6 +1,6 @@
 # OpenCues Re-integration Steps
 
-Re-integrating OpenCues patches against Claude Code v2.1.110 (`claude-cues` at `~/local-claude-code`).
+Re-integrating OpenCues patches against Claude Code v2.1.110 (`claude-cues` at `~/claude-code-cues`).
 Each step is verified before proceeding to the next.
 
 ---
@@ -38,7 +38,7 @@ Each step is verified before proceeding to the next.
    ```bash
    TWEAKCC=~/opencues/integrations/claude-code/tweakcc
    cd $TWEAKCC && npm run build
-   CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
+   CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
    TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node $TWEAKCC/dist/index.mjs --apply
    ```
    Expected: `Customizations applied successfully!` — no `patch:` error lines.
@@ -2162,7 +2162,7 @@ After Step 36 landed, four residual items surfaced. Grouped here because none in
 ```bash
 TWEAKCC=~/opencues/integrations/claude-code/tweakcc
 cd $TWEAKCC && npm run build
-CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
+CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node $TWEAKCC/dist/index.mjs --apply
 ```
 
