@@ -67,7 +67,7 @@ function runCC(passthrough) {
   }
   console.log(`Launching ${resolved}...`);
   const result = spawnSync(resolved, passthrough, { stdio: 'inherit' });
-  process.exit(result.status ?? 0);
+  exitFromSpawn(result, resolved);
 }
 
 function runOC(passthrough, fullArgv) {
@@ -83,12 +83,22 @@ function runOC(passthrough, fullArgv) {
     process.exit(1);
   }
 
+  // bun is required to launch the dev server. Pre-flight so the user
+  // gets a clear error rather than the spawn silently failing later.
+  const bunCheck = spawnSync('which', ['bun'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (bunCheck.status !== 0) {
+    console.error('opencues run opencode: bun is not on PATH.');
+    console.error('Install bun first: https://bun.sh/');
+    console.error(`Then re-run: opencues run opencode${targetIdx >= 0 ? ` --target ${fork}` : ''}`);
+    process.exit(127);
+  }
+
   // Drop --target if it was passed; it's ours, not bun's.
   const cleaned = passthrough.filter((a, i, arr) => a !== '--target' && arr[i - 1] !== '--target');
 
-  console.log(`cd ${fork} && bun run dev ${cleaned.join(' ')}`.trim());
+  console.log(`Launching: bun run dev ${cleaned.join(' ')} (cwd: ${fork})`.trim());
   const result = spawnSync('bun', ['run', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit' });
-  process.exit(result.status ?? 0);
+  exitFromSpawn(result, 'bun');
 }
 
 function runCodex(passthrough, fullArgv) {
@@ -112,6 +122,19 @@ function runCodex(passthrough, fullArgv) {
 
   console.log(`Launching ${launchHelper}...`);
   const result = spawnSync(launchHelper, cleaned, { stdio: 'inherit' });
+  exitFromSpawn(result, launchHelper);
+}
+
+// Translate a spawnSync result into a process exit. spawnSync sets
+// `error` (and `status === null`) when the child can't be launched at
+// all (ENOENT, EACCES, …). The previous `process.exit(status ?? 0)`
+// pattern silently exited 0 in those cases, which let "bun missing" /
+// "binary unfindable" failures look like clean runs.
+function exitFromSpawn(result, what) {
+  if (result.error) {
+    console.error(`opencues run: failed to launch ${what}: ${result.error.message}`);
+    process.exit(127);
+  }
   process.exit(result.status ?? 0);
 }
 
