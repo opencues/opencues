@@ -175,16 +175,36 @@ function doInstall() {
   }
 
   // 3. Print Chrome reload instructions.
+  // Chrome runs as a Windows process — when loading from a path under
+  // /mnt/c/, it needs the native Windows form (C:\Users\…), not the
+  // WSL mount form. Convert via wslpath -w if available.
   const oc = launchCommand();
   const tgt = args.target ? ` --target ${args.target}` : '';
+  const displayPath = toWindowsPathIfPossible(loadPath);
   console.log('');
   console.log('Done. Load it in Chrome:');
   console.log('  1. open chrome://extensions');
   console.log('  2. enable Developer mode');
-  console.log(`  3. Load unpacked → ${loadPath}`);
+  console.log(`  3. Load unpacked → ${displayPath}`);
   console.log('');
   console.log('Reload after future rebuilds: click reload on the extension card');
   console.log(`Uninstall: ${oc} uninstall chrome${tgt}`);
+}
+
+// Convert a WSL /mnt/<drive>/… path to the Windows-native form
+// (C:\…) so "Load unpacked" accepts it. Returns the input unchanged
+// when not on WSL or not a /mnt/ path.
+function toWindowsPathIfPossible(p) {
+  if (!/^\/mnt\/[a-z]\//i.test(p)) return p;
+  // Prefer wslpath -w when available — handles edge cases (spaces, symlinks).
+  const probe = spawnSync('wslpath', ['-w', p], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (probe.status === 0) {
+    const out = String(probe.stdout).trim();
+    if (out) return out;
+  }
+  // Fallback: manual rewrite. /mnt/c/Foo/Bar → C:\Foo\Bar
+  const m = p.match(/^\/mnt\/([a-z])\/(.*)$/i);
+  return m ? `${m[1].toUpperCase()}:\\${m[2].replace(/\//g, '\\')}` : p;
 }
 
 
