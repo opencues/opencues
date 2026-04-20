@@ -83,7 +83,6 @@ if (command === 'install') {
 
 function doInstall() {
   const fork = args.target || DEFAULT_FORK;
-  console.log(`Target opencode fork: ${fork}`);
   const paths = pathsForFork(fork);
 
   // Pre-flight bun. OpenCode itself is a bun app — without it, `bun
@@ -113,18 +112,16 @@ function doInstall() {
     return;
   }
 
-  // Delegate to setup.sh. It accepts an optional fork-dir argument.
+  // Delegate to setup.sh. It owns its own progress output (▸/✓ lines)
+  // + the final "Done. Launch with…" message; we stay silent on success
+  // so the user sees one coherent flow rather than three competing
+  // banners.
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const result = spawnSync(setupSh, [fork], { stdio: 'inherit' });
   if (result.status !== 0) {
-    console.error(`\n${pkg.name} install failed (setup.sh exited ${result.status}).`);
+    console.error(`\nInstall failed. To roll back: pnpm --filter @opencues/oc dev-uninstall`);
     process.exit(result.status || 1);
   }
-
-  console.log(`\n${pkg.name} install complete.`);
-  console.log('Run the patched fork:');
-  console.log(`  cd ${fork} && bun install && bun run dev`);
-  console.log('To roll back: pnpm --filter @opencues/oc dev-uninstall');
 }
 
 // --- UNINSTALL ------------------------------------------------------------
@@ -281,11 +278,7 @@ function warnUnknownFlags(unknown) {
 }
 
 function printBanner() {
-  console.log(`${pkg.name} v${pkg.version} — ${pkg.description}`);
-  if (pkg.compatibility) {
-    const compatStr = Object.entries(pkg.compatibility).map(([h, v]) => `${h} ${v}`).join(', ');
-    console.log(`Compatible with: ${compatStr}`);
-  }
+  console.log(`${pkg.name} v${pkg.version}`);
 }
 
 function printHelp() {
