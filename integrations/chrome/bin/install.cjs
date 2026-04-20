@@ -28,6 +28,36 @@ const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
+// Quiet/verbose progress wrapper. Defined up here so the doInstall()
+// call below resolves through the const initializers (TDZ).
+const LOG_PATH = process.env.OPENCUES_INSTALL_LOG || '/tmp/opencues-install-chrome.log';
+let _logFd = null;
+function logFd() {
+  if (_logFd == null) _logFd = fs.openSync(LOG_PATH, 'w');
+  return _logFd;
+}
+function runStep(label, fn) {
+  if (process.env.OPENCUES_INSTALL_VERBOSE === '1') {
+    process.stdout.write(`  ▸ ${label}\n`);
+    const ok = !!fn();
+    process.stdout.write(`  ${ok ? '✓' : '✗'} ${label}\n`);
+    return ok;
+  }
+  process.stdout.write(`  ▸ ${label}`);
+  const ok = !!fn();
+  process.stdout.write(ok ? ' ✓\n' : ' ✗\n');
+  return ok;
+}
+function reportFailure(label) {
+  if (process.env.OPENCUES_INSTALL_VERBOSE === '1') return;
+  console.error(`\n${label}. Last 30 lines of ${LOG_PATH}:`);
+  try {
+    const lines = fs.readFileSync(LOG_PATH, 'utf8').split('\n');
+    process.stderr.write(lines.slice(-30).join('\n') + '\n');
+  } catch { /* nothing logged */ }
+  console.error(`\nFull log: ${LOG_PATH}  —  re-run with OPENCUES_INSTALL_VERBOSE=1 to stream live.`);
+}
+
 const { command, args, unknown } = parseArgv(process.argv.slice(2));
 warnUnknownFlags(unknown);
 if (args.help || command === 'help') { printHelp(); process.exit(0); }
@@ -75,40 +105,47 @@ function doInstall() {
     return;
   }
 
-  // 1. Build (unless --no-build).
+  // 1. Build (unless --no-build). Same quiet/verbose pattern as the
+  //    OC installer: pipe to /tmp/opencues-install-chrome.log unless
+  //    OPENCUES_INSTALL_VERBOSE=1.
   if (!args.noBuild) {
-    console.log('Building @opencues/chrome (and deps via turbo)...');
-    const build = spawnSync('pnpm', ['--filter', '@opencues/chrome', 'build'], {
-      cwd: REPO_ROOT, stdio: 'inherit',
-    });
-    if (build.status !== 0) {
-      console.error('\nBuild failed.');
-      process.exit(build.status || 1);
+    if (!runStep('Building extension', () =>
+      spawnSync('pnpm', ['--filter', '@opencues/chrome', 'build'], {
+        cwd: REPO_ROOT,
+        stdio: process.env.OPENCUES_INSTALL_VERBOSE === '1' ? 'inherit' : ['ignore', logFd(), logFd()],
+      }).status === 0
+    )) {
+      reportFailure('Build failed');
+      process.exit(1);
     }
   }
 
   // 2. Deploy.
   if (args.target) {
-    console.log(`\nDeploying to ${loadPath}/ ...`);
-    fs.mkdirSync(path.join(loadPath, 'dist'), { recursive: true });
-    copyDirContents(distDir, path.join(loadPath, 'dist'));
-    fs.copyFileSync(manifest, path.join(loadPath, 'manifest.json'));
+    if (!runStep('Deploying to ' + loadPath, () => {
+      fs.mkdirSync(path.join(loadPath, 'dist'), { recursive: true });
+      copyDirContents(distDir, path.join(loadPath, 'dist'));
+      fs.copyFileSync(manifest, path.join(loadPath, 'manifest.json'));
+      return true;
+    })) {
+      reportFailure('Deploy failed');
+      process.exit(1);
+    }
   }
 
   // 3. Print Chrome reload instructions.
-  console.log(`\n${pkg.name} install complete.`);
-  console.log('');
-  console.log(`To load: open chrome://extensions, enable Developer mode,`);
-  console.log(`         click "Load unpacked", select:`);
-  console.log(`         ${loadPath}`);
-  console.log('');
   const oc = launchCommand();
   const tgt = args.target ? ` --target ${args.target}` : '';
-  console.log(`To reload after future builds: ${oc} install chrome${tgt}`);
-  console.log(`         (then click the reload button on the extension card)`);
   console.log('');
-  console.log(`To roll back: ${oc} uninstall chrome${tgt}`);
+  console.log('Done. Load it in Chrome:');
+  console.log('  1. open chrome://extensions');
+  console.log('  2. enable Developer mode');
+  console.log(`  3. Load unpacked → ${loadPath}`);
+  console.log('');
+  console.log('Reload after future rebuilds: click reload on the extension card');
+  console.log(`Uninstall: ${oc} uninstall chrome${tgt}`);
 }
+
 
 // Prefer the short "opencues" form when the binary is on PATH; fall back
 // to the always-works-from-a-clone form. Used in user-facing hint messages.
@@ -205,11 +242,7 @@ function warnUnknownFlags(unknown) {
 }
 
 function printBanner() {
-  console.log(`${pkg.name} v${pkg.version} — ${pkg.description}`);
-  if (pkg.compatibility) {
-    const compatStr = Object.entries(pkg.compatibility).map(([h, v]) => `${h} ${v}`).join(', ');
-    console.log(`Compatible with: ${compatStr}`);
-  }
+  console.log(`${pkg.name} v${pkg.version}`);
 }
 
 function printHelp() {
