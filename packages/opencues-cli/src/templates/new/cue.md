@@ -89,6 +89,13 @@ priority: 50
 # not-on-host: chrome
 ---
 Suggest 3 alternatives for the highlighted word, considering the
-surrounding sentence context. Output as a comma-separated list.
+surrounding sentence context.
 
-Example: "happy" → "joyful, pleased, content"
+# ── Output format (parser: alternatives) ───────────────────────────
+# The runtime parses responses as INDEX:alt1,alt2,alt3 — INDEX is the
+# 1-based position of the highlighted word. Anything not in this form
+# gets dropped silently. The runtime appends a final reminder to the
+# combined prompt, but include the format here so the LLM doesn't
+# drift mid-output.
+Format: INDEX:alt1,alt2,alt3
+Example: 1=happy → 1:joyful,pleased,content

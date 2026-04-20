@@ -110,6 +110,28 @@ version: 1
 
 ## Prompt
 
+# ─────────────────────────────────────────────────────────────────────
+# OUTPUT FORMAT — IMPORTANT FOR `parser: alternatives`
+# ─────────────────────────────────────────────────────────────────────
+#
+# The runtime parses LLM responses in this exact form:
+#
+#     INDEX:alt1,alt2,alt3 | INDEX:alt1,alt2 | ...
+#
+# Where INDEX is the position (1-based) of the highlighted word in the
+# input the LLM was given. For a single-word input the index is `1`.
+#
+# Multiple `alternatives` cue sources are COMBINED into one LLM call
+# (one round trip = ~250ms instead of N × 250ms). The runtime appends
+# `Output ONLY index:alternatives format` as the LAST line of the
+# combined prompt — but you should still mention the format in your
+# own prompt so the LLM doesn't drift mid-output.
+#
+# Example correct output for `1=happy` highlighted:
+#   1:joyful,pleased,content
+#
+# Anything not in this shape gets dropped silently (no alts → no cycling).
+
 # ### synonym
 #
 # ```yaml
@@ -119,8 +141,10 @@ version: 1
 # ```
 #
 # Suggest 3 alternative words for the highlighted word that fit the
-# surrounding sentence context. Output as a comma-separated list.
-# Example: "happy" → "joyful, pleased, content"
+# surrounding sentence context.
+#
+# Format: INDEX:alt1,alt2,alt3
+# Example: 1=happy → 1:joyful,pleased,content
 
 # ### formal
 #
@@ -132,5 +156,7 @@ version: 1
 # ```
 #
 # Suggest 3 alternatives in a more formal register that preserve the
-# meaning and fit the surrounding sentence. Output comma-separated.
-# Example: "however" → "nevertheless, conversely, that said"
+# meaning and fit the surrounding sentence.
+#
+# Format: INDEX:alt1,alt2,alt3
+# Example: 1=however → 1:nevertheless,conversely,that said

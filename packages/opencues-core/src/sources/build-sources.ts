@@ -56,11 +56,14 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
       s.promptText!
     );
   }
-  // Reinforce output format at the end — domain prompts may push the
-  // original format instruction into the middle of the combined prompt
-  if (domain.length > 0) {
-    parts.push('\nOutput ONLY index:alternatives format.');
-  }
+  // Reinforce output format at the end — UNCONDITIONALLY. The
+  // alternatives parser only accepts INDEX:alt1,alt2,alt3 form, so any
+  // sloppy or hijacking base-source prompt that omits / overrides the
+  // format would silently produce unparseable responses. Appending the
+  // spec last makes it the LAST instruction the LLM sees and gives the
+  // parser something to work with regardless of which sources are
+  // active.
+  parts.push('\nOutput ONLY index:alternatives format (e.g. 1:alt1,alt2,alt3).');
 
   return {
     name: 'grammar',
