@@ -275,6 +275,11 @@ For per-host re-install only: `pnpm exec opencues install <host>` re-runs the in
 
 ## Removing
 
+`uninstall` reverts the patches each integration applied to its host.
+It does **not** touch your user configs, the cloned OpenCues repo, or
+(for OpenCode) the OpenCode fork itself — those stay put so you can
+re-install without losing settings.
+
 ```bash
 pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/.claude/opencues/
 pnpm exec opencues uninstall opencode      # git checkout 3 patched files + removes fork node_modules entries
@@ -282,7 +287,37 @@ pnpm exec opencues uninstall chrome        # removes integrations/chrome/dist + 
 pnpm exec opencues uninstall --all         # all three
 ```
 
-Preview any of these with `--dry-run` before executing. To fully clean: also `rm -rf ~/opencues` (the clone) and `rm -rf ~/.opencues` (your user-level configs).
+Preview any of these with `--dry-run` before executing. `opencues which`
+shows every path that would be affected, before or after.
+
+### Fully removing OpenCues from your machine
+
+`uninstall` only handles the host-side patches. To go further, clean
+each layer explicitly:
+
+```bash
+# 1. Revert host patches (as above)
+pnpm exec opencues uninstall --all
+
+# 2. Remove user-level configs (voice-mode, tips, custom cues, ...)
+rm -rf ~/.opencues
+
+# 3. Remove the OpenCues clone itself
+rm -rf ~/opencues
+
+# 4. (OpenCode only) remove the OpenCode fork dir — uninstall leaves
+#    this in place because it's your OpenCode checkout, not ours
+rm -rf ~/opencode-cues      # or whatever --target you used
+```
+
+### If uninstall partially fails
+
+The OpenCode uninstall reverts three patched files with `git checkout --`.
+If the fork's working tree is dirty (you edited those files), git will
+refuse and the uninstaller logs the skipped file. Stash or commit your
+changes, then re-run `opencues uninstall opencode`. The other two
+integrations (`claude-code`, `chrome`) are idempotent — re-running is
+safe.
 
 ### Disable individual features
 
