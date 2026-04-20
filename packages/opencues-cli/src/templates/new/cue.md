@@ -67,6 +67,26 @@ priority: 50
 # model: openai/gpt-oss-120b
 # tip: "alternative word suggestions"
 # speak: false
+
+# ─────────────────────────────────────────────────────────────────────
+# HOST COMPATIBILITY (advanced)
+# ─────────────────────────────────────────────────────────────────────
+# Most cues run on every integration (claude-code, opencode, codex,
+# chrome). Pure LLM cues like this one have no host-specific dependencies
+# — leave the fields below alone.
+#
+# When you need to declare:
+#   on-host:     [chrome, claude-code, ...]   — allow-list (overrides auto)
+#   not-on-host: [chrome]                     — deny-list (filters from auto / on-host)
+#
+# Host names: chrome, claude-code, codex, opencode.
+# Auto-detect: a `script: ./X.sh` field implies "not chrome" (no
+# subprocess in browsers). Override with `on-host:` if you have a
+# runtime-class implementation that handles chrome separately.
+# See docs/features/host-compat.md.
+
+# on-host: chrome, claude-code, codex, opencode
+# not-on-host: chrome
 ---
 Suggest 3 alternatives for the highlighted word, considering the
 surrounding sentence context. Output as a comma-separated list.

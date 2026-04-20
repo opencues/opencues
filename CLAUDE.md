@@ -291,6 +291,44 @@ and is auto-created on first write.
 
 ---
 
+## Host compatibility — which integrations a cue/control runs on
+
+Every cue / blank / control has an implicit (or explicit) host-compat
+list: which of `{chrome, claude-code, codex, opencode}` it works on.
+Native hosts (CC, OC, codex) can spawn subprocesses + read the
+filesystem; chrome can't.
+
+Default: auto-detected from `script:` / `blankScript:` extension.
+`.sh .bash .ps1 .bat .cmd .exe .py .rb .pl` → not chrome. Everything
+else → all hosts.
+
+Override via frontmatter:
+
+```yaml
+on-host: [chrome, claude-code, codex, opencode]   # allow-list
+not-on-host: [chrome]                              # deny-list
+```
+
+Resolution: `on-host` (if set) wins over auto-detect, then `not-on-host`
+filters. Surfaced by `opencues list` (per-entry marker), validated by
+`opencues validate` (typos + contradictions), used by the upcoming
+`opencues sync chrome`.
+
+Full spec: `docs/features/host-compat.md`. Glossary entry:
+`docs/glossary.md § Host Compat`. API: `@opencues/core`'s
+`inferHostCompat()`, `formatHostList()`, `unknownHostNames()`,
+`HOSTS`, `NATIVE_HOSTS`.
+
+Real-world example: `.opencues/controls/opencues/cue.md` has
+`blankScript: ./opencues-blank.sh` (native fallback) AND a
+runtime-class implementation in `@opencues/runtime`. Auto-detect
+would exclude chrome because of the `.sh`; the file adds
+`on-host: chrome, claude-code, codex, opencode` to override. The
+validator warns about the contradiction (on-host + .sh), which is
+the expected nudge for readers to check.
+
+---
+
 ## Hoisted-control writes vs ConfigLoader hot-reload
 
 Selector/satellite cycling (e.g. `opencues settings` flipping

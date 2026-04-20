@@ -82,6 +82,10 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **Folder-based config** — An alternative to monolithic `.md` files. Each cue is a self-contained folder with a `cue.md` file (YAML frontmatter for config, body for prompt) and optional colocated scripts. Folders in `cues/`, `blanks/`, `controls/` are auto-discovered. Folder configs merge with monolithic files — folders win on name conflict.
 
+**Host** — One of the four OpenCues integrations: `claude-code`, `opencode`, `codex`, `chrome`. They share the same `.md` config format but differ in runtime capabilities. Native hosts (CC, OC, codex) can spawn subprocesses + read the filesystem; chrome can't.
+
+**Host Compat** — Per-entry declaration of which hosts a cue / blank / control runs on. Auto-detected from `script:` extension (`.sh` etc. → not chrome) and overridable via `on-host:` (allow-list) and `not-on-host:` (deny-list) frontmatter fields. Surfaced in `opencues list`, validated by `opencues validate`, used by `opencues sync chrome` to filter the bundle. See `docs/features/host-compat.md` for the full spec.
+
 ---
 
 ## Cue Sources

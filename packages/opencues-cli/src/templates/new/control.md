@@ -104,4 +104,23 @@ control: {{NAME}}
 # stepValues: ["first", "second", "third"]
 # tip: "{{NAME}} options"
 # blankDismissible: true
+
+# ─────────────────────────────────────────────────────────────────────
+# HOST COMPATIBILITY (advanced)
+# ─────────────────────────────────────────────────────────────────────
+# Auto-detect: if `script:` or `blankScript:` ends in .sh / .ps1 / .bat
+# / .exe / etc., this control is excluded from chrome (browsers can't
+# spawn subprocesses).
+#
+# Override:
+#   on-host:     [chrome, ...]   — allow-list (replaces auto-detect)
+#   not-on-host: [chrome]        — deny-list (filters auto / on-host)
+#
+# Use `on-host:` if you have a runtime-class implementation in
+# @opencues/runtime/src/controls/<name>.ts that handles chrome (e.g.
+# routes through chrome.storage instead of the .sh fallback).
+# See docs/features/host-compat.md.
+
+# on-host: chrome, claude-code, codex, opencode
+# not-on-host: chrome
 ---

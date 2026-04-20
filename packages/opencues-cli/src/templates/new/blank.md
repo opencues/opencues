@@ -67,6 +67,18 @@ priority: 100
 # model:  override LLM model for this mode only
 
 # model: openai/gpt-oss-120b
+
+# ─────────────────────────────────────────────────────────────────────
+# HOST COMPATIBILITY (advanced)
+# ─────────────────────────────────────────────────────────────────────
+# Most blanks run everywhere. Override only when this mode depends on
+# something a particular host can't provide (e.g. subprocess access).
+#   on-host:     allow-list (e.g. [claude-code, opencode, codex, chrome])
+#   not-on-host: deny-list  (e.g. [chrome])
+# See docs/features/host-compat.md.
+
+# on-host: chrome, claude-code, codex, opencode
+# not-on-host: chrome
 ---
 Answer the user's question concisely. Output one line, no preamble.
 
