@@ -75,6 +75,18 @@ function walkConfigDir(dir, label, parseCuesMd, seen, errors, warnings) {
     try {
       const content = fs.readFileSync(p, 'utf8');
       const parsed = parseCuesMd(content);
+      // parseCuesMd is forgiving by design — it returns empty
+      // frontmatter + sections on garbage rather than throwing. Catch
+      // the "looks like the user tried frontmatter but broke it" case:
+      // a `---` fence present but nothing extracted.
+      const looksLikeFrontmatterAttempt = /^---\s*$/m.test(content);
+      const parsedNothing =
+        (!parsed?.frontmatter || Object.keys(parsed.frontmatter).length === 0) &&
+        (!parsed?.sections || Object.keys(parsed.sections).length === 0) &&
+        (!parsed?.promptConfig?.sources || Object.keys(parsed.promptConfig.sources).length === 0);
+      if (looksLikeFrontmatterAttempt && parsedNothing) {
+        errors.push(`${p}: looks like frontmatter is malformed — nothing parsed`);
+      }
       const namesInThisFile = new Set();
       if (parsed && parsed.promptConfig && parsed.promptConfig.sources) {
         for (const name of Object.keys(parsed.promptConfig.sources)) {
