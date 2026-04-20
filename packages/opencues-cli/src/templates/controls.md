@@ -73,7 +73,7 @@ version: 1
 #   control: volume
 #   tip: system volume ± 5
 #   speak: true
-#   script: ./volume.sh        # relative to this cue.md
+#   script: ./volume.sh        # path is relative to volume/cue.md
 #   upArgs: ["up", "5"]
 #   downArgs: ["down", "5"]
 #   ---
