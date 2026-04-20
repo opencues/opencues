@@ -15,18 +15,18 @@ module.exports = function validate(argv, ctx) {
   const userOnly = argv.includes('--user');
   const strict = argv.includes('--strict');
 
-  // Load core's parser. opencues.md uses a runtime-side parser (different
-  // shape — top-level YAML state, not section-based); for now we just
-  // verify opencues.md is readable text.
-  let parseCuesMd;
+  // Load core's parser + host-compat helpers. opencues.md uses a
+  // runtime-side parser (different shape — top-level YAML state, not
+  // section-based); for now we just verify opencues.md is readable text.
+  let core;
   try {
-    const core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
-    parseCuesMd = core.parseCuesMd;
+    core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
   } catch (err) {
     console.error(`opencues validate: failed to load @opencues/core (have you run \`pnpm build\`?)`);
     console.error(`  ${err.message}`);
     process.exit(1);
   }
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames } = core;
 
   const HOME = os.homedir();
   const searchPaths = [];
@@ -47,7 +47,7 @@ module.exports = function validate(argv, ctx) {
       continue;
     }
     console.log(`Checking ${label}-level: ${dir}`);
-    walkConfigDir(dir, label, parseCuesMd, seen, errors, warnings);
+    walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames }, seen, errors, warnings);
   }
 
   // Report.
@@ -61,7 +61,8 @@ module.exports = function validate(argv, ctx) {
   if (strict && warnings.length > 0) process.exit(1);
 };
 
-function walkConfigDir(dir, label, parseCuesMd, seen, errors, warnings) {
+function walkConfigDir(dir, label, tools, seen, errors, warnings) {
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames } = tools;
   // Top-level .md files (cues.md, blanks.md, controls.md). Duplicates
   // WITHIN one file = error. opencues.md uses a different schema; we
   // just check it's readable.
@@ -89,15 +90,17 @@ function walkConfigDir(dir, label, parseCuesMd, seen, errors, warnings) {
       }
       const namesInThisFile = new Set();
       if (parsed && parsed.promptConfig && parsed.promptConfig.sources) {
-        for (const name of Object.keys(parsed.promptConfig.sources)) {
+        for (const [name, src] of Object.entries(parsed.promptConfig.sources)) {
           if (namesInThisFile.has(name)) errors.push(`${p}: duplicate name "${name}" within file`);
           namesInThisFile.add(name);
           seen[kind].set(name, p);
+          checkHostCompat(p, name, src, inferHostCompat, unknownHostNames, errors, warnings);
         }
       }
       if (parsed && parsed.controls) {
-        for (const name of Object.keys(parsed.controls)) {
+        for (const [name, ctl] of Object.entries(parsed.controls)) {
           seen.control.set(name, p);
+          checkHostCompat(p, name, ctl, inferHostCompat, unknownHostNames, errors, warnings);
         }
       }
     } catch (err) {
@@ -128,8 +131,9 @@ function walkConfigDir(dir, label, parseCuesMd, seen, errors, warnings) {
       }
       try {
         const content = fs.readFileSync(cueMd, 'utf8');
-        parseCuesMd(content);
+        const folderParsed = parseSingleCueMd(content, path.dirname(cueMd));
         seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
+        checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings);
         // Sanity: if cue.md declares a script, check it exists + executable.
         const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
         if (scriptMatch) {
@@ -153,6 +157,39 @@ function walkConfigDir(dir, label, parseCuesMd, seen, errors, warnings) {
   }
 }
 
+// Host-compat sanity. Three failure modes worth catching:
+//   1. Unknown host name in on-host: / not-on-host: (typo, e.g. "claud-code")
+//   2. on-host: [chrome] but the script: extension implies subprocess
+//      (auto-detect would say "not chrome" — author probably didn't realise)
+//   3. inferHostCompat() resolves to ZERO hosts (effectively disabled)
+function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, errors, warnings) {
+  if (!src) return;
+  // 1. Typos in explicit lists.
+  const onHost = src.onHost ?? src['on-host'];
+  const notOnHost = src.notOnHost ?? src['not-on-host'];
+  for (const bad of unknownHostNames(onHost)) {
+    warnings.push(`${file}: ${name}: unknown host in on-host: "${bad}"`);
+  }
+  for (const bad of unknownHostNames(notOnHost)) {
+    warnings.push(`${file}: ${name}: unknown host in not-on-host: "${bad}"`);
+  }
+  // 2. Author override likely wrong (script: ./X.sh but on-host: [chrome]).
+  const compat = inferHostCompat(src);
+  const explicitChrome = compat.source === 'on-host' && compat.hosts.includes('chrome');
+  const sub = ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', '.rb', '.pl'];
+  const hasSubprocess = (s) => s && sub.some(e => s.toLowerCase().endsWith(e));
+  if (explicitChrome && (hasSubprocess(src.script) || hasSubprocess(src.blankScript))) {
+    warnings.push(
+      `${file}: ${name}: on-host includes "chrome" but script extension implies a subprocess ` +
+      `(${src.script || src.blankScript}). Chrome can't spawn processes — was this intended?`
+    );
+  }
+  // 3. Empty allow-list = entry never runs anywhere.
+  if (compat.hosts.length === 0) {
+    warnings.push(`${file}: ${name}: host-compat resolves to 0 hosts — this entry will never run`);
+  }
+}
+
 function printHelp() {
   console.log('opencues validate [--project] [--user] [--strict]');
   console.log('');
@@ -169,4 +206,5 @@ function printHelp() {
   console.log('  * Duplicate cue/blank/control names within a path');
   console.log('  * script: / blankScript: paths that don\'t exist or aren\'t executable');
   console.log('  * Empty cue folders (no cue.md inside)');
+  console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');
 }
