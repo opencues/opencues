@@ -241,6 +241,15 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 > **PRE-LAUNCH:** Rotate `GROQ_API_KEY` and `FINNHUB_API_KEY` before making the repo public. Keys are hardcoded in `integrations/chrome/.env` (gitignored) for dev convenience.
 
+> **PRE-LAUNCH (security):** the Chrome extension currently inlines
+> `__GROQ_API_KEY__` from `.env` at esbuild time into `dist/content.js`
+> (see `integrations/chrome/src/types.ts:42` and the esbuild config).
+> That means anyone who installs the unpacked extension can grep the
+> API key out of the JS bundle. **Fix before publishing**: drop the
+> build-time inline; load the key from `chrome.storage.local`, set via
+> a popup field. Removes the need for `.env` entirely. Tracked here
+> because `opencues doctor` doesn't surface this.
+
 ---
 
 ## Config search paths — project-level + user-level
