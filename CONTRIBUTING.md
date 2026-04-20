@@ -176,17 +176,17 @@ The core library is pure TypeScript with no I/O dependencies.
 ### Setup
 
 ```bash
-cd packages/cues-core
-npm install
-npm run build
+# From the repo root (pnpm workspace)
+pnpm install
+pnpm build
 ```
 
 ### Running tests
 
 ```bash
-cd packages/cues-core
-npm run build    # compile TypeScript
-npm test         # run all unit tests (418 tests)
+pnpm --filter @opencues/core test        # cues-core unit tests
+pnpm --filter @opencues/runtime test     # runtime tests (350)
+pnpm test                                # all packages, via turbo
 ```
 
 The test suite has four layers:
@@ -204,7 +204,7 @@ The test suite has four layers:
 
 ```bash
 # Run with live LLM classifier tests
-GROQ_API_KEY=xxx npm test
+GROQ_API_KEY=xxx pnpm --filter @opencues/core test
 ```
 
 ### Live benchmark
@@ -267,7 +267,7 @@ These issues were found during development and are worth knowing about:
 
 ```bash
 # Build, deploy, and apply patches (handles everything)
-integrations/claude-code/patches/setup.sh
+integrations/cc/patches/setup.sh
 # Then restart Claude Code
 ```
 
@@ -277,7 +277,7 @@ integrations/claude-code/patches/setup.sh
 
 - **Keep PRs focused** — one feature or fix per PR. If you find something else to fix along the way, open a separate PR.
 - **Test manually** — run `setup.sh`, restart Claude Code, and verify your change works. Describe what you tested in the PR.
-- **Run the test suite** for cues-core changes: `cd packages/cues-core && npm test`
+- **Run the test suite** for `@opencues/core` changes: `pnpm --filter @opencues/core test`
 - **Don't break hot-reload** — config file changes (`.md`) must not require a restart. Patch file changes (`.ts`) must not require re-running `setup.sh` more than once.
 - **Follow existing patterns** — look at how existing controls, sources, or features are built before starting something new.
 - **Docs matter** — if you add a config field, document it in the relevant feature doc and the config table. If you add a feature, add test cases to `tests/user-test.md`.

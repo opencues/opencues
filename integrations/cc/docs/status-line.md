@@ -19,7 +19,7 @@ word (N/M) - Tip text for this word
 
 - **word** — the currently highlighted word
 - **N/M** — current alternative position / total alternatives
-- **Tip text** — from `~/.claude/claude-code-tips.json` (only for tips words, not LLM alternatives)
+- **Tip text** — from `~/.claude/opencues/tips.json` (only for tips words, not LLM alternatives)
 
 Words without alts or a cue-control tip produce no status line output.
 
@@ -88,7 +88,7 @@ Cue-controls (custom controls, control-bound blanks, step controls, list control
 
 ## Tips Source
 
-Tips come from `~/.claude/claude-code-tips.json`. Two formats:
+Tips come from `~/.claude/opencues/tips.json`. Two formats:
 
 **Groups** (synonyms share a tip, alts point to other groups):
 ```json
@@ -139,12 +139,12 @@ Set in `~/.tweakcc/config.json` under `misc`.
 |------|-----|
 | Status line display | Run `/statusline` in Claude Code, clear command |
 | State file export | Set `highlightExportEnabled: false` in config |
-| Remove script | `rm ~/.claude/highlight-statusline.sh` |
+| Remove script | `rm ~/.claude/opencues/statusline.sh` |
 
 ## Script Location
 
-- **Source:** `opencues/integrations/claude-code/patches/highlight-statusline.sh`
-- **Installed to:** `~/.claude/highlight-statusline.sh`
+- **Source:** `opencues/integrations/cc/patches/highlight-statusline.sh`
+- **Installed to:** `~/.claude/opencues/statusline.sh`
 - **Customise:** Edit the installed copy — it's a plain bash script.
 
 ## Related

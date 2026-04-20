@@ -34,7 +34,7 @@ Press Ctrl+Alt+Up
            ↓
 cue-control check (FIRST priority)
   → Word "volume" found in cueControlOverrides
-  → Spawn: ~/.claude/actions/volume.sh up 5
+  → Spawn: ~/.claude/opencues/actions/volume.sh up 5
   → Return (skip step control/cycling logic)
            ↓
 Volume increases
@@ -93,7 +93,7 @@ All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_
 
 Script path is resolved in this order:
 1. `script` field value (supports `./` relative to folder for folder-based controls)
-2. `~/.claude/actions/{control}.sh` (default)
+2. `~/.claude/opencues/actions/{control}.sh` (default)
 
 ### Folder-Based Controls
 
@@ -114,16 +114,16 @@ See `docs/guides/adding-a-cue-control.md` for the full folder format.
 Scripts receive arguments as defined in config:
 ```bash
 # For upArgs: ["up", "5"]
-~/.claude/actions/volume.sh up 5
+~/.claude/opencues/actions/volume.sh up 5
 
 # For downArgs: ["down", "5"]
-~/.claude/actions/volume.sh down 5
+~/.claude/opencues/actions/volume.sh down 5
 ```
 
 Scripts should also implement a `get` command — the integration calls it on navigation and ~200ms after each cycle to update the status line with the live value:
 
 ```bash
-~/.claude/actions/volume.sh get
+~/.claude/opencues/actions/volume.sh get
 # → "volume: 64%"
 ```
 
@@ -166,25 +166,25 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 1. Check script exists and is executable:
    ```bash
-   ls -la ~/.claude/actions/volume.sh
+   ls -la ~/.claude/opencues/actions/volume.sh
    ```
 
 2. Test script directly:
    ```bash
-   ~/.claude/actions/volume.sh up 5
+   ~/.claude/opencues/actions/volume.sh up 5
    ```
 
 3. Check for Windows line endings (WSL):
    ```bash
-   sed -i 's/\r$//' ~/.claude/actions/volume.sh
+   sed -i 's/\r$//' ~/.claude/opencues/actions/volume.sh
    ```
 
 ### Volume/Brightness Not Changing (WSL)
 
 1. **Test the exe directly** from WSL:
    ```bash
-   ~/.claude/actions/VolCtl.exe up 10
-   ~/.claude/actions/BrightCtl.exe up 10
+   ~/.claude/opencues/actions/VolCtl.exe up 10
+   ~/.claude/opencues/actions/BrightCtl.exe up 10
    ```
 2. **Check VolCtl.exe get returns a value** — if it returns 0 or empty on first call, that's the COM init delay (retry logic in volume.sh handles this automatically)
 3. **Verify setup.sh compiled the executables** — re-run `setup.sh` if the `.exe` files are missing
@@ -215,7 +215,7 @@ See `docs/features/control-blanks.md` for full configuration reference.
 
 ## Compiled Executables
 
-`setup.sh` auto-compiles `.cs` files from both `patches/actions/` and `controls/*/` to `~/.claude/actions/` via the Windows .NET csc.exe compiler.
+`setup.sh` auto-compiles `.cs` files from both `patches/actions/` and `controls/*/` to `~/.claude/opencues/actions/` via the Windows .NET csc.exe compiler.
 
 | Executable | Source | Purpose |
 |------------|--------|---------|

@@ -180,9 +180,9 @@ These are the core behaviours that any integration of control-bound blanks must 
 
 | Component | File | Role |
 |-----------|------|------|
-| `ControlBlankSource` | `packages/cues-core/src/sources/control-blank-source.ts` | CueSource: keyword matching, state read, CueResult |
-| `ControlConfig` | `packages/cues-core/src/cues-md.ts` | All `blank*` fields |
-| `buildSourcesFromConfig` | `packages/cues-core/src/sources/build-sources.ts` | Wires ControlBlankSource when controls have `blankKeywords` |
+| `ControlBlankSource` | `packages/opencues-core/src/sources/control-blank-source.ts` | CueSource: keyword matching, state read, CueResult |
+| `ControlConfig` | `packages/opencues-core/src/cues-md.ts` | All `blank*` fields |
+| `buildSourcesFromConfig` | `packages/opencues-core/src/sources/build-sources.ts` | Wires ControlBlankSource when controls have `blankKeywords` |
 
 ### Integration responsibilities (what each editor must implement)
 
@@ -199,7 +199,7 @@ Any integration consuming cues-core needs to handle these for control-bound blan
 | **Tip suppression** | Block grammar/LLM tips from overwriting control-blank positions. Only show `blankTip`. |
 | **Cache invalidation** | Clear old control-blank WordDefs when `_` reappears. |
 
-For Claude Code's implementation of these, see `integrations/claude-code/docs/cue-controls.md` § "Control-Bound Blanks".
+For Claude Code's implementation of these, see `integrations/cc/docs/cue-controls.md` § "Control-Bound Blanks".
 
 ---
 
@@ -234,7 +234,7 @@ controls/brightness/
   cue.md                # Config: word-control + blank-control fields
   brightness.sh         # Word-control: up/down via BrightCtl.exe (native powrprof.dll)
   brightness-blank.sh   # Blank-control: get/set via BrightCtl.exe
-  (BrightCtl.cs compiled to ~/.claude/actions/BrightCtl.exe by setup.sh)
+  (BrightCtl.cs compiled to ~/.claude/opencues/actions/BrightCtl.exe by setup.sh)
 ```
 
 **Key design choices:**

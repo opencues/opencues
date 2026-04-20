@@ -50,9 +50,9 @@ Add a row to `docs/features/README.md`:
 
 If the feature needs new LLM logic, sources, or data types:
 
-1. Add types to `packages/cues-core/src/types.ts`
-2. Add source/logic to `packages/cues-core/src/sources/`
-3. Export from `packages/cues-core/src/index.ts`
+1. Add types to `packages/opencues-core/src/types.ts`
+2. Add source/logic to `packages/opencues-core/src/sources/`
+3. Export from `packages/opencues-core/src/index.ts`
 4. Add tests
 
 ## 4. Implement in each integration

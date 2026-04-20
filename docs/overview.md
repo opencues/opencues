@@ -51,9 +51,17 @@ Integrations (Claude Code, future editors) use cues-core to load the config stan
 
 ```bash
 cd ~/opencues
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
+
+For end-user installation (host integrations):
+
+```bash
+pnpm exec opencues install claude-code     # or: opencode | chrome | --all
+```
+
+See the top-level [README.md](../README.md) for the full quickstart.
 
 ## Package Structure
 
@@ -130,7 +138,7 @@ import { CueResolver, LocalCueSource, parseLocalCueFile } from 'cues-core';
 import * as fs from 'fs';
 
 // Load tips from file
-const tipsContent = fs.readFileSync('~/.claude/claude-code-tips.json', 'utf8');
+const tipsContent = fs.readFileSync('~/.claude/opencues/tips.json', 'utf8');
 const tipsData = parseLocalCueFile(tipsContent);
 
 // Create resolver with tips source
@@ -290,8 +298,8 @@ import * as fs from 'fs';
 const source = new LocalCueSource(initialData);
 
 // Watch for changes
-fs.watch('~/.claude/claude-code-tips.json', () => {
-  const content = fs.readFileSync('~/.claude/claude-code-tips.json', 'utf8');
+fs.watch('~/.claude/opencues/tips.json', () => {
+  const content = fs.readFileSync('~/.claude/opencues/tips.json', 'utf8');
   const newData = parseLocalCueFile(content);
   source.updateData(newData);
   console.log('Tips reloaded');
@@ -406,9 +414,10 @@ cues-core is used directly from the injected cli.js code (no shell scripts). The
 Run the test suite:
 
 ```bash
-cd ~/opencues/packages/opencues-core
-npm run build
-npm run test
+cd ~/opencues
+pnpm test                                # all packages via turbo
+pnpm --filter @opencues/core test        # cues-core only
+pnpm --filter @opencues/runtime test     # runtime only
 ```
 
 ## Future Extensions
