@@ -13,7 +13,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const SEED_FILES = ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
+// Note: opencues.md is user-level only. It's runtime-owned — the schema
+// lives in OpenCues, not in user/project config. We seed it only when
+// --project is NOT passed; `seed-configs --project` skips it so projects
+// never override the system-wide settings file.
+const SEED_FILES_USER = ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
+const SEED_FILES_PROJECT = ['cues.md', 'blanks.md', 'controls.md', 'cues', 'controls'];
 
 module.exports = function seedConfigs(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -37,7 +42,8 @@ module.exports = function seedConfigs(argv, ctx) {
   console.log(`  target: ${targetDir}`);
   console.log('');
 
-  const plan = SEED_FILES.map(name => ({
+  const seedFiles = projectScope ? SEED_FILES_PROJECT : SEED_FILES_USER;
+  const plan = seedFiles.map(name => ({
     name,
     src: path.join(sourceDir, name),
     dst: path.join(targetDir, name),

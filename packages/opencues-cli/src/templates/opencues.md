@@ -2,12 +2,24 @@
 version: 1
 
 # ─────────────────────────────────────────────────────────────────────
-# opencues.md — project state + settings
+# opencues.md — system settings (runtime-owned)
 # ─────────────────────────────────────────────────────────────────────
 #
-# This file lives at both user- (~/.opencues/) and project-level
-# (<cwd>/.opencues/). Project wins entirely when present (NOT merged
-# key-by-key — unlike cues.md/blanks.md/controls.md).
+# This file lives at user-level ONLY (~/.opencues/opencues.md). The
+# schema (voice-mode, tips-mode, debug-mode, cursor-navigate, …) is
+# defined by the OpenCues runtime — not by users or projects — and
+# settings are system-wide: one voice-mode value applies across every
+# integration (Claude Code, OpenCode, Chrome, Codex).
+#
+# The runtime auto-manages this file via OpenCuesSettingsControl: when
+# you cycle a setting through the selector/satellite UI, the runtime
+# rewrites the matching `name: value` line in place. `opencues
+# seed-configs` (no flag) can also re-seed defaults if the file is
+# missing or corrupted.
+#
+# You can hand-edit scalar values (voice-mode: active/inactive) if you
+# prefer, but the settings block shape is NOT user-customisable — the
+# runtime overwrites additions during state writes.
 #
 # Two sections:
 #   TOP-LEVEL SCALARS — current values. Cycled by selector/satellite

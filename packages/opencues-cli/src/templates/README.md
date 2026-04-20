@@ -9,9 +9,12 @@ project (`cd <project> && claude-cues` or equivalent).
 | `cues.md` | LLM cue sources (word alternatives) |
 | `blanks.md` | Blank-fill modes (typed `_` triggers a fill) |
 | `controls.md` | Cue-control declarations (rare; folders preferred) |
-| `opencues.md` | Settings / state (voice-mode, tips-mode, debug-mode, etc.) |
 | `cues/<name>/cue.md` | Folder-based cue sources |
 | `controls/<name>/cue.md` + `<name>.sh` | Folder-based controls |
+
+Note: `opencues.md` is NOT a project file. Settings (voice-mode,
+tips-mode, debug-mode, cursor-navigate) are system-wide and live only
+at `~/.opencues/opencues.md`, managed by the runtime.
 
 Hot-reload picks up changes within ~2s of the next keystroke.
 

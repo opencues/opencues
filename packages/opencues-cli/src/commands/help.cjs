@@ -48,7 +48,7 @@ module.exports = function help(argv, ctx) {
   console.log('  show <name>             Print full config for one cue / blank / control by name');
   console.log('  edit <file>             Open ~/.opencues/<file>.md in $EDITOR');
   console.log('  logs [--tail]           Show /tmp/opencues.log (last 50 lines, or follow with --tail)');
-  console.log('  debug [on|off]          Toggle runtime debug-mode in opencues.md (no arg = print current)');
+  console.log('  debug [on|off]          Toggle runtime debug-mode (~/.opencues/opencues.md; no arg = print current)');
   console.log('  completion <shell>      Print shell completion script (bash | zsh | fish)');
   console.log('  help [<command>]        Show help. With <command>: that subcommand\'s help.');
   console.log('');
