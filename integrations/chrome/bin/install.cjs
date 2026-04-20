@@ -179,7 +179,8 @@ function doInstall() {
   // /mnt/c/, it needs the native Windows form (C:\Users\…), not the
   // WSL mount form. Convert via wslpath -w if available.
   const oc = launchCommand();
-  const tgt = args.target ? ` --target ${args.target}` : '';
+  // Mirror the same flag form on uninstall: --wsl ↔ --wsl, --target ↔ --target.
+  const uninstallSuffix = args.wsl ? ' --wsl' : (args.target ? ` --target ${args.target}` : '');
   const displayPath = toWindowsPathIfPossible(loadPath);
   console.log('');
   console.log('Done. Load it in Chrome:');
@@ -188,7 +189,7 @@ function doInstall() {
   console.log(`  3. Load unpacked → ${displayPath}`);
   console.log('');
   console.log('Reload after future rebuilds: click reload on the extension card');
-  console.log(`Uninstall: ${oc} uninstall chrome${tgt}`);
+  console.log(`Uninstall: ${oc} uninstall chrome${uninstallSuffix}`);
 }
 
 // Convert a WSL /mnt/<drive>/… path to the Windows-native form
@@ -218,6 +219,16 @@ function launchCommand() {
 // --- UNINSTALL ------------------------------------------------------------
 
 function doUninstall() {
+  // --wsl auto-resolves to the same path the install --wsl deployed to.
+  if (args.wsl) {
+    const resolved = resolveWslTarget();
+    if (!resolved) {
+      console.error('--wsl requires running under WSL with /mnt/c/ accessible.');
+      process.exit(1);
+    }
+    args.target = resolved;
+  }
+
   const distDir = path.join(PKG_DIR, 'dist');
   const targetDist = args.target ? path.join(path.resolve(args.target), 'dist') : null;
   const targetManifest = args.target ? path.join(path.resolve(args.target), 'manifest.json') : null;

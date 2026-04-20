@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
 module.exports = function which(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -42,7 +43,8 @@ module.exports = function which(argv, ctx) {
     ['Chrome state', [
       ['Repo build output',          path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist')],
       ['Manifest',                   path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'manifest.json')],
-      ['(deploy target is whatever you passed to --target; chrome reload state lives in Chrome itself)', ''],
+      ...wslChromeDeployRows(),
+      ['(other deploy targets are wherever you passed --target; chrome reload state lives in Chrome itself)', ''],
     ]],
     ['Runtime IPC files (created when CC/OC actually runs)', [
       ['Debug log',                  '/tmp/opencues.log'],
@@ -66,6 +68,26 @@ module.exports = function which(argv, ctx) {
 
 function statSafe(p) {
   try { fs.accessSync(p); return true; } catch { return false; }
+}
+
+// On WSL, surface the conventional Windows-side deploy path used by
+// `opencues install chrome --wsl`. Returns a row only if the deploy
+// exists OR if we're under WSL (so the user knows the slot exists).
+function wslChromeDeployRows() {
+  if (!isWsl()) return [];
+  const probe = spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (probe.status !== 0) return [];
+  const winUser = String(probe.stdout).trim().replace(/\r$/, '');
+  if (!winUser) return [];
+  const wslPath = `/mnt/c/Users/${winUser}/AppData/Local/opencues-chrome`;
+  return [['WSL deploy (--wsl)', wslPath]];
+}
+
+function isWsl() {
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+  try {
+    return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8'));
+  } catch { return false; }
 }
 
 function printHelp() {
