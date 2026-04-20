@@ -238,11 +238,12 @@ function validatePack(dir, opts) {
       }
     }
     // Refuse malformed frontmatter (same heuristic as `opencues validate`:
-    // a `---` fence is present but no frontmatter / sections / sources
-    // could be extracted). Only applies to .md files that aren't README.md
-    // or documentation — config files live under top-level root, cues/*,
-    // blanks/*, controls/*. Skip the pack's own README.md + anything in
-    // a docs/ sub-tree.
+    // a `---` fence is present but nothing could be extracted).
+    //
+    // File shapes differ:
+    //   - top-level cues.md/blanks.md/controls.md       → parseCuesMd
+    //   - folder-based <kind>/<name>/cue.md             → parseSingleCueMd
+    //   - README.md or anything under docs/             → skip (prose)
     const relParts = rel.split(path.sep);
     const basename = path.basename(rel).toLowerCase();
     const isDocOrReadme =
@@ -251,13 +252,24 @@ function validatePack(dir, opts) {
     if (!isDocOrReadme) {
       const hasFence = /^---\s*$/m.test(content);
       if (hasFence) {
+        const isFolderBased =
+          basename === 'cue.md' &&
+          relParts.length >= 3 &&
+          ['cues', 'blanks', 'controls'].includes(relParts[relParts.length - 3]);
         try {
-          const parseCuesMd = getParseCuesMd();
-          const parsed = parseCuesMd(content);
-          const parsedNothing =
-            (!parsed?.frontmatter || Object.keys(parsed.frontmatter).length === 0) &&
-            (!parsed?.sections || Object.keys(parsed.sections).length === 0) &&
-            (!parsed?.promptConfig?.sources || Object.keys(parsed.promptConfig.sources).length === 0);
+          const core = getCore();
+          let parsedNothing;
+          if (isFolderBased) {
+            const parsed = core.parseSingleCueMd(content);
+            parsedNothing =
+              (!parsed?.frontmatter || Object.keys(parsed.frontmatter).length === 0);
+          } else {
+            const parsed = core.parseCuesMd(content);
+            parsedNothing =
+              (!parsed?.frontmatter || Object.keys(parsed.frontmatter).length === 0) &&
+              (!parsed?.sections || Object.keys(parsed.sections).length === 0) &&
+              (!parsed?.promptConfig?.sources || Object.keys(parsed.promptConfig.sources).length === 0);
+          }
           if (parsedNothing) {
             issues.push({ severity: 'error', message: `${rel}: looks like frontmatter is malformed — nothing parsed` });
           }
@@ -270,14 +282,14 @@ function validatePack(dir, opts) {
   return issues;
 }
 
-// Lazy-load core's parser once per process — validatePack may run on
+// Lazy-load core's parsers once per process — validatePack may run on
 // tarball-extracted packs in any CWD, so we can't rely on cwd resolution.
-let _parseCuesMdCache = null;
-function getParseCuesMd() {
-  if (_parseCuesMdCache) return _parseCuesMdCache;
+let _coreCache = null;
+function getCore() {
+  if (_coreCache) return _coreCache;
   const corePath = path.resolve(__dirname, '../../../opencues-core/dist/index.js');
-  _parseCuesMdCache = require(corePath).parseCuesMd;
-  return _parseCuesMdCache;
+  _coreCache = require(corePath);
+  return _coreCache;
 }
 
 function walk(dir, cb) {
