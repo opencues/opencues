@@ -25,7 +25,7 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 | Editor | Status | Integration | Compatible with |
 |--------|--------|-------------|-----------------|
 | **Claude Code** | Available | `integrations/claude-code/` (via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches) | Claude Code 2.1.110+ |
-| **OpenCode** | Available | `integrations/oc/` (TUI patches) | OpenCode 1.4.x |
+| **OpenCode** | Available | `integrations/opencode/` (TUI patches) | OpenCode 1.4.x |
 | **Chrome** | Beta | `integrations/chrome/` (MV3 extension) | Chrome 121+ |
 | **VS Code** | Planned | Extension | — |
 
@@ -185,7 +185,7 @@ Only if you're modifying the patches for a specific integration:
 
 | Touching... | Extra tool |
 |-------------|-----------|
-| `integrations/oc/` patches | bun |
+| `integrations/opencode/` patches | bun |
 | `integrations/codex/` crates | Rust toolchain (1.75+) |
 | `integrations/chrome/` extension | (none — pure TS/rollup) |
 | `integrations/claude-code/` patches | (none — pure TS via tweakcc) |
@@ -219,10 +219,10 @@ Host-agnostic runtime + per-host adapter bands. Source: `packages/opencues-runti
 ### Per-host integrations
 
 - `integrations/claude-code/` — Claude Code (tweakcc patches; runtime installed to `~/.claude/opencues/`)
-- `integrations/oc/` — OpenCode (clone fork at pinned SHA + bootstrap copy)
+- `integrations/opencode/` — OpenCode (clone fork at pinned SHA + bootstrap copy)
 - `integrations/chrome/` — Chrome MV3 extension (esbuild bundle + popup)
 
-Each is its own npm-publishable package (`@opencues/claude-code`, `@opencues/oc`, `@opencues/chrome`).
+Each is its own npm-publishable package (`@opencues/claude-code`, `@opencues/opencode`, `@opencues/chrome`).
 
 ## Status line (optional)
 

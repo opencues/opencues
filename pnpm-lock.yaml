@@ -50,7 +50,7 @@ importers:
 
   integrations/codex: {}
 
-  integrations/oc: {}
+  integrations/opencode: {}
 
   packages/opencues-cli: {}
 

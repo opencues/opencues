@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// @opencues/oc CLI — install / uninstall.
+// @opencues/opencode CLI — install / uninstall.
 //
 // Usage:
-//   opencues-oc                         # install (default; clones fork if missing)
-//   opencues-oc install
-//   opencues-oc uninstall               # roll back to pre-install state
+//   opencues-opencode                         # install (default; clones fork if missing)
+//   opencues-opencode install
+//   opencues-opencode uninstall               # roll back to pre-install state
 //
 // Common flags:
 //   --target <path>   Path to opencode fork dir (default: $HOME/opencode-cues)
 //   --dry-run         Print the plan, don't execute
 //   --help            Show usage
 //
-// Today this runs from a clone via `pnpm --filter @opencues/oc dev-install`.
-// Post-publish (Stage 8) it becomes the bin entry for `npx @opencues/oc`.
+// Today this runs from a clone via `pnpm --filter @opencues/opencode dev-install`.
+// Post-publish (Stage 8) it becomes the bin entry for `npx @opencues/opencode`.
 
 'use strict';
 const fs = require('node:fs');
@@ -62,7 +62,7 @@ if (!isClone) {
     'For now, install from a clone:\n' +
     '  git clone https://github.com/opencues/opencues\n' +
     '  pnpm install\n' +
-    '  pnpm --filter @opencues/oc dev-install\n',
+    '  pnpm --filter @opencues/opencode dev-install\n',
   );
   process.exit(1);
 }
@@ -119,7 +119,7 @@ function doInstall() {
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const result = spawnSync(setupSh, [fork], { stdio: 'inherit' });
   if (result.status !== 0) {
-    console.error(`\nInstall failed. To roll back: pnpm --filter @opencues/oc dev-uninstall`);
+    console.error(`\nInstall failed. To roll back: pnpm --filter @opencues/opencode dev-uninstall`);
     process.exit(result.status || 1);
   }
 }

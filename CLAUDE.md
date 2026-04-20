@@ -29,7 +29,7 @@ host and the runtime.
 
 **Current Integrations**:
 - **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.110+ via tweakcc
-- **OpenCode** (`integrations/oc/`) — patches OpenCode 1.4.x; runtime loaded inline
+- **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.4.x; runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 
 > Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of

@@ -119,7 +119,7 @@ echo ""
 echo "To run codex (once TUI patches land):"
 echo "  pnpm exec opencues run codex"
 
-# TODO STEP 4: in-place TUI patches via Python sed (mirrors integrations/oc/patches/setup.sh).
+# TODO STEP 4: in-place TUI patches via Python sed (mirrors integrations/opencode/patches/setup.sh).
 # Patch points:
 #   <fork>/codex-rs/tui/src/bottom_pane/chat_composer.rs
 #     - add `bridge: Option<opencues_bridge::Bridge>` field to ChatComposer

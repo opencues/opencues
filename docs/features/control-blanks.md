@@ -269,7 +269,7 @@ runtime classes are now the source of truth across all hosts.
 
 Each host integration assembles a `Map<string, Control>` and passes it to
 `createControlInvoke()` which becomes the host's `controlInvoke` binding. See
-`integrations/oc/patches/opencuesBootstrap.ts` (lines 105-116) and
+`integrations/opencode/patches/opencuesBootstrap.ts` (lines 105-116) and
 `integrations/claude-code/patches/opencuesRuntime.ts` (the `controlInvoke:` block) for
 the wiring pattern.
 

@@ -197,7 +197,7 @@ This applies to both read-only API controls (e.g. stocks, weather) and dynamic l
 2. **Export it** from `packages/opencues-runtime/src/controls/index.ts`.
 3. **Register it** in each host's controls map:
    - CC: `integrations/claude-code/patches/opencuesRuntime.ts` — add a `__ocReg.set("<name>", new __ocCtl.YourControl({ ... }))` line in the `controlInvoke:` factory block
-   - OC: `integrations/oc/patches/opencuesBootstrap.ts:105-116` — add to `controlsRegistry`
+   - OC: `integrations/opencode/patches/opencuesBootstrap.ts:105-116` — add to `controlsRegistry`
    - Chrome: `integrations/chrome/src/controls/index.ts`
 4. **Add the control's `cue.md`** under `controls/<name>/cue.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. — same as before. The `blankScript:` field is **omitted** for hoisted controls; the host's `controlInvoke` dispatches by control name.
 

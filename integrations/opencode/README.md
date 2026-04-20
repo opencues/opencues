@@ -1,12 +1,12 @@
 # OpenCues for OpenCode
 
-`@opencues/oc` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-controls inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
+`@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-controls inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
 
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
 | Compatible with | OpenCode 1.4.x (pinned to v1.4.11 / SHA `5e9d5c7`) |
-| Source | `integrations/oc/` |
+| Source | `integrations/opencode/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed into the fork's `node_modules/`) |
 
 ---
@@ -17,13 +17,13 @@
 git clone https://github.com/opencues/opencues
 cd opencues
 pnpm install
-pnpm --filter @opencues/oc dev-install
+pnpm --filter @opencues/opencode dev-install
 ```
 
 By default the installer clones the OpenCode fork to `$HOME/opencode-cues`. To install against an existing fork at a different path:
 
 ```bash
-pnpm --filter @opencues/oc dev-install -- --target /path/to/your/opencode-fork
+pnpm --filter @opencues/opencode dev-install -- --target /path/to/your/opencode-fork
 ```
 
 The installer:
@@ -33,7 +33,7 @@ The installer:
 4. Copies `opencuesBootstrap.ts` into the fork's TUI source as `opencues.ts`
 5. Patches `app.tsx`, `component/prompt/index.tsx`, and `feature-plugins/home/footer.tsx` via Python sed-style edits (idempotent)
 
-> **Future:** post-publish, the same script runs as `npx @opencues/oc`. Same flags, same behaviour.
+> **Future:** post-publish, the same script runs as `npx @opencues/opencode`. Same flags, same behaviour.
 
 ---
 
@@ -94,7 +94,7 @@ Project-level wins on name conflicts (cue source name, blank mode name, control 
 **Seed `~/.opencues/` from the repo's defaults:**
 
 ```bash
-pnpm --filter @opencues/oc seed-configs
+pnpm --filter @opencues/opencode seed-configs
 ```
 
 Idempotent — copies any file that doesn't already exist at the destination, skips files you've already created. Preview first with `-- --dry-run`.
@@ -126,7 +126,7 @@ The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.
 cd opencues
 git pull
 pnpm install
-pnpm --filter @opencues/oc dev-install   # rebuilds + redeploys into fork
+pnpm --filter @opencues/opencode dev-install   # rebuilds + redeploys into fork
 cd ~/opencode-cues && bun run dev        # restart the fork
 ```
 
@@ -152,5 +152,5 @@ The fork itself stays a regular OpenCode checkout — you can `git pull upstream
 ## See also
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — repo layout + stage tracker
-- [`integrations/oc/patches/opencuesBootstrap.ts`](patches/opencuesBootstrap.ts) — the actual bootstrap (read for what gets injected)
+- [`integrations/opencode/patches/opencuesBootstrap.ts`](patches/opencuesBootstrap.ts) — the actual bootstrap (read for what gets injected)
 - [`@opencues/runtime` adapter band](../../packages/opencues-runtime/adapters/oc/v1.4/) — the OC v1.4 host adapter (what `boot()` resolves to)

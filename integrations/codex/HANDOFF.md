@@ -39,7 +39,7 @@ The `TextArea` component lives at `<fork>/codex-rs/tui/src/bottom_pane/textarea.
 
 **File:** `integrations/codex/patches/setup.sh`
 
-Currently does steps 1-3 (clone, add to workspace, build). The TODO marker `# TODO STEP 4` shows where the in-place patches via Python/sed should go (mirrors `integrations/oc/patches/setup.sh`'s pattern). Likely sed-injects:
+Currently does steps 1-3 (clone, add to workspace, build). The TODO marker `# TODO STEP 4` shows where the in-place patches via Python/sed should go (mirrors `integrations/opencode/patches/setup.sh`'s pattern). Likely sed-injects:
 
 - Add `let _bridge = opencues_bridge::Bridge::start();` to the ChatComposer constructor
 - Add the call sites from §1 above

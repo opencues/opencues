@@ -589,7 +589,7 @@ pnpm --filter @opencues/runtime test 2>&1 | tail -5
 ```bash
 # Per-integration seed (works the same as the umbrella `opencues seed-configs`):
 pnpm --filter @opencues/claude-code seed-configs --dry-run
-pnpm --filter @opencues/oc seed-configs --dry-run
+pnpm --filter @opencues/opencode seed-configs --dry-run
 # → both show source / target / plan
 ```
 

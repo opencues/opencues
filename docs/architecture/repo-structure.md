@@ -127,7 +127,7 @@ The shape we're building toward, ordered by user expectation:
 | Integration | Primary (end-user) | Alternative | Dev (contributor) |
 |---|---|---|---|
 | **CC** | `npx @opencues/claude-code` | `curl -fsSL opencues.dev/install/cc \| sh` | `pnpm --filter @opencues/claude-code dev-install` |
-| **OC** | `npx @opencues/oc` | tarball from GitHub Release | `pnpm --filter @opencues/oc dev-install` |
+| **OC** | `npx @opencues/opencode` | tarball from GitHub Release | `pnpm --filter @opencues/opencode dev-install` |
 | **Chrome** | Chrome Web Store | unpacked-extension `.zip` from GitHub Release | `pnpm --filter @opencues/chrome dev` |
 
 `npx` is the primary install front-door because it works on every OS,
