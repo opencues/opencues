@@ -55,12 +55,93 @@ module.exports = function sync(argv, ctx) {
   }
 
   if (flags.watch) {
-    console.error('--watch is implemented in a follow-up commit. Skipping for now.');
-    process.exit(2);
+    syncChromeWatch({ flags, pack, source }, ctx);
+    return;
   }
 
   syncChrome({ flags, pack, source }, ctx);
 };
+
+// Run an initial sync, then watch every source dir for changes and
+// re-sync on edits. Debounced to coalesce burst writes (e.g. editor
+// save). Exits cleanly on SIGINT.
+function syncChromeWatch(opts, ctx) {
+  syncChrome(opts, ctx);
+  const sources = resolveSources(opts);
+  if (sources.length === 0) process.exit(0);
+
+  console.log('');
+  console.log('Watching for changes (Ctrl+C to stop):');
+  for (const s of sources) console.log(`  ${s.dir}`);
+  console.log('');
+
+  const DEBOUNCE_MS = 250;
+  let pending = false;
+  let timer = null;
+  const trigger = (reason) => {
+    pending = true;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (!pending) return;
+      pending = false;
+      const ts = new Date().toTimeString().slice(0, 8);
+      process.stdout.write(`[${ts}] re-syncing (${reason}) ... `);
+      try {
+        // Re-resolve sources each time — handles new pack dirs etc.
+        const distConfigs = path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist', 'configs');
+        const before = readVersion(distConfigs);
+        syncChromeQuiet(opts, ctx);
+        const after = readVersion(distConfigs);
+        process.stdout.write(after !== before ? `version ${after}\n` : `no changes\n`);
+      } catch (err) {
+        process.stdout.write(`failed: ${err.message}\n`);
+      }
+    }, DEBOUNCE_MS);
+  };
+
+  const watchers = [];
+  for (const s of sources) {
+    if (!fs.existsSync(s.dir)) continue;
+    try {
+      const w = fs.watch(s.dir, { recursive: true }, (event, filename) => {
+        if (!filename) return;
+        // Ignore noise: editor swap files, dotfiles other than the
+        // ones we'd actually sync.
+        if (filename.includes('~') || filename.endsWith('.swp') || filename.endsWith('.tmp')) return;
+        trigger(filename);
+      });
+      watchers.push(w);
+    } catch (err) {
+      console.error(`  WARN: couldn't watch ${s.dir}: ${err.message}`);
+    }
+  }
+
+  if (watchers.length === 0) {
+    console.error('opencues sync chrome --watch: no watchable sources. Exiting.');
+    process.exit(1);
+  }
+
+  process.on('SIGINT', () => {
+    console.log('\nStopping watcher.');
+    for (const w of watchers) try { w.close(); } catch { /* ignore */ }
+    process.exit(0);
+  });
+}
+
+// Same as syncChrome but suppresses the per-file summary chatter —
+// for the watch loop where the per-event line is already concise.
+function syncChromeQuiet(opts, ctx) {
+  const orig = console.log;
+  console.log = () => {};
+  try { syncChrome(opts, ctx); }
+  finally { console.log = orig; }
+}
+
+function readVersion(distConfigs) {
+  try { return fs.readFileSync(path.join(distConfigs, '.version'), 'utf8').trim(); }
+  catch { return ''; }
+}
 
 function syncChrome({ flags, pack, source }, ctx) {
   const core = loadCore(ctx);
