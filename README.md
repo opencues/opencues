@@ -24,7 +24,7 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 
 | Editor | Status | Integration | Compatible with |
 |--------|--------|-------------|-----------------|
-| **Claude Code** | Available | `integrations/cc/` (via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches) | Claude Code 2.1.110+ |
+| **Claude Code** | Available | `integrations/claude-code/` (via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches) | Claude Code 2.1.110+ |
 | **OpenCode** | Available | `integrations/oc/` (TUI patches) | OpenCode 1.4.x |
 | **Chrome** | Beta | `integrations/chrome/` (MV3 extension) | Chrome 121+ |
 | **VS Code** | Planned | Extension | — |
@@ -117,7 +117,7 @@ For per-host details (paths it touches, uninstall, troubleshooting): see each in
 │  ├── node-http-adapter.ts     HTTPS with keep-alive         │
 │  └── sources/                 ConfigSource, parsers...      │
 │                                                             │
-│  integrations/cc/patches/       Claude Code integration       │
+│  integrations/claude-code/patches/       Claude Code integration       │
 │  ├── setup.sh                 One-command installer         │
 │  ├── wordHighlight.ts         Navigation + rendering        │
 │  ├── dynamicHighlight.ts      LLM integration + cycling     │
@@ -188,7 +188,7 @@ Only if you're modifying the patches for a specific integration:
 | `integrations/oc/` patches | bun |
 | `integrations/codex/` crates | Rust toolchain (1.75+) |
 | `integrations/chrome/` extension | (none — pure TS/rollup) |
-| `integrations/cc/` patches | (none — pure TS via tweakcc) |
+| `integrations/claude-code/` patches | (none — pure TS via tweakcc) |
 
 Run `pnpm install && pnpm build` once after cloning; then work on each
 integration's patches using the per-integration README under
@@ -218,11 +218,11 @@ Host-agnostic runtime + per-host adapter bands. Source: `packages/opencues-runti
 
 ### Per-host integrations
 
-- `integrations/cc/` — Claude Code (tweakcc patches; runtime installed to `~/.claude/opencues/`)
+- `integrations/claude-code/` — Claude Code (tweakcc patches; runtime installed to `~/.claude/opencues/`)
 - `integrations/oc/` — OpenCode (clone fork at pinned SHA + bootstrap copy)
 - `integrations/chrome/` — Chrome MV3 extension (esbuild bundle + popup)
 
-Each is its own npm-publishable package (`@opencues/cc`, `@opencues/oc`, `@opencues/chrome`).
+Each is its own npm-publishable package (`@opencues/claude-code`, `@opencues/oc`, `@opencues/chrome`).
 
 ## Status line (optional)
 
@@ -239,7 +239,7 @@ agents (1/3) - Spawn parallel workers via Task tool
 
 **Disable:** Run `/statusline` again and clear the command.
 
-See [status line docs](integrations/cc/docs/status-line.md) for details.
+See [status line docs](integrations/claude-code/docs/status-line.md) for details.
 
 ## Configuration
 
@@ -351,7 +351,7 @@ Work through these in order:
 cp ~/.tweakcc/cli.js.backup $(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
 
 # Re-run setup
-~/opencues/integrations/cc/patches/setup.sh
+~/opencues/integrations/claude-code/patches/setup.sh
 ```
 
 ### setup.sh fails to patch

@@ -1,12 +1,12 @@
 # OpenCues for Claude Code
 
-`@opencues/cc` — patches Claude Code's CLI via [tweakcc](https://github.com/Piebald-AI/tweakcc) to add real-time word alternatives, blanks, and cue-controls inline in your prompts.
+`@opencues/claude-code` — patches Claude Code's CLI via [tweakcc](https://github.com/Piebald-AI/tweakcc) to add real-time word alternatives, blanks, and cue-controls inline in your prompts.
 
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
 | Compatible with | Claude Code 2.1.110+ (2.1.x line) |
-| Source | `integrations/cc/` |
+| Source | `integrations/claude-code/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/.claude/opencues/`) |
 
 ---
@@ -17,13 +17,13 @@
 git clone https://github.com/opencues/opencues
 cd opencues
 pnpm install
-pnpm --filter @opencues/cc dev-install
+pnpm --filter @opencues/claude-code dev-install
 ```
 
 If your `claude` CLI lives at a non-standard path (e.g. you use [`claude-cues`](../../CLAUDE.md#claude-installs) at `~/local-claude-code/`):
 
 ```bash
-pnpm --filter @opencues/cc dev-install -- \
+pnpm --filter @opencues/claude-code dev-install -- \
   --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
@@ -33,7 +33,7 @@ The installer:
 3. Builds tweakcc with the patches under `patches/`
 4. Applies patches to the detected `cli.js` (backup at `~/.claude/opencues/tweakcc-state/cli.js.backup`)
 
-> **Future:** post-publish, the same script runs as `npx @opencues/cc`. Same flags, same behaviour.
+> **Future:** post-publish, the same script runs as `npx @opencues/claude-code`. Same flags, same behaviour.
 
 ---
 
@@ -81,7 +81,7 @@ Project-level wins on name conflicts (cue source name, blank mode name, control 
 **Seed `~/.opencues/` from the repo's defaults:**
 
 ```bash
-pnpm --filter @opencues/cc seed-configs
+pnpm --filter @opencues/claude-code seed-configs
 ```
 
 Idempotent — copies any file that doesn't already exist at the destination, skips files you've already created. Preview first with `-- --dry-run`.
@@ -112,7 +112,7 @@ The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.
 cd opencues
 git pull
 pnpm install                              # picks up dep changes
-pnpm --filter @opencues/cc dev-install    # rebuilds + redeploys
+pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 # Restart claude-cues
 ```
 
@@ -122,7 +122,7 @@ pnpm --filter @opencues/cc dev-install    # rebuilds + redeploys
 
 ## What gets installed where
 
-**Everything @opencues/cc owns lives under one dir:**
+**Everything @opencues/claude-code owns lives under one dir:**
 
 ```
 ~/.claude/opencues/
@@ -149,7 +149,7 @@ These are runtime IPC files; OS rotates `/tmp/`.
 ## Removing
 
 ```bash
-pnpm --filter @opencues/cc dev-uninstall -- \
+pnpm --filter @opencues/claude-code dev-uninstall -- \
   --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
@@ -160,6 +160,6 @@ Reverts `cli.js` from the backup in `~/.claude/opencues/tweakcc-state/`, then re
 ## See also
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — overall repo shape + stage tracker
-- [`integrations/cc/docs/`](docs/) — feature reference (navigation, cycling, alternatives, blanks, status line, etc.)
-- [`integrations/cc/docs/architecture.md`](docs/architecture.md) — patch architecture + development notes
+- [`integrations/claude-code/docs/`](docs/) — feature reference (navigation, cycling, alternatives, blanks, status line, etc.)
+- [`integrations/claude-code/docs/architecture.md`](docs/architecture.md) — patch architecture + development notes
 - [`CLAUDE.md`](../../CLAUDE.md) — internal project notes including the `claude-cues` vs `claude` install distinction

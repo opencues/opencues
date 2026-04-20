@@ -52,11 +52,11 @@ module.exports = function update(argv, ctx) {
 function detectInstalled(HOME, REPO_ROOT) {
   const out = [];
   if (fs.existsSync(path.join(HOME, '.claude/opencues/runtime'))) {
-    out.push({ host: 'claude-code', folder: 'cc', evidence: '~/.claude/opencues/runtime exists' });
+    out.push({ host: 'claude-code', folder: 'claude-code', evidence: '~/.claude/opencues/runtime exists' });
   }
   const ocFork = path.join(HOME, 'opencode-cues');
   if (fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime'))) {
-    out.push({ host: 'opencode',    folder: 'oc', evidence: `${ocFork}/node_modules/@opencues/runtime exists` });
+    out.push({ host: 'opencode',    folder: 'opencode', evidence: `${ocFork}/node_modules/@opencues/runtime exists` });
   }
   const codexFork = path.join(HOME, 'codex-cues');
   if (fs.existsSync(path.join(codexFork, 'codex-rs/opencues-bridge'))) {

@@ -143,7 +143,7 @@ Set in `~/.tweakcc/config.json` under `misc`.
 
 ## Script Location
 
-- **Source:** `opencues/integrations/cc/patches/highlight-statusline.sh`
+- **Source:** `opencues/integrations/claude-code/patches/highlight-statusline.sh`
 - **Installed to:** `~/.claude/opencues/statusline.sh`
 - **Customise:** Edit the installed copy — it's a plain bash script.
 

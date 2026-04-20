@@ -55,7 +55,7 @@ See [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md) f
 - [ ] **Stage 8 — Choose Changesets vs hand-managed versions.** Changesets is mainstream (shadcn/ui uses it) but adds overhead for a small project. Hand-managed `npm version patch` per integration works fine until automated changelogs become valuable.
 - [ ] **Stage 8 — Set up GitHub Actions release workflow** with OIDC publish to npm (no token management). Triggered by changeset version PR merge OR by manual `pnpm release`.
 - [ ] **Stage 8 — Drop `private: true`** from each integration's `package.json` and from `@opencues/core` / `@opencues/runtime`. Run `pnpm publish --access public` (first time) for each scoped package.
-- [ ] **Stage 8 — Update top-level README** to lead with `npx @opencues/cc` (and `oc`/`chrome`) as the primary install path; current `pnpm --filter ... dev-install` becomes the contributor fallback.
+- [ ] **Stage 8 — Update top-level README** to lead with `npx @opencues/claude-code` (and `oc`/`chrome`) as the primary install path; current `pnpm --filter ... dev-install` becomes the contributor fallback.
 - [x] Add `package.json` version field — v0.1.0 (pre-release) across all packages
 - [x] Add `CHANGELOG.md` — v0.1.0 initial pre-release with all 18 features (per-package CHANGELOGs land with Changesets in Stage 8)
 

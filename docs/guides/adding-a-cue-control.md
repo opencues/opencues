@@ -196,7 +196,7 @@ This applies to both read-only API controls (e.g. stocks, weather) and dynamic l
 1. **Add a class** to `packages/opencues-runtime/src/controls/<name>.ts` implementing the `Control` interface from `./types`. Typically you implement `get(keyword, contextWords) → Promise<string>` (and optionally `set(value, keyword)` if it's writable). Return newline-separated output for dynamic lists.
 2. **Export it** from `packages/opencues-runtime/src/controls/index.ts`.
 3. **Register it** in each host's controls map:
-   - CC: `integrations/cc/patches/opencuesRuntime.ts` — add a `__ocReg.set("<name>", new __ocCtl.YourControl({ ... }))` line in the `controlInvoke:` factory block
+   - CC: `integrations/claude-code/patches/opencuesRuntime.ts` — add a `__ocReg.set("<name>", new __ocCtl.YourControl({ ... }))` line in the `controlInvoke:` factory block
    - OC: `integrations/oc/patches/opencuesBootstrap.ts:105-116` — add to `controlsRegistry`
    - Chrome: `integrations/chrome/src/controls/index.ts`
 4. **Add the control's `cue.md`** under `controls/<name>/cue.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. — same as before. The `blankScript:` field is **omitted** for hoisted controls; the host's `controlInvoke` dispatches by control name.
@@ -272,4 +272,4 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 - [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true` to clear entire input on auto-populate. Requires dedicated cycling storage — see `docs/guides/creating-a-cue-type.md`
 - [ ] Restart Claude Code
 
-> **No need to run `setup.sh`** — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patch files in `integrations/cc/patches/`.
+> **No need to run `setup.sh`** — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patch files in `integrations/claude-code/patches/`.

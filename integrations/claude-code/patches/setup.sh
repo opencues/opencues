@@ -7,6 +7,10 @@
 # If no directory specified, clones tweakcc to ~/tweakcc
 # Re-runs are fast: skips clone, npm install, and unchanged builds.
 #
+# Set OPENCUES_INSTALL_VERBOSE=1 to stream every command's output.
+# Default is quiet — only top-level progress lines + errors. Full log
+# lives at the path printed on failure.
+#
 
 set -e
 
@@ -17,7 +21,59 @@ NEEDS_TWEAKCC_BUILD=false
 CLEAN_INSTALL=false
 TWEAKCC_DIR=""
 
-# Single-dir install root. Everything @opencues/cc owns lives here so
+# ─── progress helpers ────────────────────────────────────────────────
+LOG="${OPENCUES_INSTALL_LOG:-/tmp/opencues-install-cc.log}"
+VERBOSE="${OPENCUES_INSTALL_VERBOSE:-0}"
+: > "$LOG"
+
+# In quiet mode we save the real stdout/stderr on fd 3/4 and redirect
+# the default fds to the log. Internal echoes from the rest of the
+# script automatically land in the log rather than the terminal.
+# begin_step/end_step use fd 3 to print the one progress line per step.
+if [ "$VERBOSE" = "1" ]; then
+  exec 3>&1 4>&2
+else
+  exec 3>&1 4>&2
+  exec >>"$LOG" 2>&1
+fi
+
+CURRENT_STEP=""
+begin_step() {
+  CURRENT_STEP="$1"
+  if [ "$VERBOSE" = "1" ]; then
+    printf '  ▸ %s\n' "$CURRENT_STEP" >&3
+  else
+    printf '  ▸ %s' "$CURRENT_STEP" >&3
+  fi
+}
+end_step() {
+  if [ "$VERBOSE" = "1" ]; then
+    printf '  ✓ %s\n' "$CURRENT_STEP" >&3
+  else
+    printf ' ✓\n' >&3
+  fi
+  CURRENT_STEP=""
+}
+on_error() {
+  local rc=$?
+  if [ -n "$CURRENT_STEP" ] && [ "$VERBOSE" != "1" ]; then
+    printf ' ✗\n' >&4
+  fi
+  if [ -n "$CURRENT_STEP" ]; then
+    echo "" >&4
+    echo "Step failed: $CURRENT_STEP (exit $rc)" >&4
+  fi
+  if [ "$VERBOSE" != "1" ] && [ -s "$LOG" ]; then
+    echo "Last 30 lines of $LOG:" >&4
+    tail -30 "$LOG" >&4
+    echo "" >&4
+    echo "Full log: $LOG  —  re-run with OPENCUES_INSTALL_VERBOSE=1 to stream live." >&4
+  fi
+  exit $rc
+}
+trap on_error ERR
+
+# Single-dir install root. Everything @opencues/claude-code owns lives here so
 # uninstall is `rm -rf $OC_INSTALL_ROOT` + tweakcc revert. tweakcc's own
 # config + cli.js.backup are redirected here too via TWEAKCC_CONFIG_DIR
 # (tweakcc respects this env var; see tweakcc/src/tests/tweakccConfigDir.test.ts).
@@ -34,20 +90,20 @@ for arg in "$@"; do
 done
 TWEAKCC_DIR="${TWEAKCC_DIR:-$HOME/tweakcc}"
 
-echo "=== OpenCues Setup ==="
-
-# Check Node.js >= 18
+# Check Node.js >= 18 (runs before first begin_step so its errors are
+# shown directly, not wrapped in a step label).
 if ! command -v node &>/dev/null; then
-  echo "Error: Node.js is not installed. Please install Node.js 18 or later."
+  echo "Error: Node.js is not installed. Please install Node.js 18 or later." >&4
   exit 1
 fi
 NODE_MAJOR=$(node -e "process.stdout.write(String(process.versions.node.split('.')[0]))")
 if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Error: Node.js 18+ required (found $(node --version))."
+  echo "Error: Node.js 18+ required (found $(node --version))." >&4
   exit 1
 fi
 
 # 1. Clone or reuse tweakcc
+begin_step "Setting up tweakcc"
 if [ ! -d "$TWEAKCC_DIR" ]; then
   echo "Cloning tweakcc..."
   git clone https://github.com/Piebald-AI/tweakcc "$TWEAKCC_DIR"
@@ -55,12 +111,14 @@ if [ ! -d "$TWEAKCC_DIR" ]; then
   npm install --legacy-peer-deps
   NEEDS_TWEAKCC_BUILD=true
 elif [ ! -d "$TWEAKCC_DIR/src/patches" ]; then
-  echo "Error: $TWEAKCC_DIR exists but doesn't look like tweakcc"
+  echo "Error: $TWEAKCC_DIR exists but doesn't look like tweakcc" >&4
   exit 1
 else
   cd "$TWEAKCC_DIR"
 fi
+end_step
 
+begin_step "Patching tweakcc source"
 # 2. Copy patch files (always — cheap, ensures latest)
 PATCH_FILES=(cursorStateExport.ts wordHighlight.ts dynamicHighlight.ts opencuesRuntime.ts)
 PATCH_CHANGED=false
@@ -242,7 +300,9 @@ if (writeBackMatch) {
 "
   NEEDS_TWEAKCC_BUILD=true
 fi
+end_step
 
+begin_step "Building @opencues/{core,runtime}"
 # 6. Build cues-core (skip if dist is newer than src)
 if [ -d "$CUES_CORE" ]; then
   NEWEST_SRC=$(find "$CUES_CORE/src" -name '*.ts' -newer "$CUES_CORE/dist/index.js" 2>/dev/null | head -1)
@@ -325,7 +385,9 @@ if [ -d "$OC_RUNTIME" ]; then
   fi
   cp "$OC_RUNTIME/package.json" "$OC_INSTALL_ROOT/runtime/package.json"
 fi
+end_step
 
+begin_step "Installing support files (tips, actions, statusline)"
 # 7. Copy supporting files into $OC_INSTALL_ROOT (cheap — always run).
 #    Cleanup of legacy ~/.claude/{claude-code-tips.json, highlight-statusline.sh,
 #    actions/<our files>} is best-effort — only files we know we shipped.
@@ -367,7 +429,9 @@ if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
     fi
   done
 fi
+end_step
 
+begin_step "Building tweakcc"
 # 8. Build tweakcc (skip if no changes)
 cd "$TWEAKCC_DIR"
 if $NEEDS_TWEAKCC_BUILD || [ ! -f "$TWEAKCC_DIR/dist/index.mjs" ]; then
@@ -376,26 +440,32 @@ if $NEEDS_TWEAKCC_BUILD || [ ! -f "$TWEAKCC_DIR/dist/index.mjs" ]; then
 else
   echo "tweakcc up to date"
 fi
+end_step
 
-# 9. Apply to Claude Code
-CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" 2>/dev/null | head -1)
+begin_step "Applying patches to cli.js"
+# 9. Apply to Claude Code.
+# The caller (install.cjs) may have already resolved the target and
+# passed it via OPENCUES_CC_TARGET. Otherwise find it ourselves under
+# the two common install paths.
+CLI_JS="${OPENCUES_CC_TARGET:-}"
+if [ -z "$CLI_JS" ]; then
+  CLI_JS=$(find ~/.claude ~/local-claude-code -name "cli.js" -path "*claude-code*" 2>/dev/null | head -1)
+fi
 if [ -n "$CLI_JS" ]; then
-  echo "Applying patches..."
   TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
-
-  if node --check "$CLI_JS" 2>/dev/null; then
-    echo "Syntax OK"
-  else
-    echo "Warning: Syntax check failed"
+  if ! node --check "$CLI_JS" 2>/dev/null; then
+    echo "Warning: Syntax check failed on $CLI_JS"
   fi
-  echo ""
-  echo "=== Setup Complete — restart Claude Code to activate ==="
+  end_step
+  echo "" >&3
+  echo "Done. Restart Claude Code to activate." >&3
 else
-  echo ""
-  echo "=== ERROR: Claude Code not found ==="
-  echo "cli.js was not found. Apply patches manually once Claude Code is installed:"
-  echo "  cd $TWEAKCC_DIR"
-  echo "  CLI_JS=\$(find ~/.claude -name 'cli.js' -path '*claude-code*' | head -1)"
-  echo "  TWEAKCC_CC_INSTALLATION_PATH=\"\$CLI_JS\" node dist/index.mjs --apply"
-  exit 1
+  # Soft failure: finish the step as a skip, let the caller decide
+  # whether to try --target fallback or report the error.
+  end_step
+  echo "" >&4
+  echo "NOTE: cli.js not found under ~/.claude/ or ~/local-claude-code/." >&4
+  echo "Pass --target /path/to/cli.js to opencues install claude-code, or install" >&4
+  echo "Claude Code first and re-run." >&4
+  exit 2
 fi

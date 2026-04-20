@@ -17,11 +17,11 @@ pnpm exec opencues install claude-code
 pnpm exec opencues install claude-code --target /path/to/cli.js
 ```
 
-The `opencues install claude-code` command runs `setup.sh` (this directory) under the hood. See `integrations/cc/README.md` for the user-facing flow.
+The `opencues install claude-code` command runs `setup.sh` (this directory) under the hood. See `integrations/claude-code/README.md` for the user-facing flow.
 
 ## What setup.sh does
 
-1. Clones tweakcc from upstream into `integrations/cc/tweakcc/`
+1. Clones tweakcc from upstream into `integrations/claude-code/tweakcc/`
 2. Copies the `.ts` patches into tweakcc's `src/patches/`
 3. Patches tweakcc's `types.ts`, `defaultSettings.ts`, and `src/patches/index.ts` (one-time wiring)
 4. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
@@ -60,7 +60,7 @@ If `opencues install claude-code` fails for some reason, you can run the setup s
 cd ~/opencues
 pnpm install
 pnpm build       # builds @opencues/core + @opencues/runtime
-integrations/cc/patches/setup.sh ~/opencues/integrations/cc/tweakcc
+integrations/claude-code/patches/setup.sh ~/opencues/integrations/claude-code/tweakcc
 ```
 
 If your Claude Code install is at a non-standard path (e.g. WSL `claude-cues`):
@@ -69,7 +69,7 @@ If your Claude Code install is at a non-standard path (e.g. WSL `claude-cues`):
 CLI_JS=/home/$USER/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
 TWEAKCC_CONFIG_DIR=~/.claude/opencues/tweakcc-state \
   TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" \
-  node ~/opencues/integrations/cc/tweakcc/dist/index.mjs --apply
+  node ~/opencues/integrations/claude-code/tweakcc/dist/index.mjs --apply
 ```
 
 ## Features
@@ -94,4 +94,4 @@ Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.
 - [`@opencues/core`](../../../packages/opencues-core/) — the LLM analysis library
 - [`@opencues/runtime`](../../../packages/opencues-runtime/) — the host-agnostic runtime + adapter bands
 - [Full documentation](../docs/) — implementation guides and references
-- [`integrations/cc/README.md`](../README.md) — user-facing install + verify + uninstall + blast-radius
+- [`integrations/claude-code/README.md`](../README.md) — user-facing install + verify + uninstall + blast-radius

@@ -31,7 +31,7 @@ trademark coupling, we use **opaque short codes for repo internals** and
 
 Casing: lowercase on the filesystem (`cc/`, `oc/`, `chrome/`), uppercase
 in prose (`CC`, `OC`, `Chrome`). User-facing READMEs are free to say
-"OpenCues for Claude Code (`npx @opencues/cc`)" — describing what the
+"OpenCues for Claude Code (`npx @opencues/claude-code`)" — describing what the
 package does without naming-coupling.
 
 ---
@@ -50,7 +50,7 @@ opencues/
 │
 ├── integrations/                # Host glue — each is its own release unit
 │   ├── cc/                      # was: claude-code/
-│   │   ├── package.json         # @opencues/cc, version + compat
+│   │   ├── package.json         # @opencues/claude-code, version + compat
 │   │   ├── src/                 # patch sources
 │   │   ├── bin/install.js       # npx entry — end-user installer
 │   │   ├── scripts/dev-install.sh   # was: patches/setup.sh — for contributors
@@ -104,7 +104,7 @@ Each integration's `package.json`:
 
 ```json
 {
-  "name": "@opencues/cc",
+  "name": "@opencues/claude-code",
   "version": "0.5.2",
   "compatibility": {
     "claude-code": "2.1.110 - 2.1.x"
@@ -126,7 +126,7 @@ The shape we're building toward, ordered by user expectation:
 
 | Integration | Primary (end-user) | Alternative | Dev (contributor) |
 |---|---|---|---|
-| **CC** | `npx @opencues/cc` | `curl -fsSL opencues.dev/install/cc \| sh` | `pnpm --filter @opencues/cc dev-install` |
+| **CC** | `npx @opencues/claude-code` | `curl -fsSL opencues.dev/install/cc \| sh` | `pnpm --filter @opencues/claude-code dev-install` |
 | **OC** | `npx @opencues/oc` | tarball from GitHub Release | `pnpm --filter @opencues/oc dev-install` |
 | **Chrome** | Chrome Web Store | unpacked-extension `.zip` from GitHub Release | `pnpm --filter @opencues/chrome dev` |
 

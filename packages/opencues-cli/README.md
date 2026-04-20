@@ -50,4 +50,4 @@ packages/opencues-cli/
     └── help.cjs              top-level + per-command
 ```
 
-Per-integration installers stay valid as direct entry points (`pnpm --filter @opencues/cc dev-install ...`). The CLI is the discoverable umbrella; both layers are first-class.
+Per-integration installers stay valid as direct entry points (`pnpm --filter @opencues/claude-code dev-install ...`). The CLI is the discoverable umbrella; both layers are first-class.

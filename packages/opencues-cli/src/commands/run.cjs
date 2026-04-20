@@ -12,8 +12,8 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const HOST_ALIASES = {
-  'claude-code': 'cc', 'claudecode': 'cc', 'claude': 'cc', 'cc': 'cc',
-  'opencode':    'oc', 'oc':         'oc',
+  'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
+  'opencode':    'opencode',    'oc':         'opencode',
   'codex':       'codex',
   'chrome':      'chrome',
 };
@@ -41,8 +41,8 @@ module.exports = function run(argv, ctx) {
     process.exit(2);
   }
 
-  if (folder === 'cc')     return runCC(passthrough);
-  if (folder === 'oc')     return runOC(passthrough, argv);
+  if (folder === 'claude-code') return runCC(passthrough);
+  if (folder === 'opencode')    return runOC(passthrough, argv);
   if (folder === 'codex')  return runCodex(passthrough, argv);
   if (folder === 'chrome') return runChrome();
 };

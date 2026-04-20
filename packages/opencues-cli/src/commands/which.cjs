@@ -26,7 +26,7 @@ module.exports = function which(argv, ctx) {
       ['Statusline script',          path.join(HOME, '.claude', 'opencues', 'statusline.sh')],
       ['OS action scripts',          path.join(HOME, '.claude', 'opencues', 'actions')],
       ['tweakcc state + cli backup', path.join(HOME, '.claude', 'opencues', 'tweakcc-state')],
-      ['tweakcc clone (in repo)',    path.join(ctx.REPO_ROOT, 'integrations', 'cc', 'tweakcc')],
+      ['tweakcc clone (in repo)',    path.join(ctx.REPO_ROOT, 'integrations', 'claude-code', 'tweakcc')],
     ]],
     ['OC install state (per fork)', [
       ['Default fork dir',           path.join(HOME, 'opencode-cues')],

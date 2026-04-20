@@ -28,7 +28,7 @@ host and the runtime.
 
 
 **Current Integrations**:
-- **Claude Code** (`integrations/cc/`) — patches Claude Code 2.1.110+ via tweakcc
+- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.110+ via tweakcc
 - **OpenCode** (`integrations/oc/`) — patches OpenCode 1.4.x; runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 
@@ -108,7 +108,7 @@ opencues/
 │       │   └── chrome/v1/         # Chrome extension adapter
 │       └── dist/                  # Built output
 │
-├── integrations/cc/      # Claude Code integration (@opencues/cc)
+├── integrations/claude-code/      # Claude Code integration (@opencues/claude-code)
 │   ├── patches/                   # tweakcc patches + installer
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
 │   │   ├── cursorStateExport.ts   # Cursor position → JSON
@@ -161,12 +161,12 @@ opencues/
 
 ```bash
 git clone https://github.com/opencues/opencues ~/opencues
-~/opencues/integrations/cc/patches/setup.sh
+~/opencues/integrations/claude-code/patches/setup.sh
 export GROQ_API_KEY="your-key"
 ```
 
 The setup script:
-1. Clones tweakcc from upstream into `integrations/cc/tweakcc/`
+1. Clones tweakcc from upstream into `integrations/claude-code/tweakcc/`
 2. Copies + integrates patch files
 3. Builds `@opencues/core` + `@opencues/runtime`, installs everything under `~/.claude/opencues/` (single dir; uninstall is `rm -rf`)
 4. Applies patches to `claude-cues` (`~/local-claude-code`) — not the native `claude` install
@@ -179,7 +179,7 @@ pnpm exec opencues install claude-code
 pnpm exec opencues install claude-code --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
-The legacy `integrations/cc/patches/setup.sh` direct invocation still works for contributors hacking on the patches.
+The legacy `integrations/claude-code/patches/setup.sh` direct invocation still works for contributors hacking on the patches.
 
 ---
 
@@ -192,10 +192,10 @@ The legacy `integrations/cc/patches/setup.sh` direct invocation still works for 
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
   - **`adding-a-cue-control.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
-- **integrations/cc/docs/** — Claude Code implementation docs
+- **integrations/claude-code/docs/** — Claude Code implementation docs
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
-- **integrations/cc/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
-- **integrations/cc/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
+- **integrations/claude-code/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
+- **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21 feature concepts (one file each)
 
 ---
@@ -207,7 +207,7 @@ The legacy `integrations/cc/patches/setup.sh` direct invocation still works for 
 After any change to a Claude Code patch source or to `@opencues/core` / `@opencues/runtime`, run:
 
 ```bash
-integrations/cc/patches/setup.sh
+integrations/claude-code/patches/setup.sh
 ```
 
 The script:
@@ -219,7 +219,7 @@ The script:
 To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):
 
 ```bash
-cd integrations/cc/tweakcc
+cd integrations/claude-code/tweakcc
 CLI_JS=$(find ~/local-claude-code -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
@@ -228,7 +228,7 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
-> **Important:** See `integrations/cc/docs/architecture.md` § "Development Notes" for critical patch development rules (e.g., never use bare `require()` in patch files).
+> **Important:** See `integrations/claude-code/docs/architecture.md` § "Development Notes" for critical patch development rules (e.g., never use bare `require()` in patch files).
 
 ---
 

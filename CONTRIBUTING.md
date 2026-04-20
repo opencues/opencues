@@ -267,7 +267,7 @@ These issues were found during development and are worth knowing about:
 
 ```bash
 # Build, deploy, and apply patches (handles everything)
-integrations/cc/patches/setup.sh
+integrations/claude-code/patches/setup.sh
 # Then restart Claude Code
 ```
 

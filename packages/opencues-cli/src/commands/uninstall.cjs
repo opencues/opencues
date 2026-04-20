@@ -8,17 +8,17 @@ const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
 const HOST_ALIASES = {
-  'claude-code': 'cc',
-  'claudecode':  'cc',
-  'claude':      'cc',
-  'cc':          'cc',
-  'opencode':    'oc',
-  'oc':          'oc',
+  'claude-code': 'claude-code',
+  'claudecode':  'claude-code',
+  'claude':      'claude-code',
+  'cc':          'claude-code',
+  'opencode':    'opencode',
+  'oc':          'opencode',
   'codex':       'codex',
   'chrome':      'chrome',
 };
 const HOSTS = ['claude-code', 'opencode', 'codex', 'chrome'];
-const HOST_FOLDERS = ['cc', 'oc', 'codex', 'chrome'];
+const HOST_FOLDERS = ['claude-code', 'opencode', 'codex', 'chrome'];
 
 module.exports = function uninstall(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

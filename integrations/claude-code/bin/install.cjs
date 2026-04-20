@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// @opencues/cc CLI — install / uninstall.
+// @opencues/claude-code CLI — install / uninstall.
 //
 // Usage:
-//   opencues-cc                         # install (default)
-//   opencues-cc install                 # explicit
-//   opencues-cc uninstall               # roll back to pre-install state
+//   opencues-claude-code                         # install (default)
+//   opencues-claude-code install                 # explicit
+//   opencues-claude-code uninstall               # roll back to pre-install state
 //
 // Common flags:
 //   --target <path>   Path to claude-code's cli.js (default: auto-detect)
@@ -13,9 +13,9 @@
 //                     Uninstall: implied
 //   --help            Show usage
 //
-// Today this runs from a clone via `pnpm --filter @opencues/cc dev-install`.
+// Today this runs from a clone via `pnpm --filter @opencues/claude-code dev-install`.
 // Post-publish (Stage 8) the same script becomes the bin entry for
-// `npx @opencues/cc`.
+// `npx @opencues/claude-code`.
 
 'use strict';
 const fs = require('node:fs');
@@ -29,7 +29,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8
 
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
-// Single-dir install root. Everything @opencues/cc owns lives here, so
+// Single-dir install root. Everything @opencues/claude-code owns lives here, so
 // uninstall is "rm -rf $INSTALL_ROOT + tweakcc revert". tweakcc's own
 // config + cli.js.backup are redirected here too via TWEAKCC_CONFIG_DIR.
 const INSTALL_ROOT = path.join(CLAUDE_DIR, 'opencues');
@@ -77,7 +77,7 @@ if (!isClone) {
     'For now, install from a clone:\n' +
     '  git clone https://github.com/opencues/opencues\n' +
     '  pnpm install\n' +
-    '  pnpm --filter @opencues/cc dev-install\n',
+    '  pnpm --filter @opencues/claude-code dev-install\n',
   );
   process.exit(1);
 }
@@ -98,12 +98,8 @@ if (command === 'install') {
 
 function doInstall() {
   const target = args.target || tryAutoDetectCli();
-  if (target) {
-    checkCompat(target);
-    console.log(`Target cli.js: ${target}`);
-  } else {
-    console.log('Target cli.js: (auto-detect; setup.sh will look under ~/.claude/)');
-  }
+  if (target) checkCompat(target);
+  console.log(`Target cli.js: ${target || '(auto-detecting under ~/.claude/)'}`);
 
   if (args.dryRun) {
     console.log(`\n[dry-run] Would install everything under one dir:`);
@@ -117,51 +113,29 @@ function doInstall() {
   }
 
   // Delegate to setup.sh — it handles the full pipeline (build core +
-  // runtime, install, build tweakcc, apply patches if cli.js auto-found).
+  // runtime, install, build tweakcc, apply patches via OPENCUES_CC_TARGET
+  // when present, else its own find under ~/.claude / ~/local-claude-code).
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const tweakccDir = path.join(PKG_DIR, 'tweakcc');
   const setupArgs = [];
   if (fs.existsSync(tweakccDir)) setupArgs.push(tweakccDir);
   if (args.clean) setupArgs.push('--clean');
-  // setup.sh sets TWEAKCC_CONFIG_DIR itself, but pass it through too so
-  // any tweakcc invocation we do later in this script picks it up.
   const env = { ...process.env, TWEAKCC_CONFIG_DIR };
+  if (target) env.OPENCUES_CC_TARGET = target;
   const result = spawnSync(setupSh, setupArgs, { stdio: 'inherit', env });
 
-  // setup.sh exits non-zero when it can't auto-detect cli.js. If --target
-  // was passed, fall through to apply patches directly via tweakcc.
-  if (result.status !== 0 && !target) {
-    console.error(`\n${pkg.name} install failed (setup.sh exited ${result.status}).`);
-    console.error('If your claude-code install is at a non-standard path, re-run with:');
-    console.error('  pnpm --filter @opencues/cc dev-install -- --target /path/to/cli.js');
+  // exit 2 from setup.sh = "everything built, but no cli.js to patch
+  // and no target was given." Print a single actionable hint and bail.
+  if (result.status === 2) {
+    console.error('\nRe-run with --target /path/to/cli.js once Claude Code is installed.');
+    process.exit(2);
+  }
+  if (result.status !== 0) {
+    console.error('\nInstall failed. To roll back: pnpm --filter @opencues/claude-code dev-uninstall');
     process.exit(result.status || 1);
   }
-
-  if (target) {
-    if (!fs.existsSync(target)) {
-      console.error(`\n--target path not found: ${target}`);
-      process.exit(1);
-    }
-    console.log(`\nApplying patches to ${target}...`);
-    const tweakccBin = path.join(tweakccDir, 'dist', 'index.mjs');
-    if (!fs.existsSync(tweakccBin)) {
-      console.error(`tweakcc not built (expected ${tweakccBin}). Run setup.sh once first.`);
-      process.exit(1);
-    }
-    const apply = spawnSync('node', [tweakccBin, '--apply'], {
-      cwd: tweakccDir,
-      env: { ...process.env, TWEAKCC_CC_INSTALLATION_PATH: target, TWEAKCC_CONFIG_DIR },
-      stdio: 'inherit',
-    });
-    if (apply.status !== 0) {
-      console.error(`\ntweakcc apply failed (exit ${apply.status}).`);
-      process.exit(apply.status || 1);
-    }
-  }
-
-  console.log(`\n${pkg.name} install complete.`);
-  console.log('Restart claude-cues to pick up the patched cli.js.');
-  console.log('To roll back: pnpm --filter @opencues/cc dev-uninstall');
+  // Success — setup.sh already printed "Done. Restart Claude Code to
+  // activate." We stay silent.
 }
 
 // --- UNINSTALL ------------------------------------------------------------
@@ -416,11 +390,7 @@ function warnUnknownFlags(unknown) {
 }
 
 function printBanner() {
-  console.log(`${pkg.name} v${pkg.version} — ${pkg.description}`);
-  if (pkg.compatibility) {
-    const compatStr = Object.entries(pkg.compatibility).map(([h, v]) => `${h} ${v}`).join(', ');
-    console.log(`Compatible with: ${compatStr}`);
-  }
+  console.log(`${pkg.name} v${pkg.version}`);
 }
 
 function printHelp() {
@@ -452,7 +422,7 @@ function printHelp() {
   console.log('    <cli.js>                   (revertable via uninstall — backup');
   console.log('                                stored inside ~/.claude/opencues/)');
   console.log('  Repo state (gitignored, lives only inside the clone):');
-  console.log('    integrations/cc/tweakcc/   vendored upstream tool');
+  console.log('    integrations/claude-code/tweakcc/   vendored upstream tool');
   console.log('    packages/*/dist/, .turbo/  build cache');
   console.log('  Runtime state (NOT created by install — appears when CC runs):');
   console.log('    /tmp/opencues.log');

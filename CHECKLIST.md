@@ -101,7 +101,7 @@ The HIGH + MEDIUM stale-doc fixes from the audit. No commands to run; just read-
 
 - `README.md` install section uses `pnpm exec opencues install <host>`
 - `CLAUDE.md` install destination is `~/.claude/opencues/` (not `~/.claude/node_modules/`)
-- `integrations/cc/README.md` and `integrations/cc/patches/README.md` reflect the consolidated layout
+- `integrations/claude-code/README.md` and `integrations/claude-code/patches/README.md` reflect the consolidated layout
 - `docs/guides/quickstart.md` uses `pnpm` and `opencues install claude-code`
 - Various feature/guide docs no longer reference `~/.claude/actions/` or `~/.claude/highlight-statusline.sh` directly
 
@@ -588,7 +588,7 @@ pnpm --filter @opencues/runtime test 2>&1 | tail -5
 
 ```bash
 # Per-integration seed (works the same as the umbrella `opencues seed-configs`):
-pnpm --filter @opencues/cc seed-configs --dry-run
+pnpm --filter @opencues/claude-code seed-configs --dry-run
 pnpm --filter @opencues/oc seed-configs --dry-run
 # → both show source / target / plan
 ```

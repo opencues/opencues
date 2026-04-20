@@ -199,7 +199,7 @@ Any integration consuming cues-core needs to handle these for control-bound blan
 | **Tip suppression** | Block grammar/LLM tips from overwriting control-blank positions. Only show `blankTip`. |
 | **Cache invalidation** | Clear old control-blank WordDefs when `_` reappears. |
 
-For Claude Code's implementation of these, see `integrations/cc/docs/cue-controls.md` § "Control-Bound Blanks".
+For Claude Code's implementation of these, see `integrations/claude-code/docs/cue-controls.md` § "Control-Bound Blanks".
 
 ---
 
@@ -270,7 +270,7 @@ runtime classes are now the source of truth across all hosts.
 Each host integration assembles a `Map<string, Control>` and passes it to
 `createControlInvoke()` which becomes the host's `controlInvoke` binding. See
 `integrations/oc/patches/opencuesBootstrap.ts` (lines 105-116) and
-`integrations/cc/patches/opencuesRuntime.ts` (the `controlInvoke:` block) for
+`integrations/claude-code/patches/opencuesRuntime.ts` (the `controlInvoke:` block) for
 the wiring pattern.
 
 The `controls/<name>/cue.md` config files for these stay where they are —

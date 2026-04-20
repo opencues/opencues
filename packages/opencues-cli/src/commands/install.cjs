@@ -11,22 +11,21 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
-// Map every recognised host name to its folder code under integrations/.
-// Descriptive forms ('claude-code', 'opencode') are the primary user-facing
-// names — what `--help` documents. Short codes ('cc', 'oc') are accepted
-// aliases for power users / typing speed.
+// Map every recognised host name to its folder under integrations/.
+// Descriptive forms are the canonical folder names now; short codes
+// ('cc', 'oc') remain as accepted aliases for power users / typing speed.
 const HOST_ALIASES = {
-  'claude-code': 'cc',
-  'claudecode':  'cc',
-  'claude':      'cc',
-  'cc':          'cc',
-  'opencode':    'oc',
-  'oc':          'oc',
+  'claude-code': 'claude-code',
+  'claudecode':  'claude-code',
+  'claude':      'claude-code',
+  'cc':          'claude-code',
+  'opencode':    'opencode',
+  'oc':          'opencode',
   'codex':       'codex',
   'chrome':      'chrome',
 };
 const HOSTS = ['claude-code', 'opencode', 'codex', 'chrome'];     // canonical names
-const HOST_FOLDERS = ['cc', 'oc', 'codex', 'chrome'];             // resolved folders for --all
+const HOST_FOLDERS = ['claude-code', 'opencode', 'codex', 'chrome']; // resolved folders for --all
 
 module.exports = function install(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
