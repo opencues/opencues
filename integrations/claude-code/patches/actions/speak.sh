@@ -5,6 +5,7 @@
 #   text = string to speak
 #   rate = SAPI rate (-10 to 10, default 2)
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEXT="$1"
 RATE="${2:-2}"
 PID_FILE="/tmp/cue-tts.pid"
@@ -16,6 +17,24 @@ PID_FILE="/tmp/cue-tts.pid"
 (( RATE > 10 )) && RATE=10
 (( RATE < -10 )) && RATE=-10
 
+# Resolve SpeakCtl.exe across install layouts. Without this, a stale
+# path-hardcode silently falls through to the ~500ms PowerShell branch
+# — user-perceptible lag every time TTS fires.
+find_helper() {
+  local name="$1"
+  local candidates=(
+    "${SCRIPT_DIR}/${name}"
+    "${HOME}/.claude/opencues/scripts/${name}"
+    "${HOME}/.claude/opencues/actions/${name}"
+    "${HOME}/.claude/actions/${name}"
+  )
+  for p in "${candidates[@]}"; do
+    [ -f "$p" ] && echo "$p" && return 0
+  done
+  return 1
+}
+SPEAK_CTL="$(find_helper SpeakCtl.exe || true)"
+
 # Kill previous TTS process
 if [ -f "$PID_FILE" ]; then
   OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
@@ -25,9 +44,9 @@ if [ -f "$PID_FILE" ]; then
   fi
 fi
 
-if [ -f "${HOME}/.claude/actions/SpeakCtl.exe" ]; then
+if [ -n "$SPEAK_CTL" ]; then
   # Compiled .exe — fast (~50ms startup)
-  "${HOME}/.claude/actions/SpeakCtl.exe" "$TEXT" "$RATE" &
+  "$SPEAK_CTL" "$TEXT" "$RATE" &
   echo $! > "$PID_FILE"
 elif [ -d /mnt/c/Windows ]; then
   # WSL fallback: PowerShell (~500ms startup)
