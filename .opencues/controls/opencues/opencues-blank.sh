@@ -7,11 +7,10 @@
 #   set <settingName> <value>  → (writes to opencues.md, no output)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Find opencues.md: two levels up from controls/opencues/
-OPENCUES_MD="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)/opencues.md"
-if [[ ! -f "$OPENCUES_MD" ]]; then
-  OPENCUES_MD="$SCRIPT_DIR/../../opencues.md"
-fi
+# opencues.md is user-level only (system-wide settings owned by the
+# runtime). This control always lives at ~/.opencues/controls/opencues/
+# so the target file is deterministically two levels up.
+OPENCUES_MD="$SCRIPT_DIR/../../opencues.md"
 
 cmd="${1:-get}"
 setting="${2:-}"
