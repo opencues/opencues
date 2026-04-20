@@ -80,24 +80,16 @@ const sourceReclassifier = createSourceReclassifier()
 // shell scripts (controls/<name>/*.sh) once every host has parity.
 // OS-level controls (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
-// Project-root opencues.md — same path the legacy bash control read.
-// Mirrors `git -C $SCRIPT_DIR rev-parse --show-toplevel` so the file is
-// found regardless of where opencode is launched from. Falls back to
-// $OPENCUES_ROOT env, then process.cwd(). Resolved lazily on each call
-// so cwd flips / git initialisation are picked up live.
+// opencues.md holds system-wide settings (voice-mode, tips-mode, …)
+// whose schema is owned by the OpenCues runtime. It lives only at
+// user-level so one settings value applies across every integration —
+// projects cannot override it. Auto-created on first write by
+// OpenCuesSettingsControl.
 function findOpenCuesMdPath(): string {
-  // 1. Explicit env override (CI / container deploys).
+  // Explicit env override (CI / container deploys / tests).
   if (process.env.OPENCUES_ROOT) {
     return path.join(process.env.OPENCUES_ROOT, "opencues.md")
   }
-  // 2. Walk up from this script file's location to find opencues.md.
-  //    The patched bootstrap lives at <opencode-cues>/packages/opencode/
-  //    src/cli/cmd/tui/feature-plugins/opencues/opencuesBootstrap.ts at
-  //    runtime, so we can't use __dirname reliably.
-  // 2. Project-level: <cwd>/.opencues/opencues.md
-  const projectFile = path.join(process.cwd(), ".opencues", "opencues.md")
-  try { require("fs").accessSync(projectFile); return projectFile } catch { /* fall through */ }
-  // 3. User-level: ~/.opencues/opencues.md (auto-created on first write).
   return path.join(process.env.HOME ?? "~", ".opencues", "opencues.md")
 }
 

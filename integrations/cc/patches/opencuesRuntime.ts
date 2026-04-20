@@ -196,18 +196,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // installs (without controls/) still load — controlInvoke just stays
   // null in that case and BlankFill falls back to spawnProcess.
   const controlsPath = `(process.env.HOME||"~")+"/.claude/opencues/runtime/dist/src/controls/index.js"`;
-  // Project-root opencues.md — same path the legacy bash control read.
-  // Resolved at call time so cwd flips are picked up live. Mirrors
-  // opencode/patches/opencuesBootstrap.ts:findOpenCuesMdPath.
-  // Project-level wins if a .opencues/opencues.md exists; otherwise user-level.
-  // Resolved at call time so cwd flips are picked up live. Mirrors
-  // ConfigLoader's search-path precedence + the OC bootstrap's
-  // findOpenCuesMdPath shape.
+  // opencues.md is system-wide, user-level only. Schema is runtime-owned;
+  // no project override. Resolved at call time so an OPENCUES_HOME flip
+  // after boot is still honoured.
   const opencuesMdPathExpr =
     `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/opencues.md"):` +
-    `(${requireFn}("fs").existsSync(process.cwd()+"/.opencues/opencues.md")?` +
-    `(process.cwd()+"/.opencues/opencues.md"):` +
-    `((process.env.HOME||"~")+"/.opencues/opencues.md")))`;
+    `((process.env.HOME||"~")+"/.opencues/opencues.md"))`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.

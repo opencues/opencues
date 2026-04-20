@@ -3,7 +3,7 @@
 // Loads:
 //   - tips JSON                           (~/.claude/claude-code-tips.json)
 //   - cwd cues.md / controls.md / blanks.md  (frontmatter parsed by cues-core)
-//   - cwd opencues.md                    (top-level YAML state — voice-mode, tips-mode, etc.)
+//   - ~/.opencues/opencues.md              (user-level only — system settings owned by the runtime)
 //   - cwd cues/* and controls/* folders  (per-folder cue.md via cues-core's discoverFolderConfigs)
 //
 // Exposes:
@@ -432,24 +432,33 @@ export class ConfigLoader {
     // adapter bands keep working unchanged.
     const searchPaths = this.options.configSearchPaths ?? [this.adapter.cwd];
 
-    // Fan out tips read + per-path .md reads. Each path contributes 4 .md
-    // files (cues, controls, blanks, opencues), so total promises =
-    // 1 + 4 * searchPaths.length.
+    // opencues.md is system-wide (voice-mode, tips-mode, debug-mode, …)
+    // — schema owned by the OpenCues runtime, not by users or projects.
+    // It lives at user-level only. We read it from the LAST search path
+    // (which is user-level by CC/OC adapter convention:
+    // [OPENCUES_HOME?, project, user]). If the caller provided a single-
+    // entry searchPaths (e.g. the fallback [adapter.cwd]), that's both
+    // project and user and the read still resolves correctly.
+    const userLevelPath = searchPaths[searchPaths.length - 1];
+
+    // Fan out tips read + per-path .md reads + user-level opencues.md.
+    // Each search path contributes 3 .md files (cues, controls, blanks);
+    // opencues.md is a singleton from the user-level path.
     const allReads = await Promise.all([
       this._safeReadFile(this.options.tipsPath),
+      this._safeReadFile(`${userLevelPath}/opencues.md`),
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
         this._safeReadFile(`${p}/controls.md`),
         this._safeReadFile(`${p}/blanks.md`),
-        this._safeReadFile(`${p}/opencues.md`),
       ]),
     ]);
     const tips = allReads[0];
+    const opencuesMdContent = allReads[1];
     const perPath = searchPaths.map((_, i) => ({
-      cuesMd: allReads[1 + i * 4],
-      controlsMd: allReads[2 + i * 4],
-      blanksMd: allReads[3 + i * 4],
-      opencuesMd: allReads[4 + i * 4],
+      cuesMd: allReads[2 + i * 3],
+      controlsMd: allReads[3 + i * 3],
+      blanksMd: allReads[4 + i * 3],
     }));
 
     // Tips JSON → primary cueMap (single source — no merge across paths
@@ -479,9 +488,9 @@ export class ConfigLoader {
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
     );
 
-    // opencues.md state — single state object; project file wins entirely
-    // (no merging of in-memory state across files).
-    const opencuesMdContent = perPath.map(p => p.opencuesMd).find(c => c !== null) ?? null;
+    // opencues.md state — read above from the user-level search path.
+    // The file is system-wide and runtime-owned; projects cannot override
+    // it.
     const opencuesState = opencuesMdContent !== null ? parseOpenCuesMd(opencuesMdContent) : DEFAULT_OPENCUES_STATE;
 
     // Folder discovery: walk each search path, then merge with project-
