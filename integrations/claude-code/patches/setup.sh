@@ -78,7 +78,7 @@ trap on_error ERR
 # config + cli.js.backup are redirected here too via TWEAKCC_CONFIG_DIR
 # (tweakcc respects this env var; see tweakcc/src/tests/tweakccConfigDir.test.ts).
 OC_INSTALL_ROOT="$HOME/.claude/opencues"
-export TWEAKCC_CONFIG_DIR="$OC_INSTALL_ROOT/tweakcc-state"
+export TWEAKCC_CONFIG_DIR="$OC_INSTALL_ROOT/patch-state"
 mkdir -p "$OC_INSTALL_ROOT" "$TWEAKCC_CONFIG_DIR"
 
 for arg in "$@"; do
@@ -398,8 +398,8 @@ for f in speak.sh brightness.sh brightness-set.ps1 BrightCtl.cs BrightCtl.exe Sp
 done
 
 cp "$SCRIPT_DIR/claude-code-tips.json" "$OC_INSTALL_ROOT/tips.json" 2>/dev/null || true
-mkdir -p "$OC_INSTALL_ROOT/actions"
-cp "$SCRIPT_DIR/actions/"* "$OC_INSTALL_ROOT/actions/" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/actions/"*.sh 2>/dev/null || true
+mkdir -p "$OC_INSTALL_ROOT/scripts"
+cp "$SCRIPT_DIR/actions/"* "$OC_INSTALL_ROOT/scripts/" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/scripts/"*.sh 2>/dev/null || true
 cp "$SCRIPT_DIR/highlight-statusline.sh" "$OC_INSTALL_ROOT/statusline.sh" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/statusline.sh" 2>/dev/null || true
 
 # 7b. Compile cue-control .exe files on WSL (skip on native Linux)
@@ -415,7 +415,7 @@ if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
   done
   for CS_FILE in "${CS_FILES[@]}"; do
     BASE=$(basename "$CS_FILE" .cs)
-    EXE="$OC_INSTALL_ROOT/actions/${BASE}.exe"
+    EXE="$OC_INSTALL_ROOT/scripts/${BASE}.exe"
     if [ ! -f "$EXE" ] || [ "$CS_FILE" -nt "$EXE" ]; then
       cp "$CS_FILE" "$WIN_TMP/${BASE}.cs"
       CSC_ARGS="/nologo /optimize"

@@ -255,7 +255,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // because the harness only drives one CC at a time.
     `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
     // TTS: speak.sh is the same script v1 used. ttsRate matches v1's default.
-    `ttsScriptPath:(process.env.HOME||"~")+"/.claude/opencues/actions/speak.sh",` +
+    `ttsScriptPath:(process.env.HOME||"~")+"/.claude/opencues/scripts/speak.sh",` +
     `ttsRate:2,` +
     // LLM resolver. Resolver only constructs if llmApiKey is set; otherwise
     // the runtime stays static-cue-only. Endpoint + model match v1's defaults.

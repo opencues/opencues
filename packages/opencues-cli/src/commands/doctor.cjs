@@ -51,7 +51,7 @@ module.exports = function doctor(argv, ctx) {
   const ccRoot = path.join(HOME, '.claude/opencues');
   const ccCore = path.join(ccRoot, 'core');
   const ccRuntime = path.join(ccRoot, 'runtime');
-  const ccBackup = path.join(ccRoot, 'tweakcc-state/cli.js.backup');
+  const ccBackup = path.join(ccRoot, 'patch-state/cli.js.backup');
   ok(`install root  ${ccRoot}/`, fs.existsSync(ccRoot));
   ok(`runtime`,    fs.existsSync(ccRuntime));
   ok(`core`,       fs.existsSync(ccCore));

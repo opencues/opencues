@@ -33,7 +33,7 @@ const CLAUDE_DIR = path.join(HOME, '.claude');
 // uninstall is "rm -rf $INSTALL_ROOT + tweakcc revert". tweakcc's own
 // config + cli.js.backup are redirected here too via TWEAKCC_CONFIG_DIR.
 const INSTALL_ROOT = path.join(CLAUDE_DIR, 'opencues');
-const TWEAKCC_CONFIG_DIR = path.join(INSTALL_ROOT, 'tweakcc-state');
+const TWEAKCC_CONFIG_DIR = path.join(INSTALL_ROOT, 'patch-state');
 
 // Single source of truth for blast radius. Install creates these,
 // uninstall removes these, dry-run prints these.
@@ -46,8 +46,8 @@ const INSTALLED_PATHS = {
     'runtime/',
     'tips.json',
     'statusline.sh',
-    'actions/',
-    'tweakcc-state/  (tweakcc config + cli.js.backup)',
+    'scripts/',
+    'patch-state/  (patcher config + cli.js.backup)',
   ],
   // Legacy paths from prior install layouts — removed on every install
   // and uninstall regardless of whether this install created them.
@@ -415,8 +415,8 @@ function printHelp() {
   console.log('      ├── runtime/             built @opencues/runtime');
   console.log('      ├── tips.json            pre-computed word tips');
   console.log('      ├── statusline.sh        wire via /statusline in CC');
-  console.log('      ├── actions/             OS-bound shell scripts + WSL .exe shims');
-  console.log('      └── tweakcc-state/       tweakcc config + cli.js.backup');
+  console.log('      ├── scripts/             OS-bound shell scripts + WSL .exe shims');
+  console.log('      └── patch-state/         patcher config + cli.js.backup');
   console.log('                               (TWEAKCC_CONFIG_DIR override)');
   console.log('  Modified in place:');
   console.log('    <cli.js>                   (revertable via uninstall — backup');

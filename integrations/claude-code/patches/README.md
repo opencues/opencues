@@ -28,7 +28,7 @@ The `opencues install claude-code` command runs `setup.sh` (this directory) unde
 5. Installs everything under `~/.claude/opencues/`:
    - `core/`, `runtime/` — built artefacts
    - `tips.json`, `statusline.sh`, `actions/` — supporting files
-   - `tweakcc-state/` — tweakcc config + `cli.js.backup` (via `TWEAKCC_CONFIG_DIR` override)
+   - `patch-state/` — tweakcc config + `cli.js.backup` (via `TWEAKCC_CONFIG_DIR` override)
 6. Builds tweakcc with the patches compiled in
 7. Applies the patches to the detected `cli.js` (auto-finds under `~/.claude` or `~/local-claude-code`; explicit path via `--target`)
 
@@ -44,7 +44,7 @@ patches/
 ├── types-additions.ts        # Reference: types added to tweakcc's MiscSettings
 ├── defaultSettings-additions.ts  # Reference: defaults added to tweakcc
 ├── index-additions.ts        # Reference: wiring added to tweakcc src/patches/index.ts
-├── actions/                  # OS-bound scripts copied to ~/.claude/opencues/actions/
+├── actions/                  # OS-bound scripts copied to ~/.claude/opencues/scripts/
 │   ├── speak.sh, brightness.sh
 │   ├── BrightCtl.cs, SpeakCtl.cs   # WSL: compiled to .exe by setup.sh
 │   └── brightness-set.ps1
@@ -67,7 +67,7 @@ If your Claude Code install is at a non-standard path (e.g. WSL `claude-cues`):
 
 ```bash
 CLI_JS=/home/$USER/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
-TWEAKCC_CONFIG_DIR=~/.claude/opencues/tweakcc-state \
+TWEAKCC_CONFIG_DIR=~/.claude/opencues/patch-state \
   TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" \
   node ~/opencues/integrations/claude-code/tweakcc/dist/index.mjs --apply
 ```

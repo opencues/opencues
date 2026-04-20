@@ -35,7 +35,7 @@ Cue-controls are checked **first** in the cycling function (`_cycleAlt`) before 
 |-------|------|---------|-------------|
 | `control` | string | (required) | Control identifier (e.g., "volume", "brightness") |
 | `tip` | string | control name | Tip text shown in the secondary display when focused |
-| `script` | string | `~/.claude/opencues/actions/{control}.sh` | Path to the script to spawn |
+| `script` | string | `~/.claude/opencues/scripts/{control}.sh` | Path to the script to spawn |
 | `upArgs` | string[] | `["up"]` | Arguments passed when cycling up |
 | `downArgs` | string[] | `["down"]` | Arguments passed when cycling down |
 | `speak` | boolean | false | Read the tip aloud via TTS on navigation |
@@ -71,7 +71,7 @@ bash {script} {args...}
 **Spawn behavior:**
 - **Detached, fire-and-forget** — `child_process.spawn` with `{detached: true, stdio: "ignore"}` and `.unref()`. The script runs independently; its exit code is not checked
 - **Debounced** — if the user presses Up three times in 50ms, only one spawn fires with the final arguments
-- **Path resolution** — `~` is expanded to `$HOME`. The default script path is `~/.claude/opencues/actions/{control}.sh`
+- **Path resolution** — `~` is expanded to `$HOME`. The default script path is `~/.claude/opencues/scripts/{control}.sh`
 - **WSL** — scripts run in the Linux environment. To control Windows applications, use `powershell.exe` or compiled `.exe` helpers inside the script
 
 **Dynamic tip via `script get`:**
