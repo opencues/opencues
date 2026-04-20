@@ -235,11 +235,20 @@ echo "Target: $OPENCODE_DIR (opencode v$PINNED_VERSION)"
 
 build_both() { build_runtime && build_core_if_needed; }
 
+# Install the fork's own dependencies via bun. Required so `bun run dev`
+# can resolve @opentui/solid/preload etc. — without this step the first
+# launch explodes with "preload not found". Idempotent: bun skips
+# unchanged installs.
+bun_install_fork() {
+  ( cd "$OPENCODE_DIR" && bun install )
+}
+
 if [[ -d "$OPENCODE_DIR/packages/opencode" ]]; then
   echo "  ▸ Fork already present — reusing"
 else
   run_step "Cloning sst/opencode (~250MB)" clone_fork
 fi
+run_step "Installing fork dependencies (bun install)" bun_install_fork
 run_step "Building @opencues/{runtime,core}" build_both
 run_step "Installing runtime + core into fork" install_into_fork
 run_step "Patching fork (3 files + bootstrap)" patch_fork
