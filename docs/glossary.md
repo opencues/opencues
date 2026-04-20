@@ -98,8 +98,14 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **ClassifiedSourceGroup** — Wraps multiple config-driven sources for blanks. Picks one mode per input via fast heuristics (regex/keywords) or LLM classifier fallback. Blank modes are **mutually exclusive** — an input is math OR factual OR grammar, so classifying and routing to one source is correct.
 
+**RoutedWordSourceGroup** — Wraps multiple `### alternatives` word-cue sources and dispatches each highlighted word to ONE child source via per-word routing. Mirrors `ClassifiedSourceGroup` (blanks) but uses fast-path rules only — no LLM classifier. Domain sources (with `match:` or `keywords:`) get checked first in priority order; the highest-priority **default** catches everything else; words with no matching source produce no cue. Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-alt-routing.md`.
+
+**Default Cue Source** — A `parser: alternatives` source with NEITHER `match:` NOR `keywords:` set. Catches every word that no domain source claimed. Most projects want exactly one default (typically a general "synonyms" source); `opencues validate` warns when a project has zero defaults or multiple defaults at the same priority.
+
+**Domain Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (legal, medical, formal connectors). Higher priority wins ties.
+
 **buildSourcesFromConfig** — Factory function that takes parsed `cues.md` and `blanks.md` configs and returns `CueSource[]`. Uses two strategies:
-- **Words**: Combines all word-scoped alternatives sources into ONE `ConfigSource` with a merged prompt. Domains (legal, medical) can overlap in a single input, so the LLM handles all domains in one pass.
+- **Words**: Each `### alternatives` section becomes its own `ConfigSource`; all of them are wrapped in ONE `RoutedWordSourceGroup` that dispatches per-word.
 - **Blanks**: Routes to one mode via `ClassifiedSourceGroup` (modes are mutually exclusive).
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.

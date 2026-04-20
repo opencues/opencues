@@ -329,6 +329,52 @@ the expected nudge for readers to check.
 
 ---
 
+## Word-alt routing — DEFAULT vs DOMAIN sources
+
+Every `### alternatives` section in `cues.md` (or `cues/<name>/cue.md`)
+becomes one `ConfigSource`. `buildSourcesFromConfig` wraps the whole
+set in ONE `RoutedWordSourceGroup` that dispatches each highlighted
+word to exactly one child source — never combines them into a giant
+prompt.
+
+Classification per source (frontmatter):
+
+```
+match: <regex> OR keywords: <list>     → DOMAIN  (only fires for matches)
+neither match: nor keywords:           → DEFAULT (catches everything else)
+```
+
+Routing per word: highest-priority domain whose match/keyword hits the
+word wins; otherwise highest-priority default; otherwise no cue (word
+isn't navigable). Words destined for the same source are batched into
+one parallel LLM call, then results are index-remapped back to the
+original positions.
+
+Why per-word dispatch (not the old "combine into one prompt"):
+- **Isolation**: a hijacking prompt in one source can no longer poison
+  every word. Sync-demo's "always output bundled,deployed,shipped"
+  used to swap `happy → bundled`. With routing, that prompt only
+  affects words its source is called for.
+- **Symmetry**: blanks already use a `ClassifiedSourceGroup`; word-alts
+  follow the same model now.
+
+Surfaces that enforce + surface this:
+- `@opencues/core` `RoutedWordSourceGroup` — runtime routing class
+- `cues.md` / `new/cue.md` templates — teach the distinction at scaffold time
+- `opencues list` — marks each source `domain` / `default`
+- `opencues validate` — warns on zero defaults + multi-default priority ties
+
+Full spec: `docs/features/word-alt-routing.md`. Glossary entries:
+`docs/glossary.md § RoutedWordSourceGroup, Default Cue Source, Domain Cue Source`.
+
+> **Don't** introduce code paths that rebuild the merged-prompt model
+> (e.g. concatenating multiple `### alternatives` bodies into one
+> `ConfigSource`). The `combineWordSources` export in
+> `build-sources.ts` is a no-op shim kept only for external callers
+> mid-migration; new code should not call it.
+
+---
+
 ## Hoisted-control writes vs ConfigLoader hot-reload
 
 Selector/satellite cycling (e.g. `opencues settings` flipping
