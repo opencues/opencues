@@ -23,9 +23,30 @@
 parser: alternatives
 
 # ─────────────────────────────────────────────────────────────────────
-# TRIGGERS (at least one recommended; if both omitted, source runs on
-# every word in document scope)
+# TRIGGERS — also decide DEFAULT vs DOMAIN routing
 # ─────────────────────────────────────────────────────────────────────
+# For `parser: alternatives` sources, the presence (or absence) of
+# match:/keywords: classifies the source for per-word routing:
+#
+#   match: OR keywords: set    → DOMAIN source
+#                                Only fires for words that match the
+#                                regex / keyword list. Use for narrow
+#                                vocabularies (legal, medical, formal).
+#
+#   neither match nor keywords → DEFAULT source
+#                                Catches every word no domain claimed.
+#                                Most projects want exactly ONE default
+#                                (e.g. a general "synonyms" source).
+#                                Omit both fields if this is yours.
+#
+# Routing per word (highest priority wins within each tier):
+#   1. Domain whose match/keyword hits the word → that source.
+#   2. No domain hit → highest-priority default.
+#   3. No default exists → no cue (word isn't navigable).
+#
+# `opencues validate` warns when a project has zero defaults or
+# multiple defaults at the same priority. See docs/features/word-alt-routing.md.
+#
 # match:     regex — only fires when the highlighted word matches
 # keywords:  comma-separated — instant trigger (OR'd with match:)
 #

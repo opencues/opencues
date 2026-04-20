@@ -111,6 +111,32 @@ version: 1
 ## Prompt
 
 # ─────────────────────────────────────────────────────────────────────
+# WORD-ALT ROUTING — DEFAULT vs DOMAIN SOURCES
+# ─────────────────────────────────────────────────────────────────────
+#
+# Multiple `### alternatives` cue sources can coexist. The runtime
+# routes each highlighted word to ONE source (not all of them) based
+# on whether the source is a "domain" or a "default":
+#
+#   match:    OR keywords:  set  → DOMAIN source
+#                                  (only fires for words that match)
+#   neither match nor keywords    → DEFAULT source
+#                                  (catches words no domain claimed)
+#
+# Routing per word:
+#   1. Highest-priority domain whose match-regex hits OR whose
+#      keywords list contains the word wins.
+#   2. If nothing in step 1 matched → highest-priority default wins.
+#   3. If no default exists → no cue. Word isn't navigable.
+#
+# Examples:
+#   "happy"    → matches no domain → grammar (the default below)
+#   "however"  → keyword in formal → formal wins
+#   "synced"   → no domain match   → grammar (the default)
+#
+# See docs/features/word-alt-routing.md for the full spec.
+
+# ─────────────────────────────────────────────────────────────────────
 # OUTPUT FORMAT — IMPORTANT FOR `parser: alternatives`
 # ─────────────────────────────────────────────────────────────────────
 #
@@ -121,11 +147,9 @@ version: 1
 # Where INDEX is the position (1-based) of the highlighted word in the
 # input the LLM was given. For a single-word input the index is `1`.
 #
-# Multiple `alternatives` cue sources are COMBINED into one LLM call
-# (one round trip = ~250ms instead of N × 250ms). The runtime appends
-# `Output ONLY index:alternatives format` as the LAST line of the
-# combined prompt — but you should still mention the format in your
-# own prompt so the LLM doesn't drift mid-output.
+# Each cue source's prompt runs as its OWN LLM call (one per source
+# per text change, dispatched in parallel). Always include the format
+# spec in your own prompt body so the LLM doesn't drift.
 #
 # Example correct output for `1=happy` highlighted:
 #   1:joyful,pleased,content
@@ -137,7 +161,9 @@ version: 1
 # ```yaml
 # parser: alternatives
 # priority: 50
-# match: \b[a-z]{4,}\b
+# # No match: AND no keywords: → this is the DEFAULT source. Catches
+# # any word that no domain source claimed. Drop this section if you
+# # want an opt-in project (only specific words get cued).
 # ```
 #
 # Suggest 3 alternative words for the highlighted word that fit the
@@ -152,6 +178,8 @@ version: 1
 # parser: alternatives
 # priority: 60
 # keywords: therefore, however, moreover, furthermore
+# # `keywords:` makes this a DOMAIN source. Fires only when the
+# # highlighted word is in the keyword list.
 # tip: "more formal alternatives"
 # ```
 #
