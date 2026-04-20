@@ -76,7 +76,30 @@ pnpm exec opencues run opencode
 
 For per-host details (paths it touches, uninstall, troubleshooting): see each integration's README under `integrations/<host>/README.md`.
 
-> **Where install state lives:** Claude Code consolidates everything under `~/.claude/opencues/`. OpenCode lives inside its fork dir. Chrome lives inside the cloned repo. See `opencues which` for a complete blast-radius view.
+### What each install does
+
+Every `opencues install <host>` is one command, end-to-end — no manual `bun install` / `cargo build` / extra setup after.
+
+| Host | Steps the installer runs | Runnable with `opencues run <host>` after? |
+|---|---|---|
+| `claude-code` | Clone tweakcc (if missing) + build our runtime + install under `~/.claude/opencues/` + patch `cli.js` in place | ✓ (runs `claude-cues` / `claude`) |
+| `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 3 TSX files | ✓ (runs `bun run dev` in the fork) |
+| `chrome` | Build MV3 extension + copy dist/ to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
+| `codex` | Clone the fork + build Rust bridge crate + drop launch helper | **Pre-alpha** — TUI patches still TODO, see `integrations/codex/HANDOFF.md` |
+
+### Where things land
+
+| Path | Purpose |
+|---|---|
+| `~/.claude/opencues/` | Everything `@opencues/claude-code` owns — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall is `rm -rf` of this dir + `cli.js` revert. |
+| `~/claude-code-cues/` | Local Claude Code install the integration patches (optional — auto-detects a native install too) |
+| `~/opencode-cues/` | OpenCode fork the integration clones + patches |
+| `~/codex-cues/` | Codex fork the integration clones + patches |
+| `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `controls.md`, `opencues.md`, plus `cues/` and `controls/` folders |
+| `<cwd>/.opencues/` | Project-level config overrides |
+| `/tmp/opencues.log` | Runtime debug log when a patched host runs |
+
+Uninstall is one command per integration: `opencues uninstall <host>` (or `--all`). Run `opencues which` for a live blast-radius view with ✓ / − markers showing what's actually on disk.
 
 ## Features
 

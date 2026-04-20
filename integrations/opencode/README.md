@@ -11,44 +11,64 @@
 
 ---
 
-## Install (from a clone)
+## Install
+
+Requires: Node.js 18+, [pnpm](https://pnpm.io), [bun](https://bun.sh/).
+From a fresh clone of the OpenCues repo:
 
 ```bash
-git clone https://github.com/opencues/opencues
-cd opencues
 pnpm install
-pnpm --filter @opencues/opencode dev-install
+opencues install opencode     # or: pnpm exec opencues install opencode
 ```
 
-By default the installer clones the OpenCode fork to `$HOME/opencode-cues`. To install against an existing fork at a different path:
+That's the whole install — one command, end to end. The installer will:
+
+1. **Clone** `sst/opencode` at the pinned SHA into `~/opencode-cues/` (or reuse an existing clone at `--target <path>`)
+2. **Install fork dependencies** via `bun install` so the fork's own deps (e.g. `@opentui/solid/preload`) land
+3. **Build** `@opencues/core` + `@opencues/runtime` (turbo-cached)
+4. **Install** the built artefacts into the fork at `node_modules/@opencues/{core,runtime}/`
+5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`
+
+Re-runs are idempotent — unchanged patches skip, unchanged builds skip. First install is ~5 min (mostly `git clone` + `bun install`); re-runs are under 30s.
+
+### Custom fork location
 
 ```bash
-pnpm --filter @opencues/opencode dev-install -- --target /path/to/your/opencode-fork
+opencues install opencode --target /path/to/your/opencode-fork
 ```
 
-The installer:
-1. Clones `sst/opencode` at the pinned SHA into the target dir (or reuses an existing clone)
-2. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
-3. Copies built artefacts into the fork's `node_modules/@opencues/{core,runtime}/`
-4. Copies `opencuesBootstrap.ts` into the fork's TUI source as `opencues.ts`
-5. Patches `app.tsx`, `component/prompt/index.tsx`, and `feature-plugins/home/footer.tsx` via Python sed-style edits (idempotent)
+### Verbose output
 
-> **Future:** post-publish, the same script runs as `npx @opencues/opencode`. Same flags, same behaviour.
+Set `OPENCUES_INSTALL_VERBOSE=1` to stream every command's output. By default the installer shows a five-line progress summary and logs everything else to `/tmp/opencues-install-oc.log`.
 
 ---
 
-## Run the patched fork
+## Run
 
 ```bash
-cd ~/opencode-cues       # or your --target dir
-bun install
-bun run dev
+opencues run opencode         # or: pnpm exec opencues run opencode
 ```
 
-Watch `/tmp/opencues.log` in a second shell for the boot line:
+Launches `bun run dev` inside the patched fork. Watch `/tmp/opencues.log` in a second shell for the boot line:
 
 ```
 [HH:MM:SS][info] OpenCues runtime starting (OpenCode v1.4)
+```
+
+---
+
+## Uninstall
+
+One command:
+
+```bash
+opencues uninstall opencode
+```
+
+This reverts the three patched TSX files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/opencode-cues/`) stays in place — it's your OpenCode checkout, not OpenCues's artefact. To remove it entirely:
+
+```bash
+rm -rf ~/opencode-cues
 ```
 
 ---
@@ -66,7 +86,7 @@ If something fails, the runtime writes diagnostics to `/tmp/opencues.log`.
 
 ---
 
-## Configuration — where your `.md` files live
+## Configuration
 
 OpenCues reads configs from **one or more `.opencues/` directories** in priority order:
 
@@ -78,74 +98,60 @@ OpenCues reads configs from **one or more `.opencues/` directories** in priority
 
 Project-level wins on name conflicts (cue source name, blank mode name, control name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
 
-**Each directory has the same shape:**
+Each directory has the same shape:
 ```
 .opencues/
 ├── cues.md          word sources + LLM prompts
 ├── blanks.md        blank-fill modes
 ├── controls.md      cue-control declarations
-├── opencues.md      settings / state (voice-mode, tips-mode, etc.)
 ├── cues/            folder-based cue sources (one folder per source)
 │   └── <name>/cue.md
 └── controls/        folder-based control configs
     └── <name>/cue.md
 ```
 
+`opencues.md` (voice-mode, tips-mode, debug-mode, cursor-navigate) is **system-wide**, runtime-owned, and lives only at user-level — the runtime auto-manages it.
+
 **Seed `~/.opencues/` from the repo's defaults:**
 
 ```bash
-pnpm --filter @opencues/opencode seed-configs
+opencues seed-configs        # user-level
+opencues seed-configs --project   # from a project dir
 ```
 
-Idempotent — copies any file that doesn't already exist at the destination, skips files you've already created. Preview first with `-- --dry-run`.
+Idempotent — copies any file that doesn't already exist at the destination.
 
-**Per-project example:**
-
-```bash
-mkdir -p ~/projects/contract-review/.opencues
-cat > ~/projects/contract-review/.opencues/cues.md <<'EOF'
-## Prompt
-### legal
-match: \b(plaintiff|defendant|tort|estoppel)\b
 ---
-Suggest formal legal alternatives, prefer Latin terminology where appropriate.
-EOF
 
-cd ~/projects/contract-review
-bun run dev   # in your opencode-cues fork
-# .opencues/cues.md is now active alongside ~/.opencues defaults
-```
+## Where things live (blast radius)
 
-The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.) follows the same precedence: project file wins, else user file (auto-created on first write).
+| Path | Contents |
+|---|---|
+| `~/opencode-cues/` | Cloned OpenCode fork (~3 GB after `bun install`) |
+| `~/opencode-cues/node_modules/@opencues/core/` | Built `@opencues/core` |
+| `~/opencode-cues/node_modules/@opencues/runtime/` | Built `@opencues/runtime` |
+| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/opencues.ts` | OpenCues bootstrap (the `opencuesBootstrap.ts` source, copied in) |
+| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/app.tsx` | **Patched in place** — mounts the runtime + forwards keyboard events |
+| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` | **Patched in place** — publishes textarea ref + onContentChange handler |
+| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx` | **Patched in place** — renders OpenCues tip alongside MCP status |
+| `~/.opencues/` | User-level configs (see Configuration above) |
+| `/tmp/opencues.log` | Runtime debug log (created on first launch) |
+| `/tmp/opencues-install-oc.log` | Installer log from the most recent install |
+
+`opencues which` prints every path with ✓ / − markers per existence.
 
 ---
 
 ## Update workflow
 
 ```bash
-cd opencues
-git pull
+cd ~/opencues && git pull
 pnpm install
-pnpm --filter @opencues/opencode dev-install   # rebuilds + redeploys into fork
-cd ~/opencode-cues && bun run dev        # restart the fork
+opencues install opencode     # rebuilds + redeploys into fork
+opencues run opencode         # restart
 ```
 
 `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/*`, `controls/*`) hot-reload within ~2s on the next keystroke. Set `OPENCUES_HOME` to point at a non-default config root if you keep your configs separately from the repo.
-
----
-
-## What gets installed where
-
-| Path | Contents |
-|---|---|
-| `<fork>/node_modules/@opencues/core/` | Built `@opencues/core` |
-| `<fork>/node_modules/@opencues/runtime/` | Built `@opencues/runtime` |
-| `<fork>/packages/opencode/src/cli/cmd/tui/opencues.ts` | Bootstrap copy (the `opencuesBootstrap.ts` source) |
-| `<fork>/packages/opencode/src/cli/cmd/tui/app.tsx` | Patched: mounts the runtime + forwards keyboard events |
-| `<fork>/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` | Patched: publishes textarea ref + onContentChange handler |
-| `<fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx` | Patched: renders OpenCues tip alongside MCP status |
-
-The fork itself stays a regular OpenCode checkout — you can `git pull upstream` and reapply patches as long as the file shapes haven't shifted dramatically.
 
 ---
 
@@ -153,4 +159,4 @@ The fork itself stays a regular OpenCode checkout — you can `git pull upstream
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — repo layout + stage tracker
 - [`integrations/opencode/patches/opencuesBootstrap.ts`](patches/opencuesBootstrap.ts) — the actual bootstrap (read for what gets injected)
-- [`@opencues/runtime` adapter band](../../packages/opencues-runtime/adapters/oc/v1.4/) — the OC v1.4 host adapter (what `boot()` resolves to)
+- [`@opencues/runtime` adapter band](../../packages/opencues-runtime/adapters/opencode/v1.4/) — the OC v1.4 host adapter (what `boot()` resolves to)
