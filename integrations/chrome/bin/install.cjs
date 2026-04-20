@@ -58,6 +58,25 @@ function reportFailure(label) {
   console.error(`\nFull log: ${LOG_PATH}  —  re-run with OPENCUES_INSTALL_VERBOSE=1 to stream live.`);
 }
 
+// ─── WSL detection + Windows-side deploy path resolution ────────────────
+function isWsl() {
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+  try {
+    return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8'));
+  } catch { return false; }
+}
+
+// Resolve `/mnt/c/Users/<windows-user>/AppData/Local/opencues-chrome/`.
+// Returns null if not on WSL or the Windows username can't be determined.
+function resolveWslTarget() {
+  if (!isWsl()) return null;
+  const probe = spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (probe.status !== 0) return null;
+  const winUser = String(probe.stdout).trim().replace(/\r$/, '');
+  if (!winUser) return null;
+  return `/mnt/c/Users/${winUser}/AppData/Local/opencues-chrome`;
+}
+
 const { command, args, unknown } = parseArgv(process.argv.slice(2));
 warnUnknownFlags(unknown);
 if (args.help || command === 'help') { printHelp(); process.exit(0); }
@@ -91,6 +110,19 @@ if (command === 'install') {
 function doInstall() {
   const distDir = path.join(PKG_DIR, 'dist');
   const manifest = path.join(PKG_DIR, 'manifest.json');
+
+  // --wsl auto-resolves to a Windows-side path Chrome can read natively.
+  // Refuses cleanly if not actually running under WSL.
+  if (args.wsl) {
+    const resolved = resolveWslTarget();
+    if (!resolved) {
+      console.error('--wsl requires running under WSL with /mnt/c/ accessible.');
+      console.error('Use --target <path> for a custom location, or drop --wsl on Linux/macOS.');
+      process.exit(1);
+    }
+    args.target = resolved;
+  }
+
   const loadPath = args.target ? path.resolve(args.target) : PKG_DIR;
 
   if (args.dryRun) {
@@ -131,6 +163,15 @@ function doInstall() {
       reportFailure('Deploy failed');
       process.exit(1);
     }
+  }
+
+  // 2b. Detect WSL without --wsl/--target — flag the cross-fs slowness
+  //     so the user knows there's a better path.
+  if (!args.target && isWsl()) {
+    console.log('');
+    console.log('  Note: detected WSL. Loading the extension from the WSL filesystem');
+    console.log('        (\\\\wsl.localhost\\...) is slow + flaky. Run with --wsl to');
+    console.log('        mirror to a Windows-side path Chrome can read natively.');
   }
 
   // 3. Print Chrome reload instructions.
@@ -215,7 +256,7 @@ function copyDirContents(src, dst) {
 
 function parseArgv(argv) {
   const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'help']);
-  const out = { command: 'install', args: { help: false, dryRun: false, noBuild: false }, unknown: [] };
+  const out = { command: 'install', args: { help: false, dryRun: false, noBuild: false, wsl: false }, unknown: [] };
   let i = 0;
   if (argv[i] && !argv[i].startsWith('-')) {
     if (KNOWN_COMMANDS.has(argv[i])) { out.command = argv[i]; i++; }
@@ -227,6 +268,7 @@ function parseArgv(argv) {
     if (a === '--help' || a === '-h') out.args.help = true;
     else if (a === '--dry-run') out.args.dryRun = true;
     else if (a === '--no-build') out.args.noBuild = true;
+    else if (a === '--wsl') out.args.wsl = true;
     else if (a === '--target') out.args.target = argv[++i];
     else out.unknown.push(a);
   }
@@ -237,7 +279,7 @@ function warnUnknownFlags(unknown) {
   if (!unknown.length) return;
   console.warn(`WARNING: ignoring unknown argument(s): ${unknown.join(' ')}`);
   console.warn(`Known commands: install, uninstall, help`);
-  console.warn(`Known flags:    --target <path>, --no-build, --dry-run, --help`);
+  console.warn(`Known flags:    --target <path>, --wsl, --no-build, --dry-run, --help`);
   console.warn('');
 }
 
@@ -255,6 +297,8 @@ function printHelp() {
   console.log('');
   console.log('Flags:');
   console.log('  --target <path>     Where to deploy unpacked extension (default: in-place)');
+  console.log('  --wsl               Auto-resolve --target to a Windows-side path');
+  console.log('                      (/mnt/c/Users/<user>/AppData/Local/opencues-chrome/)');
   console.log('  --no-build          Skip the build step (use existing dist/)');
   console.log('  --dry-run           Print the plan; do not execute');
   console.log('  --help              Show this message');
