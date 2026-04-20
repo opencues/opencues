@@ -1,8 +1,109 @@
 # Walkthrough checklist
 
-Manual smoke tests for the CLI work landed in stages. Each section maps to a commit (newest first); run through top-to-bottom or jump to the section you care about.
+Manual smoke tests for the CLI + Codex integration work landed across many stages. Each section maps to a commit (newest first); run through top-to-bottom or jump to the section you care about.
 
 All checks below assume **cwd = the opencues clone** unless stated otherwise. After ticking through, this file can be deleted (`git rm CHECKLIST.md`).
+
+---
+
+## ⓪⓪ Codex integration (commits `7b7e66d`, prior codex skeleton + bridge commits)
+
+This is the BIG new piece overnight. **Status: pre-alpha** — the infrastructure is in place but the TUI patches that wire OpenCues into Codex's `ChatComposer` are not yet implemented. See `integrations/codex/HANDOFF.md` for what remains.
+
+### Verify CLI knows about codex
+
+```bash
+pnpm exec opencues version
+# → 4 integration rows including @opencues/codex v0.0.1
+
+pnpm exec opencues install --help
+# → "Hosts:" section lists 4 hosts; "Install all four" mentioned
+
+pnpm exec opencues install codex --dry-run
+# → prints plan (verify cargo / clone fork / build runtime / copy bridge /
+#    add to workspace / cargo build / drop launch helper)
+# → does NOT require cargo to be on PATH (the dry-run skips pre-flight)
+
+pnpm exec opencues run codex
+# → error message: "launch helper missing at $HOME/codex-cues/run-codex-cues.sh"
+# → suggests `opencues install codex` first, mentions pre-alpha + HANDOFF.md
+
+pnpm exec opencues uninstall codex --dry-run
+# → prints plan (no-op since not installed); exit 0
+
+pnpm exec opencues which | grep -A 5 "Codex"
+# → new "Codex install state" section with bridge crate / launch helper /
+#    daemon source paths, all marked - (not installed)
+
+pnpm exec opencues doctor 2>&1 | grep -A 5 "## OpenAI Codex"
+# → cargo on PATH check, fork-not-installed message, daemon-built check
+```
+
+### Smoke test the bridge ↔ daemon (no codex install needed)
+
+The Rust bridge crate has a standalone smoke binary that exercises the JSON-RPC bridge:
+
+```bash
+# Requires cargo on PATH:
+. "$HOME/.cargo/env" 2>/dev/null
+cd integrations/codex/patches/opencues-bridge
+cargo run --release --bin opencues-bridge-smoke -- \
+  ../../../../packages/opencues-runtime/dist/adapters/codex/v1/daemon.js
+# Expected output:
+#   [smoke] spawning daemon: ".../daemon.js"
+#   [smoke] sending text-change notification...
+#   [smoke] dispatching key event (always returns false in scaffold)...
+#   [smoke] consumed = false
+#   [opencues-bridge][info] daemon started; pid=...
+#   [opencues-bridge][info] daemon booted (params={...})
+#   [smoke] directives: 0 dim ranges, active = None, tip = None
+#   [smoke] dropping bridge → daemon should exit cleanly
+#   [opencues-bridge][info] daemon shutting down (stdin closed)
+```
+
+This proves the JSON-RPC wire format works end-to-end. The remaining work (per HANDOFF.md) is hooking the bridge into Codex's TUI.
+
+### Live install codex (long — ~5 min cargo build)
+
+⚠️ This actually clones openai/codex (~hundreds of MB) and runs cargo build. Skip if you're just reviewing.
+
+```bash
+pnpm exec opencues install codex
+# → clones $HOME/codex-cues
+# → builds @opencues/runtime
+# → copies bridge crate
+# → adds to workspace
+# → cargo build --release for the bridge crate (slow first time)
+# → smoke-tests the bridge
+# → drops $HOME/codex-cues/run-codex-cues.sh
+
+pnpm exec opencues uninstall codex
+# → reverts Cargo.toml workspace addition via git checkout
+# → removes bridge crate dir
+# → removes launch helper
+# → leaves the fork dir itself (rm -rf $HOME/codex-cues to fully clean)
+```
+
+### Read the HANDOFF
+
+`integrations/codex/HANDOFF.md` is the single source of truth for what's done vs what needs human attention. Three TODO items:
+1. Wire the bridge into `chat_composer.rs` (4-8 hr Rust work)
+2. Add the in-place TUI patches to setup.sh (30 min)
+3. Verify end-to-end (1 hr)
+
+`integrations/codex/docs/protocol.md` and `integrations/codex/docs/architecture.md` document the JSON-RPC wire format and the three-piece (daemon ↔ bridge ↔ TUI) design.
+
+---
+
+## ⓪⓪⓪ Doc updates (commits `13d8e70`, `83948f9`)
+
+The HIGH + MEDIUM stale-doc fixes from the audit. No commands to run; just read-through. Spot-check that:
+
+- `README.md` install section uses `pnpm exec opencues install <host>`
+- `CLAUDE.md` install destination is `~/.claude/opencues/` (not `~/.claude/node_modules/`)
+- `integrations/cc/README.md` and `integrations/cc/patches/README.md` reflect the consolidated layout
+- `docs/guides/quickstart.md` uses `pnpm` and `opencues install claude-code`
+- Various feature/guide docs no longer reference `~/.claude/actions/` or `~/.claude/highlight-statusline.sh` directly
 
 ---
 
