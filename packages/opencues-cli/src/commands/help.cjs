@@ -33,6 +33,8 @@ module.exports = function help(argv, ctx) {
   console.log('Authoring:');
   console.log('  init                    Scaffold <cwd>/.opencues/ with templates');
   console.log('  new <kind> <name>       Scaffold a single cue / blank / control');
+  console.log('  validate                Lint configs across search paths');
+  console.log('  import <source>         Download a community config pack (gist/github/url/local)');
   console.log('');
   console.log('Run / inspect:');
   console.log('  run <host>              Launch the patched host (claude-code | opencode | chrome)');
