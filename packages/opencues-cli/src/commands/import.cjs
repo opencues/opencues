@@ -52,7 +52,13 @@ module.exports = function importCmd(argv, ctx) {
     ? path.join(process.cwd(), '.opencues', 'packs')
     : path.join(HOME, '.opencues', 'packs');
 
-  const resolved = resolveSource(source);
+  let resolved;
+  try {
+    resolved = resolveSource(source);
+  } catch (err) {
+    console.error(`opencues import: ${err.message}`);
+    process.exit(1);
+  }
   const packName = nameOverride || resolved.defaultName;
   const target = path.join(installRoot, packName);
 
@@ -231,8 +237,47 @@ function validatePack(dir, opts) {
         }
       }
     }
+    // Refuse malformed frontmatter (same heuristic as `opencues validate`:
+    // a `---` fence is present but no frontmatter / sections / sources
+    // could be extracted). Only applies to .md files that aren't README.md
+    // or documentation — config files live under top-level root, cues/*,
+    // blanks/*, controls/*. Skip the pack's own README.md + anything in
+    // a docs/ sub-tree.
+    const relParts = rel.split(path.sep);
+    const basename = path.basename(rel).toLowerCase();
+    const isDocOrReadme =
+      basename === 'readme.md' ||
+      relParts.some(p => p.toLowerCase() === 'docs');
+    if (!isDocOrReadme) {
+      const hasFence = /^---\s*$/m.test(content);
+      if (hasFence) {
+        try {
+          const parseCuesMd = getParseCuesMd();
+          const parsed = parseCuesMd(content);
+          const parsedNothing =
+            (!parsed?.frontmatter || Object.keys(parsed.frontmatter).length === 0) &&
+            (!parsed?.sections || Object.keys(parsed.sections).length === 0) &&
+            (!parsed?.promptConfig?.sources || Object.keys(parsed.promptConfig.sources).length === 0);
+          if (parsedNothing) {
+            issues.push({ severity: 'error', message: `${rel}: looks like frontmatter is malformed — nothing parsed` });
+          }
+        } catch (err) {
+          issues.push({ severity: 'error', message: `${rel}: parse failed — ${err.message}` });
+        }
+      }
+    }
   });
   return issues;
+}
+
+// Lazy-load core's parser once per process — validatePack may run on
+// tarball-extracted packs in any CWD, so we can't rely on cwd resolution.
+let _parseCuesMdCache = null;
+function getParseCuesMd() {
+  if (_parseCuesMdCache) return _parseCuesMdCache;
+  const corePath = path.resolve(__dirname, '../../../opencues-core/dist/index.js');
+  _parseCuesMdCache = require(corePath).parseCuesMd;
+  return _parseCuesMdCache;
 }
 
 function walk(dir, cb) {
