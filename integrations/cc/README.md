@@ -7,7 +7,7 @@
 | Version | 0.1.0 |
 | Compatible with | Claude Code 2.1.110+ (2.1.x line) |
 | Source | `integrations/cc/` |
-| Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/.claude/node_modules/`) |
+| Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/.claude/opencues/`) |
 
 ---
 

@@ -1,108 +1,75 @@
 ---
-last_updated: 2026-04-01
+last_updated: 2026-04-20
 ---
 
 # Claude Code Patches
 
-Custom patches for tweakcc that add LLM-powered word alternatives to Claude Code.
+The patch sources that get compiled into [tweakcc](https://github.com/Piebald-AI/tweakcc) and applied to Claude Code's `cli.js`. Maintained as `.ts` files; tweakcc transpiles + injects them at apply time.
 
-## Quick Install
+## Quick install (preferred)
+
+From the cloned opencues repo:
 
 ```bash
-# 1. Clone opencues
-git clone https://github.com/opencues/opencues ~/opencues
-
-# 2. Run setup (clones tweakcc, patches everything, builds, applies)
-~/opencues/integrations/claude-code/patches/setup.sh
-
-# 3. Set API key (add to ~/.bashrc for persistence)
-export GROQ_API_KEY="your-key"
-
-# 4. Restart Claude Code
-claude
+pnpm install
+pnpm exec opencues install claude-code
+# or with explicit cli.js path:
+pnpm exec opencues install claude-code --target /path/to/cli.js
 ```
 
-That's it. The setup script:
-- Clones tweakcc to ~/tweakcc
-- Installs dependencies
-- Copies and integrates patch files
-- Builds cues-core
-- Applies patches to Claude Code
+The `opencues install claude-code` command runs `setup.sh` (this directory) under the hood. See `integrations/cc/README.md` for the user-facing flow.
 
-## Contents
+## What setup.sh does
+
+1. Clones tweakcc from upstream into `integrations/cc/tweakcc/`
+2. Copies the `.ts` patches into tweakcc's `src/patches/`
+3. Patches tweakcc's `types.ts`, `defaultSettings.ts`, and `src/patches/index.ts` (one-time wiring)
+4. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
+5. Installs everything under `~/.claude/opencues/`:
+   - `core/`, `runtime/` — built artefacts
+   - `tips.json`, `statusline.sh`, `actions/` — supporting files
+   - `tweakcc-state/` — tweakcc config + `cli.js.backup` (via `TWEAKCC_CONFIG_DIR` override)
+6. Builds tweakcc with the patches compiled in
+7. Applies the patches to the detected `cli.js` (auto-finds under `~/.claude` or `~/local-claude-code`; explicit path via `--target`)
+
+## Contents of this directory
 
 ```
 patches/
-├── setup.sh                  # Automated setup script
+├── setup.sh                  # The install pipeline (called by opencues install claude-code)
+├── opencuesRuntime.ts        # Boot + controlInvoke wiring (the v2.x patch)
 ├── cursorStateExport.ts      # Exports cursor position to JSON
 ├── wordHighlight.ts          # Ctrl+Alt navigation, numbers, rendering
 ├── dynamicHighlight.ts       # LLM alternatives, cycling, spans
-├── types-additions.ts        # Reference: types to add
-├── defaultSettings-additions.ts  # Reference: defaults to add
-├── index-additions.ts        # Reference: index.ts changes
-├── actions/                  # Cue-control scripts
-│   └── volume.sh
-└── claude-code-tips.json     # Per-word tips (instant lookup)
+├── types-additions.ts        # Reference: types added to tweakcc's MiscSettings
+├── defaultSettings-additions.ts  # Reference: defaults added to tweakcc
+├── index-additions.ts        # Reference: wiring added to tweakcc src/patches/index.ts
+├── actions/                  # OS-bound scripts copied to ~/.claude/opencues/actions/
+│   ├── speak.sh, brightness.sh
+│   ├── BrightCtl.cs, SpeakCtl.cs   # WSL: compiled to .exe by setup.sh
+│   └── brightness-set.ps1
+├── highlight-statusline.sh   # Status-line script copied to ~/.claude/opencues/statusline.sh
+└── claude-code-tips.json     # Per-word tips JSON copied to ~/.claude/opencues/tips.json
 ```
 
-## Manual Installation
+## Manual installation (fallback)
 
-If the setup script doesn't work, follow these steps:
-
-### 1. Clone vanilla tweakcc
+If `opencues install claude-code` fails for some reason, you can run the setup script directly:
 
 ```bash
-git clone https://github.com/anthropics/tweakcc ~/tweakcc
-cd ~/tweakcc && npm install
+cd ~/opencues
+pnpm install
+pnpm build       # builds @opencues/core + @opencues/runtime
+integrations/cc/patches/setup.sh ~/opencues/integrations/cc/tweakcc
 ```
 
-### 2. Copy patch files
+If your Claude Code install is at a non-standard path (e.g. WSL `claude-cues`):
 
 ```bash
-CUES_PATCHES=~/opencues/integrations/claude-code/patches
-
-cp $CUES_PATCHES/cursorStateExport.ts ~/tweakcc/src/patches/
-cp $CUES_PATCHES/wordHighlight.ts ~/tweakcc/src/patches/
-cp $CUES_PATCHES/dynamicHighlight.ts ~/tweakcc/src/patches/
-```
-
-### 3. Modify tweakcc source files
-
-**src/types.ts** - Add contents of `types-additions.ts` to the `MiscSettings` interface.
-
-**src/defaultSettings.ts** - Add contents of `defaultSettings-additions.ts` to the `misc` object.
-
-**src/patches/index.ts** - Add imports and patch calls from `index-additions.ts`.
-
-### 4. Build and install cues-core
-
-```bash
-cd ~/opencues/packages/cues-core
-npm install && npm run build
-
-mkdir -p ~/.claude/node_modules/cues-core
-cp dist/*.js dist/*.d.ts ~/.claude/node_modules/cues-core/
-cp -r dist/sources ~/.claude/node_modules/cues-core/
-```
-
-### 5. Install supporting files
-
-```bash
-cp $CUES_PATCHES/claude-code-tips.json ~/.claude/
-
-mkdir -p ~/.claude/actions
-cp $CUES_PATCHES/actions/* ~/.claude/actions/
-chmod +x ~/.claude/actions/*.sh
-```
-
-### 6. Set API key and build
-
-```bash
-export GROQ_API_KEY="your-key"
-
-cd ~/tweakcc && npm run build
-CLI_JS=$(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
-TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
+CLI_JS=/home/$USER/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+TWEAKCC_CONFIG_DIR=~/.claude/opencues/tweakcc-state \
+  TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" \
+  node ~/opencues/integrations/cc/tweakcc/dist/index.mjs --apply
 ```
 
 ## Features
@@ -119,10 +86,12 @@ Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.
 
 ## Dependencies
 
-- **cues-core** - LLM analysis module (sibling package)
-- **GROQ_API_KEY** - API key for Groq (default provider)
+- **`@opencues/core`** + **`@opencues/runtime`** — built from `packages/` and installed to `~/.claude/opencues/`
+- **GROQ_API_KEY** — API key for Groq (default provider)
 
 ## See Also
 
-- [cues-core](../../../packages/cues-core/) - The LLM analysis module
-- [Full documentation](../docs/) - Implementation guides and references
+- [`@opencues/core`](../../../packages/opencues-core/) — the LLM analysis library
+- [`@opencues/runtime`](../../../packages/opencues-runtime/) — the host-agnostic runtime + adapter bands
+- [Full documentation](../docs/) — implementation guides and references
+- [`integrations/cc/README.md`](../README.md) — user-facing install + verify + uninstall + blast-radius

@@ -166,10 +166,20 @@ export GROQ_API_KEY="your-key"
 ```
 
 The setup script:
-1. Clones tweakcc from upstream
-2. Copies and integrates patch files
-3. Builds cues-core → ~/.claude/node_modules/
+1. Clones tweakcc from upstream into `integrations/cc/tweakcc/`
+2. Copies + integrates patch files
+3. Builds `@opencues/core` + `@opencues/runtime`, installs everything under `~/.claude/opencues/` (single dir; uninstall is `rm -rf`)
 4. Applies patches to `claude-cues` (`~/local-claude-code`) — not the native `claude` install
+
+**Recommended invocation** (the repo's `opencues` CLI wraps this):
+
+```bash
+pnpm exec opencues install claude-code
+# or, if cli.js lives at a non-standard path:
+pnpm exec opencues install claude-code --target ~/local-claude-code/node_modules/@anthropic-ai/claude-code/cli.js
+```
+
+The legacy `integrations/cc/patches/setup.sh` direct invocation still works for contributors hacking on the patches.
 
 ---
 
