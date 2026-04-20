@@ -199,6 +199,10 @@ function syncChrome({ flags, pack, source }, ctx) {
     else if (rel.startsWith('controls') || rel === 'controls.md') summary.control++;
   }
 
+  // Write index.json so the chrome extension can enumerate what's in
+  // the bundle (chrome.runtime.getURL doesn't support directory listing).
+  writeIndexJson(distConfigs);
+
   // Bump .version so the extension can detect changes via polling.
   // Use content hash to avoid re-triggering on no-op syncs.
   const versionPath = path.join(distConfigs, '.version');
@@ -321,6 +325,25 @@ function walkFolder(dir, cb) {
     if (entry.isDirectory()) walkFolder(full, cb);
     else cb(full);
   }
+}
+
+// Emit configs/index.json listing every synced file. The chrome
+// extension's bootstrap reads this on boot to know what to fetch —
+// there's no directory-listing API for chrome.runtime.getURL().
+function writeIndexJson(distConfigs) {
+  const files = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name.startsWith('.')) continue;      // skip .version etc
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else files.push(path.relative(distConfigs, f).split(path.sep).join('/'));
+    }
+  };
+  walk(distConfigs);
+  files.sort();
+  const payload = { schema: 1, files };
+  fs.writeFileSync(path.join(distConfigs, 'index.json'), JSON.stringify(payload, null, 2));
 }
 
 function computeVersion(rootDir) {

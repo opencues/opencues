@@ -24,5 +24,11 @@
   ],
   "action": {
     "default_popup": "dist/popup/popup.html"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/configs/*", "dist/configs/**/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
