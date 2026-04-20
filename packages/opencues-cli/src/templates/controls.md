@@ -54,43 +54,52 @@ version: 1
 #   packages/opencues-runtime/src/controls/<name>.ts, not in a cue.md
 #
 # ─────────────────────────────────────────────────────────────────────
-# EXAMPLE: monolithic declaration
+# EXAMPLE: folder-based word-control (with colocated script)
 # ─────────────────────────────────────────────────────────────────────
 #
-# Good for cases with NO scripts and short config. Most controls should
-# go in .opencues/controls/<name>/cue.md folders instead.
+# Anything that runs a script MUST live in its own folder so the script
+# can sit next to the cue.md and be referenced with a relative path.
+# Layout for a "volume" control:
+#
+#   .opencues/controls/volume/
+#     cue.md        ← frontmatter below
+#     volume.sh     ← script invoked with upArgs / downArgs
+#
+# cue.md frontmatter:
+#
+#   ---
+#   name: volume
+#   type: control
+#   control: volume
+#   tip: system volume ± 5
+#   speak: true
+#   script: ./volume.sh        # relative to this cue.md
+#   upArgs: ["up", "5"]
+#   downArgs: ["down", "5"]
+#   ---
+#
+# Scaffold this layout with:
+#   opencues new control volume --project
+
+# ─────────────────────────────────────────────────────────────────────
+# EXAMPLE: monolithic declaration (zero-script controls only)
+# ─────────────────────────────────────────────────────────────────────
+#
+# Use the inline `## Controls` block for controls that have NO script
+# and short config — typically step or list controls. Anything needing
+# a script belongs in a folder (see above).
 
 # ## Controls
 #
 # ```json
 # {
-#   "volume": {
-#     "control": "volume",
-#     "tip": "system volume ± 5",
-#     "speak": true,
-#     "upArgs": ["up", "5"],
-#     "downArgs": ["down", "5"]
-#   },
 #   "units": {
 #     "control": "units",
 #     "tip": "step numeric values with unit suffixes",
 #     "stepSuffixes": "px em rem % vh vw",
 #     "step": 1,
 #     "stepMin": 0
-#   }
-# }
-# ```
-
-# ─────────────────────────────────────────────────────────────────────
-# EXAMPLE: minimal step control inline (no folder needed)
-# ─────────────────────────────────────────────────────────────────────
-#
-# Steps ANY `Nf` or `N.Nf` value by 0.5 (e.g. "8.5f" → "9.0f"):
-
-# ## Controls
-#
-# ```json
-# {
+#   },
 #   "f-values": {
 #     "control": "f-values",
 #     "stepSuffixes": "f",
