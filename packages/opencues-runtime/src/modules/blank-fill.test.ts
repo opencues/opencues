@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BlankFill, buildClearKeywordText, computeCleanupRange, computeFillRange } from './blank-fill';
 import { ConfigLoader } from './config-loader';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
 
-const TIPS = JSON.stringify({ concepts: [] });
+const TIPS = wrapTipsAsCuesMd({ concepts: [] });
 
 const VOLUME_CUE = `---
 type: control
@@ -39,14 +39,14 @@ async function setup(text: string) {
   const adapter = new MockAdapter({
     cwd: '/proj',
     files: {
-      '/tips.json': TIPS,
+      '/mock/cues.md': TIPS,
       '/proj/controls/volume/cue.md': VOLUME_CUE,
       '/proj/controls/affirmations/cue.md': AFFIRM_CUE,
       '/proj/controls/prompt/cue.md': PROMPT_CUE,
     },
   });
   adapter.pushText(text);
-  const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+  const loader = new ConfigLoader(adapter);
   await loader.load();
   const bf = new BlankFill(adapter, loader);
   bf.subscribe();
@@ -306,9 +306,9 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -331,12 +331,12 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
     });
     // Sandboxed host returns the value via controlInvoke; spawn should
     // never be hit.
     adapter.stubControlInvoke('stocks:get', '$201.66\n');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -361,9 +361,9 @@ blankScript: ./weather.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/weather/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/weather/cue.md': SCRIPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -385,9 +385,9 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -408,9 +408,9 @@ blankScript: ~/.claude/actions/stock.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -446,9 +446,9 @@ generate alts
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': SCRIPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -475,9 +475,9 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -498,10 +498,10 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/cheer/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/cheer/cue.md': CLR_CTRL },
     });
     adapter.pushText('cheer ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -521,10 +521,10 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/temp/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/temp/cue.md': CLR_CTRL },
     });
     adapter.pushText('weather in Paris ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -543,10 +543,10 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/greet/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/greet/cue.md': CLR_CTRL },
     });
     adapter.pushText('say hello ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -565,9 +565,9 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/weather/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/weather/cue.md': CLR_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -592,9 +592,9 @@ blankScript: ./weather.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/weather2/cue.md': PLAIN },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/weather2/cue.md': PLAIN },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -619,10 +619,10 @@ blankKeywordExpansions.hi: Hello
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/greeting/cue.md': EXP_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/greeting/cue.md': EXP_CTRL },
     });
     adapter.pushText('hi ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -642,10 +642,10 @@ blankKeywordExpansions.bye: Goodbye
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/bye/cue.md': BOTH },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/bye/cue.md': BOTH },
     });
     adapter.pushText('bye ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -665,9 +665,9 @@ blankKeywordExpansions.rddt: Reddit
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': EXP_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': EXP_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -692,9 +692,9 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/answer/cue.md': ANSWER_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/answer/cue.md': ANSWER_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -718,10 +718,10 @@ blankConsumeContext: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/ctxsync/cue.md': CTX_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/ctxsync/cue.md': CTX_CTRL },
     });
     adapter.pushText('how to say hello ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -741,9 +741,9 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
@@ -788,7 +788,7 @@ blankAutoPopulate: true
     // pick up the controlInvoke path or skip the slot entirely.
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/hn/cue.md': SCRIPTLESS_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/hn/cue.md': SCRIPTLESS_CTRL },
       capabilities: [
         'render-override', 'dim-ranges', 'highlight-range',
         'file-read', 'file-write', 'force-render', 'change-source',
@@ -796,7 +796,7 @@ blankAutoPopulate: true
       ],
     });
     adapter.stubControlInvoke('hn:get', 'top story title\n');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
@@ -825,13 +825,13 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
     });
     adapter.stubControlInvoke(
       'prompt:get',
       'Improved version one\nImproved version two\nImproved version three\n',
     );
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
@@ -864,9 +864,9 @@ blankConsumeAll: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
@@ -891,10 +891,10 @@ stepValues: ["I am strong", "I am brave"]
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/affirmations/cue.md': AFFIRM_F },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/affirmations/cue.md': AFFIRM_F },
     });
     adapter.pushText('affirm ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const span = new SpanFillState();
     const bf = new BlankFill(adapter, loader, span);
@@ -926,10 +926,10 @@ stepValues: ["only"]
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/lone/cue.md': ONE },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/lone/cue.md': ONE },
     });
     adapter.pushText('lone ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const span = new SpanFillState();
     const bf = new BlankFill(adapter, loader, span);
@@ -955,10 +955,10 @@ blankTip: Daily affirmations
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/affirmations/cue.md': DISMISS },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/affirmations/cue.md': DISMISS },
     });
     adapter.pushText('affirm ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const span = new SpanFillState();
     const bf = new BlankFill(adapter, loader, span);
@@ -984,10 +984,10 @@ blankDismissible: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/a/cue.md': DISMISS },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/a/cue.md': DISMISS },
     });
     adapter.pushText('a ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const dismissed = new DismissedBlanks();
     const bf = new BlankFill(adapter, loader, undefined, dismissed);
@@ -1015,9 +1015,9 @@ blankDismissible: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/weather/cue.md': SCRIPT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/weather/cue.md': SCRIPT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const dismissed = new DismissedBlanks();
     const bf = new BlankFill(adapter, loader, undefined, dismissed);
@@ -1040,9 +1040,9 @@ blankTip: Hacker News
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/hackernews/cue.md': HN },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/hackernews/cue.md': HN },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const span = new SpanFillState();
     const bf = new BlankFill(adapter, loader, span);
@@ -1079,9 +1079,9 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/stocks/cue.md': STOCK },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': STOCK },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const span = new SpanFillState();
     const bf = new BlankFill(adapter, loader, span);
@@ -1111,9 +1111,9 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1149,9 +1149,9 @@ blankSatelliteSeparator: '='
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1177,9 +1177,9 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1212,9 +1212,9 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1247,9 +1247,9 @@ blankSatellite: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1279,9 +1279,9 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1313,9 +1313,9 @@ blankSatellite: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1344,9 +1344,9 @@ blankSatellite: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const ss = new SelectorSatelliteState();
     const bf = new BlankFill(adapter, loader, undefined, undefined, ss);
@@ -1373,9 +1373,9 @@ blankConsumeAll: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
@@ -1408,9 +1408,9 @@ blankConsumeAll: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const consumeAll = new SpanFillState();
     const bf = new BlankFill(adapter, loader, consumeAll);
@@ -1438,10 +1438,10 @@ blankAutoPopulate: false
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/controls/noauto/cue.md': NO_AUTO },
+      files: { '/mock/cues.md': TIPS, '/proj/controls/noauto/cue.md': NO_AUTO },
     });
     adapter.pushText('noauto ');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();

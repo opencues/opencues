@@ -10,7 +10,15 @@ import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
 import { MockAdapter } from '../../testing/mock-adapter';
 
-const TIPS = JSON.stringify({
+// Tips live inside cues.md's `## Tips` JSON block — no separate file.
+// Wrap a tips-data object as a minimal cues.md so ConfigLoader's
+// existing parser flow (parseCuesMd → cuesConfig.tips → cueMap) loads
+// it just like a real config.
+function wrapTipsAsCuesMd(tipsData: unknown): string {
+  return `# tips fixture\n\n## Tips\n\`\`\`json\n${JSON.stringify(tipsData)}\n\`\`\`\n`;
+}
+
+const TIPS = wrapTipsAsCuesMd({
   domain: 'test',
   version: 1,
   concepts: [
@@ -25,11 +33,11 @@ const TIPS = JSON.stringify({
 });
 
 async function setup(text: string) {
-  const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+  const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+  const loader = new ConfigLoader(adapter);
   await loader.load();
   const cycling = new Cycling(adapter, hlState, dynDefs, loader);
   cycling.subscribe();
@@ -119,7 +127,7 @@ describe('Cycling static-alt multi-word spans', () => {
   //   - DimRender highlights the whole group as a unit
   //   - Subsequent cycles go through cycleSpanFill (Path 0), keeping
   //     currentAltIndex + spanLength in sync
-  const MW_TIPS = JSON.stringify({
+  const MW_TIPS = wrapTipsAsCuesMd({
     domain: 'test',
     version: 1,
     concepts: [
@@ -134,12 +142,12 @@ describe('Cycling static-alt multi-word spans', () => {
   });
 
   async function setupMw(text: string) {
-    const adapter = new MockAdapter({ files: { '/tips.json': MW_TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': MW_TIPS } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const spanFillState = new SpanFillState();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
     cycling.subscribe();
@@ -310,12 +318,12 @@ describe('Cycling static-alt multi-word spans', () => {
 
 describe('Cycling consume-all (Step 31)', () => {
   async function setupCa(initialText: string) {
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText(initialText);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const consumeAll = new SpanFillState();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, consumeAll);
     cycling.subscribe();
@@ -381,13 +389,13 @@ describe('Cycling consume-all (Step 31)', () => {
   });
 
   it('Phase F.b: cycling to `_` adds slot to DismissedBlanks; cycling away removes it', async () => {
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText('foo');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const span = new SpanFillState();
     const dismissed = new DismissedBlanks();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, span, dismissed);
     cycling.subscribe();
@@ -427,7 +435,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     const hlState = new HighlightState();
@@ -445,7 +453,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -475,7 +483,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     const hlState = new HighlightState();
@@ -493,7 +501,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -519,7 +527,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('output-format plain text');
     const hlState = new HighlightState();
@@ -537,7 +545,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'output-format plain text');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -562,7 +570,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('output-format plain text');
     const hlState = new HighlightState();
@@ -580,7 +588,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'output-format plain text');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -602,7 +610,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('display mode split pane');
     const hlState = new HighlightState();
@@ -620,7 +628,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'display mode split pane');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -669,7 +677,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     // Host stubs controlInvoke for the selector get; spawn must NOT be hit.
@@ -688,7 +696,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -715,7 +723,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     // No stub registered → controlInvoke returns null → spawnProcess used.
@@ -733,7 +741,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
     cycling.subscribe();

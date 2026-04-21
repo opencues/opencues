@@ -35,12 +35,12 @@ interface MockResult {
 function setupResolver(scriptedResults: MockResult[]) {
   const adapter = new MockAdapter({
     cwd: '/proj',
-    files: { '/tips.json': TIPS, '/proj/cues.md': CUES_MD },
+    files: { '/mock/cues.md': TIPS, '/proj/cues.md': CUES_MD },
   });
   adapter.pushText('alpha');
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+  const loader = new ConfigLoader(adapter);
 
   // Inject a mock resolver factory so we don't load real opencues-core sources.
   // The Resolver class still calls require('@opencues/core').createResolver, so we
@@ -143,11 +143,11 @@ describe('Resolver.resolveAndApply', () => {
     // computed words (and words inside an active span-fill) as empty
     // strings. Downstream, RoutedWordSourceGroup + every other
     // CueSource skips empty entries — no LLM call, no token spend.
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText('alpha beta gamma');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     const spanFillState = new SpanFillState();
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
@@ -182,11 +182,11 @@ describe('Resolver.resolveAndApply', () => {
   it('blanks (_) are always re-resolved, even if the runtime has cached alts', async () => {
     // Context for a `_` must pass through unchanged — its answer
     // depends on surrounding words that may have shifted on any edit.
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText('weather _ paris');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -209,7 +209,7 @@ describe('Resolver.resolveAndApply', () => {
     ]);
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     let resolveDelay = 50;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -234,14 +234,14 @@ describe('Resolver.resolveAndApply', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/tips.json': TIPS,
+        '/mock/cues.md': TIPS,
         '/proj/cues.md': CUES_MD,
         '/proj/opencues.md': '---\nllm-endpoint: https://other.example.com/v1\nllm-model: openai/custom-model\n---\n',
       },
     });
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
 
     let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
@@ -264,11 +264,11 @@ describe('Resolver.resolveAndApply', () => {
   it('falls back to options.endpoint/defaultModel when opencues.md has no overrides', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/tips.json': TIPS, '/proj/cues.md': CUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': CUES_MD },
     });
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {

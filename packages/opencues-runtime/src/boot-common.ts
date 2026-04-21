@@ -115,10 +115,6 @@ export interface SharedRuntime {
 }
 
 export interface BuildSharedRuntimeOptions {
-  /** Tips JSON path. Each host computes its own default
-   *  (`~/.claude/opencues/tips.json` on Node hosts, a chrome.storage
-   *  key on chrome, etc.) before calling this. */
-  readonly tipsPath: string;
   /** Same log function the host uses. Errors from ConfigLoader.load
    *  + BlankFill.subscribe wiring flow through it. */
   readonly log: (level: LogLevel, msg: string, data?: unknown) => void;
@@ -141,11 +137,11 @@ export function buildSharedRuntime(
   adapter: HostAdapter,
   opts: BuildSharedRuntimeOptions,
 ): SharedRuntime {
-  const { tipsPath, log, configSearchPaths } = opts;
+  const { log, configSearchPaths } = opts;
 
   // ConfigLoader first — every other module depends on it. load() runs
   // async; modules tolerate the empty pre-load window.
-  const configLoader = new ConfigLoader(adapter, { tipsPath, configSearchPaths });
+  const configLoader = new ConfigLoader(adapter, { configSearchPaths });
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 

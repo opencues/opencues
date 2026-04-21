@@ -4,7 +4,7 @@ import { Navigation } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 import { applyDirectives } from '../render-directives';
 
 function setup(text: string) {
@@ -119,7 +119,7 @@ step: 0.5
       },
     });
     adapter.pushText('0.5f');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
@@ -134,7 +134,7 @@ step: 0.5
       files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
     });
     adapter.pushText('cat sat');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();

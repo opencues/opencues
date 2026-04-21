@@ -3,7 +3,7 @@ import { Statusline } from './statusline';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
 function setup(text: string) {
   const adapter = new MockAdapter();
@@ -56,7 +56,7 @@ describe('Statusline.buildPayload', () => {
 });
 
 describe('Statusline cue-tip plumbing', () => {
-  const TIPS = JSON.stringify({
+  const TIPS = wrapTipsAsCuesMd({
     domain: 'test',
     version: 1,
     concepts: [
@@ -78,11 +78,11 @@ describe('Statusline cue-tip plumbing', () => {
   });
 
   async function setupWithTips(text: string) {
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/test-statusline.json',
@@ -126,7 +126,7 @@ describe('Statusline cue-tip plumbing', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/tips.json': TIPS,
+        '/proj/cues.md': TIPS,
         '/proj/opencues.md': '---\ntips-mode: off\n---\n',
       },
     });
@@ -134,7 +134,7 @@ describe('Statusline cue-tip plumbing', () => {
     const hlState = new HighlightState();
     hlState.activate(0, 'opus');
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const sl = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/x.json',
@@ -245,7 +245,7 @@ settings:
       },
     });
     adapter.pushText('voice-mode active');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
@@ -290,7 +290,7 @@ settings:
       },
     });
     adapter.pushText('voice-mode active');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();

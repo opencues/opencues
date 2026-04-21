@@ -52,10 +52,8 @@ declare const __DEFAULT_BLANKS_MD__: string;
 declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_CONTROL_FOLDERS__: Record<string, string>;
-declare const __DEFAULT_TIPS_JSON__: string;
 
 const ROOT = '/chrome-storage';
-const TIPS_KEY = `${STORAGE_PREFIX}/chrome-storage/.tips.json`;
 
 // Per-readFile trace logging is OFF by default — at ~20 lines per
 // boot it was the loudest thing in DevTools. Gated behind the
@@ -250,7 +248,6 @@ function readBakeTimeDefault(path: string): string | null {
   if (rel === 'cues.md') return __DEFAULT_CUES_MD__ || null;
   if (rel === 'blanks.md') return __DEFAULT_BLANKS_MD__ || null;
   if (rel === 'opencues.md') return __DEFAULT_OPENCUES_MD__ || null;
-  if (rel === '.tips.json') return __DEFAULT_TIPS_JSON__ || null;
   const cueMatch = rel.match(/^cues\/([^/]+)\/cue\.md$/);
   if (cueMatch) return __DEFAULT_CUE_FOLDERS__[cueMatch[1]] ?? null;
   const ctrlMatch = rel.match(/^controls\/([^/]+)\/cue\.md$/);
@@ -475,7 +472,6 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     readFile,
     writeFile,
     readDir,
-    tipsPath: TIPS_KEY.slice(STORAGE_PREFIX.length),
     log,
     // CE.6 — render statusline tip into the floating div.
     statusSnapshotHook: (payload) => applyStatuslinePayload(payload as Parameters<typeof applyStatuslinePayload>[0]),

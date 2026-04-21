@@ -152,8 +152,6 @@ export interface CommonHostInfo {
   writeFile?(path: string, content: string): Promise<void>;
   pushText?(text: string, cursor?: number): void;
   log?(level: LogLevel, msg: string, data?: unknown): void;
-  /** Path / virtual key the runtime reads the tips JSON from. */
-  tipsPath?: string;
   /** File path the Statusline module exports the JSON snapshot to.
    *  Hosts that have no filesystem (chrome) leave this unset. */
   statusFilePath?: string;

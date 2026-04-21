@@ -51,12 +51,9 @@ try {
   }
 } catch { /* no controls/ dir */ }
 
-// Load tips JSON from Claude Code patches (same tips file used by both integrations)
-const tipsJsonPath = projectRoot + 'integrations/claude-code/patches/claude-code-tips.json';
-// Fall back to empty-object JSON (not "") so ConfigLoader's JSON.parse
-// succeeds even when the tips file is missing — the parser treats an
-// empty object as "no tips configured" rather than throwing.
-const defaultTipsJson = readOr(tipsJsonPath, '{}');
+// Tips ship inside defaults/cues.md's `## Tips` block — no separate
+// JSON file. The runtime's ConfigLoader extracts them from the parsed
+// cues.md just like every other section.
 
 const envDefines = {
   '__GROQ_API_KEY__': JSON.stringify(envVars['GROQ_API_KEY'] || ''),
@@ -66,7 +63,6 @@ const envDefines = {
   '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/opencues.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_CONTROL_FOLDERS__': JSON.stringify(controlFolders),
-  '__DEFAULT_TIPS_JSON__': JSON.stringify(defaultTipsJson),
   // Stub Node globals the runtime modules reference. Content scripts
   // have no `process`; these defines replace the lookups at bundle
   // time so the bundled code reads literal '~' / '' / undefined.

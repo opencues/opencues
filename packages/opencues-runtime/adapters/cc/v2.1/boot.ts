@@ -78,8 +78,6 @@ export interface HostInfo {
   llmDefaultModel?: string;
   /** Optional: resolver debounce ms (defaults to 500). */
   llmDebounceMs?: number;
-  /** Optional: absolute path to the static cue tips JSON. */
-  tipsPath?: string;
   /** Optional: absolute path for the statusline state-export JSON. */
   statusFilePath?: string;
   /**
@@ -291,8 +289,8 @@ export function boot(host: HostInfo): BootResult {
   const controlValues = new ControlValuesCache();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
-  // map (returns false from step) until load resolves.
-  const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.claude/opencues/tips.json`;
+  // map (returns false from step) until load resolves. Tips come from
+  // cues.md's `## Tips` block — no separate JSON file.
   // Search paths in priority order. Project-level `.opencues/` wins on
   // name conflicts; user-level `~/.opencues/` is the global default.
   // OPENCUES_HOME env var takes top priority for power users / CI.
@@ -302,7 +300,7 @@ export function boot(host: HostInfo): BootResult {
     `${host.cwd}/.opencues`,
     `${HOME}/.opencues`,
   ];
-  const configLoader = new ConfigLoader(adapter, { tipsPath, configSearchPaths });
+  const configLoader = new ConfigLoader(adapter, { configSearchPaths });
   configLoaderRef = configLoader; // wire isDebugEnabled to opencues.md
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));

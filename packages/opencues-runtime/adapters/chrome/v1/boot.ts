@@ -150,8 +150,7 @@ export function boot(host: HostInfo): BootResult {
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args.
-  const tipsPath = host.tipsPath ?? 'chrome:tips.json';
-  const shared = buildSharedRuntime(adapter, { tipsPath, log });
+  const shared = buildSharedRuntime(adapter, { log });
   configLoaderRef = shared.configLoader;
 
   const {

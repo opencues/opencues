@@ -28,8 +28,6 @@ export interface CodexHostInfo {
   readonly cwd: string;
   /** Search paths in priority order. */
   readonly configSearchPaths?: readonly string[];
-  /** Tips JSON path. */
-  readonly tipsPath?: string;
 }
 
 interface JsonRpcRequest {

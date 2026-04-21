@@ -44,19 +44,21 @@ const INSTALLED_PATHS = {
   inside: [
     'core/',
     'runtime/',
-    'tips.json',
     'statusline.sh',
     'scripts/',
     'patch-state/  (patcher config + cli.js.backup)',
   ],
   // Legacy paths from prior install layouts — removed on every install
   // and uninstall regardless of whether this install created them.
+  // tips.json is included here (not in `inside`) because prior installs
+  // seeded it but the refactor moved tips into cues.md's ## Tips block.
   legacy: [
     path.join(CLAUDE_DIR, 'node_modules', 'opencues-core'),
     path.join(CLAUDE_DIR, 'node_modules', 'opencues-runtime'),
     path.join(CLAUDE_DIR, 'node_modules', '@opencues', 'core'),
     path.join(CLAUDE_DIR, 'node_modules', '@opencues', 'runtime'),
     path.join(CLAUDE_DIR, 'claude-code-tips.json'),
+    path.join(INSTALL_ROOT, 'tips.json'),
     path.join(CLAUDE_DIR, 'highlight-statusline.sh'),
     // Action files we know we shipped (only these basenames removed
     // from the shared ~/.claude/actions/ dir; user files left alone).

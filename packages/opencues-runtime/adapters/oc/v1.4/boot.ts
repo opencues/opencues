@@ -147,18 +147,15 @@ export function boot(host: HostInfo): BootResult {
 
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
-  // drift on subscription order or constructor args.
-  const tipsPath = host.tipsPath ?? `${process.env.HOME ?? '~'}/.opencues/tips.json`;
-  // Project + user config search paths. Same convention as the cc band:
-  //   $OPENCUES_HOME (if set) → <cwd>/.opencues → ~/.opencues
-  // Project (cwd) wins on name conflicts; user is the global fallback.
+  // drift on subscription order or constructor args. Tips come from
+  // cues.md's `## Tips` block — no separate JSON file.
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
     ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
     `${host.cwd}/.opencues`,
     `${HOME}/.opencues`,
   ];
-  const shared = buildSharedRuntime(adapter, { tipsPath, log, configSearchPaths });
+  const shared = buildSharedRuntime(adapter, { log, configSearchPaths });
   configLoaderRef = shared.configLoader; // wires isDebugEnabled to opencues.md
 
   const {

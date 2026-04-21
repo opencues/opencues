@@ -20,7 +20,6 @@ import {
   buildLookupMap,
   discoverFolderConfigs,
   mergeConfigs,
-  parseLocalCueFile,
   parseCuesMd,
   type LocalCueLookupResult,
   type CuesMdConfig,
@@ -37,8 +36,6 @@ export interface StepPattern {
 }
 
 export interface ConfigLoaderOptions {
-  /** Absolute path to the tips JSON. */
-  readonly tipsPath: string;
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
   /**
@@ -272,7 +269,7 @@ export class ConfigLoader {
 
   constructor(
     private adapter: HostAdapter,
-    private options: ConfigLoaderOptions,
+    private options: ConfigLoaderOptions = {},
   ) {}
 
   // ─── Read accessors ────────────────────────────────────────────────────
@@ -441,11 +438,11 @@ export class ConfigLoader {
     // project and user and the read still resolves correctly.
     const userLevelPath = searchPaths[searchPaths.length - 1];
 
-    // Fan out tips read + per-path .md reads + user-level opencues.md.
-    // Each search path contributes 3 .md files (cues, controls, blanks);
-    // opencues.md is a singleton from the user-level path.
+    // Fan out per-path .md reads + user-level opencues.md. Each search
+    // path contributes 3 .md files (cues, controls, blanks); opencues.md
+    // is a singleton from the user-level path. Tips come from each
+    // cues.md's `## Tips` block — no separate JSON file.
     const allReads = await Promise.all([
-      this._safeReadFile(this.options.tipsPath),
       this._safeReadFile(`${userLevelPath}/opencues.md`),
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
@@ -453,26 +450,12 @@ export class ConfigLoader {
         this._safeReadFile(`${p}/blanks.md`),
       ]),
     ]);
-    const tips = allReads[0];
-    const opencuesMdContent = allReads[1];
+    const opencuesMdContent = allReads[0];
     const perPath = searchPaths.map((_, i) => ({
-      cuesMd: allReads[2 + i * 3],
-      controlsMd: allReads[3 + i * 3],
-      blanksMd: allReads[4 + i * 3],
+      cuesMd: allReads[1 + i * 3],
+      controlsMd: allReads[2 + i * 3],
+      blanksMd: allReads[3 + i * 3],
     }));
-
-    // Tips JSON → primary cueMap (single source — no merge across paths
-    // for tips today; can extend later if a per-project tips override
-    // becomes useful).
-    const cueMap = new Map<string, LocalCueLookupResult>();
-    if (tips !== null) {
-      try {
-        const data = parseLocalCueFile(tips);
-        for (const [k, v] of buildLookupMap(data)) cueMap.set(k, v);
-      } catch (err) {
-        this.adapter.log('error', 'ConfigLoader: tips JSON parse failed', err);
-      }
-    }
 
     // Per-path .md parses. Project (index 0) is highest priority; user
     // (index 1+) is fallback. We fold from LOW to HIGH so the high-priority
@@ -481,6 +464,18 @@ export class ConfigLoader {
     const cuesConfig = this._mergeConfigsAcrossPaths(
       perPath.map(p => this._safeParseCuesMd(p.cuesMd, 'cues.md')),
     );
+
+    // Build cueMap from cues.md's `## Tips` JSON block (now the sole
+    // source of truth — no more claude-code-tips.json). Project-level
+    // cues.md's tips win on word conflicts via mergeConfigs above.
+    const cueMap = new Map<string, LocalCueLookupResult>();
+    if (cuesConfig?.tips) {
+      try {
+        for (const [k, v] of buildLookupMap(cuesConfig.tips)) cueMap.set(k, v);
+      } catch (err) {
+        this.adapter.log('error', 'ConfigLoader: cues.md ## Tips buildLookupMap failed', err);
+      }
+    }
     const controlsConfig = this._mergeConfigsAcrossPaths(
       perPath.map(p => this._safeParseCuesMd(p.controlsMd, 'controls.md')),
     );

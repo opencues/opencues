@@ -387,17 +387,19 @@ if [ -d "$OC_RUNTIME" ]; then
 fi
 end_step
 
-begin_step "Installing support files (tips, actions, statusline)"
+begin_step "Installing support files (actions, statusline)"
 # 7. Copy supporting files into $OC_INSTALL_ROOT (cheap — always run).
 #    Cleanup of legacy ~/.claude/{claude-code-tips.json, highlight-statusline.sh,
-#    actions/<our files>} is best-effort — only files we know we shipped.
+#    actions/<our files>, tips.json} is best-effort — only files we
+#    know we shipped. Tips now live inside cues.md's ## Tips block;
+#    no separate JSON file ships.
 [ -f ~/.claude/claude-code-tips.json ] && rm ~/.claude/claude-code-tips.json
+[ -f "$OC_INSTALL_ROOT/tips.json" ] && rm "$OC_INSTALL_ROOT/tips.json"
 [ -f ~/.claude/highlight-statusline.sh ] && rm ~/.claude/highlight-statusline.sh
 for f in speak.sh brightness.sh brightness-set.ps1 BrightCtl.cs BrightCtl.exe SpeakCtl.cs SpeakCtl.exe; do
   [ -f ~/.claude/actions/"$f" ] && rm ~/.claude/actions/"$f"
 done
 
-cp "$SCRIPT_DIR/claude-code-tips.json" "$OC_INSTALL_ROOT/tips.json" 2>/dev/null || true
 mkdir -p "$OC_INSTALL_ROOT/scripts"
 cp "$SCRIPT_DIR/actions/"* "$OC_INSTALL_ROOT/scripts/" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/scripts/"*.sh 2>/dev/null || true
 cp "$SCRIPT_DIR/highlight-statusline.sh" "$OC_INSTALL_ROOT/statusline.sh" 2>/dev/null && chmod +x "$OC_INSTALL_ROOT/statusline.sh" 2>/dev/null || true

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { boot, type HostInfo } from './boot';
+import { wrapTipsAsCuesMd } from '../../../testing/mock-adapter';
 
-const TIPS = JSON.stringify({
+const TIPS = wrapTipsAsCuesMd({
   domain: 'test',
   version: 1,
   concepts: [{ id: 'w', words: { fast: { tip: '', alts: ['quick', 'rapid'] } } }],
@@ -52,8 +53,10 @@ describe('boot()', () => {
 
   it('consumePendingRender returns Cycling text replacement when setText was called', async () => {
     const host = fakeHost('fast slow', {
-      readFile: async (p: string) => p === '/tips.json' ? TIPS : null,
-      tipsPath: '/tips.json',
+      // cwd is '/test' (fakeHost default), cc boot adds `.opencues`
+      // to every search path — serve TIPS from /test/.opencues/cues.md
+      // (mirrors what the adapter looks for in production).
+      readFile: async (p: string) => p === '/test/.opencues/cues.md' ? TIPS : null,
     });
     const result = boot(host);
     await new Promise(r => setImmediate(r));

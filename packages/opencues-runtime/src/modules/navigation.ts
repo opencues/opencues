@@ -71,11 +71,22 @@ export class Navigation {
 
   /**
    * User typing (or any text change we didn't initiate) clears the
-   * highlight and PRUNES stale DynDefs. "Stale" = word at the def's
-   * index is neither the originalWord nor the first word of the
-   * current alt (covers single-word + multi-word mid-cycle cases).
+   * highlight and PRUNES stale DynDefs. "Stale" = the word(s) at the
+   * def's position no longer match what cycling last produced.
+   *
+   * Survive pruning if one of:
+   *   - word at index === def.originalWord (def is fresh, untouched)
+   *   - single-word current alt === word at index (mid-cycle)
+   *   - multi-word current alt — ALL N words match contiguously at
+   *     [index..index+N-1]. Just matching the first word isn't enough
+   *     because the def's cached char range (spanStart/spanEnd) would
+   *     still point at the OLD multi-word replacement, and the next
+   *     cycle would splice the wrong substring.
+   *
    * Fresh defs survive, so dim/cycling keep working without the
-   * 500 ms dim-flash that the old `dynDefs.clear()` caused.
+   * 500 ms dim-flash that the old `dynDefs.clear()` caused. Stale
+   * multi-word span defs get dropped cleanly when the user breaks
+   * the span.
    */
   onTextChange(event: TextChangeEvent): void {
     if (event.source === 'runtime') return;
@@ -88,8 +99,13 @@ export class Navigation {
       if (!actual) { this.dynDefs.delete(index); continue; }
       if (def.originalWord === actual) continue;
       const currentAlt = def.alternatives[def.currentIndex] ?? '';
-      const firstWord = currentAlt.split(/\s+/)[0] ?? '';
-      if (firstWord === actual) continue;
+      const altWords = currentAlt.split(/\s+/).filter(Boolean);
+      if (altWords.length === 1) {
+        if (currentAlt === actual) continue;
+      } else if (altWords.length > 1) {
+        const allMatch = altWords.every((w, k) => words[index + k]?.word === w);
+        if (allMatch) continue;
+      }
       this.dynDefs.delete(index);
     }
   }

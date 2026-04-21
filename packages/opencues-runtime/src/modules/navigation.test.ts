@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
 function setup(text: string) {
   const adapter = new MockAdapter();
@@ -188,18 +188,18 @@ describe('Navigation', () => {
 });
 
 describe('Navigation cue filtering (Bucket B)', () => {
-  const TIPS = JSON.stringify({
+  const TIPS = wrapTipsAsCuesMd({
     domain: 't', version: 1,
     concepts: [{ id: 'a', words: { volume: { tip: 'V', alts: [] }, brightness: { tip: 'B', alts: [] } } }],
   });
 
   async function setupWithCues(text: string) {
     const { ConfigLoader } = await import('./config-loader');
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const nav = new Navigation(adapter, hlState, dynDefs, loader);
     nav.subscribe();
@@ -276,7 +276,7 @@ describe('Navigation span-fill filter (Phase F.a / Step 33)', () => {
     adapter.pushText('foo bar baz qux');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const span = new SpanFillState();
     span.set({ index: 1, alternatives: ['bar baz', 'other text'], currentAltIndex: 0, spanLength: 2 }, 'foo bar baz qux');

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigLoader, parseOpenCuesMd } from './config-loader';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
-const SAMPLE_TIPS = JSON.stringify({
+const SAMPLE_TIPS = wrapTipsAsCuesMd({
   domain: 'test',
   version: 1,
   concepts: [
@@ -17,9 +17,9 @@ const SAMPLE_TIPS = JSON.stringify({
 });
 
 describe('ConfigLoader', () => {
-  it('loads tips JSON and builds a case-insensitive lookup', async () => {
-    const adapter = new MockAdapter({ files: { '/tips.json': SAMPLE_TIPS } });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+  it('loads tips from cues.md ## Tips and builds a case-insensitive lookup', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': SAMPLE_TIPS } });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
 
     expect(loader.loaded).toBe(true);
@@ -34,27 +34,27 @@ describe('ConfigLoader', () => {
     expect(loader.lookup('Fast')?.alternatives).toContain('quick');
   });
 
-  it('resolves gracefully when tips file is missing', async () => {
+  it('resolves gracefully when cues.md is missing', async () => {
     const adapter = new MockAdapter({ files: {} });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/missing.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.loaded).toBe(true);
     expect(loader.cueMap.size).toBe(0);
     expect(loader.lookup('hello')).toBeNull();
   });
 
-  it('leaves map empty on parse failure, logs error', async () => {
-    const adapter = new MockAdapter({ files: { '/bad.json': 'not valid json{{{' } });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/bad.json' });
+  it('leaves map empty when ## Tips JSON is malformed', async () => {
+    const malformedCuesMd = `# malformed\n\n## Tips\n\`\`\`json\nnot valid json{{{\n\`\`\`\n`;
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': malformedCuesMd } });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.loaded).toBe(true);
     expect(loader.cueMap.size).toBe(0);
-    expect(adapter.logs.some(l => l.level === 'error' && /parse failed/.test(l.msg))).toBe(true);
   });
 
   it('returns null from lookup when file-read capability absent', async () => {
     const adapter = new MockAdapter({ capabilities: [] });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.cueMap.size).toBe(0);
     expect(loader.lookup('hello')).toBeNull();
@@ -162,7 +162,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
         '/proj/blanks.md': '---\nname: my-blanks\nversion: 1\n---\n',
       },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.cuesConfig?.frontmatter.name).toBe('my-cues');
     expect(loader.controlsConfig?.frontmatter.name).toBe('my-controls');
@@ -177,7 +177,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
         '/proj/opencues.md': '---\nvoice-mode: inactive\ntips-mode: off\n---\n',
       },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.opencuesState.voiceMode).toBe('inactive');
     expect(loader.opencuesState.tipsMode).toBe('off');
@@ -185,33 +185,34 @@ describe('ConfigLoader expanded — cwd .md files', () => {
 
   it('opencuesState is the default when opencues.md is missing', async () => {
     const adapter = new MockAdapter({ cwd: '/proj', files: { '/tips.json': TIPS } });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.opencuesState.voiceMode).toBe('active');
     expect(loader.opencuesState.tipsMode).toBe('on');
   });
 
-  it('continues loading when one .md file is malformed', async () => {
+  it('continues loading other files when one .md file is malformed', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/tips.json': TIPS,
         '/proj/cues.md': 'no frontmatter at all',
         '/proj/controls.md': '---\nname: ok\nversion: 1\n---\n',
       },
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     // controls.md still parses fine even though cues.md was odd.
+    // cueMap is empty because cues.md (the sole tips source post-refactor)
+    // didn't yield a valid ## Tips block.
     expect(loader.controlsConfig?.frontmatter.name).toBe('ok');
-    expect(loader.cueMap.size).toBeGreaterThan(0); // tips JSON unaffected
+    expect(loader.cueMap.size).toBe(0);
   });
 });
 
 describe('ConfigLoader hot-reload', () => {
   it('maybeReload skips inside the debounce window', async () => {
     const adapter = new MockAdapter({ files: { '/tips.json': '{"concepts":[]}' } });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 1000 });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 1000 });
     await loader.load();
     const initial = adapter.logs.length;
     await loader.maybeReload();
@@ -222,7 +223,7 @@ describe('ConfigLoader hot-reload', () => {
 
   it('maybeReload does reload when debounce elapsed', async () => {
     const adapter = new MockAdapter({ files: { '/tips.json': '{"concepts":[]}' } });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 0 });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
     await loader.load();
     const initial = adapter.logs.length;
     await loader.maybeReload();
@@ -231,7 +232,7 @@ describe('ConfigLoader hot-reload', () => {
 
   it('subscribe wires onTextChange → maybeReload', async () => {
     const adapter = new MockAdapter({ files: { '/tips.json': '{"concepts":[]}' } });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 0 });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
     await loader.load();
     loader.subscribe();
     const initial = adapter.logs.length;
@@ -255,7 +256,7 @@ describe('ConfigLoader hot-reload', () => {
       files: { '/tips.json': '{"concepts":[]}', '/proj/opencues.md': FILE_INACTIVE },
       cwd: '/proj',
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 0 });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
     await loader.load();
     expect(loader.opencuesState.voiceMode).toBe('inactive');
     // User cycles satellite → applyOpenCuesScalar fires.
@@ -277,7 +278,7 @@ describe('ConfigLoader hot-reload', () => {
       files: { '/tips.json': '{"concepts":[]}', '/proj/opencues.md': FILE },
       cwd: '/proj',
     });
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json', reloadDebounceMs: 0 });
+    const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
     await loader.load();
     loader.applyOpenCuesScalar('voice-mode', 'active');
     // Simulate the file write completing + the user editing the file

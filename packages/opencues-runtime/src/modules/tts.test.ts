@@ -3,9 +3,9 @@ import { TTS } from './tts';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
-import { MockAdapter } from '../../testing/mock-adapter';
+import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
-const TIPS = JSON.stringify({
+const TIPS = wrapTipsAsCuesMd({
   domain: 'test',
   version: 1,
   concepts: [
@@ -20,11 +20,11 @@ const TIPS = JSON.stringify({
 });
 
 async function setup(text: string) {
-  const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+  const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+  const loader = new ConfigLoader(adapter);
   await loader.load();
   const tts = new TTS(adapter, hlState, dynDefs, loader, { scriptPath: '/speak.sh' });
   tts.subscribe();
@@ -115,14 +115,14 @@ describe('TTS', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/tips.json': TIPS,
+        '/proj/cues.md': TIPS,
         '/proj/opencues.md': '---\nvoice-mode: inactive\n---\n',
       },
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -134,14 +134,14 @@ describe('TTS', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/tips.json': TIPS,
+        '/proj/cues.md': TIPS,
         '/proj/opencues.md': '---\ntts-rate: 7\n---\n',
       },
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, {
       scriptPath: '/speak.sh',
@@ -156,14 +156,14 @@ describe('TTS', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/tips.json': TIPS,
+        '/proj/cues.md': TIPS,
         '/proj/opencues.md': '---\ntts-script: /custom/say.sh\n---\n',
       },
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/default/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -180,11 +180,11 @@ describe('TTS', () => {
   });
 
   it('does not speak when spawn-process capability absent', async () => {
-    const adapter = new MockAdapter({ capabilities: ['file-read'], files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ capabilities: ['file-read'], files: { '/mock/cues.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -193,11 +193,11 @@ describe('TTS', () => {
   });
 
   it('speakFn is preferred over spawnProcess when supplied', async () => {
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const speakFn = vi.fn();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh', speakFn });
@@ -209,11 +209,11 @@ describe('TTS', () => {
   });
 
   it('speakFn works without scriptPath (sandboxed host case)', async () => {
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const speakFn = vi.fn();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn });
@@ -222,11 +222,11 @@ describe('TTS', () => {
   });
 
   it('speakFn throws are logged and swallowed (does not break render loop)', async () => {
-    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const speakFn = vi.fn(() => { throw new Error('audio device gone'); });
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn });
@@ -237,13 +237,13 @@ describe('TTS', () => {
 
   it('opencues.md tts-rate flows to speakFn (same precedence as spawn path)', async () => {
     const adapter = new MockAdapter({
-      files: { '/tips.json': TIPS, '/proj/opencues.md': '---\ntts-rate: 5\n---\n' },
+      files: { '/proj/cues.md': TIPS, '/proj/opencues.md': '---\ntts-rate: 5\n---\n' },
       cwd: '/proj',
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const loader = new ConfigLoader(adapter);
     await loader.load();
     const speakFn = vi.fn();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn, rate: '2' });

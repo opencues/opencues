@@ -24,7 +24,6 @@ module.exports = function which(argv, ctx) {
       ['Install root',               path.join(HOME, '.claude', 'opencues')],
       ['Built core',                 path.join(HOME, '.claude', 'opencues', 'core')],
       ['Built runtime',              path.join(HOME, '.claude', 'opencues', 'runtime')],
-      ['Tips JSON',                  path.join(HOME, '.claude', 'opencues', 'tips.json')],
       ['Statusline script',          path.join(HOME, '.claude', 'opencues', 'statusline.sh')],
       ['OS action scripts',          path.join(HOME, '.claude', 'opencues', 'actions')],
       ['tweakcc state + cli backup', path.join(HOME, '.claude', 'opencues', 'patch-state')],
