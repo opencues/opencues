@@ -396,7 +396,7 @@ export class Cycling {
       void startIndex;
       this.dynDefs.set(target.index, def);
     }
-    return this.applyAltCycle(event, def, direction);
+    return this.applyAltCycle(event, def, direction, target.index);
   }
 
   // ─── Path 3: step-pattern numeric ──────────────────────────────────────
@@ -529,7 +529,7 @@ export class Cycling {
       def = built;
     }
     if (def.alternatives.length <= 1) return false;
-    return this.applyAltCycle(event, def, direction);
+    return this.applyAltCycle(event, def, direction, wordIndex);
   }
 
   private buildDefFrom(target: { word: string; start: number; end: number; index: number }): WordDef | null {
@@ -551,7 +551,7 @@ export class Cycling {
 
   // ─── Shared alt-cycling loop ───────────────────────────────────────────
 
-  private applyAltCycle(event: KeyEvent, def: WordDef, direction: 1 | -1): boolean {
+  private applyAltCycle(event: KeyEvent, def: WordDef, direction: 1 | -1, wordIndex: number): boolean {
     const len = def.alternatives.length;
     if (len <= 1) return false;
     def.currentIndex = ((def.currentIndex + direction) % len + len) % len;
@@ -571,6 +571,27 @@ export class Cycling {
         ? cursorBefore + lenDiff
         : def.spanEnd;
     const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
+
+    // Multi-word alt handling: if the alt contains spaces, register it
+    // as a span in SpanFillState so Navigation treats the N words as
+    // one unit (left/right skip past the inner words) and DimRender
+    // highlights the whole group. Subsequent cycles land in Path 0
+    // (cycleSpanFill) — which keeps the entry's currentAltIndex +
+    // spanLength in sync as the user rotates through alts. Cycling
+    // back to a single-word alt clears the span.
+    if (this.spanFillState) {
+      const spanLength = nextWord.split(/\s+/).filter(Boolean).length;
+      if (spanLength > 1) {
+        this.spanFillState.set({
+          index: wordIndex,
+          alternatives: def.alternatives,
+          currentAltIndex: def.currentIndex,
+          spanLength,
+        }, newText);
+      } else if (this.spanFillState.current?.index === wordIndex) {
+        this.spanFillState.clear();
+      }
+    }
 
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(clampedCursor);
