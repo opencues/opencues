@@ -43,6 +43,33 @@ export class DynDefs {
    *   - its current alt is multi-word AND all N words match
    *     contiguously at [index..index+N-1] (mid-cycle multi-word span)
    */
+  /**
+   * Find the multi-word static-alt span (if any) that covers `index`.
+   * Returns the span's origin DynDef and length, or null if the
+   * position isn't inside any multi-word span.
+   *
+   * A multi-word span = a DynDef whose currentAlt contains spaces.
+   * The span occupies [originIdx .. originIdx + N - 1] where N is the
+   * alt's word count. After Apr 2026 (the multi-span refactor) this is
+   * the SOLE source of static-alt span info — DimRender, Navigation,
+   * and Cycling all consult it instead of SpanFillState (which now
+   * holds only blank-fills, one slot at a time).
+   *
+   * O(defs * 1). Linear in the number of active DynDefs, fine for the
+   * tens-of-words contexts the runtime sees in practice.
+   */
+  findSpanContaining(index: number): { originIdx: number; spanLength: number; def: WordDef } | null {
+    for (const [originIdx, def] of this._defs.entries()) {
+      if (originIdx > index) continue;
+      const currentAlt = def.alternatives[def.currentIndex] ?? '';
+      const altWords = currentAlt.split(/\s+/).filter(Boolean);
+      if (altWords.length <= 1) continue;
+      if (index >= originIdx + altWords.length) continue;
+      return { originIdx, spanLength: altWords.length, def };
+    }
+    return null;
+  }
+
   pruneStale(words: readonly { word: string }[]): void {
     for (const [index, def] of this._defs.entries()) {
       const actual = words[index]?.word;

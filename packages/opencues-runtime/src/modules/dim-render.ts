@@ -68,11 +68,34 @@ export class DimRender {
       if (activeInSatellite && ss && i >= ss.satelliteIndex && i <= ssSatEnd) return true;
       return false;
     };
+    // Used by both the dim loop AND the highlight expansion below —
+    // declared at outer scope so the highlight branch can reach it.
+    const activeStaticAltSpan = activeIndex !== null && activeIndex >= 0
+      ? this.dynDefs.findSpanContaining(activeIndex)
+      : null;
     if (hasDimCap && this.configLoader) {
       const navigable = this.configLoader.navigableWords;
+      const seenStaticAltSpans = new Set<number>();
       for (const w of words) {
         if (w.index === activeIndex) continue;
         if (isInsideActiveBlock(w.index)) continue;
+
+        // Multi-word static-alt span handling. Each origin emits ONE
+        // group dim range covering all N words. Inner positions are
+        // skipped (the origin's range covers them). The span the
+        // active highlight is inside (if any) is also skipped — the
+        // highlight layer paints it.
+        const span = this.dynDefs.findSpanContaining(w.index);
+        if (span) {
+          if (span.originIdx !== w.index) continue;
+          if (seenStaticAltSpans.has(span.originIdx)) continue;
+          seenStaticAltSpans.add(span.originIdx);
+          if (activeStaticAltSpan && activeStaticAltSpan.originIdx === span.originIdx) continue;
+          const endWord = words[span.originIdx + span.spanLength - 1];
+          if (endWord) dimRanges.push({ start: w.start, end: endWord.end });
+          continue;
+        }
+
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
         // Step 21: DynDefs entries (LLM-resolved alts) also count as
@@ -111,14 +134,21 @@ export class DimRender {
     }
 
     // Highlight: the active word (overlaid). When the active word is
-    // inside a span fill OR a multi-word satellite, expand the
-    // highlight to cover the whole unit — that's how the user sees a
-    // multi-word value as one cycleable thing.
+    // inside a span fill OR a multi-word satellite OR a multi-word
+    // static-alt span, expand the highlight to cover the whole unit
+    // — that's how the user sees a multi-word value as one cycleable
+    // thing.
     let highlight: { start: number; end: number } | undefined;
     if (hasHighlightCap && this.hlState.active && this.hlState.wordIndex !== null) {
       if (activeInSpanRegion && span) {
         const startWord = words[span.index];
         const endWord = words[span.index + spanLen - 1];
+        if (startWord && endWord) {
+          highlight = { start: startWord.start, end: endWord.end };
+        }
+      } else if (activeStaticAltSpan) {
+        const startWord = words[activeStaticAltSpan.originIdx];
+        const endWord = words[activeStaticAltSpan.originIdx + activeStaticAltSpan.spanLength - 1];
         if (startWord && endWord) {
           highlight = { start: startWord.start, end: endWord.end };
         }

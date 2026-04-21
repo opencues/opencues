@@ -160,70 +160,84 @@ describe('Cycling static-alt multi-word spans', () => {
     return { adapter, hlState, dynDefs, spanFillState, cycling, nav, bf };
   }
 
-  it('cycling to a multi-word alt registers a span', async () => {
-    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
-    hlState.activate(1, 'the attorney'); // attorney at word idx 1
-    adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer (single word; no span yet)
-    expect(spanFillState.current).toBeNull();
-    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle (2 words)
-    expect(spanFillState.current).not.toBeNull();
-    expect(spanFillState.current!.index).toBe(1);
-    expect(spanFillState.current!.spanLength).toBe(2);
-    expect(spanFillState.current!.alternatives).toContain('legal eagle');
+  it('cycling to a multi-word alt creates an implicit span via DynDefs', async () => {
+    // After Apr 2026 (option B refactor) static-alt spans are tracked
+    // implicitly by DynDefs — a span exists wherever a DynDef's
+    // currentAlt has multiple words. SpanFillState stays untouched
+    // (it's reserved for blank-fills, single-slot).
+    const { adapter, hlState, dynDefs, spanFillState } = await setupMw('the attorney');
+    hlState.activate(1, 'the attorney');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer (single)
+    expect(dynDefs.findSpanContaining(1)).toBeNull();
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle (multi)
+    const span = dynDefs.findSpanContaining(1);
+    expect(span).not.toBeNull();
+    expect(span!.originIdx).toBe(1);
+    expect(span!.spanLength).toBe(2);
     expect(adapter.setTextCalls.at(-1)).toBe('the legal eagle');
+    expect(spanFillState.current).toBeNull(); // SpanFillState left alone
   });
 
-  it('cycling multi-word → multi-word updates span (no clear)', async () => {
-    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+  it('cycling multi-word → multi-word keeps the span (DynDef updates)', async () => {
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
-    // Sequence: attorney → lawyer → legal eagle (span registered) → defendant counsel
     adapter.fireKey('up', { ctrl: true, alt: true });
-    adapter.fireKey('up', { ctrl: true, alt: true });
-    expect(spanFillState.current?.spanLength).toBe(2);
-    adapter.fireKey('up', { ctrl: true, alt: true }); // → "defendant counsel" (cycleSpanFill path)
-    expect(spanFillState.current).not.toBeNull();
-    expect(spanFillState.current!.spanLength).toBe(2);
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → defendant counsel
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
     expect(adapter.setTextCalls.at(-1)).toBe('the defendant counsel');
   });
 
-  it('cycling multi-word → single-word clears the span', async () => {
-    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+  it('cycling multi-word → single-word collapses the span', async () => {
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
-    // attorney → lawyer → legal eagle (span set) → defendant counsel → attorney (single)
     adapter.fireKey('up', { ctrl: true, alt: true });
     adapter.fireKey('up', { ctrl: true, alt: true });
     adapter.fireKey('up', { ctrl: true, alt: true });
-    expect(spanFillState.current?.spanLength).toBe(2);
-    adapter.fireKey('up', { ctrl: true, alt: true }); // wraps to "attorney" (original)
-    // Once cycleSpanFill has spanLength=1, the span is effectively gone;
-    // the SpanFillState entry may linger with spanLength=1, which is a
-    // no-op for nav/dim. Check that setText produced the single word.
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
+    adapter.fireKey('up', { ctrl: true, alt: true }); // wraps to original (single)
     expect(adapter.setTextCalls.at(-1)).toBe('the attorney');
-    const cur = spanFillState.current;
-    if (cur !== null) expect(cur.spanLength).toBe(1);
+    expect(dynDefs.findSpanContaining(1)).toBeNull();
   });
 
-  it('after span registered, Ctrl+Alt+Down from inner word cycles whole span', async () => {
-    // Simulate: user cycled to "Jeff Bezos", then highlight sat on
-    // "Bezos" (inner span word). Pressing Ctrl+Alt+Down should cycle
-    // the entire span, not just the inner word.
-    const { adapter, hlState, spanFillState } = await setupMw('the ceo said');
-    hlState.activate(1, 'the ceo said'); // ceo at idx 1
-    adapter.fireKey('up', { ctrl: true, alt: true }); // → Jeff Bezos (multi-word)
-    expect(spanFillState.current?.spanLength).toBe(2);
+  it('Ctrl+Alt+Up from inner span word redirects to origin and cycles whole span', async () => {
+    const { adapter, hlState, dynDefs } = await setupMw('the ceo said');
+    hlState.activate(1, 'the ceo said');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → Jeff Bezos (multi)
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
     expect(adapter.setTextCalls.at(-1)).toBe('the Jeff Bezos said');
 
-    // Once the span is registered, pressing Down from ANY word inside
-    // it (including the inner span position, idx 2 = "Bezos") should
-    // route through Path 0 (cycleSpanFill) because spanFillState.current
-    // is set. cycleSpanFill bounds-checks wordIndex against the span,
-    // so it accepts both idx 1 (origin) and idx 2 (inner).
     const before = adapter.setTextCalls.length;
     const currentText = adapter.setTextCalls.at(-1)!;
-    hlState.activate(2, currentText); // inner span word position (Bezos)
-    adapter.fireKey('down', { ctrl: true, alt: true });
+    hlState.activate(2, currentText); // inner span word (Bezos)
+    adapter.fireKey('up', { ctrl: true, alt: true }); // forward → next multi-word alt
     expect(adapter.setTextCalls.length).toBeGreaterThan(before);
-    expect(spanFillState.current).not.toBeNull(); // span persists through cycle
+    // Span persists — cycled from inner position to next multi-word alt.
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
+  });
+
+  it('TWO concurrent multi-word spans coexist via DynDefs', async () => {
+    // The bug option B exists to fix: SpanFillState held one slot,
+    // so registering span B clobbered span A. With DynDefs as the
+    // source, both spans live independently. Each span's origin DynDef
+    // tracks its own alts + currentIndex.
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney said the ceo agrees');
+    hlState.activate(1, 'the attorney said the ceo agrees');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    adapter.fireKey('up', { ctrl: true, alt: true }); // attorney → legal eagle
+    expect(adapter.setTextCalls.at(-1)).toBe('the legal eagle said the ceo agrees');
+    const spanA = dynDefs.findSpanContaining(1);
+    expect(spanA?.spanLength).toBe(2);
+
+    // After the cycle, "ceo" shifted from idx 4 to idx 5.
+    const newText = adapter.setTextCalls.at(-1)!;
+    hlState.activate(5, newText); // ceo at idx 5
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → Jeff Bezos
+    expect(adapter.setTextCalls.at(-1)).toBe('the legal eagle said the Jeff Bezos agrees');
+    // BOTH spans still active — no clobber.
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
+    expect(dynDefs.findSpanContaining(5)?.spanLength).toBe(2);
   });
 
   it('cycling single → multi-word prunes DynDefs at shifted word indices', async () => {
@@ -281,59 +295,50 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(adapter.setTextCalls.at(-1)).toBe('the ceo said');
   });
 
-  it('typing OUTSIDE the span preserves it (re-anchors index)', async () => {
-    // The bug this pins: user cycles "attorney" → "legal eagle",
-    // then continues typing (e.g. appends " today"). Old behaviour
-    // cleared SpanFillState on any text change, breaking the span
-    // into two independent words. New behaviour re-anchors the
-    // index — span stays, nav treats "legal eagle" as one unit.
-    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+  it('typing OUTSIDE the span preserves the DynDef (span words still match)', async () => {
+    // User cycles attorney → legal eagle, then appends ' today'.
+    // Pruning checks the multi-word alt's words still appear at the
+    // span's index — they do (idx 1 = "legal", idx 2 = "eagle"),
+    // so the DynDef + its implicit span survive.
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
-    adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer
+    adapter.fireKey('up', { ctrl: true, alt: true });
     adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle
-    expect(spanFillState.current?.spanLength).toBe(2);
-    expect(spanFillState.current?.index).toBe(1);
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
 
-    // Simulate the user appending ' today' to the end.
     adapter.pushText('the legal eagle today');
-    expect(spanFillState.current).not.toBeNull();
-    expect(spanFillState.current!.spanLength).toBe(2);
-    expect(spanFillState.current!.index).toBe(1); // still at position 1
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
   });
 
-  it('typing a prefix re-anchors the span to the new position', async () => {
-    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+  it('prepending text drops the span (no auto re-anchor in option B)', async () => {
+    // SpanFillState's preservation logic re-anchored on prefix edits;
+    // option B trades that off for N-spans support. After prefix edit
+    // the words at the OLD span index don't match anymore — pruning
+    // drops the DynDef cleanly. User cycles fresh from the new state.
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
     adapter.fireKey('up', { ctrl: true, alt: true });
     adapter.fireKey('up', { ctrl: true, alt: true });
-    expect(spanFillState.current?.index).toBe(1);
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
 
-    // Prepend two words — "legal eagle" now lives at word index 3.
-    adapter.pushText('hey there the legal eagle');
-    expect(spanFillState.current).not.toBeNull();
-    expect(spanFillState.current!.index).toBe(3);
+    adapter.pushText('hey there the legal eagle'); // span shifted to idx 3
+    // DynDef at idx 1 had originalWord=attorney, currentAlt="legal eagle".
+    // At idx 1 after prefix the word is "there" — mismatch on both
+    // the originalWord AND the multi-word match. Pruned.
+    expect(dynDefs.get(1)).toBeUndefined();
+    expect(dynDefs.findSpanContaining(3)).toBeNull(); // no def at new pos either
   });
 
-  it('destroying the span text clears the entry', async () => {
-    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+  it('destroying the span text drops the DynDef', async () => {
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
     adapter.fireKey('up', { ctrl: true, alt: true });
     adapter.fireKey('up', { ctrl: true, alt: true });
-    expect(spanFillState.current?.spanLength).toBe(2);
+    expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
 
-    // Replace the span text with something that doesn't match.
     adapter.pushText('the cat jumped');
-    expect(spanFillState.current).toBeNull();
-  });
-
-  it('span-free cycling leaves SpanFillState untouched', async () => {
-    const { adapter, hlState, spanFillState } = await setupMw('the big cat');
-    hlState.activate(1, 'the big cat'); // "big" has single-word alts only
-    // But wait — TIPS above doesn't have "big". Use "fast" setup.
-    // Skip this — we rely on single-word alts leaving state alone, tested
-    // implicitly by the other tests (SpanFillState starts null and only
-    // flips to non-null when a multi-word alt is cycled to).
-    expect(spanFillState.current).toBeNull();
+    expect(dynDefs.get(1)).toBeUndefined();
+    expect(dynDefs.findSpanContaining(1)).toBeNull();
   });
 });
 

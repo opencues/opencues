@@ -171,6 +171,12 @@ export class Navigation {
       const navigable = this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
+        // Skip inner positions of any multi-word static-alt span —
+        // navigation lands only on the origin so the span behaves as
+        // one unit. Same semantics as SpanFillState span handling
+        // below (which handles blank-fills).
+        const span = this.dynDefs.findSpanContaining(w.index);
+        if (span && span.originIdx !== w.index) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
         if (navigable?.has(lc)) {

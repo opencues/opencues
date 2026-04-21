@@ -532,6 +532,21 @@ export class Cycling {
     wordIndex: number,
     direction: 1 | -1,
   ): boolean {
+    // Inner-span redirect: if this index is inside a multi-word
+    // static-alt span (not the origin), cycle the origin instead so
+    // the whole span rotates as one unit. Mirrors what cycleSpanFill
+    // does for blank-fills.
+    const span = this.dynDefs.findSpanContaining(wordIndex);
+    if (span && span.originIdx !== wordIndex) {
+      const words = splitWords(event.text);
+      const origin = words[span.originIdx];
+      if (origin) {
+        return this.cycleStaticAlts(event, {
+          word: origin.word, start: origin.start, end: origin.end, index: span.originIdx,
+        }, span.originIdx, direction);
+      }
+    }
+
     let def = this.dynDefs.get(wordIndex);
     if (!def) {
       const built = this.buildDefFrom(target);
@@ -609,24 +624,12 @@ export class Cycling {
         : rangeStart + nextWord.length;
     const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
 
-    // Register / clear the span. Multi-word alts live in SpanFillState
-    // so Navigation skips inner positions, DimRender groups them, and
-    // the next cycle routes through Path 0. Cycling back to a single-
-    // word alt clears the span. Same semantics as blanks.
-    if (this.spanFillState) {
-      const spanLength = nextWord.split(/\s+/).filter(Boolean).length;
-      if (spanLength > 1) {
-        this.spanFillState.set({
-          kind: 'static-alt',
-          index: wordIndex,
-          alternatives: def.alternatives,
-          currentAltIndex: def.currentIndex,
-          spanLength,
-        }, newText);
-      } else if (this.spanFillState.current?.index === wordIndex) {
-        this.spanFillState.clear();
-      }
-    }
+    // Multi-word static-alt spans live in DynDefs, NOT SpanFillState
+    // (which is reserved for blank-fills — one slot at a time). The
+    // span is implicit: a DynDef's currentAlt with N words occupies
+    // N consecutive word positions. Navigation, DimRender, and
+    // Cycling all derive span ranges via DynDefs.findSpanContaining,
+    // which scales naturally to N concurrent spans.
 
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(clampedCursor);
