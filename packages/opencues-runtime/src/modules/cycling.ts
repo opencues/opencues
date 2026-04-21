@@ -521,7 +521,11 @@ export class Cycling {
     wordIndex: number,
     direction: 1 | -1,
   ): boolean {
-    let def = this.dynDefs.get(wordIndex);
+    // Stale DynDefs (from before a user edit) shouldn't be cycled —
+    // they'd rotate alternatives for a word that no longer lives at
+    // this position. Validate originalWord before trusting; rebuild
+    // on mismatch.
+    let def = this.dynDefs.getValid(wordIndex, target.word);
     if (!def) {
       const built = this.buildDefFrom(target);
       if (!built) return false;

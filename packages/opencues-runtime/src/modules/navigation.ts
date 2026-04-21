@@ -70,15 +70,17 @@ export class Navigation {
   }
 
   /**
-   * User typing (or any text change we didn't initiate) clears the highlight
-   * and any cycling state. Otherwise the highlight visually drifts onto an
-   * unrelated word as the buffer mutates underneath.
+   * User typing (or any text change we didn't initiate) clears the
+   * highlight — otherwise it visually drifts onto an unrelated word
+   * as the buffer mutates. DynDefs are deliberately NOT cleared here
+   * anymore: callers use `dynDefs.getValid(i, word)` which returns
+   * undefined for stale entries, so a keystroke no longer wipes the
+   * dim layer just to have it reappear 500ms later.
    */
   onTextChange(event: TextChangeEvent): void {
     if (event.source === 'runtime') return;
-    if (!this.hlState.active && this.dynDefs.size === 0) return;
+    if (!this.hlState.active) return;
     this.hlState.deactivate();
-    this.dynDefs.clear();
   }
 
   onArrowLeft(event: KeyEvent): boolean {
@@ -161,7 +163,7 @@ export class Navigation {
         if (lc.length === 0) continue;
         if (navigable?.has(lc)) {
           filtered.push(w.index);
-        } else if (this.dynDefs.get(w.index)) {
+        } else if (this.dynDefs.getValid(w.index, w.word)) {
           filtered.push(w.index);
         } else if (this.configLoader?.matchStepPattern(w.word)) {
           filtered.push(w.index);

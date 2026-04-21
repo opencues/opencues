@@ -26,6 +26,30 @@ export class DynDefs {
     return this._defs.get(wordIndex);
   }
 
+  /**
+   * Return the DynDef at this index IFF the word currently at that
+   * position is still "owned" by the def. Ownership = one of:
+   *   - the current word equals def.originalWord (def is fresh)
+   *   - the current word equals one of def.alternatives (user has
+   *     cycled to an alt; def still drives subsequent cycles)
+   * Otherwise the entry is stale (word indices shifted / user edited)
+   * and callers treat the position as unresolved. Resolver's next
+   * pass overwrites stale entries cleanly.
+   *
+   * Replaces the old blunt `dynDefs.clear()` on text-change. Clearing
+   * caused a dim-flash on every keystroke (Navigation wiped the defs,
+   * DimRender lost its data, Resolver re-populated 500 ms later).
+   * Keeping defs + validating on read eliminates the flash without
+   * letting stale entries leak visual glitches.
+   */
+  getValid(wordIndex: number, currentWord: string): WordDef | undefined {
+    const def = this._defs.get(wordIndex);
+    if (!def) return undefined;
+    if (def.originalWord === currentWord) return def;
+    if (def.alternatives.includes(currentWord)) return def;
+    return undefined;
+  }
+
   set(wordIndex: number, def: WordDef): void {
     this._defs.set(wordIndex, def);
   }

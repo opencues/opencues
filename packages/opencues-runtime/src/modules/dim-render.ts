@@ -80,7 +80,7 @@ export class DimRender {
         if (
           navigable.has(lc) ||
           this.configLoader.matchStepPattern(w.word) ||
-          this.dynDefs.get(w.index)
+          this.dynDefs.getValid(w.index, w.word)
         ) {
           dimRanges.push({ start: w.start, end: w.end });
         }
