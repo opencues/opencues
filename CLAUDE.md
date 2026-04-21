@@ -238,6 +238,58 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
+## Testing — write the SCENARIO that triggered the bug
+
+The runtime has 400+ tests. Most are unit tests, which are good at
+pinning module behaviour but **structurally bad at catching the bug
+class we keep hitting**: state inconsistencies across multiple modules
+during multi-step user journeys (cycle → cycle → type → cycle, two
+spans active, dim flicker between cycles, etc.).
+
+**Rule:** when fixing a bug, write the SCENARIO (multi-step user
+journey) that triggered it, not just a unit-level repro of the
+broken function.
+
+The right shape:
+```ts
+it('cycle → cycle → type → cycle preserves downstream defs', async () => {
+  const { adapter, hlState, dynDefs } = await setupScenario('the attorney filed today');
+  hlState.activate(1, ...);
+  adapter.fireKey('up', { ctrl: true, alt: true });
+  expect(adapter.setTextCalls.at(-1)).toBe('the lawyer filed today');
+  adapter.fireKey('up', { ctrl: true, alt: true });
+  expect(adapter.setTextCalls.at(-1)).toBe('the legal eagle filed today');
+  expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
+  // ... continue the user journey, asserting at every step
+});
+```
+
+The wrong shape (what we'd write reflexively):
+```ts
+it('applyAltCycle handles multi-word alt', () => {
+  const def = makeDef(...);
+  applyAltCycle(event, def, +1, 1);
+  expect(def.spanEnd).toBe(...);  // unit-level — misses every interaction
+});
+```
+
+Where to put scenario tests:
+- `packages/opencues-runtime/src/modules/cycling.scenarios.test.ts` — the
+  canonical place for cycling/span/dim/nav journeys. 30+ tests cover
+  the well-traveled paths; add to the relevant describe block.
+- New domains get their own `<feature>.scenarios.test.ts` file.
+
+Why this matters: the April 2026 bug arc had 8+ regressions caught
+only after the user reported them. Each was a state inconsistency
+across modules during a multi-step interaction. Unit tests covered
+each module in isolation but missed the journey. The scenarios file
++ the pattern above is the structural fix.
+
+See `docs/architecture/spans-and-cycling.md` § "Bugs we've fixed" for
+the table of regressions and which scenario test now pins each one.
+
+---
+
 ## Environment
 
 - **API Key**: `GROQ_API_KEY` for Groq (default provider)
