@@ -426,6 +426,43 @@ Then reload the extension at `chrome://extensions` and hard-refresh the page.
 
 > Symptom that this step was skipped: `[opencues][info] OpenCues runtime starting (Chrome v1)` is missing from devtools console while legacy `[OpenCues] ...` lines still fire.
 
+### `opencues sync chrome` source discovery
+
+Chrome is a global browser extension — it runs across every tab, has
+no cwd, and isn't scoped to any single project. So `sync chrome`
+deliberately breaks from the user+project search-paths model the
+native hosts use (see above). By default, **only `~/.opencues/`
+feeds into the chrome bundle.** The cwd you happen to run sync from
+does NOT get mixed in.
+
+To bundle project configs, opt them in explicitly:
+
+```bash
+opencues sync chrome --wsl                              # user-level only (default)
+opencues sync chrome --include ~/work/proj/.opencues --wsl    # + one project
+opencues sync chrome --include ~/a/.opencues --include ~/b/.opencues --wsl  # + several
+opencues sync chrome --project --wsl                    # + <cwd>/.opencues
+opencues sync chrome --pack demo-pack --wsl             # ONLY that pack
+opencues sync chrome --source ~/custom/.opencues --wsl  # ONLY that dir
+```
+
+Why this matters — `sync chrome --watch` is a long-running process.
+Under the old cwd-default model, starting the watcher from `~/scratch`
+would bind it to `~/scratch/.opencues` forever, silently missing edits
+in the project the user actually cares about. The explicit
+`--include` / `--project` model makes the watched paths part of the
+command, not a side-effect of startup cwd.
+
+Rule of thumb: if you're iterating on configs *inside this repo*, use
+
+```bash
+opencues sync chrome --include ~/opencues/.opencues --wsl --watch
+```
+
+so the watcher's path list is stable regardless of shell cwd.
+
+Full spec: `docs/features/chrome-sync.md`.
+
 ---
 
 ## Testing Harness (private)

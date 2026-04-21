@@ -5,16 +5,23 @@
 // read ~/.opencues/). CC/OC/codex have native ConfigLoader hot-reload
 // and don't need a sync step.
 //
-// Default sync sources (mirroring ConfigLoader precedence):
-//   1. $OPENCUES_HOME if set
-//   2. <cwd>/.opencues/   (project-level)
-//   3. ~/.opencues/        (user-level)
-// Project wins on name conflicts. Override via --user / --project /
-// --pack <name> / --source <path>.
+// ── Chrome source discovery ──────────────────────────────────────────
+// Chrome is a global browser extension — it isn't "in" a project, has
+// no cwd, and runs across every tab. So `sync chrome` defaults to
+// user-level ONLY, ignoring whatever directory you happened to run it
+// from. Projects that want their configs bundled must opt in:
+//
+//   1. $OPENCUES_HOME if set          (env override — single source)
+//   2. ~/.opencues/                   (user-level, default)
+//   3. + --include <path> (repeatable, highest priority → wins merges)
+//   4. + --project for <cwd>/.opencues (same precedence as --include)
+//
+// Override the whole chain with --pack <name> or --source <path>.
 //
 // Filter: entries whose host-compat (auto-detected from script:
 // extension or declared via on-host:/not-on-host: frontmatter) excludes
 // chrome are dropped. See docs/features/host-compat.md.
+// Rationale: docs/features/chrome-sync.md.
 
 'use strict';
 
@@ -29,17 +36,18 @@ module.exports = function sync(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let host = null;
-  const flags = { user: false, project: false, dryRun: false, watch: false, wsl: false };
+  const flags = { project: false, dryRun: false, watch: false, wsl: false };
+  const includes = [];
   let pack = null;
   let source = null;
   let target = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--user') flags.user = true;
-    else if (a === '--project') flags.project = true;
+    if (a === '--project') flags.project = true;
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--watch') flags.watch = true;
     else if (a === '--wsl') flags.wsl = true;
+    else if (a === '--include') includes.push(argv[++i]);
     else if (a === '--pack') pack = argv[++i];
     else if (a === '--source') source = argv[++i];
     else if (a === '--target') target = argv[++i];
@@ -57,7 +65,7 @@ module.exports = function sync(argv, ctx) {
     process.exit(2);
   }
 
-  const opts = { flags, pack, source, target };
+  const opts = { flags, includes, pack, source, target };
   if (flags.watch) {
     syncChromeWatch(opts, ctx);
     return;
@@ -146,11 +154,12 @@ function readVersion(distConfigs) {
   catch { return ''; }
 }
 
-function syncChrome({ flags, pack, source, target }, ctx) {
+function syncChrome({ flags, includes, pack, source, target }, ctx) {
   const core = loadCore(ctx);
-  const sources = resolveSources({ flags, pack, source });
+  const sources = resolveSources({ flags, includes, pack, source });
   if (sources.length === 0) {
-    console.error('opencues sync chrome: no sources resolved. Try --user, --project, --pack <name>, or --source <path>.');
+    console.error('opencues sync chrome: no sources resolved. ~/.opencues/ doesn\'t exist.');
+    console.error('Try --include <path>, --project, --pack <name>, or --source <path>.');
     process.exit(1);
   }
 
@@ -270,8 +279,23 @@ function isWsl() {
   catch { return false; }
 }
 
-// Resolve which .opencues/ dirs to read from based on flags.
-function resolveSources({ flags, pack, source }) {
+// Resolve which .opencues/ dirs to bundle for chrome.
+//
+// Chrome has no cwd — it's a browser extension running across every
+// tab. So sync chrome deliberately DOES NOT inherit the
+// "user + <cwd>/.opencues" model the native hosts use. It defaults to
+// user-level only; projects are opted in explicitly via --include /
+// --project / --pack / --source.
+//
+// Precedence (low → high; later overlays earlier on same-name files):
+//   1. $OPENCUES_HOME  (env override — if set, becomes the sole source)
+//   2. ~/.opencues      (user-level, always first unless overridden)
+//   3. each --include <path> in the order given
+//   4. --project        (pins to <cwd>/.opencues; highest project priority)
+//
+// --source <path> and --pack <name> SHORT-CIRCUIT everything above and
+// become the sole source. Useful for testing a single pack in isolation.
+function resolveSources({ flags, includes, pack, source }) {
   if (source) {
     const abs = path.resolve(source);
     return [{ label: 'custom', dir: abs }];
@@ -289,20 +313,25 @@ function resolveSources({ flags, pack, source }) {
     }
     return [{ label: 'pack', dir: found }];
   }
-  // Default chain. Project (low priority) goes first so user (high
-  // priority) overlays — wait, we want project to WIN (matches
-  // ConfigLoader). So order = [user (low), project (high)].
   const sources = [];
   const HOME = os.homedir();
   if (process.env.OPENCUES_HOME) {
     sources.push({ label: 'env', dir: process.env.OPENCUES_HOME });
-    return sources.filter(s => fs.existsSync(s.dir));
-  }
-  if (!flags.project) {
+  } else {
     const userDir = path.join(HOME, '.opencues');
     if (fs.existsSync(userDir)) sources.push({ label: 'user', dir: userDir });
   }
-  if (!flags.user) {
+  if (includes && includes.length) {
+    for (const inc of includes) {
+      const abs = path.resolve(inc);
+      if (!fs.existsSync(abs)) {
+        console.error(`opencues sync chrome: --include path not found: ${abs}`);
+        process.exit(1);
+      }
+      sources.push({ label: 'include', dir: abs });
+    }
+  }
+  if (flags.project) {
     const projectDir = path.join(process.cwd(), '.opencues');
     if (fs.existsSync(projectDir)) sources.push({ label: 'project', dir: projectDir });
   }
@@ -441,11 +470,18 @@ function printHelp() {
   console.log('Hosts:');
   console.log('  chrome      Bundle into integrations/chrome/dist/configs/');
   console.log('');
-  console.log('Sources (mutually exclusive; default = user + project merged):');
-  console.log('  --user            Only sync ~/.opencues/');
-  console.log('  --project         Only sync <cwd>/.opencues/');
-  console.log('  --pack <name>     Sync only ~/.opencues/packs/<name>/ (or <cwd>/...)');
-  console.log('  --source <path>   Sync from an arbitrary directory');
+  console.log('Default source:  ~/.opencues/ only.');
+  console.log('Chrome is a global browser extension with no cwd, so the project-');
+  console.log('level (<cwd>/.opencues/) discovery used by the native hosts is');
+  console.log('deliberately OFF by default. Opt projects in with --include / --project.');
+  console.log('');
+  console.log('Adding sources (stackable; later overlays earlier on same-name files):');
+  console.log('  --include <path>   Bundle this extra .opencues/ dir (repeatable)');
+  console.log('  --project          Also include <cwd>/.opencues/ (explicit opt-in)');
+  console.log('');
+  console.log('Overriding sources (short-circuits the default chain):');
+  console.log('  --pack <name>      Sync ONLY ~/.opencues/packs/<name>/ (or <cwd>/...)');
+  console.log('  --source <path>    Sync ONLY the given directory');
   console.log('');
   console.log('Flags:');
   console.log('  --watch              Re-sync on filesystem change (loop, Ctrl+C to stop)');
@@ -461,7 +497,17 @@ function printHelp() {
   console.log('See docs/features/host-compat.md for the full spec.');
   console.log('');
   console.log('Examples:');
-  console.log('  opencues sync chrome                    # default user + project');
-  console.log('  opencues sync chrome --pack demo-pack   # one pack only');
-  console.log('  opencues sync chrome --dry-run          # preview the plan');
+  console.log('  opencues sync chrome --wsl');
+  console.log('    # user-level only, mirror to Windows-side install (typical)');
+  console.log('  opencues sync chrome --include ~/work/repo-a/.opencues --wsl');
+  console.log('    # user + one project');
+  console.log('  opencues sync chrome --project --wsl');
+  console.log('    # user + whatever project dir you\'re in right now');
+  console.log('  opencues sync chrome --pack demo-pack --wsl');
+  console.log('    # just that pack, nothing else');
+  console.log('  opencues sync chrome --dry-run');
+  console.log('    # preview the plan');
+  console.log('  opencues sync chrome --include ~/opencues/.opencues --wsl --watch');
+  console.log('    # long-running watcher: stays on this explicit path list');
+  console.log('    # regardless of where your shell cwd wanders');
 }

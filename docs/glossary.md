@@ -86,6 +86,8 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **Host Compat** — Per-entry declaration of which hosts a cue / blank / control runs on. Auto-detected from `script:` extension (`.sh` etc. → not chrome) and overridable via `on-host:` (allow-list) and `not-on-host:` (deny-list) frontmatter fields. Surfaced in `opencues list`, validated by `opencues validate`, used by `opencues sync chrome` to filter the bundle. See `docs/features/host-compat.md` for the full spec.
 
+**Chrome Sync** — `opencues sync chrome` bundles `.opencues/` configs into the browser extension's `dist/configs/`. Unlike the native hosts (which merge `~/.opencues/` + `<cwd>/.opencues/` automatically), chrome defaults to **user-level only** — projects are opted in with `--include <path>` (repeatable) or `--project`. Rationale: chrome is a global browser extension with no cwd, so inheriting cwd-based project discovery causes long-running `--watch` processes to bind to the wrong directory. Full spec: `docs/features/chrome-sync.md`.
+
 ---
 
 ## Cue Sources

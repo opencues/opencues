@@ -30,6 +30,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 20 | [Consume-Context Blanks](consume-context-blanks.md) | Blanks that collapse keyword + context between keyword and blank, preserving surrounding text |
 | 21 | [Cursor Navigate](cursor-navigate.md) | Highlight automatically follows cursor to navigable words |
 | 22 | [Word-Alt Routing](word-alt-routing.md) | Per-word dispatch of `### alternatives` cue sources via match/keywords/priority/default |
+| 23 | [Chrome Sync](chrome-sync.md) | How `opencues sync chrome` picks which `.opencues/` dirs feed the browser extension (user-only by default; opt-in for projects) |
 
 ## Adding a new feature
 
