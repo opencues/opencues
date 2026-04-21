@@ -57,6 +57,36 @@ declare const __DEFAULT_TIPS_JSON__: string;
 const ROOT = '/chrome-storage';
 const TIPS_KEY = `${STORAGE_PREFIX}/chrome-storage/.tips.json`;
 
+// Per-readFile trace logging is OFF by default — at ~20 lines per
+// boot it was the loudest thing in DevTools. Gated behind the
+// user-facing `debug-mode: on` setting. Flip it via the cue-control
+// (`opencues settings _` → cycle debug-mode to `on`) or the CLI
+// (`opencues debug on`). Reflects both initial boot state and live
+// cycling — chrome.storage.onChanged subscription updates the flag
+// without an extension reload.
+let _readTrace = false;
+function tlog(msg: string): void { if (_readTrace) console.log(msg); }
+function parseDebugMode(content: string | null | undefined): boolean {
+  return /debug-mode:\s*on\b/i.test(content ?? '');
+}
+async function refreshReadTraceFromStorage(): Promise<void> {
+  try {
+    const key = `${STORAGE_PREFIX}${ROOT}/opencues.md`;
+    const result = await chrome.storage.local.get(key);
+    const v = typeof result[key] === 'string' && result[key].length > 0
+      ? result[key]
+      : __DEFAULT_OPENCUES_MD__;
+    _readTrace = parseDebugMode(v);
+  } catch { _readTrace = false; }
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  const key = `${STORAGE_PREFIX}${ROOT}/opencues.md`;
+  if (key in changes && typeof changes[key].newValue === 'string') {
+    _readTrace = parseDebugMode(changes[key].newValue);
+  }
+});
+
 let bootResult: BootResult | undefined;
 let currentTarget: HTMLElement | null = null;
 const speech = new WebSpeechAdapter();
@@ -158,7 +188,7 @@ async function readFile(path: string): Promise<string | null> {
   // 1. Synced bundle (opencues sync chrome --wsl) wins if present.
   const bundled = await readBundledConfig(path);
   if (bundled !== null) {
-    console.log(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
+    tlog(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
     return bundled;
   }
 
@@ -170,10 +200,10 @@ async function readFile(path: string): Promise<string | null> {
   if (isReadOnlyPath(path)) {
     const bake = readBakeTimeDefault(path);
     if (bake !== null) {
-      console.log(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars)`);
+      tlog(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars)`);
       return bake;
     }
-    console.log(`[opencues] readFile(${path}) ← null (no bundle, no bake-time)`);
+    tlog(`[opencues] readFile(${path}) ← null (no bundle, no bake-time)`);
     return null;
   }
 
@@ -186,7 +216,7 @@ async function readFile(path: string): Promise<string | null> {
     const result = await chrome.storage.local.get(key);
     const v = result[key];
     if (typeof v === 'string' && v.length > 0) {
-      console.log(`[opencues] readFile(${path}) ← storage (${v.length} chars)`);
+      tlog(`[opencues] readFile(${path}) ← storage (${v.length} chars)`);
       return v;
     }
   } catch (err) {
@@ -194,10 +224,10 @@ async function readFile(path: string): Promise<string | null> {
   }
   const bake = readBakeTimeDefault(path);
   if (bake !== null) {
-    console.log(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars, storage empty)`);
+    tlog(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars, storage empty)`);
     return bake;
   }
-  console.log(`[opencues] readFile(${path}) ← null (no bundle, no storage, no bake-time)`);
+  tlog(`[opencues] readFile(${path}) ← null (no bundle, no storage, no bake-time)`);
   return null;
 }
 
@@ -472,6 +502,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   });
 
   startVersionPoll(bootResult);
+
+  // One-shot read of debug-mode from storage — subsequent flips are
+  // picked up by the chrome.storage.onChanged listener registered
+  // near the top of this file.
+  void refreshReadTraceFromStorage();
+
   return bootResult;
 }
 
