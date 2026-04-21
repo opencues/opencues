@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { Cycling } from './cycling';
 import { ConfigLoader } from './config-loader';
 import { Navigation } from './navigation';
+import { BlankFill } from './blank-fill';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
@@ -144,7 +145,11 @@ describe('Cycling static-alt multi-word spans', () => {
     cycling.subscribe();
     const nav = new Navigation(adapter, hlState, dynDefs, spanFillState);
     nav.subscribe();
-    return { adapter, hlState, dynDefs, spanFillState, cycling, nav };
+    // BlankFill's onTextChange is where SpanFillState preservation runs.
+    // Wire it up so typing-past-the-span tests exercise the real path.
+    const bf = new BlankFill(adapter, loader, spanFillState);
+    bf.subscribe();
+    return { adapter, hlState, dynDefs, spanFillState, cycling, nav, bf };
   }
 
   it('cycling to a multi-word alt registers a span', async () => {
@@ -211,6 +216,51 @@ describe('Cycling static-alt multi-word spans', () => {
     adapter.fireKey('down', { ctrl: true, alt: true });
     expect(adapter.setTextCalls.length).toBeGreaterThan(before);
     expect(spanFillState.current).not.toBeNull(); // span persists through cycle
+  });
+
+  it('typing OUTSIDE the span preserves it (re-anchors index)', async () => {
+    // The bug this pins: user cycles "attorney" → "legal eagle",
+    // then continues typing (e.g. appends " today"). Old behaviour
+    // cleared SpanFillState on any text change, breaking the span
+    // into two independent words. New behaviour re-anchors the
+    // index — span stays, nav treats "legal eagle" as one unit.
+    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+    hlState.activate(1, 'the attorney');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle
+    expect(spanFillState.current?.spanLength).toBe(2);
+    expect(spanFillState.current?.index).toBe(1);
+
+    // Simulate the user appending ' today' to the end.
+    adapter.pushText('the legal eagle today');
+    expect(spanFillState.current).not.toBeNull();
+    expect(spanFillState.current!.spanLength).toBe(2);
+    expect(spanFillState.current!.index).toBe(1); // still at position 1
+  });
+
+  it('typing a prefix re-anchors the span to the new position', async () => {
+    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+    hlState.activate(1, 'the attorney');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(spanFillState.current?.index).toBe(1);
+
+    // Prepend two words — "legal eagle" now lives at word index 3.
+    adapter.pushText('hey there the legal eagle');
+    expect(spanFillState.current).not.toBeNull();
+    expect(spanFillState.current!.index).toBe(3);
+  });
+
+  it('destroying the span text clears the entry', async () => {
+    const { adapter, hlState, spanFillState } = await setupMw('the attorney');
+    hlState.activate(1, 'the attorney');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(spanFillState.current?.spanLength).toBe(2);
+
+    // Replace the span text with something that doesn't match.
+    adapter.pushText('the cat jumped');
+    expect(spanFillState.current).toBeNull();
   });
 
   it('span-free cycling leaves SpanFillState untouched', async () => {

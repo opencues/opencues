@@ -27,6 +27,20 @@ export interface SpanFillEntry {
   currentAltIndex: number;
   spanLength: number;
   /**
+   * What kind of span this is. Controls invalidation semantics on
+   * text change:
+   *   'blank-fill' — consume-all / stepValue / blankScript output.
+   *                  Strict: any text change clears the stash (user
+   *                  is assumed to be moving on).
+   *   'static-alt' — a plain cue-word cycled to a multi-word alt
+   *                  (e.g. "attorney" → "legal eagle"). Tolerant:
+   *                  edits OUTSIDE the span text preserve the entry
+   *                  (re-anchor index) — user is continuing to write
+   *                  around a previously-cycled span.
+   * Default 'blank-fill' keeps the original behaviour.
+   */
+  readonly kind?: 'blank-fill' | 'static-alt';
+  /**
    * Optional control-side tip text. When set, Statusline shows this verbatim
    * when the highlight lands on the span — bypasses cueMap lookup which
    * would miss filled words like "13.9°C" or "Reddit".

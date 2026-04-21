@@ -583,6 +583,7 @@ export class Cycling {
       const spanLength = nextWord.split(/\s+/).filter(Boolean).length;
       if (spanLength > 1) {
         this.spanFillState.set({
+          kind: 'static-alt',
           index: wordIndex,
           alternatives: def.alternatives,
           currentAltIndex: def.currentIndex,

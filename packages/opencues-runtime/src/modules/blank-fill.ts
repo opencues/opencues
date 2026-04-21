@@ -83,12 +83,15 @@ export class BlankFill {
   private onTextChange(e: TextChangeEvent): void {
     // Step 31 / Phase F.b invalidation: if the span fill is live and the
     // current text doesn't match what we last filled (cycle or initial),
-    // the user edited it — drop the stash AND any dismissed-blank flags
-    // tied to the old span (their word indices are no longer meaningful).
+    // try to preserve the span (user edited OUTSIDE it — just re-anchor
+    // the word index). If preservation fails, drop the stash AND any
+    // dismissed-blank flags tied to the old span.
     const cleaned = e.text.replace(/[\u200B\u200C]/g, '');
     if (this.spanFillState && this.spanFillState.current && cleaned !== this.spanFillState.lastFilledText) {
-      this.spanFillState.clear();
-      this.dismissedBlanks?.clear();
+      if (!this.maybePreserveSpanFill(cleaned)) {
+        this.spanFillState.clear();
+        this.dismissedBlanks?.clear();
+      }
     }
     // Phase G.a / G.c — selector/satellite stash. Tolerate edits OUTSIDE
     // the pair (typing a space after, prepending text before): pair is
@@ -397,6 +400,58 @@ export class BlankFill {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
     }
+  }
+
+  /**
+   * Try to preserve a SpanFillState entry when the user typed OUTSIDE
+   * the span (continuing a sentence, prepending text, etc.). Returns
+   * true when the span's current alt text still appears exactly once
+   * in the new text as a contiguous word sequence — in that case the
+   * entry's `index` is re-anchored to the new position and
+   * `lastFilledText` is updated. Returns false when the span is
+   * genuinely broken (alt text edited, duplicate matches, missing) so
+   * the caller invalidates.
+   *
+   * Fixes the "typing breaks the span into two words" regression: the
+   * old behaviour cleared SpanFillState on any text mismatch, so
+   * adding a single character after a multi-word alt dropped the span
+   * entirely and left the N words floating as independent nav units.
+   */
+  private maybePreserveSpanFill(newText: string): boolean {
+    if (!this.spanFillState) return false;
+    const entry = this.spanFillState.current;
+    if (!entry) return false;
+    // Only static-alt spans (cue words cycled to multi-word alts)
+    // preserve on outside edits. Blank-fill spans (consume-all,
+    // stepValues, blankScript) stick to strict-equality invalidation.
+    if (entry.kind !== 'static-alt') return false;
+    const currentAlt = entry.alternatives[entry.currentAltIndex];
+    if (!currentAlt) return false;
+    const altWords = currentAlt.split(/\s+/).filter(Boolean);
+    if (altWords.length === 0) return false;
+
+    const words = splitWords(newText);
+    let matchIndex = -1;
+    for (let i = 0; i <= words.length - altWords.length; i += 1) {
+      let ok = true;
+      for (let j = 0; j < altWords.length; j += 1) {
+        if (words[i + j]?.word !== altWords[j]) { ok = false; break; }
+      }
+      if (ok) {
+        if (matchIndex !== -1) return false; // ambiguous — clear
+        matchIndex = i;
+      }
+    }
+    if (matchIndex === -1) return false;
+
+    // index is readonly on SpanFillEntry — construct a fresh entry
+    // with the re-anchored index, preserving everything else.
+    this.spanFillState.set({
+      ...entry,
+      index: matchIndex,
+      spanLength: altWords.length,
+    }, newText);
+    return true;
   }
 
   /**
