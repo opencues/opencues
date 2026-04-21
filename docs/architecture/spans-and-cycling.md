@@ -1,0 +1,525 @@
+# Spans and Cycling — Implementation Reference
+
+This is the canonical implementation reference for everything that
+happens when a user presses Ctrl+Alt+Up/Down, Left/Right on a word in
+the buffer. It complements the feature-level docs in
+`docs/features/cycling.md` and `docs/features/multi-word-spans.md`,
+which describe the user-visible behaviour.
+
+If you're re-implementing the runtime in a new language, debugging an
+edge case, or trying to understand why two pieces of state exist for
+something that looks the same — start here.
+
+---
+
+## Where the code lives
+
+**Everything is in `@opencues/runtime`.** Adapters (chrome, claude-code,
+opencode, codex) wire it up via `buildSharedRuntime()` and never
+re-implement the cycling/span/dim/nav logic. `@opencues/core` is a
+separate concern: it does LLM resolution and produces alternatives.
+
+```
+packages/opencues-runtime/
+├── src/
+│   ├── state/
+│   │   ├── dyn-defs.ts           ← static-alt span source of truth
+│   │   ├── span-fill.ts          ← blank-fill span (single slot)
+│   │   ├── highlight-state.ts    ← which word is selected
+│   │   ├── dismissed-blanks.ts   ← user said "no" to filling this `_`
+│   │   └── selector-satellite.ts ← `opencues settings _` pair
+│   └── modules/
+│       ├── cycling.ts            ← all Ctrl+Alt+Up/Down dispatch
+│       ├── navigation.ts         ← all Ctrl+Alt+Left/Right dispatch
+│       ├── dim-render.ts         ← computes dim + highlight ranges
+│       ├── blank-fill.ts         ← detects `_`, runs scripts/LLM, registers
+│       │                            spans, owns SpanFillState invalidation
+│       └── resolver.ts           ← runs the LLM Resolver, populates DynDefs
+└── adapters/{cc,oc,chrome,codex}/v*/boot.ts ← per-host wiring
+```
+
+---
+
+## Two span systems, two roles
+
+OpenCues has **two different span tracking systems**. They coexist
+deliberately because they have different semantics.
+
+### Blank-fill spans (`SpanFillState`)
+
+For: `_` placeholders that get filled by control scripts or LLM
+classifiers. Examples:
+- `weather _ paris` → `_` becomes `13.9°C, light cloud`
+- `improve prompt write a poem _` → consume-all overwrites the whole
+  buffer with the improved prompt
+- `volume _` → blankScript writes the current value (`50%`)
+
+**Single-slot** — at any moment, at most ONE blank-fill is being
+cycled. This matches the user model: they're focused on one fill at a
+time, then move on.
+
+When the user types after the fill, the span clears (their next edit
+is unrelated; they're done with that blank).
+
+### Static-alt spans (DynDefs implicit)
+
+For: a normal word whose LLM-resolved or static-tip alternative
+happens to be multiple words. Examples:
+- `attorney → legal eagle` (LLM-suggested multi-word synonym)
+- `ceo → Jeff Bezos` (proper-noun replacement)
+- `spantest → one word, two words, ...` (test fixture)
+
+**N-slot** — many can coexist in one buffer. A sentence might have
+both `legal eagle` AND `Jeff Bezos` active; cycling either doesn't
+disturb the other.
+
+When the user types, downstream defs SHIFT to follow their words; if
+the span text is destroyed (mid-word edit), only that one def is
+pruned. Other spans persist.
+
+---
+
+## Data structures
+
+### `WordDef` (in `state/dyn-defs.ts`)
+
+The unit of static-alt span tracking. One per cycled word position.
+
+```ts
+interface WordDef {
+  readonly originalWord: string;     // word as it appeared at populate time
+  readonly alternatives: readonly string[];  // index 0 = original; 1+ = alts
+  currentIndex: number;              // which alt is currently displayed
+  spanStart: number;                 // char offset (cache; not source of truth)
+  spanEnd: number;                   // char offset (cache; not source of truth)
+  readonly controlName?: string;     // attribution for blank-fill DynDefs
+}
+```
+
+A WordDef "is" a multi-word span when
+`alternatives[currentIndex].split(/\s+/).length > 1`. The span occupies
+`[index, index + altWordCount)` in the current text.
+
+### `SpanFillEntry` (in `state/span-fill.ts`)
+
+The unit of blank-fill span tracking. ONE entry exists in
+`SpanFillState` at any moment.
+
+```ts
+interface SpanFillEntry {
+  readonly index: number;
+  readonly alternatives: readonly string[];
+  currentAltIndex: number;
+  spanLength: number;
+  readonly kind?: 'blank-fill' | 'static-alt';  // strict-equality vs preserve
+  readonly blankTip?: string;
+}
+```
+
+Historical note: `kind: 'static-alt'` exists because an earlier version
+registered static-alt spans here too. After the April 2026 refactor
+(`refactor(runtime): static-alt spans now live in DynDefs`), only
+blank-fills set entries here. The field is kept for backwards-compat
+inside the type but is not written by any current code path.
+
+---
+
+## Cycling dispatch — the seven paths
+
+When Ctrl+Alt+Up/Down fires, `Cycling.onKey` runs through paths in
+order. First one to return `true` wins.
+
+| Path | Condition | What it does |
+|---|---|---|
+| -1 | `selectorSatelliteState.current` | Selector/satellite cycling (e.g. `opencues settings _`) |
+| 0  | `spanFillState.current` AND wordIndex inside the span | Blank-fill span cycling (`cycleSpanFill`) |
+| 1  | Word maps to a control with `script:` | Spawn the script (no text change, side-effect only) |
+| 2  | Word maps to a control with `stepValues:` | Rotate values in-place (`cycleListControl`) |
+| 3a | DynDef at this index has `controlName` | Cycle via that control's blankStep/Suffix/Script |
+| 3  | Word matches a `step:` pattern (`5f`, `50%`) | Numeric arithmetic (`cycleStepPattern`) |
+| 4  | Default | Static-alt cycling (`cycleStaticAlts`) |
+
+Path 4 is where multi-word static-alt spans are created and rotated.
+Path 0 is for blank-fills only (since the April 2026 refactor).
+
+---
+
+## Path 4 — `cycleStaticAlts` walkthrough
+
+This is the most-trafficked path, and where multi-word span behaviour
+emerges.
+
+### 1. Inner-span redirect
+
+If the highlighted index is inside an existing multi-word DynDef span
+(but not the origin), recurse with the origin's index. This makes
+pressing Ctrl+Alt+Up on `eagle` cycle `legal eagle` as a unit, not
+nothing.
+
+```ts
+const span = this.dynDefs.findSpanContaining(wordIndex);
+if (span && span.originIdx !== wordIndex) {
+  // recurse on the origin
+}
+```
+
+### 2. Get-or-build the DynDef
+
+```ts
+let def = this.dynDefs.get(wordIndex);
+if (!def) {
+  def = this.buildDefFrom(target);  // looks up alts via configLoader
+  if (!def) return false;            // word has no cue, nothing to cycle
+  this.dynDefs.set(wordIndex, def);
+}
+```
+
+### 3. `applyAltCycle` — the splice
+
+```ts
+// 1. Compute the splice range from LIVE word positions every time
+//    (never trust def.spanStart/spanEnd — they drift across cycles).
+const words = splitWords(event.text);
+const startWord = words[wordIndex];
+const currentAlt = def.alternatives[def.currentIndex];   // BEFORE the cycle
+const currentAltWordCount = max(1, currentAlt.split(/\s+/).length);
+const endWord = words[wordIndex + currentAltWordCount - 1];
+const rangeStart = startWord.start;
+const rangeEnd = endWord.end;
+
+// 2. Advance the cycle, splice the new alt in.
+def.currentIndex = (def.currentIndex + direction + len) % len;
+const nextWord = def.alternatives[def.currentIndex];
+const newText = event.text.slice(0, rangeStart) + nextWord + event.text.slice(rangeEnd);
+
+// 3. Cache the new char range (best-effort; recomputed next time).
+def.spanStart = rangeStart;
+def.spanEnd = rangeStart + nextWord.length;
+
+// 4. Push the new text + cursor.
+adapter.setText(newText);
+adapter.setCursorOffset(...);
+
+// 5. If word count changed, SHIFT downstream DynDefs by delta, then
+//    PRUNE anything still mismatched. This keeps resolved-but-
+//    unrelated words' DynDefs continuous across the cycle (no dim
+//    flicker) while dropping anything genuinely stale.
+const delta = nextAltWordCount - currentAltWordCount;
+if (delta !== 0) {
+  this.dynDefs.shiftAfter(wordIndex, delta);
+  this.dynDefs.pruneStale(splitWords(newText));
+}
+
+adapter.forceRender();
+```
+
+### Why the order matters
+
+- **Live word positions before def.spanStart cache** — caches drift over
+  multi-word cycles. Multi-word → multi-word → user edits → cycle
+  again would splice at a stale offset and corrupt the buffer.
+- **Shift before prune** — if "filed" is at idx 2 and we cycle the def
+  at idx 1 from single to 2-word, "filed" shifts to idx 3. Without
+  shift-first, prune sees "the word at idx 2 is no longer 'filed'" and
+  drops the def → dim flickers off until Resolver re-runs.
+
+---
+
+## DynDefs methods and invariants
+
+### `findSpanContaining(index)` — query
+
+Returns `{ originIdx, spanLength, def } | null`. `null` if `index`
+isn't inside any multi-word DynDef span. Linear in number of defs.
+
+Used by:
+- Navigation.computeTargets — skip inner span positions
+- DimRender.compute — group dim across spans, expand highlight
+- Cycling.cycleStaticAlts — inner-span redirect
+
+### `shiftAfter(originIndex, delta)` — mutation
+
+Shifts every DynDef at index > originIndex by `delta` positions.
+Snapshot-then-reinsert; collision-safe with origin and below.
+
+Called from `applyAltCycle` after a word-count-changing cycle.
+
+### `pruneStale(words)` — mutation
+
+Drops every DynDef whose def.originalWord doesn't match the current
+word at its index AND whose currentAlt doesn't either (single-word: ===
+match, multi-word: all N words contiguously match).
+
+Called from:
+- Navigation.onTextChange — user edits
+- Cycling.applyAltCycle — after shift, to mop up genuine staleness
+
+### `get(wordIndex)` — query
+
+Plain access. Note: with pruning in place, callers can trust the result
+is fresh-or-undefined; no need to validate on read.
+
+---
+
+## Navigation — span-aware computeTargets
+
+`computeTargets` produces the ordered list of word indices the
+highlight can land on. Multi-word span inner positions are excluded:
+
+```ts
+for (const w of words) {
+  // SpanFillState (blank-fills) — handled by another branch above.
+  // DynDefs (static-alt) — skip inner positions.
+  const span = this.dynDefs.findSpanContaining(w.index);
+  if (span && span.originIdx !== w.index) continue;
+  // ... usual navigable filter (cueMap / step pattern / DynDef)
+}
+```
+
+`Navigation.onTextChange` (user edits only) calls `dynDefs.pruneStale`
+to drop entries whose words have changed.
+
+---
+
+## DimRender — group dim and highlight expansion
+
+Three loops produce render directives:
+
+1. **Per-word dim** — for each word that's navigable AND not active AND
+   not in an active highlight block:
+   - If inside a multi-word DynDef span:
+     - Origin emits ONE group dim range covering all N words
+     - Inner positions are skipped
+     - The span containing the active highlight is also skipped (the
+       highlight covers it)
+   - Otherwise: emit a per-word dim range
+2. **SpanFillState span dim** — if a blank-fill span is active and the
+   highlight isn't inside it, dim the whole span as one block.
+3. **Selector/satellite dim** — same shape, separate state.
+
+For the highlight:
+- If active is inside a SpanFillState span → expand to span range
+- Else if active is inside a multi-word DynDef span → expand to span range
+- Else if active is inside a selector/satellite multi-word side → expand
+- Else → just the active word
+
+---
+
+## BlankFill — blank-fill span lifecycle
+
+`BlankFill.onTextChange` is where SpanFillState gets invalidated and
+re-anchored.
+
+```ts
+if (this.spanFillState && this.spanFillState.current && cleaned !== lastFilledText) {
+  if (!this.maybePreserveSpanFill(cleaned)) {
+    this.spanFillState.clear();
+    this.dismissedBlanks?.clear();
+  }
+}
+```
+
+`maybePreserveSpanFill` only fires for `kind: 'static-alt'` entries
+(legacy code path, no longer used by current code) — it tries to find
+the alt's words elsewhere in the new text and re-anchor `entry.index`.
+For `kind: 'blank-fill'`, any text mismatch clears the entry (the
+"user moved on" semantic).
+
+---
+
+## The Resolver loop
+
+The Resolver re-runs on user text changes (debounced 500ms). It
+populates DynDefs with LLM-suggested alts.
+
+Two filters prevent waste:
+1. **Skip already-resolved words** — `cleanWords[i] = ''` if
+   `dynDefs.get(i)` exists and `originalWord === word[i]` and
+   `alts.length > 1`. RoutedWordSourceGroup sees empty strings and
+   skips them — no LLM call, no token spend.
+2. **Skip inside active span-fill** — same treatment for words inside
+   `spanFillState.current` range.
+
+Blanks (`_`) are NEVER skipped — their answer depends on context that
+may have changed.
+
+---
+
+## Pruning + shifting flow chart
+
+```
+                      ┌──────────────────────────┐
+                      │ Text change (any source) │
+                      └────────────┬─────────────┘
+                                   │
+        ┌──────────────────────────┴──────────────────────────┐
+        │                                                     │
+   user source                                          runtime source
+   (keystroke)                                          (cycling, fill)
+        │                                                     │
+        ▼                                                     ▼
+  Navigation.onTextChange                                 Cycling
+        │                                                     │
+        ├─ hlState.deactivate()                               ├─ apply splice
+        ├─ dynDefs.pruneStale(words)                          │
+        │                                                     ├─ if word-count
+  BlankFill.onTextChange                                      │  changed:
+        │                                                     │   ├─ shiftAfter
+        ├─ if spanFillState mismatch:                         │   └─ pruneStale
+        │   ├─ try maybePreserveSpanFill                      │
+        │   └─ else: clear()                                  └─ forceRender
+        │                                                       (no Nav/BlankFill
+   forceRender (later)                                          subscribers fire)
+```
+
+---
+
+## What lives in adapters vs runtime
+
+Adapters do TWO things related to cycling/spans:
+
+1. **Provide the `HostAdapter`** — `setText`, `setCursorOffset`,
+   `forceRender`, `onKey`, `onTextChange`, `readFile`, `readDir`, etc.
+2. **Render the directives** — chrome paints CSS Custom Highlight API
+   ranges, claude-code emits ANSI sequences, opencode draws via its TUI.
+
+Adapters do NOT:
+- Track spans
+- Compute dim ranges
+- Decide what's navigable
+- Cycle alternatives
+
+If you're writing a new adapter, you implement steps 1+2 above and
+inherit everything else from `buildSharedRuntime`. The cycling/spans
+logic in this doc applies to your host automatically.
+
+---
+
+## Test fixtures and patterns
+
+### `MockAdapter` (testing/mock-adapter.ts)
+
+The test stand-in for any host. Records every `setText`, `forceRender`,
+key dispatch, etc. Simulate user keystrokes via `fireKey`, simulate
+typing via `pushText`, assert on `setTextCalls.at(-1)` for the visible
+output.
+
+### `wrapTipsAsCuesMd(data)` (in mock-adapter.ts)
+
+Wraps a tips JSON object as a minimal cues.md so ConfigLoader's
+existing parser flow loads it from `## Tips`. Use for any test that
+needs cued words.
+
+### Static-alt span fixture (`spantest`)
+
+Live in both `defaults/cues.md` AND `~/.opencues/cues.md` (after
+seeding) for manual testing in chrome / opencode:
+
+```json
+{
+  "id": "span-test",
+  "words": {
+    "spantest": {
+      "alts": ["one word", "two words", "three short words", "back to one"]
+    }
+  }
+}
+```
+
+Cycle sequence covers: single → multi (2) → multi (2) → multi (3) →
+multi (3) → wrap to single. Hits every transition.
+
+### Pinning a regression with vitest
+
+Pattern from `cycling.test.ts`:
+
+```ts
+const { adapter, hlState, dynDefs } = await setupMw('the attorney filed today');
+hlState.activate(1, 'the attorney filed today');
+adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer
+expect(adapter.setTextCalls.at(-1)).toBe('the lawyer filed today');
+adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle
+expect(adapter.setTextCalls.at(-1)).toBe('the legal eagle filed today');
+expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
+```
+
+End-to-end: real Cycling + Navigation + DynDefs, fake host, drive with
+keystrokes, assert on observable text + state.
+
+---
+
+## Bugs we've fixed (and the test that pins each)
+
+| Bug | Fix | Test |
+|---|---|---|
+| `def.spanStart/spanEnd` drifted across multi-word cycles → corrupt splice | `applyAltCycle` reads live `splitWords` every time | "swapping between multi-word alts splices at the correct char range" |
+| Two multi-word spans → second clobbered first via `SpanFillState.set` | Static-alt spans live in DynDefs; SpanFillState is blank-fill only | "TWO concurrent multi-word spans coexist via DynDefs" |
+| Cycling shifted downstream words → DynDefs got pruned, dim flickered | `shiftAfter` before `pruneStale` in `applyAltCycle` | "cycling single → multi-word SHIFTS downstream DynDefs (no dim flicker)" |
+| `Navigation.onTextChange` called `dynDefs.clear()` → 500ms dim flash on every keystroke | Replaced with `pruneStale` (keeps fresh defs, drops stale ones) | "keeps DynDefs whose originalWord matches the current word" |
+| Inner span position → cycle did nothing (no def at inner index) | Inner-span redirect at top of `cycleStaticAlts` | "Ctrl+Alt+Up from inner span word redirects to origin and cycles whole span" |
+| Resolver re-ran on every keystroke including for already-resolved words → token spend + alt jitter | Filter `cleanWords` against DynDefs + SpanFillState before passing to Resolver | "does NOT send already-resolved words to the LLM" |
+| Multi-word static-alt prompts produced prose, not `INDEX:alt` | `ConfigSource` auto-appends format spec when prompt missing it | `config-source.test.ts` — "appends the format spec when the prompt lacks one" |
+| Stale DynDef.originalWord after user edit → wrong cycling direction | `pruneStale` drops mismatched defs on user text change | "drops DynDefs whose word has been deleted from that position" |
+
+---
+
+## Trade-offs accepted
+
+### No auto-reanchor on prefix edits for static-alt spans
+
+`SpanFillState` had a "find the alt elsewhere in text and re-anchor
+the index" feature for prefix typing. The DynDefs-based model can't
+auto-relocate cleanly (ambiguous matches risk moving to the wrong
+position), so prepending text now drops the affected DynDef and the
+user starts cycling from the new state.
+
+The N-spans support was the bigger win. If a user reports this as
+painful, we can add deterministic relocate-via-content-match later
+(only when the alt's words appear at exactly one new position).
+
+### Per-cycle splitWords pass
+
+`applyAltCycle` calls `splitWords(event.text)` every cycle to compute
+fresh char ranges. Past 1000-word buffers this could matter; under
+that, it's noise. The correctness win (no stale char-cache splices)
+is worth it.
+
+### Pruning is O(defs)
+
+`pruneStale` walks every entry in DynDefs every text change. For
+typical buffers (tens of words, under 50 active defs) this is
+negligible. If we ever see thousands of active defs, we could add a
+"dirty range" hint, but no current host gets near that.
+
+---
+
+## Re-implementation checklist
+
+If you're porting the runtime to a new language or auditing the
+TypeScript implementation:
+
+1. **WordDef + DynDefs** — keyed by word index, with `findSpanContaining`,
+   `shiftAfter`, `pruneStale`, plain `get/set/delete/entries/size`.
+2. **SpanFillState** — single slot, `set(entry, lastFilledText)`,
+   `clear()`, `current`, `lastFilledText` getters.
+3. **Cycling.onKey** dispatch in priority order: selector/satellite,
+   spanFill, script control, listControl, blankStep DynDef, step
+   pattern, static alts.
+4. **applyAltCycle** must compute char range from live words, mutate
+   def.currentIndex, push new text, and (if word count changed) shift
+   downstream DynDefs then prune.
+5. **Navigation.computeTargets** filters out inner span positions for
+   both SpanFillState and DynDef-tracked multi-word spans.
+6. **DimRender** emits one group dim range per multi-word span origin
+   (skips inner positions), expands the active highlight to cover the
+   whole span when active is inside one.
+7. **BlankFill.onTextChange** invalidates SpanFillState on text
+   mismatch (with the static-alt-preserve fallback for the legacy
+   `kind` field).
+8. **Resolver** filters context.words to skip already-resolved
+   non-blank words and words inside active spans before sending to
+   the LLM.
+
+The vitest suite under `packages/opencues-runtime/src/` is the
+contract. 371 tests across 25 files — every behaviour described above
+is pinned by at least one test.

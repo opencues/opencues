@@ -201,7 +201,8 @@ The legacy `integrations/claude-code/patches/setup.sh` direct invocation still w
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
 - **integrations/claude-code/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
 - **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
-- **docs/features/** — 21 feature concepts (one file each)
+- **docs/features/** — 21+ feature concepts (one file each)
+- **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), seven cycling paths, the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
 
 ---
 
