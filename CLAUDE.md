@@ -257,13 +257,32 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
-## Config search paths — project-level + user-level
+## Config search paths — who reads what
 
-ConfigLoader reads `.md` configs and `cues/*` / `controls/*` folders from a
-**search path list**, in priority order. Earlier entries win on name conflicts
-(cue source name, blank mode name, control name).
+Native hosts (CC / OC / codex) read the filesystem directly. Chrome
+can't — it runs in the browser — so it reads a pre-built bundle. The
+two paths behave differently:
 
-Default chain (CC + OC adapters):
+| Host | Sources at runtime | How project configs get in |
+|---|---|---|
+| **claude-code** | `$OPENCUES_HOME` → `<cwd>/.opencues/` → `~/.opencues/` | Automatic (cwd-based merge) |
+| **opencode** | same | same |
+| **codex** | same | same |
+| **chrome** | `<extension>/dist/configs/` (sync'd) + bake-time defaults from `<repo>/defaults/` | Explicit — `opencues sync chrome [--include <path>]` |
+
+For the native hosts, project wins on name conflicts. Missing dirs are
+silently skipped; the runtime degrades gracefully. Hot-reload polls
+every search path on every keystroke.
+
+Chrome has NO runtime filesystem access, so its "search path" is
+whatever `sync chrome` wrote last. By default that's `~/.opencues/`
+only — project dirs are opted in explicitly (see
+`docs/features/chrome-sync.md`). The extension also carries bake-time
+defaults inlined from `<repo>/defaults/` at esbuild time, so a user
+who installs but never syncs still gets grammar/legal/medical etc.
+(see `docs/features/shipped-defaults.md`).
+
+### ConfigLoader search-path detail (native hosts)
 
 ```
 $OPENCUES_HOME           ← env override (top priority; for CI / power users)
@@ -275,9 +294,9 @@ The convention mirrors `.editorconfig` / `.npmrc` / `.claude/skills/` — opaque
 host-neutral dir at the project root. Missing dirs are silently skipped; the
 runtime degrades gracefully.
 
-A user with no `.opencues/` anywhere gets bake-time defaults (chrome) or
-empty config (CC/OC) — not a crash. Hot-reload polls every search path on
-every keystroke (same `maybeReload` mechanism as before).
+A user with no `.opencues/` anywhere gets empty config (CC/OC/codex)
+— not a crash. Hot-reload polls every search path on every keystroke
+(same `maybeReload` mechanism as before).
 
 The OpenCuesSettingsControl read/write of `opencues.md` is a special
 case: it is user-level only. `opencues.md` holds system-wide settings

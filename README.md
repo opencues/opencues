@@ -95,8 +95,9 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `~/claude-code-cues/` | Local Claude Code install the integration patches (optional — auto-detects a native install too) |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/codex-cues/` | Codex fork the integration clones + patches |
-| `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `controls.md`, `opencues.md`, plus `cues/` and `controls/` folders |
-| `<cwd>/.opencues/` | Project-level config overrides |
+| `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `controls.md`, `opencues.md`, plus `cues/` and `controls/` folders. Read by every host. |
+| `<cwd>/.opencues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, codex) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
+| `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
 
 Uninstall is one command per integration: `opencues uninstall <host>` (or `--all`). Run `opencues which` for a live blast-radius view with ✓ / − markers showing what's actually on disk.
