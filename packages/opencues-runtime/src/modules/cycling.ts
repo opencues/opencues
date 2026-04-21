@@ -636,14 +636,17 @@ export class Cycling {
 
     // If the cycle changed word count (single ↔ multi-word alt, or
     // multi-word ↔ multi-word with different lengths), every DynDef at
-    // index > wordIndex now points at the WRONG word. Prune them so
-    // the next cycle / render doesn't splice against stale positions.
-    // Navigation.onTextChange skips runtime-source events, so this
-    // can't piggyback on that — we prune explicitly here.
+    // index > wordIndex now sits at the wrong key — the words it
+    // belongs to have shifted by `delta`. SHIFT first so resolved-but-
+    // unrelated words keep their dim/cycling continuity, THEN prune
+    // any genuinely stale entries (e.g. defs whose word actually
+    // changed).
     const prevAlt = def.alternatives[(def.currentIndex - direction + len) % len];
     const prevCount = Math.max(1, prevAlt.split(/\s+/).filter(Boolean).length);
     const newCount = Math.max(1, nextWord.split(/\s+/).filter(Boolean).length);
-    if (prevCount !== newCount) {
+    const delta = newCount - prevCount;
+    if (delta !== 0) {
+      this.dynDefs.shiftAfter(wordIndex, delta);
       this.dynDefs.pruneStale(splitWords(newText));
     }
 

@@ -240,12 +240,15 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(dynDefs.findSpanContaining(5)?.spanLength).toBe(2);
   });
 
-  it('cycling single → multi-word prunes DynDefs at shifted word indices', async () => {
-    // Regression for "future word index positions become misaligned"
-    // after a multi-word cycle. A DynDef at idx 2 (for "filed") must
-    // drop when cycling "attorney" → "legal eagle" shifts "filed" to
-    // idx 3 — otherwise the next cycle on "filed" would splice at the
-    // DynDef's stale char range and corrupt the text.
+  it('cycling single → multi-word SHIFTS downstream DynDefs (no dim flicker)', async () => {
+    // Regression: "dimmed words beyond the span lose their dimness"
+    // after a multi-word cycle. Cause: DynDefs at idx > origin used
+    // to be PRUNED when their originalWord no longer matched the
+    // word at their old index — but that word had just shifted by
+    // `delta`. Now we shift the def to its new index FIRST, then
+    // prune anything still mismatched. Resolved-but-unrelated words
+    // keep their dim across the cycle without waiting for the
+    // resolver's debounce.
     const { adapter, hlState, dynDefs } = await setupMw('the attorney filed today');
     dynDefs.set(2, {
       originalWord: 'filed',
@@ -255,10 +258,32 @@ describe('Cycling static-alt multi-word spans', () => {
     });
     hlState.activate(1, 'the attorney filed today');
     adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer (single, no shift)
-    expect(dynDefs.get(2)).toBeDefined(); // word at idx 2 still "filed"
-    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle (multi, shifts)
-    // Word at idx 2 is now "eagle" — stale DynDef pruned.
+    expect(dynDefs.get(2)?.originalWord).toBe('filed');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle (multi, +1 shift)
+    // "filed" moved from idx 2 to idx 3. DynDef follows.
     expect(dynDefs.get(2)).toBeUndefined();
+    expect(dynDefs.get(3)?.originalWord).toBe('filed');
+  });
+
+  it('cycling multi-word → single-word SHIFTS downstream DynDefs back', async () => {
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney filed today');
+    hlState.activate(1, 'the attorney filed today');
+    // Cycle attorney → lawyer → legal eagle so we're in multi-word state.
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // "filed" is now at idx 3 in "the legal eagle filed today".
+    dynDefs.set(3, {
+      originalWord: 'filed',
+      alternatives: ['filed', 'submitted', 'lodged'],
+      currentIndex: 0,
+      spanStart: 16, spanEnd: 21,
+    });
+    // Cycle multi → multi (no shift), then back to single.
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → defendant counsel
+    expect(dynDefs.get(3)?.originalWord).toBe('filed');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // wrap to attorney (single, -1 shift)
+    expect(dynDefs.get(3)).toBeUndefined();
+    expect(dynDefs.get(2)?.originalWord).toBe('filed'); // shifted left
   });
 
   it('swapping between multi-word alts splices at the correct char range', async () => {

@@ -44,6 +44,32 @@ export class DynDefs {
    *     contiguously at [index..index+N-1] (mid-cycle multi-word span)
    */
   /**
+   * Shift every DynDef at index > origin by `delta` positions.
+   * Called after a runtime-source cycle changes word count (single ↔
+   * multi-word static-alt swap) — every downstream DynDef now lives at
+   * a word position N steps to the left/right and would otherwise be
+   * pruned (their originalWord no longer matches the new word at the
+   * old index). Shifting first preserves dim/cycling continuity for
+   * those resolved-but-unrelated words; pruneStale runs afterwards to
+   * mop up any genuinely stale entries.
+   *
+   * Order-safe: snapshots all to-be-shifted entries first, then
+   * deletes + re-inserts. No collision possible with the entries
+   * staying put (origin and below).
+   */
+  shiftAfter(originIndex: number, delta: number): void {
+    if (delta === 0) return;
+    const moves: Array<[number, WordDef]> = [];
+    for (const [idx, def] of this._defs.entries()) {
+      if (idx > originIndex) {
+        moves.push([idx, def]);
+      }
+    }
+    for (const [idx] of moves) this._defs.delete(idx);
+    for (const [idx, def] of moves) this._defs.set(idx + delta, def);
+  }
+
+  /**
    * Find the multi-word static-alt span (if any) that covers `index`.
    * Returns the span's origin DynDef and length, or null if the
    * position isn't inside any multi-word span.
