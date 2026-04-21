@@ -582,7 +582,7 @@ describe('parseCuesMd: edge cases', () => {
 describe('parseCuesMd: real blanks.md', () => {
   const fs = require('fs');
   const path = require('path');
-  const blanksPath = path.resolve(__dirname, '../../../.opencues/blanks.md');
+  const blanksPath = path.resolve(__dirname, '../../../defaults/blanks.md');
 
   // Skip if blanks.md doesn't exist (e.g., CI without repo root)
   const blanksExists = fs.existsSync(blanksPath);
@@ -649,7 +649,7 @@ describe('parseCuesMd: real blanks.md', () => {
 describe('parseCuesMd: real cues.md', () => {
   const fs = require('fs');
   const path = require('path');
-  const cuesPath = path.resolve(__dirname, '../../../.opencues/cues.md');
+  const cuesPath = path.resolve(__dirname, '../../../defaults/cues.md');
   const cuesExists = fs.existsSync(cuesPath);
 
   (cuesExists ? it : it.skip)('should parse grammar word source (domain sources in cues/ folders)', () => {

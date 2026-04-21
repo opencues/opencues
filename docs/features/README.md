@@ -31,6 +31,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 21 | [Cursor Navigate](cursor-navigate.md) | Highlight automatically follows cursor to navigable words |
 | 22 | [Word-Alt Routing](word-alt-routing.md) | Per-word dispatch of `### alternatives` cue sources via match/keywords/priority/default |
 | 23 | [Chrome Sync](chrome-sync.md) | How `opencues sync chrome` picks which `.opencues/` dirs feed the browser extension (user-only by default; opt-in for projects) |
+| 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source; the repo no longer self-dogfoods via an in-tree `.opencues/` |
 
 ## Adding a new feature
 

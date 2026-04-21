@@ -553,19 +553,26 @@ pnpm exec opencues which
 
 ## ⑦ Earlier landed work (commits `a96853e`, `848bcec`, `c37512b`)
 
-### Repo-self-dogfood (`a96853e`)
+### Shipped defaults (repo dir, formerly `.opencues/`, now `defaults/`)
 
 ```bash
-ls .opencues
+ls defaults
 # → cues.md, blanks.md, controls.md, opencues.md, cues/, controls/
-#   (NOT at the repo root anymore — under .opencues/)
+#   (these are the seed source — NOT an ambient project config anymore)
+
+ls .opencues 2>&1
+# → "No such file or directory" (repo no longer ships a project config)
 
 ls cues.md 2>&1
 # → "No such file or directory" (correctly absent)
 
-# Confirm chrome esbuild reads from new path:
+# Confirm chrome esbuild reads from the new path:
 pnpm --filter @opencues/chrome build 2>&1 | grep -E 'Loaded (cue|control) folders'
 # → "Loaded cue folders: ..." and "Loaded control folders: ..."
+
+# Confirm seed-configs sources from defaults/:
+pnpm exec opencues seed-configs --dry-run 2>&1 | grep source
+# → source: /home/<you>/opencues/defaults
 ```
 
 ### `.opencues/` convention (`c37512b`)

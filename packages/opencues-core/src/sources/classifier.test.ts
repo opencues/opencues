@@ -21,7 +21,7 @@ import * as path from 'path';
 // ---------------------------------------------------------------------------
 
 const stubAdapter: HttpAdapter = { post: async () => '{}' };
-const blanksPath = path.resolve(__dirname, '../../../../.opencues/blanks.md');
+const blanksPath = path.resolve(__dirname, '../../../../defaults/blanks.md');
 const blanksContent = fs.readFileSync(blanksPath, 'utf8');
 const blanksConfig = parseCuesMd(blanksContent);
 

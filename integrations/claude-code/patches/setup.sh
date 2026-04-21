@@ -410,7 +410,7 @@ if [ -f /mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe ]; then
   WIN_TMP="/mnt/c/Users/$WIN_USER"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
   CS_FILES=()
-  for f in "$SCRIPT_DIR/actions/"*.cs "$REPO_ROOT/.opencues/controls/"*/*.cs; do
+  for f in "$SCRIPT_DIR/actions/"*.cs "$REPO_ROOT/defaults/controls/"*/*.cs; do
     [ -f "$f" ] && CS_FILES+=("$f")
   done
   for CS_FILE in "${CS_FILES[@]}"; do

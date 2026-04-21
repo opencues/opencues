@@ -17,7 +17,8 @@ module.exports = function which(argv, ctx) {
       ['$OPENCUES_HOME (env)',      process.env.OPENCUES_HOME || '(unset)'],
       ['Project-level',              path.join(process.cwd(), '.opencues')],
       ['User-level',                 path.join(HOME, '.opencues')],
-      ['Repo-level (this clone)',    path.join(ctx.REPO_ROOT, '.opencues')],
+      ['Shipped defaults (seed source, NOT a runtime search path)',
+                                     path.join(ctx.REPO_ROOT, 'defaults')],
     ]],
     ['CC install state', [
       ['Install root',               path.join(HOME, '.claude', 'opencues')],

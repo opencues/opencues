@@ -60,7 +60,12 @@ opencues/
 ├── CLAUDE.md                      # THIS FILE - project overview
 ├── README.md                      # Public readme with install instructions
 │
-├── .opencues/                     # Repo's OWN OpenCues config (project-level by convention)
+├── defaults/                      # Shipped defaults — seed source for `opencues seed-configs`
+│   │                              # AND the Chrome extension's bake-time bundled fallbacks.
+│   │                              # NOT an ambient project-level config — the repo does not
+│   │                              # self-dogfood via `<cwd>/.opencues` anymore. Devs working
+│   │                              # on opencues run `seed-configs` once just like any user.
+│   │                              # See docs/features/shipped-defaults.md.
 │   ├── cues.md                    # OpenCues config (tips, prompts, ignore)
 │   ├── blanks.md                  # Blank-fill modes (math, factual, grammar, etc.)
 │   ├── controls.md                # Cue-controls (can be empty if using folders)

@@ -213,7 +213,7 @@ function doUninstall() {
 
 function doSeedConfigs() {
   const userConfigDir = path.join(HOME, '.opencues');
-  const repoConfigDir = path.join(REPO_ROOT, '.opencues');
+  const repoConfigDir = path.join(REPO_ROOT, 'defaults');
   const sources = listConfigSources();
 
   console.log(`Seeding user-level configs to: ${userConfigDir}/`);
@@ -291,9 +291,9 @@ function listActionFileBasenames() {
       if (f.endsWith('.cs')) out.push(f.replace(/\.cs$/, '.exe'));
     }
   }
-  // .opencues/controls/*/*.cs — compiled to ~/.claude/opencues/actions/<basename>.exe
-  // by setup.sh's WSL .exe block (e.g. .opencues/controls/volume/VolCtl.cs → VolCtl.exe).
-  const controlsDir = path.resolve(REPO_ROOT, '.opencues', 'controls');
+  // defaults/controls/*/*.cs — compiled to ~/.claude/opencues/actions/<basename>.exe
+  // by setup.sh's WSL .exe block (e.g. defaults/controls/volume/VolCtl.cs → VolCtl.exe).
+  const controlsDir = path.resolve(REPO_ROOT, 'defaults', 'controls');
   if (fs.existsSync(controlsDir)) {
     for (const sub of fs.readdirSync(controlsDir)) {
       const subDir = path.join(controlsDir, sub);

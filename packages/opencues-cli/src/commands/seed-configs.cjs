@@ -29,7 +29,11 @@ module.exports = function seedConfigs(argv, ctx) {
   const targetDir = projectScope
     ? path.join(process.cwd(), '.opencues')
     : path.join(HOME, '.opencues');
-  const sourceDir = path.join(ctx.REPO_ROOT, '.opencues');
+  // Ship defaults live in <repo>/defaults/ (not <repo>/.opencues/). The
+  // repo treats them as a curated seed source — not an ambient project
+  // config — so devs working on opencues run this command once, same as
+  // any other user. See docs/features/shipped-defaults.md.
+  const sourceDir = path.join(ctx.REPO_ROOT, 'defaults');
 
   if (!fs.existsSync(sourceDir)) {
     console.error(`opencues seed-configs: source dir not found at ${sourceDir}`);
