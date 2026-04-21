@@ -1,40 +1,34 @@
 import { loadConfig, saveConfig, resetConfig } from '../adapters/chrome-storage-adapter';
 
-const fields = ['apiKey', 'model', 'apiUrl', 'targetSelector', 'cuesMd', 'blanksMd', 'opencuesMd'] as const;
-const advancedFields = ['finnhubApiKey', 'tipsJson'] as const;
+// Popup = SETTINGS only. Cue / blank / control content lives in
+// ~/.opencues/ on the host side and flows into the extension via
+// `opencues sync chrome`. The popup used to have a `cues.md` /
+// `blanks.md` / `opencues.md` textarea but it was a confusing second
+// config path — killed Apr 2026. See docs/features/chrome-sync.md.
+const fields = ['apiKey', 'model', 'apiUrl', 'targetSelector'] as const;
+const advancedFields = ['finnhubApiKey'] as const;
 
 async function init(): Promise<void> {
   const config = await loadConfig();
 
-  // Populate fields
   for (const id of [...fields, ...advancedFields]) {
-    const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
+    const el = document.getElementById(id) as HTMLInputElement;
     if (el && config[id as keyof typeof config]) el.value = config[id as keyof typeof config] as string;
   }
 
   const ttsEnabled = document.getElementById('ttsEnabled') as HTMLInputElement;
   const ttsRate = document.getElementById('ttsRate') as HTMLInputElement;
-  // Sync TTS checkbox with voice-mode from opencues.md
-  const voiceActive = !config.opencuesMd?.includes('voice-mode: inactive');
-  ttsEnabled.checked = voiceActive;
+  ttsEnabled.checked = config.ttsEnabled;
   ttsRate.value = String(config.ttsRate);
 
-  // Save handler
   document.getElementById('save')!.addEventListener('click', async () => {
-    const update: Record<string, any> = {};
+    const update: Record<string, unknown> = {};
     for (const id of [...fields, ...advancedFields]) {
-      const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
+      const el = document.getElementById(id) as HTMLInputElement;
       if (el) update[id] = el.value;
     }
     update.ttsEnabled = ttsEnabled.checked;
     update.ttsRate = parseInt(ttsRate.value, 10) || 2;
-
-    // Sync TTS checkbox → voice-mode in opencues.md
-    const opencuesMd = (update.opencuesMd || '') as string;
-    const newVoiceMode = ttsEnabled.checked ? 'active' : 'inactive';
-    if (opencuesMd.includes('voice-mode:')) {
-      update.opencuesMd = opencuesMd.replace(/voice-mode:\s*\S+/, `voice-mode: ${newVoiceMode}`);
-    }
 
     await saveConfig(update);
 
@@ -43,12 +37,11 @@ async function init(): Promise<void> {
     setTimeout(() => { status.textContent = ''; }, 2000);
   });
 
-  // Reset handler
   document.getElementById('reset')!.addEventListener('click', async () => {
     await resetConfig();
     const freshConfig = await loadConfig();
     for (const id of [...fields, ...advancedFields]) {
-      const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
+      const el = document.getElementById(id) as HTMLInputElement;
       if (el) el.value = (freshConfig[id as keyof typeof freshConfig] as string) || '';
     }
     ttsEnabled.checked = freshConfig.ttsEnabled;

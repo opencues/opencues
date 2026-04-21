@@ -20,21 +20,17 @@
     <label for="targetSelector">Target Selector</label>
     <input type="text" id="targetSelector" placeholder='[contenteditable="true"]'>
 
-    <label for="cuesMd">cues.md</label>
-    <textarea id="cuesMd" rows="5" placeholder="Paste cues.md content..."></textarea>
-
-    <label for="blanksMd">blanks.md</label>
-    <textarea id="blanksMd" rows="3" placeholder="Paste blanks.md content (optional)..."></textarea>
-
-    <label for="opencuesMd">opencues.md</label>
-    <textarea id="opencuesMd" rows="3" placeholder="Paste opencues.md content (optional)..."></textarea>
+    <p style="font-size:12px;color:#888;margin:12px 0 4px">
+      To customize cues/blanks/controls, edit <code>~/.opencues/</code> and run
+      <code>opencues sync chrome --wsl</code>. See
+      <a href="https://github.com/opencues/opencues/blob/master/docs/features/chrome-sync.md"
+         target="_blank" rel="noopener">chrome-sync.md</a>.
+    </p>
 
     <details>
       <summary style="font-size:12px;color:#888;cursor:pointer">Advanced</summary>
       <label for="finnhubApiKey">Finnhub API Key (stocks)</label>
       <input type="password" id="finnhubApiKey" placeholder="optional">
-      <label for="tipsJson">Extra Tips JSON</label>
-      <textarea id="tipsJson" rows="3" placeholder="Extra tips (tips are usually inline in cues.md)..."></textarea>
     </details>
 
     <div class="row">
