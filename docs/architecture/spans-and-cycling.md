@@ -332,16 +332,63 @@ For `kind: 'blank-fill'`, any text mismatch clears the entry (the
 The Resolver re-runs on user text changes (debounced 500ms). It
 populates DynDefs with LLM-suggested alts.
 
-Two filters prevent waste:
-1. **Skip already-resolved words** — `cleanWords[i] = ''` if
-   `dynDefs.get(i)` exists and `originalWord === word[i]` and
-   `alts.length > 1`. RoutedWordSourceGroup sees empty strings and
-   skips them — no LLM call, no token spend.
-2. **Skip inside active span-fill** — same treatment for words inside
-   `spanFillState.current` range.
+**Critical:** the Resolver fires ONLY on user-source events, never on
+runtime-source ones (cycling, controls writing back, etc.). That's why
+cycling alone never triggered drift — drift required cycling FOLLOWED
+by a user keystroke that scheduled the resolver.
 
-Blanks (`_`) are NEVER skipped — their answer depends on context that
-may have changed.
+Four filters in `cleanWords` prevent waste AND prevent the resolver
+from second-guessing words that cycling owns. A position becomes `''`
+in the context (which RoutedWordSourceGroup + every other CueSource
+silently skip) when ANY of these match:
+
+1. **Inside an active blank-fill** — `i` falls in
+   `spanFillState.current` range.
+2. **Inside any multi-word static-alt span** — `dynDefs.findSpanContaining(i)`
+   returns a span (covers origin AND inner positions).
+3. **Word is a DynDef's originalWord** — `existing.originalWord === word`.
+   The def is fresh and untouched; alts already cached.
+4. **Word is the def's current alt's first word** — covers
+   single-word cycle (`attorney → lawyer` — word at idx 1 is "lawyer",
+   currentAlt is "lawyer", first word is "lawyer", match) AND the
+   origin position of multi-word cycle (`attorney → legal eagle` —
+   word is "legal", currentAlt is "legal eagle", first word is
+   "legal", match).
+
+**Blanks (`_`) are NEVER skipped** — their answer depends on context
+that may have changed.
+
+### Why filter #4 matters: alt-track drift
+
+Without filter #4, this sequence drifted onto a different alt track:
+
+```
+1. text "the attorney filed"
+2. user cycles attorney → lawyer (DynDef.currentIndex = 1)
+   text becomes "the lawyer filed"
+   — runtime-source change, Resolver doesn't fire
+3. user types a single character anywhere → user-source
+   Resolver scheduled, debounced 500ms
+4. After 500ms, Resolver runs on "the lawyer filed"
+   - Filter #3 fails: existing.originalWord ("attorney") !== word ("lawyer")
+   - LLM gets sent "lawyer" as a fresh word
+   - LLM returns lawyer's alts: [counsel, advocate, client]
+   - Write-side check at resolver.ts (existing.originalWord === target.word)
+     ALSO fails — overwrites the attorney def with lawyer's alts
+5. user cycles again → now on lawyer's alt track (client, etc.)
+6. Repeat: client → customer → ...
+```
+
+The bug was intermittent because it required all of:
+- Cycling to a non-original alt
+- A user keystroke after cycling
+- Waiting past the 500ms debounce
+- LLM returning sufficiently different alts
+
+Fast cycling, navigation-only sequences, or back-to-original cycles
+all dodged it. Filter #4 closes the door regardless of timing — any
+cycled-to alt is recognized as "owned by cycling" on every resolver
+pass.
 
 ---
 
@@ -460,8 +507,326 @@ keystrokes, assert on observable text + state.
 | Resolver re-ran on every keystroke including for already-resolved words → token spend + alt jitter | Filter `cleanWords` against DynDefs + SpanFillState before passing to Resolver | "does NOT send already-resolved words to the LLM" |
 | Multi-word static-alt prompts produced prose, not `INDEX:alt` | `ConfigSource` auto-appends format spec when prompt missing it | `config-source.test.ts` — "appends the format spec when the prompt lacks one" |
 | Stale DynDef.originalWord after user edit → wrong cycling direction | `pruneStale` drops mismatched defs on user text change | "drops DynDefs whose word has been deleted from that position" |
+| Cycled alt re-evaluated by Resolver → alt-track drift (`attorney → lawyer → client → customer`) | Resolver filter also matches def's currentAlt first word + checks `findSpanContaining` | "skips a word that has been CYCLED to one of the def's alternatives" + "skips both inner positions of a multi-word static-alt span" |
 
 ---
+
+## Scenarios — concrete walkthroughs of the complexity
+
+The system's behaviour emerges from interactions between several
+modules over multi-step user actions. Reading each module in
+isolation hides this. The scenarios below trace exact state through
+realistic sequences — what the user does, what each module sees, why
+the result is correct.
+
+For each: text + state at every step, which modules/methods fire, and
+the invariant that holds at the end.
+
+### Scenario 1 — Single-word cycle, then user types
+
+```
+Start:  text "the attorney filed today"
+        DynDefs: {} (nothing resolved yet)
+        SpanFillState: null
+
+[t=0]   User highlights "attorney" (idx 1) and presses Ctrl+Alt+Up.
+        ── Cycling.onKey → Path 4 cycleStaticAlts
+        ── No def at idx 1 → buildDefFrom("attorney") via configLoader.lookup
+        ── Returns {originalWord:"attorney", alts:[attorney,lawyer,legal eagle,...], currentIndex:0}
+        ── applyAltCycle: increments currentIndex=1, nextWord="lawyer"
+        ── Single-word alt (no shift), splice [4..12) with "lawyer"
+        ── adapter.setText("the lawyer filed today")  [source: 'runtime']
+        ── DynDefs: {1: attorney def, currentIndex=1}
+
+[t=200ms] User types " ok" at the end → "the lawyer filed today ok"
+          [source: 'user']
+          ── Navigation.onTextChange:
+             ── hlState.deactivate()
+             ── pruneStale(words):
+                - DynDef at idx 1: originalWord="attorney", current text "lawyer".
+                  altWords[currentIndex=1] = ["lawyer"], single-word, matches "lawyer". KEEP.
+          ── BlankFill.onTextChange: SpanFillState null, no-op
+          ── Resolver.onTextChange: source==='user', schedules debounced resolve
+
+[t=700ms] Resolver fires (500ms debounce elapsed):
+          ── cleanWords: ["the", "?", "filed", "today", "ok"]
+             - idx 1: existing def, currentAlt="lawyer", firstWord="lawyer"
+                       === text word "lawyer" → SKIP, set ''
+          ── Sends only ["", "filed", "today", "ok"] (and "the" if not function-filtered)
+          ── LLM returns alts for filed/today/ok only
+          ── DynDefs: {1: attorney def (untouched), 2: filed def, 3: today def, 4: ok def}
+
+End:   "the lawyer filed today ok"
+       attorney's def is INTACT — next cycle on idx 1 continues attorney's
+       track (legal eagle next), NOT lawyer's track. No drift.
+```
+
+### Scenario 2 — Multi-word cycle shifts downstream defs
+
+```
+Start: text "the attorney filed today"
+       DynDefs already populated by Resolver:
+         {1: attorney def @0, 2: filed def @0, 3: today def @0}
+
+[t=0]  User cycles attorney twice → "the legal eagle filed today"
+       ── First cycle: attorney → lawyer (single, no shift)
+          DynDefs: {1: attorney @1, 2: filed, 3: today}
+       ── Second cycle: lawyer → legal eagle (multi, prevCount=1 → newCount=2, delta=+1)
+          ── applyAltCycle: live splitWords, range from words[1]=lawyer
+          ── newText = "the legal eagle filed today"
+          ── shiftAfter(1, +1):
+             snapshot {2:filed, 3:today}, delete both, re-insert at {3:filed, 4:today}
+          ── pruneStale(splitWords(newText)):
+             words = [the, legal, eagle, filed, today]
+             - idx 1 (legal): attorney def, currentAlt="legal eagle",
+                              altWords ["legal","eagle"] match contiguously → KEEP
+             - idx 3 (filed): filed def, originalWord="filed" === word → KEEP
+             - idx 4 (today): today def, matches → KEEP
+             No stale entries pruned.
+          ── adapter.setText(newText), forceRender
+
+       DynDefs: {1: attorney@2, 3: filed, 4: today}
+       findSpanContaining(2) returns {originIdx:1, spanLength:2}
+       findSpanContaining(3) returns null
+
+[t=200ms] DimRender.compute called by host:
+          ── activeStaticAltSpan = findSpanContaining(activeIndex=1) = the span
+          ── For each word:
+             - idx 0 "the": function word, no dim
+             - idx 1 "legal": span origin AND active → highlight expanded to whole span
+             - idx 2 "eagle": inner span position → SKIP (covered by origin)
+             - idx 3 "filed": no span here, has DynDef → dim
+             - idx 4 "today": no span, has DynDef → dim
+          ── Result: highlight covers "legal eagle"; dim covers "filed" and "today"
+             (no flicker — defs survived via shift)
+
+End:   filed and today STAY DIM through the cycle. No 500ms wait for
+       Resolver to re-populate. The shift kept their defs alive.
+```
+
+### Scenario 3 — Two concurrent spans, cycle one without disturbing the other
+
+```
+Start: text "the attorney said the ceo agrees"
+       DynDefs: {} initially
+
+[t=0]  Cycle attorney → legal eagle (2 cycles up)
+       After: text = "the legal eagle said the ceo agrees"
+              DynDefs: {1: attorney @currentIndex=2 (legal eagle)}
+              "ceo" shifted from idx 4 to idx 5
+
+[t=2s] Cycle ceo → Jeff Bezos
+       ── Cycling.onKey at wordIndex=5
+       ── Path 0 (cycleSpanFill) — spanFillState.current is null, skip
+       ── Path 4 (cycleStaticAlts):
+          ── findSpanContaining(5) → null (5 isn't inside attorney's span at [1,2])
+          ── No def at idx 5 → buildDefFrom("ceo")
+          ── Cycle to "Jeff Bezos" (multi, +1 shift)
+          ── applyAltCycle:
+             newText = "the legal eagle said the Jeff Bezos agrees"
+             shiftAfter(5, +1) — only "agrees" was at idx 6, now at idx 7
+             pruneStale: all KEEP (no stale entries)
+       After: DynDefs: {1: attorney@2 (legal eagle), 5: ceo@1 (Jeff Bezos), 7: agrees def?}
+              Two ACTIVE multi-word spans coexist.
+
+[t=5s] Cycle attorney AGAIN to defendant counsel:
+       ── cycleStaticAlts at wordIndex=1
+       ── No span containing 1 redirect needed (origin === wordIndex)
+       ── Get def at 1: currentAlt="legal eagle", currentAltWordCount=2
+       ── Range: [words[1].start, words[2].end] from LIVE positions
+       ── newText: "the defendant counsel said the Jeff Bezos agrees"
+       ── delta=0 (multi 2 → multi 2), no shift, no prune needed
+       
+       ceo's def at idx 5: UNTOUCHED. Its currentIndex still points at "Jeff Bezos".
+       Span B remains intact across span A's cycle.
+```
+
+### Scenario 4 — Inner-span navigation + cycle redirect
+
+```
+Start: text "the legal eagle filed" — span at idx 1, spanLength 2
+       DynDefs: {1: attorney @currentIndex=2 (legal eagle)}
+
+[t=0]  User presses Ctrl+Alt+Right repeatedly to navigate left-to-right.
+       ── Navigation.computeTargets for "the legal eagle filed":
+          - idx 0 "the": not navigable (function word)
+          - idx 1 "legal": findSpanContaining(1) returns span, origin===idx → INCLUDE
+          - idx 2 "eagle": findSpanContaining(2) returns span, origin!==idx → SKIP
+          - idx 3 "filed": no span, has def → INCLUDE
+          Targets: [1, 3]
+       
+       Right from idx 0 lands on idx 1 (legal). Right again lands on idx 3 (filed).
+       Inner position idx 2 (eagle) is INVISIBLE to navigation — exactly right.
+
+[t=2s] Suppose user has cursor on "eagle" via mouse click and presses Ctrl+Alt+Up.
+       ── cycleStaticAlts at wordIndex=2
+       ── findSpanContaining(2) returns span, originIdx=1, spanLength=2
+       ── Inner position! Redirect: recurse with wordIndex=1
+       ── Now cycles attorney from currentIndex=2 → 3 (defendant counsel)
+       
+       The whole span rotates as one unit — cycling from inside felt the same
+       as cycling from the origin.
+```
+
+### Scenario 5 — Blank fill coexists with static-alt span
+
+```
+Start: text "improve prompt write a poem _"
+       — "_" is a blank, "improve prompt" is a consume-all keyword.
+       — Some other word later might become a multi-word span.
+
+[t=0]  User types this. BlankFill.onTextChange detects the blank slot.
+       ── consume-all script runs (or LLM if no script)
+       ── Returns ["A vivid poem about loss", "A whimsical haiku", ...]
+       ── BlankFill.applyConsumeAllFill:
+          ── spanFillState.set({
+                kind: 'blank-fill',
+                index: 0, spanLength: 4 (words in first alt),
+                alternatives: [...4 items],
+                currentAltIndex: 0,
+                blankTip: '...'
+             }, "A vivid poem about loss")
+          ── adapter.setText("A vivid poem about loss")  [runtime]
+       
+       SpanFillState now has the consume-all entry.
+       DynDefs: empty (no static-alt spans yet).
+
+[t=2s] User cycles the blank fill: Ctrl+Alt+Up
+       ── Path 0 (cycleSpanFill): spanFillState.current is set, wordIndex inside range
+       ── Cycles to next alt "A whimsical haiku"
+       ── Updates entry: currentAltIndex=1, spanLength=3 (new word count)
+       ── adapter.setText("A whimsical haiku")
+       
+       This flow uses ONLY SpanFillState, never DynDefs.
+
+[t=10s] User types after: "A whimsical haiku today"
+        ── BlankFill.onTextChange: cleaned !== lastFilledText
+           - kind: 'blank-fill' → maybePreserveSpanFill returns false (only 'static-alt' preserves)
+           - spanFillState.clear()
+        ── Navigation.onTextChange: hlState.deactivate(), pruneStale (no defs to prune)
+        
+        Blank fill ends naturally on the user's "I'm done" signal (any edit).
+
+       Now if the user cycles "haiku" they could enter a static-alt span.
+       The two systems can run sequentially in the same buffer; they just
+       don't actively coexist the way two static-alt spans do.
+```
+
+### Scenario 6 — User destructively edits a span's content
+
+```
+Start: text "the legal eagle filed" — span at idx 1, spanLength 2
+
+[t=0]  User selects "eagle" and types over it: "the legal owl filed"
+       ── Navigation.onTextChange (user source):
+          ── pruneStale(words):
+             words = [the, legal, owl, filed]
+             - DynDef at idx 1: originalWord="attorney", currentAlt="legal eagle",
+               altWords ["legal","eagle"]:
+                 words[1]="legal" matches, words[2]="owl" ≠ "eagle"
+                 → NOT contiguous match → DROP
+          ── DynDefs: {} (only the attorney def existed)
+       
+       ── BlankFill.onTextChange: spanFillState null, no-op
+
+       findSpanContaining(1) now returns null. The span is gone. User starts fresh.
+
+[t=500ms] Resolver fires:
+          ── cleanWords: every word eligible (no spans, no defs)
+          ── LLM resolves "legal", "owl", "filed" individually
+          ── Builds fresh DynDefs for each
+       
+       Cycling on any of these now offers their own tracks.
+```
+
+### Scenario 7 — Adjacent multi-word spans
+
+```
+Start: text "the attorney filed indemnify clause"
+       — both "attorney" (1) and "indemnify" (3) have multi-word alts in their cues.
+
+[t=0]  Cycle attorney → legal eagle (multi, +1 shift)
+       After: "the legal eagle filed indemnify clause"
+              DynDefs: {1: attorney@2 (legal eagle)}
+              indemnify shifted from idx 3 to idx 4
+
+[t=2s] Cycle indemnify → "hold harmless" (multi, +1 shift)
+       After: "the legal eagle filed hold harmless clause"
+              DynDefs: {1: attorney@2, 4: indemnify@1 (hold harmless)}
+              clause shifted from idx 5 to idx 6
+       
+       Both spans are tight — span A occupies [1,2], span B occupies [4,5].
+       Nothing between them except "filed" at idx 3.
+
+[t=5s] Cycle attorney back to "lawyer" (single, -1 shift)
+       After: "the lawyer filed hold harmless clause"
+              DynDefs: {1: attorney@1 (lawyer), 3: indemnify@1, 5: clause def}
+              indemnify shifted from idx 4 to idx 3
+              clause shifted from idx 6 to idx 5
+              hold harmless's span is now at idx [3,4]
+       
+       Span B's def moved with the shift. span B still works correctly because:
+       - findSpanContaining now scans defs and finds idx 3 has currentAlt="hold harmless"
+       - Spans naturally relocate; nav and dim continue to treat [3,4] as one block.
+```
+
+### Scenario 8 — Cycle, type, cycle again on the SAME word
+
+```
+Start: text "fast slow"
+
+[t=0]  Cycle "fast" → "quick"
+       DynDefs: {0: fast @currentIndex=1 (quick)}
+       text: "quick slow"
+
+[t=2s] User types " today" at the end → "quick slow today"
+       ── Navigation.onTextChange:
+          ── pruneStale: word at idx 0 = "quick".
+             def.originalWord="fast" ≠ "quick", but altWords[currentIndex=1]=["quick"]
+             matches "quick". KEEP.
+          DynDefs: {0: fast @1}  unchanged
+
+[t=3s] Cycle again on idx 0:
+       ── cycleStaticAlts: get def, found.
+       ── applyAltCycle: currentIndex=2, nextWord="rapid"
+       ── splice from words[0]=quick to "rapid"
+       ── text: "rapid slow today"
+
+       Continues attorney's track correctly. The intermediate user typing
+       didn't disturb the cycle state.
+```
+
+### Common state-transition patterns
+
+| Action | Modules fired | DynDefs effect | SpanFillState effect |
+|---|---|---|---|
+| Single-word cycle (no shift) | Cycling | def.currentIndex++; cache spanStart/End | unchanged |
+| Single → multi-word cycle (+N shift) | Cycling | def.currentIndex++; shiftAfter; pruneStale | unchanged |
+| Multi → single-word cycle (-N shift) | Cycling | def.currentIndex++; shiftAfter; pruneStale | unchanged |
+| User types | Navigation, BlankFill, Resolver | pruneStale on stale defs; resolve fires after debounce | maybePreserveSpanFill or clear |
+| User deletes a span word | Navigation, BlankFill | def at span origin pruned (multi-word match fails) | unchanged (no static-alt entries) |
+| Blank-fill via script | BlankFill | unchanged | set with new entry |
+| Cycle blank-fill | Cycling Path 0 (cycleSpanFill) | unchanged | currentAltIndex++ |
+| Resolver runs | Resolver | new defs at unfilled positions; cycled defs untouched | unchanged |
+
+### Gotchas
+
+- **Cycling is runtime-source.** Resolver, Navigation, BlankFill all
+  branch on `event.source === 'user'` or similar. Don't assume cycling
+  triggers the same handlers as user typing.
+- **Pruning is invariant per-event but called explicitly from two
+  paths.** Navigation does it on user text change, Cycling does it
+  inside applyAltCycle when word count changes. They're not a pipeline
+  — each is independent. Adding a new path that mutates word count
+  needs to call pruneStale itself.
+- **`findSpanContaining` is queried on demand, not cached.** Linear
+  scan each call. Fine at typical sizes; aware of it if profiling shows
+  pressure.
+- **The DynDefs char range cache (def.spanStart/spanEnd) is best-effort
+  only.** applyAltCycle recomputes from live word positions every
+  cycle. Other readers (DimRender) can use the cache, but treat it as
+  hint not source-of-truth — between cycles, if the user edited
+  surrounding text, the cache is stale until the next cycle refreshes it.
 
 ## Trade-offs accepted
 
