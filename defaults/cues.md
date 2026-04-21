@@ -707,6 +707,15 @@ For cue-controls see controls.md. For blank-fill behaviour see blanks.md.
     }
   },
   {
+    "id": "span-test",
+    "words": {
+      "spantest": {
+        "tip": "Multi-word span test fixture — cycles through spaced alts to exercise span tracking without the LLM",
+        "alts": ["one word", "two words", "three short words", "back to one"]
+      }
+    }
+  },
+  {
     "id": "help",
     "words": {
       "/help": {
