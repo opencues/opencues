@@ -155,29 +155,77 @@ function writeText(text: string): void {
  * try it as a bundle asset first.
  */
 async function readFile(path: string): Promise<string | null> {
+  // 1. Synced bundle (opencues sync chrome --wsl) wins if present.
   const bundled = await readBundledConfig(path);
   if (bundled !== null) {
     console.log(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
     return bundled;
   }
+
+  // 2. Read-only files (cues.md, blanks.md, folder cues, folder
+  //    controls, tips.json): read the bake-time constant direct.
+  //    No storage cache — that's what used to go stale when the repo's
+  //    prompt changed but chrome.storage still held the old seeded
+  //    copy. Bake-time is in-memory, always fresh per build.
+  if (isReadOnlyPath(path)) {
+    const bake = readBakeTimeDefault(path);
+    if (bake !== null) {
+      console.log(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars)`);
+      return bake;
+    }
+    console.log(`[opencues] readFile(${path}) ← null (no bundle, no bake-time)`);
+    return null;
+  }
+
+  // 3. Writable files (opencues.md — OpenCuesSettingsControl cycles
+  //    voice-mode / tips-mode / debug-mode via writeFile). Storage
+  //    wins so the user's saved setting persists across reloads,
+  //    falling back to bake-time before the first write.
   const key = STORAGE_PREFIX + path;
   try {
     const result = await chrome.storage.local.get(key);
     const v = result[key];
-    if (typeof v !== 'string') {
-      console.log(`[opencues] readFile(${path}) ← null (no bundle, no storage)`);
-      return null;
+    if (typeof v === 'string' && v.length > 0) {
+      console.log(`[opencues] readFile(${path}) ← storage (${v.length} chars)`);
+      return v;
     }
-    if (v.length === 0) {
-      console.log(`[opencues] readFile(${path}) ← null (empty in storage)`);
-      return null;
-    }
-    console.log(`[opencues] readFile(${path}) ← storage (${v.length} chars)`);
-    return v;
   } catch (err) {
     console.warn(`[opencues] readFile(${path}) threw:`, err);
-    return null;
   }
+  const bake = readBakeTimeDefault(path);
+  if (bake !== null) {
+    console.log(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars, storage empty)`);
+    return bake;
+  }
+  console.log(`[opencues] readFile(${path}) ← null (no bundle, no storage, no bake-time)`);
+  return null;
+}
+
+// Is this path a READ-ONLY config? Read-only paths bypass storage
+// entirely — they resolve directly from the bake-time constant when
+// the sync bundle doesn't cover them. This kills the staleness class
+// of bug where storage held an old seeded copy forever.
+function isReadOnlyPath(path: string): boolean {
+  if (!path.startsWith(ROOT + '/')) return false;
+  const rel = path.slice(ROOT.length + 1);
+  if (rel === 'opencues.md') return false;       // OpenCuesSettingsControl writes
+  if (rel === 'controls.md') return false;       // legacy monolithic; write-safe fallback
+  return true;
+}
+
+// Resolve a runtime-path to its bake-time constant value.
+function readBakeTimeDefault(path: string): string | null {
+  if (!path.startsWith(ROOT + '/')) return null;
+  const rel = path.slice(ROOT.length + 1);
+  if (rel === 'cues.md') return __DEFAULT_CUES_MD__ || null;
+  if (rel === 'blanks.md') return __DEFAULT_BLANKS_MD__ || null;
+  if (rel === 'opencues.md') return __DEFAULT_OPENCUES_MD__ || null;
+  if (rel === '.tips.json') return __DEFAULT_TIPS_JSON__ || null;
+  const cueMatch = rel.match(/^cues\/([^/]+)\/cue\.md$/);
+  if (cueMatch) return __DEFAULT_CUE_FOLDERS__[cueMatch[1]] ?? null;
+  const ctrlMatch = rel.match(/^controls\/([^/]+)\/cue\.md$/);
+  if (ctrlMatch) return __DEFAULT_CONTROL_FOLDERS__[ctrlMatch[1]] ?? null;
+  return null;
 }
 
 // Cache the bundle index. Crucially we cache the PROMISE, not the
@@ -306,45 +354,14 @@ async function readBundledDir(runtimePath: string): Promise<readonly { name: str
 }
 
 /**
- * Seed chrome.storage with the bake-time config defaults on first
- * boot. Idempotent — only writes keys that don't already exist so a
- * popup-edited config isn't clobbered on extension reload.
+ * No storage seeding. readFile() resolves bake-time constants directly
+ * for every read-only config path, and writable files (opencues.md)
+ * flow through chrome.storage only when the runtime actually writes
+ * them. The previous seedDefaults() call was deleted in Apr 2026 — it
+ * cached bake-time values into storage where they went stale on the
+ * next prompt rewrite. See docs/features/chrome-sync.md for the
+ * simplified model.
  */
-async function seedDefaults(): Promise<void> {
-  const seeds: Record<string, string> = {
-    [`${STORAGE_PREFIX}${ROOT}/cues.md`]: __DEFAULT_CUES_MD__,
-    [`${STORAGE_PREFIX}${ROOT}/blanks.md`]: __DEFAULT_BLANKS_MD__,
-    [`${STORAGE_PREFIX}${ROOT}/opencues.md`]: __DEFAULT_OPENCUES_MD__,
-    [TIPS_KEY]: __DEFAULT_TIPS_JSON__,
-  };
-  for (const [name, content] of Object.entries(__DEFAULT_CUE_FOLDERS__)) {
-    seeds[`${STORAGE_PREFIX}${ROOT}/cues/${name}/cue.md`] = content;
-  }
-  for (const [name, content] of Object.entries(__DEFAULT_CONTROL_FOLDERS__)) {
-    seeds[`${STORAGE_PREFIX}${ROOT}/controls/${name}/cue.md`] = content;
-  }
-
-  const keys = Object.keys(seeds);
-  let existing: Record<string, unknown> = {};
-  try { existing = await chrome.storage.local.get(keys); } catch { /* swallow */ }
-  const toWrite: Record<string, string> = {};
-  for (const key of keys) {
-    const cur = existing[key];
-    // Re-seed when storage has nothing OR when it has an empty string
-    // (a sentinel left over from a broken bake-time default — without
-    // this we'd preserve the broken empty value forever, even after
-    // the underlying source file is fixed).
-    if (typeof cur !== 'string' || cur.length === 0) {
-      // Only write if we have non-empty default content to seed.
-      if (seeds[key] && seeds[key].length > 0) {
-        toWrite[key] = seeds[key];
-      }
-    }
-  }
-  if (Object.keys(toWrite).length > 0) {
-    try { await chrome.storage.local.set(toWrite); } catch { /* swallow */ }
-  }
-}
 
 /**
  * Optional runtime config the content script can supply at boot time.
@@ -405,12 +422,9 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     else console.log(tag, msg, data ?? '');
   };
 
-  // Fire-and-forget seed; ConfigLoader.load tolerates empty stores
-  // and will re-load once the seeded data lands. The runtime's own
-  // first read may briefly see no config — same behaviour as the
-  // legacy CueEngine which also debounces its initial analyse.
-  void seedDefaults();
-
+  // No seed step — readFile() resolves bake-time constants directly
+  // for read-only paths, and writable paths (opencues.md) persist
+  // through chrome.storage only when they're actually written.
   bootResult = boot({
     hostVersion: '0.1.0',
     cwd: ROOT,
