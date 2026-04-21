@@ -79,3 +79,10 @@ Dimming also respects spans: a word at index `_ni` is dimmed if it is in a span 
 - Apply dimming and highlighting across all words in an active span
 - Protect span words from receiving individual alternatives during re-analysis (check `_spanInfo.originalIndex !== _nw2.index` and null out alts if mismatched)
 - Clear span tracking when the user cycles back to a single-word alternative
+- **Reconcile span positions on every text change** — when the user types,
+  any def whose words appear at a new contiguous position should be RELOCATED
+  there (deterministic, only when exactly one match exists). This preserves
+  cycle progress through prefix/middle edits. Ambiguous matches drop. See
+  `docs/architecture/spans-and-cycling.md` § "Deterministic relocate" for
+  the algorithm; `@opencues/runtime` ships a reference implementation in
+  `DynDefs.pruneStale`.
