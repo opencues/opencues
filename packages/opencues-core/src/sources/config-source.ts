@@ -16,6 +16,23 @@ import {
 import { SourceConfig, BlankParser } from '../cues-md';
 import { parseMath, parseCompute, parseAnswer, parseAlternatives, parseRaw } from './parsers';
 
+/**
+ * The canonical output-format reminder for `parser: alternatives`
+ * sources. Auto-appended by getCues when the prompt doesn't already
+ * contain a format spec — cue authors don't need to remember it, and
+ * the system stays robust against naive prompts that would otherwise
+ * cause the LLM to respond in prose.
+ */
+const ALT_FORMAT_SPEC = 'Output ONLY index:alternatives format (e.g. 1:alt1,alt2,alt3). No prose, tables, or markdown.';
+
+/** Does the prompt already tell the LLM to output INDEX:alt form?
+ *  Matches the canonical shape only — "INDEX:alt" in any case, with
+ *  optional whitespace around the colon. A bare "INDEX:foo" is NOT
+ *  the contract and gets auto-replaced with the canonical reminder. */
+function hasFormatSpec(prompt: string): boolean {
+  return /index\s*:\s*alt/i.test(prompt);
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -100,7 +117,16 @@ export class ConfigSource implements CueSource {
     try {
       const input = this.formatInput(context);
       const separator = this.parser === 'alternatives' ? '\n' : ' ';
-      const fullPrompt = promptText.trimEnd() + separator + input;
+      // Defensive: for parser: alternatives, ensure the prompt ends with
+      // the INDEX:alt1,alt2,alt3 format spec. Without this, a prompt that
+      // instructs the LLM on content but forgets to constrain the output
+      // shape gets interpreted as "write a reference essay" — classic
+      // failure mode for domain cues authored naively. See
+      // docs/features/word-alt-routing.md § OUTPUT FORMAT.
+      const ensuredPrompt = this.parser === 'alternatives' && !hasFormatSpec(promptText)
+        ? `${promptText.trimEnd()}\n\n${ALT_FORMAT_SPEC}`
+        : promptText.trimEnd();
+      const fullPrompt = ensuredPrompt + separator + input;
 
       const shortResponse = this.parser === 'math' || this.parser === 'compute' || this.parser === 'answer';
       const maxTokens = shortResponse ? 200 : 800;
