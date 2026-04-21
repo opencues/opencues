@@ -179,6 +179,71 @@ describe('Resolver.resolveAndApply', () => {
     expect(capturedContext!.words[2]).toBe('');
   });
 
+  it('skips a word that has been CYCLED to one of the def\'s alternatives', async () => {
+    // Regression: "the word lawyer when changed for alts can sometimes
+    // drift into being other words and be re-evaluated. So it becomes
+    // client then client becomes customer". The original skip-already-
+    // resolved filter only checked existing.originalWord === cleaned.
+    // After cycling attorney → lawyer, cleaned is "lawyer" and
+    // originalWord is still "attorney" — the check fails, the resolver
+    // sees "lawyer" as a fresh word, builds a new DynDef with "lawyer's
+    // own alts (client, etc.), and the next cycle drifts onto a
+    // different alt track. Now the filter ALSO checks current alt.
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    adapter.pushText('the lawyer filed');
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter);
+    let capturedContext: { words: string[] } | null = null;
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
+      httpAdapter: {},
+    });
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx: unknown) => { capturedContext = ctx as { words: string[] }; return { results: [] }; },
+    };
+    // User cycled attorney → lawyer. DynDef tracks both.
+    dyn.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney', 'lawyer', 'legal eagle', 'defendant counsel'],
+      currentIndex: 1, // currently showing "lawyer"
+      spanStart: 4, spanEnd: 10,
+    });
+    await resolver.resolveAndApply('the lawyer filed');
+    expect(capturedContext!.words[1]).toBe(''); // skipped — "lawyer" is owned by attorney's def
+  });
+
+  it('skips both inner positions of a multi-word static-alt span', async () => {
+    // "the legal eagle filed" — DynDef at idx 1 (originalWord=attorney,
+    // current=legal eagle). Inner position idx 2 ("eagle") has NO def
+    // but is inside the span. Both should be skipped — re-resolving
+    // "legal" or "eagle" as fresh words would build separate DynDefs
+    // and corrupt the cycling state.
+    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    adapter.pushText('the legal eagle filed');
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter);
+    let capturedContext: { words: string[] } | null = null;
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
+      httpAdapter: {},
+    });
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx: unknown) => { capturedContext = ctx as { words: string[] }; return { results: [] }; },
+    };
+    dyn.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney', 'lawyer', 'legal eagle'],
+      currentIndex: 2, // multi-word
+      spanStart: 4, spanEnd: 15,
+    });
+    await resolver.resolveAndApply('the legal eagle filed');
+    expect(capturedContext!.words[1]).toBe(''); // origin (legal) — span owned
+    expect(capturedContext!.words[2]).toBe(''); // inner (eagle) — span owned
+    expect(capturedContext!.words[3]).toBe('filed'); // unrelated, sent normally
+  });
+
   it('blanks (_) are always re-resolved, even if the runtime has cached alts', async () => {
     // Context for a `_` must pass through unchanged — its answer
     // depends on surrounding words that may have shifted on any edit.

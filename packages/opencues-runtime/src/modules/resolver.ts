@@ -165,21 +165,29 @@ export class Resolver {
     // Rules:
     //   - Blanks (`_`) always re-resolve — their context determines the
     //     answer and may have changed.
-    //   - Words inside an active span-fill (static-alt or blank-fill)
-    //     are owned by cycling; re-querying would waste tokens and risk
-    //     clobbering the cached alts.
-    //   - A DynDef with matching originalWord means alts are already
-    //     cached for this position. Re-querying produces alts the cache
-    //     throws away (see line 197 below), so skipping the call is pure
-    //     win.
+    //   - Words inside an active blank-fill (SpanFillState) are owned
+    //     by cycling; re-querying would waste tokens.
+    //   - Words inside ANY multi-word static-alt span (DynDefs-derived)
+    //     are owned by cycling — origin OR inner positions.
+    //   - A DynDef at this index already claims the position. The word
+    //     might be:
+    //         (a) the def's originalWord (untouched after resolve)
+    //         (b) the def's currentAlt (user cycled to a single-word alt)
+    //     Both cases mean cycling owns this word and the resolver must
+    //     not second-guess it. Without this, cycling attorney → lawyer
+    //     would let the resolver re-evaluate "lawyer" as a fresh word
+    //     and drift the alt track (lawyer → client → customer → ...).
     const span = this.spanFillState?.current;
     const cleanWords = wordSpans.map((w, i) => {
       const cleaned = w.word.replace(/[\u200B\u200C]/g, '');
       if (cleaned === '_') return cleaned;
       if (span && i >= span.index && i < span.index + span.spanLength) return '';
+      if (this.dynDefs.findSpanContaining(i)) return '';
       const existing = this.dynDefs.get(i);
-      if (existing && existing.originalWord === cleaned && existing.alternatives.length > 1) {
-        return '';
+      if (existing && existing.alternatives.length > 1) {
+        const currentAlt = existing.alternatives[existing.currentIndex] ?? '';
+        const currentFirstWord = currentAlt.split(/\s+/).filter(Boolean)[0] ?? '';
+        if (existing.originalWord === cleaned || currentFirstWord === cleaned) return '';
       }
       return cleaned;
     });
