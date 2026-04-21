@@ -17,6 +17,7 @@ import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import type { HighlightState } from '../state/highlight-state';
+import type { SpanFillState } from '../state/span-fill';
 import { splitWords } from './navigation';
 
 export interface ResolverOptions {
@@ -58,6 +59,7 @@ export class Resolver {
     private dynDefs: DynDefs,
     private configLoader: ConfigLoader,
     private options: ResolverOptions,
+    private spanFillState?: SpanFillState,
   ) {}
 
   subscribe(): void {
@@ -158,7 +160,29 @@ export class Resolver {
     const generation = ++this._generation;
 
     const wordSpans = splitWords(text);
-    const cleanWords = wordSpans.map(w => w.word.replace(/[\u200B\u200C]/g, ''));
+    // Skip words we've already resolved. Empty strings get filtered out
+    // by RoutedWordSourceGroup + every other CueSource — no LLM call.
+    // Rules:
+    //   - Blanks (`_`) always re-resolve — their context determines the
+    //     answer and may have changed.
+    //   - Words inside an active span-fill (static-alt or blank-fill)
+    //     are owned by cycling; re-querying would waste tokens and risk
+    //     clobbering the cached alts.
+    //   - A DynDef with matching originalWord means alts are already
+    //     cached for this position. Re-querying produces alts the cache
+    //     throws away (see line 197 below), so skipping the call is pure
+    //     win.
+    const span = this.spanFillState?.current;
+    const cleanWords = wordSpans.map((w, i) => {
+      const cleaned = w.word.replace(/[\u200B\u200C]/g, '');
+      if (cleaned === '_') return cleaned;
+      if (span && i >= span.index && i < span.index + span.spanLength) return '';
+      const existing = this.dynDefs.get(i);
+      if (existing && existing.originalWord === cleaned && existing.alternatives.length > 1) {
+        return '';
+      }
+      return cleaned;
+    });
 
     let result;
     try {

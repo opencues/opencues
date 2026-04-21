@@ -359,7 +359,7 @@ export function boot(host: HostInfo): BootResult {
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs ?? 500,
-    });
+    }, spanFillState);
     // Wait for first config load so resolver can see cues/blanks configs.
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
   }

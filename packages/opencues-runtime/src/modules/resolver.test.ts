@@ -3,6 +3,7 @@ import { Resolver } from './resolver';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
+import { SpanFillState } from '../state/span-fill';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({ concepts: [] });
@@ -135,6 +136,71 @@ describe('Resolver.resolveAndApply', () => {
     ]);
     await resolver.resolveAndApply('alpha');
     expect(dynDefs.get(0)).toBeUndefined();
+  });
+
+  it('does NOT send already-resolved words to the LLM', async () => {
+    // The context passed to the inner resolver should mark already-
+    // computed words (and words inside an active span-fill) as empty
+    // strings. Downstream, RoutedWordSourceGroup + every other
+    // CueSource skips empty entries — no LLM call, no token spend.
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText('alpha beta gamma');
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    const spanFillState = new SpanFillState();
+    let capturedContext: { words: string[] } | null = null;
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
+      httpAdapter: {},
+    }, spanFillState);
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx: unknown) => {
+        capturedContext = ctx as { words: string[] };
+        return { results: [] };
+      },
+    };
+
+    // Prior DynDef for "alpha" — should be skipped on next resolve.
+    dyn.set(0, { originalWord: 'alpha', alternatives: ['alpha', 'a1'], currentIndex: 0, spanStart: 0, spanEnd: 5 });
+    // Active span-fill covers words 2..3 (i.e. index 2, spanLength 2).
+    spanFillState.set({
+      kind: 'static-alt',
+      index: 2, spanLength: 1, // (gamma only — keeping test simple)
+      alternatives: ['gamma', 'cached multi'], currentAltIndex: 0,
+    }, 'alpha beta gamma');
+
+    await resolver.resolveAndApply('alpha beta gamma');
+    expect(capturedContext).not.toBeNull();
+    // "alpha" skipped (cached), "beta" not skipped (no DynDef), "gamma"
+    // skipped (in span-fill range).
+    expect(capturedContext!.words[0]).toBe('');
+    expect(capturedContext!.words[1]).toBe('beta');
+    expect(capturedContext!.words[2]).toBe('');
+  });
+
+  it('blanks (_) are always re-resolved, even if the runtime has cached alts', async () => {
+    // Context for a `_` must pass through unchanged — its answer
+    // depends on surrounding words that may have shifted on any edit.
+    const adapter = new MockAdapter({ files: { '/tips.json': TIPS } });
+    adapter.pushText('weather _ paris');
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { tipsPath: '/tips.json' });
+    let capturedContext: { words: string[] } | null = null;
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
+      httpAdapter: {},
+    });
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx: unknown) => {
+        capturedContext = ctx as { words: string[] };
+        return { results: [] };
+      },
+    };
+
+    await resolver.resolveAndApply('weather _ paris');
+    expect(capturedContext!.words).toContain('_');
   });
 
   it('stale-invalidates: if generation bumped during in-flight, drops result', async () => {
