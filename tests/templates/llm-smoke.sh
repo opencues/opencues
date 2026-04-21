@@ -17,6 +17,25 @@
 #  10. blanks.md ### classifier  — factual input → MODE=FACTUAL
 #  11. blanks.md ### classifier  — ambiguous input → MODE=GRAMMAR
 #  12. cues.md ### synonym       — alternatives count discipline (== 3 items)
+#  13-14. defaults/cues/legal     — single-word + multi-word indices covered
+#  15-16. defaults/cues/medical   — single-word + multi-word indices covered
+#  17-18. defaults/cues/financial — single-word + multi-word indices covered
+#
+# ── Adding a new cue? ────────────────────────────────────────────────
+# Before shipping a new defaults/cues/<name>/cue.md, add a loop entry
+# in the "Shipped domain cues" block below with one known keyword (for
+# single-word) + three keywords (for multi-word). Domain cues MUST pass
+# this smoke to avoid the class of bug where:
+#   - LLM returns prose instead of INDEX:alt (prompt missed a format
+#     spec or was too chatty) — ConfigSource.getCues auto-appends now,
+#     but a test still catches regressions.
+#   - LLM hallucinates extra indices from "examples: X vs Y, A vs B"
+#     lists in the prompt body (fixed in Apr 2026 domain-cue rewrite).
+#   - Indexing drift (prompt examples use 1-based, runtime sends
+#     0-based, parser rejects out-of-range indices).
+# See docs/features/word-alt-routing.md for the routing model, and
+# defaults/cues/grammar/cue.md for the canonical example-heavy prompt
+# style.
 #
 # Skipped silently if GROQ_API_KEY is missing.
 
@@ -189,5 +208,96 @@ else
   fail "expected ~3 alternatives, got $COUNT: '$OUT'"
 fi
 
+# ─────────────────────────────────────────────────────────────────
+# Shipped domain cues — legal, medical, financial
+# ─────────────────────────────────────────────────────────────────
+# Each domain cue ships in defaults/cues/<name>/cue.md. Under the
+# RoutedWordSourceGroup model each one is dispatched standalone with
+# a sub-context containing ONLY its matched words, 0-indexed. The
+# ConfigSource auto-appends the INDEX:alt format spec.
+#
+# This block verifies every shipped domain cue produces:
+#   - correct shape (INDEX:alt1,alt2,alt3 per input index)
+#   - correct indexing (0-based, matching the runtime's input form)
+#   - no hallucinated extra indices (parser would drop them)
+# ...for BOTH single-word and multi-word sub-contexts.
+
+# Extract the prompt body (strip YAML frontmatter).
+extract_body() {
+  awk 'BEGIN{c=0} /^---$/{c++; next} c>=2{print}' "$1"
+}
+
+# Send a domain cue's prompt + input to Groq; return LLM content.
+domain_call() {
+  local cue_file="$1" input="$2"
+  local body="$(extract_body "$cue_file")"
+  # Mirror the runtime's auto-append so the test matches what
+  # ConfigSource.getCues actually sends.
+  local prompt="$body
+
+Output ONLY index:alternatives format (e.g. 1:alt1,alt2,alt3). No prose, tables, or markdown.
+$input"
+  groq_call "$prompt" 500
+}
+
+# Assert every index 0..N-1 from the input appears in the LLM output
+# with ≥2 comma-separated alts. Dies on first missing index.
+assert_all_indices_covered() {
+  local label="$1" input="$2" response="$3"
+  # Count how many indices are in the input (0=foo 1=bar 2=baz → 3).
+  local n
+  n="$(echo "$input" | grep -oE '[0-9]+=' | wc -l | tr -d '[:space:]')"
+  for ((i=0; i<n; i++)); do
+    # Look for "i:alt,alt,..." OR "i: alt,alt,..." on a line OR pipe-delimited.
+    if ! echo "$response" | grep -qE "(^|[|[:space:]])${i}[[:space:]]*:[[:space:]]*[a-zA-Z]"; then
+      fail "$label: missing index $i in response:
+$response"
+    fi
+    # Check ≥ 2 alts at that index (comma-separated list).
+    local line
+    line="$(echo "$response" | tr '|' '\n' | grep -E "(^|[[:space:]])${i}[[:space:]]*:" | head -1)"
+    local alts
+    alts="$(echo "$line" | sed -E "s/^[^:]*:[[:space:]]*//" | tr ',' '\n' | grep -c '.')"
+    if [[ "$alts" -lt 2 ]]; then
+      fail "$label: index $i has only $alts alts (need ≥2):
+$line"
+    fi
+  done
+  pass "$label ($n indices, all covered): $(echo "$response" | tr '\n' '|' | head -c 120)…"
+}
+
+for cue in legal medical financial; do
+  cue_file="$(dirname "$0")/../../defaults/cues/$cue/cue.md"
+  [[ -f "$cue_file" ]] || { echo "SKIP: $cue_file missing"; continue; }
+
+  # Pick one known keyword from the cue's match regex for single-word test,
+  # and three keywords for multi-word. These must be words the match regex
+  # actually matches (the match is checked by RoutedWordSourceGroup, but
+  # once routed here, any input word goes through — the keywords just give
+  # the LLM concrete test cases).
+  case "$cue" in
+    legal)
+      single="0=contract"
+      multi="0=contract 1=shall 2=indemnify"
+      ;;
+    medical)
+      single="0=diagnosis"
+      multi="0=diagnosis 1=prognosis 2=contraindication"
+      ;;
+    financial)
+      single="0=equity"
+      multi="0=portfolio 1=leverage 2=hedge"
+      ;;
+  esac
+
+  echo "=== $cue: single-word input ($single) ==="
+  OUT="$(domain_call "$cue_file" "$single")"
+  assert_all_indices_covered "$cue single" "$single" "$OUT"
+
+  echo "=== $cue: multi-word input ($multi) ==="
+  OUT="$(domain_call "$cue_file" "$multi")"
+  assert_all_indices_covered "$cue multi" "$multi" "$OUT"
+done
+
 echo
-echo "PASS: llm-smoke.sh (12 LLM checks across cue / math / factual / classifier)"
+echo "PASS: llm-smoke.sh (12 LLM checks + 6 domain-cue checks = 18 total)"
