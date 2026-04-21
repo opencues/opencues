@@ -96,21 +96,114 @@ export class DynDefs {
     return null;
   }
 
+  /**
+   * Reconcile DynDefs with the current text: keep entries that still
+   * match at their existing index, RELOCATE entries whose content
+   * appears at exactly one different position (deterministic
+   * re-anchor), and drop everything else.
+   *
+   * Snapshot → classify → resolve collisions → apply, in three phases.
+   *
+   * Why three phases: relocate decisions can collide (two defs both
+   * want to move to the same target, or a relocate target is occupied
+   * by a "keep") — collision detection has to see all decisions before
+   * any mutation. Single-pass mutation would also break iteration
+   * order: a def moved to a higher index could be re-evaluated under
+   * its new index and double-act.
+   *
+   * Relocate is deterministic (only fires when EXACTLY ONE match
+   * exists); ambiguity always drops. This is the design
+   * trade-off: we'd rather force the user to re-cycle than silently
+   * relocate a def to the wrong position. See
+   * docs/architecture/spans-and-cycling.md § "Deterministic relocate".
+   */
   pruneStale(words: readonly { word: string }[]): void {
+    type Decision =
+      | { kind: 'keep' }
+      | { kind: 'drop' }
+      | { kind: 'move'; to: number };
+    const decisions = new Map<number, { def: WordDef; decision: Decision }>();
+
+    // Phase 1 — classify each entry without mutating.
     for (const [index, def] of this._defs.entries()) {
-      const actual = words[index]?.word;
-      if (!actual) { this._defs.delete(index); continue; }
-      if (def.originalWord === actual) continue;
-      const currentAlt = def.alternatives[def.currentIndex] ?? '';
-      const altWords = currentAlt.split(/\s+/).filter(Boolean);
-      if (altWords.length === 1) {
-        if (currentAlt === actual) continue;
-      } else if (altWords.length > 1) {
-        const allMatch = altWords.every((w, k) => words[index + k]?.word === w);
-        if (allMatch) continue;
+      if (this._defMatchesAt(def, index, words)) {
+        decisions.set(index, { def, decision: { kind: 'keep' } });
+        continue;
       }
-      this._defs.delete(index);
+      const target = this._findUniqueMatch(def, words);
+      if (target !== null && target !== index) {
+        decisions.set(index, { def, decision: { kind: 'move', to: target } });
+      } else {
+        decisions.set(index, { def, decision: { kind: 'drop' } });
+      }
     }
+
+    // Phase 2 — resolve collisions. A move is dropped when:
+    //  - another move targets the same destination (ambiguous outcome)
+    //  - the destination is currently occupied by a 'keep' def
+    //    (we don't overwrite a fresh def with a relocated one)
+    const moveTargets = new Map<number, number[]>();
+    for (const [from, { decision }] of decisions) {
+      if (decision.kind === 'move') {
+        const arr = moveTargets.get(decision.to) ?? [];
+        arr.push(from);
+        moveTargets.set(decision.to, arr);
+      }
+    }
+    for (const [target, fromIndices] of moveTargets) {
+      const occupiedByKeep = decisions.get(target)?.decision.kind === 'keep';
+      if (fromIndices.length > 1 || occupiedByKeep) {
+        for (const from of fromIndices) {
+          decisions.set(from, { def: decisions.get(from)!.def, decision: { kind: 'drop' } });
+        }
+      }
+    }
+
+    // Phase 3 — apply. Delete first (clears slots for incoming moves),
+    // then re-insert moved entries.
+    for (const [idx, { decision }] of decisions) {
+      if (decision.kind !== 'keep') this._defs.delete(idx);
+    }
+    for (const [, { def, decision }] of decisions) {
+      if (decision.kind === 'move') this._defs.set(decision.to, def);
+    }
+  }
+
+  /** Does `def` correctly describe the word(s) at `index` in `words`? */
+  private _defMatchesAt(def: WordDef, index: number, words: readonly { word: string }[]): boolean {
+    const actual = words[index]?.word;
+    if (actual === undefined) return false;
+    if (def.originalWord === actual) return true;
+    const currentAlt = def.alternatives[def.currentIndex] ?? '';
+    const altWords = currentAlt.split(/\s+/).filter(Boolean);
+    if (altWords.length === 1) return currentAlt === actual;
+    if (altWords.length > 1) {
+      return altWords.every((w, k) => words[index + k]?.word === w);
+    }
+    return false;
+  }
+
+  /**
+   * Return the unique index where `def`'s current alt appears
+   * contiguously in `words`, or null if zero or more than one match
+   * exists. Conservative: ambiguity = no relocate.
+   */
+  private _findUniqueMatch(def: WordDef, words: readonly { word: string }[]): number | null {
+    const currentAlt = def.alternatives[def.currentIndex] ?? '';
+    const altWords = currentAlt.split(/\s+/).filter(Boolean);
+    if (altWords.length === 0) return null;
+    let foundAt: number | null = null;
+    for (let i = 0; i <= words.length - altWords.length; i += 1) {
+      let ok = true;
+      for (let k = 0; k < altWords.length; k += 1) {
+        if (words[i + k]?.word !== altWords[k]) { ok = false; break; }
+      }
+      if (ok) {
+        if (foundAt !== null) return null; // ambiguous — bail
+        foundAt = i;
+      }
+    }
+    return foundAt;
   }
 
   set(wordIndex: number, def: WordDef): void {

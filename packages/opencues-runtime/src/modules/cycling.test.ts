@@ -335,23 +335,22 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
   });
 
-  it('prepending text drops the span (no auto re-anchor in option B)', async () => {
-    // SpanFillState's preservation logic re-anchored on prefix edits;
-    // option B trades that off for N-spans support. After prefix edit
-    // the words at the OLD span index don't match anymore — pruning
-    // drops the DynDef cleanly. User cycles fresh from the new state.
+  it('prepending text RELOCATES the def to its new contiguous position', async () => {
+    // pruneStale runs deterministic relocate: when a stale def's
+    // currentAlt's words still appear at exactly one new position,
+    // the def MOVES instead of being dropped. User keeps their cycle
+    // progress through prefix edits.
     const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
     adapter.fireKey('up', { ctrl: true, alt: true });
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(dynDefs.findSpanContaining(1)?.spanLength).toBe(2);
 
-    adapter.pushText('hey there the legal eagle'); // span shifted to idx 3
-    // DynDef at idx 1 had originalWord=attorney, currentAlt="legal eagle".
-    // At idx 1 after prefix the word is "there" — mismatch on both
-    // the originalWord AND the multi-word match. Pruned.
+    adapter.pushText('hey there the legal eagle');
+    // Def relocated from idx 1 → idx 3 (where "legal eagle" now lives).
     expect(dynDefs.get(1)).toBeUndefined();
-    expect(dynDefs.findSpanContaining(3)).toBeNull(); // no def at new pos either
+    expect(dynDefs.get(3)?.originalWord).toBe('attorney');
+    expect(dynDefs.findSpanContaining(3)?.spanLength).toBe(2);
   });
 
   it('destroying the span text drops the DynDef', async () => {

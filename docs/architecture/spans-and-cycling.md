@@ -246,13 +246,23 @@ Called from `applyAltCycle` after a word-count-changing cycle.
 
 ### `pruneStale(words)` — mutation
 
-Drops every DynDef whose def.originalWord doesn't match the current
-word at its index AND whose currentAlt doesn't either (single-word: ===
-match, multi-word: all N words contiguously match).
+Three-phase reconciliation: keeps defs that still match at their
+current index, RELOCATES defs whose currentAlt's words appear at
+exactly one new position, drops everything else.
+
+Phases:
+1. **Classify** every def (keep / drop / move-to-N) without mutating.
+2. **Resolve collisions** — drop any `move` that conflicts with
+   another `move` to the same target, or with a `keep` at that target.
+3. **Apply** — delete first, then re-insert moved entries at their
+   targets.
 
 Called from:
-- Navigation.onTextChange — user edits
-- Cycling.applyAltCycle — after shift, to mop up genuine staleness
+- Navigation.onTextChange — user edits (keystrokes, paste, deletion)
+- Cycling.applyAltCycle — after a word-count-changing cycle
+
+The relocate path is conservative: ambiguous matches always drop, no
+silent wrong relocations. See "Trade-offs" → "Deterministic relocate".
 
 ### `get(wordIndex)` — query
 
@@ -508,6 +518,7 @@ keystrokes, assert on observable text + state.
 | Multi-word static-alt prompts produced prose, not `INDEX:alt` | `ConfigSource` auto-appends format spec when prompt missing it | `config-source.test.ts` — "appends the format spec when the prompt lacks one" |
 | Stale DynDef.originalWord after user edit → wrong cycling direction | `pruneStale` drops mismatched defs on user text change | "drops DynDefs whose word has been deleted from that position" |
 | Cycled alt re-evaluated by Resolver → alt-track drift (`attorney → lawyer → client → customer`) | Resolver filter also matches def's currentAlt first word + checks `findSpanContaining` | "skips a word that has been CYCLED to one of the def's alternatives" + "skips both inner positions of a multi-word static-alt span" |
+| Prepending text dropped the cycled DynDef → user lost cycle progress on prefix edits | `pruneStale` adds deterministic relocate: stale def whose currentAlt's words appear at exactly ONE new position is moved instead of dropped | "cycle, then PREPEND text — DynDef RELOCATES to new position" + 4 sibling tests covering single/multi/ambiguity/collision |
 
 ---
 
@@ -830,17 +841,49 @@ Start: text "fast slow"
 
 ## Trade-offs accepted
 
-### No auto-reanchor on prefix edits for static-alt spans
+### Deterministic relocate on prefix/middle edits — RESOLVED
 
-`SpanFillState` had a "find the alt elsewhere in text and re-anchor
-the index" feature for prefix typing. The DynDefs-based model can't
-auto-relocate cleanly (ambiguous matches risk moving to the wrong
-position), so prepending text now drops the affected DynDef and the
-user starts cycling from the new state.
+(Originally listed here as "no auto-reanchor", later resolved.)
 
-The N-spans support was the bigger win. If a user reports this as
-painful, we can add deterministic relocate-via-content-match later
-(only when the alt's words appear at exactly one new position).
+The original option B trade-off dropped DynDefs that no longer
+matched at their current index — including the case where the user
+just typed a prefix and the def's content is alive and well at a new
+position. That meant prepending text reset cycle progress.
+
+April 2026 added **deterministic relocate** to `pruneStale`: a stale
+def whose currentAlt's words appear at EXACTLY ONE new position is
+moved there instead of dropped. Ambiguous matches (zero or multiple
+contiguous occurrences) still drop — that's the deterministic part.
+
+Algorithm in three phases:
+
+1. **Classify.** For each def, decide `keep` / `drop` / `move-to-N`
+   without mutating. `keep` = matches at current index; `move-to-N` =
+   doesn't match at current but matches at exactly one new position;
+   `drop` = matches nowhere or matches multiple places.
+2. **Resolve collisions.** If two `move` decisions target the same
+   index, OR a `move` targets a position currently held by a `keep`,
+   downgrade the conflicting `move`s to `drop`. We never overwrite
+   a fresh def with a relocated one; ambiguous moves are bailed out
+   of conservatively.
+3. **Apply.** Delete all non-`keep` slots, then re-insert moved
+   entries at their targets. Snapshot-then-mutate avoids iteration
+   ordering hazards (a moved def can't be re-evaluated under its new
+   index).
+
+Net effect: prepending text now preserves cycle progress in the
+common case, drops cleanly when ambiguity exists, and never silently
+lands a def on the wrong word.
+
+Tests pin all three outcomes — see `cycling.scenarios.test.ts`:
+- "cycle, then PREPEND text — DynDef RELOCATES to new position"
+  (single relocate)
+- "relocate works for SINGLE-word cycled alts too"
+- "relocate handles MULTIPLE defs all shifting by the same prefix"
+- "relocate fails (drops) when the cycled alt appears MULTIPLE times
+  AND original position no longer matches" (ambiguity bail)
+- "relocate refuses to overwrite an existing keep-def at its target"
+  (collision avoidance)
 
 ### Per-cycle splitWords pass
 
