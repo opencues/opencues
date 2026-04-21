@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, existsSync, readdirSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'fs';
 
 // Load .env file if it exists (for dev API keys — .env is gitignored)
 const envVars = {};
@@ -120,5 +120,19 @@ mkdirSync('dist/popup', { recursive: true });
 copyFileSync('src/popup/popup.html', 'dist/popup/popup.html');
 copyFileSync('src/popup/popup.css', 'dist/popup/popup.css');
 copyFileSync('src/content.css', 'dist/content.css');
+
+// Ship sentinel configs/.version + configs/index.json so the version
+// poller and index fetcher always get a 200 on a fresh install (no
+// sync run yet). Without these, every 2.5s poll fires a
+// net::ERR_FILE_NOT_FOUND that Chrome logs to devtools — noisy and
+// scary even though the runtime falls back cleanly. `opencues sync
+// chrome` overwrites both files with real content when it runs.
+mkdirSync('dist/configs', { recursive: true });
+if (!existsSync('dist/configs/.version')) {
+  writeFileSync('dist/configs/.version', 'unsynced\n');
+}
+if (!existsSync('dist/configs/index.json')) {
+  writeFileSync('dist/configs/index.json', JSON.stringify({ schema: 1, files: [] }, null, 2));
+}
 
 console.log('Build complete');

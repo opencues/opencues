@@ -156,38 +156,62 @@ function writeText(text: string): void {
  */
 async function readFile(path: string): Promise<string | null> {
   const bundled = await readBundledConfig(path);
-  if (bundled !== null) return bundled;
+  if (bundled !== null) {
+    console.log(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
+    return bundled;
+  }
   const key = STORAGE_PREFIX + path;
   try {
     const result = await chrome.storage.local.get(key);
     const v = result[key];
-    if (typeof v !== 'string') return null;
-    // Empty strings break parsers (JSON.parse('') → SyntaxError). Treat
-    // them as "no content" so ConfigLoader can fall through to defaults.
-    return v.length > 0 ? v : null;
-  } catch {
+    if (typeof v !== 'string') {
+      console.log(`[opencues] readFile(${path}) ← null (no bundle, no storage)`);
+      return null;
+    }
+    if (v.length === 0) {
+      console.log(`[opencues] readFile(${path}) ← null (empty in storage)`);
+      return null;
+    }
+    console.log(`[opencues] readFile(${path}) ← storage (${v.length} chars)`);
+    return v;
+  } catch (err) {
+    console.warn(`[opencues] readFile(${path}) threw:`, err);
     return null;
   }
 }
 
-// Cache the bundle's index.json. If no index is present (sync never
-// run), cache the absence so we don't hammer chrome.runtime.getURL.
-let _bundleIndexCache: { files: Set<string>; loaded: boolean } | null = null;
-async function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
-  if (_bundleIndexCache) return _bundleIndexCache;
-  _bundleIndexCache = { files: new Set(), loaded: false };
-  try {
-    const url = chrome.runtime.getURL('dist/configs/index.json');
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && Array.isArray(data.files)) {
-        _bundleIndexCache.files = new Set(data.files.map(String));
-        _bundleIndexCache.loaded = true;
+// Cache the bundle index. Crucially we cache the PROMISE, not the
+// resolved value: ConfigLoader fires every readFile() in parallel via
+// Promise.all on boot, so multiple concurrent callers must await the
+// same in-flight fetch (otherwise the second+ callers would see an
+// empty-cache snapshot before the first call's await resolves).
+let _bundleIndexPromise: Promise<{ files: Set<string>; loaded: boolean }> | null = null;
+function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
+  if (_bundleIndexPromise) return _bundleIndexPromise;
+  _bundleIndexPromise = (async () => {
+    const result = { files: new Set<string>(), loaded: false };
+    try {
+      const url = chrome.runtime.getURL('dist/configs/index.json');
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.files)) {
+          result.files = new Set(data.files.map(String));
+          result.loaded = true;
+          console.log(`[opencues] bundled configs loaded: ${result.files.size} files from dist/configs/`);
+        } else {
+          console.warn('[opencues] dist/configs/index.json malformed:', data);
+        }
+      } else {
+        console.warn(`[opencues] dist/configs/index.json fetch returned ${res.status}`);
       }
+    } catch (err) {
+      // Bundle not present — fall back to bake-time. Log so we know.
+      console.warn(`[opencues] dist/configs/index.json fetch failed: ${(err as Error).message}`);
     }
-  } catch { /* bundle not present — fall back to bake-time */ }
-  return _bundleIndexCache;
+    return result;
+  })();
+  return _bundleIndexPromise;
 }
 
 // Read a synced file out of dist/configs/. Path is the runtime's
@@ -305,8 +329,16 @@ async function seedDefaults(): Promise<void> {
   try { existing = await chrome.storage.local.get(keys); } catch { /* swallow */ }
   const toWrite: Record<string, string> = {};
   for (const key of keys) {
-    if (typeof existing[key] !== 'string') {
-      toWrite[key] = seeds[key];
+    const cur = existing[key];
+    // Re-seed when storage has nothing OR when it has an empty string
+    // (a sentinel left over from a broken bake-time default — without
+    // this we'd preserve the broken empty value forever, even after
+    // the underlying source file is fixed).
+    if (typeof cur !== 'string' || cur.length === 0) {
+      // Only write if we have non-empty default content to seed.
+      if (seeds[key] && seeds[key].length > 0) {
+        toWrite[key] = seeds[key];
+      }
     }
   }
   if (Object.keys(toWrite).length > 0) {
@@ -449,7 +481,7 @@ function startVersionPoll(bootResult: BootResult): void {
       }
       if (version !== _lastKnownVersion) {
         _lastKnownVersion = version;
-        _bundleIndexCache = null;          // force index.json re-fetch
+        _bundleIndexPromise = null;        // force index.json re-fetch
         await bootResult.reloadConfig();   // re-read every source
       }
     } catch { /* bundle absent / offline — next tick tries again */ }
