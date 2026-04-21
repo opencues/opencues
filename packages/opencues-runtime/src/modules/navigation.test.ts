@@ -11,7 +11,7 @@ function setup(text: string) {
   const dynDefs = new DynDefs();
   const nav = new Navigation(adapter, hlState, dynDefs);
   nav.subscribe();
-  return { adapter, hlState, nav };
+  return { adapter, hlState, dynDefs, nav };
 }
 
 describe('splitWords', () => {
@@ -25,6 +25,75 @@ describe('splitWords', () => {
   });
   it('empty string returns empty', () => {
     expect(splitWords('')).toEqual([]);
+  });
+});
+
+describe('Navigation.onTextChange DynDef pruning', () => {
+  // Pins the fix for "user deletes words but the span/dim stays".
+  // Stale DynDefs at positions where the word has changed must be
+  // dropped on text change; fresh ones (unchanged word OR mid-cycle
+  // alt at that position) must survive to avoid the dim-flash.
+
+  it('keeps DynDefs whose originalWord matches the current word', () => {
+    const { adapter, dynDefs } = setup('alpha beta');
+    dynDefs.set(0, { originalWord: 'alpha', alternatives: ['alpha', 'a1'], currentIndex: 0, spanStart: 0, spanEnd: 5 });
+    dynDefs.set(1, { originalWord: 'beta',  alternatives: ['beta', 'b1'],  currentIndex: 0, spanStart: 6, spanEnd: 10 });
+    adapter.pushText('alpha beta foo'); // append a word; originals unchanged
+    expect(dynDefs.get(0)).toBeDefined();
+    expect(dynDefs.get(1)).toBeDefined();
+  });
+
+  it('keeps DynDefs whose current alt is the word at that position (mid-cycle)', () => {
+    const { adapter, dynDefs } = setup('quick');
+    dynDefs.set(0, { originalWord: 'fast', alternatives: ['fast', 'quick'], currentIndex: 1, spanStart: 0, spanEnd: 5 });
+    adapter.pushText('quick more'); // user typed after cycled word
+    expect(dynDefs.get(0)).toBeDefined();
+  });
+
+  it('keeps DynDefs for multi-word alts (matches first word)', () => {
+    const { adapter, dynDefs } = setup('legal eagle filed');
+    // cycled attorney → legal eagle at index 0
+    dynDefs.set(0, {
+      originalWord: 'attorney',
+      alternatives: ['attorney', 'lawyer', 'legal eagle'],
+      currentIndex: 2,
+      spanStart: 0, spanEnd: 11,
+    });
+    adapter.pushText('legal eagle filed today'); // appends, span intact
+    expect(dynDefs.get(0)).toBeDefined();
+  });
+
+  it('drops DynDefs whose word has been deleted from that position', () => {
+    const { adapter, dynDefs } = setup('alpha beta');
+    dynDefs.set(0, { originalWord: 'alpha', alternatives: ['alpha', 'a1'], currentIndex: 0, spanStart: 0, spanEnd: 5 });
+    dynDefs.set(1, { originalWord: 'beta',  alternatives: ['beta', 'b1'],  currentIndex: 0, spanStart: 6, spanEnd: 10 });
+    adapter.pushText('alpha'); // deleted 'beta'
+    expect(dynDefs.get(0)).toBeDefined();
+    expect(dynDefs.get(1)).toBeUndefined();
+  });
+
+  it('drops DynDefs at positions whose word has been replaced', () => {
+    const { adapter, dynDefs } = setup('alpha beta');
+    dynDefs.set(0, { originalWord: 'alpha', alternatives: ['alpha', 'a1'], currentIndex: 0, spanStart: 0, spanEnd: 5 });
+    adapter.pushText('zebra beta'); // replaced alpha with zebra
+    expect(dynDefs.get(0)).toBeUndefined();
+  });
+
+  it('drops all DynDefs when buffer is emptied', () => {
+    const { adapter, dynDefs } = setup('alpha');
+    dynDefs.set(0, { originalWord: 'alpha', alternatives: ['alpha', 'a1'], currentIndex: 0, spanStart: 0, spanEnd: 5 });
+    adapter.pushText('');
+    expect(dynDefs.get(0)).toBeUndefined();
+  });
+
+  it('leaves DynDefs alone on runtime-origin text changes (cycling setText)', () => {
+    const { adapter, dynDefs } = setup('alpha');
+    dynDefs.set(0, { originalWord: 'alpha', alternatives: ['alpha', 'a1'], currentIndex: 0, spanStart: 0, spanEnd: 5 });
+    // setText fires with source='runtime' (cycling path); pushText
+    // fires with source='user' (mimicking a keystroke). Pruning
+    // should only run on user-source events.
+    adapter.setText('beta');
+    expect(dynDefs.get(0)).toBeDefined(); // not pruned — source !== 'user'
   });
 });
 

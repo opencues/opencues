@@ -71,16 +71,27 @@ export class Navigation {
 
   /**
    * User typing (or any text change we didn't initiate) clears the
-   * highlight — otherwise it visually drifts onto an unrelated word
-   * as the buffer mutates. DynDefs are deliberately NOT cleared here
-   * anymore: callers use `dynDefs.getValid(i, word)` which returns
-   * undefined for stale entries, so a keystroke no longer wipes the
-   * dim layer just to have it reappear 500ms later.
+   * highlight and PRUNES stale DynDefs. "Stale" = word at the def's
+   * index is neither the originalWord nor the first word of the
+   * current alt (covers single-word + multi-word mid-cycle cases).
+   * Fresh defs survive, so dim/cycling keep working without the
+   * 500 ms dim-flash that the old `dynDefs.clear()` caused.
    */
   onTextChange(event: TextChangeEvent): void {
     if (event.source === 'runtime') return;
-    if (!this.hlState.active) return;
-    this.hlState.deactivate();
+    if (this.hlState.active) this.hlState.deactivate();
+    if (this.dynDefs.size === 0) return;
+
+    const words = splitWords(event.text);
+    for (const [index, def] of this.dynDefs.entries()) {
+      const actual = words[index]?.word;
+      if (!actual) { this.dynDefs.delete(index); continue; }
+      if (def.originalWord === actual) continue;
+      const currentAlt = def.alternatives[def.currentIndex] ?? '';
+      const firstWord = currentAlt.split(/\s+/)[0] ?? '';
+      if (firstWord === actual) continue;
+      this.dynDefs.delete(index);
+    }
   }
 
   onArrowLeft(event: KeyEvent): boolean {
@@ -163,7 +174,7 @@ export class Navigation {
         if (lc.length === 0) continue;
         if (navigable?.has(lc)) {
           filtered.push(w.index);
-        } else if (this.dynDefs.getValid(w.index, w.word)) {
+        } else if (this.dynDefs.get(w.index)) {
           filtered.push(w.index);
         } else if (this.configLoader?.matchStepPattern(w.word)) {
           filtered.push(w.index);
