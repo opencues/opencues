@@ -306,6 +306,17 @@ export class Cycling {
     entry.spanLength = nextAlt.split(/\s+/).filter(Boolean).length;
     this.spanFillState!.set(entry, newText);
 
+    // Mirror the new char range to any DynDef at the span origin so a
+    // later fallthrough to Path 4 (static-alts) — e.g. after the span
+    // clears due to user edit — doesn't splice at stale spanStart /
+    // spanEnd from the last multi-word replacement.
+    const def = this.dynDefs.get(entry.index);
+    if (def) {
+      def.currentIndex = nextIdx;
+      def.spanStart = spanStartWord.start;
+      def.spanEnd = spanStartWord.start + nextAlt.length;
+    }
+
     // Phase F.b — if the user just cycled to `_`, mark the slot as
     // dismissed so BlankFill doesn't immediately re-fill (script path)
     // or auto-populate (sync path) on the next text-change. Cycling
@@ -554,31 +565,54 @@ export class Cycling {
   private applyAltCycle(event: KeyEvent, def: WordDef, direction: 1 | -1, wordIndex: number): boolean {
     const len = def.alternatives.length;
     if (len <= 1) return false;
+
+    // Compute the char range to REPLACE from live word positions, not
+    // from def.spanStart/spanEnd — those can drift across multi-word
+    // cycles (applyAltCycle updates them, cycleSpanFill updates them,
+    // user edits don't update them). Trusting them was the root cause
+    // of "swapping multi-word alts repositions words incorrectly":
+    // after cycling legal eagle → defendant counsel through Path 0,
+    // def.spanEnd lagged, and the next cycle spliced at stale chars.
+    //
+    // Blank-fills have always computed their range fresh each cycle
+    // (cycleSpanFill reads words[entry.index..entry.index+spanLen-1]
+    // on every call). Same pattern here — one source of truth is the
+    // live words array.
+    const words = splitWords(event.text);
+    const startWord = words[wordIndex];
+    if (!startWord) return false;
+    const currentAlt = def.alternatives[def.currentIndex] ?? '';
+    const currentAltWordCount = Math.max(1, currentAlt.split(/\s+/).filter(Boolean).length);
+    const endWord = words[wordIndex + currentAltWordCount - 1] ?? startWord;
+    const rangeStart = startWord.start;
+    const rangeEnd = endWord.end;
+
+    // Advance the cycle AFTER we've captured the current range.
     def.currentIndex = ((def.currentIndex + direction) % len + len) % len;
     const nextWord = def.alternatives[def.currentIndex];
 
-    const before = event.text.slice(0, def.spanStart);
-    const after = event.text.slice(def.spanEnd);
+    const before = event.text.slice(0, rangeStart);
+    const after = event.text.slice(rangeEnd);
     const newText = before + nextWord + after;
-    const oldLen = def.spanEnd - def.spanStart;
-    const lenDiff = nextWord.length - oldLen;
-    def.spanEnd = def.spanStart + nextWord.length;
+    const lenDiff = nextWord.length - (rangeEnd - rangeStart);
+
+    // Refresh the cache so DimRender's other readers see current
+    // positions until the next cycle recomputes.
+    def.spanStart = rangeStart;
+    def.spanEnd = rangeStart + nextWord.length;
 
     const cursorBefore = event.cursorOffset;
-    const newCursor = cursorBefore <= def.spanStart
+    const newCursor = cursorBefore <= rangeStart
       ? cursorBefore
-      : cursorBefore >= def.spanEnd - lenDiff
+      : cursorBefore >= rangeEnd
         ? cursorBefore + lenDiff
-        : def.spanEnd;
+        : rangeStart + nextWord.length;
     const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
 
-    // Multi-word alt handling: if the alt contains spaces, register it
-    // as a span in SpanFillState so Navigation treats the N words as
-    // one unit (left/right skip past the inner words) and DimRender
-    // highlights the whole group. Subsequent cycles land in Path 0
-    // (cycleSpanFill) — which keeps the entry's currentAltIndex +
-    // spanLength in sync as the user rotates through alts. Cycling
-    // back to a single-word alt clears the span.
+    // Register / clear the span. Multi-word alts live in SpanFillState
+    // so Navigation skips inner positions, DimRender groups them, and
+    // the next cycle routes through Path 0. Cycling back to a single-
+    // word alt clears the span. Same semantics as blanks.
     if (this.spanFillState) {
       const spanLength = nextWord.split(/\s+/).filter(Boolean).length;
       if (spanLength > 1) {

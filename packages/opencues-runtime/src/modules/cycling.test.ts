@@ -218,6 +218,40 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(spanFillState.current).not.toBeNull(); // span persists through cycle
   });
 
+  it('swapping between multi-word alts splices at the correct char range', async () => {
+    // Regression test for "SERIOUS bugs when we adjust spans …
+    // positing words incorrectly when swapping out multiple word spans".
+    // Root cause: applyAltCycle used to trust def.spanStart/spanEnd
+    // which drifted across multi-word cycles. Now char range is
+    // computed fresh from live word positions every cycle.
+    const { adapter, hlState } = await setupMw('the attorney filed');
+    hlState.activate(1, 'the attorney filed');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer
+    expect(adapter.setTextCalls.at(-1)).toBe('the lawyer filed');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle (multi)
+    expect(adapter.setTextCalls.at(-1)).toBe('the legal eagle filed');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → defendant counsel (multi)
+    expect(adapter.setTextCalls.at(-1)).toBe('the defendant counsel filed');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → attorney (wrap, single)
+    expect(adapter.setTextCalls.at(-1)).toBe('the attorney filed');
+    // Cycle the whole rotation once more — same shape every step.
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('the lawyer filed');
+  });
+
+  it('cycle multi → multi → single → multi correctly shrinks/grows the range', async () => {
+    const { adapter, hlState } = await setupMw('the ceo said');
+    hlState.activate(1, 'the ceo said');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → Jeff Bezos
+    expect(adapter.setTextCalls.at(-1)).toBe('the Jeff Bezos said');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → Elon Musk
+    expect(adapter.setTextCalls.at(-1)).toBe('the Elon Musk said');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → Tim Cook
+    expect(adapter.setTextCalls.at(-1)).toBe('the Tim Cook said');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → ceo (wrap, single)
+    expect(adapter.setTextCalls.at(-1)).toBe('the ceo said');
+  });
+
   it('typing OUTSIDE the span preserves it (re-anchors index)', async () => {
     // The bug this pins: user cycles "attorney" → "legal eagle",
     // then continues typing (e.g. appends " today"). Old behaviour
