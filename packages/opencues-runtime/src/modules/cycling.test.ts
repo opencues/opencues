@@ -226,6 +226,27 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(spanFillState.current).not.toBeNull(); // span persists through cycle
   });
 
+  it('cycling single → multi-word prunes DynDefs at shifted word indices', async () => {
+    // Regression for "future word index positions become misaligned"
+    // after a multi-word cycle. A DynDef at idx 2 (for "filed") must
+    // drop when cycling "attorney" → "legal eagle" shifts "filed" to
+    // idx 3 — otherwise the next cycle on "filed" would splice at the
+    // DynDef's stale char range and corrupt the text.
+    const { adapter, hlState, dynDefs } = await setupMw('the attorney filed today');
+    dynDefs.set(2, {
+      originalWord: 'filed',
+      alternatives: ['filed', 'submitted', 'lodged'],
+      currentIndex: 0,
+      spanStart: 13, spanEnd: 18,
+    });
+    hlState.activate(1, 'the attorney filed today');
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → lawyer (single, no shift)
+    expect(dynDefs.get(2)).toBeDefined(); // word at idx 2 still "filed"
+    adapter.fireKey('up', { ctrl: true, alt: true }); // → legal eagle (multi, shifts)
+    // Word at idx 2 is now "eagle" — stale DynDef pruned.
+    expect(dynDefs.get(2)).toBeUndefined();
+  });
+
   it('swapping between multi-word alts splices at the correct char range', async () => {
     // Regression test for "SERIOUS bugs when we adjust spans …
     // positing words incorrectly when swapping out multiple word spans".

@@ -92,22 +92,7 @@ export class Navigation {
     if (event.source === 'runtime') return;
     if (this.hlState.active) this.hlState.deactivate();
     if (this.dynDefs.size === 0) return;
-
-    const words = splitWords(event.text);
-    for (const [index, def] of this.dynDefs.entries()) {
-      const actual = words[index]?.word;
-      if (!actual) { this.dynDefs.delete(index); continue; }
-      if (def.originalWord === actual) continue;
-      const currentAlt = def.alternatives[def.currentIndex] ?? '';
-      const altWords = currentAlt.split(/\s+/).filter(Boolean);
-      if (altWords.length === 1) {
-        if (currentAlt === actual) continue;
-      } else if (altWords.length > 1) {
-        const allMatch = altWords.every((w, k) => words[index + k]?.word === w);
-        if (allMatch) continue;
-      }
-      this.dynDefs.delete(index);
-    }
+    this.dynDefs.pruneStale(splitWords(event.text));
   }
 
   onArrowLeft(event: KeyEvent): boolean {

@@ -26,6 +26,40 @@ export class DynDefs {
     return this._defs.get(wordIndex);
   }
 
+  /**
+   * Remove entries whose current word no longer matches what the def
+   * represents. Called:
+   *   - on user text change (Navigation.onTextChange) — keystrokes,
+   *     paste, delete, etc.
+   *   - on runtime-source text change when multi-word cycling shifts
+   *     word indices (Cycling.applyAltCycle) — e.g. cycling
+   *     "lawyer" → "legal eagle" moves everything after index+1 by
+   *     one, and DynDefs that haven't been reindexed would splice
+   *     against the wrong positions on the next cycle.
+   *
+   * A def survives if:
+   *   - its originalWord equals the current word (fresh def, untouched)
+   *   - its current alt is a single word === current word (mid-cycle)
+   *   - its current alt is multi-word AND all N words match
+   *     contiguously at [index..index+N-1] (mid-cycle multi-word span)
+   */
+  pruneStale(words: readonly { word: string }[]): void {
+    for (const [index, def] of this._defs.entries()) {
+      const actual = words[index]?.word;
+      if (!actual) { this._defs.delete(index); continue; }
+      if (def.originalWord === actual) continue;
+      const currentAlt = def.alternatives[def.currentIndex] ?? '';
+      const altWords = currentAlt.split(/\s+/).filter(Boolean);
+      if (altWords.length === 1) {
+        if (currentAlt === actual) continue;
+      } else if (altWords.length > 1) {
+        const allMatch = altWords.every((w, k) => words[index + k]?.word === w);
+        if (allMatch) continue;
+      }
+      this._defs.delete(index);
+    }
+  }
+
   set(wordIndex: number, def: WordDef): void {
     this._defs.set(wordIndex, def);
   }
