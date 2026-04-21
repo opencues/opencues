@@ -133,7 +133,7 @@ function doInstall() {
       console.log(`  cp -r ${distDir}/* ${loadPath}/dist/`);
       console.log(`  cp ${manifest} ${loadPath}/manifest.json`);
     }
-    console.log(`  print: load unpacked from ${loadPath} at chrome://extensions`);
+    console.log(`  print: load unpacked from ${toWindowsPathIfPossible(loadPath)} at chrome://extensions`);
     return;
   }
 
@@ -154,7 +154,7 @@ function doInstall() {
 
   // 2. Deploy.
   if (args.target) {
-    if (!runStep('Deploying to ' + loadPath, () => {
+    if (!runStep('Deploying to ' + toWindowsPathIfPossible(loadPath), () => {
       fs.mkdirSync(path.join(loadPath, 'dist'), { recursive: true });
       copyDirContents(distDir, path.join(loadPath, 'dist'));
       fs.copyFileSync(manifest, path.join(loadPath, 'manifest.json'));
@@ -239,10 +239,15 @@ function doUninstall() {
     rmTargetManifest: targetManifest && fs.existsSync(targetManifest) ? targetManifest : null,
   };
 
+  // Under --wsl, filesystem ops have to use the /mnt/... mount path (Node
+  // can't resolve C:\...), but the user sees their install at the Windows
+  // path in Chrome + File Explorer. Always display the Windows form.
+  const showPath = (p) => toWindowsPathIfPossible(p);
+
   console.log('Uninstall plan:');
-  if (plan.rmDist) console.log(`  rm -rf ${plan.rmDist}/`);
-  if (plan.rmTargetDist) console.log(`  rm -rf ${plan.rmTargetDist}/`);
-  if (plan.rmTargetManifest) console.log(`  rm ${plan.rmTargetManifest}`);
+  if (plan.rmDist) console.log(`  rm -rf ${showPath(plan.rmDist)}/`);
+  if (plan.rmTargetDist) console.log(`  rm -rf ${showPath(plan.rmTargetDist)}/`);
+  if (plan.rmTargetManifest) console.log(`  rm ${showPath(plan.rmTargetManifest)}`);
   if (!plan.rmDist && !plan.rmTargetDist && !plan.rmTargetManifest) {
     console.log('  (no installed paths found — appears clean)');
   }
@@ -256,15 +261,15 @@ function doUninstall() {
   console.log('');
   if (plan.rmDist) {
     fs.rmSync(plan.rmDist, { recursive: true, force: true });
-    console.log(`  removed ${plan.rmDist}/`);
+    console.log(`  removed ${showPath(plan.rmDist)}/`);
   }
   if (plan.rmTargetDist) {
     fs.rmSync(plan.rmTargetDist, { recursive: true, force: true });
-    console.log(`  removed ${plan.rmTargetDist}/`);
+    console.log(`  removed ${showPath(plan.rmTargetDist)}/`);
   }
   if (plan.rmTargetManifest) {
     fs.rmSync(plan.rmTargetManifest, { force: true });
-    console.log(`  removed ${plan.rmTargetManifest}`);
+    console.log(`  removed ${showPath(plan.rmTargetManifest)}`);
   }
 
   console.log(`\n${pkg.name} uninstall complete.`);

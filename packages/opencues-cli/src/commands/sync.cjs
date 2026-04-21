@@ -250,7 +250,7 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
     if (fs.existsSync(extraTarget)) fs.rmSync(extraTarget, { recursive: true, force: true });
     fs.mkdirSync(extraTarget, { recursive: true });
     copyDirSync(distConfigs, extraTarget);
-    console.log(`Mirrored to ${extraTarget}`);
+    console.log(`Mirrored to ${toWindowsPathIfPossible(extraTarget)}`);
   }
 }
 
@@ -277,6 +277,21 @@ function isWsl() {
   if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
   try { return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8')); }
   catch { return false; }
+}
+
+// Display-only: /mnt/c/Foo/Bar → C:\Foo\Bar so users see the path the
+// same way Chrome and File Explorer do. NEVER use the result for
+// filesystem ops — Node on Linux can't resolve C:\ paths. Mirror of
+// integrations/chrome/bin/install.cjs's helper.
+function toWindowsPathIfPossible(p) {
+  if (!/^\/mnt\/[a-z]\//i.test(p)) return p;
+  const probe = require('node:child_process').spawnSync('wslpath', ['-w', p], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (probe.status === 0) {
+    const out = String(probe.stdout).trim();
+    if (out) return out;
+  }
+  const m = p.match(/^\/mnt\/([a-z])\/(.*)$/i);
+  return m ? `${m[1].toUpperCase()}:\\${m[2].replace(/\//g, '\\')}` : p;
 }
 
 // Resolve which .opencues/ dirs to bundle for chrome.
