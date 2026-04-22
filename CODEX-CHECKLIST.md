@@ -10,10 +10,18 @@
 > (full agent report; 796 lines; everything below is distilled from
 > there).
 >
-> **What's been done overnight (commits):**
-> - Trivial cleanups (Tier 1 below) — done by Claude
-> - `--verbose` flag parity with OC (Tier 2.A) — done by Claude
-> - Basic daemon tests (Tier 2.D) — done by Claude
+> **What's been done overnight (commits, in order):**
+> - `d6d6671` Tier 1 cleanups + this checklist
+> - `6cbc270` Tier 2.A + 2.B + 2.C: setup.sh refactored to per-step
+>   `run_step` pattern with log file + `OPENCUES_INSTALL_VERBOSE=1`;
+>   each install step now wrapped, errors point at which step broke
+> - `e047431` Tier 2.D: daemon refactored to expose `createDaemon()`
+>   factory, **12 unit tests added** + 1 real bug found and fixed
+>   (daemon crashed on `boot` without params)
+> - `<below>` Tier 2.E: codex/v1 adapter band has 5 surface tests
+>   for boot.ts re-exports + CodexHostInfo shape + createDaemon API
+>
+> Runtime test count went from 415 → 432.
 >
 > **What needs YOU:** Tier 3 onward — daemon module wiring, Rust
 > bridge fixes, TUI patches, verification. The mechanical scaffolding
@@ -54,36 +62,30 @@ These are safe one-liners. Done overnight.
 
 OC-parity ergonomic improvements that don't require runtime work.
 
-- [x] **A. `--verbose` flag in setup.sh + install.cjs** —
-      parity with `OPENCUES_INSTALL_VERBOSE=1` and `--verbose` in OC's
-      install.cjs. Default behavior should pipe to a log file
-      (`/tmp/opencues-install-codex.log`); `--verbose` streams to
-      stdout. **Severity: MEDIUM** (codex's setup is opaque on failure
-      because everything goes through `tail -15`)
-- [ ] **B. Error wrapping in setup.sh** — wrap each step in a `run_step`
-      function (mirror OC's pattern) so failures point at which step
-      broke. Currently the `set -euo pipefail` will exit but doesn't
-      tell you whether step 1 (clone), step 4 (cargo build), or step 5
-      (smoke test) failed. **Severity: MEDIUM**. *Files:*
-      `integrations/codex/patches/setup.sh:1-139`
-- [ ] **C. Build steps stream to log** — mirror OC's
-      `/tmp/opencues-install-oc.log` pattern. Currently codex's setup
-      truncates `cargo build` output to `tail -15` (line 91), losing
-      the first error if the build fails. **Severity: HIGH** (debugging
-      cargo failures is currently impossible). *Files:*
-      `integrations/codex/patches/setup.sh:89-94`
-- [x] **D. Daemon JSON-RPC unit tests** — basic tests for the wire
-      protocol: invalid JSON, missing jsonrpc field, unknown method,
-      `boot` request returns `{ok:true}`, `key` returns
-      `{consumed:false}` while runtime modules are TODO.
-      **Severity: HIGH** (currently 0 tests vs OC's 13).
-      *Files:* new `packages/opencues-runtime/adapters/codex/v1/daemon.test.ts`
-- [ ] **E. Adapter band `boot.test.ts` + `holder.test.ts` parity** —
-      mirror OC's adapter band tests. Even if daemon is a thin
-      JSON-RPC stub, the band's surface should be tested. Holder
-      pattern doesn't apply to codex (no holder), but boot.test.ts
-      should test that startDaemon's exports match the daemon.ts shape.
-      **Severity: MEDIUM**. *Files:* new
+- [x] **A. `OPENCUES_INSTALL_VERBOSE=1` env-var support in setup.sh** —
+      mirrors OC's pattern (env var, no CLI flag — OC doesn't have
+      one either). Default pipes to `/tmp/opencues-install-codex.log`;
+      `OPENCUES_INSTALL_VERBOSE=1` streams to stdout. **Done.**
+- [x] **B. Error wrapping in setup.sh** — each step is now a function
+      wrapped in `run_step` (the OC pattern). On failure, the failing
+      step label + last 30 log lines are dumped to stderr. **Done
+      (came with A).**
+- [x] **C. Build steps stream to log** — every step now appends to
+      `/tmp/opencues-install-codex.log`. The cargo build output is
+      no longer truncated through `tail -15` — the full error is
+      visible in the log file. **Done (came with A).**
+- [x] **D. Daemon JSON-RPC unit tests** — 12 tests covering parse
+      errors, jsonrpc version check, unknown methods, boot, key,
+      text-change, force-render, notification (no-id) cases, and
+      multi-frame state continuity. Caught + fixed a real bug:
+      daemon crashed when `boot` was called without params.
+      **Done.** *Files:*
+      `packages/opencues-runtime/adapters/codex/v1/daemon.test.ts`
+- [x] **E. Adapter band `boot.test.ts` parity** — 5 surface tests
+      pinning the codex/v1 boot.ts re-exports + CodexHostInfo type
+      shape + createDaemon API. **Holder.test.ts is N/A** — codex
+      has no holder pattern (no SolidJS-style lazy publish; daemon
+      owns its own state). **Done.** *Files:*
       `packages/opencues-runtime/adapters/codex/v1/boot.test.ts`
 
 ---
@@ -334,7 +336,7 @@ Once codex actually works, mirror OC's reintegration docs.
 | Tier | Hours | Notes |
 |---|---|---|
 | 1 | done | trivial cleanups |
-| 2 | done (A, D) + ~1h (B, C, E remaining) | infra polish |
+| 2 | **all done** | infra polish |
 | 3 | 3-6h | daemon wiring — the biggest TS chunk |
 | 4 | 2-4h | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
