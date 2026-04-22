@@ -267,26 +267,32 @@ See [status line docs](integrations/claude-code/docs/status-line.md) for details
 
 ## Configuration
 
-Settings are in `~/.tweakcc/config.json`:
+Your user-level OpenCues config lives at `~/.opencues/`:
 
-```json
-{
-  "misc": {
-    "enableWordHighlight": true,
-    "enableDynamicHighlight": true,
-    "highlightMode": "words",
-    "numberDimming": true
-  }
-}
+```
+~/.opencues/
+├── opencues.md         # System settings (voice-mode, tips-mode, debug-mode, cursor-navigate)
+├── cues.md             # Word alternatives + tips (## Tips JSON block)
+├── blanks.md           # Blank-fill modes (math, factual, grammar, …)
+├── controls.md         # Inline cue-control definitions
+├── cues/<name>/cue.md  # Folder-based word cue sources (legal, medical, …)
+└── controls/<name>/    # Folder-based cue-controls (with colocated scripts)
 ```
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `enableWordHighlight` | `true` | Enable Ctrl+Alt+Arrow navigation |
-| `enableDynamicHighlight` | `true` | Enable LLM alternatives |
-| `highlightMode` | `"words"` | `"numbers"` or `"words"` |
-| `numberDimming` | `true` | Dim step-pattern matches in gray |
-| `highlightExportEnabled` | `true` | Write highlight state JSON for status line |
+Project-level overrides live at `<cwd>/.opencues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
+
+System settings (in `~/.opencues/opencues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-control:
+
+| Setting | Values | Description |
+|---|---|---|
+| `voice-mode` | `active` / `inactive` | TTS reads tips aloud on navigation |
+| `tips-mode` | `on` / `off` | Show secondary-display tips |
+| `debug-mode` | `on` / `off` | Verbose logging in the host's debug surface |
+| `cursor-navigate` | `active` / `inactive` | Highlight follows cursor to navigable words |
+
+Run `pnpm exec opencues seed-configs` to populate `~/.opencues/` from the shipped defaults the first time. Hot-reloads on every edit (~2.5s for native hosts; chrome polls a `.version` hash — see `docs/features/chrome-hot-reload.md`).
+
+CC-specific patch toggles (e.g. `enableWordHighlight`, `numberDimming`) live in tweakcc's config under `~/.claude/opencues/patch-state/config.json`. They're rarely changed; defaults work for everyone.
 
 ## Updating
 
