@@ -214,26 +214,68 @@ tab per minute, all served locally so cheap).
 
 ## Trade-offs
 
-**Why polling, not push?** Chrome's `chrome.storage.onChanged` only
-fires for `chrome.storage`, not for files in the extension package.
-There's no native fs-change event from a content script — the file
-*system* the extension reads from (its own bundle) is treated as
-immutable by the runtime. Polling a small file is the simplest
-observable channel.
+**Polling here isn't a trade-off we *chose* — it's the only option
+Chrome gives us.** Push would be cleaner if it existed, but it
+doesn't for bundle files.
 
-**Why 2.5s and not 500ms?** Every open tab polls independently. With
-20 tabs open, 500ms = 40 fetches/second baseline. 2.5s = 8 fetches/sec,
-all served from local disk. The latency was deliberately tuned for
-"feels live during dev" not "feels instantaneous in production."
+### What "push" would look like (and why it doesn't exist for us)
 
-**Why no checksum API like `chrome.runtime.requestUpdateCheck`?** That
-API only checks for *extension updates* from the Chrome Web Store, not
-for changes to packaged files. We need the latter.
+Chrome has exactly one push channel for content scripts:
+`chrome.storage.onChanged`. It fires when something writes to
+`chrome.storage.{local,sync}`. Files inside the extension's own
+package (`dist/configs/...`) have no event API — Chrome treats the
+bundle as immutable from the content script's view, even though we
+know the CLI is mutating it from outside.
 
-**Why not write `.version` to `chrome.storage.local` instead?** Two
-reasons. (1) The CLI runs outside the extension and has no storage
-access. (2) The bundle is the source of truth — having the version
-live alongside the data it describes keeps them in sync atomically.
+We *could* fake push by having the CLI write the version to
+`chrome.storage.local` instead of a file. Two problems:
+
+1. **The CLI runs outside Chrome.** It has no `chrome.storage` API.
+   We'd need a bridge (native messaging host, or a popup the CLI
+   talks to). That's a real piece of infrastructure for a marginal
+   gain.
+2. **The bundle stops being self-describing.** Right now
+   `dist/configs/.version` lives next to the data it describes —
+   atomically synced together, no possibility of drift. If the
+   version moves to storage, you can have storage saying "v3" while
+   the bundle on disk is still v2.
+
+`chrome.runtime.requestUpdateCheck` is also not it — that API only
+checks for *extension updates from the Chrome Web Store*, not for
+changes to packaged files mid-session.
+
+### Costs of polling (as actually experienced)
+
+| Cost | Magnitude | Notes |
+|---|---|---|
+| **Latency** | up to 2500ms between sync finishing and reload firing | Dominant cost. Tunable via `VERSION_POLL_MS`. |
+| **Idle CPU/IO** | 1 fetch per tab per 2.5s, served from local disk | Negligible — `.version` is 17 bytes. 100 tabs ≈ 40 fetches/sec, all in-process. |
+| **Battery** | tiny | Same reason — local disk, no network, no parsing on unchanged hash. |
+| **No back-pressure** | can't dynamically slow under load | Doesn't matter at this volume. |
+| **Wasted reloads on round-trip** | edit → sync → revert → sync = bundle reloaded twice for net-zero change | Cheap (just re-parses configs). Acceptable. |
+
+### Counterfactual: if push were available
+
+| Pro / Con | Notes |
+|---|---|
+| 0ms latency | the genuine win |
+| No idle traffic | also genuine, but baseline is already negligible |
+| One more API surface to keep healthy | native messaging hosts can break silently across Chrome updates |
+| Bridges between CLI and extension | adds installer complexity, a new failure mode for users |
+| Bundle no longer self-describing | version-in-storage can drift from files-on-disk |
+
+**Verdict.** Even if push were available natively (it isn't), polling
+is the right call here. The only real cost is the 2.5s latency, fine
+for a dev-iteration workflow. If we ever hit a use case that needed
+sub-second propagation we'd have to do real work to get it.
+
+### Why 2.5s and not 500ms?
+
+Every open tab polls independently. With 20 tabs open: 500ms ≈ 40
+fetches/sec; 2.5s ≈ 8 fetches/sec. All served from local disk so
+the absolute cost is small either way, but the cadence was tuned for
+"feels live during dev" not "feels instantaneous in production." Drop
+the constant if you find yourself wishing edits propagated faster.
 
 ---
 
