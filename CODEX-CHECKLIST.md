@@ -96,21 +96,26 @@ This is the big work to make the daemon non-stub. Each step
 should mirror what `integrations/opencode/patches/opencuesBootstrap.ts`
 does for OpenCode. Use OC as the structural template.
 
-- [ ] **A. Wire ConfigLoader** — `daemon.ts:86` is currently
-      `// TODO: actually wire ConfigLoader + modules`. Should:
-      - Construct ConfigLoader with the `configSearchPaths` from boot RPC params
-      - Wait for `configLoader.load()` before resolving `boot` response
-      - Subscribe to file-change events (the OC pattern uses `fs.watch`)
-      - **Severity: HIGH** (BLOCKER for everything below — no cues
-        without configs).
-      - *Reference:* `integrations/opencode/patches/opencuesBootstrap.ts:204-206`
-- [ ] **B. Construct adapter wrapping the daemon** — daemon needs a
-      `HostAdapter` instance to pass to runtime modules. Unlike OC
-      (which has an in-process adapter via bindings), codex's adapter
-      will be a synthetic shim: `getText` returns the latest text
-      received via `text-change` RPC; `setText` sends the `set-text`
-      notification back to the bridge. **Severity: BLOCKER**.
-      *Reference:* `packages/opencues-runtime/adapters/oc/v1.4/adapter.ts:1-183`
+- [x] **A. Wire ConfigLoader** — Done. The boot RPC handler now
+      constructs the runtime bundle (CodexAdapter + ConfigLoader),
+      calls `subscribe()` + awaits `load()`, and only then sends the
+      `{ok:true}` response. Boot failures return `-32001` instead of
+      crashing. Live-verified: loading `~/.opencues/` produced
+      "ConfigLoader: loaded 138 cue entries, opencuesState={...}".
+      Companion fix: `startDaemon` now tracks in-flight handleLine
+      promises and awaits them on stdin close — single-line stdin
+      pipes were racing the async boot handler before this.
+- [x] **B. Construct adapter wrapping the daemon** — Done (FS subset).
+      `adapters/codex/v1/adapter.ts:CodexAdapter` implements
+      HostAdapter. FS ops + log are real via `node:fs/promises`;
+      UI ops (getText/setText/onKey/onTextChange/onRender/
+      forceRender/pushText) are STUBS that register subscriptions in
+      arrays and expose `notifyTextChangeFromBridge` /
+      `dispatchKeyFromBridge` / `collectRenderDirectives` bridge
+      points the daemon will fan into when Tier 3.F-I lands.
+      `spawnProcess` + `controlInvoke` are unimplemented (Tier 3.D-E).
+      Capabilities = `['file-read', 'file-write']` for now; UI caps
+      get added as their wiring lands.
 - [ ] **C. Source reclassifier** — `createSourceReclassifier` from
       `boot-common`. Used in OC's setText/pushText to mark runtime
       writes so the next text-change pulse correctly identifies them
@@ -337,7 +342,7 @@ Once codex actually works, mirror OC's reintegration docs.
 |---|---|---|
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
-| 3 | 3-6h | daemon wiring — the biggest TS chunk |
+| 3 | A+B done; ~2-5h remaining | daemon wiring — the biggest TS chunk |
 | 4 | 2-4h | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
