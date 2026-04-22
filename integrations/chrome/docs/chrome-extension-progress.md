@@ -93,7 +93,7 @@ re-verified end-to-end via a phased test plan.
 | 2 | Bake-time defaults + multi-source routing | No sync run; type a sentence with legal/medical/financial/grammar words, verify 4 parallel LLM calls and per-source alts | ✅ **Verified 2026-04-22** — see "Phase 2 verification" below |
 | 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ✅ **Verified 2026-04-22** — see "Phase 3 verification" below |
 | 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ✅ **Verified 2026-04-22** — see "Phase 4 verification" below |
-| 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ☐ Pending |
+| 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ✅ **Verified 2026-04-22** — see "Phase 5 verification" below |
 | 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ☐ Pending |
 
 ### Phase 2 verification (2026-04-22)
@@ -178,6 +178,35 @@ Negative test — explicit-opt-in property holds.
 - Watcher started from any cwd will bind to the same stable source set
   (matches the documented model in CLAUDE.md § "`opencues sync chrome`
   source discovery")
+
+### Phase 5 verification (2026-04-22)
+
+Explicit opt-in via `--include` — project content overlays user.
+
+Test project: `~/testing/.opencues/` (contains `cues.md`, `blanks.md`,
+`controls.md`). Distinguishing marker: `cues.md` frontmatter
+`name: project-cues` (vs user-level `name: claude-code-cues`).
+
+**Dry-run first** — `sync chrome --include ~/testing/.opencues --dry-run`:
+- Source list now shows TWO entries:
+  `source: user /home/wilfred/.opencues` + `source: include /home/wilfred/testing/.opencues`
+- The 3 files where names collide (`cues.md`, `blanks.md`, `controls.md`)
+  flip to come from the include path; non-conflicting files still come
+  from user.
+
+**Real sync** — `sync chrome --include ~/testing/.opencues --wsl`:
+- 16 files synced (same count — include overlays, doesn't add)
+- New version hash `0b4a8a3b6d79795c`
+- Both repo `dist/configs/cues.md` AND Windows-mirror
+  `C:\Users\wilfred\AppData\Local\opencues-chrome\dist\configs\cues.md`
+  show `name: project-cues` — confirms the swap landed everywhere.
+
+**Confirms working:**
+- `--include` opt-in actually mixes the named path into the source set
+- Precedence: include > user (project-style override semantics)
+- Mirror writes the swapped content to Windows side, not just repo dist
+- `.version` hash changes, so chrome's `.version` poller will pick the
+  new bundle up within ~2.5s without page refresh
 
 ### Cross-host runtime fixes verified
 
