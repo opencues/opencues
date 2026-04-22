@@ -48,10 +48,17 @@ describe('codex/v1 adapter band — surface', () => {
     expect(daemon.booted).toBe(false);
   });
 
-  it('createDaemon does not require a log callback (defaults to a `log` notification)', () => {
+  it('createDaemon does not require a log callback (defaults to a `log` notification)', async () => {
     const frames: Frame[] = [];
-    const daemon = createDaemon({ send: (f) => { frames.push(f); } });
-    daemon.handleLine(JSON.stringify({
+    const daemon = createDaemon({
+      send: (f) => { frames.push(f); },
+      // Use a buildRuntime stub so the test doesn't hit the real fs.
+      buildRuntime: async () => ({
+        adapter: { cwd: '/p', log: () => {} } as never,
+        configLoader: {} as never,
+      }),
+    });
+    await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
     }));
     // First frame: the boot response. Second frame: the default-log notification.
