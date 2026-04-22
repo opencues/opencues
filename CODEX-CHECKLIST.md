@@ -235,45 +235,59 @@ as the daemon work above.
 
 ---
 
-## Tier 5 — TUI patches in chat_composer.rs (~4-8 hours)
+## Tier 5 — TUI patches in chat_composer.rs
 
-This is the headline gap from HANDOFF.md. Until these land, none of
-the daemon work above is observable in the TUI.
+All sub-items A-K landed. Pinned to codex-rs SHA d58d3cc. Patches
+ship as a unified-diff at `integrations/codex/patches/tui-bridge-wiring.diff`
+applied by setup.sh on install. Per the user's pegged-version model,
+the diff will be regenerated when bumping PINNED_SHA.
 
-- [ ] **A. Read `<fork>/codex-rs/tui/src/bottom_pane/chat_composer.rs`
-      end-to-end** — needed to find safe patch points. Estimate
-      ~1000 LOC.
-- [ ] **B. Read `<fork>/codex-rs/tui/src/bottom_pane/textarea.rs`** —
-      this is what we're hooking the render path into. Find whether
-      it has a `set_styled_ranges()` API or whether we need to add one
-      (vs. a parallel highlight overlay).
-- [ ] **C. Decide rendering strategy** — three options:
-      1. Modify glyph styling per-cell during the existing render path
-      2. Maintain a parallel highlight overlay
-      3. Extend `TextArea` with `set_styled_ranges(ranges, style)` —
-         the cleanest; uses ratatui's `Span` styling
-      Option 3 is preferred unless TextArea's structure makes it hard.
-- [ ] **D. Wire the bridge crate dep** — add to
-      `<fork>/codex-rs/tui/Cargo.toml`:
-      `opencues-bridge = { path = "../opencues-bridge" }`
-- [ ] **E. Add `bridge` field to `ChatComposer`** — `Option<Bridge>`
-      so a daemon failure degrades to vanilla codex behavior instead
-      of preventing TUI startup.
-- [ ] **F. In `ChatComposer::new()` — start the bridge** —
-      `Bridge::start(BridgeConfig {...})`; warn (not panic) on failure.
-- [ ] **G. In key-handling path — call `bridge.dispatch_key` BEFORE
-      normal handling** — if it returns true, swallow the event.
-      Depends on Tier 4.A landing.
-- [ ] **H. In text-mutation path — call `bridge.notify_text_change`
-      AFTER mutation** — fires after every `insert_str`,
-      `delete_char`, etc.
-- [ ] **I. In render path — query `bridge.directives()` and apply** —
-      uses the rendering strategy decided in C.
-- [ ] **J. Add `bridge.on_set_text(...)` callback** — apply
-      runtime-driven text writes to the TextArea. Depends on Tier 4.B.
-- [ ] **K. STEP 4 in setup.sh: Python sed-injects** — once the patch
-      points are stable, mechanize the application via setup.sh's
-      TODO marker (line 126). Mirrors OC's pattern.
+- [x] **A. Read chat_composer.rs end-to-end** — done; patch points found.
+- [x] **B. Read textarea.rs** — done; discovered it already has
+      `render_ref_styled_with_highlights(ranges, style)` so no API
+      additions needed.
+- [x] **C. Decide rendering strategy** — picked option 3 (use the
+      existing styled-with-highlights API). DIM modifier for dim
+      ranges, REVERSED+BOLD for the active range, merged with the
+      existing history-search highlights in the non-zellij branch.
+- [x] **D. Wire bridge crate dep** — `opencues-bridge = { path = "../opencues-bridge" }`
+      added to `tui/Cargo.toml`.
+- [x] **E. `bridge: Option<opencues_bridge::Bridge>`** field on
+      ChatComposer + `opencues_set_text_rx: Option<Receiver<...>>`.
+- [x] **F. `new_with_config` starts the bridge** — gated on
+      `OPENCUES_DAEMON_PATH` env (set by the launch helper). Failures
+      drop to vanilla codex behaviour. Builds configSearchPaths from
+      `$OPENCUES_HOME / cwd/.opencues / $HOME/.opencues` (mirrors OC
+      and the runtime convention).
+- [x] **G. dispatch_key BEFORE normal handling** — at the top of
+      `handle_key_event`. Crossterm KeyCode → stable name string via
+      `opencues_key_name`. Returns `(InputResult::None, true)` on
+      consumed.
+- [x] **H. notify_text_change AFTER mutation** — at the bottom of
+      `handle_key_event`. Snapshot/diff approach (no instrumenting
+      every insert_str / delete_char site).
+- [x] **I. Apply directives in render path** — `opencues_highlight_pairs`
+      helper converts dim + active to (Range, Style) tuples; merged
+      with history-search highlights in the non-zellij branch.
+- [x] **J. on_set_text callback** — registered in `new_with_config`.
+      Pushes to a std::sync::mpsc channel; `handle_key_event` drains
+      the channel at the top so cycling results land in the textarea
+      before the next key is processed (also re-drains after a
+      consumed key for cycle-result-then-immediate-redraw).
+- [x] **K. setup.sh applies the diff** — new step 8
+      "Apply TUI bridge-wiring patches" with idempotency
+      (OPENCUES_BRIDGE_BEGIN marker check) + pre-flight (git apply
+      --check, fails clean on upstream drift).
+
+**Live-verified:**
+- `pnpm exec opencues install codex` → 9/9 steps green
+- Fresh-apply (after `git checkout` reverted fork files): 14
+  OPENCUES_BRIDGE markers land in chat_composer.rs + opencues-bridge
+  dep lands in Cargo.toml
+- Idempotent re-run: apply step detects markers, skips cleanly
+- Type-checked via `CODEX_SKIP_VENDORED_BWRAP=1 cargo check -p
+  codex-tui --lib` (full build needs libcap-dev system package on
+  Linux — orthogonal to patch validation)
 
 ---
 
@@ -367,7 +381,7 @@ Once codex actually works, mirror OC's reintegration docs.
 | 2 | **all done** | infra polish |
 | 3 | A+B+C+D+E+F+I done; ~1h remaining (G+H optional) | daemon wiring — the biggest TS chunk |
 | 4 | A+B+E done; ~1-2h remaining (C/D/F/G defensive) | bridge fixes — Rust |
-| 5 | 4-8h | TUI patches — the HANDOFF.md headline |
+| 5 | **all done** (pinned to SHA d58d3cc) | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
 | 7 | 1-2h | docs |
 | **Total** | **~12-22h** | for a full beta-quality codex integration |
