@@ -134,16 +134,18 @@ interface CueSource {
 ### Basic Usage (Node.js)
 
 ```typescript
-import { CueResolver, LocalCueSource, parseLocalCueFile } from 'opencues-core';
+import { CueResolver, LocalCueSource, parseCuesMd } from '@opencues/core';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
-// Load tips from file
-const tipsContent = fs.readFileSync('~/.claude/opencues/tips.json', 'utf8');
-const tipsData = parseLocalCueFile(tipsContent);
+// Load tips from cues.md's ## Tips JSON block
+const cuesPath = path.join(os.homedir(), '.opencues', 'cues.md');
+const cuesConfig = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
 
-// Create resolver with tips source
+// Create resolver with the tips source
 const resolver = new CueResolver([
-  new LocalCueSource(tipsData, { priority: 100 })
+  new LocalCueSource(cuesConfig.tips!, { priority: 100 })
 ]);
 
 // Resolve cues for input text
@@ -294,17 +296,23 @@ The `LocalCueSource` can be combined with file watching for hot reload:
 
 ```typescript
 import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { parseCuesMd } from '@opencues/core';
 
-const source = new LocalCueSource(initialData);
+const cuesPath = path.join(os.homedir(), '.opencues', 'cues.md');
+const initial = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
+const source = new LocalCueSource(initial.tips!);
 
 // Watch for changes
-fs.watch('~/.claude/opencues/tips.json', () => {
-  const content = fs.readFileSync('~/.claude/opencues/tips.json', 'utf8');
-  const newData = parseLocalCueFile(content);
-  source.updateData(newData);
+fs.watch(cuesPath, () => {
+  const next = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
+  if (next.tips) source.updateData(next.tips);
   console.log('Tips reloaded');
 });
 ```
+
+> The runtime's `ConfigLoader` already does this — host integrations should subscribe to its hot-reload notifications instead of writing their own watcher.
 
 ## Error Handling
 

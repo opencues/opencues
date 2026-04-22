@@ -14,7 +14,7 @@ Tips come from several sources depending on the word type:
 | **Satellite word** | `opencues.md` `tips:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
 | **Control blank** | `blankTip` in the control's `cue.md` | `72` → "System volume" |
 | **Cue-control keyword** | Live script `get` output, falls back to `tip` in `cue.md` | `volume` → "85" |
-| **Local cue (JSON tips)** | `claude-code-tips.json` via instant lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
+| **Local cue (`cues.md ## Tips`)** | `cues.md` `## Tips` JSON block via instant `cueMap` lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
 | **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
 
 See [Tip Priority](tip-priority.md) for the full resolution order and how the branches interact.

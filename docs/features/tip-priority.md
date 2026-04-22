@@ -17,7 +17,7 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 | 3 | Selector | `voice-mode` | "Gates TTS globally" | `opencues.md` `tips:` block, setting-level line |
 | 4 | Control blank | `72` after `volume` | "System volume" | Control's `cue.md` `blankTip` field |
 | 5 | Cue-control keyword | `volume` (the trigger word) | "85" (live reading) | Script `get` output; falls back to `tip` in `cue.md` |
-| 6 | Local cue (JSON tips) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `claude-code-tips.json` via `_localCueMap` |
+| 6 | Local cue (`cues.md ## Tips`) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `cues.md` `## Tips` JSON block via `cueMap` (built in `ConfigLoader`) |
 | 7 | LLM-analyzed word | `happy` | "glad, joyful, content" | LLM response via opencues-core resolver |
 
 ---
