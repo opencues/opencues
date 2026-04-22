@@ -21,15 +21,18 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+/// How many recent stderr lines to retain for diagnostics.
+const STDERR_RING_CAPACITY: usize = 64;
 
 #[derive(Debug, Clone)]
 pub struct BridgeConfig {
@@ -94,6 +97,15 @@ pub struct Bridge {
     set_text_cb: Arc<Mutex<Option<SetTextCallback>>>,
     /// stdin half of the daemon, kept alive for the life of the bridge.
     stdin: Mutex<Option<std::process::ChildStdin>>,
+    /// Tier 4.C: alive flag flipped to false by either reader thread
+    /// when stdin/stdout EOF is observed (daemon exited). Callers
+    /// poll via `is_alive()` and decide whether to respawn the bridge.
+    daemon_dead: Arc<AtomicBool>,
+    /// Tier 4.F: ring buffer of the most recent daemon stderr lines.
+    /// Useful for surfacing crash context in the TUI ("daemon died:
+    /// thread main panicked at ..."). Capped at STDERR_RING_CAPACITY
+    /// to bound memory.
+    stderr_ring: Arc<Mutex<VecDeque<String>>>,
 }
 
 /// Default timeout for synchronous request/response RPCs (currently
@@ -110,20 +122,29 @@ impl Bridge {
             .arg(&cfg.daemon_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            // Tier 4.F: capture stderr instead of inheriting so daemon
+            // crashes don't dump panic backtraces into the user's TUI.
+            // We keep a ring buffer of recent lines for diagnostics.
+            .stderr(Stdio::piped())
             .spawn()?;
 
         let stdin = child.stdin.take().expect("child stdin missing");
         let stdout = child.stdout.take().expect("child stdout missing");
+        let stderr = child.stderr.take().expect("child stderr missing");
         let directives = Arc::new(Mutex::new(Directives::default()));
         let directives_for_thread = Arc::clone(&directives);
         let pending: Arc<Mutex<HashMap<u64, SyncSender<Value>>>> = Arc::new(Mutex::new(HashMap::new()));
         let pending_for_thread = Arc::clone(&pending);
         let set_text_cb: Arc<Mutex<Option<SetTextCallback>>> = Arc::new(Mutex::new(None));
         let set_text_cb_for_thread = Arc::clone(&set_text_cb);
+        let daemon_dead = Arc::new(AtomicBool::new(false));
+        let daemon_dead_stdout = Arc::clone(&daemon_dead);
+        let daemon_dead_stderr = Arc::clone(&daemon_dead);
+        let stderr_ring: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_RING_CAPACITY)));
+        let stderr_ring_for_thread = Arc::clone(&stderr_ring);
 
-        // Move stdout reader into a background thread so we don't block
-        // codex's main thread on daemon output.
+        // Stdout reader: background thread so we don't block codex's
+        // main thread on daemon output. EOF here = daemon process died.
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
@@ -132,6 +153,25 @@ impl Bridge {
                 let Ok(frame): Result<Value, _> = serde_json::from_str(&line) else { continue };
                 handle_frame(frame, &directives_for_thread, &pending_for_thread, &set_text_cb_for_thread);
             }
+            // Daemon's stdout closed → process likely exited. Flip the
+            // alive flag so callers can detect + respawn.
+            daemon_dead_stdout.store(true, Ordering::Release);
+        });
+
+        // Stderr reader: ring-buffer the last N lines for diagnostics.
+        // Last writer wins on EOF — that's usually the panic line.
+        thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                let Ok(line) = line else { break };
+                if let Ok(mut ring) = stderr_ring_for_thread.lock() {
+                    if ring.len() >= STDERR_RING_CAPACITY {
+                        ring.pop_front();
+                    }
+                    ring.push_back(line);
+                }
+            }
+            daemon_dead_stderr.store(true, Ordering::Release);
         });
 
         let bridge = Self {
@@ -141,6 +181,8 @@ impl Bridge {
             pending,
             set_text_cb,
             stdin: Mutex::new(Some(stdin)),
+            daemon_dead,
+            stderr_ring,
         };
         // Send boot RPC. We don't strictly need the response for the
         // smoke test — daemon's `log` notification confirms it started.
@@ -223,6 +265,27 @@ impl Bridge {
         if let Ok(mut guard) = self.set_text_cb.lock() {
             *guard = cb;
         }
+    }
+
+    /// Tier 4.C: has the daemon process exited (stdout/stderr EOF
+    /// observed by the reader threads)? Callers poll this to decide
+    /// whether to drop the bridge and call Bridge::start again. We
+    /// don't auto-restart from inside Bridge — codex's TUI patch
+    /// owns the user-visible recovery flow (e.g. show a banner
+    /// before reconnecting).
+    pub fn is_alive(&self) -> bool {
+        !self.daemon_dead.load(Ordering::Acquire)
+    }
+
+    /// Tier 4.F: snapshot of the most recent daemon stderr lines.
+    /// Useful for surfacing crash context — codex can dump these
+    /// into its own log or display the last line as part of a
+    /// "daemon died" banner. Capped at STDERR_RING_CAPACITY lines.
+    pub fn recent_stderr(&self) -> Vec<String> {
+        self.stderr_ring
+            .lock()
+            .map(|ring| ring.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// Send a JSON-RPC request, await the response value with a timeout.
