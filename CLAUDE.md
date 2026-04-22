@@ -248,6 +248,13 @@ once Chrome + OpenCode are fully verified on phases 1–6, before
 extending verification to Claude Code + Codex. The file is
 self-deleting: `git rm CLEANUP.md` once everything inside is done.
 
+`CODEX-CHECKLIST.md` (repo root) is the parallel tracker for the
+codex integration's path from pre-alpha scaffolding to OpenCode
+parity. 7 tiers ordered easy → hard, with severities + file
+citations. Tiers 1–2 are done; Tier 3 onward (daemon module wiring,
+Rust bridge fixes, TUI patches, verification) is the remaining
+work. Self-deleting once codex hits beta.
+
 ---
 
 ## Testing — write the SCENARIO that triggered the bug
