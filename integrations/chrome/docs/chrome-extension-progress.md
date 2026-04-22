@@ -92,7 +92,7 @@ re-verified end-to-end via a phased test plan.
 | 1 | Fresh install | `pnpm exec opencues install chrome --wsl`, load unpacked, runtime boots | ✅ Verified — `[opencues][info] OpenCues runtime starting (Chrome v1)` shows in DevTools |
 | 2 | Bake-time defaults + multi-source routing | No sync run; type a sentence with legal/medical/financial/grammar words, verify 4 parallel LLM calls and per-source alts | ✅ **Verified 2026-04-22** — see "Phase 2 verification" below |
 | 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ✅ **Verified 2026-04-22** — see "Phase 3 verification" below |
-| 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ☐ Pending |
+| 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ✅ **Verified 2026-04-22** — see "Phase 4 verification" below |
 | 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ☐ Pending |
 | 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ☐ Pending |
 
@@ -158,6 +158,26 @@ Default-source isolation + bundle precedence over bake-time.
 - User-only content (`sync-demo/`) actually reaches the runtime
 - Display paths under `--wsl` show as `C:\…` (not `/mnt/c/…`)
 - Hot-version `.version` polling will pick up future syncs
+
+### Phase 4 verification (2026-04-22)
+
+Negative test — explicit-opt-in property holds.
+
+**Test 1** — `sync chrome --dry-run` from inside `/home/wilfred/opencues`
+(a directory that contains its own `.opencues/`):
+- Output: exactly one source line — `source: user /home/wilfred/.opencues`
+- NO `source: project ...` line
+- 16 files, all from `~/.opencues/...`
+
+**Test 2** — same command from `/tmp` (no `.opencues/` in cwd):
+- Identical output, identical 16 files, same `source: user` line.
+
+**Confirms working:**
+- `sync chrome` default source set is user-level only — independent of cwd
+- No silent project leak from running inside a `.opencues/`-bearing dir
+- Watcher started from any cwd will bind to the same stable source set
+  (matches the documented model in CLAUDE.md § "`opencues sync chrome`
+  source discovery")
 
 ### Cross-host runtime fixes verified
 
