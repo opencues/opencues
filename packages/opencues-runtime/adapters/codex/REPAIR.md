@@ -67,7 +67,46 @@ misses.
 the workspace members list. The setup script is idempotent: re-run
 will skip the patch step and continue.
 
-### IL-3. Smoke test exits 0 even when daemon misbehaves
+### IL-3. Cargo too old for codex-rs's workspace manifest
+
+**File:** environmental — user's `cargo --version` < 1.85 (Feb 2025).
+
+**Symptom:** `pnpm exec opencues install codex` fails at the
+`▸ cargo build -p opencues-bridge` step with:
+
+```
+error: failed to load manifest for workspace member
+       `<fork>/codex-rs/analytics`
+Caused by: feature `edition2024` is required
+The package requires the Cargo feature called `edition2024`, but
+that feature is not stabilized in this version of Cargo (1.75.0).
+```
+
+**Why:** even though we only ask cargo to build the `opencues-bridge`
+crate (`-p opencues-bridge`), cargo must parse every workspace
+member's `Cargo.toml` first to construct the dependency graph. One
+of codex-rs's members (`analytics` at minimum) declares
+`edition = "2024"`, which was stabilized in Rust 1.85 (Feb 2025).
+Older toolchains can't load the workspace at all.
+
+**Fix:** update the user's Rust toolchain.
+
+```bash
+rustup update stable
+# or fresh-install if no rustup:
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
+Verify with `cargo --version` ≥ 1.85, then re-run
+`pnpm exec opencues install codex`. The setup.sh is idempotent —
+the partial state (cloned fork, copied bridge crate, patched
+Cargo.toml) doesn't need cleanup before retry.
+
+`bin/install.cjs` includes a pre-flight cargo version check that
+fails fast with this message if cargo is too old.
+
+### IL-4. Smoke test exits 0 even when daemon misbehaves
 
 **File:** `integrations/codex/patches/opencues-bridge/src/bin/smoke.rs`.
 

@@ -77,6 +77,31 @@ function doInstall() {
   }
   if (cargo.status === 0) console.log(`cargo: ${cargo.stdout.toString().trim()}`);
 
+  // Pre-flight: cargo version. codex-rs's workspace contains members
+  // declaring `edition = "2024"`, which was stabilized in Rust 1.85
+  // (Feb 2025). Older toolchains can't even *parse* the workspace,
+  // let alone build the bridge crate. Fail fast with a clear message
+  // instead of letting setup.sh hit an opaque cargo manifest error.
+  // See REPAIR.md § IL-3 for the underlying gotcha.
+  if (cargo.status === 0) {
+    const m = String(cargo.stdout).match(/cargo (\d+)\.(\d+)\.(\d+)/);
+    if (m) {
+      const [maj, min] = [Number(m[1]), Number(m[2])];
+      const ok = maj > 1 || (maj === 1 && min >= 85);
+      if (!ok) {
+        console.error('');
+        console.error(`opencues-codex install: cargo ${m[0].slice(6)} is too old.`);
+        console.error("openai/codex's workspace requires Rust 1.85+ (edition2024).");
+        console.error('Update with:');
+        console.error('  rustup update stable');
+        console.error('Or, if you don\'t have rustup:');
+        console.error('  curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh');
+        console.error('  source "$HOME/.cargo/env"');
+        process.exit(1);
+      }
+    }
+  }
+
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   // Source ~/.cargo/env if cargo wasn't on PATH but rustup is installed,
   // so the spawned setup.sh sees cargo too.
