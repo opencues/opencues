@@ -26,8 +26,14 @@ import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { createSourceReclassifier, type SourceReclassifier } from '../../../src/boot-common';
-import type { ControlInvokeSpec, HostAdapter, LogLevel, ProcessHandle } from '../../../src/adapter';
+import { Resolver } from '../../../src/modules/resolver';
+import {
+  buildSharedRuntime,
+  createSourceReclassifier,
+  type SharedRuntime,
+  type SourceReclassifier,
+} from '../../../src/boot-common';
+import type { ControlInvokeSpec, HostAdapter, KeyEvent, LogLevel, ProcessHandle } from '../../../src/adapter';
 import {
   AnswerControl,
   HackerNewsControl,
@@ -73,7 +79,14 @@ export type Frame = JsonRpcResponse | JsonRpcNotification;
 
 /** Bundle constructed in `boot` and stored for subsequent RPC handlers. */
 export interface RuntimeBundle {
-  readonly adapter: HostAdapter;
+  /** The CodexAdapter — concrete type so handlers can call its
+   *  bridge points (notifyTextChangeFromBridge etc.). */
+  readonly adapter: CodexAdapter;
+  /** Same surface OC's boot.ts exposes: ConfigLoader plus all the
+   *  shared state classes. Modules (Navigation, Cycling, BlankFill,
+   *  DimRender) are already subscribed by buildSharedRuntime. */
+  readonly shared: SharedRuntime;
+  /** Convenience alias — same as shared.configLoader. */
   readonly configLoader: ConfigLoader;
   /** Source reclassifier — the daemon's `text-change` RPC handler
    *  calls `reclassify(text, source)` before fanning to the adapter,
@@ -81,13 +94,10 @@ export interface RuntimeBundle {
    *  just wrote via `setText` / `pushText`. Avoids feedback loops. */
   readonly reclassifier: SourceReclassifier;
   /** Hoisted controls map — same six classes OC wires (HackerNews,
-   *  Stocks, Weather, Answer, PromptImprover, OpenCuesSettings).
-   *  Exposed so the upcoming `control-invoke` RPC method (Tier 3.E)
-   *  can dispatch directly without going through the adapter. */
+   *  Stocks, Weather, Answer, PromptImprover, OpenCuesSettings). */
   readonly controlsRegistry: Map<string, Control>;
   /** Dispatcher derived from controlsRegistry. Returns null for
-   *  unregistered controls (BlankFill / Cycling fall through to
-   *  spawnProcess for shell-script controls). */
+   *  unregistered controls. */
   readonly controlInvoke: (spec: ControlInvokeSpec) => ProcessHandle | null;
 }
 
@@ -180,18 +190,70 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
         break;
       }
       case 'text-change': {
-        // TODO Tier 3.F: parse params, call adapter.notifyTextChangeFromBridge.
-        // For now: ignored — no runtime modules subscribed yet.
+        // Tier 3.F. Bridge tells us the codex TextArea changed.
+        // Reclassify through the one-shot stash (so a runtime-driven
+        // setText echo doesn't look like a user keystroke), then fan
+        // to the adapter's text subscribers (Navigation, ConfigLoader
+        // hot-reload, BlankFill scan, etc.).
+        if (!runtime) break; // Pre-boot — silently drop.
+        const params = (req.params ?? {}) as { text?: string; cursorOffset?: number; source?: string };
+        if (typeof params.text !== 'string') break;
+        const proposedSource: 'user' | 'runtime' =
+          params.source === 'runtime' ? 'runtime' : 'user';
+        const actualSource = runtime.reclassifier.reclassify(params.text, proposedSource);
+        runtime.adapter.notifyTextChangeFromBridge(
+          params.text,
+          params.cursorOffset ?? 0,
+          actualSource,
+        );
         break;
       }
       case 'key': {
-        // TODO Tier 3.F: parse params, call adapter.dispatchKeyFromBridge.
-        // For the scaffold, never consume.
-        sendResult(req, { consumed: false });
+        // Tier 3.F. Bridge asks "do you want this key?". Fan to
+        // adapter, return whether any handler (Navigation, Cycling)
+        // consumed it. Bridge swallows on consumed=true.
+        if (!runtime) {
+          sendResult(req, { consumed: false });
+          break;
+        }
+        const params = (req.params ?? {}) as Partial<KeyEvent>;
+        if (typeof params.key !== 'string') {
+          sendResult(req, { consumed: false });
+          break;
+        }
+        const event: KeyEvent = {
+          key: params.key,
+          modifiers: params.modifiers ?? { ctrl: false, alt: false, shift: false, meta: false },
+          text: typeof params.text === 'string' ? params.text : '',
+          cursorOffset: typeof params.cursorOffset === 'number' ? params.cursorOffset : 0,
+        };
+        const consumed = runtime.adapter.dispatchKeyFromBridge(event);
+        sendResult(req, { consumed });
         break;
       }
       case 'force-render': {
-        // TODO Tier 3.I: ask adapter for current directives + emit them.
+        // Tier 3.F+I. Collect directives from every render handler
+        // (DimRender + future modules), emit a single `directives`
+        // notification back to the bridge for it to apply on next
+        // paint.
+        if (!runtime) break;
+        const params = (req.params ?? {}) as { text?: string; cursor?: number };
+        const list = runtime.adapter.collectRenderDirectives({
+          text: params.text,
+          cursor: params.cursor,
+        });
+        // Merge per-handler directive results into one payload. The
+        // bridge applies dim ranges + active range + tip on each
+        // paint; if multiple handlers emit, last-wins for active and
+        // union for dim.
+        const merged: { dim: { start: number; end: number }[]; active: { start: number; end: number } | null } = {
+          dim: [], active: null,
+        };
+        for (const d of list) {
+          if (d.dimRanges) for (const r of d.dimRanges) merged.dim.push({ start: r.start, end: r.end });
+          if (d.highlight) merged.active = { start: d.highlight.start, end: d.highlight.end };
+        }
+        opts.send({ jsonrpc: '2.0', method: 'directives', params: merged });
         break;
       }
       case 'control-invoke': {
@@ -298,12 +360,45 @@ async function defaultBuildRuntime(
     reclassifier,
     controlInvoke,
   });
-  const configLoader = new ConfigLoader(adapter, {
+
+  // Universal modules (Navigation/DimRender/Cycling/BlankFill +
+  // ConfigLoader + every state class) live in buildSharedRuntime so
+  // every host stays on the same wiring. Mirrors OC's pattern at
+  // adapters/oc/v1.4/boot.ts:158.
+  const shared = buildSharedRuntime(adapter, {
+    log,
     configSearchPaths: params.configSearchPaths,
   });
-  configLoader.subscribe();
-  await configLoader.load();
-  return { adapter, configLoader, reclassifier, controlsRegistry, controlInvoke };
+  // buildSharedRuntime fires-and-forgets ConfigLoader.load(). For
+  // codex we await it before resolving boot — the bridge may send
+  // RPCs immediately after boot returns, and we want them to see a
+  // populated cueMap. load() is idempotent (returns the in-flight
+  // promise if already running), so this just waits for the existing
+  // call to finish. Adds ~200-500ms to boot time depending on config
+  // size, which is fine — the bridge does this once per session.
+  await shared.configLoader.load();
+
+  // Resolver — opt-in via GROQ_API_KEY (same env var OC reads).
+  // Same subscribe-after-load order OC uses: rebuildResolver needs
+  // the cuesConfig + blanksConfig populated before its first pass.
+  if (process.env.GROQ_API_KEY) {
+    const resolver = new Resolver(adapter, shared.hlState, shared.dynDefs, shared.configLoader, {
+      endpoint: process.env.GROQ_ENDPOINT ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: process.env.GROQ_API_KEY,
+      defaultModel: process.env.GROQ_DEFAULT_MODEL ?? 'openai/gpt-oss-120b',
+      debounceMs: Number(process.env.GROQ_DEBOUNCE_MS ?? 500),
+    }, shared.spanFillState);
+    shared.configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+  }
+
+  return {
+    adapter,
+    shared,
+    configLoader: shared.configLoader,
+    reclassifier,
+    controlsRegistry,
+    controlInvoke,
+  };
 }
 
 /**

@@ -19,18 +19,41 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
 
   const stubBuildRuntime = vi.fn(async (params: CodexHostInfo, daemonLog) => {
     buildRuntimeCalls.push(params);
-    const adapter = new MockAdapter({ cwd: params.cwd });
+    // The reclassifier is shared between the adapter (which calls
+    // markRuntimeWrite inside setText) and the bundle (which the
+    // daemon's text-change RPC handler calls reclassify on). Tests
+    // must wire BOTH to the same instance to mirror production.
+    const reclassifier = createSourceReclassifier();
+    const adapter = new CodexAdapter({
+      cwd: params.cwd,
+      log: () => {},
+      reclassifier,
+    });
     const configLoader = new ConfigLoader(adapter, {
       configSearchPaths: params.configSearchPaths,
     });
     configLoader.subscribe();
     await configLoader.load();
-    const reclassifier = createSourceReclassifier();
-    // Empty registry for tests — the test that exercises the real
-    // registry uses defaultBuildRuntime via realBuildRuntime: true.
+    // Empty registry for tests — Tier 3.D's real-registry test uses
+    // defaultBuildRuntime via realBuildRuntime: true.
     const controlsRegistry = new Map();
     const controlInvoke = () => null;
-    return { adapter, configLoader, reclassifier, controlsRegistry, controlInvoke } as RuntimeBundle;
+    // Minimal SharedRuntime stand-in: runtime modules aren't wired
+    // for these tests (tests don't exercise Navigation / Cycling /
+    // BlankFill / DimRender; the Tier 3.A test that needs them goes
+    // through the real default builder). Expose null state classes
+    // so the type contract holds; the daemon's RPC handlers don't
+    // touch shared.* directly — they go through the adapter.
+    const shared = {
+      configLoader,
+      hlState: null as never,
+      dynDefs: null as never,
+      controlValues: null as never,
+      spanFillState: null as never,
+      dismissedBlanks: null as never,
+      selectorSatelliteState: null as never,
+    };
+    return { adapter, shared, configLoader, reclassifier, controlsRegistry, controlInvoke } as RuntimeBundle;
   });
 
   const daemon = createDaemon({
@@ -594,5 +617,171 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     expect(resp.result?.exitCode).toBe(0);
     // Whatever value voice-mode is set to (we don't pin it — just that it returns *something*).
     expect(typeof resp.result?.stdout).toBe('string');
+  });
+});
+
+describe('codex daemon — Tier 3.F: text-change / key / force-render fanout', () => {
+  it('text-change RPC fans into adapter text subscribers', async () => {
+    const { daemon } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    const seen: { text: string; cursor: number; source: string }[] = [];
+    daemon.runtime!.adapter.onTextChange((e) => {
+      seen.push({ text: e.text, cursor: e.cursorOffset, source: e.source });
+    });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'text-change',
+      params: { text: 'the quick fox', cursorOffset: 9, source: 'user' },
+    }));
+    expect(seen).toEqual([{ text: 'the quick fox', cursor: 9, source: 'user' }]);
+  });
+
+  it('text-change reclassifies to "runtime" when text matches a previous setText', async () => {
+    const { daemon } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    // Simulate a runtime-driven setText (e.g. cycling result):
+    daemon.runtime!.adapter.setText('the lawyer');
+    const seen: string[] = [];
+    daemon.runtime!.adapter.onTextChange((e) => seen.push(e.source));
+    // Bridge echoes the text back labelled as 'user' — reclassifier
+    // should flip it to 'runtime'.
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'text-change',
+      params: { text: 'the lawyer', cursorOffset: 10, source: 'user' },
+    }));
+    expect(seen).toEqual(['runtime']);
+  });
+
+  it('text-change pre-boot is a silent no-op (no error response, no fanout)', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'text-change',
+      params: { text: 'pre-boot', cursorOffset: 0, source: 'user' },
+    }));
+    expect(frames).toEqual([]);
+    expect(daemon.runtime).toBeNull();
+  });
+
+  it('text-change with non-string text is a silent no-op', async () => {
+    const { daemon } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    const seen: unknown[] = [];
+    daemon.runtime!.adapter.onTextChange((e) => seen.push(e));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'text-change',
+      params: { /* missing text */ cursorOffset: 0 },
+    }));
+    expect(seen).toEqual([]);
+  });
+
+  it('key RPC fans into adapter key subscribers + returns consumed=true when handler claims it', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    daemon.runtime!.adapter.onKey(null, (event) => {
+      // Consume only Ctrl+Alt+Up — same shape Cycling uses.
+      return event.key === 'up' && event.modifiers.ctrl && event.modifiers.alt;
+    });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'key',
+      params: {
+        key: 'up',
+        modifiers: { ctrl: true, alt: true, shift: false, meta: false },
+        text: 'foo',
+        cursorOffset: 3,
+      },
+      id: 5,
+    }));
+    expect(frames.find(f => 'id' in f && f.id === 5)).toEqual({
+      jsonrpc: '2.0',
+      result: { consumed: true },
+      id: 5,
+    });
+  });
+
+  it('key RPC returns consumed=false when no handler claims it', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    daemon.runtime!.adapter.onKey(null, () => false);
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'key',
+      params: { key: 'a', modifiers: { ctrl: false, alt: false, shift: false, meta: false } },
+      id: 6,
+    }));
+    expect(frames.find(f => 'id' in f && f.id === 6)).toEqual({
+      jsonrpc: '2.0', result: { consumed: false }, id: 6,
+    });
+  });
+
+  it('key RPC pre-boot returns {consumed:false} (graceful degrade, no error)', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'key',
+      params: { key: 'a' }, id: 7,
+    }));
+    expect(frames[0]).toEqual({
+      jsonrpc: '2.0', result: { consumed: false }, id: 7,
+    });
+  });
+
+  it('key RPC with non-string key returns {consumed:false} (defensive)', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'key', params: { /* no key */ }, id: 8,
+    }));
+    expect(frames.find(f => 'id' in f && f.id === 8)).toEqual({
+      jsonrpc: '2.0', result: { consumed: false }, id: 8,
+    });
+  });
+
+  it('force-render emits a `directives` notification merging every render handler', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    // Two render handlers — one emits dim ranges, one emits a highlight.
+    daemon.runtime!.adapter.onRender(() => ({
+      dimRanges: [{ start: 0, end: 3 }, { start: 8, end: 11 }],
+    }));
+    daemon.runtime!.adapter.onRender(() => ({
+      highlight: { start: 4, end: 7 },
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'force-render',
+      params: { text: 'the quick fox', cursor: 4 },
+    }));
+    const directivesFrame = frames.find(f => 'method' in f && f.method === 'directives');
+    expect(directivesFrame).toEqual({
+      jsonrpc: '2.0',
+      method: 'directives',
+      params: {
+        dim: [{ start: 0, end: 3 }, { start: 8, end: 11 }],
+        active: { start: 4, end: 7 },
+      },
+    });
+  });
+
+  it('force-render pre-boot is a silent no-op (no notification emitted)', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'force-render',
+    }));
+    expect(frames).toEqual([]);
   });
 });

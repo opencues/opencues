@@ -78,10 +78,18 @@ interface RenderSub { handler: (ctx: RenderContext) => RenderDirectives | null }
 const CODEX_BASE_CAPABILITIES: readonly Capability[] = [
   'file-read',
   'file-write',
-  // UI capabilities get added as Tier 3 wires the JSON-RPC routing:
-  //   'render-override', 'dim-ranges', 'highlight-range' — when forceRender + onRender land
-  //   'change-source', 'spawn-process' — later
-  // 'control-invoke' is added per-instance when bindings.controlInvoke is supplied.
+  'force-render',
+  'render-override',
+  'dim-ranges',
+  'highlight-range',
+  'change-source',
+  // Mirrors OPENCODE_V14_CAPABILITIES (adapters/oc/v1.4/adapter.ts:73-80)
+  // plus 'change-source' which both runtime modules use to emit
+  // source-attributed text events from the bridge into the runtime.
+  // 'control-invoke' is added per-instance when bindings.controlInvoke
+  // is supplied. 'spawn-process' stays off until Tier 3 wires a bridge
+  // for spawning; codex's controls are all hoisted to TS so the
+  // shell-script fallback isn't load-bearing.
 ];
 
 /**
@@ -178,8 +186,32 @@ export class CodexAdapter implements HostAdapter {
 
   // ─── Process / control ─────────────────────────────────────────────
 
-  spawnProcess(_spec: never): never {
-    throw new Error('CodexAdapter.spawnProcess: not yet implemented (Tier 3.B subset)');
+  /**
+   * Codex's adapter doesn't currently bridge subprocess spawns to the
+   * Rust side — `spawn-process` capability stays off in
+   * CODEX_BASE_CAPABILITIES so most call sites bail before reaching
+   * here. BlankFill's controlInvoke→spawnProcess fallthrough doesn't
+   * gate on the capability though (it has its own `script` presence
+   * check), so we'd land here when a `.sh`-backed control like
+   * `volume-blank.sh` falls through after our control-invoke registry
+   * misses it. Return a "command unavailable" handle instead of
+   * throwing — modules treat non-zero exit as "skip this slot" and
+   * stay alive. The proper fix lives in Tier 3 follow-up: either
+   * hoist the remaining shell-script controls (volume / brightness)
+   * to TS, or add a spawn-process JSON-RPC method that tunnels
+   * stdio through the bridge.
+   */
+  spawnProcess(_spec: import('../../../src/adapter').ProcessSpec): import('../../../src/adapter').ProcessHandle {
+    this._logFn('warn', 'CodexAdapter.spawnProcess: no bridge wiring for subprocesses; treating as unavailable');
+    return {
+      result: Promise.resolve({
+        stdout: '',
+        stderr: 'CodexAdapter: spawnProcess not implemented (no spawn-process capability)',
+        exitCode: 127,
+        timedOut: false,
+      }),
+      kill: () => {},
+    };
   }
 
   /** Forward to the host's controlInvoke binding when supplied. Same
@@ -251,10 +283,15 @@ export class CodexAdapter implements HostAdapter {
   /** Collect the latest render directives from every subscribed
    *  handler. Called by the daemon's `force-render` handler before
    *  emitting a `directives` notification. */
-  collectRenderDirectives(ctx: RenderContext): RenderDirectives[] {
+  collectRenderDirectives(ctx?: Partial<RenderContext>): RenderDirectives[] {
+    const fullCtx: RenderContext = {
+      text: ctx?.text ?? this._text,
+      cursor: ctx?.cursor ?? this._cursor,
+      externalHighlights: ctx?.externalHighlights ?? [],
+    };
     const out: RenderDirectives[] = [];
     for (const sub of this._renderSubs) {
-      const d = sub.handler(ctx);
+      const d = sub.handler(fullCtx);
       if (d) out.push(d);
     }
     return out;
