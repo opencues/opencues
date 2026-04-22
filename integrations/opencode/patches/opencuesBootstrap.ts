@@ -249,7 +249,6 @@ export function startOpenCues(opts: {
     // scripts still run for OS controls (volume, brightness) and any
     // control that hasn't been hoisted to runtime yet.
     controlInvoke,
-    tipsPath: path.join(process.env.HOME ?? "~", ".claude/claude-code-tips.json"),
     // Rename from claude-highlight-state-<pid>.json to opencode-<pid>.json
     // so the path visually disambiguates from a claude-cues instance
     // writing to the same /tmp (both processes can run concurrently).
