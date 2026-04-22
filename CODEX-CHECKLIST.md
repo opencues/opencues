@@ -188,22 +188,23 @@ The bridge crate has known holes. These are Rust changes that need
 careful design — concurrency, ownership, async. Not as straightforward
 as the daemon work above.
 
-- [ ] **A. Implement `dispatch_key` request/response correlation by
-      ID** — `lib.rs:119-123` currently always returns `false`.
-      Without this, codex can never consume Ctrl+Alt+Up/Down for
-      cycling. **Severity: BLOCKER**. The TODO comment says
-      "synchronous wait for response is noisy without tokio" — options:
-      (a) add tokio + go async, (b) use a `oneshot` channel keyed by
-      request id with a short timeout, (c) make `dispatch_key`
-      fire-and-forget and have the bridge buffer key events while it
-      waits for the daemon's verdict. (b) is the cleanest.
-- [ ] **B. Implement `set-text` callback** — `lib.rs:195-197`
-      currently has a TODO. Bridge needs a registration mechanism so
-      `chat_composer.rs` can give it a closure to apply set-text
-      results to the TextArea. **Severity: BLOCKER**. Pattern:
-      `Bridge::on_set_text(callback: Box<dyn Fn(&str, usize)>)`
-      called once during construction; frame handler invokes it on
-      `set-text` notifications.
+- [x] **A. Implement `dispatch_key` request/response correlation by
+      ID** — Done. Used option (b) — std::sync::mpsc::sync_channel
+      per request keyed by id in a HashMap. Frame handler thread
+      sends the result Value to the parked SyncSender; dispatch_key
+      blocks on `recv_timeout(200ms)` and parses
+      `{consumed: bool}`. Times out fail-open (returns false) so a
+      stuck daemon never hangs the codex render loop. KeyEvent +
+      Modifiers structs exposed so callers build typed events.
+      Live-verified via smoke.rs.
+- [x] **B. Implement `set-text` callback** — Done.
+      `Bridge::on_set_text(Option<SetTextCallback>)` registers a
+      `Box<dyn Fn(&str, usize) + Send + Sync>` that the frame handler
+      invokes when a `set-text` notification arrives. Codex's TUI
+      patch (Tier 5) will register this once during
+      `ChatComposer::new` to wire runtime-driven writes back into the
+      actual TextArea. `None` unregisters. Live-verified registration
+      in smoke.rs.
 - [ ] **C. Daemon restart on crash** — `lib.rs` doesn't restart the
       daemon if it dies. Watchdog thread that checks
       `child.try_wait()` periodically and respawns. **Severity: HIGH**
@@ -213,10 +214,13 @@ as the daemon work above.
       `ping` notification; daemon doesn't reply (it's a notification);
       bridge times out the daemon if no `directives`/`log` activity
       for N seconds. **Severity: MEDIUM**.
-- [ ] **E. Request timeout in `send_request`** — `lib.rs:132-141`
-      has no timeout. If the daemon hangs (e.g., ConfigLoader stuck on
-      slow disk I/O), the calling thread hangs too. Add a 500ms
-      timeout. **Severity: LOW** (unlikely but possible).
+- [x] **E. Request timeout in `send_request`** — Done as part of 4.A.
+      `request_with_timeout(method, params, timeout)` is the new
+      one-shot RPC helper. dispatch_key uses 200ms; invoke_control
+      uses 10s (network-bound controls like Stocks/Weather/HN can
+      take seconds). Timeouts return io::ErrorKind::TimedOut so
+      callers can decide their fallback (dispatch_key → false,
+      invoke_control → None).
 - [ ] **F. Better error reporting** — `lib.rs:71` uses
       `Stdio::inherit()` for daemon stderr. If the daemon crashes,
       the user sees the panic on stderr but the TUI just stops
@@ -362,7 +366,7 @@ Once codex actually works, mirror OC's reintegration docs.
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
 | 3 | A+B+C+D+E+F+I done; ~1h remaining (G+H optional) | daemon wiring — the biggest TS chunk |
-| 4 | 2-4h | bridge fixes — Rust |
+| 4 | A+B+E done; ~1-2h remaining (C/D/F/G defensive) | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
 | 7 | 1-2h | docs |
