@@ -123,20 +123,16 @@ does for OpenCode. Use OC as the structural template.
       lands). 5 unit tests cover the bundle inclusion, mark-write
       behaviour for setText + pushText, one-shot semantics, and the
       adapter-without-reclassifier graceful no-op.
-- [ ] **D. Build controls registry** — mirror OC's exact registry:
-      ```typescript
-      const controlsRegistry = new Map<string, Control>([
-        ['hackernews', new HackerNewsControl()],
-        ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
-        ['weather', new WeatherControl()],
-        ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
-        ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
-        ['opencues', new OpenCuesSettingsControl({...})],
-      ])
-      const controlInvoke = createControlInvoke(controlsRegistry)
-      ```
-      **Severity: HIGH**. *Reference:*
-      `integrations/opencode/patches/opencuesBootstrap.ts:116-127`
+- [x] **D. Build controls registry** — Done. `buildControlsRegistry()`
+      in `daemon.ts` registers the same six controls OC wires
+      (HackerNews, Stocks, Weather, Answer, PromptImprover,
+      OpenCuesSettings) with identical constructor args.
+      `findOpenCuesMdPath()` mirrors OC's resolution
+      ($OPENCUES_HOME → ~/.opencues/opencues.md). `createControlInvoke`
+      wraps the registry; `CodexAdapter` accepts the binding + adds
+      `'control-invoke'` to capabilities when supplied. Same
+      per-instance capability pattern OC uses in
+      `adapters/oc/v1.4/adapter.ts:91-98`. 5 unit tests.
 - [ ] **E. Add `control-invoke` RPC method to protocol + daemon** —
       bridge sends control invocations via JSON-RPC; daemon dispatches
       via `controlInvoke`. Update `docs/protocol.md` with the new
@@ -342,7 +338,7 @@ Once codex actually works, mirror OC's reintegration docs.
 |---|---|---|
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
-| 3 | A+B+C done; ~2-4h remaining | daemon wiring — the biggest TS chunk |
+| 3 | A+B+C+D done; ~2-3h remaining | daemon wiring — the biggest TS chunk |
 | 4 | 2-4h | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
