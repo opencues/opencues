@@ -13,6 +13,10 @@
 #      that happens once the TUI patches land; see HANDOFF.md)
 #   6. Drop a launch helper at <fork>/launch.sh
 #
+# Set OPENCUES_INSTALL_VERBOSE=1 to stream every command's output.
+# Default is quiet — only progress lines + errors. Full log lives at
+# the path printed on failure (default /tmp/opencues-install-codex.log).
+#
 # Pinned upstream version: see PINNED_SHA below.
 
 set -euo pipefail
@@ -25,83 +29,136 @@ FORK_DIR="${1:-$HOME/codex-cues}"
 PINNED_SHA="d58d3cc"
 PINNED_HUMAN="2026-04 (master at the time of writing)"
 
+LOG="${OPENCUES_INSTALL_LOG:-/tmp/opencues-install-codex.log}"
+VERBOSE="${OPENCUES_INSTALL_VERBOSE:-0}"
+: > "$LOG"
+
+# ─── progress helpers ────────────────────────────────────────────────
+# run_step <label> <fn-name> [args...]
+#   verbose=0 (default): prints "  ▸ <label> ✓" / "✗" + error excerpt
+#   verbose=1:           streams everything live, still prints ✓/✗
+run_step() {
+  local label="$1"; shift
+  if [[ "$VERBOSE" = "1" ]]; then
+    printf '  ▸ %s\n' "$label"
+    if "$@"; then
+      printf '  ✓ %s\n' "$label"
+    else
+      local rc=$?
+      printf '  ✗ %s (exit %d)\n' "$label" "$rc" >&2
+      exit "$rc"
+    fi
+  else
+    printf '  ▸ %s' "$label"
+    if "$@" >>"$LOG" 2>&1; then
+      printf ' ✓\n'
+    else
+      local rc=$?
+      printf ' ✗\n' >&2
+      echo "" >&2
+      echo "Step failed: $label (exit $rc)" >&2
+      echo "Last 30 lines of $LOG:" >&2
+      tail -30 "$LOG" >&2
+      echo "" >&2
+      echo "Full log: $LOG  —  re-run with OPENCUES_INSTALL_VERBOSE=1 to stream live." >&2
+      exit "$rc"
+    fi
+  fi
+}
+
 echo "=== OpenCues × OpenAI Codex setup ==="
 echo "Target fork: $FORK_DIR"
 echo "Pinned to codex SHA $PINNED_SHA ($PINNED_HUMAN)"
-
-# 1. Clone or reuse the fork.
-if [[ ! -d "$FORK_DIR" ]]; then
-  echo "Cloning openai/codex..."
-  git clone https://github.com/openai/codex.git "$FORK_DIR"
-  cd "$FORK_DIR"
-  git checkout "$PINNED_SHA" 2>/dev/null || echo "WARN: couldn't checkout $PINNED_SHA — using HEAD"
-elif [[ ! -d "$FORK_DIR/codex-rs" ]]; then
-  echo "Error: $FORK_DIR exists but doesn't look like a codex checkout."
-  exit 1
-else
-  cd "$FORK_DIR"
-fi
-
-# 2. Build @opencues/runtime so daemon.js exists at the path the bridge expects.
 echo ""
-echo "Building @opencues/runtime..."
-cd "$OPENCUES_ROOT"
-pnpm --filter @opencues/runtime build
+
+# ─── step bodies ─────────────────────────────────────────────────────
+
+clone_fork() {
+  if [[ ! -d "$FORK_DIR" ]]; then
+    git -c advice.detachedHead=false clone --quiet \
+      https://github.com/openai/codex.git "$FORK_DIR"
+    cd "$FORK_DIR"
+    git checkout --quiet "$PINNED_SHA" 2>/dev/null \
+      || echo "WARN: couldn't checkout $PINNED_SHA — using HEAD"
+  elif [[ ! -d "$FORK_DIR/codex-rs" ]]; then
+    echo "Error: $FORK_DIR exists but doesn't look like a codex checkout." >&2
+    return 1
+  else
+    cd "$FORK_DIR"
+  fi
+}
+
+build_runtime() {
+  cd "$OPENCUES_ROOT"
+  pnpm --filter @opencues/runtime build
+}
 
 DAEMON_JS="$OPENCUES_ROOT/packages/opencues-runtime/dist/adapters/codex/v1/daemon.js"
-if [[ ! -f "$DAEMON_JS" ]]; then
-  echo "ERROR: daemon.js not built at $DAEMON_JS"
-  echo "Check tsconfig — adapters/codex/v1/ must be in the include path."
-  exit 1
-fi
-echo "Daemon: $DAEMON_JS"
 
-# 3. Copy the bridge crate into the codex workspace.
-BRIDGE_SRC="$SCRIPT_DIR/opencues-bridge"
-BRIDGE_DEST="$FORK_DIR/codex-rs/opencues-bridge"
-echo ""
-echo "Copying bridge crate..."
-mkdir -p "$BRIDGE_DEST"
-rsync -a --delete "$BRIDGE_SRC/" "$BRIDGE_DEST/" 2>/dev/null || cp -r "$BRIDGE_SRC/." "$BRIDGE_DEST/"
+verify_daemon() {
+  if [[ ! -f "$DAEMON_JS" ]]; then
+    echo "ERROR: daemon.js not built at $DAEMON_JS" >&2
+    echo "Check tsconfig — adapters/codex/v1/ must be in the include path." >&2
+    return 1
+  fi
+}
 
-# 4. Add opencues-bridge to the workspace members list.
-CARGO_TOML="$FORK_DIR/codex-rs/Cargo.toml"
-if ! grep -q '"opencues-bridge"' "$CARGO_TOML"; then
-  echo "Adding opencues-bridge to $CARGO_TOML workspace members..."
+copy_bridge() {
+  local BRIDGE_SRC="$SCRIPT_DIR/opencues-bridge"
+  local BRIDGE_DEST="$FORK_DIR/codex-rs/opencues-bridge"
+  mkdir -p "$BRIDGE_DEST"
+  rsync -a --delete "$BRIDGE_SRC/" "$BRIDGE_DEST/" 2>/dev/null \
+    || cp -r "$BRIDGE_SRC/." "$BRIDGE_DEST/"
+}
+
+patch_workspace() {
+  local CARGO_TOML="$FORK_DIR/codex-rs/Cargo.toml"
+  if grep -q '"opencues-bridge"' "$CARGO_TOML"; then
+    return 0
+  fi
   python3 - "$CARGO_TOML" <<'PY'
 import sys, re
 p = sys.argv[1]
 src = open(p).read()
-# Inject right after "members = [" so we don't disturb existing entries.
 new = re.sub(r'(members\s*=\s*\[)', r'\1\n    "opencues-bridge",', src, count=1)
 if new == src:
-  print("WARN: couldn't find 'members = [' in Cargo.toml — please add manually")
-else:
-  open(p, 'w').write(new)
+  print("ERROR: couldn't find 'members = [' in Cargo.toml — please add manually", file=__import__('sys').stderr)
+  sys.exit(1)
+open(p, 'w').write(new)
 PY
-else
-  echo "opencues-bridge already in workspace members."
-fi
+}
 
-# 5. Build the bridge crate (NOT the full codex TUI yet — see HANDOFF.md
-#    for the TUI patches that need to land before the full build is useful).
-echo ""
-echo "Building opencues-bridge..."
-cd "$FORK_DIR/codex-rs"
-cargo build -p opencues-bridge --release 2>&1 | tail -15
-echo ""
-echo "Smoke test (spawns daemon, sends text-change, exits)..."
-cargo run -q --release --bin opencues-bridge-smoke -- "$DAEMON_JS" 2>&1 | tail -15
+build_bridge() {
+  cd "$FORK_DIR/codex-rs"
+  cargo build -p opencues-bridge --release
+}
 
-# 6. Drop a launch helper at the fork root.
-LAUNCH_HELPER="$FORK_DIR/launch.sh"
-cat > "$LAUNCH_HELPER" <<EOF
+smoke_test() {
+  cd "$FORK_DIR/codex-rs"
+  cargo run -q --release --bin opencues-bridge-smoke -- "$DAEMON_JS"
+}
+
+write_launch_helper() {
+  local LAUNCH_HELPER="$FORK_DIR/launch.sh"
+  cat > "$LAUNCH_HELPER" <<EOF
 #!/usr/bin/env bash
 # Launch helper for opencues-patched codex.
 # Generated by integrations/codex/patches/setup.sh.
 exec env OPENCUES_DAEMON_PATH="$DAEMON_JS" cargo run --release --manifest-path "$FORK_DIR/codex-rs/Cargo.toml" -p codex-tui -- "\$@"
 EOF
-chmod +x "$LAUNCH_HELPER"
+  chmod +x "$LAUNCH_HELPER"
+}
+
+# ─── orchestrate ─────────────────────────────────────────────────────
+
+run_step "Clone or reuse codex fork"            clone_fork
+run_step "Build @opencues/runtime"              build_runtime
+run_step "Verify daemon.js produced"            verify_daemon
+run_step "Copy bridge crate into fork"          copy_bridge
+run_step "Add bridge to Cargo.toml workspace"   patch_workspace
+run_step "cargo build -p opencues-bridge"       build_bridge
+run_step "Bridge ↔ daemon smoke test"           smoke_test
+run_step "Write launch helper"                  write_launch_helper
 
 echo ""
 echo "=== Setup complete (infrastructure layer) ==="
@@ -110,11 +167,11 @@ echo "Bridge crate built + smoke-tested. Daemon path:"
 echo "  $DAEMON_JS"
 echo ""
 echo "Launch helper installed at:"
-echo "  $LAUNCH_HELPER"
+echo "  $FORK_DIR/launch.sh"
 echo ""
 echo "Next steps (manual, see integrations/codex/HANDOFF.md):"
 echo "  - Wire the bridge into codex-rs/tui/src/bottom_pane/chat_composer.rs"
-echo "  - Apply via setup.sh's STEP 4 (TODO marker)"
+echo "  - Apply via setup.sh's STEP 4 (TODO marker below)"
 echo ""
 echo "To run codex (once TUI patches land):"
 if command -v opencues &>/dev/null; then

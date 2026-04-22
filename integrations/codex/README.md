@@ -34,6 +34,8 @@ The installer:
 5. Builds the patched codex TUI via `cargo build --release` (slow — first build ~5 min)
 6. Drops a launch script the user invokes via `opencues run codex`
 
+Set `OPENCUES_INSTALL_VERBOSE=1` to stream every command's output. By default the installer shows a per-step progress summary (`▸ <label> ✓`) and logs everything else to `/tmp/opencues-install-codex.log`. If a step fails, the last 30 lines of the log are dumped to stderr.
+
 ## Why a JSON-RPC bridge?
 
 Codex is Rust; `@opencues/runtime` is TypeScript. Three options were considered:
