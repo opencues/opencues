@@ -1,13 +1,17 @@
 // ConfigLoader — Phase A.
 //
-// Loads:
-//   - tips JSON                           (~/.claude/claude-code-tips.json)
-//   - cwd cues.md / controls.md / blanks.md  (frontmatter parsed by opencues-core)
-//   - ~/.opencues/opencues.md              (user-level only — system settings owned by the runtime)
-//   - cwd cues/* and controls/* folders  (per-folder cue.md via opencues-core's discoverFolderConfigs)
+// Loads (across $OPENCUES_HOME → <cwd>/.opencues → ~/.opencues):
+//   - cues.md / controls.md / blanks.md  (frontmatter parsed by @opencues/core).
+//     Tips live inside cues.md's `## Tips` JSON block — there is no
+//     separate tips.json file any more.
+//   - ~/.opencues/opencues.md (user-level only — system settings owned
+//     by the runtime; project-level opencues.md is ignored)
+//   - cues/<name>/ and controls/<name>/ folders (per-folder cue.md via
+//     @opencues/core's discoverFolderConfigs)
 //
 // Exposes:
-//   - cueMap     — primary lookup (tips JSON + folder cues merged)
+//   - cueMap     — primary lookup, built from cues.md ## Tips (project
+//                  wins on word conflicts via mergeConfigs)
 //   - cuesConfig / controlsConfig / blanksConfig — frontmatter parses
 //   - opencuesState — voiceMode, tipsMode, debugMode, cursorNavigate, raw settings
 //
