@@ -146,11 +146,25 @@ does for OpenCode. Use OC as the structural template.
       Bonus: caught + fixed an FIFO ordering bug — readline 'line'
       events now process serially through a chained promise queue.
       6 new unit tests.
-- [ ] **F. Wire Navigation / Cycling / BlankFill / DimRender / Resolver
-      / Statusline / TTS modules** — same shared-runtime pattern OC
-      uses. Each module subscribes to events from the synthetic
-      adapter (B). **Severity: BLOCKER** for actual cue functionality.
-      *Reference:* `packages/opencues-runtime/adapters/oc/v1.4/boot.ts:153-251`
+- [x] **F. Wire Navigation / Cycling / BlankFill / DimRender / Resolver
+      modules** — Done. `defaultBuildRuntime` calls `buildSharedRuntime`
+      (same primitive OC uses) which subscribes ConfigLoader,
+      Navigation, DimRender, Cycling, BlankFill atomically. Plus an
+      opt-in Resolver gated on `GROQ_API_KEY` env var, mirroring OC's
+      lines 196-206. **Three RPC fanout handlers wired** —
+      `text-change` reclassifies + fans to text subscribers; `key`
+      dispatches to key handlers + returns `consumed`; `force-render`
+      collects every handler's render directives + emits a
+      `directives` notification. CodexAdapter capabilities expanded
+      to match `OPENCODE_V14_CAPABILITIES` + `change-source`.
+      `spawnProcess` now degrades gracefully (warn + fail-handle)
+      instead of throwing — BlankFill's controlInvoke→spawnProcess
+      fallthrough doesn't gate on the spawn-process cap, so .sh-only
+      controls would crash without this. Live-verified end-to-end:
+      typing `the volume is 25 and HN posts _` correctly emitted
+      `dim:[{4,10},{21,23}]` (volume + HN both dimmed) AND invoked
+      the hoisted HackerNewsControl via control-invoke. Statusline
+      (3.G) and TTS still TODO. 10 new tests.
 - [ ] **G. Statusline file export** — `/tmp/opencues-codex-${pid}.status.json`
       (file, not socket — README says socket but file is consistent
       with OC's `/tmp/opencues-opencode-status-${pid}.json`).
@@ -160,11 +174,11 @@ does for OpenCode. Use OC as the structural template.
       `/tmp/opencues-codex-cursor-state-${pid}.json` if codex needs
       external cursor reads. **Severity: LOW** (codex may not need it
       — codex isn't using a status line script the way CC is).
-- [ ] **I. Wire `force-render` to actually emit `directives`** —
-      currently `daemon.ts:104` is a TODO. Should call
-      `collectRenderDirectives` from the runtime + emit the
-      `directives` notification. **Severity: HIGH** (without this,
-      the bridge sees no highlights).
+- [x] **I. Wire `force-render` to actually emit `directives`** —
+      Done as part of 3.F (the handler is in the same case block as
+      text-change/key). `force-render` collects every render handler's
+      directives, merges into one payload, emits a `directives`
+      notification.
 
 ---
 
@@ -347,7 +361,7 @@ Once codex actually works, mirror OC's reintegration docs.
 |---|---|---|
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
-| 3 | A+B+C+D+E done; ~1-3h remaining | daemon wiring — the biggest TS chunk |
+| 3 | A+B+C+D+E+F+I done; ~1h remaining (G+H optional) | daemon wiring — the biggest TS chunk |
 | 4 | 2-4h | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
