@@ -103,7 +103,7 @@ The HIGH + MEDIUM stale-doc fixes from the audit. No commands to run; just read-
 - `CLAUDE.md` install destination is `~/.claude/opencues/` (not `~/.claude/node_modules/`)
 - `integrations/claude-code/README.md` and `integrations/claude-code/patches/README.md` reflect the consolidated layout
 - `docs/guides/quickstart.md` uses `pnpm` and `opencues install claude-code`
-- Various feature/guide docs no longer reference `~/.claude/actions/` or `~/.claude/highlight-statusline.sh` directly
+- Various feature/guide docs no longer reference `~/.claude/actions/` or `~/.claude/highlight-statusline.sh` directly (current paths: `~/.claude/opencues/scripts/` and `~/.claude/opencues/statusline.sh`)
 
 ---
 
@@ -514,8 +514,8 @@ pnpm exec opencues uninstall --all --dry-run
 ```bash
 pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 # → goes through full install pipeline
-# → at the end: ~/.claude/opencues/ should exist with core/, runtime/, tips.json,
-#   statusline.sh, actions/, patch-state/
+# → at the end: ~/.claude/opencues/ should exist with core/, runtime/,
+#   statusline.sh, scripts/, patch-state/ (tips ship inside cues.md ## Tips)
 
 pnpm exec opencues which | grep -E '✓|-'
 # → many ✓ marks for what just got installed

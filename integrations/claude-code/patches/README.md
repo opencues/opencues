@@ -27,8 +27,9 @@ The `opencues install claude-code` command runs `setup.sh` (this directory) unde
 4. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
 5. Installs everything under `~/.claude/opencues/`:
    - `core/`, `runtime/` — built artefacts
-   - `tips.json`, `statusline.sh`, `actions/` — supporting files
+   - `statusline.sh`, `scripts/` — supporting files (OS-bound scripts copied from `patches/actions/`)
    - `patch-state/` — tweakcc config + `cli.js.backup` (via `TWEAKCC_CONFIG_DIR` override)
+   - Tips ship inside `cues.md ## Tips` (no separate JSON file)
 6. Builds tweakcc with the patches compiled in
 7. Applies the patches to the detected `cli.js` (auto-finds under `~/.claude` or `~/claude-code-cues`; explicit path via `--target`)
 
@@ -48,8 +49,11 @@ patches/
 │   ├── speak.sh, brightness.sh
 │   ├── BrightCtl.cs, SpeakCtl.cs   # WSL: compiled to .exe by setup.sh
 │   └── brightness-set.ps1
-├── highlight-statusline.sh   # Status-line script copied to ~/.claude/opencues/statusline.sh
-└── claude-code-tips.json     # Per-word tips JSON copied to ~/.claude/opencues/tips.json
+└── highlight-statusline.sh   # Status-line script copied to ~/.claude/opencues/statusline.sh
+
+# Tips: live in cues.md's ## Tips JSON block (loaded from
+# ~/.opencues/cues.md and project-level <cwd>/.opencues/cues.md).
+# No separate JSON file ships any longer.
 ```
 
 ## Manual installation (fallback)

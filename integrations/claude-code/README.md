@@ -128,10 +128,9 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 ~/.claude/opencues/
 ├── core/                 built @opencues/core (CueResolver, parsers, sources)
 ├── runtime/              built @opencues/runtime (Navigation, Cycling, BlankFill, controls/)
-├── tips.json             pre-computed word tips (read by ConfigLoader)
 ├── statusline.sh         status-line script (wire via /statusline)
-├── actions/              OS-bound scripts (speak.sh, brightness.sh) + WSL .exe shims
-└── patch-state/        tweakcc's config + cli.js.backup
+├── scripts/              OS-bound scripts (speak.sh, brightness.sh) + WSL .exe shims
+└── patch-state/          tweakcc's config + cli.js.backup
                           (redirected from ~/.tweakcc/ via TWEAKCC_CONFIG_DIR)
 ```
 

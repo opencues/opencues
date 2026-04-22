@@ -120,8 +120,8 @@ opencues/
 │   │   ├── wordHighlight.ts       # Navigation, numbers, rendering, TTS
 │   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans, TTS
 │   │   ├── highlight-statusline.sh # Status line script
-│   │   ├── claude-code-tips.json  # Per-word tips file
-│   │   └── actions/               # Scripts (volume.sh, speak.sh, SpeakCtl.cs)
+│   │   └── actions/               # OS-bound scripts (speak.sh, brightness.sh, *.cs);
+│   │                              # copied into ~/.claude/opencues/scripts/ at install time
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
 │   │   ├── cursor-positioning.md  # Cursor offset adjustment during blank fill
