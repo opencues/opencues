@@ -138,6 +138,33 @@ smoke_test() {
   cargo run -q --release --bin opencues-bridge-smoke -- "$DAEMON_JS"
 }
 
+apply_tui_patches() {
+  cd "$FORK_DIR/codex-rs"
+  local patch="$SCRIPT_DIR/tui-bridge-wiring.diff"
+  if [[ ! -f "$patch" ]]; then
+    echo "tui-bridge-wiring.diff not found at $patch" >&2
+    return 1
+  fi
+  # Idempotency: the patch inserts OPENCUES_BRIDGE_BEGIN markers in
+  # chat_composer.rs. If they're already present, re-apply would
+  # produce 'patch fragments already applied' errors — skip cleanly.
+  if grep -q OPENCUES_BRIDGE_BEGIN tui/src/bottom_pane/chat_composer.rs 2>/dev/null; then
+    echo "TUI patches already applied — skipping"
+    return 0
+  fi
+  # Pre-flight check via git apply --check. Surfaces upstream drift
+  # cleanly: if codex-rs has moved past the pinned SHA, the patch
+  # may not land. See HANDOFF.md for the rebase workflow.
+  if ! git apply --check "$patch" 2>&1; then
+    echo "" >&2
+    echo "TUI patch pre-flight failed — upstream codex-rs has drifted from pinned SHA $PINNED_SHA." >&2
+    echo "Either bump PINNED_SHA in setup.sh + regenerate the diff, or pin to an older codex." >&2
+    echo "See HANDOFF.md for the rebase workflow." >&2
+    return 1
+  fi
+  git apply "$patch"
+}
+
 write_launch_helper() {
   local LAUNCH_HELPER="$FORK_DIR/launch.sh"
   cat > "$LAUNCH_HELPER" <<EOF
@@ -158,6 +185,7 @@ run_step "Copy bridge crate into fork"          copy_bridge
 run_step "Add bridge to Cargo.toml workspace"   patch_workspace
 run_step "cargo build -p opencues-bridge"       build_bridge
 run_step "Bridge ↔ daemon smoke test"           smoke_test
+run_step "Apply TUI bridge-wiring patches"      apply_tui_patches
 run_step "Write launch helper"                  write_launch_helper
 
 echo ""
@@ -169,27 +197,15 @@ echo ""
 echo "Launch helper installed at:"
 echo "  $FORK_DIR/launch.sh"
 echo ""
-echo "Next steps (manual, see integrations/codex/HANDOFF.md):"
-echo "  - Wire the bridge into codex-rs/tui/src/bottom_pane/chat_composer.rs"
-echo "  - Apply via setup.sh's STEP 4 (TODO marker below)"
+echo "TUI patches applied — bridge is wired into chat_composer.rs."
+echo "Diff lives at: integrations/codex/patches/tui-bridge-wiring.diff"
 echo ""
-echo "To run codex (once TUI patches land):"
+echo "To run codex:"
 if command -v opencues &>/dev/null; then
   echo "  opencues run codex"
 else
   echo "  pnpm exec opencues run codex"
 fi
-
-# TODO STEP 4: in-place TUI patches via Python sed (mirrors integrations/opencode/patches/setup.sh).
-# Patch points:
-#   <fork>/codex-rs/tui/src/bottom_pane/chat_composer.rs
-#     - add `bridge: Option<opencues_bridge::Bridge>` field to ChatComposer
-#     - in `new()`: try Bridge::start; warn on failure
-#     - in key-handling path: call bridge.dispatch_key(...) BEFORE normal handling
-#     - in text-mutation path: call bridge.notify_text_change(...) AFTER mutation
-#     - in render path: query bridge.directives() and apply highlight ranges to TextArea
-#   <fork>/codex-rs/tui/Cargo.toml
-#     - add: opencues-bridge = { path = "../opencues-bridge" }
-#
-# These edits aren't auto-applied because they involve Rust ownership/lifetime
-# decisions in fast-evolving upstream code. See HANDOFF.md for the path.
+echo ""
+echo "First run takes ~5 min for the full codex-tui build (cargo)."
+echo "Requires libcap-dev on Linux (apt: 'sudo apt install libcap-dev')."
