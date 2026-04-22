@@ -116,13 +116,13 @@ does for OpenCode. Use OC as the structural template.
       `spawnProcess` + `controlInvoke` are unimplemented (Tier 3.D-E).
       Capabilities = `['file-read', 'file-write']` for now; UI caps
       get added as their wiring lands.
-- [ ] **C. Source reclassifier** — `createSourceReclassifier` from
-      `boot-common`. Used in OC's setText/pushText to mark runtime
-      writes so the next text-change pulse correctly identifies them
-      as `source: 'runtime'` not `'user'`. Without this, cycling
-      causes feedback loops (every cycle clears the highlight).
-      **Severity: HIGH**. *Reference:*
-      `integrations/opencode/patches/opencuesBootstrap.ts:74-76, 154, 158-162, 319`
+- [x] **C. Source reclassifier** — Done. `defaultBuildRuntime`
+      constructs the reclassifier and passes it into both the adapter
+      (so `setText`/`pushText` mark runtime writes) and the bundle (so
+      the daemon's text-change RPC handler can reclassify, when 3.F
+      lands). 5 unit tests cover the bundle inclusion, mark-write
+      behaviour for setText + pushText, one-shot semantics, and the
+      adapter-without-reclassifier graceful no-op.
 - [ ] **D. Build controls registry** — mirror OC's exact registry:
       ```typescript
       const controlsRegistry = new Map<string, Control>([
@@ -342,7 +342,7 @@ Once codex actually works, mirror OC's reintegration docs.
 |---|---|---|
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
-| 3 | A+B done; ~2-5h remaining | daemon wiring — the biggest TS chunk |
+| 3 | A+B+C done; ~2-4h remaining | daemon wiring — the biggest TS chunk |
 | 4 | 2-4h | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
