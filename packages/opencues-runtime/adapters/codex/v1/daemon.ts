@@ -27,6 +27,7 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Resolver } from '../../../src/modules/resolver';
+import { Statusline } from '../../../src/modules/statusline';
 import {
   buildSharedRuntime,
   createSourceReclassifier,
@@ -378,6 +379,19 @@ async function defaultBuildRuntime(
   // size, which is fine — the bridge does this once per session.
   await shared.configLoader.load();
 
+  // Tier 3.G — Statusline file export. Writes a JSON status snapshot
+  // to /tmp/opencues-codex-${pid}.status.json on every render so
+  // external status-line scripts (or future codex slash-command
+  // integrations) can read the active word + tip + cycle position.
+  // Mirrors OC's pattern: the path includes the pid so concurrent
+  // codex instances don't collide.
+  const statusFilePath = `/tmp/opencues-codex-${process.pid}.status.json`;
+  const statusline = new Statusline(adapter, shared.hlState, shared.dynDefs, {
+    exportPath: statusFilePath,
+  }, shared.configLoader, shared.spanFillState, shared.selectorSatelliteState, shared.controlValues);
+  statusline.subscribe();
+  log('info', `Statusline export at ${statusFilePath}`);
+
   // Resolver — opt-in via GROQ_API_KEY (same env var OC reads).
   // Same subscribe-after-load order OC uses: rebuildResolver needs
   // the cuesConfig + blanksConfig populated before its first pass.
@@ -437,8 +451,13 @@ export function startDaemon(): void {
   });
   rl.on('close', () => {
     void pending.finally(() => {
-      fileLog('info', 'daemon shutting down (stdin closed)');
-      process.exit(0);
+      // Brief drain to let any in-flight async writes (Statusline
+      // export, log appendFileSync queueing, etc.) flush before we
+      // exit. 100ms is plenty for fs.writeFile microtasks.
+      setTimeout(() => {
+        fileLog('info', 'daemon shutting down (stdin closed)');
+        process.exit(0);
+      }, 100);
     });
   });
 
