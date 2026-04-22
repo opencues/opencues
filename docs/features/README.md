@@ -33,6 +33,8 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 23 | [Chrome Sync](chrome-sync.md) | How `opencues sync chrome` picks which `.opencues/` dirs feed the browser extension (user-only by default; opt-in for projects) |
 | 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source; the repo no longer self-dogfoods via an in-tree `.opencues/` |
 | 25 | [Chrome Hot-Reload](chrome-hot-reload.md) | Content-addressable `.version` polling so chrome picks up `sync chrome --watch` edits in already-open tabs (~2.5s) |
+| 26 | [Resolver Skip Filter](resolver-skip-filter.md) | The four-condition check that prevents the LLM from re-resolving words already owned by cycling — keeps cycle tracks stable and saves tokens |
+| 27 | [Deterministic Relocate](deterministic-relocate.md) | Cycle progress survives prefix/middle text edits — DynDefs are re-anchored to their content's new position when (and only when) the match is unambiguous |
 
 ## Adding a new feature
 
