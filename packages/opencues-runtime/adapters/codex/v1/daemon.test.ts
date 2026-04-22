@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDaemon, type Frame, type RuntimeBundle, type CodexHostInfo } from './daemon';
 import { MockAdapter } from '../../../testing/mock-adapter';
 import { ConfigLoader } from '../../../src/modules/config-loader';
+import { createSourceReclassifier } from '../../../src/boot-common';
+import { CodexAdapter } from './adapter';
 
 /**
  * Build a fresh daemon with a recording `send` callback. Returns the
@@ -22,7 +24,8 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
     });
     configLoader.subscribe();
     await configLoader.load();
-    return { adapter, configLoader } as RuntimeBundle;
+    const reclassifier = createSourceReclassifier();
+    return { adapter, configLoader, reclassifier } as RuntimeBundle;
   });
 
   const daemon = createDaemon({
@@ -292,5 +295,61 @@ describe('codex daemon — Tier 3.A: ConfigLoader wiring', () => {
     });
     // Empty cueMap from the missing search path — graceful degradation.
     expect(daemon.runtime?.configLoader.cueMap.size).toBe(0);
+  });
+});
+
+describe('codex daemon — Tier 3.C: source reclassifier', () => {
+  it('boot bundle includes a reclassifier instance', async () => {
+    const { daemon } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/proj' }, id: 1,
+    }));
+    expect(daemon.runtime?.reclassifier).toBeDefined();
+    expect(typeof daemon.runtime?.reclassifier.markRuntimeWrite).toBe('function');
+    expect(typeof daemon.runtime?.reclassifier.reclassify).toBe('function');
+  });
+
+  it('CodexAdapter.setText calls markRuntimeWrite on the supplied reclassifier', () => {
+    const reclassifier = createSourceReclassifier();
+    const adapter = new CodexAdapter({
+      cwd: '/proj',
+      log: () => {},
+      reclassifier,
+    });
+    adapter.setText('hello world');
+    // After markRuntimeWrite, an incoming text-change with the same
+    // text is reclassified from 'user' to 'runtime'.
+    expect(reclassifier.reclassify('hello world', 'user')).toBe('runtime');
+  });
+
+  it('CodexAdapter.pushText also calls markRuntimeWrite', () => {
+    const reclassifier = createSourceReclassifier();
+    const adapter = new CodexAdapter({
+      cwd: '/proj',
+      log: () => {},
+      reclassifier,
+    });
+    adapter.pushText('async fill');
+    expect(reclassifier.reclassify('async fill', 'user')).toBe('runtime');
+  });
+
+  it('reclassify is one-shot — second identical text stays "user"', () => {
+    const reclassifier = createSourceReclassifier();
+    const adapter = new CodexAdapter({
+      cwd: '/proj',
+      log: () => {},
+      reclassifier,
+    });
+    adapter.setText('cycle result');
+    expect(reclassifier.reclassify('cycle result', 'user')).toBe('runtime');
+    // The user later types the exact same text by hand — must NOT be
+    // misclassified as runtime (the one-shot stash was cleared).
+    expect(reclassifier.reclassify('cycle result', 'user')).toBe('user');
+  });
+
+  it('CodexAdapter without a reclassifier is a no-op (graceful, no throws)', () => {
+    const adapter = new CodexAdapter({ cwd: '/proj', log: () => {} });
+    expect(() => adapter.setText('no reclassifier')).not.toThrow();
+    expect(() => adapter.pushText('no reclassifier')).not.toThrow();
   });
 });

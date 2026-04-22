@@ -24,6 +24,7 @@
 import * as readline from 'node:readline';
 import * as fs from 'node:fs';
 import { ConfigLoader } from '../../../src/modules/config-loader';
+import { createSourceReclassifier, type SourceReclassifier } from '../../../src/boot-common';
 import type { HostAdapter, LogLevel } from '../../../src/adapter';
 import { CodexAdapter } from './adapter';
 
@@ -62,6 +63,11 @@ export type Frame = JsonRpcResponse | JsonRpcNotification;
 export interface RuntimeBundle {
   readonly adapter: HostAdapter;
   readonly configLoader: ConfigLoader;
+  /** Source reclassifier — the daemon's `text-change` RPC handler
+   *  calls `reclassify(text, source)` before fanning to the adapter,
+   *  flipping 'user' → 'runtime' when text matches what the runtime
+   *  just wrote via `setText` / `pushText`. Avoids feedback loops. */
+  readonly reclassifier: SourceReclassifier;
 }
 
 export interface DaemonHandle {
@@ -189,17 +195,19 @@ async function defaultBuildRuntime(
   params: CodexHostInfo,
   log: (level: LogLevel, msg: string, data?: unknown) => void,
 ): Promise<RuntimeBundle> {
+  const reclassifier = createSourceReclassifier();
   const adapter = new CodexAdapter({
     cwd: params.cwd,
     hostVersion: params.hostVersion,
     log,
+    reclassifier,
   });
   const configLoader = new ConfigLoader(adapter, {
     configSearchPaths: params.configSearchPaths,
   });
   configLoader.subscribe();
   await configLoader.load();
-  return { adapter, configLoader };
+  return { adapter, configLoader, reclassifier };
 }
 
 /**

@@ -44,6 +44,7 @@ import {
   type Unsubscribe,
   HOST_ADAPTER_INTERFACE_VERSION,
 } from '../../../src/adapter';
+import type { SourceReclassifier } from '../../../src/boot-common';
 
 export interface CodexAdapterOptions {
   readonly cwd: string;
@@ -51,6 +52,13 @@ export interface CodexAdapterOptions {
   /** Where adapter-side log lines flow. The daemon's `log` notification
    *  handler is the obvious wire-up. */
   readonly log: (level: LogLevel, msg: string, data?: unknown) => void;
+  /** Source reclassifier — the adapter calls `markRuntimeWrite(text)`
+   *  inside `setText` / `pushText` so when the bridge echoes the text
+   *  back via the next `text-change` RPC, the daemon's handler can
+   *  flip its source from 'user' to 'runtime' (avoids feedback loops
+   *  during cycling). Optional; without it, runtime writes look like
+   *  user writes downstream. */
+  readonly reclassifier?: SourceReclassifier;
 }
 
 interface KeySub {
@@ -83,6 +91,7 @@ export class CodexAdapter implements HostAdapter {
   private _text = '';
   private _cursor = 0;
   private readonly _logFn: CodexAdapterOptions['log'];
+  private readonly _reclassifier: SourceReclassifier | undefined;
 
   // Subscriptions — populated by runtime modules in subscribe(). The
   // daemon's RPC handlers will fan into these once Tier 3.F-I lands.
@@ -94,6 +103,7 @@ export class CodexAdapter implements HostAdapter {
     this.cwd = opts.cwd;
     this.hostVersion = opts.hostVersion ?? 'unknown';
     this._logFn = opts.log;
+    this._reclassifier = opts.reclassifier;
   }
 
   // ─── State reads ───────────────────────────────────────────────────
@@ -104,14 +114,23 @@ export class CodexAdapter implements HostAdapter {
 
   // ─── State writes (stubs — Tier 3.F will wire `set-text` notification out) ──
 
-  setText(_text: string): void {
+  setText(text: string): void {
+    // Tier 3.C: stash the text so the next text-change RPC's reclassify
+    // call recognises it as a runtime write (not a user keystroke).
+    this._reclassifier?.markRuntimeWrite(text);
     // TODO Tier 3.F: emit `set-text` notification back to the bridge.
     // The bridge then mutates codex's TextArea + sends back a
-    // text-change with source='runtime'.
+    // text-change with source='runtime'. Until then, runtime writes
+    // never reach the actual TUI buffer.
   }
   setCursorOffset(_offset: number): void { /* TODO Tier 3.F */ }
   forceRender(): void { /* TODO Tier 3.I: emit `directives` notification */ }
-  pushText(_text: string, _cursor?: number): void { /* TODO Tier 3.F */ }
+  pushText(text: string, _cursor?: number): void {
+    // Same Tier 3.C wiring as setText — pushText is the BlankFill /
+    // async path that uses the same write channel.
+    this._reclassifier?.markRuntimeWrite(text);
+    // TODO Tier 3.F: emit `set-text` notification + cursor reposition.
+  }
 
   // ─── Event subscriptions ───────────────────────────────────────────
 
