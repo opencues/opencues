@@ -20,7 +20,8 @@ pnpm install
 pnpm build
 
 # Requires: rust toolchain (rustup) + cargo
-pnpm exec opencues install codex
+pnpm exec opencues install codex                           # default fork at $HOME/codex-cues
+pnpm exec opencues install codex -- --target ~/my-codex    # custom fork location
 # or directly:
 pnpm --filter @opencues/codex dev-install
 ```

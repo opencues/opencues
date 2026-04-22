@@ -34,8 +34,6 @@ pub struct BridgeConfig {
     pub cwd: PathBuf,
     /// Config search paths (project + user level).
     pub config_search_paths: Vec<PathBuf>,
-    /// Optional: path to tips JSON. Daemon falls back to a default if None.
-    pub tips_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -97,7 +95,6 @@ impl Bridge {
             "hostVersion": env!("CARGO_PKG_VERSION"),
             "cwd": cfg.cwd,
             "configSearchPaths": cfg.config_search_paths,
-            "tipsPath": cfg.tips_path,
         }))?;
         Ok(bridge)
     }

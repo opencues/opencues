@@ -30,10 +30,14 @@ Sent once at startup. Daemon initializes ConfigLoader, etc.
 { "method": "boot", "params": {
   "hostVersion": "0.x.x",
   "cwd": "/home/user/some/project",
-  "configSearchPaths": ["/home/user/some/project/.opencues", "/home/user/.opencues"],
-  "tipsPath": "/home/user/.opencues/tips.json"
+  "configSearchPaths": ["/home/user/some/project/.opencues", "/home/user/.opencues"]
 }, "id": 1 }
 ```
+
+> **Note:** earlier drafts of this protocol included a `tipsPath`
+> field. Tips were folded into `cues.md`'s `## Tips` JSON block
+> during the April 2026 refactor (commit `b6b1951`); the field is
+> dead and has been removed from the spec.
 
 Response: `{ "result": { "ok": true } }` once ConfigLoader has loaded.
 

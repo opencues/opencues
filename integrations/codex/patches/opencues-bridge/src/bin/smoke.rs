@@ -26,7 +26,6 @@ fn main() {
         daemon_path,
         cwd: env::current_dir().expect("cwd"),
         config_search_paths: vec![],
-        tips_path: None,
     }).expect("bridge start failed");
 
     eprintln!("[smoke] sending text-change notification...");
