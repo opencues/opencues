@@ -238,6 +238,18 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
+## Pre-launch cleanup
+
+`CLEANUP.md` (repo root) tracks scaffolding that needs removing before
+launch — test fixtures embedded in shipped configs, dead code paths
+left over from the option B refactor, dated "April 2026" commentary in
+code comments, doc tidy-ups, and test consolidation. Walk the list
+once Chrome + OpenCode are fully verified on phases 1–6, before
+extending verification to Claude Code + Codex. The file is
+self-deleting: `git rm CLEANUP.md` once everything inside is done.
+
+---
+
 ## Testing — write the SCENARIO that triggered the bug
 
 The runtime has 400+ tests. Most are unit tests, which are good at
