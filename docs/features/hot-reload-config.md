@@ -6,6 +6,11 @@ last_updated: 2026-04-06
 
 Config file changes take effect within ~2 seconds, without restarting the integration. All `.md` config files are polled via a TTL cache rather than file watchers.
 
+> **Chrome is different.** Content scripts can't read the filesystem,
+> so the chrome extension uses content-addressable hash polling
+> (`dist/configs/.version`) instead of the per-keystroke TTL described
+> below. See `docs/features/chrome-hot-reload.md`.
+
 ---
 
 ## How It Works
