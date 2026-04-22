@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-08
+last_updated: 2026-04-22
 ---
 
 # Cue-Controls
@@ -24,6 +24,85 @@ Cue-controls are checked **first** in the cycling function (`_cycleAlt`) before 
 2. **On cycle (Up/Down)** — the cycling function checks `_actOvr[word.toLowerCase()]`. If a match exists, it spawns the configured script with direction-specific arguments. If no match but a step control pattern matches, it increments or decrements using the control's `step`/`stepMin`/`stepMax` config
 3. **Debounced spawn** — rapid key presses (e.g., holding Up) only spawn the script once per 50ms via `globalThis._cueControlTimers`. The timer fires with the final accumulated value
 5. **Clamping** — Word-based cue-control cycling hardcodes clamping to 0-100. The `blankRange` field is only used by `ControlBlankSource` for validation during auto-populate, not by the word-control cycling handler
+
+---
+
+## Controls Architecture — TS classes vs shell scripts
+
+Controls have two implementation styles. Both are dispatched through
+the same `controlInvoke` shim, so from the runtime's view they look
+identical; the difference is where the work happens.
+
+### OS-level controls → shell scripts
+
+`volume`, `brightness` and any other control whose work is genuinely
+operating-system-bound (changing system audio, toggling display
+brightness, calling `osascript` / `pactl` / `pwsh` …) ship as
+`.sh` / `.ps1` scripts under `controls/<name>/`. The control's
+`cue.md` references them via `script:` and `blankScript:`. The
+runtime `spawnProcess`-es them on each cycle.
+
+These can't run in the chrome adapter (no subprocess capability), so
+their `cue.md` includes `not-on-host: [chrome]` and chrome's bundle
+filter excludes them at sync time.
+
+### API / LLM-bound controls → TypeScript classes in the runtime
+
+Six controls were hoisted from per-host shell scripts into
+TypeScript classes living in
+`packages/opencues-runtime/src/controls/`:
+
+| Control | Class | Purpose |
+|---|---|---|
+| `hackernews` | `HackerNewsControl` | Live HN front-page headlines via RSS |
+| `stocks` | `StocksControl` | Live stock prices via Finnhub |
+| `weather` | `WeatherControl` | Forecast via Open-Meteo |
+| `answer` | `AnswerControl` | LLM-formatted answer in place |
+| `prompt` | `PromptImproverControl` | LLM-rewritten prompt in place |
+| `opencues` | `OpenCuesSettingsControl` | Read/write `opencues.md` scalars |
+
+Why hoist them: chrome can't spawn subprocesses, so the shell-script
+model excluded chrome from these controls entirely. A TS class lives
+in the runtime that ships with every host — same code, every host.
+
+### `controlInvoke` — the shared dispatcher
+
+The runtime exposes a `controlInvoke` capability the host adapter
+implements. On each control trigger, the runtime calls
+`controlInvoke({ controlName, action, args, ... })`:
+
+1. The host's TS-controls registry is checked first. If the
+   `controlName` is registered (`HackerNewsControl`, `StocksControl`,
+   `WeatherControl`, …), the class handles it directly — no
+   subprocess.
+2. If unregistered, the host falls through to `spawnProcess` (the
+   legacy `.sh` path) for OS-bound controls.
+
+Each host wires its registry in its bootstrap:
+
+- `integrations/chrome/src/opencues-bootstrap.ts` — Chrome registry
+- `integrations/opencode/patches/opencuesBootstrap.ts` — OpenCode registry
+- `integrations/claude-code/patches/opencuesRuntime.ts` — CC registry
+- `integrations/codex/...` — Codex registry (pre-alpha)
+
+The shared `createControlInvoke` factory in
+`@opencues/runtime/src/boot-common.ts` keeps the registry-then-spawn
+fallback consistent across hosts.
+
+### Pattern for adding a new TS-class control
+
+1. Add the class to `packages/opencues-runtime/src/controls/<name>.ts`
+   implementing the `Control` interface.
+2. Export it from `packages/opencues-runtime/src/controls/index.ts`.
+3. Register it in each host's `controlInvoke` map (or in
+   `controlsRegistry` for the hosts that use the shared factory).
+4. Add `controls/<name>/cue.md` under `defaults/controls/` with
+   `impl: @opencues/runtime <ClassName>` so the validator + the
+   docs-tools know it's a hoisted control.
+
+`controlInvoke` and the `Control` interface are documented in the
+[Adding a Cue-Control](../guides/adding-a-cue-control.md) guide and
+in `packages/opencues-runtime/src/controls/index.ts`.
 
 ---
 
