@@ -49,14 +49,18 @@ function doInstall() {
   console.log(`Target codex fork: ${fork}`);
 
   if (args.dryRun) {
-    console.log('\n[dry-run] Would:');
-    console.log(`  verify cargo is on PATH (rustup install if missing)`);
-    console.log(`  clone openai/codex into ${fork} (if missing) at pinned SHA`);
-    console.log(`  pnpm --filter @opencues/runtime build`);
-    console.log(`  copy patches/opencues-bridge/ into ${fork}/codex-rs/opencues-bridge/`);
-    console.log(`  add opencues-bridge to ${fork}/codex-rs/Cargo.toml workspace members`);
-    console.log(`  cargo build --release in ${fork}/codex-rs/  (slow first time, ~5 min)`);
-    console.log(`  drop launch-helper at ${fork}/launch.sh`);
+    console.log('\n[dry-run] Would (8 steps):');
+    console.log(`  ▸ verify cargo is on PATH (rustup install if missing)`);
+    console.log(`  ▸ clone or reuse codex fork at ${fork} (pinned SHA, idempotent)`);
+    console.log(`  ▸ pnpm --filter @opencues/runtime build`);
+    console.log(`  ▸ verify daemon.js produced (sanity check)`);
+    console.log(`  ▸ copy patches/opencues-bridge/ into ${fork}/codex-rs/opencues-bridge/`);
+    console.log(`  ▸ add opencues-bridge to ${fork}/codex-rs/Cargo.toml workspace members`);
+    console.log(`  ▸ cargo build -p opencues-bridge --release  (~2 min first time; bridge crate only, NOT full TUI)`);
+    console.log(`  ▸ bridge ↔ daemon smoke test  (spawns daemon, sends boot RPC, verifies handshake)`);
+    console.log(`  ▸ drop launch-helper at ${fork}/launch.sh`);
+    console.log('');
+    console.log('Set OPENCUES_INSTALL_VERBOSE=1 for live streaming; default is quiet + log to /tmp/opencues-install-codex.log.');
     return;
   }
 
