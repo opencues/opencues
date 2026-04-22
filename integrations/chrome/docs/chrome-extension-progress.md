@@ -91,7 +91,7 @@ re-verified end-to-end via a phased test plan.
 | 0 | Clean slate | Remove the extension + Windows-side install dir | n/a (prep) |
 | 1 | Fresh install | `pnpm exec opencues install chrome --wsl`, load unpacked, runtime boots | ✅ Verified — `[opencues][info] OpenCues runtime starting (Chrome v1)` shows in DevTools |
 | 2 | Bake-time defaults + multi-source routing | No sync run; type a sentence with legal/medical/financial/grammar words, verify 4 parallel LLM calls and per-source alts | ✅ **Verified 2026-04-22** — see "Phase 2 verification" below |
-| 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ☐ Pending |
+| 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ✅ **Verified 2026-04-22** — see "Phase 3 verification" below |
 | 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ☐ Pending |
 | 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ☐ Pending |
 | 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ☐ Pending |
@@ -121,6 +121,43 @@ the attorney filed a liability clause after the diagnosis caused the portfolio t
 - DimRender + Navigation working with multi-word static-alt spans
 - No alt-track drift after cycling (Resolver skip-cycled-alts filter active)
 - Deterministic relocate handles prefix/middle edits without dropping cycle progress
+
+### Phase 3 verification (2026-04-22)
+
+Default-source isolation + bundle precedence over bake-time.
+
+**CLI side:**
+- `pnpm exec opencues sync chrome --dry-run` → exactly one source listed:
+  `source: user /home/wilfred/.opencues`. No `project`, no `include` —
+  cwd-leak structurally absent.
+- `pnpm exec opencues sync chrome --wsl` → 16 files synced, mirrored to
+  `C:\Users\wilfred\AppData\Local\opencues-chrome\dist\configs` (Windows
+  path display, not `/mnt/c/...`).
+- `.version` file present + matches CLI output hash.
+- `index.json` valid + lists every bundled file.
+
+**Browser side (after extension reload):**
+- `[opencues] bundled configs loaded: N files from dist/configs/` —
+  was 0 before sync, > 0 after.
+- All shipped configs flip from `← bake-time` to `← bundle`:
+  - `cues.md`, `controls.md`, `blanks.md`
+  - `cues/{financial,grammar,legal,medical}/cue.md`
+  - All 9 controls
+- `opencues.md` correctly stays `← storage` (writable file — voice-mode /
+  debug-mode persist there).
+- `cues/sync-demo/cue.md ← bundle (494 chars)` — this folder doesn't exist
+  in `defaults/`; it lives only in `~/.opencues/cues/sync-demo/`. Its
+  presence in chrome proves user content overlays bake-time successfully.
+- `ConfigLoader: loaded 138 cue entries` — same count as bake-time
+  baseline; no entries lost in translation.
+
+**Confirms working:**
+- Default sync source = user-level only (no cwd / project leak)
+- Sync writes both repo dist AND mirrors to Windows install path
+- Chrome extension reads bundle (when present) in preference to bake-time
+- User-only content (`sync-demo/`) actually reaches the runtime
+- Display paths under `--wsl` show as `C:\…` (not `/mnt/c/…`)
+- Hot-version `.version` polling will pick up future syncs
 
 ### Cross-host runtime fixes verified
 
