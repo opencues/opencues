@@ -78,6 +78,48 @@ Bridge requests the daemon re-emit current directives. Used when the TUI redraws
 { "method": "force-render" }
 ```
 
+### `control-invoke` (request)
+
+Bridge invokes one of the daemon's hoisted controls (HackerNews, Stocks, Weather, Answer, PromptImprover, OpenCuesSettings) directly — useful for codex slash commands or other TUI affordances that want to trigger a control outside the normal runtime flow.
+
+```json
+{ "method": "control-invoke", "params": {
+  "controlName": "opencues",
+  "action": "get",
+  "args": ["voice-mode"]
+}, "id": 5 }
+```
+
+`action` is one of `'get' | 'set' | 'up' | 'down'`. Maps to the
+`Control` interface methods (see `@opencues/runtime/src/controls`).
+`args` is forwarded verbatim — for `get`, `args[0]` is the keyword
+and `args.slice(1)` is the context; for `set`, `args[0]` is the key
+and `args[1]` is the value; for `up`/`down`, args are typically empty.
+
+Response — success (any non-throwing control execution, regardless of `exitCode`):
+
+```json
+{ "result": {
+  "stdout": "active",
+  "stderr": "",
+  "exitCode": 0,
+  "timedOut": false
+}, "id": 5 }
+```
+
+Response — unknown control:
+
+```json
+{ "result": null, "id": 5 }
+```
+
+The bridge / TUI can fall back to whatever native command handling
+they have when `result` is `null`. Errors during control execution
+are caught by the dispatcher and returned as a result with non-zero
+`exitCode` + `stderr` populated — they do NOT come back as JSON-RPC
+errors. JSON-RPC errors are reserved for protocol-level problems
+(unknown method, malformed params).
+
 ## Methods (daemon → bridge)
 
 ### `set-text` (notification)

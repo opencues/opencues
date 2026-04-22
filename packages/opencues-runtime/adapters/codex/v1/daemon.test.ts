@@ -432,3 +432,167 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
+  it('returns -32000 when called before boot', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'control-invoke',
+      params: { controlName: 'opencues', action: 'get', args: ['voice-mode'] },
+      id: 9,
+    }));
+    expect(frames[0]).toMatchObject({
+      jsonrpc: '2.0',
+      error: { code: -32000 },
+      id: 9,
+    });
+  });
+
+  it('returns -32602 when params are missing controlName or action', async () => {
+    const { daemon, frames } = build();
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/proj' }, id: 1,
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'control-invoke',
+      params: { controlName: 'opencues' /* no action */ },
+      id: 9,
+    }));
+    expect(frames[1]).toMatchObject({
+      jsonrpc: '2.0',
+      error: { code: -32602 },
+      id: 9,
+    });
+  });
+
+  it('returns null result when controlName is unknown (fallback to native)', async () => {
+    const frames: Frame[] = [];
+    const stubInvoke = vi.fn(() => null);
+    const daemon = createDaemon({
+      send: (f) => { frames.push(f); },
+      buildRuntime: async (params) => ({
+        adapter: new MockAdapter({ cwd: params.cwd }),
+        configLoader: {} as never,
+        reclassifier: createSourceReclassifier(),
+        controlsRegistry: new Map(),
+        controlInvoke: stubInvoke,
+      }),
+    });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'control-invoke',
+      params: { controlName: 'no-such', action: 'get', args: [] },
+      id: 2,
+    }));
+    expect(frames.find(f => 'id' in f && f.id === 2)).toEqual({
+      jsonrpc: '2.0',
+      result: null,
+      id: 2,
+    });
+    expect(stubInvoke).toHaveBeenCalledWith({
+      controlName: 'no-such', action: 'get', args: [],
+    });
+  });
+
+  it('forwards the ProcessResult from the dispatcher when control runs', async () => {
+    const frames: Frame[] = [];
+    const stubInvoke = vi.fn(() => ({
+      result: Promise.resolve({
+        stdout: 'active', stderr: '', exitCode: 0, timedOut: false,
+      }),
+      kill: () => {},
+    }));
+    const daemon = createDaemon({
+      send: (f) => { frames.push(f); },
+      buildRuntime: async (params) => ({
+        adapter: new MockAdapter({ cwd: params.cwd }),
+        configLoader: {} as never,
+        reclassifier: createSourceReclassifier(),
+        controlsRegistry: new Map(),
+        controlInvoke: stubInvoke,
+      }),
+    });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'control-invoke',
+      params: { controlName: 'opencues', action: 'get', args: ['voice-mode'] },
+      id: 5,
+    }));
+    expect(frames.find(f => 'id' in f && f.id === 5)).toEqual({
+      jsonrpc: '2.0',
+      result: { stdout: 'active', stderr: '', exitCode: 0, timedOut: false },
+      id: 5,
+    });
+  });
+
+  it('control-invoke returns the dispatcher\'s wrapped error result (non-zero exitCode)', async () => {
+    // The createControlInvoke dispatcher catches throws inside the
+    // control and wraps them into { exitCode: 1, stderr: msg } —
+    // this is normal control behavior, NOT a JSON-RPC error.
+    const frames: Frame[] = [];
+    const stubInvoke = vi.fn(() => ({
+      result: Promise.resolve({
+        stdout: '', stderr: 'control failed', exitCode: 1, timedOut: false,
+      }),
+      kill: () => {},
+    }));
+    const daemon = createDaemon({
+      send: (f) => { frames.push(f); },
+      buildRuntime: async (params) => ({
+        adapter: new MockAdapter({ cwd: params.cwd }),
+        configLoader: {} as never,
+        reclassifier: createSourceReclassifier(),
+        controlsRegistry: new Map(),
+        controlInvoke: stubInvoke,
+      }),
+    });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/p' }, id: 1,
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'control-invoke',
+      params: { controlName: 'opencues', action: 'set', args: ['x'] },
+      id: 6,
+    }));
+    const resp = frames.find(f => 'id' in f && f.id === 6);
+    expect(resp).toEqual({
+      jsonrpc: '2.0',
+      result: { stdout: '', stderr: 'control failed', exitCode: 1, timedOut: false },
+      id: 6,
+    });
+    // NOT a JSON-RPC error — explicitly a successful call returning
+    // a non-zero-exit result.
+    expect(resp).not.toHaveProperty('error');
+  });
+
+  it('end-to-end: real registry — opencues "get voice-mode" returns the user-config value', async () => {
+    // Default buildRuntime → real OpenCuesSettingsControl → reads
+    // ~/.opencues/opencues.md. Returns whatever the live file contains.
+    const frames: Frame[] = [];
+    const daemon = createDaemon({ send: (f) => { frames.push(f); } });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/tmp' }, id: 1,
+    }));
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'control-invoke',
+      params: { controlName: 'opencues', action: 'get', args: ['voice-mode'] },
+      id: 7,
+    }));
+    const resp = frames.find(f => 'id' in f && f.id === 7) as { result?: { stdout: string; exitCode: number } };
+    expect(resp).toBeDefined();
+    expect(resp.result).toBeDefined();
+    expect(resp.result?.exitCode).toBe(0);
+    // Whatever value voice-mode is set to (we don't pin it — just that it returns *something*).
+    expect(typeof resp.result?.stdout).toBe('string');
+  });
+});

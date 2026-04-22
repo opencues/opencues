@@ -194,6 +194,39 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
         // TODO Tier 3.I: ask adapter for current directives + emit them.
         break;
       }
+      case 'control-invoke': {
+        // Tier 3.E. Bridge dispatches one of the hoisted controls
+        // directly. Returns the underlying ProcessResult, or `null`
+        // when the control isn't registered (so the bridge can fall
+        // back to native handling).
+        if (!runtime) {
+          sendError(req, -32000, 'daemon not yet booted');
+          break;
+        }
+        const spec = req.params as ControlInvokeSpec | undefined;
+        if (!spec || typeof spec.controlName !== 'string' || typeof spec.action !== 'string') {
+          sendError(req, -32602, 'control-invoke requires { controlName, action, args }');
+          break;
+        }
+        const handle = runtime.controlInvoke({
+          controlName: spec.controlName,
+          action: spec.action,
+          args: Array.isArray(spec.args) ? spec.args : [],
+        });
+        if (!handle) {
+          sendResult(req, null);
+          break;
+        }
+        try {
+          const result = await handle.result;
+          sendResult(req, result);
+        } catch (err) {
+          // ProcessHandle.result shouldn't reject in practice (the
+          // dispatcher catches throws), but guard anyway.
+          sendError(req, -32603, `control-invoke failed: ${String(err)}`);
+        }
+        break;
+      }
       default: {
         sendError(req, -32601, `unknown method: ${req.method}`);
       }
@@ -294,18 +327,21 @@ export function startDaemon(): void {
 
   const daemon = createDaemon({ send: stdoutSend, log: fileLog });
 
-  // Track in-flight handleLine promises so we don't exit mid-boot when
-  // stdin closes. (Single-line stdin pipe → rl 'close' fires before
-  // an async boot handler resolves.)
-  const inflight = new Set<Promise<void>>();
+  // Serialize inbound RPC handling. Two reasons:
+  // (1) FIFO ordering — the bridge expects responses in request order
+  //     (a control-invoke that arrives after boot must wait for boot
+  //     to finish before being processed, not race ahead because the
+  //     boot handler is doing async work).
+  // (2) Drain on shutdown — the chain promise tracks all in-flight
+  //     work so a single-line stdin pipe doesn't exit mid-boot.
+  let pending: Promise<void> = Promise.resolve();
   rl.on('line', (line) => {
-    const p = daemon.handleLine(line)
-      .catch((err) => fileLog('error', `handleLine threw: ${String(err)}`))
-      .finally(() => inflight.delete(p));
-    inflight.add(p);
+    pending = pending
+      .then(() => daemon.handleLine(line))
+      .catch((err) => fileLog('error', `handleLine threw: ${String(err)}`));
   });
   rl.on('close', () => {
-    void Promise.allSettled(inflight).then(() => {
+    void pending.finally(() => {
       fileLog('info', 'daemon shutting down (stdin closed)');
       process.exit(0);
     });
