@@ -10,21 +10,26 @@
 //!       cwd: PathBuf::from("."),
 //!       config_search_paths: vec![],
 //!   })?;
+//!
 //!   bridge.notify_text_change(text, cursor, "user");
-//!   if bridge.dispatch_key(key_event) { /* swallow */ }
+//!   if bridge.dispatch_key(KeyEvent { key: "up", ctrl: true, ... }) { /* swallow */ }
 //!   let dirs = bridge.directives();   // current highlight ranges
+//!   bridge.on_set_text(Box::new(|text, cursor| { /* mutate TextArea */ }));
 //!
 //! See integrations/codex/docs/protocol.md for the wire format.
 //! See integrations/codex/docs/architecture.md for design rationale.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct BridgeConfig {
@@ -52,11 +57,50 @@ pub struct Directives {
     pub tip: Option<String>,
 }
 
+/// Codex key event surface — a serde-compatible mirror of @opencues/runtime's
+/// KeyEvent. The bridge marshals the codex-rs key representation into this
+/// shape before dispatching.
+#[derive(Debug, Clone, Serialize)]
+pub struct KeyEvent {
+    pub key: String,
+    pub modifiers: Modifiers,
+    pub text: String,
+    #[serde(rename = "cursorOffset")]
+    pub cursor_offset: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub meta: bool,
+}
+
+/// Callback the daemon-side runtime fires when it wants to overwrite the
+/// codex TextArea (e.g. cycling result). Codex's TUI patch registers a
+/// handler that grabs the TextArea + applies the new text + cursor.
+pub type SetTextCallback = Box<dyn Fn(&str, usize) + Send + Sync>;
+
 pub struct Bridge {
     child: Mutex<Option<Child>>,
     next_id: AtomicU64,
     directives: Arc<Mutex<Directives>>,
+    /// id → oneshot sender. Frame handler thread looks up by id when a
+    /// response arrives, sends the result Value, then drops the entry.
+    pending: Arc<Mutex<HashMap<u64, SyncSender<Value>>>>,
+    /// Codex's TextArea-mutation hook — invoked when the daemon emits
+    /// `set-text`. Codex's TUI patch registers this once during startup.
+    set_text_cb: Arc<Mutex<Option<SetTextCallback>>>,
+    /// stdin half of the daemon, kept alive for the life of the bridge.
+    stdin: Mutex<Option<std::process::ChildStdin>>,
 }
+
+/// Default timeout for synchronous request/response RPCs (currently
+/// just dispatch_key). 200ms is generous — the daemon's key handler
+/// is sub-millisecond. If we time out, treat the key as unconsumed
+/// rather than blocking the codex render loop.
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_millis(200);
 
 impl Bridge {
     /// Spawn the daemon, send `boot`, wait for ack. Errors propagate so the
@@ -69,29 +113,41 @@ impl Bridge {
             .stderr(Stdio::inherit())
             .spawn()?;
 
-        // Move stdout reader into a background thread so we don't block
-        // codex's main thread on daemon output.
+        let stdin = child.stdin.take().expect("child stdin missing");
         let stdout = child.stdout.take().expect("child stdout missing");
         let directives = Arc::new(Mutex::new(Directives::default()));
         let directives_for_thread = Arc::clone(&directives);
+        let pending: Arc<Mutex<HashMap<u64, SyncSender<Value>>>> = Arc::new(Mutex::new(HashMap::new()));
+        let pending_for_thread = Arc::clone(&pending);
+        let set_text_cb: Arc<Mutex<Option<SetTextCallback>>> = Arc::new(Mutex::new(None));
+        let set_text_cb_for_thread = Arc::clone(&set_text_cb);
+
+        // Move stdout reader into a background thread so we don't block
+        // codex's main thread on daemon output.
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
                 let Ok(line) = line else { break };
                 if line.trim().is_empty() { continue; }
                 let Ok(frame): Result<Value, _> = serde_json::from_str(&line) else { continue };
-                handle_frame(frame, &directives_for_thread);
+                handle_frame(frame, &directives_for_thread, &pending_for_thread, &set_text_cb_for_thread);
             }
         });
 
-        // Send boot RPC. We don't strictly need the response for the
-        // smoke test — daemon's `log` notification confirms it started.
         let bridge = Self {
             child: Mutex::new(Some(child)),
             next_id: AtomicU64::new(1),
             directives,
+            pending,
+            set_text_cb,
+            stdin: Mutex::new(Some(stdin)),
         };
-        bridge.send_request("boot", json!({
+        // Send boot RPC. We don't strictly need the response for the
+        // smoke test — daemon's `log` notification confirms it started.
+        // But we do correlate so callers can verify boot succeeded if they
+        // want; the boot response is also the signal that ConfigLoader
+        // has finished its initial load.
+        bridge.send_notification("boot", json!({
             "hostVersion": env!("CARGO_PKG_VERSION"),
             "cwd": cfg.cwd,
             "configSearchPaths": cfg.config_search_paths,
@@ -108,16 +164,50 @@ impl Bridge {
         }));
     }
 
-    /// Ask the daemon whether it consumed a key event. Currently
-    /// returns `false` always (TODO: synchronous wait for response is
-    /// noisy without tokio; this returns the LAST `consumed` value seen
-    /// from the daemon's response stream, which is wrong for keystroke
-    /// pacing — needs proper request/response correlation by id).
-    pub fn dispatch_key(&self, _key: &str) -> bool {
-        // TODO: send `key` request, wait for response keyed by id.
-        // For now: best-effort fire-and-forget; consider this a no-op
-        // that lets every key fall through to codex's normal handling.
-        false
+    /// Synchronously ask the daemon whether it wants this key event.
+    /// Blocks for up to DEFAULT_REQUEST_TIMEOUT waiting for the response.
+    /// Returns:
+    ///   - `true`  → daemon consumed (Navigation/Cycling handled it). Bridge swallows.
+    ///   - `false` → daemon didn't claim it; codex's normal handling proceeds.
+    ///   - `false` on timeout / daemon dead — fail open so codex stays usable.
+    pub fn dispatch_key(&self, event: KeyEvent) -> bool {
+        match self.request_with_timeout(
+            "key",
+            serde_json::to_value(&event).unwrap_or(Value::Null),
+            DEFAULT_REQUEST_TIMEOUT,
+        ) {
+            Ok(value) => value
+                .get("consumed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+
+    /// Synchronously invoke one of the daemon's hoisted controls and return
+    /// its ProcessResult-shaped payload (or `None` if the controlName isn't
+    /// registered). Useful for codex slash-commands like `/volume up`.
+    /// Same timeout as dispatch_key.
+    pub fn invoke_control(
+        &self,
+        control_name: &str,
+        action: &str,
+        args: &[&str],
+    ) -> Option<Value> {
+        let resp = self.request_with_timeout(
+            "control-invoke",
+            json!({
+                "controlName": control_name,
+                "action": action,
+                "args": args,
+            }),
+            Duration::from_secs(10), // controls may hit network (HN, stocks…)
+        );
+        match resp {
+            Ok(Value::Null) => None,
+            Ok(v) => Some(v),
+            Err(_) => None,
+        }
     }
 
     /// Fetch the latest render directives. Cheap clone; codex calls this
@@ -126,15 +216,56 @@ impl Bridge {
         self.directives.lock().expect("directives mutex poisoned").clone()
     }
 
-    fn send_request(&self, method: &str, params: Value) -> std::io::Result<()> {
+    /// Register the callback codex's TUI patch fires when the daemon
+    /// emits `set-text` (i.e. cycling result). Replaces any previous
+    /// callback. Pass `None` to unregister.
+    pub fn on_set_text(&self, cb: Option<SetTextCallback>) {
+        if let Ok(mut guard) = self.set_text_cb.lock() {
+            *guard = cb;
+        }
+    }
+
+    /// Send a JSON-RPC request, await the response value with a timeout.
+    /// Returns the response's `result` field. Errors map to the closest
+    /// io::Error variant — caller decides how to recover.
+    fn request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> std::io::Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx): (SyncSender<Value>, Receiver<Value>) = sync_channel(1);
+        // Park the sender BEFORE writing the frame so the response
+        // can't race us.
+        if let Ok(mut p) = self.pending.lock() {
+            p.insert(id, tx);
+        }
         let frame = json!({
             "jsonrpc": "2.0",
             "method": method,
             "params": params,
             "id": id,
         });
-        self.write_frame(&frame)
+        if let Err(err) = self.write_frame(&frame) {
+            // Clean up the parked sender so we don't leak entries.
+            if let Ok(mut p) = self.pending.lock() {
+                p.remove(&id);
+            }
+            return Err(err);
+        }
+        match rx.recv_timeout(timeout) {
+            Ok(value) => Ok(value),
+            Err(RecvTimeoutError::Timeout) => {
+                if let Ok(mut p) = self.pending.lock() {
+                    p.remove(&id);
+                }
+                Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "daemon response timeout"))
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "daemon closed"))
+            }
+        }
     }
 
     fn send_notification(&self, method: &str, params: Value) -> std::io::Result<()> {
@@ -147,11 +278,10 @@ impl Bridge {
     }
 
     fn write_frame(&self, frame: &Value) -> std::io::Result<()> {
-        let mut guard = self.child.lock().expect("child mutex poisoned");
-        let Some(child) = guard.as_mut() else {
-            return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "daemon not running"));
+        let mut guard = self.stdin.lock().expect("stdin mutex poisoned");
+        let Some(stdin) = guard.as_mut() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "daemon stdin closed"));
         };
-        let stdin = child.stdin.as_mut().expect("child stdin missing");
         stdin.write_all(frame.to_string().as_bytes())?;
         stdin.write_all(b"\n")?;
         stdin.flush()?;
@@ -161,23 +291,43 @@ impl Bridge {
 
 impl Drop for Bridge {
     fn drop(&mut self) {
+        // Closing stdin signals daemon to exit cleanly; give it
+        // a beat then kill if needed.
+        if let Ok(mut guard) = self.stdin.lock() {
+            *guard = None; // drops the stdin handle → EOF on daemon
+        }
         if let Ok(mut guard) = self.child.lock() {
             if let Some(mut child) = guard.take() {
-                // Closing stdin signals daemon to exit cleanly; give it
-                // a beat then kill if needed.
-                drop(child.stdin.take());
                 let _ = child.wait();
             }
         }
     }
 }
 
-fn handle_frame(frame: Value, directives: &Arc<Mutex<Directives>>) {
+fn handle_frame(
+    frame: Value,
+    directives: &Arc<Mutex<Directives>>,
+    pending: &Arc<Mutex<HashMap<u64, SyncSender<Value>>>>,
+    set_text_cb: &Arc<Mutex<Option<SetTextCallback>>>,
+) {
+    // Response (id present, no method) → match to a pending request.
+    if let Some(id) = frame.get("id").and_then(Value::as_u64) {
+        let value = frame.get("result").cloned().unwrap_or(Value::Null);
+        if let Ok(mut p) = pending.lock() {
+            if let Some(sender) = p.remove(&id) {
+                // Best effort — receiver may have timed out + dropped already.
+                let _ = sender.send(value);
+                return;
+            }
+        }
+        // Fall through if no sender — could be a stray response.
+    }
+
     let Some(method) = frame.get("method").and_then(Value::as_str) else { return };
-    let Some(params) = frame.get("params") else { return };
+    let params = frame.get("params").cloned().unwrap_or(Value::Null);
     match method {
         "directives" => {
-            if let Ok(d) = serde_json::from_value::<Directives>(params.clone()) {
+            if let Ok(d) = serde_json::from_value::<Directives>(params) {
                 if let Ok(mut guard) = directives.lock() {
                     *guard = d;
                 }
@@ -190,8 +340,16 @@ fn handle_frame(frame: Value, directives: &Arc<Mutex<Directives>>) {
             eprintln!("[opencues-bridge][{level}] {msg}");
         }
         "set-text" => {
-            // TODO: route back to codex's TextArea — needs callback registration
-            // from the TUI patch site (or a shared channel the patch reads).
+            let text = params.get("text").and_then(Value::as_str).unwrap_or("");
+            let cursor = params.get("cursorOffset").and_then(Value::as_u64).unwrap_or(0) as usize;
+            // Invoke the registered callback under the lock. The callback
+            // is `Send + Sync` so codex's TUI patch can safely lock its
+            // own TextArea state inside it.
+            if let Ok(guard) = set_text_cb.lock() {
+                if let Some(ref cb) = *guard {
+                    cb(text, cursor);
+                }
+            }
         }
         _ => {}
     }
