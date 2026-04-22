@@ -1,5 +1,24 @@
 # Handoff — what's done, what remains
 
+> **STATUS UPDATE (2026-04-22):** This document is now historical.
+> All sections originally in "What remains" landed. The integration
+> reached alpha status pinned to codex-rs SHA `d58d3cc`:
+>
+> - TUI patches applied via `tui-bridge-wiring.diff` (Tier 5)
+> - Daemon module wiring complete: ConfigLoader, Navigation, Cycling,
+>   BlankFill, DimRender, Statusline, controls registry,
+>   reclassifier, Resolver (opt-in), control-invoke RPC (Tiers 3.A-G + I)
+> - Bridge gaps closed: dispatch_key correlation, set-text callback,
+>   request timeout, daemon liveness flag, stderr capture (Tiers 4.A/B/E/C/F)
+>
+> See [`reintegration/parity-review.md`](reintegration/parity-review.md)
+> for the OC-vs-codex feature matrix and what still needs interactive
+> verification (Tier 6 — needs `libcap-dev` on Linux for the full
+> codex-tui build). The original handoff text below is preserved as
+> historical context for the build-out.
+>
+> ---
+
 Built overnight as scaffolding. The infrastructure layer is complete; the actual TUI patching needs human attention because Codex's `ChatComposer` is non-trivial and merging into evolving upstream Rust requires care.
 
 ## What's done ✓

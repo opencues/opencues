@@ -7,7 +7,7 @@ It currently runs inside four hosts:
 - **Claude Code** (the CLI) — patched via `tweakcc`
 - **OpenCode** (terminal-based AI coding tool) — patched fork at `~/opencode-cues`
 - **Chrome** — Manifest V3 browser extension (works in any `<textarea>` / `contenteditable`)
-- **Codex** (OpenAI's TUI) — pre-alpha, patches incomplete
+- **Codex** (OpenAI's TUI) — alpha, pinned to codex-rs `d58d3cc`
 
 Same runtime, four host adapters. The architecture deliberately keeps the host glue thin so adding new editors is mostly a few hundred lines of bridge code.
 
@@ -485,7 +485,7 @@ Per-host integrations (under `integrations/`):
 - **`integrations/claude-code/`** — `tweakcc` patches injected into Claude Code's `cli.js` at build time
 - **`integrations/opencode/`** — Patches applied to a forked OpenCode source tree (`~/opencode-cues`)
 - **`integrations/chrome/`** — MV3 extension; CSS Custom Highlight API for in-page rendering; bundle hot-reload via `.version` polling
-- **`integrations/codex/`** — Pre-alpha; TUI patches incomplete
+- **`integrations/codex/`** — Alpha; TUI patches landed (Rust ↔ Node JSON-RPC bridge); pinned to codex-rs `d58d3cc`
 
 Other:
 

@@ -4,12 +4,19 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.0.1 (pre-alpha — Rust TUI patches incomplete; see HANDOFF.md) |
+| Version | 0.0.1 (alpha — TUI patches landed; pinned to codex-rs `d58d3cc`) |
 | Compatible with | codex-rs (pinned SHA in `patches/setup.sh`) |
 | Source | `integrations/codex/` |
 | Architecture | Node daemon (`@opencues/runtime`) ↔ Rust bridge crate ↔ codex TUI patches |
 
-> **STATUS — pre-alpha.** This integration's *infrastructure* (skeleton, install pipeline, JSON-RPC protocol, Rust bridge crate) is in place. The TUI patches that hook OpenCues' rendering + key-handling into Codex's `ChatComposer` are NOT yet implemented. See [`HANDOFF.md`](HANDOFF.md) for the remaining work.
+> **STATUS — alpha.** Infrastructure layer + TUI patches both shipped.
+> The bridge ↔ daemon JSON-RPC path is end-to-end smoke-tested.
+> Live interactive verification (typing cuable words, seeing dim
+> ranges, cycling) needs `libcap-dev` for the full `cargo build -p
+> codex-tui` (Linux: `sudo apt install -y libcap-dev`). See
+> [`reintegration/parity-review.md`](reintegration/parity-review.md)
+> for the full OC-vs-codex feature matrix; [`HANDOFF.md`](HANDOFF.md)
+> retains historical notes on the build-out.
 
 ## Install (from a clone)
 

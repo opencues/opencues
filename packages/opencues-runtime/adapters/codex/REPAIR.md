@@ -15,16 +15,135 @@ The runtime side is host-agnostic; the only band-specific code lives at:
 - `integrations/codex/patches/opencues-bridge/src/bin/smoke.rs` —
   bridge ↔ daemon smoke test
 
-> **Status: pre-alpha.** No live-fixes recorded yet because the
-> integration hasn't been run end-to-end. As bugs surface during
-> Tier 6 verification (see `CODEX-CHECKLIST.md`), append them
-> below using the same shape as `oc/REPAIR.md` — Symptom / Why / Fix /
-> File:line, plus folding the fix into `setup.sh`'s STEP 4 (when
-> implemented) so re-applying the patches stays mechanical.
+> **Status: alpha.** Tiers 1-5 (CODEX-CHECKLIST.md) have all landed
+> with end-to-end testing of the bridge ↔ daemon path. Tier 6
+> (live TUI verification with cycling + dim ranges visible in codex)
+> requires the user to run `opencues run codex` interactively — the
+> infrastructure is in place. Live-fixes from the build-out below.
 
 ## Live-fixes discovered during testing
 
-*(none yet — pre-alpha)*
+### LF-1. Stdin-close race exited daemon mid-boot (Tier 3.A)
+
+**File:** `packages/opencues-runtime/adapters/codex/v1/daemon.ts`
+`startDaemon`.
+
+**Symptom:** A single-line stdin pipe (`echo '{boot…}' | node daemon.js`)
+closed immediately after the line, triggering `rl.on('close')` and
+`process.exit(0)` BEFORE the async boot handler (which awaits
+ConfigLoader.load) had resolved. The boot reply never made it out.
+
+**Why:** `void daemon.handleLine(line)` was fire-and-forget. The
+'close' event fired before the IIFE resolved. Single-line bridges
+(every test, every smoke run) saw zero output from the boot handler.
+
+**Fix:** Track in-flight handleLine promises and await them on
+'close' before exiting. Initially a Set-based tracker; later replaced
+by a chain promise (also gives FIFO ordering — see LF-3).
+
+### LF-2. Reclassifier instances diverged in test stub (Tier 3.C)
+
+**File:** `packages/opencues-runtime/adapters/codex/v1/daemon.test.ts`
+`stubBuildRuntime`.
+
+**Symptom:** Tier 3.F's "text-change reclassifies to runtime when text
+matches setText" test failed with `expected ['runtime'] received ['user']`.
+
+**Why:** The test stub created the adapter and the bundle's
+reclassifier as TWO different instances. setText('foo') marked write
+on the adapter's instance; reclassify('foo') ran on the bundle's
+instance — no match. Production wires the same instance into both.
+
+**Fix:** Construct one reclassifier in the stub, pass into both. The
+fix is also a contract assertion: anyone implementing buildRuntime
+must wire the same reclassifier into the adapter and the bundle.
+
+### LF-3. RPC ordering wasn't FIFO (Tier 3.E)
+
+**File:** `packages/opencues-runtime/adapters/codex/v1/daemon.ts`
+`startDaemon`.
+
+**Symptom:** Two-line stdin (boot + control-invoke) returned the
+control-invoke response with `-32000 daemon not yet booted` BEFORE
+the boot response — even though the bridge sent boot first.
+
+**Why:** readline's 'line' event fired for both lines back-to-back;
+each scheduled handleLine async; the fast one (control-invoke
+checking runtime=null) finished first.
+
+**Fix:** Serialize the readline handler through a chained promise
+queue. Each request waits for the previous one before starting.
+Trade-off: a slow control-invoke blocks the queue; that's the
+correct behavior for a single-connection JSON-RPC server (matches
+how every JSON-RPC implementation orders responses).
+
+### LF-4. ConfigLoader.load was fire-and-forget on boot (Tier 3.F)
+
+**File:** `packages/opencues-runtime/adapters/codex/v1/daemon.ts`
+`defaultBuildRuntime`.
+
+**Symptom:** Live test sent boot + text-change + force-render. The
+text-change handler fired but BlankFill saw an empty cueMap because
+ConfigLoader.load hadn't completed.
+
+**Why:** `buildSharedRuntime` calls `configLoader.load().catch(...)`
+fire-and-forget — modules tolerate the empty pre-load window. OC
+gets away with it because real users type slowly enough that load
+finishes before the first cue-bearing text-change. Codex's test
+harness sends them rapidly.
+
+**Fix:** Await `shared.configLoader.load()` after `buildSharedRuntime`
+returns. `load()` is idempotent (returns the in-flight promise), so
+this just waits on the existing call. Adds ~200-500ms to boot time
+depending on config size — fine, the bridge boots once per session.
+
+### LF-5. spawnProcess threw, killing the daemon on shell-script controls (Tier 3.F)
+
+**File:** `packages/opencues-runtime/adapters/codex/v1/adapter.ts`
+`CodexAdapter::spawnProcess`.
+
+**Symptom:** Live text "the volume is _" triggered BlankFill ->
+controlInvoke('volume') -> null (volume isn't hoisted) -> fallthrough
+to spawnProcess -> THROW -> handleLine exception -> "handleLine threw"
+log line + the directives notification still arrived but BlankFill
+state was inconsistent.
+
+**Why:** BlankFill at `blank-fill.ts:228` doesn't gate on the
+`spawn-process` capability before calling `adapter.spawnProcess` (it
+has its own `script` presence check, but not the cap check).
+CodexAdapter doesn't advertise `spawn-process` (no bridge wiring for
+subprocesses), so the spawnProcess call should logically never happen,
+but in practice does because of that capability gap.
+
+**Fix:** Make CodexAdapter.spawnProcess return a "command unavailable"
+ProcessHandle (exitCode 127 + warn log) instead of throwing. Modules
+treat non-zero exit as "skip this slot" and stay alive. Proper
+long-term fix: either (a) hoist volume/brightness to TS (a la HN /
+Stocks / Weather / Answer / PromptImprover / OpenCuesSettings), or
+(b) add a spawn-process JSON-RPC method that tunnels stdio through
+the bridge.
+
+### LF-6. Statusline async-write didn't flush before daemon exit (Tier 3.G)
+
+**File:** `packages/opencues-runtime/adapters/codex/v1/daemon.ts`
+`startDaemon` close handler.
+
+**Symptom:** Test pipe closed stdin → daemon.handleLine completed →
+pending promise resolved → process.exit(0). But Statusline's
+`adapter.writeFile(...)` was a fresh microtask scheduled by an
+onRender callback inside the handleLine's collect-directives path.
+That microtask hadn't resolved by the time exit fired.
+
+**Why:** The inflight promise tracker only awaited handleLine
+promises — anything THOSE handlers spawned (writeFile, log
+appendFileSync) wasn't tracked.
+
+**Fix:** Add a 100ms `setTimeout` after the inflight promise resolves
+before calling process.exit. Pragmatic — fs.writeFile microtasks
+resolve well within that window; tracking every transitive promise
+would require mutating writeFile's signature.
+
+## Known infrastructure-level fixes
 
 ## Known infrastructure-level fixes
 
@@ -67,7 +186,40 @@ misses.
 the workspace members list. The setup script is idempotent: re-run
 will skip the patch step and continue.
 
-### IL-3. Cargo too old for codex-rs's workspace manifest
+### IL-3. libcap-dev missing for full codex-tui build (Tier 6 prereq)
+
+**File:** environmental — Linux system packages.
+
+**Symptom:** `cargo build -p codex-tui` (or any full build of codex's
+TUI binary) panics in `codex-linux-sandbox`'s build.rs:
+
+```
+failed to compile vendored bubblewrap for Linux target:
+libcap not available via pkg-config
+```
+
+**Why:** codex-rs vendors `bubblewrap` for Linux sandboxing. The
+build script links against `libcap` via `pkg-config`. Default WSL2 /
+Ubuntu installs don't include `libcap-dev`.
+
+**Fix:** Install the system package.
+
+```bash
+sudo apt install -y libcap-dev pkg-config
+```
+
+(`pkg-config` is usually present but listed for completeness.)
+
+After install, `cargo build -p codex-tui` succeeds. The bridge crate
+itself doesn't need libcap — only the full codex-tui binary does
+(for the sandbox).
+
+Tier 6 verification (running `opencues run codex` interactively)
+needs this. Type-checking the bridge wiring (Tier 5 patches) does
+NOT need this — `CODEX_SKIP_VENDORED_BWRAP=1 cargo check -p
+codex-tui --lib` works without libcap.
+
+### IL-4. Cargo too old for codex-rs's workspace manifest
 
 **File:** environmental — user's `cargo --version` < 1.85 (Feb 2025).
 
@@ -106,7 +258,7 @@ Cargo.toml) doesn't need cleanup before retry.
 `bin/install.cjs` includes a pre-flight cargo version check that
 fails fast with this message if cargo is too old.
 
-### IL-4. Smoke test exits 0 even when daemon misbehaves
+### IL-5. Smoke test exits 0 even when daemon misbehaves
 
 **File:** `integrations/codex/patches/opencues-bridge/src/bin/smoke.rs`.
 

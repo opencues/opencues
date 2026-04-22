@@ -85,7 +85,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `claude-code` | Clone tweakcc (if missing) + build our runtime + install under `~/.claude/opencues/` + patch `cli.js` in place | ✓ (runs `claude-cues` / `claude`) |
 | `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 3 TSX files | ✓ (runs `bun run dev` in the fork) |
 | `chrome` | Build MV3 extension + copy dist/ to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
-| `codex` | Clone the fork + build Rust bridge crate + drop launch helper | **Pre-alpha** — TUI patches still TODO, see `integrations/codex/HANDOFF.md` |
+| `codex` | Clone the fork + build Rust bridge crate + apply TUI patches via diff + drop launch helper | **Alpha** — pinned to codex-rs `d58d3cc`; full build needs `libcap-dev` (Linux) |
 
 ### Where things land
 

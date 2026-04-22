@@ -122,11 +122,11 @@ function doInstall() {
   }
 
   console.log(`\n${pkg.name} install complete.`);
-  console.log('Note: this is the INFRASTRUCTURE install — the TUI patches that wire');
-  console.log('OpenCues into Codex\'s ChatComposer are not yet implemented.');
-  console.log('See integrations/codex/HANDOFF.md for what remains.');
+  console.log('TUI patches applied to chat_composer.rs (pinned to d58d3cc).');
+  console.log('See integrations/codex/reintegration/parity-review.md for the');
+  console.log('OC-vs-codex feature matrix + what\'s verified end-to-end.');
   console.log('');
-  console.log('To run the patched TUI (after HANDOFF items land):');
+  console.log('To run the patched TUI:');
   console.log(`  ${launchCommand()} run codex`);
 }
 
@@ -280,7 +280,7 @@ function printHelp() {
   console.log('  --dry-run           Print plan, do not execute');
   console.log('  --help              Show this message');
   console.log('');
-  console.log('Status: pre-alpha. The TUI patches that hook OpenCues into Codex\'s');
-  console.log('ChatComposer are NOT yet implemented; install only sets up the');
-  console.log('infrastructure. See integrations/codex/HANDOFF.md.');
+  console.log('Status: alpha — TUI patches landed (pinned to codex-rs d58d3cc).');
+  console.log('Full cargo build needs libcap-dev (sudo apt install -y libcap-dev).');
+  console.log('See reintegration/parity-review.md for OC parity status.');
 }
