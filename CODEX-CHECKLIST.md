@@ -133,10 +133,19 @@ does for OpenCode. Use OC as the structural template.
       `'control-invoke'` to capabilities when supplied. Same
       per-instance capability pattern OC uses in
       `adapters/oc/v1.4/adapter.ts:91-98`. 5 unit tests.
-- [ ] **E. Add `control-invoke` RPC method to protocol + daemon** —
-      bridge sends control invocations via JSON-RPC; daemon dispatches
-      via `controlInvoke`. Update `docs/protocol.md` with the new
-      method. **Severity: HIGH** (depends on D).
+- [x] **E. Add `control-invoke` RPC method to protocol + daemon** —
+      Done. New `control-invoke` request method dispatches to the
+      Tier 3.D registry, returning the underlying `ProcessResult`
+      shape verbatim. Unknown controls return `result: null` so the
+      bridge can fall back to native. Errors fall into JSON-RPC's
+      pre-defined codes (`-32000` not booted, `-32602` bad params,
+      `-32603` internal failure); control-execution failures stay
+      in the result body (non-zero `exitCode`) per the Control
+      interface contract. Live-verified against real
+      `OpenCuesSettingsControl` reading `~/.opencues/opencues.md`.
+      Bonus: caught + fixed an FIFO ordering bug — readline 'line'
+      events now process serially through a chained promise queue.
+      6 new unit tests.
 - [ ] **F. Wire Navigation / Cycling / BlankFill / DimRender / Resolver
       / Statusline / TTS modules** — same shared-runtime pattern OC
       uses. Each module subscribes to events from the synthetic
@@ -338,7 +347,7 @@ Once codex actually works, mirror OC's reintegration docs.
 |---|---|---|
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
-| 3 | A+B+C+D done; ~2-3h remaining | daemon wiring — the biggest TS chunk |
+| 3 | A+B+C+D+E done; ~1-3h remaining | daemon wiring — the biggest TS chunk |
 | 4 | 2-4h | bridge fixes — Rust |
 | 5 | 4-8h | TUI patches — the HANDOFF.md headline |
 | 6 | 1-2h | end-to-end verification |
