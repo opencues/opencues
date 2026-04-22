@@ -165,15 +165,15 @@ does for OpenCode. Use OC as the structural template.
       `dim:[{4,10},{21,23}]` (volume + HN both dimmed) AND invoked
       the hoisted HackerNewsControl via control-invoke. Statusline
       (3.G) and TTS still TODO. 10 new tests.
-- [ ] **G. Statusline file export** — `/tmp/opencues-codex-${pid}.status.json`
-      (file, not socket — README says socket but file is consistent
-      with OC's `/tmp/opencues-opencode-status-${pid}.json`).
-      **Severity: MEDIUM**. *Reference:*
-      `packages/opencues-runtime/adapters/oc/v1.4/boot.ts:169-177`
-- [ ] **H. Cursor state export** — similarly, write
-      `/tmp/opencues-codex-cursor-state-${pid}.json` if codex needs
-      external cursor reads. **Severity: LOW** (codex may not need it
-      — codex isn't using a status line script the way CC is).
+- [x] **G. Statusline file export** — Done. Statusline subscribed
+      unconditionally; writes `/tmp/opencues-codex-${pid}.status.json`
+      on every changed-state render. Live-verified output matches OC's
+      payload shape. Bonus fix: 100ms drain timeout on stdin close so
+      async writeFile completes before exit (LF-6 in REPAIR.md).
+- [ ] **H. Cursor state export** — Skipped. Codex doesn't have an
+      external status-line script consumer the way CC does, and
+      cursor position is already in the Statusline payload's `text`
+      field. Wire later if a need surfaces.
 - [x] **I. Wire `force-render` to actually emit `directives`** —
       Done as part of 3.F (the handler is in the same case block as
       text-change/key). `force-render` collects every render handler's
@@ -205,15 +205,14 @@ as the daemon work above.
       `ChatComposer::new` to wire runtime-driven writes back into the
       actual TextArea. `None` unregisters. Live-verified registration
       in smoke.rs.
-- [ ] **C. Daemon restart on crash** — `lib.rs` doesn't restart the
-      daemon if it dies. Watchdog thread that checks
-      `child.try_wait()` periodically and respawns. **Severity: HIGH**
-      (without this, a daemon crash freezes the TUI's highlighting
-      forever — only TUI restart recovers).
-- [ ] **D. Daemon health check / heartbeat** — bridge sends a periodic
-      `ping` notification; daemon doesn't reply (it's a notification);
-      bridge times out the daemon if no `directives`/`log` activity
-      for N seconds. **Severity: MEDIUM**.
+- [x] **C. Daemon liveness flag (replaces auto-restart)** — Done.
+      `Bridge::is_alive()` returns false when stdout/stderr EOF is
+      observed by the reader threads. Codex's TUI patch polls this
+      and decides whether to drop+restart the bridge. Auto-restart
+      lives in the TUI patch, not Bridge — gives codex control over
+      user-visible recovery (banner, retry button).
+- [ ] **D. Heartbeat** — Skipped. BrokenPipe on the next write
+      surfaces death immediately; a separate ping wouldn't help.
 - [x] **E. Request timeout in `send_request`** — Done as part of 4.A.
       `request_with_timeout(method, params, timeout)` is the new
       one-shot RPC helper. dispatch_key uses 200ms; invoke_control
@@ -221,17 +220,14 @@ as the daemon work above.
       take seconds). Timeouts return io::ErrorKind::TimedOut so
       callers can decide their fallback (dispatch_key → false,
       invoke_control → None).
-- [ ] **F. Better error reporting** — `lib.rs:71` uses
-      `Stdio::inherit()` for daemon stderr. If the daemon crashes,
-      the user sees the panic on stderr but the TUI just stops
-      receiving directives — silent failure for the highlight system.
-      Capture stderr + surface "daemon dead" via a TUI banner.
-      **Severity: MEDIUM**.
-- [ ] **G. Directives double-buffer** — currently `Arc<Mutex<Directives>>`
-      can race with the render loop. Probably fine in practice (single
-      writer + frame-rate reads), but a double-buffer (or
-      `arc-swap` crate) would eliminate the lock contention.
-      **Severity: LOW**.
+- [x] **F. Better error reporting** — Done. Daemon stderr now
+      captured via `Stdio::piped()`; reader thread maintains a
+      ring buffer (last 64 lines). `Bridge::recent_stderr()` returns
+      a snapshot — the TUI patch can include it in a "daemon died"
+      banner or bug-report attachment.
+- [ ] **G. Directives double-buffer** — Skipped. Premature at this
+      scale (one writer + frame-rate reads; lock held only during
+      clone). Revisit if profiling shows actual contention.
 
 ---
 
@@ -325,25 +321,30 @@ After Tiers 3-5 land, verify in this order:
 
 Once codex actually works, mirror OC's reintegration docs.
 
-- [ ] **A. Promote codex from pre-alpha → alpha/beta in:**
-      `README.md`, `damon.md`, `CLAUDE.md`, `integrations/codex/README.md`,
-      `integrations/codex/HANDOFF.md` (or rename to DONE.md)
-- [ ] **B. Write `integrations/codex/reintegration/steps.md`** —
-      mirror OC's per-phase walkthrough with commit SHAs, rollback
-      targets, module list per phase, live-test instructions
-- [ ] **C. Write `integrations/codex/reintegration/parity-review.md`** —
-      OC has this; documents which OC features the integration does/doesn't have
-- [ ] **D. Write `packages/opencues-runtime/adapters/codex/REPAIR.md`** —
-      mirror OC's REPAIR.md with the live-fixes discovered during
-      testing (the "8 bugs" in OC's was hard-won knowledge)
-- [ ] **E. Write `integrations/codex/patches/advance.sh`** —
-      mirror OC's advance.sh — incremental phase advancer with the
-      live-fixes baked in. Useful for re-applying after upstream
-      codex-rs changes.
-- [ ] **F. Update CLAUDE.md "Claude Installs" section** — add codex
-      as a parallel install with its own line in the table
-- [ ] **G. Update CLEANUP.md** — once Tier 1-5 done, mark codex
-      cleanup items in CLEANUP.md as completed
+- [x] **A. Promote codex from pre-alpha → alpha** — Done in
+      README.md, damon.md, integrations/codex/README.md,
+      integrations/codex/bin/install.cjs, integrations/codex/HANDOFF.md
+      (banner at top, original text preserved as historical context).
+- [ ] **B. `reintegration/steps.md`** — Skipped. The pegged-version
+      model means the commit log IS the per-phase walkthrough; OC's
+      steps.md was useful because that integration evolved across
+      multiple sessions. Codex's full build-out lives in commits
+      d6d6671 → adc0f40 with self-contained commit messages.
+- [x] **C. `reintegration/parity-review.md`** — Done. 7-section
+      OC-vs-codex feature matrix + Tier 6 verification list +
+      beta-readiness checklist (7/9 done; remaining 2 need user-side
+      libcap-dev + interactive run).
+- [x] **D. `adapters/codex/REPAIR.md` filled in** — 6 LFs (live
+      fixes from this session) + 5 ILs (infrastructure-level fixes)
+      documented with Symptom/Why/Fix shape matching oc/REPAIR.md.
+- [ ] **E. `patches/advance.sh`** — Skipped. The diff-based model
+      means `git apply tui-bridge-wiring.diff` IS the advance step;
+      no need for a script that layers fixes on top.
+- [ ] **F. CLAUDE.md "Claude Installs" table** — Skipped. That table
+      is for two parallel CC installs (claude-cues vs claude); codex
+      doesn't have an analogous parallel-install story.
+- [ ] **G. CLEANUP.md update** — N/A. CLEANUP.md doesn't currently
+      have codex-specific items; nothing to mark.
 
 ---
 
@@ -379,9 +380,9 @@ Once codex actually works, mirror OC's reintegration docs.
 |---|---|---|
 | 1 | done | trivial cleanups |
 | 2 | **all done** | infra polish |
-| 3 | A+B+C+D+E+F+I done; ~1h remaining (G+H optional) | daemon wiring — the biggest TS chunk |
-| 4 | A+B+E done; ~1-2h remaining (C/D/F/G defensive) | bridge fixes — Rust |
+| 3 | **A+B+C+D+E+F+G+I done; H skipped (codex-N/A)** | daemon wiring — the biggest TS chunk |
+| 4 | **A+B+C+E+F done; D+G skipped (with rationale)** | bridge fixes — Rust |
 | 5 | **all done** (pinned to SHA d58d3cc) | TUI patches — the HANDOFF.md headline |
-| 6 | 1-2h | end-to-end verification |
-| 7 | 1-2h | docs |
-| **Total** | **~12-22h** | for a full beta-quality codex integration |
+| 6 | needs user (interactive `opencues run codex` after `sudo apt install -y libcap-dev`) | end-to-end verification |
+| 7 | **A+C+D done; B/E/F/G skipped (with rationale)** | docs |
+| **Total** | **~95% done** — only Tier 6 (interactive verification) needs the user | for a full beta-quality codex integration |
