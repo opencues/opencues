@@ -25,7 +25,7 @@ The four levels are checked in order. The first match wins.
 
 **Condition**: `globalThis._cueControlOverrides[word.toLowerCase()]` exists.
 
-Triggers an external script (e.g., `volume.sh`). The script path comes from the control's config (`script`, `scriptPath`, or defaults to `~/.claude/actions/<controlName>.sh`). Up passes `upArgs` (default `["up"]`), Down passes `downArgs` (default `["down"]`). For in-memory value calculation, defaults are `['up','10']`/`['down','10']` (step of 10). For the spawned script args, defaults are `['up']`/`['down']`.
+Triggers an external script (e.g., `volume.sh`). The script path comes from the control's config (`script`, `scriptPath`, or defaults to `~/.claude/opencues/scripts/<controlName>.sh`). Up passes `upArgs` (default `["up"]`), Down passes `downArgs` (default `["down"]`). For in-memory value calculation, defaults are `['up','10']`/`['down','10']` (step of 10). For the spawned script args, defaults are `['up']`/`['down']`.
 
 Script execution is debounced: rapid presses queue a single spawn after 50 ms with the direction string (up/down), not the computed numeric value. The numeric value is tracked in-memory only. In-memory state (`globalThis._cueControlValues`) tracks the current value to avoid file I/O on the hot path. Returns `{refresh: true}` — no text replacement, the integration triggers a full input refresh instead.
 

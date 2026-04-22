@@ -1,14 +1,26 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-04-22
 ---
 
 # Multi-Word Spans
 
 An alternative can be multiple words (e.g., `_` to "Sundar Pichai", "toy" to "stuffed animal"). Since the system tracks words by index, replacing one word with two shifts all subsequent indices. Span tracking solves this by mapping each word of a multi-word replacement back to the original index.
 
+> **Two implementations.** The `globalThis._dynSpans` model described
+> below is **Claude Code's local implementation** inside the tweakcc
+> patches. The system-wide model used by `@opencues/runtime`
+> (Chrome, OpenCode, Codex, and the future CC v3.x adapter) is
+> different: spans live inside `DynDefs` (`packages/opencues-runtime/src/state/dyn-defs.ts`),
+> N spans can be active concurrently, and stale defs are pruned via
+> `pruneStale` with deterministic relocate. See
+> `docs/architecture/spans-and-cycling.md` for that canonical reference.
+> This page is preserved because the CC v2.x patches still use
+> `_dynSpans` and the integration responsibilities at the bottom apply
+> to either model.
+
 ---
 
-## How It Works
+## How It Works (Claude Code v2.x — `_dynSpans`)
 
 1. **Cycle**: The user presses Up/Down on a highlighted word. The new alternative contains a space (e.g., "Sundar Pichai")
 2. **Detect**: `_cycleAlt` splits the new alternative on whitespace and counts `_nwc` (new word count)

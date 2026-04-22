@@ -8,7 +8,7 @@ output-format: rich markdown
 display mode: split pane
 # Optional overrides — uncomment to override patch-supplied defaults.
 # tts-rate: 2
-# tts-script: ~/.claude/actions/speak.sh
+# tts-script: ~/.claude/opencues/scripts/speak.sh
 # llm-model: openai/gpt-oss-120b
 # llm-endpoint: https://api.groq.com/openai/v1/chat/completions
 settings:

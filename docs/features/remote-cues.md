@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-04-22
 ---
 
 # Remote Cues
@@ -18,18 +18,20 @@ Remote cues are alternatives computed externally via an LLM or other system, typ
 
 ---
 
-## Source Combining
+## Word-Alt Routing (replaces the old "combine into one prompt" model)
 
-Word-scoped `alternatives` sources from `cues.md` are combined into a single `ConfigSource` via `combineWordSources()`. This produces **one LLM call instead of N sequential calls**.
+Each `### alternatives` section in `cues.md` (or `cues/<name>/cue.md`) becomes its OWN `ConfigSource`. They are wrapped in a single `RoutedWordSourceGroup` that **dispatches each highlighted word to exactly one child source** based on the source's `match` / `keywords` / `priority` fields.
 
-The combining logic:
+Words destined for the same source are batched into one parallel LLM call; results are then index-remapped back to the original positions. So a sentence with one legal word + one medical word + three grammar words produces three parallel LLM calls, not five sequential ones and not one giant merged prompt.
 
-1. **Base sources** (no `match` regex) contribute their prompt text directly
-2. **Domain sources** (with a `match` regex, e.g., `medical|clinical`) get a conditional header: `"When the input contains terms like medical, clinical: {prompt}"`
-3. **Format reinforcement** — when domain sources are present, the combined prompt appends `"Output ONLY index:alternatives format."` to prevent domain instructions from disrupting the output format
-4. **Priority** — the combined source takes the maximum priority of its constituents
+Why per-word dispatch (not the old "combine into one prompt"):
 
-The result is a single `SourceConfig` with `name: 'grammar'`, `scope: 'words'`, `parser: 'alternatives'`, and the concatenated prompt text.
+- **Isolation**: a hijacking prompt in one source can no longer poison every word. With the old combine model, a prompt in `cues/sync-demo/cue.md` saying "always output `bundled,deployed,shipped`" would swap `happy → bundled`. With routing, that prompt only affects words its source is called for.
+- **Symmetry**: blanks already use a `ClassifiedSourceGroup`; word-alts now follow the same model.
+
+See [Word-Alt Routing](word-alt-routing.md) for the full classification + dispatch spec, and the `RoutedWordSourceGroup` source in `@opencues/core` for the implementation.
+
+> The legacy `combineWordSources()` export in `build-sources.ts` is a no-op shim kept only for external callers mid-migration; new code should not call it.
 
 ---
 
@@ -43,7 +45,7 @@ The result is a single `SourceConfig` with `name: 'grammar'`, `scope: 'words'`, 
 | `priority` | number | 50 | Higher wins; same-priority results merge |
 | `scope` | `'words'` \| `'blanks'` \| `'all'` | `'words'` | When the source activates |
 | `parser` | `'alternatives'` \| `'math'` \| `'compute'` \| `'answer'` \| `'raw'` | `'alternatives'` | How the LLM response is parsed |
-| `match` | string | (none) | Regex used for two purposes: (1) by `ClassifiedSourceGroup.classifyFast()` for blank mode classification, and (2) by `combineWordSources()` to generate conditional prompt headers for domain sources. It does NOT gate `ConfigSource.supports()` directly. |
+| `match` | string | (none) | Regex used for two purposes: (1) by `ClassifiedSourceGroup.classifyFast()` for blank mode classification, and (2) by `RoutedWordSourceGroup` to classify a source as **domain** (matching words route here) vs **default** (catches everything else). It does NOT gate `ConfigSource.supports()` directly. |
 | `model` | string | (from promptConfig) | LLM model override for this source |
 | `promptText` | string | (none) | The prompt template; input is appended after it |
 | `enabled` | boolean | true | Set to `false` to disable without removing |
