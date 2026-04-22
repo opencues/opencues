@@ -426,6 +426,53 @@ Each cue / blank / control declares which hosts it works on (`on-host: [chrome, 
 
 ---
 
+## The `opencues` CLI
+
+Single front-door for managing every host integration. OpenCues spans four hosts with very different install models — CC patches `cli.js` via `tweakcc`, OpenCode patches a forked source tree, Chrome bundles configs into the extension, Codex patches a Rust TUI. The `opencues` CLI normalizes "install / update / debug" so you don't have to remember each integration's quirks.
+
+```
+$ opencues --help
+
+Setup:
+  install <host>          Install a host integration (claude-code|opencode|codex|chrome|--all)
+  uninstall <host>        Roll back an installation
+  seed-configs            Copy repo defaults into ~/.opencues/
+  update                  Pull, rebuild, redeploy installed integrations
+  set-key <provider>      Store an API key in ~/.opencues/.env
+  check-keys              Verify configured API keys against provider endpoints
+
+Authoring:
+  init                    Scaffold <cwd>/.opencues/ with templates
+  new <kind> <name>       Scaffold a single cue / blank / control
+  validate                Lint configs across search paths
+  import <source>         Download a community config pack (gist/github/url/local)
+
+Run / inspect:
+  run <host>              Launch the patched host
+  sync <host>             Bundle .opencues/ into a host that doesn't auto-discover (chrome)
+  which                   Print every relevant path (installs, configs, logs)
+  version                 Print CLI version + per-integration versions/compat
+  doctor                  Cross-host diagnostics + suggested fixes
+  list                    List every defined cue / blank / control with source path
+  show <name>             Print full config for one cue / blank / control by name
+  edit <file>             Open ~/.opencues/<file>.md in $EDITOR
+  logs [--tail]           Show /tmp/opencues.log
+  debug [on|off]          Toggle runtime debug-mode
+  completion <shell>      Print shell completion script (bash | zsh | fish)
+```
+
+Three high-level surfaces:
+
+**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.opencues/` from the shipped `defaults/` so you start with the same `cues.md` / `blanks.md` / `controls.md` that ship with the project.
+
+**Authoring** — for users *building* their own cues. `init` scaffolds a `.opencues/` directory in any project. `new control hackernews-rss` (or `new cue legal`, `new blank math`) writes a starter file with comments. `validate` lints the configs across every search path before you start the host. `import gh:someone/cool-cues` pulls a community pack.
+
+**Run / inspect** — day-to-day operations. `which` is the "where does X live?" answer (paths to every install, config, log, key file). `list` shows every cue/blank/control plus where it was loaded from (so you can see project-level overriding user-level). `show <name>` dumps one entry's full config. `doctor` walks every installation and points at fixable problems. `logs --tail` is for live debugging.
+
+The CLI is the same whether you have one host installed or four — `opencues install --all` then `opencues update` keeps everything fresh in one command. Per-host installers (`integrations/<host>/bin/install.cjs`) still exist underneath; the CLI just orchestrates them.
+
+---
+
 ## Stack
 
 Two core packages + per-host integration glue:
