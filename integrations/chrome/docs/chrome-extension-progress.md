@@ -1,10 +1,14 @@
 ---
-last_updated: 2026-04-15
+last_updated: 2026-04-22
 ---
 
 # Chrome Extension — Testing Progress
 
 Tracking what has been manually verified in the Chrome extension integration.
+
+> **Current testing scope:** Chrome + OpenCode are the primary verification
+> targets through the post-refactor test arc. Claude Code and Codex will be
+> tested after both of these are fully green on every phase.
 
 ## Verified Working
 
@@ -70,3 +74,71 @@ Tracking what has been manually verified in the Chrome extension integration.
 | Selector/satellite: blankClearOnEdit not firing | Added `invalidateWordsSync()` for immediate per-word invalidation (not 50ms timer) |
 | Selector/satellite: executeClearOnEdit returning "" treated as falsy | Changed `if (cleaned)` to `if (cleaned !== null)` |
 | Hot-reload: TTS checkbox disconnected from voice-mode | Popup syncs with voice-mode in opencues.md; cycling persists back to chrome.storage |
+
+---
+
+## Post-refactor verification (April 2026)
+
+After the major April 2026 simplification + bug-fix arc (sync chrome
+redesign, popup cleanup, storage cache removal, multi-word span fixes,
+Resolver filter hardening, deterministic relocate, etc.), Chrome was
+re-verified end-to-end via a phased test plan.
+
+### 6-phase fresh-install verification plan
+
+| # | Phase | What it verifies | Status |
+|---|---|---|---|
+| 0 | Clean slate | Remove the extension + Windows-side install dir | n/a (prep) |
+| 1 | Fresh install | `pnpm exec opencues install chrome --wsl`, load unpacked, runtime boots | ✅ Verified — `[opencues][info] OpenCues runtime starting (Chrome v1)` shows in DevTools |
+| 2 | Bake-time defaults + multi-source routing | No sync run; type a sentence with legal/medical/financial/grammar words, verify 4 parallel LLM calls and per-source alts | ✅ **Verified 2026-04-22** — see "Phase 2 verification" below |
+| 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ☐ Pending |
+| 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ☐ Pending |
+| 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ☐ Pending |
+| 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ☐ Pending |
+
+### Phase 2 verification (2026-04-22)
+
+Test sentence:
+```
+the attorney filed a liability clause after the diagnosis caused the portfolio to decline quickly
+```
+
+**4 parallel LLM calls observed in DevTools:**
+
+| Source | Prompt input | Response |
+|---|---|---|
+| **legal** | `0=liability 1=clause` | `0:obligation,responsibility,exposure \| 1:provision,stipulation,term` ✅ |
+| **medical** | `0=diagnosis` | `0:assessment,evaluation,clinical-diagnosis` ✅ |
+| **financial** | `0=portfolio` | `0:holdings,assets,investment-mix` ✅ |
+| **grammar** (default) | `0=the 1=attorney 2=filed 3=a 4=after 5=the 6=caused 7=the 8=to 9=decline 10=quickly` | indices 1, 2, 6, 9, 10 returned (function words 0/3/4/5/7/8 correctly skipped) ✅ |
+
+**Confirms working end-to-end:**
+
+- `RoutedWordSourceGroup` per-source dispatch — exactly one LLM call per source group, in parallel
+- Bake-time defaults loaded from `defaults/cues/*` (no sync needed)
+- Auto-append `INDEX:alt` format spec — every response in correct shape
+- Function-word skipping in grammar prompt
+- DimRender + Navigation working with multi-word static-alt spans
+- No alt-track drift after cycling (Resolver skip-cycled-alts filter active)
+- Deterministic relocate handles prefix/middle edits without dropping cycle progress
+
+### Cross-host runtime fixes verified
+
+These runtime-level fixes from the April 2026 arc apply to all hosts but
+have been confirmed in **Chrome AND OpenCode**:
+
+| Fix | Chrome | OpenCode |
+|---|---|---|
+| Multi-word static-alt spans (DynDefs source of truth) | ✅ | ✅ |
+| Span preservation across edits outside the span | ✅ | ✅ |
+| Skip already-resolved + cycled words in Resolver | ✅ | ✅ |
+| No dim-flash on keystroke | ✅ | ✅ |
+| Two concurrent multi-word spans coexist | ✅ | ✅ |
+| Multi-word splice at live char positions (no drift) | ✅ | ✅ |
+| Shift downstream DynDefs on cycle (no flicker) | ✅ | ✅ |
+| Deterministic relocate on prefix/middle edits | ✅ | ✅ |
+| Resolver skips cycled alts (no track drift) | ✅ | ✅ |
+
+Claude Code and Codex inherit the same runtime fixes via
+`buildSharedRuntime` and will be re-verified after Chrome + OpenCode
+phases 3-6 are complete.
