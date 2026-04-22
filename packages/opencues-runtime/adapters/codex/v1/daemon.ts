@@ -50,29 +50,52 @@ interface JsonRpcNotification {
   params?: unknown;
 }
 
-type Frame = JsonRpcResponse | JsonRpcNotification;
+export type Frame = JsonRpcResponse | JsonRpcNotification;
+
+export interface DaemonHandle {
+  /** Process one inbound JSON-RPC frame (raw line text). */
+  handleLine(line: string): void;
+  /** Whether the daemon has received its `boot` request yet. */
+  readonly booted: boolean;
+}
+
+export interface CreateDaemonOptions {
+  /** How to emit a frame back to the bridge. */
+  send: (frame: Frame) => void;
+  /** How to log a daemon-side message. Defaults to a `log` notification on `send`. */
+  log?: (level: 'info' | 'warn' | 'error' | 'debug', msg: string) => void;
+}
 
 /**
- * Start the daemon. Called from a one-line wrapper script the install
- * pipeline drops at a known path. Blocks until stdin closes.
+ * Create a testable daemon instance. The state (`booted` flag, future
+ * runtime modules) lives in this closure. `startDaemon` below wires
+ * one of these up to stdin/stdout; tests build one with mock callbacks.
  */
-export function startDaemon(): void {
-  const rl = readline.createInterface({ input: process.stdin });
+export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
   let booted = false;
-  // TODO: real runtime state. For now, just hand-shake correctly so the
-  // bridge crate's smoke test passes.
-  // const adapter = new CodexAdapter(...);
-  // const configLoader = new ConfigLoader(adapter, ...);
-  // const navigation = new Navigation(adapter, ...);
-  // const cycling = new Cycling(adapter, ...);
-  // ...
+  const log = opts.log ?? ((level, msg) => {
+    opts.send({ jsonrpc: '2.0', method: 'log', params: { level, msg } });
+  });
 
-  rl.on('line', (line) => {
+  function sendResult(req: JsonRpcRequest, result: unknown): void {
+    if (req.id == null) return; // notifications get no response
+    opts.send({ jsonrpc: '2.0', result, id: req.id });
+  }
+  function sendError(req: JsonRpcRequest, code: number, message: string): void {
+    if (req.id == null) return;
+    opts.send({ jsonrpc: '2.0', error: { code, message }, id: req.id });
+  }
+
+  function handleLine(line: string): void {
     if (!line.trim()) return;
     let req: JsonRpcRequest;
     try { req = JSON.parse(line); }
     catch (err) {
-      send({ jsonrpc: '2.0', error: { code: -32700, message: `parse error: ${err}` }, id: null });
+      opts.send({
+        jsonrpc: '2.0',
+        error: { code: -32700, message: `parse error: ${String(err)}` },
+        id: null,
+      });
       return;
     }
 
@@ -86,7 +109,8 @@ export function startDaemon(): void {
         // TODO: actually wire ConfigLoader + modules with the params.
         booted = true;
         sendResult(req, { ok: true });
-        log('info', `daemon booted (params=${JSON.stringify(req.params).slice(0, 200)})`);
+        const paramsRepr = String(JSON.stringify(req.params ?? null)).slice(0, 200);
+        log('info', `daemon booted (params=${paramsRepr})`);
         break;
       }
       case 'text-change': {
@@ -109,35 +133,42 @@ export function startDaemon(): void {
         sendError(req, -32601, `unknown method: ${req.method}`);
       }
     }
-  });
+  }
 
+  return {
+    handleLine,
+    get booted() { return booted; },
+  };
+}
+
+/**
+ * Start the daemon. Called from a one-line wrapper script the install
+ * pipeline drops at a known path. Blocks until stdin closes.
+ */
+export function startDaemon(): void {
+  const rl = readline.createInterface({ input: process.stdin });
+  const stdoutSend = (frame: Frame): void => {
+    process.stdout.write(JSON.stringify(frame) + '\n');
+  };
+  const fileLog = (level: 'info' | 'warn' | 'error' | 'debug', msg: string): void => {
+    // Daemon-side log notification. Bridge can route it (e.g. write to /tmp/opencues.log).
+    stdoutSend({ jsonrpc: '2.0', method: 'log', params: { level, msg } });
+    // Also write directly so logs survive even if the bridge drops them.
+    try {
+      fs.appendFileSync('/tmp/opencues.log',
+        `[${new Date().toISOString().slice(11, 23)}][codex-daemon][${level}] ${msg}\n`);
+    } catch { /* ignore */ }
+  };
+
+  const daemon = createDaemon({ send: stdoutSend, log: fileLog });
+
+  rl.on('line', (line) => daemon.handleLine(line));
   rl.on('close', () => {
-    log('info', 'daemon shutting down (stdin closed)');
+    fileLog('info', 'daemon shutting down (stdin closed)');
     process.exit(0);
   });
 
-  log('info', `daemon started; pid=${process.pid}`);
-}
-
-function send(frame: Frame): void {
-  process.stdout.write(JSON.stringify(frame) + '\n');
-}
-function sendResult(req: JsonRpcRequest, result: unknown): void {
-  if (req.id == null) return; // notifications get no response
-  send({ jsonrpc: '2.0', result, id: req.id });
-}
-function sendError(req: JsonRpcRequest, code: number, message: string): void {
-  if (req.id == null) return;
-  send({ jsonrpc: '2.0', error: { code, message }, id: req.id });
-}
-function log(level: 'info' | 'warn' | 'error' | 'debug', msg: string): void {
-  // Daemon-side log notification. Bridge can route it (e.g. write to /tmp/opencues.log).
-  send({ jsonrpc: '2.0', method: 'log', params: { level, msg } });
-  // Also write directly so logs survive even if the bridge drops them.
-  try {
-    fs.appendFileSync('/tmp/opencues.log',
-      `[${new Date().toISOString().slice(11, 23)}][codex-daemon][${level}] ${msg}\n`);
-  } catch { /* ignore */ }
+  fileLog('info', `daemon started; pid=${process.pid}`);
 }
 
 // CLI entry — run this file directly as `node daemon.js`.
