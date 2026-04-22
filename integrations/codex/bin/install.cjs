@@ -64,18 +64,22 @@ function doInstall() {
     return;
   }
 
-  // Pre-flight: cargo on PATH (also looks at the default rustup install
-  // location, since shells that don't source ~/.cargo/env still find it).
-  const cargo = spawnSync('cargo', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-  const cargoEnv = path.join(HOME, '.cargo', 'env');
-  if (cargo.status !== 0 && !fs.existsSync(cargoEnv)) {
-    console.error('\nopencues-codex install: cargo not found on PATH.');
+  // Pre-flight: pick a cargo. Prefer the rustup-managed one at
+  // ~/.cargo/bin/cargo when it exists (it's always newer + correctly
+  // versioned), even if a different cargo is on PATH (e.g. apt's
+  // /usr/bin/cargo, which is often pinned to an old version).
+  const rustupCargo = path.join(HOME, '.cargo', 'bin', 'cargo');
+  const useRustupCargo = fs.existsSync(rustupCargo);
+  const cargoBin = useRustupCargo ? rustupCargo : 'cargo';
+  const cargo = spawnSync(cargoBin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (cargo.status !== 0) {
+    console.error('\nopencues-codex install: cargo not found on PATH and not at ~/.cargo/bin/cargo.');
     console.error('Install rust + cargo (https://rustup.rs) and re-run:');
-    console.error('  curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh');
+    console.error('  curl --proto \'=https\' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y');
     console.error('  source "$HOME/.cargo/env"');
     process.exit(127);
   }
-  if (cargo.status === 0) console.log(`cargo: ${cargo.stdout.toString().trim()}`);
+  console.log(`cargo: ${cargo.stdout.toString().trim()}${useRustupCargo ? '  (rustup)' : ''}`);
 
   // Pre-flight: cargo version. codex-rs's workspace contains members
   // declaring `edition = "2024"`, which was stabilized in Rust 1.85
@@ -103,12 +107,14 @@ function doInstall() {
   }
 
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
-  // Source ~/.cargo/env if cargo wasn't on PATH but rustup is installed,
-  // so the spawned setup.sh sees cargo too.
-  const env = cargo.status === 0 ? process.env : {
+  // Make sure setup.sh's `cargo` invocations resolve to the same one
+  // we just verified above. If we picked the rustup-managed cargo
+  // (or fell back because cargo wasn't on PATH at all), prepend
+  // ~/.cargo/bin so the spawned shell sees it before any system cargo.
+  const env = useRustupCargo ? {
     ...process.env,
     PATH: `${path.join(HOME, '.cargo', 'bin')}:${process.env.PATH || ''}`,
-  };
+  } : process.env;
   const result = spawnSync(setupSh, [fork], { stdio: 'inherit', env });
   if (result.status !== 0) {
     console.error(`\n${pkg.name} install failed (setup.sh exited ${result.status}).`);
