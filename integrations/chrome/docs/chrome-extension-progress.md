@@ -94,7 +94,7 @@ re-verified end-to-end via a phased test plan.
 | 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ✅ **Verified 2026-04-22** — see "Phase 3 verification" below |
 | 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ✅ **Verified 2026-04-22** — see "Phase 4 verification" below |
 | 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ✅ **Verified 2026-04-22** — see "Phase 5 verification" below |
-| 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ☐ Pending |
+| 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ✅ **Verified 2026-04-22** — see "Phase 6 verification" below |
 
 ### Phase 2 verification (2026-04-22)
 
@@ -207,6 +207,35 @@ Test project: `~/testing/.opencues/` (contains `cues.md`, `blanks.md`,
 - Mirror writes the swapped content to Windows side, not just repo dist
 - `.version` hash changes, so chrome's `.version` poller will pick the
   new bundle up within ~2.5s without page refresh
+
+### Phase 6 verification (2026-04-22)
+
+End-to-end watch-mode propagation — file edit → re-sync → bundle update
+→ chrome reload, all without manual intervention.
+
+**Setup**: `pnpm exec opencues sync chrome --wsl --watch` running.
+
+**Edit**: appended `[PHASE6]` marker to the `spantest` tip in
+`~/.opencues/cues.md`.
+
+**Within ~2 seconds:**
+- `.version` flipped: `1ac5a116781d2757` → `0c47706bff306800`
+- Marker present in repo `dist/configs/cues.md` AND Windows mirror
+- Browser-side: `spantest` tip popup rendered with `[PHASE6]` text —
+  no extension reload, no page refresh required
+
+**Reverted** the edit; watcher re-synced again; `.version` returned to
+the original `1ac5a116781d2757` (content-addressable round-trip).
+
+**Confirms working:**
+- Watcher fires re-sync within ~1s of file change
+- Mirror to Windows path happens on every re-sync
+- `.version` is content-addressable — reverting an edit returns to the
+  same hash, so the polling client knows to re-load the original state
+- `ConfigLoader` swaps the active config without restart
+- The full feedback loop (edit a file in WSL, see it live in Chrome on
+  Windows) is the daily-iteration workflow described in CLAUDE.md
+  § "Chrome Extension — Dev Workflow"
 
 ### Cross-host runtime fixes verified
 
