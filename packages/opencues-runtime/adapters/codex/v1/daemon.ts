@@ -23,9 +23,21 @@
 
 import * as readline from 'node:readline';
 import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
+import * as path from 'node:path';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { createSourceReclassifier, type SourceReclassifier } from '../../../src/boot-common';
-import type { HostAdapter, LogLevel } from '../../../src/adapter';
+import type { ControlInvokeSpec, HostAdapter, LogLevel, ProcessHandle } from '../../../src/adapter';
+import {
+  AnswerControl,
+  HackerNewsControl,
+  OpenCuesSettingsControl,
+  PromptImproverControl,
+  StocksControl,
+  WeatherControl,
+  createControlInvoke,
+  type Control,
+} from '../../../src/controls';
 import { CodexAdapter } from './adapter';
 
 export interface CodexHostInfo {
@@ -68,6 +80,15 @@ export interface RuntimeBundle {
    *  flipping 'user' → 'runtime' when text matches what the runtime
    *  just wrote via `setText` / `pushText`. Avoids feedback loops. */
   readonly reclassifier: SourceReclassifier;
+  /** Hoisted controls map — same six classes OC wires (HackerNews,
+   *  Stocks, Weather, Answer, PromptImprover, OpenCuesSettings).
+   *  Exposed so the upcoming `control-invoke` RPC method (Tier 3.E)
+   *  can dispatch directly without going through the adapter. */
+  readonly controlsRegistry: Map<string, Control>;
+  /** Dispatcher derived from controlsRegistry. Returns null for
+   *  unregistered controls (BlankFill / Cycling fall through to
+   *  spawnProcess for shell-script controls). */
+  readonly controlInvoke: (spec: ControlInvokeSpec) => ProcessHandle | null;
 }
 
 export interface DaemonHandle {
@@ -191,23 +212,65 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
  * Production path. Tests inject a different `buildRuntime` to avoid
  * hitting the real filesystem.
  */
+/**
+ * Resolve the path to opencues.md for the OpenCuesSettingsControl.
+ * Mirrors `findOpenCuesMdPath` in
+ * `integrations/opencode/patches/opencuesBootstrap.ts:88-94` exactly:
+ * - $OPENCUES_HOME wins if set (CI / container deploys / tests)
+ * - else ~/.opencues/opencues.md (user-level only — see CLAUDE.md
+ *   "Config search paths — who reads what" for the rationale)
+ */
+function findOpenCuesMdPath(): string {
+  if (process.env.OPENCUES_HOME) {
+    return path.join(process.env.OPENCUES_HOME, 'opencues.md');
+  }
+  return path.join(process.env.HOME ?? '~', '.opencues', 'opencues.md');
+}
+
+/**
+ * Build the same six-control registry OC wires. Mirrors
+ * `integrations/opencode/patches/opencuesBootstrap.ts:116-127` —
+ * if you change the wiring there, change it here too.
+ */
+function buildControlsRegistry(): Map<string, Control> {
+  return new Map<string, Control>([
+    ['hackernews', new HackerNewsControl()],
+    ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
+    ['weather', new WeatherControl()],
+    ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
+    ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
+    ['opencues', new OpenCuesSettingsControl({
+      readFile: async () => {
+        try { return await fsp.readFile(findOpenCuesMdPath(), 'utf8'); }
+        catch { return null; }
+      },
+      writeFile: async (content) => {
+        await fsp.writeFile(findOpenCuesMdPath(), content, 'utf8');
+      },
+    })],
+  ]);
+}
+
 async function defaultBuildRuntime(
   params: CodexHostInfo,
   log: (level: LogLevel, msg: string, data?: unknown) => void,
 ): Promise<RuntimeBundle> {
   const reclassifier = createSourceReclassifier();
+  const controlsRegistry = buildControlsRegistry();
+  const controlInvoke = createControlInvoke(controlsRegistry);
   const adapter = new CodexAdapter({
     cwd: params.cwd,
     hostVersion: params.hostVersion,
     log,
     reclassifier,
+    controlInvoke,
   });
   const configLoader = new ConfigLoader(adapter, {
     configSearchPaths: params.configSearchPaths,
   });
   configLoader.subscribe();
   await configLoader.load();
-  return { adapter, configLoader, reclassifier };
+  return { adapter, configLoader, reclassifier, controlsRegistry, controlInvoke };
 }
 
 /**

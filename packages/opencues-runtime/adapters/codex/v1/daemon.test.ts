@@ -4,6 +4,7 @@ import { MockAdapter } from '../../../testing/mock-adapter';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { createSourceReclassifier } from '../../../src/boot-common';
 import { CodexAdapter } from './adapter';
+import type { ControlInvokeSpec } from '../../../src/adapter';
 
 /**
  * Build a fresh daemon with a recording `send` callback. Returns the
@@ -25,7 +26,11 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
     configLoader.subscribe();
     await configLoader.load();
     const reclassifier = createSourceReclassifier();
-    return { adapter, configLoader, reclassifier } as RuntimeBundle;
+    // Empty registry for tests — the test that exercises the real
+    // registry uses defaultBuildRuntime via realBuildRuntime: true.
+    const controlsRegistry = new Map();
+    const controlInvoke = () => null;
+    return { adapter, configLoader, reclassifier, controlsRegistry, controlInvoke } as RuntimeBundle;
   });
 
   const daemon = createDaemon({
@@ -351,5 +356,79 @@ describe('codex daemon — Tier 3.C: source reclassifier', () => {
     const adapter = new CodexAdapter({ cwd: '/proj', log: () => {} });
     expect(() => adapter.setText('no reclassifier')).not.toThrow();
     expect(() => adapter.pushText('no reclassifier')).not.toThrow();
+  });
+});
+
+describe('codex daemon — Tier 3.D: controls registry', () => {
+  it('default buildRuntime registers the same six controls OC wires', async () => {
+    // Real buildRuntime — exercises the actual registry construction.
+    const frames: Frame[] = [];
+    const daemon = createDaemon({ send: (f) => { frames.push(f); } });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'boot',
+      params: { cwd: '/tmp/codex-controls-test', configSearchPaths: ['/tmp/nonexistent'] },
+      id: 1,
+    }));
+    const reg = daemon.runtime?.controlsRegistry;
+    expect(reg).toBeInstanceOf(Map);
+    expect([...reg!.keys()].sort()).toEqual([
+      'answer', 'hackernews', 'opencues', 'prompt', 'stocks', 'weather',
+    ]);
+  });
+
+  it('controlInvoke dispatches to the right control + returns null for unknown', async () => {
+    const frames: Frame[] = [];
+    const daemon = createDaemon({ send: (f) => { frames.push(f); } });
+    await daemon.handleLine(JSON.stringify({
+      jsonrpc: '2.0', method: 'boot', params: { cwd: '/tmp/codex' }, id: 1,
+    }));
+    // Unknown control → null (BlankFill / Cycling fall through to spawnProcess).
+    const unknown = daemon.runtime?.controlInvoke({
+      controlName: 'definitely-not-real',
+      action: 'get',
+      args: [],
+    });
+    expect(unknown).toBeNull();
+    // Known control → ProcessHandle (the result Promise will resolve
+    // with whatever the underlying control returns; we don't await
+    // it here to keep the test fast and offline-safe).
+    const known = daemon.runtime?.controlInvoke({
+      controlName: 'opencues',
+      action: 'get',
+      args: ['voice-mode'],
+    });
+    expect(known).not.toBeNull();
+    expect(known).toHaveProperty('result');
+  });
+
+  it('CodexAdapter advertises control-invoke capability when binding is supplied', () => {
+    const withInvoke = new CodexAdapter({
+      cwd: '/proj',
+      log: () => {},
+      controlInvoke: () => null,
+    });
+    expect(withInvoke.capabilities).toContain('control-invoke');
+
+    const withoutInvoke = new CodexAdapter({ cwd: '/proj', log: () => {} });
+    expect(withoutInvoke.capabilities).not.toContain('control-invoke');
+  });
+
+  it('CodexAdapter.controlInvoke forwards to the supplied binding', () => {
+    const calls: ControlInvokeSpec[] = [];
+    const stub = (spec: ControlInvokeSpec): null => { calls.push(spec); return null; };
+    const adapter = new CodexAdapter({
+      cwd: '/proj',
+      log: () => {},
+      controlInvoke: stub,
+    });
+    adapter.controlInvoke({ controlName: 'foo', action: 'get', args: ['bar'] });
+    expect(calls).toEqual([{ controlName: 'foo', action: 'get', args: ['bar'] }]);
+  });
+
+  it('CodexAdapter.controlInvoke returns null when no binding is supplied', () => {
+    const adapter = new CodexAdapter({ cwd: '/proj', log: () => {} });
+    const result = adapter.controlInvoke({ controlName: 'x', action: 'get', args: [] });
+    expect(result).toBeNull();
   });
 });

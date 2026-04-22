@@ -32,11 +32,13 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   type Capability,
+  type ControlInvokeSpec,
   type DirEntry,
   type HostAdapter,
   type KeyEvent,
   type KeyFilter,
   type LogLevel,
+  type ProcessHandle,
   type Range,
   type RenderContext,
   type RenderDirectives,
@@ -59,6 +61,11 @@ export interface CodexAdapterOptions {
    *  during cycling). Optional; without it, runtime writes look like
    *  user writes downstream. */
   readonly reclassifier?: SourceReclassifier;
+  /** Host-native control dispatch. When supplied, BlankFill +
+   *  Cycling try this BEFORE spawnProcess for `controlInvoke`
+   *  capability. Same shape as OC's binding — usually wired by
+   *  passing `createControlInvoke(controlsRegistry)`. */
+  readonly controlInvoke?: (spec: ControlInvokeSpec) => ProcessHandle | null;
 }
 
 interface KeySub {
@@ -68,12 +75,13 @@ interface KeySub {
 interface TextSub { handler: (e: TextChangeEvent) => void }
 interface RenderSub { handler: (ctx: RenderContext) => RenderDirectives | null }
 
-const CODEX_CAPABILITIES: readonly Capability[] = [
+const CODEX_BASE_CAPABILITIES: readonly Capability[] = [
   'file-read',
   'file-write',
   // UI capabilities get added as Tier 3 wires the JSON-RPC routing:
   //   'render-override', 'dim-ranges', 'highlight-range' — when forceRender + onRender land
-  //   'change-source', 'spawn-process', 'control-invoke' — later
+  //   'change-source', 'spawn-process' — later
+  // 'control-invoke' is added per-instance when bindings.controlInvoke is supplied.
 ];
 
 /**
@@ -85,13 +93,14 @@ export class CodexAdapter implements HostAdapter {
   readonly interfaceVersion = HOST_ADAPTER_INTERFACE_VERSION;
   readonly hostName = 'codex';
   readonly hostVersion: string;
-  readonly capabilities = CODEX_CAPABILITIES;
+  readonly capabilities: readonly Capability[];
   readonly cwd: string;
 
   private _text = '';
   private _cursor = 0;
   private readonly _logFn: CodexAdapterOptions['log'];
   private readonly _reclassifier: SourceReclassifier | undefined;
+  private readonly _controlInvoke: CodexAdapterOptions['controlInvoke'];
 
   // Subscriptions — populated by runtime modules in subscribe(). The
   // daemon's RPC handlers will fan into these once Tier 3.F-I lands.
@@ -104,6 +113,12 @@ export class CodexAdapter implements HostAdapter {
     this.hostVersion = opts.hostVersion ?? 'unknown';
     this._logFn = opts.log;
     this._reclassifier = opts.reclassifier;
+    this._controlInvoke = opts.controlInvoke;
+    // Conditional capability: 'control-invoke' only when the binding
+    // is supplied. Mirrors OC's per-instance capability list.
+    const caps: Capability[] = [...CODEX_BASE_CAPABILITIES];
+    if (opts.controlInvoke) caps.push('control-invoke');
+    this.capabilities = caps;
   }
 
   // ─── State reads ───────────────────────────────────────────────────
@@ -161,10 +176,17 @@ export class CodexAdapter implements HostAdapter {
     };
   }
 
-  // ─── Process / control (stubs) ─────────────────────────────────────
+  // ─── Process / control ─────────────────────────────────────────────
 
   spawnProcess(_spec: never): never {
     throw new Error('CodexAdapter.spawnProcess: not yet implemented (Tier 3.B subset)');
+  }
+
+  /** Forward to the host's controlInvoke binding when supplied. Same
+   *  shape as OC's adapter — null fallthrough so BlankFill / Cycling
+   *  drop to spawnProcess for shell-script controls. */
+  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
+    return this._controlInvoke?.(spec) ?? null;
   }
 
   // ─── FS ops (real) ─────────────────────────────────────────────────
