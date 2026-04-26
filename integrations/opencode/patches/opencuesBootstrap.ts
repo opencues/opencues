@@ -16,7 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
-import { createControlInvoke, AnswerControl, HackerNewsControl, OpenCuesSettingsControl, PromptImproverControl, StocksControl, WeatherControl, type Control } from "@opencues/runtime/dist/src/controls"
+import { createControlInvoke, AnswerControl, CountriesControl, CryptoControl, DictionaryControl, HackerNewsControl, OpenCuesSettingsControl, PromptImproverControl, StocksControl, WeatherControl, type Control } from "@opencues/runtime/dist/src/controls"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -106,6 +106,9 @@ const controlsRegistry = new Map<string, Control>([
   ['hackernews', new HackerNewsControl()],
   ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
   ['weather', new WeatherControl()],
+  ['dictionary', new DictionaryControl()],
+  ['crypto', new CryptoControl()],
+  ['countries', new CountriesControl()],
   ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
   ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
   ['opencues', new OpenCuesSettingsControl({

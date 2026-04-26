@@ -20,6 +20,9 @@ export { WeatherControl, type WeatherControlOptions } from './weather';
 export { AnswerControl, type AnswerControlOptions } from './answer';
 export { PromptImproverControl, type PromptImproverControlOptions } from './prompt-improver';
 export { OpenCuesSettingsControl, type OpenCuesSettingsControlOptions } from './opencues-settings';
+export { DictionaryControl, type DictionaryControlOptions } from './dictionary';
+export { CryptoControl, type CryptoControlOptions } from './crypto';
+export { CountriesControl, type CountriesControlOptions } from './countries';
 
 /**
  * Build a controlInvoke handler that dispatches into the given registry.

@@ -10,6 +10,9 @@ import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
 import {
   AnswerControl,
+  CountriesControl,
+  CryptoControl,
+  DictionaryControl,
   HackerNewsControl,
   OpenCuesSettingsControl,
   PromptImproverControl,
@@ -51,6 +54,9 @@ export function createControls(options?: {
   }));
   controls.set('weather', new WeatherControl());
   controls.set('hackernews', new HackerNewsControl());
+  controls.set('dictionary', new DictionaryControl());
+  controls.set('crypto', new CryptoControl());
+  controls.set('countries', new CountriesControl());
 
   if (options?.llmConfig) {
     controls.set('prompt', new PromptImproverControl(options.llmConfig));
