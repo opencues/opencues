@@ -53,7 +53,15 @@ if (!command || !COMMANDS[command]) command = 'help';
 const ctx = { pkg, PKG_DIR, REPO_ROOT };
 
 try {
-  COMMANDS[command]()(rest, ctx);
+  // Commands may be sync OR async (return a Promise — e.g. `update --check`
+  // queries upstream registries). Handle both shapes uniformly.
+  const result = COMMANDS[command]()(rest, ctx);
+  if (result && typeof result.then === 'function') {
+    result.catch(err => {
+      console.error(`opencues ${command}: ${err && err.stack || err}`);
+      process.exit(1);
+    });
+  }
 } catch (err) {
   console.error(`opencues ${command}: ${err && err.stack || err}`);
   process.exit(1);

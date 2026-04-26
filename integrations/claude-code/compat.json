@@ -1,0 +1,21 @@
+{
+  "//": "OpenCues compatibility manifest for Claude Code. Read by `opencues update claude-code [--check|--to <version>]`. Keep in sync with manual testing — every time someone validates a new claude-code version, add it to `tested` (and bump `current-pin` if you want it to become the default).",
+  "host-kind": "npm",
+  "host-package": "@anthropic-ai/claude-code",
+  "current-pin": "2.1.110",
+  "pin-location": {
+    "kind": "npm-package-json",
+    "path-from-fork": "package.json",
+    "field": "dependencies.@anthropic-ai/claude-code",
+    "fork-default": "~/claude-code-cues"
+  },
+  "tested": ["2.1.110"],
+  "compat-range": "2.1.x",
+  "known-incompatible": [
+    {
+      "version": "2.1.119",
+      "reason": "Switched to native binary distribution. No cli.js to patch — would need a totally different patcher approach.",
+      "first-broken": "2.1.119"
+    }
+  ]
+}

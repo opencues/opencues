@@ -1,0 +1,16 @@
+{
+  "//": "OpenCues compatibility manifest for Chrome. Chrome auto-updates itself, so we don't pin a version — we declare the minimum required (driven by the CSS Custom Highlight API). Update.cjs --check on chrome is informational only (no auto-upgrade path).",
+  "host-kind": "browser",
+  "host-runtime": "chrome",
+  "current-pin": null,
+  "min-version": "121",
+  "min-version-reason": "CSS Custom Highlight API (Highlight.range, document.highlights) reached stable in Chrome 121.",
+  "tested": ["121", "122", "123", "124"],
+  "compat-range": ">=121",
+  "known-incompatible": [
+    {
+      "version": "<121",
+      "reason": "CSS Custom Highlight API not available — extension renders no highlights."
+    }
+  ]
+}
