@@ -90,6 +90,16 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
   if (!skipPull) steps.push({ desc: 'git pull', argv: ['git', 'pull'], cwd: ctx.REPO_ROOT });
   steps.push({ desc: 'pnpm install', argv: ['pnpm', 'install'], cwd: ctx.REPO_ROOT });
   steps.push({ desc: 'pnpm build',   argv: ['pnpm', 'build'],   cwd: ctx.REPO_ROOT });
+  // seed-configs picks up new shipped cue.md / control / blank dirs that
+  // were added in defaults/ since the user's last seed (additive seed
+  // phase). Without this, `update opencode` leaves new controls invisible
+  // because their cue.md never lands in ~/.opencues/controls/.
+  // Mirrors what `opencues install` already does.
+  steps.push({
+    desc: 'seed-configs (additive — pulls in new defaults)',
+    argv: ['node', path.join(ctx.REPO_ROOT, 'packages/opencues-cli/bin/cli.cjs'), 'seed-configs', '--silent'],
+    cwd: ctx.REPO_ROOT,
+  });
   for (const i of targets) {
     steps.push({
       desc: `redeploy ${i.host}`,
