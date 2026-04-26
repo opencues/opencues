@@ -28,7 +28,8 @@ module.exports = function help(argv, ctx) {
   console.log('Setup:');
   console.log('  install <host>          Install a host integration (claude-code|opencode|codex|chrome|--all)');
   console.log('  uninstall <host>        Roll back an installation');
-  console.log('  seed-configs            Copy repo defaults into ~/.opencues/');
+  console.log('  seed-configs            Copy repo defaults into ~/.opencues/ (first-time + sync)');
+  console.log('  update-config           Pull new shipped controls/cues/blanks into ~/.opencues/ (after a `git pull`)');
   console.log('  update                  Pull, rebuild, redeploy installed integrations');
   console.log('  set-key <provider>      Store an API key in ~/.opencues/.env');
   console.log('  check-keys              Verify configured API keys against provider endpoints');

@@ -5,7 +5,7 @@
 'use strict';
 
 const COMMANDS = [
-  'install', 'uninstall', 'seed-configs', 'init', 'new', 'run',
+  'install', 'uninstall', 'seed-configs', 'update-config', 'init', 'new', 'run',
   'validate', 'import', 'doctor', 'edit', 'logs', 'list', 'show',
   'set-key', 'check-keys', 'update', 'debug', 'completion',
   'which', 'version', 'help',
