@@ -1,4 +1,4 @@
-// `opencues update-config` — pull new shipped defaults into ~/.opencues/.
+// `opencues update-configs` — pull new shipped defaults into ~/.opencues/.
 //
 // Discoverable name for the workflow: "I just pulled new opencues code,
 // get any new shipped controls/cues/blanks onto my disk."
@@ -28,7 +28,7 @@ module.exports = function updateConfig(argv, ctx) {
 };
 
 function printHelp() {
-  console.log('opencues update-config [--project] [--dry-run] [--silent]');
+  console.log('opencues update-configs [--project] [--dry-run] [--silent]');
   console.log('');
   console.log('Pull new shipped defaults into ~/.opencues/. Run this after `git pull`');
   console.log('on the opencues repo to pick up any new controls, cues, or blanks');
@@ -47,6 +47,6 @@ function printHelp() {
   console.log('  --help      Show this message');
   console.log('');
   console.log('Note: this is the same code path as `opencues seed-configs` — that');
-  console.log('command name still works. `update-config` is the discoverable name');
+  console.log('command name still works. `update-configs` is the discoverable name');
   console.log('for the "I just pulled new opencues code" use case.');
 }
