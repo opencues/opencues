@@ -148,12 +148,14 @@ async function doCheck(host, ctx) {
       const latestInRange = [...versions].reverse().find(v => compatLib.matchesRange(v, compat['compat-range']));
       printNpmRecommendation(installedPin, latest, latestInRange, compat);
     } else if (compat['host-kind'] === 'git') {
-      console.log(`  current pin:     ${compat['current-pin'].version} (sha ${compat['current-pin'].sha})`);
+      const pin = compatLib.readGitPin(ctx.REPO_ROOT, compat);
+      if (!pin) { console.log('  current pin:     (could not read pin source)\n'); continue; }
+      console.log(`  current pin:     ${pin.version} (sha ${pin.sha})`);
       const tags = await compatLib.queryGitHubTags(compat['host-repo']);
       if (!tags) { console.log('  upstream check:  failed (GitHub API unreachable or rate-limited)\n'); continue; }
       const latest = tags[0];
       const latestInRange = tags.find(t => compatLib.matchesRange(stripV(t.name), compat['compat-range']));
-      printGitRecommendation(compat['current-pin'], latest, latestInRange, compat);
+      printGitRecommendation(pin, latest, latestInRange, compat);
     } else {
       console.log(`  (host-kind=${compat['host-kind']} — no auto-upgrade. ` +
                   `${compat['min-version'] ? `Min version ${compat['min-version']}.` : ''})`);
@@ -237,7 +239,7 @@ function stripV(s) { return String(s || '').replace(/^v/, ''); }
 
 // ─── MODE 3: UPGRADE (--to) ────────────────────────────────────────────
 
-function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
+async function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
   if (!host) {
     console.error('opencues update --to <version>: must specify a host (e.g. opencues update claude-code --to 2.1.115)');
     process.exit(2);
@@ -247,13 +249,8 @@ function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
     console.error(`opencues update: no compat.json for ${host} — can't upgrade automatically`);
     process.exit(1);
   }
-  if (compat['host-kind'] !== 'npm') {
-    console.error(`opencues update: --to is only implemented for npm-pinned hosts (CC). ${host} is ${compat['host-kind']}.`);
-    console.error(`For ${host}, edit the pin manually and run: opencues update ${host}`);
-    process.exit(1);
-  }
 
-  // Compatibility gate.
+  // Compatibility gate (same for both kinds — uses version string).
   const cls = compatLib.classifyVersion(toVersion, compat);
   if (cls.status === 'incompatible') {
     console.error(`opencues update: ${toVersion} is INCOMPATIBLE.`);
@@ -270,7 +267,21 @@ function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
     console.warn(`opencues update: ${toVersion} is in compat-range but NOT in the tested list. Should work but no maintainer guarantee.`);
   }
 
-  // Rewrite the pin.
+  // Per-host-kind dispatch.
+  if (compat['host-kind'] === 'npm') {
+    return doUpgradeNpm(host, toVersion, compat, { dryRun }, ctx);
+  }
+  if (compat['host-kind'] === 'git') {
+    return doUpgradeGit(host, toVersion, compat, { dryRun }, ctx);
+  }
+  console.error(`opencues update: --to not supported for host-kind=${compat['host-kind']} (${host}).`);
+  if (compat['host-kind'] === 'browser') {
+    console.error(`Chrome auto-updates itself; no opencues-side pin to rewrite.`);
+  }
+  process.exit(1);
+}
+
+function doUpgradeNpm(host, toVersion, compat, { dryRun }, ctx) {
   const HOME = os.homedir();
   const loc = compat['pin-location'];
   const forkDir = (loc['fork-default'] || '').replace(/^~/, HOME);
@@ -282,7 +293,6 @@ function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
   }
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   const fieldPath = loc.field.split('.');
-  // Walk to second-to-last + set the leaf.
   let parent = pkg;
   for (let i = 0; i < fieldPath.length - 1; i++) parent = parent[fieldPath[i]] = parent[fieldPath[i]] || {};
   const oldValue = parent[fieldPath[fieldPath.length - 1]];
@@ -295,16 +305,62 @@ function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
   parent[fieldPath[fieldPath.length - 1]] = toVersion;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log(`\nPin updated. Re-installing ${host} at ${toVersion}...\n`);
+  runHostInstaller(host, ctx, { rollback: () => fixupRollbackHint(pkgPath, loc.field, oldValue, host) });
+  console.log(`\n✓ ${host} now pinned at ${toVersion} and installed.`);
+  console.log(`Consider adding ${toVersion} to integrations/${host}/compat.json's "tested" list once you've verified.`);
+}
 
+async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
+  // For git hosts we need both a version AND a SHA. Look up the tag's
+  // SHA on GitHub. Accept either bare version ("1.4.12") or tag-prefixed
+  // ("v1.4.12") from the user.
+  const tags = await compatLib.queryGitHubTags(compat['host-repo']);
+  if (!tags) {
+    console.error(`opencues update: GitHub tags query for ${compat['host-repo']} failed (network or rate limit).`);
+    console.error(`Edit ${path.join(ctx.REPO_ROOT, compat['current-pin-source']['path-from-repo'])} manually + re-run: opencues update ${host}`);
+    process.exit(1);
+  }
+  const wantNorm = stripV(toVersion);
+  const tag = tags.find(t => stripV(t.name) === wantNorm);
+  if (!tag) {
+    console.error(`opencues update: ${toVersion} not found in ${compat['host-repo']}'s recent tags.`);
+    console.error(`Available recent tags: ${tags.slice(0, 8).map(t => t.name).join(', ')}...`);
+    process.exit(1);
+  }
+
+  const oldPin = compatLib.readGitPin(ctx.REPO_ROOT, compat);
+  const oldDisplay = oldPin ? `${oldPin.version}@${oldPin.sha}` : '(unknown)';
+  const pinPath = path.join(ctx.REPO_ROOT, compat['current-pin-source']['path-from-repo']);
+
+  console.log(`Plan:`);
+  console.log(`  rewrite ${pinPath}: { version: "${wantNorm}", sha: "${tag.sha}" }  (was ${oldDisplay})`);
+  console.log(`  re-run: opencues install ${host}  (will git-checkout the new SHA in <fork>)`);
+  if (dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
+
+  compatLib.writeGitPin(ctx.REPO_ROOT, compat, { version: wantNorm, sha: tag.sha });
+  console.log(`\nPin updated. Re-installing ${host} at ${wantNorm}@${tag.sha}...\n`);
+  runHostInstaller(host, ctx, {
+    rollback: () => {
+      console.error(`To roll back: edit ${pinPath} and re-run \`opencues install ${host}\``);
+      if (oldPin) console.error(`  Previous pin: { version: "${oldPin.version}", sha: "${oldPin.sha}" }`);
+    },
+  });
+  console.log(`\n✓ ${host} now pinned at ${wantNorm}@${tag.sha} and installed.`);
+  console.log(`Consider adding {version:"${wantNorm}",sha:"${tag.sha}"} to integrations/${host}/compat.json's "tested" list once you've verified.`);
+}
+
+function runHostInstaller(host, ctx, { rollback }) {
   const installer = path.join(ctx.REPO_ROOT, 'integrations', host, 'bin/install.cjs');
   const r = spawnSync('node', [installer, 'install'], { cwd: ctx.REPO_ROOT, stdio: 'inherit' });
   if (r.status !== 0) {
-    console.error(`\nInstall failed at new pin. Roll back by editing ${pkgPath} and running:`);
-    console.error(`  opencues update ${host} --to ${oldValue}`);
+    console.error(`\nInstall failed at new pin.`);
+    if (rollback) rollback();
     process.exit(r.status ?? 1);
   }
-  console.log(`\n✓ ${host} now pinned at ${toVersion} and installed.`);
-  console.log(`Consider adding ${toVersion} to integrations/${host}/compat.json's "tested" list once you've verified.`);
+}
+
+function fixupRollbackHint(pkgPath, field, oldValue, host) {
+  console.error(`Roll back by editing ${pkgPath} and setting ${field} = "${oldValue}", then re-run \`opencues install ${host}\``);
 }
 
 // ─── shared helpers ────────────────────────────────────────────────────

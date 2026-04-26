@@ -17,8 +17,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OPENCUES_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 OPENCODE_DIR="${1:-$HOME/opencode-cues}"
-PINNED_VERSION="1.4.11"
-PINNED_SHA="5e9d5c7"
+# Pin sourced from pin.json (structured) instead of inline vars, so
+# `opencues update opencode --to <version>` can rewrite it without
+# regex'ing this script. Mirrors CC's npm pin pattern.
+PIN_FILE="$OPENCUES_ROOT/integrations/opencode/pin.json"
+PINNED_VERSION=$(node -p "require('$PIN_FILE').version")
+PINNED_SHA=$(node -p "require('$PIN_FILE').sha")
 
 LOG="${OPENCUES_INSTALL_LOG:-/tmp/opencues-install-oc.log}"
 VERBOSE="${OPENCUES_INSTALL_VERBOSE:-0}"

@@ -148,6 +148,37 @@ function readNpmPin(home, compat) {
   }
 }
 
+/** Read the repo-side pin for git-pinned hosts. Returns {version, sha} or null. */
+function readGitPin(repoRoot, compat) {
+  if (compat['host-kind'] !== 'git') return null;
+  const src = compat['current-pin-source'];
+  if (!src || src.kind !== 'json-file') return null;
+  const p = path.join(repoRoot, src['path-from-repo']);
+  if (!fs.existsSync(p)) return null;
+  try {
+    const obj = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (typeof obj.version !== 'string' || typeof obj.sha !== 'string') return null;
+    return { version: obj.version, sha: obj.sha, _path: p };
+  } catch {
+    return null;
+  }
+}
+
+/** Rewrite the pin file for a git-pinned host. Mirrors `// ` lines in the
+ *  source so the shape is preserved. */
+function writeGitPin(repoRoot, compat, { version, sha }) {
+  const src = compat['current-pin-source'];
+  if (!src || src.kind !== 'json-file') {
+    throw new Error(`writeGitPin: compat.json has no json-file pin-source`);
+  }
+  const p = path.join(repoRoot, src['path-from-repo']);
+  const obj = JSON.parse(fs.readFileSync(p, 'utf8'));
+  obj.version = version;
+  obj.sha = sha;
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '\n');
+  return p;
+}
+
 module.exports = {
   loadCompat,
   queryNpmVersions,
@@ -156,4 +187,6 @@ module.exports = {
   matchesRange,
   classifyVersion,
   readNpmPin,
+  readGitPin,
+  writeGitPin,
 };

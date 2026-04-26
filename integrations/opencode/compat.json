@@ -1,15 +1,10 @@
 {
-  "//": "OpenCues compatibility manifest for OpenCode. The fork is git-SHA pinned (not npm), so upgrades require both a SHA and a version. Patches target specific files in the fork (app.tsx, prompt/index.tsx, footer.tsx) — anything that touches those files in upstream needs a re-test before adding here.",
+  "//": "OpenCues compatibility manifest for OpenCode. The fork is git-SHA pinned (not npm). Pin lives in integrations/opencode/pin.json (structured JSON, sourced by setup.sh + rewritten by `opencues update opencode --to <version>`). Patches target specific files in the fork (app.tsx, prompt/index.tsx, footer.tsx) — anything that touches those files in upstream needs a re-test before adding here.",
   "host-kind": "git",
   "host-repo": "sst/opencode",
-  "current-pin": {
-    "version": "1.4.11",
-    "sha": "5e9d5c7"
-  },
-  "pin-location": {
-    "kind": "shell-script-vars",
-    "path-from-repo": "integrations/opencode/patches/setup.sh",
-    "vars": ["PINNED_VERSION", "PINNED_SHA"]
+  "current-pin-source": {
+    "kind": "json-file",
+    "path-from-repo": "integrations/opencode/pin.json"
   },
   "tested": [
     { "version": "1.4.11", "sha": "5e9d5c7" }
