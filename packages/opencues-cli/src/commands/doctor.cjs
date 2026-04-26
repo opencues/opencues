@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const compatLib = require('../lib/compat.cjs');
 
 module.exports = function doctor(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -48,6 +49,7 @@ module.exports = function doctor(argv, ctx) {
 
   // ── CC install ────────────────────────────────────────────────────────
   console.log('## Claude Code (cc)');
+  reportPinStatus('claude-code', ctx, HOME, findings);
   // Compact-footprint layout: everything inside <CC_FORK>/{node_modules/@opencues, .opencues}.
   // Auto-detect the fork dir; ~/claude-code-cues is the default install location.
   const ccFork = path.join(HOME, 'claude-code-cues');
@@ -90,6 +92,7 @@ module.exports = function doctor(argv, ctx) {
 
   // ── OC install ────────────────────────────────────────────────────────
   console.log('## OpenCode (oc)');
+  reportPinStatus('opencode', ctx, HOME, findings);
   const ocFork = path.join(HOME, 'opencode-cues');
   if (fs.existsSync(ocFork)) {
     ok(`fork at ${ocFork}`, true);
@@ -169,6 +172,58 @@ module.exports = function doctor(argv, ctx) {
 
 function ok(label, present)  { console.log(`  ${present ? '✓' : '✗'}  ${label}`); }
 function bad(label, present) { ok(label, present); }
+
+/**
+ * Print a one-line pin-status check for the given integration.
+ * Reads compat.json + the local pin (no network — that's `update --check`).
+ * Surfaces drift: pin is tested ✓ / pin is in compat-range but untested ⚠ /
+ * pin is incompatible (shouldn't happen because installer should refuse,
+ * but check anyway).
+ */
+function reportPinStatus(host, ctx, HOME, findings) {
+  const compat = compatLib.loadCompat(ctx.REPO_ROOT, host);
+  if (!compat) return;
+  let pin = null;
+  if (compat['host-kind'] === 'npm') {
+    pin = compatLib.readNpmPin(HOME, compat);
+  } else if (compat['host-kind'] === 'git') {
+    const g = compatLib.readGitPin(ctx.REPO_ROOT, compat);
+    if (g) pin = g.version;
+  }
+  if (!pin) return; // not installed yet — other checks will flag it
+  const cls = compatLib.classifyVersion(pin, compat);
+  const tested = (compat.tested || [])
+    .map(t => typeof t === 'string' ? t : t.version);
+  const latestTested = tested.length ? tested[tested.length - 1] : null;
+  if (cls.status === 'tested') {
+    if (latestTested && pin !== latestTested) {
+      ok(`pin status   ${pin} (tested, but ${latestTested} is newer-tested)`, true);
+    } else {
+      ok(`pin status   ${pin} (tested ✓)`, true);
+    }
+  } else if (cls.status === 'compat-untested') {
+    bad(`pin status   ${pin} (in compat-range ${compat['compat-range']}, NOT tested)`, false);
+    findings.push({
+      sev: 'info',
+      msg: `${host}: pin ${pin} is in compat-range but not in maintainer's tested list`,
+      fix: latestTested ? `opencues update ${host} --to ${latestTested}  (or test + add to compat.json)` : `add ${pin} to integrations/${host}/compat.json's "tested" list once verified`,
+    });
+  } else if (cls.status === 'incompatible') {
+    bad(`pin status   ${pin} (KNOWN INCOMPATIBLE: ${cls.reason})`, false);
+    findings.push({
+      sev: 'warn',
+      msg: `${host}: pin ${pin} is known-incompatible (${cls.reason})`,
+      fix: latestTested ? `opencues update ${host} --to ${latestTested}` : `pick a tested version + opencues update ${host} --to <v>`,
+    });
+  } else if (cls.status === 'out-of-range') {
+    bad(`pin status   ${pin} (OUT OF compat-range ${compat['compat-range']})`, false);
+    findings.push({
+      sev: 'warn',
+      msg: `${host}: pin ${pin} is outside compat-range ${compat['compat-range']}`,
+      fix: latestTested ? `opencues update ${host} --to ${latestTested}` : `pick a version in ${compat['compat-range']} + opencues update ${host} --to <v>`,
+    });
+  }
+}
 
 function printHelp() {
   console.log('opencues doctor');
