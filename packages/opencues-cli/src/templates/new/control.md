@@ -5,13 +5,19 @@
 # ─────────────────────────────────────────────────────────────────────
 #
 # A folder-based control. Pick ONE shape below by uncommenting the
-# relevant block and deleting the others. Colocate any scripts in this
+# relevant block and deleting the rest. Colocate any scripts in this
 # same folder (e.g. ./{{NAME}}.sh) and reference with a relative path.
 #
-# For LLM/HTTP-backed controls, do NOT configure here — implement as a
-# TS class under `packages/opencues-runtime/src/controls/<name>.ts` and
-# register in each host's controlInvoke map. See
-# docs/guides/adding-a-cue-control.md.
+# Real shipped examples (cat any to see the pattern in production):
+#   defaults/controls/volume/cue.md         — SHAPE 5: word + blank combined
+#   defaults/controls/brightness/cue.md     — SHAPE 5: same pattern
+#   defaults/controls/affirmations/cue.md   — SHAPE 4: list (no script)
+#   defaults/controls/numbers/cue.md        — SHAPE 3: step
+#   defaults/controls/opencues/cue.md       — SHAPE 6: selector + satellite
+#   defaults/controls/stocks/cue.md         — SHAPE 7: runtime-class (TS)
+#   defaults/controls/weather/cue.md        — SHAPE 7: runtime-class
+#   defaults/controls/hackernews/cue.md     — SHAPE 7: runtime-class
+#   defaults/controls/prompt/cue.md         — SHAPE 7: runtime-class (consume-all)
 
 name: {{NAME}}
 type: control
@@ -21,8 +27,9 @@ control: {{NAME}}
 # SHAPE 1: Word-control — cycling triggers external action
 # ─────────────────────────────────────────────────────────────────────
 # The word "{{NAME}}" in text becomes cyclable. Ctrl+Alt+Up/Down runs
-# the script with the given args. Good for: volume, brightness, any
-# system adjustment.
+# the script with the given args. Good for: pure system adjustments
+# where the user types the word as a verb (less common — most useful
+# controls combine word + blank, see SHAPE 5).
 #
 # Fields:
 #   script:    path to script, relative to this cue.md
@@ -41,37 +48,39 @@ control: {{NAME}}
 # SHAPE 2: Blank-control — typing `_` near keyword auto-populates
 # ─────────────────────────────────────────────────────────────────────
 # When the user types `_` within `blankProximity` words of a keyword,
-# the runtime calls `blankScript` (or uses `stepValues`) to populate
-# the blank with the current value.
+# the runtime calls `blankScript get` to read the current value, fills
+# the blank, then calls `blankScript set <value>` on cycle. Good for:
+# blanks-only controls without a corresponding word-control (rare).
 #
-# Fields (all optional except blankKeywords):
+# Fields (all optional except blankKeywords + blankScript):
 #   blankKeywords:        comma-separated triggers (required)
-#   blankAutoPopulate:    fill `_` immediately (default true)
-#   blankScript:          script that returns the current value
-#                         (called with no args; prints value to stdout)
-#   blankRange:           "min-max" — clamps the value
-#   blankFormat:          number | string (default string)
-#   blankSuffix:          appended to numeric values (e.g. "%", "px")
+#   blankScript:          script that responds to `get` / `set <value>`
+#                         (required for live-value controls; alternative:
+#                         stepValues for static lists — see SHAPE 4)
+#   blankAutoPopulate:    fill `_` immediately on typing (default false;
+#                         most live-value controls want true)
+#   blankFormat:          integer | float | string  (default string)
+#   blankSuffix:          appended to numeric display (e.g. "%", "px")
 #   blankStep:            step size for cycling (numeric blanks only)
-#   blankReadOnly:        disable cycling (live API data, e.g. stocks)
+#   blankReadOnly:        disable cycling — use for live API data
+#                         where the user just wants to read (stocks)
 #   blankDismissible:     allow `_` to be cleared to nothing (default false)
-#   blankProximity:       max words between keyword + `_` (default 3)
+#   blankProximity:       max words between keyword + `_` (default 0 = adjacent)
 #   blankTip:             statusline tip when the blank is highlighted
-#   blankKeywordExpansions.<kw>: <expansion>   — per-keyword aliases
-#                         (e.g. blankKeywordExpansions.nvda: Nvidia)
 
 # blankKeywords: {{NAME}}
 # blankAutoPopulate: true
 # blankFormat: string
 # blankTip: "{{NAME}} value"
-# blankProximity: 3
+# blankProximity: 0
 # blankScript: ./{{NAME}}-blank.sh
 
 # ─────────────────────────────────────────────────────────────────────
 # SHAPE 3: Step control — numeric cycling, no script
 # ─────────────────────────────────────────────────────────────────────
 # Cycles numeric values with suffixes (e.g. "8.5f" → "9.0f" → "9.5f").
-# No script needed; runtime handles the arithmetic.
+# No script needed; runtime handles the arithmetic. See defaults/
+# controls/numbers/cue.md for production example.
 #
 # Fields (use stepPattern OR stepSuffixes, not both):
 #   stepPattern:   regex with captures — (\d+)(px|em|rem)
@@ -79,31 +88,108 @@ control: {{NAME}}
 #   step:          increment (default 1)
 #   stepMin:       lower bound (optional)
 #   stepMax:       upper bound (optional)
-#   stepFormat:    int | float (default int)
+#   stepFormat:    integer | float (default integer)
 #   stepTip:       tip shown when a cyclable value is highlighted
 
 # stepSuffixes: f
 # step: 0.5
 # stepMin: 0
 # stepFormat: float
-# stepTip: "±0.5f"
+# stepTip: "±0.5{{NAME}}"
 
 # ─────────────────────────────────────────────────────────────────────
 # SHAPE 4: List control — cycles a fixed list on a blank position
 # ─────────────────────────────────────────────────────────────────────
 # Combines a blank-control keyword trigger with a fixed cycle list.
-# e.g. "affirmation" keyword + `_` cycles "I am strong" / "I am brave".
+# No script needed. See defaults/controls/affirmations/cue.md.
 #
 # Fields:
-#   blankKeywords: comma-separated triggers
-#   stepValues:    JSON array of strings to cycle through
-#   tip:           statusline tip on highlight
-#   blankDismissible: allow clearing (default false)
+#   blankKeywords:    comma-separated triggers
+#   stepValues:       JSON array of strings to cycle through
+#   tip:              statusline tip on highlight
+#   blankDismissible: allow clearing (default false; affirmations uses true)
 
 # blankKeywords: {{NAME}}
 # stepValues: ["first", "second", "third"]
 # tip: "{{NAME}} options"
 # blankDismissible: true
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 5: COMBINED word + blank control (most powerful — volume/brightness)
+# ─────────────────────────────────────────────────────────────────────
+# Both word-control AND blank-control on the same cue.md. The word
+# itself cycles via key presses (script:); typing `_` near the keyword
+# auto-populates with the live value AND lets you cycle that value
+# precisely (blankScript:). The two scripts share the same colocated
+# helper binary (e.g. VolCtl.exe). See defaults/controls/volume/cue.md.
+
+# tip: system {{NAME}} control
+# speak: true
+# script: ./{{NAME}}.sh
+# upArgs: ["up", "5"]
+# downArgs: ["down", "5"]
+# blankKeywords: {{NAME}}
+# blankAutoPopulate: true
+# blankFormat: integer
+# blankSuffix: %
+# blankStep: 5
+# blankScript: ./{{NAME}}-blank.sh
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 6: Selector + Satellite (opencues settings pattern)
+# ─────────────────────────────────────────────────────────────────────
+# Two-word span: typing `<keyword> _` expands to `<setting-name> <value>`.
+# Cycle the SELECTOR (first word) to switch settings; cycle the
+# SATELLITE (second word) to change the current setting's value. Used
+# by opencues control for runtime settings (voice-mode, debug-mode, etc.).
+# See defaults/controls/opencues/cue.md.
+#
+# Extra fields:
+#   blankSatellite:           true — enable selector+satellite shape
+#   blankSatelliteSeparator:  string between selector+satellite (default ' ')
+#   blankClearKeywords:       remove the trigger keywords from text
+#                             after expansion (true = clean output)
+#   blankClearOnEdit:         drop the satellite if user types over the
+#                             selector (true = matched-pair cleanup)
+
+# blankKeywords: opencues settings, config
+# blankAutoPopulate: true
+# blankFormat: string
+# blankScript: ./{{NAME}}-blank.sh
+# blankSatellite: true
+# blankSatelliteSeparator: ' '
+# blankClearKeywords: true
+# blankClearOnEdit: true
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 7: Runtime-class control (LLM/HTTP-backed — stocks, weather, etc.)
+# ─────────────────────────────────────────────────────────────────────
+# For controls backed by an LLM call, HTTP API, or any host-runtime
+# logic, do NOT write a script — implement a TS class instead:
+#   1. packages/opencues-runtime/src/controls/{{NAME}}.ts (extends Control)
+#   2. Register in each host's controlInvoke map (see opencuesRuntime.ts
+#      for CC, opencuesBootstrap.ts for OC, controls/index.ts for chrome)
+#   3. cue.md declares blankKeywords + blankReadOnly + blankFormat —
+#      no script: or blankScript: at all.
+#
+# See defaults/controls/stocks/cue.md (real-world: 7 ticker keyword
+# expansions, blankReadOnly: true so cycling is no-op, all dispatch
+# happens in StocksControl in TS).
+#
+# Bonus: blankKeywordExpansions.<keyword>: <expansion> — replaces the
+# matched trigger word with a friendlier display name. e.g. typing
+# "rddt _" with `blankKeywordExpansions.rddt: Reddit` produces
+# "Reddit $133.44". One entry per keyword.
+
+# blankKeywords: rddt, nvda, aapl
+# blankAutoPopulate: true
+# blankFormat: string
+# blankTip: Stock price
+# blankReadOnly: true
+# blankProximity: 1
+# blankKeywordExpansions.rddt: Reddit
+# blankKeywordExpansions.nvda: Nvidia
+# blankKeywordExpansions.aapl: Apple
 
 # ─────────────────────────────────────────────────────────────────────
 # HOST COMPATIBILITY (advanced)
@@ -118,7 +204,11 @@ control: {{NAME}}
 #
 # Use `on-host:` if you have a runtime-class implementation in
 # @opencues/runtime/src/controls/<name>.ts that handles chrome (e.g.
-# routes through chrome.storage instead of the .sh fallback).
+# routes through chrome.storage instead of the .sh fallback). The
+# opencues control does this — `blankScript: ./opencues-blank.sh` for
+# native hosts, OpenCuesSettingsControl in TS for chrome, and
+# `on-host: chrome, claude-code, codex, opencode` to override the
+# auto-detect that would otherwise exclude chrome.
 # See docs/features/host-compat.md.
 
 # on-host: chrome, claude-code, codex, opencode

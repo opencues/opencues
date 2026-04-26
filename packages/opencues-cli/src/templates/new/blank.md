@@ -5,27 +5,47 @@
 # ─────────────────────────────────────────────────────────────────────
 #
 # A folder-based blank mode. The runtime merges this with modes
-# declared in monolithic blanks.md; folder wins on name conflicts.
+# declared in monolithic blanks.md (`### name` sections); folder wins
+# on name conflicts. NOTE: all shipped blank modes today live in the
+# monolithic defaults/blanks.md — folder-based blanks work but aren't
+# in production use yet, so review your output against `### math`,
+# `### factual`, etc. there for the canonical patterns.
 #
 # Blank modes fire when the user types `_`. Mode selection cascades:
 #   1. `match:` regex     (instant — any mode whose regex matches wins)
 #   2. `keywords:` list   (instant — OR'd with match:)
 #   3. LLM classifier     (fallback — blanks.md `### classifier` picks)
-#
+
 # ─────────────────────────────────────────────────────────────────────
-# REQUIRED FIELD
+# REQUIRED FIELDS
 # ─────────────────────────────────────────────────────────────────────
-# parser:  alternatives | compute | answer | raw
+# name:    must match the folder name
+# parser:  alternatives | math | compute | answer | raw
 #
 #   alternatives — comma-separated options the user cycles through
-#                  e.g. "joyful, pleased, content"
-#   compute      — LLM returns COMPUTE=<js-expr>, runtime evaluates
-#                  e.g. COMPUTE=50*1.20 → "60"
+#                  (rare for blanks; usually controls do this via stepValues)
+#   math         — numeric expressions; LLM returns COMPUTE=<expr>;
+#                  runtime evaluates with safe sandbox. Used by `### math`
+#                  for "4 * 12 = _" style inputs.
+#   compute      — generic COMPUTE=<expr> form (math is the common case)
 #   answer       — LLM returns ANSWER=<text>, displayed verbatim
-#                  e.g. ANSWER=Paris
-#   raw          — LLM's raw string is the output (no parsing)
+#                  e.g. ANSWER=Paris. Used by `### factual`.
+#   raw          — LLM's raw string is the output (no parsing).
 
+name: {{NAME}}
 parser: answer
+
+# ─────────────────────────────────────────────────────────────────────
+# SCOPE
+# ─────────────────────────────────────────────────────────────────────
+# scope: words | blanks | all
+#   blanks  — fills a single `_` blank (default for blank modes — what
+#             you want).
+#   words   — runs per highlighted word (cue mode; not normally a blank
+#             concern).
+#   all     — runs in both contexts.
+
+scope: blanks
 
 # ─────────────────────────────────────────────────────────────────────
 # TRIGGERS (optional but recommended — otherwise relies on classifier)
@@ -33,33 +53,26 @@ parser: answer
 # match:     regex — instant trigger when input matches
 # keywords:  comma-separated — instant trigger (OR'd with match:)
 #
-# Examples:
-#   match: \d+\s*[+\-*/]\s*\d+       # arithmetic expressions
-#   match: (capital|ceo|founder) of  # factual questions
-#   keywords: math, calc, compute    # direct keyword triggers
+# Examples (lifted from defaults/blanks.md):
+#   ### math:    match: \d+\s*[+\-*/^%]\s*\d+|\d+%
+#                keywords: factorial, average, half of, double, triple,
+#                          square root, sqrt, power of, tip, tax, ...
+#
+#   ### factual: match: the (capital|ceo|founder|author|inventor|...) of .+ is
+#                keywords: capital of, ceo of, founder of, who is, who was
 
-# match:
-# keywords:
+# match: <regex>
+# keywords: <comma,separated>
 
 # ─────────────────────────────────────────────────────────────────────
 # PRIORITY
 # ─────────────────────────────────────────────────────────────────────
 # priority: number (default 50)
 #   Higher priority wins when multiple modes match (match: or keywords:
-#   ties). Also determines classifier preference on ambiguous inputs.
-#   Classifier itself usually has priority: 100.
+#   ties). The LLM classifier itself uses priority: 100; specific modes
+#   like math/factual use 90.
 
 priority: 100
-
-# ─────────────────────────────────────────────────────────────────────
-# SCOPE
-# ─────────────────────────────────────────────────────────────────────
-# scope: word | document
-#   word     — fills a single `_` blank (default; most modes)
-#   document — consume-all mode; runs once for the whole input
-#              (e.g. "improve the whole prompt" patterns)
-
-# scope: word
 
 # ─────────────────────────────────────────────────────────────────────
 # OPTIONAL FIELDS
