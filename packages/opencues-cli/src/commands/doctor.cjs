@@ -48,18 +48,31 @@ module.exports = function doctor(argv, ctx) {
 
   // ── CC install ────────────────────────────────────────────────────────
   console.log('## Claude Code (cc)');
-  const ccRoot = path.join(HOME, '.claude/opencues');
-  const ccCore = path.join(ccRoot, 'core');
-  const ccRuntime = path.join(ccRoot, 'runtime');
-  const ccBackup = path.join(ccRoot, 'patch-state/cli.js.backup');
-  ok(`install root  ${ccRoot}/`, fs.existsSync(ccRoot));
+  // Compact-footprint layout: everything inside <CC_FORK>/{node_modules/@opencues, .opencues}.
+  // Auto-detect the fork dir; ~/claude-code-cues is the default install location.
+  const ccFork = path.join(HOME, 'claude-code-cues');
+  const ccSupport = path.join(ccFork, '.opencues');
+  const ccCore = path.join(ccFork, 'node_modules/@opencues/core');
+  const ccRuntime = path.join(ccFork, 'node_modules/@opencues/runtime');
+  const ccBackup = path.join(ccSupport, 'patch-state/cli.js.backup');
+  ok(`fork dir     ${ccFork}/`, fs.existsSync(ccFork));
+  ok(`support dir  ${ccSupport}/`, fs.existsSync(ccSupport));
   ok(`runtime`,    fs.existsSync(ccRuntime));
   ok(`core`,       fs.existsSync(ccCore));
   ok(`tweakcc backup`, fs.existsSync(ccBackup));
+  // Warn if a stale pre-compact-footprint install is still on disk.
+  const legacyCcRoot = path.join(HOME, '.claude/opencues');
+  if (fs.existsSync(legacyCcRoot)) {
+    findings.push({
+      sev: 'warn',
+      msg: `legacy install at ${legacyCcRoot}/ — re-run install to migrate to compact footprint`,
+      fix: 'opencues install claude-code',
+    });
+  }
   // Detect cli.js patches.
   const cliCandidates = [
     path.join(HOME, '.claude/node_modules/@anthropic-ai/claude-code/cli.js'),
-    path.join(HOME, 'claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js'),
+    path.join(ccFork, 'node_modules/@anthropic-ai/claude-code/cli.js'),
   ];
   for (const cli of cliCandidates) {
     if (!fs.existsSync(cli)) continue;
@@ -70,8 +83,8 @@ module.exports = function doctor(argv, ctx) {
       findings.push({ sev: 'warn', msg: `cli.js at ${cli} is not patched`, fix: `opencues install claude-code --target ${cli}` });
     }
   }
-  if (!fs.existsSync(ccRoot)) {
-    findings.push({ sev: 'info', msg: 'CC not installed', fix: 'opencues install claude-code' });
+  if (!fs.existsSync(ccSupport)) {
+    findings.push({ sev: 'info', msg: 'CC not installed (compact footprint)', fix: 'opencues install claude-code' });
   }
   console.log('');
 

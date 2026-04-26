@@ -84,9 +84,9 @@ Features and values that are hardcoded in patch code or opencues-core rather tha
 - **Note:** Integration-specific — different editors have different key systems
 
 ### File paths
-- **What:** TTS script (`~/.claude/opencues/scripts/speak.sh`), highlight export (`/tmp/opencues-highlight-state-{pid}.json`)
+- **What:** TTS script (`~/claude-code-cues/.opencues/scripts/speak.sh`), highlight export (`/tmp/opencues-highlight-state-{pid}.json`)
 - **Where:** `dynamicHighlight.ts`, `wordHighlight.ts`
-- **Note:** Could be in `~/.tweakcc/config.json`
+- **Note:** Could be in `~/claude-code-cues/.opencues/patch-state/config.json`
 
 ### HTTP configuration
 - **What:** Timeout (30s), socket pool (2), warmup timeout (1s)

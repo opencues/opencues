@@ -86,10 +86,16 @@ entry, or `$OPENCUES_HOME` when set).
 
 - `opencues init` does NOT scaffold `opencues.md` — neither at
   project nor user level
-- `opencues seed-configs` (no flag) copies it to `~/.opencues/`;
-  `seed-configs --project` skips it
-- The file is auto-created on first write by
-  `OpenCuesSettingsControl.set` if it doesn't exist
+- `opencues seed-configs` (no flag) copies it from
+  `defaults/opencues.md` to `~/.opencues/`; `seed-configs --project`
+  skips it
+- A 0-byte `opencues.md` is treated as missing — `seed-configs`
+  re-seeds it, and `setup.sh` self-heals on every install. The
+  `OpenCuesSettingsControl` silently no-ops on null/empty content
+  (correct behavior for "no file"), so an empty file would otherwise
+  silently break `opencues ___` / `config ___` blank-fills on every
+  native host. Chrome is unaffected — its storage adapter falls back
+  to the bake-time `__DEFAULT_OPENCUES_MD__` constant
 
 ---
 

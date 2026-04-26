@@ -2,12 +2,14 @@
 
 `@opencues/claude-code` — patches Claude Code's CLI via [tweakcc](https://github.com/Piebald-AI/tweakcc) to add real-time word alternatives, blanks, and cue-controls inline in your prompts.
 
+> **tweakcc is just our patcher tool.** Every stock tweakcc patch (verbose-property, opusplan1m, thinker-symbol-*, worktree-mode, the launch banner, etc.) is disabled — only the OpenCues v2 wiring lands in cli.js. Users who want tweakcc's other features should run stock tweakcc separately.
+
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
 | Compatible with | Claude Code 2.1.110+ (2.1.x line) |
 | Source | `integrations/claude-code/` |
-| Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/.claude/opencues/`) |
+| Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/claude-code-cues/node_modules/@opencues/`) |
 
 ---
 
@@ -27,11 +29,27 @@ pnpm --filter @opencues/claude-code dev-install -- \
   --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
-The installer:
-1. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
-2. Installs both under **one dir**: `~/.claude/opencues/`
-3. Builds tweakcc with the patches under `patches/`
-4. Applies patches to the detected `cli.js` (backup at `~/.claude/opencues/patch-state/cli.js.backup`)
+The installer (`opencues install claude-code`) chains two scripts:
+
+1. **`opencues seed-configs --silent`** (shared `~/.opencues/` writes — used by all native hosts)
+   - First-time copy of `defaults/{cues,blanks,controls,opencues}.md + cues/ + controls/ + scripts/` → `~/.opencues/`
+   - Sync of library files (`.sh` / `.cs` / `.ps1`) every install — overwrites stale, never overwrites your `.md` edits
+   - Self-heal a 0-byte `~/.opencues/opencues.md`
+   - Compile colocated `.cs` → `.exe` (WSL only)
+
+2. **CC-specific setup.sh** (default behavior: nuke + rebuild from scratch)
+   - `npm install @anthropic-ai/claude-code` — pinned to exact version 2.1.110
+   - Clones tweakcc into `<CC_FORK>/.opencues/tweakcc/` (the patcher lives inside the fork)
+   - Builds + installs `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/`
+   - Installs `statusline.sh` into `<CC_FORK>/.opencues/`
+   - Patches tweakcc to wire OpenCues v2 + disable every stock patch
+   - Builds tweakcc + verifies dist contains v2 wiring (fail loud if not)
+   - Applies tweakcc to cli.js + verifies the boot landed (fail loud if not)
+
+**Install times**: ~1m 5s warm (default) / ~3-4 min cold (first install on a fresh machine).
+For dev iteration on patch sources, use `--keep-state` (skips nuke + npm install + git clone) → ~39s.
+
+> **Future:** post-publish, the same script runs as `npx @opencues/claude-code`. Same flags, same behaviour.
 
 > **Future:** post-publish, the same script runs as `npx @opencues/claude-code`. Same flags, same behaviour.
 
@@ -46,7 +64,7 @@ After install, restart `claude-cues` (or whichever Claude CLI you patched) and t
 | Type `5f`, position cursor on it, Ctrl+Alt+Up | Numeric cycling: `5f → 5.5f → 6f` |
 | Type `voice-mode active`, cycle Up | Selector/satellite + `@opencues/runtime` settings control |
 | Type `weather _ paris` | LLM/HTTP control: fills with current Paris weather |
-| Cycle any cyclable word | TTS announces the cycled value (uses `~/.claude/opencues/scripts/speak.sh`) |
+| Cycle any cyclable word | TTS announces the cycled value (uses `~/.opencues/scripts/speak.sh` — shared by all native hosts) |
 | Verify highlighted word shows tip in the status bar | Statusline export → `highlight-statusline.sh` |
 
 If any of these fail, tail `/tmp/opencues.log` in another shell — the runtime writes diagnostics there regardless of whether the TUI swallows stderr.
@@ -102,7 +120,7 @@ claude-cues
 # .opencues/cues/legal-doc/cue.md is now active alongside ~/.opencues defaults
 ```
 
-The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.) follows the same precedence: project file wins, else user file (auto-created on first write).
+The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set), seeded from `defaults/opencues.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
 
 ---
 
@@ -122,19 +140,37 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 
 ## What gets installed where
 
-**Everything @opencues/claude-code owns lives under one dir:**
+**Compact footprint: everything CC-specific lives inside the CC fork dir** (e.g. `~/claude-code-cues/`). One directory = one CC blast radius.
 
 ```
-~/.claude/opencues/
-├── core/                 built @opencues/core (CueResolver, parsers, sources)
-├── runtime/              built @opencues/runtime (Navigation, Cycling, BlankFill, controls/)
-├── statusline.sh         status-line script (wire via /statusline)
-├── scripts/              OS-bound scripts (speak.sh, brightness.sh) + WSL .exe shims
-└── patch-state/          tweakcc's config + cli.js.backup
-                          (redirected from ~/.tweakcc/ via TWEAKCC_CONFIG_DIR)
+~/claude-code-cues/                 (CC fork — npm-installed locally, single CC blast radius)
+├── package.json                    pin @anthropic-ai/claude-code: "2.1.110" (exact, no caret)
+├── node_modules/
+│   ├── @anthropic-ai/claude-code/cli.js   patched in place
+│   └── @opencues/
+│       ├── core/                  built @opencues/core (CueResolver, parsers, sources)
+│       └── runtime/               built @opencues/runtime (Navigation, Cycling, BlankFill)
+└── .opencues/
+    ├── statusline.sh              CC's statusline command (absolute path baked into
+    │                              ~/.claude/settings.json — works from any cwd)
+    ├── tweakcc/                   our patcher tool (re-cloned every install)
+    └── patch-state/               tweakcc's config + cli.js.backup
+
+~/.opencues/                        (USER-LEVEL — shared by CC + OpenCode + Codex)
+├── cues.md, blanks.md, controls.md, opencues.md   user-editable config (never overwritten)
+├── cues/<name>/cue.md             folder-based cue configs
+├── controls/<name>/               folder-based controls — colocated with their helpers:
+│   ├── brightness/                  cue.md + brightness.sh + BrightCtl.exe + brightness-set.ps1
+│   ├── volume/                      cue.md + volume.sh + VolCtl.exe
+│   └── opencues/                    cue.md + opencues-blank.sh
+└── scripts/                       shared utilities (speak.sh + SpeakCtl.exe — TTS for all hosts)
 ```
 
-Plus `<cli.js>` itself is patched in place. Backup lives inside `~/.claude/opencues/patch-state/`.
+**Compact, decoupled, predictable**:
+- Uninstalling CC (`rm -rf ~/claude-code-cues`) doesn't break OC or Codex — they read `~/.opencues/` independently
+- TTS works on OC/Codex even if CC was never installed (`~/.opencues/scripts/speak.sh` is shared)
+- `require("@opencues/runtime")` from cli.js resolves via Node's standard upward `node_modules` walk — no symlinks
+- The statusline path in `~/.claude/settings.json` is absolute, so it works from every project you launch claude-cues in
 
 **Runtime state** (NOT created by install — appears when CC runs):
 - `/tmp/opencues.log`
@@ -152,7 +188,7 @@ pnpm --filter @opencues/claude-code dev-uninstall -- \
   --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
-Reverts `cli.js` from the backup in `~/.claude/opencues/patch-state/`, then removes `~/.claude/opencues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
+Reverts `cli.js` from the backup in `~/claude-code-cues/.opencues/patch-state/`, then removes `~/claude-code-cues/.opencues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
 
 ---
 

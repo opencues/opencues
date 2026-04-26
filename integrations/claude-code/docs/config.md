@@ -76,8 +76,8 @@ TTS is per-tip opt-in via the `speak: true` flag on individual tip entries or co
 ```
 
 **Also requires at runtime:**
-- `~/.claude/opencues/core` (npm package — handles all LLM calls via CueResolver + NodeHttpAdapter)
-- `~/.claude/opencues/tips.json` (tips data)
+- `~/claude-code-cues/.opencues/core` (npm package — handles all LLM calls via CueResolver + NodeHttpAdapter)
+- `~/claude-code-cues/.opencues/tips.json` (tips data)
 - `GROQ_API_KEY` env var (for LLM calls)
 
 ## Feature Gating
@@ -107,4 +107,4 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 }
 ```
 
-Script path defaults to `~/.claude/opencues/actions/{control}.sh`. Override with `"scriptPath": "/path/to/script.sh"`.
+Script path defaults to `~/claude-code-cues/.opencues/actions/{control}.sh`. Override with `"scriptPath": "/path/to/script.sh"`.

@@ -234,7 +234,7 @@ controls/brightness/
   cue.md                # Config: word-control + blank-control fields
   brightness.sh         # Word-control: up/down via BrightCtl.exe (native powrprof.dll)
   brightness-blank.sh   # Blank-control: get/set via BrightCtl.exe
-  (BrightCtl.cs compiled to ~/.claude/opencues/scripts/BrightCtl.exe by setup.sh)
+  (BrightCtl.cs compiled to ~/.opencues/controls/brightness/BrightCtl.exe by setup.sh)
 ```
 
 **Key design choices:**

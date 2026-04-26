@@ -29,9 +29,9 @@ Add an entry to the `## Controls` JSON block in your `controls.md` file:
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
-| `control` | Yes | string | Identifier. Also used to construct the default script path: `~/.claude/opencues/scripts/{control}.sh` |
+| `control` | Yes | string | Identifier (e.g. `volume`). Used as the in-memory key in `_cueControlOverrides` and as the cycling/blank lookup name |
 | `tip` | No | string | Label shown in the status line when the word is highlighted |
-| `script` | No | string | Custom script path (overrides the default). Use `./script.sh` for folder-colocated scripts |
+| `script` | Yes (for OS-bound controls) | string | Path to the script to spawn. Use `./{name}.sh` for folder-based controls — relative to the cue.md, which seeds to `~/.opencues/controls/{name}/{name}.sh` with any helper binaries (`*.exe`, `*.ps1`) colocated in the same folder |
 | `upArgs` | No | string[] | Arguments passed on Up. Default: `["up"]` |
 | `downArgs` | No | string[] | Arguments passed on Down. Default: `["down"]` |
 | `speak` | No | boolean | Read the tip aloud via TTS when navigated to (default: false) |
@@ -69,7 +69,7 @@ Relative `script` paths (starting with `./`) are resolved against the folder. Fo
 
 ## 2. Write the control script
 
-Create a script at `~/.claude/opencues/scripts/{control}.sh` (or colocate it in the control folder). The script receives the arguments from `upArgs` or `downArgs`:
+Create a folder-based control: `defaults/controls/{name}/cue.md` + `defaults/controls/{name}/{name}.sh` colocated. setup.sh seeds both into `~/.opencues/controls/{name}/`, and the script finds any helper binaries via `${SCRIPT_DIR}/<helper>` (no path walking, no install-layout coupling). The script receives the arguments from `upArgs` or `downArgs`:
 
 ```bash
 #!/bin/bash
@@ -111,7 +111,7 @@ my-system-command "$DIRECTION" "$AMOUNT"
 1. User types "volume" in their prompt and navigates to it
 2. User presses Ctrl+Alt+Up or Ctrl+Alt+Down
 3. The CLI looks up `"volume"` in `_cueControlOverrides`
-4. Spawns: `bash ~/.claude/opencues/scripts/volume.sh up 5` (detached — integration doesn't wait)
+4. Spawns: `bash ~/.opencues/controls/volume/volume.sh up 5` (detached — integration doesn't wait)
 5. Script applies change synchronously, exits
 6. Integration calls `bash volume.sh get` ~200ms later → status line updates with new value
 
@@ -132,7 +132,7 @@ A cue-control that opens a URL:
 
 ```bash
 #!/bin/bash
-# ~/.claude/opencues/scripts/docs.sh
+# ~/.opencues/controls/docs/docs.sh
 xdg-open "https://docs.example.com" &
 ```
 

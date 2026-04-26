@@ -12,7 +12,7 @@ Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/fe
 
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
-1. **Cue-control (custom)** → spawn `~/.claude/opencues/scripts/{control}.sh`, return
+1. **Cue-control (custom)** → spawn the script from the control's `script` field (folder-based controls colocate as `~/.opencues/controls/{name}/{name}.sh`), return
 2. **Control-bound blanks** → sync script call, replace blank value, return (skipped for list controls with `stepValues` or multi-line script output — those go through step 5)
 3. **Step control** → config-driven increment/decrement via `stepPattern`/`stepSuffixes`, return
 4. **Consume-all alts** → cycle `_consumeAllAlts` (dedicated storage, independent of `_dynDefs`). Used by controls with `blankConsumeAll: true` that replace entire text with multi-word cycling alternatives. Span-aware replacement, updates `_dynSpans`, `_dynLastAnalyzed`, `_dynPrevWords`, and `_hlState.wordIndex` to prevent re-analysis interference. See `docs/guides/creating-a-cue-type.md`.

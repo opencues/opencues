@@ -22,6 +22,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const { targetExistsWithContent } = require('./seed-helpers.cjs');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
@@ -29,42 +30,48 @@ const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8
 
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
-// Single-dir install root. Everything @opencues/claude-code owns lives here, so
-// uninstall is "rm -rf $INSTALL_ROOT + tweakcc revert". tweakcc's own
-// config + cli.js.backup are redirected here too via TWEAKCC_CONFIG_DIR.
-const INSTALL_ROOT = path.join(CLAUDE_DIR, 'opencues');
-const TWEAKCC_CONFIG_DIR = path.join(INSTALL_ROOT, 'patch-state');
 
-// Single source of truth for blast radius. Install creates these,
-// uninstall removes these, dry-run prints these.
-const INSTALLED_PATHS = {
-  // The whole install dir is what gets removed. Listed inside it for
-  // visibility (dry-run prints these).
-  root: INSTALL_ROOT,
-  inside: [
-    'core/',
-    'runtime/',
-    'statusline.sh',
-    'scripts/',
-    'patch-state/  (patcher config + cli.js.backup)',
-  ],
-  // Legacy paths from prior install layouts — removed on every install
-  // and uninstall regardless of whether this install created them.
-  // tips.json is included here (not in `inside`) because prior installs
-  // seeded it but the refactor moved tips into cues.md's ## Tips block.
-  legacy: [
+// Compact-footprint install layout (mirrors OpenCode):
+//   <CC_FORK>/                        e.g. ~/claude-code-cues/
+//     ├── node_modules/
+//     │   ├── @anthropic-ai/claude-code/cli.js   ← patched in place
+//     │   └── @opencues/{core,runtime}/          ← runtime install
+//     └── .opencues/                              ← all support files
+//         ├── statusline.sh
+//         ├── scripts/                            ← speak.sh + WSL .exe shims
+//         └── patch-state/                        ← tweakcc backup + config
+//
+// Uninstall = `rm -rf <CC_FORK>` (or tweakcc --revert + `rm -rf .opencues`
+// if the user wants to keep the CC binary itself).
+//
+// We don't know <CC_FORK> until we've located cli.js, so the install root
+// is computed inside doInstall/doUninstall, not at module load.
+
+function computeInstallRoot(cliJsPath) {
+  if (!cliJsPath) return null;
+  // cli.js sits at <fork>/node_modules/@anthropic-ai/claude-code/cli.js.
+  // Walk up 4 levels to get the fork dir.
+  return path.join(path.resolve(path.dirname(cliJsPath), '..', '..', '..'), '.opencues');
+}
+
+// Legacy paths from prior install layouts — removed on every install
+// and uninstall regardless of whether this install created them.
+// Pre-compact-footprint installs put everything under ~/.claude/opencues/.
+function legacyPaths() {
+  return [
     path.join(CLAUDE_DIR, 'node_modules', 'opencues-core'),
     path.join(CLAUDE_DIR, 'node_modules', 'opencues-runtime'),
     path.join(CLAUDE_DIR, 'node_modules', '@opencues', 'core'),
     path.join(CLAUDE_DIR, 'node_modules', '@opencues', 'runtime'),
     path.join(CLAUDE_DIR, 'claude-code-tips.json'),
-    path.join(INSTALL_ROOT, 'tips.json'),
     path.join(CLAUDE_DIR, 'highlight-statusline.sh'),
+    // Pre-compact-footprint location (now inside the fork).
+    path.join(CLAUDE_DIR, 'opencues'),
     // Action files we know we shipped (only these basenames removed
     // from the shared ~/.claude/actions/ dir; user files left alone).
     ...listActionFileBasenames().map(f => path.join(CLAUDE_DIR, 'actions', f)),
-  ],
-};
+  ];
+}
 
 const { command, args, unknown } = parseArgv(process.argv.slice(2));
 warnUnknownFlags(unknown);
@@ -103,26 +110,40 @@ function doInstall() {
   if (target) checkCompat(target);
   console.log(`Target cli.js: ${target || '(auto-detecting under ~/.claude/)'}`);
 
+  const installRoot = computeInstallRoot(target);
+  const tweakccConfigDir = installRoot ? path.join(installRoot, 'patch-state') : null;
+  const legacy = legacyPaths();
+
   if (args.dryRun) {
-    console.log(`\n[dry-run] Would install everything under one dir:`);
-    console.log(`  ${INSTALLED_PATHS.root}/`);
-    for (const p of INSTALLED_PATHS.inside) console.log(`    ${p}`);
+    console.log(`\n[dry-run] Would install everything inside the CC fork dir:`);
+    console.log(`  ${installRoot || '(unknown — pass --target to compute)'}/`);
+    for (const p of ['statusline.sh', 'scripts/', 'patch-state/  (patcher config + cli.js.backup)']) {
+      console.log(`    ${p}`);
+    }
+    console.log(`  ${target ? path.join(path.dirname(target), '..', '..', '@opencues') : '<fork>/node_modules/@opencues'}/`);
+    console.log(`    core/`);
+    console.log(`    runtime/`);
     console.log(`\n[dry-run] Would remove legacy paths if present:`);
-    for (const p of INSTALLED_PATHS.legacy) console.log(`  ${p}`);
+    for (const p of legacy) console.log(`  ${p}`);
     if (target) console.log(`\n[dry-run] Would patch in place: ${target}`);
-    console.log(`[dry-run] cli.js backup will be at: ${TWEAKCC_CONFIG_DIR}/cli.js.backup`);
+    console.log(`[dry-run] cli.js backup will be at: ${tweakccConfigDir || '<install-root>'}/cli.js.backup`);
     return;
   }
 
-  // Delegate to setup.sh — it handles the full pipeline (build core +
-  // runtime, install, build tweakcc, apply patches via OPENCUES_CC_TARGET
-  // when present, else its own find under ~/.claude / ~/claude-code-cues).
+  // Delegate to setup.sh — strictly CC-specific work now (cli.js patching,
+  // statusline install, tweakcc build/apply, settings.json fixup). All the
+  // shared ~/.opencues/ writes (control library scripts, opencues.md
+  // self-heal, .cs compilation, TTS speak.sh) live in `opencues seed-configs`,
+  // which the top-level `opencues install` invokes BEFORE this script runs.
+  //
+  // tweakcc clones into <CC_FORK>/.opencues/tweakcc by default — no need
+  // to pass an override unless the user is hacking on a side checkout.
+  // Pass through --keep-state for dev iteration; otherwise default to
+  // from-scratch.
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
-  const tweakccDir = path.join(PKG_DIR, 'tweakcc');
   const setupArgs = [];
-  if (fs.existsSync(tweakccDir)) setupArgs.push(tweakccDir);
-  if (args.clean) setupArgs.push('--clean');
-  const env = { ...process.env, TWEAKCC_CONFIG_DIR };
+  if (args.keepState) setupArgs.push('--keep-state');
+  const env = { ...process.env };
   if (target) env.OPENCUES_CC_TARGET = target;
   const result = spawnSync(setupSh, setupArgs, { stdio: 'inherit', env });
 
@@ -146,15 +167,25 @@ function doUninstall() {
   const target = args.target || tryAutoDetectCli();
   const tweakccDir = path.join(PKG_DIR, 'tweakcc');
   const tweakccBin = path.join(tweakccDir, 'dist', 'index.mjs');
-  // Backup lives inside the install root because TWEAKCC_CONFIG_DIR
-  // redirected it there. Falls back to the legacy ~/.tweakcc/ location
-  // for users uninstalling an old install.
-  const newBackup = path.join(TWEAKCC_CONFIG_DIR, 'cli.js.backup');
-  const legacyBackup = path.join(HOME, '.tweakcc', 'cli.js.backup');
-  const backup = fs.existsSync(newBackup) ? newBackup : (fs.existsSync(legacyBackup) ? legacyBackup : null);
 
-  const rootExists = fs.existsSync(INSTALLED_PATHS.root);
-  const legacyToRemove = INSTALLED_PATHS.legacy.filter(p => fs.existsSync(p));
+  const installRoot = computeInstallRoot(target);
+  const tweakccConfigDir = installRoot ? path.join(installRoot, 'patch-state') : null;
+
+  // Backup may live inside the new install root, the pre-compact-footprint
+  // location, or the very-old ~/.tweakcc/ default. Try in that order.
+  const candidates = [
+    tweakccConfigDir && path.join(tweakccConfigDir, 'cli.js.backup'),
+    path.join(CLAUDE_DIR, 'opencues', 'patch-state', 'cli.js.backup'),
+    path.join(CLAUDE_DIR, 'opencues', 'tweakcc-state', 'cli.js.backup'),
+    path.join(HOME, '.tweakcc', 'cli.js.backup'),
+  ].filter(Boolean);
+  const backup = candidates.find(p => fs.existsSync(p)) || null;
+
+  const rootExists = installRoot && fs.existsSync(installRoot);
+  const inForkNodeModules = target ? path.join(path.dirname(target), '..', '..', '@opencues') : null;
+  const inForkExists = inForkNodeModules && fs.existsSync(inForkNodeModules);
+  const legacy = legacyPaths();
+  const legacyToRemove = legacy.filter(p => fs.existsSync(p));
 
   console.log('Uninstall plan:');
   if (target && fs.existsSync(tweakccBin) && backup) {
@@ -166,9 +197,10 @@ function doUninstall() {
   } else {
     console.log(`  (no --target given — skipping cli.js restore; pass --target to revert it)`);
   }
-  if (rootExists) console.log(`  rm -rf ${INSTALLED_PATHS.root}/`);
+  if (rootExists) console.log(`  rm -rf ${installRoot}/`);
+  if (inForkExists) console.log(`  rm -rf ${inForkNodeModules}/  (runtime)`);
   for (const p of legacyToRemove) console.log(`  rm -rf ${p}  (legacy)`);
-  if (!rootExists && !legacyToRemove.length) {
+  if (!rootExists && !inForkExists && !legacyToRemove.length) {
     console.log('  (no installed paths found — appears clean)');
   }
 
@@ -182,9 +214,11 @@ function doUninstall() {
   //    (otherwise we'd nuke the backup that tweakcc reads from).
   if (target && fs.existsSync(tweakccBin) && backup) {
     console.log(`Reverting cli.js patches via tweakcc...`);
+    const revEnv = { ...process.env, TWEAKCC_CC_INSTALLATION_PATH: target };
+    if (tweakccConfigDir) revEnv.TWEAKCC_CONFIG_DIR = tweakccConfigDir;
     const rev = spawnSync('node', [tweakccBin, '--revert'], {
       cwd: tweakccDir,
-      env: { ...process.env, TWEAKCC_CC_INSTALLATION_PATH: target, TWEAKCC_CONFIG_DIR },
+      env: revEnv,
       stdio: 'inherit',
     });
     if (rev.status !== 0) {
@@ -195,10 +229,14 @@ function doUninstall() {
     console.log(`  restored ${target} from ${backup}`);
   }
 
-  // 2. Remove the entire install root.
+  // 2. Remove the in-fork install root + the @opencues runtime install.
   if (rootExists) {
-    fs.rmSync(INSTALLED_PATHS.root, { recursive: true, force: true });
-    console.log(`  removed ${INSTALLED_PATHS.root}/`);
+    fs.rmSync(installRoot, { recursive: true, force: true });
+    console.log(`  removed ${installRoot}/`);
+  }
+  if (inForkExists) {
+    fs.rmSync(inForkNodeModules, { recursive: true, force: true });
+    console.log(`  removed ${inForkNodeModules}/`);
   }
   // 3. Remove any legacy paths from prior layouts.
   for (const p of legacyToRemove) {
@@ -230,14 +268,15 @@ function doSeedConfigs() {
 
   for (const entry of seedPlan) {
     if (!fs.existsSync(entry.src)) continue;
-    entry.exists = fs.existsSync(entry.dst);
-    entry.willCopy = !entry.exists; // never overwrite user edits
+    entry.exists = targetExistsWithContent(entry.dst);
+    entry.willCopy = !entry.exists; // never overwrite non-empty user edits
   }
 
   console.log('Seed plan:');
   for (const e of seedPlan) {
     if (!fs.existsSync(e.src)) console.log(`  (no source) ${e.src}`);
     else if (e.exists) console.log(`  SKIP (target exists) ${e.dst}`);
+    else if (fs.existsSync(e.dst)) console.log(`  RESEED (empty file) ${e.dst}`);
     else console.log(`  COPY ${e.src} → ${e.dst}`);
   }
   if (args.dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
@@ -357,10 +396,10 @@ function rmdirIfEmpty(dir) {
 
 function parseArgv(argv) {
   // First non-flag positional = command. Default 'install'.
-  const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean']);
+  const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean', '--keep-state']);
   const VALUE_FLAGS = new Set(['--target']);
   const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'seed-configs', 'help']);
-  const out = { command: 'install', args: { help: false, dryRun: false, clean: false }, unknown: [] };
+  const out = { command: 'install', args: { help: false, dryRun: false, clean: false, keepState: false }, unknown: [] };
   let i = 0;
   if (argv[i] && !argv[i].startsWith('-')) {
     if (KNOWN_COMMANDS.has(argv[i])) {
@@ -377,6 +416,7 @@ function parseArgv(argv) {
     if (a === '--help' || a === '-h') out.args.help = true;
     else if (a === '--dry-run') out.args.dryRun = true;
     else if (a === '--clean') out.args.clean = true;
+    else if (a === '--keep-state') out.args.keepState = true;
     else if (a === '--target') out.args.target = argv[++i];
     else out.unknown.push(a);
   }
@@ -399,7 +439,7 @@ function printHelp() {
   printBanner();
   console.log('');
   console.log('Commands:');
-  console.log('  install (default)   Build, install runtime to ~/.claude/opencues/, patch cli.js');
+  console.log('  install (default)   Build, install runtime + support files into the CC fork, patch cli.js');
   console.log('  uninstall           Revert cli.js + remove all installed paths');
   console.log('  seed-configs        Copy repo defaults to ~/.opencues/ (skips files that exist)');
   console.log('  help                Show this message');
@@ -407,22 +447,22 @@ function printHelp() {
   console.log('Flags:');
   console.log('  --target <path>     Path to cli.js (auto-detected if omitted)');
   console.log('  --dry-run           Print the plan; do not execute');
-  console.log('  --clean             Install: wipe ~/.claude/node_modules/@opencues/ first');
+  console.log('  --clean             Install: wipe runtime + core dirs first');
   console.log('  --help              Show this message');
   console.log('');
-  console.log('Blast radius:');
-  console.log('  Everything installs under ONE dir:');
-  console.log('    ~/.claude/opencues/');
-  console.log('      ├── core/                built @opencues/core');
-  console.log('      ├── runtime/             built @opencues/runtime');
-  console.log('      ├── tips.json            pre-computed word tips');
-  console.log('      ├── statusline.sh        wire via /statusline in CC');
-  console.log('      ├── scripts/             OS-bound shell scripts + WSL .exe shims');
-  console.log('      └── patch-state/         patcher config + cli.js.backup');
+  console.log('Blast radius (compact footprint — everything inside the CC fork dir):');
+  console.log('    <CC_FORK>/                e.g. ~/claude-code-cues/');
+  console.log('      ├── node_modules/');
+  console.log('      │   ├── @anthropic-ai/claude-code/cli.js   (patched in place,');
+  console.log('      │   │                                       revertable via uninstall)');
+  console.log('      │   └── @opencues/');
+  console.log('      │       ├── core/        built @opencues/core');
+  console.log('      │       └── runtime/     built @opencues/runtime');
+  console.log('      └── .opencues/');
+  console.log('          ├── statusline.sh    wire via /statusline in CC');
+  console.log('          ├── scripts/         OS-bound shell scripts + WSL .exe shims');
+  console.log('          └── patch-state/     tweakcc config + cli.js.backup');
   console.log('                               (TWEAKCC_CONFIG_DIR override)');
-  console.log('  Modified in place:');
-  console.log('    <cli.js>                   (revertable via uninstall — backup');
-  console.log('                                stored inside ~/.claude/opencues/)');
   console.log('  Repo state (gitignored, lives only inside the clone):');
   console.log('    integrations/claude-code/tweakcc/   vendored upstream tool');
   console.log('    packages/*/dist/, .turbo/  build cache');

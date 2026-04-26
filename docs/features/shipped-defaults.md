@@ -53,8 +53,7 @@ defaults/
 
 | Consumer | When | What it does |
 |---|---|---|
-| `opencues seed-configs` | On first install (run once per user) | Copies every file to `~/.opencues/`. Never overwrites existing files — idempotent. |
-| Per-host `seed-configs` (CC / OC / codex install.cjs) | During `opencues install <host>` | Same copy step, scoped to that integration's needs. |
+| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy to `~/.opencues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{controls,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed 0-byte `opencues.md`; (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). |
 | Chrome `esbuild.config.mjs` | Every `pnpm --filter @opencues/chrome build` | Inlines `defaults/cues/*`, `defaults/controls/*`, `defaults/cues.md`, `defaults/blanks.md`, `defaults/opencues.md` into the bundle as `__DEFAULT_*__` constants. The runtime uses these as fallbacks when the bundled `configs/` dir is absent or hasn't been sync'd. |
 | `packages/opencues-core/src/sources/classifier.test.ts` | Unit test | Reads `defaults/blanks.md` as a real-world fixture. |
 
@@ -67,7 +66,7 @@ Nothing reads `defaults/` at host runtime. The runtime only reads `~/.opencues/`
 If you're iterating on, say, the grammar prompt:
 
 1. Edit `defaults/cues/grammar/cue.md` in the repo.
-2. Run `pnpm exec opencues seed-configs` — idempotent; will SKIP files that already exist in `~/.opencues/`. If you've already seeded once and want the update to land, either delete the user-level file first or edit `~/.opencues/cues/grammar/cue.md` directly for fast iteration and copy back to `defaults/` when ready to ship.
+2. Run `pnpm exec opencues seed-configs` — idempotent; SKIPS files that already exist in `~/.opencues/` (empty 0-byte files re-seed automatically). If you've already seeded a non-empty file and want the update to land, either delete the user-level file first (or `truncate -s 0` it) or edit `~/.opencues/cues/grammar/cue.md` directly for fast iteration and copy back to `defaults/` when ready to ship.
 3. Re-run the integration (CC / OC / chrome) — changes picked up on next keystroke via hot-reload.
 
 For Chrome specifically, you can also re-run `pnpm exec opencues sync chrome --wsl` to pick up changes from `~/.opencues/` without rebuilding the extension. Or rebuild the extension to refresh the baked-in defaults.

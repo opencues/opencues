@@ -188,14 +188,19 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     );
   }
 
-  // Single absolute path — boot.js handles all internal wiring.
-  const bootPath = `(process.env.HOME||"~")+"/.claude/opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
-  // The hoisted control classes (HackerNews / Stocks / Weather / Answer /
+  // Bare specifiers — Node's CJS resolver walks up from cli.js
+  // (~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js)
+  // and finds @opencues/{runtime,core} in the fork's own
+  // node_modules/ where setup.sh installs them. Mirrors OpenCode's
+  // approach. Robust by design — no path drama, no symlinks, no
+  // bundling needed. Uninstalling claude-cues cleans these up too.
+  const bootPath = `"@opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
+  // Hoisted control classes (HackerNews / Stocks / Weather / Answer /
   // PromptImprover / OpenCuesSettings) live in the runtime's controls
-  // package. We require it lazily inside the bootstrap so older runtime
-  // installs (without controls/) still load — controlInvoke just stays
-  // null in that case and BlankFill falls back to spawnProcess.
-  const controlsPath = `(process.env.HOME||"~")+"/.claude/opencues/runtime/dist/src/controls/index.js"`;
+  // module. Lazy require inside the bootstrap so older runtime installs
+  // (without controls/) still load — controlInvoke just stays null in
+  // that case and BlankFill falls back to spawnProcess.
+  const controlsPath = `"@opencues/runtime/dist/src/controls/index.js"`;
   // opencues.md is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
@@ -254,8 +259,10 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // opencues-auto harness reads this. Last-writer-wins is fine
     // because the harness only drives one CC at a time.
     `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
-    // TTS: speak.sh is the same script v1 used. ttsRate matches v1's default.
-    `ttsScriptPath:(process.env.HOME||"~")+"/.claude/opencues/scripts/speak.sh",` +
+    // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.opencues/scripts/),
+    // shared with OpenCode + Codex. seed-configs ships them there + compiles
+    // SpeakCtl.cs colocated. Honors OPENCUES_HOME for env-driven overrides.
+    `ttsScriptPath:(process.env.OPENCUES_HOME||((process.env.HOME||"~")+"/.opencues"))+"/scripts/speak.sh",` +
     `ttsRate:2,` +
     // LLM resolver. Resolver only constructs if llmApiKey is set; otherwise
     // the runtime stays static-cue-only. Endpoint + model match v1's defaults.

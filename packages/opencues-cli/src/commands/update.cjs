@@ -51,8 +51,13 @@ module.exports = function update(argv, ctx) {
 
 function detectInstalled(HOME, REPO_ROOT) {
   const out = [];
-  if (fs.existsSync(path.join(HOME, '.claude/opencues/runtime'))) {
-    out.push({ host: 'claude-code', folder: 'claude-code', evidence: '~/.claude/opencues/runtime exists' });
+  // Compact-footprint install (current): runtime lives inside the CC fork's node_modules.
+  // Fall back to the pre-compact-footprint location for users with stale installs.
+  const ccFork = path.join(HOME, 'claude-code-cues');
+  if (fs.existsSync(path.join(ccFork, 'node_modules/@opencues/runtime'))) {
+    out.push({ host: 'claude-code', folder: 'claude-code', evidence: `${ccFork}/node_modules/@opencues/runtime exists` });
+  } else if (fs.existsSync(path.join(HOME, '.claude/opencues/runtime'))) {
+    out.push({ host: 'claude-code', folder: 'claude-code', evidence: '~/.claude/opencues/runtime exists (legacy)' });
   }
   const ocFork = path.join(HOME, 'opencode-cues');
   if (fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime'))) {

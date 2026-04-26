@@ -29,7 +29,7 @@ import { writeOpenCuesRuntimeV2 } from './opencuesRuntime';
   // Branch on runtime version: v2 bypasses all v1 cues patches and injects a
   // single bootstrap at the KeyDispatcher seam. v1 (default) runs the legacy
   // 22-seam patch stack below. See refactor.md §10.
-  const runtimeVersion = config.settings.misc?.opencuesRuntime ?? 'v1';
+  const runtimeVersion = config.settings.misc?.opencuesRuntime ?? 'v2';
   if (runtimeVersion === 'v2') {
     if ((result = writeOpenCuesRuntimeV2(content))) content = result;
     else console.error('patch: opencues v2 bootstrap failed — see above.');

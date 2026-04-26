@@ -48,26 +48,47 @@ module.exports = function run(argv, ctx) {
 };
 
 function runCC(passthrough) {
-  // Find a binary to launch. Prefer the patched claude-cues if the user
-  // set up that alias; otherwise plain claude. --bin <name> overrides.
+  // First choice: the patched cli.js at the known install location
+  // (~/claude-code-cues/...). This is what `opencues install claude-code`
+  // produces — the binary is `node <that-cli.js>`. Going direct skips
+  // PATH/shell-alias resolution entirely (which used to fall back to
+  // the native unpatched `claude` binary, leaving cues + highlights
+  // silently broken because the runtime never loaded — claude-cues was
+  // a shell alias and `which` couldn't see it).
   const binFlag = passthrough.indexOf('--bin');
-  let binName = (binFlag >= 0 && passthrough[binFlag + 1]) || null;
-  if (binName) passthrough.splice(binFlag, 2);
+  if (binFlag >= 0 && passthrough[binFlag + 1]) {
+    const explicit = passthrough[binFlag + 1];
+    passthrough.splice(binFlag, 2);
+    console.log(`Launching ${explicit} (--bin override)...`);
+    exitFromSpawn(spawnSync(explicit, passthrough, { stdio: 'inherit' }), explicit);
+    return;
+  }
 
-  const candidates = binName ? [binName] : ['claude-cues', 'claude'];
-  let resolved = null;
-  for (const c of candidates) {
+  const patchedCli = path.join(os.homedir(), 'claude-code-cues', 'node_modules',
+    '@anthropic-ai', 'claude-code', 'cli.js');
+  if (fs.existsSync(patchedCli)) {
+    console.log(`Launching patched claude-code at ${patchedCli}...`);
+    const result = spawnSync('node', [patchedCli, ...passthrough], { stdio: 'inherit' });
+    exitFromSpawn(result, patchedCli);
+    return;
+  }
+
+  // Fallback: PATH-based lookup. `claude-cues` shell alias won't
+  // resolve via `which` — only a real binary on PATH works.
+  console.warn('opencues run claude-code: patched install not found at ~/claude-code-cues.');
+  console.warn('Install with: opencues install claude-code');
+  console.warn('Falling back to PATH lookup (likely UNPATCHED — cues will not work):');
+  for (const c of ['claude-cues', 'claude']) {
     const which = spawnSync('which', [c], { stdio: ['ignore', 'pipe', 'ignore'] });
-    if (which.status === 0) { resolved = which.stdout.toString().trim(); break; }
+    if (which.status === 0) {
+      const resolved = which.stdout.toString().trim();
+      console.log(`Launching ${resolved}...`);
+      exitFromSpawn(spawnSync(resolved, passthrough, { stdio: 'inherit' }), resolved);
+      return;
+    }
   }
-  if (!resolved) {
-    console.error(`opencues run claude-code: no binary found in PATH (tried: ${candidates.join(', ')})`);
-    console.error('Install with: opencues install claude-code');
-    process.exit(127);
-  }
-  console.log(`Launching ${resolved}...`);
-  const result = spawnSync(resolved, passthrough, { stdio: 'inherit' });
-  exitFromSpawn(result, resolved);
+  console.error('opencues run claude-code: no binary found.');
+  process.exit(127);
 }
 
 function runOC(passthrough, fullArgv) {

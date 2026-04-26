@@ -100,10 +100,10 @@ pnpm exec opencues uninstall codex
 The HIGH + MEDIUM stale-doc fixes from the audit. No commands to run; just read-through. Spot-check that:
 
 - `README.md` install section uses `pnpm exec opencues install <host>`
-- `CLAUDE.md` install destination is `~/.claude/opencues/` (not `~/.claude/node_modules/`)
+- `CLAUDE.md` install destination is `~/claude-code-cues/.opencues/` (not `~/.claude/node_modules/`)
 - `integrations/claude-code/README.md` and `integrations/claude-code/patches/README.md` reflect the consolidated layout
 - `docs/guides/quickstart.md` uses `pnpm` and `opencues install claude-code`
-- Various feature/guide docs no longer reference `~/.claude/actions/` or `~/.claude/highlight-statusline.sh` directly (current paths: `~/.claude/opencues/scripts/` and `~/.claude/opencues/statusline.sh`)
+- Various feature/guide docs no longer reference `~/.claude/actions/` or `~/.claude/highlight-statusline.sh` directly (current paths: `~/claude-code-cues/.opencues/scripts/` and `~/claude-code-cues/.opencues/statusline.sh`)
 
 ---
 
@@ -514,7 +514,7 @@ pnpm exec opencues uninstall --all --dry-run
 ```bash
 pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 # → goes through full install pipeline
-# → at the end: ~/.claude/opencues/ should exist with core/, runtime/,
+# → at the end: ~/claude-code-cues/.opencues/ should exist with core/, runtime/,
 #   statusline.sh, scripts/, patch-state/ (tips ship inside cues.md ## Tips)
 
 pnpm exec opencues which | grep -E '✓|-'

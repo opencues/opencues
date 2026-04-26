@@ -17,27 +17,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRECTION="$1"
 AMOUNT="${2:-5}"
 
-# Resolve an OS helper by trying every known location in priority order.
-# See brightness.sh for the full rationale on the multiple paths.
-find_helper() {
-  local name="$1"
-  local candidates=(
-    "${SCRIPT_DIR}/${name}"
-    "${HOME}/.claude/opencues/scripts/${name}"
-    "${HOME}/.claude/opencues/actions/${name}"
-    "${HOME}/.claude/actions/${name}"
-  )
-  for p in "${candidates[@]}"; do
-    [ -f "$p" ] && echo "$p" && return 0
-  done
-  return 1
-}
-VOL_CTL="$(find_helper VolCtl.exe || true)"
+VOL_CTL="${SCRIPT_DIR}/VolCtl.exe"
 
-# Live read: query actual system volume
-# Retries once on 0/empty — VolCtl.exe can return 0 on first call (COM init delay)
 get_volume() {
-  if [ -n "$VOL_CTL" ]; then
+  if [ -f "$VOL_CTL" ]; then
     ACTUAL=$("$VOL_CTL" get 2>/dev/null | tr -dc '0-9')
     if [ -z "$ACTUAL" ] || [ "$ACTUAL" = "0" ]; then
       sleep 0.1
@@ -56,9 +39,9 @@ case "$DIRECTION" in
 esac
 
 # Apply via key presses (fast, shows Windows OSD)
-if [ -n "$VOL_CTL" ]; then
+if [ -f "$VOL_CTL" ]; then
   "$VOL_CTL" "$DIRECTION" "$AMOUNT"
-elif [[ -f /mnt/c/Windows/nircmd.exe ]]; then
+elif [ -f /mnt/c/Windows/nircmd.exe ]; then
   case "$DIRECTION" in
     up)   /mnt/c/Windows/nircmd.exe changesysvolume $((AMOUNT * 655)) ;;
     down) /mnt/c/Windows/nircmd.exe changesysvolume -$((AMOUNT * 655)) ;;

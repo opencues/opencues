@@ -34,7 +34,7 @@ Press Ctrl+Alt+Up
            ↓
 cue-control check (FIRST priority)
   → Word "volume" found in cueControlOverrides
-  → Spawn: ~/.claude/opencues/scripts/volume.sh up 5
+  → Spawn: ~/.opencues/controls/volume/volume.sh up 5
   → Return (skip step control/cycling logic)
            ↓
 Volume increases
@@ -54,7 +54,7 @@ All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_
 
 ## Configuration
 
-### In `~/.tweakcc/config.json`
+### In `~/claude-code-cues/.opencues/patch-state/config.json`
 
 ```json
 {
@@ -91,9 +91,13 @@ All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_
 
 ### Script Resolution
 
-Script path is resolved in this order:
-1. `script` field value (supports `./` relative to folder for folder-based controls)
-2. `~/.claude/opencues/scripts/{control}.sh` (default)
+Folder-based controls use `script: ./{name}.sh` — resolved relative to the
+cue.md location, which seeds to `~/.opencues/controls/{name}/{name}.sh`.
+OS helper binaries (`*.exe`, `*.ps1`) live colocated in the same folder
+and are looked up via `${SCRIPT_DIR}/<helper>` inside the script — no
+path walking, no install-layout coupling.
+
+Monolithic controls.md entries supply an absolute path via `script:`.
 
 ### Folder-Based Controls
 
@@ -114,16 +118,16 @@ See `docs/guides/adding-a-cue-control.md` for the full folder format.
 Scripts receive arguments as defined in config:
 ```bash
 # For upArgs: ["up", "5"]
-~/.claude/opencues/scripts/volume.sh up 5
+~/.opencues/controls/volume/volume.sh up 5
 
 # For downArgs: ["down", "5"]
-~/.claude/opencues/scripts/volume.sh down 5
+~/.opencues/controls/volume/volume.sh down 5
 ```
 
 Scripts should also implement a `get` command — the integration calls it on navigation and ~200ms after each cycle to update the status line with the live value:
 
 ```bash
-~/.claude/opencues/scripts/volume.sh get
+~/.opencues/controls/volume/volume.sh get
 # → "volume: 64%"
 ```
 
@@ -166,25 +170,25 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 1. Check script exists and is executable:
    ```bash
-   ls -la ~/.claude/opencues/scripts/volume.sh
+   ls -la ~/.opencues/controls/volume/volume.sh
    ```
 
 2. Test script directly:
    ```bash
-   ~/.claude/opencues/scripts/volume.sh up 5
+   ~/.opencues/controls/volume/volume.sh up 5
    ```
 
 3. Check for Windows line endings (WSL):
    ```bash
-   sed -i 's/\r$//' ~/.claude/opencues/scripts/volume.sh
+   sed -i 's/\r$//' ~/.opencues/controls/volume/volume.sh
    ```
 
 ### Volume/Brightness Not Changing (WSL)
 
 1. **Test the exe directly** from WSL:
    ```bash
-   ~/.claude/opencues/scripts/VolCtl.exe up 10
-   ~/.claude/opencues/scripts/BrightCtl.exe up 10
+   ~/.opencues/controls/volume/VolCtl.exe up 10
+   ~/.opencues/controls/brightness/BrightCtl.exe up 10
    ```
 2. **Check VolCtl.exe get returns a value** — if it returns 0 or empty on first call, that's the COM init delay (retry logic in volume.sh handles this automatically)
 3. **Verify setup.sh compiled the executables** — re-run `setup.sh` if the `.exe` files are missing
@@ -215,13 +219,15 @@ See `docs/features/control-blanks.md` for full configuration reference.
 
 ## Compiled Executables
 
-`setup.sh` auto-compiles `.cs` files from both `patches/actions/` and `controls/*/` to `~/.claude/opencues/scripts/` via the Windows .NET csc.exe compiler.
+`setup.sh` auto-compiles `.cs` files into two destinations on WSL (Windows .NET csc.exe required):
 
-| Executable | Source | Purpose |
-|------------|--------|---------|
-| `VolCtl.exe` | `controls/volume/VolCtl.cs` | Volume via Core Audio API (`get`, `set`, `up`, `down`) |
-| `BrightCtl.exe` | `patches/actions/BrightCtl.cs` | Brightness via powrprof.dll (`get`, `set`, `up`, `down`) |
-| `SpeakCtl.exe` | `patches/actions/SpeakCtl.cs` | TTS via System.Speech |
+| Executable | Source | Compiled to | Purpose |
+|------------|--------|-------------|---------|
+| `VolCtl.exe` | `defaults/controls/volume/VolCtl.cs` | `~/.opencues/controls/volume/VolCtl.exe` | Volume via Core Audio API (colocated with `volume.sh`) |
+| `BrightCtl.exe` | `defaults/controls/brightness/BrightCtl.cs` | `~/.opencues/controls/brightness/BrightCtl.exe` | Brightness via powrprof.dll (colocated with `brightness.sh`) |
+| `SpeakCtl.exe` | `integrations/claude-code/patches/actions/SpeakCtl.cs` | `<CC_FORK>/.opencues/scripts/SpeakCtl.exe` | TTS via System.Speech (colocated with `speak.sh` — host runtime utility, not a user-control) |
+
+Control-colocated executables (`VolCtl`, `BrightCtl`) sit in the same folder as the script that calls them — `volume.sh` does `"${SCRIPT_DIR}/VolCtl.exe"`. No path walking, no fallback list.
 
 **VolCtl.exe** uses the Windows Core Audio API (via COM vtable calls):
 - `get` — queries actual system volume as 0-100 integer

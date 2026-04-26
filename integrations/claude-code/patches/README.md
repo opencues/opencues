@@ -1,10 +1,10 @@
 ---
-last_updated: 2026-04-20
+last_updated: 2026-04-26
 ---
 
 # Claude Code Patches
 
-The patch sources that get compiled into [tweakcc](https://github.com/Piebald-AI/tweakcc) and applied to Claude Code's `cli.js`. Maintained as `.ts` files; tweakcc transpiles + injects them at apply time.
+The patch sources that get compiled into [tweakcc](https://github.com/Piebald-AI/tweakcc) and applied to Claude Code's `cli.js`. tweakcc is just our patcher tool — every stock tweakcc patch is disabled, only the OpenCues v2 wiring lands.
 
 ## Quick install (preferred)
 
@@ -17,64 +17,79 @@ pnpm exec opencues install claude-code
 pnpm exec opencues install claude-code --target /path/to/cli.js
 ```
 
-The `opencues install claude-code` command runs `setup.sh` (this directory) under the hood. See `integrations/claude-code/README.md` for the user-facing flow.
+## Install pipeline
 
-## What setup.sh does
+`opencues install claude-code` runs two scripts in order:
 
-1. Clones tweakcc from upstream into `integrations/claude-code/tweakcc/`
-2. Copies the `.ts` patches into tweakcc's `src/patches/`
-3. Patches tweakcc's `types.ts`, `defaultSettings.ts`, and `src/patches/index.ts` (one-time wiring)
-4. Builds `@opencues/core` + `@opencues/runtime` (turbo-cached)
-5. Installs everything under `~/.claude/opencues/`:
-   - `core/`, `runtime/` — built artefacts
-   - `statusline.sh`, `scripts/` — supporting files (OS-bound scripts copied from `patches/actions/`)
-   - `patch-state/` — tweakcc config + `cli.js.backup` (via `TWEAKCC_CONFIG_DIR` override)
-   - Tips ship inside `cues.md ## Tips` (no separate JSON file)
-6. Builds tweakcc with the patches compiled in
-7. Applies the patches to the detected `cli.js` (auto-finds under `~/.claude` or `~/claude-code-cues`; explicit path via `--target`)
+1. **`opencues seed-configs --silent`** (top-level CLI, owns shared `~/.opencues/` writes)
+   - First-time copy of `defaults/{cues,blanks,controls,opencues}.md + cues/ + controls/ + scripts/` → `~/.opencues/`
+   - Sync of library files (`.sh` / `.cs` / `.ps1`) from `defaults/{controls,scripts}/` — overwrites stale, never overwrites `.md`
+   - Self-heal: re-seed a 0-byte `~/.opencues/opencues.md` (would otherwise silently break `opencues ___` blank-fills)
+   - Compile colocated `.cs` → `.exe` (WSL only — `BrightCtl.exe`, `VolCtl.exe`, `SpeakCtl.exe`)
 
-## Contents of this directory
+2. **`integrations/claude-code/patches/setup.sh`** (CC-specific only)
+   - Default behavior: nuke + rebuild from scratch (`~/claude-code-cues/{node_modules/@anthropic-ai, node_modules/@opencues, .opencues/}`). `--keep-state` flag skips the nuke for dev iteration.
+   - `npm install @anthropic-ai/claude-code` — pinned to exact version 2.1.110 (no caret) so cli.js is bit-identical every install.
+   - `git clone tweakcc` into `<CC_FORK>/.opencues/tweakcc/` — the patcher lives inside the fork too (compact footprint).
+   - Patch tweakcc's `types.ts` (add OpenCues fields), `defaultSettings.ts` (set OpenCues defaults + flip `showTweakcc{Version,PatchesApplied}` to false), `src/patches/index.ts` (wire `writeOpenCuesRuntimeV2` into the orchestrator + disable every other tweakcc patch).
+   - Build `@opencues/{core,runtime}` and install into `<CC_FORK>/node_modules/@opencues/`.
+   - Install statusline.sh into `<CC_FORK>/.opencues/statusline.sh`.
+   - Auto-fix `~/.claude/settings.json`'s `statusLine.command` if it points at a stale path.
+   - Build tweakcc + **verify** dist contains the v2 wiring (fail loud if missing).
+   - Apply tweakcc to cli.js + **verify** cli.js contains `@opencues/runtime` (fail loud if seam-miss).
+
+The whole pipeline is rocksolid against drift because:
+
+- **CC version pinned exact** — no `^` allows npm to upgrade past 2.1.110
+- **Tweakcc cloned fresh per install** — no stale state can accumulate
+- **Two verification gates** — build + apply both checked at install time
+
+## Install times
+
+| Path | Cold (no caches) | Warm (caches present) |
+|---|---|---|
+| Default (from-scratch) | ~3-4 min | **~1m 5s** |
+| `--keep-state` (dev only) | n/a | **~39s** |
+
+`--keep-state` skips `rm -rf` + `npm install @anthropic-ai/claude-code` + `git clone tweakcc` + `npm install` of tweakcc deps. Use it when iterating on patch source files. The default (always-from-scratch) is the rocksolid path.
+
+## What gets shipped
+
+After a successful install, the patched cli.js contains exactly:
+- The OpenCues v2 boot injection (`@opencues/runtime` require + dispatchKey wiring at the S1/S3/S6 seams)
+- Nothing else from tweakcc
+
+No `verbose-property` token-count modification, no `opusplan1m` model option, no `thinker-symbol-*` spinner customization, no `worktree-mode` commands, no banner. Users who want tweakcc's other features should run stock tweakcc separately against their cli.js.
+
+## Layout
 
 ```
-patches/
-├── setup.sh                  # The install pipeline (called by opencues install claude-code)
-├── opencuesRuntime.ts        # Boot + controlInvoke wiring (the v2.x patch)
-├── cursorStateExport.ts      # Exports cursor position to JSON
-├── wordHighlight.ts          # Ctrl+Alt navigation, numbers, rendering
-├── dynamicHighlight.ts       # LLM alternatives, cycling, spans
-├── types-additions.ts        # Reference: types added to tweakcc's MiscSettings
+integrations/claude-code/patches/
+├── setup.sh                  # CC-specific install pipeline (called by opencues install)
+├── opencuesRuntime.ts        # The v2 patch source — boot + controlInvoke wiring
+├── cursorStateExport.ts      # Legacy v1 patches (unused — opencuesRuntime: 'v1' fallback only)
+├── wordHighlight.ts          # ↑
+├── dynamicHighlight.ts       # ↑
+├── types-additions.ts        # Reference: types added to tweakcc's MiscConfig
 ├── defaultSettings-additions.ts  # Reference: defaults added to tweakcc
-├── index-additions.ts        # Reference: wiring added to tweakcc src/patches/index.ts
-├── actions/                  # OS-bound scripts copied to ~/.claude/opencues/scripts/
-│   ├── speak.sh, brightness.sh
-│   ├── BrightCtl.cs, SpeakCtl.cs   # WSL: compiled to .exe by setup.sh
-│   └── brightness-set.ps1
-└── highlight-statusline.sh   # Status-line script copied to ~/.claude/opencues/statusline.sh
-
-# Tips: live in cues.md's ## Tips JSON block (loaded from
-# ~/.opencues/cues.md and project-level <cwd>/.opencues/cues.md).
-# No separate JSON file ships any longer.
+├── index-additions.ts        # Reference: orchestrator wiring added to tweakcc index.ts
+└── highlight-statusline.sh   # CC's statusline command — copied to <CC_FORK>/.opencues/statusline.sh
 ```
+
+Cross-host scripts (`speak.sh`, `SpeakCtl.cs`, brightness/volume helpers) live under `defaults/controls/<name>/` and `defaults/scripts/`, NOT here — they're managed by `opencues seed-configs` and shared by every native host (CC + OC + Codex).
 
 ## Manual installation (fallback)
 
-If `opencues install claude-code` fails for some reason, you can run the setup script directly:
+If `opencues install claude-code` fails for some reason, you can run setup.sh directly:
 
 ```bash
 cd ~/opencues
 pnpm install
 pnpm build       # builds @opencues/core + @opencues/runtime
-integrations/claude-code/patches/setup.sh ~/opencues/integrations/claude-code/tweakcc
+integrations/claude-code/patches/setup.sh
 ```
 
-If your Claude Code install is at a non-standard path (e.g. WSL `claude-cues`):
-
-```bash
-CLI_JS=/home/$USER/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
-TWEAKCC_CONFIG_DIR=~/.claude/opencues/patch-state \
-  TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" \
-  node ~/opencues/integrations/claude-code/tweakcc/dist/index.mjs --apply
-```
+That runs the same nuke-and-rebuild flow. Pass `--keep-state` for incremental.
 
 ## Features
 
@@ -90,7 +105,7 @@ Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.
 
 ## Dependencies
 
-- **`@opencues/core`** + **`@opencues/runtime`** — built from `packages/` and installed to `~/.claude/opencues/`
+- **`@opencues/core`** + **`@opencues/runtime`** — built from `packages/` and installed to `<CC_FORK>/node_modules/@opencues/`
 - **GROQ_API_KEY** — API key for Groq (default provider)
 
 ## See Also

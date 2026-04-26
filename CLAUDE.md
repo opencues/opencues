@@ -121,7 +121,7 @@ opencues/
 │   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans, TTS
 │   │   ├── highlight-statusline.sh # Status line script
 │   │   └── actions/               # OS-bound scripts (speak.sh, brightness.sh, *.cs);
-│   │                              # copied into ~/.claude/opencues/scripts/ at install time
+│   │                              # copied into <CC_FORK>/.opencues/scripts/ at install time
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
 │   │   ├── cursor-positioning.md  # Cursor offset adjustment during blank fill
@@ -166,25 +166,34 @@ opencues/
 
 ```bash
 git clone https://github.com/opencues/opencues ~/opencues
-~/opencues/integrations/claude-code/patches/setup.sh
+cd ~/opencues && pnpm install
+pnpm exec opencues install claude-code
 export GROQ_API_KEY="your-key"
 ```
 
-The setup script:
-1. Clones tweakcc from upstream into `integrations/claude-code/tweakcc/`
-2. Copies + integrates patch files
-3. Builds `@opencues/core` + `@opencues/runtime`, installs everything under `~/.claude/opencues/` (single dir; uninstall is `rm -rf`)
-4. Applies patches to `claude-cues` (`~/claude-code-cues`) — not the native `claude` install
+`opencues install claude-code` chains two scripts:
 
-**Recommended invocation** (the repo's `opencues` CLI wraps this):
+1. **`opencues seed-configs --silent`** — owns all writes to `~/.opencues/`
+   (shared by every native host: CC, OC, Codex). First-time copy +
+   library-script sync + 0-byte opencues.md self-heal + colocated `.cs`
+   compile (WSL only).
+2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
+   Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code@2.1.110`
+   reinstalled + cloned tweakcc inside `<CC_FORK>/.opencues/tweakcc/` +
+   `@opencues/{core,runtime}` built and installed into `<CC_FORK>/node_modules/@opencues/`
+   + statusline.sh into `<CC_FORK>/.opencues/` + tweakcc patched (only
+   the OpenCues v2 wiring; every stock tweakcc patch disabled) +
+   verified at build AND apply time. ~1m 5s warm install.
 
-```bash
-pnpm exec opencues install claude-code
-# or, if cli.js lives at a non-standard path:
-pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
-```
+**Compact footprint**: everything CC-specific lives inside `~/claude-code-cues/`.
+Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert. OpenCode + Codex
+keep working (they read shared `~/.opencues/` independently).
 
-The legacy `integrations/claude-code/patches/setup.sh` direct invocation still works for contributors hacking on the patches.
+For non-standard cli.js paths: `--target /path/to/cli.js`.
+For dev iteration on patch sources: `--keep-state` (skips nuke; ~39s).
+
+The legacy `integrations/claude-code/patches/setup.sh` direct invocation still
+works for contributors hacking on the patches (also accepts `--keep-state`).
 
 ---
 
@@ -199,7 +208,7 @@ The legacy `integrations/claude-code/patches/setup.sh` direct invocation still w
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
-- **integrations/claude-code/tweakcc/** — tweakcc install (untracked, gitignored) — clone here on fresh setup
+- **`<CC_FORK>/.opencues/tweakcc/`** — tweakcc install lives inside the CC fork (re-cloned every from-scratch install — no global `~/tweakcc/` dir to manage)
 - **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21+ feature concepts (one file each)
 - **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), seven cycling paths, the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
@@ -218,8 +227,8 @@ integrations/claude-code/patches/setup.sh
 
 The script:
 1. Copies patch `.ts` files (`cursorStateExport.ts`, `wordHighlight.ts`, `dynamicHighlight.ts`, `opencuesRuntime.ts`) to tweakcc and rebuilds it (compiles patches into `dist/`)
-2. Builds `@opencues/core` and copies to `~/.claude/opencues/core/`
-3. Builds `@opencues/runtime` and rsyncs `dist/` to `~/.claude/opencues/runtime/`. Tips JSON, statusline script, and OS action scripts also go under `~/.claude/opencues/`. tweakcc's own config + `cli.js.backup` redirect there too via `TWEAKCC_CONFIG_DIR`. Single dir = clean uninstall.
+2. Builds `@opencues/core` and copies to `<CC_FORK>/node_modules/@opencues/core/` (so cli.js's bare-specifier `require("@opencues/core")` resolves via Node's standard upward walk — no symlinks)
+3. Builds `@opencues/runtime` and rsyncs `dist/` to `<CC_FORK>/node_modules/@opencues/runtime/`. Statusline script + OS action scripts go under `<CC_FORK>/.opencues/{statusline.sh,scripts/}`. tweakcc's own config + `cli.js.backup` redirect to `<CC_FORK>/.opencues/patch-state/` via `TWEAKCC_CONFIG_DIR`. **Compact footprint**: everything (runtime, support files, patcher state, patched cli.js) lives inside `~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert (mirrors OpenCode).
 4. Applies compiled patches to `claude-cues` (`~/claude-code-cues`)
 
 To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):
@@ -375,13 +384,21 @@ case: it is user-level only. `opencues.md` holds system-wide settings
 (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is
 owned by the OpenCues runtime. A single value applies across every
 integration, so projects cannot override it. The file lives at
-`~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set)
-and is auto-created on first write.
+`~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set).
 
 - `opencues init` does NOT scaffold `opencues.md` — neither at
   project nor user level.
-- `opencues seed-configs` (no flag) copies it to `~/.opencues/`;
-  `seed-configs --project` skips it.
+- `opencues seed-configs` (no flag) copies it from `defaults/opencues.md`
+  to `~/.opencues/`; `seed-configs --project` skips it.
+- **A 0-byte `opencues.md` is treated as missing** by both `seed-configs`
+  AND `setup.sh` (section 7a-bis self-heal). The `OpenCuesSettingsControl`
+  silently no-ops on null/empty content (correct behavior for "no file
+  exists"), so an empty seed used to silently break `opencues ___` /
+  `config ___` blank-fills on every native host. Chrome was unaffected
+  because its storage adapter falls back to the bake-time
+  `__DEFAULT_OPENCUES_MD__` constant. Both the seed-configs check and
+  the setup.sh self-heal now ensure `opencues.md` is always non-empty
+  on disk.
 - `ConfigLoader._loadOnce` reads it only from the last search path
   (the user-level entry).
 

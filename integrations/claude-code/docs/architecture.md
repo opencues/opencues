@@ -298,7 +298,7 @@ CONFIG:
   • cueControlOverrides: {word: {control, upArgs, downArgs}}
 
 EXTERNAL SCRIPTS:
-  • ~/.claude/opencues/actions/{control}.sh
+  • ~/claude-code-cues/.opencues/actions/{control}.sh
 
 DEPENDENCIES: None (foundation for dynamicHighlight)
 ```
@@ -442,7 +442,7 @@ HTTPS (via opencues-core NodeHttpAdapter):
 
 READS (at startup + on 2s TTL reload):
   │
-  ├── ~/.claude/opencues/tips.json         ← opencues-core tips lookup
+  ├── ~/claude-code-cues/.opencues/tips.json         ← opencues-core tips lookup
   │   (parsed once at startup, built into base hash map)
   │
   ├── {cwd}/cues.md (or hints.md / tips.md)   ← tips + prompt sources
@@ -453,7 +453,7 @@ READS (at startup + on 2s TTL reload):
 
 SPAWNS (from cli.js):
   │
-  └── ~/.claude/opencues/actions/{control}.sh           ← _cycleAlt (control words)
+  └── ~/claude-code-cues/.opencues/actions/{control}.sh           ← _cycleAlt (control words)
       Args: <up|down>
 ```
 

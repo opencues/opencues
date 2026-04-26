@@ -21,7 +21,7 @@ That covers everything the host needs. Specifically:
 
 | Host | What the installer does |
 |---|---|
-| `claude-code` | Clone [tweakcc](https://github.com/Piebald-AI/tweakcc) if missing → build `@opencues/{core,runtime}` → install under `~/.claude/opencues/` → patch `cli.js` in place |
+| `claude-code` | `opencues seed-configs` (shared `~/.opencues/`) → nuke prior CC state + reinstall pinned `@anthropic-ai/claude-code@2.1.110` → clone tweakcc into `<CC_FORK>/.opencues/tweakcc/` → patch tweakcc (every stock patch disabled, only OpenCues v2 wiring) → build `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/` → install statusline.sh into `<CC_FORK>/.opencues/` → apply tweakcc to cli.js + verify v2 boot landed. ~1m warm. tweakcc is just our patcher tool. |
 | `opencode` | Clone `sst/opencode` fork → `bun install` the fork's deps → build `@opencues/{core,runtime}` → install into `<fork>/node_modules/@opencues/` → patch 3 TSX files in place |
 | `chrome` | Build MV3 extension → copy `dist/` to `--target` if provided |
 | `codex` | **Pre-alpha** — clone fork + build Rust bridge. TUI patches TODO; see [`integrations/codex/HANDOFF.md`](integrations/codex/HANDOFF.md) |
@@ -61,8 +61,8 @@ Installer hints automatically print whichever form works in your shell.
 **No.** `opencues.md` holds system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is defined by the OpenCues runtime — not by users or projects. One value applies across every integration. It's runtime-owned:
 
 - Lives at user-level only: `~/.opencues/opencues.md`
-- Auto-created by the runtime on first settings write (via the OpenCues settings control)
-- `opencues seed-configs` will copy the shipped defaults there
+- Seeded from `defaults/opencues.md` by `opencues seed-configs` (and re-seeded automatically if the file is 0-bytes — the `OpenCuesSettingsControl` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills)
+- `setup.sh` self-heals an empty `opencues.md` on every install (section 7a-bis)
 - `opencues init` scaffolds only `cues.md`, `blanks.md`, `controls.md`, `README.md` in a project
 
 ### Can I have project-level `opencues.md`?
@@ -92,7 +92,7 @@ Yes: `opencues uninstall <host>` (or `--all`). Each integration reverts its patc
 
 | Host | What uninstall does |
 |---|---|
-| `claude-code` | Revert `cli.js` from backup → `rm -rf ~/.claude/opencues/` |
+| `claude-code` | Revert `cli.js` from backup → `rm -rf ~/claude-code-cues/.opencues/` |
 | `opencode` | `git checkout --` on 3 patched TSX files → remove `<fork>/node_modules/@opencues/` → remove bootstrap |
 | `chrome` | Remove the Chrome extension's `dist/` in the repo; remove the `--target` deploy if one was used |
 | `codex` | Revert patches → remove bridge crate |
@@ -128,7 +128,7 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `~/.claude/opencues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
+| `~/claude-code-cues/.opencues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
 | `~/claude-code-cues/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
 | `~/opencode-cues/` | OpenCode fork (cloned on install) | Patched fork; `~/opencode-cues/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
 | `~/codex-cues/` | Codex fork (cloned on install) | Similar to opencode-cues. Pre-alpha. |

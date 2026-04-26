@@ -82,7 +82,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 
 | Host | Steps the installer runs | Runnable with `opencues run <host>` after? |
 |---|---|---|
-| `claude-code` | Clone tweakcc (if missing) + build our runtime + install under `~/.claude/opencues/` + patch `cli.js` in place | ✓ (runs `claude-cues` / `claude`) |
+| `claude-code` | seed-configs (shared `~/.opencues/`) + nuke-and-rebuild from scratch inside `~/claude-code-cues/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues` / `claude`) |
 | `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 3 TSX files | ✓ (runs `bun run dev` in the fork) |
 | `chrome` | Build MV3 extension + copy dist/ to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
 | `codex` | Clone the fork + build Rust bridge crate + apply TUI patches via diff + drop launch helper | **Alpha** — pinned to codex-rs `d58d3cc`; full build needs `libcap-dev` (Linux) |
@@ -91,8 +91,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 
 | Path | Purpose |
 |---|---|
-| `~/.claude/opencues/` | Everything `@opencues/claude-code` owns — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall is `rm -rf` of this dir + `cli.js` revert. |
-| `~/claude-code-cues/` | Local Claude Code install the integration patches (optional — auto-detects a native install too) |
+| `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.opencues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/codex-cues/` | Codex fork the integration clones + patches |
 | `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `controls.md`, `opencues.md`, plus `cues/` and `controls/` folders. Read by every host. |
@@ -135,26 +134,36 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │                       OpenCues                               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  packages/opencues-core/          Runtime module                │
-│  ├── resolver.ts              CueResolver orchestration     │
-│  ├── cues-md.ts               Config parser (cues/blanks.md)│
-│  ├── node-http-adapter.ts     HTTPS with keep-alive         │
-│  └── sources/                 ConfigSource, parsers...      │
-│                                                             │
-│  integrations/claude-code/patches/       Claude Code integration       │
-│  ├── setup.sh                 One-command installer         │
-│  ├── wordHighlight.ts         Navigation + rendering        │
-│  ├── dynamicHighlight.ts      LLM integration + cycling     │
-│  └── cursorStateExport.ts     Cursor position export        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+│  packages/opencues-core/      LLM analysis library            │
+│  ├── resolver.ts              CueResolver orchestration       │
+│  ├── cues-md.ts               Config parser (cues/blanks.md)  │
+│  ├── node-http-adapter.ts     HTTPS with keep-alive           │
+│  └── sources/                 ConfigSource, parsers...        │
+│                                                               │
+│  packages/opencues-runtime/   Host-agnostic runtime           │
+│  ├── src/modules/             Navigation, Cycling, BlankFill, │
+│  │                            DimRender, TTS, Statusline,...  │
+│  ├── src/controls/            Stocks, Weather, HackerNews,    │
+│  │                            PromptImprover, OpenCuesSettings│
+│  └── adapters/cc/v2.1/        boot.ts — the CC adapter band   │
+│                                                               │
+│  integrations/claude-code/patches/      CC integration glue   │
+│  ├── setup.sh                 The install pipeline            │
+│  ├── opencuesRuntime.ts       v2 patch — injects a thin       │
+│  │                            bootstrap that lazy-requires    │
+│  │                            @opencues/runtime/.../boot.js   │
+│  └── highlight-statusline.sh  CC's statusline command         │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     tweakcc (upstream)                      │
+│                tweakcc (our patcher tool)                   │
 │                                                             │
-│  Patch infrastructure — regex-based cli.js modification     │
-│  Cloned automatically by setup.sh                           │
+│  Patch infrastructure — regex-based cli.js modification.    │
+│  Re-cloned every install into <CC_FORK>/.opencues/tweakcc/. │
+│  ALL stock tweakcc patches disabled — only OpenCues v2      │
+│  wiring lands in cli.js.                                    │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -165,7 +174,8 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │  • Word highlight rendering (ANSI codes)                    │
 │  • Keyboard handlers (Ctrl+Alt+Arrow)                       │
 │  • LLM call on keystroke (debounced)                        │
-│  • require("~/.claude/opencues/core")                       │
+│  • require("@opencues/runtime") — bare specifier resolves   │
+│    via the CC fork's own node_modules (no symlinks needed)  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -242,7 +252,7 @@ Host-agnostic runtime + per-host adapter bands. Source: `packages/opencues-runti
 
 ### Per-host integrations
 
-- `integrations/claude-code/` — Claude Code (tweakcc patches; runtime installed to `~/.claude/opencues/`)
+- `integrations/claude-code/` — Claude Code (tweakcc patches; runtime + support files installed inside the CC fork at `~/claude-code-cues/`)
 - `integrations/opencode/` — OpenCode (clone fork at pinned SHA + bootstrap copy)
 - `integrations/chrome/` — Chrome MV3 extension (esbuild bundle + popup)
 
@@ -258,7 +268,7 @@ agents (1/3) - Spawn parallel workers via Task tool
 
 **Enable:** Run `/statusline` in Claude Code and set the command to:
 ```
-~/.claude/opencues/statusline.sh
+~/claude-code-cues/.opencues/statusline.sh
 ```
 
 **Disable:** Run `/statusline` again and clear the command.
@@ -292,7 +302,7 @@ System settings (in `~/.opencues/opencues.md`) — the same scalars are cyclable
 
 Run `pnpm exec opencues seed-configs` to populate `~/.opencues/` from the shipped defaults the first time. Hot-reloads on every edit (~2.5s for native hosts; chrome polls a `.version` hash — see `docs/features/chrome-hot-reload.md`).
 
-CC-specific patch toggles (e.g. `enableWordHighlight`, `numberDimming`) live in tweakcc's config under `~/.claude/opencues/patch-state/config.json`. They're rarely changed; defaults work for everyone.
+CC-specific patch toggles (e.g. `enableWordHighlight`, `numberDimming`) live in tweakcc's config under `~/claude-code-cues/.opencues/patch-state/config.json`. They're rarely changed; defaults work for everyone.
 
 ## Updating
 
@@ -311,7 +321,7 @@ It does **not** touch your user configs, the cloned OpenCues repo, or
 re-install without losing settings.
 
 ```bash
-pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/.claude/opencues/
+pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/claude-code-cues/{node_modules/@opencues,.opencues}/
 pnpm exec opencues uninstall opencode      # git checkout 3 patched files + removes fork node_modules entries
 pnpm exec opencues uninstall chrome        # removes integrations/chrome/dist + (if --target was used) the deploy
 pnpm exec opencues uninstall --all         # all three
@@ -351,7 +361,7 @@ safe.
 
 ### Disable individual features
 
-Per-feature gates live in `~/.tweakcc/config.json` under `misc.*` (e.g. `enableWordHighlight`, `enableDynamicHighlight`, `highlightExportEnabled`). Toggle to `false` and restart the patched binary.
+Per-feature gates live in `~/claude-code-cues/.opencues/patch-state/config.json` under `misc.*` (e.g. `enableWordHighlight`, `enableDynamicHighlight`, `highlightExportEnabled`). Toggle to `false` and re-run `opencues install claude-code` to apply. (Note: a re-install nukes patch-state by default and re-applies from defaults — to keep your manual config edits, use `--keep-state` or set the toggles via `defaults/` and re-install.)
 
 ## Troubleshooting
 
@@ -374,26 +384,42 @@ Work through these in order:
 1. **Did you restart the host editor?** Patches only take effect after a restart.
 2. **Is the API key on PATH?** `export GROQ_API_KEY=...` in a terminal session is not enough — the host won't see it unless it's in `~/.bashrc` (and you've started a new session since adding it). `pnpm exec opencues check-keys` validates configured keys.
 3. **Did install finish successfully?** `pnpm exec opencues doctor` shows what's missing.
-4. **Check runtime loaded:** `ls ~/.claude/opencues/runtime/` should list dist files.
+4. **Check runtime loaded:** `ls ~/claude-code-cues/node_modules/@opencues/runtime/dist/` should list dist files.
 5. **Enable debug logging:** `pnpm exec opencues debug on` then tail `opencues logs --tail`.
 
 ### Syntax error after patching
 
-```bash
-# Restore original
-cp ~/.tweakcc/cli.js.backup $(find ~/.claude -name "cli.js" -path "*claude-code*" | head -1)
+The from-scratch install nukes + reinstalls cli.js from npm every run, so the
+fastest fix is just re-running:
 
-# Re-run setup
-~/opencues/integrations/claude-code/patches/setup.sh
+```bash
+pnpm exec opencues install claude-code
 ```
 
-### setup.sh fails to patch
-
-tweakcc may have changed. Check for pattern matches:
+If you need to manually revert (e.g. tweakcc backup is the only good copy):
 
 ```bash
-grep "MiscSettings" ~/tweakcc/src/types.ts
-grep "misc:" ~/tweakcc/src/defaultSettings.ts
+cp ~/claude-code-cues/.opencues/patch-state/cli.js.backup \
+   ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
+```
+
+### Install fails at "FATAL: tweakcc dist contains no opencues v2 code" / "cli.js was patched but contains no opencues v2 boot"
+
+setup.sh's verification gates caught a real problem — tweakcc patched but
+opencues didn't land. Most likely a CC version drift (your `~/claude-code-cues/package.json`
+has a non-exact pin like `^2.1.110` allowing npm to upgrade to 2.1.119 which
+has a totally different cli.js layout). Fix:
+
+```bash
+# Force exact version pin (no caret)
+cat > ~/claude-code-cues/package.json << 'EOF'
+{
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.110"
+  }
+}
+EOF
+pnpm exec opencues install claude-code
 ```
 
 ## Extending blanks.md

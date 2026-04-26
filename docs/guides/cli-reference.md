@@ -59,19 +59,27 @@ opencues uninstall claude-code
 opencues uninstall --all
 ```
 
-### `seed-configs` — populate `~/.opencues/`
+### `seed-configs` — manage `~/.opencues/`
 
-Copies the shipped `defaults/*` into `~/.opencues/`. Run once after
-a fresh install.
+Owns all writes to the user-level `~/.opencues/` tree. Idempotent + safe to
+re-run. Invoked automatically (with `--silent`) by every `opencues install <host>`,
+and runnable standalone whenever you suspect drift.
+
+Four phases on every invocation:
+
+1. **SEED** — first-time copy of `defaults/{cues,blanks,controls,opencues}.md + cues/ + controls/ + scripts/` → `~/.opencues/`. Skips files that already exist with content (preserves user edits).
+2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{controls,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
+3. **HEAL** — re-seeds a 0-byte `~/.opencues/opencues.md`. The runtime's `OpenCuesSettingsControl` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
+4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
 |---|---|
-| (none) | User-level. Skips files that already exist. |
-| `--project` | Writes into `<cwd>/.opencues/` instead. Skips `opencues.md` (system-wide settings don't belong at project level). |
-| `--force` | Overwrite existing files. Use with care. |
+| (none) | User-level. Runs all four phases. |
+| `--project` | Writes into `<cwd>/.opencues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `opencues.md` (runtime-owned, no project-level overrides). |
+| `--silent` | Suppress non-error output (used when chained from `opencues install`). |
+| `--dry-run` | Print the plan; do not copy / compile anything. |
 
-See [Config Search Paths](../features/config-search-paths.md) for
-where the configs are loaded from.
+See [Config Search Paths](../features/config-search-paths.md) for where the configs are loaded from at runtime.
 
 ### `update` — pull, rebuild, redeploy
 
@@ -312,7 +320,7 @@ opencues list --controls | grep -c domain  # how many domain controls exist
 
 | Host | What `install` does | Notes |
 |---|---|---|
-| `claude-code` | Builds `@opencues/core` + `@opencues/runtime`, copies them into `~/.claude/opencues/`, builds tweakcc with the patches, applies to `cli.js` | Targets `~/claude-code-cues` (NOT the native `claude` install) |
+| `claude-code` | Builds `@opencues/core` + `@opencues/runtime`, copies them into `~/claude-code-cues/.opencues/`, builds tweakcc with the patches, applies to `cli.js` | Targets `~/claude-code-cues` (NOT the native `claude` install) |
 | `opencode` | Patches the fork at `~/opencode-cues` | Quiet by default; `--verbose` for full output |
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
 | `codex` | Builds + applies Rust TUI patches | **Pre-alpha** — see `integrations/codex/HANDOFF.md` |

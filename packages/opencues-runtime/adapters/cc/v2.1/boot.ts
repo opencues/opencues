@@ -66,7 +66,7 @@ export interface HostInfo {
   controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
   /** Optional: async text push (calls captured onChange + onOffsetChange). */
   pushText?(text: string, cursor?: number): void;
-  /** Optional: absolute path to the TTS script (typically ~/.claude/actions/speak.sh). */
+  /** Optional: absolute path to the TTS script (CC ships speak.sh + SpeakCtl.exe colocated in <CC_FORK>/.opencues/scripts/). */
   ttsScriptPath?: string;
   /** Optional: TTS rate (-10 to 10) passed as 2nd arg to the script. Defaults to 2. */
   ttsRate?: number;

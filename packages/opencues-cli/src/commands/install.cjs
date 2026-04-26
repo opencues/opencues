@@ -56,6 +56,16 @@ module.exports = function install(argv, ctx) {
     process.exit(2);
   }
 
+  // Run seed-configs FIRST so the user-level ~/.opencues/ tree is current
+  // before any host installer runs. seed-configs handles all shared writes:
+  // first-time copy, library-script sync, opencues.md self-heal, .cs compile.
+  // Per-host installers then do strictly host-specific work (patches, etc.).
+  // --dry-run flows through; --silent keeps the output focused on host steps.
+  if (!passthrough.includes('--dry-run')) {
+    const seedConfigs = require('./seed-configs.cjs');
+    seedConfigs(['--silent'], ctx);
+  }
+
   let exitCode = 0;
   for (const folder of folders) {
     if (folders.length > 1) console.log(`\n=== installing @opencues/${folder} ===\n`);

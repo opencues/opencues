@@ -17,23 +17,10 @@ PID_FILE="/tmp/cue-tts.pid"
 (( RATE > 10 )) && RATE=10
 (( RATE < -10 )) && RATE=-10
 
-# Resolve SpeakCtl.exe across install layouts. Without this, a stale
-# path-hardcode silently falls through to the ~500ms PowerShell branch
-# — user-perceptible lag every time TTS fires.
-find_helper() {
-  local name="$1"
-  local candidates=(
-    "${SCRIPT_DIR}/${name}"
-    "${HOME}/.claude/opencues/scripts/${name}"
-    "${HOME}/.claude/opencues/actions/${name}"
-    "${HOME}/.claude/actions/${name}"
-  )
-  for p in "${candidates[@]}"; do
-    [ -f "$p" ] && echo "$p" && return 0
-  done
-  return 1
-}
-SPEAK_CTL="$(find_helper SpeakCtl.exe || true)"
+# SpeakCtl.exe is colocated in this same directory (setup.sh ships both
+# speak.sh and SpeakCtl.exe to <CC_FORK>/.opencues/scripts/ together).
+# Falls through to the PowerShell / espeak branches below if it's missing.
+SPEAK_CTL="${SCRIPT_DIR}/SpeakCtl.exe"
 
 # Kill previous TTS process
 if [ -f "$PID_FILE" ]; then
@@ -44,7 +31,7 @@ if [ -f "$PID_FILE" ]; then
   fi
 fi
 
-if [ -n "$SPEAK_CTL" ]; then
+if [ -f "$SPEAK_CTL" ]; then
   # Compiled .exe — fast (~50ms startup)
   "$SPEAK_CTL" "$TEXT" "$RATE" &
   echo $! > "$PID_FILE"

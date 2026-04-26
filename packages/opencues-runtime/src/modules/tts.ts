@@ -19,7 +19,9 @@ import { splitWords } from './navigation';
 
 export interface TTSOptions {
   /**
-   * Absolute path to the TTS script. Typically ~/.claude/actions/speak.sh.
+   * Absolute path to the TTS script. The CC integration ships speak.sh +
+   * SpeakCtl.exe colocated in <CC_FORK>/.opencues/scripts/, and resolves
+   * the path at runtime via require.resolve('@opencues/runtime/...').
    * Optional when `speakFn` is supplied — sandboxed hosts (Chrome
    * extension, browser-only TUIs) skip the script path entirely.
    */

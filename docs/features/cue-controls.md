@@ -114,7 +114,7 @@ in `packages/opencues-runtime/src/controls/index.ts`.
 |-------|------|---------|-------------|
 | `control` | string | (required) | Control identifier (e.g., "volume", "brightness") |
 | `tip` | string | control name | Tip text shown in the secondary display when focused |
-| `script` | string | `~/.claude/opencues/scripts/{control}.sh` | Path to the script to spawn |
+| `script` | string | (required for OS-bound controls) | Path to the script to spawn. Use `./{name}.sh` for folder-based controls — relative to the cue.md location, which seeds to `~/.opencues/controls/{name}/{name}.sh` |
 | `upArgs` | string[] | `["up"]` | Arguments passed when cycling up |
 | `downArgs` | string[] | `["down"]` | Arguments passed when cycling down |
 | `speak` | boolean | false | Read the tip aloud via TTS on navigation |
@@ -150,7 +150,7 @@ bash {script} {args...}
 **Spawn behavior:**
 - **Detached, fire-and-forget** — `child_process.spawn` with `{detached: true, stdio: "ignore"}` and `.unref()`. The script runs independently; its exit code is not checked
 - **Debounced** — if the user presses Up three times in 50ms, only one spawn fires with the final arguments
-- **Path resolution** — `~` is expanded to `$HOME`. The default script path is `~/.claude/opencues/scripts/{control}.sh`
+- **Path resolution** — `~` is expanded to `$HOME`. Folder-based controls use `./{name}.sh` relative to the cue.md (resolves to `~/.opencues/controls/{name}/{name}.sh`). OS helpers (`*.exe`, `*.ps1`) live colocated in the same folder; setup.sh seeds them and compiles `*.cs` → `*.exe` in-place
 - **WSL** — scripts run in the Linux environment. To control Windows applications, use `powershell.exe` or compiled `.exe` helpers inside the script
 
 **Dynamic tip via `script get`:**

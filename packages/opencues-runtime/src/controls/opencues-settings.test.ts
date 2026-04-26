@@ -87,6 +87,45 @@ describe('OpenCuesSettingsControl', () => {
     expect(await ctl.get('voice-mode')).toBe('');
   });
 
+  // Regression contract: an empty-string read result (e.g. a 0-byte
+  // ~/.opencues/opencues.md left by an interrupted seed) is functionally
+  // equivalent to "no file" — the control silently no-ops on both `get`
+  // and `set`. This is intentional (it avoids fabricating a settings
+  // schema that the host doesn't know about), but it means the host MUST
+  // seed non-empty content before the control is used. install.cjs's
+  // seed-configs treats 0-byte files as missing + setup.sh's section
+  // 7a-bis re-seeds them; without those, `opencues ___` / `config ___`
+  // blank-fills look broken on every native host. See FAQ.md "Does init
+  // scaffold opencues.md?" + docs/features/config-search-paths.md.
+  it('returns "" when readFile yields empty string (0-byte file)', async () => {
+    const ctl = new OpenCuesSettingsControl({
+      readFile: async () => '',
+      writeFile: async () => { /* unused */ },
+    });
+    expect(await ctl.get()).toBe('');
+    expect(await ctl.get('voice-mode')).toBe('');
+  });
+
+  it('set() is a no-op when readFile yields null (no file to rewrite)', async () => {
+    const writeFile = vi.fn(async () => { /* unused */ });
+    const ctl = new OpenCuesSettingsControl({
+      readFile: async () => null,
+      writeFile,
+    });
+    await ctl.set('voice-mode', 'active');
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it('set() is a no-op when readFile yields empty string (0-byte file)', async () => {
+    const writeFile = vi.fn(async () => { /* unused */ });
+    const ctl = new OpenCuesSettingsControl({
+      readFile: async () => '',
+      writeFile,
+    });
+    await ctl.set('voice-mode', 'active');
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
   it('preserves surrounding whitespace + frontmatter delimiters on set', async () => {
     const { ctl, storage } = makeControl(SAMPLE_MD);
     await ctl.set('debug-mode', 'on');
