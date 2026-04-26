@@ -103,6 +103,31 @@ module.exports = function seedConfigs(argv, ctx) {
   // overrides, not library/utility files which stay user-level).
   if (projectScope) return;
 
+  // ── 1.5 ADDITIVE SEED — copy in any NEW subdirs (controls/<name>,
+  // cues/<name>) that exist in defaults/ but not yet in ~/.opencues/.
+  // The original SEED phase only copies the top-level `controls/` dir
+  // once; new shipped controls (or cues) added in a later release would
+  // otherwise be silently missed. .md inside copied subdirs is user
+  // content from then on (SYNC won't touch it). ──────────────────────
+  log('');
+  log('Additive seed (new subdirs from defaults/{cues,controls}/):');
+  let added = 0;
+  for (const parent of ['cues', 'controls']) {
+    const srcParent = path.join(sourceDir, parent);
+    const dstParent = path.join(HOME, '.opencues', parent);
+    if (!fs.existsSync(srcParent)) continue;
+    fs.mkdirSync(dstParent, { recursive: true });
+    for (const subSrc of listChildDirs(srcParent)) {
+      const sub = path.basename(subSrc);
+      const subDst = path.join(dstParent, sub);
+      if (fs.existsSync(subDst)) continue; // user already has it (or opted out)
+      copyDir(subSrc, subDst);
+      added++;
+      log(`  added ${parent}/${sub}/`);
+    }
+  }
+  if (added === 0) log('  (no new subdirs)');
+
   // ── 2. SYNC — library files (always overwrite if differs) ──────────
   log('');
   log('Library sync (.sh/.cs/.ps1 from defaults — never overwrites .md):');
