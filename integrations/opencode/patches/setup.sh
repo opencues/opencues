@@ -84,10 +84,9 @@ build_runtime() {
   ( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/runtime build )
 }
 
-build_core_if_needed() {
-  if [[ ! -d "$OPENCUES_ROOT/packages/opencues-core/dist" ]]; then
-    ( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/core build )
-  fi
+build_core() {
+  # ALWAYS rebuild — skipping when dist/ exists silently drops source edits.
+  ( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/core build )
 }
 
 install_into_fork() {
@@ -98,7 +97,12 @@ install_into_fork() {
   cp "$OPENCUES_ROOT/packages/opencues-runtime/package.json" "$rt_dest/"
 
   # @opencues/core
+  # Clean any prior install — without this, a stale dist/ subfolder from
+  # an earlier setup.sh layout silently shadows the new top-level files
+  # via package.json main: "dist/index.js". Symptom: code edits don't
+  # take effect even though the redeploy "succeeded".
   local core_dest="$OPENCODE_DIR/node_modules/@opencues/core"
+  rm -rf "$core_dest"
   mkdir -p "$core_dest"
   cp -r "$OPENCUES_ROOT/packages/opencues-core/dist/"* "$core_dest/"
   cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$core_dest/"
@@ -237,7 +241,7 @@ patch_fork() {
 # ─── go ──────────────────────────────────────────────────────────────
 echo "Target: $OPENCODE_DIR (opencode v$PINNED_VERSION)"
 
-build_both() { build_runtime && build_core_if_needed; }
+build_both() { build_runtime && build_core; }
 
 # Install the fork's own dependencies via bun. Required so `bun run dev`
 # can resolve @opentui/solid/preload etc. — without this step the first

@@ -24,6 +24,8 @@ import { ConfigSource } from './config-source';
 import { ClassifiedSourceGroup } from './classified-source-group';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { ControlBlankSource } from './control-blank-source';
+import { FluidBlankSource } from './fluid-blank-source';
+import { SpellingSource } from './spelling-source';
 
 export interface BuildSourcesOptions {
   httpAdapter: HttpAdapter;
@@ -35,6 +37,35 @@ export interface BuildSourcesOptions {
   /** I/O adapter: calls blankScript get to read current live control value (raw string).
    * May return synchronously or as a Promise — async implementations avoid blocking the event loop. */
   readControlState?: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
+  /**
+   * Enable the fluid-blank source — a 2-pass (P1 SEGMENT + P3 ANSWER) handler
+   * that catches free-form lookup queries embedded in casual prose.
+   * See fluid-blank-source.ts and tests/benchmarks/fluid-blank/BUILD-LOG.md.
+   * Defaults to false; flip on per-integration.
+   */
+  enableFluidBlank?: boolean;
+  /** Enable ClassifiedSourceGroup (the classifier-routed blank modes from
+   * blanks.md: math/factual/translation/unit/color/http/timezone/roman/
+   * grammar). Defaults to false — fluid-blank + spelling + control-bound
+   * blanks cover most ground without the extra classifier LLM call.
+   * Flip on via opencues.md `classified-blanks-mode: on`. */
+  enableClassifiedBlanks?: boolean;
+  /** Enable SpellingSource — word-scope spell-checker. Flags misspelled
+   * words in plain text and offers corrections as cycling alternatives.
+   * Priority 80 (above typical domain max ~75). Defaults to false; flip
+   * on via opencues.md `spelling-mode: on`. */
+  enableSpelling?: boolean;
+  /** Enable RoutedWordSourceGroup (word-alts on plain text). When false,
+   * NO word-alt LLM calls fire — words are not navigable as alternatives.
+   * Domain blanks/controls/fluid-blank still work. Defaults to false;
+   * flip on via opencues.md `word-alts-mode: on`. */
+  enableWordAlts?: boolean;
+  /** Within RoutedWordSourceGroup, include sources with NO `match:`/
+   * `keywords:` (the catch-everything default like grammar). When false,
+   * only domain sources fire — words not matching any domain stay
+   * uncoloured. Defaults to false; flip on via opencues.md
+   * `default-word-alts: on`. */
+  enableDefaultWordAlts?: boolean;
 }
 
 /**
@@ -86,6 +117,10 @@ export function buildSourcesFromConfig(
   // From cues.md: collect all word-scope alternatives sources into one
   // RoutedWordSourceGroup. Other sources (different scope/parser) stay
   // individual ConfigSource instances.
+  // Gate the entire word-alts block on enableWordAlts. Non-word-alt
+  // sources (different scope/parser) still pass through — they're not
+  // the "everything coloured" surface, so they obey their own enable
+  // flag in cue.md frontmatter as before.
   if (cuesConfig?.promptConfig?.sources) {
     const wordAltSources: ConfigSource[] = [];
 
@@ -95,6 +130,11 @@ export function buildSourcesFromConfig(
       const parser = srcCfg.parser ?? 'alternatives';
 
       if (scope === 'words' && parser === 'alternatives') {
+        if (!options.enableWordAlts) continue;
+        // Default sources (NO match: AND NO keywords:) are the catch-
+        // everything surface. Skip them when enableDefaultWordAlts=false.
+        const isDefault = !srcCfg.match && !srcCfg.keywords;
+        if (isDefault && !options.enableDefaultWordAlts) continue;
         wordAltSources.push(new ConfigSource({
           sourceConfig: { ...srcCfg, scope },
           ...options,
@@ -113,8 +153,8 @@ export function buildSourcesFromConfig(
     }
   }
 
-  // From blanks.md: build ClassifiedSourceGroup
-  if (blanksConfig?.promptConfig?.sources) {
+  // From blanks.md: build ClassifiedSourceGroup (opt-in).
+  if (options.enableClassifiedBlanks && blanksConfig?.promptConfig?.sources) {
     const blankSources: ConfigSource[] = [];
     let classifierPrompt: string | undefined;
 
@@ -157,6 +197,42 @@ export function buildSourcesFromConfig(
         readState: options.readControlState,
       }));
     }
+  }
+
+  // Spelling: word-scope spell-checker. Flags misspelled words in plain
+  // text and offers corrections as cycling alternatives. Priority 80 —
+  // above domain word-alts (~75) so corrections beat synonyms on the
+  // same wordIndex.
+  if (options.enableSpelling) {
+    sources.push(new SpellingSource({
+      httpAdapter: options.httpAdapter,
+      endpoint: options.endpoint,
+      apiKey: options.apiKey,
+      model: options.defaultModel,
+    }));
+  }
+
+  // Fluid-blank: free-form lookup handler (P1 SEGMENT + P3 ANSWER).
+  // Priority 50 — sits between the classifier-based modes (whose results
+  // win on regex match) and grammar fallback. Catches inputs that don't
+  // match any structured mode AND inputs the structured modes can't fully
+  // handle (conversational shapes, ?-marker, ellipsis, etc.).
+  if (options.enableFluidBlank) {
+    // Collect blankKeywords from all declared controls so fluid-blank can
+    // cede the slot to BlankFill when the input matches a control trigger.
+    const allKeywords: string[] = [];
+    if (options.controls) {
+      for (const ctrl of Object.values(options.controls)) {
+        if (ctrl.blankKeywords?.length) allKeywords.push(...ctrl.blankKeywords);
+      }
+    }
+    sources.push(new FluidBlankSource({
+      httpAdapter: options.httpAdapter,
+      endpoint: options.endpoint,
+      apiKey: options.apiKey,
+      model: options.defaultModel,
+      blankKeywords: allKeywords,
+    }));
   }
 
   return sources;

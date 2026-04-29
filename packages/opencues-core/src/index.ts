@@ -28,6 +28,17 @@ export {
 } from './sources/control-blank-source';
 
 export {
+  FluidBlankSource,
+  determineReplaceMode,
+  type FluidBlankSourceConfig,
+} from './sources/fluid-blank-source';
+
+export {
+  SpellingSource,
+  type SpellingSourceConfig,
+} from './sources/spelling-source';
+
+export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,
 } from './sources/build-sources';

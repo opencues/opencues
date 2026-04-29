@@ -44,6 +44,11 @@ interface CueResultLike {
   alternatives: string[];
   cueTip?: string;
   altCueTips?: Record<string, string>;
+  /** Multi-word span in CHARACTER offsets — set by FluidBlankSource WIPE mode. */
+  spanStart?: number;
+  spanEnd?: number;
+  /** Source id — used to detect fluid-blank for auto-substitute. */
+  source?: string;
 }
 
 export class Resolver {
@@ -52,6 +57,9 @@ export class Resolver {
   private _unsubText: Unsubscribe | null = null;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _generation = 0;
+  /** Last user-typed text — used to detect when `_` was just added so we
+   *  can bypass the debounce and fire fluid-blank resolution immediately. */
+  private _lastInputText = '';
 
   constructor(
     private adapter: HostAdapter,
@@ -119,6 +127,15 @@ export class Resolver {
       apiKey: this.options.apiKey,
       defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
       controls: this.configLoader.folderConfigs?.controlOverrides ?? {},
+      // ALL opt-in: every cue surface defaults to OFF. User flips on via
+      // opencues.md. Missing settings → off. Explicit "on" → on.
+      // See packages/opencues-core/src/sources/build-sources.ts for what
+      // each flag gates.
+      enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
+      enableSpelling: settings.get('spelling-mode') === 'on',
+      enableWordAlts: settings.get('word-alts-mode') === 'on',
+      enableDefaultWordAlts: settings.get('default-word-alts') === 'on',
+      enableClassifiedBlanks: settings.get('classified-blanks-mode') === 'on',
     };
     let sources: unknown[];
     try {
@@ -131,7 +148,10 @@ export class Resolver {
     }
 
     this._resolver = cuesCore.createResolver(sources, {
-      parallel: false,
+      // Parallel: all sources run concurrently. Total latency = max(source
+      // times) instead of sum. The merge-by-priority happens after all
+      // return so result correctness is unchanged.
+      parallel: true,
       timeout: 30000,
       continueOnError: true,
     });
@@ -143,7 +163,24 @@ export class Resolver {
   private onTextChange(e: TextChangeEvent): void {
     if (e.source !== 'user') return; // ignore our own setText echoes
     if (!this._resolver) return;
-    this.scheduleResolve(e.text);
+
+    // Fluid-blank fast-path: when the user just typed `_` (it's at the
+    // trailing edge AND wasn't there before), bypass the debounce and
+    // resolve immediately. Cuts the magical-helper latency from ~1000ms
+    // to ~500ms by skipping the 500ms debounce that exists to coalesce
+    // mid-word typing.
+    const text = e.text;
+    const prev = this._lastInputText;
+    this._lastInputText = text;
+    const blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
+    if (blankJustTyped) {
+      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+      this.adapter.log('info', 'Resolver: _ trigger — bypassing debounce');
+      void this.resolveAndApply(text);
+      return;
+    }
+
+    this.scheduleResolve(text);
   }
 
   private scheduleResolve(text: string): void {
@@ -158,6 +195,7 @@ export class Resolver {
   async resolveAndApply(text: string): Promise<void> {
     if (!this._resolver) return;
     const generation = ++this._generation;
+    this.adapter.log('info', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out
@@ -204,6 +242,8 @@ export class Resolver {
       return;
     }
 
+    this.adapter.log('info', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
+
     // Stale check — a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;
 
@@ -237,7 +277,75 @@ export class Resolver {
       if (cueMapEntry && cueMapEntry.alternatives && cueMapEntry.alternatives.length > 1) continue;
       const alts = (r.alternatives ?? []).filter(a => a && a !== target.word);
       if (alts.length === 0) continue;
-      const def: WordDef = {
+      // FluidBlankSource sets spanStart/spanEnd (character offsets) when
+      // it wants the answer to wipe a multi-word lookup phrase, not just
+      // the single _ token. Cycling back to alt[0] = `_` clears the
+      // lookup phrase to a bare blank.
+      const isMultiWordSpan = typeof r.spanStart === 'number'
+        && typeof r.spanEnd === 'number'
+        && r.spanEnd > r.spanStart;
+      const isFluidBlank = r.source === 'fluid-blank';
+      // Fluid-blank substitutes inline (BlankFill-style). For WIPE mode the
+      // text shrinks so the wordIndex shifts — we have to compute the def's
+      // FINAL position in the new text and key the def there, not at the
+      // resolver's r.wordIndex (which referred to the pre-substitute text).
+      // Without this the def is orphaned at an out-of-bounds index and the
+      // next resolve generates synonym alts for the answer position.
+      if (isFluidBlank && alts.length > 0) {
+        // Race guard: BlankFill (control-bound) runs synchronously after
+        // its blankScript returns and can populate the `_` BEFORE this
+        // LLM-driven path completes. If `_` is no longer in the live text
+        // at the expected position, BlankFill already won — skip our
+        // substitute so we don't overwrite "nvidia $209.25" with "NVDA".
+        const liveText = this.adapter.getText();
+        const start = isMultiWordSpan ? r.spanStart! : target.start;
+        if (liveText.charAt(start) !== '_' && !liveText.includes('_')) {
+          this.adapter.log('info', 'FluidBlank: skipping — _ already substituted by another module');
+          continue;
+        }
+        const answer = alts[0];
+        const end = isMultiWordSpan ? r.spanEnd! : target.end;
+        const newText = text.slice(0, start) + answer + text.slice(end);
+        const newCursor = start + answer.length;
+
+        // Find which word in the new text the answer sits at.
+        const newWords = splitWords(newText);
+        const newWord = newWords.find(w => w.start === start);
+        const newWordIndex = newWord ? newWord.index : r.wordIndex;
+        const newSpanEnd = newWord ? newWord.end : newCursor;
+
+        const fluidDef: WordDef = {
+          originalWord: '_',
+          alternatives: ['_', ...alts],
+          currentIndex: 1,
+          spanStart: start,
+          spanEnd: newSpanEnd,
+          // controlName locks this def against re-resolution by the LLM —
+          // same mechanism control-bound blanks use to prevent the answer
+          // from being clobbered by RoutedWordSourceGroup synonyms.
+          controlName: 'fluid-blank',
+        };
+        this.dynDefs.set(newWordIndex, fluidDef);
+        wrote++;
+
+        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex})`);
+        if (this.adapter.pushText) {
+          this.adapter.pushText(newText, newCursor);
+        } else {
+          this.adapter.setText(newText);
+          this.adapter.setCursorOffset(newCursor);
+          this.adapter.forceRender();
+        }
+        continue; // skip the generic def-creation below
+      }
+
+      const def: WordDef = isMultiWordSpan ? {
+        originalWord: '_',
+        alternatives: ['_', ...alts],
+        currentIndex: 0,
+        spanStart: r.spanStart!,
+        spanEnd: r.spanEnd!,
+      } : {
         originalWord: target.word,
         alternatives: [target.word, ...alts],
         currentIndex: 0,

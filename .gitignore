@@ -11,3 +11,6 @@ dist/
 
 # tweakcc — local tool, not part of the public repo
 integrations/claude-code/tweakcc/
+
+# fluid-blank generator output (locally accumulated, not source)
+tests/benchmarks/fluid-blank/cases-generated.jsonl

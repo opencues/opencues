@@ -96,11 +96,16 @@ export class RoutedWordSourceGroup implements CueSource {
     this.defaultEntries = [...defaults].sort((a, b) => b.priority - a.priority);
   }
 
-  /** Word-alts apply when there's plain text to alt. Skip pure-blank inputs
-   *  (those go through the blanks ClassifiedSourceGroup). */
+  /** Word-alts apply when there's plain text to alt. Skip:
+   *   - empty inputs
+   *   - inputs containing a `_` blank — the user is invoking a lookup,
+   *     not asking for synonyms on surrounding words. Fluid-blank /
+   *     classified blank handlers own that resolve; word-alt LLM calls
+   *     just add latency without contributing to the lookup answer. */
   supports(context: CueContext): boolean {
     if (!context.words || context.words.length === 0) return false;
-    return context.words.some(w => w !== '_' && w.length > 0);
+    if (context.words.some(w => w === '_')) return false;
+    return context.words.some(w => w.length > 0);
   }
 
   /**

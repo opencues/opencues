@@ -6,6 +6,14 @@ tips-mode: on
 cursor-navigate: inactive
 output-format: rich markdown
 display mode: split pane
+# All cue surfaces are opt-in. Flip to "on" to enable; missing/anything-else
+# means off. See packages/opencues-core/src/sources/build-sources.ts for what
+# each one gates.
+fluid-blank-mode: on
+spelling-mode: on
+word-alts-mode: on
+default-word-alts: off
+classified-blanks-mode: off
 # Optional overrides — uncomment to override patch-supplied defaults.
 # tts-rate: 2
 # tts-script: ~/claude-code-cues/.opencues/scripts/speak.sh
@@ -44,4 +52,29 @@ settings:
       focus: Single-pane focused view
       split pane: Side-by-side split layout
       zen: Distraction-free minimal view
+  fluid-blank-mode:
+    tip: Free-form `_` lookups (P1+P3 LLM pipeline)
+    values:
+      on: Enabled — `_` next to a lookup phrase auto-substitutes the answer
+      off: Disabled — fluid-blank ignored
+  spelling-mode:
+    tip: Spell-checker — flags misspelled words in plain text, correction is the alternative
+    values:
+      on: Enabled — "the boy jumpved over the dog" cues "jumpved" → "jumped"
+      off: Disabled
+  word-alts-mode:
+    tip: Word-level alternatives (RoutedWordSourceGroup) on plain text
+    values:
+      on: Enabled — words get cycled alternatives from cues.md sources
+      off: Disabled — no word-alt LLM calls fire
+  default-word-alts:
+    tip: Within word-alts, include catch-everything default sources (no match/keywords)
+    values:
+      on: Default sources (e.g. grammar) colour every word
+      off: Only domain sources (with match/keywords) fire
+  classified-blanks-mode:
+    tip: Classifier-routed blank modes from blanks.md (math/factual/translation/...)
+    values:
+      on: Enabled — classifier picks one specialised mode per `_`
+      off: Disabled — fluid-blank + spelling + controls cover this ground
 ---
