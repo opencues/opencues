@@ -160,7 +160,7 @@ export function boot(host: HostInfo): BootResult {
 
   const {
     configLoader, hlState, dynDefs,
-    spanFillState, selectorSatelliteState, controlValues,
+    spanFillState, selectorSatelliteState,
   } = shared;
 
   // Phase O.7 — Statusline (file-based) + O.12 — in-process snapshot
@@ -172,7 +172,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
-    }, configLoader, spanFillState, selectorSatelliteState, controlValues);
+    }, configLoader, spanFillState, selectorSatelliteState);
     statusline.subscribe();
   }
 

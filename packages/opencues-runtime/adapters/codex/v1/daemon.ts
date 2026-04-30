@@ -388,7 +388,7 @@ async function defaultBuildRuntime(
   const statusFilePath = `/tmp/opencues-codex-${process.pid}.status.json`;
   const statusline = new Statusline(adapter, shared.hlState, shared.dynDefs, {
     exportPath: statusFilePath,
-  }, shared.configLoader, shared.spanFillState, shared.selectorSatelliteState, shared.controlValues);
+  }, shared.configLoader, shared.spanFillState, shared.selectorSatelliteState);
   statusline.subscribe();
   log('info', `Statusline export at ${statusFilePath}`);
 

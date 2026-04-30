@@ -17,7 +17,6 @@ import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
-import type { BlankValuesCache } from '../state/blank-values';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -31,10 +30,7 @@ export class Cycling {
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
-    _controlValues?: BlankValuesCache,
-  ) {
-    void _controlValues;
-  }
+  ) {}
 
   /**
    * Try host-native control invocation first; fall back to spawning

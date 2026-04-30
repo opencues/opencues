@@ -15,7 +15,6 @@ import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
-import type { BlankValuesCache } from '../state/blank-values';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -79,14 +78,7 @@ export class Statusline {
      * per-value tip from opencues.md `settings:` block.
      */
     private selectorSatelliteState?: SelectorSatelliteState,
-    /**
-     * Optional. Per-control value cache (kept for future blank-fill
-     * value caching).
-     */
-    private controlValues?: BlankValuesCache,
-  ) {
-    void this.controlValues;
-  }
+  ) {}
 
   subscribe(): void {
     this._unsub = this.adapter.onRender(ctx => {

@@ -48,7 +48,6 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
       configLoader,
       hlState: null as never,
       dynDefs: null as never,
-      controlValues: null as never,
       spanFillState: null as never,
       dismissedBlanks: null as never,
       selectorSatelliteState: null as never,

@@ -26,7 +26,6 @@ import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
-import { BlankValuesCache } from '../../../src/state/blank-values';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   BlankInvokeSpec,
@@ -286,7 +285,6 @@ export function boot(host: HostInfo): BootResult {
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
-  const controlValues = new BlankValuesCache();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves. Tips come from
@@ -310,7 +308,7 @@ export function boot(host: HostInfo): BootResult {
   navigation.subscribe();
   const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   dimRender.subscribe();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, controlValues);
+  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState);
   cycling.subscribe();
 
   // BlankFill: scans for `_` placeholders + matched control. Owns the
@@ -328,7 +326,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
-    }, configLoader, spanFillState, selectorSatelliteState, controlValues);
+    }, configLoader, spanFillState, selectorSatelliteState);
     statusline.subscribe();
   }
 

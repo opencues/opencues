@@ -155,7 +155,7 @@ export function boot(host: HostInfo): BootResult {
 
   const {
     configLoader, hlState, dynDefs,
-    spanFillState, selectorSatelliteState, controlValues,
+    spanFillState, selectorSatelliteState,
   } = shared;
 
   // Statusline — Chrome has no filesystem, so exportPath is '' (empty).
@@ -165,7 +165,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '',
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
-    }, configLoader, spanFillState, selectorSatelliteState, controlValues);
+    }, configLoader, spanFillState, selectorSatelliteState);
     statusline.subscribe();
   }
 

@@ -81,15 +81,20 @@ Missing setting → off. Every surface defaults off. The user opts in to what th
 
 ## Open simplifications (residual misalignment)
 
-These predate the concept-cleanup pass; the names disagree with the dual-direction model and could be aligned in follow-up commits:
+These predate the concept-cleanup pass; the names disagree with the dual-direction model.
 
-1. **Class names `*Control` → `*Blank`** — runtime classes (`StocksControl`, `WeatherControl`, `HackerNewsControl`, `PromptImproverControl`, `AnswerControl`, `OpenCuesSettingsControl`, `CountriesControl`, `CryptoControl`, `DictionaryControl`) implement the `Blank` interface but are still named `*Control`. Pure rename; safe.
-2. **`controlsRegistry` → `blanksRegistry`** — the runtime registry is still called `controlsRegistry`. Pure rename; safe.
-3. **`metadata.controlName` → `metadata.blankName`** — CueResult metadata key used as a cross-module lock identifier. Mechanical but touches ~30 sites; check no string comparison hardcodes the literal `"controlName"` outside the rename target.
-4. **cue.md frontmatter `type: control`, `control: <name>`** — user-authored config files still use the legacy field names. Either:
+**Done (concept-aligned):**
+- ✅ Class names `*Control` → `*Blank` (StocksControl → StocksBlank, etc. — all 9 classes)
+- ✅ `controlsRegistry` → `blanksRegistry`
+- ✅ `metadata.controlName` → `metadata.blankName`
+- ✅ `BlankValuesCache` deleted (it was dead after the word-cycling removal)
+
+**Remaining — these trade naming clarity for migration / protocol break:**
+
+1. **cue.md frontmatter `type: control`, `control: <name>`** — user-authored config files still use the legacy field names. Either:
    - Drop both (the dirname under `defaults/blanks/<name>/` already names the blank), or
    - Rename to `type: blank` + `name: <name>` with parser-side back-compat.
-5. **Wire format: `'control-invoke'` JSON-RPC method, `"controlName"` JSON key** — preserved to avoid breaking the Codex Rust bridge. Renaming = protocol bump. Cosmetic value only; not recommended unless we're already shipping a Codex protocol bump for another reason.
-6. **`BlankValuesCache` constructor parameters** — threaded through `Cycling` and `Statusline` constructors but unused after the word-cycling removal. Either drop the parameter (touches adapter-band wiring) or delete the cache class entirely if no remaining caller exercises it.
 
-Items 1, 2, 3 are pure cleanup with no migration cost. Items 4–6 trade naming clarity for migration / protocol break.
+   Cost: every user with a custom blank in `~/.opencues/blanks/<name>/cue.md` needs their file updated. Mitigation = parser-side alias (read either spelling).
+
+2. **Wire format: `'control-invoke'` JSON-RPC method, `"controlName"` JSON key** — preserved to avoid breaking the Codex Rust bridge (`integrations/codex/patches/opencues-bridge/src/lib.rs`). Renaming = protocol bump. Cosmetic value only; not recommended unless we're already shipping a Codex protocol bump for another reason.
