@@ -584,8 +584,13 @@ describe('parseCuesMd: real blanks.md', () => {
   const path = require('path');
   const blanksPath = path.resolve(__dirname, '../../../defaults/blanks.md');
 
-  // Skip if blanks.md doesn't exist (e.g., CI without repo root)
-  const blanksExists = fs.existsSync(blanksPath);
+  // Skip if blanks.md doesn't exist (CI without repo root) OR if it's
+  // the post-Phase-0/Phase-1 file (which is the renamed-from-controls
+  // file, not the classifier-sources file these tests assert against).
+  // The classifier blanks.md content was removed in Phase 0; these
+  // tests pin behaviour that no longer ships.
+  const fileContent = fs.existsSync(blanksPath) ? fs.readFileSync(blanksPath, 'utf8') : '';
+  const blanksExists = fileContent.includes('classifier') && fileContent.includes('### math');
 
   (blanksExists ? it : it.skip)('should parse all 11 sources', () => {
     const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));

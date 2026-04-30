@@ -696,11 +696,6 @@ if(process.env.GROQ_API_KEY)setTimeout(function(){try{globalThis._httpAdapter.wa
 }catch(_ha){globalThis._httpAdapter=null;}
 try{
 var _rfs=${requireFuncName}("fs");
-var _ctrlPath=process.cwd()+"/controls.md";
-if(_rfs.existsSync(_ctrlPath)){
-var _parsedCtrl=_cues.parseCuesMd(_rfs.readFileSync(_ctrlPath,"utf8"));
-if(_parsedCtrl&&_parsedCtrl.controls)Object.assign(globalThis._cueControlOverrides,_parsedCtrl.controls);
-}
 var _cuesPath=process.cwd()+"/cues.md";
 var _parsedCues=null;
 if(_rfs.existsSync(_cuesPath)){
@@ -714,6 +709,7 @@ var _blanksPath=process.cwd()+"/blanks.md";
 var _parsedBlanks=null;
 if(_rfs.existsSync(_blanksPath)){
 _parsedBlanks=_cues.parseCuesMd(_rfs.readFileSync(_blanksPath,"utf8"));
+if(_parsedBlanks&&_parsedBlanks.controls)Object.assign(globalThis._cueControlOverrides,_parsedBlanks.controls);
 }
 var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_fe){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_fe){return null;}}};
 var _folderCfgs=_cues.discoverFolderConfigs({basePath:process.cwd(),readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});

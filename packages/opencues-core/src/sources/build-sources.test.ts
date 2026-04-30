@@ -23,6 +23,9 @@ const defaultOptions = {
   endpoint: 'https://api.example.com/v1/chat/completions',
   apiKey: 'test-key',
   defaultModel: 'test-model',
+  enableWordAlts: true,
+  enableDefaultWordAlts: true,
+  enableClassifiedBlanks: true,
 };
 
 /** Helper to create a CuesMdConfig with required fields */

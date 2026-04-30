@@ -1,98 +1,216 @@
 ---
 # ─────────────────────────────────────────────────────────────────────
-# Blank-fill mode: {{NAME}}
-# Created by `opencues new blank {{NAME}}`.
+# Cue-control: {{NAME}}
+# Created by `opencues new control {{NAME}}`.
 # ─────────────────────────────────────────────────────────────────────
 #
-# A folder-based blank mode. The runtime merges this with modes
-# declared in monolithic blanks.md (`### name` sections); folder wins
-# on name conflicts. NOTE: all shipped blank modes today live in the
-# monolithic defaults/blanks.md — folder-based blanks work but aren't
-# in production use yet, so review your output against `### math`,
-# `### factual`, etc. there for the canonical patterns.
+# A folder-based control. Pick ONE shape below by uncommenting the
+# relevant block and deleting the rest. Colocate any scripts in this
+# same folder (e.g. ./{{NAME}}.sh) and reference with a relative path.
 #
-# Blank modes fire when the user types `_`. Mode selection cascades:
-#   1. `match:` regex     (instant — any mode whose regex matches wins)
-#   2. `keywords:` list   (instant — OR'd with match:)
-#   3. LLM classifier     (fallback — blanks.md `### classifier` picks)
-
-# ─────────────────────────────────────────────────────────────────────
-# REQUIRED FIELDS
-# ─────────────────────────────────────────────────────────────────────
-# name:    must match the folder name
-# parser:  alternatives | math | compute | answer | raw
-#
-#   alternatives — comma-separated options the user cycles through
-#                  (rare for blanks; usually controls do this via stepValues)
-#   math         — numeric expressions; LLM returns COMPUTE=<expr>;
-#                  runtime evaluates with safe sandbox. Used by `### math`
-#                  for "4 * 12 = _" style inputs.
-#   compute      — generic COMPUTE=<expr> form (math is the common case)
-#   answer       — LLM returns ANSWER=<text>, displayed verbatim
-#                  e.g. ANSWER=Paris. Used by `### factual`.
-#   raw          — LLM's raw string is the output (no parsing).
+# Real shipped examples (cat any to see the pattern in production):
+#   defaults/controls/volume/cue.md         — SHAPE 5: word + blank combined
+#   defaults/controls/brightness/cue.md     — SHAPE 5: same pattern
+#   defaults/controls/affirmations/cue.md   — SHAPE 4: list (no script)
+#   defaults/controls/numbers/cue.md        — SHAPE 3: step
+#   defaults/controls/opencues/cue.md       — SHAPE 6: selector + satellite
+#   defaults/controls/stocks/cue.md         — SHAPE 7: runtime-class (TS)
+#   defaults/controls/weather/cue.md        — SHAPE 7: runtime-class
+#   defaults/controls/hackernews/cue.md     — SHAPE 7: runtime-class
+#   defaults/controls/prompt/cue.md         — SHAPE 7: runtime-class (consume-all)
 
 name: {{NAME}}
-parser: answer
+type: control
+control: {{NAME}}
 
 # ─────────────────────────────────────────────────────────────────────
-# SCOPE
+# SHAPE 1: Word-control — cycling triggers external action
 # ─────────────────────────────────────────────────────────────────────
-# scope: words | blanks | all
-#   blanks  — fills a single `_` blank (default for blank modes — what
-#             you want).
-#   words   — runs per highlighted word (cue mode; not normally a blank
-#             concern).
-#   all     — runs in both contexts.
-
-scope: blanks
-
-# ─────────────────────────────────────────────────────────────────────
-# TRIGGERS (optional but recommended — otherwise relies on classifier)
-# ─────────────────────────────────────────────────────────────────────
-# match:     regex — instant trigger when input matches
-# keywords:  comma-separated — instant trigger (OR'd with match:)
+# The word "{{NAME}}" in text becomes cyclable. Ctrl+Alt+Up/Down runs
+# the script with the given args. Good for: pure system adjustments
+# where the user types the word as a verb (less common — most useful
+# controls combine word + blank, see SHAPE 5).
 #
-# Examples (lifted from defaults/blanks.md):
-#   ### math:    match: \d+\s*[+\-*/^%]\s*\d+|\d+%
-#                keywords: factorial, average, half of, double, triple,
-#                          square root, sqrt, power of, tip, tax, ...
+# Fields:
+#   script:    path to script, relative to this cue.md
+#   upArgs:    JSON array of args passed on Up-cycle
+#   downArgs:  JSON array of args passed on Down-cycle
+#   tip:       statusline tip when the word is highlighted
+#   speak:     bool — read tip via TTS on navigation (default false)
+
+# tip: "{{NAME}} control"
+# speak: false
+# script: ./{{NAME}}.sh
+# upArgs: ["up", "5"]
+# downArgs: ["down", "5"]
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 2: Blank-control — typing `_` near keyword auto-populates
+# ─────────────────────────────────────────────────────────────────────
+# When the user types `_` within `blankProximity` words of a keyword,
+# the runtime calls `blankScript get` to read the current value, fills
+# the blank, then calls `blankScript set <value>` on cycle. Good for:
+# blanks-only controls without a corresponding word-control (rare).
 #
-#   ### factual: match: the (capital|ceo|founder|author|inventor|...) of .+ is
-#                keywords: capital of, ceo of, founder of, who is, who was
+# Fields (all optional except blankKeywords + blankScript):
+#   blankKeywords:        comma-separated triggers (required)
+#   blankScript:          script that responds to `get` / `set <value>`
+#                         (required for live-value controls; alternative:
+#                         stepValues for static lists — see SHAPE 4)
+#   blankAutoPopulate:    fill `_` immediately on typing (default false;
+#                         most live-value controls want true)
+#   blankFormat:          integer | float | string  (default string)
+#   blankSuffix:          appended to numeric display (e.g. "%", "px")
+#   blankStep:            step size for cycling (numeric blanks only)
+#   blankReadOnly:        disable cycling — use for live API data
+#                         where the user just wants to read (stocks)
+#   blankDismissible:     allow `_` to be cleared to nothing (default false)
+#   blankProximity:       max words between keyword + `_` (default 0 = adjacent)
+#   blankTip:             statusline tip when the blank is highlighted
 
-# match: <regex>
-# keywords: <comma,separated>
+# blankKeywords: {{NAME}}
+# blankAutoPopulate: true
+# blankFormat: string
+# blankTip: "{{NAME}} value"
+# blankProximity: 0
+# blankScript: ./{{NAME}}-blank.sh
 
 # ─────────────────────────────────────────────────────────────────────
-# PRIORITY
+# SHAPE 3: Step control — numeric cycling, no script
 # ─────────────────────────────────────────────────────────────────────
-# priority: number (default 50)
-#   Higher priority wins when multiple modes match (match: or keywords:
-#   ties). The LLM classifier itself uses priority: 100; specific modes
-#   like math/factual use 90.
+# Cycles numeric values with suffixes (e.g. "8.5f" → "9.0f" → "9.5f").
+# No script needed; runtime handles the arithmetic. See defaults/
+# controls/numbers/cue.md for production example.
+#
+# Fields (use stepPattern OR stepSuffixes, not both):
+#   stepPattern:   regex with captures — (\d+)(px|em|rem)
+#   stepSuffixes:  space-separated list — "px em rem %"
+#   step:          increment (default 1)
+#   stepMin:       lower bound (optional)
+#   stepMax:       upper bound (optional)
+#   stepFormat:    integer | float (default integer)
+#   stepTip:       tip shown when a cyclable value is highlighted
 
-priority: 100
+# stepSuffixes: f
+# step: 0.5
+# stepMin: 0
+# stepFormat: float
+# stepTip: "±0.5{{NAME}}"
 
 # ─────────────────────────────────────────────────────────────────────
-# OPTIONAL FIELDS
+# SHAPE 4: List control — cycles a fixed list on a blank position
 # ─────────────────────────────────────────────────────────────────────
-# model:  override LLM model for this mode only
+# Combines a blank-control keyword trigger with a fixed cycle list.
+# No script needed. See defaults/controls/affirmations/cue.md.
+#
+# Fields:
+#   blankKeywords:    comma-separated triggers
+#   stepValues:       JSON array of strings to cycle through
+#   tip:              statusline tip on highlight
+#   blankDismissible: allow clearing (default false; affirmations uses true)
 
-# model: openai/gpt-oss-120b
+# blankKeywords: {{NAME}}
+# stepValues: ["first", "second", "third"]
+# tip: "{{NAME}} options"
+# blankDismissible: true
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 5: COMBINED word + blank control (most powerful — volume/brightness)
+# ─────────────────────────────────────────────────────────────────────
+# Both word-control AND blank-control on the same cue.md. The word
+# itself cycles via key presses (script:); typing `_` near the keyword
+# auto-populates with the live value AND lets you cycle that value
+# precisely (blankScript:). The two scripts share the same colocated
+# helper binary (e.g. VolCtl.exe). See defaults/controls/volume/cue.md.
+
+# tip: system {{NAME}} control
+# speak: true
+# script: ./{{NAME}}.sh
+# upArgs: ["up", "5"]
+# downArgs: ["down", "5"]
+# blankKeywords: {{NAME}}
+# blankAutoPopulate: true
+# blankFormat: integer
+# blankSuffix: %
+# blankStep: 5
+# blankScript: ./{{NAME}}-blank.sh
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 6: Selector + Satellite (opencues settings pattern)
+# ─────────────────────────────────────────────────────────────────────
+# Two-word span: typing `<keyword> _` expands to `<setting-name> <value>`.
+# Cycle the SELECTOR (first word) to switch settings; cycle the
+# SATELLITE (second word) to change the current setting's value. Used
+# by opencues control for runtime settings (voice-mode, debug-mode, etc.).
+# See defaults/controls/opencues/cue.md.
+#
+# Extra fields:
+#   blankSatellite:           true — enable selector+satellite shape
+#   blankSatelliteSeparator:  string between selector+satellite (default ' ')
+#   blankClearKeywords:       remove the trigger keywords from text
+#                             after expansion (true = clean output)
+#   blankClearOnEdit:         drop the satellite if user types over the
+#                             selector (true = matched-pair cleanup)
+
+# blankKeywords: opencues settings, config
+# blankAutoPopulate: true
+# blankFormat: string
+# blankScript: ./{{NAME}}-blank.sh
+# blankSatellite: true
+# blankSatelliteSeparator: ' '
+# blankClearKeywords: true
+# blankClearOnEdit: true
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 7: Runtime-class control (LLM/HTTP-backed — stocks, weather, etc.)
+# ─────────────────────────────────────────────────────────────────────
+# For controls backed by an LLM call, HTTP API, or any host-runtime
+# logic, do NOT write a script — implement a TS class instead:
+#   1. packages/opencues-runtime/src/controls/{{NAME}}.ts (extends Control)
+#   2. Register in each host's controlInvoke map (see opencuesRuntime.ts
+#      for CC, opencuesBootstrap.ts for OC, controls/index.ts for chrome)
+#   3. cue.md declares blankKeywords + blankReadOnly + blankFormat —
+#      no script: or blankScript: at all.
+#
+# See defaults/controls/stocks/cue.md (real-world: 7 ticker keyword
+# expansions, blankReadOnly: true so cycling is no-op, all dispatch
+# happens in StocksControl in TS).
+#
+# Bonus: blankKeywordExpansions.<keyword>: <expansion> — replaces the
+# matched trigger word with a friendlier display name. e.g. typing
+# "rddt _" with `blankKeywordExpansions.rddt: Reddit` produces
+# "Reddit $133.44". One entry per keyword.
+
+# blankKeywords: rddt, nvda, aapl
+# blankAutoPopulate: true
+# blankFormat: string
+# blankTip: Stock price
+# blankReadOnly: true
+# blankProximity: 1
+# blankKeywordExpansions.rddt: Reddit
+# blankKeywordExpansions.nvda: Nvidia
+# blankKeywordExpansions.aapl: Apple
 
 # ─────────────────────────────────────────────────────────────────────
 # HOST COMPATIBILITY (advanced)
 # ─────────────────────────────────────────────────────────────────────
-# Most blanks run everywhere. Override only when this mode depends on
-# something a particular host can't provide (e.g. subprocess access).
-#   on-host:     allow-list (e.g. [claude-code, opencode, codex, chrome])
-#   not-on-host: deny-list  (e.g. [chrome])
+# Auto-detect: if `script:` or `blankScript:` ends in .sh / .ps1 / .bat
+# / .exe / etc., this control is excluded from chrome (browsers can't
+# spawn subprocesses).
+#
+# Override:
+#   on-host:     [chrome, ...]   — allow-list (replaces auto-detect)
+#   not-on-host: [chrome]        — deny-list (filters auto / on-host)
+#
+# Use `on-host:` if you have a runtime-class implementation in
+# @opencues/runtime/src/controls/<name>.ts that handles chrome (e.g.
+# routes through chrome.storage instead of the .sh fallback). The
+# opencues control does this — `blankScript: ./opencues-blank.sh` for
+# native hosts, OpenCuesSettingsControl in TS for chrome, and
+# `on-host: chrome, claude-code, codex, opencode` to override the
+# auto-detect that would otherwise exclude chrome.
 # See docs/features/host-compat.md.
 
 # on-host: chrome, claude-code, codex, opencode
 # not-on-host: chrome
 ---
-Answer the user's question concisely. Output one line, no preamble.
-
-Example: "The capital of France is _" → ANSWER=Paris

@@ -1,7 +1,7 @@
 /**
  * opencues-core/discover.ts
  *
- * Folder-based config discovery. Scans cues/, blanks/, controls/ directories
+ * Folder-based config discovery. Scans cues/, blanks/ directories
  * for individual cue.md files and merges them into CuesMdConfig objects.
  *
  * Pure TypeScript — I/O adapters are injected, no direct filesystem access.
@@ -123,7 +123,7 @@ function combineCueConfigs(configs: CuesMdConfig[]): CuesMdConfig {
 // ============================================================================
 
 /**
- * Discover folder-based configs by scanning cues/, blanks/, controls/ directories.
+ * Discover folder-based configs by scanning cues/, blanks/ directories.
  *
  * Each subdirectory containing a cue.md file is parsed as an individual cue.
  * Returns discovered configs ready for merging with monolithic file configs.
@@ -148,8 +148,10 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
 
-  // Scan controls/ directory
-  const controlConfigs = scanDir(opts.basePath + '/controls', opts);
+  // Scan blanks/ directory for control overrides (post-rename, the same
+  // path scanned above for blanksConfig — folder cue.md files with
+  // `type: control` are funnelled into result.controlOverrides here).
+  const controlConfigs = scanDir(opts.basePath + '/blanks', opts);
   if (controlConfigs.length > 0) {
     const combined = combineCueConfigs(controlConfigs);
     if (combined.controls) {

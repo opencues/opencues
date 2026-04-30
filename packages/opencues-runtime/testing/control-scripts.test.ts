@@ -22,7 +22,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
-const DEFAULTS_CONTROLS = path.join(REPO_ROOT, 'defaults/controls');
+const DEFAULTS_CONTROLS = path.join(REPO_ROOT, 'defaults/blanks');
 const DEFAULTS_SCRIPTS = path.join(REPO_ROOT, 'defaults/scripts');
 
 // Shipped scripts the colocated contract applies to. speak.sh + SpeakCtl.cs
@@ -115,7 +115,7 @@ describe('shipped control scripts: colocated-helpers contract', () => {
       // opencues-blank.sh's contract: read the opencues.md file two
       // levels up from the script. Set up the layout it expects.
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
-      const ctlDir = path.join(tmpHome, '.opencues/controls/opencues');
+      const ctlDir = path.join(tmpHome, '.opencues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
       fs.copyFileSync(
         path.join(DEFAULTS_CONTROLS, 'opencues/opencues-blank.sh'),
@@ -141,7 +141,7 @@ describe('shipped control scripts: colocated-helpers contract', () => {
     // happens on a real install.
     it.skipIf(skip)('opencues-blank.sh get: silently exits 1 when opencues.md is 0 bytes', () => {
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
-      const ctlDir = path.join(tmpHome, '.opencues/controls/opencues');
+      const ctlDir = path.join(tmpHome, '.opencues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
       fs.copyFileSync(
         path.join(DEFAULTS_CONTROLS, 'opencues/opencues-blank.sh'),

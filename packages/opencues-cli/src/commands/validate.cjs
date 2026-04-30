@@ -90,13 +90,13 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordAltSources
       priority: src?.priority ?? 50,
     });
   };
-  // Top-level .md files (cues.md, blanks.md, controls.md). Duplicates
-  // WITHIN one file = error. opencues.md uses a different schema; we
-  // just check it's readable.
+  // Top-level .md files (cues.md, blanks.md). Duplicates WITHIN one
+  // file = error. opencues.md uses a different schema; we just check
+  // it's readable. Note: blanks.md may declare both `## Sources` and
+  // `## Controls` post-rename, so we register both kinds from it.
   for (const [filename, kind] of [
-    ['cues.md',     'cue'],
-    ['blanks.md',   'blank'],
-    ['controls.md', 'control'],
+    ['cues.md',   'cue'],
+    ['blanks.md', 'blank'],
   ]) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
@@ -143,11 +143,11 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordAltSources
     catch (err) { errors.push(`${opencuesMdPath}: read failed — ${err.message}`); }
   }
 
-  // Folder discoveries: .opencues/{cues,blanks,controls}/<name>/cue.md
+  // Folder discoveries: .opencues/{cues,blanks}/<name>/cue.md
   // Folder name IS the cue/blank/control name. Within the same dir,
   // can't have two folders with the same name (filesystem prevents it).
   // Folder + monolithic same name is FINE — folder overrides.
-  for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank'], ['controls', 'control']]) {
+  for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank']]) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {

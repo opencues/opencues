@@ -1,12 +1,12 @@
 // ConfigLoader — Phase A.
 //
 // Loads (across $OPENCUES_HOME → <cwd>/.opencues → ~/.opencues):
-//   - cues.md / controls.md / blanks.md  (frontmatter parsed by @opencues/core).
+//   - cues.md / blanks.md  (frontmatter parsed by @opencues/core).
 //     Tips live inside cues.md's `## Tips` JSON block — there is no
 //     separate tips.json file any more.
 //   - ~/.opencues/opencues.md (user-level only — system settings owned
 //     by the runtime; project-level opencues.md is ignored)
-//   - cues/<name>/ and controls/<name>/ folders (per-folder cue.md via
+//   - cues/<name>/ and blanks/<name>/ folders (per-folder cue.md via
 //     @opencues/core's discoverFolderConfigs)
 //
 // Exposes:
@@ -362,7 +362,7 @@ export class ConfigLoader {
    * isn't a tip-having entry but IS a control or blankKeyword — synthesises
    * a LocalCueLookupResult from the control's `tip` / `blankTip` so the
    * statusline shows e.g. "system volume control" when the user highlights
-   * `volume`. The control side wasn't in cueMap because controls.md and
+   * `volume`. The control side wasn't in cueMap because blanks.md and
    * folder cue.md don't go through the tips JSON path.
    */
   lookup(word: string): LocalCueLookupResult | null {
@@ -443,22 +443,21 @@ export class ConfigLoader {
     const userLevelPath = searchPaths[searchPaths.length - 1];
 
     // Fan out per-path .md reads + user-level opencues.md. Each search
-    // path contributes 3 .md files (cues, controls, blanks); opencues.md
+    // path contributes 2 .md files (cues, blanks); opencues.md
     // is a singleton from the user-level path. Tips come from each
     // cues.md's `## Tips` block — no separate JSON file.
     const allReads = await Promise.all([
       this._safeReadFile(`${userLevelPath}/opencues.md`),
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
-        this._safeReadFile(`${p}/controls.md`),
         this._safeReadFile(`${p}/blanks.md`),
       ]),
     ]);
     const opencuesMdContent = allReads[0];
     const perPath = searchPaths.map((_, i) => ({
-      cuesMd: allReads[1 + i * 3],
-      controlsMd: allReads[2 + i * 3],
-      blanksMd: allReads[3 + i * 3],
+      cuesMd: allReads[1 + i * 2],
+      controlsMd: allReads[2 + i * 2],
+      blanksMd: allReads[2 + i * 2],
     }));
 
     // Per-path .md parses. Project (index 0) is highest priority; user
@@ -481,7 +480,7 @@ export class ConfigLoader {
       }
     }
     const controlsConfig = this._mergeConfigsAcrossPaths(
-      perPath.map(p => this._safeParseCuesMd(p.controlsMd, 'controls.md')),
+      perPath.map(p => this._safeParseCuesMd(p.controlsMd, 'blanks.md')),
     );
     const blanksConfig = this._mergeConfigsAcrossPaths(
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
@@ -525,7 +524,7 @@ export class ConfigLoader {
     // configs use the LLM resolver shape, not the static-tip shape.
 
     // Build the navigable-words set + controlsByWord map + stepPatterns
-    // from cueMap keys, folder controls, and controls.md frontmatter.
+    // from cueMap keys, folder controls, and blanks.md frontmatter.
     const navigableWords = new Set<string>();
     const controlsByWord = new Map<string, ControlEntry>();
     const stepPatterns: StepPattern[] = [];
@@ -658,7 +657,7 @@ export class ConfigLoader {
       }
     };
 
-    for (const sub of ['cues', 'controls', 'blanks']) {
+    for (const sub of ['cues', 'blanks']) {
       await prewalk(`${cwd}/${sub}`, 0);
     }
 

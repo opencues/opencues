@@ -196,7 +196,7 @@ function doSeedConfigs() {
   const HOME = require('node:os').homedir();
   const userConfigDir = path.join(HOME, '.opencues');
   const repoConfigDir = path.join(REPO_ROOT, 'defaults');
-  const sources = ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
+  const sources = ['cues.md', 'blanks.md', 'opencues.md', 'cues', 'blanks'];
 
   console.log(`Seeding user-level configs to: ${userConfigDir}/`);
   console.log(`Sources: ${repoConfigDir}\n`);

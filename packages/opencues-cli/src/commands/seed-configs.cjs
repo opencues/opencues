@@ -4,11 +4,11 @@
 // Three responsibilities, all idempotent + safe to re-run:
 //
 //   1. SEED   first-time copy of repo defaults → ~/.opencues/
-//             (cues.md, blanks.md, controls.md, opencues.md, cues/, controls/, scripts/)
+//             (cues.md, blanks.md, opencues.md, cues/, blanks/, scripts/)
 //             Skips files that already exist with content (preserves user edits).
 //
 //   2. SYNC   library-script refresh on every run.
-//             ~/.opencues/{controls/<name>,scripts}/{*.sh,*.cs,*.ps1} ← repo defaults
+//             ~/.opencues/{blanks/<name>,scripts}/{*.sh,*.cs,*.ps1} ← repo defaults
 //             These are LIBRARY code (not user content). They ship with the
 //             repo, the user normally doesn't edit them, and stale copies
 //             silently break things when paths change. Sync overwrites if
@@ -40,8 +40,8 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 // First-time copy targets. opencues.md is user-level only (skipped under --project).
-const SEED_FILES_USER = ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls', 'scripts'];
-const SEED_FILES_PROJECT = ['cues.md', 'blanks.md', 'controls.md', 'cues', 'controls'];
+const SEED_FILES_USER = ['cues.md', 'blanks.md', 'opencues.md', 'cues', 'blanks', 'scripts'];
+const SEED_FILES_PROJECT = ['cues.md', 'blanks.md', 'cues', 'blanks'];
 
 module.exports = function seedConfigs(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -103,16 +103,16 @@ module.exports = function seedConfigs(argv, ctx) {
   // overrides, not library/utility files which stay user-level).
   if (projectScope) return;
 
-  // ── 1.5 ADDITIVE SEED — copy in any NEW subdirs (controls/<name>,
+  // ── 1.5 ADDITIVE SEED — copy in any NEW subdirs (blanks/<name>,
   // cues/<name>) that exist in defaults/ but not yet in ~/.opencues/.
-  // The original SEED phase only copies the top-level `controls/` dir
-  // once; new shipped controls (or cues) added in a later release would
+  // The original SEED phase only copies the top-level `blanks/` dir
+  // once; new shipped blanks (or cues) added in a later release would
   // otherwise be silently missed. .md inside copied subdirs is user
   // content from then on (SYNC won't touch it). ──────────────────────
   log('');
-  log('Additive seed (new subdirs from defaults/{cues,controls}/):');
+  log('Additive seed (new subdirs from defaults/{cues,blanks}/):');
   let added = 0;
-  for (const parent of ['cues', 'controls']) {
+  for (const parent of ['cues', 'blanks']) {
     const srcParent = path.join(sourceDir, parent);
     const dstParent = path.join(HOME, '.opencues', parent);
     if (!fs.existsSync(srcParent)) continue;
@@ -133,10 +133,10 @@ module.exports = function seedConfigs(argv, ctx) {
   log('Library sync (.sh/.cs/.ps1 from defaults — never overwrites .md):');
   let synced = 0;
 
-  // 2a. defaults/controls/<name>/ → ~/.opencues/controls/<name>/
-  for (const ctlDir of listChildDirs(path.join(sourceDir, 'controls'))) {
+  // 2a. defaults/blanks/<name>/ → ~/.opencues/blanks/<name>/
+  for (const ctlDir of listChildDirs(path.join(sourceDir, 'blanks'))) {
     const ctl = path.basename(ctlDir);
-    const userDir = path.join(HOME, '.opencues/controls', ctl);
+    const userDir = path.join(HOME, '.opencues/blanks', ctl);
     if (!fs.existsSync(userDir)) continue; // not seeded → user opted out
     for (const src of listFilesByExt(ctlDir, ['.sh', '.cs', '.ps1'])) {
       const dst = path.join(userDir, path.basename(src));
@@ -172,8 +172,8 @@ module.exports = function seedConfigs(argv, ctx) {
     log('');
     log('Compile (.cs → .exe, WSL):');
     let compiled = 0;
-    // 4a. controls/<name>/*.cs colocated.
-    for (const userDir of listChildDirs(path.join(HOME, '.opencues/controls'))) {
+    // 4a. blanks/<name>/*.cs colocated.
+    for (const userDir of listChildDirs(path.join(HOME, '.opencues/blanks'))) {
       for (const csFile of listFilesByExt(userDir, ['.cs'])) {
         if (compileExe(csc, csFile, userDir, log)) compiled++;
       }
@@ -289,7 +289,7 @@ function printHelp() {
   console.log('');
   console.log('On every invocation:');
   console.log('  1. Seed first-time copies (cues.md, blanks.md, etc.) — never overwrites');
-  console.log('  2. Sync library files (.sh/.cs/.ps1) from defaults/{controls,scripts}/');
+  console.log('  2. Sync library files (.sh/.cs/.ps1) from defaults/{blanks,scripts}/');
   console.log('     — overwrites stale copies but never .md (user content)');
   console.log('  3. Self-heal a 0-byte opencues.md (would otherwise silently break');
   console.log('     "opencues ___" / "config ___" blank-fills on native hosts)');

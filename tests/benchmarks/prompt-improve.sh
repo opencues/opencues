@@ -13,8 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CUE_MD="$SCRIPT_DIR/../../controls/prompt/cue.md"
-PROMPT_SCRIPT="$SCRIPT_DIR/../../controls/prompt/prompt-blank.sh"
+CUE_MD="$SCRIPT_DIR/../../defaults/blanks/prompt/cue.md"
+PROMPT_SCRIPT="$SCRIPT_DIR/../../defaults/blanks/prompt/prompt-blank.sh"
 
 FILTER_CATEGORY="${1:-}"
 if [[ "$FILTER_CATEGORY" == "--category" ]]; then

@@ -8,7 +8,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # opencues.md is user-level only (system-wide settings owned by the
-# runtime). This control always lives at ~/.opencues/controls/opencues/
+# runtime). This control always lives at ~/.opencues/blanks/opencues/
 # so the target file is deterministically two levels up.
 OPENCUES_MD="$SCRIPT_DIR/../../opencues.md"
 

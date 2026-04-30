@@ -119,7 +119,7 @@ globalThis._localCueData=null;
 globalThis._localCueMap=null;
 }
 }
-// Config reload function: parses cues.md/blanks.md/controls.md + folder configs,
+// Config reload function: parses cues.md/blanks.md + folder configs,
 // rebuilds the resolver with new sources, and clears the analyzed-word cache.
 // Called at startup and re-called after CONFIG_TTL_MS (2s) on the next analysis trigger.
 globalThis._reloadCuesConfig=function(){
@@ -131,13 +131,10 @@ var _rfs=${requireFuncName}("fs");var _rcwd=process.cwd();
 var _ign=[],_newCuesMd=null,_newBlanksMd=null,_newCtrlOvr=Object.assign({},globalThis._staticCueControlOverrides||{});
 // cues.md (aliases: hints.md, tips.md) — tips + prompt config
 ["cues.md","hints.md","tips.md"].some(function(f){var p=_rcwd+"/"+f;if(_rfs.existsSync(p)){var _c=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(p,"utf8"));_newCuesMd=_c;if(_c.ignore){_ign=_ign.concat(_c.ignore);}return true;}});
-// controls.md — cue-controls (custom control overrides)
-var _rCtrlPath=_rcwd+"/controls.md";
-if(_rfs.existsSync(_rCtrlPath)){var _cc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rCtrlPath,"utf8"));if(_cc.controls)Object.assign(_newCtrlOvr,_cc.controls);if(_cc.ignore){_ign=_ign.concat(_cc.ignore);}}
-// blanks.md — blank-fill config
+// blanks.md — cue-controls + (legacy) blank-fill config in one file
 var _rBlankPath=_rcwd+"/blanks.md";
-if(_rfs.existsSync(_rBlankPath)){var _bc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rBlankPath,"utf8"));_newBlanksMd=_bc;if(_bc.ignore){_ign=_ign.concat(_bc.ignore);}}
-// Folder-based config discovery (cues/, blanks/, controls/ directories)
+if(_rfs.existsSync(_rBlankPath)){var _bc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rBlankPath,"utf8"));_newBlanksMd=_bc;if(_bc.controls)Object.assign(_newCtrlOvr,_bc.controls);if(_bc.ignore){_ign=_ign.concat(_bc.ignore);}}
+// Folder-based config discovery (cues/, blanks/ directories)
 if(globalThis._cuesCore.discoverFolderConfigs){
 var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_e){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_e){return null;}}};
 var _rFolderCfgs=globalThis._cuesCore.discoverFolderConfigs({basePath:_rcwd,readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});

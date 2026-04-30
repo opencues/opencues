@@ -51,7 +51,7 @@ declare const __DEFAULT_CUES_MD__: string;
 declare const __DEFAULT_BLANKS_MD__: string;
 declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
-declare const __DEFAULT_CONTROL_FOLDERS__: Record<string, string>;
+declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
 
 const ROOT = '/chrome-storage';
 
@@ -237,7 +237,7 @@ function isReadOnlyPath(path: string): boolean {
   if (!path.startsWith(ROOT + '/')) return false;
   const rel = path.slice(ROOT.length + 1);
   if (rel === 'opencues.md') return false;       // OpenCuesSettingsControl writes
-  if (rel === 'controls.md') return false;       // legacy monolithic; write-safe fallback
+  if (rel === 'blanks.md') return false;         // legacy monolithic; write-safe fallback
   return true;
 }
 
@@ -250,8 +250,8 @@ function readBakeTimeDefault(path: string): string | null {
   if (rel === 'opencues.md') return __DEFAULT_OPENCUES_MD__ || null;
   const cueMatch = rel.match(/^cues\/([^/]+)\/cue\.md$/);
   if (cueMatch) return __DEFAULT_CUE_FOLDERS__[cueMatch[1]] ?? null;
-  const ctrlMatch = rel.match(/^controls\/([^/]+)\/cue\.md$/);
-  if (ctrlMatch) return __DEFAULT_CONTROL_FOLDERS__[ctrlMatch[1]] ?? null;
+  const ctrlMatch = rel.match(/^blanks\/([^/]+)\/cue\.md$/);
+  if (ctrlMatch) return __DEFAULT_BLANK_FOLDERS__[ctrlMatch[1]] ?? null;
   return null;
 }
 
@@ -316,9 +316,9 @@ async function writeFile(path: string, content: string): Promise<void> {
 
 /**
  * Synthetic readDir over the bake-time folder maps. ConfigLoader walks
- * `${cwd}/cues` + `${cwd}/controls` to discover folder configs. We
+ * `${cwd}/cues` + `${cwd}/blanks` to discover folder configs. We
  * don't have a real filesystem, so return the names esbuild baked in
- * from the project's cues/* and controls/* directories.
+ * from the project's cues/* and blanks/* directories.
  */
 async function readDir(path: string): Promise<readonly { name: string; isDirectory: boolean }[] | null> {
   // Try the bundled index.json first — "what did `opencues sync chrome`
@@ -330,14 +330,14 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   if (path === `${ROOT}/cues`) {
     return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({ name, isDirectory: true }));
   }
-  if (path === `${ROOT}/controls`) {
-    return Object.keys(__DEFAULT_CONTROL_FOLDERS__).map(name => ({ name, isDirectory: true }));
+  if (path === `${ROOT}/blanks`) {
+    return Object.keys(__DEFAULT_BLANK_FOLDERS__).map(name => ({ name, isDirectory: true }));
   }
   // ConfigLoader's prewalk descends into each folder name and lists it
   // again expecting a `cue.md` entry. Without this branch the discovery
   // returns 0 controls and BlankFill never matches any keyword.
   const cuesPrefix = `${ROOT}/cues/`;
-  const ctrlsPrefix = `${ROOT}/controls/`;
+  const ctrlsPrefix = `${ROOT}/blanks/`;
   if (path.startsWith(cuesPrefix)) {
     const folder = path.slice(cuesPrefix.length);
     if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_CUE_FOLDERS__, folder)) {
@@ -346,7 +346,7 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   }
   if (path.startsWith(ctrlsPrefix)) {
     const folder = path.slice(ctrlsPrefix.length);
-    if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_CONTROL_FOLDERS__, folder)) {
+    if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_BLANK_FOLDERS__, folder)) {
       return [{ name: 'cue.md', isDirectory: false }];
     }
   }

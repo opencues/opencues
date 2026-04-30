@@ -306,7 +306,7 @@ function listConfigSources() {
   // under ~/.opencues/. Names here are relative to the .opencues/ root
   // — both source (`<REPO>/.opencues/<name>`) and dest (`~/.opencues/<name>`)
   // share the same suffix. Order is informational only.
-  return ['cues.md', 'blanks.md', 'controls.md', 'opencues.md', 'cues', 'controls'];
+  return ['cues.md', 'blanks.md', 'opencues.md', 'cues', 'blanks'];
 }
 
 function copyDir(src, dst) {
@@ -332,9 +332,9 @@ function listActionFileBasenames() {
       if (f.endsWith('.cs')) out.push(f.replace(/\.cs$/, '.exe'));
     }
   }
-  // defaults/controls/*/*.cs — compiled to ~/.claude/opencues/actions/<basename>.exe
-  // by setup.sh's WSL .exe block (e.g. defaults/controls/volume/VolCtl.cs → VolCtl.exe).
-  const controlsDir = path.resolve(REPO_ROOT, 'defaults', 'controls');
+  // defaults/blanks/*/*.cs — compiled to ~/.claude/opencues/actions/<basename>.exe
+  // by setup.sh's WSL .exe block (e.g. defaults/blanks/volume/VolCtl.cs → VolCtl.exe).
+  const controlsDir = path.resolve(REPO_ROOT, 'defaults', 'blanks');
   if (fs.existsSync(controlsDir)) {
     for (const sub of fs.readdirSync(controlsDir)) {
       const subDir = path.join(controlsDir, sub);

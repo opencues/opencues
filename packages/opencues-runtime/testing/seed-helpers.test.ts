@@ -58,14 +58,14 @@ describe('seed-configs: targetExistsWithContent', () => {
     expect(targetExistsWithContent(f)).toBe(true);
   });
 
-  it('returns true for a directory regardless of contents (cues/, controls/ are always present-once-seeded)', () => {
+  it('returns true for a directory regardless of contents (cues/, blanks/ are always present-once-seeded)', () => {
     const d = path.join(tmp, 'cues');
     fs.mkdirSync(d);
     expect(targetExistsWithContent(d)).toBe(true);
   });
 
   it('returns true for an empty directory (fs.stat.size on a dir is the entry size, not contents)', () => {
-    const d = path.join(tmp, 'controls');
+    const d = path.join(tmp, 'blanks');
     fs.mkdirSync(d);
     // Sanity: directory has zero entries but the function still says "present".
     expect(fs.readdirSync(d)).toHaveLength(0);

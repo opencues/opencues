@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-controls-shapes.sh — verifies each of the four control shapes
-# documented in the new/control.md template (word / blank / step / list)
+# test-blanks-shapes.sh — verifies each of the four blank/control shapes
+# documented in the new/blank.md template (word / blank / step / list)
 # can be scaffolded, uncommented, and validated end-to-end.
 
 set -euo pipefail
@@ -17,7 +17,7 @@ pass() { printf "  PASS %s\n" "$1"; }
 fail() { printf "  FAIL %s\n" "$1" >&2; exit 1; }
 
 # Helper: scaffold a new control + uncomment a labelled shape block.
-# The new/control.md template has 4 SHAPE blocks delimited by section
+# The new/blank.md template has 4 SHAPE blocks delimited by section
 # banners. Only lines matching `# <yaml-key>: ...` at column 0 (no extra
 # indent) are uncommented — descriptive lines like `#   script:  path…`
 # stay commented because they're indented prose, not real config.
@@ -63,35 +63,35 @@ make_stub() {
 # ─── SHAPE 1: Word-control (volume-style) ─────────────────────────
 echo "=== SHAPE 1: word-control ==="
 "$OPENCUES" new control my-word --project >/dev/null 2>&1
-uncomment_shape .opencues/controls/my-word/cue.md "Word-control"
-make_stub .opencues/controls/my-word/my-word.sh
-assert_field .opencues/controls/my-word/cue.md "script"
-assert_field .opencues/controls/my-word/cue.md "upArgs"
-assert_field .opencues/controls/my-word/cue.md "downArgs"
+uncomment_shape .opencues/blanks/my-word/cue.md "Word-control"
+make_stub .opencues/blanks/my-word/my-word.sh
+assert_field .opencues/blanks/my-word/cue.md "script"
+assert_field .opencues/blanks/my-word/cue.md "upArgs"
+assert_field .opencues/blanks/my-word/cue.md "downArgs"
 
 # ─── SHAPE 2: Blank-control ───────────────────────────────────────
 echo "=== SHAPE 2: blank-control ==="
 "$OPENCUES" new control my-blank --project >/dev/null 2>&1
-uncomment_shape .opencues/controls/my-blank/cue.md "Blank-control"
-make_stub .opencues/controls/my-blank/my-blank-blank.sh
-assert_field .opencues/controls/my-blank/cue.md "blankKeywords"
-assert_field .opencues/controls/my-blank/cue.md "blankAutoPopulate"
-assert_field .opencues/controls/my-blank/cue.md "blankFormat"
+uncomment_shape .opencues/blanks/my-blank/cue.md "Blank-control"
+make_stub .opencues/blanks/my-blank/my-blank-blank.sh
+assert_field .opencues/blanks/my-blank/cue.md "blankKeywords"
+assert_field .opencues/blanks/my-blank/cue.md "blankAutoPopulate"
+assert_field .opencues/blanks/my-blank/cue.md "blankFormat"
 
 # ─── SHAPE 3: Step control ────────────────────────────────────────
 echo "=== SHAPE 3: step-control ==="
 "$OPENCUES" new control my-step --project >/dev/null 2>&1
-uncomment_shape .opencues/controls/my-step/cue.md "Step control"
-assert_field .opencues/controls/my-step/cue.md "stepSuffixes"
-assert_field .opencues/controls/my-step/cue.md "step"
-assert_field .opencues/controls/my-step/cue.md "stepFormat"
+uncomment_shape .opencues/blanks/my-step/cue.md "Step control"
+assert_field .opencues/blanks/my-step/cue.md "stepSuffixes"
+assert_field .opencues/blanks/my-step/cue.md "step"
+assert_field .opencues/blanks/my-step/cue.md "stepFormat"
 
 # ─── SHAPE 4: List control ────────────────────────────────────────
 echo "=== SHAPE 4: list-control ==="
 "$OPENCUES" new control my-list --project >/dev/null 2>&1
-uncomment_shape .opencues/controls/my-list/cue.md "List control"
-assert_field .opencues/controls/my-list/cue.md "blankKeywords"
-assert_field .opencues/controls/my-list/cue.md "stepValues"
+uncomment_shape .opencues/blanks/my-list/cue.md "List control"
+assert_field .opencues/blanks/my-list/cue.md "blankKeywords"
+assert_field .opencues/blanks/my-list/cue.md "stepValues"
 
 echo "=== validate all four shapes together ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || { "$OPENCUES" validate --project; fail "validate failed"; }
@@ -105,4 +105,4 @@ done
 pass "list registers all four controls (my-word, my-blank, my-step, my-list)"
 
 echo
-echo "PASS: test-controls-shapes.sh (4 shapes × 2-3 fields + validate + list = 14 checks)"
+echo "PASS: test-blanks-shapes.sh (4 shapes × 2-3 fields + validate + list = 14 checks)"

@@ -8,6 +8,9 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const VALID = new Set(['cues', 'blanks', 'controls', 'opencues']);
+// One-version backwards-compat alias: `opencues edit controls` silently
+// resolves to blanks.md (controls.md was renamed to blanks.md).
+const ALIASES = { controls: 'blanks' };
 
 module.exports = function edit(argv) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -24,15 +27,17 @@ module.exports = function edit(argv) {
     console.error(`opencues edit: unknown <file> "${name}". One of: ${[...VALID].join(', ')}`);
     process.exit(2);
   }
+  // Resolve aliases silently (backwards-compat for the rename window).
+  const resolved = ALIASES[name] || name;
 
   const baseDir = projectScope
     ? path.join(process.cwd(), '.opencues')
     : path.join(os.homedir(), '.opencues');
-  const file = path.join(baseDir, `${name}.md`);
+  const file = path.join(baseDir, `${resolved}.md`);
 
   if (!fs.existsSync(file)) {
     fs.mkdirSync(baseDir, { recursive: true });
-    fs.writeFileSync(file, `# ${name}.md (auto-created by opencues edit)\n`);
+    fs.writeFileSync(file, `# ${resolved}.md (auto-created by opencues edit)\n`);
     console.log(`Created empty ${file}`);
   }
 

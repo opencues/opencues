@@ -35,21 +35,21 @@ try {
   }
 } catch { /* no cues/ dir */ }
 
-// Also load folder-based control configs (controls/*.md)
-const controlFolders = {};
-const controlsDir = projectRoot + 'defaults/controls/';
+// Also load folder-based blank/control configs (blanks/*.md)
+const blankFolders = {};
+const blanksDir = projectRoot + 'defaults/blanks/';
 try {
-  const dirs = readdirSync(controlsDir, { withFileTypes: true });
+  const dirs = readdirSync(blanksDir, { withFileTypes: true });
   for (const d of dirs) {
     if (d.isDirectory()) {
-      const cueMd = readOr(controlsDir + d.name + '/cue.md', '');
-      if (cueMd) controlFolders[d.name] = cueMd;
+      const cueMd = readOr(blanksDir + d.name + '/cue.md', '');
+      if (cueMd) blankFolders[d.name] = cueMd;
     }
   }
-  if (Object.keys(controlFolders).length > 0) {
-    console.log('Loaded control folders:', Object.keys(controlFolders).join(', '));
+  if (Object.keys(blankFolders).length > 0) {
+    console.log('Loaded blank folders:', Object.keys(blankFolders).join(', '));
   }
-} catch { /* no controls/ dir */ }
+} catch { /* no blanks/ dir */ }
 
 // Tips ship inside defaults/cues.md's `## Tips` block — no separate
 // JSON file. The runtime's ConfigLoader extracts them from the parsed
@@ -62,7 +62,7 @@ const envDefines = {
   '__DEFAULT_BLANKS_MD__': JSON.stringify(readOr(projectRoot + 'defaults/blanks.md', '')),
   '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/opencues.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
-  '__DEFAULT_CONTROL_FOLDERS__': JSON.stringify(controlFolders),
+  '__DEFAULT_BLANK_FOLDERS__': JSON.stringify(blankFolders),
   // Stub Node globals the runtime modules reference. Content scripts
   // have no `process`; these defines replace the lookups at bundle
   // time so the bundled code reads literal '~' / '' / undefined.

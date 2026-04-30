@@ -152,20 +152,21 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     concepts: [{ id: 'a', words: { hello: { tip: 'hi', alts: ['hi'] } } }],
   });
 
-  it('parses cues.md / controls.md / blanks.md frontmatter from cwd', async () => {
+  it('parses cues.md / blanks.md frontmatter from cwd', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
         '/tips.json': TIPS,
         '/proj/cues.md': '---\nname: my-cues\ndomain: test\nversion: 1\n---\n',
-        '/proj/controls.md': '---\nname: my-controls\nversion: 1\n---\n',
         '/proj/blanks.md': '---\nname: my-blanks\nversion: 1\n---\n',
       },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.cuesConfig?.frontmatter.name).toBe('my-cues');
-    expect(loader.controlsConfig?.frontmatter.name).toBe('my-controls');
+    // Post-rename: controlsConfig and blanksConfig are both populated from
+    // the same blanks.md file (symbol-level rename comes in phase 2).
+    expect(loader.controlsConfig?.frontmatter.name).toBe('my-blanks');
     expect(loader.blanksConfig?.frontmatter.name).toBe('my-blanks');
   });
 
@@ -196,12 +197,12 @@ describe('ConfigLoader expanded — cwd .md files', () => {
       cwd: '/proj',
       files: {
         '/proj/cues.md': 'no frontmatter at all',
-        '/proj/controls.md': '---\nname: ok\nversion: 1\n---\n',
+        '/proj/blanks.md': '---\nname: ok\nversion: 1\n---\n',
       },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
-    // controls.md still parses fine even though cues.md was odd.
+    // blanks.md still parses fine even though cues.md was odd.
     // cueMap is empty because cues.md (the sole tips source post-refactor)
     // didn't yield a valid ## Tips block.
     expect(loader.controlsConfig?.frontmatter.name).toBe('ok');

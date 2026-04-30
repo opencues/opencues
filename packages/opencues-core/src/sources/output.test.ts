@@ -36,7 +36,7 @@ async function wordResult(sentence: string, llm: string): Promise<CueSourceResul
       medical: { name: 'medical', promptText: 'M.', priority: 75, match: 'diagnosis|prognosis|etiology|contraindication|prophylaxis|comorbidity|pathology' },
     }}),
     undefined,
-    { httpAdapter: { post: async () => json(llm) }, endpoint: '', apiKey: '', defaultModel: '' },
+    { httpAdapter: { post: async () => json(llm) }, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
   );
   return src[0].getCues(ctx(sentence));
 }
@@ -55,7 +55,7 @@ async function blankResult(sentence: string, adapter: HttpAdapter): Promise<CueS
                     keywords: 'capital of,ceo of,founder of,author of,who is,who was,when did' },
       grammar:    { name: 'grammar', promptText: 'Fill.', priority: 50 },
     }}),
-    { httpAdapter: adapter, endpoint: '', apiKey: '', defaultModel: '' },
+    { httpAdapter: adapter, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
   );
   return src.find(s => s instanceof ClassifiedSourceGroup)!.getCues(ctx(sentence));
 }

@@ -40,9 +40,9 @@ async function setup(text: string) {
     cwd: '/proj',
     files: {
       '/mock/cues.md': TIPS,
-      '/proj/controls/volume/cue.md': VOLUME_CUE,
-      '/proj/controls/affirmations/cue.md': AFFIRM_CUE,
-      '/proj/controls/prompt/cue.md': PROMPT_CUE,
+      '/proj/blanks/volume/cue.md': VOLUME_CUE,
+      '/proj/blanks/affirmations/cue.md': AFFIRM_CUE,
+      '/proj/blanks/prompt/cue.md': PROMPT_CUE,
     },
   });
   adapter.pushText(text);
@@ -306,7 +306,7 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': SCRIPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -331,7 +331,7 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': SCRIPT_CTRL },
     });
     // Sandboxed host returns the value via controlInvoke; spawn should
     // never be hit.
@@ -361,7 +361,7 @@ blankScript: ./weather.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/weather/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/weather/cue.md': SCRIPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -385,7 +385,7 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': SCRIPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -408,7 +408,7 @@ blankScript: ~/.claude/actions/stock.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': SCRIPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -446,7 +446,7 @@ generate alts
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': SCRIPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -475,7 +475,7 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': SCRIPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': SCRIPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -498,7 +498,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/cheer/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/cheer/cue.md': CLR_CTRL },
     });
     adapter.pushText('cheer ');
     const loader = new ConfigLoader(adapter);
@@ -521,7 +521,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/temp/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/temp/cue.md': CLR_CTRL },
     });
     adapter.pushText('weather in Paris ');
     const loader = new ConfigLoader(adapter);
@@ -543,7 +543,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/greet/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/greet/cue.md': CLR_CTRL },
     });
     adapter.pushText('say hello ');
     const loader = new ConfigLoader(adapter);
@@ -565,7 +565,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/weather/cue.md': CLR_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/weather/cue.md': CLR_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -592,7 +592,7 @@ blankScript: ./weather.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/weather2/cue.md': PLAIN },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/weather2/cue.md': PLAIN },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -619,7 +619,7 @@ blankKeywordExpansions.hi: Hello
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/greeting/cue.md': EXP_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/greeting/cue.md': EXP_CTRL },
     });
     adapter.pushText('hi ');
     const loader = new ConfigLoader(adapter);
@@ -642,7 +642,7 @@ blankKeywordExpansions.bye: Goodbye
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/bye/cue.md': BOTH },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/bye/cue.md': BOTH },
     });
     adapter.pushText('bye ');
     const loader = new ConfigLoader(adapter);
@@ -665,7 +665,7 @@ blankKeywordExpansions.rddt: Reddit
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': EXP_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': EXP_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -692,7 +692,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/answer/cue.md': ANSWER_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/answer/cue.md': ANSWER_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -718,7 +718,7 @@ blankConsumeContext: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/ctxsync/cue.md': CTX_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/ctxsync/cue.md': CTX_CTRL },
     });
     adapter.pushText('how to say hello ');
     const loader = new ConfigLoader(adapter);
@@ -741,7 +741,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': PROMPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -788,7 +788,7 @@ blankAutoPopulate: true
     // pick up the controlInvoke path or skip the slot entirely.
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/hn/cue.md': SCRIPTLESS_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/hn/cue.md': SCRIPTLESS_CTRL },
       capabilities: [
         'render-override', 'dim-ranges', 'highlight-range',
         'file-read', 'file-write', 'force-render', 'change-source',
@@ -825,7 +825,7 @@ blankClearKeywords: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': PROMPT_CTRL },
     });
     adapter.stubControlInvoke(
       'prompt:get',
@@ -864,7 +864,7 @@ blankConsumeAll: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': PROMPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -891,7 +891,7 @@ stepValues: ["I am strong", "I am brave"]
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/affirmations/cue.md': AFFIRM_F },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/affirmations/cue.md': AFFIRM_F },
     });
     adapter.pushText('affirm ');
     const loader = new ConfigLoader(adapter);
@@ -926,7 +926,7 @@ stepValues: ["only"]
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/lone/cue.md': ONE },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/lone/cue.md': ONE },
     });
     adapter.pushText('lone ');
     const loader = new ConfigLoader(adapter);
@@ -955,7 +955,7 @@ blankTip: Daily affirmations
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/affirmations/cue.md': DISMISS },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/affirmations/cue.md': DISMISS },
     });
     adapter.pushText('affirm ');
     const loader = new ConfigLoader(adapter);
@@ -984,7 +984,7 @@ blankDismissible: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/a/cue.md': DISMISS },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/a/cue.md': DISMISS },
     });
     adapter.pushText('a ');
     const loader = new ConfigLoader(adapter);
@@ -1015,7 +1015,7 @@ blankDismissible: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/weather/cue.md': SCRIPT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/weather/cue.md': SCRIPT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1040,7 +1040,7 @@ blankTip: Hacker News
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/hackernews/cue.md': HN },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/hackernews/cue.md': HN },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1079,7 +1079,7 @@ blankScript: ./stocks.sh
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/stocks/cue.md': STOCK },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': STOCK },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1111,7 +1111,7 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1149,7 +1149,7 @@ blankSatelliteSeparator: '='
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1177,7 +1177,7 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1212,7 +1212,7 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1247,7 +1247,7 @@ blankSatellite: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1279,7 +1279,7 @@ blankClearOnEdit: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1313,7 +1313,7 @@ blankSatellite: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1344,7 +1344,7 @@ blankSatellite: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/opencues/cue.md': SAT },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/opencues/cue.md': SAT },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1373,7 +1373,7 @@ blankConsumeAll: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': PROMPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1408,7 +1408,7 @@ blankConsumeAll: true
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/prompt/cue.md': PROMPT_CTRL },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': PROMPT_CTRL },
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -1438,7 +1438,7 @@ blankAutoPopulate: false
 `;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/controls/noauto/cue.md': NO_AUTO },
+      files: { '/mock/cues.md': TIPS, '/proj/blanks/noauto/cue.md': NO_AUTO },
     });
     adapter.pushText('noauto ');
     const loader = new ConfigLoader(adapter);

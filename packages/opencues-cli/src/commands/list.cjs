@@ -60,7 +60,7 @@ module.exports = function list(argv, ctx) {
 function collect(dir, tools, results) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList } = tools;
 
-  for (const [filename, kind] of [['cues.md', 'cue'], ['blanks.md', 'blank'], ['controls.md', 'control']]) {
+  for (const [filename, kind] of [['cues.md', 'cue'], ['blanks.md', 'blank']]) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {
@@ -77,7 +77,7 @@ function collect(dir, tools, results) {
       }
     } catch { /* validate command surfaces parse errors */ }
   }
-  for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank'], ['controls', 'control']]) {
+  for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank']]) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub)) continue;
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {

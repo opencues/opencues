@@ -23,7 +23,7 @@ module.exports = function init(argv, ctx) {
   // by users or projects — and it lives only at user-level (~/.opencues/
   // opencues.md), auto-managed by OpenCuesSettingsControl on first
   // settings write.
-  const files = ['cues.md', 'blanks.md', 'controls.md', 'README.md'];
+  const files = ['cues.md', 'blanks.md', 'README.md'];
 
   console.log(`Initialising .opencues/ in ${cwd}\n`);
   console.log('Plan:');

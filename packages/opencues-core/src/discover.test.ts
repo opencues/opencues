@@ -119,13 +119,13 @@ upArgs: ["up", "6"]
 downArgs: ["down", "6"]
 ---
 `;
-    const config = parseSingleCueMd(content, '/project/controls/volume');
+    const config = parseSingleCueMd(content, '/project/blanks/volume');
     assert.ok(config.controls);
     const ctrl = config.controls!['volume'];
     assert.ok(ctrl);
     assert.strictEqual(ctrl.control, 'volume');
     assert.strictEqual(ctrl.tip, 'system volume control');
-    assert.strictEqual(ctrl.script, '/project/controls/volume/volume.sh');
+    assert.strictEqual(ctrl.script, '/project/blanks/volume/volume.sh');
     assert.deepStrictEqual(ctrl.upArgs, ['up', '6']);
     assert.deepStrictEqual(ctrl.downArgs, ['down', '6']);
   });
@@ -138,8 +138,8 @@ control: speak
 script: ./speak.sh
 ---
 `;
-    const config = parseSingleCueMd(content, '/project/controls/speak');
-    assert.strictEqual(config.controls!['speak'].script, '/project/controls/speak/speak.sh');
+    const config = parseSingleCueMd(content, '/project/blanks/speak');
+    assert.strictEqual(config.controls!['speak'].script, '/project/blanks/speak/speak.sh');
   });
 
   it('should keep absolute script path unchanged', () => {
@@ -150,7 +150,7 @@ control: custom
 script: /opt/scripts/custom.sh
 ---
 `;
-    const config = parseSingleCueMd(content, '/project/controls/custom');
+    const config = parseSingleCueMd(content, '/project/blanks/custom');
     assert.strictEqual(config.controls!['custom'].script, '/opt/scripts/custom.sh');
   });
 });
@@ -238,7 +238,7 @@ Answer factual questions.
 
   it('should discover controls with resolved script paths', () => {
     const opts = mockFs({
-      '/project/controls/volume/cue.md': `---
+      '/project/blanks/volume/cue.md': `---
 name: volume
 type: control
 control: volume
@@ -255,7 +255,7 @@ downArgs: ["down", "5"]
     assert.ok(result.controlOverrides!['volume']);
     assert.strictEqual(
       result.controlOverrides!['volume'].script,
-      '/project/controls/volume/volume.sh'
+      '/project/blanks/volume/volume.sh'
     );
   });
 

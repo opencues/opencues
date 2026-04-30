@@ -54,8 +54,8 @@ describe('opencues seed-configs', () => {
     const userDir = path.join(tmpHome, '.opencues');
     expect(fs.existsSync(path.join(userDir, 'cues.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'opencues.md'))).toBe(true);
-    expect(fs.existsSync(path.join(userDir, 'controls/brightness/cue.md'))).toBe(true);
-    expect(fs.existsSync(path.join(userDir, 'controls/brightness/brightness.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'blanks/brightness/cue.md'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness.sh'))).toBe(true);
     // scripts/ — the new shared utility dir (added in this session).
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
@@ -95,7 +95,7 @@ describe('opencues seed-configs', () => {
     // Pre-seed the user-level dir + a stale brightness.sh (no find_helper —
     // simulates the pre-colocated-helpers layout from earlier in this session).
     const userDir = path.join(tmpHome, '.opencues');
-    const ctlDir = path.join(userDir, 'controls/brightness');
+    const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
     fs.writeFileSync(path.join(ctlDir, 'cue.md'), '---\ncontrol: brightness\n---\n');
     const staleScript = '#!/bin/bash\n# stale\necho "stale"\n';
@@ -106,7 +106,7 @@ describe('opencues seed-configs', () => {
 
     // After sync, brightness.sh should match the repo's defaults — not the stale stub.
     const after = fs.readFileSync(path.join(ctlDir, 'brightness.sh'), 'utf8');
-    const repo = fs.readFileSync(path.join(REPO_ROOT, 'defaults/controls/brightness/brightness.sh'), 'utf8');
+    const repo = fs.readFileSync(path.join(REPO_ROOT, 'defaults/blanks/brightness/brightness.sh'), 'utf8');
     expect(after).toBe(repo);
     expect(after).not.toContain('# stale');
   });
@@ -114,7 +114,7 @@ describe('opencues seed-configs', () => {
   it('SYNC phase: never overwrites a .md file (user content boundary)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userDir = path.join(tmpHome, '.opencues');
-    const ctlDir = path.join(userDir, 'controls/brightness');
+    const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
     // Custom cue.md content that differs from defaults.
     const customCueMd = '---\ncontrol: brightness\ntip: my custom tip\n---\n';

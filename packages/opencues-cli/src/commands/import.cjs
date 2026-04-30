@@ -123,7 +123,7 @@ module.exports = function importCmd(argv, ctx) {
 
     const summary = summariseContents(target);
     console.log(`\nInstalled pack "${packName}" at ${target}`);
-    console.log(`  ${summary.cues} cue(s), ${summary.blanks} blank(s), ${summary.controls} control(s)`);
+    console.log(`  ${summary.cues} cue(s), ${summary.blanks} blank(s)`);
     console.log('');
     console.log('Note: ConfigLoader does not yet walk packs/<name>/ subfolders automatically');
     console.log('— it will after the next ConfigLoader update. Symlink contents into the');
@@ -241,7 +241,7 @@ function validatePack(dir, opts) {
     // a `---` fence is present but nothing could be extracted).
     //
     // File shapes differ:
-    //   - top-level cues.md/blanks.md/controls.md       → parseCuesMd
+    //   - top-level cues.md/blanks.md                   → parseCuesMd
     //   - folder-based <kind>/<name>/cue.md             → parseSingleCueMd
     //   - README.md or anything under docs/             → skip (prose)
     const relParts = rel.split(path.sep);
@@ -255,7 +255,7 @@ function validatePack(dir, opts) {
         const isFolderBased =
           basename === 'cue.md' &&
           relParts.length >= 3 &&
-          ['cues', 'blanks', 'controls'].includes(relParts[relParts.length - 3]);
+          ['cues', 'blanks'].includes(relParts[relParts.length - 3]);
         try {
           const core = getCore();
           let parsedNothing;
@@ -301,8 +301,8 @@ function walk(dir, cb) {
 }
 
 function summariseContents(dir) {
-  const out = { cues: 0, blanks: 0, controls: 0 };
-  for (const sub of ['cues', 'blanks', 'controls']) {
+  const out = { cues: 0, blanks: 0 };
+  for (const sub of ['cues', 'blanks']) {
     const p = path.join(dir, sub);
     if (!fs.existsSync(p)) continue;
     out[sub] = fs.readdirSync(p, { withFileTypes: true }).filter(e => e.isDirectory()).length;

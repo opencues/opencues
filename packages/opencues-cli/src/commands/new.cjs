@@ -10,7 +10,11 @@ const path = require('node:path');
 const os = require('node:os');
 
 const KINDS = new Set(['cue', 'blank', 'control']);
-const KIND_TO_DIR = { cue: 'cues', blank: 'blanks', control: 'controls' };
+// Phase-1 backwards-compat: `control` is a silent alias for `blank`
+// (controls/ folder was renamed to blanks/, control.md template merged
+// into blank.md). New canonical kind name is `blank`.
+const KIND_TO_DIR = { cue: 'cues', blank: 'blanks', control: 'blanks' };
+const KIND_TEMPLATE = { cue: 'cue', blank: 'blank', control: 'blank' };
 
 module.exports = function newCmd(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -51,7 +55,8 @@ module.exports = function newCmd(argv, ctx) {
   }
 
   // Substitute {{NAME}} into the per-kind template.
-  const templatePath = path.join(ctx.PKG_DIR, 'src/templates/new', `${kind}.md`);
+  const templateName = KIND_TEMPLATE[kind] || kind;
+  const templatePath = path.join(ctx.PKG_DIR, 'src/templates/new', `${templateName}.md`);
   const template = fs.readFileSync(templatePath, 'utf8');
   const content = template.replace(/\{\{NAME\}\}/g, name);
 

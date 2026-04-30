@@ -213,7 +213,7 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
   fs.mkdirSync(distConfigs, { recursive: true });
 
   let copied = 0;
-  const summary = { cue: 0, blank: 0, control: 0 };
+  const summary = { cue: 0, blank: 0 };
   for (const p of finalPlan) {
     fs.mkdirSync(path.dirname(p.dst), { recursive: true });
     fs.copyFileSync(p.src, p.dst);
@@ -222,7 +222,6 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
     const rel = path.relative(distConfigs, p.dst);
     if (rel.startsWith('cues') || rel === 'cues.md') summary.cue++;
     else if (rel.startsWith('blanks') || rel === 'blanks.md') summary.blank++;
-    else if (rel.startsWith('controls') || rel === 'controls.md') summary.control++;
   }
 
   // Write index.json so the chrome extension can enumerate what's in
@@ -237,7 +236,6 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
   console.log(`Synced ${copied} file(s):`);
   console.log(`  ${summary.cue} cue dir(s)/file(s)`);
   console.log(`  ${summary.blank} blank dir(s)/file(s)`);
-  console.log(`  ${summary.control} control dir(s)/file(s)`);
   if (dropped > 0) {
     console.log(`Skipped ${dropped} entry(ies) flagged as non-chrome (see opencues list for hosts).`);
   }
@@ -358,12 +356,12 @@ function resolveSources({ flags, includes, pack, source }) {
 function walkSource(dir, core, cb) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
 
-  // Top-level files: cues.md / blanks.md / controls.md. These are
-  // monolithic — host-compat applies per-section, so we either include
-  // the whole file or rebuild it from the chrome-compatible subset.
+  // Top-level files: cues.md / blanks.md. These are monolithic —
+  // host-compat applies per-section, so we either include the whole
+  // file or rebuild it from the chrome-compatible subset.
   // Today: include whole file if ANY section is chrome-compatible.
   // Folder-based configs (next loop) get per-entry filtering.
-  for (const filename of ['cues.md', 'blanks.md', 'controls.md']) {
+  for (const filename of ['cues.md', 'blanks.md']) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {
@@ -379,9 +377,9 @@ function walkSource(dir, core, cb) {
     } catch { /* skip on parse error */ }
   }
 
-  // Folder-based: cues/<name>/cue.md, blanks/<name>/cue.md, controls/<name>/cue.md
+  // Folder-based: cues/<name>/cue.md, blanks/<name>/cue.md
   // Per-entry compat filter; copy the WHOLE folder when included.
-  for (const subdir of ['cues', 'blanks', 'controls']) {
+  for (const subdir of ['cues', 'blanks']) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {

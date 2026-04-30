@@ -115,7 +115,7 @@ step: 0.5
       cwd: '/proj',
       files: {
         '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
-        '/proj/controls/numbers/cue.md': NUMBERS_CUE,
+        '/proj/blanks/numbers/cue.md': NUMBERS_CUE,
       },
     });
     adapter.pushText('0.5f');

@@ -28,13 +28,13 @@ module.exports = function show(argv, ctx) {
   // order so the user sees the override chain.
   const matches = [];
   for (const dir of paths) {
-    for (const sub of ['cues', 'blanks', 'controls']) {
+    for (const sub of ['cues', 'blanks']) {
       const candidate = path.join(dir, sub, name, 'cue.md');
       if (fs.existsSync(candidate)) {
         matches.push({ kind: sub.replace(/s$/, ''), source: candidate, scope: dir });
       }
     }
-    for (const file of ['cues.md', 'blanks.md', 'controls.md']) {
+    for (const file of ['cues.md', 'blanks.md']) {
       const p = path.join(dir, file);
       if (!fs.existsSync(p)) continue;
       const content = fs.readFileSync(p, 'utf8');

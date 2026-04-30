@@ -48,7 +48,7 @@ function buildWordSources(response: string) {
       },
     }),
     undefined,
-    { httpAdapter: { post: async () => llmResponse(response) }, endpoint: '', apiKey: '', defaultModel: '' },
+    { httpAdapter: { post: async () => llmResponse(response) }, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
   );
 }
 
@@ -82,7 +82,7 @@ function buildBlankSources(adapter: HttpAdapter) {
         },
       },
     }),
-    { httpAdapter: adapter, endpoint: '', apiKey: '', defaultModel: '' },
+    { httpAdapter: adapter, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
   );
 }
 
@@ -624,12 +624,12 @@ describe.skip('sentences: resolver with both word and blank sources', () => {
     const wordSources = buildSourcesFromConfig(
       mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
       undefined,
-      { httpAdapter: wordAdapter, endpoint: '', apiKey: '', defaultModel: '' },
+      { httpAdapter: wordAdapter, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
     );
     const blankSources = buildSourcesFromConfig(
       undefined,
       mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Fill.', priority: 50 } } }),
-      { httpAdapter: blankAdapter, endpoint: '', apiKey: '', defaultModel: '' },
+      { httpAdapter: blankAdapter, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
     );
 
     const resolver = createResolver([...wordSources, ...blankSources]);
@@ -653,12 +653,12 @@ describe.skip('sentences: resolver with both word and blank sources', () => {
     const wordSources = buildSourcesFromConfig(
       mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Alts.', priority: 50 } } }),
       undefined,
-      { httpAdapter: wordAdapter, endpoint: '', apiKey: '', defaultModel: '' },
+      { httpAdapter: wordAdapter, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
     );
     const blankSources = buildSourcesFromConfig(
       undefined,
       mkConfig({ sources: { grammar: { name: 'grammar', promptText: 'Fill.', priority: 50 } } }),
-      { httpAdapter: blankAdapter, endpoint: '', apiKey: '', defaultModel: '' },
+      { httpAdapter: blankAdapter, endpoint: '', apiKey: '', defaultModel: '', enableWordAlts: true, enableDefaultWordAlts: true, enableClassifiedBlanks: true },
     );
 
     const resolver = createResolver([...wordSources, ...blankSources]);
