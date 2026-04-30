@@ -127,6 +127,51 @@ describe('opencues seed-configs', () => {
     expect(fs.existsSync(path.join(ctlDir, 'brightness.sh'))).toBe(true);
   });
 
+  it('MIGRATE phase: renames legacy controls.md → blanks.md', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.opencues');
+    fs.mkdirSync(userDir, { recursive: true });
+    const userControls = '---\nname: my-controls\nversion: 1\n---\n# my custom controls';
+    fs.writeFileSync(path.join(userDir, 'controls.md'), userControls);
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    // Legacy file is gone; new file has the user's content.
+    expect(fs.existsSync(path.join(userDir, 'controls.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(userDir, 'blanks.md'), 'utf8')).toBe(userControls);
+  });
+
+  it('MIGRATE phase: renames legacy controls/ → blanks/ (preserves all subdirs)', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.opencues');
+    const legacyDir = path.join(userDir, 'controls', 'myctrl');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyDir, 'cue.md'), '---\ncontrol: myctrl\n---\n');
+    fs.writeFileSync(path.join(legacyDir, 'myctrl.sh'), '#!/bin/bash\necho hi\n');
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    expect(fs.existsSync(path.join(userDir, 'controls'))).toBe(false);
+    expect(fs.existsSync(path.join(userDir, 'blanks/myctrl/cue.md'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'blanks/myctrl/myctrl.sh'))).toBe(true);
+  });
+
+  it('MIGRATE phase: leaves both alone if both controls.md and blanks.md exist', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.opencues');
+    fs.mkdirSync(userDir, { recursive: true });
+    const oldContent = 'OLD';
+    const newContent = '---\nname: new\n---\n';
+    fs.writeFileSync(path.join(userDir, 'controls.md'), oldContent);
+    fs.writeFileSync(path.join(userDir, 'blanks.md'), newContent);
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    // Both intact — user resolves manually.
+    expect(fs.readFileSync(path.join(userDir, 'controls.md'), 'utf8')).toBe(oldContent);
+    expect(fs.readFileSync(path.join(userDir, 'blanks.md'), 'utf8')).toBe(newContent);
+  });
+
   it('--project flag scopes to <cwd>/.opencues and skips opencues.md (runtime-owned)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const projectDir = path.join(tmpHome, 'my-project');

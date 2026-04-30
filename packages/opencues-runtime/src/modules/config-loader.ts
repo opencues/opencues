@@ -12,7 +12,7 @@
 // Exposes:
 //   - cueMap     — primary lookup, built from cues.md ## Tips (project
 //                  wins on word conflicts via mergeConfigs)
-//   - cuesConfig / controlsConfig / blanksConfig — frontmatter parses
+//   - cuesConfig / blanksConfig — frontmatter parses
 //   - opencuesState — voiceMode, tipsMode, debugMode, cursorNavigate, raw settings
 //
 // Hot-reload: subscribes onTextChange and re-runs load() if more than the
@@ -209,7 +209,6 @@ export interface LoadedConfig {
   readonly cueMap: ReadonlyMap<string, LocalCueLookupResult>;
   readonly opencuesState: OpenCuesState;
   readonly cuesConfig: CuesMdConfig | null;
-  readonly controlsConfig: CuesMdConfig | null;
   readonly blanksConfig: CuesMdConfig | null;
   readonly folderConfigs: DiscoveredConfigs | null;
   /** cwd cues.md + folder cues/* merged. The resolver consumes this. */
@@ -249,7 +248,6 @@ export class ConfigLoader {
     cueMap: new Map(),
     opencuesState: DEFAULT_OPENCUES_STATE,
     cuesConfig: null,
-    controlsConfig: null,
     blanksConfig: null,
     folderConfigs: null,
     mergedCuesConfig: null,
@@ -282,7 +280,6 @@ export class ConfigLoader {
   get cueMap(): ReadonlyMap<string, LocalCueLookupResult> { return this._config.cueMap; }
   get opencuesState(): OpenCuesState { return this._config.opencuesState; }
   get cuesConfig(): CuesMdConfig | null { return this._config.cuesConfig; }
-  get controlsConfig(): CuesMdConfig | null { return this._config.controlsConfig; }
   get blanksConfig(): CuesMdConfig | null { return this._config.blanksConfig; }
   get folderConfigs(): DiscoveredConfigs | null { return this._config.folderConfigs; }
   get mergedCuesConfig(): CuesMdConfig | null { return this._config.mergedCuesConfig; }
@@ -291,7 +288,7 @@ export class ConfigLoader {
   get controlsByWord(): ReadonlyMap<string, BlankEntry> { return this._config.controlsByWord; }
 
   /** Unique blanks (script-replaceable controls) by name (lowercased).
-   *  Sourced from folderConfigs + controlsConfig. Useful when a consumer
+   *  Sourced from folderConfigs + blanksConfig. Useful when a consumer
    *  wants to iterate each blank once (BlankFill, etc.) rather than
    *  per-word. */
   get blanks(): ReadonlyMap<string, BlankConfig> {
@@ -447,19 +444,32 @@ export class ConfigLoader {
     // path contributes 2 .md files (cues, blanks); opencues.md
     // is a singleton from the user-level path. Tips come from each
     // cues.md's `## Tips` block — no separate JSON file.
+    // Per-path reads: 3 files each (cues.md, blanks.md, legacy controls.md).
+    // The legacy controls.md read is a one-version transition for users
+    // who upgraded but haven't rerun `opencues seed-configs`. When both
+    // exist, blanks.md wins. When only controls.md exists, we read it as
+    // if it were blanks.md and warn so the user knows to migrate.
     const allReads = await Promise.all([
       this._safeReadFile(`${userLevelPath}/opencues.md`),
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
         this._safeReadFile(`${p}/blanks.md`),
+        this._safeReadFile(`${p}/controls.md`),
       ]),
     ]);
     const opencuesMdContent = allReads[0];
-    const perPath = searchPaths.map((_, i) => ({
-      cuesMd: allReads[1 + i * 2],
-      controlsMd: allReads[2 + i * 2],
-      blanksMd: allReads[2 + i * 2],
-    }));
+    const perPath = searchPaths.map((searchPath, i) => {
+      const blanksMd = allReads[2 + i * 3];
+      const legacyControlsMd = allReads[3 + i * 3];
+      // Legacy fallback: only when blanks.md absent AND controls.md present.
+      if (blanksMd === null && legacyControlsMd !== null) {
+        this.adapter.log('warn', `ConfigLoader: reading legacy ${searchPath}/controls.md (run \`opencues seed-configs\` to migrate to blanks.md)`);
+      }
+      return {
+        cuesMd: allReads[1 + i * 3],
+        blanksMd: blanksMd !== null ? blanksMd : legacyControlsMd,
+      };
+    });
 
     // Per-path .md parses. Project (index 0) is highest priority; user
     // (index 1+) is fallback. We fold from LOW to HIGH so the high-priority
@@ -480,9 +490,6 @@ export class ConfigLoader {
         this.adapter.log('error', 'ConfigLoader: cues.md ## Tips buildLookupMap failed', err);
       }
     }
-    const controlsConfig = this._mergeConfigsAcrossPaths(
-      perPath.map(p => this._safeParseCuesMd(p.controlsMd, 'blanks.md')),
-    );
     const blanksConfig = this._mergeConfigsAcrossPaths(
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
     );
@@ -572,7 +579,7 @@ export class ConfigLoader {
     for (const [name, ctrl] of Object.entries(folderConfigs?.blankOverrides ?? {})) {
       addControl(name, ctrl as BlankConfig);
     }
-    for (const [name, ctrl] of Object.entries(controlsConfig?.controls ?? {})) {
+    for (const [name, ctrl] of Object.entries(blanksConfig?.controls ?? {})) {
       addControl(name, ctrl as BlankConfig);
     }
 
@@ -580,7 +587,6 @@ export class ConfigLoader {
       cueMap,
       opencuesState,
       cuesConfig,
-      controlsConfig,
       blanksConfig,
       folderConfigs,
       mergedCuesConfig,
