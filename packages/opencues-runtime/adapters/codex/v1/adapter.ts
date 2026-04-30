@@ -19,9 +19,9 @@
 //     into this adapter through the test-friendly `notifyTextChange`
 //     / `dispatchKey` / `collectRender` methods exposed below.
 //
-//   ▸ Process ops (spawnProcess / controlInvoke) — STUB. The bridge
+//   ▸ Process ops (spawnProcess / blankInvoke) — STUB. The bridge
 //     can't easily tunnel subprocess stdio through JSON-RPC; codex's
-//     control-invoke story is RPC-based and lives in Tier 3.E.
+//     blank-invoke story is RPC-based and lives in Tier 3.E.
 //
 // As Tier 3 progresses, the stubbed methods get filled in. Keep the
 // stubs aligned with the OC adapter's pattern
@@ -61,8 +61,8 @@ export interface CodexAdapterOptions {
    *  during cycling). Optional; without it, runtime writes look like
    *  user writes downstream. */
   readonly reclassifier?: SourceReclassifier;
-  /** Host-native control dispatch. When supplied, BlankFill +
-   *  Cycling try this BEFORE spawnProcess for `controlInvoke`
+  /** Host-native blank dispatch. When supplied, BlankFill +
+   *  Cycling try this BEFORE spawnProcess for `blank-invoke`
    *  capability. Same shape as OC's binding — usually wired by
    *  passing `createBlankInvoke(blanksRegistry)`. */
   readonly blankInvoke?: (spec: BlankInvokeSpec) => ProcessHandle | null;
@@ -86,9 +86,9 @@ const CODEX_BASE_CAPABILITIES: readonly Capability[] = [
   // Mirrors OPENCODE_V14_CAPABILITIES (adapters/oc/v1.4/adapter.ts:73-80)
   // plus 'change-source' which both runtime modules use to emit
   // source-attributed text events from the bridge into the runtime.
-  // 'control-invoke' is added per-instance when bindings.blankInvoke
+  // 'blank-invoke' is added per-instance when bindings.blankInvoke
   // is supplied. 'spawn-process' stays off until Tier 3 wires a bridge
-  // for spawning; codex's controls are all hoisted to TS so the
+  // for spawning; codex's blanks are all hoisted to TS so the
   // shell-script fallback isn't load-bearing.
 ];
 
@@ -122,10 +122,10 @@ export class CodexAdapter implements HostAdapter {
     this._logFn = opts.log;
     this._reclassifier = opts.reclassifier;
     this._blankInvoke = opts.blankInvoke;
-    // Conditional capability: 'control-invoke' only when the binding
+    // Conditional capability: 'blank-invoke' only when the binding
     // is supplied. Mirrors OC's per-instance capability list.
     const caps: Capability[] = [...CODEX_BASE_CAPABILITIES];
-    if (opts.blankInvoke) caps.push('control-invoke');
+    if (opts.blankInvoke) caps.push('blank-invoke');
     this.capabilities = caps;
   }
 
@@ -184,20 +184,20 @@ export class CodexAdapter implements HostAdapter {
     };
   }
 
-  // ─── Process / control ─────────────────────────────────────────────
+  // ─── Process / dispatch ─────────────────────────────────────────────
 
   /**
    * Codex's adapter doesn't currently bridge subprocess spawns to the
    * Rust side — `spawn-process` capability stays off in
    * CODEX_BASE_CAPABILITIES so most call sites bail before reaching
-   * here. BlankFill's controlInvoke→spawnProcess fallthrough doesn't
+   * here. BlankFill's blankInvoke→spawnProcess fallthrough doesn't
    * gate on the capability though (it has its own `script` presence
-   * check), so we'd land here when a `.sh`-backed control like
-   * `volume-blank.sh` falls through after our control-invoke registry
+   * check), so we'd land here when a `.sh`-backed blank like
+   * `volume-blank.sh` falls through after our blank-invoke registry
    * misses it. Return a "command unavailable" handle instead of
    * throwing — modules treat non-zero exit as "skip this slot" and
    * stay alive. The proper fix lives in Tier 3 follow-up: either
-   * hoist the remaining shell-script controls (volume / brightness)
+   * hoist the remaining shell-script blanks (volume / brightness)
    * to TS, or add a spawn-process JSON-RPC method that tunnels
    * stdio through the bridge.
    */
@@ -214,9 +214,9 @@ export class CodexAdapter implements HostAdapter {
     };
   }
 
-  /** Forward to the host's controlInvoke binding when supplied. Same
+  /** Forward to the host's blankInvoke binding when supplied. Same
    *  shape as OC's adapter — null fallthrough so BlankFill / Cycling
-   *  drop to spawnProcess for shell-script controls. */
+   *  drop to spawnProcess for shell-script blanks. */
   blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
     return this._blankInvoke?.(spec) ?? null;
   }

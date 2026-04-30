@@ -247,9 +247,9 @@ export interface FluidBlankSourceConfig {
    * factual/math) so fluid-blank wins when it produces a result, but falls
    * back to classifier-routed modes when P1 bails (SPAN: NONE → no result). */
   priority?: number;
-  /** All declared control blankKeywords (single-word OR multi-word phrases).
+  /** All declared blank keywords (single-word OR multi-word phrases).
    * When ANY of these match the input, fluid-blank stays out and lets the
-   * control's BlankFill handle the slot. Without this, slow controls (hn,
+   * blank's BlankFill handle the slot. Without this, slow blanks (hn,
    * weather, stocks) lose the race because fluid-blank substitutes first
    * and BlankFill arrives later to find no `_`. */
   blankKeywords?: string[];
@@ -276,8 +276,8 @@ export class FluidBlankSource implements CueSource {
 
   supports(context: CueContext): boolean {
     if (!context.words.some(w => w === '_')) return false;
-    // Cede the slot to BlankFill if any control's blankKeyword matches.
-    // Without this, slow controls (hn, weather, stocks API) lose the race —
+    // Cede the slot to BlankFill if any blank's keyword matches.
+    // Without this, slow blanks (hn, weather, stocks API) lose the race —
     // fluid-blank substitutes first, BlankFill arrives later, can't find `_`.
     if (this.blankKeywords.length > 0) {
       const lower = context.words.map(w => w.toLowerCase());

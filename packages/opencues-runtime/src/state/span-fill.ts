@@ -41,7 +41,7 @@ export interface SpanFillEntry {
    */
   readonly kind?: 'blank-fill' | 'static-alt';
   /**
-   * Optional control-side tip text. When set, Statusline shows this verbatim
+   * Optional blank-side tip text. When set, Statusline shows this verbatim
    * when the highlight lands on the span — bypasses cueMap lookup which
    * would miss filled words like "13.9°C" or "Reddit".
    */

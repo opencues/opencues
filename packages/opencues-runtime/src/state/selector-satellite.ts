@@ -1,6 +1,6 @@
 /**
  * State for the selector/satellite "settings" pattern (Step 35). When a
- * control with `blankSatellite: true` fills via a tab-separated script
+ * blank with `blankSatellite: true` fills via a tab-separated script
  * output, the runtime spawns TWO words instead of one:
  *
  *   - selector  (e.g. "voice-mode")  — cycles through the names of all
@@ -15,9 +15,9 @@
  * invalidation pattern as SpanFillState.
  */
 export interface SelectorSatelliteEntry {
-  /** Lowercased control name (e.g. "opencues"). */
-  readonly controlName: string;
-  /** Absolute path to the control's blankScript (already ~-expanded). */
+  /** Lowercased blank name (e.g. "opencues"). */
+  readonly blankName: string;
+  /** Absolute path to the blank's blankScript (already ~-expanded). */
   readonly scriptPath: string;
   /** Word index of the FIRST word of the selector. */
   selectorIndex: number;
@@ -41,7 +41,7 @@ export interface SelectorSatelliteEntry {
   currentValue: string;
   /** Separator string between selector and satellite (default ' '). */
   readonly separator: string;
-  /** From control config — true means edits to either word remove the pair. */
+  /** From blank config — true means edits to either word remove the pair. */
   readonly clearOnEdit: boolean;
   /**
    * Char position of the selector's first char in `lastFilledText`.

@@ -1,32 +1,32 @@
 /**
  * opencues-core/sources/blank-source.ts
  *
- * CueSource that bridges blanks (_) with cue-controls.
- * When context words match a control's blankKeywords, the blank is bound
- * to that control — auto-populated with the current value and cycled via
- * the control's script.
+ * CueSource that bridges blanks (`_`) with blank configs.
+ * When context words match a blank's blankKeywords, the blank is bound
+ * to that config — auto-populated with the current value and cycled via
+ * the blank's script.
  */
 
 import { CueSource, CueContext, CueSourceResult, CueResult } from '../types';
 import { BlankConfig } from '../cues-md';
 
 export interface BlankSourceConfig {
-  /** All controls that have blankKeywords defined */
-  controls: Record<string, BlankConfig>;
+  /** All blanks that have blankKeywords defined */
+  blanks: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read the current live value.
    * May return synchronously or a Promise — async implementations avoid blocking the event loop. */
-  readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
+  readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 }
 
 export class BlankSource implements CueSource {
-  readonly id = 'control-blank';
+  readonly id = 'blank';
   readonly priority = 95;
 
-  private controls: Record<string, BlankConfig>;
-  private readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
+  private blanks: Record<string, BlankConfig>;
+  private readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 
   constructor(config: BlankSourceConfig) {
-    this.controls = config.controls;
+    this.blanks = config.blanks;
     this.readState = config.readState;
   }
 
@@ -43,7 +43,7 @@ export class BlankSource implements CueSource {
       return { results };
     }
 
-    // Find which control matches by scanning context words against blankKeywords
+    // Find which blank matches by scanning context words against blankKeywords
     // Keywords can be multi-word phrases (e.g. "opencues settings") — matched as consecutive words
     const contextLower = context.words.map(w => w.toLowerCase());
     let matched: BlankConfig | undefined;
@@ -66,11 +66,11 @@ export class BlankSource implements CueSource {
     };
 
     let bestGap = Infinity;
-    for (const [, ctrl] of Object.entries(this.controls)) {
-      if (!ctrl.blankKeywords?.length) continue;
-      const proximity = ctrl.blankProximity ?? 0;
+    for (const [, blk] of Object.entries(this.blanks)) {
+      if (!blk.blankKeywords?.length) continue;
+      const proximity = blk.blankProximity ?? 0;
 
-      for (const kw of ctrl.blankKeywords) {
+      for (const kw of blk.blankKeywords) {
         const kwParts = kw.split(/\s+/);
         const kwLen = kwParts.length;
         let idx = findPhrase(kw, 0);
@@ -79,7 +79,7 @@ export class BlankSource implements CueSource {
           const endIdx = idx + kwLen - 1;
           const gap = Math.abs(endIdx - blankIndex) - 1;
           if (gap <= proximity && gap < bestGap) {
-            matched = ctrl;
+            matched = blk;
             matchedKeyword = kw;
             matchedKeywordIndex = idx;
             bestGap = gap;
@@ -141,7 +141,7 @@ export class BlankSource implements CueSource {
     }
 
     // Keyword expansion: if config maps this keyword to a display name, pass it through
-    // Computed early so all control paths (list, satellite, dynamic list, generic) can use it
+    // Computed early so all paths (list, satellite, dynamic list, generic) can use it
     const expansion = matchedKeyword
       ? matched.blankKeywordExpansions?.[matchedKeyword.toLowerCase()]
       : undefined;
@@ -156,12 +156,12 @@ export class BlankSource implements CueSource {
         wordIndex: blankIndex,
         word: '_',
         alternatives: alts,
-        source: 'control-blank',
+        source: 'blank',
         priority: this.priority,
         cueTip: matched.blankTip ?? matched.tip,
         metadata: {
-          blankName: matched.control,
-          listControl: true,
+          blankName: matched.name,
+          listBlank: true,
           blankClearKeywords: matched.blankClearKeywords || false,
           blankClearOnEdit: matched.blankClearOnEdit || false,
           blankKeywordIndices: matchedKeywordIndices,
@@ -173,7 +173,7 @@ export class BlankSource implements CueSource {
 
     // Read current value — validation is format-aware.
     // readState may be sync or async; Promise.resolve normalizes both.
-    const rawValue = await Promise.resolve(this.readState(matched.control, matchedKeyword, context.words));
+    const rawValue = await Promise.resolve(this.readState(matched.name, matchedKeyword, context.words));
     if (rawValue === null || rawValue === '') {
       return { results };
     }
@@ -189,13 +189,13 @@ export class BlankSource implements CueSource {
         wordIndex: blankIndex,
         word: '_',
         alternatives: [selectorText],
-        source: 'control-blank',
+        source: 'blank',
         priority: this.priority,
         cueTip: matched.blankTip ?? matched.tip,
         metadata: {
-          blankName: matched.control,
+          blankName: matched.name,
           blankScript: matched.blankScript,
-          selectorControl: true,
+          selectorBlank: true,
           satelliteValue: satelliteText,
           displaySeparator: displaySep,
           blankClearKeywords: matched.blankClearKeywords || false,
@@ -207,7 +207,7 @@ export class BlankSource implements CueSource {
       return { results };
     }
 
-    // Dynamic list: if script returns multiple lines, treat as list control
+    // Dynamic list: if script returns multiple lines, treat as list-style blank
     if (rawValue.includes('\n')) {
       const lines = rawValue.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       if (lines.length > 0) {
@@ -216,12 +216,12 @@ export class BlankSource implements CueSource {
           wordIndex: blankIndex,
           word: '_',
           alternatives: alts,
-          source: 'control-blank',
+          source: 'blank',
           priority: this.priority,
           cueTip: matched.blankTip ?? matched.tip,
           metadata: {
-            blankName: matched.control,
-            listControl: true,
+            blankName: matched.name,
+            listBlank: true,
             blankClearKeywords: matched.blankClearKeywords || false,
             blankClearOnEdit: matched.blankClearOnEdit || false,
             blankKeywordIndices: matchedKeywordIndices,
@@ -255,17 +255,17 @@ export class BlankSource implements CueSource {
       wordIndex: blankIndex,
       word: '_',
       alternatives,
-      source: 'control-blank',
+      source: 'blank',
       priority: this.priority,
       cueTip: matched.blankTip ?? matched.tip,
       metadata: {
-        blankName: matched.control,
+        blankName: matched.name,
         blankScript: matched.blankScript,
         ...(step != null ? { blankStep: step } : {}),
         ...(format ? { blankFormat: format } : {}),
         blankReadOnly: matched.blankReadOnly,
         blankSuffix: matched.blankSuffix,
-        ...(matched.blankDismissible ? { listControl: true, blankDismissible: true } : {}),
+        ...(matched.blankDismissible ? { listBlank: true, blankDismissible: true } : {}),
         ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         blankClearKeywords: matched.blankClearKeywords || false,
         blankClearOnEdit: matched.blankClearOnEdit || false,

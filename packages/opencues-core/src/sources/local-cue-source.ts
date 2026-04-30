@@ -364,7 +364,7 @@ export function lookupMultiple(
       continue;
     }
 
-    // Skip words rejected by custom function (e.g., cue-controls)
+    // Skip words rejected by custom function (e.g., blanks)
     if (skipFn && skipFn(word)) {
       missingIndices.push(i);
       continue;
@@ -447,7 +447,7 @@ export interface MergeWordDefsOptions {
 
   /**
    * Skip merging into entries where existing has metadata.blankName but new doesn't.
-   * Prevents LLM results from overwriting control-blank positions.
+   * Prevents LLM results from overwriting blank positions.
    */
   protectControlName?: boolean;
 }
@@ -479,7 +479,7 @@ export function mergeWordDefs(
       if (options?.protectSource && existingDef.source === options.protectSource) {
         continue;
       }
-      // Skip control-name guard (LLM shouldn't overwrite control-blank)
+      // Skip blank-name guard (LLM shouldn't overwrite blank)
       if (options?.protectControlName &&
           existingDef.metadata?.blankName &&
           !newDef.metadata?.blankName) {
@@ -578,11 +578,12 @@ export function convertCueResultsToWordDefs(
 
   for (const r of results) {
     if (!r.alternatives) continue;
-    // Control-bound blanks are retained regardless of alt count — a single-alt
-    // result is the auto-populate value, not a cycle list, and its metadata
-    // (blankName, blankStep, blankScript, etc.) is load-bearing downstream.
-    const isControlBlank = !!(r.metadata && (r.metadata as { blankName?: unknown }).blankName);
-    if (!isControlBlank && r.alternatives.length < minAlts) continue;
+    // Blanks (those with a blankName attribution) are retained
+    // regardless of alt count — a single-alt result is the auto-populate
+    // value, not a cycle list, and its metadata (blankName, blankStep,
+    // blankScript, etc.) is load-bearing downstream.
+    const isBlank = !!(r.metadata && (r.metadata as { blankName?: unknown }).blankName);
+    if (!isBlank && r.alternatives.length < minAlts) continue;
 
     const alts = cleanAlternatives(r.alternatives);
     if (alts.length === 0) continue;

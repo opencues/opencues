@@ -9,7 +9,7 @@ interface StatuslinePayload {
   currentAltIndex?: number;
   alts?: readonly string[];
   cueTip?: string | null;
-  cueControl?: boolean;
+  cueBlank?: boolean;
 }
 
 let el: HTMLDivElement | null = null;
@@ -40,7 +40,7 @@ function show(text: string): void {
 /** Render a runtime Statusline payload into the floating bar.
  *
  * Format mirrors CC's highlight-statusline.sh:
- *   - cueControl=true        → "<tip>"            (tip alone)
+ *   - cueBlank=true        → "<tip>"            (tip alone)
  *   - cycling alts (N>1)     → "<word> (N/M) - <tip>"  (or head when tipless)
  *   - otherwise (no alts)    → tip alone, or hide
  */
@@ -52,7 +52,7 @@ export function applyStatuslinePayload(payload: StatuslinePayload): void {
 
   const tip = payload.cueTip ?? null;
 
-  if (payload.cueControl) {
+  if (payload.cueBlank) {
     if (tip) { show(tip); } else { hide(); }
     return;
   }

@@ -69,12 +69,11 @@ in the runtime that ships with every host — same code, every host.
 
 The runtime exposes a `blankInvoke` capability the host adapter
 implements. On each blank trigger, the runtime calls
-`blankInvoke({ controlName, action, args, ... })` (the JSON-RPC wire
-key remains `controlName` for backwards compatibility):
+`blankInvoke({ blankName, action, args, ... })`:
 
 1. The host's TS-blanks registry is checked first. If the
-   `controlName` is registered (`HackerNewsControl`, `StocksControl`,
-   `WeatherControl`, …), the class handles it directly — no
+   `blankName` is registered (`HackerNewsBlank`, `StocksBlank`,
+   `WeatherBlank`, …), the class handles it directly — no
    subprocess.
 2. If unregistered, the host falls through to `spawnProcess` (the
    legacy `.sh` path) for OS-bound blanks.

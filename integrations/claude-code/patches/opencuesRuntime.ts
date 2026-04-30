@@ -200,7 +200,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // module. Lazy require inside the bootstrap so older runtime installs
   // (without blanks/) still load — blankInvoke just stays null in
   // that case and BlankFill falls back to spawnProcess.
-  const controlsPath = `"@opencues/runtime/dist/src/blanks/index.js"`;
+  const blanksPath = `"@opencues/runtime/dist/src/blanks/index.js"`;
   // opencues.md is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
@@ -240,7 +240,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // to spawnProcess for that name). Lazily-built registry — avoid
     // constructing classes that need API keys we don't have.
     `blankInvoke:(function(){try{` +
-    `var __ocCtl=${requireFn}(${controlsPath});var __ocReg=new Map();` +
+    `var __ocCtl=${requireFn}(${blanksPath});var __ocReg=new Map();` +
     `__ocReg.set("hackernews",new __ocCtl.HackerNewsBlank());` +
     `__ocReg.set("stocks",new __ocCtl.StocksBlank({apiKey:process.env.FINNHUB_API_KEY}));` +
     `__ocReg.set("weather",new __ocCtl.WeatherBlank());` +

@@ -81,7 +81,7 @@ export interface ChromeBindings {
    */
   pushText?(text: string, cursor?: number): void;
   /**
-   * Optional control dispatch for sandboxed hosts. BlankFill +
+   * Optional blank dispatch for sandboxed hosts. BlankFill +
    * Cycling try this BEFORE spawnProcess. Returns ProcessHandle for
    * controls the host knows; null falls through to spawnProcess
    * (which the chrome adapter resolves with exitCode 127).
@@ -117,7 +117,7 @@ export class ChromeV1Adapter implements HostAdapter {
     this.cwd = bindings.cwd;
     // spawn-process is NEVER advertised — Chrome extensions can't spawn.
     const caps: Capability[] = [...CHROME_V1_CAPABILITIES];
-    if (bindings.blankInvoke) caps.push('control-invoke');
+    if (bindings.blankInvoke) caps.push('blank-invoke');
     this.capabilities = caps;
   }
 

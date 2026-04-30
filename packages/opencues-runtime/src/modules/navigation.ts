@@ -4,7 +4,7 @@
 // and Ctrl+Alt+Right by walking the whitespace-separated word list from the
 // right-hand side and updating HighlightState.
 //
-// Phase 1 does NOT implement cue filtering (globalThis._isCueControl,
+// Phase 1 does NOT implement cue filtering (globalThis._isCueBlank,
 // globalThis._localCueMap etc.). Navigation targets all non-empty words. Cue
 // filtering returns in a later phase once DynDefs is populated.
 

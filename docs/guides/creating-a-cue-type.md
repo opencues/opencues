@@ -285,7 +285,7 @@ globalThis._consumeAllAlts = {
   currentAltIndex: 0,    // Which alt is currently displayed
   spanLength: 12,        // Word count of current alt
   cueTip: "Prompt improver",
-  controlName: "prompt"
+  blankName: "prompt"
 };
 ```
 

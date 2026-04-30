@@ -272,7 +272,7 @@ describe('ConfigLoader hot-reload', () => {
 
   it('applyOpenCuesScalar suppresses the next maybeReload (write-race guard)', async () => {
     // Regression guard: cycling a satellite calls applyOpenCuesScalar
-    // (in-memory update) followed by an ASYNC controlInvoke set that
+    // (in-memory update) followed by an ASYNC blankInvoke set that
     // writes the file. Cycling.ts then calls setText → onTextChange →
     // maybeReload. If maybeReload reads the file BEFORE the async
     // write lands, the in-memory update is reverted to the stale

@@ -32,11 +32,11 @@ export interface BuildSourcesOptions {
   endpoint: string;
   apiKey: string;
   defaultModel: string;
-  /** Merged control configs (for control-bound blanks) */
-  controls?: Record<string, BlankConfig>;
-  /** I/O adapter: calls blankScript get to read current live control value (raw string).
+  /** Merged blank configs */
+  blanks?: Record<string, BlankConfig>;
+  /** I/O adapter: calls blankScript get to read current live blank value (raw string).
    * May return synchronously or as a Promise — async implementations avoid blocking the event loop. */
-  readControlState?: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
+  readBlankState?: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
   /**
    * Enable the fluid-blank source — a 2-pass (P1 SEGMENT + P3 ANSWER) handler
    * that catches free-form lookup queries embedded in casual prose.
@@ -46,7 +46,7 @@ export interface BuildSourcesOptions {
   enableFluidBlank?: boolean;
   /** Enable ClassifiedSourceGroup (the classifier-routed blank modes from
    * blanks.md: math/factual/translation/unit/color/http/timezone/roman/
-   * grammar). Defaults to false — fluid-blank + spelling + control-bound
+   * grammar). Defaults to false — fluid-blank + spelling + blank
    * blanks cover most ground without the extra classifier LLM call.
    * Flip on via opencues.md `classified-blanks-mode: on`. */
   enableClassifiedBlanks?: boolean;
@@ -57,7 +57,7 @@ export interface BuildSourcesOptions {
   enableSpelling?: boolean;
   /** Enable RoutedWordSourceGroup (word-alts on plain text). When false,
    * NO word-alt LLM calls fire — words are not navigable as alternatives.
-   * Domain blanks/controls/fluid-blank still work. Defaults to false;
+   * Domain blanks/fluid-blank still work. Defaults to false;
    * flip on via opencues.md `word-alts-mode: on`. */
   enableWordAlts?: boolean;
   /** Within RoutedWordSourceGroup, include sources with NO `match:`/
@@ -183,18 +183,18 @@ export function buildSourcesFromConfig(
     }
   }
 
-  // Control-bound blanks: controls with blankKeywords get a BlankSource
-  if (options.controls && options.readControlState) {
-    const blankControls: Record<string, BlankConfig> = {};
-    for (const [name, ctrl] of Object.entries(options.controls)) {
-      if (ctrl.blankKeywords?.length) {
-        blankControls[name] = ctrl;
+  // Keyword-bound blanks: blanks with blankKeywords get a BlankSource
+  if (options.blanks && options.readBlankState) {
+    const keywordBlanks: Record<string, BlankConfig> = {};
+    for (const [name, blk] of Object.entries(options.blanks)) {
+      if (blk.blankKeywords?.length) {
+        keywordBlanks[name] = blk;
       }
     }
-    if (Object.keys(blankControls).length > 0) {
+    if (Object.keys(keywordBlanks).length > 0) {
       sources.push(new BlankSource({
-        controls: blankControls,
-        readState: options.readControlState,
+        blanks: keywordBlanks,
+        readState: options.readBlankState,
       }));
     }
   }
@@ -218,12 +218,12 @@ export function buildSourcesFromConfig(
   // match any structured mode AND inputs the structured modes can't fully
   // handle (conversational shapes, ?-marker, ellipsis, etc.).
   if (options.enableFluidBlank) {
-    // Collect blankKeywords from all declared controls so fluid-blank can
-    // cede the slot to BlankFill when the input matches a control trigger.
+    // Collect blankKeywords from all declared blanks so fluid-blank can
+    // cede the slot to BlankFill when the input matches a known trigger.
     const allKeywords: string[] = [];
-    if (options.controls) {
-      for (const ctrl of Object.values(options.controls)) {
-        if (ctrl.blankKeywords?.length) allKeywords.push(...ctrl.blankKeywords);
+    if (options.blanks) {
+      for (const blk of Object.values(options.blanks)) {
+        if (blk.blankKeywords?.length) allKeywords.push(...blk.blankKeywords);
       }
     }
     sources.push(new FluidBlankSource({

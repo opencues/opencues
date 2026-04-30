@@ -1,9 +1,9 @@
 // BlankFill — Phase E foundation (Step 23).
 //
 // Scans the input text on every change for `_` placeholders. For each `_`,
-// walks backward word-by-word looking for a match against any control's
+// walks backward word-by-word looking for a match against any blank's
 // blankKeywords (single or multi-word). When matched, records a BlankSlot
-// with the control name + match positions for downstream consumers
+// with the blank name + match positions for downstream consumers
 // (auto-populate, blank-script fetch, span tracking, dismiss, etc.).
 //
 // This module is detection-only in E.1. Auto-fill behaviours come in E.2+.
@@ -21,8 +21,8 @@ export interface BlankSlot {
   readonly index: number;
   /** Matched keyword string (lowercased, may contain spaces for multi-word). */
   readonly keyword: string;
-  /** Lowercased control name. */
-  readonly controlName: string;
+  /** Lowercased blank name. */
+  readonly blankName: string;
   /** First word index of the matched keyword. */
   readonly keywordStart: number;
   /** Last word index of the matched keyword. */
@@ -123,12 +123,12 @@ export class BlankFill {
    */
   private maybeRunScripts(text: string, slots: readonly BlankSlot[]): void {
     if (slots.length > 0) this.adapter.log('debug', `BlankFill: ${slots.length} slot(s) on text-change`, slots);
-    // Chrome (and other sandboxed hosts) advertise 'control-invoke' instead
+    // Chrome (and other sandboxed hosts) advertise 'blank-invoke' instead
     // of 'spawn-process'. Either is enough to dispatch a fill; we try
-    // controlInvoke first below and only fall through to spawnProcess if
+    // blankInvoke first below and only fall through to spawnProcess if
     // the host returns null.
     if (!this.adapter.capabilities.includes('spawn-process')
-        && !this.adapter.capabilities.includes('control-invoke')) return;
+        && !this.adapter.capabilities.includes('blank-invoke')) return;
 
     // Pre-split words for context extraction (used for every slot).
     const cleaned = text.replace(/[\u200B\u200C]/g, '');
@@ -140,7 +140,7 @@ export class BlankFill {
       // the fill back to `_`. Without this, the script re-spawns immediately
       // and the dismissal sticks for ~zero milliseconds.
       if (this.dismissedBlanks?.has(slot.index)) continue;
-      const control = this.configLoader.blanks.get(slot.controlName) as
+      const blank = this.configLoader.blanks.get(slot.blankName) as
         | (Record<string, unknown> & {
             stepValues?: readonly string[];
             blankScript?: string;
@@ -154,16 +154,16 @@ export class BlankFill {
             prompts?: Record<string, string>;
           })
         | undefined;
-      if (!control) continue;
-      if (control.blankAutoPopulate === false) continue;
+      if (!blank) continue;
+      if (blank.blankAutoPopulate === false) continue;
       // stepValues path is handled synchronously in onUnderscoreKey.
-      if (Array.isArray(control.stepValues) && control.stepValues.length > 0) continue;
-      const script = control.blankScript;
-      const canControlInvoke = this.adapter.capabilities.includes('control-invoke');
+      if (Array.isArray(blank.stepValues) && blank.stepValues.length > 0) continue;
+      const script = blank.blankScript;
+      const canBlankInvoke = this.adapter.capabilities.includes('blank-invoke');
       // Need EITHER a shell script (legacy spawnProcess path) OR a
-      // controlInvoke-capable host (modern shared-runtime controls).
+      // blankInvoke-capable host (modern shared-runtime blanks).
       // Without either, no way to fetch the fill.
-      if (!script && !canControlInvoke) continue;
+      if (!script && !canBlankInvoke) continue;
 
       const dedupKey = `${text}::${slot.index}`;
       if (this._pendingScripts.has(dedupKey)) continue;
@@ -179,39 +179,39 @@ export class BlankFill {
         contextWords.push(words[wi]);
       }
 
-      // Expand ~ in script path. Empty when the control is
-      // controlInvoke-only (shared runtime control, no shell fallback);
+      // Expand ~ in script path. Empty when the blank is
+      // blankInvoke-only (shared runtime blank, no shell fallback);
       // we just won't reach the spawnProcess branch below.
       const scriptPath = script
         ? (script.startsWith('~') ? home + script.slice(1) : script)
         : '';
 
-      // Build per-control env. Inherits process.env on Node hosts;
+      // Build per-blank env. Inherits process.env on Node hosts;
       // sandboxed hosts (Chrome content scripts) have no `process` global,
-      // so `typeof` guard avoids ReferenceError. controlInvoke ignores env
+      // so `typeof` guard avoids ReferenceError. blankInvoke ignores env
       // there anyway — only spawnProcess paths consume it.
       const baseEnv: Record<string, string> = (typeof process !== 'undefined' && process.env)
         ? process.env as Record<string, string>
         : {};
       const env: Record<string, string> = { ...baseEnv };
-      if (control.model) env.CUES_MODEL = control.model;
-      if (control.apiUrl) env.CUES_API_URL = control.apiUrl;
-      if (control.apiKeyEnv) env.CUES_API_KEY_ENV = control.apiKeyEnv;
-      if (control.altCount !== undefined) env.CUES_ALT_COUNT = String(control.altCount);
-      if (control.includeOriginal !== undefined) env.CUES_INCLUDE_ORIGINAL = String(control.includeOriginal);
-      if (control.prompts) {
-        for (const [k, v] of Object.entries(control.prompts)) {
+      if (blank.model) env.CUES_MODEL = blank.model;
+      if (blank.apiUrl) env.CUES_API_URL = blank.apiUrl;
+      if (blank.apiKeyEnv) env.CUES_API_KEY_ENV = blank.apiKeyEnv;
+      if (blank.altCount !== undefined) env.CUES_ALT_COUNT = String(blank.altCount);
+      if (blank.includeOriginal !== undefined) env.CUES_INCLUDE_ORIGINAL = String(blank.includeOriginal);
+      if (blank.prompts) {
+        for (const [k, v] of Object.entries(blank.prompts)) {
           const envKey = 'CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_');
           env[envKey] = String(v);
         }
       }
 
-      this.adapter.log('debug', `BlankFill: invoke ${slot.controlName} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(control), scriptPath });
-      // Try host-native control invocation first (Chrome, Electron,
+      this.adapter.log('debug', `BlankFill: invoke ${slot.blankName} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(blank), scriptPath });
+      // Try host-native blank invocation first (Chrome, Electron,
       // anything without shell access). Fall through to spawnProcess
-      // when the host returns null or doesn't implement controlInvoke.
+      // when the host returns null or doesn't implement blankInvoke.
       let handle = this.adapter.blankInvoke?.({
-        controlName: slot.controlName,
+        blankName: slot.blankName,
         action: 'get',
         args: [slot.keyword, ...contextWords],
         env,
@@ -219,7 +219,7 @@ export class BlankFill {
       }) ?? null;
       if (!handle) {
         if (!script) {
-          // controlInvoke didn't recognise the control AND there's no
+          // blankInvoke didn't recognise the blank AND there's no
           // shell fallback. Drop the dedup so a later state change can
           // retry, and skip cleanly.
           this._pendingScripts.delete(dedupKey);
@@ -234,14 +234,14 @@ export class BlankFill {
       }
       handle.result.then(res => {
         this._pendingScripts.delete(dedupKey);
-        this.adapter.log('debug', `BlankFill: script result for ${slot.controlName}`, { exitCode: res.exitCode, timedOut: res.timedOut, stdoutLen: res.stdout?.length ?? 0, stdoutPreview: res.stdout?.slice(0, 80) });
+        this.adapter.log('debug', `BlankFill: script result for ${slot.blankName}`, { exitCode: res.exitCode, timedOut: res.timedOut, stdoutLen: res.stdout?.length ?? 0, stdoutPreview: res.stdout?.slice(0, 80) });
         if (res.exitCode !== 0 || res.timedOut) return;
         const stdout = res.stdout.trim();
         if (!stdout) return;
         this.applyAsyncFill(slot, stdout);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);
-        this.adapter.log('error', `BlankFill: script promise rejected for ${slot.controlName}`, err);
+        this.adapter.log('error', `BlankFill: script promise rejected for ${slot.blankName}`, err);
       });
     }
   }
@@ -257,7 +257,7 @@ export class BlankFill {
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
     const target = words[slot.index];
-    const control = this.configLoader.blanks.get(slot.controlName) as
+    const blank = this.configLoader.blanks.get(slot.blankName) as
       | (Record<string, unknown> & {
           blankClearKeywords?: boolean;
           blankConsumeContext?: boolean;
@@ -280,33 +280,33 @@ export class BlankFill {
     if (!target || target.word !== '_') return;
 
     // Phase G.a — selector/satellite fill. When the script returns a
-    // tab-separated `<setting>\t<value>` and the control declares
+    // tab-separated `<setting>\t<value>` and the blank declares
     // blankSatellite, splice TWO words separated by blankSatelliteSeparator
     // (default ' ') and stash the pair so cycling can write back via
     // `script set` / `script get`.
-    if (control?.blankSatellite === true && fillValue.includes('\t')) {
-      this.applySatelliteFill(slot, control, fillValue, cleaned, target);
+    if (blank?.blankSatellite === true && fillValue.includes('\t')) {
+      this.applySatelliteFill(slot, blank, fillValue, cleaned, target);
       return;
     }
 
     // Phase F.b — parse stdout into lines once. Both consume-all and
     // splice paths use line[0] as the visible fill; alternates stash if
-    // the script returned multiple lines (hackernews) or the control is
+    // the script returned multiple lines (hackernews) or the blank is
     // dismissible (so the user can cycle back to `_`).
     const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
     if (lines.length === 0) return;
     let primaryFill = lines[0];
-    const isDismissible = control?.blankDismissible === true;
-    // Append blankSuffix when the control declares one and the primary
+    const isDismissible = blank?.blankDismissible === true;
+    // Append blankSuffix when the blank declares one and the primary
     // fill looks numeric (volume, brightness — script returns "50",
     // displayed as "50%").
-    if (control?.blankSuffix && /^-?\d+(?:\.\d+)?$/.test(primaryFill)) {
-      primaryFill = primaryFill + control.blankSuffix;
+    if (blank?.blankSuffix && /^-?\d+(?:\.\d+)?$/.test(primaryFill)) {
+      primaryFill = primaryFill + blank.blankSuffix;
     }
 
     // Step 30 — consume-all short-circuits the splice/expand/clear pipeline.
-    if (control?.blankConsumeAll === true) {
-      this.adapter.log('debug', `BlankFill: consume-all ${slot.controlName}`, {
+    if (blank?.blankConsumeAll === true) {
+      this.adapter.log('debug', `BlankFill: consume-all ${slot.blankName}`, {
         altCount: lines.length,
         firstAltLen: primaryFill.length,
       });
@@ -319,7 +319,7 @@ export class BlankFill {
           alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: newText.split(/\s+/).filter(Boolean).length,
-          blankTip: control?.blankTip ?? control?.tip,
+          blankTip: blank?.blankTip ?? blank?.tip,
         }, newText);
       } else if (this.spanFillState) {
         this.spanFillState.clear();
@@ -334,8 +334,8 @@ export class BlankFill {
       return;
     }
 
-    const { clearEnd, expansion } = computeFillRange(control ?? {}, slot);
-    this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.controlName}`, {
+    const { clearEnd, expansion } = computeFillRange(blank ?? {}, slot);
+    this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.blankName}`, {
       currentTextLen: currentText.length,
       cleanedLen: cleaned.length,
       slotIndex: slot.index,
@@ -371,7 +371,7 @@ export class BlankFill {
           alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: Math.max(1, fillWordCount),
-          blankTip: control?.blankTip ?? control?.tip,
+          blankTip: blank?.blankTip ?? blank?.tip,
         }, newText);
       } else {
         this.spanFillState.clear();
@@ -379,16 +379,16 @@ export class BlankFill {
     }
 
     // Phase I.8 — when blankSuffix produced a numeric+unit fill (volume,
-    // brightness), attribute the resulting word to its source control
+    // brightness), attribute the resulting word to its source blank
     // via a DynDef so cycling routes to the originating blank.
-    if (this.dynDefs && startWord && control?.blankSuffix && primaryFill.endsWith(control.blankSuffix)) {
+    if (this.dynDefs && startWord && blank?.blankSuffix && primaryFill.endsWith(blank.blankSuffix)) {
       this.dynDefs.set(startWord.index, {
         originalWord: primaryFill,
         alternatives: [primaryFill],
         currentIndex: 0,
         spanStart: startWord.start,
         spanEnd: startWord.end,
-        blankName: slot.controlName,
+        blankName: slot.blankName,
       });
     }
 
@@ -534,7 +534,7 @@ export class BlankFill {
    */
   private applySatelliteFill(
     slot: BlankSlot,
-    control: {
+    blank: {
       blankClearKeywords?: boolean;
       blankConsumeContext?: boolean;
       blankSatellite?: boolean;
@@ -551,9 +551,9 @@ export class BlankFill {
     const selectorRaw = fillValue.slice(0, tabIdx).trim();
     const satelliteRaw = fillValue.slice(tabIdx + 1).split('\n')[0].trim();
     if (!selectorRaw || !satelliteRaw) return;
-    const sep = control.blankSatelliteSeparator || ' ';
+    const sep = blank.blankSatelliteSeparator || ' ';
     const pair = `${selectorRaw}${sep}${satelliteRaw}`;
-    const { clearEnd, expansion } = computeFillRange(control, slot);
+    const { clearEnd, expansion } = computeFillRange(blank, slot);
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
       ? buildClearKeywordText(cleaned, slot, pair, expansion, clearEnd)
       : { newText: cleaned.slice(0, target.start) + pair + cleaned.slice(target.end),
@@ -565,15 +565,15 @@ export class BlankFill {
       const startWord = newWords.find(w => w.start === fillStart);
       if (startWord) {
         const home = process.env.HOME ?? '~';
-        const scriptPath = control.blankScript
-          ? (control.blankScript.startsWith('~') ? home + control.blankScript.slice(1) : control.blankScript)
+        const scriptPath = blank.blankScript
+          ? (blank.blankScript.startsWith('~') ? home + blank.blankScript.slice(1) : blank.blankScript)
           : '';
         const selectorLength = Math.max(1, selectorRaw.split(/\s+/).filter(Boolean).length);
         const satelliteLength = Math.max(1, satelliteRaw.split(/\s+/).filter(Boolean).length);
         const pairCharStart = startWord.start;
         const pairCharEnd = startWord.start + pair.length;
         this.selectorSatelliteState.set({
-          controlName: slot.controlName,
+          blankName: slot.blankName,
           scriptPath,
           selectorIndex: startWord.index,
           selectorLength,
@@ -582,13 +582,13 @@ export class BlankFill {
           currentSetting: selectorRaw,
           currentValue: satelliteRaw,
           separator: sep,
-          clearOnEdit: control.blankClearOnEdit === true,
+          clearOnEdit: blank.blankClearOnEdit === true,
           pairCharStart,
           pairCharEnd,
         }, newText);
       }
     }
-    this.adapter.log('debug', `BlankFill: satellite ${slot.controlName}`, {
+    this.adapter.log('debug', `BlankFill: satellite ${slot.blankName}`, {
       selector: selectorRaw,
       satellite: satelliteRaw,
       sep,
@@ -605,7 +605,7 @@ export class BlankFill {
   /**
    * Handler for the '_' key. Simulates the insertion that the host would
    * make, scans the result, and if a fillable slot lands at the inserted
-   * position we replace '_' with the control's stepValues[0] in the same
+   * position we replace '_' with the blank's stepValues[0] in the same
    * dispatch. Returns true to consume the key (host's default insert is
    * skipped); false otherwise (host inserts '_' normally).
    */
@@ -628,7 +628,7 @@ export class BlankFill {
     const slot = slots.find(s => s.index === insertedWord.index);
     if (!slot) return false;
 
-    const control = this.configLoader.blanks.get(slot.controlName) as
+    const blank = this.configLoader.blanks.get(slot.blankName) as
       | (Record<string, unknown> & {
           stepValues?: readonly string[];
           blankAutoPopulate?: boolean;
@@ -640,14 +640,14 @@ export class BlankFill {
           blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
-    if (!control) return false;
-    if (control.blankAutoPopulate === false) return false;
+    if (!blank) return false;
+    if (blank.blankAutoPopulate === false) return false;
     if (this.dismissedBlanks?.has(slot.index)) return false;
-    const stepValues = control.stepValues;
+    const stepValues = blank.stepValues;
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
 
-    const { clearEnd, expansion } = computeFillRange(control, slot);
+    const { clearEnd, expansion } = computeFillRange(blank, slot);
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
       ? buildClearKeywordText(insertedText, slot, fillValue, expansion, clearEnd)
@@ -655,14 +655,14 @@ export class BlankFill {
           newCursor: insertedWord.start + fillValue.length };
 
     // Step 33 / Phase F.a — when the fill or the alternative pool is
-    // multi-word OR the control is dismissible, register a span so
+    // multi-word OR the blank is dismissible, register a span so
     // Cycling and DimRender can treat the whole fill as a single
     // navigable, cycleable unit. Affirmations are the canonical case:
     // stepValues[0] = "I am strong" doesn't cycle via path 2
-    // (lookupControl on inner words returns nothing). Without a span
+    // (lookupBlank on inner words returns nothing). Without a span
     // entry, Ctrl+Alt+Up after the fill falls through to no-op.
     // Phase F.b: blankDismissible appends `_` so cycling can dismiss.
-    const dismissible = control.blankDismissible === true;
+    const dismissible = blank.blankDismissible === true;
     const altsForSpan = dismissible ? [...stepValues, '_'] : stepValues;
     if (this.spanFillState && altsForSpan.length > 1) {
       const fillStart = newCursor - fillValue.length;
@@ -675,7 +675,7 @@ export class BlankFill {
           alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: Math.max(1, spanLength),
-          blankTip: control.blankTip ?? control.tip,
+          blankTip: blank.blankTip ?? blank.tip,
         }, newText);
       }
     }
@@ -686,13 +686,13 @@ export class BlankFill {
     return true;
   }
 
-  /** Walk backward from blankIdx looking for a control's blankKeywords match. */
+  /** Walk backward from blankIdx looking for a blank's blankKeywords match. */
   private matchKeyword(words: readonly string[], blankIdx: number): BlankSlot | null {
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
-      for (const [name, control] of this.configLoader.blanks.entries()) {
-        const blankKeywords = (control as { blankKeywords?: readonly string[] }).blankKeywords;
+      for (const [name, blank] of this.configLoader.blanks.entries()) {
+        const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
-        const blankProximity = (control as { blankProximity?: number }).blankProximity;
+        const blankProximity = (blank as { blankProximity?: number }).blankProximity;
         if (blankProximity != null && (blankIdx - j - 1) > blankProximity) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
@@ -710,7 +710,7 @@ export class BlankFill {
             return {
               index: blankIdx,
               keyword: kwLc,
-              controlName: name,
+              blankName: name,
               keywordStart: start,
               keywordEnd: j,
               proximity: blankIdx - j - 1,
@@ -724,15 +724,15 @@ export class BlankFill {
 }
 
 /** Debug helper — keys actually injected into the script env. */
-function extraEnvKeys(control: Record<string, unknown>): string[] {
+function extraEnvKeys(blank: Record<string, unknown>): string[] {
   const keys: string[] = [];
-  if (control.model) keys.push('CUES_MODEL');
-  if (control.apiUrl) keys.push('CUES_API_URL');
-  if (control.apiKeyEnv) keys.push('CUES_API_KEY_ENV');
-  if (control.altCount !== undefined) keys.push('CUES_ALT_COUNT');
-  if (control.includeOriginal !== undefined) keys.push('CUES_INCLUDE_ORIGINAL');
-  if (control.prompts && typeof control.prompts === 'object') {
-    for (const k of Object.keys(control.prompts as object)) {
+  if (blank.model) keys.push('CUES_MODEL');
+  if (blank.apiUrl) keys.push('CUES_API_URL');
+  if (blank.apiKeyEnv) keys.push('CUES_API_KEY_ENV');
+  if (blank.altCount !== undefined) keys.push('CUES_ALT_COUNT');
+  if (blank.includeOriginal !== undefined) keys.push('CUES_INCLUDE_ORIGINAL');
+  if (blank.prompts && typeof blank.prompts === 'object') {
+    for (const k of Object.keys(blank.prompts as object)) {
       keys.push('CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_'));
     }
   }
@@ -741,7 +741,7 @@ function extraEnvKeys(control: Record<string, unknown>): string[] {
 
 /**
  * Step 27/28/29 — derive the (clearEnd, expansion) pair that the helper
- * loop will apply, given a control's flags. Lets callers stay short.
+ * loop will apply, given a blank's flags. Lets callers stay short.
  *
  *   - blankConsumeContext: clearEnd = slot.index - 1 (drop keyword +
  *     anything between it and the blank).
@@ -752,21 +752,21 @@ function extraEnvKeys(control: Record<string, unknown>): string[] {
  *   - Both clear flags + expansion: expansion is suppressed (clear wins).
  */
 export function computeFillRange(
-  control: {
+  blank: {
     blankClearKeywords?: boolean;
     blankConsumeContext?: boolean;
     blankKeywordExpansions?: Record<string, string>;
   },
   slot: { index: number; keyword: string; keywordEnd: number },
 ): { clearEnd: number | undefined; expansion: string | undefined } {
-  const consumeContext = control.blankConsumeContext === true;
-  const clearKw = control.blankClearKeywords === true;
+  const consumeContext = blank.blankConsumeContext === true;
+  const clearKw = blank.blankClearKeywords === true;
   let clearEnd: number | undefined;
   if (consumeContext) clearEnd = slot.index - 1;
   else if (clearKw) clearEnd = slot.keywordEnd;
   const expansion = (clearKw || consumeContext)
     ? undefined
-    : control.blankKeywordExpansions?.[slot.keyword];
+    : blank.blankKeywordExpansions?.[slot.keyword];
   return { clearEnd, expansion };
 }
 

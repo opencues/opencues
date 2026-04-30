@@ -9,11 +9,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-// User-facing kinds advertised in help/error messages. `control` is
+// User-facing kinds advertised in help/error messages. `control` is the
 // accepted but hidden — see KINDS / ALIASES below.
 const ADVERTISED_KINDS = ['cue', 'blank'];
-// Phase-1 backwards-compat: `control` is a silent alias for `blank`
-// (controls/ folder was renamed to blanks/, control.md template merged
+// Backwards-compat: `control` is a silent alias for `blank`
+// (the legacy controls/ folder was renamed to blanks/, control.md template merged
 // into blank.md). New canonical kind name is `blank`. Accepted but NOT
 // surfaced in help text.
 const KINDS = new Set([...ADVERTISED_KINDS, 'control']);

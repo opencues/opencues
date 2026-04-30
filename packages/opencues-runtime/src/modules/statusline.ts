@@ -4,7 +4,7 @@
 // The shape mirrors what v1's wordHighlight.ts wrote to
 // /tmp/opencues-highlight-state-<pid>.json so the existing shell consumer
 // keeps working unchanged. Phase 4 covers the navigation+cycling subset of
-// fields; LLM/blank/control fields land as their modules ship.
+// fields; LLM/blank fields land as their modules ship.
 //
 // Writes are deduped by content — only fires when the JSON actually changes,
 // so a busy render loop doesn't spam the disk.
@@ -50,7 +50,7 @@ export interface StatuslinePayload {
   cueTip?: string | null;
   /** Per-alt tips. Mirrors v1's altCueTips for consumers that want to preview. */
   altCueTips?: Readonly<Record<string, string>> | null;
-  cueControl?: boolean;
+  cueBlank?: boolean;
   wordCount?: number;
   timestamp: number;
 }
@@ -113,7 +113,7 @@ export class Statusline {
 
     // Phase G.b — selector/satellite takes priority over both span and
     // cue lookup. Selector word emits the setting's `tip`; satellite
-    // emits the value-specific tip. cueControl=true so the consumer
+    // emits the value-specific tip. cueBlank=true so the consumer
     // prints the tip alone.
     const ss = this.selectorSatelliteState?.current ?? null;
     const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
@@ -136,16 +136,16 @@ export class Statusline {
         alts: [cleanHighlighted],
         cueTip: tipsHidden ? null : ssTip,
         altCueTips: null,
-        cueControl: true,
+        cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,
         timestamp: Date.now(),
       };
     }
 
     // Phase F.b — span fill takes priority. When the highlight is on
-    // any word inside an active span, render the control's blankTip
+    // any word inside an active span, render the blank's blankTip
     // (e.g. "Daily affirmations", "Prompt improver") and treat the
-    // span as a single cycleable unit (cueControl=true so the shell
+    // span as a single cycleable unit (cueBlank=true so the shell
     // consumer prints just the tip instead of "(N/M) - tip").
     const span = this.spanFillState?.current ?? null;
     const inSpan = span !== null
@@ -160,16 +160,16 @@ export class Statusline {
         alts: span.alternatives.map(clean),
         cueTip: tipsHidden ? null : span.blankTip ?? null,
         altCueTips: null,
-        cueControl: true,
+        cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,
         timestamp: Date.now(),
       };
     }
 
-    // Phase I.8 — control-attributed DynDef (volume/brightness blank
+    // Phase I.8 — blank-attributed DynDef (volume/brightness blank
     // fill at "50%"): suppress the statusline tip entirely. The value
     // is already visible in the input ("50%") and the tip would be
-    // redundant ("system volume control 50%").
+    // redundant ("system volume blank 50%").
     if (def?.blankName) {
       return {
         active: true,
@@ -179,7 +179,7 @@ export class Statusline {
         alts: [cleanHighlighted],
         cueTip: null,
         altCueTips: null,
-        cueControl: true,
+        cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,
         timestamp: Date.now(),
       };
@@ -198,12 +198,12 @@ export class Statusline {
       cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
     }
 
-    // When the highlighted word is a control or blankKeyword (volume,
+    // When the highlighted word is a blank or blankKeyword (volume,
     // brightness, etc.), the consumer should print "tip alone" rather
-    // than "word (N/M) - tip". This mirrors v1's `cueControl=true`
-    // routing for control words.
-    const ctrlEntry = this.configLoader?.controlsByWord.get(lookupKey);
-    const isControlWord = ctrlEntry != null;
+    // than "word (N/M) - tip". This mirrors v1's `cueBlank=true`
+    // routing for blank words.
+    const blkEntry = this.configLoader?.blanksByWord.get(lookupKey);
+    const isBlankWord = blkEntry != null;
 
     return {
       active: true,
@@ -213,7 +213,7 @@ export class Statusline {
       alts: def ? def.alternatives.map(clean) : [cleanHighlighted],
       cueTip,
       altCueTips,
-      cueControl: isControlWord,
+      cueBlank: isBlankWord,
       wordCount: words.filter(w => clean(w.word).length > 0).length,
       timestamp: Date.now(),
     };

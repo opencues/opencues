@@ -226,24 +226,24 @@ impl Bridge {
         }
     }
 
-    /// Synchronously invoke one of the daemon's hoisted controls and return
-    /// its ProcessResult-shaped payload (or `None` if the controlName isn't
+    /// Synchronously invoke one of the daemon's hoisted blanks and return
+    /// its ProcessResult-shaped payload (or `None` if the blankName isn't
     /// registered). Useful for codex slash-commands like `/volume up`.
     /// Same timeout as dispatch_key.
-    pub fn invoke_control(
+    pub fn invoke_blank(
         &self,
-        control_name: &str,
+        blank_name: &str,
         action: &str,
         args: &[&str],
     ) -> Option<Value> {
         let resp = self.request_with_timeout(
-            "control-invoke",
+            "blank-invoke",
             json!({
-                "controlName": control_name,
+                "blankName": blank_name,
                 "action": action,
                 "args": args,
             }),
-            Duration::from_secs(10), // controls may hit network (HN, stocks…)
+            Duration::from_secs(10), // blanks may hit network (HN, stocks…)
         );
         match resp {
             Ok(Value::Null) => None,

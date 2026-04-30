@@ -56,10 +56,10 @@ export interface HostInfo {
   /** Optional: spawn a child process. Used by TTS for fire-and-forget speak. */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
   /**
-   * Optional host-native control dispatch. BlankFill + Cycling try this
-   * BEFORE spawnProcess so the shared TS controls (HackerNewsBlank,
-   * etc. — see opencues-runtime/src/controls/) win over the legacy shell
-   * scripts in controls/. Returns null when the controlName isn't in
+   * Optional host-native blank dispatch. BlankFill + Cycling try this
+   * BEFORE spawnProcess so the shared TS blanks (HackerNewsBlank,
+   * etc. — see opencues-runtime/src/blanks/) win over the legacy shell
+   * scripts in blanks/. Returns null when the blankName isn't in
    * the host's registry; runtime falls through to spawnProcess.
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
@@ -311,7 +311,7 @@ export function boot(host: HostInfo): BootResult {
   const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState);
   cycling.subscribe();
 
-  // BlankFill: scans for `_` placeholders + matched control. Owns the
+  // BlankFill: scans for `_` placeholders + matched blank. Owns the
   // detection + sync (stepValues) and async (blankScript) fill paths.
   // E.8 adds the consume-all branch — needs SpanFillState as a writer
   // so E.9's Cycling can read the stash. F.a generalises the same state

@@ -90,20 +90,20 @@ export interface PromptConfig {
 export type ActionConfig = BlankConfig;
 
 export interface BlankConfig {
-  control: string;
+  name: string;
   tip?: string;
   speak?: boolean;
-  /** Context words that bind a blank (_) to this control (e.g., ['volume', 'sound']) */
+  /** Context words that bind a blank (_) to this entry (e.g., ['volume', 'sound']) */
   blankKeywords?: string[];
-  /** Increment/decrement step size when cycling a control-bound blank */
+  /** Increment/decrement step size when cycling a blank */
   blankStep?: number;
-  /** When true, auto-fill the blank with the current control value on analysis */
+  /** When true, auto-fill the blank with the current value on analysis */
   blankAutoPopulate?: boolean;
   /** Value format: integer (default), float, or string */
   blankFormat?: 'integer' | 'float' | 'string';
-  /** Tip shown when the auto-populated value is highlighted (separate from word-control tip) */
+  /** Tip shown when the auto-populated value is highlighted */
   blankTip?: string;
-  /** Script for blank get/set (separate from word-control script). Defaults to `script` if not set. */
+  /** Script for blank get/set. */
   blankScript?: string;
   /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
   blankProximity?: number;
@@ -113,7 +113,7 @@ export interface BlankConfig {
   blankDismissible?: boolean;
   /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
   blankSuffix?: string;
-  /** Ordered list of values to cycle through on a control-bound blank */
+  /** Ordered list of values to cycle through on a blank */
   stepValues?: string[];
   /** Map from keyword (lowercase) to display expansion applied at auto-populate time (e.g. { rddt: "Reddit" }) */
   blankKeywordExpansions?: Record<string, string>;
@@ -149,7 +149,7 @@ export interface BlankConfig {
   onHost?: string[];
   /**
    * Explicit host deny-list. Removes hosts from the auto-detected (or
-   * on-host) set. Useful for marking a control as "not chrome" when the
+   * on-host) set. Useful for marking a blank as "not chrome" when the
    * auto-detection (script: extension) didn't catch it.
    */
   notOnHost?: string[];
@@ -165,8 +165,8 @@ export interface CuesMdConfig {
   /** Prompt configuration with per-source definitions */
   promptConfig?: PromptConfig;
 
-  /** Cue-control definitions from ## Blanks (or ## Controls / ## Actions) JSON block */
-  controls?: Record<string, BlankConfig>;
+  /** Blank definitions from ## Blanks (or legacy ## Controls / ## Actions) JSON block */
+  blanks?: Record<string, BlankConfig>;
 
   /** Words to never suggest alternatives for from ## Ignore */
   ignore?: string[];
@@ -450,7 +450,16 @@ function parseBlanksSection(content: string): Record<string, BlankConfig> | unde
   const jsonBlock = extractCodeBlock(content, 'json');
   if (!jsonBlock) return undefined;
   try {
-    return JSON.parse(jsonBlock) as Record<string, BlankConfig>;
+    const raw = JSON.parse(jsonBlock) as Record<string, BlankConfig & { control?: string }>;
+    // Back-compat: accept legacy `control:` key on the JSON entries and map
+    // it onto the canonical `name:` field.
+    for (const [key, entry] of Object.entries(raw)) {
+      if (entry && !entry.name && (entry as { control?: string }).control) {
+        entry.name = (entry as { control?: string }).control!;
+      }
+      if (entry && !entry.name) entry.name = key;
+    }
+    return raw as Record<string, BlankConfig>;
   } catch {
     return undefined;
   }
@@ -498,7 +507,7 @@ export function parseCuesMd(content: string): CuesMdConfig {
         // Accept ## Blanks (preferred), ## Controls (legacy), and ## Actions
         // (older legacy) — one-version transition while user-edited .md files
         // may still carry the old headings.
-        result.controls = parseBlanksSection(section.content);
+        result.blanks = parseBlanksSection(section.content);
         break;
       }
       case 'ignore': {
@@ -536,7 +545,8 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   model?: string;
   enabled?: boolean;
   promptPath?: string;
-  // Control-specific fields
+  // Blank-specific fields
+  /** @deprecated Use `name` (top-level frontmatter `name:`) — `control:` is back-compat alias. */
   control?: string;
   tip?: string;
   speak?: boolean;
@@ -684,35 +694,35 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
     }
     case 'blank':
     case 'control': {
-      const control: BlankConfig = {
-        control: frontmatter.control || name,
+      const blank: BlankConfig = {
+        name: frontmatter.control || name,
         tip: frontmatter.tip,
         speak: frontmatter.speak,
       };
       if (frontmatter.blankKeywords) {
-        control.blankKeywords = frontmatter.blankKeywords.split(',').map(k => k.trim().toLowerCase());
+        blank.blankKeywords = frontmatter.blankKeywords.split(',').map(k => k.trim().toLowerCase());
       }
-      if (frontmatter.blankStep !== undefined) control.blankStep = frontmatter.blankStep;
-      if (frontmatter.blankAutoPopulate !== undefined) control.blankAutoPopulate = frontmatter.blankAutoPopulate;
-      if (frontmatter.blankFormat !== undefined) control.blankFormat = frontmatter.blankFormat;
-      if (frontmatter.blankTip !== undefined) control.blankTip = frontmatter.blankTip;
-      if (frontmatter.blankProximity !== undefined) control.blankProximity = frontmatter.blankProximity;
-      if (frontmatter.blankReadOnly !== undefined) control.blankReadOnly = frontmatter.blankReadOnly;
-      if (frontmatter.blankDismissible !== undefined) control.blankDismissible = frontmatter.blankDismissible;
-      if (frontmatter.blankSuffix !== undefined) control.blankSuffix = frontmatter.blankSuffix;
-      if (frontmatter.stepValues !== undefined) control.stepValues = frontmatter.stepValues;
-      if (frontmatter.blankKeywordExpansions !== undefined) control.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
-      if (frontmatter.blankSatellite !== undefined) control.blankSatellite = frontmatter.blankSatellite;
-      if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
-      if (frontmatter.blankClearKeywords !== undefined) control.blankClearKeywords = frontmatter.blankClearKeywords;
-      if (frontmatter.blankClearOnEdit !== undefined) control.blankClearOnEdit = frontmatter.blankClearOnEdit;
-      if (frontmatter.blankConsumeContext !== undefined) control.blankConsumeContext = frontmatter.blankConsumeContext;
-      if (frontmatter.blankConsumeAll !== undefined) control.blankConsumeAll = frontmatter.blankConsumeAll;
-      if (frontmatter.model !== undefined) control.model = frontmatter.model;
-      if (frontmatter.apiUrl !== undefined) control.apiUrl = frontmatter.apiUrl;
-      if (frontmatter.apiKeyEnv !== undefined) control.apiKeyEnv = frontmatter.apiKeyEnv;
-      if (frontmatter.altCount !== undefined) control.altCount = frontmatter.altCount;
-      if (frontmatter.includeOriginal !== undefined) control.includeOriginal = frontmatter.includeOriginal;
+      if (frontmatter.blankStep !== undefined) blank.blankStep = frontmatter.blankStep;
+      if (frontmatter.blankAutoPopulate !== undefined) blank.blankAutoPopulate = frontmatter.blankAutoPopulate;
+      if (frontmatter.blankFormat !== undefined) blank.blankFormat = frontmatter.blankFormat;
+      if (frontmatter.blankTip !== undefined) blank.blankTip = frontmatter.blankTip;
+      if (frontmatter.blankProximity !== undefined) blank.blankProximity = frontmatter.blankProximity;
+      if (frontmatter.blankReadOnly !== undefined) blank.blankReadOnly = frontmatter.blankReadOnly;
+      if (frontmatter.blankDismissible !== undefined) blank.blankDismissible = frontmatter.blankDismissible;
+      if (frontmatter.blankSuffix !== undefined) blank.blankSuffix = frontmatter.blankSuffix;
+      if (frontmatter.stepValues !== undefined) blank.stepValues = frontmatter.stepValues;
+      if (frontmatter.blankKeywordExpansions !== undefined) blank.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
+      if (frontmatter.blankSatellite !== undefined) blank.blankSatellite = frontmatter.blankSatellite;
+      if (frontmatter.blankSatelliteSeparator !== undefined) blank.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
+      if (frontmatter.blankClearKeywords !== undefined) blank.blankClearKeywords = frontmatter.blankClearKeywords;
+      if (frontmatter.blankClearOnEdit !== undefined) blank.blankClearOnEdit = frontmatter.blankClearOnEdit;
+      if (frontmatter.blankConsumeContext !== undefined) blank.blankConsumeContext = frontmatter.blankConsumeContext;
+      if (frontmatter.blankConsumeAll !== undefined) blank.blankConsumeAll = frontmatter.blankConsumeAll;
+      if (frontmatter.model !== undefined) blank.model = frontmatter.model;
+      if (frontmatter.apiUrl !== undefined) blank.apiUrl = frontmatter.apiUrl;
+      if (frontmatter.apiKeyEnv !== undefined) blank.apiKeyEnv = frontmatter.apiKeyEnv;
+      if (frontmatter.altCount !== undefined) blank.altCount = frontmatter.altCount;
+      if (frontmatter.includeOriginal !== undefined) blank.includeOriginal = frontmatter.includeOriginal;
       // Parse ## sections from body as named prompts
       const promptSections: Record<string, string> = {};
       const sectionPattern = /^## (.+)$/gm;
@@ -726,14 +736,14 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
         const text = body.slice(positions[pi].start, end).trim();
         if (text) promptSections[positions[pi].name] = text;
       }
-      if (Object.keys(promptSections).length > 0) control.prompts = promptSections;
+      if (Object.keys(promptSections).length > 0) blank.prompts = promptSections;
       // Resolve relative script paths
       if (frontmatter.blankScript) {
-        control.blankScript = frontmatter.blankScript.startsWith('./')
+        blank.blankScript = frontmatter.blankScript.startsWith('./')
           ? folderPath + '/' + frontmatter.blankScript.slice(2)
           : frontmatter.blankScript;
       }
-      result.controls = { [control.control]: control };
+      result.blanks = { [blank.name]: blank };
       break;
     }
     default: {
@@ -793,10 +803,10 @@ export function validateCuesMd(config: CuesMdConfig): string[] {
     }
   }
 
-  if (config.controls) {
-    for (const [key, control] of Object.entries(config.controls)) {
-      if (!control.control) {
-        errors.push(`Control "${key}" missing required "control" field`);
+  if (config.blanks) {
+    for (const [key, blank] of Object.entries(config.blanks)) {
+      if (!blank.name) {
+        errors.push(`Blank "${key}" missing required "name" field`);
       }
     }
   }

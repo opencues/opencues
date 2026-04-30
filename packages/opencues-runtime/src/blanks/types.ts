@@ -1,4 +1,4 @@
-// Shared Blank interface — every blank (script-replaceable control)
+// Shared Blank interface — every blank (script-replaceable or runtime-class)
 // across hosts (chrome, opencode, claude-code) implements this same
 // shape. Hosts wire instances into a registry that BlankFill + Cycling
 // reach via adapter.blankInvoke.

@@ -82,11 +82,11 @@ export class MockAdapter implements HostAdapter {
   readonly setTextCalls: string[] = [];
   readonly setCursorCalls: number[] = [];
   forceRenderCalls = 0;
-  /** Captured controlInvoke specs for assertions. */
+  /** Captured blankInvoke specs for assertions. */
   readonly blankInvokeCalls: BlankInvokeSpec[] = [];
   /**
-   * Per-control mock returns. Set via stubControlInvoke; when set, the
-   * matching spec resolves to the supplied stdout. controlName + action
+   * Per-blank mock returns. Set via stubBlankInvoke; when set, the
+   * matching spec resolves to the supplied stdout. blankName + action
    * pair is the lookup key (e.g. "volume:up", "weather:get").
    */
   private _blankInvokeStubs = new Map<string, string>();
@@ -181,23 +181,23 @@ export class MockAdapter implements HostAdapter {
   }
 
   /**
-   * Register a stub return for a controlInvoke call. Matched on
-   * `${controlName}:${action}`. Use `*:action` to match any control,
-   * `controlName:*` to match any action. Tests that don't stub get
-   * controlInvoke=undefined behaviour (BlankFill/Cycling fall through
-   * to spawnProcess as if controlInvoke wasn't implemented).
+   * Register a stub return for a blankInvoke call. Matched on
+   * `${blankName}:${action}`. Use `*:action` to match any blank,
+   * `blankName:*` to match any action. Tests that don't stub get
+   * blankInvoke=undefined behaviour (BlankFill/Cycling fall through
+   * to spawnProcess as if blankInvoke wasn't implemented).
    */
-  stubControlInvoke(key: string, stdout: string): void {
+  stubBlankInvoke(key: string, stdout: string): void {
     this._blankInvokeStubs.set(key, stdout);
   }
 
   blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
     this.blankInvokeCalls.push(spec);
     if (this._blankInvokeStubs.size === 0) return null;
-    const exact = `${spec.controlName}:${spec.action}`;
+    const exact = `${spec.blankName}:${spec.action}`;
     const match = this._blankInvokeStubs.get(exact)
       ?? this._blankInvokeStubs.get(`*:${spec.action}`)
-      ?? this._blankInvokeStubs.get(`${spec.controlName}:*`);
+      ?? this._blankInvokeStubs.get(`${spec.blankName}:*`);
     if (match === undefined) return null;
     return {
       result: Promise.resolve({ stdout: match, stderr: '', exitCode: 0, timedOut: false }),

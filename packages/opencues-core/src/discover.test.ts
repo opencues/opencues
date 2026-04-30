@@ -107,47 +107,45 @@ type: tips
   });
 });
 
-describe('parseSingleCueMd: control type', () => {
-  it('should parse control config from frontmatter', () => {
+describe('parseSingleCueMd: blank type', () => {
+  it('should parse blank config from frontmatter (legacy `type: control`)', () => {
     const content = `---
 name: volume
 type: control
 control: volume
-tip: system volume control
+tip: system volume
 blankScript: ./volume-blank.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/volume');
-    assert.ok(config.controls);
-    const ctrl = config.controls!['volume'];
-    assert.ok(ctrl);
-    assert.strictEqual(ctrl.control, 'volume');
-    assert.strictEqual(ctrl.tip, 'system volume control');
-    assert.strictEqual(ctrl.blankScript, '/project/blanks/volume/volume-blank.sh');
+    assert.ok(config.blanks);
+    const blk = config.blanks!['volume'];
+    assert.ok(blk);
+    assert.strictEqual(blk.name, 'volume');
+    assert.strictEqual(blk.tip, 'system volume');
+    assert.strictEqual(blk.blankScript, '/project/blanks/volume/volume-blank.sh');
   });
 
   it('should resolve relative blankScript path', () => {
     const content = `---
 name: speak
-type: control
-control: speak
+type: blank
 blankScript: ./speak.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/speak');
-    assert.strictEqual(config.controls!['speak'].blankScript, '/project/blanks/speak/speak.sh');
+    assert.strictEqual(config.blanks!['speak'].blankScript, '/project/blanks/speak/speak.sh');
   });
 
   it('should keep absolute blankScript path unchanged', () => {
     const content = `---
 name: custom
-type: control
-control: custom
+type: blank
 blankScript: /opt/scripts/custom.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/custom');
-    assert.strictEqual(config.controls!['custom'].blankScript, '/opt/scripts/custom.sh');
+    assert.strictEqual(config.blanks!['custom'].blankScript, '/opt/scripts/custom.sh');
   });
 
   it('should accept type: blank as canonical (control is legacy alias)', () => {
@@ -159,12 +157,12 @@ blankScript: ./volume-blank.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/volume');
-    assert.ok(config.controls);
-    const ctrl = config.controls!['volume'];
-    assert.ok(ctrl);
-    // dirname/name fallback when `control:` is omitted (canonical shape)
-    assert.strictEqual(ctrl.control, 'volume');
-    assert.deepStrictEqual(ctrl.blankKeywords, ['volume']);
+    assert.ok(config.blanks);
+    const blk = config.blanks!['volume'];
+    assert.ok(blk);
+    // dirname/name fallback when frontmatter `name:` is the only identifier
+    assert.strictEqual(blk.name, 'volume');
+    assert.deepStrictEqual(blk.blankKeywords, ['volume']);
   });
 });
 
@@ -249,13 +247,12 @@ Answer factual questions.
     assert.strictEqual(sources['factual'].parser, 'answer');
   });
 
-  it('should discover controls with resolved blankScript paths', () => {
+  it('should discover blanks with resolved blankScript paths', () => {
     const opts = mockFs({
       '/project/blanks/volume/cue.md': `---
 name: volume
-type: control
-control: volume
-tip: volume control
+type: blank
+tip: volume
 blankScript: ./volume-blank.sh
 ---
 `,
@@ -413,12 +410,12 @@ describe('mergeConfigs', () => {
     assert.strictEqual(result.cuesConfig!.tips![1].id, 'b');
   });
 
-  it('should merge control overrides with folder winning', () => {
+  it('should merge blank overrides with folder winning', () => {
     const mono: ReturnType<typeof discoverFolderConfigs> = {
-      blankOverrides: { volume: { control: 'volume', tip: 'old' } },
+      blankOverrides: { volume: { name: 'volume', tip: 'old' } },
     };
     const folders: ReturnType<typeof discoverFolderConfigs> = {
-      blankOverrides: { volume: { control: 'volume', tip: 'new' } },
+      blankOverrides: { volume: { name: 'volume', tip: 'new' } },
     };
     const result = mergeConfigs(mono, folders);
     assert.strictEqual(result.blankOverrides!['volume'].tip, 'new');

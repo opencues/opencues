@@ -1,6 +1,6 @@
 /**
  * Tests for host-compat.ts — auto-detection + explicit overrides for
- * which OpenCues integrations a cue/blank/control runs on.
+ * which OpenCues integrations a cue or blank runs on.
  *
  * Run with: node --test dist/host-compat.test.js
  */
@@ -26,9 +26,9 @@ describe('inferHostCompat: auto-detection', () => {
     assert.strictEqual(r.source, 'auto');
   });
 
-  it('runtime-class control (no script) → all hosts', () => {
-    // e.g. controls/stocks/cue.md with `control: stocks` resolves
-    // by name in the runtime's controlInvoke map; no script = chrome OK.
+  it('runtime-class blank (no script) → all hosts', () => {
+    // e.g. blanks/stocks/cue.md with `name: stocks` resolves
+    // by name in the runtime's blanksRegistry; no script = chrome OK.
     const r = inferHostCompat({});
     assert.strictEqual(r.all, true);
   });
@@ -54,7 +54,7 @@ describe('inferHostCompat: auto-detection', () => {
   });
 
   it('script with no recognised extension → all hosts (assume runtime-resolvable)', () => {
-    // e.g. script: 'volume' in monolithic ## Controls JSON refers to a
+    // e.g. script: 'volume' in monolithic ## Blanks JSON refers to a
     // runtime registry name, not a file path.
     const r = inferHostCompat({ script: 'volume' });
     assert.strictEqual(r.all, true);

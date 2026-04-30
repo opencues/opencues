@@ -154,7 +154,7 @@ export function startOpenCues(opts: {
     },
     // forceRender on OpenCode means: re-fire OpenCues render handlers
     // (DimRender, Statusline) so async state changes (Resolver alts,
-    // ControlValuesCache writes, etc.) paint without waiting for the
+    // BlankFill auto-populate, etc.) paint without waiting for the
     // next user keystroke. The OpenTUI request is layered on top so the
     // visual buffer also refreshes.
     forceRender: () => {
@@ -249,16 +249,16 @@ export function startOpenCues(opts: {
     // In-process statusline hook — feeds the active tip into the
     // SolidJS signal the patched home footer reads. Format matches
     // Claude Code's statusline (highlight-statusline.sh:41-63):
-    //   - cueControl=true: <tip> alone
+    //   - cueBlank=true: <tip> alone
     //   - alts.length > 1: "<word> (N/M) - <tip>"  (tip optional)
-    //   - else (no alts, no control): <tip> alone, or null
+    //   - else (no alts, no blank): <tip> alone, or null
     statusSnapshotHook: (payload: any) => {
       if (!payload?.active) { setOpencuesTip(null); return }
       const tip = payload?.cueTip as string | null | undefined
       const word = payload?.highlightedWord as string | undefined
       const alts = payload?.alts as readonly string[] | undefined
-      const cueControl = !!payload?.cueControl
-      if (cueControl) {
+      const cueBlank = !!payload?.cueBlank
+      if (cueBlank) {
         setOpencuesTip(tip ?? null)
         return
       }

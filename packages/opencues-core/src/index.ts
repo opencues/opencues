@@ -95,7 +95,7 @@ export {
   type DirEntry,
 } from './discover';
 
-// Host-compat: which integrations a cue/blank/control runs on
+// Host-compat: which integrations a cue or blank runs on
 export {
   inferHostCompat,
   unknownHostNames,

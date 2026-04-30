@@ -20,7 +20,7 @@ settings:
 ---
 `;
 
-function makeControl(initial: string): {
+function makeBlank(initial: string): {
   ctl: OpenCuesSettingsBlank;
   storage: { value: string };
   reads: number;
@@ -37,25 +37,25 @@ function makeControl(initial: string): {
 
 describe('OpenCuesSettingsBlank', () => {
   it('get() with no keyword returns "<firstSetting>\\t<currentValue>"', async () => {
-    const { ctl } = makeControl(SAMPLE_MD);
+    const { ctl } = makeBlank(SAMPLE_MD);
     expect(await ctl.get()).toBe('voice-mode\tinactive');
   });
 
   it('get(keyword) returns the current value for that setting', async () => {
-    const { ctl } = makeControl(SAMPLE_MD);
+    const { ctl } = makeBlank(SAMPLE_MD);
     expect(await ctl.get('debug-mode')).toBe('off');
     expect(await ctl.get('tips-mode')).toBe('on');
   });
 
   it('get(unknown) falls back to first setting tab-delimited (so satellite still spawns)', async () => {
-    const { ctl } = makeControl(SAMPLE_MD);
+    const { ctl } = makeBlank(SAMPLE_MD);
     expect(await ctl.get('not-a-setting')).toBe('voice-mode\tinactive');
   });
 
   it('set(setting, value) rewrites the matching line in opencues.md', async () => {
     // NB: arg order is (settingName, value) per the selector/satellite
     // cycling convention — see opencues-settings.ts comment.
-    const { ctl, storage } = makeControl(SAMPLE_MD);
+    const { ctl, storage } = makeBlank(SAMPLE_MD);
     await ctl.set('voice-mode', 'active');
     expect(storage.value).toContain('voice-mode: active');
     // Other lines untouched.
@@ -64,7 +64,7 @@ describe('OpenCuesSettingsBlank', () => {
   });
 
   it('set is a no-op when the setting line does not exist', async () => {
-    const { ctl, storage, writes } = makeControl(SAMPLE_MD);
+    const { ctl, storage, writes } = makeBlank(SAMPLE_MD);
     await ctl.set('unknown-key', 'whatever');
     expect(storage.value).toBe(SAMPLE_MD);
     // No-op skips writeFile entirely (avoids touching mtime when nothing
@@ -73,7 +73,7 @@ describe('OpenCuesSettingsBlank', () => {
   });
 
   it('set is a no-op when value is missing', async () => {
-    const { ctl, writes } = makeControl(SAMPLE_MD);
+    const { ctl, writes } = makeBlank(SAMPLE_MD);
     await ctl.set('voice-mode');
     expect(writes).toBe(0);
   });
@@ -89,10 +89,10 @@ describe('OpenCuesSettingsBlank', () => {
 
   // Regression contract: an empty-string read result (e.g. a 0-byte
   // ~/.opencues/opencues.md left by an interrupted seed) is functionally
-  // equivalent to "no file" — the control silently no-ops on both `get`
+  // equivalent to "no file" — the blank silently no-ops on both `get`
   // and `set`. This is intentional (it avoids fabricating a settings
   // schema that the host doesn't know about), but it means the host MUST
-  // seed non-empty content before the control is used. install.cjs's
+  // seed non-empty content before the blank is used. install.cjs's
   // seed-configs treats 0-byte files as missing + setup.sh's section
   // 7a-bis re-seeds them; without those, `opencues ___` / `config ___`
   // blank-fills look broken on every native host. See FAQ.md "Does init
@@ -127,7 +127,7 @@ describe('OpenCuesSettingsBlank', () => {
   });
 
   it('preserves surrounding whitespace + frontmatter delimiters on set', async () => {
-    const { ctl, storage } = makeControl(SAMPLE_MD);
+    const { ctl, storage } = makeBlank(SAMPLE_MD);
     await ctl.set('debug-mode', 'on');
     expect(storage.value.startsWith('---\n')).toBe(true);
     expect(storage.value.endsWith('---\n')).toBe(true);
@@ -138,7 +138,7 @@ describe('OpenCuesSettingsBlank', () => {
     // at the top, then `settings:` block lists them indented. The walker
     // should pick the first INDENTED key under `settings:`, not the
     // top-level scalars.
-    const { ctl } = makeControl(SAMPLE_MD);
+    const { ctl } = makeBlank(SAMPLE_MD);
     expect((await ctl.get()).startsWith('voice-mode\t')).toBe(true);
   });
 });

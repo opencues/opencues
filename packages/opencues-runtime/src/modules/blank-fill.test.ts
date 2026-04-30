@@ -58,7 +58,7 @@ describe('BlankFill detection (Step 23)', () => {
     expect(slots[0]).toMatchObject({
       index: 1,
       keyword: 'affirm',
-      controlName: 'affirmations',
+      blankName: 'affirmations',
       keywordStart: 0,
       keywordEnd: 0,
       proximity: 0,
@@ -72,7 +72,7 @@ describe('BlankFill detection (Step 23)', () => {
     expect(slots[0]).toMatchObject({
       index: 2,
       keyword: 'improve prompt',
-      controlName: 'prompt',
+      blankName: 'prompt',
       keywordStart: 0,
       keywordEnd: 1,
       proximity: 0,
@@ -88,7 +88,7 @@ describe('BlankFill detection (Step 23)', () => {
     const { bf } = await setup('affirm _ improve prompt _');
     const slots = bf.scan('affirm _ improve prompt _');
     expect(slots).toHaveLength(2);
-    expect(slots.map(s => s.controlName)).toEqual(['affirmations', 'prompt']);
+    expect(slots.map(s => s.blankName)).toEqual(['affirmations', 'prompt']);
   });
 
   it('honours blankProximity: prompt requires keyword adjacent to _', async () => {
@@ -101,14 +101,14 @@ describe('BlankFill detection (Step 23)', () => {
 
   it('matches synonyms: vol / sound / audio all map to volume', async () => {
     const { bf } = await setup('vol _');
-    expect(bf.scan('vol _')[0]?.controlName).toBe('volume');
-    expect(bf.scan('sound _')[0]?.controlName).toBe('volume');
-    expect(bf.scan('audio _')[0]?.controlName).toBe('volume');
+    expect(bf.scan('vol _')[0]?.blankName).toBe('volume');
+    expect(bf.scan('sound _')[0]?.blankName).toBe('volume');
+    expect(bf.scan('audio _')[0]?.blankName).toBe('volume');
   });
 
   it('case-insensitive keyword matching', async () => {
     const { bf } = await setup('Volume _');
-    expect(bf.scan('Volume _')[0]?.controlName).toBe('volume');
+    expect(bf.scan('Volume _')[0]?.blankName).toBe('volume');
   });
 
   it('subscribe re-scans on text change', async () => {
@@ -116,7 +116,7 @@ describe('BlankFill detection (Step 23)', () => {
     expect(bf.slots).toHaveLength(0);
     adapter.pushText('affirm _');
     expect(bf.slots).toHaveLength(1);
-    expect(bf.slots[0].controlName).toBe('affirmations');
+    expect(bf.slots[0].blankName).toBe('affirmations');
   });
 });
 
@@ -318,7 +318,7 @@ blankScript: ./stocks.sh
     }));
   });
 
-  it('async path: controlInvoke is preferred over spawnProcess when host implements it', async () => {
+  it('async path: blankInvoke is preferred over spawnProcess when host implements it', async () => {
     const SCRIPT_CTRL = `---
 type: control
 name: stocks
@@ -330,9 +330,9 @@ blankScript: ./stocks.sh
       cwd: '/proj',
       files: { '/mock/cues.md': TIPS, '/proj/blanks/stocks/cue.md': SCRIPT_CTRL },
     });
-    // Sandboxed host returns the value via controlInvoke; spawn should
+    // Sandboxed host returns the value via blankInvoke; spawn should
     // never be hit.
-    adapter.stubControlInvoke('stocks:get', '$201.66\n');
+    adapter.stubBlankInvoke('stocks:get', '$201.66\n');
     const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
@@ -342,7 +342,7 @@ blankScript: ./stocks.sh
     expect(spawnSpy).not.toHaveBeenCalled();
     expect(adapter.blankInvokeCalls.length).toBe(1);
     expect(adapter.blankInvokeCalls[0]).toMatchObject({
-      controlName: 'stocks',
+      blankName: 'stocks',
       action: 'get',
       args: ['stock'],
     });
@@ -767,11 +767,11 @@ blankClearKeywords: true
     });
   });
 
-  it('async path: dispatches via controlInvoke when control has no blankScript (runtime-hoisted control)', async () => {
-    // Hoisted runtime controls (HackerNewsBlank, OpenCuesSettingsBlank
+  it('async path: dispatches via blankInvoke when blank has no blankScript (runtime-hoisted blank)', async () => {
+    // Hoisted runtime blanks (HackerNewsBlank, OpenCuesSettingsBlank
     // etc.) live without blankScript in their cue.md — the host's
-    // controlInvoke registry IS the implementation. Regression guard
-    // for "controls with no blankScript get silently skipped" — fires
+    // blankInvoke registry IS the implementation. Regression guard
+    // for "blanks with no blankScript get silently skipped" — fires
     // when something accidentally re-adds the early `if (!script)
     // continue` gate.
     const SCRIPTLESS_CTRL = `---
@@ -782,17 +782,17 @@ blankAutoPopulate: true
 ---
 `;
     // Sandboxed-host caps: NO spawn-process. Forces the runtime to
-    // pick up the controlInvoke path or skip the slot entirely.
+    // pick up the blankInvoke path or skip the slot entirely.
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: { '/mock/cues.md': TIPS, '/proj/blanks/hn/cue.md': SCRIPTLESS_CTRL },
       capabilities: [
         'render-override', 'dim-ranges', 'highlight-range',
         'file-read', 'file-write', 'force-render', 'change-source',
-        'control-invoke',
+        'blank-invoke',
       ],
     });
-    adapter.stubControlInvoke('hn:get', 'top story title\n');
+    adapter.stubBlankInvoke('hn:get', 'top story title\n');
     const loader = new ConfigLoader(adapter);
     await loader.load();
     const bf = new BlankFill(adapter, loader);
@@ -804,13 +804,13 @@ blankAutoPopulate: true
     expect(adapter.getText()).toBe('hn top story title');
   });
 
-  it('async path: blankConsumeAll via controlInvoke replaces input and stashes alts (chrome path)', async () => {
+  it('async path: blankConsumeAll via blankInvoke replaces input and stashes alts (chrome path)', async () => {
     // Pins the chrome prompt-improver path: a sandboxed host
-    // (controlInvoke, no spawnProcess) MUST get the same consume-all
+    // (blankInvoke, no spawnProcess) MUST get the same consume-all
     // behaviour as the shell-spawn path. Regression guard for
     // "improve prompt resolves to original word" + "spans break on
     // multi-word fills" — both happened when the runtime didn't reach
-    // the consume-all branch under controlInvoke routing.
+    // the consume-all branch under blankInvoke routing.
     const PROMPT_CTRL = `---
 type: control
 name: prompt
@@ -824,7 +824,7 @@ blankClearKeywords: true
       cwd: '/proj',
       files: { '/mock/cues.md': TIPS, '/proj/blanks/prompt/cue.md': PROMPT_CTRL },
     });
-    adapter.stubControlInvoke(
+    adapter.stubBlankInvoke(
       'prompt:get',
       'Improved version one\nImproved version two\nImproved version three\n',
     );
@@ -836,7 +836,7 @@ blankClearKeywords: true
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     adapter.pushText('improve prompt write code _');
     await new Promise(r => setTimeout(r, 0));
-    // Sandboxed host: controlInvoke wins, spawnProcess never called.
+    // Sandboxed host: blankInvoke wins, spawnProcess never called.
     expect(spawnSpy).not.toHaveBeenCalled();
     expect(adapter.blankInvokeCalls.length).toBe(1);
     // Buffer replaced with first alt.
@@ -1124,7 +1124,7 @@ blankClearOnEdit: true
     // Keyword stripped, selector + satellite spliced with default ' '.
     expect(adapter.getText()).toBe('voice-mode active');
     expect(ss.current).toMatchObject({
-      controlName: 'opencues',
+      blankName: 'opencues',
       selectorIndex: 0,
       satelliteIndex: 1,
       currentSetting: 'voice-mode',

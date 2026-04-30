@@ -1,4 +1,4 @@
-// OpenCuesSettingsBlank — selector + satellite control that reads/
+// OpenCuesSettingsBlank — selector + satellite blank that reads/
 // writes opencues.md. Triggered by `opencues settings _` / `config _`;
 // spawns a "<setting> <value>" pair the user can cycle through.
 //
@@ -6,7 +6,7 @@
 //   get(name)             → "<currentValue>"   (name's current value, or "" if unknown)
 //   set(name, value)      → rewrites the matching `name: value` line in opencues.md
 //
-// The control receives async readFile + writeFile functions instead of a
+// The blank receives async readFile + writeFile functions instead of a
 // hard-wired path so each host can route through its own filesystem (Node
 // fs on opencode, chrome.storage on chrome).
 //

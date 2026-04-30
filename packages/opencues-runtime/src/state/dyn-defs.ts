@@ -10,7 +10,7 @@ export interface WordDef {
   /** End offset (exclusive) of the current alt in the text. */
   spanEnd: number;
   /**
-   * Optional blank (control) attribution. Set by BlankFill when the def
+   * Optional blank attribution. Set by BlankFill when the def
    * came from a blank fill so cycling can route to the originating
    * blank's blankStep / blankScript.
    */

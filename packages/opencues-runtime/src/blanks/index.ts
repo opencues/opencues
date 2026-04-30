@@ -1,17 +1,13 @@
-// Blanks registry helpers — every host wires blanks (script-replaceable
-// controls) into a `Map<string, Blank>` and exposes them to BlankFill +
-// Cycling via the `blankInvoke` adapter binding. The dispatch logic
-// (translating {controlName, action, args} → blk.get/set/up/down) is
+// Blanks registry helpers — every host wires its blanks into a
+// `Map<string, Blank>` and exposes them to BlankFill + Cycling via
+// the `blankInvoke` adapter binding. The dispatch logic
+// (translating {blankName, action, args} → blk.get/set/up/down) is
 // identical across hosts; it lives here once.
 //
 // Hosts construct their registry with the blanks they support (chrome:
-// the runtime classes + chrome-only OS controls; opencode: same TS
+// the runtime classes + chrome-only OS blanks; opencode: same TS
 // classes; CC: same), then pass `createBlankInvoke(registry)` as their
 // adapter binding's blankInvoke.
-//
-// NOTE: the JSON-RPC wire keys ('control-invoke' method name and
-// 'controlName' param key) are preserved as wire format and must NOT
-// be renamed — see integrations/codex/patches/opencues-bridge/src/lib.rs.
 
 import type { BlankInvokeSpec, ProcessHandle, ProcessResult } from '../adapter';
 import type { Blank } from './types';
@@ -30,7 +26,7 @@ export { CountriesBlank, type CountriesBlankOptions } from './countries';
 
 /**
  * Build a blankInvoke handler that dispatches into the given registry.
- * Returns null when the controlName isn't registered — the runtime then
+ * Returns null when the blankName isn't registered — the runtime then
  * falls through to spawnProcess (which sandboxed hosts resolve with
  * exitCode 127 to surface the gap visibly).
  *
@@ -44,7 +40,7 @@ export function createBlankInvoke(
   registry: Map<string, Blank>,
 ): (spec: BlankInvokeSpec) => ProcessHandle | null {
   return (spec) => {
-    const blk = registry.get(spec.controlName);
+    const blk = registry.get(spec.blankName);
     if (!blk) return null;
     const run = async (): Promise<ProcessResult> => {
       try {

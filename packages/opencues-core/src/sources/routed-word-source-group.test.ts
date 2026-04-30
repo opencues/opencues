@@ -145,7 +145,7 @@ describe('RoutedWordSourceGroup: supports()', () => {
     assert.strictEqual(group.supports(mkContext(['_'])), false);
   });
 
-  it('rejects mixed text + blank — blank handlers (fluid-blank, control) own the slot', () => {
+  it('rejects mixed text + blank — blank handlers (fluid-blank, blank-bound) own the slot', () => {
     // Word-alts skip when `_` is present so the blank-fill handler can
     // take over without competing word-alt LLM calls. See
     // routed-word-source-group.ts supports() rationale.

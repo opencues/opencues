@@ -79,15 +79,14 @@ export interface ProcessSpec {
  * and the returned stdout is interpreted identically to a script's
  * stdout (same exitCode/timedOut semantics).
  *
- * NOTE: the `controlName` field is the JSON-RPC wire-format key used by
- * the codex Rust bridge (see integrations/codex/patches/opencues-bridge/
- * src/lib.rs). The TS-side type was renamed to BlankInvokeSpec, but the
- * field name on the wire MUST stay `controlName`.
+ * The `blankName` field identifies which blank to invoke (declared in
+ * blanks/<name>/cue.md, e.g. "volume"). The codex Rust bridge mirrors
+ * this on the wire (see integrations/codex/patches/opencues-bridge/
+ * src/lib.rs).
  */
 export interface BlankInvokeSpec {
-  /** Control name as declared in blanks/<name>/cue.md (e.g. "volume").
-   * Wire-format key — DO NOT rename. */
-  readonly controlName: string;
+  /** Blank name as declared in blanks/<name>/cue.md (e.g. "volume"). */
+  readonly blankName: string;
   /** Action verb — typically "get" / "set" / "up" / "down" but arbitrary. */
   readonly action: string;
   /** Action args. For "get" on a blank: [keyword, ...contextWords]. */
@@ -116,7 +115,7 @@ export type Capability =
   | 'highlight-range'
   | 'selection'
   | 'spawn-process'
-  | 'control-invoke'
+  | 'blank-invoke'
   | 'file-read'
   | 'file-write'
   | 'force-render'
@@ -136,7 +135,7 @@ export interface DirEntry {
 /**
  * Base shape of the HostInfo argument that each adapter band's `boot()`
  * accepts. Hosts extend this with their own host-specific optional
- * fields (chrome adds controlInvoke/speakFn/httpAdapter, opencode adds
+ * fields (chrome adds blankInvoke/speakFn/httpAdapter, opencode adds
  * spawnProcess/ttsScriptPath, etc.).
  *
  * Why this exists: declaring HostInfo independently in each adapter
@@ -210,8 +209,8 @@ export interface HostAdapter {
   /**
    * Host-native blank invocation. Optional — when present, BlankFill
    * + Cycling try it BEFORE spawnProcess, falling through to the spawn
-   * path if this returns null. Covered by the `control-invoke`
-   * capability when present (capability string preserved as wire format).
+   * path if this returns null. Covered by the `blank-invoke`
+   * capability when present.
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   readFile(path: string): Promise<string | null>;

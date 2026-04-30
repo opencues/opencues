@@ -57,10 +57,10 @@ export interface OpenCodeBindings {
   /** Optional spawn (Bun.spawn or node:child_process). */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
   /**
-   * Optional host-native control dispatch. Same shape as chrome's
-   * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
-   * shared TS controls (HackerNewsBlank, etc.) win over the legacy
-   * shell scripts in controls/. Returns null when the controlName
+   * Optional host-native blank dispatch. Same shape as chrome's
+   * blankInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
+   * shared TS blanks (HackerNewsBlank, etc.) win over the legacy
+   * shell scripts in blanks/. Returns null when the blankName
    * isn't in the host's registry.
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
@@ -93,7 +93,7 @@ export class OpenCodeV14Adapter implements HostAdapter {
     this.cwd = bindings.cwd;
     const caps: Capability[] = [...OPENCODE_V14_CAPABILITIES];
     if (bindings.spawnProcess) caps.push('spawn-process');
-    if (bindings.blankInvoke) caps.push('control-invoke');
+    if (bindings.blankInvoke) caps.push('blank-invoke');
     this.capabilities = caps;
   }
 
@@ -159,10 +159,10 @@ export class OpenCodeV14Adapter implements HostAdapter {
     return this.bindings.spawnProcess(spec);
   }
   /**
-   * Forward to the host's controlInvoke binding when one is supplied
-   * (opencode now ships shared TS controls — HackerNewsBlank etc. —
+   * Forward to the host's blankInvoke binding when one is supplied
+   * (opencode now ships shared TS blanks — HackerNewsBlank etc. —
    * via this path so they don't need a shell). Returns null when the
-   * binding isn't wired or the controlName isn't registered; runtime
+   * binding isn't wired or the blankName isn't registered; runtime
    * then falls through to spawnProcess for the legacy shell scripts.
    */
   blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {

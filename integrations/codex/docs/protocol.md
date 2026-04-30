@@ -78,25 +78,25 @@ Bridge requests the daemon re-emit current directives. Used when the TUI redraws
 { "method": "force-render" }
 ```
 
-### `control-invoke` (request)
+### `blank-invoke` (request)
 
-Bridge invokes one of the daemon's hoisted blanks (HackerNews, Stocks, Weather, Answer, PromptImprover, OpenCuesSettings) directly — useful for codex slash commands or other TUI affordances that want to trigger a control outside the normal runtime flow.
+Bridge invokes one of the daemon's hoisted blanks (HackerNews, Stocks, Weather, Answer, PromptImprover, OpenCuesSettings) directly — useful for codex slash commands or other TUI affordances that want to trigger a blank outside the normal runtime flow.
 
 ```json
-{ "method": "control-invoke", "params": {
-  "controlName": "opencues",
+{ "method": "blank-invoke", "params": {
+  "blankName": "opencues",
   "action": "get",
   "args": ["voice-mode"]
 }, "id": 5 }
 ```
 
 `action` is one of `'get' | 'set' | 'up' | 'down'`. Maps to the
-`Control` interface methods (see `@opencues/runtime/src/controls`).
+`Blank` interface methods (see `@opencues/runtime/src/blanks`).
 `args` is forwarded verbatim — for `get`, `args[0]` is the keyword
 and `args.slice(1)` is the context; for `set`, `args[0]` is the key
 and `args[1]` is the value; for `up`/`down`, args are typically empty.
 
-Response — success (any non-throwing control execution, regardless of `exitCode`):
+Response — success (any non-throwing blank execution, regardless of `exitCode`):
 
 ```json
 { "result": {

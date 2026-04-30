@@ -492,7 +492,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '/tmp/oc.sh',
       selectorIndex: 0,
       selectorLength: 1,
@@ -540,7 +540,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '/tmp/oc.sh',
       selectorIndex: 0,
       selectorLength: 1,
@@ -584,7 +584,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '/tmp/oc.sh',
       selectorIndex: 0,
       selectorLength: 1,
@@ -627,7 +627,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '',
       selectorIndex: 0,
       selectorLength: 1,
@@ -667,7 +667,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '',
       selectorIndex: 0,
       selectorLength: 2,
@@ -708,8 +708,8 @@ settings:
   });
 });
 
-describe('Cycling controlInvoke (sandboxed-host path)', () => {
-  it('selector cycle prefers controlInvoke when host implements it', async () => {
+describe('Cycling blankInvoke (sandboxed-host path)', () => {
+  it('selector cycle prefers blankInvoke when host implements it', async () => {
     const OPENCUES_MD = `---
 voice-mode: active
 debug-mode: off
@@ -730,12 +730,12 @@ settings:
       files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
-    // Host stubs controlInvoke for the selector get; spawn must NOT be hit.
-    adapter.stubControlInvoke('opencues:get', 'off\n');
+    // Host stubs blankInvoke for the selector get; spawn must NOT be hit.
+    adapter.stubBlankInvoke('opencues:get', 'off\n');
     const hlState = new HighlightState();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '/tmp/oc.sh',
       selectorIndex: 0,
       selectorLength: 1,
@@ -753,15 +753,15 @@ settings:
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     hlState.activate(0, 'voice-mode active');
     adapter.fireKey('up', { ctrl: true, alt: true });
-    // controlInvoke was called for the selector get; spawnProcess wasn't.
+    // blankInvoke was called for the selector get; spawnProcess wasn't.
     const getCall = adapter.blankInvokeCalls.find(c => c.action === 'get');
     expect(getCall).toBeDefined();
-    expect(getCall!.controlName).toBe('opencues');
+    expect(getCall!.blankName).toBe('opencues');
     expect(getCall!.args).toEqual(['debug-mode']);
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
-  it('falls through to spawnProcess when host returns null from controlInvoke', async () => {
+  it('falls through to spawnProcess when host returns null from blankInvoke', async () => {
     const OPENCUES_MD = `---
 voice-mode: active
 settings:
@@ -776,11 +776,11 @@ settings:
       files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
-    // No stub registered → controlInvoke returns null → spawnProcess used.
+    // No stub registered → blankInvoke returns null → spawnProcess used.
     const hlState = new HighlightState();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '/tmp/oc.sh',
       selectorIndex: 0,
       selectorLength: 1,

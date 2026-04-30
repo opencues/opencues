@@ -4,7 +4,7 @@
 //
 // The default ticker map covers the most-asked names; hosts can extend
 // it with `customTickers` at construction time. Without an API key the
-// control returns a friendly "<TICKER>: no API key" so missing config
+// blank returns a friendly "<TICKER>: no API key" so missing config
 // doesn't masquerade as a network error.
 
 import type { Blank } from './types';

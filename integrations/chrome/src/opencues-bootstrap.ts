@@ -40,7 +40,7 @@ import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
-import { createControls, type BrowserControl } from './controls';
+import { createBlanks, type BrowserBlank } from './blanks';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -57,11 +57,11 @@ const ROOT = '/chrome-storage';
 
 // Per-readFile trace logging is OFF by default — at ~20 lines per
 // boot it was the loudest thing in DevTools. Gated behind the
-// user-facing `debug-mode: on` setting. Flip it via the cue-control
-// (`opencues settings _` → cycle debug-mode to `on`) or the CLI
-// (`opencues debug on`). Reflects both initial boot state and live
-// cycling — chrome.storage.onChanged subscription updates the flag
-// without an extension reload.
+// user-facing `debug-mode: on` setting. Flip it via the opencues
+// settings blank (`opencues settings _` → cycle debug-mode to `on`)
+// or the CLI (`opencues debug on`). Reflects both initial boot state
+// and live cycling — chrome.storage.onChanged subscription updates
+// the flag without an extension reload.
 let _readTrace = false;
 function tlog(msg: string): void { if (_readTrace) console.log(msg); }
 function parseDebugMode(content: string | null | undefined): boolean {
@@ -191,7 +191,7 @@ async function readFile(path: string): Promise<string | null> {
   }
 
   // 2. Read-only files (cues.md, blanks.md, folder cues, folder
-  //    controls, tips.json): read the bake-time constant direct.
+  //    blanks, tips.json): read the bake-time constant direct.
   //    No storage cache — that's what used to go stale when the repo's
   //    prompt changed but chrome.storage still held the old seeded
   //    copy. Bake-time is in-memory, always fresh per build.
@@ -335,17 +335,17 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   }
   // ConfigLoader's prewalk descends into each folder name and lists it
   // again expecting a `cue.md` entry. Without this branch the discovery
-  // returns 0 controls and BlankFill never matches any keyword.
+  // returns 0 blanks and BlankFill never matches any keyword.
   const cuesPrefix = `${ROOT}/cues/`;
-  const ctrlsPrefix = `${ROOT}/blanks/`;
+  const blanksPrefix = `${ROOT}/blanks/`;
   if (path.startsWith(cuesPrefix)) {
     const folder = path.slice(cuesPrefix.length);
     if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_CUE_FOLDERS__, folder)) {
       return [{ name: 'cue.md', isDirectory: false }];
     }
   }
-  if (path.startsWith(ctrlsPrefix)) {
-    const folder = path.slice(ctrlsPrefix.length);
+  if (path.startsWith(blanksPrefix)) {
+    const folder = path.slice(blanksPrefix.length);
     if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_BLANK_FOLDERS__, folder)) {
       return [{ name: 'cue.md', isDirectory: false }];
     }
@@ -421,7 +421,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // CE.8 — build the chrome blank registry. The runtime's BlankFill
   // + Cycling dispatch into this via blankInvoke. Prompt-improver
   // is opt-in via llmConfig.
-  const controls = createControls({
+  const blanks = createBlanks({
     finnhubApiKey: opts.finnhubApiKey,
     customTickers: opts.customTickers,
     llmConfig: opts.llmApiKey ? {
@@ -439,7 +439,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     opencuesMdReadFile: () => readFile(`${ROOT}/opencues.md`),
     opencuesMdWriteFile: (content) => writeFile(`${ROOT}/opencues.md`, content),
   });
-  blankInvoke = createBlankInvoke(controls);
+  blankInvoke = createBlankInvoke(blanks);
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     const tag = `[opencues][${level}]`;

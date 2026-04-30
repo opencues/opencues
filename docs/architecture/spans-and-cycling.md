@@ -92,7 +92,7 @@ interface WordDef {
   currentIndex: number;              // which alt is currently displayed
   spanStart: number;                 // char offset (cache; not source of truth)
   spanEnd: number;                   // char offset (cache; not source of truth)
-  readonly controlName?: string;     // attribution for blank-fill DynDefs
+  readonly blankName?: string;       // attribution for blank-fill DynDefs
 }
 ```
 
@@ -133,9 +133,9 @@ order. First one to return `true` wins.
 |---|---|---|
 | -1 | `selectorSatelliteState.current` | Selector/satellite cycling (e.g. `opencues settings _`) |
 | 0  | `spanFillState.current` AND wordIndex inside the span | Blank-fill span cycling (`cycleSpanFill`) |
-| 1  | Word maps to a control with `script:` | Spawn the script (no text change, side-effect only) |
-| 2  | Word maps to a control with `stepValues:` | Rotate values in-place (`cycleListControl`) |
-| 3a | DynDef at this index has `controlName` | Cycle via that blank's blankStep/Suffix/Script |
+| 1  | Word maps to a blank with `script:` | Spawn the script (no text change, side-effect only) |
+| 2  | Word maps to a blank with `stepValues:` | Rotate values in-place (`cycleListBlank`) |
+| 3a | DynDef at this index has `blankName` | Cycle via that blank's blankStep/Suffix/Script |
 | 3  | Word matches a `step:` pattern (`5f`, `50%`) | Numeric arithmetic (`cycleStepPattern`) |
 | 4  | Default | Static-alt cycling (`cycleStaticAlts`) |
 

@@ -211,24 +211,24 @@ export interface LoadedConfig {
   /**
    * All words known to be navigable, lowercased. Union of:
    *   - cueMap keys (tip-having words)
-   *   - control names from folder discovery (`controls/X/cue.md` → "X")
-   *   - blankKeywords from each control (synonyms that trigger the same control)
+   *   - blank names from folder discovery (`blanks/X/cue.md` → "X")
+   *   - blankKeywords from each blank (synonyms that trigger the same blank)
    *
-   * Navigation's filter uses this. Bigger than cueMap because controls
+   * Navigation's filter uses this. Bigger than cueMap because blanks
    * declared in folders aren't necessarily mirrored in the tips JSON.
    */
   readonly navigableWords: ReadonlySet<string>;
   /**
-   * Word → control map for fast control lookup during cycling.
-   * Includes both the control's own name (lowercased) AND every blankKeywords
-   * synonym → same Control entry.
+   * Word → blank map for fast blank lookup during cycling.
+   * Includes both the blank's own name (lowercased) AND every blankKeywords
+   * synonym → same BlankEntry.
    */
-  readonly controlsByWord: ReadonlyMap<string, BlankEntry>;
+  readonly blanksByWord: ReadonlyMap<string, BlankEntry>;
 }
 
 export interface BlankEntry {
   readonly name: string;
-  readonly control: BlankConfig;
+  readonly blank: BlankConfig;
 }
 
 export class ConfigLoader {
@@ -241,14 +241,14 @@ export class ConfigLoader {
     mergedCuesConfig: null,
     mergedBlanksConfig: null,
     navigableWords: new Set(),
-    controlsByWord: new Map(),
+    blanksByWord: new Map(),
   };
   private _loaded = false;
   private _lastLoadAt = 0;
   private _loadInFlight: Promise<void> | null = null;
   private _unsubText: Unsubscribe | null = null;
   // Race guard: when applyOpenCuesScalar fires (cycling a satellite
-  // updates an opencues.md scalar in-memory), the host's controlInvoke
+  // updates an opencues.md scalar in-memory), the host's blankInvoke
   // also kicks off an ASYNC file write. Cycling.ts then calls setText
   // which fires onTextChange → maybeReload, and if maybeReload reads
   // the file BEFORE the async write lands, the in-memory update is
@@ -272,26 +272,26 @@ export class ConfigLoader {
   get mergedCuesConfig(): CuesMdConfig | null { return this._config.mergedCuesConfig; }
   get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
-  get controlsByWord(): ReadonlyMap<string, BlankEntry> { return this._config.controlsByWord; }
+  get blanksByWord(): ReadonlyMap<string, BlankEntry> { return this._config.blanksByWord; }
 
-  /** Unique blanks (script-replaceable controls) by name (lowercased).
+  /** Unique blanks by name (lowercased).
    *  Sourced from folderConfigs + blanksConfig. Useful when a consumer
    *  wants to iterate each blank once (BlankFill, etc.) rather than
    *  per-word. */
   get blanks(): ReadonlyMap<string, BlankConfig> {
     const out = new Map<string, BlankConfig>();
-    for (const entry of this._config.controlsByWord.values()) {
-      out.set(entry.name, entry.control);
+    for (const entry of this._config.blanksByWord.values()) {
+      out.set(entry.name, entry.blank);
     }
     return out;
   }
 
   /**
-   * Look up a control by a word — checks the control's own name AND
+   * Look up a blank by a word — checks the blank's own name AND
    * blankKeywords synonyms. Returns null if no match.
    */
-  lookupControl(word: string): BlankEntry | null {
-    return this._config.controlsByWord.get(word.toLowerCase().replace(/[\u200B\u200C]/g, '')) ?? null;
+  lookupBlank(word: string): BlankEntry | null {
+    return this._config.blanksByWord.get(word.toLowerCase().replace(/[\u200B\u200C]/g, '')) ?? null;
   }
 
   get loaded(): boolean { return this._loaded; }
@@ -308,7 +308,7 @@ export class ConfigLoader {
   applyOpenCuesScalar(key: string, value: string): void {
     // Suppress the next ~2.5s of reloads. The cycling path that called
     // us is about to call setText → onTextChange → maybeReload, and
-    // the in-flight controlInvoke set hasn't landed yet. Without this
+    // the in-flight blankInvoke set hasn't landed yet. Without this
     // guard the reload reads stale file content and reverts our
     // in-memory update (visible as "voice-mode flips back to active
     // immediately").
@@ -329,20 +329,20 @@ export class ConfigLoader {
   }
 
   /**
-   * Case-insensitive lookup. Falls back to controlsByWord when the word
-   * isn't a tip-having entry but IS a control or blankKeyword — synthesises
-   * a LocalCueLookupResult from the control's `tip` / `blankTip` so the
-   * statusline shows e.g. "system volume control" when the user highlights
-   * `volume`. The control side wasn't in cueMap because blanks.md and
+   * Case-insensitive lookup. Falls back to blanksByWord when the word
+   * isn't a tip-having entry but IS a blank or blankKeyword — synthesises
+   * a LocalCueLookupResult from the blank's `tip` / `blankTip` so the
+   * statusline shows e.g. "system volume" when the user highlights
+   * `volume`. The blank side wasn't in cueMap because blanks.md and
    * folder cue.md don't go through the tips JSON path.
    */
   lookup(word: string): LocalCueLookupResult | null {
     const lc = word.toLowerCase();
     const fromTips = this._config.cueMap.get(lc);
     if (fromTips) return fromTips;
-    const ctrl = this._config.controlsByWord.get(lc);
-    if (!ctrl) return null;
-    const c = ctrl.control as unknown as {
+    const ent = this._config.blanksByWord.get(lc);
+    if (!ent) return null;
+    const c = ent.blank as unknown as {
       tip?: string;
       blankTip?: string;
       speak?: boolean;
@@ -375,7 +375,7 @@ export class ConfigLoader {
   /** Reload only if debounce window elapsed. */
   async maybeReload(): Promise<void> {
     // Race guard set by applyOpenCuesScalar — see comment on
-    // _suppressReloadUntil. Lets the in-flight controlInvoke set's
+    // _suppressReloadUntil. Lets the in-flight blankInvoke set's
     // async file write complete before we read the file back.
     if (Date.now() < this._suppressReloadUntil) return;
     const debounce = this.options.reloadDebounceMs ?? 2000;
@@ -504,18 +504,18 @@ export class ConfigLoader {
     // become navigable via the same lookup). Not done yet because folder
     // configs use the LLM resolver shape, not the static-tip shape.
 
-    // Build the navigable-words set + controlsByWord map from cueMap
-    // keys, folder controls, and blanks.md frontmatter.
+    // Build the navigable-words set + blanksByWord map from cueMap
+    // keys, folder blanks, and blanks.md frontmatter.
     const navigableWords = new Set<string>();
-    const controlsByWord = new Map<string, BlankEntry>();
+    const blanksByWord = new Map<string, BlankEntry>();
     for (const k of cueMap.keys()) navigableWords.add(k);
 
-    const addControl = (name: string, control: BlankConfig): void => {
+    const addBlank = (name: string, blank: BlankConfig): void => {
       const lcName = name.toLowerCase();
       navigableWords.add(lcName);
-      controlsByWord.set(lcName, { name: lcName, control });
-      // Each blankKeyword maps to the same control entry.
-      const bk = control.blankKeywords;
+      blanksByWord.set(lcName, { name: lcName, blank });
+      // Each blankKeyword maps to the same blank entry.
+      const bk = blank.blankKeywords;
       const synonyms: string[] = [];
       if (typeof bk === 'string') {
         for (const k of (bk as string).split(',')) {
@@ -530,14 +530,14 @@ export class ConfigLoader {
       }
       for (const syn of synonyms) {
         navigableWords.add(syn);
-        controlsByWord.set(syn, { name: lcName, control });
+        blanksByWord.set(syn, { name: lcName, blank });
       }
     };
-    for (const [name, ctrl] of Object.entries(folderConfigs?.blankOverrides ?? {})) {
-      addControl(name, ctrl as BlankConfig);
+    for (const [name, blk] of Object.entries(folderConfigs?.blankOverrides ?? {})) {
+      addBlank(name, blk as BlankConfig);
     }
-    for (const [name, ctrl] of Object.entries(blanksConfig?.controls ?? {})) {
-      addControl(name, ctrl as BlankConfig);
+    for (const [name, blk] of Object.entries(blanksConfig?.blanks ?? {})) {
+      addBlank(name, blk as BlankConfig);
     }
 
     this._config = {
@@ -549,7 +549,7 @@ export class ConfigLoader {
       mergedCuesConfig,
       mergedBlanksConfig,
       navigableWords,
-      controlsByWord,
+      blanksByWord,
     };
     this.adapter.log('info', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,

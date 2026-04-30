@@ -3,7 +3,7 @@
 //!   2. send a text-change notification
 //!   3. dispatch a key event with proper request/response correlation
 //!      (returns the daemon's actual `consumed` value, not always-false)
-//!   4. invoke a hoisted control via the control-invoke RPC
+//!   4. invoke a hoisted blank via the blank-invoke RPC
 //!   5. register a set-text callback (basic registration check —
 //!      no daemon-driven set-text in scaffold)
 //!   6. exit cleanly on drop
@@ -54,13 +54,13 @@ fn main() {
     });
     eprintln!("[smoke] consumed = {consumed}  (expected: false — no Cycling state for this text)");
 
-    eprintln!("[smoke] invoking control-invoke (opencues get voice-mode)...");
-    match bridge.invoke_control("opencues", "get", &["voice-mode"]) {
+    eprintln!("[smoke] invoking blank-invoke (opencues get voice-mode)...");
+    match bridge.invoke_blank("opencues", "get", &["voice-mode"]) {
         Some(result) => {
-            eprintln!("[smoke] control result: {result}");
+            eprintln!("[smoke] blank result: {result}");
         }
         None => {
-            eprintln!("[smoke] control returned None (unknown / null result)");
+            eprintln!("[smoke] blank returned None (unknown / null result)");
         }
     }
 

@@ -1,14 +1,14 @@
-import type { BrowserControl } from './types';
+import type { BrowserBlank } from './types';
 
 /**
- * Tab audio volume control using Web Audio API.
+ * Tab audio volume blank using Web Audio API.
  *
  * Controls the gain of all <audio>/<video> elements on the page
  * via an AudioContext GainNode. This is tab-scoped, not system volume.
  *
- * Step: 6% per press (matching bash volume.sh behavior).
+ * Step: 6% per press (matching the legacy bash behavior).
  */
-export class VolumeControl implements BrowserControl {
+export class VolumeBlank implements BrowserBlank {
   readonly name = 'volume';
   readonly readOnly = false;
   private gain = 1.0; // 0.0 - 1.0

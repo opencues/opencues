@@ -102,10 +102,10 @@ function combineCueConfigs(configs: CuesMdConfig[]): CuesMdConfig {
       }
     }
 
-    // Merge controls
-    if (config.controls) {
-      if (!result.controls) result.controls = {};
-      Object.assign(result.controls, config.controls);
+    // Merge blanks
+    if (config.blanks) {
+      if (!result.blanks) result.blanks = {};
+      Object.assign(result.blanks, config.blanks);
     }
 
     // Merge ignore
@@ -150,12 +150,12 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
 
   // Scan blanks/ directory for blank overrides (post-rename, the same
   // path scanned above for blanksConfig — folder cue.md files with
-  // `type: control` are funnelled into result.blankOverrides here).
-  const controlConfigs = scanDir(opts.basePath + '/blanks', opts);
-  if (controlConfigs.length > 0) {
-    const combined = combineCueConfigs(controlConfigs);
-    if (combined.controls) {
-      result.blankOverrides = combined.controls;
+  // `type: blank` are funnelled into result.blankOverrides here).
+  const blankFolderConfigs = scanDir(opts.basePath + '/blanks', opts);
+  if (blankFolderConfigs.length > 0) {
+    const combined = combineCueConfigs(blankFolderConfigs);
+    if (combined.blanks) {
+      result.blankOverrides = combined.blanks;
     }
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
@@ -173,7 +173,7 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
  *
  * - promptConfig.sources: folder entries overwrite monolithic by name
  * - tips: concatenated (folder appended after monolithic)
- * - controls: folder entries overwrite monolithic by key
+ * - blanks: folder entries overwrite monolithic by key
  * - ignoreWords: union of both lists
  */
 export function mergeConfigs(
@@ -238,11 +238,11 @@ function mergeOneCuesMdConfig(
     };
   }
 
-  // Controls: folder overwrites by key
-  if (mono.controls || folder.controls) {
-    result.controls = {
-      ...(mono.controls || {}),
-      ...(folder.controls || {}),
+  // Blanks: folder overwrites by key
+  if (mono.blanks || folder.blanks) {
+    result.blanks = {
+      ...(mono.blanks || {}),
+      ...(folder.blanks || {}),
     };
   }
 

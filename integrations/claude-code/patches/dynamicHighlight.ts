@@ -26,7 +26,7 @@
  * ## Cycling Priority
  *
  * When Up/Down pressed on highlighted word:
- * 1. Control word override → spawn external script, return
+ * 1. Blank word override → spawn external script, return
  * 2. Dynamic alts → cycle through alternatives + update linked words
  * 3. Fall through to wordHighlight (numbers)
  *
@@ -37,7 +37,7 @@
  * - globalThis._dynSpans — multi-word alternative tracking
  * - globalThis._cueResolver — CueResolver instance (from opencues-core)
  * - globalThis._localCueMap — hash map for instant tips lookup
- * - globalThis._cycleAlt — shared cycling function (control words, alts, spans)
+ * - globalThis._cycleAlt — shared cycling function (blank words, alts, spans)
  *
  * @see references/dynamic-highlight.md for full feature reference
  * @see docs/systems-diagram.md for architecture overview
@@ -128,29 +128,29 @@ globalThis._configReloading=true;
 var _applied=false;
 try{
 var _rfs=${requireFuncName}("fs");var _rcwd=process.cwd();
-var _ign=[],_newCuesMd=null,_newBlanksMd=null,_newCtrlOvr=Object.assign({},globalThis._staticCueControlOverrides||{});
+var _ign=[],_newCuesMd=null,_newBlanksMd=null,_newBlankOvr=Object.assign({},globalThis._staticBlankOverrides||{});
 // cues.md (aliases: hints.md, tips.md) — tips + prompt config
 ["cues.md","hints.md","tips.md"].some(function(f){var p=_rcwd+"/"+f;if(_rfs.existsSync(p)){var _c=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(p,"utf8"));_newCuesMd=_c;if(_c.ignore){_ign=_ign.concat(_c.ignore);}return true;}});
-// blanks.md — cue-controls + (legacy) blank-fill config in one file
+// blanks.md — cue-blanks config
 var _rBlankPath=_rcwd+"/blanks.md";
-if(_rfs.existsSync(_rBlankPath)){var _bc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rBlankPath,"utf8"));_newBlanksMd=_bc;if(_bc.controls)Object.assign(_newCtrlOvr,_bc.controls);if(_bc.ignore){_ign=_ign.concat(_bc.ignore);}}
+if(_rfs.existsSync(_rBlankPath)){var _bc=globalThis._cuesCore.parseCuesMd(_rfs.readFileSync(_rBlankPath,"utf8"));_newBlanksMd=_bc;if(_bc.blanks)Object.assign(_newBlankOvr,_bc.blanks);if(_bc.ignore){_ign=_ign.concat(_bc.ignore);}}
 // Folder-based config discovery (cues/, blanks/ directories)
 if(globalThis._cuesCore.discoverFolderConfigs){
 var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_e){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_e){return null;}}};
 var _rFolderCfgs=globalThis._cuesCore.discoverFolderConfigs({basePath:_rcwd,readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});
-var _rMono={cuesConfig:_newCuesMd||undefined,blanksConfig:_newBlanksMd||undefined,blankOverrides:Object.keys(_newCtrlOvr).length?_newCtrlOvr:undefined,ignoreWords:_ign.length?_ign:undefined};
+var _rMono={cuesConfig:_newCuesMd||undefined,blanksConfig:_newBlanksMd||undefined,blankOverrides:Object.keys(_newBlankOvr).length?_newBlankOvr:undefined,ignoreWords:_ign.length?_ign:undefined};
 var _rMerged=globalThis._cuesCore.mergeConfigs(_rMono,_rFolderCfgs);
 _newCuesMd=_rMerged.cuesConfig||_newCuesMd;
 _newBlanksMd=_rMerged.blanksConfig||_newBlanksMd;
-if(_rMerged.blankOverrides)Object.assign(_newCtrlOvr,_rMerged.blankOverrides);
+if(_rMerged.blankOverrides)Object.assign(_newBlankOvr,_rMerged.blankOverrides);
 if(_rMerged.ignoreWords&&_rMerged.ignoreWords.length)_ign=_rMerged.ignoreWords;
 }
 // Apply merged config atomically (all assignments after all parsing)
 globalThis._cuesMdParsed=_newCuesMd||null;
 globalThis._blanksMdParsed=_newBlanksMd||null;
-globalThis._cueControlOverrides=_newCtrlOvr;
+globalThis._blankOverrides=_newBlankOvr;
 // Build step patterns index for fast lookup during cycling
-var _newStepPats=[];Object.values(_newCtrlOvr).forEach(function(_sc){
+var _newStepPats=[];Object.values(_newBlankOvr).forEach(function(_sc){
 if(_sc.stepPattern){try{_newStepPats.push({re:new RegExp(_sc.stepPattern),ctrl:_sc});}catch(_e){}}
 if(_sc.stepSuffixes&&_sc.stepSuffixes.length){_sc.stepSuffixes.forEach(function(_sf){var _escaped=_sf.replace(/[^a-zA-Z0-9]/g,'\\$&');try{_newStepPats.push({re:new RegExp('^-?\\\\d+(\\\\.\\\\d+)?'+_escaped+'$'),ctrl:Object.assign({},_sc,{stepSuffix:_sf,stepSuffixes:undefined})});}catch(_e){}});}
 });globalThis._stepPatterns=_newStepPats;
@@ -221,7 +221,7 @@ var _rEp="https://api.groq.com/openai/v1/chat/completions";
 var _rCuesPc=(globalThis._cuesMdParsed&&globalThis._cuesMdParsed.promptConfig)||{};
 var _rBlanksPc=(globalThis._blanksMdParsed&&globalThis._blanksMdParsed.promptConfig)||{};
 var _rDefaultMod=_rCuesPc.model||_rBlanksPc.model||"openai/gpt-oss-120b";
-var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,controls:globalThis._cueControlOverrides,readControlState:function(_cn,_mkw,_ctx){var _ctrl=globalThis._cueControlOverrides&&globalThis._cueControlOverrides[_cn];var _bs2=_ctrl&&(_ctrl.blankScript||_ctrl.script);if(!_bs2)return null;var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");var _bsArgs=["get"].concat(_mkw?[_mkw]:[]).concat(_ctx?_ctx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_mkw||"").toLowerCase();}):[]); var _bsEnv=Object.assign({},process.env);if(_ctrl.model)_bsEnv.CUES_MODEL=_ctrl.model;if(_ctrl.apiUrl)_bsEnv.CUES_API_URL=_ctrl.apiUrl;if(_ctrl.apiKeyEnv)_bsEnv.CUES_API_KEY_ENV=_ctrl.apiKeyEnv;if(_ctrl.altCount)_bsEnv.CUES_ALT_COUNT=String(_ctrl.altCount);if(_ctrl.includeOriginal!==undefined)_bsEnv.CUES_INCLUDE_ORIGINAL=String(_ctrl.includeOriginal);if(_ctrl.prompts){for(var _pk in _ctrl.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUpperCase().replace(/[^A-Z0-9]/g,"_")]=_ctrl.prompts[_pk];}}try{var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome)].concat(_bsArgs),{timeout:6000,encoding:"utf8",env:_bsEnv}).trim();return _bsOut||null;}catch(_e){return null;}}});
+var _rSources=globalThis._cuesCore.buildSourcesFromConfig(globalThis._cuesMdParsed,globalThis._blanksMdParsed,{httpAdapter:globalThis._httpAdapter,endpoint:_rEp,apiKey:_rApiKey,defaultModel:_rDefaultMod,blanks:globalThis._blankOverrides,readBlankState:function(_bn,_mkw,_ctx){var _blk=globalThis._blankOverrides&&globalThis._blankOverrides[_bn];var _bs2=_blk&&(_blk.blankScript||_blk.script);if(!_bs2)return null;var _bsHome=process.env.HOME||"/home/"+(process.env.USER||"root");var _bsArgs=["get"].concat(_mkw?[_mkw]:[]).concat(_ctx?_ctx.filter(function(w){return w!=="_"&&w.toLowerCase()!==(_mkw||"").toLowerCase();}):[]); var _bsEnv=Object.assign({},process.env);if(_blk.model)_bsEnv.CUES_MODEL=_blk.model;if(_blk.apiUrl)_bsEnv.CUES_API_URL=_blk.apiUrl;if(_blk.apiKeyEnv)_bsEnv.CUES_API_KEY_ENV=_blk.apiKeyEnv;if(_blk.altCount)_bsEnv.CUES_ALT_COUNT=String(_blk.altCount);if(_blk.includeOriginal!==undefined)_bsEnv.CUES_INCLUDE_ORIGINAL=String(_blk.includeOriginal);if(_blk.prompts){for(var _pk in _blk.prompts){_bsEnv["CUES_PROMPT_"+_pk.toUpperCase().replace(/[^A-Z0-9]/g,"_")]=_blk.prompts[_pk];}}try{var _bsOut=${requireFuncName}("child_process").execFileSync("bash",[_bs2.replace(/^~/,_bsHome)].concat(_bsArgs),{timeout:6000,encoding:"utf8",env:_bsEnv}).trim();return _bsOut||null;}catch(_e){return null;}}});
 globalThis._cueResolver=globalThis._cuesCore.createResolver(_rSources,{parallel:false,timeout:30000,continueOnError:true});
 globalThis._resolverGeneration=(globalThis._resolverGeneration||0)+1;
 // Clear analyzed cache — all visible words re-analyze against the new config
@@ -230,23 +230,23 @@ globalThis._dynLastAnalyzed=[];
 }
 globalThis._configReloading=false;
 };
-// TTS configuration (speak.sh path + speech rate; per-tip "speak" flag controls which tips are read)
+// TTS configuration (speak.sh path + speech rate; per-tip "speak" flag gates which tips are read)
 globalThis._ttsRate=${config.ttsSpeed || 2};
 globalThis._ttsScript=${config.ttsScript ? `"${config.ttsScript}"` : 'null'};
-// Periodic status line refresh when a cue-control word is selected
+// Periodic status line refresh when a cue-blank word is selected
 // Writes cueTip directly to the JSON export file — no re-render, no flicker
-if(!globalThis._cueControlStatusInterval){
-globalThis._cueControlStatusInterval=setInterval(function(){
+if(!globalThis._blankStatusInterval){
+globalThis._blankStatusInterval=setInterval(function(){
 if(!(globalThis._hlState&&globalThis._hlState.active&&globalThis._hlState.wordIndex!=null))return;
-if(!globalThis._cueControlTip)return;
+if(!globalThis._blankTip)return;
 var _ws=(globalThis._hlText||"").split(/\s+/).filter(function(w){return w;});
 var _wrd=_ws[globalThis._hlState.wordIndex]||"";
-if(!globalThis._isCueControl||!globalThis._isCueControl(_wrd))return;
+if(!globalThis._isCueBlank||!globalThis._isCueBlank(_wrd))return;
 try{
 var _ep="/tmp/opencues-highlight-state-"+process.pid+".json";
 var _fs=${requireFuncName}("fs");
 var _ex=JSON.parse(_fs.readFileSync(_ep,"utf8"));
-if(_ex.cueTip!==globalThis._cueControlTip){_ex.cueTip=globalThis._cueControlTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();}
+if(_ex.cueTip!==globalThis._blankTip){_ex.cueTip=globalThis._blankTip;_ex.timestamp=Date.now();_fs.writeFileSync(_ep,JSON.stringify(_ex));if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();}
 }catch(_ei){}
 },200);
 }
@@ -268,15 +268,15 @@ setTimeout(function(){globalThis._httpAdapter.warmup("https://api.groq.com/opena
 }
 // Run initial config load now that the HTTP adapter is ready
 if(globalThis._cuesCore){globalThis._reloadCuesConfig();}
-// Cue-control check: returns true for words with built-in cycling behavior
-// (numbers increment/decrement, custom controls run scripts) — these bypass alt cycling and tips
-globalThis._isCueControl=function(_w){
-if(!!(globalThis._cueControlOverrides||{})[_w.toLowerCase()])return true;
+// Cue-blank check: returns true for words with built-in cycling behavior
+// (numbers increment/decrement, custom blanks run scripts) — these bypass alt cycling and tips
+globalThis._isCueBlank=function(_w){
+if(!!(globalThis._blankOverrides||{})[_w.toLowerCase()])return true;
 var _sps=globalThis._stepPatterns||[];
 for(var _spi=0;_spi<_sps.length;_spi++){if(_sps[_spi].re.test(_w))return true;}
 return false;
 };
-// Shared cycling function: handles cue-controls, alt cycling, linked words, spans, underscore re-analysis
+// Shared cycling function: handles cue-blanks, alt cycling, linked words, spans, underscore re-analysis
 // dir=1 for Up (next alt), dir=-1 for Down (prev alt)
 globalThis._cycleAlt=function(_dir,_IZClass,_IZVar,_cfgVar,_reqFn){
 if(!globalThis._hlState||!globalThis._hlState.active||globalThis._hlState.wordIndex==null)return null;
@@ -284,33 +284,33 @@ var _allW=globalThis._hlText?globalThis._hlText.split(/\\s+/).filter(function(w)
 var _hlIdx=globalThis._hlState.wordIndex;
 if(_hlIdx<0||_hlIdx>=_allW.length)return null;
 var _curWord=_allW[_hlIdx];
-// === Cue-controls: words with built-in cycling behavior (no tips, no LLM alts) ===
-// Custom cue-controls: spawn external scripts (e.g. volume.sh)
-var _actOvr=globalThis._cueControlOverrides||{};
+// === Cue-blanks: words with built-in cycling behavior (no tips, no LLM alts) ===
+// Custom cue-blanks: spawn external scripts (e.g. volume.sh)
+var _actOvr=globalThis._blankOverrides||{};
 var _wLower=_curWord.toLowerCase();
 if(_actOvr[_wLower]){
 var _ad=_actOvr[_wLower];
 var _home=process.env.HOME||"/home/"+(process.env.USER||"root");
-var _rawScript=_ad.script||_ad.scriptPath||(_home+"/.claude/actions/"+_ad.control+".sh");
+var _rawScript=_ad.script||_ad.scriptPath||(_home+"/.claude/actions/"+_ad.name+".sh");
 var _script=_rawScript.replace(/^~/,_home);
 var _args=["bash",_script].concat(_dir>0?_ad.upArgs||["up"]:_ad.downArgs||["down"]);
-var _dynTip=_ad.tip||_ad.control;
+var _dynTip=_ad.tip||_ad.name;
 // Static tip fallback — live tip updated by script get after spawn
-if(!globalThis._cueControlTip)globalThis._cueControlTip=_dynTip;
+if(!globalThis._blankTip)globalThis._blankTip=_dynTip;
 // Debounce spawn: rapid presses only fire script once with final value
-if(!globalThis._cueControlTimers)globalThis._cueControlTimers={};
-if(globalThis._cueControlTimers[_ad.control])clearTimeout(globalThis._cueControlTimers[_ad.control]);
+if(!globalThis._blankTimers)globalThis._blankTimers={};
+if(globalThis._blankTimers[_ad.name])clearTimeout(globalThis._blankTimers[_ad.name]);
 var _spawnArgs=_args.slice(0);
 var _tipScript=_script;
-globalThis._cueControlTimers[_ad.control]=setTimeout(function(){
+globalThis._blankTimers[_ad.name]=setTimeout(function(){
 try{_reqFn("child_process").spawn(_spawnArgs[0],_spawnArgs.slice(1),{detached:true,stdio:"ignore"}).unref();}catch(_e){}
 // After script applies the change, read live value and push directly to status line
 setTimeout(function(){
 try{
-if(globalThis._cueControlTipWord===null)return;
+if(globalThis._blankTipWord===null)return;
 var _lt=_reqFn("child_process").execSync("bash "+_tipScript+" get",{timeout:1000,encoding:"utf8"}).trim();
 if(_lt){
-globalThis._cueControlTip=_lt;
+globalThis._blankTip=_lt;
 var _ep2="/tmp/opencues-highlight-state-"+process.pid+".json";
 var _fs2=_reqFn("fs");
 var _ex2=JSON.parse(_fs2.readFileSync(_ep2,"utf8"));
@@ -323,19 +323,19 @@ if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 },50);
 return{refresh:true};
 }
-// Control-bound blank cycling: blank positions bound to a control via blankKeywords
+// Blank-bound cycling: blank positions bound via blankKeywords
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
-var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.blankName&&!w.metadata.listControl&&!w.metadata.selectorWord&&!w.metadata.satelliteWord;});
+var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.blankName&&!w.metadata.listBlank&&!w.metadata.selectorWord&&!w.metadata.satelliteWord;});
 if(_cbDef){
 var _cbMeta=_cbDef.metadata;
 if(_cbMeta.blankReadOnly)return null;
-if(_cbDef.cueTip)globalThis._cueControlTip=_cbDef.cueTip;
+if(_cbDef.cueTip)globalThis._blankTip=_cbDef.cueTip;
 // Only do numeric stepping when blankStep or blankFormat is explicitly configured
 if(!_cbMeta.blankStep&&!_cbMeta.blankFormat)return null;
 var _cbHome=process.env.HOME||"/home/"+(process.env.USER||"root");
 var _cbRawScript=_cbMeta.blankScript||(_cbHome+"/.claude/actions/"+_cbMeta.blankName+".sh");
 var _cbScript=_cbRawScript.replace(/^~/,_cbHome);
-// Calculate target value, then call script with "set <value>" for exact control
+// Calculate target value, then call script with "set <value>" for exact set
 var _cbStep=_cbMeta.blankStep||1;
 var _cbSuffix=_cbMeta.blankSuffix||"";
 var _cbCurStr=_cbSuffix&&_curWord.endsWith(_cbSuffix)?_curWord.slice(0,_curWord.length-_cbSuffix.length):_curWord;
@@ -353,8 +353,8 @@ var _cbWEnd=_cbWStart+_curWord.length;
 var _cbNewText=_cbText.slice(0,_cbWStart)+_cbNewVal+_cbText.slice(_cbWEnd);
 globalThis._hlText=_cbNewText;
 globalThis._hlState.text=_cbNewText;
-if(!globalThis._cueControlValues)globalThis._cueControlValues={};
-globalThis._cueControlValues[_cbMeta.blankName]=_cbFmt==="string"?_cbNewVal:(_cbFmt==="float"?parseFloat(_cbNewVal)||0:parseInt(_cbNewVal,10)||0);
+if(!globalThis._blankValues)globalThis._blankValues={};
+globalThis._blankValues[_cbMeta.blankName]=_cbFmt==="string"?_cbNewVal:(_cbFmt==="float"?parseFloat(_cbNewVal)||0:parseInt(_cbNewVal,10)||0);
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_cbNewText,lenDiff:_cbNewVal.length-_curWord.length,wStart:_cbWStart,newLen:_cbNewVal.length};
 }
@@ -447,7 +447,7 @@ for(var _nsi3=0;_nsi3<_newSatWc;_nsi3++)globalThis._dynSpans[_newSatIdx+_nsi3]={
 }else{delete _satDef.spanLength;}
 }
 globalThis._hlText=_newSelText;globalThis._hlState.text=_newSelText;
-try{var _selExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_nextSet,wordCount:_newSelText.split(/\\s+/).filter(function(w){return w;}).length,cueTip:_selDef.cueTip||null,cueControl:!!_selDef.cueTip,alts:_ocKeys,currentAltIndex:_nextSetIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_selExp));}catch(_we){}
+try{var _selExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_nextSet,wordCount:_newSelText.split(/\\s+/).filter(function(w){return w;}).length,cueTip:_selDef.cueTip||null,cueBlank:!!_selDef.cueTip,alts:_ocKeys,currentAltIndex:_nextSetIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_selExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_newSelText,lenDiff:_newSelText.length-_selText.length,wStart:_selWStart,newLen:_nextSet.length};
 }
@@ -504,12 +504,12 @@ if(!globalThis._dynSpans)globalThis._dynSpans={};
 for(var _nsxi=0;_nsxi<_newSatWc;_nsxi++)globalThis._dynSpans[_hlIdx+_nsxi]={originalIndex:_hlIdx,spanLength:_newSatWc};
 }else{delete _satBound.spanLength;}
 globalThis._hlText=_satNewTxt;globalThis._hlState.text=_satNewTxt;
-try{var _satExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_satNewVal,wordCount:_satAllW.length,cueTip:_satBound.cueTip||null,cueControl:!!_satBound.cueTip,alts:_satVals,currentAltIndex:_satNextIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_satExp));}catch(_we){}
+try{var _satExp={active:true,highlightedWordIndex:_hlIdx,highlightedWord:_satNewVal,wordCount:_satAllW.length,cueTip:_satBound.cueTip||null,cueBlank:!!_satBound.cueTip,alts:_satVals,currentAltIndex:_satNextIdx,timestamp:Date.now()};_reqFn("fs").writeFileSync("/tmp/opencues-highlight-state-"+process.pid+".json",JSON.stringify(_satExp));}catch(_we){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_satNewTxt,lenDiff:_satNewTxt.length-_satTxt.length,wStart:_satWS,newLen:_satNewVal.length};
 }
 }
-// Step control: arithmetic or script-based increment/decrement for patterned values
+// Step blank: arithmetic or script-based increment/decrement for patterned values
 // Skip if this position has dynamic alternatives (e.g. blank fill-in result) — let alt cycling handle it
 var _hasAltsCycle=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.alts&&w.alts.length>1;});
 var _stepCtrl=null;
@@ -674,7 +674,7 @@ else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/opencues/scripts/
 // Re-evaluate underscore if present
 var _cw=_newText.split(/\\s+/).filter(function(w){return w;});
 if(_cw.indexOf("_")>=0){var _ctx=_cw.filter(function(w){return w!=="_";}).join(" ");var _ctxChanged=_ctx!==(globalThis._dynUnderscoreContext||"");
-// Clear control-blank WordDefs when _ reappears — forces fresh value read
+// Clear blank WordDefs when _ reappears — forces fresh value read
 if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _ci=globalThis._dynDefs.words.length-1;_ci>=0;_ci--){if(globalThis._dynDefs.words[_ci].metadata&&globalThis._dynDefs.words[_ci].metadata.blankName){globalThis._dynDefs.words.splice(_ci,1);_ctxChanged=true;}}}
 if(_ctxChanged){globalThis._dynUnderscoreContext=null;globalThis._dynUnderscoreQueued=true;if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){setTimeout(globalThis._dynTriggerAnalysis,100);}}}
 return{text:_newText,lenDiff:_newWord.length-_oldWord.length,wStart:_wStart,newLen:_newWord.length};
@@ -911,7 +911,7 @@ if(_sentWords.indexOf("_")>=0){
 globalThis._dynUnderscoreContext=_sentWords.filter(function(w){return w!=="_";}).join(" ");
 }
 
-// Inject step-controlled words into _dynDefs so they're highlighted and navigable
+// Inject step-pattern words into _dynDefs so they're highlighted and navigable
 var _spsInj=globalThis._stepPatterns||[];
 if(_spsInj.length>0){
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
@@ -927,8 +927,8 @@ break;
 });
 }
 // LOCAL TIPS LOOKUP - uses opencues-core functions for O(1) lookup
-// Skip cue-controls (numbers, custom controls) — they have built-in cycling, not tips
-var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
+// Skip cue-blanks (numbers, custom blanks) — they have built-in cycling, not tips
+var _lookup=globalThis._cuesCore&&globalThis._localCueMap?globalThis._cuesCore.lookupMultiple(_sentWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueBlank}):{found:[],missingIndices:_sentWords.map(function(_,i){return i;}).filter(function(i){return _sentWords[i]!=="_";})};
 
 // If ALL non-underscore words matched tips, skip LLM entirely
 if(_lookup.found.length>0&&_lookup.missingIndices.length===0&&_sentWords.indexOf("_")<0){
@@ -982,8 +982,8 @@ for(var _si=0;_si<_sentWords.length;_si++){
 var _sw=_sentWords[_si].toLowerCase();
 if(_ignSet&&_ignSet.has(_sw))continue;
 if(/^(the|a|an|to|is|was|of|and|in|on|at|for|it|its|be|am|are|were|been|has|had|have|do|did|does|not|but|or|if|so|no|my|we|he|she|me|us|them|this|that|with|from|by|as)$/.test(_sw))continue;
-// Skip cue-controls (numbers, step-pattern words) — they have built-in cycling, not LLM alts
-if(globalThis._isCueControl&&globalThis._isCueControl(_sentWords[_si]))continue;
+// Skip cue-blanks (numbers, step-pattern words) — they have built-in cycling, not LLM alts
+if(globalThis._isCueBlank&&globalThis._isCueBlank(_sentWords[_si]))continue;
 // Check if this index already has valid alts in _dynDefs
 var _hasAlts=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===_si&&d.alts&&d.alts.length>1&&d.alts.indexOf(_sentWords[_si])>=0;});
 // Also skip if tips already covered this word
@@ -1022,14 +1022,14 @@ var _elapsed=Date.now()-globalThis._dynPollStart;
 var _words=[];
 for(var _ri=0;_ri<_resolved.results.length;_ri++){
 var _r=_resolved.results[_ri];
-var _isControlBlank=_r.metadata&&_r.metadata.blankName;
-if(_r.alternatives&&(_r.alternatives.length>1||_isControlBlank)){
+var _isBlank=_r.metadata&&_r.metadata.blankName;
+if(_r.alternatives&&(_r.alternatives.length>1||_isBlank)){
 var _filteredAlts=[];
 for(var _fa=0;_fa<_r.alternatives.length;_fa++){
 var _a=_r.alternatives[_fa].replace(/[.;:!?]+$/,"");
-if(_a&&(_a==="_"||_a.length>1||_r.word==="_"||_isControlBlank)&&_filteredAlts.indexOf(_a)<0)_filteredAlts.push(_a);
+if(_a&&(_a==="_"||_a.length>1||_r.word==="_"||_isBlank)&&_filteredAlts.indexOf(_a)<0)_filteredAlts.push(_a);
 }
-if(_filteredAlts.length>0||_isControlBlank){
+if(_filteredAlts.length>0||_isBlank){
 var _wdef={index:_r.wordIndex,word:_r.word,alts:_filteredAlts.length>0?_filteredAlts:null,linked:_r.linked||null,currentAltIndex:0,source:_r.source||"resolver"};
 if(_r.cueTip)_wdef.cueTip=_r.cueTip;
 if(_r.altCueTips)_wdef.altCueTips=_r.altCueTips;
@@ -1050,7 +1050,7 @@ if(_spanInfo2&&_spanInfo2.originalIndex!==_nw2.index){_nw2.alts=null;continue;}
 var _oldW2=globalThis._dynDefs.words.find(function(w){return w.index===_nw2.index;});
 // Skip LLM results for tip-sourced entries — tips are curated, don't mix
 if(_oldW2&&_oldW2.source==="tips")continue;
-// Skip grammar/LLM results for control-bound blank positions — but allow fresh control-blank results through
+// Skip grammar/LLM results for bound blank positions — but allow fresh blank results through
 if(_oldW2&&_oldW2.metadata&&_oldW2.metadata.blankName&&!(_nw2.metadata&&_nw2.metadata.blankName))continue;
 if(_oldW2&&_oldW2.alts){
 if(_oldW2.spanLength)_nw2.spanLength=_oldW2.spanLength;
@@ -1088,7 +1088,7 @@ for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
 if(_apw.metadata&&_apw.metadata.blankName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
 if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
-globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.blankName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null,consumeAllAlts:_apw.alts.length>1?_apw.alts.slice():null,consumeAllTip:_apw.cueTip||null};
+globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,blankName:_apw.metadata.blankName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null,consumeAllAlts:_apw.alts.length>1?_apw.alts.slice():null,consumeAllTip:_apw.cueTip||null};
 }}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
@@ -1128,7 +1128,7 @@ if(_needsAnalysis&&_curWords.length>0&&!globalThis._dynPending){
 // EAGER TIPS LOOKUP: resolve tip words immediately on keystroke (before debounce)
 // This ensures tip words dim in <5ms, not after 300ms pause + 50ms debounce + LLM round-trip
 if(globalThis._cuesCore&&globalThis._localCueMap){
-var _eagerLookup=globalThis._cuesCore.lookupMultiple(_curWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueControl});
+var _eagerLookup=globalThis._cuesCore.lookupMultiple(_curWords,globalThis._localCueMap,{skipPattern:/^_$/,skipFn:globalThis._isCueBlank});
 if(_eagerLookup.found.length>0){
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
 globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_eagerLookup.found);
@@ -1237,7 +1237,7 @@ export const writeDynamicCycleHandlers = (
   const inputZoneClass = fromTextMatch[2]; // i5
   const configVar = fromTextMatch[4];       // G
 
-  // Get require function name for spawning control scripts
+  // Get require function name for spawning blank scripts
   const requireFuncName = getRequireFuncName(oldFile);
 
   // Insert dynamic handling code at the start of the Up arrow handler
@@ -1339,11 +1339,11 @@ if(_r){if(globalThis._refreshTimer){clearTimeout(globalThis._refreshTimer);globa
 };
 
 /**
- * writeControlOvrVariable is no longer needed — gender mode was removed,
+ * writeBlankOvrVariable is no longer needed — gender mode was removed,
  * so _rootPat no longer exists. The rendering code accesses
- * globalThis._cueControlOverrides directly.
+ * globalThis._blankOverrides directly.
  */
-export const writeControlOvrVariable = (
+export const writeBlankOvrVariable = (
   oldFile: string,
   _config: DynamicHighlightConfig = {}
 ): string | null => {
@@ -1354,7 +1354,7 @@ export const writeControlOvrVariable = (
  * Modify the rendering to show words with alts in gray (dim).
  * When dynamic defs are loaded, words with alternatives are dimmed to show they're navigable.
  *
- * Extends the _numRanges pattern to also dim control words and dynamic alt words.
+ * Extends the _numRanges pattern to also dim blank words and dynamic alt words.
  */
 export const writeDynamicRendering = (
   oldFile: string,
@@ -1366,15 +1366,15 @@ export const writeDynamicRendering = (
   const numMatch = oldFile.match(numPattern);
 
   if (numMatch && numMatch.index !== undefined) {
-    // Extend _numRanges to also dim control words, tips, and dynamic alt words
+    // Extend _numRanges to also dim blank words, tips, and dynamic alt words
     // INSTANT TIPS: check _localCueMap directly in render — no waiting for analysis pipeline
     const newNumCode = `else if((function(){
 // Keyword-context skip: words at blank keyword indices are not navigable
-// Covers selectors (opencues), list controls (hackernews), and any blank with blankKeywordIndices
+// Covers selectors (opencues), list blanks (hackernews), and any blank with blankKeywordIndices
 var _isCtxKw=false;
 if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _cki=0;_cki<globalThis._dynDefs.words.length;_cki++){var _ckd=globalThis._dynDefs.words[_cki];if(_ckd&&_ckd.metadata&&_ckd.metadata.blankKeywordIndices&&_ckd.index!==_ni){for(var _ckj=0;_ckj<_ckd.metadata.blankKeywordIndices.length;_ckj++){if(_ckd.metadata.blankKeywordIndices[_ckj]===_ni){_isCtxKw=true;break;}}if(_isCtxKw)break;}}}
 if(_isCtxKw)return false;
-if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
+if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._blankOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
 if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
 var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&((d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0)||(d.metadata&&d.metadata.blankName));});
@@ -1624,7 +1624,7 @@ export const writeDynamicHighlight = (
   }
 
   // 5. Add _actOvr variable definition (required for rendering)
-  result = writeControlOvrVariable(content, config);
+  result = writeBlankOvrVariable(content, config);
   if (!result) {
     console.log('patch: dynamicHighlight: _actOvr variable not added (optional)');
   } else {

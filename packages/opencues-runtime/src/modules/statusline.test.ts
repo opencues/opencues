@@ -201,7 +201,7 @@ describe('Statusline write behaviour', () => {
     expect(written).toBeNull();
   });
 
-  it('Phase F.b: span-fill highlight emits blankTip + cueControl=true', async () => {
+  it('Phase F.b: span-fill highlight emits blankTip + cueBlank=true', async () => {
     const { SpanFillState } = await import('../state/span-fill');
     const adapter = new MockAdapter();
     adapter.pushText('affirm I am strong');
@@ -221,7 +221,7 @@ describe('Statusline write behaviour', () => {
     hlState.activate(2, 'affirm I am strong'); // "am" — inside span
     const p = sl.buildPayload({ text: 'affirm I am strong', cursor: 0, externalHighlights: [] });
     expect(p.cueTip).toBe('Daily affirmations');
-    expect(p.cueControl).toBe(true);
+    expect(p.cueBlank).toBe(true);
     expect(p.alts).toEqual(['I am strong', 'I am brave', '_']);
     expect(p.currentAltIndex).toBe(0);
   });
@@ -251,7 +251,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '',
       selectorIndex: 0,
       selectorLength: 1,
@@ -268,7 +268,7 @@ settings:
     hlState.activate(0, 'voice-mode active'); // selector
     const p = sl.buildPayload({ text: 'voice-mode active', cursor: 0, externalHighlights: [] });
     expect(p.cueTip).toBe('Gates TTS globally');
-    expect(p.cueControl).toBe(true);
+    expect(p.cueBlank).toBe(true);
   });
 
   it('Phase G.b: satellite word emits per-value tip', async () => {
@@ -296,7 +296,7 @@ settings:
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
     ss.set({
-      controlName: 'opencues',
+      blankName: 'opencues',
       scriptPath: '',
       selectorIndex: 0,
       selectorLength: 1,
@@ -313,7 +313,7 @@ settings:
     hlState.activate(1, 'voice-mode active'); // satellite
     const p = sl.buildPayload({ text: 'voice-mode active', cursor: 0, externalHighlights: [] });
     expect(p.cueTip).toBe('TTS reads tips aloud');
-    expect(p.cueControl).toBe(true);
+    expect(p.cueBlank).toBe(true);
   });
 
   it('Phase F.b: highlight outside the span uses cueMap (no span tip leakage)', async () => {
@@ -336,7 +336,7 @@ settings:
     hlState.activate(0, 'foo I am strong'); // "foo" — outside span
     const p = sl.buildPayload({ text: 'foo I am strong', cursor: 0, externalHighlights: [] });
     expect(p.cueTip).toBeNull();
-    expect(p.cueControl).toBe(false);
+    expect(p.cueBlank).toBe(false);
   });
 
   it('writes inactive payload after typing clears highlight', async () => {

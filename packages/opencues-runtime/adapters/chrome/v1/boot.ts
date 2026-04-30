@@ -41,11 +41,11 @@ import type {
  *  that don't apply to spawning hosts (opencode). */
 export interface HostInfo extends CommonHostInfo {
   /**
-   * Host-native control dispatch. BlankFill + Cycling try this before
+   * Host-native blank dispatch. BlankFill + Cycling try this before
    * spawnProcess. Chrome implementations typically dispatch to
    * Web Audio (volume) / fetch() (stocks/weather/HN) / two-step LLM
    * (prompt-improver). Returns ProcessHandle or null when the
-   * controlName isn't recognised (runtime falls through to spawnProcess,
+   * blankName isn't recognised (runtime falls through to spawnProcess,
    * which the chrome adapter resolves with exitCode 127).
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;

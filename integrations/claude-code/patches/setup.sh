@@ -212,7 +212,7 @@ const additions = \`
   ttsSpeed?: number;
   ttsScript?: string;
   opencuesRuntime?: 'v1' | 'v2';
-  cueControlOverrides?: { [word: string]: { control: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
+  blankOverrides?: { [word: string]: { name: string; scriptPath?: string; }; };
 \`;
 const m = content.match(/export interface MiscConfig \\{[^}]+/);
 if (!m) { console.error('Error: MiscConfig interface not found in types.ts'); process.exit(1); }
@@ -247,7 +247,7 @@ const additions = \`
     dynamicHighlightAutoSubmit: true,
     dynamicHighlightDebounceMs: 500,
     opencuesRuntime: 'v2',
-    cueControlOverrides: { volume: { control: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
+    blankOverrides: { volume: { name: 'volume' } },
 \`;
 const m = content.match(/misc:\\s*\\{/);
 if (!m) { console.error('Error: misc object not found in defaultSettings.ts'); process.exit(1); }
@@ -310,7 +310,7 @@ const patchCode = \`
           highlightExportEnabled: config.settings.misc.highlightExportEnabled,
           highlightExportPath: config.settings.misc.highlightExportPath,
           numberDimming: config.settings.misc.numberDimming,
-          cueControlOverrides: config.settings.misc.cueControlOverrides,
+          blankOverrides: config.settings.misc.blankOverrides,
         };
         if ((result = writeWordHighlight(content, highlightConfig))) content = result;
       }
@@ -400,7 +400,7 @@ cp "$OC_RUNTIME/package.json" "$OC_NM_DIR/runtime/package.json"
 end_step
 
 # ─── 6. Install CC-specific support files (statusline + settings.json) ─
-# All shared/cross-host concerns (control library scripts, opencues.md
+# All shared/cross-host concerns (blank library scripts, opencues.md
 # self-heal, .cs compile, TTS speak.sh) live in `opencues seed-configs`
 # now — install.cjs invokes that BEFORE this script runs. setup.sh is
 # strictly CC-specific.

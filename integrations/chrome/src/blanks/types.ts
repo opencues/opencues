@@ -1,14 +1,14 @@
 /**
- * Browser-native control interface.
+ * Browser-native blank interface.
  * Replaces bash script spawning with web APIs.
  *
- * Each control implements get/set/up/down:
+ * Each blank implements get/set/up/down:
  *   get()  → current display value (e.g. "50%", "$186.43")
  *   set(v) → apply a specific value
  *   up()   → increment
  *   down() → decrement
  */
-export interface BrowserControl {
+export interface BrowserBlank {
   readonly name: string;
   readonly readOnly: boolean;
 

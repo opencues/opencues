@@ -132,7 +132,7 @@ function doInstall() {
 
   // Delegate to setup.sh — strictly CC-specific work now (cli.js patching,
   // statusline install, tweakcc build/apply, settings.json fixup). All the
-  // shared ~/.opencues/ writes (control library scripts, opencues.md
+  // shared ~/.opencues/ writes (blank library scripts, opencues.md
   // self-heal, .cs compilation, TTS speak.sh) live in `opencues seed-configs`,
   // which the top-level `opencues install` invokes BEFORE this script runs.
   //
@@ -334,10 +334,10 @@ function listActionFileBasenames() {
   }
   // defaults/blanks/*/*.cs — compiled to ~/.claude/opencues/actions/<basename>.exe
   // by setup.sh's WSL .exe block (e.g. defaults/blanks/volume/VolCtl.cs → VolCtl.exe).
-  const controlsDir = path.resolve(REPO_ROOT, 'defaults', 'blanks');
-  if (fs.existsSync(controlsDir)) {
-    for (const sub of fs.readdirSync(controlsDir)) {
-      const subDir = path.join(controlsDir, sub);
+  const blanksDir = path.resolve(REPO_ROOT, 'defaults', 'blanks');
+  if (fs.existsSync(blanksDir)) {
+    for (const sub of fs.readdirSync(blanksDir)) {
+      const subDir = path.join(blanksDir, sub);
       if (!fs.statSync(subDir).isDirectory()) continue;
       for (const f of fs.readdirSync(subDir)) {
         if (f.endsWith('.cs')) out.push(f.replace(/\.cs$/, '.exe'));

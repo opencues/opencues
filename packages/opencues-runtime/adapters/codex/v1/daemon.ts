@@ -94,11 +94,11 @@ export interface RuntimeBundle {
    *  flipping 'user' → 'runtime' when text matches what the runtime
    *  just wrote via `setText` / `pushText`. Avoids feedback loops. */
   readonly reclassifier: SourceReclassifier;
-  /** Hoisted controls map — same six classes OC wires (HackerNews,
+  /** Hoisted blanks map — same six classes OC wires (HackerNews,
    *  Stocks, Weather, Answer, PromptImprover, OpenCuesSettings). */
   readonly blanksRegistry: Map<string, Blank>;
   /** Dispatcher derived from blanksRegistry. Returns null for
-   *  unregistered controls. */
+   *  unregistered blanks. */
   readonly blankInvoke: (spec: BlankInvokeSpec) => ProcessHandle | null;
 }
 
@@ -257,22 +257,22 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
         opts.send({ jsonrpc: '2.0', method: 'directives', params: merged });
         break;
       }
-      case 'control-invoke': {
-        // Tier 3.E. Bridge dispatches one of the hoisted controls
+      case 'blank-invoke': {
+        // Tier 3.E. Bridge dispatches one of the hoisted blanks
         // directly. Returns the underlying ProcessResult, or `null`
-        // when the control isn't registered (so the bridge can fall
+        // when the blank isn't registered (so the bridge can fall
         // back to native handling).
         if (!runtime) {
           sendError(req, -32000, 'daemon not yet booted');
           break;
         }
         const spec = req.params as BlankInvokeSpec | undefined;
-        if (!spec || typeof spec.controlName !== 'string' || typeof spec.action !== 'string') {
-          sendError(req, -32602, 'control-invoke requires { controlName, action, args }');
+        if (!spec || typeof spec.blankName !== 'string' || typeof spec.action !== 'string') {
+          sendError(req, -32602, 'blank-invoke requires { blankName, action, args }');
           break;
         }
         const handle = runtime.blankInvoke({
-          controlName: spec.controlName,
+          blankName: spec.blankName,
           action: spec.action,
           args: Array.isArray(spec.args) ? spec.args : [],
         });
@@ -286,7 +286,7 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
         } catch (err) {
           // ProcessHandle.result shouldn't reject in practice (the
           // dispatcher catches throws), but guard anyway.
-          sendError(req, -32603, `control-invoke failed: ${String(err)}`);
+          sendError(req, -32603, `blank-invoke failed: ${String(err)}`);
         }
         break;
       }
@@ -324,7 +324,7 @@ function findOpenCuesMdPath(): string {
 }
 
 /**
- * Build the same six-control registry OC wires. Mirrors
+ * Build the same six-blank registry OC wires. Mirrors
  * `integrations/opencode/patches/opencuesBootstrap.ts:116-127` —
  * if you change the wiring there, change it here too.
  */
@@ -438,7 +438,7 @@ export function startDaemon(): void {
 
   // Serialize inbound RPC handling. Two reasons:
   // (1) FIFO ordering — the bridge expects responses in request order
-  //     (a control-invoke that arrives after boot must wait for boot
+  //     (a blank-invoke that arrives after boot must wait for boot
   //     to finish before being processed, not race ahead because the
   //     boot handler is doing async work).
   // (2) Drain on shutdown — the chain promise tracks all in-flight

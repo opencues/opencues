@@ -57,7 +57,7 @@ import { writeOpenCuesRuntimeV2 } from './opencuesRuntime';
       highlightExportEnabled: config.settings.misc.highlightExportEnabled,
       highlightExportPath: config.settings.misc.highlightExportPath,
       numberDimming: config.settings.misc.numberDimming,
-      cueControlOverrides: config.settings.misc.cueControlOverrides,  // Control words like "volume"
+      blankOverrides: config.settings.misc.blankOverrides,  // Blank words like "volume"
     };
     if ((result = writeWordHighlight(content, highlightConfig))) content = result;
   }

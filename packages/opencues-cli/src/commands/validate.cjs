@@ -39,7 +39,7 @@ module.exports = function validate(argv, ctx) {
   // one folder cue.md), duplicates are errors. Across sources (cues.md
   // + cues/<name>/cue.md), folder takes precedence — that's the merge
   // contract, not a conflict. So we track names per source file.
-  const seen = { cue: new Map(), blank: new Map(), control: new Map() };
+  const seen = { cue: new Map(), blank: new Map() };
 
   // Track every word-alts source we see across all search paths so we
   // can report the post-merge default-source picture (rather than per
@@ -125,10 +125,10 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordAltSources
           if (kind === 'cue') noteWordAlts(name, src, p);
         }
       }
-      if (parsed && parsed.controls) {
-        for (const [name, ctl] of Object.entries(parsed.controls)) {
-          seen.control.set(name, p);
-          checkHostCompat(p, name, ctl, inferHostCompat, unknownHostNames, errors, warnings);
+      if (parsed && parsed.blanks) {
+        for (const [name, blk] of Object.entries(parsed.blanks)) {
+          seen.blank.set(name, p);
+          checkHostCompat(p, name, blk, inferHostCompat, unknownHostNames, errors, warnings);
         }
       }
     } catch (err) {

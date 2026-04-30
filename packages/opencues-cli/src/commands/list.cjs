@@ -72,11 +72,10 @@ function collect(dir, tools, results) {
           results[kind].push({ name, source: p, hosts: hostsLabel(src, inferHostCompat, formatHostList) });
         }
       }
-      if (parsed && parsed.controls) {
-        // Inline `## Controls` block in cues.md / blanks.md — these are
-        // blanks post-rename, so surface them under the blank bucket.
-        for (const [name, ctl] of Object.entries(parsed.controls)) {
-          results.blank.push({ name, source: p, hosts: hostsLabel(ctl, inferHostCompat, formatHostList) });
+      if (parsed && parsed.blanks) {
+        // Inline `## Blanks` block in cues.md / blanks.md.
+        for (const [name, blk] of Object.entries(parsed.blanks)) {
+          results.blank.push({ name, source: p, hosts: hostsLabel(blk, inferHostCompat, formatHostList) });
         }
       }
     } catch { /* validate command surfaces parse errors */ }

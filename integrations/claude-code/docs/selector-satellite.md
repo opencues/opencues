@@ -43,7 +43,7 @@ globalThis._pendingAutoPopulate = {
   index, value,
   keywordExpansion: metadata.blankKeywordExpansion || null,
   satellite: metadata.satelliteValue || null,  // NEW
-  controlName: metadata.blankName || null,   // NEW
+  blankName: metadata.blankName || null,     // NEW
   blankScript: metadata.blankScript || null,   // NEW
 };
 ```
@@ -68,8 +68,8 @@ When `wordHighlight.ts`'s onChange handler sees `_ap.satellite != null`, it take
                 || (_openCuesTips && _openCuesTips[selector]) || null;
    ```
    Tips are read directly from the hot-reloaded globals — no metadata passthrough needed.
-8. **Selector WordDef created/replaced at index N** with `metadata: { controlName, blankScript, selectorWord: true, childIndex: N+1, currentSetting: selector }`.
-9. **Satellite WordDef pushed at index N+1** with `metadata: { controlName, blankScript, satelliteWord: true, parentIndex: N }`.
+8. **Selector WordDef created/replaced at index N** with `metadata: { blankName, blankScript, selectorWord: true, childIndex: N+1, currentSetting: selector }`.
+9. **Satellite WordDef pushed at index N+1** with `metadata: { blankName, blankScript, satelliteWord: true, parentIndex: N }`.
 10. **Cursor placed** at the end of the satellite; `onChangeParam` called with the new text + ZWS toggle.
 
 No `_dynSpans` entry is created — the pair are independent words, not a span.

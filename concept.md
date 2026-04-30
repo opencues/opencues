@@ -79,9 +79,9 @@ classified-blanks-mode: off   # legacy classifier — fluid covers it
 
 Missing setting → off. Every surface defaults off. The user opts in to what they want.
 
-## Open simplifications (residual misalignment)
+## Open simplifications (all resolved)
 
-These predate the concept-cleanup pass; the names disagree with the dual-direction model.
+These predated the concept-cleanup pass; the names disagreed with the dual-direction model.
 
 **Done (concept-aligned):**
 - ✅ Class names `*Control` → `*Blank` (StocksControl → StocksBlank, etc. — all 9 classes)
@@ -89,7 +89,4 @@ These predate the concept-cleanup pass; the names disagree with the dual-directi
 - ✅ `metadata.controlName` → `metadata.blankName`
 - ✅ `BlankValuesCache` deleted (it was dead after the word-cycling removal)
 - ✅ cue.md frontmatter `type: blank` is canonical (legacy `type: control` still accepted by the parser as alias). Redundant `control: <name>` field dropped from all 12 shipped defaults (dirname/name already identifies the blank).
-
-**Remaining — only one item, and it has a real cost:**
-
-1. **Wire format: `'control-invoke'` JSON-RPC method, `"controlName"` JSON key** — preserved to avoid breaking the Codex Rust bridge (`integrations/codex/patches/opencues-bridge/src/lib.rs`). Renaming = protocol bump. Cosmetic value only; not recommended unless we're already shipping a Codex protocol bump for another reason.
+- ✅ Wire format: `'control-invoke'` JSON-RPC method → `'blank-invoke'`; `"controlName"` JSON key → `"blankName"`. Codex Rust bridge updated in lockstep (`integrations/codex/patches/opencues-bridge/src/lib.rs` `invoke_blank`). `BlankConfig.control` field renamed to `BlankConfig.name`. `controlsByWord` map → `blanksByWord`. `lookupControl` → `lookupBlank`.

@@ -105,27 +105,35 @@ describe('parseCuesMd: ## Ignore', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ## Controls
+// ## Blanks (legacy ## Controls / ## Actions also accepted)
 // ---------------------------------------------------------------------------
 
-describe('parseCuesMd: ## Controls', () => {
-  it('should parse controls from JSON block', () => {
+describe('parseCuesMd: ## Blanks', () => {
+  it('should parse blanks from JSON block', () => {
+    const cfg = parseCuesMd('## Blanks\n```json\n{"volume":{"name":"volume","tip":"vol"}}\n```');
+    assert.ok(cfg.blanks);
+    assert.ok(cfg.blanks.volume);
+    assert.strictEqual(cfg.blanks.volume.name, 'volume');
+    assert.strictEqual(cfg.blanks.volume.tip, 'vol');
+  });
+
+  it('should accept legacy ## Controls heading + legacy "control" key on entry', () => {
     const cfg = parseCuesMd('## Controls\n```json\n{"volume":{"control":"volume","tip":"vol"}}\n```');
-    assert.ok(cfg.controls);
-    assert.ok(cfg.controls.volume);
-    assert.strictEqual(cfg.controls.volume.control, 'volume');
-    assert.strictEqual(cfg.controls.volume.tip, 'vol');
+    assert.ok(cfg.blanks);
+    assert.ok(cfg.blanks.volume);
+    // legacy "control" is mapped onto "name"
+    assert.strictEqual(cfg.blanks.volume.name, 'volume');
   });
 
   it('should accept ## Actions as backward compat', () => {
     const cfg = parseCuesMd('## Actions\n```json\n{"brightness":{"control":"brightness"}}\n```');
-    assert.ok(cfg.controls);
-    assert.ok(cfg.controls.brightness);
+    assert.ok(cfg.blanks);
+    assert.ok(cfg.blanks.brightness);
   });
 
   it('should handle invalid JSON gracefully', () => {
-    const cfg = parseCuesMd('## Controls\n```json\n{invalid\n```');
-    assert.strictEqual(cfg.controls, undefined);
+    const cfg = parseCuesMd('## Blanks\n```json\n{invalid\n```');
+    assert.strictEqual(cfg.blanks, undefined);
   });
 });
 
@@ -457,10 +465,14 @@ describe('validateCuesMd', () => {
     assert.ok(errors.some(e => e.includes('missing "id"')));
   });
 
-  it('should flag control without control field', () => {
-    const cfg = parseCuesMd('## Controls\n```json\n{"vol":{"tip":"volume"}}\n```');
+  it('should flag blank without name field', () => {
+    // parseBlanksSection back-fills name from JSON key, so to test missing
+    // name we need a JSON entry that explicitly nulls it out — easier to
+    // construct the config directly.
+    const cfg = parseCuesMd('## Blanks\n```json\n{"vol":{"tip":"volume"}}\n```') as any;
+    if (cfg.blanks?.vol) cfg.blanks.vol.name = '';
     const errors = validateCuesMd(cfg);
-    assert.ok(errors.some(e => e.includes('missing required "control"')));
+    assert.ok(errors.some(e => e.includes('missing required "name"')));
   });
 
   it('should warn when multiple blank modes exist but no classifier', () => {

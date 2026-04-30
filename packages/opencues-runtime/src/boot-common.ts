@@ -169,7 +169,7 @@ export function buildSharedRuntime(
   cycling.subscribe();
 
   // BlankFill subscribes only after ConfigLoader.load resolves so its
-  // initial scan sees the populated controlsByWord map. Same pattern
+  // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline.
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs,

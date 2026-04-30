@@ -37,12 +37,12 @@ export interface HostInfo extends CommonHostInfo {
   /** Optional: TTS script path. spawn-process must be available. */
   ttsScriptPath?: string;
   /**
-   * Optional host-native control dispatch. Same shape as chrome's
-   * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
-   * shared TS controls (HackerNewsBlank, etc.) win over the legacy
-   * shell scripts in controls/. Returns null when the controlName
+   * Optional host-native blank dispatch. Same shape as chrome's
+   * blankInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
+   * shared TS blanks (HackerNewsBlank, etc.) win over the legacy
+   * shell scripts in blanks/. Returns null when the blankName
    * isn't in the host's registry; runtime then falls through to
-   * spawnProcess (still works for OS controls like volume/brightness).
+   * spawnProcess (still works for OS blanks like volume/brightness).
    */
   blankInvoke?(spec: import('../../../src/adapter').BlankInvokeSpec):
     import('../../../src/adapter').ProcessHandle | null;
@@ -88,7 +88,7 @@ export function boot(host: HostInfo): BootResult {
   // when collectRenderDirectives sees drift — the bootstrap can't
   // reliably tell user-typed drift apart from a runtime-initiated
   // setText/pushText that hasn't yet flowed through SolidJS's
-  // onContentChange (Cycling.cycleControl → setText → forceRender all
+  // onContentChange (Cycling.cycleBlank → setText → forceRender all
   // run synchronously, before onContentChange fires). Synthesising
   // 'user' there clears the highlight and the next Resolver pass
   // pollutes the now-unattributed word with LLM alts.
@@ -225,7 +225,7 @@ export function boot(host: HostInfo): BootResult {
     },
     collectRenderDirectives(text, cursor) {
       // Observe-only — never synthesise textChange here (see comment by
-      // lastSeenText declaration). Cycling.cycleControl + forceRender
+      // lastSeenText declaration). Cycling.cycleBlank + forceRender
       // race onContentChange and would otherwise look like user drift.
       lastSeenText = text;
       lastSeenCursor = cursor;

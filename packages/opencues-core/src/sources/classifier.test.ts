@@ -24,7 +24,7 @@ const stubAdapter: HttpAdapter = { post: async () => '{}' };
 const blanksPath = path.resolve(__dirname, '../../../../defaults/blanks.md');
 const blanksContent = fs.existsSync(blanksPath) ? fs.readFileSync(blanksPath, 'utf8') : '';
 // Phase 0 deleted the classifier blanks.md content; Phase 1 reused
-// the same filename for the renamed-from-controls file. These tests
+// the same filename for the renamed-from-controls.md file. These tests
 // exercise classifier routing — short-circuit the whole file if the
 // classifier content isn't present (deferred Phase 0 cleanup will
 // delete the file outright in a later commit).

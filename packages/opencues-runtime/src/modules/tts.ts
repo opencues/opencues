@@ -124,17 +124,17 @@ export class TTS {
     const inSatellite = ss !== null && wordIndex >= ss.satelliteIndex && wordIndex <= ssSatEnd;
 
     if (onSelector || inSatellite) {
-      const ctrl = this.configLoader.blanks.get(ss!.controlName);
-      if (!ctrl || !(ctrl as { speak?: boolean }).speak) return null;
+      const blk = this.configLoader.blanks.get(ss!.blankName);
+      if (!blk || !(blk as { speak?: boolean }).speak) return null;
       const sdef = this.configLoader.opencuesState.definitions.get(ss!.currentSetting);
       tip = onSelector ? sdef?.tip : sdef?.valueTips.get(ss!.currentValue);
     } else if (inSpan) {
-      // Span TTS gated on the originating control's `speak`. Without
+      // Span TTS gated on the originating blank's `speak`. Without
       // that gate, every multi-word fill would announce its blankTip
       // on each cycle (affirmations, prompt improver, etc.) regardless
-      // of the user's voice preference for that control.
-      // controlName isn't on SpanFillEntry today; look up by tip match
-      // — works for now since blankTip is unique per control.
+      // of the user's voice preference for that blank.
+      // blankName isn't on SpanFillEntry today; look up by tip match
+      // — works for now since blankTip is unique per blank.
       // Also suppress when current alt is `_` (dismissed).
       const curAlt = span!.alternatives[span!.currentAltIndex];
       if (curAlt === '_') {

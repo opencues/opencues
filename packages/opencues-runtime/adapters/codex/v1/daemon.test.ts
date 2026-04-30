@@ -399,24 +399,24 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
     ]);
   });
 
-  it('controlInvoke dispatches to the right control + returns null for unknown', async () => {
+  it('blankInvoke dispatches to the right blank + returns null for unknown', async () => {
     const frames: Frame[] = [];
     const daemon = createDaemon({ send: (f) => { frames.push(f); } });
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0', method: 'boot', params: { cwd: '/tmp/codex' }, id: 1,
     }));
-    // Unknown control → null (BlankFill / Cycling fall through to spawnProcess).
+    // Unknown blank → null (BlankFill / Cycling fall through to spawnProcess).
     const unknown = daemon.runtime?.blankInvoke({
-      controlName: 'definitely-not-real',
+      blankName: 'definitely-not-real',
       action: 'get',
       args: [],
     });
     expect(unknown).toBeNull();
-    // Known control → ProcessHandle (the result Promise will resolve
-    // with whatever the underlying control returns; we don't await
+    // Known blank → ProcessHandle (the result Promise will resolve
+    // with whatever the underlying blank returns; we don't await
     // it here to keep the test fast and offline-safe).
     const known = daemon.runtime?.blankInvoke({
-      controlName: 'opencues',
+      blankName: 'opencues',
       action: 'get',
       args: ['voice-mode'],
     });
@@ -424,19 +424,19 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
     expect(known).toHaveProperty('result');
   });
 
-  it('CodexAdapter advertises control-invoke capability when binding is supplied', () => {
+  it('CodexAdapter advertises blank-invoke capability when binding is supplied', () => {
     const withInvoke = new CodexAdapter({
       cwd: '/proj',
       log: () => {},
       blankInvoke: () => null,
     });
-    expect(withInvoke.capabilities).toContain('control-invoke');
+    expect(withInvoke.capabilities).toContain('blank-invoke');
 
     const withoutInvoke = new CodexAdapter({ cwd: '/proj', log: () => {} });
-    expect(withoutInvoke.capabilities).not.toContain('control-invoke');
+    expect(withoutInvoke.capabilities).not.toContain('blank-invoke');
   });
 
-  it('CodexAdapter.controlInvoke forwards to the supplied binding', () => {
+  it('CodexAdapter.blankInvoke forwards to the supplied binding', () => {
     const calls: BlankInvokeSpec[] = [];
     const stub = (spec: BlankInvokeSpec): null => { calls.push(spec); return null; };
     const adapter = new CodexAdapter({
@@ -444,24 +444,24 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
       log: () => {},
       blankInvoke: stub,
     });
-    adapter.blankInvoke({ controlName: 'foo', action: 'get', args: ['bar'] });
-    expect(calls).toEqual([{ controlName: 'foo', action: 'get', args: ['bar'] }]);
+    adapter.blankInvoke({ blankName: 'foo', action: 'get', args: ['bar'] });
+    expect(calls).toEqual([{ blankName: 'foo', action: 'get', args: ['bar'] }]);
   });
 
-  it('CodexAdapter.controlInvoke returns null when no binding is supplied', () => {
+  it('CodexAdapter.blankInvoke returns null when no binding is supplied', () => {
     const adapter = new CodexAdapter({ cwd: '/proj', log: () => {} });
-    const result = adapter.blankInvoke({ controlName: 'x', action: 'get', args: [] });
+    const result = adapter.blankInvoke({ blankName: 'x', action: 'get', args: [] });
     expect(result).toBeNull();
   });
 });
 
-describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
+describe('codex daemon — Tier 3.E: blank-invoke RPC', () => {
   it('returns -32000 when called before boot', async () => {
     const { daemon, frames } = build();
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
-      method: 'control-invoke',
-      params: { controlName: 'opencues', action: 'get', args: ['voice-mode'] },
+      method: 'blank-invoke',
+      params: { blankName: 'opencues', action: 'get', args: ['voice-mode'] },
       id: 9,
     }));
     expect(frames[0]).toMatchObject({
@@ -471,15 +471,15 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     });
   });
 
-  it('returns -32602 when params are missing controlName or action', async () => {
+  it('returns -32602 when params are missing blankName or action', async () => {
     const { daemon, frames } = build();
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0', method: 'boot', params: { cwd: '/proj' }, id: 1,
     }));
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
-      method: 'control-invoke',
-      params: { controlName: 'opencues' /* no action */ },
+      method: 'blank-invoke',
+      params: { blankName: 'opencues' /* no action */ },
       id: 9,
     }));
     expect(frames[1]).toMatchObject({
@@ -489,7 +489,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     });
   });
 
-  it('returns null result when controlName is unknown (fallback to native)', async () => {
+  it('returns null result when blankName is unknown (fallback to native)', async () => {
     const frames: Frame[] = [];
     const stubInvoke = vi.fn(() => null);
     const daemon = createDaemon({
@@ -507,8 +507,8 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     }));
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
-      method: 'control-invoke',
-      params: { controlName: 'no-such', action: 'get', args: [] },
+      method: 'blank-invoke',
+      params: { blankName: 'no-such', action: 'get', args: [] },
       id: 2,
     }));
     expect(frames.find(f => 'id' in f && f.id === 2)).toEqual({
@@ -517,11 +517,11 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
       id: 2,
     });
     expect(stubInvoke).toHaveBeenCalledWith({
-      controlName: 'no-such', action: 'get', args: [],
+      blankName: 'no-such', action: 'get', args: [],
     });
   });
 
-  it('forwards the ProcessResult from the dispatcher when control runs', async () => {
+  it('forwards the ProcessResult from the dispatcher when blank runs', async () => {
     const frames: Frame[] = [];
     const stubInvoke = vi.fn(() => ({
       result: Promise.resolve({
@@ -544,8 +544,8 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     }));
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
-      method: 'control-invoke',
-      params: { controlName: 'opencues', action: 'get', args: ['voice-mode'] },
+      method: 'blank-invoke',
+      params: { blankName: 'opencues', action: 'get', args: ['voice-mode'] },
       id: 5,
     }));
     expect(frames.find(f => 'id' in f && f.id === 5)).toEqual({
@@ -555,10 +555,10 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     });
   });
 
-  it('control-invoke returns the dispatcher\'s wrapped error result (non-zero exitCode)', async () => {
-    // The createControlInvoke dispatcher catches throws inside the
-    // control and wraps them into { exitCode: 1, stderr: msg } —
-    // this is normal control behavior, NOT a JSON-RPC error.
+  it('blank-invoke returns the dispatcher\'s wrapped error result (non-zero exitCode)', async () => {
+    // The createBlankInvoke dispatcher catches throws inside the
+    // blank and wraps them into { exitCode: 1, stderr: msg } —
+    // this is normal blank behavior, NOT a JSON-RPC error.
     const frames: Frame[] = [];
     const stubInvoke = vi.fn(() => ({
       result: Promise.resolve({
@@ -581,8 +581,8 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     }));
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
-      method: 'control-invoke',
-      params: { controlName: 'opencues', action: 'set', args: ['x'] },
+      method: 'blank-invoke',
+      params: { blankName: 'opencues', action: 'set', args: ['x'] },
       id: 6,
     }));
     const resp = frames.find(f => 'id' in f && f.id === 6);
@@ -606,8 +606,8 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
     }));
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
-      method: 'control-invoke',
-      params: { controlName: 'opencues', action: 'get', args: ['voice-mode'] },
+      method: 'blank-invoke',
+      params: { blankName: 'opencues', action: 'get', args: ['voice-mode'] },
       id: 7,
     }));
     const resp = frames.find(f => 'id' in f && f.id === 7) as { result?: { stdout: string; exitCode: number } };

@@ -72,9 +72,9 @@ export interface HostBindings {
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
 
   /**
-   * Optional host-native control dispatch. Same shape as chrome's
-   * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess
-   * so shared TS controls win over the legacy shell scripts.
+   * Optional host-native blank dispatch. Same shape as chrome's
+   * blankInvoke — BlankFill + Cycling try this BEFORE spawnProcess
+   * so shared TS blanks win over the legacy shell scripts.
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
 
@@ -119,13 +119,13 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
   ) {
     this.hostVersion = bindings.hostVersion;
     this.cwd = bindings.cwd;
-    // Merge in 'control-invoke' when the host wired a registry. Same
+    // Merge in 'blank-invoke' when the host wired a registry. Same
     // pattern as the chrome adapter — runtime modules check this cap
-    // before trying controlInvoke (otherwise BlankFill skips the path
+    // before trying blankInvoke (otherwise BlankFill skips the path
     // and goes straight to spawnProcess for everything).
     const merged: Capability[] = [...capabilities];
-    if (bindings.blankInvoke && !merged.includes('control-invoke')) {
-      merged.push('control-invoke');
+    if (bindings.blankInvoke && !merged.includes('blank-invoke')) {
+      merged.push('blank-invoke');
     }
     this.capabilities = merged;
   }
@@ -207,8 +207,8 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
     }
   }
   /**
-   * Forward to the host's controlInvoke binding when wired. Returns null
-   * when the binding isn't present or the controlName isn't registered;
+   * Forward to the host's blankInvoke binding when wired. Returns null
+   * when the binding isn't present or the blankName isn't registered;
    * BlankFill + Cycling then fall through to spawnProcess for the legacy
    * shell scripts.
    */

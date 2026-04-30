@@ -1,16 +1,16 @@
 /**
- * Host-compat: which OpenCues integrations a cue/blank/control runs on.
+ * Host-compat: which OpenCues integrations a cue or blank runs on.
  *
  * The OpenStandard supports multiple host integrations — claude-code,
  * opencode, codex, chrome — that share the same .md config format but
  * have different runtime capabilities. The most consequential split is:
  *
  *   - Native hosts (claude-code, opencode, codex) can spawn subprocesses
- *     and read arbitrary filesystem paths. Shell-script-backed cue-controls
+ *     and read arbitrary filesystem paths. Shell-script-backed blanks
  *     (volume.sh, brightness.sh, …) only run here.
  *
  *   - Chrome can't spawn subprocesses or read arbitrary paths from a
- *     content-script context. Only LLM cues + runtime-class controls
+ *     content-script context. Only LLM cues + runtime-class blanks
  *     (HackerNews, Stocks, Weather, …) work in chrome.
  *
  * Rather than make every cue author declare compatibility manually, we
@@ -28,7 +28,7 @@
  *   script: ./X.py             → not chrome  (subprocess)
  *   script: ./X.rb             → not chrome  (subprocess)
  *   blankScript: <same exts>   → not chrome
- *   no script: field           → all hosts   (LLM-only or runtime-class control)
+ *   no script: field           → all hosts   (LLM-only or runtime-class blank)
  *
  * Override rules (applied AFTER auto-detect):
  *

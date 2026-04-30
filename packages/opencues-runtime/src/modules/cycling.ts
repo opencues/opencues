@@ -1,8 +1,8 @@
-// Cycling module — Phase 3 (static alts) + Bucket C (control-aware).
+// Cycling module — Phase 3 (static alts) + Bucket C (blank-aware).
 //
 // Ctrl+Alt+Up/Down dispatches based on what kind of word is highlighted:
 //
-//   1. List control (e.g. affirmations): rotate through stepValues in-place.
+//   1. List blank (e.g. affirmations): rotate through stepValues in-place.
 //   2. Blank-fill DynDef: cycle the originating blank's stepped value.
 //   3. Plain cue word: rotate through cueMap.alternatives (Phase 3 path).
 //
@@ -33,21 +33,21 @@ export class Cycling {
   ) {}
 
   /**
-   * Try host-native control invocation first; fall back to spawning
+   * Try host-native blank invocation first; fall back to spawning
    * the configured script. Sandboxed hosts (Chrome) implement
-   * controlInvoke; CLI hosts (OpenCode, CC) typically don't and rely
+   * blankInvoke; CLI hosts (OpenCode, CC) typically don't and rely
    * on the spawn path. Returns null when neither path is viable
-   * (no controlInvoke + no spawn capability + no scriptPath).
+   * (no blankInvoke + no spawn capability + no scriptPath).
    */
   private invokeOrSpawn(
-    controlName: string,
+    blankName: string,
     action: string,
     args: readonly string[],
     scriptPath: string | undefined,
     options: { detached?: boolean; timeoutMs?: number } = {},
   ): ProcessHandle | null {
     const native = this.adapter.blankInvoke?.({
-      controlName,
+      blankName,
       action,
       args,
       timeoutMs: options.timeoutMs,
@@ -90,7 +90,7 @@ export class Cycling {
 
     // -1. Selector / satellite — opencues "settings" pattern (Step 35).
     //     Highlight on selector cycles setting names; on satellite
-    //     cycles values. Both write back via the control's blankScript.
+    //     cycles values. Both write back via the blank's blankScript.
     if (this.selectorSatelliteState?.current && this.cycleSelectorSatellite(event, words, wordIndex, direction)) {
       return true;
     }
@@ -102,10 +102,10 @@ export class Cycling {
       return true;
     }
 
-    // 1. List control (stepValues) — rotate values in-place.
-    const control = this.configLoader.lookupControl(target.word);
-    if (control && control.control.stepValues && control.control.stepValues.length > 0) {
-      return this.cycleListControl(event, target, control, direction);
+    // 1. List blank (stepValues) — rotate values in-place.
+    const blank = this.configLoader.lookupBlank(target.word);
+    if (blank && blank.blank.stepValues && blank.blank.stepValues.length > 0) {
+      return this.cycleListBlank(event, target, blank, direction);
     }
 
     // 2. Blank-fill DynDef with blankName attribution (Phase I.8) —
@@ -113,8 +113,8 @@ export class Cycling {
     //    blankStep/Suffix/Script.
     const def = this.dynDefs.get(wordIndex);
     if (def && def.blankName) {
-      const ctrl = this.configLoader.blanks.get(def.blankName);
-      if (ctrl && this.cycleBlankStep(event, target, ctrl as BlankEntry['control'], def.blankName, direction)) {
+      const blk = this.configLoader.blanks.get(def.blankName);
+      if (blk && this.cycleBlankStep(event, target, blk as BlankEntry['blank'], def.blankName, direction)) {
         return true;
       }
     }
@@ -175,7 +175,7 @@ export class Cycling {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
 
-      const handle = this.invokeOrSpawn(entry.controlName, 'get', [nextSetting], entry.scriptPath, { timeoutMs: 4000 });
+      const handle = this.invokeOrSpawn(entry.blankName, 'get', [nextSetting], entry.scriptPath, { timeoutMs: 4000 });
       if (handle) {
         handle.result.then(res => {
           if (res.exitCode !== 0 || res.timedOut) return;
@@ -198,7 +198,7 @@ export class Cycling {
           if (this.adapter.pushText) this.adapter.pushText(replaced);
           else { this.adapter.setText(replaced); this.adapter.forceRender(); }
         }).catch(err => {
-          this.adapter.log('error', `Cycling: selector get failed for ${entry.controlName}`, err);
+          this.adapter.log('error', `Cycling: selector get failed for ${entry.blankName}`, err);
         });
       }
       return true;
@@ -228,26 +228,26 @@ export class Cycling {
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
 
-    this.adapter.log('debug', `Cycling: satellite set ${entry.controlName}`, {
+    this.adapter.log('debug', `Cycling: satellite set ${entry.blankName}`, {
       script: entry.scriptPath, setting: entry.currentSetting, value: nextValue,
     });
     try {
       const handle = this.invokeOrSpawn(
-        entry.controlName,
+        entry.blankName,
         'set',
         [entry.currentSetting, nextValue],
         entry.scriptPath,
         { detached: true, timeoutMs: 4000 },
       );
       if (!handle) {
-        this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.controlName}`, {
+        this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.blankName}`, {
           hasScriptPath: !!entry.scriptPath,
           hasSpawnCap: this.adapter.capabilities.includes('spawn-process'),
-          hasControlInvoke: !!this.adapter.blankInvoke,
+          hasBlankInvoke: !!this.adapter.blankInvoke,
         });
       }
     } catch (err) {
-      this.adapter.log('error', `Cycling: satellite set failed for ${entry.controlName}`, err);
+      this.adapter.log('error', `Cycling: satellite set failed for ${entry.blankName}`, err);
     }
     return true;
   }
@@ -314,18 +314,18 @@ export class Cycling {
     return true;
   }
 
-  // ─── Path 1: list control (stepValues) ─────────────────────────────────
+  // ─── Path 1: list blank (stepValues) ─────────────────────────────────
 
-  private cycleListControl(
+  private cycleListBlank(
     event: KeyEvent,
     target: { word: string; start: number; end: number; index: number },
     entry: BlankEntry,
     direction: 1 | -1,
   ): boolean {
-    const values = entry.control.stepValues!;
+    const values = entry.blank.stepValues!;
     let def = this.dynDefs.get(target.index);
     if (!def) {
-      // Build def from the control's stepValues. Index 0 = current word OR
+      // Build def from the blank's stepValues. Index 0 = current word OR
       // first stepValue if current word matches a known one.
       const startIndex = Math.max(0, values.findIndex(v => v.toLowerCase() === target.word.toLowerCase()));
       def = {
@@ -348,23 +348,23 @@ export class Cycling {
   private cycleBlankStep(
     event: KeyEvent,
     target: { word: string; start: number; end: number; index: number },
-    control: { blankStep?: number; blankSuffix?: string; blankScript?: string },
-    controlName: string,
+    blank: { blankStep?: number; blankSuffix?: string; blankScript?: string },
+    blankName: string,
     direction: 1 | -1,
   ): boolean {
-    if (control.blankStep === undefined) return false;
-    const suffix = control.blankSuffix ?? '';
+    if (blank.blankStep === undefined) return false;
+    const suffix = blank.blankSuffix ?? '';
     const cleanWord = target.word.replace(/[\u200B\u200C]/g, '');
     const numStr = suffix && cleanWord.endsWith(suffix)
       ? cleanWord.slice(0, cleanWord.length - suffix.length)
       : cleanWord;
     const cur = parseFloat(numStr);
     if (Number.isNaN(cur)) return false;
-    let next = cur + direction * control.blankStep;
-    // Clamp to 0..100 by default for percentage-style controls.
+    let next = cur + direction * blank.blankStep;
+    // Clamp to 0..100 by default for percentage-style blanks.
     if (next < 0) next = 0;
     if (next > 100) next = 100;
-    const decimals = (control.blankStep.toString().split('.')[1] ?? '').length;
+    const decimals = (blank.blankStep.toString().split('.')[1] ?? '').length;
     const formatted = decimals > 0 ? next.toFixed(decimals) : String(Math.round(next));
     const nextWord = formatted + suffix;
 
@@ -395,16 +395,16 @@ export class Cycling {
     this.adapter.forceRender();
 
     // Write back via script set <num> (no suffix — script expects raw
-    // number). Sandboxed hosts route through controlInvoke; CLI hosts
+    // number). Sandboxed hosts route through blankInvoke; CLI hosts
     // spawn the configured blankScript.
     const home = process.env.HOME ?? '~';
-    const scriptPath = control.blankScript?.startsWith('~')
-      ? home + control.blankScript.slice(1)
-      : control.blankScript;
+    const scriptPath = blank.blankScript?.startsWith('~')
+      ? home + blank.blankScript.slice(1)
+      : blank.blankScript;
     try {
-      this.invokeOrSpawn(controlName, 'set', [formatted], scriptPath, { detached: true, timeoutMs: 4000 });
+      this.invokeOrSpawn(blankName, 'set', [formatted], scriptPath, { detached: true, timeoutMs: 4000 });
     } catch (err) {
-      this.adapter.log('error', `Cycling: blankScript set failed for ${controlName}`, err);
+      this.adapter.log('error', `Cycling: blankScript set failed for ${blankName}`, err);
     }
     return true;
   }

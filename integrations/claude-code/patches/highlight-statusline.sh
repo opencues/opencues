@@ -43,14 +43,14 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
     tip=$(echo "$content" | sed -n 's/.*"cueTip":"\([^"]*\)".*/\1/p')
 
     if [ -n "$word" ]; then
-      is_cue_control=$(echo "$content" | grep -o '"cueControl":true')
+      is_cue_blank=$(echo "$content" | grep -o '"cueBlank":true')
       altcount=$(echo "$content" | sed -n 's/.*"alts":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | wc -l)
-      # Show if word has alts OR is a cue-control with a tip
-      if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_control" -a -n "$tip" ]; then
+      # Show if word has alts OR is a cue-blank with a tip
+      if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_blank" -a -n "$tip" ]; then
         # Inline (no newline) — CC v2.1.x renders only the first line of the
         # status command output. Use a separator instead of a newline.
         printf ' %s|%s ' "$YELLOW" "$RESET"
-        if [ -n "$is_cue_control" ]; then
+        if [ -n "$is_cue_blank" ]; then
           printf '%s' "$tip"
         else
           altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')

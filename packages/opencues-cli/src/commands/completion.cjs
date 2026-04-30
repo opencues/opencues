@@ -12,7 +12,7 @@ const COMMANDS = [
 ];
 const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'codex', 'chrome'];
 // Tab-completion advertises canonical names only. The CLI also accepts
-// the legacy `control` / `controls` as silent aliases (see new.cjs and
+// the legacy `control` / `controls` terms remain as silent aliases (see new.cjs and
 // edit.cjs) for one-version backwards-compat after the controls→blanks
 // rename, but they are intentionally not surfaced in completions.
 const KINDS = ['cue', 'blank'];

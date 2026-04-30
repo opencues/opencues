@@ -367,8 +367,8 @@ function walkSource(dir, core, cb) {
     try {
       const parsed = parseCuesMd(fs.readFileSync(p, 'utf8'));
       const sources = (parsed?.promptConfig?.sources) || {};
-      const controls = parsed?.controls || {};
-      const all = [...Object.values(sources), ...Object.values(controls)];
+      const blanks = parsed?.blanks || {};
+      const all = [...Object.values(sources), ...Object.values(blanks)];
       const hasChromeCompat = all.length === 0 ||
         all.some(e => inferHostCompat(e || {}).hosts.includes('chrome'));
       if (hasChromeCompat) {
