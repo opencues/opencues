@@ -29,14 +29,14 @@ module.exports = function help(argv, ctx) {
   console.log('  install <host>          Install a host integration (claude-code|opencode|codex|chrome|--all)');
   console.log('  uninstall <host>        Roll back an installation');
   console.log('  seed-configs            Copy repo defaults into ~/.opencues/ (first-time + sync)');
-  console.log('  update-configs          Pull new shipped controls/cues/blanks into ~/.opencues/ (after a `git pull`)');
+  console.log('  update-configs          Pull new shipped cues/blanks into ~/.opencues/ (after a `git pull`)');
   console.log('  update                  Pull, rebuild, redeploy installed integrations');
   console.log('  set-key <provider>      Store an API key in ~/.opencues/.env');
   console.log('  check-keys              Verify configured API keys against provider endpoints');
   console.log('');
   console.log('Authoring:');
   console.log('  init                    Scaffold <cwd>/.opencues/ with templates');
-  console.log('  new <kind> <name>       Scaffold a single cue / blank / control');
+  console.log('  new <kind> <name>       Scaffold a single cue / blank');
   console.log('  validate                Lint configs across search paths');
   console.log('  import <source>         Download a community config pack (gist/github/url/local)');
   console.log('');
@@ -46,8 +46,8 @@ module.exports = function help(argv, ctx) {
   console.log('  which                   Print every relevant path (installs, configs, logs)');
   console.log('  version                 Print CLI version + per-integration versions/compat');
   console.log('  doctor                  Cross-host diagnostics + suggested fixes');
-  console.log('  list                    List every defined cue / blank / control with source path');
-  console.log('  show <name>             Print full config for one cue / blank / control by name');
+  console.log('  list                    List every defined cue / blank with source path');
+  console.log('  show <name>             Print full config for one cue / blank by name');
   console.log('  edit <file>             Open ~/.opencues/<file>.md in $EDITOR');
   console.log('  logs [--tail]           Show /tmp/opencues.log (last 50 lines, or follow with --tail)');
   console.log('  debug [on|off]          Toggle runtime debug-mode (~/.opencues/opencues.md; no arg = print current)');

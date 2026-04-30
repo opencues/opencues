@@ -30,7 +30,7 @@ npm i -g opencues               # global install
 
 ## Coming (Tier 2)
 
-`import` (download cue packs from URL/gist/github), `init` (scaffold `<cwd>/.opencues/`), `new <kind> <name>` (scaffold a single cue/blank/control), `validate` (lint configs), `run <host>` (orchestrate launch).
+`import` (download cue packs from URL/gist/github), `init` (scaffold `<cwd>/.opencues/`), `new <kind> <name>` (scaffold a single cue/blank), `validate` (lint configs), `run <host>` (orchestrate launch).
 
 ## Coming (Tier 3+)
 

@@ -1,12 +1,12 @@
 ---
-name: project-controls
+name: project-blanks
 domain: project
 version: 1
 ---
 
-# controls.md
+# blanks.md
 #
-# Cue-controls: words that trigger external actions instead of cycling
+# Blanks: words that trigger external actions instead of cycling
 # text alternatives. "volume" runs a volume script. "weather _" auto-
 # populates with current weather. Etc.
 #
@@ -16,52 +16,52 @@ version: 1
 #
 # 1. Folder-based (PREFERRED for anything with a script or multi-field config):
 #
-#    .opencues/controls/<name>/
-#      cue.md        — control config in YAML frontmatter
-#      <name>.sh     — optional colocated script (OS-bound controls only)
+#    .opencues/blanks/<name>/
+#      cue.md        — blank config in YAML frontmatter
+#      <name>.sh     — optional colocated script (OS-bound blanks only)
 #
-#    Scaffold one with: `opencues new control <name> --project`
+#    Scaffold one with: `opencues new blank <name> --project`
 #
-# 2. Monolithic (THIS FILE — only useful for minimal zero-script controls):
+# 2. Monolithic (THIS FILE — only useful for minimal zero-script blanks):
 #
-#    Single `## Controls` block with JSON declarations. Good for simple
-#    step controls that just transform matched words; not good for
+#    Single `## Blanks` block with JSON declarations. Good for simple
+#    step blanks that just transform matched words; not good for
 #    anything needing a script or long frontmatter.
 #
 # Folder-based entries merge with monolithic ones — folder wins on
 # name conflicts.
 #
 # ─────────────────────────────────────────────────────────────────────
-# CONTROL TYPES
+# BLANK TYPES
 # ─────────────────────────────────────────────────────────────────────
 #
-# Word-control: word triggers a script on Ctrl+Alt+Up/Down
+# Word-blank: word triggers a script on Ctrl+Alt+Up/Down
 #   Fields: control, tip, script, upArgs, downArgs, speak
 #
-# Blank-control: typing `_` near keyword auto-populates with current value
+# Typed blank: typing `_` near keyword auto-populates with current value
 #   Fields: blankKeywords, blankAutoPopulate, blankScript, blankRange,
 #           blankFormat, blankSuffix, blankStep, blankReadOnly,
 #           blankDismissible, blankProximity, blankTip
 #
-# Step control: cycles numeric values (e.g. "2.5f" → "3f") — no script
+# Step blank: cycles numeric values (e.g. "2.5f" → "3f") — no script
 #   Fields: stepPattern OR stepSuffixes, step, stepMin, stepMax, stepFormat
 #
-# List control: cycles a fixed list on a blank-control position
+# List blank: cycles a fixed list on a typed-blank position
 #   Fields: stepValues (JSON array of strings)
 #
-# LLM/HTTP control: implemented as TS class in @opencues/runtime
+# LLM/HTTP blank: implemented as TS class in @opencues/runtime
 #   See docs/guides/adding-a-cue-control.md — these live in
 #   packages/opencues-runtime/src/controls/<name>.ts, not in a cue.md
 #
 # ─────────────────────────────────────────────────────────────────────
-# EXAMPLE: folder-based word-control (with colocated script)
+# EXAMPLE: folder-based word-blank (with colocated script)
 # ─────────────────────────────────────────────────────────────────────
 #
 # Anything that runs a script MUST live in its own folder so the script
 # can sit next to the cue.md and be referenced with a relative path.
-# Layout for a "volume" control:
+# Layout for a "volume" blank:
 #
-#   .opencues/controls/volume/
+#   .opencues/blanks/volume/
 #     cue.md        ← frontmatter below
 #     volume.sh     ← script invoked with upArgs / downArgs
 #
@@ -79,17 +79,17 @@ version: 1
 #   ---
 #
 # Scaffold this layout with:
-#   opencues new control volume --project
+#   opencues new blank volume --project
 
 # ─────────────────────────────────────────────────────────────────────
-# EXAMPLE: monolithic declaration (zero-script controls only)
+# EXAMPLE: monolithic declaration (zero-script blanks only)
 # ─────────────────────────────────────────────────────────────────────
 #
-# Use the inline `## Controls` block for controls that have NO script
-# and short config — typically step or list controls. Anything needing
+# Use the inline `## Blanks` block for blanks that have NO script
+# and short config — typically step or list blanks. Anything needing
 # a script belongs in a folder (see above).
 
-# ## Controls
+# ## Blanks
 #
 # ```json
 # {

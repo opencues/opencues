@@ -32,8 +32,8 @@ module.exports = function which(argv, ctx) {
     ['Shared user-level (used by CC + OC + Codex)', [
       ['TTS script',                 path.join(HOME, '.opencues', 'scripts', 'speak.sh')],
       ['TTS helper (compiled)',      path.join(HOME, '.opencues', 'scripts', 'SpeakCtl.exe')],
-      ['Brightness control dir',     path.join(HOME, '.opencues', 'blanks', 'brightness')],
-      ['Volume control dir',         path.join(HOME, '.opencues', 'blanks', 'volume')],
+      ['Brightness blank dir',       path.join(HOME, '.opencues', 'blanks', 'brightness')],
+      ['Volume blank dir',           path.join(HOME, '.opencues', 'blanks', 'volume')],
       ['OpenCues settings (.md)',    path.join(HOME, '.opencues', 'opencues.md')],
     ]],
     ['OC install state (per fork)', [

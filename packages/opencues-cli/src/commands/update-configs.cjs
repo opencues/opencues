@@ -1,7 +1,7 @@
 // `opencues update-configs` — pull new shipped defaults into ~/.opencues/.
 //
 // Discoverable name for the workflow: "I just pulled new opencues code,
-// get any new shipped controls/cues/blanks onto my disk."
+// get any new shipped cues/blanks onto my disk."
 //
 // Implementation is a thin wrapper around `seed-configs` (which has all
 // four phases: SEED, ADDITIVE SEED, SYNC library files, HEAL empty
@@ -31,12 +31,12 @@ function printHelp() {
   console.log('opencues update-configs [--project] [--dry-run] [--silent]');
   console.log('');
   console.log('Pull new shipped defaults into ~/.opencues/. Run this after `git pull`');
-  console.log('on the opencues repo to pick up any new controls, cues, or blanks');
+  console.log('on the opencues repo to pick up any new cues or blanks');
   console.log('that landed in defaults/ since your last seed.');
   console.log('');
   console.log('Four phases (all idempotent + safe to re-run):');
   console.log('  1. SEED      first-time copy of cues.md / blanks.md / etc.');
-  console.log('  2. ADDITIVE  copy any NEW subdirs from defaults/{cues,controls}/');
+  console.log('  2. ADDITIVE  copy any NEW subdirs from defaults/{cues,blanks}/');
   console.log('  3. SYNC      refresh library files (.sh / .cs / .ps1) — never .md');
   console.log('  4. HEAL      re-seed a 0-byte opencues.md from defaults');
   console.log('  5. COMPILE   colocated .cs → .exe (WSL only)');

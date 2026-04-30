@@ -144,7 +144,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordAltSources
   }
 
   // Folder discoveries: .opencues/{cues,blanks}/<name>/cue.md
-  // Folder name IS the cue/blank/control name. Within the same dir,
+  // Folder name IS the cue/blank name. Within the same dir,
   // can't have two folders with the same name (filesystem prevents it).
   // Folder + monolithic same name is FINE — folder overrides.
   for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank']]) {
@@ -289,7 +289,7 @@ function printHelp() {
   console.log('');
   console.log('Detects:');
   console.log('  * Frontmatter parse errors (with file path)');
-  console.log('  * Duplicate cue/blank/control names within a path');
+  console.log('  * Duplicate cue/blank names within a path');
   console.log('  * script: / blankScript: paths that don\'t exist or aren\'t executable');
   console.log('  * Empty cue folders (no cue.md inside)');
   console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');

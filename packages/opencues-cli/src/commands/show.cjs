@@ -1,5 +1,5 @@
 // `opencues show <name>` — print the resolved config for a single
-// cue / blank / control by name, with its source file.
+// cue / blank by name, with its source file.
 
 'use strict';
 
@@ -38,7 +38,7 @@ module.exports = function show(argv, ctx) {
       const p = path.join(dir, file);
       if (!fs.existsSync(p)) continue;
       const content = fs.readFileSync(p, 'utf8');
-      // crude name match — `### name` or `name:` in controls block
+      // crude name match — `### name` or `name:` in blanks block
       if (new RegExp(`^###\\s+${escapeRe(name)}\\b`, 'm').test(content)
        || new RegExp(`^\\s*${escapeRe(name)}:`, 'm').test(content)) {
         matches.push({ kind: file.replace(/\.md$/, '').replace(/s$/, ''), source: p, scope: dir });
@@ -47,7 +47,7 @@ module.exports = function show(argv, ctx) {
   }
 
   if (matches.length === 0) {
-    console.error(`opencues show: no cue/blank/control named "${name}" found.`);
+    console.error(`opencues show: no cue/blank named "${name}" found.`);
     console.error('Run `opencues list` to see what\'s defined.');
     process.exit(1);
   }
@@ -68,7 +68,7 @@ function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function printHelp() {
   console.log('opencues show <name>');
   console.log('');
-  console.log('Print every config (across all search paths) for a single cue/blank/control');
+  console.log('Print every config (across all search paths) for a single cue/blank');
   console.log('by name. Order is precedence — first match is what the runtime uses.');
   console.log('');
   console.log('Use `opencues list` to find available names.');

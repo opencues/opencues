@@ -1,5 +1,5 @@
-// `opencues list` — list cues / blanks / controls across search paths,
-// with their source file. Useful for "what's actually going to fire?"
+// `opencues list` — list cues / blanks across search paths, with their
+// source file. Useful for "what's actually going to fire?"
 
 'use strict';
 
@@ -9,10 +9,12 @@ const os = require('node:os');
 
 module.exports = function list(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  // --controls accepted as a hidden alias for --blanks (one-version
+  // backwards-compat with the rename).
   const onlyKind =
     argv.includes('--cues')     ? 'cue'     :
     argv.includes('--blanks')   ? 'blank'   :
-    argv.includes('--controls') ? 'control' :
+    argv.includes('--controls') ? 'blank'   :
     null;
 
   let parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList;
@@ -36,16 +38,16 @@ module.exports = function list(argv, ctx) {
   ].filter(Boolean).filter(p => fs.existsSync(p));
 
   const tools = { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList };
-  const results = { cue: [], blank: [], control: [] };
+  const results = { cue: [], blank: [] };
   for (const dir of paths) {
     collect(dir, tools, results);
   }
 
   // Compute host-compat column width so the right column aligns.
-  const allItems = [].concat(results.cue, results.blank, results.control);
+  const allItems = [].concat(results.cue, results.blank);
   const maxHostLen = allItems.reduce((m, it) => Math.max(m, (it.hosts || '').length), 0);
 
-  for (const kind of ['cue', 'blank', 'control']) {
+  for (const kind of ['cue', 'blank']) {
     if (onlyKind && onlyKind !== kind) continue;
     const items = results[kind];
     console.log(`\n${kind.toUpperCase()}S (${items.length}):`);
@@ -71,8 +73,10 @@ function collect(dir, tools, results) {
         }
       }
       if (parsed && parsed.controls) {
+        // Inline `## Controls` block in cues.md / blanks.md — these are
+        // blanks post-rename, so surface them under the blank bucket.
         for (const [name, ctl] of Object.entries(parsed.controls)) {
-          results.control.push({ name, source: p, hosts: hostsLabel(ctl, inferHostCompat, formatHostList) });
+          results.blank.push({ name, source: p, hosts: hostsLabel(ctl, inferHostCompat, formatHostList) });
         }
       }
     } catch { /* validate command surfaces parse errors */ }
@@ -102,14 +106,13 @@ function hostsLabel(input, inferHostCompat, formatHostList) {
 }
 
 function printHelp() {
-  console.log('opencues list [--cues|--blanks|--controls]');
+  console.log('opencues list [--cues|--blanks]');
   console.log('');
-  console.log('List every cue, blank, and control discovered across your search paths,');
+  console.log('List every cue and blank discovered across your search paths,');
   console.log('with the source file each came from. Folder-based entries override');
   console.log('monolithic .md sections of the same name (folder wins).');
   console.log('');
   console.log('  --cues        only cues');
   console.log('  --blanks      only blanks');
-  console.log('  --controls    only controls');
   console.log('  --help        Show this message');
 }

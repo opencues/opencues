@@ -11,8 +11,12 @@ const COMMANDS = [
   'which', 'version', 'help',
 ];
 const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'codex', 'chrome'];
-const KINDS = ['cue', 'blank', 'control'];
-const FILES = ['cues', 'blanks', 'controls', 'opencues'];
+// Tab-completion advertises canonical names only. The CLI also accepts
+// the legacy `control` / `controls` as silent aliases (see new.cjs and
+// edit.cjs) for one-version backwards-compat after the controls→blanks
+// rename, but they are intentionally not surfaced in completions.
+const KINDS = ['cue', 'blank'];
+const FILES = ['cues', 'blanks', 'opencues'];
 
 module.exports = function completion(argv) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

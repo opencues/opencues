@@ -7,7 +7,11 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
-const VALID = new Set(['cues', 'blanks', 'controls', 'opencues']);
+// User-facing (advertised) names. The hidden alias `controls` is added
+// to VALID below for backwards-compat but is intentionally NOT shown in
+// help text or error messages — `blanks` is the canonical term.
+const ADVERTISED = ['cues', 'blanks', 'opencues'];
+const VALID = new Set([...ADVERTISED, 'controls']);
 // One-version backwards-compat alias: `opencues edit controls` silently
 // resolves to blanks.md (controls.md was renamed to blanks.md).
 const ALIASES = { controls: 'blanks' };
@@ -20,11 +24,11 @@ module.exports = function edit(argv) {
   for (const a of argv) { if (!a.startsWith('-') && !name) name = a; }
 
   if (!name) {
-    console.error(`opencues edit: missing <file>. One of: ${[...VALID].join(', ')}`);
+    console.error(`opencues edit: missing <file>. One of: ${ADVERTISED.join(', ')}`);
     process.exit(2);
   }
   if (!VALID.has(name)) {
-    console.error(`opencues edit: unknown <file> "${name}". One of: ${[...VALID].join(', ')}`);
+    console.error(`opencues edit: unknown <file> "${name}". One of: ${ADVERTISED.join(', ')}`);
     process.exit(2);
   }
   // Resolve aliases silently (backwards-compat for the rename window).
@@ -53,7 +57,7 @@ function printHelp() {
   console.log('Open a .opencues/ config file in $EDITOR (or $VISUAL, or vi as fallback).');
   console.log('Auto-creates the file with a stub header if it doesn\'t exist.');
   console.log('');
-  console.log('  <file>      cues | blanks | controls | opencues');
+  console.log('  <file>      cues | blanks | opencues');
   console.log('  --project   Edit <cwd>/.opencues/<file>.md instead of ~/.opencues/<file>.md');
   console.log('');
   console.log('Examples:');

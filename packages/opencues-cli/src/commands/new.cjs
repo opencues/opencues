@@ -1,4 +1,4 @@
-// `opencues new <kind> <name>` — scaffold a single cue / blank / control.
+// `opencues new <kind> <name>` — scaffold a single cue / blank.
 //
 // Default destination: ~/.opencues/<kind>s/<name>/cue.md.
 // `--project` writes to <cwd>/.opencues/<kind>s/<name>/cue.md instead.
@@ -9,10 +9,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const KINDS = new Set(['cue', 'blank', 'control']);
+// User-facing kinds advertised in help/error messages. `control` is
+// accepted but hidden — see KINDS / ALIASES below.
+const ADVERTISED_KINDS = ['cue', 'blank'];
 // Phase-1 backwards-compat: `control` is a silent alias for `blank`
 // (controls/ folder was renamed to blanks/, control.md template merged
-// into blank.md). New canonical kind name is `blank`.
+// into blank.md). New canonical kind name is `blank`. Accepted but NOT
+// surfaced in help text.
+const KINDS = new Set([...ADVERTISED_KINDS, 'control']);
 const KIND_TO_DIR = { cue: 'cues', blank: 'blanks', control: 'blanks' };
 const KIND_TEMPLATE = { cue: 'cue', blank: 'blank', control: 'blank' };
 
@@ -30,11 +34,11 @@ module.exports = function newCmd(argv, ctx) {
 
   if (!kind || !name) {
     console.error('opencues new: missing arguments. Usage: opencues new <kind> <name>');
-    console.error(`<kind>: ${[...KINDS].join(' | ')}`);
+    console.error(`<kind>: ${ADVERTISED_KINDS.join(' | ')}`);
     process.exit(2);
   }
   if (!KINDS.has(kind)) {
-    console.error(`opencues new: unknown kind "${kind}". Known: ${[...KINDS].join(', ')}`);
+    console.error(`opencues new: unknown kind "${kind}". Known: ${ADVERTISED_KINDS.join(', ')}`);
     process.exit(2);
   }
   if (!/^[a-z][a-z0-9-]*$/.test(name)) {
@@ -74,16 +78,16 @@ module.exports = function newCmd(argv, ctx) {
 function printHelp() {
   console.log('opencues new <kind> <name> [--project] [--dry-run]');
   console.log('');
-  console.log('Scaffold a single cue / blank / control with the right frontmatter');
+  console.log('Scaffold a single cue / blank with the right frontmatter');
   console.log('shape pre-filled. Refuses to overwrite existing files.');
   console.log('');
-  console.log('  <kind>      cue | blank | control');
+  console.log('  <kind>      cue | blank');
   console.log('  <name>      lowercase, hyphens, no spaces (e.g. legal-doc)');
   console.log('  --project   Scaffold under <cwd>/.opencues/ (default: ~/.opencues/)');
   console.log('  --dry-run   Print the plan; do not create anything');
   console.log('');
   console.log('Examples:');
   console.log('  opencues new cue legal-doc');
-  console.log('  opencues new control my-api --project');
+  console.log('  opencues new blank my-api --project');
   console.log('  opencues new blank custom-mode');
 }
