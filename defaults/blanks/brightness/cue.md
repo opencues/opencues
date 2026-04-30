@@ -1,7 +1,6 @@
 ---
 name: brightness
-type: control
-control: brightness
+type: blank
 tip: screen brightness
 speak: true
 blankKeywords: brightness, bright, screen, display

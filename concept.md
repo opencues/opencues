@@ -88,13 +88,8 @@ These predate the concept-cleanup pass; the names disagree with the dual-directi
 - ✅ `controlsRegistry` → `blanksRegistry`
 - ✅ `metadata.controlName` → `metadata.blankName`
 - ✅ `BlankValuesCache` deleted (it was dead after the word-cycling removal)
+- ✅ cue.md frontmatter `type: blank` is canonical (legacy `type: control` still accepted by the parser as alias). Redundant `control: <name>` field dropped from all 12 shipped defaults (dirname/name already identifies the blank).
 
-**Remaining — these trade naming clarity for migration / protocol break:**
+**Remaining — only one item, and it has a real cost:**
 
-1. **cue.md frontmatter `type: control`, `control: <name>`** — user-authored config files still use the legacy field names. Either:
-   - Drop both (the dirname under `defaults/blanks/<name>/` already names the blank), or
-   - Rename to `type: blank` + `name: <name>` with parser-side back-compat.
-
-   Cost: every user with a custom blank in `~/.opencues/blanks/<name>/cue.md` needs their file updated. Mitigation = parser-side alias (read either spelling).
-
-2. **Wire format: `'control-invoke'` JSON-RPC method, `"controlName"` JSON key** — preserved to avoid breaking the Codex Rust bridge (`integrations/codex/patches/opencues-bridge/src/lib.rs`). Renaming = protocol bump. Cosmetic value only; not recommended unless we're already shipping a Codex protocol bump for another reason.
+1. **Wire format: `'control-invoke'` JSON-RPC method, `"controlName"` JSON key** — preserved to avoid breaking the Codex Rust bridge (`integrations/codex/patches/opencues-bridge/src/lib.rs`). Renaming = protocol bump. Cosmetic value only; not recommended unless we're already shipping a Codex protocol bump for another reason.

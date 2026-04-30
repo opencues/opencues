@@ -524,8 +524,9 @@ export function parseCuesMd(content: string): CuesMdConfig {
  * Config lives in frontmatter instead of YAML code blocks.
  */
 export interface SingleCueFrontmatter extends CuesMdFrontmatter {
-  /** Cue type: 'prompt' (default), 'tips', or 'control' */
-  type?: 'prompt' | 'tips' | 'control';
+  /** Cue type: 'prompt' (default), 'tips', or 'blank' (alias: 'control' for back-compat).
+   *  'blank' identifies a `_`-triggered config in defaults/blanks/<name>/cue.md. */
+  type?: 'prompt' | 'tips' | 'blank' | 'control';
   scope?: 'words' | 'blanks' | 'all';
   parser?: BlankParser;
   priority?: number;
@@ -681,6 +682,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       result.tips = parseTipsSection(body);
       break;
     }
+    case 'blank':
     case 'control': {
       const control: BlankConfig = {
         control: frontmatter.control || name,

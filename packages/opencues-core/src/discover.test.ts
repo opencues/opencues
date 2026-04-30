@@ -149,6 +149,23 @@ blankScript: /opt/scripts/custom.sh
     const config = parseSingleCueMd(content, '/project/blanks/custom');
     assert.strictEqual(config.controls!['custom'].blankScript, '/opt/scripts/custom.sh');
   });
+
+  it('should accept type: blank as canonical (control is legacy alias)', () => {
+    const content = `---
+name: volume
+type: blank
+blankKeywords: volume
+blankScript: ./volume-blank.sh
+---
+`;
+    const config = parseSingleCueMd(content, '/project/blanks/volume');
+    assert.ok(config.controls);
+    const ctrl = config.controls!['volume'];
+    assert.ok(ctrl);
+    // dirname/name fallback when `control:` is omitted (canonical shape)
+    assert.strictEqual(ctrl.control, 'volume');
+    assert.deepStrictEqual(ctrl.blankKeywords, ['volume']);
+  });
 });
 
 describe('parseSingleCueMd: ignore section', () => {

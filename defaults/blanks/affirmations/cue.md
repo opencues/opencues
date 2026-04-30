@@ -1,5 +1,5 @@
 ---
-type: control
+type: blank
 name: affirmations
 blankKeywords: affirmation, affirm
 stepValues: ["I am strong", "I am brave", "I am worthy", "I am enough"]

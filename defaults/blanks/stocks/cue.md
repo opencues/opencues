@@ -1,7 +1,6 @@
 ---
 name: stocks
-type: control
-control: stocks
+type: blank
 blankKeywords: reddit stock, reddit, rddt, nvidia stock, nvidia, nvda, apple stock, apple, aapl, google stock, google, googl, microsoft stock, microsoft, msft, amazon stock, amazon, amzn, tesla stock, tesla, tsla, meta stock, meta
 blankAutoPopulate: true
 blankFormat: string

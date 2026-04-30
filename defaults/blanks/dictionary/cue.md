@@ -1,7 +1,6 @@
 ---
 name: dictionary
-type: control
-control: dictionary
+type: blank
 blankKeywords: define, definition of, meaning of, what does, what is
 blankAutoPopulate: true
 blankFormat: string

@@ -1,7 +1,6 @@
 ---
 name: hackernews
-type: control
-control: hackernews
+type: blank
 blankKeywords: hn, hackernews
 blankKeywordExpansions.hn: HackerNews
 blankAutoPopulate: true

@@ -1,7 +1,6 @@
 ---
 name: prompt
-type: control
-control: prompt
+type: blank
 blankKeywords: improve prompt, enhance prompt, refine prompt
 blankAutoPopulate: true
 blankFormat: string

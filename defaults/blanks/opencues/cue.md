@@ -1,7 +1,6 @@
 ---
 name: opencues
-type: control
-control: opencues
+type: blank
 blankKeywords: opencues settings, config
 blankAutoPopulate: true
 blankFormat: string

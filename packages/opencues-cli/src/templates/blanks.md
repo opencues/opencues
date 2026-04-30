@@ -32,29 +32,35 @@ version: 1
 # name conflicts.
 #
 # ─────────────────────────────────────────────────────────────────────
-# BLANK TYPES
+# BLANK SHAPES
 # ─────────────────────────────────────────────────────────────────────
 #
-# Word-blank: word triggers a script on Ctrl+Alt+Up/Down
-#   Fields: control, tip, script, upArgs, downArgs, speak
+# A blank is a `_`-triggered slot. The user types your keyword followed
+# by `_`, and your script / runtime class fills the slot. There are
+# four shapes:
 #
-# Typed blank: typing `_` near keyword auto-populates with current value
-#   Fields: blankKeywords, blankAutoPopulate, blankScript, blankRange,
-#           blankFormat, blankSuffix, blankStep, blankReadOnly,
-#           blankDismissible, blankProximity, blankTip
+# 1. Typed blank with script
+#    Fields: blankKeywords, blankScript, blankAutoPopulate, blankFormat,
+#            blankSuffix, blankStep, blankReadOnly, blankProximity,
+#            blankTip, blankDismissible
+#    Example: defaults/blanks/volume/cue.md
 #
-# Step blank: cycles numeric values (e.g. "2.5f" → "3f") — no script
-#   Fields: stepPattern OR stepSuffixes, step, stepMin, stepMax, stepFormat
+# 2. List blank (no script — fixed cycle list)
+#    Fields: blankKeywords, stepValues, tip, blankDismissible
+#    Example: defaults/blanks/affirmations/cue.md
 #
-# List blank: cycles a fixed list on a typed-blank position
-#   Fields: stepValues (JSON array of strings)
+# 3. Selector + Satellite (two-word span)
+#    Adds: blankSatellite, blankSatelliteSeparator, blankClearKeywords,
+#          blankClearOnEdit
+#    Example: defaults/blanks/opencues/cue.md
 #
-# LLM/HTTP blank: implemented as TS class in @opencues/runtime
-#   See docs/guides/adding-a-cue-blank.md — these live in
-#   packages/opencues-runtime/src/blanks/<name>.ts, not in a cue.md
+# 4. Runtime-class blank (LLM/HTTP-backed — TS class, no script)
+#    Implementation: packages/opencues-runtime/src/blanks/<name>.ts
+#    cue.md just declares blankKeywords + blankReadOnly + blankFormat
+#    Examples: defaults/blanks/{stocks,weather,hackernews,prompt}/cue.md
 #
 # ─────────────────────────────────────────────────────────────────────
-# EXAMPLE: folder-based word-blank (with colocated script)
+# EXAMPLE: folder-based blank with a colocated script
 # ─────────────────────────────────────────────────────────────────────
 #
 # Anything that runs a script MUST live in its own folder so the script
@@ -62,52 +68,26 @@ version: 1
 # Layout for a "volume" blank:
 #
 #   .opencues/blanks/volume/
-#     cue.md        ← frontmatter below
-#     volume.sh     ← script invoked with upArgs / downArgs
+#     cue.md              ← frontmatter below
+#     volume-blank.sh     ← responds to `get` and `set <value>`
 #
 # cue.md frontmatter:
 #
 #   ---
 #   name: volume
-#   type: control
-#   control: volume
-#   tip: system volume ± 5
+#   type: blank
+#   tip: system volume
 #   speak: true
-#   script: ./volume.sh        # path is relative to volume/cue.md
-#   upArgs: ["up", "5"]
-#   downArgs: ["down", "5"]
+#   blankKeywords: volume, vol
+#   blankScript: ./volume-blank.sh
+#   blankAutoPopulate: true
+#   blankFormat: integer
+#   blankSuffix: %
+#   blankStep: 5
 #   ---
 #
 # Scaffold this layout with:
 #   opencues new blank volume --project
-
-# ─────────────────────────────────────────────────────────────────────
-# EXAMPLE: monolithic declaration (zero-script blanks only)
-# ─────────────────────────────────────────────────────────────────────
-#
-# Use the inline `## Blanks` block for blanks that have NO script
-# and short config — typically step or list blanks. Anything needing
-# a script belongs in a folder (see above).
-
-# ## Blanks
-#
-# ```json
-# {
-#   "units": {
-#     "control": "units",
-#     "tip": "step numeric values with unit suffixes",
-#     "stepSuffixes": "px em rem % vh vw",
-#     "step": 1,
-#     "stepMin": 0
-#   },
-#   "f-values": {
-#     "control": "f-values",
-#     "stepSuffixes": "f",
-#     "step": 0.5,
-#     "stepFormat": "float"
-#   }
-# }
-# ```
 
 # For complete field reference see docs/features/cue-blanks.md and
 # docs/guides/adding-a-cue-blank.md.

@@ -1,7 +1,6 @@
 ---
 name: answer
-type: control
-control: answer
+type: blank
 blankKeywords: what is the word for, how to say
 blankConsumeContext: true
 blankClearKeywords: true

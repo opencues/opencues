@@ -1,7 +1,6 @@
 ---
 name: weather
-type: control
-control: weather
+type: blank
 blankKeywords: weather, forecast, temp, temperature
 blankAutoPopulate: true
 blankFormat: string

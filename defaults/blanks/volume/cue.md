@@ -1,7 +1,6 @@
 ---
 name: volume
-type: control
-control: volume
+type: blank
 tip: system volume control
 speak: true
 blankKeywords: volume, vol, sound, audio

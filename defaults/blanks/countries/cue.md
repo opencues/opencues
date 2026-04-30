@@ -1,7 +1,6 @@
 ---
 name: countries
-type: control
-control: countries
+type: blank
 blankKeywords: population of, capital of, currency of, region of, language of, languages of, area of, size of
 blankAutoPopulate: true
 blankFormat: string
