@@ -286,7 +286,7 @@ pnpm exec opencues list
 pnpm exec opencues list --cues
 # → only CUES section
 
-pnpm exec opencues list --controls
+pnpm exec opencues list --blanks
 # → only CONTROLS section
 ```
 
@@ -345,7 +345,7 @@ pnpm exec opencues import ./.opencues --dry-run
 # Test local-pack import (the safest source — your own dir):
 pnpm exec opencues import ./.opencues --name test-pack-delete-me
 # → downloads (just copies for local), validates, installs
-# → expected: refused if any control's cue.md has "script: ./X.sh" — that's
+# → expected: refused if any blank's cue.md has "script: ./X.sh" — that's
 #   relative-but-valid; if test fails check the validation logic.
 # → if it succeeds: ls ~/.opencues/packs/test-pack-delete-me/
 
@@ -374,7 +374,7 @@ rm -rf ~/.opencues/packs/test-pack-delete-me
 ```bash
 mkdir /tmp/opencues-init-test && cd /tmp/opencues-init-test
 node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs init --dry-run
-# → plan: 5 CREATE rows for cues.md, blanks.md, controls.md, opencues.md, README.md
+# → plan: 5 CREATE rows for cues.md, blanks.md, opencues.md, README.md
 # → "[dry-run] Nothing executed."
 
 node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs init
@@ -421,12 +421,12 @@ pnpm exec opencues new garbage foo
 pnpm exec opencues new cue Bad_Name
 # → name validation error (must match /^[a-z][a-z0-9-]*$/); exit 2
 
-pnpm exec opencues new control my-control --project
-# → creates <cwd>/.opencues/controls/my-control/cue.md (in repo)
+pnpm exec opencues new blank my-control --project
+# → creates <cwd>/.opencues/blanks/my-control/cue.md (in repo)
 
 # CLEANUP:
 rm -rf ~/.opencues/cues/test-cue
-rm -rf .opencues/controls/my-control
+rm -rf .opencues/blanks/my-control
 ```
 
 ### `run`
@@ -535,7 +535,7 @@ pnpm exec opencues seed-configs
 # → real run; populates ~/.opencues if not already there
 
 ls ~/.opencues
-# → cues.md, blanks.md, controls.md, opencues.md, cues/, controls/
+# → cues.md, blanks.md, opencues.md, cues/, controls/
 
 pnpm exec opencues seed-configs
 # → re-run: all SKIP (idempotent)
@@ -557,7 +557,7 @@ pnpm exec opencues which
 
 ```bash
 ls defaults
-# → cues.md, blanks.md, controls.md, opencues.md, cues/, controls/
+# → cues.md, blanks.md, opencues.md, cues/, controls/
 #   (these are the seed source — NOT an ambient project config anymore)
 
 ls .opencues 2>&1

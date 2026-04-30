@@ -22,8 +22,8 @@ pnpm exec opencues install claude-code --target /path/to/cli.js
 `opencues install claude-code` runs two scripts in order:
 
 1. **`opencues seed-configs --silent`** (top-level CLI, owns shared `~/.opencues/` writes)
-   - First-time copy of `defaults/{cues,blanks,controls,opencues}.md + cues/ + controls/ + scripts/` → `~/.opencues/`
-   - Sync of library files (`.sh` / `.cs` / `.ps1`) from `defaults/{controls,scripts}/` — overwrites stale, never overwrites `.md`
+   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.opencues/`
+   - Sync of library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` — overwrites stale, never overwrites `.md`
    - Self-heal: re-seed a 0-byte `~/.opencues/opencues.md` (would otherwise silently break `opencues ___` blank-fills)
    - Compile colocated `.cs` → `.exe` (WSL only — `BrightCtl.exe`, `VolCtl.exe`, `SpeakCtl.exe`)
 
@@ -66,7 +66,7 @@ No `verbose-property` token-count modification, no `opusplan1m` model option, no
 ```
 integrations/claude-code/patches/
 ├── setup.sh                  # CC-specific install pipeline (called by opencues install)
-├── opencuesRuntime.ts        # The v2 patch source — boot + controlInvoke wiring
+├── opencuesRuntime.ts        # The v2 patch source — boot + blankInvoke wiring
 ├── cursorStateExport.ts      # Legacy v1 patches (unused — opencuesRuntime: 'v1' fallback only)
 ├── wordHighlight.ts          # ↑
 ├── dynamicHighlight.ts       # ↑
@@ -76,7 +76,7 @@ integrations/claude-code/patches/
 └── highlight-statusline.sh   # CC's statusline command — copied to <CC_FORK>/.opencues/statusline.sh
 ```
 
-Cross-host scripts (`speak.sh`, `SpeakCtl.cs`, brightness/volume helpers) live under `defaults/controls/<name>/` and `defaults/scripts/`, NOT here — they're managed by `opencues seed-configs` and shared by every native host (CC + OC + Codex).
+Cross-host scripts (`speak.sh`, `SpeakCtl.cs`, brightness/volume helpers) live under `defaults/blanks/<name>/` and `defaults/scripts/`, NOT here — they're managed by `opencues seed-configs` and shared by every native host (CC + OC + Codex).
 
 ## Manual installation (fallback)
 
@@ -98,7 +98,7 @@ After installation:
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Step controls (configurable increment), cycle alternatives |
+| Ctrl+Alt+Up/Down | Step blanks (configurable increment), cycle alternatives |
 | Escape | Clear highlight |
 
 Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.

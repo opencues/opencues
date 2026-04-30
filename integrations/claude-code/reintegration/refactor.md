@@ -20,7 +20,7 @@
 - **Not solving CC API plugin model.** Upstreaming a plugin hook to Anthropic is a downstream goal after this refactor; we don't wait for it.
 - **Not supporting arbitrary hosts in v1.** Interface is designed to allow other editors, but we only build a Claude Code adapter in the first implementation.
 - **Not regressing current features.** Every reintegrated feature (through Step 37) must still work after migration. No dropping capabilities for architectural purity.
-- **Not changing user-visible config.** `cues.md`, `controls.md`, `opencues.md`, folder-based discovery — all stay as they are.
+- **Not changing user-visible config.** `cues.md`, `blanks.md`, `opencues.md`, folder-based discovery — all stay as they are.
 
 ---
 
@@ -497,7 +497,7 @@ packages/opencues-runtime/src/
 │   ├── dim-render.ts     # RenderDirectives calc (highlight, dim, span)
 │   ├── tts.ts            # text-to-speech spawn
 │   ├── statusline.ts     # writeStatusFile payload
-│   └── config-loader.ts  # cues.md / controls.md / opencues.md
+│   └── config-loader.ts  # cues.md / blanks.md / opencues.md
 ├── state/
 │   ├── highlight-state.ts   # current highlight position, wordIndex
 │   ├── dyn-defs.ts          # WordDef entries + span tracking
@@ -611,7 +611,7 @@ class ConfigLoader {
     const cwd = this.adapter.cwd;
     const [cues, controls, openCues, blanks] = await Promise.all([
       this.adapter.readFile(`${cwd}/cues.md`),
-      this.adapter.readFile(`${cwd}/controls.md`),
+      this.adapter.readFile(`${cwd}/blanks.md`),
       this.adapter.readFile(`${cwd}/opencues.md`),
       this.adapter.readFile(`${cwd}/blanks.md`),
     ]);

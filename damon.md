@@ -51,7 +51,7 @@ Three interaction modes, one navigable system:
 ┌──────────────────────────────────────────────────────────────────┐
 │  @opencues/core  (pure TypeScript — the brain)                   │
 │  CueResolver · RoutedWordSourceGroup · ClassifiedSourceGroup     │
-│  ConfigSource · ControlBlankSource · parsers (cues.md, …)        │
+│  ConfigSource · BlankSource · parsers (cues.md, …)        │
 └──────────────────────────────────┬───────────────────────────────┘
                                    │ HTTPS keep-alive
                                    ▼
@@ -166,7 +166,7 @@ USER TYPES
                         ▼
 CLASSIFYING
 ──────────────────────────────────────────────
-  ControlBlankSource  → no keyword match → pass
+  BlankSource  → no keyword match → pass
   ClassifiedSourceGroup → classifies as FACTUAL
   LLM prompt: "fill in: the capital of France is ___"
 
@@ -197,11 +197,11 @@ USER TYPES
 ──────────────────────────────────────────────
   "volume _"
 
-  ControlBlankSource:
+  BlankSource:
     "volume" is adjacent to _ → matched
     blankSuffix: %
 
-  Reads: controls/volume/state.txt → "50"
+  Reads: blanks/volume/state.txt → "50"
   displayValue = "50" + "%" = "50%"
                         │
                         ▼
@@ -285,7 +285,7 @@ USER TYPES
 ──────────────────────────────────────────────
   "affirmation _"
 
-  ControlBlankSource:
+  BlankSource:
     "affirmation" adjacent to _ → matched
     stepValues: ["I am strong","I am brave","I am worthy","I am enough"]
     blankDismissible: true
@@ -324,7 +324,7 @@ DISMISSED
 
 ### 6. Read-Only Blank (Live Data)
 
-A control-bound blank that fetches live data from an external API but does not allow cycling. The matched keyword is passed to the script so one script can serve multiple lookups (e.g. "reddit" → RDDT → price).
+A blank that fetches live data from an external API but does not allow cycling. The matched keyword is passed to the script so one script can serve multiple lookups (e.g. "reddit" → RDDT → price).
 
 Set `blankReadOnly: true` in the control config.
 
@@ -333,7 +333,7 @@ USER TYPES
 ──────────────────────────────────────────────
   "Reddit stock _"
 
-  ControlBlankSource:
+  BlankSource:
     "reddit" adjacent to _ → matched (blankKeywords includes company names)
     blankReadOnly: true
     → calls: bash stock-blank.sh get reddit
@@ -378,7 +378,7 @@ These work across all cue types and all hosts:
 - **Cursor Navigate** (optional) — Highlight automatically follows cursor to navigable words. Toggle with the `cursor-navigate` setting.
 - **Auto-Submit** — Analysis fires automatically after a pause in typing. Only unseen words are sent to the LLM.
 - **Selector + Satellite Blanks** — A single `_` can become two linked words: a selector picks a setting, a satellite shows/writes its value. How `voice-mode active` toggles work in-text.
-- **Tip Priority** — When a word matches multiple tip sources, a fixed priority decides which one wins (selector > satellite > control blank > cue-control keyword > local cue > LLM).
+- **Tip Priority** — When a word matches multiple tip sources, a fixed priority decides which one wins (selector > satellite > control blank > cue-blank keyword > local cue > LLM).
 - **Hot-Reload Config** — `.md` config files reload within ~2 seconds for native hosts (CC, OC, codex). Chrome polls a content-addressable `.version` hash so `opencues sync chrome --watch` propagates edits into already-open tabs in the same window. No restart needed.
 
 ---
@@ -394,7 +394,7 @@ Lives at `~/.opencues/` (user-level) and optionally `<cwd>/.opencues/` (project-
 ├── cues/           — Folder-based word cue configs (grammar, legal, medical, financial)
 │   └── grammar/cue.md
 ├── blanks.md       — Blank-fill modes (math, factual, grammar, etc.)
-├── controls.md     — Inline control definitions (rarely used)
+├── blanks.md     — Inline control definitions (rarely used)
 └── controls/       — Folder-based controls (one folder per control)
     └── volume/
         ├── cue.md            — Config (blankKeywords, blankStep, blankSuffix, etc.)
@@ -463,7 +463,7 @@ Run / inspect:
 
 Three high-level surfaces:
 
-**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.opencues/` from the shipped `defaults/` so you start with the same `cues.md` / `blanks.md` / `controls.md` that ship with the project.
+**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.opencues/` from the shipped `defaults/` so you start with the same `cues.md` / `blanks.md` / `blanks.md` that ship with the project.
 
 **Authoring** — for users *building* their own cues. `init` scaffolds a `.opencues/` directory in any project. `new control hackernews-rss` (or `new cue legal`, `new blank math`) writes a starter file with comments. `validate` lints the configs across every search path before you start the host. `import gh:someone/cool-cues` pulls a community pack.
 

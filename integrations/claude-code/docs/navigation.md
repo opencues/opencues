@@ -31,7 +31,7 @@ Implements features [1](../../../docs/features/navigation.md), [3](../../../docs
 ## Navigation Filter
 
 Navigation targets are determined by `_isCueControl(word)` which checks:
-1. `_cueControlOverrides[word]` — named control words (e.g., `volume`, `brightness`)
+1. `_cueBlankOverrides[word]` — named control words (e.g., `volume`, `brightness`)
 2. `_stepPatterns` — step control regex patterns (auto-generated from `stepSuffixes` or explicit `stepPattern`)
 
 No hardcoded number pattern — all navigable values are config-driven via `controls/` folder `cue.md` files.

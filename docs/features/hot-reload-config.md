@@ -20,11 +20,11 @@ Config file changes take effect within ~2 seconds, without restarting the integr
 3. **`_reloadCuesConfig()`** sets `_configReloading = true`, then parses all config files into local variables:
    - `cues.md` (tips, prompt sources, ignore list)
    - `blanks.md` (blank-fill modes, classifier, parsers)
-   - `controls.md` (cue-control JSON block)
+   - `blanks.md` (cue-blank JSON block)
    - `cues/{name}/cue.md` (folder-based word sources via `discoverFolderConfigs`)
-   - `controls/{name}/cue.md` (folder-based controls)
+   - `blanks/{name}/cue.md` (folder-based controls)
    - `opencues.md` (settings, current values, selector/satellite tips — **user-level only**, `~/.opencues/opencues.md`)
-4. **Atomic apply** — all parsed results are assigned to globals in a single block (`_cueControlOverrides`, `_localCueMap`, `_cuesIgnoreWords`, etc.). If parsing throws, the previous config is preserved (`_applied` stays false and the resolver rebuild is skipped)
+4. **Atomic apply** — all parsed results are assigned to globals in a single block (`_cueBlankOverrides`, `_localCueMap`, `_cuesIgnoreWords`, etc.). If parsing throws, the previous config is preserved (`_applied` stays false and the resolver rebuild is skipped)
 5. **Resolver rebuild** — `_cueResolver` is constructed from the new sources, `_resolverGeneration` is incremented, and `_dynLastAnalyzed` is cleared so all visible words re-analyze against the new config
 6. **`_configLoadedAt`** is set to `Date.now()`, restarting the 2-second TTL
 
@@ -34,9 +34,9 @@ Config file changes take effect within ~2 seconds, without restarting the integr
 
 - `cues.md` — tips, prompt sources, ignore list
 - `blanks.md` — blank-fill modes, parsers
-- `controls.md` — cue-control definitions
+- `blanks.md` — cue-blank definitions
 - `cues/{name}/cue.md` — folder-based word sources (adding or removing a folder)
-- `controls/{name}/cue.md` — folder-based controls (adding or removing a folder)
+- `blanks/{name}/cue.md` — folder-based controls (adding or removing a folder)
 - `opencues.md` — settings, current values, selector/satellite tips (`_openCuesSettings`, `_openCuesCurrent`, `_openCuesTips`, `_openCuesSatTips`). **User-level only** (`~/.opencues/opencues.md`); project-level `opencues.md` is ignored.
 
 The `_localCueMap` is rebuilt from scratch on every reload (not merged), so deleting a tip from `cues.md` removes it immediately.

@@ -1,6 +1,6 @@
 # OpenCues for OpenCode
 
-`@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-controls inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
+`@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-blanks inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
 
 > **Shares user-level state with CC + Codex**: `~/.opencues/` (cue/blank/control configs) and `~/.opencues/scripts/speak.sh` (TTS) are common across all three native hosts. Brightness/volume controls, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews controls — all work identically on OpenCode because they spawn the same scripts that CC + Codex spawn. You can install OpenCode standalone (no CC required) and TTS still works.
 
@@ -104,11 +104,10 @@ Each directory has the same shape:
 ```
 .opencues/
 ├── cues.md          word sources + LLM prompts
-├── blanks.md        blank-fill modes
-├── controls.md      cue-control declarations
+├── blanks.md        cue-blank declarations
 ├── cues/            folder-based cue sources (one folder per source)
 │   └── <name>/cue.md
-└── controls/        folder-based control configs
+└── blanks/          folder-based cue-blank configs
     └── <name>/cue.md
 ```
 
@@ -153,7 +152,7 @@ opencues install opencode     # rebuilds + redeploys into fork
 opencues run opencode         # restart
 ```
 
-`.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/*`, `controls/*`) hot-reload within ~2s on the next keystroke. Set `OPENCUES_HOME` to point at a non-default config root if you keep your configs separately from the repo.
+`.md` config files (`cues.md`, `blanks.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke. Set `OPENCUES_HOME` to point at a non-default config root if you keep your configs separately from the repo.
 
 ---
 

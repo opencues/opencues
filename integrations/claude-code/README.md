@@ -1,6 +1,6 @@
 # OpenCues for Claude Code
 
-`@opencues/claude-code` — patches Claude Code's CLI via [tweakcc](https://github.com/Piebald-AI/tweakcc) to add real-time word alternatives, blanks, and cue-controls inline in your prompts.
+`@opencues/claude-code` — patches Claude Code's CLI via [tweakcc](https://github.com/Piebald-AI/tweakcc) to add real-time word alternatives, blanks, and cue-blanks inline in your prompts.
 
 > **tweakcc is just our patcher tool.** Every stock tweakcc patch (verbose-property, opusplan1m, thinker-symbol-*, worktree-mode, the launch banner, etc.) is disabled — only the OpenCues v2 wiring lands in cli.js. Users who want tweakcc's other features should run stock tweakcc separately.
 
@@ -32,7 +32,7 @@ pnpm --filter @opencues/claude-code dev-install -- \
 The installer (`opencues install claude-code`) chains two scripts:
 
 1. **`opencues seed-configs --silent`** (shared `~/.opencues/` writes — used by all native hosts)
-   - First-time copy of `defaults/{cues,blanks,controls,opencues}.md + cues/ + controls/ + scripts/` → `~/.opencues/`
+   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.opencues/`
    - Sync of library files (`.sh` / `.cs` / `.ps1`) every install — overwrites stale, never overwrites your `.md` edits
    - Self-heal a 0-byte `~/.opencues/opencues.md`
    - Compile colocated `.cs` → `.exe` (WSL only)
@@ -87,12 +87,11 @@ Project-level wins on name conflicts (cue source name, blank mode name, control 
 ```
 .opencues/
 ├── cues.md          word sources + LLM prompts
-├── blanks.md        blank-fill modes
-├── controls.md      cue-control declarations
+├── blanks.md        cue-blank declarations
 ├── opencues.md      settings / state (voice-mode, tips-mode, etc.)
 ├── cues/            folder-based cue sources (one folder per source)
 │   └── <name>/cue.md
-└── controls/        folder-based control configs
+└── blanks/          folder-based cue-blank configs
     └── <name>/cue.md
 ```
 
@@ -134,7 +133,7 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 # Restart claude-cues
 ```
 
-`.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/*`, `controls/*`) hot-reload within ~2s on the next keystroke — no install needed for config edits.
+`.md` config files (`cues.md`, `blanks.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke — no install needed for config edits.
 
 ---
 
@@ -157,9 +156,9 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
     └── patch-state/               tweakcc's config + cli.js.backup
 
 ~/.opencues/                        (USER-LEVEL — shared by CC + OpenCode + Codex)
-├── cues.md, blanks.md, controls.md, opencues.md   user-editable config (never overwritten)
+├── cues.md, blanks.md, opencues.md   user-editable config (never overwritten)
 ├── cues/<name>/cue.md             folder-based cue configs
-├── controls/<name>/               folder-based controls — colocated with their helpers:
+├── blanks/<name>/               folder-based controls — colocated with their helpers:
 │   ├── brightness/                  cue.md + brightness.sh + BrightCtl.exe + brightness-set.ps1
 │   ├── volume/                      cue.md + volume.sh + VolCtl.exe
 │   └── opencues/                    cue.md + opencues-blank.sh

@@ -1,7 +1,7 @@
 # Template instruction tests
 
 These scripts verify that the instructions in the scaffolded `.opencues/`
-templates (`cues.md`, `blanks.md`, `controls.md`, `opencues.md`, plus the
+templates (`cues.md`, `blanks.md`, `opencues.md`, plus the
 per-kind `new/*.md` files) actually work when followed. Each test walks
 through the user journey documented in the template comments and asserts
 the behaviour matches.

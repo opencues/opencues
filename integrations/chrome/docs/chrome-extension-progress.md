@@ -65,7 +65,7 @@ Tracking what has been manually verified in the Chrome extension integration.
 | Prompt: not cycling | Consume-all WordDef had `controlName` → navigator routed to `controlAction()` (no-op). Added `consumeAll: true` metadata flag to bypass |
 | Prompt: LLM/tips overwriting span words | Re-added `controlName` to consume-all WordDef for LLM protection; `consumeAll` flag routes cycling correctly |
 | Consume-all: stale def clearing deleted span entry | Skip stale def clearing for consume-all fills (entire text replaced, no context word to clear) |
-| Volume: not navigable | Control-bound blanks with `controlName` and `!blankReadOnly` now navigable |
+| Volume: not navigable | Blanks with `controlName` and `!blankReadOnly` now navigable |
 | Volume: number not updating in text | Navigator controlAction path now replaces word in DOM with returned value |
 | Volume: LLM giving word alts for "volume" | Standalone control words skipped in tips + LLM analysis; minimal WordDef created for renderer dimming |
 | Selector/satellite: not auto-populating | Implemented satellite branch in checkBlanks, paired WordDefs, span setup |
@@ -140,7 +140,7 @@ Default-source isolation + bundle precedence over bake-time.
 - `[opencues] bundled configs loaded: N files from dist/configs/` —
   was 0 before sync, > 0 after.
 - All shipped configs flip from `← bake-time` to `← bundle`:
-  - `cues.md`, `controls.md`, `blanks.md`
+  - `cues.md`, `blanks.md`
   - `cues/{financial,grammar,legal,medical}/cue.md`
   - All 9 controls
 - `opencues.md` correctly stays `← storage` (writable file — voice-mode /
@@ -184,13 +184,13 @@ Negative test — explicit-opt-in property holds.
 Explicit opt-in via `--include` — project content overlays user.
 
 Test project: `~/testing/.opencues/` (contains `cues.md`, `blanks.md`,
-`controls.md`). Distinguishing marker: `cues.md` frontmatter
+`blanks.md`). Distinguishing marker: `cues.md` frontmatter
 `name: project-cues` (vs user-level `name: claude-code-cues`).
 
 **Dry-run first** — `sync chrome --include ~/testing/.opencues --dry-run`:
 - Source list now shows TWO entries:
   `source: user /home/wilfred/.opencues` + `source: include /home/wilfred/testing/.opencues`
-- The 3 files where names collide (`cues.md`, `blanks.md`, `controls.md`)
+- The 3 files where names collide (`cues.md`, `blanks.md`)
   flip to come from the include path; non-conflicting files still come
   from user.
 

@@ -12,7 +12,7 @@ Tips come from several sources depending on the word type:
 |---|---|---|
 | **Selector word** | `opencues.md` `tips:` block (setting-level line) | `voice-mode` → "Gates TTS globally" |
 | **Satellite word** | `opencues.md` `tips:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
-| **Control blank** | `blankTip` in the control's `cue.md` | `72` → "System volume" |
+| **Control blank** | `blankTip` in the blank's `cue.md` | `72` → "System volume" |
 | **Cue-control keyword** | Live script `get` output, falls back to `tip` in `cue.md` | `volume` → "85" |
 | **Local cue (`cues.md ## Tips`)** | `cues.md` `## Tips` JSON block via instant `cueMap` lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
 | **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
@@ -47,11 +47,11 @@ The JSON file (`_hlExport`) contains these fields:
 | `altCueTips` | object \| null | Map of each alternative to its own tip (for per-alternative tip display during cycling) |
 | `alts` | string[] \| null | Alternatives list for the highlighted word |
 | `currentAltIndex` | number \| undefined | Position within the alternatives list (0-based). Only set when a word with alternatives is highlighted. `undefined` when inactive or the word has no alts. |
-| `cueControl` | true \| undefined | True if the word is a cue-control (custom control or control-bound blank with a tip). Only set to `true` when applicable. `undefined` (not `false`) when the word is not a cue-control. |
+| `cueControl` | true \| undefined | True if the word is a cue-blank (custom control or blank with a tip). Only set to `true` when applicable. `undefined` (not `false`) when the word is not a cue-blank. |
 | `timestamp` | number | `Date.now()` when the export was written |
 | `_debug` | object | Debug info: word, isCA, cueControlTip, overrides keys, cueValues |
 
-**Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, control blanks, cue-control keywords, local cues, LLM).
+**Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, control blanks, cue-blank keywords, local cues, LLM).
 
 ---
 
@@ -69,10 +69,10 @@ The `highlight-statusline.sh` script is a self-contained bash script that reads 
 **Display format:**
 - **Inactive:** `user@host:dir` (PS1-style prefix, colored with tput — always shown)
 - **Regular word:** `word (pos/total) - tip` where pos is `currentAltIndex + 1` and total is the alts array length
-- **Selector word:** `tip` only — shows the setting-level tip from `opencues.md` (displayed as cue-control)
-- **Satellite word:** `tip` only — shows the per-value tip from `opencues.md`, falls back to setting-level (displayed as cue-control)
+- **Selector word:** `tip` only — shows the setting-level tip from `opencues.md` (displayed as cue-blank)
+- **Satellite word:** `tip` only — shows the per-value tip from `opencues.md`, falls back to setting-level (displayed as cue-blank)
 - **Cue-control keyword:** `tip` only — the word is already highlighted in the input, so repeating it is redundant
-- **Control blank:** `tip` only — only shown if `blankTip` is set in the control's config (displayed as cue-control)
+- **Control blank:** `tip` only — only shown if `blankTip` is set in the blank's config (displayed as cue-blank)
 - **No tip:** Output suppressed entirely
 
 The script suppresses output entirely for words that have neither alts nor a tip, so the status line stays clean.
@@ -86,7 +86,7 @@ The script suppresses output entirely for words that have neither alts nor a tip
 - `CueResult.cueTip` provides the primary tip text for the focused word
 - `CueResult.altCueTips` maps each alternative to its own tip, enabling per-alternative tip display during cycling
 - `WordDef.speak` flag indicates whether the tip should be read aloud via TTS
-- Control blanks use `blankTip` from the control's config; suppressed if unset
+- Control blanks use `blankTip` from the blank's config; suppressed if unset
 - Cue-control keywords use live script output with fallback to `tip` from config
 - Selector/satellite tips are read from the backing config file (`opencues.md` `tips:` block), not from static metadata
 
@@ -96,6 +96,6 @@ The script suppresses output entirely for words that have neither alts nor a tip
 - Render the current word name, cycle position (e.g., "2/4"), and cue-tip text
 - Switch the displayed tip when cycling to show the per-alternative tip from `altCueTips`
 - Execute TTS when `speak` is true, using a platform-appropriate speech engine
-- Implement the tip resolution branches: control-bound words (selector/satellite, then regular blanks), cue-control keywords, then general words (local cues, LLM) — see [Tip Priority](tip-priority.md)
+- Implement the tip resolution branches: control-bound words (selector/satellite, then regular blanks), cue-blank keywords, then general words (local cues, LLM) — see [Tip Priority](tip-priority.md)
 - For selector/satellite words, read tips from the backing config's `tips:` block and hot-reload them
 - Suppress the display when no tip resolves for a word

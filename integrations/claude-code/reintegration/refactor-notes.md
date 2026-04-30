@@ -592,10 +592,10 @@ Ctrl+Alt+Left/Right or Ctrl+Alt+Up/Down. No polling, no stale state.
 Phases 0–5 ship the runtime spine + the most common path features
 (navigation, visible highlight, static cycling, statusline + tips, TTS).
 **That's about 4 of v1's 38 steps fully ported.** A lot of breadth is
-still missing — cue-controls, blank-fill (8 sub-steps), LLM resolver
+still missing — cue-blanks, blank-fill (8 sub-steps), LLM resolver
 path, span infrastructure, selector/satellite, real ConfigLoader
 (currently only loads `claude-code-tips.json`, not `cues.md` /
-`controls.md` / `opencues.md`).
+`blanks.md` / `opencues.md`).
 
 The full audit + suggested order lives at
 `integrations/claude-code/reintegration/parity.md`.

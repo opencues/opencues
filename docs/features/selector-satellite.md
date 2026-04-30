@@ -79,8 +79,8 @@ The word-count change between old and new values is handled on every cycle: if t
 
 ## Read Flow (Abstract)
 
-1. User types a phrase containing the control's keyword and a `_`.
-2. The blank source matches the keyword within proximity of the `_`, shells out to the control's script, and receives a two-word response: `"<setting> <value>"`.
+1. User types a phrase containing the blank's keyword and a `_`.
+2. The blank source matches the keyword within proximity of the `_`, shells out to the blank's script, and receives a two-word response: `"<setting> <value>"`.
 3. Because the control declares `blankSatellite: true` and the script output contains a space, the source emits a blank-fill result whose metadata carries both the selector value *and* the satellite value.
 4. The integration's auto-populate layer replaces the `_` with `<setting> <value>` (two words in place of one), then constructs the two word definitions with their flags, cross-pointers, and alts lists.
 
@@ -233,7 +233,7 @@ When combined with `blankClearOnEdit: true`, editing the selector or satellite t
 
 When `blankClearKeywords` is not set, keywords remain in the text but are suppressed from navigation and visual dimming while the pair is live.
 
-The rule is evaluated dynamically on every render: **while a `selectorWord` exists anywhere in the text, any word to its left whose lowercase value matches an entry in the owning control's `blankKeywords` is suppressed from navigation and visual dimming.**
+The rule is evaluated dynamically on every render: **while a `selectorWord` exists anywhere in the text, any word to its left whose lowercase value matches an entry in the owning blank's `blankKeywords` is suppressed from navigation and visual dimming.**
 
 Properties:
 

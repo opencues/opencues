@@ -26,10 +26,10 @@ That covers every cue + control we ship today without a single annotation:
 |---|---|---|
 | `cues.md ### grammar` (LLM only) | all | no script |
 | `blanks.md ### math` (compute parser) | all | no script |
-| `controls/affirmations/cue.md` (list) | all | no script |
-| `controls/stocks/cue.md` (runtime class) | all | no script |
-| `controls/volume/cue.md` (`script: ./volume.sh`) | claude-code, codex, opencode | `.sh` |
-| `controls/brightness/cue.md` (`script: ./brightness.sh`) | claude-code, codex, opencode | `.sh` |
+| `blanks/affirmations/cue.md` (list) | all | no script |
+| `blanks/stocks/cue.md` (runtime class) | all | no script |
+| `blanks/volume/cue.md` (`script: ./volume.sh`) | claude-code, codex, opencode | `.sh` |
+| `blanks/brightness/cue.md` (`script: ./brightness.sh`) | claude-code, codex, opencode | `.sh` |
 
 ---
 
@@ -61,7 +61,7 @@ Both accept:
 - A runtime-class control that ALSO has a shell fallback for native
   hosts. Without `on-host:`, auto-detect sees the `.sh` and excludes
   chrome — the override re-includes it. See
-  `.opencues/controls/opencues/cue.md` for a real example.
+  `.opencues/blanks/opencues/cue.md` for a real example.
 
 ### When you'd use `not-on-host:`
 

@@ -8,7 +8,7 @@ Implements feature [14](../../../docs/features/secondary-display.md). See that d
 
 **Patch files:** `patches/highlight-statusline.sh` (status line script), `patches/wordHighlight.ts` (export JSON)
 
-Shows the highlighted word, tip text, and alternative count in Claude Code's status bar. Cue-controls show their tip text only. Alt-cycling words show word, position, and tip.
+Shows the highlighted word, tip text, and alternative count in Claude Code's status bar. Cue-blanks show their tip text only. Alt-cycling words show word, position, and tip.
 
 ## Display Format
 
@@ -21,7 +21,7 @@ word (N/M) - Tip text for this word
 - **N/M** — current alternative position / total alternatives
 - **Tip text** — from `~/claude-code-cues/.opencues/tips.json` (only for tips words, not LLM alternatives)
 
-Words without alts or a cue-control tip produce no status line output.
+Words without alts or a cue-blank tip produce no status line output.
 
 ## Setup
 
@@ -68,11 +68,11 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 |-------|------|--------|
 | `active` | boolean | `_hlState.active` |
 | `highlightedWord` | string | Current word text |
-| `cueControl` | boolean | `true` if word is a cue-control (step control or custom). When set, `tip`/`alts`/`altCueTips` are null. |
-| `tip` | string | `_dynDefs.words[i].tip` (from local cues, null for cue-controls) |
-| `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues, null for cue-controls) |
+| `cueControl` | boolean | `true` if word is a cue-blank (step control or custom). When set, `tip`/`alts`/`altCueTips` are null. |
+| `tip` | string | `_dynDefs.words[i].tip` (from local cues, null for cue-blanks) |
+| `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues, null for cue-blanks) |
 | `currentAltIndex` | number | Updated by cycling and per-word clearing |
-| `altCueTips` | object | Per-alternative tip text (tips words only, null for cue-controls) |
+| `altCueTips` | object | Per-alternative tip text (tips words only, null for cue-blanks) |
 
 ## Display Format
 
@@ -84,7 +84,7 @@ The status line script formats the display based on control type:
 | Alt-cycling word | `{word} ({N}/{total}) - {cueTip}` | `agents (1/3) - Spawn parallel workers` |
 | No tip | `{word} ({N}/{total})` | `happy (2/4)` |
 
-Cue-controls (custom controls, control-bound blanks, step controls, list controls, dynamic list controls, read-only controls) all show just the `cueTip` text — the word is already highlighted in the input so repeating it in the status line is redundant.
+Cue-blanks (custom blanks, blanks, step blanks, list blanks, dynamic list blanks, read-only blanks) all show just the `cueTip` text — the word is already highlighted in the input so repeating it in the status line is redundant.
 
 ## Tips Source
 

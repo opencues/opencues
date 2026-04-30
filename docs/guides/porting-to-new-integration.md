@@ -76,15 +76,15 @@ The integration must:
 Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. A word is navigable if:
 - It has alternatives (`alts.length > 1`)
 - It matches a step control pattern (config-driven increment/decrement)
-- It's a cue-control word (in `_cueControlOverrides`)
-- It has `metadata.controlName` (control-bound blank — **exception: navigable with 1 alt**)
+- It's a cue-blank word (in `_cueBlankOverrides`)
+- It has `metadata.blankName` (blank — **exception: navigable with 1 alt**)
 - It's part of a multi-word span (navigable at the span's original index)
 
 ### 5. Cycling
 
 Up/Down at a navigable position cycles alternatives. Priority order:
 1. **Cue-control words** — run external script (debounced)
-2. **Control-bound blanks** — run script synchronously, call `script get` for new value, update display
+2. **Blanks** — run script synchronously, call `script get` for new value, update display
 3. **Step control** — config-driven increment/decrement, only if no alternatives exist at this position
 4. **Alternative cycling** — cycle through `alternatives` array
 
@@ -118,11 +118,11 @@ Sources are queried in priority order (highest first). When two sources return r
 - **Higher priority wins** — lower priority result is discarded
 - **Same priority** — alternatives are deduplicated and merged (case-sensitive)
 
-Key priorities: `ControlBlankSource` (95) > `ClassifiedSourceGroup` (90) > `ConfigSource`/grammar (50-75)
+Key priorities: `BlankSource` (95) > `ClassifiedSourceGroup` (90) > `ConfigSource`/grammar (50-75)
 
 ### Tips protection
 
-When merging results, entries from `source: 'tips'` (local tips file) are NEVER overwritten by LLM results. Similarly, entries with `metadata.controlName` (control-bound blanks) are protected from grammar/LLM overwrite. The integration's merge logic must respect these protections.
+When merging results, entries from `source: 'tips'` (local tips file) are NEVER overwritten by LLM results. Similarly, entries with `metadata.blankName` (blanks) are protected from grammar/LLM overwrite. The integration's merge logic must respect these protections.
 
 ### Linked word cycling
 
@@ -186,11 +186,11 @@ The `compute` parser evaluates arbitrary JavaScript via `new Function()`. This i
 
 If a word at position N matches a step control pattern (checked via `_isCueControl`), the analysis pipeline skips it. The LLM is never called for step-controlled values — they get step control cycling instead.
 
-### Control-bound blanks: only first `_` is bound
+### Blanks: only first `_` is bound
 
 If the input has multiple underscores (e.g., `set _ to _`), only the FIRST `_` is bound to the control. The second stays as a regular blank.
 
-### Cache invalidation for control-bound blanks
+### Cache invalidation for blanks
 
 When `_` reappears at a position that previously had a control-bound value, the old WordDef must be cleared and the resolver must re-run. Without this, the stale value persists.
 
@@ -200,17 +200,17 @@ opencues-core's parsers are stateless — call `parseCuesMd()` any time to re-pa
 
 ---
 
-## Control-bound blanks: additional integration notes
+## Blanks: additional integration notes
 
-See `docs/features/control-blanks.md` for the full spec. Key integration points:
+See `docs/features/cue-blanks.md` for the full spec. Key integration points:
 
 1. **`readControlState` callback** — passed to `buildSourcesFromConfig`. Calls `blankScript get [keyword] [context...]` and returns the raw string output. Validation is config-driven by `blankRange` and `blankFormat`.
-2. **Result filter exception** — control-blank results have only 1 alternative but must pass through (normal filter requires >1).
-3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular control blanks. Selector/satellite blanks use the `tips:` block from `opencues.md` instead. Grammar/LLM tips cannot override any position with `metadata.controlName`. See `docs/features/tip-priority.md` for the full resolution order.
+2. **Result filter exception** — blank results have only 1 alternative but must pass through (normal filter requires >1).
+3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular control blanks. Selector/satellite blanks use the `tips:` block from `opencues.md` instead. Grammar/LLM tips cannot override any position with `metadata.blankName`. See `docs/features/tip-priority.md` for the full resolution order.
 4. **Two-script pattern** — `blankScript` (for `get`/`set`) is separate from `script` (for `up`/`down`). The blank cycling handler calculates the target value and calls `blankScript set <value>` synchronously. Falls back to `script` if `blankScript` is not set.
-5. **Cycling runs synchronously** — unlike word-based controls which debounce and spawn detached, control-bound blank cycling runs the script synchronously then calls `script get` for the new value before updating the display.
-6. **Ownership model (critical)** — `metadata.controlName` must only be cleared by user edits, never by LLM results. Two separate code paths:
-   - **User edit** (text-change detection in render cycle): if the word at a control-blank position changed, clear `metadata` — the user "unlocked" it. Also clear metadata for positions beyond the new text length (word removal).
-   - **LLM merge** (resolver callback): if existing WordDef has `metadata.controlName` and the incoming result is NOT a control-blank, skip the merge — preserve the control-blank.
-   - Getting this wrong causes either (a) grammar overwriting live control values, or (b) permanently stuck control-blank positions the user can't reclaim. See `docs/features/control-blanks.md` § "Ownership Model" for the full explanation.
+5. **Cycling runs synchronously** — unlike word-based controls which debounce and spawn detached, blank cycling runs the script synchronously then calls `script get` for the new value before updating the display.
+6. **Ownership model (critical)** — `metadata.blankName` must only be cleared by user edits, never by LLM results. Two separate code paths:
+   - **User edit** (text-change detection in render cycle): if the word at a blank position changed, clear `metadata` — the user "unlocked" it. Also clear metadata for positions beyond the new text length (word removal).
+   - **LLM merge** (resolver callback): if existing WordDef has `metadata.blankName` and the incoming result is NOT a control-blank, skip the merge — preserve the control-blank.
+   - Getting this wrong causes either (a) grammar overwriting live control values, or (b) permanently stuck blank positions the user can't reclaim. See `docs/features/cue-blanks.md` § "Ownership Model" for the full explanation.
 7. **Keyword clearing** — when `blankClearKeywords: true`, keyword context words are removed from the text during auto-populate (only the resolved value remains). When `blankClearOnEdit: true`, editing the populated value to something not in alts removes the spawned words entirely. Keywords can be multi-word phrases (e.g. `opencues settings` as one entry in `blankKeywords`).

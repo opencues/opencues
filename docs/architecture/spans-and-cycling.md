@@ -135,7 +135,7 @@ order. First one to return `true` wins.
 | 0  | `spanFillState.current` AND wordIndex inside the span | Blank-fill span cycling (`cycleSpanFill`) |
 | 1  | Word maps to a control with `script:` | Spawn the script (no text change, side-effect only) |
 | 2  | Word maps to a control with `stepValues:` | Rotate values in-place (`cycleListControl`) |
-| 3a | DynDef at this index has `controlName` | Cycle via that control's blankStep/Suffix/Script |
+| 3a | DynDef at this index has `controlName` | Cycle via that blank's blankStep/Suffix/Script |
 | 3  | Word matches a `step:` pattern (`5f`, `50%`) | Numeric arithmetic (`cycleStepPattern`) |
 | 4  | Default | Static-alt cycling (`cycleStaticAlts`) |
 

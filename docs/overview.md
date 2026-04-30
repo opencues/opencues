@@ -4,17 +4,17 @@ last_updated: 2026-04-01
 
 # OpenCues Architecture
 
-A system for real-time guidance as you type — providing alternatives, blanks, cue-tips, and cue-controls across any text input. See the [glossary](glossary.md) for all terminology.
+A system for real-time guidance as you type — providing alternatives, blanks, cue-tips, and cue-blanks across any text input. See the [glossary](glossary.md) for all terminology.
 
 For the full list of features any integration should implement, see `features/README.md`.
 
 ## Overview
 
-OpenCues has three types of interaction: **Cues** (system indicates alternatives to the user), **Blanks** (user cues the system to fill in), and **Cue-Controls** (user triggers external actions like volume). All three share the same navigable system.
+OpenCues has three types of interaction: **Cues** (system indicates alternatives to the user), **Blanks** (user cues the system to fill in), and **Cue-Blanks** (user triggers external actions like volume). All three share the same navigable system.
 
 The architecture has two layers:
 
-1. **Config Standard** (`cues.md`, `blanks.md`, `controls.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
+1. **Config Standard** (`cues.md`, `blanks.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
 2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
 
 Integrations (Claude Code, future editors) use opencues-core to load the config standard and provide the UI layer.
@@ -407,7 +407,7 @@ opencues-core is used directly from the injected cli.js code (no shell scripts).
 ```typescript
 // In dynamicHighlight.ts writeCuesCoreInit:
 // 1. Load tips file into LocalCueSource
-// 2. Parse cues.md, blanks.md, controls.md
+// 2. Parse cues.md, blanks.md
 // 3. Create NodeHttpAdapter (keep-alive, Groq provider config)
 // 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → sources
 //    - Word sources: combined into ONE ConfigSource (grammar + domain prompts merged)

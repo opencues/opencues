@@ -56,7 +56,7 @@ This is a selector/satellite setting — it can be toggled via `opencues setting
 ### Standard (opencues-core)
 
 - opencues-core has no cursor awareness — cursor-navigate is entirely integration-specific
-- The navigability criteria (cue-control, local cues, LLM alts, spans) are the same as manual navigation
+- The navigability criteria (cue-blank, local cues, LLM alts, spans) are the same as manual navigation
 - opencues-core provides `WordDef` classification; the integration decides how to map cursor position to word index
 
 ### Integration responsibilities
@@ -64,7 +64,7 @@ This is a selector/satellite setting — it can be toggled via `opencues setting
 - Track cursor offset within the editor's text buffer in real time
 - Map character offset to word index on each cursor movement or text change
 - Track the last-evaluated word index to avoid redundant re-evaluation
-- Check navigability using the same sources as manual navigation (cue-controls, local cues, dynamic defs, spans)
+- Check navigability using the same sources as manual navigation (cue-blanks, local cues, dynamic defs, spans)
 - Skip blank-keyword positions (words that serve as context for a nearby blank)
 - Respect manual navigation: do not override when the user has explicitly navigated via keys
 - Reset tracking state (`_cursorNavLastWordIdx`, `_hlManualNav`) when the input text changes

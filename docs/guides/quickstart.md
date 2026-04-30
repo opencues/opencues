@@ -62,7 +62,7 @@ All behaviour is defined in `.md` config files that hot-reload (~2s, no restart)
 |------|---------|
 | `~/.opencues/cues.md` | Word tips and LLM prompts for alternatives (user-level) |
 | `~/.opencues/blanks.md` | Fill-in-the-blank modes (math, factual, etc.) |
-| `~/.opencues/controls/<name>/cue.md` | Hardware/API controls |
+| `~/.opencues/blanks/<name>/cue.md` | Hardware/API controls |
 | `<project>/.opencues/...` | Project-level overrides — wins over user-level on name conflicts |
 
 To populate `~/.opencues/` with the repo's defaults: `pnpm exec opencues seed-configs`.

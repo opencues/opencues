@@ -58,7 +58,7 @@ Content Script (per tab)              Background Service Worker
 3. Updates `HighlightState` → `notify()` → re-render with `.oc-word--active`
 4. User presses Ctrl+Alt+Up/Down → `cycle()` in WordNavigator
 5. Delegates to `engine.cycle()` which checks priority order:
-   - Control-bound blanks (via `controlAction()`)
+   - Blanks (via `controlAction()`)
    - Selector word cycling (opencues.md settings)
    - Satellite word cycling (opencues.md values)
    - Consume-all cycling (dedicated state)
@@ -77,14 +77,14 @@ Content Script (per tab)              Background Service Worker
 4. If keyword found and has expansion (e.g., "aapl" → "Apple"), applies it
 5. If `clearKeywords: true` (prompt improver), removes keyword words from text
 6. Calls `engine.controlGet(controlName, keyword, context)` → browser control
-7. For consume-all controls: replaces entire text, populates `engine.consumeAllAlts`
+7. For consume-all blanks: replaces entire text, populates `engine.consumeAllAlts`
 8. For regular controls: replaces `_` with fetched value
 
 ## Cycling Priority Order
 
 Matches Claude Code exactly (dynamicHighlight.ts `_cycleAlt`):
 
-1. **Control-bound blanks** — browser controls (volume up/down)
+1. **Blanks** — browser controls (volume up/down)
 2. **Selector word** — cycles opencues.md setting names, updates satellite
 3. **Satellite word** — cycles values for current setting
 4. **Consume-all** — dedicated `consumeAllAlts` state, separate from `words[]`
@@ -133,7 +133,7 @@ Matches Claude Code exactly (dynamicHighlight.ts `_cycleAlt`):
 
 - Cycling state machine (priority order, linked words, spans, index shifting)
 - opencues.md parser (line-by-line walker — opencues-core doesn't parse this format)
-- Keyword matching for blank auto-populate (opencues-core's `ControlBlankSource` uses bash)
+- Keyword matching for blank auto-populate (opencues-core's `BlankSource` uses bash)
 - DOM rendering (CSS classes on spans)
 - Cursor management (Selection/Range API)
 

@@ -21,28 +21,28 @@ Word cycling replaces the focused word with an alternative. It is the **vertical
 
 The four levels are checked in order. The first match wins.
 
-### 1. Custom cue-controls
+### 1. Custom cue-blanks
 
-**Condition**: `globalThis._cueControlOverrides[word.toLowerCase()]` exists.
+**Condition**: `globalThis._cueBlankOverrides[word.toLowerCase()]` exists.
 
-Triggers an external script (e.g., `volume.sh`). The script path comes from the control's config (`script` or `scriptPath`). Folder-based controls use `./<name>.sh` relative to the cue.md, which seeds to `~/.opencues/controls/<name>/<name>.sh` with any helper binaries (`*.exe`, `*.ps1`) colocated in the same folder. Up passes `upArgs` (default `["up"]`), Down passes `downArgs` (default `["down"]`). For in-memory value calculation, defaults are `['up','10']`/`['down','10']` (step of 10). For the spawned script args, defaults are `['up']`/`['down']`.
+Triggers an external script (e.g., `volume.sh`). The script path comes from the blank's config (`script` or `scriptPath`). Folder-based controls use `./<name>.sh` relative to the cue.md, which seeds to `~/.opencues/blanks/<name>/<name>.sh` with any helper binaries (`*.exe`, `*.ps1`) colocated in the same folder. Up passes `upArgs` (default `["up"]`), Down passes `downArgs` (default `["down"]`). For in-memory value calculation, defaults are `['up','10']`/`['down','10']` (step of 10). For the spawned script args, defaults are `['up']`/`['down']`.
 
 Script execution is debounced: rapid presses queue a single spawn after 50 ms with the direction string (up/down), not the computed numeric value. The numeric value is tracked in-memory only. In-memory state (`globalThis._cueControlValues`) tracks the current value to avoid file I/O on the hot path. Returns `{refresh: true}` — no text replacement, the integration triggers a full input refresh instead.
 
-### 2. Control-bound blanks
+### 2. Blanks
 
 **Condition**: The word's `_dynDefs` entry has `metadata.control` set (a blank position bound to a control via `blankKeywords`).
 
 Two modes:
 
-- **Script-based** (default): Runs the control's script synchronously (`execSync`, 3 s timeout) then calls `blankScript get` for the new live value. The `blankFormat` field determines how the value is parsed for display.
+- **Script-based** (default): Runs the blank's script synchronously (`execSync`, 3 s timeout) then calls `blankScript get` for the new live value. The `blankFormat` field determines how the value is parsed for display.
 - **List-based** (`stepValues`): When the control has a `stepValues` array, the blank auto-populates with the first value and Up/Down cycles through the list via normal alternative cycling. Multi-word values are span-tracked automatically. No script is needed.
 - **Dynamic list** (multi-line script output): When `blankScript get` returns multiple lines, each line becomes a cycling alternative. Same behavior as `stepValues` but populated from live data (e.g., RSS feeds, API results).
 - **Consume-all** (`blankConsumeAll: true`): Clears the entire input and replaces it with a multi-word result. Cycling swaps the full text as a span. Requires dedicated cycling storage because the standard WordDef array is overwritten by analysis. See [Consume-All Blanks](consume-all-blanks.md).
 
 All list-based controls (static `stepValues`, dynamic multi-line, and consume-all) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
 
-Example list control (`controls/affirmations/cue.md`):
+Example list control (`blanks/affirmations/cue.md`):
 ```yaml
 ---
 type: control
@@ -55,11 +55,11 @@ blankDismissible: true
 ```
 Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles through the list. Cycle past the last value → `_` to dismiss.
 
-### 3. Step controls
+### 3. Step blanks
 
-**Condition**: The word matches a `stepPattern` (from a control's `cue.md`) or a pattern auto-generated from `stepSuffixes` AND there are no dynamic alternatives at this position (`_hasAltsCycle` is falsy). The alternatives check ensures that if a value has LLM-provided alts (e.g., from a blank fill-in), alt cycling (level 4) handles it instead.
+**Condition**: The word matches a `stepPattern` (from a blank's `cue.md`) or a pattern auto-generated from `stepSuffixes` AND there are no dynamic alternatives at this position (`_hasAltsCycle` is falsy). The alternatives check ensures that if a value has LLM-provided alts (e.g., from a blank fill-in), alt cycling (level 4) handles it instead.
 
-Step controls are fully config-driven via `controls/` folder `cue.md` files. There is no hardcoded number behavior.
+Step blanks are fully config-driven via `blanks/` folder `cue.md` files. There is no hardcoded number behavior.
 
 - **Config fields**: `stepPattern`, `step`, `stepMin`, `stepMax`, `stepFormat`, `stepSuffix`, `stepSuffixes`, `stepScript`
 - **`stepSuffixes`**: space-separated suffixes (e.g., `f px em %`) — auto-generates patterns like `^\d+(\.\d+)?px$` for each suffix
@@ -68,7 +68,7 @@ Step controls are fully config-driven via `controls/` folder `cue.md` files. The
 - **`stepMin`/`stepMax`**: explicit bounds — Down will not go below `stepMin`, Up will not go above `stepMax`
 - **`stepFormat`**: `integer` (rounds), `float` (preserves decimals), or auto (uses natural JS formatting)
 
-Example config (`controls/numbers/cue.md`):
+Example config (`blanks/numbers/cue.md`):
 ```yaml
 ---
 type: control
@@ -99,11 +99,11 @@ Used by controls with `blankConsumeAll: true` that replace the entire input with
 
 ## Step Bounds
 
-Step controls use explicit `stepMin` and `stepMax` fields for bounds rather than tracking original values.
+Step blanks use explicit `stepMin` and `stepMax` fields for bounds rather than tracking original values.
 
 - **Down** cannot go below `stepMin` (if set)
 - **Up** cannot go above `stepMax` (if set)
-- Bounds are declarative — set in the control's `cue.md` frontmatter
+- Bounds are declarative — set in the blank's `cue.md` frontmatter
 - No per-word state tracking is needed — bounds are global for the control
 
 Example: with `step: 0.5, stepMin: 0`, highlight `2f`, press Down 5 times: `1.5f`, `1f`, `0.5f`, `0f`, `0f` (floors at 0).
@@ -133,15 +133,15 @@ Linked groups are resolved and merged across sources by `CueResolver` in opencue
 
 - `CueResult.alternatives` array provides the ordered list of replacements (`alts[0]` is always the original word)
 - `CueResult.linked` array contains indices of co-dependent words that must cycle together
-- Priority order is defined by the standard: cue-controls > control-blanks > step controls > alternative cycling
-- `CueResult.metadata.control` identifies custom cue-controls; `CueResult.metadata.stepControl` identifies step controls
+- Priority order is defined by the standard: cue-blanks > control-blanks > step blanks > alternative cycling
+- `CueResult.metadata.control` identifies custom cue-blanks; `CueResult.metadata.stepControl` identifies step blanks
 - Linked-word groups are resolved and merged across sources by the resolver
 
 ### Integration responsibilities
 
 - Perform the actual text replacement in the editor buffer when the user cycles
 - Maintain `currentAltIndex` per word and handle wrap-around (`alts.length`)
-- Enforce `stepMin`/`stepMax` bounds for step controls
-- Execute external scripts for custom cue-controls (path from control config)
+- Enforce `stepMin`/`stepMax` bounds for step blanks
+- Execute external scripts for custom cue-blanks (path from control config)
 - When cycling a linked word, update ALL linked words' `currentAltIndex` and replace their text simultaneously
 - Map Up/Down (or equivalent) input events to cycle direction

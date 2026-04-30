@@ -8,7 +8,7 @@ Implements feature [17](../../../docs/features/selector-satellite.md). See that 
 
 **Patch files:** `patches/dynamicHighlight.ts` (config parser, cycling paths, `_pendingAutoPopulate` extension, render-pass suppression, pair-cleanup cascade, TTS cycling gate), `patches/wordHighlight.ts` (auto-populate insertion branch, TTS navigation gate)
 
-**Cues-core changes:** `packages/opencues-core/src/sources/control-blank-source.ts` (satellite branch), `packages/opencues-core/src/cues-md.ts` (`blankSatellite` field on `ControlConfig` + `SingleCueFrontmatter`)
+**Cues-core changes:** `packages/opencues-core/src/sources/control-blank-source.ts` (satellite branch), `packages/opencues-core/src/cues-md.ts` (`blankSatellite` field on `BlankConfig` + `SingleCueFrontmatter`)
 
 ## CC-Specific: The `opencues.md` Parser
 
@@ -28,7 +28,7 @@ The parser is deliberately not a regex. An earlier version used `new RegExp("^--
 
 ## CC-Specific: Multi-Word Selector and Satellite
 
-Either half can be multi-word. The opencues-core source (`ControlBlankSource`) splits on the first **tab character** rather than a space, so script output like `"output-format\tplain text"` parses correctly into `selectorText = "output-format"` + `satelliteText = "plain text"`. A setting key with spaces in YAML — e.g. `"high quality": [fast, slow]` — also works because the YAML parser splits on `:` not whitespace.
+Either half can be multi-word. The opencues-core source (`BlankSource`) splits on the first **tab character** rather than a space, so script output like `"output-format\tplain text"` parses correctly into `selectorText = "output-format"` + `satelliteText = "plain text"`. A setting key with spaces in YAML — e.g. `"high quality": [fast, slow]` — also works because the YAML parser splits on `:` not whitespace.
 
 Each half is represented as a WordDef whose `word` field holds the **joined text** (e.g. `"plain text"`, including internal spaces) and whose `spanLength` is set to the word count when > 1. `_dynSpans` is populated for every position in the span, with `originalIndex` pointing at the span's first index. This is the same span infrastructure used by multi-word LLM alternatives (e.g. `"Jeff Bezos"`) — selector+satellite rides on top of it.
 
@@ -43,7 +43,7 @@ globalThis._pendingAutoPopulate = {
   index, value,
   keywordExpansion: metadata.blankKeywordExpansion || null,
   satellite: metadata.satelliteValue || null,  // NEW
-  controlName: metadata.controlName || null,   // NEW
+  controlName: metadata.blankName || null,   // NEW
   blankScript: metadata.blankScript || null,   // NEW
 };
 ```
@@ -76,12 +76,12 @@ No `_dynSpans` entry is created — the pair are independent words, not a span.
 
 ## CC-Specific: `_cbDef` Exclusion
 
-The existing control-bound blank cycling (the numeric/step-based path for `volume _`, `brightness _`, etc.) previously grabbed any WordDef with `metadata.controlName && !listControl`. It was narrowed:
+The existing blank cycling (the numeric/step-based path for `volume _`, `brightness _`, etc.) previously grabbed any WordDef with `metadata.blankName && !listControl`. It was narrowed:
 
 ```js
 var _cbDef = _dynDefs.words.find(w =>
   w.index === _hlIdx &&
-  w.metadata && w.metadata.controlName &&
+  w.metadata && w.metadata.blankName &&
   !w.metadata.listControl &&
   !w.metadata.selectorWord &&  // NEW
   !w.metadata.satelliteWord    // NEW
@@ -160,7 +160,7 @@ Two independent rendering passes decide what's navigable vs. dimmed. Both needed
 
 **2. Dim-ranges renderer** (`writeDynamicRendering` in `dynamicHighlight.ts`). Rewrites the `else if` cascade that pushes into `_numRanges` — the list of character ranges painted dark-gray in the rendered output.
 
-The check is the same in both places: while any WordDef has `metadata.selectorWord === true`, words at indices to its left whose lowercase matches the owning control's `blankKeywords` are suppressed.
+The check is the same in both places: while any WordDef has `metadata.selectorWord === true`, words at indices to its left whose lowercase matches the owning blank's `blankKeywords` are suppressed.
 
 ```js
 var _isCtxKw = false;
@@ -168,7 +168,7 @@ if (_dynDefs && _dynDefs.words) {
   for (var _cki = 0; _cki < _dynDefs.words.length; _cki++) {
     var _ckd = _dynDefs.words[_cki];
     if (_ckd && _ckd.metadata && _ckd.metadata.selectorWord && i < _ckd.index) {
-      var _ckCtrl = (_cueControlOverrides || {})[_ckd.metadata.controlName];
+      var _ckCtrl = (_cueBlankOverrides || {})[_ckd.metadata.blankName];
       if (_ckCtrl && _ckCtrl.blankKeywords) {
         for (var _ckj = 0; _ckj < _ckCtrl.blankKeywords.length; _ckj++) {
           if (_ckCtrl.blankKeywords[_ckj] === _wLow) { _isCtxKw = true; break; }
@@ -182,7 +182,7 @@ if (_dynDefs && _dynDefs.words) {
 
 In the dim cascade, the whole `_numRanges.push` tree was wrapped in an IIFE that returns `false` early if `_isCtxKw`, skipping every dim branch (step patterns, cue controls, tip alts, dyn defs, spans).
 
-No global state is mutated — the check is predicated purely on the live `_dynDefs.words` contents and the declared `blankKeywords` in `_cueControlOverrides`. When pair cleanup clears the `selectorWord` flag, the check stops matching on the next render and keyword words become interactive again.
+No global state is mutated — the check is predicated purely on the live `_dynDefs.words` contents and the declared `blankKeywords` in `_cueBlankOverrides`. When pair cleanup clears the `selectorWord` flag, the check stops matching on the next render and keyword words become interactive again.
 
 An earlier draft added the keyword words to `globalThis._cuesIgnoreWords` (the `## Ignore` feature's Set). That was wrong — `_cuesIgnoreWords` is a user-authored list, not a runtime scratch space, and mutating it caused those words to be silently ignored in unrelated contexts. Reverted in favour of the dynamic filter.
 
@@ -219,7 +219,7 @@ Because satellite cycling updates `_openCuesCurrent` in memory immediately, flip
 | `_openCuesSatTips` | `_reloadCuesConfig` (value entries under `values:` in `opencues.md` `settings:`) | Per-value satellite tip display |
 | `_openCuesVersion` | `_reloadCuesConfig` (`version:` top-level key) | Format version marker |
 
-Tips are the single source for selector/satellite tip display. See [Tip Priority](../../../docs/features/tip-priority.md) for how they interact with other tip sources (control blanks, cue-control keywords, local cues, LLM).
+Tips are the single source for selector/satellite tip display. See [Tip Priority](../../../docs/features/tip-priority.md) for how they interact with other tip sources (control blanks, cue-blank keywords, local cues, LLM).
 
 ## CC-Specific: New Metadata Fields on WordDef
 
@@ -230,15 +230,15 @@ Tips are the single source for selector/satellite tip display. See [Tip Priority
 | `metadata.childIndex: number` | selector | Points at the satellite. Updated on index shift during insertion. |
 | `metadata.parentIndex: number` | satellite | Points back at the selector. Updated on index shift during insertion. |
 | `metadata.currentSetting: string` | selector | Authoritative logical state (which setting the selector represents). Distinct from `word`, which is the display text. Read by satellite cycling to know which setting to write. |
-| `metadata.selectorControl: true` | `CueResult` from `ControlBlankSource` | Internal handoff flag from the resolver to auto-populate. Converted to `selectorWord: true` on the runtime WordDef. |
-| `metadata.satelliteValue: string` | `CueResult` from `ControlBlankSource` | Carries the satellite's initial value through the resolver callback to `_pendingAutoPopulate`. |
+| `metadata.selectorControl: true` | `CueResult` from `BlankSource` | Internal handoff flag from the resolver to auto-populate. Converted to `selectorWord: true` on the runtime WordDef. |
+| `metadata.satelliteValue: string` | `CueResult` from `BlankSource` | Carries the satellite's initial value through the resolver callback to `_pendingAutoPopulate`. |
 | `metadata.blankClearOnEdit: boolean` | both | If true, pair cleanup removes the spawned words from text (via `_pendingClearOnEdit`). |
 
-## CC-Specific: New Fields on `ControlConfig` / `SingleCueFrontmatter`
+## CC-Specific: New Fields on `BlankConfig` / `SingleCueFrontmatter`
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `blankSatellite` | `boolean` | `false` | Signals that script output should be split into selector + satellite rather than treated as a single value. Parsed by `parseExtendedFrontmatter` and copied onto `ControlConfig` in `parseSingleCueMd`. |
-| `blankSatelliteSeparator` | `string` | `'\t'` (tab) | The delimiter between selector and satellite in the script's `get` output. Can be any string (single or multi-character). `ControlBlankSource` splits on the first occurrence via `rawValue.indexOf(satSep)`. Surrounding quotes are stripped during frontmatter parsing (`value.replace(/^['"\|['"]$/g, '')`). Common values: `'\t'`, `' \| '`, `' :: '`. |
+| `blankSatellite` | `boolean` | `false` | Signals that script output should be split into selector + satellite rather than treated as a single value. Parsed by `parseExtendedFrontmatter` and copied onto `BlankConfig` in `parseSingleCueMd`. |
+| `blankSatelliteSeparator` | `string` | `'\t'` (tab) | The delimiter between selector and satellite in the script's `get` output. Can be any string (single or multi-character). `BlankSource` splits on the first occurrence via `rawValue.indexOf(satSep)`. Surrounding quotes are stripped during frontmatter parsing (`value.replace(/^['"\|['"]$/g, '')`). Common values: `'\t'`, `' \| '`, `' :: '`. |
 | `blankClearKeywords` | `boolean` | `false` | Remove keyword context words from text on auto-populate. Keywords can be multi-word phrases. |
 | `blankClearOnEdit` | `boolean` | `false` | Remove spawned selector/satellite words when user edits to something not in alts. Schedules removal via `globalThis._pendingClearOnEdit`. |

@@ -10,7 +10,7 @@ If you're new, look for issues labelled **`good first issue`** on GitHub. These 
 
 - Adding a new word source to `cues.md` (no code changes)
 - Adding a new blank mode to `blanks.md` (config + prompt only)
-- Adding a new cue-control in `controls/{name}/` (config + shell script)
+- Adding a new cue-blank in `blanks/{name}/` (config + shell script)
 - Fixing typos or improving docs
 - Adding test cases to `tests/user-test.md`
 
@@ -54,8 +54,8 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 | `cues.md` | Word tips (`## Tips`) and base LLM prompt (`## Prompt`). Domain sources can also be `### sections` here. |
 | `cues/{name}/cue.md` | Folder-based word source — config in YAML frontmatter, prompt in body. Overrides same-name monolithic section. |
 | `blanks.md` | Blank fill-in modes — math, factual, translation, etc., plus the `### classifier`. |
-| `controls.md` | Cue-controls — words that trigger external scripts (can be empty if using folders). |
-| `controls/{name}/cue.md` | Folder-based control with colocated script (e.g., `script: ./volume.sh`). |
+| `blanks.md` | Cue-blanks — words that trigger external scripts (can be empty if using folders). |
+| `blanks/{name}/cue.md` | Folder-based control with colocated script (e.g., `script: ./volume.sh`). |
 
 ### Adding a new word source
 

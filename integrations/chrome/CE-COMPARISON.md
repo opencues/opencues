@@ -42,11 +42,11 @@ Feature numbers come from
 | 12 | Instant tips (sync lookup) | `src/modules/dim-render.ts` reads `cueMap` synchronously | implicit | dim-render.test.ts | ⚠️ CE.3 |
 | 13 | Multi-word spans | `src/state/span-fill.ts` + `Cycling`/`DimRender` span branches | boot.ts:166 | span-fill.test.ts + cycling.test.ts span cases | ⚠️ CE.4 |
 | 14 | Blanks (math `2+2=_`) | `src/modules/blank-fill.ts` step pattern | boot.ts:181 | blank-fill.test.ts step cases (~20) | ⚠️ CE.8 |
-| 15 | Weather control | `src/modules/blank-fill.ts` async script + new `controlInvoke` (NEW: `fc5a9a3`) | boot.ts:181 + adapter.controlInvoke | blank-fill.test.ts controlInvoke case | ⚠️ CE.8 |
-| 16 | Stocks control | same path as weather (controlInvoke) | same | same | ⚠️ CE.8 |
+| 15 | Weather control | `src/modules/blank-fill.ts` async script + new `blankInvoke` (NEW: `fc5a9a3`) | boot.ts:181 + adapter.blankInvoke | blank-fill.test.ts blankInvoke case | ⚠️ CE.8 |
+| 16 | Stocks control | same path as weather (blankInvoke) | same | same | ⚠️ CE.8 |
 | 17 | Hackernews control | same path (multi-line stdout → list alts) | same | blank-fill.test.ts list alt cases | ⚠️ CE.8 |
 | 18 | Prompt improver (consume-all) | `src/modules/blank-fill.ts` `blankConsumeAll` branch | same | blank-fill.test.ts consume-all cases | ⚠️ CE.8 |
-| 19 | Volume control | `src/modules/cycling.ts` runScriptControl + controlInvoke | boot.ts:177 + adapter.controlInvoke | cycling.test.ts (22, incl. 2 controlInvoke cases) | ⚠️ CE.4/CE.8 |
+| 19 | Volume control | `src/modules/cycling.ts` runScriptControl + blankInvoke | boot.ts:177 + adapter.blankInvoke | cycling.test.ts (22, incl. 2 blankInvoke cases) | ⚠️ CE.4/CE.8 |
 | 20 | Selector/satellite | `src/state/selector-satellite.ts` + cycling/blank-fill branches | boot.ts:167 | cycling.test.ts selector/satellite cases | ⚠️ CE.4/CE.8 |
 | 21 | Hot-reload (popup → re-bootstrap) | `src/modules/config-loader.ts` debounced reload + `applyOpenCuesScalar` | boot.ts:155 | config-loader.test.ts | ⚠️ CE.5 |
 | 22 | Input swapping (textarea/input) | n/a — explicitly out of scope per original ext | n/a | n/a | host-side / N/A |
@@ -64,7 +64,7 @@ They're additive — OpenCode keeps working without them.
 | Commit | Add | Why |
 |---|---|---|
 | `2faf0ff` | `TTSOptions.speakFn?(text, rate)` + scriptPath optional | Sandboxed hosts can't spawn bash + speak.sh. Web Speech routes through a host-supplied function. |
-| `fc5a9a3` | `HostAdapter.controlInvoke?(spec)` + `'control-invoke'` capability + `Cycling.invokeOrSpawn()` helper | Chrome controls (Volume via Web Audio, Stocks via Finnhub, etc.) need a non-spawn dispatch. Falls through to `spawnProcess` when host returns null. |
+| `fc5a9a3` | `HostAdapter.blankInvoke?(spec)` + `'control-invoke'` capability + `Cycling.invokeOrSpawn()` helper | Chrome controls (Volume via Web Audio, Stocks via Finnhub, etc.) need a non-spawn dispatch. Falls through to `spawnProcess` when host returns null. |
 | `07d7719` | Chrome boot wires TTS + CursorStateExport + `httpAdapter` flow | Adapter band now reaches every runtime module the original ext used. |
 
 ## What the chrome adapter band currently provides
@@ -105,7 +105,7 @@ cd ~/opencode-cues && bun run dev
 # Type: improve prompt write me a poem _ → improved version
 ```
 Expect: every O.8 feature still works. If any regress, the
-controlInvoke wiring in cycling.ts may have broken a CLI path.
+blankInvoke wiring in cycling.ts may have broken a CLI path.
 
 ### 3. Chrome port readiness — the contract is testable
 The chrome port itself isn't done (CE.1+ is unstarted). But the
@@ -126,15 +126,15 @@ Expect: 4 tests pass — speakFn preferred over spawn, works without
 scriptPath, throws swallowed, opencues.md tts-rate flows through.
 
 ```bash
-npx vitest run src/modules/cycling -t controlInvoke
+npx vitest run src/modules/cycling -t blankInvoke
 ```
-Expect: 2 tests pass — selector path uses controlInvoke when
+Expect: 2 tests pass — selector path uses blankInvoke when
 stubbed, falls through to spawn when not.
 
 ```bash
-npx vitest run src/modules/blank-fill -t controlInvoke
+npx vitest run src/modules/blank-fill -t blankInvoke
 ```
-Expect: 1 test passes — controlInvoke preferred over spawnProcess
+Expect: 1 test passes — blankInvoke preferred over spawnProcess
 for async script gets.
 
 ### 5. CE-PORT-PLAN sign-off
@@ -154,12 +154,12 @@ content.ts migration order is yours to call.
 ## Confidence summary
 
 - ✅ **Runtime supports every documented chrome feature except linked
-  words.** Three additions made (speakFn, controlInvoke, chrome boot
+  words.** Three additions made (speakFn, blankInvoke, chrome boot
   TTS+CursorStateExport).
 - ✅ **278 + 3 = 281 runtime tests cover the contract.** Specifically:
   - 16 TTS tests (incl. 4 new speakFn)
-  - 22 cycling tests (incl. 2 new controlInvoke)
-  - 68 blank-fill tests (incl. 1 new controlInvoke)
+  - 22 cycling tests (incl. 2 new blankInvoke)
+  - 68 blank-fill tests (incl. 1 new blankInvoke)
   - 10 chrome boot tests (incl. 3 new wiring smoke)
   - existing runtime modules unchanged
 - ⚠️ **CE.1..CE.9 migration of content.ts is unstarted.** The runtime

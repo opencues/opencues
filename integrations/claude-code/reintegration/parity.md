@@ -22,13 +22,13 @@ just architecture.
 | 1 | `cursorStateExport` | ✓ | Phase I.1. New CursorStateExport module subscribes to onTextChange + initial state; writes JSON snapshot (text, cursorPosition, currentWord, atEnd, textLength, timestamp) to `cursorStatePath` after a 100ms debounce. ZWS stripped before measuring. Opt-in via host config; patch sets the path to `/tmp/opencues-cursor-state.json` matching v1. Live verified. |
 | 2 | `wordHighlight` (full nav + highlight) | ✓ | Phase 1 (Navigation) + Phase 2 (DimRender) ship the core. Cue filtering moved to Step 4 ✓. Highlight uses bright white foreground (`\x1b[97m`); dim uses `\x1b[2m` — the active word stays bright and others fade, which reads better than inverse video on most terminals. ZWS chars stay in the InputZone display: they render zero-width in terminal so they're invisible to users; stripping would require reconstructing the InputZone every render (see REPAIR.md for why ZWS toggling is load-bearing). |
 | 3 | bare-number dim | — | REMOVED in v1 itself (reverted Step 21). Not porting. |
-| 4 | nav filter narrows to cue-control words | ✓ | Phase 7 (commit `1cfc47f`). Filter priority: cueMap → folder controls (incl. blankKeywords) → DynDefs → fallback all-words. |
-| 5 | load opencues-core, tip-having words = cue-controls | ✓ | Phase 6 (commit `fa82625`). ConfigLoader loads tips JSON + cwd .md files + folder configs. Nav cue-control gating still pending Step 4. |
-| 6 | parse cwd `controls.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via opencues-core's parseCuesMd. |
+| 4 | nav filter narrows to cue-blank words | ✓ | Phase 7 (commit `1cfc47f`). Filter priority: cueMap → folder controls (incl. blankKeywords) → DynDefs → fallback all-words. |
+| 5 | load opencues-core, tip-having words = cue-blanks | ✓ | Phase 6 (commit `fa82625`). ConfigLoader loads tips JSON + cwd .md files + folder configs. Nav cue-blank gating still pending Step 4. |
+| 6 | parse cwd `blanks.md` | ✓ | Phase 6. ConfigLoader exposes `controlsConfig` via opencues-core's parseCuesMd. |
 | 7 | parse cwd `cues.md` | ✓ | Phase 6. ConfigLoader exposes `cuesConfig`. |
 | 8 | folder-config discovery for `controls/` | ✓ | Phase 6. readDir capability + opencues-core's parseSingleCueMd-based walk. cues/, controls/, blanks/ all walked. |
 | 9 | `_stepPatterns` + dim renderer extension | ✓ | Phase 8 + Phase I.4 verification. DimRender dims standalone stepPattern matches (`0.5f` typed alone with no other cues still dims). Test added covering the no-cueMap-context case. |
-| 10 | `_cycleAlt` for script-backed cue-controls | ✓ | Phase 8 (commit `6534f8a`). Cycling.runScriptControl spawns control.script with up/downArgs, fire-and-forget. |
+| 10 | `_cycleAlt` for script-backed cue-blanks | ✓ | Phase 8 (commit `6534f8a`). Cycling.runScriptControl spawns control.script with up/downArgs, fire-and-forget. |
 | 11 | `_isCueControl` recognises `_stepPatterns` | ✓ | Phase 8. Navigation.computeTargets calls matchStepPattern; DimRender includes step-pattern matches in its dim set. |
 | 12 | step-control cycling (arithmetic in-place) | ✓ | Phase 8. Numeric (0.5f → 1.0f) + list (affirmation → "I am strong"). |
 | 13 | tip text in statusline | ✓ | Phase 4.6 (commit `65393f8`). cueTip + altCueTips populated from cue map. |
@@ -82,7 +82,7 @@ unconditionally. Replace with: filter to words whose lowercased form is in
 `configLoader.cueMap` OR matches a `_stepPatterns` regex (TBD when patterns
 land). Preserve fall-back to all-words when no targets match (matches v1).
 
-### C. Step-pattern dim + step controls
+### C. Step-pattern dim + step blanks
 Steps **9, 10, 11, 12, 21**.
 
 What it unlocks: `0.5f` cycling, number dimming, generic regex-pattern cues.
@@ -148,7 +148,7 @@ Dependency-respecting:
 
 1. ~~**A — ConfigLoader expansion**~~ ✓ Phase 6 (`fa82625`).
 2. ~~**B — Nav cue filtering**~~ ✓ Phase 7 (`1cfc47f`).
-3. ~~**C — Step-pattern dim + step controls**~~ ✓ Phase 8 (`6534f8a`).
+3. ~~**C — Step-pattern dim + step blanks**~~ ✓ Phase 8 (`6534f8a`).
 4. ~~**D — LLM resolver path**~~ ✓ Phase 9 (`43f8775`).
 5. **E — Blank-fill** (~3-4 days). Big chunk; tackle as 4-5 commits not one.
 6. **F — Span infrastructure** (~half day). Slot before E if parallel work

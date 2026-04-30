@@ -50,8 +50,8 @@ version: 1
 #   Fields: stepValues (JSON array of strings)
 #
 # LLM/HTTP blank: implemented as TS class in @opencues/runtime
-#   See docs/guides/adding-a-cue-control.md — these live in
-#   packages/opencues-runtime/src/controls/<name>.ts, not in a cue.md
+#   See docs/guides/adding-a-cue-blank.md — these live in
+#   packages/opencues-runtime/src/blanks/<name>.ts, not in a cue.md
 #
 # ─────────────────────────────────────────────────────────────────────
 # EXAMPLE: folder-based word-blank (with colocated script)
@@ -109,5 +109,5 @@ version: 1
 # }
 # ```
 
-# For complete field reference see docs/features/cue-controls.md and
-# docs/guides/adding-a-cue-control.md.
+# For complete field reference see docs/features/cue-blanks.md and
+# docs/guides/adding-a-cue-blank.md.

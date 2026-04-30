@@ -57,7 +57,7 @@ IIFE injected at startup in cli.js:
 - Loads opencues-core module → `globalThis._cuesCore`
 - Parses tips file → `globalThis._localCueMap`
 - Creates NodeHttpAdapter (HTTPS keep-alive, Groq provider config) → `globalThis._httpAdapter`
-- Loads config from cues.md, blanks.md, controls.md
+- Loads config from cues.md, blanks.md
 - Builds sources via `buildSourcesFromConfig()` → `globalThis._cueResolver`
 - Creates shared `_cycleAlt(dir)` function
 

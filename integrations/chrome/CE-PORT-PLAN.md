@@ -140,7 +140,7 @@ Cycling. Multi-word affirmations cycle as a single unit.
 
 ### CE.5 — ConfigLoader on chrome.storage
 **Goal:** The runtime's ConfigLoader becomes the source of truth for
-cues.md / blanks.md / opencues.md / controls.md. The popup writes to
+cues.md / blanks.md / opencues.md / blanks.md. The popup writes to
 `chrome.storage.local` with keys matching the virtual paths
 (`/chrome-storage/cues.md`, etc.); the chrome adapter's `readFile`
 implementation reads from `chrome.storage.local.get()` keyed by path.
@@ -239,7 +239,7 @@ HN, prompt-improver) need a different routing in Chrome since
 - `src/content.ts` — DELETE checkBlanks. The runtime's BlankFill is
   triggered automatically via the `_` keystroke through `Cycling`'s
   key dispatch.
-- `src/controls/*` — chrome controls (volume, stocks, weather, HN,
+- `src/blanks/*` — chrome controls (volume, stocks, weather, HN,
   prompt-improver) are currently called directly from `checkBlanks`.
   They need a different entry point. Two options:
   1. **Route via `pushText`** — the chrome adapter intercepts certain
@@ -274,7 +274,7 @@ prompt write a poem _` → improved version. All via runtime BlankFill.
 - `src/content.ts` (thin bootstrap)
 - `src/opencues-bootstrap.ts` (host bindings)
 - `src/adapters/*` (FetchHttpAdapter, WebSpeechAdapter, ChromeStorageAdapter — runtime feeds on these)
-- `src/controls/*` (browser-native control impls — entry-point shape changes per CE.8)
+- `src/blanks/*` (browser-native control impls — entry-point shape changes per CE.8)
 - `src/popup/*` (UI for config — unchanged)
 - `src/background.ts` (CORS proxy — unchanged)
 

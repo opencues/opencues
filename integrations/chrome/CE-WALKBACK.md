@@ -8,7 +8,7 @@ to verify each phase.
 
 ```
 361ab86  chore(chrome): CE.9 — drop the duplicated engine
-13700af  feat(chrome): CE.8 — BlankFill via runtime + controlInvoke
+13700af  feat(chrome): CE.8 — BlankFill via runtime + blankInvoke
 2f08073  feat(chrome): CE.7 — Resolver via runtime + FetchHttpAdapter
 05ac230  feat(chrome): CE.6 — Statusline + TTS via runtime
 8f3a40e  fix(chrome): CE.4 — normalise browser key names
@@ -17,7 +17,7 @@ to verify each phase.
 c4bb9d5  feat(chrome): CE.1 — runtime boots alongside CueEngine
 9188d55  docs(chrome): CE-COMPARISON.md — feature parity matrix
 07d7719  feat(chrome): wire TTS + CursorStateExport in boot
-fc5a9a3  feat(runtime): controlInvoke — host-native dispatch
+fc5a9a3  feat(runtime): blankInvoke — host-native dispatch
 2faf0ff  feat(runtime): TTS gains speakFn option
 a6c3946  docs(chrome): CE-PORT-PLAN.md — staged path
 f1dcfc6  feat(chrome): CE.0 — adapter band scaffold
@@ -48,7 +48,7 @@ chrome (with the caveat below for early phases).
 |---|---|---|---|
 | CE.0 | `f1dcfc6` | Runtime adapter band exists, tests pass | `cd packages/opencues-runtime && npx vitest run adapters/chrome` → 7 pass |
 | Runtime | `2faf0ff` | TTS speakFn works | `npx vitest run src/modules/tts -t speakFn` → 4 pass |
-| Runtime | `fc5a9a3` | controlInvoke works | `npx vitest run src/modules/cycling -t controlInvoke` → 2 pass |
+| Runtime | `fc5a9a3` | blankInvoke works | `npx vitest run src/modules/cycling -t blankInvoke` → 2 pass |
 | Wire | `07d7719` | Chrome boot wires TTS + CSE | `npx vitest run adapters/chrome` → 10 pass |
 | Docs | `a6c3946` | Plan doc readable | `cat integrations/chrome-extension/CE-PORT-PLAN.md` |
 | Docs | `9188d55` | Comparison doc readable | `cat integrations/chrome-extension/CE-COMPARISON.md` |
@@ -58,7 +58,7 @@ chrome (with the caveat below for early phases).
 | **CE.4** | `8f3a40e` | Browser keys map to runtime | After build: Ctrl+Alt+Up/Down cycles via runtime (this fixed Navigation+Cycling silently failing because 'ArrowUp' didn't match 'up') |
 | **CE.6** | `05ac230` | Statusline + TTS via runtime | After build: tip appears in floating div; voice-mode active → TTS speaks; voice-mode inactive → silent |
 | **CE.7** | `2f08073` | Resolver via runtime | After build: type a sentence, pause ~500ms, LLM-resolved alts dim and cycle |
-| **CE.8** | `13700af` | BlankFill via controlInvoke | After build: `volume _`, `weather _`, `nvidia _`, `improve prompt … _` all work via runtime → controlInvoke → chrome control |
+| **CE.8** | `13700af` | BlankFill via blankInvoke | After build: `volume _`, `weather _`, `nvidia _`, `improve prompt … _` all work via runtime → blankInvoke → chrome control |
 | **CE.9** | `361ab86` | Duplicated engine deleted | `ls integrations/chrome-extension/src/` shows no `core/` or `ui/`. Bundle still works. |
 
 ## Known intermediate states
@@ -77,7 +77,7 @@ keys alone. To force a re-seed: clear chrome.storage in DevTools
 CE.7 LLM resolution requires `apiKey` populated in popup config.
 Without it, Resolver isn't constructed and you'll see no LLM dim.
 
-CE.8 BlankFill requires the chrome control's prerequisites:
+CE.8 BlankFill requires the chrome blank's prerequisites:
 - volume: Web Audio API (always available)
 - stocks: `finnhubApiKey` populated in popup config
 - weather: Open-Meteo (no key)
@@ -95,7 +95,7 @@ CE.8 BlankFill requires the chrome control's prerequisites:
 - **Two-step LLM prompt-improver tracing** — the existing
   PromptImproverControl runs unchanged; runtime BlankFill just
   fetches the result. If the legacy two-step path bugs out, look
-  in src/controls/prompt-improver.ts (untouched by the port).
+  in src/blanks/prompt-improver.ts (untouched by the port).
 
 ## Risk areas
 

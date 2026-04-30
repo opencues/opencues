@@ -37,9 +37,9 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 |--------|----------------|---------|
 | **cues.md** | Word tips and LLM prompt sources for word alternatives | `### grammar` with synonym/opposite/creative prompt |
 | **blanks.md** | Fill-in-the-blank modes with prompt + parser per mode | `### math` with `parser: compute` |
-| **controls.md** | Cue-controls — words that trigger external scripts | `"volume"` runs a volume control script |
+| **blanks.md** | Cue-blanks — words that trigger external scripts | `"volume"` runs a volume control script |
 | **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
-| **controls/{name}/** | Self-contained control with colocated script | `controls/volume/cue.md` + `volume.sh` |
+| **blanks/{name}/** | Self-contained control with colocated script | `blanks/volume/cue.md` + `volume.sh` |
 
 Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -94,7 +94,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.opencues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/codex-cues/` | Codex fork the integration clones + patches |
-| `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `controls.md`, `opencues.md`, plus `cues/` and `controls/` folders. Read by every host. |
+| `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `opencues.md`, plus `cues/` and `blanks/` folders. Read by every host. |
 | `<cwd>/.opencues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, codex) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
@@ -106,7 +106,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Step controls (configurable increment), cycle alternatives |
+| Ctrl+Alt+Up/Down | Step blanks (configurable increment), cycle alternatives |
 | Escape | Clear highlight |
 
 ### What you get
@@ -115,11 +115,11 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 - **Visual cues** — words dim when alternatives are available
 - **Alternatives** — cycle through synonyms, opposites, creative suggestions
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
-- **Cue-controls** — `volume` triggers system volume control
-- **Control-bound blanks** — `volume _` auto-populates with actual system volume; cycle to change it
-- **Step controls** — `1.5f` → `2f` → `2.5f`, works with any suffix (`px`, `em`, `%`)
-- **List controls** — `affirmation _` cycles through "I am strong", "I am brave", ... (cycle to `_` to dismiss)
-- **Dynamic list controls** — `HN posts _` fetches live Hacker News titles; Up/Down scrolls through them
+- **Cue-blanks** — `volume` triggers system volume control
+- **Blanks** — `volume _` auto-populates with actual system volume; cycle to change it
+- **Step blanks** — `1.5f` → `2f` → `2.5f`, works with any suffix (`px`, `em`, `%`)
+- **List blanks** — `affirmation _` cycles through "I am strong", "I am brave", ... (cycle to `_` to dismiss)
+- **Dynamic list blanks** — `HN posts _` fetches live Hacker News titles; Up/Down scrolls through them
 - **Prompt improver** — `improve prompt _` uses LLM to rewrite your prompt; cycle through 3 improved versions
 - **API controls** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
 - **Secondary display** — highlighted words show cue-tips
@@ -143,7 +143,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │  packages/opencues-runtime/   Host-agnostic runtime           │
 │  ├── src/modules/             Navigation, Cycling, BlankFill, │
 │  │                            DimRender, TTS, Statusline,...  │
-│  ├── src/controls/            Stocks, Weather, HackerNews,    │
+│  ├── src/blanks/            Stocks, Weather, HackerNews,    │
 │  │                            PromptImprover, OpenCuesSettings│
 │  └── adapters/cc/v2.1/        boot.ts — the CC adapter band   │
 │                                                               │
@@ -237,7 +237,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **CueResolver** — orchestrates multiple sources, merges results
 - **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
 - **ClassifiedSourceGroup** — wraps blank modes with fast/LLM classification
-- **ControlBlankSource** — bridges blanks with cue-controls (auto-populate + cycling)
+- **BlankSource** — bridges blanks with cue-blanks (auto-populate + cycling)
 - **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + controls → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
@@ -248,7 +248,7 @@ Host-agnostic runtime + per-host adapter bands. Source: `packages/opencues-runti
 - Modules: Navigation, Cycling, BlankFill, DimRender, Statusline, TTS, ConfigLoader, ...
 - State classes: HighlightState, DynDefs, SpanFillState, etc.
 - Adapter bands: `adapters/cc/v2.1/`, `adapters/oc/v1.4/`, `adapters/chrome/v1/`
-- Hoisted controls: `src/controls/` (StocksControl, WeatherControl, HackerNewsControl, etc.)
+- Hoisted controls: `src/blanks/` (StocksControl, WeatherControl, HackerNewsControl, etc.)
 
 ### Per-host integrations
 
@@ -284,14 +284,14 @@ Your user-level OpenCues config lives at `~/.opencues/`:
 ├── opencues.md         # System settings (voice-mode, tips-mode, debug-mode, cursor-navigate)
 ├── cues.md             # Word alternatives + tips (## Tips JSON block)
 ├── blanks.md           # Blank-fill modes (math, factual, grammar, …)
-├── controls.md         # Inline cue-control definitions
+├── blanks.md         # Inline cue-blank definitions
 ├── cues/<name>/cue.md  # Folder-based word cue sources (legal, medical, …)
-└── controls/<name>/    # Folder-based cue-controls (with colocated scripts)
+└── blanks/<name>/    # Folder-based cue-blanks (with colocated scripts)
 ```
 
 Project-level overrides live at `<cwd>/.opencues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
 
-System settings (in `~/.opencues/opencues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-control:
+System settings (in `~/.opencues/opencues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
 
 | Setting | Values | Description |
 |---|---|---|
@@ -446,11 +446,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full details and pitfalls.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:
-- **Extend the standard** — add new word sources, blank modes, or cue-controls to the `.md` config files
+- **Extend the standard** — add new word sources, blank modes, or cue-blanks to the `.md` config files
 - **Build an integration** — bring OpenCues to a new editor or tool using opencues-core
 - **Improve opencues-core** — modify the core library, run tests, submit changes
 
-New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — cues, blanks, cue-controls, sources, parsers, and more.
+New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — cues, blanks, cue-blanks, sources, parsers, and more.
 
 <!-- ## Community
 

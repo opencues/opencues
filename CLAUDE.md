@@ -8,8 +8,8 @@ This document provides context for Claude sessions working on this project.
 
 **Architecture** (two libraries + integrations):
 - **`@opencues/core`** — *what alternatives exist*. Pure TypeScript: parsers
-  (cues.md / controls.md / opencues.md / blanks.md), the LLM `Resolver`,
-  prompt templates, sources (ConfigSource, ControlBlankSource, etc.),
+  (cues.md / blanks.md / opencues.md / blanks.md), the LLM `Resolver`,
+  prompt templates, sources (ConfigSource, BlankSource, etc.),
   HTTP adapter. Given text + config, answers "what should we suggest for
   this word?" Knows nothing about editors, key events, or rendering.
 - **`@opencues/runtime`** — *how the user interacts with those alternatives*.
@@ -67,15 +67,14 @@ opencues/
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
 │   ├── cues.md                    # OpenCues config (tips, prompts, ignore)
-│   ├── blanks.md                  # Blank-fill modes (math, factual, grammar, etc.)
-│   ├── controls.md                # Cue-controls (can be empty if using folders)
+│   ├── blanks.md                  # Cue-blanks (can be empty if using folders)
 │   │                              # (opencues.md is user-level only — ~/.opencues/opencues.md)
 │   ├── cues/                      # Folder-based word cue configs
 │   │   ├── grammar/cue.md         # Base word alternatives
 │   │   ├── legal/cue.md           # Legal terminology alternatives
 │   │   ├── medical/cue.md         # Clinical terminology alternatives
 │   │   └── financial/cue.md       # Financial terminology alternatives
-│   └── controls/                  # Folder-based cue-controls (colocated scripts + state)
+│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state)
 │       ├── volume/
 │       │   ├── cue.md
 │       │   ├── volume.sh          # Word-control script: up/down via key presses
@@ -100,7 +99,7 @@ opencues/
 │   │   │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
 │   │   │   ├── discover.ts        # Folder-based config discovery
 │   │   │   ├── node-http-adapter.ts  # HTTPS with keep-alive
-│   │   │   └── sources/           # ConfigSource, ClassifiedSourceGroup, ControlBlankSource, parsers
+│   │   │   └── sources/           # ConfigSource, ClassifiedSourceGroup, BlankSource, parsers
 │   │   ├── prompts/               # Prompt references + documentation
 │   │   │   ├── linked.txt         # Linked words prompt
 │   │   │   └── references/        # Prompt documentation
@@ -127,7 +126,7 @@ opencues/
 │   │   ├── cursor-positioning.md  # Cursor offset adjustment during blank fill
 │   │   ├── cycling.md             # Numbers, alts, linked, spans, clearing
 │   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
-│   │   ├── cue-controls.md         # Cue-controls + WSL guide
+│   │   ├── cue-blanks.md         # Cue-blanks + WSL guide
 │   │   ├── selector-satellite.md  # Selector + satellite blank controls
 │   │   ├── status-line.md         # Status line setup, format, disabling
 │   │   ├── config.md              # All config options
@@ -146,7 +145,7 @@ opencues/
 │   ├── guides/                    # Task-oriented how-tos
 │   │   ├── adding-a-feature.md    # How to add a new feature
 │   │   ├── adding-an-integration.md # How to add a new editor integration
-│   │   ├── adding-a-cue-control.md # How to add a cue-control (external script trigger)
+│   │   ├── adding-a-cue-blank.md # How to add a cue-blank (external script trigger)
 │   │   ├── porting-to-new-integration.md # Porting guide: contracts, pitfalls, edge cases
 │   │   ├── parser-types.md        # Response parser types (alternatives, compute, answer, raw)
 │   │   └── llm-providers.md       # LLM provider setup & benchmarks
@@ -203,8 +202,8 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **CONTRIBUTING.md** — How to extend the standard, build integrations, modify opencues-core
 - **docs/overview.md** — System architecture, core interfaces, API usage
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
-- **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-controls, parser types, LLM providers)
-  - **`adding-a-cue-control.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
+- **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-blanks, parser types, LLM providers)
+  - **`adding-a-cue-blank.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
@@ -239,7 +238,7 @@ CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
 
-> **Note:** `.md` config files (`cues.md`, `blanks.md`, `controls.md`, `cues/`, `controls/`) hot-reload within ~2 seconds on the next keystroke — no restart needed.
+> **Note:** `.md` config files (`cues.md`, `blanks.md`, `cues/`, `blanks/`) hot-reload within ~2 seconds on the next keystroke — no restart needed.
 
 ---
 
@@ -432,7 +431,7 @@ Full spec: `docs/features/host-compat.md`. Glossary entry:
 `inferHostCompat()`, `formatHostList()`, `unknownHostNames()`,
 `HOSTS`, `NATIVE_HOSTS`.
 
-Real-world example: `.opencues/controls/opencues/cue.md` has
+Real-world example: `.opencues/blanks/opencues/cue.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a
 runtime-class implementation in `@opencues/runtime`. Auto-detect
 would exclude chrome because of the `.sh`; the file adds
@@ -495,7 +494,7 @@ Selector/satellite cycling (e.g. `opencues settings` flipping
 
 1. `Cycling.cycleSelectorSatellite` → `applyOpenCuesScalar(key, value)` —
    updates `opencuesState` in-memory **synchronously**.
-2. `controlInvoke({action: 'set', args: [setting, value]})` — kicks off
+2. `blankInvoke({action: 'set', args: [setting, value]})` — kicks off
    the host's **async** file/storage write. Chrome: `chrome.storage.local.set`.
    OpenCode: `fs.writeFile`.
 3. `setText(newText)` fires the host's text-change pipeline →
@@ -512,7 +511,7 @@ either host's async write to complete; after that the normal hot-reload
 debounce takes over.
 
 If you add a new code path that mutates a scalar *and* writes via
-`controlInvoke` (or any async write), reuse `applyOpenCuesScalar` so the
+`blankInvoke` (or any async write), reuse `applyOpenCuesScalar` so the
 suppression fires automatically. Tests pinning the contract live in
 `config-loader.test.ts` — `applyOpenCuesScalar suppresses the next
 maybeReload (write-race guard)` and the resume-after-window companion.

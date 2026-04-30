@@ -124,7 +124,7 @@ User presses: Ctrl+Alt+Up (with "dogs" highlighted)
 │                                                                │
 │  PATCHED BY: dynamicHighlight.ts (FIRST - _cycleAlt)          │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 1. Check if word is custom cue-control (e.g., "volume")  │ │
+│  │ 1. Check if word is custom cue-blank (e.g., "volume")  │ │
 │  │    → If yes: spawn script, RETURN                        │ │
 │  │                                                          │ │
 │  │ 2. Check if word matches step control pattern             │ │
@@ -138,7 +138,7 @@ User presses: Ctrl+Alt+Up (with "dogs" highlighted)
 │  PATCHED BY: wordHighlight.ts (delegates to _cycleAlt)        │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │ 4. Up/Down delegates to _cycleAlt (no duplicate logic)  │ │
-│  │    → Handles step controls, cue-controls, alt cycling   │ │
+│  │    → Handles step blanks, cue-blanks, alt cycling   │ │
 │  │    → Returns result with text/offset for InputZone      │ │
 │  └──────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────┘
@@ -162,7 +162,7 @@ Text ready to display: "The boy has 3 dogs"
 │  │    • If span selected: include span words                │ │
 │  │ 3. Build dim ranges (gray) for:                          │ │
 │  │    • Step-pattern matches (if numberDimming enabled)     │ │
-│  │    • Cue-controls                                        │ │
+│  │    • Cue-blanks                                        │ │
 │  │    • Tip words (instant — checked via _localCueMap)      │ │
 │  │    • Words with dynamic alts (after LLM response)        │ │
 │  │ 4. Walk through renderedValue char-by-char:              │ │
@@ -279,7 +279,7 @@ PATCHES:
 INJECTS:
   ├── Navigation logic with _isCueControl filtering
   ├── Up/Down delegates to _cycleAlt (no duplicate logic)
-  ├── globalThis._cueControlOverrides assignment (serialized from config)
+  ├── globalThis._cueBlankOverrides assignment (serialized from config)
   ├── ANSI rendering with highlight/dim ranges
   └── Invisible char toggle for re-render triggering
 
@@ -287,7 +287,7 @@ STATE (globalThis):
   • _hlState: {active, index, wordIndex, originalNumbers}
   • _hlText: current input text
   • _parentValue: parent's value (for invisible char toggle)
-  • _cueControlOverrides: control word config (serialized from config at build time)
+  • _cueBlankOverrides: control word config (serialized from config at build time)
   • _triggerStatusLineRefresh: function to refresh status line
   • _forceInputRefresh: function to force re-render
 
@@ -321,7 +321,7 @@ INJECTS:
   │   ├── NodeHttpAdapter (keep-alive, Groq provider config)
   │   ├── _reloadCuesConfig() — parses all .md config + rebuilds resolver
   │   │   (called at startup; re-called after 2s TTL on next analysis trigger)
-  │   └── Shared _cycleAlt(dir) function (cue-controls, alts, linked, spans)
+  │   └── Shared _cycleAlt(dir) function (cue-blanks, alts, linked, spans)
   ├── Input handler:
   │   ├── Three-tier trigger (space 50ms, pause 300ms, edit 50ms)
   │   ├── Tips lookup (instant, merge immediately)
@@ -341,9 +341,9 @@ STATE (globalThis):
   • _configLoadedAt: timestamp of last config load (0 = never)
   • _configReloading: boolean (gates analysis during rebuild)
   • _resolverGeneration: counter incremented on each resolver rebuild
-  • _isCueControl: unified check for cue-controls (step patterns + custom overrides)
+  • _isCueControl: unified check for cue-blanks (step patterns + custom overrides)
   • _stepPatterns: compiled step control regex patterns (rebuilt on config reload)
-  • _cycleAlt: shared cycling function (cue-controls first, then dynamic alts)
+  • _cycleAlt: shared cycling function (cue-blanks first, then dynamic alts)
   • _dynDefs: parsed LLM response {words: [...]}
   • _dynPending: boolean (resolver in progress)
   • _dynPrevWords: previous word list
@@ -362,7 +362,7 @@ EXTERNAL DEPENDENCIES:
 
 READS (from wordHighlight.ts):
   • globalThis._hlState, _hlText, _parentValue
-  • globalThis._cueControlOverrides (for cue-control checks in Up/Down handlers)
+  • globalThis._cueBlankOverrides (for cue-blank checks in Up/Down handlers)
   • globalThis._triggerStatusLineRefresh, _forceInputRefresh
 
 DEPENDENCIES:
@@ -447,7 +447,7 @@ READS (at startup + on 2s TTL reload):
   │
   ├── {cwd}/cues.md (or hints.md / tips.md)   ← tips + prompt sources
   ├── {cwd}/blanks.md                          ← blank-fill modes
-  ├── {cwd}/controls.md                        ← cue-control definitions
+  ├── {cwd}/blanks.md                        ← cue-blank definitions
   └── {cwd}/cues/, blanks/, controls/          ← folder-based configs
       (all re-read on every TTL-triggered reload)
 

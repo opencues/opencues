@@ -62,7 +62,7 @@ they're **merged**, not replaced. The merge rule is:
 - Top-level frontmatter and `## Tips` blocks → project wins per-key
 - `cues/<name>/cue.md` folder cues → project layer's `<name>` wins on
   conflict; uniquely-named cues from each layer all load
-- `controls/<name>/cue.md` controls → same as folder cues
+- `blanks/<name>/cue.md` controls → same as folder cues
 
 Missing layers are silently skipped — there's never a "config
 missing" error from the layering itself. A user with no `.opencues/`

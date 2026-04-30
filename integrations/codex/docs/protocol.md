@@ -80,7 +80,7 @@ Bridge requests the daemon re-emit current directives. Used when the TUI redraws
 
 ### `control-invoke` (request)
 
-Bridge invokes one of the daemon's hoisted controls (HackerNews, Stocks, Weather, Answer, PromptImprover, OpenCuesSettings) directly — useful for codex slash commands or other TUI affordances that want to trigger a control outside the normal runtime flow.
+Bridge invokes one of the daemon's hoisted blanks (HackerNews, Stocks, Weather, Answer, PromptImprover, OpenCuesSettings) directly — useful for codex slash commands or other TUI affordances that want to trigger a control outside the normal runtime flow.
 
 ```json
 { "method": "control-invoke", "params": {

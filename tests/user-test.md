@@ -11,7 +11,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Ctrl+Alt+Up/Down — cycles through alternatives
 - [ ] Escape — clears highlight
 
-## Step controls
+## Step blanks
 
 - [ ] Type `1.5f` — dimmed (dark gray), navigable
 - [ ] Navigate to it, Up — `2f`, Up — `2.5f`, Up — `3f` (step 0.5)
@@ -24,7 +24,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] `capital of France is _` — fills with `Paris` (factual mode)
 - [ ] `The _ dog` — fills with grammar alternatives (big, small, brown)
 
-## Cue-controls (word-based)
+## Cue-blanks (word-based)
 
 - [ ] Type `volume` — navigate to it, shows tip "system volume control"
 - [ ] Up/Down — actual volume changes, Windows OSD appears
@@ -32,7 +32,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Type `brightness` — navigate to it, shows live tip e.g. "brightness: 70%"
 - [ ] Up/Down — actual screen brightness changes
 
-## Control-bound blanks
+## Blanks
 
 ### Auto-populate
 - [ ] `volume _` — `_` replaced with actual system volume (e.g. `50%`)
@@ -57,7 +57,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 ### Ownership model
 - [ ] `volume _` populates with e.g. "64%"
 - [ ] Delete "64", type `hello` — "hello" gets normal grammar alts, NOT stuck as control-blank
-- [ ] Clear entire input — no ghost control-blank positions
+- [ ] Clear entire input — no ghost blank positions
 - [ ] Type `the happy dog` — normal behaviour, no stale control-blank at any index
 
 ### Brightness blank
@@ -66,11 +66,11 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Navigate to value, Up/Down — brightness changes by 10, displayed value updates
 
 ### Both controls in same input
-- [ ] Type `volume _` — "volume" is word-control, number is blank-control
+- [ ] Type `volume _` — "volume" is word-blank, number is blank-blank
 - [ ] Cycle "volume" — volume changes via key presses (OSD)
 - [ ] Cycle the number — volume changes via exact set (no OSD)
 
-## List controls
+## List blanks
 
 - [ ] `affirmation _` — blank auto-populates with "I am strong" (first value)
 - [ ] Cursor moves to end of populated value
@@ -149,7 +149,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 ## Hot-reload
 
 - [ ] Edit `cues.md` — changes take effect in ~2s without restart
-- [ ] Edit `controls/volume/cue.md` — changes take effect in ~2s without restart
+- [ ] Edit `blanks/volume/cue.md` — changes take effect in ~2s without restart
 
 ## Prompt improver (consume-all blank)
 

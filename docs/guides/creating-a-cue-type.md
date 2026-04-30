@@ -17,7 +17,7 @@ Every cue type interacts with some subset of these systems. Understanding which 
 **When you need it:** Your cue type has configuration that other types don't (e.g., `blankConsumeAll`, `blankDismissible`, `stepSuffixes`).
 
 **Touch points (4 locations per field):**
-- `ControlConfig` interface — add the field type
+- `BlankConfig` interface — add the field type
 - `SingleCueFrontmatter` interface — add to the frontmatter type
 - `parseExtendedFrontmatter` switch — parse the YAML value
 - `parseSingleCueMd` control branch — copy from frontmatter to control config
@@ -69,7 +69,7 @@ The central architectural decision: does your cue type store its cycling state i
 ### Use `_dynDefs` when:
 - Your result is a **single word** (no span collisions)
 - Your alternatives are **simple word swaps** at one index
-- Grammar/tips analysis won't **overwrite** your WordDef (because `metadata.controlName` guards protect it at the same index)
+- Grammar/tips analysis won't **overwrite** your WordDef (because `metadata.blankName` guards protect it at the same index)
 
 Examples: scalar blanks (volume `50`), read-only blanks (stock prices).
 
@@ -79,7 +79,7 @@ Examples: scalar blanks (volume `50`), read-only blanks (stock prices).
 - The tips-only fast path or grammar analysis **replaces `_dynDefs`** and your WordDef is lost
 - You need cycling state to **survive** arbitrary `_dynDefs` overwrites
 
-Examples: consume-all controls (prompt improver).
+Examples: consume-all blanks (prompt improver).
 
 ### The existing dedicated globals
 
@@ -87,9 +87,9 @@ Each cycling mechanism has its own storage because `_dynDefs` can't reliably hol
 
 | Cue type | Storage | Why not `_dynDefs` |
 |----------|---------|-------------------|
-| Word controls (volume, brightness) | `_cueControlOverrides` | Script-based, no LLM alts |
+| Word controls (volume, brightness) | `_cueBlankOverrides` | Script-based, no LLM alts |
 | Selector+satellite (opencues settings) | `_openCuesSettings` | Setting names/values are separate from word alts |
-| Step controls (numbers, units) | `_stepPatterns` | Regex-matched arithmetic, not word alternatives |
+| Step blanks (numbers, units) | `_stepPatterns` | Regex-matched arithmetic, not word alternatives |
 | **Consume-all (prompt improver)** | **`_consumeAllAlts`** | Multi-word span, index collisions after clearing |
 
 ---
@@ -116,10 +116,10 @@ Auto-populate (wordHighlight.ts)
 
 **Problem:** The `_cycleAlt` function checks cue types in order. Your cycling code must run **before** dynamic alt cycling (the fallback), otherwise the grammar WordDef at the same index handles the keypress instead.
 
-**Solution:** Insert your cycling block between step controls and dynamic alt cycling in `_cycleAlt`. The order is:
+**Solution:** Insert your cycling block between step blanks and dynamic alt cycling in `_cycleAlt`. The order is:
 
 1. Cue-control overrides (word-level scripts)
-2. Control-bound blank cycling (numeric blanks)
+2. Blank cycling (numeric blanks)
 3. Selector word cycling
 4. Satellite word cycling
 5. Step control cycling
@@ -143,7 +143,7 @@ Auto-populate (wordHighlight.ts)
 | Your global's `spanLength` | Next cycle uses wrong span boundaries for text replacement |
 | `_dynDefs.words[idx].spanLength` | Rendering reads `_hlDef.spanLength` first — if stale and larger than your global's new span, the highlight spans the wrong number of words |
 
-Compare with **dynamic alt cycling** (Path 7): it only updates `_hlText`, `_hlState.text`, and `_dynSpans`. It does NOT update `_dynLastAnalyzed`/`_dynPrevWords`. It can skip these because its WordDef in `_dynDefs` is protected by `metadata.controlName` guards during the merge path. Your dedicated global doesn't have that protection — the analysis will overwrite `_dynDefs` and break your spans if you don't prevent it.
+Compare with **dynamic alt cycling** (Path 7): it only updates `_hlText`, `_hlState.text`, and `_dynSpans`. It does NOT update `_dynLastAnalyzed`/`_dynPrevWords`. It can skip these because its WordDef in `_dynDefs` is protected by `metadata.blankName` guards during the merge path. Your dedicated global doesn't have that protection — the analysis will overwrite `_dynDefs` and break your spans if you don't prevent it.
 
 ### D. Per-word clearing skip
 
@@ -164,7 +164,7 @@ if (globalThis._myGlobal) {
 
 **Problem:** After your global is set and spans are active, the user might start typing new text. If your global persists, the old span locks those positions — the user's new text is still treated as part of the span.
 
-**Solution:** Clear your global, its span entries, AND the control-blank WordDefs at those positions from `_dynDefs`. This check must run **unconditionally** — outside the `_hlState.active` guard — because the highlight may already be inactive when the user types over the span. Cycling doesn't trigger this because it pre-sets `globalThis._hlText` before onChange fires, so `_hlText === _oldText` during cycling.
+**Solution:** Clear your global, its span entries, AND the blank WordDefs at those positions from `_dynDefs`. This check must run **unconditionally** — outside the `_hlState.active` guard — because the highlight may already be inactive when the user types over the span. Cycling doesn't trigger this because it pre-sets `globalThis._hlText` before onChange fires, so `_hlText === _oldText` during cycling.
 
 ```javascript
 // OUTSIDE the _hlState.active guard — must fire even when highlight is already inactive
@@ -173,7 +173,7 @@ if (_hlText !== _oldText && globalThis._myGlobal) {
   for (var _i = 0; _i < (_c.spanLength || 1); _i++) {
     if (globalThis._dynSpans) delete globalThis._dynSpans[_c.index + _i];
   }
-  // Remove stale control-blank WordDefs at span positions
+  // Remove stale blank WordDefs at span positions
   if (globalThis._dynDefs && globalThis._dynDefs.words) {
     globalThis._dynDefs.words = globalThis._dynDefs.words.filter(function(d) {
       return d.index < _c.index || d.index >= _c.index + (_c.spanLength || 1);
@@ -204,7 +204,7 @@ if (_hlText !== _oldText && globalThis._myGlobal) {
 
 **`def.word` after auto-populate.** When the blank auto-populates, the WordDef in `_dynDefs` was created at `_` time, so `def.word = "_"`. The runtime patches `def.word` to the resolved value immediately after populate. This matters because the per-word invalidation check (`writeDynamicClearOnChange`) compares the current word in the buffer against `def.word` — if they don't match, the def is discarded. If you're storing state in `_dynDefs` (not a dedicated global), ensure `def.word` reflects the resolved value, not the keyword that triggered it. The runtime also calls `alts.unshift(resolvedValue)` so that `currentAltIndex=0` points to the correct displayed value.
 
-**Pitfall: stale `cueTip` after clearing.** When the blank originally resolved, a WordDef was created in `_dynDefs` with `metadata.controlName` and your `cueTip`. After clearing your global, this WordDef persists. The LLM merge path in `dynamicHighlight.ts` guards: `if(_oldW2.metadata.controlName && !_nw2.metadata.controlName) continue` — it skips grammar results for control-blank positions. So the fresh analysis of the user's new text updates the `alts` but the old `cueTip` is never overwritten. The user sees correct alternatives but the wrong tip label. Removing the WordDefs from `_dynDefs` during cleanup unblocks the guard so the next analysis populates cleanly.
+**Pitfall: stale `cueTip` after clearing.** When the blank originally resolved, a WordDef was created in `_dynDefs` with `metadata.blankName` and your `cueTip`. After clearing your global, this WordDef persists. The LLM merge path in `dynamicHighlight.ts` guards: `if(_oldW2.metadata.blankName && !_nw2.metadata.blankName) continue` — it skips grammar results for blank positions. So the fresh analysis of the user's new text updates the `alts` but the old `cueTip` is never overwritten. The user sees correct alternatives but the wrong tip label. Removing the WordDefs from `_dynDefs` during cleanup unblocks the guard so the next analysis populates cleanly.
 
 ### F. Rendering span length
 
@@ -240,7 +240,7 @@ if (globalThis._dynDefs && globalThis._dynDefs.words) {
 
 The prompt improver is a consume-all control that clears the entire input and replaces it with an LLM-improved version of the user's prompt.
 
-### Config (`controls/prompt/cue.md`)
+### Config (`blanks/prompt/cue.md`)
 ```yaml
 ---
 name: prompt
@@ -256,10 +256,10 @@ blankTip: Prompt improver
 ```
 
 > **Note:** the original implementation was a `prompt-blank.sh` shell
-> script. During the controls hoist refactor it became
-> [`PromptImproverControl`](../../packages/opencues-runtime/src/controls/prompt-improver.ts)
+> script. During the blanks hoist refactor it became
+> [`PromptImproverControl`](../../packages/opencues-runtime/src/blanks/prompt-improver.ts)
 > in `@opencues/runtime`. The `cue.md` no longer references a script;
-> dispatch goes through the host's `controlInvoke` registry.
+> dispatch goes through the host's `blankInvoke` registry.
 
 ### New config field: `blankConsumeAll`
 
@@ -305,20 +305,20 @@ Two-step LLM pipeline inside the runtime class:
 2. **Improve:** Generate 3 improved versions (newline-separated → dynamic list pattern)
 3. **Original prompt:** Appended as the last line so the user can cycle back to their original text (without activation keywords)
 
-Source: [`packages/opencues-runtime/src/controls/prompt-improver.ts`](../../packages/opencues-runtime/src/controls/prompt-improver.ts).
+Source: [`packages/opencues-runtime/src/blanks/prompt-improver.ts`](../../packages/opencues-runtime/src/blanks/prompt-improver.ts).
 
 ---
 
 ## Checklist for new cue types
 
-- [ ] **Config fields** — added to `ControlConfig`, `SingleCueFrontmatter`, `parseExtendedFrontmatter`, `parseSingleCueMd`?
+- [ ] **Config fields** — added to `BlankConfig`, `SingleCueFrontmatter`, `parseExtendedFrontmatter`, `parseSingleCueMd`?
 - [ ] **Source resolution** — fits existing pattern (scalar/list/satellite) or needs new path?
 - [ ] **Dedicated global needed?** — multi-word + cycling + analysis interference?
 - [ ] **Data pipeline** — alts flow through `_pendingAutoPopulate`, not `_dynDefs` lookup?
 - [ ] **Cycling path** — inserted before dynamic alt cycling in `_cycleAlt`?
 - [ ] **State updates** — all 7 globals updated after cycling? (see table in section C)
 - [ ] **Per-word clearing** — span positions skipped in `writeDynamicClearOnChange`?
-- [ ] **Cleanup on user edit** — global, spans, and `_dynDefs` control-blank WordDefs at span positions all cleared unconditionally on text change (outside `_hlState.active` guard)?
+- [ ] **Cleanup on user edit** — global, spans, and `_dynDefs` blank WordDefs at span positions all cleared unconditionally on text change (outside `_hlState.active` guard)?
 - [ ] **Rendering** — span length checked from your global in both render paths?
 - [ ] **Dismiss tracking** — if `blankDismissible`, `_dismissedBlanks` updated when cycling to `_`? Alternatively, include the original input as a cycling option instead of `_`.
 - [ ] **Script** — completes within 6s, returns expected format?

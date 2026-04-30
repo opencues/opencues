@@ -4,9 +4,9 @@ last_updated: 2026-04-10
 
 # Consume-All Blanks
 
-A consume-all blank is a control-bound blank that **clears all surrounding text** when it auto-populates and replaces it with a multi-word result. The user can cycle through alternative results as a single word group.
+A consume-all blank is a blank that **clears all surrounding text** when it auto-populates and replaces it with a multi-word result. The user can cycle through alternative results as a single word group.
 
-This extends [Control Blanks](control-blanks.md) (Feature 12) with a new pattern: instead of replacing just `_`, the entire input is consumed — activation keywords, prompt text, and the blank are all replaced by the result.
+This extends [Control Blanks](cue-blanks.md) (Feature 12) with a new pattern: instead of replacing just `_`, the entire input is consumed — activation keywords, prompt text, and the blank are all replaced by the result.
 
 ---
 
@@ -61,7 +61,7 @@ Consume-all results require **dedicated cycling storage** (`_consumeAllAlts` in 
 
 An integration implementing consume-all blanks must:
 
-1. **Clear all words** — use the expanded `blankKeywordIndices` from `ControlBlankSource` (which includes every non-blank index when `blankConsumeAll` is true)
+1. **Clear all words** — use the expanded `blankKeywordIndices` from `BlankSource` (which includes every non-blank index when `blankConsumeAll` is true)
 2. **Store alternatives independently** — dedicated storage that survives analysis cycles
 3. **Cycle as a word group** — replace the full span on each cycle, not individual words
 4. **Protect spans from per-word clearing** — skip consume-all positions in per-word invalidation
@@ -72,14 +72,14 @@ An integration implementing consume-all blanks must:
 ## Example: Prompt Improver
 
 ```
-controls/prompt/
+blanks/prompt/
   cue.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
                       # Implementation: @opencues/runtime PromptImproverControl
-                      # (packages/opencues-runtime/src/controls/prompt-improver.ts)
+                      # (packages/opencues-runtime/src/blanks/prompt-improver.ts)
 ```
 
 The implementation is a TypeScript class in `@opencues/runtime` (post the
-controls hoist refactor). It performs a two-step LLM pass: extract
+blanks hoist refactor). It performs a two-step LLM pass: extract
 prompt/conditions from the activation keywords, then generate 3 improved
 versions. Returns newline-separated output, which the consume-all pipeline
 treats as cycling alternatives.

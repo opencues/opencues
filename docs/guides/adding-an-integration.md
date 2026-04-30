@@ -38,7 +38,7 @@ Read `docs/features/README.md` for the full list. At minimum, implement:
 | Recommended | Secondary Display (14) | Shows cue-tips and cycle position |
 | Optional | Linked Words (5) | Agreement tracking |
 | Optional | Multi-Word Spans (9) | Complex but useful for factual answers |
-| Optional | Cue-Controls (11) | Platform-specific external triggers |
+| Optional | Cue-Blanks (11) | Platform-specific external triggers |
 | Optional | Cursor Export (13) | For external tool integration |
 
 ## Using opencues-core

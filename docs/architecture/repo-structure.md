@@ -66,7 +66,7 @@ opencues/
 │   ├── blanks.md
 │   ├── opencues.md
 │   ├── cues/
-│   └── controls/
+│   └── blanks/
 │
 ├── docs/
 │   ├── architecture/            # THIS FILE lives here

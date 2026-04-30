@@ -63,11 +63,11 @@ Installer hints automatically print whichever form works in your shell.
 - Lives at user-level only: `~/.opencues/opencues.md`
 - Seeded from `defaults/opencues.md` by `opencues seed-configs` (and re-seeded automatically if the file is 0-bytes — the `OpenCuesSettingsControl` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills)
 - `setup.sh` self-heals an empty `opencues.md` on every install (section 7a-bis)
-- `opencues init` scaffolds only `cues.md`, `blanks.md`, `controls.md`, `README.md` in a project
+- `opencues init` scaffolds only `cues.md`, `blanks.md`, `README.md` in a project
 
 ### Can I have project-level `opencues.md`?
 
-No — it's intentionally user-level only. A project-level override would violate the "one value across every integration" invariant. `cues.md`, `blanks.md`, `controls.md` can all be project-level overrides; `opencues.md` cannot.
+No — it's intentionally user-level only. A project-level override would violate the "one value across every integration" invariant. `cues.md`, `blanks.md` can all be project-level overrides; `opencues.md` cannot.
 
 ### The install output is too verbose / too quiet — can I change it?
 
@@ -207,7 +207,7 @@ You can edit the *scalar values* (`voice-mode: active ↔ inactive`, etc.) if yo
 ```bash
 opencues new cue my-synonyms            # → ~/.opencues/cues/my-synonyms/cue.md
 opencues new blank my-answer --project   # → ./.opencues/blanks/my-answer/cue.md
-opencues new control my-ctl --project    # → ./.opencues/controls/my-ctl/cue.md
+opencues new blank my-ctl --project    # → ./.opencues/blanks/my-ctl/cue.md
 ```
 
 The scaffolded `cue.md` is a thorough schema reference — every frontmatter field documented with examples. Validate after editing:

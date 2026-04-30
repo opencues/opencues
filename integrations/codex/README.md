@@ -1,6 +1,6 @@
 # OpenCues for OpenAI Codex (TUI)
 
-`@opencues/codex` — patches OpenAI's [Codex Rust TUI](https://github.com/openai/codex) to add real-time word alternatives, blanks, and cue-controls inline in the chat composer.
+`@opencues/codex` — patches OpenAI's [Codex Rust TUI](https://github.com/openai/codex) to add real-time word alternatives, blanks, and cue-blanks inline in the chat composer.
 
 | Field | Value |
 |---|---|

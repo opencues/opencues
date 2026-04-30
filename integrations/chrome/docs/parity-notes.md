@@ -97,8 +97,8 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Chrome Extension:** Uses the same line-by-line walker approach (no regex for frontmatter). **Full parity.**
 
 ### Cycling Priority Order
-**Claude Code:** Strict order: cue-controls → control-blanks → selector → satellite → consume-all → step → dynamic alts → tips.
-**Chrome Extension:** Same order enforced in `cycle()` method. Control-bound blanks are handled separately via `controlAction()` in word-navigator before the main `cycle()` call. **Full parity.**
+**Claude Code:** Strict order: cue-blanks → control-blanks → selector → satellite → consume-all → step → dynamic alts → tips.
+**Chrome Extension:** Same order enforced in `cycle()` method. Blanks are handled separately via `controlAction()` in word-navigator before the main `cycle()` call. **Full parity.**
 
 ### Voice-Mode Gate
 **Claude Code:** Checks `_openCuesCurrent["voice-mode"]` synchronously before every TTS spawn. Satellite cycling updates this in-memory immediately.
@@ -113,7 +113,7 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Chrome Extension:** Same — `updatedWords` map, sequential forward walk. **Full parity.**
 
 ### controlName Merge Guard
-**Claude Code:** `if(_oldW2.metadata.controlName && !_nw2.metadata.controlName) continue` — prevents LLM overwriting control-blank positions.
+**Claude Code:** `if(_oldW2.metadata.blankName && !_nw2.metadata.blankName) continue` — prevents LLM overwriting blank positions.
 **Chrome Extension:** Same guard in analysis merge loop. **Full parity.**
 
 ### Unconditional Consume-All Cleanup

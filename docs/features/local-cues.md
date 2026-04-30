@@ -88,7 +88,7 @@ At runtime, `lookupMultiple()` iterates the input words and calls `map.get(word.
 | `found` | `WordDef[]` | Words with local matches, fully populated with `alts`, `cueTip`, `altCueTips`, `speak`, and `source: 'tips'` |
 | `missingIndices` | `number[]` | Word positions with no local match, passed to LLM sources |
 
-Words matching `skipPattern` (e.g., `_` for blanks) are silently skipped. Words rejected by `skipFn` (e.g., cue-control keywords) are added to `missingIndices`.
+Words matching `skipPattern` (e.g., `_` for blanks) are silently skipped. Words rejected by `skipFn` (e.g., cue-blank keywords) are added to `missingIndices`.
 
 ---
 

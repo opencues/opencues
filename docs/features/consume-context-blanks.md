@@ -4,9 +4,9 @@ last_updated: 2026-04-12
 
 # Consume-Context Blanks
 
-A consume-context blank is a control-bound blank that **collapses the keyword and context words between the keyword and blank**, while preserving surrounding text. The collapsed region is replaced by the blank's resolved value.
+A consume-context blank is a blank that **collapses the keyword and context words between the keyword and blank**, while preserving surrounding text. The collapsed region is replaced by the blank's resolved value.
 
-This extends [Control Blanks](control-blanks.md) and differs from [Consume-All Blanks](consume-all-blanks.md) which clear *everything*.
+This extends [Control Blanks](cue-blanks.md) and differs from [Consume-All Blanks](consume-all-blanks.md) which clear *everything*.
 
 ---
 
@@ -46,7 +46,7 @@ Other fields typically used:
 
 ## Example: Answer Control
 
-The `controls/answer/` control uses consume-context to provide factual lookups:
+The `blanks/answer/` control uses consume-context to provide factual lookups:
 
 ```yaml
 ---

@@ -18,8 +18,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 8 | [Fill-in-the-Blank](fill-in-the-blank.md) | Underscore placeholder filling |
 | 9 | [Multi-Word Spans](multi-word-spans.md) | Alternatives that are multiple words |
 | 10 | [Per-Word Clearing](per-word-clearing.md) | Preserve alternatives when editing text |
-| 11 | [Cue-Controls](cue-controls.md) | Words that trigger external controls |
-| 12 | [Control Blanks](control-blanks.md) | Blanks bound to controls — auto-populate, step, list, read-only |
+| 11 | [Cue-Blanks](cue-blanks.md) | Words and `_` positions with built-in cycling — script-driven, auto-populated, step, list, read-only |
 | 13 | [Auto-Submit](auto-submit.md) | Automatic analysis as you type |
 | 14 | [Cursor Export](cursor-export.md) | Export cursor position for external tools |
 | 15 | [Secondary Display](secondary-display.md) | Show cue-tips in a secondary area |

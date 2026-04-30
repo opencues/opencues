@@ -11,15 +11,15 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 | File | Lines | What |
 |------|-------|------|
 | `sources/classified-source-group.ts` | Entire (191 lines) | Blank mode classification — regex → keywords → LLM classifier. Picks one mode per input. |
-| `sources/control-blank-source.ts` | Entire (257 lines) | Control-bound blanks — keyword matching, auto-populate, step/list/satellite/dynamic list paths. |
+| `sources/control-blank-source.ts` | Entire (257 lines) | Blanks — keyword matching, auto-populate, step/list/satellite/dynamic list paths. |
 
 ### Shared Files (blank logic mixed with word logic)
 
 | File | Blank-Specific Lines | What |
 |------|---------------------|------|
-| `cues-md.ts` | ~100-148 (ControlConfig), ~499-540 (SingleCueFrontmatter), ~585-610 (parsing), ~666-692 (wiring) | 19 `blank*` fields on interfaces + parsing + assembly. Word-alt fields are separate. |
+| `cues-md.ts` | ~100-148 (BlankConfig), ~499-540 (SingleCueFrontmatter), ~585-610 (parsing), ~666-692 (wiring) | 19 `blank*` fields on interfaces + parsing + assembly. Word-alt fields are separate. |
 | `sources/config-source.ts` | ~86-91 (supports), ~105-107 (max_tokens), ~138-150 (formatInput) | `scope` filtering, `BLANK` formatting, parser-specific settings. Rest is shared. |
-| `sources/build-sources.ts` | ~117-161 | ClassifiedSourceGroup construction + ControlBlankSource construction. Word combining is ~89-115. |
+| `sources/build-sources.ts` | ~117-161 | ClassifiedSourceGroup construction + BlankSource construction. Word combining is ~89-115. |
 | `sources/parsers.ts` | ~135-148 | `parseAlternatives()` — blank positions get alts without prepending original word. |
 | `types.ts` | ~62-63 | `blankIndices?: number[]` on CueContext. Generic otherwise. |
 
@@ -47,12 +47,12 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 | File | Status |
 |------|--------|
 | `blanks.md` | Entire file — 10 blank modes + classifier |
-| `controls/volume/cue.md` | `blank*` fields (blankKeywords, blankStep, blankAutoPopulate, blankSuffix, blankScript) |
-| `controls/brightness/cue.md` | `blank*` fields |
-| `controls/stocks/cue.md` | `blank*` fields (blankReadOnly, blankClearKeywords, blankProximity) |
-| `controls/weather/cue.md` | `blank*` fields |
-| `controls/hackernews/cue.md` | `blank*` fields (blankDismissible) |
-| `controls/opencues/cue.md` | `blank*` fields (blankSatellite, blankClearKeywords, blankClearOnEdit) |
+| `blanks/volume/cue.md` | `blank*` fields (blankKeywords, blankStep, blankAutoPopulate, blankSuffix, blankScript) |
+| `blanks/brightness/cue.md` | `blank*` fields |
+| `blanks/stocks/cue.md` | `blank*` fields (blankReadOnly, blankClearKeywords, blankProximity) |
+| `blanks/weather/cue.md` | `blank*` fields |
+| `blanks/hackernews/cue.md` | `blank*` fields (blankDismissible) |
+| `blanks/opencues/cue.md` | `blank*` fields (blankSatellite, blankClearKeywords, blankClearOnEdit) |
 | `controls/*/volume-blank.sh` etc. | 6 blank-specific scripts (get/set commands) |
 
 ---
@@ -63,7 +63,7 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 | File | Content |
 |------|---------|
 | `docs/features/fill-in-the-blank.md` | Blank detection, classification, parsing, scope |
-| `docs/features/control-blanks.md` | Control-bound blank config and behaviour |
+| `docs/features/cue-blanks.md` | Blank config and behaviour |
 | `docs/features/selector-satellite.md` | Selector+satellite pair mechanics |
 
 ### Docs That Reference Blanks
@@ -72,10 +72,10 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 | `docs/features/tip-priority.md` | Control blank tips in priority table |
 | `docs/features/secondary-display.md` | Control blank display format |
 | `docs/features/hot-reload-config.md` | blanks.md in hot-reload list |
-| `docs/features/cue-controls.md` | `blank*` fields in config table |
+| `docs/features/cue-blanks.md` | `blank*` fields in config table |
 | `docs/glossary.md` | "Control-Bound Blank" definition |
 | `docs/guides/quickstart.md` | Blank examples |
-| `docs/guides/adding-a-cue-control.md` | Blank config in checklist |
+| `docs/guides/adding-a-cue-blank.md` | Blank config in checklist |
 | `docs/guides/porting-to-new-integration.md` | Blank integration points |
 | `docs/guides/parser-types.md` | Blank parser types |
 | `README.md` | Blank feature descriptions, blanks.md section |
@@ -89,10 +89,10 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 
 ### Clean Boundaries (easy to extract)
 - `ClassifiedSourceGroup` — standalone class, zero word-alt dependencies
-- `ControlBlankSource` — standalone class
+- `BlankSource` — standalone class
 - `blanks.md` — entire file is blank-specific
 - Blank `cue.md` fields — can be parsed/ignored independently
-- Blank scripts — optional, only invoked for control-bound blanks
+- Blank scripts — optional, only invoked for blanks
 - 3 feature docs — can be excluded from a non-blank release
 
 ### Moderate Entanglement (needs refactoring)
@@ -112,7 +112,7 @@ Complete map of every place "blanks" (the `_` placeholder system) are referenced
 
 **Option A: Feature flag** — add `blanksEnabled: false` to disable blank sources in `buildSourcesFromConfig`. Cheapest. Blanks code stays in tree but doesn't run. ~2 hours.
 
-**Option B: Conditional build** — `buildSourcesFromConfig` skips ClassifiedSourceGroup and ControlBlankSource when `blanksCfg` is null. Already partially implemented (the `if` guards exist). ~4 hours to clean up edge cases.
+**Option B: Conditional build** — `buildSourcesFromConfig` skips ClassifiedSourceGroup and BlankSource when `blanksCfg` is null. Already partially implemented (the `if` guards exist). ~4 hours to clean up edge cases.
 
 **Option C: Full extraction** — move blank-specific code to `packages/cues-blanks/`. ConfigSource needs subclassing or scope removal. ~20-30 hours.
 
