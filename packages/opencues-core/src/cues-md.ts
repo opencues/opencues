@@ -92,9 +92,6 @@ export type ActionConfig = BlankConfig;
 export interface BlankConfig {
   control: string;
   tip?: string;
-  script?: string;
-  upArgs?: string[];
-  downArgs?: string[];
   speak?: boolean;
   /** Context words that bind a blank (_) to this control (e.g., ['volume', 'sound']) */
   blankKeywords?: string[];
@@ -116,26 +113,8 @@ export interface BlankConfig {
   blankDismissible?: boolean;
   /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
   blankSuffix?: string;
-  /** Regex pattern matching values that can be stepped (default: ^-?\d+(\.\d+)?$) */
-  stepPattern?: string;
-  /** Arithmetic step size for Up/Down (default: 1) */
-  step?: number;
-  /** Minimum value — Down will not go below this */
-  stepMin?: number;
-  /** Maximum value — Up will not go above this */
-  stepMax?: number;
-  /** Output format for stepped values: 'integer' | 'float' | 'string' (default: auto) */
-  stepFormat?: 'integer' | 'float' | 'string';
-  /** Suffix to strip before stepping and re-append after (e.g. 'px', 'em', 'f') */
-  stepSuffix?: string;
-  /** Multiple suffixes sharing this control's step settings (e.g. ['px', 'em', 'rem']) */
-  stepSuffixes?: string[];
-  /** Script called with (current_value, direction) to compute next value */
-  stepScript?: string;
   /** Ordered list of values to cycle through on a control-bound blank */
   stepValues?: string[];
-  /** Tip text shown when a stepped word is selected (e.g. '±0.5f'). Omit to show nothing. */
-  stepTip?: string;
   /** Map from keyword (lowercase) to display expansion applied at auto-populate time (e.g. { rddt: "Reddit" }) */
   blankKeywordExpansions?: Record<string, string>;
   /** If true, blank auto-populates as two independent words: selector (word N) + satellite (word N+1) */
@@ -559,9 +538,6 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   // Control-specific fields
   control?: string;
   tip?: string;
-  script?: string;
-  upArgs?: string[];
-  downArgs?: string[];
   speak?: boolean;
   blankKeywords?: string;
   blankStep?: number;
@@ -573,16 +549,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankReadOnly?: boolean;
   blankDismissible?: boolean;
   blankSuffix?: string;
-  stepPattern?: string;
-  step?: number;
-  stepMin?: number;
-  stepMax?: number;
-  stepFormat?: 'integer' | 'float' | 'string';
-  stepSuffix?: string;
-  stepSuffixes?: string;
-  stepScript?: string;
   stepValues?: string[];
-  stepTip?: string;
   blankKeywordExpansions?: Record<string, string>;
   blankSatellite?: boolean;
   blankSatelliteSeparator?: string;
@@ -602,7 +569,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
 
 /**
  * Parse extended frontmatter from a single cue.md file.
- * Handles arrays (JSON bracket syntax) for upArgs/downArgs.
+ * Handles arrays (JSON bracket syntax) for stepValues.
  */
 function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFrontmatter; body: string } {
   const match = content.match(FRONTMATTER_RE);
@@ -639,9 +606,6 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'promptPath': fm.promptPath = value; break;
       case 'control': fm.control = value; break;
       case 'tip': fm.tip = value; break;
-      case 'script': fm.script = value; break;
-      case 'upArgs': try { fm.upArgs = JSON.parse(value); } catch { /* ignore */ } break;
-      case 'downArgs': try { fm.downArgs = JSON.parse(value); } catch { /* ignore */ } break;
       case 'speak': fm.speak = value === 'true'; break;
       case 'blankKeywords': fm.blankKeywords = value; break;
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
@@ -653,16 +617,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankReadOnly': fm.blankReadOnly = value === 'true'; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
       case 'blankSuffix': fm.blankSuffix = value; break;
-      case 'stepPattern': fm.stepPattern = value; break;
-      case 'step': fm.step = parseFloat(value) || undefined; break;
-      case 'stepMin': fm.stepMin = parseFloat(value); break;
-      case 'stepMax': fm.stepMax = parseFloat(value); break;
-      case 'stepFormat': fm.stepFormat = value as 'integer' | 'float' | 'string'; break;
-      case 'stepSuffix': fm.stepSuffix = value; break;
-      case 'stepSuffixes': fm.stepSuffixes = value; break;
-      case 'stepScript': fm.stepScript = value; break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
-      case 'stepTip': fm.stepTip = value; break;
       case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
@@ -730,8 +685,6 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       const control: BlankConfig = {
         control: frontmatter.control || name,
         tip: frontmatter.tip,
-        upArgs: frontmatter.upArgs,
-        downArgs: frontmatter.downArgs,
         speak: frontmatter.speak,
       };
       if (frontmatter.blankKeywords) {
@@ -745,17 +698,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       if (frontmatter.blankReadOnly !== undefined) control.blankReadOnly = frontmatter.blankReadOnly;
       if (frontmatter.blankDismissible !== undefined) control.blankDismissible = frontmatter.blankDismissible;
       if (frontmatter.blankSuffix !== undefined) control.blankSuffix = frontmatter.blankSuffix;
-      if (frontmatter.stepPattern !== undefined) control.stepPattern = frontmatter.stepPattern;
-      if (frontmatter.step !== undefined) control.step = frontmatter.step;
-      if (frontmatter.stepMin !== undefined) control.stepMin = frontmatter.stepMin;
-      if (frontmatter.stepMax !== undefined) control.stepMax = frontmatter.stepMax;
-      if (frontmatter.stepFormat !== undefined) control.stepFormat = frontmatter.stepFormat;
-      if (frontmatter.stepSuffix !== undefined) control.stepSuffix = frontmatter.stepSuffix;
-      if (frontmatter.stepSuffixes !== undefined) {
-        control.stepSuffixes = frontmatter.stepSuffixes.split(/[\s,]+/).filter(s => s.length > 0);
-      }
       if (frontmatter.stepValues !== undefined) control.stepValues = frontmatter.stepValues;
-      if (frontmatter.stepTip !== undefined) control.stepTip = frontmatter.stepTip;
       if (frontmatter.blankKeywordExpansions !== undefined) control.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
       if (frontmatter.blankSatellite !== undefined) control.blankSatellite = frontmatter.blankSatellite;
       if (frontmatter.blankSatelliteSeparator !== undefined) control.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
@@ -783,16 +726,6 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       }
       if (Object.keys(promptSections).length > 0) control.prompts = promptSections;
       // Resolve relative script paths
-      if (frontmatter.stepScript) {
-        control.stepScript = frontmatter.stepScript.startsWith('./')
-          ? folderPath + '/' + frontmatter.stepScript.slice(2)
-          : frontmatter.stepScript;
-      }
-      if (frontmatter.script) {
-        control.script = frontmatter.script.startsWith('./')
-          ? folderPath + '/' + frontmatter.script.slice(2)
-          : frontmatter.script;
-      }
       if (frontmatter.blankScript) {
         control.blankScript = frontmatter.blankScript.startsWith('./')
           ? folderPath + '/' + frontmatter.blankScript.slice(2)

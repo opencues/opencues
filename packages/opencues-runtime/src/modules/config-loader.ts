@@ -32,13 +32,6 @@ import {
   type DirEntry as CoreDirEntry,
 } from '@opencues/core';
 
-/** Pattern that matches words eligible for step-arithmetic cycling. */
-export interface StepPattern {
-  readonly regex: RegExp;
-  readonly control: BlankConfig;
-  readonly controlName: string;
-}
-
 export interface ConfigLoaderOptions {
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
@@ -231,11 +224,6 @@ export interface LoadedConfig {
    * synonym → same Control entry.
    */
   readonly controlsByWord: ReadonlyMap<string, BlankEntry>;
-  /**
-   * Step-arithmetic patterns. Words matching any regex here cycle by step.
-   * Built per-control from `stepSuffixes` + `step`.
-   */
-  readonly stepPatterns: readonly StepPattern[];
 }
 
 export interface BlankEntry {
@@ -254,7 +242,6 @@ export class ConfigLoader {
     mergedBlanksConfig: null,
     navigableWords: new Set(),
     controlsByWord: new Map(),
-    stepPatterns: [],
   };
   private _loaded = false;
   private _lastLoadAt = 0;
@@ -298,7 +285,6 @@ export class ConfigLoader {
     }
     return out;
   }
-  get stepPatterns(): readonly StepPattern[] { return this._config.stepPatterns; }
 
   /**
    * Look up a control by a word — checks the control's own name AND
@@ -308,19 +294,6 @@ export class ConfigLoader {
     return this._config.controlsByWord.get(word.toLowerCase().replace(/[\u200B\u200C]/g, '')) ?? null;
   }
 
-  /**
-   * Match a word against any registered step-pattern. Returns the matching
-   * pattern + the regex match (so callers can see what the captured numeric
-   * portion is) or null.
-   */
-  matchStepPattern(word: string): { pattern: StepPattern; match: RegExpMatchArray } | null {
-    const w = word.replace(/[\u200B\u200C]/g, '');
-    for (const p of this._config.stepPatterns) {
-      const m = w.match(p.regex);
-      if (m) return { pattern: p, match: m };
-    }
-    return null;
-  }
   get loaded(): boolean { return this._loaded; }
   get config(): LoadedConfig { return this._config; }
 
@@ -531,11 +504,10 @@ export class ConfigLoader {
     // become navigable via the same lookup). Not done yet because folder
     // configs use the LLM resolver shape, not the static-tip shape.
 
-    // Build the navigable-words set + controlsByWord map + stepPatterns
-    // from cueMap keys, folder controls, and blanks.md frontmatter.
+    // Build the navigable-words set + controlsByWord map from cueMap
+    // keys, folder controls, and blanks.md frontmatter.
     const navigableWords = new Set<string>();
     const controlsByWord = new Map<string, BlankEntry>();
-    const stepPatterns: StepPattern[] = [];
     for (const k of cueMap.keys()) navigableWords.add(k);
 
     const addControl = (name: string, control: BlankConfig): void => {
@@ -560,21 +532,6 @@ export class ConfigLoader {
         navigableWords.add(syn);
         controlsByWord.set(syn, { name: lcName, control });
       }
-      // Step-arithmetic pattern: build regex from stepSuffixes.
-      if (control.step !== undefined) {
-        const suffixes = (control.stepSuffixes && control.stepSuffixes.length > 0)
-          ? control.stepSuffixes.map(s => escapeRegex(s)).join('|')
-          : '';
-        const suffixGroup = suffixes ? `(?:${suffixes})` : '';
-        const regex = suffixes
-          ? new RegExp(`^(-?\\d+(?:\\.\\d+)?)${suffixGroup}$`, 'i')
-          : new RegExp(`^(-?\\d+(?:\\.\\d+)?)$`);
-        stepPatterns.push({ regex, control, controlName: lcName });
-      }
-      // No global stepPattern for blankStep/blankSuffix-only controls
-      // (volume, brightness): they share a `%` suffix, so a global
-      // pattern would route ambiguously. Cycling routes via
-      // DynDef.controlName instead — see BlankFill (Phase I.8).
     };
     for (const [name, ctrl] of Object.entries(folderConfigs?.blankOverrides ?? {})) {
       addControl(name, ctrl as BlankConfig);
@@ -593,7 +550,6 @@ export class ConfigLoader {
       mergedBlanksConfig,
       navigableWords,
       controlsByWord,
-      stepPatterns,
     };
     this.adapter.log('info', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,
@@ -681,7 +637,4 @@ export class ConfigLoader {
   }
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 

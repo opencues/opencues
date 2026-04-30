@@ -102,7 +102,6 @@ export class DimRender {
         // navigable, so they should dim too.
         if (
           navigable.has(lc) ||
-          this.configLoader.matchStepPattern(w.word) ||
           this.dynDefs.get(w.index)
         ) {
           dimRanges.push({ start: w.start, end: w.end });

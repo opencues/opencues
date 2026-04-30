@@ -101,33 +101,6 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([]);
   });
 
-  it('Step 9: dims a standalone step-pattern match (e.g. 0.5f) even with no surrounding cues', async () => {
-    const NUMBERS_CUE = `---
-type: control
-name: numbers
-control: numbers
-stepSuffixes: f
-step: 0.5
----
-`;
-    const { ConfigLoader } = await import('./config-loader');
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: {
-        '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
-        '/proj/blanks/numbers/cue.md': NUMBERS_CUE,
-      },
-    });
-    adapter.pushText('0.5f');
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const hlState = new HighlightState();
-    const dynDefs = new DynDefs();
-    const dim = new DimRender(adapter, hlState, dynDefs, loader);
-    const out = dim.compute({ text: '0.5f', cursor: 0, externalHighlights: [] });
-    expect(out?.dimRanges).toEqual([{ start: 0, end: 4 }]);
-  });
-
   it('Step 21: dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const adapter = new MockAdapter({

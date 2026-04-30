@@ -183,8 +183,6 @@ export class Navigation {
           filtered.push(w.index);
         } else if (this.dynDefs.get(w.index)) {
           filtered.push(w.index);
-        } else if (this.configLoader?.matchStepPattern(w.word)) {
-          filtered.push(w.index);
         }
       }
       if (filtered.length > 0) return filtered;

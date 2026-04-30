@@ -12,9 +12,6 @@ const VOLUME_CUE = `---
 type: control
 name: volume
 control: volume
-script: ./volume.sh
-upArgs: ["up", "6"]
-downArgs: ["down", "6"]
 blankKeywords: volume, vol, sound, audio
 ---
 `;

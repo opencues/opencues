@@ -194,7 +194,7 @@ export class BlankSource implements CueSource {
         cueTip: matched.blankTip ?? matched.tip,
         metadata: {
           controlName: matched.control,
-          blankScript: matched.blankScript ?? matched.script,
+          blankScript: matched.blankScript,
           selectorControl: true,
           satelliteValue: satelliteText,
           displaySeparator: displaySep,
@@ -243,9 +243,7 @@ export class BlankSource implements CueSource {
     }
 
     // Determine step size: only when explicitly configured
-    const step = matched.blankStep
-      ?? parseStepFromArgs(matched.upArgs)
-      ?? parseStepFromArgs(matched.downArgs);
+    const step = matched.blankStep;
 
     const displayValue = matched.blankSuffix ? rawValue + matched.blankSuffix : rawValue;
     const baseAlts = matched.blankAutoPopulate
@@ -262,7 +260,7 @@ export class BlankSource implements CueSource {
       cueTip: matched.blankTip ?? matched.tip,
       metadata: {
         controlName: matched.control,
-        blankScript: matched.blankScript ?? matched.script,
+        blankScript: matched.blankScript,
         ...(step != null ? { blankStep: step } : {}),
         ...(format ? { blankFormat: format } : {}),
         blankReadOnly: matched.blankReadOnly,
@@ -279,9 +277,3 @@ export class BlankSource implements CueSource {
   }
 }
 
-/** Extract numeric step from args like ["up", "6"] → 6 */
-function parseStepFromArgs(args?: string[]): number | undefined {
-  if (!args || args.length < 2) return undefined;
-  const n = parseInt(args[args.length - 1], 10);
-  return isNaN(n) ? undefined : n;
-}

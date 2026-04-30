@@ -2,19 +2,17 @@
 //
 // Ctrl+Alt+Up/Down dispatches based on what kind of word is highlighted:
 //
-//   1. Script-backed control (e.g. volume): spawn the configured script
-//      with upArgs/downArgs, no text mutation.
-//   2. List control (e.g. affirmations): rotate through stepValues in-place.
-//   3. Step-pattern numeric (e.g. "0.5f"): arithmetic increment by `step`.
-//   4. Plain cue word: rotate through cueMap.alternatives (Phase 3 path).
+//   1. List control (e.g. affirmations): rotate through stepValues in-place.
+//   2. Blank-fill DynDef: cycle the originating blank's stepped value.
+//   3. Plain cue word: rotate through cueMap.alternatives (Phase 3 path).
 //
 // Each path updates DynDefs as needed so subsequent cycles continue from
 // the right state.
 
-import type { HostAdapter, KeyEvent, ProcessHandle, ProcessSpec, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, type WordDef } from '../state/dyn-defs';
-import type { ConfigLoader, BlankEntry, StepPattern } from './config-loader';
+import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
@@ -24,8 +22,6 @@ import type { BlankValuesCache } from '../state/blank-values';
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
   private _unsubDown: Unsubscribe | null = null;
-  /** Per-control debounce timers for script up/down (50ms coalesce). */
-  private _scriptTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private adapter: HostAdapter,
@@ -35,8 +31,10 @@ export class Cycling {
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
-    private controlValues?: BlankValuesCache,
-  ) {}
+    _controlValues?: BlankValuesCache,
+  ) {
+    void _controlValues;
+  }
 
   /**
    * Try host-native control invocation first; fall back to spawning
@@ -108,21 +106,15 @@ export class Cycling {
       return true;
     }
 
-    // 1. Script-backed control — spawn script, no text change.
+    // 1. List control (stepValues) — rotate values in-place.
     const control = this.configLoader.lookupControl(target.word);
-    if (control && control.control.script) {
-      return this.runScriptControl(control, direction);
-    }
-
-    // 2. List control (stepValues) — rotate values in-place.
     if (control && control.control.stepValues && control.control.stepValues.length > 0) {
       return this.cycleListControl(event, target, control, direction);
     }
 
-    // 3a. Blank-fill DynDef with blankName attribution (Phase I.8) —
-    //     volume/brightness `50%` cycles via the originating blank's
-    //     blankStep/Suffix/Script. Checked BEFORE matchStepPattern so
-    //     sibling blanks sharing a suffix don't ambiguously route.
+    // 2. Blank-fill DynDef with blankName attribution (Phase I.8) —
+    //    volume/brightness `50%` cycles via the originating blank's
+    //    blankStep/Suffix/Script.
     const def = this.dynDefs.get(wordIndex);
     if (def && def.blankName) {
       const ctrl = this.configLoader.blanks.get(def.blankName);
@@ -131,13 +123,7 @@ export class Cycling {
       }
     }
 
-    // 3. Step-pattern numeric — arithmetic on the matched number.
-    const stepMatch = this.configLoader.matchStepPattern(target.word);
-    if (stepMatch) {
-      return this.cycleStepPattern(event, target, stepMatch.pattern, direction);
-    }
-
-    // 4. Plain cue word — fall through to original static-alts cycling.
+    // 3. Plain cue word — fall through to original static-alts cycling.
     return this.cycleStaticAlts(event, target, wordIndex, direction);
   }
 
@@ -307,7 +293,7 @@ export class Cycling {
     this.spanFillState!.set(entry, newText);
 
     // Mirror the new char range to any DynDef at the span origin so a
-    // later fallthrough to Path 4 (static-alts) — e.g. after the span
+    // later fallthrough to Path 3 (static-alts) — e.g. after the span
     // clears due to user edit — doesn't splice at stale spanStart /
     // spanEnd from the last multi-word replacement.
     const def = this.dynDefs.get(entry.index);
@@ -332,56 +318,7 @@ export class Cycling {
     return true;
   }
 
-  // ─── Path 1: script-backed ─────────────────────────────────────────────
-
-  private runScriptControl(entry: BlankEntry, direction: 1 | -1): boolean {
-    // Hosts without spawn-process AND without controlInvoke can't drive
-    // the script. Sandboxed hosts that implement controlInvoke handle
-    // both the up/down and the post-fetch via their native API.
-    if (!this.adapter.capabilities.includes('spawn-process') && !this.adapter.blankInvoke) return false;
-    const c = entry.control;
-    const args = direction === 1 ? c.upArgs ?? [] : c.downArgs ?? [];
-    // First arg is the action (e.g. "up"); remainder are extra args.
-    const action = args[0] ?? (direction === 1 ? 'up' : 'down');
-    const restArgs = args.slice(1);
-    const scriptPath = c.script as string;
-    // Debounce + post-spawn fetch — mirrors v1's wordHighlight.ts:1015.
-    // Holding Up key issues many key dispatches; without the debounce
-    // we'd spawn a script per dispatch. After the script settles
-    // (~200ms — per volume.sh / brightness.sh comments), fetch the
-    // actual new value via `script get` so statusline shows the real
-    // post-clamp number, not a guess.
-    const existing = this._scriptTimers.get(entry.name);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      this._scriptTimers.delete(entry.name);
-      try {
-        this.invokeOrSpawn(entry.name, action, restArgs, scriptPath, { detached: true });
-      } catch (err) {
-        this.adapter.log('error', `Cycling: script invoke failed for ${entry.name}`, err);
-        return;
-      }
-      // After ~200ms the OS-side change has settled — fetch new value.
-      setTimeout(() => {
-        if (!this.controlValues) return;
-        try {
-          const getHandle = this.invokeOrSpawn(entry.name, 'get', [], scriptPath, { timeoutMs: 2000 });
-          if (!getHandle) return;
-          getHandle.result.then(res => {
-            if (res.exitCode !== 0 || res.timedOut) return;
-            const value = res.stdout.split(/\n/)[0]?.trim();
-            if (!value) return;
-            this.controlValues!.set(entry.name, value);
-            this.adapter.forceRender();
-          }).catch(() => { /* swallow */ });
-        } catch { /* swallow */ }
-      }, 200);
-    }, 50);
-    this._scriptTimers.set(entry.name, timer);
-    return true;
-  }
-
-  // ─── Path 2: list control (stepValues) ─────────────────────────────────
+  // ─── Path 1: list control (stepValues) ─────────────────────────────────
 
   private cycleListControl(
     event: KeyEvent,
@@ -410,58 +347,12 @@ export class Cycling {
     return this.applyAltCycle(event, def, direction, target.index);
   }
 
-  // ─── Path 3: step-pattern numeric ──────────────────────────────────────
-
-  private cycleStepPattern(
-    event: KeyEvent,
-    target: { word: string; start: number; end: number; index: number },
-    pattern: StepPattern,
-    direction: 1 | -1,
-  ): boolean {
-    const c = pattern.control;
-    const step = c.step ?? 1;
-    // splitWords may include trailing ZWS noise from our re-render toggles.
-    // Strip before matching so the regex anchor `$` lines up.
-    const cleanWord = target.word.replace(/[\u200B\u200C]/g, '');
-    const m = cleanWord.match(pattern.regex);
-    if (!m) return false;
-    const numStr = m[1];
-    const current = Number(numStr);
-    if (Number.isNaN(current)) return false;
-    let next = current + direction * step;
-    if (c.stepMin !== undefined && next < c.stepMin) next = c.stepMin;
-    if (c.stepMax !== undefined && next > c.stepMax) next = c.stepMax;
-    // Preserve decimal precision: if step is fractional, keep one decimal.
-    const decimals = (step.toString().split('.')[1] ?? '').length;
-    const formatted = decimals > 0 ? next.toFixed(decimals) : String(next);
-    // Preserve the suffix (everything after the captured numeric portion in
-    // the cleaned word — preserves ZWS in cleanWord-vs-target.word noise).
-    const suffix = cleanWord.slice(numStr.length);
-    const nextWord = formatted + suffix;
-
-    const before = event.text.slice(0, target.start);
-    const after = event.text.slice(target.end);
-    const newText = before + nextWord + after;
-    const lenDiff = nextWord.length - target.word.length;
-    const newCursor = event.cursorOffset <= target.start
-      ? event.cursorOffset
-      : event.cursorOffset >= target.end
-        ? event.cursorOffset + lenDiff
-        : target.start + nextWord.length;
-    const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
-
-    this.adapter.setText(newText);
-    this.adapter.setCursorOffset(clampedCursor);
-    this.adapter.forceRender();
-    return true;
-  }
-
-  // ─── Path 3a: blank-fill DynDef route (volume / brightness) ───────────
+  // ─── Path 2: blank-fill DynDef route (volume / brightness) ───────────
 
   private cycleBlankStep(
     event: KeyEvent,
     target: { word: string; start: number; end: number; index: number },
-    control: { blankStep?: number; blankSuffix?: string; blankScript?: string; stepMin?: number; stepMax?: number },
+    control: { blankStep?: number; blankSuffix?: string; blankScript?: string },
     controlName: string,
     direction: 1 | -1,
   ): boolean {
@@ -474,11 +365,9 @@ export class Cycling {
     const cur = parseFloat(numStr);
     if (Number.isNaN(cur)) return false;
     let next = cur + direction * control.blankStep;
-    if (control.stepMin !== undefined && next < control.stepMin) next = control.stepMin;
-    if (control.stepMax !== undefined && next > control.stepMax) next = control.stepMax;
     // Clamp to 0..100 by default for percentage-style controls.
-    if (control.stepMin === undefined && next < 0) next = 0;
-    if (control.stepMax === undefined && next > 100) next = 100;
+    if (next < 0) next = 0;
+    if (next > 100) next = 100;
     const decimals = (control.blankStep.toString().split('.')[1] ?? '').length;
     const formatted = decimals > 0 ? next.toFixed(decimals) : String(Math.round(next));
     const nextWord = formatted + suffix;
@@ -524,7 +413,7 @@ export class Cycling {
     return true;
   }
 
-  // ─── Path 4: plain cue word (Phase 3 behaviour) ────────────────────────
+  // ─── Path 3: plain cue word (Phase 3 behaviour) ────────────────────────
 
   private cycleStaticAlts(
     event: KeyEvent,

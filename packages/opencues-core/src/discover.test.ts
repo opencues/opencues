@@ -114,9 +114,7 @@ name: volume
 type: control
 control: volume
 tip: system volume control
-script: ./volume.sh
-upArgs: ["up", "6"]
-downArgs: ["down", "6"]
+blankScript: ./volume-blank.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/volume');
@@ -125,33 +123,31 @@ downArgs: ["down", "6"]
     assert.ok(ctrl);
     assert.strictEqual(ctrl.control, 'volume');
     assert.strictEqual(ctrl.tip, 'system volume control');
-    assert.strictEqual(ctrl.script, '/project/blanks/volume/volume.sh');
-    assert.deepStrictEqual(ctrl.upArgs, ['up', '6']);
-    assert.deepStrictEqual(ctrl.downArgs, ['down', '6']);
+    assert.strictEqual(ctrl.blankScript, '/project/blanks/volume/volume-blank.sh');
   });
 
-  it('should resolve relative script path', () => {
+  it('should resolve relative blankScript path', () => {
     const content = `---
 name: speak
 type: control
 control: speak
-script: ./speak.sh
+blankScript: ./speak.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/speak');
-    assert.strictEqual(config.controls!['speak'].script, '/project/blanks/speak/speak.sh');
+    assert.strictEqual(config.controls!['speak'].blankScript, '/project/blanks/speak/speak.sh');
   });
 
-  it('should keep absolute script path unchanged', () => {
+  it('should keep absolute blankScript path unchanged', () => {
     const content = `---
 name: custom
 type: control
 control: custom
-script: /opt/scripts/custom.sh
+blankScript: /opt/scripts/custom.sh
 ---
 `;
     const config = parseSingleCueMd(content, '/project/blanks/custom');
-    assert.strictEqual(config.controls!['custom'].script, '/opt/scripts/custom.sh');
+    assert.strictEqual(config.controls!['custom'].blankScript, '/opt/scripts/custom.sh');
   });
 });
 
@@ -236,16 +232,14 @@ Answer factual questions.
     assert.strictEqual(sources['factual'].parser, 'answer');
   });
 
-  it('should discover controls with resolved script paths', () => {
+  it('should discover controls with resolved blankScript paths', () => {
     const opts = mockFs({
       '/project/blanks/volume/cue.md': `---
 name: volume
 type: control
 control: volume
 tip: volume control
-script: ./volume.sh
-upArgs: ["up", "5"]
-downArgs: ["down", "5"]
+blankScript: ./volume-blank.sh
 ---
 `,
     });
@@ -254,8 +248,8 @@ downArgs: ["down", "5"]
     assert.ok(result.blankOverrides);
     assert.ok(result.blankOverrides!['volume']);
     assert.strictEqual(
-      result.blankOverrides!['volume'].script,
-      '/project/blanks/volume/volume.sh'
+      result.blankOverrides!['volume'].blankScript,
+      '/project/blanks/volume/volume-blank.sh'
     );
   });
 

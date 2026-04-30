@@ -380,8 +380,7 @@ export class BlankFill {
 
     // Phase I.8 — when blankSuffix produced a numeric+unit fill (volume,
     // brightness), attribute the resulting word to its source control
-    // via a DynDef. Cycling looks at this BEFORE matchStepPattern so
-    // sibling controls sharing the suffix don't ambiguously route.
+    // via a DynDef so cycling routes to the originating blank.
     if (this.dynDefs && startWord && control?.blankSuffix && primaryFill.endsWith(control.blankSuffix)) {
       this.dynDefs.set(startWord.index, {
         originalWord: primaryFill,

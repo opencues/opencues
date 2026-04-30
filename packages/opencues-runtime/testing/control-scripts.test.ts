@@ -31,9 +31,7 @@ const DEFAULTS_SCRIPTS = path.join(REPO_ROOT, 'defaults/scripts');
 // `opencues seed-configs` to ~/.opencues/scripts/ and used by every native
 // host (CC, OC, Codex), not piggybacked on CC's install.
 const SHIPPED_SCRIPTS: { path: string; helpers: readonly string[] }[] = [
-  { path: path.join(DEFAULTS_CONTROLS, 'brightness/brightness.sh'),       helpers: ['BrightCtl.exe', 'brightness-set.ps1'] },
   { path: path.join(DEFAULTS_CONTROLS, 'brightness/brightness-blank.sh'), helpers: ['BrightCtl.exe', 'brightness-set.ps1'] },
-  { path: path.join(DEFAULTS_CONTROLS, 'volume/volume.sh'),               helpers: ['VolCtl.exe'] },
   { path: path.join(DEFAULTS_CONTROLS, 'volume/volume-blank.sh'),         helpers: ['VolCtl.exe'] },
   { path: path.join(DEFAULTS_SCRIPTS, 'speak.sh'),                        helpers: ['SpeakCtl.exe'] },
 ];
@@ -79,28 +77,12 @@ describe('shipped control scripts: colocated-helpers contract', () => {
     // are bash-portable.
     const skip = os.platform() === 'win32';
 
-    it.skipIf(skip)('brightness.sh get: returns a numeric percentage line, never crashes', () => {
-      const out = execFileSync('bash', [path.join(DEFAULTS_CONTROLS, 'brightness/brightness.sh'), 'get'], {
-        encoding: 'utf8',
-        env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
-      });
-      expect(out.trim()).toMatch(/^brightness:\s*\d{1,3}%$/);
-    });
-
     it.skipIf(skip)('brightness-blank.sh get: returns a bare integer, never crashes', () => {
       const out = execFileSync('bash', [path.join(DEFAULTS_CONTROLS, 'brightness/brightness-blank.sh'), 'get'], {
         encoding: 'utf8',
         env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
       });
       expect(out.trim()).toMatch(/^\d{1,3}$/);
-    });
-
-    it.skipIf(skip)('volume.sh get: returns a numeric percentage line, never crashes', () => {
-      const out = execFileSync('bash', [path.join(DEFAULTS_CONTROLS, 'volume/volume.sh'), 'get'], {
-        encoding: 'utf8',
-        env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
-      });
-      expect(out.trim()).toMatch(/^volume:\s*\d{1,3}%$/);
     });
 
     it.skipIf(skip)('volume-blank.sh get: returns a bare integer, never crashes', () => {

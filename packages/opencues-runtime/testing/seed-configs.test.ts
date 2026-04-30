@@ -55,7 +55,7 @@ describe('opencues seed-configs', () => {
     expect(fs.existsSync(path.join(userDir, 'cues.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'opencues.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/cue.md'))).toBe(true);
-    expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness-blank.sh'))).toBe(true);
     // scripts/ — the new shared utility dir (added in this session).
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
@@ -92,21 +92,21 @@ describe('opencues seed-configs', () => {
 
   it('SYNC phase: refreshes a stale library script with repo content', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    // Pre-seed the user-level dir + a stale brightness.sh (no find_helper —
-    // simulates the pre-colocated-helpers layout from earlier in this session).
+    // Pre-seed the user-level dir + a stale brightness-blank.sh (no find_helper
+    // — simulates the pre-colocated-helpers layout from earlier in this session).
     const userDir = path.join(tmpHome, '.opencues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
     fs.writeFileSync(path.join(ctlDir, 'cue.md'), '---\ncontrol: brightness\n---\n');
     const staleScript = '#!/bin/bash\n# stale\necho "stale"\n';
-    fs.writeFileSync(path.join(ctlDir, 'brightness.sh'), staleScript);
-    fs.chmodSync(path.join(ctlDir, 'brightness.sh'), 0o755);
+    fs.writeFileSync(path.join(ctlDir, 'brightness-blank.sh'), staleScript);
+    fs.chmodSync(path.join(ctlDir, 'brightness-blank.sh'), 0o755);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    // After sync, brightness.sh should match the repo's defaults — not the stale stub.
-    const after = fs.readFileSync(path.join(ctlDir, 'brightness.sh'), 'utf8');
-    const repo = fs.readFileSync(path.join(REPO_ROOT, 'defaults/blanks/brightness/brightness.sh'), 'utf8');
+    // After sync, brightness-blank.sh should match the repo's defaults — not the stale stub.
+    const after = fs.readFileSync(path.join(ctlDir, 'brightness-blank.sh'), 'utf8');
+    const repo = fs.readFileSync(path.join(REPO_ROOT, 'defaults/blanks/brightness/brightness-blank.sh'), 'utf8');
     expect(after).toBe(repo);
     expect(after).not.toContain('# stale');
   });
@@ -124,7 +124,7 @@ describe('opencues seed-configs', () => {
 
     // .md preserved; library scripts synced.
     expect(fs.readFileSync(path.join(ctlDir, 'cue.md'), 'utf8')).toBe(customCueMd);
-    expect(fs.existsSync(path.join(ctlDir, 'brightness.sh'))).toBe(true);
+    expect(fs.existsSync(path.join(ctlDir, 'brightness-blank.sh'))).toBe(true);
   });
 
   it('MIGRATE phase: renames legacy controls.md → blanks.md', () => {

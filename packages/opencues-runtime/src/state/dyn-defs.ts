@@ -12,9 +12,7 @@ export interface WordDef {
   /**
    * Optional blank (control) attribution. Set by BlankFill when the def
    * came from a blank fill so cycling can route to the originating
-   * blank's blankStep / blankScript instead of guessing via stepPattern
-   * (which is ambiguous when multiple blanks share the same suffix,
-   * e.g. volume + brightness both use `%`).
+   * blank's blankStep / blankScript.
    */
   readonly blankName?: string;
 }
