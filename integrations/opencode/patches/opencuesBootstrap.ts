@@ -16,7 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
-import { createBlankInvoke, AnswerControl, CountriesControl, CryptoControl, DictionaryControl, HackerNewsControl, OpenCuesSettingsControl, PromptImproverControl, StocksControl, WeatherControl, type Blank } from "@opencues/runtime/dist/src/blanks"
+import { createBlankInvoke, AnswerBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -84,7 +84,7 @@ const sourceReclassifier = createSourceReclassifier()
 // whose schema is owned by the OpenCues runtime. It lives only at
 // user-level so one settings value applies across every integration —
 // projects cannot override it. Auto-created on first write by
-// OpenCuesSettingsControl.
+// OpenCuesSettingsBlank.
 function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
   if (process.env.OPENCUES_HOME) {
@@ -102,21 +102,21 @@ function resolveTtsScript(): string {
   return path.join(root, "scripts/speak.sh")
 }
 
-const controlsRegistry = new Map<string, Blank>([
-  ['hackernews', new HackerNewsControl()],
-  ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
-  ['weather', new WeatherControl()],
-  ['dictionary', new DictionaryControl()],
-  ['crypto', new CryptoControl()],
-  ['countries', new CountriesControl()],
-  ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
-  ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
-  ['opencues', new OpenCuesSettingsControl({
+const blanksRegistry = new Map<string, Blank>([
+  ['hackernews', new HackerNewsBlank()],
+  ['stocks', new StocksBlank({ apiKey: process.env.FINNHUB_API_KEY })],
+  ['weather', new WeatherBlank()],
+  ['dictionary', new DictionaryBlank()],
+  ['crypto', new CryptoBlank()],
+  ['countries', new CountriesBlank()],
+  ['answer', new AnswerBlank({ apiKey: process.env.GROQ_API_KEY })],
+  ['prompt', new PromptImproverBlank({ apiKey: process.env.GROQ_API_KEY })],
+  ['opencues', new OpenCuesSettingsBlank({
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), "utf8") } catch { return null } },
     writeFile: async (content) => { await fs.writeFile(findOpenCuesMdPath(), content, "utf8") },
   })],
 ])
-const blankInvoke = createBlankInvoke(controlsRegistry)
+const blankInvoke = createBlankInvoke(blanksRegistry)
 
 export function startOpenCues(opts: {
   renderer: CliRenderer

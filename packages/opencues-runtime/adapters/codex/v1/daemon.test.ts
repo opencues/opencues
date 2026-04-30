@@ -36,7 +36,7 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
     await configLoader.load();
     // Empty registry for tests — Tier 3.D's real-registry test uses
     // defaultBuildRuntime via realBuildRuntime: true.
-    const controlsRegistry = new Map();
+    const blanksRegistry = new Map();
     const blankInvoke = () => null;
     // Minimal SharedRuntime stand-in: runtime modules aren't wired
     // for these tests (tests don't exercise Navigation / Cycling /
@@ -53,7 +53,7 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
       dismissedBlanks: null as never,
       selectorSatelliteState: null as never,
     };
-    return { adapter, shared, configLoader, reclassifier, controlsRegistry, blankInvoke } as RuntimeBundle;
+    return { adapter, shared, configLoader, reclassifier, blanksRegistry, blankInvoke } as RuntimeBundle;
   });
 
   const daemon = createDaemon({
@@ -393,7 +393,7 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
       params: { cwd: '/tmp/codex-controls-test', configSearchPaths: ['/tmp/nonexistent'] },
       id: 1,
     }));
-    const reg = daemon.runtime?.controlsRegistry;
+    const reg = daemon.runtime?.blanksRegistry;
     expect(reg).toBeInstanceOf(Map);
     expect([...reg!.keys()].sort()).toEqual([
       'answer', 'hackernews', 'opencues', 'prompt', 'stocks', 'weather',
@@ -499,7 +499,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
         adapter: new MockAdapter({ cwd: params.cwd }),
         configLoader: {} as never,
         reclassifier: createSourceReclassifier(),
-        controlsRegistry: new Map(),
+        blanksRegistry: new Map(),
         blankInvoke: stubInvoke,
       }),
     });
@@ -536,7 +536,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
         adapter: new MockAdapter({ cwd: params.cwd }),
         configLoader: {} as never,
         reclassifier: createSourceReclassifier(),
-        controlsRegistry: new Map(),
+        blanksRegistry: new Map(),
         blankInvoke: stubInvoke,
       }),
     });
@@ -573,7 +573,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
         adapter: new MockAdapter({ cwd: params.cwd }),
         configLoader: {} as never,
         reclassifier: createSourceReclassifier(),
-        controlsRegistry: new Map(),
+        blanksRegistry: new Map(),
         blankInvoke: stubInvoke,
       }),
     });
@@ -598,7 +598,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
   });
 
   it('end-to-end: real registry — opencues "get voice-mode" returns the user-config value', async () => {
-    // Default buildRuntime → real OpenCuesSettingsControl → reads
+    // Default buildRuntime → real OpenCuesSettingsBlank → reads
     // ~/.opencues/opencues.md. Returns whatever the live file contains.
     const frames: Frame[] = [];
     const daemon = createDaemon({ send: (f) => { frames.push(f); } });

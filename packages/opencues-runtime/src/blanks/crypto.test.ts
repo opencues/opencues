@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CryptoControl } from './crypto';
+import { CryptoBlank } from './crypto';
 
 function fetchOk(body: unknown, status = 200): typeof fetch {
   return vi.fn(async () => ({
@@ -10,30 +10,30 @@ function fetchOk(body: unknown, status = 200): typeof fetch {
   } as Response)) as unknown as typeof fetch;
 }
 
-describe('CryptoControl', () => {
+describe('CryptoBlank', () => {
   it('returns empty string when called with no keyword', async () => {
-    const ctl = new CryptoControl({ fetchFn: fetchOk({}) });
+    const ctl = new CryptoBlank({ fetchFn: fetchOk({}) });
     expect(await ctl.get()).toBe('');
   });
 
   it('returns "Unknown: <kw>" for keywords not in the coin map', async () => {
-    const ctl = new CryptoControl({ fetchFn: fetchOk({}) });
+    const ctl = new CryptoBlank({ fetchFn: fetchOk({}) });
     expect(await ctl.get('not-a-coin')).toBe('Unknown: not-a-coin');
   });
 
   it('formats price >= $1 with commas + 2 decimals', async () => {
-    const ctl = new CryptoControl({ fetchFn: fetchOk({ bitcoin: { usd: 68432.5 } }) });
+    const ctl = new CryptoBlank({ fetchFn: fetchOk({ bitcoin: { usd: 68432.5 } }) });
     expect(await ctl.get('btc')).toBe('$68,432.50');
   });
 
   it('formats price < $1 with 4 decimals (no commas)', async () => {
-    const ctl = new CryptoControl({ fetchFn: fetchOk({ dogecoin: { usd: 0.1245 } }) });
+    const ctl = new CryptoBlank({ fetchFn: fetchOk({ dogecoin: { usd: 0.1245 } }) });
     expect(await ctl.get('doge')).toBe('$0.1245');
   });
 
   it('maps multiple keywords to the same coin id (btc/bitcoin → bitcoin)', async () => {
     const fetchFn = vi.fn(fetchOk({ bitcoin: { usd: 100 } }));
-    const ctl = new CryptoControl({ fetchFn: fetchFn as unknown as typeof fetch, cacheTtlMs: 60_000 });
+    const ctl = new CryptoBlank({ fetchFn: fetchFn as unknown as typeof fetch, cacheTtlMs: 60_000 });
     await ctl.get('btc');
     await ctl.get('bitcoin');
     // Only one network call — same coin-id, cache hit on second.
@@ -42,13 +42,13 @@ describe('CryptoControl', () => {
 
   it('returns "<id>: HTTP <code>" on non-ok response', async () => {
     const fetchFn = vi.fn(async () => ({ ok: false, status: 429 } as Response)) as unknown as typeof fetch;
-    const ctl = new CryptoControl({ fetchFn });
+    const ctl = new CryptoBlank({ fetchFn });
     expect(await ctl.get('btc')).toBe('bitcoin: HTTP 429');
   });
 
   it('returns "<id>: error" on fetch throw', async () => {
     const fetchFn = vi.fn(async () => { throw new Error('net'); }) as unknown as typeof fetch;
-    const ctl = new CryptoControl({ fetchFn });
+    const ctl = new CryptoBlank({ fetchFn });
     expect(await ctl.get('btc')).toBe('bitcoin: error');
   });
 
@@ -63,7 +63,7 @@ describe('CryptoControl', () => {
         text: async () => '',
       } as Response;
     }) as unknown as typeof fetch;
-    const ctl = new CryptoControl({
+    const ctl = new CryptoBlank({
       customCoins: { pepe: 'pepe' },
       fetchFn,
     });
@@ -72,7 +72,7 @@ describe('CryptoControl', () => {
   });
 
   it('returns "<id>: no price" when API returns no price field', async () => {
-    const ctl = new CryptoControl({ fetchFn: fetchOk({ bitcoin: {} }) });
+    const ctl = new CryptoBlank({ fetchFn: fetchOk({ bitcoin: {} }) });
     expect(await ctl.get('btc')).toBe('bitcoin: no price');
   });
 });

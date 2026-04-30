@@ -1,4 +1,4 @@
-// PromptImproverControl — two-step LLM pipeline for the
+// PromptImproverBlank — two-step LLM pipeline for the
 // `improve prompt _` consume-all flow.
 //
 // Step 1 (Extract): pull the user's actual prompt + any conditions
@@ -35,7 +35,7 @@ When the prompt is already specific, add only what is still missing (output form
 When the user specifies conditions (tone, length, style), all 3 alternatives must honour them.
 When no programming language is specified, do not invent one and do not turn the prompt into a question. Instead use a placeholder like [language] or [your language], or phrase it generically.`;
 
-export interface PromptImproverControlOptions {
+export interface PromptImproverBlankOptions {
   /** LLM API key. Required — without it, get() falls back to fullContext
    *  so consume-all looks like a no-op rather than an error. */
   readonly apiKey?: string;
@@ -52,7 +52,7 @@ export interface PromptImproverControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class PromptImproverControl implements Blank {
+export class PromptImproverBlank implements Blank {
   readonly name = 'prompt';
   readonly readOnly = false;
   private readonly _apiKey: string;
@@ -62,7 +62,7 @@ export class PromptImproverControl implements Blank {
   private readonly _includeOriginal: boolean;
   private readonly _fetch: typeof fetch;
 
-  constructor(opts: PromptImproverControlOptions = {}) {
+  constructor(opts: PromptImproverBlankOptions = {}) {
     this._apiKey = opts.apiKey ?? '';
     this._apiUrl = opts.apiUrl ?? 'https://api.groq.com/openai/v1/chat/completions';
     this._model = opts.model ?? 'openai/gpt-oss-120b';

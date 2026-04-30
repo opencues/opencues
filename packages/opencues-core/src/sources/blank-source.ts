@@ -160,7 +160,7 @@ export class BlankSource implements CueSource {
         priority: this.priority,
         cueTip: matched.blankTip ?? matched.tip,
         metadata: {
-          controlName: matched.control,
+          blankName: matched.control,
           listControl: true,
           blankClearKeywords: matched.blankClearKeywords || false,
           blankClearOnEdit: matched.blankClearOnEdit || false,
@@ -193,7 +193,7 @@ export class BlankSource implements CueSource {
         priority: this.priority,
         cueTip: matched.blankTip ?? matched.tip,
         metadata: {
-          controlName: matched.control,
+          blankName: matched.control,
           blankScript: matched.blankScript,
           selectorControl: true,
           satelliteValue: satelliteText,
@@ -220,7 +220,7 @@ export class BlankSource implements CueSource {
           priority: this.priority,
           cueTip: matched.blankTip ?? matched.tip,
           metadata: {
-            controlName: matched.control,
+            blankName: matched.control,
             listControl: true,
             blankClearKeywords: matched.blankClearKeywords || false,
             blankClearOnEdit: matched.blankClearOnEdit || false,
@@ -259,7 +259,7 @@ export class BlankSource implements CueSource {
       priority: this.priority,
       cueTip: matched.blankTip ?? matched.tip,
       metadata: {
-        controlName: matched.control,
+        blankName: matched.control,
         blankScript: matched.blankScript,
         ...(step != null ? { blankStep: step } : {}),
         ...(format ? { blankFormat: format } : {}),

@@ -241,15 +241,15 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // constructing classes that need API keys we don't have.
     `blankInvoke:(function(){try{` +
     `var __ocCtl=${requireFn}(${controlsPath});var __ocReg=new Map();` +
-    `__ocReg.set("hackernews",new __ocCtl.HackerNewsControl());` +
-    `__ocReg.set("stocks",new __ocCtl.StocksControl({apiKey:process.env.FINNHUB_API_KEY}));` +
-    `__ocReg.set("weather",new __ocCtl.WeatherControl());` +
-    `__ocReg.set("dictionary",new __ocCtl.DictionaryControl());` +
-    `__ocReg.set("crypto",new __ocCtl.CryptoControl());` +
-    `__ocReg.set("countries",new __ocCtl.CountriesControl());` +
-    `if(process.env.GROQ_API_KEY){__ocReg.set("answer",new __ocCtl.AnswerControl({apiKey:process.env.GROQ_API_KEY}));__ocReg.set("prompt",new __ocCtl.PromptImproverControl({apiKey:process.env.GROQ_API_KEY}));}` +
+    `__ocReg.set("hackernews",new __ocCtl.HackerNewsBlank());` +
+    `__ocReg.set("stocks",new __ocCtl.StocksBlank({apiKey:process.env.FINNHUB_API_KEY}));` +
+    `__ocReg.set("weather",new __ocCtl.WeatherBlank());` +
+    `__ocReg.set("dictionary",new __ocCtl.DictionaryBlank());` +
+    `__ocReg.set("crypto",new __ocCtl.CryptoBlank());` +
+    `__ocReg.set("countries",new __ocCtl.CountriesBlank());` +
+    `if(process.env.GROQ_API_KEY){__ocReg.set("answer",new __ocCtl.AnswerBlank({apiKey:process.env.GROQ_API_KEY}));__ocReg.set("prompt",new __ocCtl.PromptImproverBlank({apiKey:process.env.GROQ_API_KEY}));}` +
     `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
-    `__ocReg.set("opencues",new __ocCtl.OpenCuesSettingsControl({` +
+    `__ocReg.set("opencues",new __ocCtl.OpenCuesSettingsBlank({` +
     `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
     `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
     `}));` +

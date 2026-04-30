@@ -59,7 +59,7 @@ export interface OpenCodeBindings {
   /**
    * Optional host-native control dispatch. Same shape as chrome's
    * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
-   * shared TS controls (HackerNewsControl, etc.) win over the legacy
+   * shared TS controls (HackerNewsBlank, etc.) win over the legacy
    * shell scripts in controls/. Returns null when the controlName
    * isn't in the host's registry.
    */
@@ -160,7 +160,7 @@ export class OpenCodeV14Adapter implements HostAdapter {
   }
   /**
    * Forward to the host's controlInvoke binding when one is supplied
-   * (opencode now ships shared TS controls — HackerNewsControl etc. —
+   * (opencode now ships shared TS controls — HackerNewsBlank etc. —
    * via this path so they don't need a shell). Returns null when the
    * binding isn't wired or the controlName isn't registered; runtime
    * then falls through to spawnProcess for the legacy shell scripts.

@@ -4,7 +4,7 @@
 // check classified a 0-byte file as "exists", so seed-configs would skip it
 // forever — leaving the user with an empty ~/.opencues/opencues.md. That
 // empty file silently breaks `opencues ___` / `config ___` blank-fills on
-// every native host (the OpenCuesSettingsControl no-ops on empty content).
+// every native host (the OpenCuesSettingsBlank no-ops on empty content).
 //
 // New rule (in integrations/claude-code/bin/seed-helpers.cjs):
 //   true  → skip (file exists with content, OR directory exists)

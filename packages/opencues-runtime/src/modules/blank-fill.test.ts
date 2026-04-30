@@ -768,7 +768,7 @@ blankClearKeywords: true
   });
 
   it('async path: dispatches via controlInvoke when control has no blankScript (runtime-hoisted control)', async () => {
-    // Hoisted runtime controls (HackerNewsControl, OpenCuesSettingsControl
+    // Hoisted runtime controls (HackerNewsBlank, OpenCuesSettingsBlank
     // etc.) live without blankScript in their cue.md — the host's
     // controlInvoke registry IS the implementation. Regression guard
     // for "controls with no blankScript get silently skipped" — fires

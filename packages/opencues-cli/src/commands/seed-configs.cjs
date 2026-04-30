@@ -23,7 +23,7 @@
 //             are NEVER touched here.
 //
 //   3. HEAL   self-heal a 0-byte ~/.opencues/opencues.md.
-//             OpenCuesSettingsControl silently no-ops on empty content, so
+//             OpenCuesSettingsBlank silently no-ops on empty content, so
 //             an interrupted-write or pre-content seed would silently break
 //             "opencues ___" / "config ___" blank-fills. Re-seed from defaults
 //             when (file exists AND is 0 bytes AND repo source has content).

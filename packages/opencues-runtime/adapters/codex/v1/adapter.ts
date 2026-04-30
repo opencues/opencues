@@ -64,7 +64,7 @@ export interface CodexAdapterOptions {
   /** Host-native control dispatch. When supplied, BlankFill +
    *  Cycling try this BEFORE spawnProcess for `controlInvoke`
    *  capability. Same shape as OC's binding — usually wired by
-   *  passing `createBlankInvoke(controlsRegistry)`. */
+   *  passing `createBlankInvoke(blanksRegistry)`. */
   readonly blankInvoke?: (spec: BlankInvokeSpec) => ProcessHandle | null;
 }
 

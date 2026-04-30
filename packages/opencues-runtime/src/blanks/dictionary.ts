@@ -1,4 +1,4 @@
-// DictionaryControl — fetches a one-line definition from the free
+// DictionaryBlank — fetches a one-line definition from the free
 // dictionaryapi.dev (no auth, no rate limit beyond reasonable).
 // Read-only. 24h cache per word (definitions don't change often).
 //
@@ -21,21 +21,21 @@ interface DictApiEntry {
   }>;
 }
 
-export interface DictionaryControlOptions {
+export interface DictionaryBlankOptions {
   /** Override fetch — defaults to globalThis.fetch.bind(globalThis). */
   readonly fetchFn?: typeof fetch;
   /** Override TTL for testing (default 24h). */
   readonly cacheTtlMs?: number;
 }
 
-export class DictionaryControl implements Blank {
+export class DictionaryBlank implements Blank {
   readonly name = 'dictionary';
   readonly readOnly = true;
   private readonly _fetch: typeof fetch;
   private readonly _ttl: number;
   private readonly _cache = new Map<string, { value: string; ts: number }>();
 
-  constructor(opts: DictionaryControlOptions = {}) {
+  constructor(opts: DictionaryBlankOptions = {}) {
     this._fetch = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
     this._ttl = opts.cacheTtlMs ?? CACHE_TTL_MS;
   }

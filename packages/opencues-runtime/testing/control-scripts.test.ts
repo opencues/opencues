@@ -118,7 +118,7 @@ describe('shipped control scripts: colocated-helpers contract', () => {
 
     // Documents the behavior the host needs to seed against. The script
     // exits 1 + outputs nothing when opencues.md is empty — same silent-
-    // failure mode that hits OpenCuesSettingsControl.set(). install.cjs
+    // failure mode that hits OpenCuesSettingsBlank.set(). install.cjs
     // seed-configs + setup.sh section 7a-bis ensure this state never
     // happens on a real install.
     it.skipIf(skip)('opencues-blank.sh get: silently exits 1 when opencues.md is 0 bytes', () => {

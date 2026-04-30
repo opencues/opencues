@@ -39,7 +39,7 @@ export interface HostInfo extends CommonHostInfo {
   /**
    * Optional host-native control dispatch. Same shape as chrome's
    * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
-   * shared TS controls (HackerNewsControl, etc.) win over the legacy
+   * shared TS controls (HackerNewsBlank, etc.) win over the legacy
    * shell scripts in controls/. Returns null when the controlName
    * isn't in the host's registry; runtime then falls through to
    * spawnProcess (still works for OS controls like volume/brightness).

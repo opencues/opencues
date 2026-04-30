@@ -18,15 +18,15 @@ import type { Blank } from './types';
 
 export type { Blank } from './types';
 export { FetchHttpAdapter } from './http-adapter';
-export { HackerNewsControl } from './hackernews';
-export { StocksControl, type StocksControlOptions } from './stocks';
-export { WeatherControl, type WeatherControlOptions } from './weather';
-export { AnswerControl, type AnswerControlOptions } from './answer';
-export { PromptImproverControl, type PromptImproverControlOptions } from './prompt-improver';
-export { OpenCuesSettingsControl, type OpenCuesSettingsControlOptions } from './opencues-settings';
-export { DictionaryControl, type DictionaryControlOptions } from './dictionary';
-export { CryptoControl, type CryptoControlOptions } from './crypto';
-export { CountriesControl, type CountriesControlOptions } from './countries';
+export { HackerNewsBlank } from './hackernews';
+export { StocksBlank, type StocksBlankOptions } from './stocks';
+export { WeatherBlank, type WeatherBlankOptions } from './weather';
+export { AnswerBlank, type AnswerBlankOptions } from './answer';
+export { PromptImproverBlank, type PromptImproverBlankOptions } from './prompt-improver';
+export { OpenCuesSettingsBlank, type OpenCuesSettingsBlankOptions } from './opencues-settings';
+export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
+export { CryptoBlank, type CryptoBlankOptions } from './crypto';
+export { CountriesBlank, type CountriesBlankOptions } from './countries';
 
 /**
  * Build a blankInvoke handler that dispatches into the given registry.

@@ -325,7 +325,7 @@ return{refresh:true};
 }
 // Control-bound blank cycling: blank positions bound to a control via blankKeywords
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
-var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.controlName&&!w.metadata.listControl&&!w.metadata.selectorWord&&!w.metadata.satelliteWord;});
+var _cbDef=globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.metadata&&w.metadata.blankName&&!w.metadata.listControl&&!w.metadata.selectorWord&&!w.metadata.satelliteWord;});
 if(_cbDef){
 var _cbMeta=_cbDef.metadata;
 if(_cbMeta.blankReadOnly)return null;
@@ -333,7 +333,7 @@ if(_cbDef.cueTip)globalThis._cueControlTip=_cbDef.cueTip;
 // Only do numeric stepping when blankStep or blankFormat is explicitly configured
 if(!_cbMeta.blankStep&&!_cbMeta.blankFormat)return null;
 var _cbHome=process.env.HOME||"/home/"+(process.env.USER||"root");
-var _cbRawScript=_cbMeta.blankScript||(_cbHome+"/.claude/actions/"+_cbMeta.controlName+".sh");
+var _cbRawScript=_cbMeta.blankScript||(_cbHome+"/.claude/actions/"+_cbMeta.blankName+".sh");
 var _cbScript=_cbRawScript.replace(/^~/,_cbHome);
 // Calculate target value, then call script with "set <value>" for exact control
 var _cbStep=_cbMeta.blankStep||1;
@@ -354,7 +354,7 @@ var _cbNewText=_cbText.slice(0,_cbWStart)+_cbNewVal+_cbText.slice(_cbWEnd);
 globalThis._hlText=_cbNewText;
 globalThis._hlState.text=_cbNewText;
 if(!globalThis._cueControlValues)globalThis._cueControlValues={};
-globalThis._cueControlValues[_cbMeta.controlName]=_cbFmt==="string"?_cbNewVal:(_cbFmt==="float"?parseFloat(_cbNewVal)||0:parseInt(_cbNewVal,10)||0);
+globalThis._cueControlValues[_cbMeta.blankName]=_cbFmt==="string"?_cbNewVal:(_cbFmt==="float"?parseFloat(_cbNewVal)||0:parseInt(_cbNewVal,10)||0);
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 return{text:_cbNewText,lenDiff:_cbNewVal.length-_curWord.length,wStart:_cbWStart,newLen:_cbNewVal.length};
 }
@@ -675,7 +675,7 @@ else{var _ttsScript=globalThis._ttsScript||(_ttsHome+"/.claude/opencues/scripts/
 var _cw=_newText.split(/\\s+/).filter(function(w){return w;});
 if(_cw.indexOf("_")>=0){var _ctx=_cw.filter(function(w){return w!=="_";}).join(" ");var _ctxChanged=_ctx!==(globalThis._dynUnderscoreContext||"");
 // Clear control-blank WordDefs when _ reappears — forces fresh value read
-if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _ci=globalThis._dynDefs.words.length-1;_ci>=0;_ci--){if(globalThis._dynDefs.words[_ci].metadata&&globalThis._dynDefs.words[_ci].metadata.controlName){globalThis._dynDefs.words.splice(_ci,1);_ctxChanged=true;}}}
+if(globalThis._dynDefs&&globalThis._dynDefs.words){for(var _ci=globalThis._dynDefs.words.length-1;_ci>=0;_ci--){if(globalThis._dynDefs.words[_ci].metadata&&globalThis._dynDefs.words[_ci].metadata.blankName){globalThis._dynDefs.words.splice(_ci,1);_ctxChanged=true;}}}
 if(_ctxChanged){globalThis._dynUnderscoreContext=null;globalThis._dynUnderscoreQueued=true;if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){setTimeout(globalThis._dynTriggerAnalysis,100);}}}
 return{text:_newText,lenDiff:_newWord.length-_oldWord.length,wStart:_wStart,newLen:_newWord.length};
 };
@@ -1022,7 +1022,7 @@ var _elapsed=Date.now()-globalThis._dynPollStart;
 var _words=[];
 for(var _ri=0;_ri<_resolved.results.length;_ri++){
 var _r=_resolved.results[_ri];
-var _isControlBlank=_r.metadata&&_r.metadata.controlName;
+var _isControlBlank=_r.metadata&&_r.metadata.blankName;
 if(_r.alternatives&&(_r.alternatives.length>1||_isControlBlank)){
 var _filteredAlts=[];
 for(var _fa=0;_fa<_r.alternatives.length;_fa++){
@@ -1051,7 +1051,7 @@ var _oldW2=globalThis._dynDefs.words.find(function(w){return w.index===_nw2.inde
 // Skip LLM results for tip-sourced entries — tips are curated, don't mix
 if(_oldW2&&_oldW2.source==="tips")continue;
 // Skip grammar/LLM results for control-bound blank positions — but allow fresh control-blank results through
-if(_oldW2&&_oldW2.metadata&&_oldW2.metadata.controlName&&!(_nw2.metadata&&_nw2.metadata.controlName))continue;
+if(_oldW2&&_oldW2.metadata&&_oldW2.metadata.blankName&&!(_nw2.metadata&&_nw2.metadata.blankName))continue;
 if(_oldW2&&_oldW2.alts){
 if(_oldW2.spanLength)_nw2.spanLength=_oldW2.spanLength;
 if(_nw2.alts){
@@ -1086,9 +1086,9 @@ globalThis._dynDefs={words:_words,_model:"resolver",_auto:true};
 // Auto-populate: set pending flag for render-cycle pickup (fresh onChange)
 for(var _api=0;_api<_words.length;_api++){
 var _apw=_words[_api];
-if(_apw.metadata&&_apw.metadata.controlName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
+if(_apw.metadata&&_apw.metadata.blankName&&_apw.alts&&_apw.alts.length>0&&_apw.alts[0]!=="_"){
 if(!(globalThis._dismissedBlanks&&globalThis._dismissedBlanks[_apw.index])){
-globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.controlName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null,consumeAllAlts:_apw.alts.length>1?_apw.alts.slice():null,consumeAllTip:_apw.cueTip||null};
+globalThis._pendingAutoPopulate={index:_apw.index,value:_apw.alts[0],keywordExpansion:_apw.metadata.blankKeywordExpansion||null,satellite:_apw.metadata.satelliteValue||null,controlName:_apw.metadata.blankName||null,blankScript:_apw.metadata.blankScript||null,displaySeparator:_apw.metadata.displaySeparator||null,blankClearKeywords:_apw.metadata.blankClearKeywords||false,blankClearOnEdit:_apw.metadata.blankClearOnEdit||false,blankKeywordIndices:_apw.metadata.blankKeywordIndices||null,consumeAllAlts:_apw.alts.length>1?_apw.alts.slice():null,consumeAllTip:_apw.cueTip||null};
 }}
 }
 globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
@@ -1377,7 +1377,7 @@ if(_isCtxKw)return false;
 if((globalThis._stepPatterns||[]).some(function(s){return s.re.test(_w);})||(globalThis._cueControlOverrides||{})[_w.toLowerCase()]){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
 if(globalThis._localCueMap&&globalThis._localCueMap.has(_w.toLowerCase())&&_ni!==_hlWordIdx){_numRanges.push({start:_wStart,end:_wStart+_w.length});return true;}
 if(globalThis._dynDefs&&globalThis._dynDefs.words){
-var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&((d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0)||(d.metadata&&d.metadata.controlName));});
+var _dynDef=globalThis._dynDefs.words.find(function(d){return d.index===_ni&&((d.alts&&d.alts.length>1&&d.alts.indexOf(_w)>=0)||(d.metadata&&d.metadata.blankName));});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[_ni];
 var _isInSpan=!!_spanInfo;
 var _isSpanOrigin=_spanInfo&&_spanInfo.originalIndex===_ni;
@@ -1548,7 +1548,7 @@ export const writeDynamicNavigation = (
     const newForEach = `${m.allW}.forEach(function(w,i){
 var _hasTipAlt=globalThis._localCueMap&&globalThis._localCueMap.has(w.toLowerCase());
 var _wLow=w.toLowerCase();
-var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===i&&((d.alts&&d.alts.length>1&&(d.alts.indexOf(w)>=0||d.alts.some(function(a){return a.toLowerCase()===_wLow;})))||(d.metadata&&d.metadata.controlName));});
+var _hasDynAlt=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(d){return d.index===i&&((d.alts&&d.alts.length>1&&(d.alts.indexOf(w)>=0||d.alts.some(function(a){return a.toLowerCase()===_wLow;})))||(d.metadata&&d.metadata.blankName));});
 var _spanInfo=globalThis._dynSpans&&globalThis._dynSpans[i];
 var _isNonOrigSpan=_spanInfo&&_spanInfo.originalIndex!==i;
 var _isSpanOriginal=_spanInfo&&_spanInfo.originalIndex===i;

@@ -1,4 +1,4 @@
-// StocksControl — fetches a live stock quote from Finnhub for a
+// StocksBlank — fetches a live stock quote from Finnhub for a
 // keyword that maps to a ticker (e.g. "aapl" → AAPL, "Tesla" → TSLA).
 // Read-only. 1-minute cache per ticker. Returns "$201.66"-style strings.
 //
@@ -22,7 +22,7 @@ const DEFAULT_TICKERS: Record<string, string> = {
 
 const CACHE_TTL_MS = 60_000;
 
-export interface StocksControlOptions {
+export interface StocksBlankOptions {
   /** Finnhub API key. Without it, get() returns "<TICKER>: no API key". */
   readonly apiKey?: string;
   /** Extra keyword → ticker mappings, merged on top of DEFAULT_TICKERS. */
@@ -33,7 +33,7 @@ export interface StocksControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class StocksControl implements Blank {
+export class StocksBlank implements Blank {
   readonly name = 'stocks';
   readonly readOnly = true;
   private readonly _apiKey: string;
@@ -41,12 +41,12 @@ export class StocksControl implements Blank {
   private readonly _fetch: typeof fetch;
   private readonly _cache = new Map<string, { price: string; ts: number }>();
 
-  constructor(opts: StocksControlOptions = {}) {
+  constructor(opts: StocksBlankOptions = {}) {
     this._apiKey = opts.apiKey ?? '';
     this._tickers = { ...DEFAULT_TICKERS, ...(opts.customTickers ?? {}) };
     // Bind to globalThis when capturing the default — bare fetch.call
     // throws "Illegal invocation" in browsers (window.fetch needs window
-    // as `this`). Same pattern as HackerNewsControl.
+    // as `this`). Same pattern as HackerNewsBlank.
     this._fetch = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 

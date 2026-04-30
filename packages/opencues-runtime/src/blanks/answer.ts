@@ -1,4 +1,4 @@
-// AnswerControl — factual answer / translation / definition lookup via
+// AnswerBlank — factual answer / translation / definition lookup via
 // an LLM. Returns 3 alternatives, one per line, so BlankFill's
 // consume-list path can register them as a cycleable span.
 //
@@ -36,7 +36,7 @@ Coucou
 Gomawo
 감사합니다`;
 
-export interface AnswerControlOptions {
+export interface AnswerBlankOptions {
   /** LLM API key. Required — empty key returns "" so BlankFill skips
    *  the fill quietly instead of yelling. */
   readonly apiKey?: string;
@@ -48,7 +48,7 @@ export interface AnswerControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class AnswerControl implements Blank {
+export class AnswerBlank implements Blank {
   readonly name = 'answer';
   readonly readOnly = true;
   private readonly _apiKey: string;
@@ -56,7 +56,7 @@ export class AnswerControl implements Blank {
   private readonly _model: string;
   private readonly _fetch: typeof fetch;
 
-  constructor(opts: AnswerControlOptions = {}) {
+  constructor(opts: AnswerBlankOptions = {}) {
     this._apiKey = opts.apiKey ?? '';
     this._apiUrl = opts.apiUrl ?? 'https://api.groq.com/openai/v1/chat/completions';
     this._model = opts.model ?? 'openai/gpt-oss-120b';

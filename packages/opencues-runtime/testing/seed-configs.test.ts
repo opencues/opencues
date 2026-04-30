@@ -6,7 +6,7 @@
 //               from defaults/{controls,scripts}/ every run. Never
 //               touches .md (user content).
 //   3. HEAL   — re-seeds 0-byte opencues.md (the runtime's
-//               OpenCuesSettingsControl silently no-ops on empty
+//               OpenCuesSettingsBlank silently no-ops on empty
 //               content; an empty file would break "opencues ___"
 //               blank-fills on every native host).
 //   4. COMPILE — colocated .cs → .exe (WSL only — skipped here).

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OpenCuesSettingsControl } from './opencues-settings';
+import { OpenCuesSettingsBlank } from './opencues-settings';
 
 const SAMPLE_MD = `---
 version: 1
@@ -21,7 +21,7 @@ settings:
 `;
 
 function makeControl(initial: string): {
-  ctl: OpenCuesSettingsControl;
+  ctl: OpenCuesSettingsBlank;
   storage: { value: string };
   reads: number;
   writes: number;
@@ -31,11 +31,11 @@ function makeControl(initial: string): {
   let writes = 0;
   const readFile = vi.fn(async () => { reads += 1; return storage.value; });
   const writeFile = vi.fn(async (content: string) => { writes += 1; storage.value = content; });
-  const ctl = new OpenCuesSettingsControl({ readFile, writeFile });
+  const ctl = new OpenCuesSettingsBlank({ readFile, writeFile });
   return { ctl, storage, get reads() { return reads; }, get writes() { return writes; } };
 }
 
-describe('OpenCuesSettingsControl', () => {
+describe('OpenCuesSettingsBlank', () => {
   it('get() with no keyword returns "<firstSetting>\\t<currentValue>"', async () => {
     const { ctl } = makeControl(SAMPLE_MD);
     expect(await ctl.get()).toBe('voice-mode\tinactive');
@@ -79,7 +79,7 @@ describe('OpenCuesSettingsControl', () => {
   });
 
   it('returns "" when readFile yields null (file missing)', async () => {
-    const ctl = new OpenCuesSettingsControl({
+    const ctl = new OpenCuesSettingsBlank({
       readFile: async () => null,
       writeFile: async () => { /* unused */ },
     });
@@ -98,7 +98,7 @@ describe('OpenCuesSettingsControl', () => {
   // blank-fills look broken on every native host. See FAQ.md "Does init
   // scaffold opencues.md?" + docs/features/config-search-paths.md.
   it('returns "" when readFile yields empty string (0-byte file)', async () => {
-    const ctl = new OpenCuesSettingsControl({
+    const ctl = new OpenCuesSettingsBlank({
       readFile: async () => '',
       writeFile: async () => { /* unused */ },
     });
@@ -108,7 +108,7 @@ describe('OpenCuesSettingsControl', () => {
 
   it('set() is a no-op when readFile yields null (no file to rewrite)', async () => {
     const writeFile = vi.fn(async () => { /* unused */ });
-    const ctl = new OpenCuesSettingsControl({
+    const ctl = new OpenCuesSettingsBlank({
       readFile: async () => null,
       writeFile,
     });
@@ -118,7 +118,7 @@ describe('OpenCuesSettingsControl', () => {
 
   it('set() is a no-op when readFile yields empty string (0-byte file)', async () => {
     const writeFile = vi.fn(async () => { /* unused */ });
-    const ctl = new OpenCuesSettingsControl({
+    const ctl = new OpenCuesSettingsBlank({
       readFile: async () => '',
       writeFile,
     });

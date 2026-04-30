@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { HackerNewsControl } from './hackernews';
+import { HackerNewsBlank } from './hackernews';
 
 function mockFetch(responses: Record<string, unknown>): typeof fetch {
   return vi.fn(async (url: string | URL | Request) => {
@@ -17,7 +17,7 @@ function mockFetch(responses: Record<string, unknown>): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
-describe('HackerNewsControl', () => {
+describe('HackerNewsBlank', () => {
   beforeEach(() => {
     vi.useRealTimers();
   });
@@ -29,7 +29,7 @@ describe('HackerNewsControl', () => {
       '102.json': { title: 'Second story' },
       '103.json': { title: 'Third story' },
     });
-    const ctl = new HackerNewsControl({ fetchFn });
+    const ctl = new HackerNewsBlank({ fetchFn });
     const out = await ctl.get();
     expect(out).toBe('First story\nSecond story\nThird story');
   });
@@ -46,7 +46,7 @@ describe('HackerNewsControl', () => {
         text: async () => JSON.stringify(body),
       } as Response;
     }) as unknown as typeof fetch;
-    const ctl = new HackerNewsControl({ fetchFn });
+    const ctl = new HackerNewsBlank({ fetchFn });
     await ctl.get();
     const firstCallCount = calls;
     await ctl.get();
@@ -66,7 +66,7 @@ describe('HackerNewsControl', () => {
         text: async () => JSON.stringify(body),
       } as Response;
     }) as unknown as typeof fetch;
-    const ctl = new HackerNewsControl({ fetchFn });
+    const ctl = new HackerNewsBlank({ fetchFn });
     await ctl.get(); // populate
     mode = 'fail';
     // Force expire by waiting (vi.advanceTimersByTime skipped — we
@@ -81,7 +81,7 @@ describe('HackerNewsControl', () => {
 
   it('returns "HN: fetch error" when fetch fails AND cache is empty', async () => {
     const fetchFn = vi.fn(async () => { throw new Error('cold start network down'); }) as unknown as typeof fetch;
-    const ctl = new HackerNewsControl({ fetchFn });
+    const ctl = new HackerNewsBlank({ fetchFn });
     expect(await ctl.get()).toBe('HN: fetch error');
   });
 
@@ -101,7 +101,7 @@ describe('HackerNewsControl', () => {
       } as Response);
     };
     try {
-      const ctl = new HackerNewsControl();
+      const ctl = new HackerNewsBlank();
       await ctl.get();
       expect(invocationContext).toBe(globalThis);
     } finally {
@@ -115,7 +115,7 @@ describe('HackerNewsControl', () => {
       '1.json': { title: 'kept' },
       '2.json': { /* no title */ },
     });
-    const ctl = new HackerNewsControl({ fetchFn });
+    const ctl = new HackerNewsBlank({ fetchFn });
     expect(await ctl.get()).toBe('kept');
   });
 });

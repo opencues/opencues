@@ -205,7 +205,7 @@ async function readFile(path: string): Promise<string | null> {
     return null;
   }
 
-  // 3. Writable files (opencues.md — OpenCuesSettingsControl cycles
+  // 3. Writable files (opencues.md — OpenCuesSettingsBlank cycles
   //    voice-mode / tips-mode / debug-mode via writeFile). Storage
   //    wins so the user's saved setting persists across reloads,
   //    falling back to bake-time before the first write.
@@ -236,7 +236,7 @@ async function readFile(path: string): Promise<string | null> {
 function isReadOnlyPath(path: string): boolean {
   if (!path.startsWith(ROOT + '/')) return false;
   const rel = path.slice(ROOT.length + 1);
-  if (rel === 'opencues.md') return false;       // OpenCuesSettingsControl writes
+  if (rel === 'opencues.md') return false;       // OpenCuesSettingsBlank writes
   if (rel === 'blanks.md') return false;         // legacy monolithic; write-safe fallback
   return true;
 }

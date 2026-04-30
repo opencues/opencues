@@ -9,19 +9,19 @@
 import type { BrowserControl } from './types';
 import { VolumeControl } from './volume';
 import {
-  AnswerControl,
-  CountriesControl,
-  CryptoControl,
-  DictionaryControl,
-  HackerNewsControl,
-  OpenCuesSettingsControl,
-  PromptImproverControl,
-  StocksControl,
-  WeatherControl,
+  AnswerBlank,
+  CountriesBlank,
+  CryptoBlank,
+  DictionaryBlank,
+  HackerNewsBlank,
+  OpenCuesSettingsBlank,
+  PromptImproverBlank,
+  StocksBlank,
+  WeatherBlank,
 } from '@opencues/runtime/dist/src/controls';
 
 export type { BrowserControl } from './types';
-export { PromptImproverControl } from '@opencues/runtime/dist/src/controls';
+export { PromptImproverBlank } from '@opencues/runtime/dist/src/controls';
 export type PromptImproverConfig = {
   apiKey: string;
   apiUrl: string;
@@ -48,22 +48,22 @@ export function createControls(options?: {
   const controls = new Map<string, BrowserControl>();
 
   controls.set('volume', new VolumeControl());
-  controls.set('stocks', new StocksControl({
+  controls.set('stocks', new StocksBlank({
     apiKey: options?.finnhubApiKey,
     customTickers: options?.customTickers,
   }));
-  controls.set('weather', new WeatherControl());
-  controls.set('hackernews', new HackerNewsControl());
-  controls.set('dictionary', new DictionaryControl());
-  controls.set('crypto', new CryptoControl());
-  controls.set('countries', new CountriesControl());
+  controls.set('weather', new WeatherBlank());
+  controls.set('hackernews', new HackerNewsBlank());
+  controls.set('dictionary', new DictionaryBlank());
+  controls.set('crypto', new CryptoBlank());
+  controls.set('countries', new CountriesBlank());
 
   if (options?.llmConfig) {
-    controls.set('prompt', new PromptImproverControl(options.llmConfig));
+    controls.set('prompt', new PromptImproverBlank(options.llmConfig));
     // Same LLM credentials power the answer control — factual lookups,
-    // translations, definitions. AnswerControl is read-only + multi-line
+    // translations, definitions. AnswerBlank is read-only + multi-line
     // for cycling; degrades to "" without a key.
-    controls.set('answer', new AnswerControl({
+    controls.set('answer', new AnswerBlank({
       apiKey: options.llmConfig.apiKey,
       apiUrl: options.llmConfig.apiUrl,
       model: options.llmConfig.model,
@@ -71,7 +71,7 @@ export function createControls(options?: {
   }
 
   if (options?.opencuesMdReadFile && options.opencuesMdWriteFile) {
-    controls.set('opencues', new OpenCuesSettingsControl({
+    controls.set('opencues', new OpenCuesSettingsBlank({
       readFile: options.opencuesMdReadFile,
       writeFile: options.opencuesMdWriteFile,
     }));

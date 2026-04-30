@@ -1,4 +1,4 @@
-// WeatherControl — current weather for a city via Open-Meteo (free, no
+// WeatherBlank — current weather for a city via Open-Meteo (free, no
 // API key). Read-only. 5-minute cache per city. Two-step fetch:
 // geocode the location name → pull current temperature + WMO weather
 // code at the resolved lat/lon. Output: "<temp>°C <description>"
@@ -30,21 +30,21 @@ const SKIP_WORDS: ReadonlySet<string> = new Set([
 const CACHE_TTL_MS = 300_000;
 const DEFAULT_LOCATION = 'London';
 
-export interface WeatherControlOptions {
+export interface WeatherBlankOptions {
   /** Override fetch — defaults to globalThis.fetch.bind(globalThis). */
   readonly fetchFn?: typeof fetch;
   /** Default city to use when no location can be extracted from context. */
   readonly defaultLocation?: string;
 }
 
-export class WeatherControl implements Blank {
+export class WeatherBlank implements Blank {
   readonly name = 'weather';
   readonly readOnly = true;
   private readonly _fetch: typeof fetch;
   private readonly _defaultLocation: string;
   private readonly _cache = new Map<string, { result: string; ts: number }>();
 
-  constructor(opts: WeatherControlOptions = {}) {
+  constructor(opts: WeatherBlankOptions = {}) {
     this._fetch = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
     this._defaultLocation = opts.defaultLocation ?? DEFAULT_LOCATION;
   }

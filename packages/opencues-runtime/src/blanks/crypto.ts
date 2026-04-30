@@ -1,8 +1,8 @@
-// CryptoControl — fetches a live crypto price from CoinGecko's public
+// CryptoBlank — fetches a live crypto price from CoinGecko's public
 // API (no auth on the demo / free tier). Read-only. 60s cache per coin.
 // Returns "$68,432.50"-style strings.
 //
-// Mirrors StocksControl shape: keyword maps to a CoinGecko coin ID
+// Mirrors StocksBlank shape: keyword maps to a CoinGecko coin ID
 // (e.g. "btc" → "bitcoin", "eth" → "ethereum"). Hosts can extend the
 // coin map via `customCoins` at construction.
 
@@ -30,7 +30,7 @@ const DEFAULT_COINS: Record<string, string> = {
 const CACHE_TTL_MS = 60_000;
 const ENDPOINT = 'https://api.coingecko.com/api/v3/simple/price';
 
-export interface CryptoControlOptions {
+export interface CryptoBlankOptions {
   /** Extra keyword → CoinGecko coin-id mappings, merged on top of DEFAULT_COINS. */
   readonly customCoins?: Record<string, string>;
   /** Override fetch — same shape as globalThis.fetch. */
@@ -39,7 +39,7 @@ export interface CryptoControlOptions {
   readonly cacheTtlMs?: number;
 }
 
-export class CryptoControl implements Blank {
+export class CryptoBlank implements Blank {
   readonly name = 'crypto';
   readonly readOnly = true;
   private readonly _coins: Record<string, string>;
@@ -47,7 +47,7 @@ export class CryptoControl implements Blank {
   private readonly _ttl: number;
   private readonly _cache = new Map<string, { price: string; ts: number }>();
 
-  constructor(opts: CryptoControlOptions = {}) {
+  constructor(opts: CryptoBlankOptions = {}) {
     this._coins = { ...DEFAULT_COINS, ...(opts.customCoins ?? {}) };
     this._fetch = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
     this._ttl = opts.cacheTtlMs ?? CACHE_TTL_MS;

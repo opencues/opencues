@@ -1,4 +1,4 @@
-// HackerNewsControl — fetches the current frontpage story titles via
+// HackerNewsBlank — fetches the current frontpage story titles via
 // the official HN Firebase API. Read-only, returns one title per line so
 // BlankFill's consume-list path can register the result as a cycleable
 // span (`hackernews _` → first title; Up/Down rotates through the rest).
@@ -14,21 +14,21 @@ const TOPSTORIES_URL = 'https://hacker-news.firebaseio.com/v0/topstories.json';
 const ITEM_URL = (id: number): string => `https://hacker-news.firebaseio.com/v0/item/${id}.json`;
 const HOW_MANY = 20;
 
-export interface HackerNewsControlOptions {
+export interface HackerNewsBlankOptions {
   /** Override fetch — useful for tests + hosts that need to proxy via
    *  a service worker (chrome content scripts can hit
    *  hacker-news.firebaseio.com directly though). Defaults to globalThis.fetch. */
   readonly fetchFn?: typeof fetch;
 }
 
-export class HackerNewsControl implements Blank {
+export class HackerNewsBlank implements Blank {
   readonly name = 'hackernews';
   readonly readOnly = true;
   private _cachedTitles: string[] = [];
   private _cacheTs = 0;
   private readonly _fetch: typeof fetch;
 
-  constructor(opts: HackerNewsControlOptions = {}) {
+  constructor(opts: HackerNewsBlankOptions = {}) {
     // Bind to globalThis when capturing the default. Browsers throw
     // "Illegal invocation" on bare `fetch.call(undefined, ...)` because
     // window.fetch needs window as its `this`. Tests can pass any

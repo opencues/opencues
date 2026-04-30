@@ -1,4 +1,4 @@
-// CountriesControl — fetches country facts from restcountries.com
+// CountriesBlank — fetches country facts from restcountries.com
 // (no auth, no rate limit beyond reasonable). Read-only. 24h cache
 // per (country, fact) pair.
 //
@@ -46,14 +46,14 @@ const SKIP_WORDS: ReadonlySet<string> = new Set([
   'area', 'size',
 ]);
 
-export interface CountriesControlOptions {
+export interface CountriesBlankOptions {
   /** Override fetch — defaults to globalThis.fetch.bind(globalThis). */
   readonly fetchFn?: typeof fetch;
   /** Override TTL for testing (default 24h). */
   readonly cacheTtlMs?: number;
 }
 
-export class CountriesControl implements Blank {
+export class CountriesBlank implements Blank {
   readonly name = 'countries';
   readonly readOnly = true;
   private readonly _fetch: typeof fetch;
@@ -61,7 +61,7 @@ export class CountriesControl implements Blank {
   // Cache the full country object — multiple fact-keys can read from one fetch.
   private readonly _cache = new Map<string, { data: CountryApiEntry; ts: number }>();
 
-  constructor(opts: CountriesControlOptions = {}) {
+  constructor(opts: CountriesBlankOptions = {}) {
     this._fetch = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
     this._ttl = opts.cacheTtlMs ?? CACHE_TTL_MS;
   }

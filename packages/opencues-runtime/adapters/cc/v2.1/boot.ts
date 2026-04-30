@@ -58,7 +58,7 @@ export interface HostInfo {
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
   /**
    * Optional host-native control dispatch. BlankFill + Cycling try this
-   * BEFORE spawnProcess so the shared TS controls (HackerNewsControl,
+   * BEFORE spawnProcess so the shared TS controls (HackerNewsBlank,
    * etc. — see opencues-runtime/src/controls/) win over the legacy shell
    * scripts in controls/. Returns null when the controlName isn't in
    * the host's registry; runtime falls through to spawnProcess.

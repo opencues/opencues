@@ -36,12 +36,12 @@ import {
 } from '../../../src/boot-common';
 import type { BlankInvokeSpec, HostAdapter, KeyEvent, LogLevel, ProcessHandle } from '../../../src/adapter';
 import {
-  AnswerControl,
-  HackerNewsControl,
-  OpenCuesSettingsControl,
-  PromptImproverControl,
-  StocksControl,
-  WeatherControl,
+  AnswerBlank,
+  HackerNewsBlank,
+  OpenCuesSettingsBlank,
+  PromptImproverBlank,
+  StocksBlank,
+  WeatherBlank,
   createBlankInvoke,
   type Blank,
 } from '../../../src/blanks';
@@ -96,8 +96,8 @@ export interface RuntimeBundle {
   readonly reclassifier: SourceReclassifier;
   /** Hoisted controls map — same six classes OC wires (HackerNews,
    *  Stocks, Weather, Answer, PromptImprover, OpenCuesSettings). */
-  readonly controlsRegistry: Map<string, Blank>;
-  /** Dispatcher derived from controlsRegistry. Returns null for
+  readonly blanksRegistry: Map<string, Blank>;
+  /** Dispatcher derived from blanksRegistry. Returns null for
    *  unregistered controls. */
   readonly blankInvoke: (spec: BlankInvokeSpec) => ProcessHandle | null;
 }
@@ -309,7 +309,7 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
  * hitting the real filesystem.
  */
 /**
- * Resolve the path to opencues.md for the OpenCuesSettingsControl.
+ * Resolve the path to opencues.md for the OpenCuesSettingsBlank.
  * Mirrors `findOpenCuesMdPath` in
  * `integrations/opencode/patches/opencuesBootstrap.ts:88-94` exactly:
  * - $OPENCUES_HOME wins if set (CI / container deploys / tests)
@@ -328,14 +328,14 @@ function findOpenCuesMdPath(): string {
  * `integrations/opencode/patches/opencuesBootstrap.ts:116-127` —
  * if you change the wiring there, change it here too.
  */
-function buildControlsRegistry(): Map<string, Blank> {
+function buildBlanksRegistry(): Map<string, Blank> {
   return new Map<string, Blank>([
-    ['hackernews', new HackerNewsControl()],
-    ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
-    ['weather', new WeatherControl()],
-    ['answer', new AnswerControl({ apiKey: process.env.GROQ_API_KEY })],
-    ['prompt', new PromptImproverControl({ apiKey: process.env.GROQ_API_KEY })],
-    ['opencues', new OpenCuesSettingsControl({
+    ['hackernews', new HackerNewsBlank()],
+    ['stocks', new StocksBlank({ apiKey: process.env.FINNHUB_API_KEY })],
+    ['weather', new WeatherBlank()],
+    ['answer', new AnswerBlank({ apiKey: process.env.GROQ_API_KEY })],
+    ['prompt', new PromptImproverBlank({ apiKey: process.env.GROQ_API_KEY })],
+    ['opencues', new OpenCuesSettingsBlank({
       readFile: async () => {
         try { return await fsp.readFile(findOpenCuesMdPath(), 'utf8'); }
         catch { return null; }
@@ -352,8 +352,8 @@ async function defaultBuildRuntime(
   log: (level: LogLevel, msg: string, data?: unknown) => void,
 ): Promise<RuntimeBundle> {
   const reclassifier = createSourceReclassifier();
-  const controlsRegistry = buildControlsRegistry();
-  const blankInvoke = createBlankInvoke(controlsRegistry);
+  const blanksRegistry = buildBlanksRegistry();
+  const blankInvoke = createBlankInvoke(blanksRegistry);
   const adapter = new CodexAdapter({
     cwd: params.cwd,
     hostVersion: params.hostVersion,
@@ -410,7 +410,7 @@ async function defaultBuildRuntime(
     shared,
     configLoader: shared.configLoader,
     reclassifier,
-    controlsRegistry,
+    blanksRegistry,
     blankInvoke,
   };
 }

@@ -446,7 +446,7 @@ export interface MergeWordDefsOptions {
   protectSource?: string;
 
   /**
-   * Skip merging into entries where existing has metadata.controlName but new doesn't.
+   * Skip merging into entries where existing has metadata.blankName but new doesn't.
    * Prevents LLM results from overwriting control-blank positions.
    */
   protectControlName?: boolean;
@@ -481,8 +481,8 @@ export function mergeWordDefs(
       }
       // Skip control-name guard (LLM shouldn't overwrite control-blank)
       if (options?.protectControlName &&
-          existingDef.metadata?.controlName &&
-          !newDef.metadata?.controlName) {
+          existingDef.metadata?.blankName &&
+          !newDef.metadata?.blankName) {
         continue;
       }
 
@@ -580,8 +580,8 @@ export function convertCueResultsToWordDefs(
     if (!r.alternatives) continue;
     // Control-bound blanks are retained regardless of alt count — a single-alt
     // result is the auto-populate value, not a cycle list, and its metadata
-    // (controlName, blankStep, blankScript, etc.) is load-bearing downstream.
-    const isControlBlank = !!(r.metadata && (r.metadata as { controlName?: unknown }).controlName);
+    // (blankName, blankStep, blankScript, etc.) is load-bearing downstream.
+    const isControlBlank = !!(r.metadata && (r.metadata as { blankName?: unknown }).blankName);
     if (!isControlBlank && r.alternatives.length < minAlts) continue;
 
     const alts = cleanAlternatives(r.alternatives);

@@ -1,4 +1,4 @@
-// OpenCuesSettingsControl — selector + satellite control that reads/
+// OpenCuesSettingsBlank — selector + satellite control that reads/
 // writes opencues.md. Triggered by `opencues settings _` / `config _`;
 // spawns a "<setting> <value>" pair the user can cycle through.
 //
@@ -17,20 +17,20 @@
 
 import type { Blank } from './types';
 
-export interface OpenCuesSettingsControlOptions {
+export interface OpenCuesSettingsBlankOptions {
   /** Read the full opencues.md content. Returns null when missing. */
   readonly readFile: () => Promise<string | null>;
   /** Write the full opencues.md content (atomic replace). */
   readonly writeFile: (content: string) => Promise<void>;
 }
 
-export class OpenCuesSettingsControl implements Blank {
+export class OpenCuesSettingsBlank implements Blank {
   readonly name = 'opencues';
   readonly readOnly = false;
   private readonly _read: () => Promise<string | null>;
   private readonly _write: (content: string) => Promise<void>;
 
-  constructor(opts: OpenCuesSettingsControlOptions) {
+  constructor(opts: OpenCuesSettingsBlankOptions) {
     this._read = opts.readFile;
     this._write = opts.writeFile;
   }
