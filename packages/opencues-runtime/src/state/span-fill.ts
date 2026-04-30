@@ -27,7 +27,7 @@ export interface SpanFillEntry {
   currentAltIndex: number;
   spanLength: number;
   /**
-   * What kind of span this is. Controls invalidation semantics on
+   * What kind of span this is. Drives invalidation semantics on
    * text change:
    *   'blank-fill' — consume-all / stepValue / blankScript output.
    *                  Strict: any text change clears the stash (user

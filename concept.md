@@ -88,5 +88,5 @@ These predated the concept-cleanup pass; the names disagreed with the dual-direc
 - ✅ `controlsRegistry` → `blanksRegistry`
 - ✅ `metadata.controlName` → `metadata.blankName`
 - ✅ `BlankValuesCache` deleted (it was dead after the word-cycling removal)
-- ✅ cue.md frontmatter `type: blank` is canonical (legacy `type: control` still accepted by the parser as alias). Redundant `control: <name>` field dropped from all 12 shipped defaults (dirname/name already identifies the blank).
+- ✅ cue.md frontmatter `type: blank` is canonical. Redundant `control: <name>` field dropped from all 12 shipped defaults (dirname/name already identifies the blank).
 - ✅ Wire format: `'control-invoke'` JSON-RPC method → `'blank-invoke'`; `"controlName"` JSON key → `"blankName"`. Codex Rust bridge updated in lockstep (`integrations/codex/patches/opencues-bridge/src/lib.rs` `invoke_blank`). `BlankConfig.control` field renamed to `BlankConfig.name`. `controlsByWord` map → `blanksByWord`. `lookupControl` → `lookupBlank`.

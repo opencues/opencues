@@ -23,16 +23,14 @@ import * as path from 'path';
 const stubAdapter: HttpAdapter = { post: async () => '{}' };
 const blanksPath = path.resolve(__dirname, '../../../../defaults/blanks.md');
 const blanksContent = fs.existsSync(blanksPath) ? fs.readFileSync(blanksPath, 'utf8') : '';
-// Phase 0 deleted the classifier blanks.md content; Phase 1 reused
-// the same filename for the renamed-from-controls.md file. These tests
-// exercise classifier routing — short-circuit the whole file if the
-// classifier content isn't present (deferred Phase 0 cleanup will
-// delete the file outright in a later commit).
+// These tests exercise classifier routing — short-circuit the whole file
+// if defaults/blanks.md doesn't carry classifier content (it no longer
+// ships there).
 const HAS_CLASSIFIER = blanksContent.includes('classifier') && blanksContent.includes('### math');
 
 if (!HAS_CLASSIFIER) {
   // Emit one skipped test so the runner has *something* to report.
-  describe('classifier (skipped: classifier blanks.md content was removed in Phase 0)', () => {
+  describe('classifier (skipped: classifier blanks.md content not present)', () => {
     it.skip('placeholder', () => {});
   });
 } else {

@@ -9,16 +9,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-// User-facing kinds advertised in help/error messages. `control` is the
-// accepted but hidden — see KINDS / ALIASES below.
-const ADVERTISED_KINDS = ['cue', 'blank'];
-// Backwards-compat: `control` is a silent alias for `blank`
-// (the legacy controls/ folder was renamed to blanks/, control.md template merged
-// into blank.md). New canonical kind name is `blank`. Accepted but NOT
-// surfaced in help text.
-const KINDS = new Set([...ADVERTISED_KINDS, 'control']);
-const KIND_TO_DIR = { cue: 'cues', blank: 'blanks', control: 'blanks' };
-const KIND_TEMPLATE = { cue: 'cue', blank: 'blank', control: 'blank' };
+const KINDS = new Set(['cue', 'blank']);
+const KIND_TO_DIR = { cue: 'cues', blank: 'blanks' };
+const KIND_TEMPLATE = { cue: 'cue', blank: 'blank' };
 
 module.exports = function newCmd(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -34,11 +27,11 @@ module.exports = function newCmd(argv, ctx) {
 
   if (!kind || !name) {
     console.error('opencues new: missing arguments. Usage: opencues new <kind> <name>');
-    console.error(`<kind>: ${ADVERTISED_KINDS.join(' | ')}`);
+    console.error(`<kind>: ${[...KINDS].join(' | ')}`);
     process.exit(2);
   }
   if (!KINDS.has(kind)) {
-    console.error(`opencues new: unknown kind "${kind}". Known: ${ADVERTISED_KINDS.join(', ')}`);
+    console.error(`opencues new: unknown kind "${kind}". Known: ${[...KINDS].join(', ')}`);
     process.exit(2);
   }
   if (!/^[a-z][a-z0-9-]*$/.test(name)) {

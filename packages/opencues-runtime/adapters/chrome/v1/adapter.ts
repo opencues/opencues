@@ -11,9 +11,9 @@
 //                render triggers (CSS Highlight API updates).
 //   - readFile/writeFile → chrome.storage.local backed (file path is
 //                          the storage key).
-//   - readDir → returns a baked manifest (controls/, cues/) the
+//   - readDir → returns a baked manifest (cues/, blanks/) the
 //               extension's esbuild config populates at build time.
-//   - spawnProcess → not supported (extension is sandboxed). Controls
+//   - spawnProcess → not supported (extension is sandboxed). Blanks
 //                    that need external state use fetch() from the
 //                    content script or background worker instead.
 //
@@ -73,7 +73,7 @@ export interface ChromeBindings {
   readFile?(path: string): Promise<string | null>;
   /** Same as readFile — chrome.storage write. */
   writeFile?(path: string, content: string): Promise<void>;
-  /** Bake-time manifest lookup (controls/, cues/). Return null when unknown. */
+  /** Bake-time manifest lookup (cues/, blanks/). Return null when unknown. */
   readDir?(path: string): Promise<readonly DirEntry[] | null>;
   /**
    * Push text asynchronously (BlankFill / Resolver). Same plumbing as
@@ -83,7 +83,7 @@ export interface ChromeBindings {
   /**
    * Optional blank dispatch for sandboxed hosts. BlankFill +
    * Cycling try this BEFORE spawnProcess. Returns ProcessHandle for
-   * controls the host knows; null falls through to spawnProcess
+   * blanks the host knows; null falls through to spawnProcess
    * (which the chrome adapter resolves with exitCode 127).
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;

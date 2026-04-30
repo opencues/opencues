@@ -1,6 +1,6 @@
 /** Popup-editable settings stored in chrome.storage.local.
  *
- * NOTE: cue / blank / control CONTENT no longer lives here. It comes
+ * NOTE: cue / blank CONTENT no longer lives here. It comes
  * from the bake-time defaults seeded by opencues-bootstrap.ts and
  * (optionally) the `opencues sync chrome` bundle. The popup is a
  * settings panel only.

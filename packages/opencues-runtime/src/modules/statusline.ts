@@ -67,7 +67,7 @@ export class Statusline {
     /** Optional. When provided, cueTip + altCueTips are populated from the cue map. */
     private configLoader?: ConfigLoader,
     /**
-     * Optional. When the highlight is on a span fill, the control's
+     * Optional. When the highlight is on a span fill, the blank's
      * blankTip wins over cueMap lookup (which would miss filled words
      * like "13.9°C" or "Reddit"). Phase F.b.
      */

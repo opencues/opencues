@@ -1,4 +1,4 @@
-// Pins the colocated-helpers contract for shipped control scripts.
+// Pins the colocated-helpers contract for shipped blank scripts.
 //
 // Bug class this guards against: shipped scripts hardcoding install-time
 // paths (e.g. "${HOME}/.claude/actions/BrightCtl.exe") OR walking a
@@ -36,7 +36,7 @@ const SHIPPED_SCRIPTS: { path: string; helpers: readonly string[] }[] = [
   { path: path.join(DEFAULTS_SCRIPTS, 'speak.sh'),                        helpers: ['SpeakCtl.exe'] },
 ];
 
-describe('shipped control scripts: colocated-helpers contract', () => {
+describe('shipped blank scripts: colocated-helpers contract', () => {
   describe('source-level checks (regressions in path-finding)', () => {
     for (const { path: scriptPath, helpers } of SHIPPED_SCRIPTS) {
       const name = path.basename(scriptPath);

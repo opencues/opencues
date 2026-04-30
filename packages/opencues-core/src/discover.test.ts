@@ -108,11 +108,10 @@ type: tips
 });
 
 describe('parseSingleCueMd: blank type', () => {
-  it('should parse blank config from frontmatter (legacy `type: control`)', () => {
+  it('should parse blank config from frontmatter', () => {
     const content = `---
 name: volume
-type: control
-control: volume
+type: blank
 tip: system volume
 blankScript: ./volume-blank.sh
 ---
@@ -148,7 +147,7 @@ blankScript: /opt/scripts/custom.sh
     assert.strictEqual(config.blanks!['custom'].blankScript, '/opt/scripts/custom.sh');
   });
 
-  it('should accept type: blank as canonical (control is legacy alias)', () => {
+  it('should parse blankKeywords from frontmatter', () => {
     const content = `---
 name: volume
 type: blank

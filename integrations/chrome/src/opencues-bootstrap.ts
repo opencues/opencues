@@ -400,9 +400,9 @@ export interface RuntimeStartOptions {
   llmEndpoint?: string;
   llmDefaultModel?: string;
   llmDebounceMs?: number;
-  /** Finnhub API key for the stocks control. */
+  /** Finnhub API key for the stocks blank. */
   finnhubApiKey?: string;
-  /** Custom ticker map for the stocks control. */
+  /** Custom ticker map for the stocks blank. */
   customTickers?: Record<string, string>;
 }
 

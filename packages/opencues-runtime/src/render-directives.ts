@@ -2,7 +2,7 @@
 //
 // The renderer walks the input char-by-char, distinguishing visible characters
 // from ANSI escape sequences (\x1b[...m). When the visible cursor reaches a
-// directive boundary, the corresponding ANSI control code is inserted before
+// directive boundary, the corresponding ANSI escape sequence is inserted before
 // the next visible char. Existing ANSI codes are preserved verbatim.
 //
 // `textOverride` short-circuits — if present, it replaces the entire string.

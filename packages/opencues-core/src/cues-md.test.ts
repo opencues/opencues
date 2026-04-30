@@ -105,7 +105,7 @@ describe('parseCuesMd: ## Ignore', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ## Blanks (legacy ## Controls / ## Actions also accepted)
+// ## Blanks
 // ---------------------------------------------------------------------------
 
 describe('parseCuesMd: ## Blanks', () => {
@@ -115,20 +115,6 @@ describe('parseCuesMd: ## Blanks', () => {
     assert.ok(cfg.blanks.volume);
     assert.strictEqual(cfg.blanks.volume.name, 'volume');
     assert.strictEqual(cfg.blanks.volume.tip, 'vol');
-  });
-
-  it('should accept legacy ## Controls heading + legacy "control" key on entry', () => {
-    const cfg = parseCuesMd('## Controls\n```json\n{"volume":{"control":"volume","tip":"vol"}}\n```');
-    assert.ok(cfg.blanks);
-    assert.ok(cfg.blanks.volume);
-    // legacy "control" is mapped onto "name"
-    assert.strictEqual(cfg.blanks.volume.name, 'volume');
-  });
-
-  it('should accept ## Actions as backward compat', () => {
-    const cfg = parseCuesMd('## Actions\n```json\n{"brightness":{"control":"brightness"}}\n```');
-    assert.ok(cfg.blanks);
-    assert.ok(cfg.blanks.brightness);
   });
 
   it('should handle invalid JSON gracefully', () => {
@@ -596,11 +582,9 @@ describe('parseCuesMd: real blanks.md', () => {
   const path = require('path');
   const blanksPath = path.resolve(__dirname, '../../../defaults/blanks.md');
 
-  // Skip if blanks.md doesn't exist (CI without repo root) OR if it's
-  // the post-Phase-0/Phase-1 file (which is the renamed-from-controls
-  // file, not the classifier-sources file these tests assert against).
-  // The classifier blanks.md content was removed in Phase 0; these
-  // tests pin behaviour that no longer ships.
+  // Skip if blanks.md doesn't exist (CI without repo root) OR if it
+  // doesn't contain classifier-sources content (these tests pin
+  // behaviour that no longer ships in defaults/blanks.md).
   const fileContent = fs.existsSync(blanksPath) ? fs.readFileSync(blanksPath, 'utf8') : '';
   const blanksExists = fileContent.includes('classifier') && fileContent.includes('### math');
 

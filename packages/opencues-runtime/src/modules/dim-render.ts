@@ -1,7 +1,7 @@
 // DimRender — computes RenderDirectives on every onRender event.
 //
 // Two visual layers:
-//   1. Dim ranges for every word that's a known cue / control / step-pattern
+//   1. Dim ranges for every word that's a known cue or blank
 //      match — visual hint that the word is navigable.
 //   2. Highlight range over the actively-selected word (overrides the dim).
 //
@@ -45,7 +45,7 @@ export class DimRender {
 
     const words = splitWords(ctx.text);
 
-    // Dim ranges: every cue / control / step-pattern word that is NOT the
+    // Dim ranges: every cue or blank word that is NOT the
     // currently-highlighted one AND not inside an active span/satellite
     // (those get whole-region highlight; individual cue dim there would
     // appear as random word-fading inside an otherwise bright unit).

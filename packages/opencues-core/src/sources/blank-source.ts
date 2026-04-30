@@ -179,7 +179,7 @@ export class BlankSource implements CueSource {
     }
 
     // Selector+satellite: script always outputs tab-delimited ("<selector>\t<satellite>").
-    // blankSatelliteSeparator controls display only — what appears in the text (default: space).
+    // blankSatelliteSeparator affects display only — what appears in the text (default: space).
     if (matched.blankSatellite && rawValue.includes('\t')) {
       const sepIdx = rawValue.indexOf('\t');
       const selectorText = rawValue.slice(0, sepIdx).trim();

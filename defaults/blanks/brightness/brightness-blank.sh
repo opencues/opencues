@@ -1,5 +1,5 @@
 #!/bin/bash
-# Brightness control for control-bound blanks (e.g. "brightness ___")
+# Brightness blank — backs `brightness _` blanks (e.g. "brightness ___")
 # Usage: brightness-blank.sh <get|set> [value]
 #
 # Helpers (BrightCtl.exe, brightness-set.ps1) are colocated in this same

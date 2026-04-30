@@ -126,7 +126,7 @@ export class Resolver {
       endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       apiKey: this.options.apiKey,
       defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
-      controls: this.configLoader.folderConfigs?.blankOverrides ?? {},
+      blanks: this.configLoader.folderConfigs?.blankOverrides ?? {},
       // ALL opt-in: every cue surface defaults to OFF. User flips on via
       // opencues.md. Missing settings → off. Explicit "on" → on.
       // See packages/opencues-core/src/sources/build-sources.ts for what
@@ -254,7 +254,7 @@ export class Resolver {
       const existing = this.dynDefs.get(r.wordIndex);
       // Don't clobber a user mid-cycle on this word.
       if (existing && existing.currentIndex > 0) continue;
-      // Don't clobber control-attributed entries (volume/brightness blank
+      // Don't clobber blank-attributed entries (volume/brightness blank
       // fills, satellite cycles, etc.) — those route through their own
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
@@ -292,7 +292,7 @@ export class Resolver {
       // Without this the def is orphaned at an out-of-bounds index and the
       // next resolve generates synonym alts for the answer position.
       if (isFluidBlank && alts.length > 0) {
-        // Race guard: BlankFill (control-bound) runs synchronously after
+        // Race guard: BlankFill runs synchronously after
         // its blankScript returns and can populate the `_` BEFORE this
         // LLM-driven path completes. If `_` is no longer in the live text
         // at the expected position, BlankFill already won — skip our
@@ -321,7 +321,7 @@ export class Resolver {
           spanStart: start,
           spanEnd: newSpanEnd,
           // blankName locks this def against re-resolution by the LLM —
-          // same mechanism control-bound blanks use to prevent the answer
+          // same mechanism blank-bound entries use to prevent the answer
           // from being clobbered by RoutedWordSourceGroup synonyms.
           blankName: 'fluid-blank',
         };

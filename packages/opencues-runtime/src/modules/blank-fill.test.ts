@@ -9,15 +9,14 @@ import { SelectorSatelliteState } from '../state/selector-satellite';
 const TIPS = wrapTipsAsCuesMd({ concepts: [] });
 
 const VOLUME_CUE = `---
-type: control
+type: blank
 name: volume
-control: volume
 blankKeywords: volume, vol, sound, audio
 ---
 `;
 
 const AFFIRM_CUE = `---
-type: control
+type: blank
 name: affirmations
 blankKeywords: affirmation, affirm
 stepValues: ["I am strong", "I am brave"]
@@ -25,7 +24,7 @@ stepValues: ["I am strong", "I am brave"]
 `;
 
 const PROMPT_CUE = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: improve prompt, write prompt, prompt
 blankProximity: 0
@@ -260,7 +259,7 @@ describe('BlankFill auto-populate (Step 24)', () => {
     };
   }
 
-  it('replaces _ with stepValues[0] when control opts in', async () => {
+  it('replaces _ with stepValues[0] when blank opts in', async () => {
     const { adapter, bf } = await setup('affirm ');
     const consumed = bf.onUnderscoreKey(makeKeyEvent('affirm ', 7));
     expect(consumed).toBe(true);
@@ -278,7 +277,7 @@ describe('BlankFill auto-populate (Step 24)', () => {
     expect(adapter.setTextCalls).toHaveLength(0);
   });
 
-  it('returns false when control is script-backed (no stepValues)', async () => {
+  it('returns false when blank is script-backed (no stepValues)', async () => {
     const { adapter, bf } = await setup('volume ');
     const consumed = bf.onUnderscoreKey(makeKeyEvent('volume ', 7));
     expect(consumed).toBe(false);
@@ -293,9 +292,9 @@ describe('BlankFill auto-populate (Step 24)', () => {
     expect(adapter.setTextCalls).toHaveLength(0);
   });
 
-  it('async path: blankScript get is spawned for script-backed control with no stepValues', async () => {
+  it('async path: blankScript get is spawned for script-backed blank with no stepValues', async () => {
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: stock, ticker
 blankScript: ./stocks.sh
@@ -320,7 +319,7 @@ blankScript: ./stocks.sh
 
   it('async path: blankInvoke is preferred over spawnProcess when host implements it', async () => {
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: stock, ticker
 blankScript: ./stocks.sh
@@ -350,7 +349,7 @@ blankScript: ./stocks.sh
 
   it('async path: passes context words (excluding keyword + blank)', async () => {
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: weather
 blankKeywords: weather
 blankScript: ./weather.sh
@@ -374,7 +373,7 @@ blankScript: ./weather.sh
 
   it('async path: passes context words for multi-word keyword (index-based filter)', async () => {
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: reddit stock
 blankScript: ./stocks.sh
@@ -397,7 +396,7 @@ blankScript: ./stocks.sh
 
   it('async path: expands ~ in script path', async () => {
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: stock
 blankScript: ~/.claude/actions/stock.sh
@@ -418,11 +417,11 @@ blankScript: ~/.claude/actions/stock.sh
     expect(args[0].startsWith('~')).toBe(false);
   });
 
-  it('async path: builds CUES_* env vars from control config', async () => {
+  it('async path: builds CUES_* env vars from blank config', async () => {
     // opencues-core's parseSingleCueMd reads `## Extract` / `## Transform`
-    // markdown sections into controls.X.prompts (NOT a YAML `prompts:` key).
+    // markdown sections into blanks.X.prompts (NOT a YAML `prompts:` key).
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: prompt
 blankScript: ./prompt.sh
@@ -464,7 +463,7 @@ generate alts
 
   it('async path: dedupes concurrent spawns for same (text, slot)', async () => {
     const SCRIPT_CTRL = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: stock
 blankScript: ./stocks.sh
@@ -486,7 +485,7 @@ blankScript: ./stocks.sh
 
   it('sync path: blankClearKeywords strips keyword from filled text (single-word keyword)', async () => {
     const CLR_CTRL = `---
-type: control
+type: blank
 name: cheer
 blankKeywords: cheer
 stepValues: ["yay"]
@@ -509,7 +508,7 @@ blankClearKeywords: true
 
   it('sync path: blankClearKeywords preserves context words between keyword and blank', async () => {
     const CLR_CTRL = `---
-type: control
+type: blank
 name: temp
 blankKeywords: weather
 stepValues: ["15°C"]
@@ -531,7 +530,7 @@ blankClearKeywords: true
 
   it('sync path: blankClearKeywords drops both words of a multi-word keyword', async () => {
     const CLR_CTRL = `---
-type: control
+type: blank
 name: greet
 blankKeywords: say hello
 stepValues: ["hi"]
@@ -553,7 +552,7 @@ blankClearKeywords: true
 
   it('async path: blankClearKeywords applies after script result splices in', async () => {
     const CLR_CTRL = `---
-type: control
+type: blank
 name: weather
 blankKeywords: weather
 blankScript: ./weather.sh
@@ -581,7 +580,7 @@ blankClearKeywords: true
 
   it('async path: no clear when blankClearKeywords is unset (existing behaviour preserved)', async () => {
     const PLAIN = `---
-type: control
+type: blank
 name: weather2
 blankKeywords: weather
 blankScript: ./weather.sh
@@ -607,7 +606,7 @@ blankScript: ./weather.sh
 
   it('sync path: blankKeywordExpansions replaces short-form keyword with long form', async () => {
     const EXP_CTRL = `---
-type: control
+type: blank
 name: greeting
 blankKeywords: hi
 stepValues: ["world"]
@@ -629,7 +628,7 @@ blankKeywordExpansions.hi: Hello
 
   it('sync path: blankClearKeywords wins when both clear + expansion are set', async () => {
     const BOTH = `---
-type: control
+type: blank
 name: bye
 blankKeywords: bye
 stepValues: ["see ya"]
@@ -653,7 +652,7 @@ blankKeywordExpansions.bye: Goodbye
 
   it('async path: blankKeywordExpansions applies after script result', async () => {
     const EXP_CTRL = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: rddt
 blankScript: ./stocks.sh
@@ -679,7 +678,7 @@ blankKeywordExpansions.rddt: Reddit
 
   it('async path: blankConsumeContext drops keyword and context words around the blank', async () => {
     const ANSWER_CTRL = `---
-type: control
+type: blank
 name: answer
 blankKeywords: how to say
 blankScript: ./answer.sh
@@ -706,7 +705,7 @@ blankClearKeywords: true
 
   it('sync path: blankConsumeContext drops keyword and context words around the blank', async () => {
     const CTX_CTRL = `---
-type: control
+type: blank
 name: ctxsync
 blankKeywords: how to say
 stepValues: ["hi"]
@@ -728,7 +727,7 @@ blankConsumeContext: true
 
   it('async path: blankConsumeAll replaces entire input with first stdout line', async () => {
     const PROMPT_CTRL = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: improve prompt
 blankScript: ./prompt.sh
@@ -775,7 +774,7 @@ blankClearKeywords: true
     // when something accidentally re-adds the early `if (!script)
     // continue` gate.
     const SCRIPTLESS_CTRL = `---
-type: control
+type: blank
 name: hn
 blankKeywords: hn
 blankAutoPopulate: true
@@ -812,7 +811,7 @@ blankAutoPopulate: true
     // multi-word fills" — both happened when the runtime didn't reach
     // the consume-all branch under blankInvoke routing.
     const PROMPT_CTRL = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: improve prompt
 blankScript: ./prompt.sh
@@ -852,7 +851,7 @@ blankClearKeywords: true
 
   it('async path: blankConsumeAll with single-line stdout fills but does not stash', async () => {
     const PROMPT_CTRL = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: improve prompt
 blankScript: ./prompt.sh
@@ -880,7 +879,7 @@ blankConsumeAll: true
 
   it('Phase F.a: multi-word stepValues fill registers a SpanFillState entry', async () => {
     const AFFIRM_F = `---
-type: control
+type: blank
 name: affirmations
 blankKeywords: affirm
 stepValues: ["I am strong", "I am brave"]
@@ -915,7 +914,7 @@ stepValues: ["I am strong", "I am brave"]
   it('Phase F.a: single-stepValue fill does NOT register a span (no cycling needed)', async () => {
     // Only one alt → cycling would be a no-op anyway.
     const ONE = `---
-type: control
+type: blank
 name: lone
 blankKeywords: lone
 stepValues: ["only"]
@@ -942,7 +941,7 @@ stepValues: ["only"]
 
   it('Phase F.b: blankDismissible appends `_` to span alternatives (sync stepValues)', async () => {
     const DISMISS = `---
-type: control
+type: blank
 name: affirmations
 blankKeywords: affirm
 stepValues: ["I am strong", "I am brave"]
@@ -972,7 +971,7 @@ blankTip: Daily affirmations
 
   it('Phase F.b: dismissed slot blocks sync auto-populate on subsequent _ key', async () => {
     const DISMISS = `---
-type: control
+type: blank
 name: a
 blankKeywords: a
 stepValues: ["x", "y"]
@@ -1003,7 +1002,7 @@ blankDismissible: true
 
   it('Phase F.b: dismissed slot blocks async script spawn', async () => {
     const SCRIPT = `---
-type: control
+type: blank
 name: weather
 blankKeywords: weather
 blankScript: ./weather.sh
@@ -1027,7 +1026,7 @@ blankDismissible: true
 
   it('Phase F.b: async multi-line stdout populates span with all lines as alternatives', async () => {
     const HN = `---
-type: control
+type: blank
 name: hackernews
 blankKeywords: hn
 blankScript: ./hn.sh
@@ -1068,7 +1067,7 @@ blankTip: Hacker News
 
   it('Phase F.b: async single-line non-dismissible single-word fill does NOT register span', async () => {
     const STOCK = `---
-type: control
+type: blank
 name: stocks
 blankKeywords: stock
 blankScript: ./stocks.sh
@@ -1096,7 +1095,7 @@ blankScript: ./stocks.sh
 
   it('Phase G.a: tab-separated stdout under blankSatellite splits into selector + satellite', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: opencues settings
 blankScript: ./oc.sh
@@ -1136,7 +1135,7 @@ blankClearOnEdit: true
 
   it('Phase G.a: respects custom blankSatelliteSeparator', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1164,7 +1163,7 @@ blankSatelliteSeparator: '='
 
   it('Phase G.c: editing inside the pair wipes both words when blankClearOnEdit:true', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1192,14 +1191,14 @@ blankClearOnEdit: true
     // User edits inside the pair (changes 'a' to 'A')
     adapter.pushText('cfg voice-mode Active');
     // Stash invalidated; pair spliced out by char range. Keyword stays
-    // because we didn't set blankClearKeywords on this control.
+    // because we didn't set blankClearKeywords on this blank.
     expect(ss.current).toBeNull();
     expect(adapter.getText()).toBe('cfg ');
   });
 
   it('Phase G.c: appending a space after the pair preserves the stash + updates lastFilledText', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1235,7 +1234,7 @@ blankClearOnEdit: true
 
   it('Phase G.c: prepending text before the pair preserves the stash + shifts positions', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1266,7 +1265,7 @@ blankSatellite: true
 
   it('Phase G.c: cleanup preserves text BEFORE and AFTER the pair', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1301,7 +1300,7 @@ blankClearOnEdit: true
 
   it('Phase G.c: blankClearOnEdit:false leaves the broken pair in place', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1332,7 +1331,7 @@ blankSatellite: true
 
   it('Phase G.a: missing tab in stdout does NOT trigger satellite path', async () => {
     const SAT = `---
-type: control
+type: blank
 name: opencues
 blankKeywords: cfg
 blankScript: ./oc.sh
@@ -1361,7 +1360,7 @@ blankSatellite: true
 
   it('Step 31 invalidation: user editing the consume-all text clears the stash', async () => {
     const PROMPT_CTRL = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: improve prompt
 blankScript: ./prompt.sh
@@ -1396,7 +1395,7 @@ blankConsumeAll: true
 
   it('Step 31 invalidation: matching text (e.g. after a cycle) keeps the stash', async () => {
     const PROMPT_CTRL = `---
-type: control
+type: blank
 name: prompt
 blankKeywords: improve prompt
 blankScript: ./prompt.sh
@@ -1424,9 +1423,9 @@ blankConsumeAll: true
     expect(consumeAll.current).not.toBeNull();
   });
 
-  it('honours blankAutoPopulate: false on the control', async () => {
+  it('honours blankAutoPopulate: false on the blank', async () => {
     const NO_AUTO = `---
-type: control
+type: blank
 name: noauto
 blankKeywords: noauto
 stepValues: ["X"]

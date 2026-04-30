@@ -115,7 +115,7 @@ export class BlankFill {
   }
 
   /**
-   * Step 25 — for any blank slot whose control has a `blankScript` (and no
+   * Step 25 — for any blank slot with a `blankScript` (and no
    * `stepValues`, since stepValues path was already handled by E.2's
    * onUnderscoreKey), spawn `bash <script> get <keyword>` async and splice
    * stdout into the `_` position when the call returns. The pendingScripts
@@ -499,7 +499,7 @@ export class BlankFill {
 
   /**
    * Phase G.c — when a selector/satellite pair was edited and the
-   * control declared `blankClearOnEdit`, splice the (broken) pair out
+   * blank declared `blankClearOnEdit`, splice the (broken) pair out
    * of the new text. Uses common-prefix/suffix matching against the
    * last filled text, with a min-of-(prefix, pairStart) / min-of-
    * (suffix, oldTail) clamp so the wipe always covers AT LEAST the

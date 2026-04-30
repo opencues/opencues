@@ -10,7 +10,7 @@
 // lockstep when the runtime's module wiring evolves.
 //
 // Host constraints worth keeping in mind here:
-//   - No spawnProcess (see adapter.ts). TTS uses Web Speech; controls
+//   - No spawnProcess (see adapter.ts). TTS uses Web Speech; blanks
 //     that need external data (stocks/weather/HN) go through fetch().
 //   - No TTS script path either — Chrome bypasses the TTS module
 //     entirely for now (Phase CE.6 will wire Web Speech through it).

@@ -7,14 +7,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
-// User-facing (advertised) names. The hidden alias `controls` is added
-// to VALID below for backwards-compat but is intentionally NOT shown in
-// help text or error messages — `blanks` is the canonical term.
-const ADVERTISED = ['cues', 'blanks', 'opencues'];
-const VALID = new Set([...ADVERTISED, 'controls']);
-// One-version backwards-compat alias: `opencues edit controls` silently
-// resolves to blanks.md (controls.md was renamed to blanks.md).
-const ALIASES = { controls: 'blanks' };
+const VALID = new Set(['cues', 'blanks', 'opencues']);
 
 module.exports = function edit(argv) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -24,24 +17,22 @@ module.exports = function edit(argv) {
   for (const a of argv) { if (!a.startsWith('-') && !name) name = a; }
 
   if (!name) {
-    console.error(`opencues edit: missing <file>. One of: ${ADVERTISED.join(', ')}`);
+    console.error(`opencues edit: missing <file>. One of: ${[...VALID].join(', ')}`);
     process.exit(2);
   }
   if (!VALID.has(name)) {
-    console.error(`opencues edit: unknown <file> "${name}". One of: ${ADVERTISED.join(', ')}`);
+    console.error(`opencues edit: unknown <file> "${name}". One of: ${[...VALID].join(', ')}`);
     process.exit(2);
   }
-  // Resolve aliases silently (backwards-compat for the rename window).
-  const resolved = ALIASES[name] || name;
 
   const baseDir = projectScope
     ? path.join(process.cwd(), '.opencues')
     : path.join(os.homedir(), '.opencues');
-  const file = path.join(baseDir, `${resolved}.md`);
+  const file = path.join(baseDir, `${name}.md`);
 
   if (!fs.existsSync(file)) {
     fs.mkdirSync(baseDir, { recursive: true });
-    fs.writeFileSync(file, `# ${resolved}.md (auto-created by opencues edit)\n`);
+    fs.writeFileSync(file, `# ${name}.md (auto-created by opencues edit)\n`);
     console.log(`Created empty ${file}`);
   }
 

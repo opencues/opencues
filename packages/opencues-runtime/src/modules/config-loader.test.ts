@@ -206,34 +206,6 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     expect(loader.cueMap.size).toBe(0);
   });
 
-  it('falls back to legacy controls.md when blanks.md is absent (one-version rename shim)', async () => {
-    // Existing users who upgraded but skipped `opencues seed-configs` may
-    // still have controls.md without blanks.md. Read it as if it were
-    // blanks.md so they don't silently lose every blank-fill on first
-    // post-upgrade run.
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: {
-        '/proj/controls.md': '---\nname: legacy-blanks\nversion: 1\n---\n',
-      },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    expect(loader.blanksConfig?.frontmatter.name).toBe('legacy-blanks');
-  });
-
-  it('prefers blanks.md when both blanks.md and controls.md exist', async () => {
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: {
-        '/proj/blanks.md': '---\nname: new\nversion: 1\n---\n',
-        '/proj/controls.md': '---\nname: legacy\nversion: 1\n---\n',
-      },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    expect(loader.blanksConfig?.frontmatter.name).toBe('new');
-  });
 });
 
 describe('ConfigLoader hot-reload', () => {

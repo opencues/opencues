@@ -92,8 +92,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordAltSources
   };
   // Top-level .md files (cues.md, blanks.md). Duplicates WITHIN one
   // file = error. opencues.md uses a different schema; we just check
-  // it's readable. Note: blanks.md may declare both `## Sources` and
-  // `## Controls` post-rename, so we register both kinds from it.
+  // it's readable.
   for (const [filename, kind] of [
     ['cues.md',   'cue'],
     ['blanks.md', 'blank'],

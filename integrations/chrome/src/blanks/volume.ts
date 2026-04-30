@@ -3,7 +3,7 @@ import type { BrowserBlank } from './types';
 /**
  * Tab audio volume blank using Web Audio API.
  *
- * Controls the gain of all <audio>/<video> elements on the page
+ * Sets the gain of all <audio>/<video> elements on the page
  * via an AudioContext GainNode. This is tab-scoped, not system volume.
  *
  * Step: 6% per press (matching the legacy bash behavior).

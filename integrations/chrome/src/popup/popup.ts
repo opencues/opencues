@@ -1,6 +1,6 @@
 import { loadConfig, saveConfig, resetConfig } from '../adapters/chrome-storage-adapter';
 
-// Popup = SETTINGS only. Cue / blank / control content lives in
+// Popup = SETTINGS only. Cue / blank content lives in
 // ~/.opencues/ on the host side and flows into the extension via
 // `opencues sync chrome`. The popup used to have a `cues.md` /
 // `blanks.md` / `opencues.md` textarea but it was a confusing second

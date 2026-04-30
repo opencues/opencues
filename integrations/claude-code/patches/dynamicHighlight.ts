@@ -512,16 +512,16 @@ return{text:_satNewTxt,lenDiff:_satNewTxt.length-_satTxt.length,wStart:_satWS,ne
 // Step blank: arithmetic or script-based increment/decrement for patterned values
 // Skip if this position has dynamic alternatives (e.g. blank fill-in result) — let alt cycling handle it
 var _hasAltsCycle=globalThis._dynDefs&&globalThis._dynDefs.words&&globalThis._dynDefs.words.find(function(w){return w.index===_hlIdx&&w.alts&&w.alts.length>1;});
-var _stepCtrl=null;
+var _stepCtl=null;
 var _spsC=globalThis._stepPatterns||[];
-for(var _spiC=0;_spiC<_spsC.length;_spiC++){if(_spsC[_spiC].re.test(_curWord)){_stepCtrl=_spsC[_spiC].ctrl;break;}}
-if(_stepCtrl&&!_hasAltsCycle){
-var _stStep=(_stepCtrl.step!=null)?_stepCtrl.step:1;
-var _stMin=(_stepCtrl.stepMin!=null)?_stepCtrl.stepMin:null;
-var _stMax=(_stepCtrl.stepMax!=null)?_stepCtrl.stepMax:null;
-var _stFmt=(_stepCtrl&&_stepCtrl.stepFormat)||null;
-var _stSuffix=(_stepCtrl&&_stepCtrl.stepSuffix)||"";
-var _stScript=(_stepCtrl&&_stepCtrl.stepScript)||null;
+for(var _spiC=0;_spiC<_spsC.length;_spiC++){if(_spsC[_spiC].re.test(_curWord)){_stepCtl=_spsC[_spiC].ctrl;break;}}
+if(_stepCtl&&!_hasAltsCycle){
+var _stStep=(_stepCtl.step!=null)?_stepCtl.step:1;
+var _stMin=(_stepCtl.stepMin!=null)?_stepCtl.stepMin:null;
+var _stMax=(_stepCtl.stepMax!=null)?_stepCtl.stepMax:null;
+var _stFmt=(_stepCtl&&_stepCtl.stepFormat)||null;
+var _stSuffix=(_stepCtl&&_stepCtl.stepSuffix)||"";
+var _stScript=(_stepCtl&&_stepCtl.stepScript)||null;
 var _stNewWord;
 if(_stScript){
 var _stHome=process.env.HOME||"/home/"+(process.env.USER||"root");
@@ -919,8 +919,8 @@ var _sentWords0=_sentText.split(/\\s+/).filter(function(w){return w;});
 _sentWords0.forEach(function(_sw0,_si0){
 for(var _spi0=0;_spi0<_spsInj.length;_spi0++){
 if(_spsInj[_spi0].re.test(_sw0)){
-var _existStep=globalThis._dynDefs.words.find(function(d){return d.index===_si0&&d.metadata&&d.metadata.stepControl;});
-if(!_existStep){globalThis._dynDefs.words.push({index:_si0,word:_sw0,alts:[_sw0],currentAltIndex:0,metadata:{stepControl:true,stepCtrl:_spsInj[_spi0].ctrl},source:'step',linked:null});}
+var _existStep=globalThis._dynDefs.words.find(function(d){return d.index===_si0&&d.metadata&&d.metadata.stepBlank;});
+if(!_existStep){globalThis._dynDefs.words.push({index:_si0,word:_sw0,alts:[_sw0],currentAltIndex:0,metadata:{stepBlank:true,stepCtl:_spsInj[_spi0].ctrl},source:'step',linked:null});}
 break;
 }
 }

@@ -35,7 +35,7 @@ try {
   }
 } catch { /* no cues/ dir */ }
 
-// Also load folder-based blank/control configs (blanks/*.md)
+// Also load folder-based blank configs (blanks/*.md)
 const blankFolders = {};
 const blanksDir = projectRoot + 'defaults/blanks/';
 try {

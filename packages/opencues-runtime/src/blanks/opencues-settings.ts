@@ -52,11 +52,11 @@ export class OpenCuesSettingsBlank implements Blank {
     return `${first}\t${value}`;
   }
 
-  // NB: argument order intentionally differs from volume-like controls.
+  // NB: argument order intentionally differs from volume-like blanks.
   // The runtime's selector/satellite cycling path (Cycling.ts) calls
-  // `controlInvoke({action:'set', args:[setting, value]})` — setting
+  // `blankInvoke({action:'set', args:[setting, value]})` — setting
   // FIRST, mirroring the legacy bash `script set <setting> <value>`.
-  // The Control interface lists `(value, keyword)` for the volume-like
+  // The Blank interface lists `(value, keyword)` for the volume-like
   // case; the labels here intentionally swap so the implementation
   // reads correctly even though the dispatcher passes args positionally.
   async set(settingName: string, value?: string): Promise<void> {

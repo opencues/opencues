@@ -1,5 +1,5 @@
 #!/bin/bash
-# Volume control for control-bound blanks (e.g. "volume ___")
+# Volume blank — backs `volume _` (e.g. "volume ___")
 # Usage: volume-blank.sh <get|set> [value]
 #
 # VolCtl.exe is colocated in this same directory (see volume.sh header).

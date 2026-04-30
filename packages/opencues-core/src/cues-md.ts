@@ -165,7 +165,7 @@ export interface CuesMdConfig {
   /** Prompt configuration with per-source definitions */
   promptConfig?: PromptConfig;
 
-  /** Blank definitions from ## Blanks (or legacy ## Controls / ## Actions) JSON block */
+  /** Blank definitions from ## Blanks JSON block */
   blanks?: Record<string, BlankConfig>;
 
   /** Words to never suggest alternatives for from ## Ignore */
@@ -450,16 +450,11 @@ function parseBlanksSection(content: string): Record<string, BlankConfig> | unde
   const jsonBlock = extractCodeBlock(content, 'json');
   if (!jsonBlock) return undefined;
   try {
-    const raw = JSON.parse(jsonBlock) as Record<string, BlankConfig & { control?: string }>;
-    // Back-compat: accept legacy `control:` key on the JSON entries and map
-    // it onto the canonical `name:` field.
+    const raw = JSON.parse(jsonBlock) as Record<string, BlankConfig>;
     for (const [key, entry] of Object.entries(raw)) {
-      if (entry && !entry.name && (entry as { control?: string }).control) {
-        entry.name = (entry as { control?: string }).control!;
-      }
       if (entry && !entry.name) entry.name = key;
     }
-    return raw as Record<string, BlankConfig>;
+    return raw;
   } catch {
     return undefined;
   }
@@ -501,12 +496,7 @@ export function parseCuesMd(content: string): CuesMdConfig {
         result.promptConfig = parsePromptSection(section.content);
         break;
       }
-      case 'blanks':
-      case 'controls':
-      case 'actions': {
-        // Accept ## Blanks (preferred), ## Controls (legacy), and ## Actions
-        // (older legacy) — one-version transition while user-edited .md files
-        // may still carry the old headings.
+      case 'blanks': {
         result.blanks = parseBlanksSection(section.content);
         break;
       }
@@ -533,9 +523,9 @@ export function parseCuesMd(content: string): CuesMdConfig {
  * Config lives in frontmatter instead of YAML code blocks.
  */
 export interface SingleCueFrontmatter extends CuesMdFrontmatter {
-  /** Cue type: 'prompt' (default), 'tips', or 'blank' (alias: 'control' for back-compat).
+  /** Cue type: 'prompt' (default), 'tips', or 'blank'.
    *  'blank' identifies a `_`-triggered config in defaults/blanks/<name>/cue.md. */
-  type?: 'prompt' | 'tips' | 'blank' | 'control';
+  type?: 'prompt' | 'tips' | 'blank';
   scope?: 'words' | 'blanks' | 'all';
   parser?: BlankParser;
   priority?: number;
@@ -546,8 +536,6 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   enabled?: boolean;
   promptPath?: string;
   // Blank-specific fields
-  /** @deprecated Use `name` (top-level frontmatter `name:`) — `control:` is back-compat alias. */
-  control?: string;
   tip?: string;
   speak?: boolean;
   blankKeywords?: string;
@@ -615,7 +603,6 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'model': fm.model = value; break;
       case 'enabled': fm.enabled = value !== 'false'; break;
       case 'promptPath': fm.promptPath = value; break;
-      case 'control': fm.control = value; break;
       case 'tip': fm.tip = value; break;
       case 'speak': fm.speak = value === 'true'; break;
       case 'blankKeywords': fm.blankKeywords = value; break;
@@ -692,10 +679,9 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       result.tips = parseTipsSection(body);
       break;
     }
-    case 'blank':
-    case 'control': {
+    case 'blank': {
       const blank: BlankConfig = {
-        name: frontmatter.control || name,
+        name,
         tip: frontmatter.tip,
         speak: frontmatter.speak,
       };

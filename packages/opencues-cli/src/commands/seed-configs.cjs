@@ -1,14 +1,7 @@
 // `opencues seed-configs` — host-agnostic. Manages the user-level
 // ~/.opencues/ tree.
 //
-// Five responsibilities, all idempotent + safe to re-run:
-//
-//   0. MIGRATE one-version transition for the controls→blanks rename.
-//             Auto-renames legacy ~/.opencues/controls.md → blanks.md and
-//             ~/.opencues/controls/ → blanks/ when the new paths don't
-//             yet exist. If both exist, leave both alone (user resolves
-//             the merge manually). Keeps existing user installs working
-//             after upgrade without forcing a manual `mv`.
+// Four responsibilities, all idempotent + safe to re-run:
 //
 //   1. SEED   first-time copy of repo defaults → ~/.opencues/
 //             (cues.md, blanks.md, opencues.md, cues/, blanks/, scripts/)
@@ -73,38 +66,6 @@ module.exports = function seedConfigs(argv, ctx) {
   log(`  source: ${sourceDir}`);
   log(`  target: ${targetDir}`);
   log('');
-
-  // ── 0. MIGRATE — one-version controls→blanks rename ────────────────
-  // Existing installs from before the rename have ~/.opencues/controls.md
-  // and ~/.opencues/controls/<name>/ but the runtime now reads only
-  // blanks.md / blanks/. Without this, hot-reload silently drops every
-  // user-defined blank on first run after upgrade. Migration is idempotent
-  // and safe — it only fires when the legacy path exists AND the new path
-  // doesn't (i.e. only on the first post-upgrade run).
-  const legacyMd = path.join(targetDir, 'controls.md');
-  const newMd = path.join(targetDir, 'blanks.md');
-  const legacyDir = path.join(targetDir, 'controls');
-  const newDir = path.join(targetDir, 'blanks');
-  let migrated = 0;
-  if (fs.existsSync(legacyMd) && !hasContent(newMd)) {
-    if (!dryRun) {
-      // Drop any 0-byte placeholder at the destination so rename can land.
-      if (fs.existsSync(newMd)) fs.rmSync(newMd);
-      fs.renameSync(legacyMd, newMd);
-    }
-    log(`Migrate: ${legacyMd} → ${newMd}`);
-    migrated++;
-  } else if (fs.existsSync(legacyMd) && hasContent(newMd)) {
-    log(`Migrate: SKIP (both ${path.basename(legacyMd)} and ${path.basename(newMd)} exist — resolve manually)`);
-  }
-  if (fs.existsSync(legacyDir) && !fs.existsSync(newDir)) {
-    if (!dryRun) fs.renameSync(legacyDir, newDir);
-    log(`Migrate: ${legacyDir}/ → ${newDir}/`);
-    migrated++;
-  } else if (fs.existsSync(legacyDir) && fs.existsSync(newDir)) {
-    log(`Migrate: SKIP (both controls/ and blanks/ exist — resolve manually)`);
-  }
-  if (migrated > 0) log('');
 
   // ── 1. SEED — first-time copy ──────────────────────────────────────
   const seedFiles = projectScope ? SEED_FILES_PROJECT : SEED_FILES_USER;

@@ -9,12 +9,9 @@ const os = require('node:os');
 
 module.exports = function list(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
-  // --controls accepted as a hidden alias for --blanks (one-version
-  // backwards-compat with the rename).
   const onlyKind =
-    argv.includes('--cues')     ? 'cue'     :
-    argv.includes('--blanks')   ? 'blank'   :
-    argv.includes('--controls') ? 'blank'   :
+    argv.includes('--cues')   ? 'cue'   :
+    argv.includes('--blanks') ? 'blank' :
     null;
 
   let parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList;

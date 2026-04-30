@@ -84,8 +84,8 @@ sed -i 's|syntax: useTheme().syntax as any|syntax: useTheme().syntax() as any|' 
 sed -i 's|(textarea.extmarks as any).remove?.(id)|(textarea.extmarks as any).delete?.(id)|' "$BOOTSTRAP" || true
 
 # 4. cwd: must point at the opencues config root, not the TUI's cwd.
-#    The TUI runs from ~/opencode-cues but cues + folder controls live
-#    at ~/opencues. Without this, ConfigLoader.load returns no controls
+#    The TUI runs from ~/opencode-cues but cues + folder blanks live
+#    at ~/opencues. Without this, ConfigLoader.load returns no blanks
 #    and Cycling can't find any.
 sed -i 's@cwd: process.cwd()@cwd: process.env.OPENCUES_HOME || "/home/wilfred/opencues"@' "$SETUP" || true
 

@@ -40,7 +40,7 @@ const RICH_TIPS = wrapTipsAsCuesMd({
         // Multi-word alt vocab (forces span tracking)
         attorney: { tip: '', alts: ['lawyer', 'legal eagle', 'defendant counsel'] },
         ceo: { tip: '', alts: ['Jeff Bezos', 'Elon Musk', 'Tim Cook'] },
-        // Single-word alt vocab (control)
+        // Single-word alt vocab
         fast: { tip: '', alts: ['quick', 'rapid', 'swift'] },
         big: { tip: '', alts: ['large', 'huge'] },
         // Mixed: multi-word alts of varying lengths

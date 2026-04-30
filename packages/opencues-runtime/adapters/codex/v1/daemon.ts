@@ -19,7 +19,7 @@
 //   ✓ A. ConfigLoader wired
 //   ✓ B. CodexAdapter (FS subset only — UI methods are stubs)
 //   ☐ C. Source reclassifier (next)
-//   ☐ D-I. Controls registry, Navigation/Cycling/BlankFill/etc.
+//   ☐ D-I. Blanks registry, Navigation/Cycling/BlankFill/etc.
 
 import * as readline from 'node:readline';
 import * as fs from 'node:fs';

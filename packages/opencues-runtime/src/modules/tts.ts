@@ -143,7 +143,7 @@ export class TTS {
         /* index already tracked by _lastSeenIndex above */
         return null;
       }
-      // Find the originating control by blankTip match.
+      // Find the originating blank by blankTip match.
       let speakOK = false;
       for (const ctrl of this.configLoader.blanks.values()) {
         const cAny = ctrl as { speak?: boolean; tip?: string; blankTip?: string };

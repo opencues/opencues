@@ -36,7 +36,7 @@ export interface ConfigLoaderOptions {
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
   /**
-   * Directories searched for .md configs and `cues/*` / `controls/*`
+   * Directories searched for .md configs and `cues/*` / `blanks/*`
    * folders, in priority order. Earlier entries win on name conflicts.
    *
    * Convention (host-agnostic, mirrors `.editorconfig` / `.npmrc`):
@@ -417,32 +417,18 @@ export class ConfigLoader {
     // path contributes 2 .md files (cues, blanks); opencues.md
     // is a singleton from the user-level path. Tips come from each
     // cues.md's `## Tips` block — no separate JSON file.
-    // Per-path reads: 3 files each (cues.md, blanks.md, legacy controls.md).
-    // The legacy controls.md read is a one-version transition for users
-    // who upgraded but haven't rerun `opencues seed-configs`. When both
-    // exist, blanks.md wins. When only controls.md exists, we read it as
-    // if it were blanks.md and warn so the user knows to migrate.
     const allReads = await Promise.all([
       this._safeReadFile(`${userLevelPath}/opencues.md`),
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
         this._safeReadFile(`${p}/blanks.md`),
-        this._safeReadFile(`${p}/controls.md`),
       ]),
     ]);
     const opencuesMdContent = allReads[0];
-    const perPath = searchPaths.map((searchPath, i) => {
-      const blanksMd = allReads[2 + i * 3];
-      const legacyControlsMd = allReads[3 + i * 3];
-      // Legacy fallback: only when blanks.md absent AND controls.md present.
-      if (blanksMd === null && legacyControlsMd !== null) {
-        this.adapter.log('warn', `ConfigLoader: reading legacy ${searchPath}/controls.md (run \`opencues seed-configs\` to migrate to blanks.md)`);
-      }
-      return {
-        cuesMd: allReads[1 + i * 3],
-        blanksMd: blanksMd !== null ? blanksMd : legacyControlsMd,
-      };
-    });
+    const perPath = searchPaths.map((_searchPath, i) => ({
+      cuesMd: allReads[1 + i * 2],
+      blanksMd: allReads[2 + i * 2],
+    }));
 
     // Per-path .md parses. Project (index 0) is highest priority; user
     // (index 1+) is fallback. We fold from LOW to HIGH so the high-priority

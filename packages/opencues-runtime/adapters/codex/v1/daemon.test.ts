@@ -381,15 +381,15 @@ describe('codex daemon — Tier 3.C: source reclassifier', () => {
   });
 });
 
-describe('codex daemon — Tier 3.D: controls registry', () => {
-  it('default buildRuntime registers the same six controls OC wires', async () => {
+describe('codex daemon — Tier 3.D: blanks registry', () => {
+  it('default buildRuntime registers the same six blanks OC wires', async () => {
     // Real buildRuntime — exercises the actual registry construction.
     const frames: Frame[] = [];
     const daemon = createDaemon({ send: (f) => { frames.push(f); } });
     await daemon.handleLine(JSON.stringify({
       jsonrpc: '2.0',
       method: 'boot',
-      params: { cwd: '/tmp/codex-controls-test', configSearchPaths: ['/tmp/nonexistent'] },
+      params: { cwd: '/tmp/codex-blanks-test', configSearchPaths: ['/tmp/nonexistent'] },
       id: 1,
     }));
     const reg = daemon.runtime?.blanksRegistry;
@@ -562,7 +562,7 @@ describe('codex daemon — Tier 3.E: blank-invoke RPC', () => {
     const frames: Frame[] = [];
     const stubInvoke = vi.fn(() => ({
       result: Promise.resolve({
-        stdout: '', stderr: 'control failed', exitCode: 1, timedOut: false,
+        stdout: '', stderr: 'invoke failed', exitCode: 1, timedOut: false,
       }),
       kill: () => {},
     }));
@@ -588,7 +588,7 @@ describe('codex daemon — Tier 3.E: blank-invoke RPC', () => {
     const resp = frames.find(f => 'id' in f && f.id === 6);
     expect(resp).toEqual({
       jsonrpc: '2.0',
-      result: { stdout: '', stderr: 'control failed', exitCode: 1, timedOut: false },
+      result: { stdout: '', stderr: 'invoke failed', exitCode: 1, timedOut: false },
       id: 6,
     });
     // NOT a JSON-RPC error — explicitly a successful call returning
