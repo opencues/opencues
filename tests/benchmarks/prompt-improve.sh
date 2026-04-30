@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# prompt-improve.sh — Benchmark for the prompt improver control
+# prompt-improve.sh — Benchmark for the prompt improver blank
 #
 # Runs prompt-blank.sh directly against test cases and prints before/after for review.
 # Scored on two axes: SPECIFICITY gain, MEANING preservation.

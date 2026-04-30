@@ -22,7 +22,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
-const DEFAULTS_CONTROLS = path.join(REPO_ROOT, 'defaults/blanks');
+const DEFAULTS_BLANKS = path.join(REPO_ROOT, 'defaults/blanks');
 const DEFAULTS_SCRIPTS = path.join(REPO_ROOT, 'defaults/scripts');
 
 // Shipped scripts the colocated contract applies to. speak.sh + SpeakCtl.cs
@@ -31,8 +31,8 @@ const DEFAULTS_SCRIPTS = path.join(REPO_ROOT, 'defaults/scripts');
 // `opencues seed-configs` to ~/.opencues/scripts/ and used by every native
 // host (CC, OC, Codex), not piggybacked on CC's install.
 const SHIPPED_SCRIPTS: { path: string; helpers: readonly string[] }[] = [
-  { path: path.join(DEFAULTS_CONTROLS, 'brightness/brightness-blank.sh'), helpers: ['BrightCtl.exe', 'brightness-set.ps1'] },
-  { path: path.join(DEFAULTS_CONTROLS, 'volume/volume-blank.sh'),         helpers: ['VolCtl.exe'] },
+  { path: path.join(DEFAULTS_BLANKS, 'brightness/brightness-blank.sh'), helpers: ['BrightCtl.exe', 'brightness-set.ps1'] },
+  { path: path.join(DEFAULTS_BLANKS, 'volume/volume-blank.sh'),         helpers: ['VolCtl.exe'] },
   { path: path.join(DEFAULTS_SCRIPTS, 'speak.sh'),                        helpers: ['SpeakCtl.exe'] },
 ];
 
@@ -78,7 +78,7 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
     const skip = os.platform() === 'win32';
 
     it.skipIf(skip)('brightness-blank.sh get: returns a bare integer, never crashes', () => {
-      const out = execFileSync('bash', [path.join(DEFAULTS_CONTROLS, 'brightness/brightness-blank.sh'), 'get'], {
+      const out = execFileSync('bash', [path.join(DEFAULTS_BLANKS, 'brightness/brightness-blank.sh'), 'get'], {
         encoding: 'utf8',
         env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
       });
@@ -86,7 +86,7 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
     });
 
     it.skipIf(skip)('volume-blank.sh get: returns a bare integer, never crashes', () => {
-      const out = execFileSync('bash', [path.join(DEFAULTS_CONTROLS, 'volume/volume-blank.sh'), 'get'], {
+      const out = execFileSync('bash', [path.join(DEFAULTS_BLANKS, 'volume/volume-blank.sh'), 'get'], {
         encoding: 'utf8',
         env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
       });
@@ -100,7 +100,7 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
       const ctlDir = path.join(tmpHome, '.opencues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
       fs.copyFileSync(
-        path.join(DEFAULTS_CONTROLS, 'opencues/opencues-blank.sh'),
+        path.join(DEFAULTS_BLANKS, 'opencues/opencues-blank.sh'),
         path.join(ctlDir, 'opencues-blank.sh'),
       );
       fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
@@ -126,7 +126,7 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
       const ctlDir = path.join(tmpHome, '.opencues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
       fs.copyFileSync(
-        path.join(DEFAULTS_CONTROLS, 'opencues/opencues-blank.sh'),
+        path.join(DEFAULTS_BLANKS, 'opencues/opencues-blank.sh'),
         path.join(ctlDir, 'opencues-blank.sh'),
       );
       fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);

@@ -12,7 +12,7 @@ SCRIPTS=(
   "test-init-flow.sh"
   "test-cues-examples.sh"
   "test-blanks-cascade.sh"
-  "test-controls-shapes.sh"
+  "test-blanks-shapes.sh"
   "llm-smoke.sh"
 )
 

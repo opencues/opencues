@@ -23,7 +23,7 @@ echo "=== init ==="
 [[ -f .opencues/blanks.md ]]   || fail ".opencues/blanks.md missing"
 [[ -f .opencues/README.md ]]   || fail ".opencues/README.md missing"
 [[ ! -f .opencues/opencues.md ]] || fail ".opencues/opencues.md should NOT be scaffolded (user-level only)"
-pass "init scaffolded 3 files (no opencues.md, no controls.md)"
+pass "init scaffolded 3 files (no opencues.md)"
 
 echo "=== validate fresh init ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || fail "validate failed after init"
@@ -39,12 +39,6 @@ echo "=== opencues new blank ==="
 [[ -f .opencues/blanks/my-answer/cue.md ]] || fail "new blank did not create cue.md"
 pass "new blank scaffolds cue.md"
 
-echo "=== opencues new control (alias for blank) ==="
-"$OPENCUES" new control my-ctl --project >/dev/null 2>&1 || fail "new control failed"
-# Phase-1 alias: control → blank (controls/ folder renamed to blanks/).
-[[ -f .opencues/blanks/my-ctl/cue.md ]] || fail "new control did not create cue.md under blanks/"
-pass "new control scaffolds cue.md under blanks/ (alias)"
-
 echo "=== validate after new ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || fail "validate failed after new <kind>"
 pass "all new <kind> commands validate 0 errors"
@@ -56,4 +50,4 @@ fi
 pass "new cue refuses to overwrite existing target"
 
 echo
-echo "PASS: test-init-flow.sh (7 checks)"
+echo "PASS: test-init-flow.sh (6 checks)"
