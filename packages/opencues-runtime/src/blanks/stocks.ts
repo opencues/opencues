@@ -7,7 +7,7 @@
 // control returns a friendly "<TICKER>: no API key" so missing config
 // doesn't masquerade as a network error.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const DEFAULT_TICKERS: Record<string, string> = {
   rddt: 'RDDT', reddit: 'RDDT', 'reddit stock': 'RDDT',
@@ -33,7 +33,7 @@ export interface StocksControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class StocksControl implements Control {
+export class StocksControl implements Blank {
   readonly name = 'stocks';
   readonly readOnly = true;
   private readonly _apiKey: string;

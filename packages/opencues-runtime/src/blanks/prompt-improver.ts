@@ -17,7 +17,7 @@
 // class doesn't drift; for now they're inlined to match the chrome
 // implementation that this hoist replaces.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const EXTRACT_SYSTEM = `You extract the user's prompt from a text that contains activation keywords mixed in.
 The activation keywords are: improve prompt, enhance prompt, refine prompt
@@ -52,7 +52,7 @@ export interface PromptImproverControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class PromptImproverControl implements Control {
+export class PromptImproverControl implements Blank {
   readonly name = 'prompt';
   readonly readOnly = false;
   private readonly _apiKey: string;

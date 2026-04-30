@@ -27,7 +27,7 @@ import { ConfigLoader } from '../../../src/modules/config-loader';
 import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
 import type {
   CommonHostInfo,
-  ControlInvokeSpec,
+  BlankInvokeSpec,
   KeyEvent,
   LogLevel,
   ProcessHandle,
@@ -48,7 +48,7 @@ export interface HostInfo extends CommonHostInfo {
    * controlName isn't recognised (runtime falls through to spawnProcess,
    * which the chrome adapter resolves with exitCode 127).
    */
-  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
+  blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   /**
    * Speak callback for the TTS module. Chrome extensions pass a Web
    * Speech-backed function here; falling back to the spawn path is
@@ -140,7 +140,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     pushText: host.pushText,
-    controlInvoke: host.controlInvoke,
+    blankInvoke: host.blankInvoke,
     log,
   };
 

@@ -14,12 +14,12 @@
 import type { HostAdapter, KeyEvent, ProcessHandle, ProcessSpec, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, type WordDef } from '../state/dyn-defs';
-import type { ConfigLoader, ControlEntry, StepPattern } from './config-loader';
+import type { ConfigLoader, BlankEntry, StepPattern } from './config-loader';
 import { splitWords } from './navigation';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
-import type { ControlValuesCache } from '../state/control-values';
+import type { BlankValuesCache } from '../state/blank-values';
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -35,7 +35,7 @@ export class Cycling {
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
-    private controlValues?: ControlValuesCache,
+    private controlValues?: BlankValuesCache,
   ) {}
 
   /**
@@ -52,7 +52,7 @@ export class Cycling {
     scriptPath: string | undefined,
     options: { detached?: boolean; timeoutMs?: number } = {},
   ): ProcessHandle | null {
-    const native = this.adapter.controlInvoke?.({
+    const native = this.adapter.blankInvoke?.({
       controlName,
       action,
       args,
@@ -119,14 +119,14 @@ export class Cycling {
       return this.cycleListControl(event, target, control, direction);
     }
 
-    // 3a. Blank-fill DynDef with controlName attribution (Phase I.8) —
-    //     volume/brightness `50%` cycles via the originating control's
+    // 3a. Blank-fill DynDef with blankName attribution (Phase I.8) —
+    //     volume/brightness `50%` cycles via the originating blank's
     //     blankStep/Suffix/Script. Checked BEFORE matchStepPattern so
-    //     sibling controls sharing a suffix don't ambiguously route.
+    //     sibling blanks sharing a suffix don't ambiguously route.
     const def = this.dynDefs.get(wordIndex);
-    if (def && def.controlName) {
-      const ctrl = this.configLoader.controls.get(def.controlName);
-      if (ctrl && this.cycleBlankStep(event, target, ctrl as ControlEntry['control'], def.controlName, direction)) {
+    if (def && def.blankName) {
+      const ctrl = this.configLoader.blanks.get(def.blankName);
+      if (ctrl && this.cycleBlankStep(event, target, ctrl as BlankEntry['control'], def.blankName, direction)) {
         return true;
       }
     }
@@ -261,7 +261,7 @@ export class Cycling {
         this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.controlName}`, {
           hasScriptPath: !!entry.scriptPath,
           hasSpawnCap: this.adapter.capabilities.includes('spawn-process'),
-          hasControlInvoke: !!this.adapter.controlInvoke,
+          hasControlInvoke: !!this.adapter.blankInvoke,
         });
       }
     } catch (err) {
@@ -334,11 +334,11 @@ export class Cycling {
 
   // ─── Path 1: script-backed ─────────────────────────────────────────────
 
-  private runScriptControl(entry: ControlEntry, direction: 1 | -1): boolean {
+  private runScriptControl(entry: BlankEntry, direction: 1 | -1): boolean {
     // Hosts without spawn-process AND without controlInvoke can't drive
     // the script. Sandboxed hosts that implement controlInvoke handle
     // both the up/down and the post-fetch via their native API.
-    if (!this.adapter.capabilities.includes('spawn-process') && !this.adapter.controlInvoke) return false;
+    if (!this.adapter.capabilities.includes('spawn-process') && !this.adapter.blankInvoke) return false;
     const c = entry.control;
     const args = direction === 1 ? c.upArgs ?? [] : c.downArgs ?? [];
     // First arg is the action (e.g. "up"); remainder are extra args.
@@ -386,7 +386,7 @@ export class Cycling {
   private cycleListControl(
     event: KeyEvent,
     target: { word: string; start: number; end: number; index: number },
-    entry: ControlEntry,
+    entry: BlankEntry,
     direction: 1 | -1,
   ): boolean {
     const values = entry.control.stepValues!;

@@ -1,11 +1,11 @@
 /**
- * Per-control "current value" cache for statusline tips on script-
- * backed controls (volume, brightness). Statusline reads cached
+ * Per-blank "current value" cache for statusline tips on script-
+ * backed blanks (volume, brightness). Statusline reads cached
  * stdout from `script get`. Cycling marks the cache stale after
  * `script up/down`; Statusline keeps showing the previous value
  * while a refetch runs in the background, then updates.
  */
-export interface ControlValueEntry {
+export interface BlankValueEntry {
   readonly value: string;
   /** Wall-clock timestamp of the last successful fetch. */
   readonly at: number;
@@ -13,10 +13,10 @@ export interface ControlValueEntry {
   stale: boolean;
 }
 
-export class ControlValuesCache {
-  private _values = new Map<string, ControlValueEntry>();
+export class BlankValuesCache {
+  private _values = new Map<string, BlankValueEntry>();
 
-  get(controlName: string): ControlValueEntry | undefined {
+  get(controlName: string): BlankValueEntry | undefined {
     return this._values.get(controlName);
   }
 

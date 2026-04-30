@@ -26,10 +26,10 @@ import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
-import { ControlValuesCache } from '../../../src/state/control-values';
+import { BlankValuesCache } from '../../../src/state/blank-values';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
-  ControlInvokeSpec,
+  BlankInvokeSpec,
   KeyEvent,
   LogLevel,
   ProcessHandle,
@@ -63,7 +63,7 @@ export interface HostInfo {
    * scripts in controls/. Returns null when the controlName isn't in
    * the host's registry; runtime falls through to spawnProcess.
    */
-  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
+  blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   /** Optional: async text push (calls captured onChange + onOffsetChange). */
   pushText?(text: string, cursor?: number): void;
   /** Optional: absolute path to the TTS script (CC ships speak.sh + SpeakCtl.exe colocated in <CC_FORK>/.opencues/scripts/). */
@@ -264,7 +264,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess,
-    controlInvoke: host.controlInvoke,
+    blankInvoke: host.blankInvoke,
     // Wrap pushText so runtime-initiated async pushes (e.g. selector
     // script-get callbacks) mark themselves as runtime — otherwise the
     // next applyRender's checkTextDrift sees the new text differs from
@@ -286,7 +286,7 @@ export function boot(host: HostInfo): BootResult {
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
-  const controlValues = new ControlValuesCache();
+  const controlValues = new BlankValuesCache();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves. Tips come from

@@ -4,7 +4,7 @@ import { MockAdapter } from '../../../testing/mock-adapter';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { createSourceReclassifier } from '../../../src/boot-common';
 import { CodexAdapter } from './adapter';
-import type { ControlInvokeSpec } from '../../../src/adapter';
+import type { BlankInvokeSpec } from '../../../src/adapter';
 
 /**
  * Build a fresh daemon with a recording `send` callback. Returns the
@@ -37,7 +37,7 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
     // Empty registry for tests — Tier 3.D's real-registry test uses
     // defaultBuildRuntime via realBuildRuntime: true.
     const controlsRegistry = new Map();
-    const controlInvoke = () => null;
+    const blankInvoke = () => null;
     // Minimal SharedRuntime stand-in: runtime modules aren't wired
     // for these tests (tests don't exercise Navigation / Cycling /
     // BlankFill / DimRender; the Tier 3.A test that needs them goes
@@ -53,7 +53,7 @@ function build(opts: { realBuildRuntime?: boolean } = {}) {
       dismissedBlanks: null as never,
       selectorSatelliteState: null as never,
     };
-    return { adapter, shared, configLoader, reclassifier, controlsRegistry, controlInvoke } as RuntimeBundle;
+    return { adapter, shared, configLoader, reclassifier, controlsRegistry, blankInvoke } as RuntimeBundle;
   });
 
   const daemon = createDaemon({
@@ -407,7 +407,7 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
       jsonrpc: '2.0', method: 'boot', params: { cwd: '/tmp/codex' }, id: 1,
     }));
     // Unknown control → null (BlankFill / Cycling fall through to spawnProcess).
-    const unknown = daemon.runtime?.controlInvoke({
+    const unknown = daemon.runtime?.blankInvoke({
       controlName: 'definitely-not-real',
       action: 'get',
       args: [],
@@ -416,7 +416,7 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
     // Known control → ProcessHandle (the result Promise will resolve
     // with whatever the underlying control returns; we don't await
     // it here to keep the test fast and offline-safe).
-    const known = daemon.runtime?.controlInvoke({
+    const known = daemon.runtime?.blankInvoke({
       controlName: 'opencues',
       action: 'get',
       args: ['voice-mode'],
@@ -429,7 +429,7 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
     const withInvoke = new CodexAdapter({
       cwd: '/proj',
       log: () => {},
-      controlInvoke: () => null,
+      blankInvoke: () => null,
     });
     expect(withInvoke.capabilities).toContain('control-invoke');
 
@@ -438,20 +438,20 @@ describe('codex daemon — Tier 3.D: controls registry', () => {
   });
 
   it('CodexAdapter.controlInvoke forwards to the supplied binding', () => {
-    const calls: ControlInvokeSpec[] = [];
-    const stub = (spec: ControlInvokeSpec): null => { calls.push(spec); return null; };
+    const calls: BlankInvokeSpec[] = [];
+    const stub = (spec: BlankInvokeSpec): null => { calls.push(spec); return null; };
     const adapter = new CodexAdapter({
       cwd: '/proj',
       log: () => {},
-      controlInvoke: stub,
+      blankInvoke: stub,
     });
-    adapter.controlInvoke({ controlName: 'foo', action: 'get', args: ['bar'] });
+    adapter.blankInvoke({ controlName: 'foo', action: 'get', args: ['bar'] });
     expect(calls).toEqual([{ controlName: 'foo', action: 'get', args: ['bar'] }]);
   });
 
   it('CodexAdapter.controlInvoke returns null when no binding is supplied', () => {
     const adapter = new CodexAdapter({ cwd: '/proj', log: () => {} });
-    const result = adapter.controlInvoke({ controlName: 'x', action: 'get', args: [] });
+    const result = adapter.blankInvoke({ controlName: 'x', action: 'get', args: [] });
     expect(result).toBeNull();
   });
 });
@@ -500,7 +500,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
         configLoader: {} as never,
         reclassifier: createSourceReclassifier(),
         controlsRegistry: new Map(),
-        controlInvoke: stubInvoke,
+        blankInvoke: stubInvoke,
       }),
     });
     await daemon.handleLine(JSON.stringify({
@@ -537,7 +537,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
         configLoader: {} as never,
         reclassifier: createSourceReclassifier(),
         controlsRegistry: new Map(),
-        controlInvoke: stubInvoke,
+        blankInvoke: stubInvoke,
       }),
     });
     await daemon.handleLine(JSON.stringify({
@@ -574,7 +574,7 @@ describe('codex daemon — Tier 3.E: control-invoke RPC', () => {
         configLoader: {} as never,
         reclassifier: createSourceReclassifier(),
         controlsRegistry: new Map(),
-        controlInvoke: stubInvoke,
+        blankInvoke: stubInvoke,
       }),
     });
     await daemon.handleLine(JSON.stringify({

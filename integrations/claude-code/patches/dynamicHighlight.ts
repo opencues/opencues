@@ -138,11 +138,11 @@ if(_rfs.existsSync(_rBlankPath)){var _bc=globalThis._cuesCore.parseCuesMd(_rfs.r
 if(globalThis._cuesCore.discoverFolderConfigs){
 var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_e){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_e){return null;}}};
 var _rFolderCfgs=globalThis._cuesCore.discoverFolderConfigs({basePath:_rcwd,readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});
-var _rMono={cuesConfig:_newCuesMd||undefined,blanksConfig:_newBlanksMd||undefined,controlOverrides:Object.keys(_newCtrlOvr).length?_newCtrlOvr:undefined,ignoreWords:_ign.length?_ign:undefined};
+var _rMono={cuesConfig:_newCuesMd||undefined,blanksConfig:_newBlanksMd||undefined,blankOverrides:Object.keys(_newCtrlOvr).length?_newCtrlOvr:undefined,ignoreWords:_ign.length?_ign:undefined};
 var _rMerged=globalThis._cuesCore.mergeConfigs(_rMono,_rFolderCfgs);
 _newCuesMd=_rMerged.cuesConfig||_newCuesMd;
 _newBlanksMd=_rMerged.blanksConfig||_newBlanksMd;
-if(_rMerged.controlOverrides)Object.assign(_newCtrlOvr,_rMerged.controlOverrides);
+if(_rMerged.blankOverrides)Object.assign(_newCtrlOvr,_rMerged.blankOverrides);
 if(_rMerged.ignoreWords&&_rMerged.ignoreWords.length)_ign=_rMerged.ignoreWords;
 }
 // Apply merged config atomically (all assignments after all parsing)

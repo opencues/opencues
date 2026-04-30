@@ -16,7 +16,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/v1.4/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
-import { createControlInvoke, AnswerControl, CountriesControl, CryptoControl, DictionaryControl, HackerNewsControl, OpenCuesSettingsControl, PromptImproverControl, StocksControl, WeatherControl, type Control } from "@opencues/runtime/dist/src/controls"
+import { createBlankInvoke, AnswerControl, CountriesControl, CryptoControl, DictionaryControl, HackerNewsControl, OpenCuesSettingsControl, PromptImproverControl, StocksControl, WeatherControl, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -75,10 +75,10 @@ let bootResult: BootResult | undefined
 // behaviour identical across hosts. See boot-common.ts:createSourceReclassifier.
 const sourceReclassifier = createSourceReclassifier()
 
-// Controls registry — same TS implementations chrome uses, dispatched
-// via the shared createControlInvoke. Lets us drop the per-control
-// shell scripts (controls/<name>/*.sh) once every host has parity.
-// OS-level controls (volume, brightness) stay shell-bound on Node hosts
+// Blanks registry — same TS implementations chrome uses, dispatched
+// via the shared createBlankInvoke. Lets us drop the per-blank
+// shell scripts (blanks/<name>/*.sh) once every host has parity.
+// OS-level blanks (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
 // opencues.md holds system-wide settings (voice-mode, tips-mode, …)
 // whose schema is owned by the OpenCues runtime. It lives only at
@@ -102,7 +102,7 @@ function resolveTtsScript(): string {
   return path.join(root, "scripts/speak.sh")
 }
 
-const controlsRegistry = new Map<string, Control>([
+const controlsRegistry = new Map<string, Blank>([
   ['hackernews', new HackerNewsControl()],
   ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
   ['weather', new WeatherControl()],
@@ -116,7 +116,7 @@ const controlsRegistry = new Map<string, Control>([
     writeFile: async (content) => { await fs.writeFile(findOpenCuesMdPath(), content, "utf8") },
   })],
 ])
-const controlInvoke = createControlInvoke(controlsRegistry)
+const blankInvoke = createBlankInvoke(controlsRegistry)
 
 export function startOpenCues(opts: {
   renderer: CliRenderer
@@ -236,11 +236,11 @@ export function startOpenCues(opts: {
       return { result, kill: (sig?: string) => { try { child.kill(sig as any || "SIGTERM") } catch {} } }
     },
     log,
-    // Shared TS controls dispatched here. Anything not in the registry
-    // falls through to spawnProcess, so the legacy controls/<name>/*.sh
-    // scripts still run for OS controls (volume, brightness) and any
-    // control that hasn't been hoisted to runtime yet.
-    controlInvoke,
+    // Shared TS blanks dispatched here. Anything not in the registry
+    // falls through to spawnProcess, so the legacy blanks/<name>/*.sh
+    // scripts still run for OS-level blanks (volume, brightness) and any
+    // blank that hasn't been hoisted to runtime yet.
+    blankInvoke,
     // Rename from claude-highlight-state-<pid>.json to opencode-<pid>.json
     // so the path visually disambiguates from a claude-cues instance
     // writing to the same /tmp (both processes can run concurrently).

@@ -52,7 +52,7 @@ const SUBPROCESS_EXTS = ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', 
 
 /**
  * The subset of frontmatter fields host-compat inference looks at.
- * Accepts both monolithic ControlConfig (camelCase) and SingleCueFrontmatter
+ * Accepts both monolithic BlankConfig (camelCase) and SingleCueFrontmatter
  * (raw YAML keys) — the latter has `not-on-host` with hyphens.
  */
 export interface HostCompatInput {

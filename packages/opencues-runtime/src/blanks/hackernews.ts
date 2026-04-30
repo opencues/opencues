@@ -7,7 +7,7 @@
 // using this class instance — pass a fresh instance per host if you
 // want host-isolated caches.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const CACHE_TTL_MS = 300_000;
 const TOPSTORIES_URL = 'https://hacker-news.firebaseio.com/v0/topstories.json';
@@ -21,7 +21,7 @@ export interface HackerNewsControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class HackerNewsControl implements Control {
+export class HackerNewsControl implements Blank {
   readonly name = 'hackernews';
   readonly readOnly = true;
   private _cachedTitles: string[] = [];

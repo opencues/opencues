@@ -7,7 +7,7 @@
  * Pure TypeScript — I/O adapters are injected, no direct filesystem access.
  */
 
-import { CuesMdConfig, ControlConfig, parseSingleCueMd } from './cues-md';
+import { CuesMdConfig, BlankConfig, parseSingleCueMd } from './cues-md';
 
 // ============================================================================
 // Types
@@ -30,7 +30,7 @@ export interface DiscoverOptions {
 export interface DiscoveredConfigs {
   cuesConfig?: CuesMdConfig;
   blanksConfig?: CuesMdConfig;
-  controlOverrides?: Record<string, ControlConfig>;
+  blankOverrides?: Record<string, BlankConfig>;
   ignoreWords?: string[];
 }
 
@@ -148,14 +148,14 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
 
-  // Scan blanks/ directory for control overrides (post-rename, the same
+  // Scan blanks/ directory for blank overrides (post-rename, the same
   // path scanned above for blanksConfig — folder cue.md files with
-  // `type: control` are funnelled into result.controlOverrides here).
+  // `type: control` are funnelled into result.blankOverrides here).
   const controlConfigs = scanDir(opts.basePath + '/blanks', opts);
   if (controlConfigs.length > 0) {
     const combined = combineCueConfigs(controlConfigs);
     if (combined.controls) {
-      result.controlOverrides = combined.controls;
+      result.blankOverrides = combined.controls;
     }
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
@@ -188,11 +188,11 @@ export function mergeConfigs(
   // Merge blanks configs
   result.blanksConfig = mergeOneCuesMdConfig(monolithic.blanksConfig, folders.blanksConfig);
 
-  // Merge control overrides
-  if (monolithic.controlOverrides || folders.controlOverrides) {
-    result.controlOverrides = {
-      ...(monolithic.controlOverrides || {}),
-      ...(folders.controlOverrides || {}),
+  // Merge blank overrides
+  if (monolithic.blankOverrides || folders.blankOverrides) {
+    result.blankOverrides = {
+      ...(monolithic.blankOverrides || {}),
+      ...(folders.blankOverrides || {}),
     };
   }
 

@@ -10,7 +10,7 @@
 // System prompt + parsing pulled verbatim from the legacy
 // answer-blank.sh so behaviour is preserved across the hoist.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const SYSTEM_PROMPT = `You answer factual questions, translate words, and define terms.
 Return ONLY the answer — no explanation, no quotes, no punctuation.
@@ -48,7 +48,7 @@ export interface AnswerControlOptions {
   readonly fetchFn?: typeof fetch;
 }
 
-export class AnswerControl implements Control {
+export class AnswerControl implements Blank {
   readonly name = 'answer';
   readonly readOnly = true;
   private readonly _apiKey: string;

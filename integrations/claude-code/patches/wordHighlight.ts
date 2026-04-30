@@ -713,7 +713,7 @@ if(_parsedBlanks&&_parsedBlanks.controls)Object.assign(globalThis._cueControlOve
 }
 var _rFsAdp={readFile:function(p){try{return _rfs.readFileSync(p,"utf8");}catch(_fe){return null;}},readDir:function(p){try{return _rfs.readdirSync(p,{withFileTypes:true}).map(function(d){return{name:d.name,isDirectory:d.isDirectory()};});}catch(_fe){return null;}}};
 var _folderCfgs=_cues.discoverFolderConfigs({basePath:process.cwd(),readFile:_rFsAdp.readFile,readDir:_rFsAdp.readDir});
-if(_folderCfgs.controlOverrides)Object.assign(globalThis._cueControlOverrides,_folderCfgs.controlOverrides);
+if(_folderCfgs.blankOverrides)Object.assign(globalThis._cueControlOverrides,_folderCfgs.blankOverrides);
 var _stepPats=[];
 Object.values(globalThis._cueControlOverrides||{}).forEach(function(_sc){
 if(_sc.stepPattern){try{_stepPats.push({re:new RegExp(_sc.stepPattern),ctrl:_sc});}catch(_spe){}}

@@ -7,7 +7,7 @@
 // keyword itself is the lookup target after stripping the trigger
 // word ("define ephemeral" → look up "ephemeral").
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const CACHE_TTL_MS = 86_400_000; // 24h
 const ENDPOINT = 'https://api.dictionaryapi.dev/api/v2/entries/en';
@@ -28,7 +28,7 @@ export interface DictionaryControlOptions {
   readonly cacheTtlMs?: number;
 }
 
-export class DictionaryControl implements Control {
+export class DictionaryControl implements Blank {
   readonly name = 'dictionary';
   readonly readOnly = true;
   private readonly _fetch: typeof fetch;

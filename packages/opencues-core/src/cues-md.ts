@@ -86,10 +86,10 @@ export interface PromptConfig {
   sources: Record<string, SourceConfig>;
 }
 
-/** @deprecated Use ControlConfig instead */
-export type ActionConfig = ControlConfig;
+/** @deprecated Use BlankConfig instead */
+export type ActionConfig = BlankConfig;
 
-export interface ControlConfig {
+export interface BlankConfig {
   control: string;
   tip?: string;
   script?: string;
@@ -186,8 +186,8 @@ export interface CuesMdConfig {
   /** Prompt configuration with per-source definitions */
   promptConfig?: PromptConfig;
 
-  /** Cue-control definitions from ## Controls (or ## Actions) JSON block */
-  controls?: Record<string, ControlConfig>;
+  /** Cue-control definitions from ## Blanks (or ## Controls / ## Actions) JSON block */
+  controls?: Record<string, BlankConfig>;
 
   /** Words to never suggest alternatives for from ## Ignore */
   ignore?: string[];
@@ -467,11 +467,11 @@ function parsePromptSection(content: string): PromptConfig {
   return config;
 }
 
-function parseControlsSection(content: string): Record<string, ControlConfig> | undefined {
+function parseBlanksSection(content: string): Record<string, BlankConfig> | undefined {
   const jsonBlock = extractCodeBlock(content, 'json');
   if (!jsonBlock) return undefined;
   try {
-    return JSON.parse(jsonBlock) as Record<string, ControlConfig>;
+    return JSON.parse(jsonBlock) as Record<string, BlankConfig>;
   } catch {
     return undefined;
   }
@@ -513,10 +513,13 @@ export function parseCuesMd(content: string): CuesMdConfig {
         result.promptConfig = parsePromptSection(section.content);
         break;
       }
+      case 'blanks':
       case 'controls':
       case 'actions': {
-        // Accept both ## Controls (preferred) and ## Actions (backward compat)
-        result.controls = parseControlsSection(section.content);
+        // Accept ## Blanks (preferred), ## Controls (legacy), and ## Actions
+        // (older legacy) — one-version transition while user-edited .md files
+        // may still carry the old headings.
+        result.controls = parseBlanksSection(section.content);
         break;
       }
       case 'ignore': {
@@ -724,7 +727,7 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       break;
     }
     case 'control': {
-      const control: ControlConfig = {
+      const control: BlankConfig = {
         control: frontmatter.control || name,
         tip: frontmatter.tip,
         upArgs: frontmatter.upArgs,

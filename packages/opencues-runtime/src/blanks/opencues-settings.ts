@@ -15,7 +15,7 @@
 // `settings:` block (alphabetical isn't guaranteed — the file's order
 // wins so users can pin their preferred default first setting).
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 export interface OpenCuesSettingsControlOptions {
   /** Read the full opencues.md content. Returns null when missing. */
@@ -24,7 +24,7 @@ export interface OpenCuesSettingsControlOptions {
   readonly writeFile: (content: string) => Promise<void>;
 }
 
-export class OpenCuesSettingsControl implements Control {
+export class OpenCuesSettingsControl implements Blank {
   readonly name = 'opencues';
   readonly readOnly = false;
   private readonly _read: () => Promise<string | null>;

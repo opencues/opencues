@@ -251,10 +251,10 @@ downArgs: ["down", "5"]
     });
 
     const result = discoverFolderConfigs(opts);
-    assert.ok(result.controlOverrides);
-    assert.ok(result.controlOverrides!['volume']);
+    assert.ok(result.blankOverrides);
+    assert.ok(result.blankOverrides!['volume']);
     assert.strictEqual(
-      result.controlOverrides!['volume'].script,
+      result.blankOverrides!['volume'].script,
       '/project/blanks/volume/volume.sh'
     );
   });
@@ -286,7 +286,7 @@ Give alternatives.
     const result = discoverFolderConfigs(opts);
     assert.strictEqual(result.cuesConfig, undefined);
     assert.strictEqual(result.blanksConfig, undefined);
-    assert.strictEqual(result.controlOverrides, undefined);
+    assert.strictEqual(result.blankOverrides, undefined);
   });
 
   it('should skip directories without cue.md', () => {
@@ -404,13 +404,13 @@ describe('mergeConfigs', () => {
 
   it('should merge control overrides with folder winning', () => {
     const mono: ReturnType<typeof discoverFolderConfigs> = {
-      controlOverrides: { volume: { control: 'volume', tip: 'old' } },
+      blankOverrides: { volume: { control: 'volume', tip: 'old' } },
     };
     const folders: ReturnType<typeof discoverFolderConfigs> = {
-      controlOverrides: { volume: { control: 'volume', tip: 'new' } },
+      blankOverrides: { volume: { control: 'volume', tip: 'new' } },
     };
     const result = mergeConfigs(mono, folders);
-    assert.strictEqual(result.controlOverrides!['volume'].tip, 'new');
+    assert.strictEqual(result.blankOverrides!['volume'].tip, 'new');
   });
 
   it('should union ignore words', () => {

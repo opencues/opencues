@@ -126,7 +126,7 @@ export class Resolver {
       endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       apiKey: this.options.apiKey,
       defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
-      controls: this.configLoader.folderConfigs?.controlOverrides ?? {},
+      controls: this.configLoader.folderConfigs?.blankOverrides ?? {},
       // ALL opt-in: every cue surface defaults to OFF. User flips on via
       // opencues.md. Missing settings → off. Explicit "on" → on.
       // See packages/opencues-core/src/sources/build-sources.ts for what
@@ -258,7 +258,7 @@ export class Resolver {
       // fills, satellite cycles, etc.) — those route through their own
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
-      if (existing && existing.controlName) continue;
+      if (existing && existing.blankName) continue;
       // Already resolved — same word at the same index, fresh from a
       // prior LLM pass. Without this, every subsequent text-change
       // (typing the next word, adding a space) clobbers the existing
@@ -320,10 +320,10 @@ export class Resolver {
           currentIndex: 1,
           spanStart: start,
           spanEnd: newSpanEnd,
-          // controlName locks this def against re-resolution by the LLM —
+          // blankName locks this def against re-resolution by the LLM —
           // same mechanism control-bound blanks use to prevent the answer
           // from being clobbered by RoutedWordSourceGroup synonyms.
-          controlName: 'fluid-blank',
+          blankName: 'fluid-blank',
         };
         this.dynDefs.set(newWordIndex, fluidDef);
         wrote++;

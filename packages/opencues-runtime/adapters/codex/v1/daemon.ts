@@ -34,7 +34,7 @@ import {
   type SharedRuntime,
   type SourceReclassifier,
 } from '../../../src/boot-common';
-import type { ControlInvokeSpec, HostAdapter, KeyEvent, LogLevel, ProcessHandle } from '../../../src/adapter';
+import type { BlankInvokeSpec, HostAdapter, KeyEvent, LogLevel, ProcessHandle } from '../../../src/adapter';
 import {
   AnswerControl,
   HackerNewsControl,
@@ -42,9 +42,9 @@ import {
   PromptImproverControl,
   StocksControl,
   WeatherControl,
-  createControlInvoke,
-  type Control,
-} from '../../../src/controls';
+  createBlankInvoke,
+  type Blank,
+} from '../../../src/blanks';
 import { CodexAdapter } from './adapter';
 
 export interface CodexHostInfo {
@@ -96,10 +96,10 @@ export interface RuntimeBundle {
   readonly reclassifier: SourceReclassifier;
   /** Hoisted controls map — same six classes OC wires (HackerNews,
    *  Stocks, Weather, Answer, PromptImprover, OpenCuesSettings). */
-  readonly controlsRegistry: Map<string, Control>;
+  readonly controlsRegistry: Map<string, Blank>;
   /** Dispatcher derived from controlsRegistry. Returns null for
    *  unregistered controls. */
-  readonly controlInvoke: (spec: ControlInvokeSpec) => ProcessHandle | null;
+  readonly blankInvoke: (spec: BlankInvokeSpec) => ProcessHandle | null;
 }
 
 export interface DaemonHandle {
@@ -266,12 +266,12 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
           sendError(req, -32000, 'daemon not yet booted');
           break;
         }
-        const spec = req.params as ControlInvokeSpec | undefined;
+        const spec = req.params as BlankInvokeSpec | undefined;
         if (!spec || typeof spec.controlName !== 'string' || typeof spec.action !== 'string') {
           sendError(req, -32602, 'control-invoke requires { controlName, action, args }');
           break;
         }
-        const handle = runtime.controlInvoke({
+        const handle = runtime.blankInvoke({
           controlName: spec.controlName,
           action: spec.action,
           args: Array.isArray(spec.args) ? spec.args : [],
@@ -328,8 +328,8 @@ function findOpenCuesMdPath(): string {
  * `integrations/opencode/patches/opencuesBootstrap.ts:116-127` —
  * if you change the wiring there, change it here too.
  */
-function buildControlsRegistry(): Map<string, Control> {
-  return new Map<string, Control>([
+function buildControlsRegistry(): Map<string, Blank> {
+  return new Map<string, Blank>([
     ['hackernews', new HackerNewsControl()],
     ['stocks', new StocksControl({ apiKey: process.env.FINNHUB_API_KEY })],
     ['weather', new WeatherControl()],
@@ -353,13 +353,13 @@ async function defaultBuildRuntime(
 ): Promise<RuntimeBundle> {
   const reclassifier = createSourceReclassifier();
   const controlsRegistry = buildControlsRegistry();
-  const controlInvoke = createControlInvoke(controlsRegistry);
+  const blankInvoke = createBlankInvoke(controlsRegistry);
   const adapter = new CodexAdapter({
     cwd: params.cwd,
     hostVersion: params.hostVersion,
     log,
     reclassifier,
-    controlInvoke,
+    blankInvoke,
   });
 
   // Universal modules (Navigation/DimRender/Cycling/BlankFill +
@@ -411,7 +411,7 @@ async function defaultBuildRuntime(
     configLoader: shared.configLoader,
     reclassifier,
     controlsRegistry,
-    controlInvoke,
+    blankInvoke,
   };
 }
 

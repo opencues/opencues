@@ -19,11 +19,11 @@
  */
 
 import { CueSource, HttpAdapter } from '../types';
-import { CuesMdConfig, SourceConfig, ControlConfig } from '../cues-md';
+import { CuesMdConfig, SourceConfig, BlankConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
 import { ClassifiedSourceGroup } from './classified-source-group';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
-import { ControlBlankSource } from './control-blank-source';
+import { BlankSource } from './blank-source';
 import { FluidBlankSource } from './fluid-blank-source';
 import { SpellingSource } from './spelling-source';
 
@@ -33,7 +33,7 @@ export interface BuildSourcesOptions {
   apiKey: string;
   defaultModel: string;
   /** Merged control configs (for control-bound blanks) */
-  controls?: Record<string, ControlConfig>;
+  controls?: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read current live control value (raw string).
    * May return synchronously or as a Promise — async implementations avoid blocking the event loop. */
   readControlState?: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
@@ -183,16 +183,16 @@ export function buildSourcesFromConfig(
     }
   }
 
-  // Control-bound blanks: controls with blankKeywords get a ControlBlankSource
+  // Control-bound blanks: controls with blankKeywords get a BlankSource
   if (options.controls && options.readControlState) {
-    const blankControls: Record<string, ControlConfig> = {};
+    const blankControls: Record<string, BlankConfig> = {};
     for (const [name, ctrl] of Object.entries(options.controls)) {
       if (ctrl.blankKeywords?.length) {
         blankControls[name] = ctrl;
       }
     }
     if (Object.keys(blankControls).length > 0) {
-      sources.push(new ControlBlankSource({
+      sources.push(new BlankSource({
         controls: blankControls,
         readState: options.readControlState,
       }));

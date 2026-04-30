@@ -1,18 +1,22 @@
-// Controls registry helpers — every host wires controls into a
-// `Map<string, Control>` and exposes them to BlankFill + Cycling via the
-// `controlInvoke` adapter binding. The dispatch logic (translating
-// {controlName, action, args} → ctl.get/set/up/down) is identical across
-// hosts; it lives here once.
+// Blanks registry helpers — every host wires blanks (script-replaceable
+// controls) into a `Map<string, Blank>` and exposes them to BlankFill +
+// Cycling via the `blankInvoke` adapter binding. The dispatch logic
+// (translating {controlName, action, args} → blk.get/set/up/down) is
+// identical across hosts; it lives here once.
 //
-// Hosts construct their registry with the controls they support (chrome:
+// Hosts construct their registry with the blanks they support (chrome:
 // the runtime classes + chrome-only OS controls; opencode: same TS
-// classes; CC: same), then pass `createControlInvoke(registry)` as their
-// adapter binding's controlInvoke.
+// classes; CC: same), then pass `createBlankInvoke(registry)` as their
+// adapter binding's blankInvoke.
+//
+// NOTE: the JSON-RPC wire keys ('control-invoke' method name and
+// 'controlName' param key) are preserved as wire format and must NOT
+// be renamed — see integrations/codex/patches/opencues-bridge/src/lib.rs.
 
-import type { ControlInvokeSpec, ProcessHandle, ProcessResult } from '../adapter';
-import type { Control } from './types';
+import type { BlankInvokeSpec, ProcessHandle, ProcessResult } from '../adapter';
+import type { Blank } from './types';
 
-export type { Control } from './types';
+export type { Blank } from './types';
 export { FetchHttpAdapter } from './http-adapter';
 export { HackerNewsControl } from './hackernews';
 export { StocksControl, type StocksControlOptions } from './stocks';
@@ -25,23 +29,23 @@ export { CryptoControl, type CryptoControlOptions } from './crypto';
 export { CountriesControl, type CountriesControlOptions } from './countries';
 
 /**
- * Build a controlInvoke handler that dispatches into the given registry.
+ * Build a blankInvoke handler that dispatches into the given registry.
  * Returns null when the controlName isn't registered — the runtime then
  * falls through to spawnProcess (which sandboxed hosts resolve with
  * exitCode 127 to surface the gap visibly).
  *
  * Action mapping mirrors the chrome implementation that this replaces:
- *   'get'  → ctl.get(args[0] as keyword, args.slice(1) as context)
- *   'set'  → ctl.set?.(args[0], args[1])
- *   'up'   → ctl.up?.()
- *   'down' → ctl.down?.()
+ *   'get'  → blk.get(args[0] as keyword, args.slice(1) as context)
+ *   'set'  → blk.set?.(args[0], args[1])
+ *   'up'   → blk.up?.()
+ *   'down' → blk.down?.()
  */
-export function createControlInvoke(
-  registry: Map<string, Control>,
-): (spec: ControlInvokeSpec) => ProcessHandle | null {
+export function createBlankInvoke(
+  registry: Map<string, Blank>,
+): (spec: BlankInvokeSpec) => ProcessHandle | null {
   return (spec) => {
-    const ctl = registry.get(spec.controlName);
-    if (!ctl) return null;
+    const blk = registry.get(spec.controlName);
+    if (!blk) return null;
     const run = async (): Promise<ProcessResult> => {
       try {
         let stdout = '';
@@ -49,19 +53,19 @@ export function createControlInvoke(
           case 'get': {
             const keyword = spec.args[0];
             const context = spec.args.slice(1) as string[];
-            stdout = await ctl.get(keyword, context);
+            stdout = await blk.get(keyword, context);
             break;
           }
           case 'set': {
-            if (ctl.set) await ctl.set(spec.args[0] ?? '', spec.args[1]);
+            if (blk.set) await blk.set(spec.args[0] ?? '', spec.args[1]);
             break;
           }
           case 'up': {
-            if (ctl.up) stdout = await ctl.up();
+            if (blk.up) stdout = await blk.up();
             break;
           }
           case 'down': {
-            if (ctl.down) stdout = await ctl.down();
+            if (blk.down) stdout = await blk.down();
             break;
           }
         }
@@ -74,3 +78,4 @@ export function createControlInvoke(
     return { result: run(), kill: () => { /* no-op */ } };
   };
 }
+

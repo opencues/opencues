@@ -11,7 +11,7 @@ system-level controls (volume, brightness, etc.) when cycled with arrow keys.
 
 <!-- volume, brightness moved to controls/ folders -->
 
-## Controls
+## Blanks
 
 ```json
 {}

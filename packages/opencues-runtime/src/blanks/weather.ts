@@ -9,7 +9,7 @@
 // short skip-list of trigger / time / determiner words). Mirrors the
 // behaviour of the legacy weather-blank.sh.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const WMO_CODES: Record<number, string> = {
   0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
@@ -37,7 +37,7 @@ export interface WeatherControlOptions {
   readonly defaultLocation?: string;
 }
 
-export class WeatherControl implements Control {
+export class WeatherControl implements Blank {
   readonly name = 'weather';
   readonly readOnly = true;
   private readonly _fetch: typeof fetch;

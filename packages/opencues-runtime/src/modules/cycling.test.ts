@@ -754,7 +754,7 @@ settings:
     hlState.activate(0, 'voice-mode active');
     adapter.fireKey('up', { ctrl: true, alt: true });
     // controlInvoke was called for the selector get; spawnProcess wasn't.
-    const getCall = adapter.controlInvokeCalls.find(c => c.action === 'get');
+    const getCall = adapter.blankInvokeCalls.find(c => c.action === 'get');
     expect(getCall).toBeDefined();
     expect(getCall!.controlName).toBe('opencues');
     expect(getCall!.args).toEqual(['debug-mode']);

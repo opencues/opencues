@@ -27,7 +27,7 @@ import {
   parseCuesMd,
   type LocalCueLookupResult,
   type CuesMdConfig,
-  type ControlConfig,
+  type BlankConfig,
   type DiscoveredConfigs,
   type DirEntry as CoreDirEntry,
 } from '@opencues/core';
@@ -35,7 +35,7 @@ import {
 /** Pattern that matches words eligible for step-arithmetic cycling. */
 export interface StepPattern {
   readonly regex: RegExp;
-  readonly control: ControlConfig;
+  readonly control: BlankConfig;
   readonly controlName: string;
 }
 
@@ -231,7 +231,7 @@ export interface LoadedConfig {
    * Includes both the control's own name (lowercased) AND every blankKeywords
    * synonym → same Control entry.
    */
-  readonly controlsByWord: ReadonlyMap<string, ControlEntry>;
+  readonly controlsByWord: ReadonlyMap<string, BlankEntry>;
   /**
    * Step-arithmetic patterns. Words matching any regex here cycle by step.
    * Built per-control from `stepSuffixes` + `step`.
@@ -239,9 +239,9 @@ export interface LoadedConfig {
   readonly stepPatterns: readonly StepPattern[];
 }
 
-export interface ControlEntry {
+export interface BlankEntry {
   readonly name: string;
-  readonly control: ControlConfig;
+  readonly control: BlankConfig;
 }
 
 export class ConfigLoader {
@@ -288,13 +288,14 @@ export class ConfigLoader {
   get mergedCuesConfig(): CuesMdConfig | null { return this._config.mergedCuesConfig; }
   get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
-  get controlsByWord(): ReadonlyMap<string, ControlEntry> { return this._config.controlsByWord; }
+  get controlsByWord(): ReadonlyMap<string, BlankEntry> { return this._config.controlsByWord; }
 
-  /** Unique controls by name (lowercased). Sourced from folderConfigs +
-   *  controlsConfig. Useful when a consumer wants to iterate each control
-   *  once (BlankFill, etc.) rather than per-word. */
-  get controls(): ReadonlyMap<string, ControlConfig> {
-    const out = new Map<string, ControlConfig>();
+  /** Unique blanks (script-replaceable controls) by name (lowercased).
+   *  Sourced from folderConfigs + controlsConfig. Useful when a consumer
+   *  wants to iterate each blank once (BlankFill, etc.) rather than
+   *  per-word. */
+  get blanks(): ReadonlyMap<string, BlankConfig> {
+    const out = new Map<string, BlankConfig>();
     for (const entry of this._config.controlsByWord.values()) {
       out.set(entry.name, entry.control);
     }
@@ -306,7 +307,7 @@ export class ConfigLoader {
    * Look up a control by a word — checks the control's own name AND
    * blankKeywords synonyms. Returns null if no match.
    */
-  lookupControl(word: string): ControlEntry | null {
+  lookupControl(word: string): BlankEntry | null {
     return this._config.controlsByWord.get(word.toLowerCase().replace(/[\u200B\u200C]/g, '')) ?? null;
   }
 
@@ -526,11 +527,11 @@ export class ConfigLoader {
     // Build the navigable-words set + controlsByWord map + stepPatterns
     // from cueMap keys, folder controls, and blanks.md frontmatter.
     const navigableWords = new Set<string>();
-    const controlsByWord = new Map<string, ControlEntry>();
+    const controlsByWord = new Map<string, BlankEntry>();
     const stepPatterns: StepPattern[] = [];
     for (const k of cueMap.keys()) navigableWords.add(k);
 
-    const addControl = (name: string, control: ControlConfig): void => {
+    const addControl = (name: string, control: BlankConfig): void => {
       const lcName = name.toLowerCase();
       navigableWords.add(lcName);
       controlsByWord.set(lcName, { name: lcName, control });
@@ -568,11 +569,11 @@ export class ConfigLoader {
       // pattern would route ambiguously. Cycling routes via
       // DynDef.controlName instead — see BlankFill (Phase I.8).
     };
-    for (const [name, ctrl] of Object.entries(folderConfigs?.controlOverrides ?? {})) {
-      addControl(name, ctrl as ControlConfig);
+    for (const [name, ctrl] of Object.entries(folderConfigs?.blankOverrides ?? {})) {
+      addControl(name, ctrl as BlankConfig);
     }
     for (const [name, ctrl] of Object.entries(controlsConfig?.controls ?? {})) {
-      addControl(name, ctrl as ControlConfig);
+      addControl(name, ctrl as BlankConfig);
     }
 
     this._config = {

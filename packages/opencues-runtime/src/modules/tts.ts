@@ -124,7 +124,7 @@ export class TTS {
     const inSatellite = ss !== null && wordIndex >= ss.satelliteIndex && wordIndex <= ssSatEnd;
 
     if (onSelector || inSatellite) {
-      const ctrl = this.configLoader.controls.get(ss!.controlName);
+      const ctrl = this.configLoader.blanks.get(ss!.controlName);
       if (!ctrl || !(ctrl as { speak?: boolean }).speak) return null;
       const sdef = this.configLoader.opencuesState.definitions.get(ss!.currentSetting);
       tip = onSelector ? sdef?.tip : sdef?.valueTips.get(ss!.currentValue);
@@ -145,7 +145,7 @@ export class TTS {
       }
       // Find the originating control by blankTip match.
       let speakOK = false;
-      for (const ctrl of this.configLoader.controls.values()) {
+      for (const ctrl of this.configLoader.blanks.values()) {
         const cAny = ctrl as { speak?: boolean; tip?: string; blankTip?: string };
         if ((cAny.blankTip ?? cAny.tip) === span!.blankTip) {
           speakOK = !!cAny.speak;

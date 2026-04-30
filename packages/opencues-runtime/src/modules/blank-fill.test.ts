@@ -343,8 +343,8 @@ blankScript: ./stocks.sh
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     adapter.pushText('stock _');
     expect(spawnSpy).not.toHaveBeenCalled();
-    expect(adapter.controlInvokeCalls.length).toBe(1);
-    expect(adapter.controlInvokeCalls[0]).toMatchObject({
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({
       controlName: 'stocks',
       action: 'get',
       args: ['stock'],
@@ -802,7 +802,7 @@ blankAutoPopulate: true
     bf.subscribe();
     adapter.pushText('hn _');
     await new Promise(r => setTimeout(r, 0));
-    expect(adapter.controlInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls.length).toBe(1);
     // Keyword stays (no blankClearKeywords) — `_` is replaced with stdout.
     expect(adapter.getText()).toBe('hn top story title');
   });
@@ -841,7 +841,7 @@ blankClearKeywords: true
     await new Promise(r => setTimeout(r, 0));
     // Sandboxed host: controlInvoke wins, spawnProcess never called.
     expect(spawnSpy).not.toHaveBeenCalled();
-    expect(adapter.controlInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls.length).toBe(1);
     // Buffer replaced with first alt.
     expect(adapter.getText()).toBe('Improved version one');
     // Span fill stashed with all three alts so cycling Up/Down rotates them.

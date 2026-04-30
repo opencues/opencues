@@ -1,6 +1,7 @@
-// Shared Control interface — every control across hosts (chrome, opencode,
-// claude-code) implements this same shape. Hosts wire instances into a
-// registry that BlankFill + Cycling reach via adapter.controlInvoke.
+// Shared Blank interface — every blank (script-replaceable control)
+// across hosts (chrome, opencode, claude-code) implements this same
+// shape. Hosts wire instances into a registry that BlankFill + Cycling
+// reach via adapter.blankInvoke.
 //
 // Lift-and-shift pattern:
 //   - get(keyword?, context?) → current display value (e.g. "50%", "$186.43")
@@ -8,12 +9,12 @@
 //   - up?()                   → increment (no-op for readOnly)
 //   - down?()                 → decrement (no-op for readOnly)
 //
-// Control implementations live in this folder when their I/O is portable
-// (HTTP fetch, pure logic, static lists). OS-level controls (volume,
+// Blank implementations live in this folder when their I/O is portable
+// (HTTP fetch, pure logic, static lists). OS-level blanks (volume,
 // brightness) stay per-host because they need shell-spawn (Node) or
 // platform APIs (Web Audio).
 
-export interface Control {
+export interface Blank {
   readonly name: string;
   readonly readOnly: boolean;
 

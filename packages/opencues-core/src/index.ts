@@ -23,9 +23,9 @@ export {
 } from './sources/classified-source-group';
 
 export {
-  ControlBlankSource,
-  type ControlBlankSourceConfig,
-} from './sources/control-blank-source';
+  BlankSource,
+  type BlankSourceConfig,
+} from './sources/blank-source';
 
 export {
   FluidBlankSource,
@@ -81,7 +81,7 @@ export {
   type SingleCueFrontmatter,
   type PromptConfig,
   type SourceConfig,
-  type ControlConfig,
+  type BlankConfig,
   type ActionConfig,
   type BlankParser,
 } from './cues-md';

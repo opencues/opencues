@@ -20,7 +20,7 @@ import type {
   Unsubscribe,
   ProcessSpec,
   ProcessHandle,
-  ControlInvokeSpec,
+  BlankInvokeSpec,
   DirEntry,
   LogLevel,
   Capability,
@@ -63,7 +63,7 @@ export interface OpenCodeBindings {
    * shell scripts in controls/. Returns null when the controlName
    * isn't in the host's registry.
    */
-  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
+  blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   /** Optional async text push — for fills that happen outside a key dispatch. */
   pushText?(text: string, cursor?: number): void;
   log?(level: LogLevel, msg: string, data?: unknown): void;
@@ -93,7 +93,7 @@ export class OpenCodeV14Adapter implements HostAdapter {
     this.cwd = bindings.cwd;
     const caps: Capability[] = [...OPENCODE_V14_CAPABILITIES];
     if (bindings.spawnProcess) caps.push('spawn-process');
-    if (bindings.controlInvoke) caps.push('control-invoke');
+    if (bindings.blankInvoke) caps.push('control-invoke');
     this.capabilities = caps;
   }
 
@@ -165,8 +165,8 @@ export class OpenCodeV14Adapter implements HostAdapter {
    * binding isn't wired or the controlName isn't registered; runtime
    * then falls through to spawnProcess for the legacy shell scripts.
    */
-  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
-    return this.bindings.controlInvoke?.(spec) ?? null;
+  blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
+    return this.bindings.blankInvoke?.(spec) ?? null;
   }
   pushText(text: string, cursor?: number): void {
     this.bindings.pushText?.(text, cursor);

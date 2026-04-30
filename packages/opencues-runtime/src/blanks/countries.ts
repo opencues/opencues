@@ -11,7 +11,7 @@
 // it via several keywords (population of, capital of, currency of, ...)
 // and the keyword tells us which field to extract.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 const CACHE_TTL_MS = 86_400_000; // 24h — country data is stable
 const ENDPOINT = 'https://restcountries.com/v3.1/name';
@@ -53,7 +53,7 @@ export interface CountriesControlOptions {
   readonly cacheTtlMs?: number;
 }
 
-export class CountriesControl implements Control {
+export class CountriesControl implements Blank {
   readonly name = 'countries';
   readonly readOnly = true;
   private readonly _fetch: typeof fetch;

@@ -28,14 +28,14 @@
 
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/chrome/v1/boot';
 import type {
-  ControlInvokeSpec,
+  BlankInvokeSpec,
   KeyEvent,
   LogLevel,
   ProcessHandle,
   ProcessResult,
 } from '@opencues/runtime/dist/src/adapter';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
-import { createControlInvoke } from '@opencues/runtime/dist/src/controls';
+import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
@@ -407,8 +407,8 @@ export interface RuntimeStartOptions {
 }
 
 // Built lazily inside startOpenCues — needs opts. The dispatcher
-// (createControlInvoke) lives in the runtime so all hosts share it.
-let controlInvoke: ((spec: ControlInvokeSpec) => ProcessHandle | null) | null = null;
+// (createBlankInvoke) lives in the runtime so all hosts share it.
+let blankInvoke: ((spec: BlankInvokeSpec) => ProcessHandle | null) | null = null;
 
 /**
  * Construct the runtime if not already running. Idempotent — second
@@ -418,8 +418,8 @@ let controlInvoke: ((spec: ControlInvokeSpec) => ProcessHandle | null) | null = 
 export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   if (bootResult) return bootResult;
 
-  // CE.8 — build the chrome control registry. The runtime's BlankFill
-  // + Cycling dispatch into this via controlInvoke. Prompt-improver
+  // CE.8 — build the chrome blank registry. The runtime's BlankFill
+  // + Cycling dispatch into this via blankInvoke. Prompt-improver
   // is opt-in via llmConfig.
   const controls = createControls({
     finnhubApiKey: opts.finnhubApiKey,
@@ -439,7 +439,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     opencuesMdReadFile: () => readFile(`${ROOT}/opencues.md`),
     opencuesMdWriteFile: (content) => writeFile(`${ROOT}/opencues.md`, content),
   });
-  controlInvoke = createControlInvoke(controls);
+  blankInvoke = createBlankInvoke(controls);
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     const tag = `[opencues][${level}]`;
@@ -485,12 +485,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     llmDefaultModel: opts.llmDefaultModel,
     llmDebounceMs: opts.llmDebounceMs,
     httpAdapter: opts.llmApiKey ? new FetchHttpAdapter() : undefined,
-    // CE.8 — controlInvoke routes blank-fill + cycle script calls to
-    // the chrome controls registry above (volume / stocks / weather /
+    // CE.8 — blankInvoke routes blank-fill + cycle script calls to
+    // the chrome blanks registry above (volume / stocks / weather /
     // hackernews / prompt-improver). Returns null for unknown
-    // controls so spawnProcess fallback (which the chrome adapter
+    // blanks so spawnProcess fallback (which the chrome adapter
     // resolves with exitCode 127) takes over visibly.
-    controlInvoke: (spec) => controlInvoke?.(spec) ?? null,
+    blankInvoke: (spec) => blankInvoke?.(spec) ?? null,
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process

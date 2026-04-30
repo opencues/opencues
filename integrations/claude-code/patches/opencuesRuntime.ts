@@ -195,12 +195,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // approach. Robust by design — no path drama, no symlinks, no
   // bundling needed. Uninstalling claude-cues cleans these up too.
   const bootPath = `"@opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
-  // Hoisted control classes (HackerNews / Stocks / Weather / Answer /
-  // PromptImprover / OpenCuesSettings) live in the runtime's controls
+  // Hoisted blank classes (HackerNews / Stocks / Weather / Answer /
+  // PromptImprover / OpenCuesSettings) live in the runtime's blanks
   // module. Lazy require inside the bootstrap so older runtime installs
-  // (without controls/) still load — controlInvoke just stays null in
+  // (without blanks/) still load — blankInvoke just stays null in
   // that case and BlankFill falls back to spawnProcess.
-  const controlsPath = `"@opencues/runtime/dist/src/controls/index.js"`;
+  const controlsPath = `"@opencues/runtime/dist/src/blanks/index.js"`;
   // opencues.md is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
@@ -234,12 +234,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `__ocCh.on("error",__ocReject);}` +
     `return{result:__ocP,kill:function(sig){try{__ocCh.kill(sig||"SIGTERM");}catch(_e){}}};}` +
     `catch(__ocSpawnErr){return{result:Promise.reject(__ocSpawnErr),kill:function(){}};}},` +
-    // controlInvoke routes BlankFill / Cycling control dispatches to the
-    // hoisted runtime classes. Wrapped in try/catch so a missing controls
+    // blankInvoke routes BlankFill / Cycling blank dispatches to the
+    // hoisted runtime classes. Wrapped in try/catch so a missing blanks
     // module on legacy installs degrades gracefully (BlankFill falls back
     // to spawnProcess for that name). Lazily-built registry — avoid
     // constructing classes that need API keys we don't have.
-    `controlInvoke:(function(){try{` +
+    `blankInvoke:(function(){try{` +
     `var __ocCtl=${requireFn}(${controlsPath});var __ocReg=new Map();` +
     `__ocReg.set("hackernews",new __ocCtl.HackerNewsControl());` +
     `__ocReg.set("stocks",new __ocCtl.StocksControl({apiKey:process.env.FINNHUB_API_KEY}));` +
@@ -253,8 +253,8 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
     `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
     `}));` +
-    `return __ocCtl.createControlInvoke(__ocReg);` +
-    `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","controlInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
+    `return __ocCtl.createBlankInvoke(__ocReg);` +
+    `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
     // Statusline export path. Per-PID so two CC instances don't collide.
     // Matches v1's path so the existing highlight-statusline.sh keeps working.
     `statusFilePath:"/tmp/opencues-highlight-state-"+process.pid+".json",` +

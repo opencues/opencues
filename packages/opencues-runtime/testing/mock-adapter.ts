@@ -2,7 +2,7 @@ import {
   AdapterUnsupportedError,
   HOST_ADAPTER_INTERFACE_VERSION,
   type Capability,
-  type ControlInvokeSpec,
+  type BlankInvokeSpec,
   type HostAdapter,
   type KeyEvent,
   type KeyFilter,
@@ -83,13 +83,13 @@ export class MockAdapter implements HostAdapter {
   readonly setCursorCalls: number[] = [];
   forceRenderCalls = 0;
   /** Captured controlInvoke specs for assertions. */
-  readonly controlInvokeCalls: ControlInvokeSpec[] = [];
+  readonly blankInvokeCalls: BlankInvokeSpec[] = [];
   /**
    * Per-control mock returns. Set via stubControlInvoke; when set, the
    * matching spec resolves to the supplied stdout. controlName + action
    * pair is the lookup key (e.g. "volume:up", "weather:get").
    */
-  private _controlInvokeStubs = new Map<string, string>();
+  private _blankInvokeStubs = new Map<string, string>();
 
   constructor(opts: MockAdapterOptions = {}) {
     this.hostName = opts.hostName ?? 'mock';
@@ -188,16 +188,16 @@ export class MockAdapter implements HostAdapter {
    * to spawnProcess as if controlInvoke wasn't implemented).
    */
   stubControlInvoke(key: string, stdout: string): void {
-    this._controlInvokeStubs.set(key, stdout);
+    this._blankInvokeStubs.set(key, stdout);
   }
 
-  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
-    this.controlInvokeCalls.push(spec);
-    if (this._controlInvokeStubs.size === 0) return null;
+  blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
+    this.blankInvokeCalls.push(spec);
+    if (this._blankInvokeStubs.size === 0) return null;
     const exact = `${spec.controlName}:${spec.action}`;
-    const match = this._controlInvokeStubs.get(exact)
-      ?? this._controlInvokeStubs.get(`*:${spec.action}`)
-      ?? this._controlInvokeStubs.get(`${spec.controlName}:*`);
+    const match = this._blankInvokeStubs.get(exact)
+      ?? this._blankInvokeStubs.get(`*:${spec.action}`)
+      ?? this._blankInvokeStubs.get(`${spec.controlName}:*`);
     if (match === undefined) return null;
     return {
       result: Promise.resolve({ stdout: match, stderr: '', exitCode: 0, timedOut: false }),

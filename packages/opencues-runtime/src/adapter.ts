@@ -67,20 +67,26 @@ export interface ProcessSpec {
 }
 
 /**
- * Host-native control invocation. Sandboxed hosts (Chrome extension,
+ * Host-native blank invocation. Sandboxed hosts (Chrome extension,
  * browser-only TUIs) can't spawn processes to run `volume.sh up` or
- * `weather-blank.sh get`. `controlInvoke` lets them fulfil the same
+ * `weather-blank.sh get`. `blankInvoke` lets them fulfil the same
  * contract via their native API layer — Web Audio for volume,
  * fetch() for stocks/weather/HN, etc.
  *
- * BlankFill + Cycling check `adapter.controlInvoke` BEFORE
+ * BlankFill + Cycling check `adapter.blankInvoke` BEFORE
  * `spawnProcess`; hosts that return null fall through to the spawn
  * path. Hosts that return a ProcessHandle take ownership of the call
  * and the returned stdout is interpreted identically to a script's
  * stdout (same exitCode/timedOut semantics).
+ *
+ * NOTE: the `controlName` field is the JSON-RPC wire-format key used by
+ * the codex Rust bridge (see integrations/codex/patches/opencues-bridge/
+ * src/lib.rs). The TS-side type was renamed to BlankInvokeSpec, but the
+ * field name on the wire MUST stay `controlName`.
  */
-export interface ControlInvokeSpec {
-  /** Control name as declared in controls/<name>/cue.md (e.g. "volume"). */
+export interface BlankInvokeSpec {
+  /** Control name as declared in blanks/<name>/cue.md (e.g. "volume").
+   * Wire-format key — DO NOT rename. */
   readonly controlName: string;
   /** Action verb — typically "get" / "set" / "up" / "down" but arbitrary. */
   readonly action: string;
@@ -202,12 +208,12 @@ export interface HostAdapter {
 
   spawnProcess(spec: ProcessSpec): ProcessHandle;
   /**
-   * Host-native control invocation. Optional — when present, BlankFill
+   * Host-native blank invocation. Optional — when present, BlankFill
    * + Cycling try it BEFORE spawnProcess, falling through to the spawn
    * path if this returns null. Covered by the `control-invoke`
-   * capability when present.
+   * capability when present (capability string preserved as wire format).
    */
-  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
+  blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   readFile(path: string): Promise<string | null>;
   writeFile(path: string, content: string): Promise<void>;
   /**

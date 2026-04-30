@@ -44,7 +44,7 @@ export interface HostInfo extends CommonHostInfo {
    * isn't in the host's registry; runtime then falls through to
    * spawnProcess (still works for OS controls like volume/brightness).
    */
-  controlInvoke?(spec: import('../../../src/adapter').ControlInvokeSpec):
+  blankInvoke?(spec: import('../../../src/adapter').BlankInvokeSpec):
     import('../../../src/adapter').ProcessHandle | null;
 }
 
@@ -137,7 +137,7 @@ export function boot(host: HostInfo): BootResult {
     readDir: host.readDir,
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess as OpenCodeBindings['spawnProcess'],
-    controlInvoke: host.controlInvoke,
+    blankInvoke: host.blankInvoke,
     pushText: host.pushText,
     log,
   };

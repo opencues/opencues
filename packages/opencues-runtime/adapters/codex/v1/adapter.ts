@@ -32,7 +32,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   type Capability,
-  type ControlInvokeSpec,
+  type BlankInvokeSpec,
   type DirEntry,
   type HostAdapter,
   type KeyEvent,
@@ -64,8 +64,8 @@ export interface CodexAdapterOptions {
   /** Host-native control dispatch. When supplied, BlankFill +
    *  Cycling try this BEFORE spawnProcess for `controlInvoke`
    *  capability. Same shape as OC's binding — usually wired by
-   *  passing `createControlInvoke(controlsRegistry)`. */
-  readonly controlInvoke?: (spec: ControlInvokeSpec) => ProcessHandle | null;
+   *  passing `createBlankInvoke(controlsRegistry)`. */
+  readonly blankInvoke?: (spec: BlankInvokeSpec) => ProcessHandle | null;
 }
 
 interface KeySub {
@@ -86,7 +86,7 @@ const CODEX_BASE_CAPABILITIES: readonly Capability[] = [
   // Mirrors OPENCODE_V14_CAPABILITIES (adapters/oc/v1.4/adapter.ts:73-80)
   // plus 'change-source' which both runtime modules use to emit
   // source-attributed text events from the bridge into the runtime.
-  // 'control-invoke' is added per-instance when bindings.controlInvoke
+  // 'control-invoke' is added per-instance when bindings.blankInvoke
   // is supplied. 'spawn-process' stays off until Tier 3 wires a bridge
   // for spawning; codex's controls are all hoisted to TS so the
   // shell-script fallback isn't load-bearing.
@@ -108,7 +108,7 @@ export class CodexAdapter implements HostAdapter {
   private _cursor = 0;
   private readonly _logFn: CodexAdapterOptions['log'];
   private readonly _reclassifier: SourceReclassifier | undefined;
-  private readonly _controlInvoke: CodexAdapterOptions['controlInvoke'];
+  private readonly _blankInvoke: CodexAdapterOptions['blankInvoke'];
 
   // Subscriptions — populated by runtime modules in subscribe(). The
   // daemon's RPC handlers will fan into these once Tier 3.F-I lands.
@@ -121,11 +121,11 @@ export class CodexAdapter implements HostAdapter {
     this.hostVersion = opts.hostVersion ?? 'unknown';
     this._logFn = opts.log;
     this._reclassifier = opts.reclassifier;
-    this._controlInvoke = opts.controlInvoke;
+    this._blankInvoke = opts.blankInvoke;
     // Conditional capability: 'control-invoke' only when the binding
     // is supplied. Mirrors OC's per-instance capability list.
     const caps: Capability[] = [...CODEX_BASE_CAPABILITIES];
-    if (opts.controlInvoke) caps.push('control-invoke');
+    if (opts.blankInvoke) caps.push('control-invoke');
     this.capabilities = caps;
   }
 
@@ -217,8 +217,8 @@ export class CodexAdapter implements HostAdapter {
   /** Forward to the host's controlInvoke binding when supplied. Same
    *  shape as OC's adapter — null fallthrough so BlankFill / Cycling
    *  drop to spawnProcess for shell-script controls. */
-  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
-    return this._controlInvoke?.(spec) ?? null;
+  blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
+    return this._blankInvoke?.(spec) ?? null;
   }
 
   // ─── FS ops (real) ─────────────────────────────────────────────────

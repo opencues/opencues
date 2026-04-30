@@ -140,7 +140,7 @@ export class BlankFill {
       // the fill back to `_`. Without this, the script re-spawns immediately
       // and the dismissal sticks for ~zero milliseconds.
       if (this.dismissedBlanks?.has(slot.index)) continue;
-      const control = this.configLoader.controls.get(slot.controlName) as
+      const control = this.configLoader.blanks.get(slot.controlName) as
         | (Record<string, unknown> & {
             stepValues?: readonly string[];
             blankScript?: string;
@@ -210,7 +210,7 @@ export class BlankFill {
       // Try host-native control invocation first (Chrome, Electron,
       // anything without shell access). Fall through to spawnProcess
       // when the host returns null or doesn't implement controlInvoke.
-      let handle = this.adapter.controlInvoke?.({
+      let handle = this.adapter.blankInvoke?.({
         controlName: slot.controlName,
         action: 'get',
         args: [slot.keyword, ...contextWords],
@@ -257,7 +257,7 @@ export class BlankFill {
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
     const target = words[slot.index];
-    const control = this.configLoader.controls.get(slot.controlName) as
+    const control = this.configLoader.blanks.get(slot.controlName) as
       | (Record<string, unknown> & {
           blankClearKeywords?: boolean;
           blankConsumeContext?: boolean;
@@ -389,7 +389,7 @@ export class BlankFill {
         currentIndex: 0,
         spanStart: startWord.start,
         spanEnd: startWord.end,
-        controlName: slot.controlName,
+        blankName: slot.controlName,
       });
     }
 
@@ -629,7 +629,7 @@ export class BlankFill {
     const slot = slots.find(s => s.index === insertedWord.index);
     if (!slot) return false;
 
-    const control = this.configLoader.controls.get(slot.controlName) as
+    const control = this.configLoader.blanks.get(slot.controlName) as
       | (Record<string, unknown> & {
           stepValues?: readonly string[];
           blankAutoPopulate?: boolean;
@@ -690,7 +690,7 @@ export class BlankFill {
   /** Walk backward from blankIdx looking for a control's blankKeywords match. */
   private matchKeyword(words: readonly string[], blankIdx: number): BlankSlot | null {
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
-      for (const [name, control] of this.configLoader.controls.entries()) {
+      for (const [name, control] of this.configLoader.blanks.entries()) {
         const blankKeywords = (control as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
         const blankProximity = (control as { blankProximity?: number }).blankProximity;

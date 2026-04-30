@@ -6,7 +6,7 @@
 // (e.g. "btc" → "bitcoin", "eth" → "ethereum"). Hosts can extend the
 // coin map via `customCoins` at construction.
 
-import type { Control } from './types';
+import type { Blank } from './types';
 
 // CoinGecko uses slug-style IDs (not ticker symbols) — "bitcoin", not "BTC".
 const DEFAULT_COINS: Record<string, string> = {
@@ -39,7 +39,7 @@ export interface CryptoControlOptions {
   readonly cacheTtlMs?: number;
 }
 
-export class CryptoControl implements Control {
+export class CryptoControl implements Blank {
   readonly name = 'crypto';
   readonly readOnly = true;
   private readonly _coins: Record<string, string>;

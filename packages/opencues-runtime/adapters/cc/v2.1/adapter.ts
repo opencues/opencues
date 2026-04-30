@@ -11,7 +11,7 @@ import {
   AdapterUnsupportedError,
   HOST_ADAPTER_INTERFACE_VERSION,
   type Capability,
-  type ControlInvokeSpec,
+  type BlankInvokeSpec,
   type HostAdapter,
   type KeyEvent,
   type KeyFilter,
@@ -76,7 +76,7 @@ export interface HostBindings {
    * controlInvoke — BlankFill + Cycling try this BEFORE spawnProcess
    * so shared TS controls win over the legacy shell scripts.
    */
-  controlInvoke?(spec: ControlInvokeSpec): ProcessHandle | null;
+  blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
 
   /** Optional: async text push (calls captured onChange or equivalent). */
   pushText?(text: string, cursor?: number): void;
@@ -124,7 +124,7 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
     // before trying controlInvoke (otherwise BlankFill skips the path
     // and goes straight to spawnProcess for everything).
     const merged: Capability[] = [...capabilities];
-    if (bindings.controlInvoke && !merged.includes('control-invoke')) {
+    if (bindings.blankInvoke && !merged.includes('control-invoke')) {
       merged.push('control-invoke');
     }
     this.capabilities = merged;
@@ -212,8 +212,8 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
    * BlankFill + Cycling then fall through to spawnProcess for the legacy
    * shell scripts.
    */
-  controlInvoke(spec: ControlInvokeSpec): ProcessHandle | null {
-    return this.bindings.controlInvoke?.(spec) ?? null;
+  blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
+    return this.bindings.blankInvoke?.(spec) ?? null;
   }
   async readFile(path: string): Promise<string | null> {
     if (!this.bindings.readFile) return null;

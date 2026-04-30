@@ -1,5 +1,5 @@
 /**
- * opencues-core/sources/control-blank-source.ts
+ * opencues-core/sources/blank-source.ts
  *
  * CueSource that bridges blanks (_) with cue-controls.
  * When context words match a control's blankKeywords, the blank is bound
@@ -8,24 +8,24 @@
  */
 
 import { CueSource, CueContext, CueSourceResult, CueResult } from '../types';
-import { ControlConfig } from '../cues-md';
+import { BlankConfig } from '../cues-md';
 
-export interface ControlBlankSourceConfig {
+export interface BlankSourceConfig {
   /** All controls that have blankKeywords defined */
-  controls: Record<string, ControlConfig>;
+  controls: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read the current live value.
    * May return synchronously or a Promise — async implementations avoid blocking the event loop. */
   readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 }
 
-export class ControlBlankSource implements CueSource {
+export class BlankSource implements CueSource {
   readonly id = 'control-blank';
   readonly priority = 95;
 
-  private controls: Record<string, ControlConfig>;
+  private controls: Record<string, BlankConfig>;
   private readState: (controlName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 
-  constructor(config: ControlBlankSourceConfig) {
+  constructor(config: BlankSourceConfig) {
     this.controls = config.controls;
     this.readState = config.readState;
   }
@@ -46,7 +46,7 @@ export class ControlBlankSource implements CueSource {
     // Find which control matches by scanning context words against blankKeywords
     // Keywords can be multi-word phrases (e.g. "opencues settings") — matched as consecutive words
     const contextLower = context.words.map(w => w.toLowerCase());
-    let matched: ControlConfig | undefined;
+    let matched: BlankConfig | undefined;
     let matchedKeyword: string | undefined;
     let matchedKeywordIndex = -1;
 

@@ -15,7 +15,7 @@ import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
-import type { ControlValuesCache } from '../state/control-values';
+import type { BlankValuesCache } from '../state/blank-values';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -85,7 +85,7 @@ export class Statusline {
      * Optional. Per-control value cache shared with Cycling — Cycling
      * invalidates after script up/down so the next render re-fetches.
      */
-    private controlValues?: ControlValuesCache,
+    private controlValues?: BlankValuesCache,
   ) {}
 
   subscribe(): void {
@@ -178,7 +178,7 @@ export class Statusline {
     // fill at "50%"): suppress the statusline tip entirely. The value
     // is already visible in the input ("50%") and the tip would be
     // redundant ("system volume control 50%").
-    if (def?.controlName) {
+    if (def?.blankName) {
       return {
         active: true,
         highlightedWordIndex: wordIndex,

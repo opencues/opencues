@@ -97,7 +97,7 @@ import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
-import { ControlValuesCache } from './state/control-values';
+import { BlankValuesCache } from './state/blank-values';
 import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
 import { SelectorSatelliteState } from './state/selector-satellite';
@@ -108,7 +108,7 @@ export interface SharedRuntime {
   readonly configLoader: ConfigLoader;
   readonly hlState: HighlightState;
   readonly dynDefs: DynDefs;
-  readonly controlValues: ControlValuesCache;
+  readonly controlValues: BlankValuesCache;
   readonly spanFillState: SpanFillState;
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
@@ -149,7 +149,7 @@ export function buildSharedRuntime(
   // historical declaration order in both per-host boot.ts files.
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const controlValues = new ControlValuesCache();
+  const controlValues = new BlankValuesCache();
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
