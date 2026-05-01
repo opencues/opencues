@@ -6,8 +6,8 @@
 >
 > - TUI patches applied via `tui-bridge-wiring.diff` (Tier 5)
 > - Daemon module wiring complete: ConfigLoader, Navigation, Cycling,
->   BlankFill, DimRender, Statusline, controls registry,
->   reclassifier, Resolver (opt-in), control-invoke RPC (Tiers 3.A-G + I)
+>   BlankFill, DimRender, Statusline, blanks registry,
+>   reclassifier, Resolver (opt-in), blank-invoke RPC (Tiers 3.A-G + I)
 > - Bridge gaps closed: dispatch_key correlation, set-text callback,
 >   request timeout, daemon liveness flag, stderr capture (Tiers 4.A/B/E/C/F)
 >

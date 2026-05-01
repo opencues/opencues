@@ -50,9 +50,9 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Claude Code:** `fs.readFileSync()` with 2-second hot-reload TTL polling.
 **Chrome Extension:** User pastes into popup. `chrome.storage.local` with `onChanged` listener (event-driven, no polling).
 
-### Control Script Execution
-**Claude Code:** `child_process.execSync("bash script.sh get/set")`.
-**Chrome Extension:** Browser-native: Web Audio (volume), `fetch()` (stocks/weather/HN).
+### Cue-Blank Script Execution
+**Claude Code:** `child_process.execSync("bash <name>-blank.sh get/set")` via the `blankInvoke` registry's spawn fallback.
+**Chrome Extension:** TS-class blanks in `@opencues/runtime/src/blanks/` registered into the chrome `blanksRegistry`. No subprocess.
 
 ### Text Replacement
 **Claude Code:** `onChange(newFullText)` replaces entire input.
@@ -63,16 +63,16 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Chrome Extension:** In-memory only — `openCues.current[setting] = newValue`. No file writeback. **Divergence:** changes don't persist across page reloads. User must update opencues.md in popup manually.
 
 ### Keyword Expansion
-**Claude Code:** Replaces typed shorthand (`aapl` → `AAPL`) using `keywordExpansion` from resolver metadata.
-**Chrome Extension:** Implemented via `ControlKeywordConfig.expansions` map in `controls/index.ts`. Expansion happens in the auto-populate flow before blank fill. **Full parity** for built-in controls (stocks). Custom expansions require adding entries to the config.
+**Claude Code:** Replaces typed shorthand (`aapl` → `AAPL`) using `blankKeywordExpansions` from the cue.md frontmatter.
+**Chrome Extension:** Same `blankKeywordExpansions` map. Expansion happens in the auto-populate flow before blank fill. **Full parity** for built-in blanks (stocks). Custom expansions require adding entries to the config.
 
 ### Keyword Clearing (blankClearKeywords)
 **Claude Code:** Removes context words before blank fill, shifts all downstream indices (descending order).
-**Chrome Extension:** Implemented in auto-populate flow. Keywords removed in descending index order, blank index adjusted per removal. **Full parity.** Used by prompt improver control (`clearKeywords: true`).
+**Chrome Extension:** Implemented in auto-populate flow. Keywords removed in descending index order, blank index adjusted per removal. **Full parity.** Used by prompt improver (`blankClearKeywords: true`).
 
 ### System Volume / Brightness
-**Claude Code:** Controls actual system volume/brightness via OS APIs.
-**Chrome Extension:** Volume is tab-scoped only (Web Audio GainNode). Brightness not controllable. **Divergence:** no system-level hardware control.
+**Claude Code:** Real system volume/brightness via OS APIs through `volume-blank.sh` / `brightness-blank.sh`.
+**Chrome Extension:** Not available — the chrome adapter has no subprocess capability. These blanks are filtered out of the chrome bundle by host-compat. **Divergence:** no system-level hardware control.
 
 ## Known Divergence
 
@@ -82,23 +82,23 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 
 ### Keyword Expansion/Clearing
 **Claude Code:** Auto-populate expands shorthand keywords and clears context words before filling.
-**Chrome Extension:** Implemented. Expansion via `ControlKeywordConfig.expansions`, clearing via descending-order removal with blank index adjustment. **Full parity.**
+**Chrome Extension:** Implemented. Expansion via `blankKeywordExpansions`, clearing via descending-order removal with blank index adjustment. **Full parity.**
 
 ### blankClearOnEdit — Text Removal
-**Claude Code:** When user edits over a control-blank pair with `blankClearOnEdit: true`, the pair is removed from text entirely (selector + separator + satellite deleted).
+**Claude Code:** When user edits over a cue-blank pair with `blankClearOnEdit: true`, the pair is removed from text entirely (selector + separator + satellite deleted).
 **Chrome Extension:** Implemented — pair indices are queued in `pendingClearOnEdit` and removed on next input event. **Same behavior**, but uses `execCommand('insertText')` instead of `onChange()` for the text replacement.
 
 ### Consume-All — Two-Step LLM Pipeline
-**Claude Code:** The `blankConsumeAll` flow has a two-step LLM pipeline (extract → transform) via `prompt-blank.sh`. Cycling state in dedicated `_consumeAllAlts`.
-**Chrome Extension:** Fully implemented. `PromptImproverControl` (`controls/prompt-improver.ts`) runs the same two-step pipeline (Extract → Transform) using `fetch()` to the LLM API. Returns newline-separated alternatives. Auto-populate in `content.ts` detects "improve prompt" keywords, calls the control, populates `engine.consumeAllAlts`, and replaces the full text with the first alternative. Cycling and unconditional cleanup are handled by the engine. **Full parity** (same prompts, same parsing, same fallbacks).
+**Claude Code:** The `blankConsumeAll` flow has a two-step LLM pipeline (extract → transform) via the `PromptImproverBlank` runtime class. Cycling state in dedicated `_consumeAllAlts`.
+**Chrome Extension:** Fully implemented. `PromptImproverBlank` (`@opencues/runtime/src/blanks/prompt-improver.ts`) runs the same two-step pipeline (Extract → Transform) using `fetch()` to the LLM API. Returns newline-separated alternatives. Auto-populate detects "improve prompt" keywords, calls the blank, populates `_consumeAllAlts`, and replaces the full text with the first alternative. Cycling and unconditional cleanup are handled by the runtime. **Full parity** (same prompts, same parsing, same fallbacks).
 
 ### opencues.md Parser — Regex Avoidance
 **Claude Code:** Learned the hard way that regex for frontmatter parsing fails silently due to escape-sequence interactions across TypeScript template → patched string → runtime regex.
 **Chrome Extension:** Uses the same line-by-line walker approach (no regex for frontmatter). **Full parity.**
 
 ### Cycling Priority Order
-**Claude Code:** Strict order: cue-blanks → control-blanks → selector → satellite → consume-all → step → dynamic alts → tips.
-**Chrome Extension:** Same order enforced in `cycle()` method. Blanks are handled separately via `controlAction()` in word-navigator before the main `cycle()` call. **Full parity.**
+**Claude Code:** Strict order: cue-blank values → selector → satellite → consume-all → dynamic alts → tips.
+**Chrome Extension:** Same order enforced by the runtime's Cycling module. Cue-blank values are handled by `blankInvoke` before the main alt-cycling path. **Full parity.**
 
 ### Voice-Mode Gate
 **Claude Code:** Checks `_openCuesCurrent["voice-mode"]` synchronously before every TTS spawn. Satellite cycling updates this in-memory immediately.
@@ -106,14 +106,14 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 
 ### Stale Result Rejection
 **Claude Code:** `_resolverGeneration` counter incremented on config rebuild. Results from old generation are discarded.
-**Chrome Extension:** Same — `resolverGeneration` counter in CueEngine. **Full parity.**
+**Chrome Extension:** Same — `resolverGeneration` counter in the runtime. **Full parity.**
 
 ### Linked Word Atomicity
 **Claude Code:** All linked word replacements in single pass via `_updW` map.
 **Chrome Extension:** Same — `updatedWords` map, sequential forward walk. **Full parity.**
 
-### controlName Merge Guard
-**Claude Code:** `if(_oldW2.metadata.blankName && !_nw2.metadata.blankName) continue` — prevents LLM overwriting blank positions.
+### blankName Merge Guard
+**Claude Code:** `if(_oldW2.metadata.blankName && !_nw2.metadata.blankName) continue` — prevents LLM overwriting cue-blank positions.
 **Chrome Extension:** Same guard in analysis merge loop. **Full parity.**
 
 ### Unconditional Consume-All Cleanup

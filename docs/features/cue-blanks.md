@@ -1,18 +1,18 @@
 ---
-last_updated: 2026-04-22
+last_updated: 2026-04-29
 ---
 
 # Cue-Blanks
 
-Cue-blanks are words with built-in cycling behavior that bypasses the normal alternatives pipeline. They never show tips or alts in the secondary display (unless they have a `blankTip`). There are six kinds:
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to an underscore (e.g., `volume _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
-- **Custom cue-blanks** — trigger external scripts instead of modifying text (e.g., "volume" runs a volume script). Configured per-word with custom arguments for up/down directions.
-- **Auto-populated blanks** — blank positions (`_`) bound to a cue-blank via `blankKeywords`. The blank auto-populates with the live value from `blankScript get` and updates on each cycle.
-- **Step blanks** — words matching config-driven patterns (via `stepPattern` or `stepSuffixes` in `blanks/` folder `cue.md` files) are incremented/decremented by a configurable step size, bounded by `stepMin`/`stepMax`. Supports suffixes like `f`, `px`, `em`.
-- **List blanks** — blanks with `stepValues` that cycle through an ordered list of values (e.g., affirmations). No script needed — uses normal alt cycling. Multi-word values are span-tracked.
-- **Dynamic list blanks** — blanks where `blankScript get` returns multiple lines, each becoming a cycling alternative (e.g., RSS feed titles from Hacker News). Same cycling behavior as `stepValues` but populated from live data.
-- **Read-only blanks** — blanks with `blankReadOnly: true` that fetch data from external APIs (e.g., stock prices via Finnhub). Auto-populate only, cycling disabled. The matched keyword is passed to the script for multi-lookup controls.
-- **Consume-all blanks** — blanks with `blankConsumeAll: true` that clear the entire input and replace it with multi-word cycling alternatives (e.g., prompt improver). Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md).
+There are five flavours:
+
+- **Auto-populated cue-blanks** — `_` populates from `blankInvoke('<name>', { action: 'get' })` (or `blankScript get` for the shell-script style). Up/Down call `set` / `up` / `down`. Example: `volume _` → `50%`.
+- **List blanks** — cue.md has `stepValues: ["I am brave", "I am strong", …]`. No script; the runtime cycles through the list. Multi-word values are span-tracked.
+- **Dynamic list blanks** — `blankInvoke get` returns multiple lines, each becoming a cycling alternative (e.g., HN front-page titles).
+- **Read-only blanks** — `blankReadOnly: true` fetches data once and disables cycling (e.g., stock prices via Finnhub).
+- **Consume-all blanks** — `blankConsumeAll: true` clears the entire input and replaces it with multi-word cycling alternatives (e.g., the prompt improver). Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md).
 
 Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before any alternative or linked-word cycling.
 
@@ -20,10 +20,10 @@ Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before an
 
 ## How It Works
 
-1. **Detection** — `_isCueControl(word)` returns true if the word exists in `globalThis._cueBlankOverrides` (case-insensitive lookup) or matches any pattern in `globalThis._stepPatterns`
-2. **On cycle (Up/Down)** — the cycling function checks `_actOvr[word.toLowerCase()]`. If a match exists, it spawns the configured script with direction-specific arguments. If no match but a step control pattern matches, it increments or decrements using the blank's `step`/`stepMin`/`stepMax` config
-3. **Debounced spawn** — rapid key presses (e.g., holding Up) only spawn the script once per 50ms via `globalThis._cueBlankTimers`. The timer fires with the final accumulated value
-5. **Clamping** — Word-based cue-blank cycling hardcodes clamping to 0-100. The `blankRange` field is only used by `BlankSource` for validation during auto-populate, not by the word-blank cycling handler
+1. **Detection** — at analysis time, every `_` is matched against the registered cue-blanks. If a `blankKeywords` entry hits within `blankProximity` words, the `_` is bound to that blank.
+2. **Auto-populate** — `blankInvoke({ blankName, action: 'get', args: [keyword, ...context] })` returns the current value; the `_` is replaced with that value, and `metadata.blankName` is set on the resulting WordDef.
+3. **On cycle (Up/Down)** — the cycling function checks the bound blank and calls `up` / `down` (or `set` for selector/satellite) via `blankInvoke`. The class implementation (or `blankScript`) updates external state and returns the new display value.
+4. **Debounced spawn** — for shell-script blanks, rapid key presses only trigger one subprocess per ~50ms; the timer fires with the final accumulated value.
 
 ---
 
@@ -39,8 +39,8 @@ identical; the difference is where the work happens.
 operating-system-bound (changing system audio, toggling display
 brightness, calling `osascript` / `pactl` / `pwsh` …) ship as
 `.sh` / `.ps1` scripts under `blanks/<name>/`. The blank's
-`cue.md` references them via `script:` and `blankScript:`. The
-runtime `spawnProcess`-es them on each cycle.
+`cue.md` references them via `blankScript:`. The runtime
+`spawnProcess`-es them on each cycle.
 
 These can't run in the chrome adapter (no subprocess capability), so
 their `cue.md` includes `not-on-host: [chrome]` and chrome's bundle
@@ -48,18 +48,21 @@ filter excludes them at sync time.
 
 ### API / LLM-bound blanks → TypeScript classes in the runtime
 
-Six blanks were hoisted from per-host shell scripts into
+Several blanks were hoisted from per-host shell scripts into
 TypeScript classes living in
 `packages/opencues-runtime/src/blanks/`:
 
-| Control | Class | Purpose |
+| Blank name | Class | Purpose |
 |---|---|---|
-| `hackernews` | `HackerNewsControl` | Live HN front-page headlines via RSS |
-| `stocks` | `StocksControl` | Live stock prices via Finnhub |
-| `weather` | `WeatherControl` | Forecast via Open-Meteo |
-| `answer` | `AnswerControl` | LLM-formatted answer in place |
-| `prompt` | `PromptImproverControl` | LLM-rewritten prompt in place |
-| `opencues` | `OpenCuesSettingsControl` | Read/write `opencues.md` scalars |
+| `hackernews` | `HackerNewsBlank` | Live HN front-page headlines via RSS |
+| `stocks` | `StocksBlank` | Live stock prices via Finnhub |
+| `weather` | `WeatherBlank` | Forecast via Open-Meteo |
+| `answer` | `AnswerBlank` | LLM-formatted answer in place |
+| `prompt` | `PromptImproverBlank` | LLM-rewritten prompt in place |
+| `opencues` | `OpenCuesSettingsBlank` | Read/write `opencues.md` scalars |
+| `countries` | `CountriesBlank` | Country lookup |
+| `crypto` | `CryptoBlank` | Live crypto prices |
+| `dictionary` | `DictionaryBlank` | Word definitions |
 
 Why hoist them: chrome can't spawn subprocesses, so the shell-script
 model excluded chrome from these blanks entirely. A TS class lives
@@ -76,7 +79,7 @@ implements. On each blank trigger, the runtime calls
    `WeatherBlank`, …), the class handles it directly — no
    subprocess.
 2. If unregistered, the host falls through to `spawnProcess` (the
-   legacy `.sh` path) for OS-bound blanks.
+   `.sh` path) for OS-bound blanks.
 
 Each host wires its registry in its bootstrap:
 
@@ -94,8 +97,7 @@ fallback consistent across hosts.
 1. Add the class to `packages/opencues-runtime/src/blanks/<name>.ts`
    implementing the `Blank` interface.
 2. Export it from `packages/opencues-runtime/src/blanks/index.ts`.
-3. Register it in each host's `blankInvoke` map (or in
-   `controlsRegistry` for the hosts that use the shared factory).
+3. Register it in each host's `blanksRegistry`.
 4. Add `blanks/<name>/cue.md` under `defaults/blanks/` with
    `impl: @opencues/runtime <ClassName>` so the validator + the
    docs-tools know it's a hoisted blank.
@@ -112,62 +114,66 @@ in `packages/opencues-runtime/src/blanks/index.ts`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `control` | string | (required) | Control identifier (e.g., "volume", "brightness") |
-| `tip` | string | control name | Tip text shown in the secondary display when focused |
-| `script` | string | (required for OS-bound blanks) | Path to the script to spawn. Use `./{name}.sh` for folder-based blanks — relative to the cue.md location, which seeds to `~/.opencues/blanks/{name}/{name}.sh` |
-| `upArgs` | string[] | `["up"]` | Arguments passed when cycling up |
-| `downArgs` | string[] | `["down"]` | Arguments passed when cycling down |
+| `name` | string | (required) | Blank identifier (e.g., "volume", "stocks") — usually inferred from folder name |
+| `tip` | string | name | Tip text shown in the secondary display when focused |
+| `blankScript` | string | (required for OS-bound blanks) | Path to the script for `get` / `set` / `up` / `down`. Use `./{name}-blank.sh` for folder-based blanks — relative to the cue.md location |
 | `speak` | boolean | false | Read the tip aloud via TTS on navigation |
-| `blankKeywords` | string[] | (none) | Context words that bind a blank (`_`) to this control |
-| `blankStep` | number | (from args) | Increment/decrement step size for blanks |
-| `blankAutoPopulate` | boolean | false | Auto-fill blank with current control value on analysis |
-| `blankRange` | [number, number] | `[0, 100]` | Min/max for validation during auto-populate (used by `BlankSource`) |
+| `blankKeywords` | string[] | (none) | Context words that bind a `_` to this blank (e.g., `volume, vol, sound`). Multi-word phrases allowed. |
+| `blankStep` | number | (none) | Increment/decrement step size for numeric blanks |
+| `blankAutoPopulate` | boolean | false | Auto-fill blank with current value on analysis |
+| `blankProximity` | number | 0 | Max words allowed between keyword and `_` (0 = adjacent) |
+| `blankFormat` | enum | `'integer'` | Value format: `integer`, `float`, or `string` |
 | `blankTip` | string | (none) | Tip shown when the auto-populated blank value is highlighted |
 | `blankSuffix` | string | (none) | Suffix appended to the displayed value (e.g. `%` shows `50%`). Stripped before arithmetic. Script always receives plain numbers. |
-| `blankKeywordExpansions` | object | (none) | Map from keyword (lowercase) to display name. When auto-populate fires, the matched keyword word is replaced with its expansion (e.g. `rddt` → `Reddit`). |
-| `blankClearKeywords` | boolean | `false` | Remove keyword context words from text on auto-populate. Only the resolved value remains. |
-| `blankClearOnEdit` | boolean | `false` | Remove spawned words when user edits to something not in alts (selector/satellite pair cleanup). |
+| `blankReadOnly` | boolean | false | Cycling disabled (display-only blank) |
+| `blankDismissible` | boolean | false | Append `_` as a final cycling option so the user can dismiss the value |
+| `blankKeywordExpansions` | object | (none) | Map from keyword (lowercase) to display name (e.g. `rddt` → `Reddit`) |
+| `blankClearKeywords` | boolean | `false` | Remove keyword context words from text on auto-populate |
+| `blankClearOnEdit` | boolean | `false` | Remove spawned words when user edits to something not in alts |
+| `stepValues` | string[] | (none) | Static list of values to cycle through |
+| `blankSatellite` | boolean | false | Auto-populate as two independent words (selector + satellite) |
+| `blankConsumeAll` | boolean | false | Clear all input on populate (see consume-all-blanks.md) |
+| `blankConsumeContext` | boolean | false | Clear words between keyword and `_` (see consume-context-blanks.md) |
 
 Cue-blanks can be defined in two ways:
-- **`blanks.md`** — a JSON code block mapping blank names to `BlankConfig` objects
-- **Folder-based** — `blanks/{name}/cue.md` with YAML frontmatter (`type: control`, plus config fields). Scripts are colocated in the same folder
+- **Folder-based** (canonical) — `blanks/{name}/cue.md` with YAML frontmatter (`type: blank`, plus config fields). Scripts colocated in the same folder.
+- **`blanks.md`** — a JSON `## Blanks` block mapping blank names to `BlankConfig` objects (rare; useful for zero-script config-only blanks).
 
-Both are parsed into the same `BlankConfig` structure and merged into `_cueBlankOverrides` at config load time.
+Both parse into the same `BlankConfig` structure and merge into the runtime's blanks registry at config load time.
 
 ---
 
 ## Script Protocol
 
-When the user cycles a custom cue-blank, the integration spawns:
+When the user cycles a shell-script cue-blank, the integration spawns:
 
 ```
-bash {script} {args...}
+bash {blankScript} {action} {args...}
 ```
 
-- **Up:** `bash volume.sh up 10` (where `["up", "10"]` comes from `upArgs`)
-- **Down:** `bash volume.sh down 10` (where `["down", "10"]` comes from `downArgs`)
+- **Get current value:** `bash volume-blank.sh get`
+- **Set:** `bash volume-blank.sh set 50`
+- **Up:** `bash volume-blank.sh up`
+- **Down:** `bash volume-blank.sh down`
 
 **Spawn behavior:**
-- **Detached, fire-and-forget** — `child_process.spawn` with `{detached: true, stdio: "ignore"}` and `.unref()`. The script runs independently; its exit code is not checked
-- **Debounced** — if the user presses Up three times in 50ms, only one spawn fires with the final arguments
-- **Path resolution** — `~` is expanded to `$HOME`. Folder-based blanks use `./{name}.sh` relative to the cue.md (resolves to `~/.opencues/blanks/{name}/{name}.sh`). OS helpers (`*.exe`, `*.ps1`) live colocated in the same folder; setup.sh seeds them and compiles `*.cs` → `*.exe` in-place
-- **WSL** — scripts run in the Linux environment. To control Windows applications, use `powershell.exe` or compiled `.exe` helpers inside the script
+- **`get` is synchronous** — the runtime awaits stdout to populate the blank
+- **`up` / `down` / `set` are detached fire-and-forget** for OS-state changes; debounced to one spawn per ~50ms
+- **Path resolution** — `~` is expanded to `$HOME`. Folder-based blanks use `./{name}-blank.sh` relative to the cue.md
+- **WSL** — scripts run in the Linux environment. To talk to Windows applications, use `powershell.exe` or compiled `.exe` helpers inside the script
 
-**Dynamic tip via `script get`:**
-
-If the script responds to a `get` command, the integration calls `bash {script} get` on navigation and uses the output as the live status line tip — overriding the static `tip:` field. After each cycle (up/down), `get` is called again ~200ms later and the status line updates with the new value.
+Example script:
 
 ```bash
 case "$1" in
-  get)  echo "volume: $(query_system_volume)%" ; exit 0 ;;
-  up)   ... ;;
-  down) ... ;;
+  get)  echo "$(query_system_volume)" ; exit 0 ;;
+  set)  set_system_volume "$2" ; exit 0 ;;
+  up)   adjust_volume +6 ; exit 0 ;;
+  down) adjust_volume -6 ; exit 0 ;;
 esac
 ```
 
-- If `get` exits without output or fails, the static `tip:` field is used as fallback
-- To disable the dynamic tip, remove the `get` case from the script (or have it exit 1)
-- TTS (`speak: true`) fires once on navigation, not on each cycle update
+TTS (`speak: true`) fires once on navigation, not on each cycle update.
 
 ---
 
@@ -175,16 +181,16 @@ esac
 
 ### Standard (opencues-core)
 
-- `BlankConfig` type defines all blank fields: `control`, `tip`, `script`, `upArgs`, `downArgs`, `speak`, and blank-related fields
+- `BlankConfig` type defines all blank fields
 - `parseSingleCueMd` parses `cue.md` frontmatter into a typed `BlankConfig`
 - `discoverFolderConfigs` finds `blanks/{name}/cue.md` files and returns parsed configs
 - `blanks.md` JSON block parsing produces the same `BlankConfig` structure
-- Step blank patterns are auto-generated from `stepSuffixes` or explicit `stepPattern` — any integration can reuse the pattern-matching approach
 
 ### Integration responsibilities
 
-- Spawn external scripts with the correct arguments (up/down direction, current value)
-- Use detached spawning for word-blanks (fire-and-forget) vs. synchronous execution for auto-populated blanks
+- Implement `blankInvoke` — registry lookup first, then `spawnProcess` fallback
+- Spawn external scripts with the correct arguments (`get`, `set`, `up`, `down`)
+- Use synchronous execution for `get` (auto-populate awaits stdout); detached fire-and-forget for `up`/`down`
 - Debounce rapid cycling to avoid spawning scripts on every keystroke
 - Implement TTS invocation when `speak: true` is set on a blank
 - Display blank tips in the secondary display (status line, tooltip, etc.)
@@ -200,8 +206,8 @@ A blank position has **two types of incoming changes**, and they must be handled
 
 | Change source | What happens | Why |
 |---------------|-------------|-----|
-| **User edit** (typing, deleting) | `metadata.blankName` is **cleared**. The position becomes a normal word. Grammar/LLM can now provide alternatives. | The user intentionally changed the word — they're done with the control-blank. |
-| **LLM/grammar result** (resolver callback) | `metadata.blankName` is **preserved**. The grammar result is **skipped**. | The LLM is offering unsolicited alternatives for a position the user didn't ask to change. The control value must not be overwritten. |
+| **User edit** (typing, deleting) | `metadata.blankName` is **cleared**. The position becomes a normal word. Grammar/LLM can now provide alternatives. | The user intentionally changed the word — they're done with the cue-blank. |
+| **LLM/grammar result** (resolver callback) | `metadata.blankName` is **preserved**. The grammar result is **skipped**. | The LLM is offering unsolicited alternatives for a position the user didn't ask to change. The blank value must not be overwritten. |
 
 **How to distinguish them:**
 
@@ -215,16 +221,16 @@ The two changes arrive through different code paths:
 
 **What goes wrong if you get this wrong:**
 
-- **If LLM can overwrite control-blanks:** The auto-populated volume value (e.g., "64") gets replaced by grammar alternatives ("sixty-four", "numerous"). The position loses its blank behaviour. Cycling no longer changes the actual volume.
-- **If user edits can't clear control-blanks:** The position is permanently stuck as a control-blank. Even after deleting "64" and typing "hello", the position stays dimmed and cycling tries to run the volume script. The user has no way to reclaim the position.
+- **If LLM can overwrite blank-bound words:** The auto-populated volume value (e.g., "64") gets replaced by grammar alternatives ("sixty-four", "numerous"). The position loses its blank behaviour. Cycling no longer changes the actual volume.
+- **If user edits can't clear blank-bound words:** The position is permanently stuck. Even after deleting "64" and typing "hello", the position stays dimmed and cycling tries to run the volume script. The user has no way to reclaim the position.
 
-**Edge case — word removal:** When the user deletes text and the word count decreases, WordDefs at indices beyond the new text length must also have their metadata cleared. The position no longer exists, so the control-blank must not persist there.
+**Edge case — word removal:** When the user deletes text and the word count decreases, WordDefs at indices beyond the new text length must also have their metadata cleared. The position no longer exists, so the blank-name must not persist there.
 
 ---
 
 ## Keyword Matching
 
-The system scans words in the input (case-insensitive) against each blank's `blankKeywords`, checking **all occurrences** of each keyword, subject to `blankProximity`. The keyword must be within `blankProximity` words of the `_` — if a keyword appears multiple times, any occurrence within range is sufficient. The first control with a matching keyword wins.
+The system scans words in the input (case-insensitive) against each blank's `blankKeywords`, checking **all occurrences** of each keyword, subject to `blankProximity`. The keyword must be within `blankProximity` words of the `_` — if a keyword appears multiple times, any occurrence within range is sufficient. The first blank with a matching keyword wins.
 
 Gap = number of words strictly between the keyword and `_` (not counting either). Examples with `blankKeywords: volume, sound, audio`:
 

@@ -14,17 +14,17 @@ Every cue type interacts with some subset of these systems. Understanding which 
 
 **What:** New frontmatter fields in `cue.md` files.
 
-**When you need it:** Your cue type has configuration that other types don't (e.g., `blankConsumeAll`, `blankDismissible`, `stepSuffixes`).
+**When you need it:** Your cue type has configuration that other types don't (e.g., `blankConsumeAll`, `blankDismissible`, `blankSatellite`).
 
 **Touch points (4 locations per field):**
 - `BlankConfig` interface — add the field type
 - `SingleCueFrontmatter` interface — add to the frontmatter type
 - `parseExtendedFrontmatter` switch — parse the YAML value
-- `parseSingleCueMd` control branch — copy from frontmatter to control config
+- `parseSingleCueMd` blank branch — copy from frontmatter to BlankConfig
 
 These four must stay in sync. Miss one and the field silently drops.
 
-### 2. Source resolution (`control-blank-source.ts`)
+### 2. Source resolution (`blank-source.ts`)
 
 **What:** How the blank `_` gets resolved to alternatives.
 
@@ -87,9 +87,8 @@ Each cycling mechanism has its own storage because `_dynDefs` can't reliably hol
 
 | Cue type | Storage | Why not `_dynDefs` |
 |----------|---------|-------------------|
-| Word controls (volume, brightness) | `_cueBlankOverrides` | Script-based, no LLM alts |
+| Cue-blank registry (volume, stocks, …) | `blanksByWord` (in ConfigLoader) | Lookup table, not cycling state |
 | Selector+satellite (opencues settings) | `_openCuesSettings` | Setting names/values are separate from word alts |
-| Step blanks (numbers, units) | `_stepPatterns` | Regex-matched arithmetic, not word alternatives |
 | **Consume-all (prompt improver)** | **`_consumeAllAlts`** | Multi-word span, index collisions after clearing |
 
 ---
@@ -116,15 +115,14 @@ Auto-populate (wordHighlight.ts)
 
 **Problem:** The `_cycleAlt` function checks cue types in order. Your cycling code must run **before** dynamic alt cycling (the fallback), otherwise the grammar WordDef at the same index handles the keypress instead.
 
-**Solution:** Insert your cycling block between step blanks and dynamic alt cycling in `_cycleAlt`. The order is:
+**Solution:** Insert your cycling block before dynamic alt cycling in `_cycleAlt`. The order is:
 
-1. Cue-control overrides (word-level scripts)
-2. Blank cycling (numeric blanks)
-3. Selector word cycling
-4. Satellite word cycling
-5. Step control cycling
-6. **Your new cycling path** ← here
-7. Dynamic alt cycling (grammar/tips fallback)
+1. Cue-blank cycling (numeric blanks via `blankInvoke up/down`)
+2. Selector word cycling
+3. Satellite word cycling
+4. Consume-all cycling
+5. **Your new cycling path** ← here
+6. Dynamic alt cycling (grammar/tips fallback)
 
 ### C. State updates in cycling
 
@@ -238,14 +236,13 @@ if (globalThis._dynDefs && globalThis._dynDefs.words) {
 
 ## Worked example: prompt improver
 
-The prompt improver is a consume-all control that clears the entire input and replaces it with an LLM-improved version of the user's prompt.
+The prompt improver is a consume-all blank that clears the entire input and replaces it with an LLM-improved version of the user's prompt.
 
 ### Config (`blanks/prompt/cue.md`)
 ```yaml
 ---
 name: prompt
-type: control
-control: prompt
+type: blank
 blankKeywords: improve prompt, enhance prompt, refine prompt
 blankAutoPopulate: true
 blankFormat: string
@@ -257,13 +254,13 @@ blankTip: Prompt improver
 
 > **Note:** the original implementation was a `prompt-blank.sh` shell
 > script. During the blanks hoist refactor it became
-> [`PromptImproverControl`](../../packages/opencues-runtime/src/blanks/prompt-improver.ts)
+> [`PromptImproverBlank`](../../packages/opencues-runtime/src/blanks/prompt-improver.ts)
 > in `@opencues/runtime`. The `cue.md` no longer references a script;
 > dispatch goes through the host's `blankInvoke` registry.
 
 ### New config field: `blankConsumeAll`
 
-Expands `matchedKeywordIndices` to include ALL non-blank positions. Added in `control-blank-source.ts` after keyword index computation:
+Expands `matchedKeywordIndices` to include ALL non-blank positions. Added in `blank-source.ts` after keyword index computation:
 
 ```typescript
 if (matched.blankConsumeAll) {
@@ -293,12 +290,12 @@ globalThis._consumeAllAlts = {
 
 | File | Changes |
 |------|---------|
-| `cues-md.ts` | Parse `blankConsumeAll` (4 locations: interface, frontmatter type, parser switch, control assignment) |
-| `control-blank-source.ts` | Expand `matchedKeywordIndices` when `blankConsumeAll` (after existing keyword index computation) |
+| `cues-md.ts` | Parse `blankConsumeAll` (4 locations: interface, frontmatter type, parser switch, BlankConfig assignment) |
+| `blank-source.ts` | Expand `matchedKeywordIndices` when `blankConsumeAll` (after existing keyword index computation) |
 | `dynamicHighlight.ts` | Consume-all cycling path in `_cycleAlt` (before dynamic alt cycling), `consumeAllAlts`/`consumeAllTip` fields in `_pendingAutoPopulate` (in resolver callback), per-word clearing skip (in `writeDynamicClearOnChange`) |
 | `wordHighlight.ts` | `_consumeAllAlts` storage from `_pendingAutoPopulate` (in simple value auto-populate path), span highlight from `_consumeAllAlts` (in both render paths), WordDef index shift after keyword clearing |
 
-### Implementation (`PromptImproverControl`)
+### Implementation (`PromptImproverBlank`)
 
 Two-step LLM pipeline inside the runtime class:
 1. **Extract:** Separate prompt from activation keywords and conditions

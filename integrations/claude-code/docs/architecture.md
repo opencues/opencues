@@ -101,8 +101,9 @@ User presses: Ctrl+Alt+Left
 │  │                                                          │ │
 │  │ 1. Get words from globalThis._hlText                     │ │
 │  │ 2. Filter to navigable words:                             │ │
-│  │    • _isCueControl(w): step patterns + control overrides │ │
-│  │    • PLUS: words with dynamic alts                       │ │
+│  │    • blanksByWord lookup: registered cue-blank keywords  │ │
+│  │    • PLUS: words with dynamic alts (alts.length > 1)     │ │
+│  │    • PLUS: words with metadata.blankName (cue-blank vals)│ │
 │  │    • PLUS: tip words, span members                       │ │
 │  │ 3. Move to previous navigable word                       │ │
 │  │ 4. Store wordIndex in globalThis._hlState                │ │
@@ -124,11 +125,11 @@ User presses: Ctrl+Alt+Up (with "dogs" highlighted)
 │                                                                │
 │  PATCHED BY: dynamicHighlight.ts (FIRST - _cycleAlt)          │
 │  ┌──────────────────────────────────────────────────────────┐ │
-│  │ 1. Check if word is custom cue-blank (e.g., "volume")  │ │
-│  │    → If yes: spawn script, RETURN                        │ │
+│  │ 1. Check if word has metadata.blankName (cue-blank val) │ │
+│  │    → If yes: blankInvoke up/down, then get, RETURN       │ │
 │  │                                                          │ │
-│  │ 2. Check if word matches step control pattern             │ │
-│  │    → If yes: increment/decrement per config, RETURN      │ │
+│  │ 2. Check consume-all alts (_consumeAllAlts dedicated)    │ │
+│  │    → If yes: cycle the dedicated span, RETURN            │ │
 │  │                                                          │ │
 │  │ 3. Check if word has dynamic alts in _dynDefs            │ │
 │  │    → If yes: cycle to next alt, update linked words      │ │
@@ -138,7 +139,7 @@ User presses: Ctrl+Alt+Up (with "dogs" highlighted)
 │  PATCHED BY: wordHighlight.ts (delegates to _cycleAlt)        │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │ 4. Up/Down delegates to _cycleAlt (no duplicate logic)  │ │
-│  │    → Handles step blanks, cue-blanks, alt cycling   │ │
+│  │    → Handles cue-blanks, consume-all, alt cycling        │ │
 │  │    → Returns result with text/offset for InputZone      │ │
 │  └──────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────┘
@@ -277,28 +278,25 @@ PATCHES:
   └── Status line trigger export
 
 INJECTS:
-  ├── Navigation logic with _isCueControl filtering
+  ├── Navigation logic via blanksByWord + _dynDefs filtering
   ├── Up/Down delegates to _cycleAlt (no duplicate logic)
-  ├── globalThis._cueBlankOverrides assignment (serialized from config)
   ├── ANSI rendering with highlight/dim ranges
   └── Invisible char toggle for re-render triggering
 
 STATE (globalThis):
-  • _hlState: {active, index, wordIndex, originalNumbers}
+  • _hlState: {active, index, wordIndex}
   • _hlText: current input text
   • _parentValue: parent's value (for invisible char toggle)
-  • _cueBlankOverrides: control word config (serialized from config at build time)
   • _triggerStatusLineRefresh: function to refresh status line
   • _forceInputRefresh: function to force re-render
 
 CONFIG:
   • highlightMode: 'numbers' | 'words'
   • highlightColor: 'white' | 'cyan' | 'yellow' | ...
-  • numberDimming: boolean
-  • cueControlOverrides: {word: {control, upArgs, downArgs}}
+  • Cue-blanks loaded from .opencues/blanks/<name>/cue.md (folder-based)
 
 EXTERNAL SCRIPTS:
-  • ~/claude-code-cues/.opencues/actions/{control}.sh
+  • Folder-based: <CC_FORK>/.opencues/blanks/<name>/<name>-blank.sh (resolved via blankInvoke spawn fallback)
 
 DEPENDENCIES: None (foundation for dynamicHighlight)
 ```
@@ -341,9 +339,8 @@ STATE (globalThis):
   • _configLoadedAt: timestamp of last config load (0 = never)
   • _configReloading: boolean (gates analysis during rebuild)
   • _resolverGeneration: counter incremented on each resolver rebuild
-  • _isCueControl: unified check for cue-blanks (step patterns + custom overrides)
-  • _stepPatterns: compiled step control regex patterns (rebuilt on config reload)
-  • _cycleAlt: shared cycling function (cue-blanks first, then dynamic alts)
+  • blankInvoke: dispatcher that runs the host's blanksRegistry first, then spawns blankScript
+  • _cycleAlt: shared cycling function (cue-blank values first, then consume-all, then dynamic alts)
   • _dynDefs: parsed LLM response {words: [...]}
   • _dynPending: boolean (resolver in progress)
   • _dynPrevWords: previous word list
@@ -362,7 +359,6 @@ EXTERNAL DEPENDENCIES:
 
 READS (from wordHighlight.ts):
   • globalThis._hlState, _hlText, _parentValue
-  • globalThis._cueBlankOverrides (for cue-blank checks in Up/Down handlers)
   • globalThis._triggerStatusLineRefresh, _forceInputRefresh
 
 DEPENDENCIES:
@@ -445,16 +441,15 @@ READS (at startup + on 2s TTL reload):
   ├── ~/claude-code-cues/.opencues/tips.json         ← opencues-core tips lookup
   │   (parsed once at startup, built into base hash map)
   │
-  ├── {cwd}/cues.md (or hints.md / tips.md)   ← tips + prompt sources
-  ├── {cwd}/blanks.md                          ← blank-fill modes
-  ├── {cwd}/blanks.md                        ← cue-blank definitions
-  └── {cwd}/cues/, blanks/, controls/          ← folder-based configs
+  ├── {cwd}/cues.md                            ← tips + prompt sources
+  ├── {cwd}/blanks.md                          ← cue-blank JSON header (rare)
+  └── {cwd}/cues/, {cwd}/blanks/               ← folder-based configs
       (all re-read on every TTL-triggered reload)
 
 SPAWNS (from cli.js):
   │
-  └── ~/claude-code-cues/.opencues/actions/{control}.sh           ← _cycleAlt (control words)
-      Args: <up|down>
+  └── ~/claude-code-cues/.opencues/blanks/<name>/<name>-blank.sh  ← blankInvoke spawn fallback
+      Args: <get|set|up|down> [value]
 ```
 
 ---
@@ -464,7 +459,7 @@ SPAWNS (from cli.js):
 | File | One-Line Summary |
 |------|------------------|
 | `cursorStateExport.ts` | Writes cursor position to JSON on each keystroke |
-| `wordHighlight.ts` | Navigation + rendering + numbers + controls |
+| `wordHighlight.ts` | Navigation + rendering + cue-blank dispatch |
 | `dynamicHighlight.ts` | opencues-core wiring + trigger + cycling + spans |
 
 **Dependency order:**

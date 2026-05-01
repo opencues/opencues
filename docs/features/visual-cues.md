@@ -24,11 +24,10 @@ A word at index `_ni` is added to `_numRanges` (and therefore dimmed) if any of 
 
 | Condition | Check | Source |
 |-----------|-------|--------|
-| **Step-pattern match** | `(globalThis._stepPatterns\|\|[]).some(s => s.re.test(_w))` — words matching any step pattern from `blanks/` configs | `wordHighlight.ts` base rendering |
-| **Cue-blank** | `(globalThis._cueBlankOverrides \|\| {})[_w.toLowerCase()]` — word is a registered blank keyword | `writeDynamicRendering` |
+| **Cue-blank keyword** | `blanksByWord.has(_w.toLowerCase())` — word is a registered blank keyword | `writeDynamicRendering` |
 | **Tip word** | `globalThis._localCueMap.has(_w.toLowerCase())` — word exists in the local cue map (case-insensitive). Checked directly in the render loop for instant dimming without waiting for the analysis pipeline | `writeDynamicRendering` |
 | **Dynamic alternative** | `_dynDef` found where `d.alts.length > 1 && d.alts.indexOf(_w) >= 0` — the LLM returned multiple alternatives and the current word is among them | `writeDynamicRendering` |
-| **Control-blank** (1-alt exception) | `d.metadata && d.metadata.control` — dimmed even when `alts.length` is 0 or 1. This is the only case where a word with fewer than 2 alternatives gets dimmed | `writeDynamicRendering` |
+| **Cue-blank value** (1-alt exception) | `d.metadata && d.metadata.blankName` — dimmed even when `alts.length` is 0 or 1. The only case where a word with fewer than 2 alternatives gets dimmed | `writeDynamicRendering` |
 | **Span member** | `globalThis._dynSpans[_ni]` is set — the word is part of a multi-word span (e.g., "Bezos" in "Jeff Bezos"). Excluded if the span is currently highlighted (`_spanInfo.originalIndex === _hlWordIdx`) | `writeDynamicRendering` |
 
 ---
@@ -43,7 +42,7 @@ Styling is applied per-character using raw ANSI escape codes. Each code starts w
 \x1b[0m\x1b[90m  +  char  +  \x1b[0m
 ```
 
-SGR 90 is dark gray foreground. All dimmed words use this single style regardless of their dim reason (number, tip, control, etc.).
+SGR 90 is dark gray foreground. All dimmed words use this single style regardless of their dim reason (tip, blank, span member, etc.).
 
 ### Highlight
 
@@ -75,14 +74,14 @@ The character loop applies styles in this order:
 ### Standard (opencues-core)
 
 - `WordDef.alts` length determines whether a word is navigable (dimmed vs. normal)
-- `metadata.control` identifies control-blanks, which are dimmed even with only 1 alt (the 1-alt exception)
+- `metadata.blankName` identifies cue-blank values, which are dimmed even with only 1 alt (the 1-alt exception)
 - Linked word indices (`CueResult.linked`) define which words share cycling behaviour (they are not visually highlighted together)
 - The three visual states (normal, dimmed, highlighted) are defined by the standard; rendering is not
 
 ### Integration responsibilities
 
 - Render the three visual states using platform-appropriate styling (ANSI codes, CSS classes, editor decorations, etc.)
-- Apply dimmed state to all words where `alts.length > 1`, plus step-pattern matches, cue-blanks, tip words, control-blanks, and span members
+- Apply dimmed state to all words where `alts.length > 1`, plus cue-blank keywords, tip words, cue-blank values, and span members
 - Apply highlighted state to the currently focused word and any span words (linked words share cycling but are rendered independently)
 - Update visual states in real time as the user navigates and as new analysis results arrive
 - Respect external highlight regions (e.g., host editor shimmer) by skipping visual overrides for those words

@@ -69,7 +69,7 @@ Four phases on every invocation:
 
 1. **SEED** — first-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.opencues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.opencues/opencues.md`. The runtime's `OpenCuesSettingsControl` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.opencues/opencues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
@@ -98,7 +98,7 @@ in your shell rc. Hosts read this file at startup.
 
 ```bash
 opencues set-key groq gsk_...        # default LLM provider
-opencues set-key finnhub xxx          # for the stocks control
+opencues set-key finnhub xxx          # for the stocks blank
 opencues set-key openai sk-...
 ```
 
@@ -114,20 +114,20 @@ whether the key or the network is the problem.
 
 ### `init` — scaffold `<cwd>/.opencues/`
 
-Creates the directory + starter `cues.md`, `blanks.md`,
-`blanks.md` with comments explaining each block. Idempotent —
-won't clobber existing files.
+Creates the directory + starter `cues.md` and `blanks.md` with
+comments explaining each block. Idempotent — won't clobber existing
+files.
 
 ```bash
 cd ~/my-project
 opencues init
 ```
 
-### `new <kind> <name>` — scaffold one cue / blank / control
+### `new <kind> <name>` — scaffold one cue / blank
 
 ```bash
 opencues new cue legal-jargon            # → ~/.opencues/cues/legal-jargon/cue.md
-opencues new blank my-script           # → ~/.opencues/blanks/my-script/cue.md
+opencues new blank my-script             # → ~/.opencues/blanks/my-script/cue.md
 opencues new blank physics               # → ~/.opencues/blanks/physics/cue.md
 opencues new cue legal --project         # write under <cwd>/.opencues/ instead
 ```
@@ -142,7 +142,7 @@ Walks every search-path layer (env / project / user), parses every
 
 - Schema problems (missing required fields, malformed YAML)
 - Host-compat contradictions (`on-host:` lists chrome but the
-  control has `script: ./*.sh`)
+  blank has `blankScript: ./*.sh`)
 - Multiple defaults without a priority discriminator
 - Tip JSON parse failures inside `## Tips` blocks
 
@@ -229,7 +229,7 @@ breakages (missing `.env`, stale tweakcc state, unbuilt artefacts,
 node version mismatches, etc.) and suggests fixes. Run after a
 weird issue or before reporting a bug.
 
-### `list` — every defined cue / blank / control + source
+### `list` — every defined cue / blank + source
 
 Walks the search paths and prints every entry with where it was
 loaded from:
@@ -237,7 +237,6 @@ loaded from:
 ```bash
 opencues list                 # everything
 opencues list --cues          # filter by kind
-opencues list --blanks
 opencues list --blanks
 ```
 
@@ -247,8 +246,8 @@ work in chrome vs CC).
 
 ### `show <name>` — full config for one entry
 
-Dumps the resolved (post-merge) config for a single cue / blank /
-control by name, plus the file it came from:
+Dumps the resolved (post-merge) config for a single cue / blank
+by name, plus the file it came from:
 
 ```bash
 opencues show legal
@@ -284,7 +283,7 @@ opencues debug off          # disable
 
 Updates `~/.opencues/opencues.md`; hot-reload picks it up on the
 next keystroke. Same effect as cycling `debug-mode` in-text via
-the OpenCues Settings control.
+the OpenCues Settings blank.
 
 ### `completion <shell>` — shell completion script
 
@@ -311,7 +310,7 @@ pipe-friendly:
 
 ```bash
 opencues which | grep ✓ | wc -l            # how many things are installed
-opencues list --blanks | grep -c domain  # how many domain controls exist
+opencues list --blanks | grep -c domain  # how many domain blanks exist
 ```
 
 ---

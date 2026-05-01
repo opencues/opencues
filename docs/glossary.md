@@ -14,7 +14,7 @@ OpenCues has three types of interaction:
 |------|-----------|-------------|-------------|
 | **Cues** | System → User | Indicates alternatives, tips, and context for words | `cues.md` |
 | **Blanks** | User → System | User places `_` to tell the system "fill this in" | `blanks.md` |
-| **Cue-Blanks** | User → External | Words that trigger actions outside the text (volume, brightness) | `blanks.md` |
+| **Cue-Blanks** | User → External | Blanks bound to a keyword that pull external state (volume, stocks) | `blanks.md` |
 
 All three share the same navigable system — you move between words and interact with them in the text input.
 
@@ -54,13 +54,11 @@ Defined in `blanks.md`.
 
 ## Cue-Blanks
 
-**Cue-Blank** — A word that triggers an action outside of the text when the user cycles it. For example, "volume" runs a volume control script instead of cycling through text alternatives. The user navigates to the word and presses Up/Down like any other cue, but the effect is external to the text.
+**Cue-Blank** — A blank (`_`) that has been bound to a keyword via `blankKeywords`. When the user types a keyword adjacent to an underscore (e.g., `volume _`), the blank auto-populates with the blank's current value and Up/Down cycling changes the actual system state (calls a runtime `Blank` class or a `blankScript`). The keyword must be within `blankProximity` words of the `_` (default 0 = adjacent). All external-state interactions are `_`-gated — there is no word-cycling on plain text without `_`.
 
-Cue-blanks always trigger scripts — they don't have text alternatives. They share the same navigation system as cues and blanks.
+Configured in `blanks/{name}/cue.md` with `blankKeywords`, `blankStep`, `blankAutoPopulate`, `blankProximity`, `blankFormat`, `blankScript`, `blankTip`, `blankReadOnly`, `blankDismissible`, `blankSuffix`, `blankClearKeywords`, `blankClearOnEdit`, `blankConsumeAll`, and `blankConsumeContext`. Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword). See `docs/features/cue-blanks.md` and `docs/guides/adding-a-cue-blank.md`.
 
-Defined in `blanks.md`. See `docs/guides/adding-a-cue-blank.md`.
-
-**Control-Bound Blank** — A blank (`_`) that is bound to a cue-blank via `blankKeywords`. When the user types a keyword adjacent to an underscore (e.g., `volume _`), the blank auto-populates with the blank's current value and cycling changes the actual system state. The keyword must be within `blankProximity` words of the `_` (default 0 = adjacent). This bridges blanks and cue-blanks — the blank is how you enter the interaction, the control is what executes. Configured in `blanks/{name}/cue.md` with `blankKeywords`, `blankStep`, `blankAutoPopulate`, `blankProximity`, `blankFormat`, `blankScript`, `blankTip`, `blankReadOnly`, `blankDismissible`, `blankSuffix`, `blankClearKeywords`, `blankClearOnEdit`, `blankConsumeAll`, and `blankConsumeContext`. Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword). See `docs/features/cue-blanks.md`.
+**Blank-Bound Word** — Internal: a WordDef with `metadata.blankName` set. Indicates the position is owned by a cue-blank's auto-populated value and must not be overwritten by LLM/grammar merges. Only the user can clear it (by editing the word).
 
 **Consume-All Blank** — A blank with `blankConsumeAll: true` that clears **all** surrounding text (not just keywords) when it auto-populates. The result is a multi-word span the user cycles through as a unit. Used when the entire input is the blank's input (e.g., a prompt to improve). Requires dedicated cycling storage because the standard WordDef array is overwritten by analysis. See `docs/features/consume-all-blanks.md`.
 
@@ -74,15 +72,15 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **cues.md** — The primary config file. Defines word tips (`## Tips`) and LLM prompt sources (`## Prompt`) for word alternatives (synonyms, opposites, creative variations). Each `### section` under `## Prompt` becomes a cue source — grammar is the default. Domain sources can also be folder-based: `cues/{name}/cue.md` with YAML frontmatter config.
 
-**blanks.md** — Cue-blanks config. Defines words and `_` positions with built-in cycling behaviour — script-triggered (volume, brightness), auto-populated (stock prices, weather), step (numeric increments), list (affirmations), read-only (live API values), and consume-all (prompt improver). Contains `## Blanks` with JSON configuration. Blanks can also be folder-based: `blanks/{name}/cue.md` with a colocated script.
+**blanks.md** — Cue-blanks config. Defines `_`-gated cycling behaviour — script-triggered (volume, brightness), auto-populated (stock prices, weather), list (affirmations), read-only (live API values), and consume-all (prompt improver). Contains `## Blanks` with JSON configuration. Blanks can also be folder-based: `blanks/{name}/cue.md` with a colocated script — folder-based is the canonical form; the monolithic JSON block is rarely used.
 
-**opencues.md** — OpenCues system state file (version 1). Lives at user-level ONLY (`~/.opencues/opencues.md`; overridable with `$OPENCUES_HOME`). Stores selector/satellite settings in YAML frontmatter: top-level keys are live current values, and a unified `settings:` block declares each setting with its `tip:`, `values:`, and per-value tips. The schema is owned by the OpenCues runtime — not by users or projects — so a single voice-mode / tips-mode / debug-mode value applies across every integration. Seeded from `defaults/opencues.md` by `opencues seed-configs` and re-seeded if 0 bytes (`OpenCuesSettingsControl` silently no-ops on empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on native hosts). Cycled live by `OpenCuesSettingsControl`; `opencues init` does not scaffold it. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
+**opencues.md** — OpenCues system state file (version 1). Lives at user-level ONLY (`~/.opencues/opencues.md`; overridable with `$OPENCUES_HOME`). Stores selector/satellite settings in YAML frontmatter: top-level keys are live current values, and a unified `settings:` block declares each setting with its `tip:`, `values:`, and per-value tips. The schema is owned by the OpenCues runtime — not by users or projects — so a single voice-mode / tips-mode / debug-mode value applies across every integration. Seeded from `defaults/opencues.md` by `opencues seed-configs` and re-seeded if 0 bytes (`OpenCuesSettingsBlank` silently no-ops on empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on native hosts). Cycled live by `OpenCuesSettingsBlank`; `opencues init` does not scaffold it. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
 
 **Folder-based config** — An alternative to monolithic `.md` files. Each cue is a self-contained folder with a `cue.md` file (YAML frontmatter for config, body for prompt) and optional colocated scripts. Folders in `cues/` and `blanks/` are auto-discovered. Folder configs merge with monolithic files — folders win on name conflict.
 
 **Host** — One of the four OpenCues integrations: `claude-code`, `opencode`, `codex`, `chrome`. They share the same `.md` config format but differ in runtime capabilities. Native hosts (CC, OC, codex) can spawn subprocesses + read the filesystem; chrome can't.
 
-**Host Compat** — Per-entry declaration of which hosts a cue / blank / control runs on. Auto-detected from `script:` extension (`.sh` etc. → not chrome) and overridable via `on-host:` (allow-list) and `not-on-host:` (deny-list) frontmatter fields. Surfaced in `opencues list`, validated by `opencues validate`, used by `opencues sync chrome` to filter the bundle. See `docs/features/host-compat.md` for the full spec.
+**Host Compat** — Per-entry declaration of which hosts a cue / blank runs on. Auto-detected from `script:` / `blankScript:` extension (`.sh` etc. → not chrome) and overridable via `on-host:` (allow-list) and `not-on-host:` (deny-list) frontmatter fields. Surfaced in `opencues list`, validated by `opencues validate`, used by `opencues sync chrome` to filter the bundle. See `docs/features/host-compat.md` for the full spec.
 
 **Chrome Sync** — `opencues sync chrome` bundles `.opencues/` configs into the browser extension's `dist/configs/`. Unlike the native hosts (which merge `~/.opencues/` + `<cwd>/.opencues/` automatically), chrome defaults to **user-level only** — projects are opted in with `--include <path>` (repeatable) or `--project`. Rationale: chrome is a global browser extension with no cwd, so inheriting cwd-based project discovery causes long-running `--watch` processes to bind to the wrong directory. Full spec: `docs/features/chrome-sync.md`.
 

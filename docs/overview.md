@@ -4,13 +4,13 @@ last_updated: 2026-04-01
 
 # OpenCues Architecture
 
-A system for real-time guidance as you type — providing alternatives, blanks, cue-tips, and cue-blanks across any text input. See the [glossary](glossary.md) for all terminology.
+A system for real-time guidance as you type — providing alternatives, blanks, cue-tips, and cue-blanks across any text input. See the [glossary](glossary.md) for all terminology and [`concept.md`](../concept.md) for the two-direction core concept.
 
 For the full list of features any integration should implement, see `features/README.md`.
 
 ## Overview
 
-OpenCues has three types of interaction: **Cues** (system indicates alternatives to the user), **Blanks** (user cues the system to fill in), and **Cue-Blanks** (user triggers external actions like volume). All three share the same navigable system.
+OpenCues has two directions of intent: **Cues** (LLM → user — alternatives offered on plain text) and **Blanks** (user → system — substitutions summoned via `_`). Cue-Blanks are blanks bound to a keyword, pulling external state (volume, stocks). Everything that touches the world is `_`-gated.
 
 The architecture has two layers:
 
@@ -410,7 +410,8 @@ opencues-core is used directly from the injected cli.js code (no shell scripts).
 // 2. Parse cues.md, blanks.md
 // 3. Create NodeHttpAdapter (keep-alive, Groq provider config)
 // 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → sources
-//    - Word sources: combined into ONE ConfigSource (grammar + domain prompts merged)
+//    - Word sources: each `### alternatives` becomes its own ConfigSource;
+//      all wrapped in ONE RoutedWordSourceGroup that dispatches per-word
 //    - Blank sources: ClassifiedSourceGroup (classify → route to one mode)
 // 5. createResolver([...sources]) → globalThis._cueResolver
 ```

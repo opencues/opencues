@@ -107,14 +107,14 @@ Response — success (any non-throwing blank execution, regardless of `exitCode`
 }, "id": 5 }
 ```
 
-Response — unknown control:
+Response — unknown blank:
 
 ```json
 { "result": null, "id": 5 }
 ```
 
 The bridge / TUI can fall back to whatever native command handling
-they have when `result` is `null`. Errors during control execution
+they have when `result` is `null`. Errors during blank execution
 are caught by the dispatcher and returned as a result with non-zero
 `exitCode` + `stderr` populated — they do NOT come back as JSON-RPC
 errors. JSON-RPC errors are reserved for protocol-level problems

@@ -34,7 +34,7 @@ Every source returns `CueResult[]`. This is the core data structure integrations
   cueTip?: string;            // Tip text for secondary display
   altCueTips?: Record<string, string>;  // Per-alternative tips
   linked?: number[];          // Other word indices that cycle together
-  source: string;             // Source ID ('tips', 'grammar', 'control-blank', etc.)
+  source: string;             // Source ID ('tips', 'grammar', 'blank', etc.)
   priority: number;           // For merge resolution (higher wins)
   spanStart?: number;         // Multi-word span start index
   spanEnd?: number;           // Multi-word span end index (exclusive)
@@ -75,18 +75,16 @@ The integration must:
 
 Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. A word is navigable if:
 - It has alternatives (`alts.length > 1`)
-- It matches a step control pattern (config-driven increment/decrement)
-- It's a cue-blank word (in `_cueBlankOverrides`)
-- It has `metadata.blankName` (blank — **exception: navigable with 1 alt**)
+- It's a cue-blank keyword (registered in `blanksByWord`)
+- It has `metadata.blankName` (cue-blank-bound value — **exception: navigable with 1 alt**)
 - It's part of a multi-word span (navigable at the span's original index)
 
 ### 5. Cycling
 
 Up/Down at a navigable position cycles alternatives. Priority order:
-1. **Cue-control words** — run external script (debounced)
-2. **Blanks** — run script synchronously, call `script get` for new value, update display
-3. **Step control** — config-driven increment/decrement, only if no alternatives exist at this position
-4. **Alternative cycling** — cycle through `alternatives` array
+1. **Cue-blank values** (`metadata.blankName`) — call `blankInvoke` (`up`/`down`/`set`), then `get` for the new value
+2. **Consume-all spans** — cycle the dedicated `_consumeAllAlts` storage
+3. **Alternative cycling** — cycle through `alternatives` array
 
 ### 6. Auto-submit (analysis trigger)
 
@@ -182,17 +180,17 @@ If the parser doesn't match the response format, it silently returns empty resul
 
 The `compute` parser evaluates arbitrary JavaScript via `new Function()`. This is a **security risk** in browser contexts. For Chrome extensions, prefer the `math` parser (which strips non-arithmetic characters before eval) or implement a sandboxed evaluator.
 
-### `parseAlternatives` skips step control positions
+### `parseAlternatives` skips cue-blank keyword positions
 
-If a word at position N matches a step control pattern (checked via `_isCueControl`), the analysis pipeline skips it. The LLM is never called for step-controlled values — they get step control cycling instead.
+If a word at position N is a registered cue-blank keyword, the LLM analysis pipeline skips it — the keyword is the trigger, not a candidate for synonyms.
 
 ### Blanks: only first `_` is bound
 
-If the input has multiple underscores (e.g., `set _ to _`), only the FIRST `_` is bound to the control. The second stays as a regular blank.
+If the input has multiple underscores (e.g., `set _ to _`), only the FIRST `_` is bound to the cue-blank. The second stays as a regular blank.
 
 ### Cache invalidation for blanks
 
-When `_` reappears at a position that previously had a control-bound value, the old WordDef must be cleared and the resolver must re-run. Without this, the stale value persists.
+When `_` reappears at a position that previously had a cue-blank-bound value, the old WordDef must be cleared and the resolver must re-run. Without this, the stale value persists.
 
 ### Hot-reload is integration-specific
 
@@ -204,13 +202,12 @@ opencues-core's parsers are stateless — call `parseCuesMd()` any time to re-pa
 
 See `docs/features/cue-blanks.md` for the full spec. Key integration points:
 
-1. **`readControlState` callback** — passed to `buildSourcesFromConfig`. Calls `blankScript get [keyword] [context...]` and returns the raw string output. Validation is config-driven by `blankRange` and `blankFormat`.
+1. **`blankInvoke` capability** — the host adapter implements a registry-then-spawn dispatcher. `blankInvoke({ blankName, action: 'get'|'set'|'up'|'down', args })` returns the result. Registered TS-class blanks handle it directly; unregistered ones fall through to `spawnProcess` of `blankScript`. Validation is config-driven by `blankFormat`.
 2. **Result filter exception** — blank results have only 1 alternative but must pass through (normal filter requires >1).
-3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular control blanks. Selector/satellite blanks use the `tips:` block from `opencues.md` instead. Grammar/LLM tips cannot override any position with `metadata.blankName`. See `docs/features/tip-priority.md` for the full resolution order.
-4. **Two-script pattern** — `blankScript` (for `get`/`set`) is separate from `script` (for `up`/`down`). The blank cycling handler calculates the target value and calls `blankScript set <value>` synchronously. Falls back to `script` if `blankScript` is not set.
-5. **Cycling runs synchronously** — unlike word-based controls which debounce and spawn detached, blank cycling runs the script synchronously then calls `script get` for the new value before updating the display.
-6. **Ownership model (critical)** — `metadata.blankName` must only be cleared by user edits, never by LLM results. Two separate code paths:
+3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular cue-blank values. Selector/satellite blanks use the `tips:` block from `opencues.md` instead. Grammar/LLM tips cannot override any position with `metadata.blankName`. See `docs/features/tip-priority.md` for the full resolution order.
+4. **Cycling runs synchronously** — `blankInvoke({ action: 'up' })` runs synchronously, then `blankInvoke({ action: 'get' })` is called for the new value before updating the display.
+5. **Ownership model (critical)** — `metadata.blankName` must only be cleared by user edits, never by LLM results. Two separate code paths:
    - **User edit** (text-change detection in render cycle): if the word at a blank position changed, clear `metadata` — the user "unlocked" it. Also clear metadata for positions beyond the new text length (word removal).
-   - **LLM merge** (resolver callback): if existing WordDef has `metadata.blankName` and the incoming result is NOT a control-blank, skip the merge — preserve the control-blank.
-   - Getting this wrong causes either (a) grammar overwriting live control values, or (b) permanently stuck blank positions the user can't reclaim. See `docs/features/cue-blanks.md` § "Ownership Model" for the full explanation.
-7. **Keyword clearing** — when `blankClearKeywords: true`, keyword context words are removed from the text during auto-populate (only the resolved value remains). When `blankClearOnEdit: true`, editing the populated value to something not in alts removes the spawned words entirely. Keywords can be multi-word phrases (e.g. `opencues settings` as one entry in `blankKeywords`).
+   - **LLM merge** (resolver callback): if existing WordDef has `metadata.blankName` and the incoming result is NOT a blank result, skip the merge — preserve the cue-blank.
+   - Getting this wrong causes either (a) grammar overwriting live cue-blank values, or (b) permanently stuck blank positions the user can't reclaim. See `docs/features/cue-blanks.md` § "Ownership Model" for the full explanation.
+6. **Keyword clearing** — when `blankClearKeywords: true`, keyword context words are removed from the text during auto-populate (only the resolved value remains). When `blankClearOnEdit: true`, editing the populated value to something not in alts removes the spawned words entirely. Keywords can be multi-word phrases (e.g. `opencues settings` as one entry in `blankKeywords`).

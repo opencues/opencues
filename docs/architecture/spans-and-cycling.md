@@ -47,7 +47,7 @@ deliberately because they have different semantics.
 
 ### Blank-fill spans (`SpanFillState`)
 
-For: `_` placeholders that get filled by control scripts or LLM
+For: `_` placeholders that get filled by blank scripts or LLM
 classifiers. Examples:
 - `weather _ paris` → `_` becomes `13.9°C, light cloud`
 - `improve prompt write a poem _` → consume-all overwrites the whole
@@ -343,7 +343,7 @@ The Resolver re-runs on user text changes (debounced 500ms). It
 populates DynDefs with LLM-suggested alts.
 
 **Critical:** the Resolver fires ONLY on user-source events, never on
-runtime-source ones (cycling, controls writing back, etc.). That's why
+runtime-source ones (cycling, blanks writing back, etc.). That's why
 cycling alone never triggered drift — drift required cycling FOLLOWED
 by a user keystroke that scheduled the resolver.
 
@@ -911,8 +911,7 @@ TypeScript implementation:
 2. **SpanFillState** — single slot, `set(entry, lastFilledText)`,
    `clear()`, `current`, `lastFilledText` getters.
 3. **Cycling.onKey** dispatch in priority order: selector/satellite,
-   spanFill, script control, listControl, blankStep DynDef, step
-   pattern, static alts.
+   spanFill, list blank, blankStep DynDef, static alts.
 4. **applyAltCycle** must compute char range from live words, mutate
    def.currentIndex, push new text, and (if word count changed) shift
    downstream DynDefs then prune.

@@ -61,9 +61,9 @@ After install, restart `claude-cues` (or whichever Claude CLI you patched) and t
 
 | Test | What it checks |
 |---|---|
-| Type `5f`, position cursor on it, Ctrl+Alt+Up | Numeric cycling: `5f → 5.5f → 6f` |
-| Type `voice-mode active`, cycle Up | Selector/satellite + `@opencues/runtime` settings control |
-| Type `weather _ paris` | LLM/HTTP control: fills with current Paris weather |
+| Type `volume _`, cycle Up | Cue-blank: auto-populates with system volume, Up/Down changes it |
+| Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
+| Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
 | Cycle any cyclable word | TTS announces the cycled value (uses `~/.opencues/scripts/speak.sh` — shared by all native hosts) |
 | Verify highlighted word shows tip in the status bar | Statusline export → `highlight-statusline.sh` |
 
@@ -81,7 +81,7 @@ OpenCues reads configs from **one or more `.opencues/` directories** in priority
 | Project-level | `<cwd>/.opencues/` | Per-project overrides — cd into your project, those configs apply |
 | User-level | `~/.opencues/` | Global defaults — apply everywhere unless overridden |
 
-Project-level wins on name conflicts (cue source name, blank mode name, control name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
+Project-level wins on name conflicts (cue source name, blank mode name, blank name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
 
 **Each directory has the same shape:**
 ```
@@ -119,7 +119,7 @@ claude-cues
 # .opencues/cues/legal-doc/cue.md is now active alongside ~/.opencues defaults
 ```
 
-The OpenCues Settings control (`opencues.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set), seeded from `defaults/opencues.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
+The OpenCues Settings blank (`opencues.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set), seeded from `defaults/opencues.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
 
 ---
 
@@ -158,7 +158,7 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 ~/.opencues/                        (USER-LEVEL — shared by CC + OpenCode + Codex)
 ├── cues.md, blanks.md, opencues.md   user-editable config (never overwritten)
 ├── cues/<name>/cue.md             folder-based cue configs
-├── blanks/<name>/               folder-based controls — colocated with their helpers:
+├── blanks/<name>/               folder-based cue-blanks — colocated with their helpers:
 │   ├── brightness/                  cue.md + brightness.sh + BrightCtl.exe + brightness-set.ps1
 │   ├── volume/                      cue.md + volume.sh + VolCtl.exe
 │   └── opencues/                    cue.md + opencues-blank.sh

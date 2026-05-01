@@ -179,7 +179,7 @@ tab per minute, all served locally so cheap).
 
 - Editing any file inside a source dir (`~/.opencues/`, an
   `--include`'d path, or `<cwd>/.opencues/` under `--project`)
-- Adding or removing a folder cue (`cues/<name>/cue.md`) or control
+- Adding or removing a folder cue (`cues/<name>/cue.md`) or blank (`blanks/<name>/cue.md`)
 - Running `opencues sync chrome` manually (the `.version` flips even
   outside `--watch`)
 - Calling `opencues sync chrome --pack` or `--source` to swap source
@@ -195,7 +195,7 @@ tab per minute, all served locally so cheap).
 - Editing `opencues.md` user-level scalars (voice-mode, debug-mode,
   etc.) — those round-trip through `chrome.storage.local`, NOT the
   bundle. The bootstrap's storage-change listener picks them up
-  separately. See `OpenCuesSettingsControl` for the storage path.
+  separately. See `OpenCuesSettingsBlank` for the storage path.
 
 ---
 

@@ -19,16 +19,13 @@ Word navigation lets users move a highlight cursor between interactive words in 
 
 ## Navigation Targets
 
-A word is navigable if it passes the `filterCode` check. The base filter (from `wordHighlight.ts`) uses `_isCueControl(word)` which checks:
-
-- **Cue-control words** — present in `globalThis._cueBlankOverrides` (a map of control keyword names)
-- **Step-pattern matches** — word matches any pattern in `globalThis._stepPatterns` (auto-generated from `stepSuffixes` or explicit `stepPattern` in control configs)
-
-The `dynamicHighlight.ts` patch (`writeDynamicNavigation`) extends this filter. After patching, a word at index `i` is also navigable if:
+A word is navigable if it passes the navigation filter. After analysis, a word at index `i` is navigable if any of these are true:
 
 - **Local cue tip** (`_hasTipAlt`) — word exists in `globalThis._localCueMap` (case-insensitive lookup)
-- **Dynamic alternative** (`_hasDynAlt`) — `globalThis._dynDefs.words` has an entry at that index with either `alts.length > 1` (and the current word appears in the alts list) or `metadata.control` set
+- **Dynamic alternative** (`_hasDynAlt`) — `globalThis._dynDefs.words` has an entry at that index with either `alts.length > 1` (and the current word appears in the alts list) or `metadata.blankName` set (a cue-blank-bound auto-populated value)
 - **Span original** — the word is the original position of a multi-word span (e.g., "Jeff" in "Jeff Bezos"). Note: `_isInSpan` and `_isSpanOriginal` evaluate to the same thing in practice — both select only the original position of a span; non-original span positions like "Bezos" are skipped
+
+Plain words without alts and without a blank binding are NOT navigable. There is no word-cycling on plain text — all external state is `_`-gated.
 
 The combined filter pushes index `i` into `_targetIdx` if any of the above conditions are true and the word is not a non-original span position.
 
@@ -40,8 +37,8 @@ The combined filter pushes index `i` into `_targetIdx` if any of the above condi
 |-----|--------|
 | Ctrl+Alt+Left | Activate navigation (if inactive) or move highlight one target toward the start of the line |
 | Ctrl+Alt+Right | Move highlight one target toward the end of the line, or deactivate if already at the rightmost target |
-| Ctrl+Alt+Up | Step increment (config-driven via step blanks) or cycle to next alternative |
-| Ctrl+Alt+Down | Step decrement (config-driven, bounded by `stepMin`) or cycle to previous alternative |
+| Ctrl+Alt+Up | Cycle to next alternative (or invoke cue-blank `up` action if blank-bound) |
+| Ctrl+Alt+Down | Cycle to previous alternative (or invoke cue-blank `down` action if blank-bound) |
 | Escape | Clear highlight and reset `_hlState` |
 | Any text change | Clear highlight and reset `_hlState` (detected by comparing `_hlText !== _oldText`) |
 
@@ -70,7 +67,7 @@ The state is reset to `{active:false, index:null, wordIndex:null, text:""}` on E
 ### Standard (opencues-core)
 
 - `WordDef` provides `index`, `word`, and `alts` for every word in the input
-- Navigation targets are words where `alts.length > 1`, step-pattern matches, cue-blanks, or words with `metadata.blankName`
+- Navigation targets are words where `alts.length > 1` or words with `metadata.blankName` (cue-blank auto-populated values)
 - `CueResolver.analyze()` returns the full word list with classification already applied
 - No navigation state is tracked in opencues-core; it only identifies which words are navigable
 
@@ -80,5 +77,5 @@ The state is reset to `{active:false, index:null, wordIndex:null, text:""}` on E
 - Filter the `WordDef[]` array to determine the ordered set of navigation targets
 - Track which word is currently focused (`highlightIndex` or equivalent)
 - Move the editor cursor or viewport to the focused word's position
-- Distinguish navigation targets by type (alt word, step control, cue-blank) if the UI treats them differently
+- Distinguish navigation targets by type (alt word, cue-blank-bound) if the UI treats them differently
 - Communicate the focused word to the cycling and visual-cues subsystems

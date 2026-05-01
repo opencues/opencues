@@ -23,18 +23,20 @@ Implements features [1](../../../docs/features/navigation.md), [3](../../../docs
 
 | Key | Action |
 |-----|--------|
-| Ctrl+Alt+Up | Cue-control (custom script / step control increment) or cycle to next alternative |
-| Ctrl+Alt+Down | Cue-control (custom script / step control decrement) or cycle to previous alternative |
+| Ctrl+Alt+Up | Cue-blank `up` action (when blank-bound) or cycle to next alternative |
+| Ctrl+Alt+Down | Cue-blank `down` action (when blank-bound) or cycle to previous alternative |
 
 **Raw sequence fallback:** Also handles `\x1B[1;7D/C/A/B` (modifier 7 = Ctrl+Alt) for terminals that don't set meta/option flags.
 
 ## Navigation Filter
 
-Navigation targets are determined by `_isCueControl(word)` which checks:
-1. `_cueBlankOverrides[word]` — named control words (e.g., `volume`, `brightness`)
-2. `_stepPatterns` — step control regex patterns (auto-generated from `stepSuffixes` or explicit `stepPattern`)
+Navigation targets are determined by:
+1. `alts.length > 1` in `_dynDefs` (LLM-provided alternatives)
+2. `metadata.blankName` (cue-blank-bound auto-populated value — navigable even with 1 alt)
+3. Cue-blank keyword (registered in `blanksByWord`)
+4. Multi-word span origin
 
-No hardcoded number pattern — all navigable values are config-driven via `controls/` folder `cue.md` files.
+All navigable values are config-driven via `cues/` and `blanks/` folder `cue.md` files. There is no word-cycling on plain text without `_`.
 
 ## ANSI Rendering
 
@@ -69,7 +71,7 @@ PID-based path prevents multi-instance interference.
 | `enableWordHighlight` | — | Master switch (required) |
 | `highlightMode` | `'words'` | `numbers`, `words` |
 | `highlightColor` | `'white'` | `white`, `cyan`, `yellow`, `inverse`, `underline` |
-| `numberDimming` | `true` | Dim step-pattern matches in dark gray |
+| `numberDimming` | `true` | Reserved (legacy — step-pattern blanks were removed) |
 | `highlightExportEnabled` | `true` | Write highlight state JSON |
 | `enableCursorStateExport` | `true` | Write cursor state JSON |
 | `highlightClearOnEscape` | `true` | Clear on Escape |

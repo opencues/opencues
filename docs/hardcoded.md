@@ -67,7 +67,7 @@ Features and values that are hardcoded in patch code or opencues-core rather tha
 ### TTS tip delay
 - **What:** 100ms delay before speaking tips
 - **Where:** `dynamicHighlight.ts` lines 406, 819
-- **Proposed:** `cues.md` frontmatter or per-control: `ttsDelay: 100`
+- **Proposed:** `cues.md` frontmatter or per-blank: `ttsDelay: 100`
 
 ---
 

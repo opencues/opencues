@@ -4,11 +4,11 @@ This document provides context for Claude sessions working on this project.
 
 ## Project Overview
 
-**OpenCues** provides LLM-powered word alternatives for text editors. The core library analyzes text and suggests alternatives (synonyms, opposites, completions) that users can cycle through.
+**OpenCues** provides LLM-powered word alternatives and `_`-gated blank fill-ins for text editors. The system reduces to two ideas: **Cues** (LLM → user, on plain text) and **Blanks** (user → system, on `_`). See `concept.md` at the repo root.
 
 **Architecture** (two libraries + integrations):
 - **`@opencues/core`** — *what alternatives exist*. Pure TypeScript: parsers
-  (cues.md / blanks.md / opencues.md / blanks.md), the LLM `Resolver`,
+  (cues.md / blanks.md / opencues.md), the LLM `Resolver`,
   prompt templates, sources (ConfigSource, BlankSource, etc.),
   HTTP adapter. Given text + config, answers "what should we suggest for
   this word?" Knows nothing about editors, key events, or rendering.
@@ -67,7 +67,7 @@ opencues/
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
 │   ├── cues.md                    # OpenCues config (tips, prompts, ignore)
-│   ├── blanks.md                  # Cue-blanks (can be empty if using folders)
+│   ├── blanks.md                  # Cue-blanks header (can be empty if using folders)
 │   │                              # (opencues.md is user-level only — ~/.opencues/opencues.md)
 │   ├── cues/                      # Folder-based word cue configs
 │   │   ├── grammar/cue.md         # Base word alternatives
@@ -76,21 +76,22 @@ opencues/
 │   │   └── financial/cue.md       # Financial terminology alternatives
 │   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state)
 │       ├── volume/
-│       │   ├── cue.md
-│       │   ├── volume.sh          # Word-control script: up/down via key presses
-│       │   ├── volume-blank.sh    # Blank-control script: get/set via Core Audio API
+│       │   ├── cue.md             # type: blank, blankKeywords: volume, …
+│       │   ├── volume-blank.sh    # Blank script: get/set system volume
 │       │   └── VolCtl.cs          # C# source for Windows Core Audio API (compiled by setup.sh)
 │       ├── brightness/
 │       │   ├── cue.md
-│       │   └── brightness.sh
-│       ├── numbers/cue.md         # Step control (stepSuffixes: f, step: 0.5)
-│       ├── affirmations/cue.md    # List control
-│       ├── stocks/cue.md          # impl: @opencues/runtime StocksControl
-│       ├── weather/cue.md         # impl: @opencues/runtime WeatherControl
-│       ├── hackernews/cue.md      # impl: @opencues/runtime HackerNewsControl
-│       ├── prompt/cue.md          # impl: @opencues/runtime PromptImproverControl
-│       ├── answer/cue.md          # impl: @opencues/runtime AnswerControl
-│       └── opencues/cue.md        # impl: @opencues/runtime OpenCuesSettingsControl
+│       │   └── brightness-blank.sh
+│       ├── affirmations/cue.md    # List blank (stepValues: [...])
+│       ├── stocks/cue.md          # impl: @opencues/runtime StocksBlank
+│       ├── weather/cue.md         # impl: @opencues/runtime WeatherBlank
+│       ├── hackernews/cue.md      # impl: @opencues/runtime HackerNewsBlank
+│       ├── prompt/cue.md          # impl: @opencues/runtime PromptImproverBlank
+│       ├── answer/cue.md          # impl: @opencues/runtime AnswerBlank
+│       ├── countries/cue.md       # impl: @opencues/runtime CountriesBlank
+│       ├── crypto/cue.md          # impl: @opencues/runtime CryptoBlank
+│       ├── dictionary/cue.md      # impl: @opencues/runtime DictionaryBlank
+│       └── opencues/cue.md        # impl: @opencues/runtime OpenCuesSettingsBlank
 │
 ├── packages/                      # Core packages (publish as @opencues/*)
 │   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core
@@ -127,7 +128,7 @@ opencues/
 │   │   ├── cycling.md             # Numbers, alts, linked, spans, clearing
 │   │   ├── alternatives.md        # Tips, LLM sources, blanks, auto-submit
 │   │   ├── cue-blanks.md         # Cue-blanks + WSL guide
-│   │   ├── selector-satellite.md  # Selector + satellite blank controls
+│   │   ├── selector-satellite.md  # Selector + satellite blanks
 │   │   ├── status-line.md         # Status line setup, format, disabling
 │   │   ├── config.md              # All config options
 │   │   ├── architecture.md        # Architecture + data flow diagrams
@@ -203,7 +204,7 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **docs/overview.md** — System architecture, core interfaces, API usage
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-blanks, parser types, LLM providers)
-  - **`adding-a-cue-blank.md`** ⚠️ Must-read before adding any new control — covers blank routing, cycling pitfalls (numeric vs list), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
+  - **`adding-a-cue-blank.md`** ⚠️ Must-read before adding any new cue-blank — covers blank routing, cycling pitfalls (list-only — no numeric stepping), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
@@ -378,7 +379,7 @@ A user with no `.opencues/` anywhere gets empty config (CC/OC/codex)
 — not a crash. Hot-reload polls every search path on every keystroke
 (same `maybeReload` mechanism as before).
 
-The OpenCuesSettingsControl read/write of `opencues.md` is a special
+The OpenCuesSettingsBlank read/write of `opencues.md` is a special
 case: it is user-level only. `opencues.md` holds system-wide settings
 (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is
 owned by the OpenCues runtime. A single value applies across every
@@ -390,7 +391,7 @@ integration, so projects cannot override it. The file lives at
 - `opencues seed-configs` (no flag) copies it from `defaults/opencues.md`
   to `~/.opencues/`; `seed-configs --project` skips it.
 - **A 0-byte `opencues.md` is treated as missing** by both `seed-configs`
-  AND `setup.sh` (section 7a-bis self-heal). The `OpenCuesSettingsControl`
+  AND `setup.sh` (section 7a-bis self-heal). The `OpenCuesSettingsBlank`
   silently no-ops on null/empty content (correct behavior for "no file
   exists"), so an empty seed used to silently break `opencues ___` /
   `config ___` blank-fills on every native host. Chrome was unaffected
@@ -403,9 +404,9 @@ integration, so projects cannot override it. The file lives at
 
 ---
 
-## Host compatibility — which integrations a cue/control runs on
+## Host compatibility — which integrations a cue/blank runs on
 
-Every cue / blank / control has an implicit (or explicit) host-compat
+Every cue / blank has an implicit (or explicit) host-compat
 list: which of `{chrome, claude-code, codex, opencode}` it works on.
 Native hosts (CC, OC, codex) can spawn subprocesses + read the
 filesystem; chrome can't.
@@ -487,7 +488,7 @@ Full spec: `docs/features/word-alt-routing.md`. Glossary entries:
 
 ---
 
-## Hoisted-control writes vs ConfigLoader hot-reload
+## Hoisted-blank writes vs ConfigLoader hot-reload
 
 Selector/satellite cycling (e.g. `opencues settings` flipping
 `voice-mode: active ↔ inactive`) goes through this sequence:
@@ -588,7 +589,7 @@ A separate private repo (`~/.claude/opencues-auto/`) provides automated integrat
 **What it does:**
 - Injects text into a running Claude Code instance via file-based IPC
 - Moves the cursor, cycles alternatives, and reads highlight state — all programmatically
-- Runs test suites that verify cues, blanks, controls, cycling, transitions, and cursor-navigate
+- Runs test suites that verify cues, blanks, cue-blanks, cycling, transitions, and cursor-navigate
 
 **When to use it:**
 - After modifying `wordHighlight.ts` or `dynamicHighlight.ts` — run the test suites to catch regressions
@@ -598,7 +599,7 @@ A separate private repo (`~/.claude/opencues-auto/`) provides automated integrat
 **Setup:** `~/.claude/opencues-auto/claude-code/testing/install-harness.sh` (after `setup.sh`)
 
 **Test suites:**
-- `test-cues.sh` — core: alts, tips, controls, blanks (14 tests)
+- `test-cues.sh` — core: alts, tips, cue-blanks, blanks (14 tests)
 - `test-cues-transitions.sh` — state isolation between injects (7 tests)
 - `test-cues-cycling.sh` — Up/Down cycling (9 tests)
 - `test-cursor-navigate.sh` — cursor-navigate feature (15 tests)

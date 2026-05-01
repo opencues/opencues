@@ -6,13 +6,13 @@ last_updated: 2026-04-12
 
 A consume-context blank is a blank that **collapses the keyword and context words between the keyword and blank**, while preserving surrounding text. The collapsed region is replaced by the blank's resolved value.
 
-This extends [Control Blanks](cue-blanks.md) and differs from [Consume-All Blanks](consume-all-blanks.md) which clear *everything*.
+This extends [Cue-Blanks](cue-blanks.md) and differs from [Consume-All Blanks](consume-all-blanks.md) which clear *everything*.
 
 ---
 
 ## Concept
 
-Standard control blanks replace only `_`. Consume-all blanks replace the entire input. Consume-context blanks replace the **keyword + context between keyword and blank**:
+Standard cue-blanks replace only `_`. Consume-all blanks replace the entire input. Consume-context blanks replace the **keyword + context between keyword and blank**:
 
 ```
 Input:  I wonder what is the word for love in Japanese _ she said
@@ -44,15 +44,14 @@ Other fields typically used:
 
 ---
 
-## Example: Answer Control
+## Example: Answer Blank
 
-The `blanks/answer/` control uses consume-context to provide factual lookups:
+The `blanks/answer/` blank uses consume-context to provide factual lookups:
 
 ```yaml
 ---
 name: answer
-type: control
-control: answer
+type: blank
 blankKeywords: what is the word for
 blankConsumeContext: true
 blankClearKeywords: true
@@ -104,7 +103,7 @@ I wonder what is the word for hello in French _ she said
 
 ## Implementation
 
-In `control-blank-source.ts`:
+In `blank-source.ts`:
 
 ```typescript
 if (matched.blankConsumeContext) {

@@ -26,7 +26,7 @@ How the three pieces fit together.
 
 **JSON-RPC over stdio.** No port allocation, no socket files to clean up, no auth. stdio closes when the parent dies. Latency is ~100µs per round-trip on the same machine — fine for keystroke pacing (~100ms human cadence). If we ever need lower latency, switch to a Unix domain socket; the protocol shape doesn't change.
 
-**Bridge crate is thin.** It does NOT know about cues, controls, or LLMs. It only knows: "send these events, receive those directives, render this overlay." All semantic logic stays on the Node side. Means we can swap the daemon without touching Rust.
+**Bridge crate is thin.** It does NOT know about cues, blanks, or LLMs. It only knows: "send these events, receive those directives, render this overlay." All semantic logic stays on the Node side. Means we can swap the daemon without touching Rust.
 
 ## What stays in Rust
 
@@ -40,7 +40,7 @@ How the three pieces fit together.
 - ConfigLoader + parse + hot-reload
 - Resolver (LLM calls)
 - Navigation / Cycling / BlankFill / DimRender modules
-- All 6 hoisted controls (HackerNewsControl, StocksControl, etc. — same code CC + OC use)
+- All 6 hoisted blanks (HackerNewsBlank, StocksBlank, etc. — same code CC + OC use)
 - Statusline (writes to its own log file or sends `directives.tip` to the bridge)
 
 ## Why no embedded JS engine

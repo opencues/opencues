@@ -449,7 +449,7 @@ export interface MergeWordDefsOptions {
    * Skip merging into entries where existing has metadata.blankName but new doesn't.
    * Prevents LLM results from overwriting blank positions.
    */
-  protectControlName?: boolean;
+  protectBlankName?: boolean;
 }
 
 /**
@@ -480,7 +480,7 @@ export function mergeWordDefs(
         continue;
       }
       // Skip blank-name guard (LLM shouldn't overwrite blank)
-      if (options?.protectControlName &&
+      if (options?.protectBlankName &&
           existingDef.metadata?.blankName &&
           !newDef.metadata?.blankName) {
         continue;

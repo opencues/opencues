@@ -6,29 +6,27 @@ last_updated: 2026-04-07
 
 Implements features [2](../../../docs/features/cycling.md), [5](../../../docs/features/linked-words.md), [9](../../../docs/features/multi-word-spans.md), [10](../../../docs/features/per-word-clearing.md). See those docs for the concepts.
 
-**Patch files:** `patches/wordHighlight.ts` (rendering, delegates Up/Down to `_cycleAlt`), `patches/dynamicHighlight.ts` (all cycling via `_cycleAlt`, cue-blanks, step blanks, LLM alts, spans, clearing)
+**Patch files:** `patches/wordHighlight.ts` (rendering, delegates Up/Down to `_cycleAlt`), `patches/dynamicHighlight.ts` (all cycling via `_cycleAlt`, cue-blanks, LLM alts, spans, clearing)
 
 ## CC-Specific: Cycling Priority Implementation
 
 All cycling goes through the shared `_cycleAlt(dir)` function in `dynamicHighlight.ts`, checked in order:
 
-1. **Cue-control (custom)** → spawn the script from the blank's `script` field (folder-based controls colocate as `~/.opencues/blanks/{name}/{name}.sh`), return
-2. **Blanks** → sync script call, replace blank value, return (skipped for list blanks with `stepValues` or multi-line script output — those go through step 5)
-3. **Step control** → config-driven increment/decrement via `stepPattern`/`stepSuffixes`, return
-4. **Consume-all alts** → cycle `_consumeAllAlts` (dedicated storage, independent of `_dynDefs`). Used by controls with `blankConsumeAll: true` that replace entire text with multi-word cycling alternatives. Span-aware replacement, updates `_dynSpans`, `_dynLastAnalyzed`, `_dynPrevWords`, and `_hlState.wordIndex` to prevent re-analysis interference. See `docs/guides/creating-a-cue-type.md`.
-5. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
-6. **Tip-lookup fallback** → if word is in `_localCueMap` but not in `_dynDefs`, resolve alts on-the-fly from tips and populate `_dynDefs` (covers cases where eager lookup was skipped, e.g., during pending LLM calls)
-7. **Fall through** → no action
+1. **Cue-blank values** (`metadata.blankName`) → call `blankInvoke({ action: 'up'|'down' })`, then `blankInvoke({ action: 'get' })` for the new value, return (skipped for list blanks with `stepValues` or multi-line output — those go through step 3)
+2. **Consume-all alts** → cycle `_consumeAllAlts` (dedicated storage, independent of `_dynDefs`). Used by blanks with `blankConsumeAll: true` that replace entire text with multi-word cycling alternatives. Span-aware replacement, updates `_dynSpans`, `_dynLastAnalyzed`, `_dynPrevWords`, and `_hlState.wordIndex` to prevent re-analysis interference. See `docs/guides/creating-a-cue-type.md`.
+3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
+4. **Tip-lookup fallback** → if word is in `_localCueMap` but not in `_dynDefs`, resolve alts on-the-fly from tips and populate `_dynDefs` (covers cases where eager lookup was skipped, e.g., during pending LLM calls)
+5. **Fall through** → no action
 
-`_isCueControl(word)` is the unified check — it tests `_cueBlankOverrides` (word controls) and `_stepPatterns` (step blanks). Used by tips lookup and status line export to exclude cue-blanks from tips/alts display.
+The cue-blank-keyword check (`blanksByWord` in `ConfigLoader`) is used by tips lookup and status line export to exclude cue-blank keywords from tips/alts display.
 
-## CC-Specific: Dynamic List Controls
+## CC-Specific: Dynamic List Blanks
 
-When `BlankSource` calls `blankScript get` and the output contains multiple lines, each line becomes a cycling alternative — same as static `stepValues` but populated from live data (e.g., RSS feed titles from Hacker News). The resulting `WordDef` has `metadata.listControl: true` and goes through the normal alt cycling path (step 4), not the script-call path (step 2).
+When `BlankSource` (or a hoisted runtime class) returns multi-line output, each line becomes a cycling alternative — same as static `stepValues` but populated from live data (e.g., RSS feed titles from Hacker News). The resulting `WordDef` has `metadata.listBlank: true` and goes through the normal alt cycling path (step 3), not the `blankInvoke up/down` path (step 1).
 
 ## CC-Specific: Dismissible Blanks
 
-When a control has `blankDismissible: true`, `BlankSource` appends `_` as the last alternative in both list blanks (`stepValues`) and dynamic list blanks. In `_cycleAlt`, when the user cycles to `_`:
+When a blank has `blankDismissible: true`, `BlankSource` appends `_` as the last alternative in both list blanks (`stepValues`) and dynamic list blanks. In `_cycleAlt`, when the user cycles to `_`:
 
 - `globalThis._dismissedBlanks[wordIndex] = true` is set
 - Auto-populate checks `_dismissedBlanks` before firing — dismissed positions are skipped

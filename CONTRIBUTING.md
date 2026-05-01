@@ -53,9 +53,8 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 |------|-----------------|
 | `cues.md` | Word tips (`## Tips`) and base LLM prompt (`## Prompt`). Domain sources can also be `### sections` here. |
 | `cues/{name}/cue.md` | Folder-based word source — config in YAML frontmatter, prompt in body. Overrides same-name monolithic section. |
-| `blanks.md` | Blank fill-in modes — math, factual, translation, etc., plus the `### classifier`. |
-| `blanks.md` | Cue-blanks — words that trigger external scripts (can be empty if using folders). |
-| `blanks/{name}/cue.md` | Folder-based control with colocated script (e.g., `script: ./volume.sh`). |
+| `blanks.md` | Cue-blanks JSON header (rare; almost everything is folder-based — can be empty). |
+| `blanks/{name}/cue.md` | Folder-based cue-blank with colocated script (e.g., `blankScript: ./volume-blank.sh`). |
 
 ### Adding a new word source
 
@@ -279,5 +278,5 @@ integrations/claude-code/patches/setup.sh
 - **Test manually** — run `setup.sh`, restart Claude Code, and verify your change works. Describe what you tested in the PR.
 - **Run the test suite** for `@opencues/core` changes: `pnpm --filter @opencues/core test`
 - **Don't break hot-reload** — config file changes (`.md`) must not require a restart. Patch file changes (`.ts`) must not require re-running `setup.sh` more than once.
-- **Follow existing patterns** — look at how existing controls, sources, or features are built before starting something new.
+- **Follow existing patterns** — look at how existing blanks, sources, or features are built before starting something new.
 - **Docs matter** — if you add a config field, document it in the relevant feature doc and the config table. If you add a feature, add test cases to `tests/user-test.md`.

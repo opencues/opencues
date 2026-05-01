@@ -50,7 +50,7 @@ Type `2 + 2 = _` — the `_` auto-fills with `4`.
 
 Type `the capital of France is _` — fills with `Paris`.
 
-### Controls
+### Cue-blanks
 
 Type `volume _` — auto-populates with your system volume. Cycle Up/Down to change it.
 
@@ -62,7 +62,7 @@ All behaviour is defined in `.md` config files that hot-reload (~2s, no restart)
 |------|---------|
 | `~/.opencues/cues.md` | Word tips and LLM prompts for alternatives (user-level) |
 | `~/.opencues/blanks.md` | Fill-in-the-blank modes (math, factual, etc.) |
-| `~/.opencues/blanks/<name>/cue.md` | Hardware/API controls |
+| `~/.opencues/blanks/<name>/cue.md` | Hardware/API cue-blanks |
 | `<project>/.opencues/...` | Project-level overrides — wins over user-level on name conflicts |
 
 To populate `~/.opencues/` with the repo's defaults: `pnpm exec opencues seed-configs`.
@@ -81,6 +81,6 @@ pnpm exec opencues --help                 # full command list
 ## Next steps
 
 - [README](../../README.md) — full feature list and configuration
-- [Glossary](../glossary.md) — terminology (cues, blanks, controls, sources)
+- [Glossary](../glossary.md) — terminology (cues, blanks, cue-blanks, sources)
 - [Feature docs](../features/) — feature concepts explained
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — how to extend OpenCues

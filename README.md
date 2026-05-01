@@ -17,7 +17,7 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 
 - **Editor-agnostic** — the standard lives in config files, not code
 - **Real-time** — suggestions appear as you type, not after
-- **Extensible** — add new word sources, blank modes, or hardware controls with just a config file
+- **Extensible** — add new word sources, blank modes, or hardware-bound blanks with just a config file
 - **Local-first** — runs on your machine, your API keys, your data
 
 ## Supported Editors
@@ -37,9 +37,8 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 |--------|----------------|---------|
 | **cues.md** | Word tips and LLM prompt sources for word alternatives | `### grammar` with synonym/opposite/creative prompt |
 | **blanks.md** | Fill-in-the-blank modes with prompt + parser per mode | `### math` with `parser: compute` |
-| **blanks.md** | Cue-blanks — words that trigger external scripts | `"volume"` runs a volume control script |
 | **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
-| **blanks/{name}/** | Self-contained control with colocated script | `blanks/volume/cue.md` + `volume.sh` |
+| **blanks/{name}/** | Self-contained cue-blank with colocated script | `blanks/volume/cue.md` + `volume-blank.sh` |
 
 Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -115,17 +114,15 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 - **Visual cues** — words dim when alternatives are available
 - **Alternatives** — cycle through synonyms, opposites, creative suggestions
 - **Blanks** — type `_` and get completions (`The capital of France is _` → `Paris`)
-- **Cue-blanks** — `volume` triggers system volume control
-- **Blanks** — `volume _` auto-populates with actual system volume; cycle to change it
-- **Step blanks** — `1.5f` → `2f` → `2.5f`, works with any suffix (`px`, `em`, `%`)
+- **Cue-blanks** — `volume _` auto-populates with current system volume; Up/Down changes it
 - **List blanks** — `affirmation _` cycles through "I am strong", "I am brave", ... (cycle to `_` to dismiss)
 - **Dynamic list blanks** — `HN posts _` fetches live Hacker News titles; Up/Down scrolls through them
 - **Prompt improver** — `improve prompt _` uses LLM to rewrite your prompt; cycle through 3 improved versions
-- **API controls** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
+- **API blanks** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
 - **Secondary display** — highlighted words show cue-tips
 - **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed
 
-> New to the terminology? See [docs/glossary.md](docs/glossary.md) for definitions of cues, blanks, controls, and sources.
+> New to the terminology? See [docs/glossary.md](docs/glossary.md) for definitions of cues, blanks, cue-blanks, and sources.
 
 ## How it works
 
@@ -143,8 +140,9 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │  packages/opencues-runtime/   Host-agnostic runtime           │
 │  ├── src/modules/             Navigation, Cycling, BlankFill, │
 │  │                            DimRender, TTS, Statusline,...  │
-│  ├── src/blanks/            Stocks, Weather, HackerNews,    │
-│  │                            PromptImprover, OpenCuesSettings│
+│  ├── src/blanks/              StocksBlank, WeatherBlank,     │
+│  │                            HackerNewsBlank, PromptImprover-│
+│  │                            Blank, OpenCuesSettingsBlank... │
 │  └── adapters/cc/v2.1/        boot.ts — the CC adapter band   │
 │                                                               │
 │  integrations/claude-code/patches/      CC integration glue   │
@@ -238,7 +236,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
 - **ClassifiedSourceGroup** — wraps blank modes with fast/LLM classification
 - **BlankSource** — bridges blanks with cue-blanks (auto-populate + cycling)
-- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + controls → `CueSource[]`
+- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + cue-blanks → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
 ### `@opencues/runtime`
@@ -248,7 +246,7 @@ Host-agnostic runtime + per-host adapter bands. Source: `packages/opencues-runti
 - Modules: Navigation, Cycling, BlankFill, DimRender, Statusline, TTS, ConfigLoader, ...
 - State classes: HighlightState, DynDefs, SpanFillState, etc.
 - Adapter bands: `adapters/cc/v2.1/`, `adapters/oc/v1.4/`, `adapters/chrome/v1/`
-- Hoisted controls: `src/blanks/` (StocksControl, WeatherControl, HackerNewsControl, etc.)
+- Hoisted blanks: `src/blanks/` (StocksBlank, WeatherBlank, HackerNewsBlank, etc.)
 
 ### Per-host integrations
 

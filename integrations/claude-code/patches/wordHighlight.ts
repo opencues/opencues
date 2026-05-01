@@ -1204,7 +1204,7 @@ break;
 }
 var _newDefs=globalThis._cuesCore.convertCueResultsToWordDefs(_resResults);
 if(!globalThis._dynDefs)globalThis._dynDefs={words:[]};
-globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_newDefs,{protectControlName:true});
+globalThis._dynDefs.words=globalThis._cuesCore.mergeWordDefs(globalThis._dynDefs.words,_newDefs,{protectBlankName:true});
 if(globalThis._debugLog)globalThis._debugLog("llm result: "+_resResults.length+" results, "+_newDefs.length+" wordDefs");
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 }).catch(function(_lre){if(globalThis._debugLog)globalThis._debugLog("llm error: "+(_lre&&_lre.message||_lre));});

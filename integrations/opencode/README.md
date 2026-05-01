@@ -2,7 +2,7 @@
 
 `@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-blanks inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
 
-> **Shares user-level state with CC + Codex**: `~/.opencues/` (cue/blank/control configs) and `~/.opencues/scripts/speak.sh` (TTS) are common across all three native hosts. Brightness/volume controls, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews controls — all work identically on OpenCode because they spawn the same scripts that CC + Codex spawn. You can install OpenCode standalone (no CC required) and TTS still works.
+> **Shares user-level state with CC + Codex**: `~/.opencues/` (cue/blank configs) and `~/.opencues/scripts/speak.sh` (TTS) are common across all three native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on OpenCode because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC + Codex use. You can install OpenCode standalone (no CC required) and TTS still works.
 
 | Field | Value |
 |---|---|
@@ -80,8 +80,8 @@ rm -rf ~/opencode-cues
 | Test | What it checks |
 |---|---|
 | Type `5f`, position cursor on it, Up/Down | Numeric cycling: `5f → 5.5f → 6f` |
-| Type `voice-mode active`, cycle Up | Selector/satellite via the `@opencues/runtime` settings control |
-| Type `weather _ paris` | LLM/HTTP control: fills with current Paris weather |
+| Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
+| Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
 | Status bar at bottom of TUI shows tip when a word is highlighted | `opencuesTip()` SolidJS signal wired into `home/footer.tsx` |
 
 If something fails, the runtime writes diagnostics to `/tmp/opencues.log`.
@@ -98,7 +98,7 @@ OpenCues reads configs from **one or more `.opencues/` directories** in priority
 | Project-level | `<cwd>/.opencues/` | Per-project overrides — cd into your project, those configs apply |
 | User-level | `~/.opencues/` | Global defaults — apply everywhere unless overridden |
 
-Project-level wins on name conflicts (cue source name, blank mode name, control name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
+Project-level wins on name conflicts (cue source name, blank mode name, blank name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
 
 Each directory has the same shape:
 ```

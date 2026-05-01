@@ -1,183 +1,125 @@
 ---
-last_updated: 2026-04-08
+last_updated: 2026-04-29
 ---
 
 # Adding a Cue-Blank
 
-Cue-blanks are words that trigger external scripts instead of cycling through text alternatives. For example, "volume" triggers a volume control script when the user presses Up/Down on it.
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to `_` (e.g., `volume _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
-## 1. Define the blank in blanks.md
+Cue-blanks ship as either:
+- A folder under `defaults/blanks/<name>/` with a colocated shell script (OS-level work like volume, brightness)
+- A TypeScript class under `packages/opencues-runtime/src/blanks/<name>.ts` (HTTP/LLM/API work — runs on chrome too)
 
-Add an entry to the `## Blanks` JSON block in your `blanks.md` file:
+## 1. Folder-based blank (canonical)
 
-```markdown
-## Blanks
+Create a self-contained folder with the config and script together:
 
-```json
-{
-  "volume": {
-    "control": "volume",
-    "tip": "system volume control",
-    "upArgs": ["up", "5"],
-    "downArgs": ["down", "5"]
-  }
-}
 ```
+blanks/volume/
+├── cue.md             # Blank config in YAML frontmatter
+└── volume-blank.sh    # Script colocated (blankScript: ./volume-blank.sh)
 ```
+
+**`blanks/volume/cue.md`:**
+```yaml
+---
+name: volume
+type: blank
+tip: system volume
+speak: true
+blankKeywords: volume, vol, sound, audio
+blankStep: 6
+blankAutoPopulate: true
+blankSuffix: '%'
+blankScript: ./volume-blank.sh
+---
+```
+
+Relative `blankScript` paths (starting with `./`) are resolved against the folder. Folder-based is the canonical form.
 
 ### BlankConfig fields
 
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
-| `control` | Yes | string | Identifier (e.g. `volume`). Used as the in-memory key in `_cueBlankOverrides` and as the cycling/blank lookup name |
-| `tip` | No | string | Label shown in the status line when the word is highlighted |
-| `script` | Yes (for OS-bound blanks) | string | Path to the script to spawn. Use `./{name}.sh` for folder-based blanks — relative to the cue.md, which seeds to `~/.opencues/blanks/{name}/{name}.sh` with any helper binaries (`*.exe`, `*.ps1`) colocated in the same folder |
-| `upArgs` | No | string[] | Arguments passed on Up. Default: `["up"]` |
-| `downArgs` | No | string[] | Arguments passed on Down. Default: `["down"]` |
-| `speak` | No | boolean | Read the tip aloud via TTS when navigated to (default: false) |
-| `blankSuffix` | No | string | Suffix appended to the displayed blank value (e.g. `%` shows `50%`). Stripped before arithmetic; script always receives and returns plain numbers. |
+| `name` | Yes | string | Identifier (e.g. `volume`). Also inferred from folder name. |
+| `type` | Yes | string | Always `blank`. |
+| `tip` | No | string | Label shown in the status line when the keyword is highlighted (live `get` output overrides). |
+| `blankScript` | Yes (for OS-bound blanks) | string | Path to the script for `get` / `set` / `up` / `down`. Use `./<name>-blank.sh` (relative to the cue.md). |
+| `blankKeywords` | Yes | string\|string[] | Context words that bind a `_` to this blank. Multi-word phrases allowed. |
+| `blankStep` | No | number | Increment/decrement amount for numeric blanks. |
+| `blankAutoPopulate` | No | boolean | Auto-fill `_` with current value on analysis. |
+| `blankProximity` | No | number | Max words allowed between keyword and `_` (default 0 = adjacent). |
+| `blankFormat` | No | enum | `integer` (default), `float`, or `string`. |
+| `blankTip` | No | string | Tip shown when the auto-populated value is highlighted. |
+| `blankSuffix` | No | string | Suffix appended to the displayed value (e.g. `%` shows `50%`). |
+| `blankReadOnly` | No | boolean | Cycling disabled (display-only). |
+| `blankDismissible` | No | boolean | Append `_` as the final cycling option so the user can dismiss the value. |
+| `blankKeywordExpansions` | No | object | Map keyword → display name (e.g. `rddt` → `Reddit`). |
+| `blankClearKeywords` | No | boolean | Remove keyword context words from text on auto-populate. |
+| `blankClearOnEdit` | No | boolean | Remove spawned words when user edits them. |
+| `blankConsumeAll` | No | boolean | Clear entire input on populate (see [consume-all-blanks](../features/consume-all-blanks.md)). |
+| `blankConsumeContext` | No | boolean | Clear words between keyword and `_` (see [consume-context-blanks](../features/consume-context-blanks.md)). |
+| `blankSatellite` | No | boolean | Auto-populate as selector + satellite (see [selector-satellite](../features/selector-satellite.md)). |
+| `stepValues` | No | string[] | Static list of values to cycle through. |
+| `speak` | No | boolean | Read the tip aloud via TTS when navigated to (default: false). |
 
-**When to use each approach:**
-- **Folder-based** (`blanks/{name}/`) — preferred for anything with a script. Keeps the config and script colocated and self-contained.
-- **Monolithic** (`blanks.md`) — only useful for zero-script, config-only blanks (e.g., a step blank with just `stepSuffixes`). Scripts can't be colocated here.
+## 2. Write the blank script (OS-level)
 
-## Alternative: Folder-based blank
-
-Instead of `blanks.md`, create a self-contained folder with the config and script together:
-
-```
-blanks/volume/
-├── cue.md        # Control config in YAML frontmatter
-└── volume.sh     # Script colocated (script: ./volume.sh)
-```
-
-**`blanks/volume/cue.md`:**
-```markdown
----
-name: volume
-type: control
-control: volume
-tip: system volume control
-speak: true
-script: ./volume.sh
-upArgs: ["up", "6"]
-downArgs: ["down", "6"]
----
-```
-
-Relative `script` paths (starting with `./`) are resolved against the folder. Folder configs merge with `blanks.md` — folder wins on name conflict.
-
-## 2. Write the control script
-
-Create a folder-based control: `defaults/blanks/{name}/cue.md` + `defaults/blanks/{name}/{name}.sh` colocated. setup.sh seeds both into `~/.opencues/blanks/{name}/`, and the script finds any helper binaries via `${SCRIPT_DIR}/<helper>` (no path walking, no install-layout coupling). The script receives the arguments from `upArgs` or `downArgs`:
+The script accepts `get`, `set`, `up`, `down`. setup.sh seeds it from `defaults/blanks/<name>/<name>-blank.sh` into `~/.opencues/blanks/<name>/`, where helper binaries are colocated and resolved via `${SCRIPT_DIR}/<helper>`.
 
 ```bash
 #!/bin/bash
-# blanks/mycontrol/mycontrol.sh
-# Called as: bash blanks/mycontrol/mycontrol.sh <get|up|down> [amount]
-#   $1 = command ("get", "up", or "down")
-#   $2 = amount (e.g., "5") — only used for up/down
+# blanks/volume/volume-blank.sh
+# Called as one of:
+#   bash volume-blank.sh get
+#   bash volume-blank.sh set <value>
+#   bash volume-blank.sh up
+#   bash volume-blank.sh down
 
-DIRECTION="$1"
-AMOUNT="${2:-10}"
-
-# Live read: query actual system value (for `get` case only)
-get_value() {
-  my-system-query-command 2>/dev/null || echo "50"
-}
-
-case "$DIRECTION" in
+case "$1" in
   get)
-    echo "mycontrol: $(get_value)"
+    my-system-query-command 2>/dev/null || echo "50"
+    exit 0
+    ;;
+  set)
+    my-system-set-command "$2"
+    exit 0
+    ;;
+  up)
+    my-system-command +6
+    exit 0
+    ;;
+  down)
+    my-system-command -6
     exit 0
     ;;
 esac
-
-# Apply change — let the system command handle delta internally
-# Do NOT call get_value() here: it adds latency and causes a race with
-# the integration's 200ms post-cycle `get` call.
-my-system-command "$DIRECTION" "$AMOUNT"
 ```
 
 ### Script conventions
 
-- **`get` command**: Implement a `get` case that outputs a human-readable tip (e.g. `"volume: 64%"`). The integration calls this on navigation and ~200ms after each cycle to update the status line.
-- **No live-read in the apply path**: Do not call your live-read function before `up`/`down`. It adds latency and can cause a timing race where the integration's `get` call fires before the change completes. Let the underlying system command handle delta internally.
-- **No `&` backgrounding**: Run the system command synchronously (no trailing `&`). The integration calls `get` 200ms after spawning — if the command is still running in the background, `get` reads a stale value.
-- **Debouncing**: Word-based blanks are debounced (50ms). Auto-populated blanks (`blankScript`) run synchronously per keypress.
+- **`get` is synchronous** — output is the current value as a plain string. The runtime awaits stdout to populate the blank.
+- **No live-read in the apply path** — do not call `get` from `up`/`down`. It adds latency and races the integration's 200ms post-cycle `get` call.
+- **No `&` backgrounding** — run the system command synchronously. The integration calls `get` 200ms after spawning; if the command is still running, `get` reads a stale value.
+- **Debouncing**: cycle keypresses are debounced (~50ms) before spawning.
 
 ## 3. How it works at runtime
 
-1. User types "volume" in their prompt and navigates to it
-2. User presses Ctrl+Alt+Up or Ctrl+Alt+Down
-3. The CLI looks up `"volume"` in `_cueBlankOverrides`
-4. Spawns: `bash ~/.opencues/blanks/volume/volume.sh up 5` (detached — integration doesn't wait)
-5. Script applies change synchronously, exits
-6. Integration calls `bash volume.sh get` ~200ms later → status line updates with new value
+1. User types `volume _` and the analyzer matches `volume` (a `blankKeywords` entry) adjacent to `_`.
+2. The runtime calls `blankInvoke({ blankName: 'volume', action: 'get', args: ['volume'] })`.
+3. The host adapter's registry runs the registered class OR spawns `bash volume-blank.sh get`.
+4. The returned value (e.g., `50`) replaces `_` (display: `50%` because of `blankSuffix`). `metadata.blankName` is set on the WordDef, protecting it from LLM overwrites.
+5. User presses Up: `blankInvoke({ action: 'up' })` runs (detached), then `get` runs ~200ms later to refresh the displayed value.
 
-## Example: minimal blank
+## 4. Adding a list blank (no script)
 
-A cue-blank that opens a URL:
-
-```json
-{
-  "docs": {
-    "control": "docs",
-    "tip": "open project docs",
-    "upArgs": ["open"],
-    "downArgs": ["open"]
-  }
-}
-```
-
-```bash
-#!/bin/bash
-# ~/.opencues/blanks/docs/docs.sh
-xdg-open "https://docs.example.com" &
-```
-
-## Adding a step blank
-
-Step blanks are a type of cue-blank that increments/decrements values matching a pattern — no external script needed for arithmetic stepping.
-
-**`blanks/units/cue.md`:**
-```yaml
----
-type: control
-name: units
-stepSuffixes: px em rem f % vh vw
-step: 1
-stepMin: 0
----
-```
-
-This makes `10px`, `2em`, `1.5f`, `50%`, etc. steppable. Each suffix auto-generates a regex pattern like `^\d+(\.\d+)?px$`.
-
-### Step blank config fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `stepPattern` | string | Regex matching steppable values (alternative to `stepSuffixes`) |
-| `stepSuffixes` | string | Space-separated suffixes — auto-generates patterns per suffix |
-| `step` | number | Arithmetic step size (default: 1) |
-| `stepMin` | number | Floor — Down will not go below this |
-| `stepMax` | number | Ceiling — Up will not go above this |
-| `stepFormat` | string | Output format: `integer`, `float`, or auto |
-| `stepSuffix` | string | Single suffix to strip/re-append (use `stepSuffixes` for multiple) |
-| `stepScript` | string | Script called with `(current_value, direction)` — overrides arithmetic |
-| `stepValues` | string[] | Ordered list of values to cycle through on a blank (JSON array) |
-
-Use separate blank folders for different step sizes (e.g., `blanks/units/` for step 1, `blanks/fine-units/` for step 0.1).
-
-## Adding a list blank
-
-List blanks cycle through an ordered set of values on a blank — no script, no arithmetic. Type a keyword + `_` and the blank auto-populates with the first value; Up/Down cycles through the list. Multi-word values are span-tracked automatically.
+List blanks cycle through an ordered set of values on a blank — no script, no arithmetic. Type a keyword + `_` and the blank auto-populates with the first value; Up/Down cycles. Multi-word values are span-tracked automatically.
 
 **`blanks/affirmations/cue.md`:**
 ```yaml
 ---
-type: control
 name: affirmations
+type: blank
 blankKeywords: affirmation, affirm
 stepValues: ["I am strong", "I am brave", "I am worthy", "I am enough"]
 tip: Daily affirmations
@@ -187,26 +129,25 @@ blankDismissible: true
 
 Type `affirmation _` → blank fills with "I am strong". Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → `_` to dismiss.
 
-## Adding an LLM/HTTP blank
+## 5. Adding an LLM/HTTP blank (TypeScript class)
 
-Blanks that fetch data from web APIs or call LLMs are implemented as **TypeScript classes inside `@opencues/runtime`** (post the blanks hoist refactor). Examples already in the runtime: `StocksControl`, `WeatherControl`, `HackerNewsControl`, `AnswerControl`, `PromptImproverControl`, `OpenCuesSettingsControl`.
+Blanks that fetch data from web APIs or call LLMs are implemented as **TypeScript classes inside `@opencues/runtime`**. Existing examples: `StocksBlank`, `WeatherBlank`, `HackerNewsBlank`, `AnswerBlank`, `PromptImproverBlank`, `OpenCuesSettingsBlank`, `CountriesBlank`, `CryptoBlank`, `DictionaryBlank`.
 
 This applies to both read-only API blanks (e.g. stocks, weather) and dynamic list blanks (e.g. Hacker News titles). The shape:
 
-1. **Add a class** to `packages/opencues-runtime/src/blanks/<name>.ts` implementing the `Blank` interface from `./types`. Typically you implement `get(keyword, contextWords) → Promise<string>` (and optionally `set(value, keyword)` if it's writable). Return newline-separated output for dynamic lists.
+1. **Add a class** to `packages/opencues-runtime/src/blanks/<name>.ts` implementing the `Blank` interface from `./types`. Implement `get(keyword, contextWords) → Promise<string>` (and optionally `set(value, keyword)` if writable). Return newline-separated output for dynamic lists.
 2. **Export it** from `packages/opencues-runtime/src/blanks/index.ts`.
-3. **Register it** in each host's blanks registry:
-   - CC: `integrations/claude-code/patches/opencuesRuntime.ts` — add a `__ocReg.set("<name>", new __ocCtl.YourControl({ ... }))` line in the `blankInvoke:` factory block
-   - OC: `integrations/opencode/patches/opencuesBootstrap.ts:105-116` — add to `controlsRegistry`
-   - Chrome: `integrations/chrome/src/controls/index.ts`
-4. **Add the blank's `cue.md`** under `blanks/<name>/cue.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. — same as before. The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by control name.
+3. **Register it** in each host's `blanksRegistry`:
+   - CC: `integrations/claude-code/patches/opencuesRuntime.ts`
+   - OC: `integrations/opencode/patches/opencuesBootstrap.ts`
+   - Chrome: `integrations/chrome/src/blanks/index.ts`
+4. **Add the blank's `cue.md`** under `defaults/blanks/<name>/cue.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by blank name.
 
 **Example `cue.md` (no blankScript field):**
 ```yaml
 ---
 name: stocks
-type: control
-control: stocks
+type: blank
 blankKeywords: reddit, rddt, nvidia, nvda, apple, aapl
 blankAutoPopulate: true
 blankFormat: string
@@ -216,26 +157,26 @@ blankProximity: 2
 ---
 ```
 
-`@opencues/runtime`'s `BlankFill` module sees the cue.md, looks up `blankInvoke('stocks', { action: 'get', args: [keyword, ...contextWords] })`, the host's registry resolves `'stocks'` to the `StocksControl` instance, and the class's `get()` returns the price.
+`@opencues/runtime`'s `BlankFill` module sees the cue.md, looks up `blankInvoke('stocks', { action: 'get', args: [keyword, ...contextWords] })`, the host's registry resolves `'stocks'` to the `StocksBlank` instance, and the class's `get()` returns the price.
 
-For dynamic list blanks (Hacker News pattern): the class returns multiple newline-separated lines, the runtime treats each as a cycling alternative. Add `blankDismissible: true` to the cue.md to append `_` as the last option (lets users dismiss back to a blank).
+For dynamic list blanks (Hacker News pattern): the class returns multiple newline-separated lines; the runtime treats each as a cycling alternative. Add `blankDismissible: true` to the cue.md to append `_` as the last option.
 
-For OS-level blanks (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the cue.md (`blanks/volume/volume.sh` etc.) and `cue.md` declares `blankScript: ./volume-blank.sh` as before.
+For OS-level blanks (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the cue.md (`blanks/volume/volume-blank.sh`) and `cue.md` declares `blankScript: ./volume-blank.sh`.
 
 ## Cycling pitfalls: numeric stepping vs list cycling
 
 The blank cycling cascade has two paths, and a blank must route to the correct one:
 
-1. **Numeric stepping** — parses the displayed word as a number, adds/subtracts `blankStep`, calls `blankScript set <value>`. Used by volume, brightness.
+1. **Numeric stepping** — parses the displayed value as a number, adds/subtracts `blankStep`, calls `blankInvoke set <value>`. Used by volume, brightness.
 2. **List cycling** — cycles through `alts[]` array by index. Used by hackernews, affirmations, and any blank with `blankDismissible: true`.
 
-**The routing rule:** if the blank's metadata has `listControl: true`, it uses the list path. Otherwise it uses the numeric path.
+**The routing rule:** if the blank's metadata has `listBlank: true` (auto-set when `blankDismissible: true` or `stepValues: [...]` or multi-line output), it uses the list path. Otherwise it uses the numeric path.
 
 **The pitfall:** if a blank returns a value that *looks* like a number (e.g., `10.9°C`) but isn't meant to be stepped, the numeric path will parse it and increment it (`10.9°C` → `11.9` → `12.9`). This happens when:
-- The blank has `blankFormat: string` but NOT `listControl: true`
+- The blank has `blankFormat: string` but NOT `listBlank: true`
 - The value contains digits that `parseFloat()` can extract
 
-**The fix:** blanks that return non-numeric string values AND have multiple alts (e.g., `blankDismissible: true`) must have `listControl: true` in their metadata. This is now automatic: `blankDismissible: true` in the config sets `listControl: true` on the WordDef's metadata in `BlankSource`. But if you're manually constructing WordDefs for a custom blank, remember to set it explicitly.
+**The fix:** blanks that return non-numeric string values AND have multiple alts (e.g., `blankDismissible: true`) must have `listBlank: true` in their metadata. This is now automatic: `blankDismissible: true` sets `listBlank: true` on the WordDef's metadata in `BlankSource`. But if you're manually constructing WordDefs for a custom blank, remember to set it explicitly.
 
 **When to use each:**
 | Config | Cycling path | Example |
@@ -250,7 +191,7 @@ The blank cycling cascade has two paths, and a blank must route to the correct o
 
 For list/consume-all blanks (`blankDismissible`, multi-line output), the resolved value is stored as a span covering one or more word positions. The runtime only invalidates this span when the **words at those positions change** — it does not invalidate on trailing spaces, punctuation appended elsewhere, or other non-word edits. This is intentional so the user can keep typing around a resolved blank without losing it.
 
-**Implication for custom blanks:** if you're building a control that should survive normal typing, this behaviour is already there. If your blank's resolved value should be cleared the moment the user edits *anywhere* in the line, use `blankClearOnEdit: true` instead.
+**Implication for custom blanks:** if you're building a blank that should survive normal typing, this behaviour is already there. If your blank's resolved value should be cleared the moment the user edits *anywhere* in the line, use `blankClearOnEdit: true` instead.
 
 ### `def.word` after auto-populate
 
@@ -260,16 +201,17 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 
 ## Checklist
 
-- [ ] Blank folder created: `blanks/{name}/cue.md` + script
-- [ ] Script is executable (`chmod +x`)
-- [ ] Script handles `get [keyword]`, `up <amount>`, `down <amount>` commands as needed
+- [ ] Blank folder created: `defaults/blanks/<name>/cue.md` (+ `<name>-blank.sh` for OS-level)
+- [ ] `type: blank` in frontmatter
+- [ ] Script (if any) is executable (`chmod +x`)
+- [ ] Script handles `get`, `set <value>`, `up`, `down` as needed
 - [ ] Script queries live system value (no file caching)
-- [ ] For blanks: `blankKeywords`, `blankAutoPopulate` set in `cue.md`
-- [ ] For read-only blanks: `blankReadOnly: true` set in `cue.md`
-- [ ] For keyword expansion: `blankKeywordExpansions.<keyword>: Display Name` set in `cue.md` (optional)
-- [ ] For keyword clearing: `blankClearKeywords: true` to remove keywords from text on auto-populate (optional)
-- [ ] For edit clearing: `blankClearOnEdit: true` to remove spawned words when user edits them (optional)
-- [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true` to clear entire input on auto-populate. Requires dedicated cycling storage — see `docs/guides/creating-a-cue-type.md`
-- [ ] Restart Claude Code
+- [ ] `blankKeywords` set; `blankAutoPopulate` set if you want `_` to fill on analysis
+- [ ] For read-only blanks: `blankReadOnly: true`
+- [ ] For keyword expansion: `blankKeywordExpansions.<keyword>: Display Name`
+- [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true`. Requires dedicated cycling storage — see [creating-a-cue-type](creating-a-cue-type.md)
+- [ ] For TS-class blanks: registered in each host's `blanksRegistry`
+- [ ] For TS-class blanks: `setup.sh` re-run so the runtime build includes the new class
+- [ ] Restart the host (config hot-reloads in ~2s; class registration requires restart)
 
-> **No need to run `setup.sh`** — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patch files in `integrations/claude-code/patches/`.
+> **No need to run `setup.sh`** for cue.md / script edits — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patches/runtime sources.

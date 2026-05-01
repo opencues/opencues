@@ -16,9 +16,9 @@ This is an optional mode that complements manual navigation (feature 1). When ac
 2. **Offset to word**: On each text change or cursor movement, the cursor's character offset is mapped to a word index by walking the whitespace-split word array
 3. **Change detection**: The system tracks `_cursorNavLastWordIdx`. If the cursor is on the same word as last time, no action is taken — this avoids redundant re-evaluation
 4. **Navigability check**: The word at the cursor is checked against the same sources as manual navigation:
-   - Cue-control words (`_isCueControl`)
+   - Cue-blank keyword (`blanksByWord` lookup) — registered blank trigger words
    - Local cue map (`_localCueMap`) — words with pre-computed tips/alts
-   - Dynamic definitions (`_dynDefs`) — words with LLM-generated alternatives
+   - Dynamic definitions (`_dynDefs`) — words with LLM-generated alternatives or `metadata.blankName` (cue-blank values)
    - Span membership (`_dynSpans`) — non-origin span positions snap to the original
 5. **Activate or deactivate**: If the word is navigable, `_hlState` is set to highlight it. If not navigable (and user hasn't manually navigated), the highlight is cleared
 6. **Keyword skip**: Words that are blank-keyword context (e.g., "volume" in "volume _") are skipped — the blank owns the interaction, not cursor-navigate

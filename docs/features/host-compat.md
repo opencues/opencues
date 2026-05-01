@@ -5,9 +5,9 @@ The OpenStandard runs on four integration hosts — `claude-code`, `opencode`,
 runtime capabilities. Native hosts (CC, OC, codex) can spawn subprocesses
 and read arbitrary filesystem paths; chrome can't.
 
-A cue, blank, or control can declare which hosts it works on. Most
-entries don't need to: OpenCues **infers** compatibility from what the
-entry uses. The annotation is only for the cases where inference can't.
+A cue or blank can declare which hosts it works on. Most entries
+don't need to: OpenCues **infers** compatibility from what the entry
+uses. The annotation is only for the cases where inference can't.
 
 ---
 
@@ -20,7 +20,7 @@ frontmatter. The rule is one line:
 > (`.sh`, `.bash`, `.ps1`, `.bat`, `.cmd`, `.exe`, `.py`, `.rb`, `.pl`),
 > the entry can't run in chrome.** Otherwise it runs everywhere.
 
-That covers every cue + control we ship today without a single annotation:
+That covers every cue + blank we ship today without a single annotation:
 
 | Entry | Auto-detected hosts | Why |
 |---|---|---|
@@ -28,8 +28,8 @@ That covers every cue + control we ship today without a single annotation:
 | `blanks.md ### math` (compute parser) | all | no script |
 | `blanks/affirmations/cue.md` (list) | all | no script |
 | `blanks/stocks/cue.md` (runtime class) | all | no script |
-| `blanks/volume/cue.md` (`script: ./volume.sh`) | claude-code, codex, opencode | `.sh` |
-| `blanks/brightness/cue.md` (`script: ./brightness.sh`) | claude-code, codex, opencode | `.sh` |
+| `blanks/volume/cue.md` (`blankScript: ./volume-blank.sh`) | claude-code, codex, opencode | `.sh` |
+| `blanks/brightness/cue.md` (`blankScript: ./brightness-blank.sh`) | claude-code, codex, opencode | `.sh` |
 
 ---
 
@@ -58,14 +58,14 @@ Both accept:
 
 - A demo cue that only makes sense in the browser (e.g. a "page word
   count" prompt that needs DOM access)
-- A runtime-class control that ALSO has a shell fallback for native
+- A runtime-class blank that ALSO has a shell fallback for native
   hosts. Without `on-host:`, auto-detect sees the `.sh` and excludes
   chrome — the override re-includes it. See
   `.opencues/blanks/opencues/cue.md` for a real example.
 
 ### When you'd use `not-on-host:`
 
-- A control that uses a runtime class but doesn't make sense outside
+- A blank that uses a runtime class but doesn't make sense outside
   one specific host (rare)
 - Forcing exclusion when the auto-detect would say "all hosts" but you
   know better
@@ -144,7 +144,7 @@ formatHostList(result.hosts);
 
 Three motivations:
 
-1. **`opencues sync chrome`** has to know which entries are safe to bundle into the Chrome extension. Bundling a control that calls `volume.sh` would silently fail because chrome content scripts can't spawn processes — the user would see a missing-control message in the extension. Filter it out at sync time, with an honest "this needs subprocess access" reason.
+1. **`opencues sync chrome`** has to know which entries are safe to bundle into the Chrome extension. Bundling a blank that calls `volume-blank.sh` would silently fail because chrome content scripts can't spawn processes — the user would see a missing-blank message in the extension. Filter it out at sync time, with an honest "this needs subprocess access" reason.
 
 2. **`opencues list`** is a "what's actually going to fire?" diagnostic. Showing the host marker per entry makes it obvious why a cue you defined isn't appearing in chrome — you can see at a glance that it's restricted.
 

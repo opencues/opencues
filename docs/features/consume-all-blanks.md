@@ -6,13 +6,13 @@ last_updated: 2026-04-10
 
 A consume-all blank is a blank that **clears all surrounding text** when it auto-populates and replaces it with a multi-word result. The user can cycle through alternative results as a single word group.
 
-This extends [Control Blanks](cue-blanks.md) (Feature 12) with a new pattern: instead of replacing just `_`, the entire input is consumed — activation keywords, prompt text, and the blank are all replaced by the result.
+This extends [Cue-Blanks](cue-blanks.md) with a new pattern: instead of replacing just `_`, the entire input is consumed — activation keywords, prompt text, and the blank are all replaced by the result.
 
 ---
 
 ## Concept
 
-Standard control blanks replace `_` with a value (e.g., `volume _` → `50`). Consume-all blanks replace **everything**:
+Standard cue-blanks replace `_` with a value (e.g., `volume _` → `50`). Consume-all blanks replace **everything**:
 
 ```
 Input:  write a poem about love improve prompt _
@@ -43,11 +43,11 @@ Other fields typically used:
 
 ## Data model
 
-### Input to the control
+### Input to the blank
 
-The control script receives ALL context words (minus `_`). The script is responsible for separating activation keywords from useful content. This typically requires a multi-step process (e.g., an LLM extraction step).
+The blank receives ALL context words (minus `_`). The implementation is responsible for separating activation keywords from useful content. This typically requires a multi-step process (e.g., an LLM extraction step).
 
-### Output from the control
+### Output from the blank
 
 The script returns multiple lines (newline-separated). Each line becomes a cycling alternative via the existing dynamic list pattern.
 
@@ -74,7 +74,7 @@ An integration implementing consume-all blanks must:
 ```
 blanks/prompt/
   cue.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
-                      # Implementation: @opencues/runtime PromptImproverControl
+                      # Implementation: @opencues/runtime PromptImproverBlank
                       # (packages/opencues-runtime/src/blanks/prompt-improver.ts)
 ```
 

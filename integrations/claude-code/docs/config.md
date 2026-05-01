@@ -17,7 +17,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `enableWordHighlight` | boolean | undefined | **YES** | Master switch — gates word highlight AND dynamic highlight patches |
 | `highlightMode` | `'numbers'\|'words'` | `'words'` | No | Which words are navigable |
 | `highlightColor` | `'white'\|'cyan'\|'yellow'\|'inverse'\|'underline'` | `'white'` | No | Highlight color |
-| `numberDimming` | boolean | `true` | No | Dim step-pattern matches and control words in dark gray |
+| `numberDimming` | boolean | `true` | No | Reserved (legacy — step-pattern blanks were removed) |
 | `highlightClearOnEscape` | boolean | `true` | No | Clear highlight on Escape |
 | `highlightExportEnabled` | boolean | `true` | No | Export state to JSON file |
 | `highlightExportPath` | string | PID-based at runtime | No | Export file path |
@@ -27,7 +27,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `highlightAutoScroll` | boolean | undefined | No | Auto-scroll to highlighted word |
 | `highlightClearOnNavigation` | boolean | undefined | No | Clear on cursor navigation |
 | `highlightWordPattern` | string | undefined | No | Custom word boundary pattern |
-| `cueControlOverrides` | object | undefined | No | Words that trigger external scripts on Up/Down (requires `enableWordHighlight`) |
+| (cue-blank registry) | (built from `.opencues/blanks/*/cue.md`) | (none) | No | Cue-blanks are loaded from folder configs at runtime; no legacy override block in `config.json` |
 
 ### Dynamic Highlight (requires `enableWordHighlight: true`)
 
@@ -42,7 +42,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 
 ### Text-to-Speech
 
-TTS is per-tip opt-in via the `speak: true` flag on individual tip entries or control configs — not a global toggle. When a user navigates to a word with `speak: true`, the tip text is read aloud.
+TTS is per-tip opt-in via the `speak: true` flag on individual tip entries or blank configs — not a global toggle. When a user navigates to a word with `speak: true`, the tip text is read aloud.
 
 **Engine priority:** SpeakCtl.exe (~50ms) > PowerShell (~500ms) > espeak-ng > spd-say. SpeakCtl.exe is auto-compiled from `SpeakCtl.cs` by setup.sh on WSL.
 
@@ -91,20 +91,23 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 
 > For standard tweakcc options (model customizations, thinking blocks, etc.), see the [tweakcc documentation](https://github.com/anthropics/tweakcc).
 
-## Cue-Blank Overrides Format
+## Cue-Blank Discovery
 
-```json
-{
-  "cueControlOverrides": {
-    "volume": {
-      "control": "volume",
-      "tip": "system volume control",
-      "speak": true,
-      "upArgs": ["up", "5"],
-      "downArgs": ["down", "5"]
-    }
-  }
-}
+Cue-blanks live as folders under `~/.opencues/blanks/<name>/cue.md` (user-level) and `<cwd>/.opencues/blanks/<name>/cue.md` (project-level). The runtime's `ConfigLoader` discovers them on each hot-reload cycle.
+
+```yaml
+# ~/.opencues/blanks/volume/cue.md
+---
+name: volume
+type: blank
+tip: system volume
+speak: true
+blankKeywords: volume, vol, sound, audio
+blankStep: 6
+blankAutoPopulate: true
+blankSuffix: '%'
+blankScript: ./volume-blank.sh
+---
 ```
 
-Script path defaults to `~/claude-code-cues/.opencues/actions/{control}.sh`. Override with `"scriptPath": "/path/to/script.sh"`.
+The colocated script `./volume-blank.sh` is resolved relative to the cue.md location. See [Adding a Cue-Blank](../../../docs/guides/adding-a-cue-blank.md) for the full schema.

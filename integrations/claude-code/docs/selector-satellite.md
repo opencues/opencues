@@ -8,7 +8,7 @@ Implements feature [17](../../../docs/features/selector-satellite.md). See that 
 
 **Patch files:** `patches/dynamicHighlight.ts` (config parser, cycling paths, `_pendingAutoPopulate` extension, render-pass suppression, pair-cleanup cascade, TTS cycling gate), `patches/wordHighlight.ts` (auto-populate insertion branch, TTS navigation gate)
 
-**Cues-core changes:** `packages/opencues-core/src/sources/control-blank-source.ts` (satellite branch), `packages/opencues-core/src/cues-md.ts` (`blankSatellite` field on `BlankConfig` + `SingleCueFrontmatter`)
+**Cues-core changes:** `packages/opencues-core/src/sources/blank-source.ts` (satellite branch), `packages/opencues-core/src/cues-md.ts` (`blankSatellite` field on `BlankConfig` + `SingleCueFrontmatter`)
 
 ## CC-Specific: The `opencues.md` Parser
 
@@ -76,13 +76,13 @@ No `_dynSpans` entry is created — the pair are independent words, not a span.
 
 ## CC-Specific: `_cbDef` Exclusion
 
-The existing blank cycling (the numeric/step-based path for `volume _`, `brightness _`, etc.) previously grabbed any WordDef with `metadata.blankName && !listControl`. It was narrowed:
+The existing blank cycling (the numeric/step-based path for `volume _`, `brightness _`, etc.) previously grabbed any WordDef with `metadata.blankName && !listBlank`. It was narrowed:
 
 ```js
 var _cbDef = _dynDefs.words.find(w =>
   w.index === _hlIdx &&
   w.metadata && w.metadata.blankName &&
-  !w.metadata.listControl &&
+  !w.metadata.listBlank &&
   !w.metadata.selectorWord &&  // NEW
   !w.metadata.satelliteWord    // NEW
 );
@@ -92,7 +92,7 @@ Otherwise the numeric path would claim the satellite and try to parse `"active"`
 
 ## CC-Specific: Cycling Paths in `_cycleAlt`
 
-Two new branches were added inside `_cycleAlt`, after the `_cbDef` check and before the step-control/generic-dyn-alt paths. Both live inside `if (globalThis._dynDefs && globalThis._dynDefs.words)`.
+Two new branches were added inside `_cycleAlt`, after the `_cbDef` check and before the generic-dyn-alt path. Both live inside `if (globalThis._dynDefs && globalThis._dynDefs.words)`.
 
 ### Selector branch (`metadata.selectorWord === true`)
 
@@ -180,9 +180,9 @@ if (_dynDefs && _dynDefs.words) {
 }
 ```
 
-In the dim cascade, the whole `_numRanges.push` tree was wrapped in an IIFE that returns `false` early if `_isCtxKw`, skipping every dim branch (step patterns, cue controls, tip alts, dyn defs, spans).
+In the dim cascade, the whole `_numRanges.push` tree was wrapped in an IIFE that returns `false` early if `_isCtxKw`, skipping every dim branch (cue-blank keywords, tip alts, dyn defs, spans).
 
-No global state is mutated — the check is predicated purely on the live `_dynDefs.words` contents and the declared `blankKeywords` in `_cueBlankOverrides`. When pair cleanup clears the `selectorWord` flag, the check stops matching on the next render and keyword words become interactive again.
+No global state is mutated — the check is predicated purely on the live `_dynDefs.words` contents and the declared `blankKeywords` in the runtime's `blanksByWord` map. When pair cleanup clears the `selectorWord` flag, the check stops matching on the next render and keyword words become interactive again.
 
 An earlier draft added the keyword words to `globalThis._cuesIgnoreWords` (the `## Ignore` feature's Set). That was wrong — `_cuesIgnoreWords` is a user-authored list, not a runtime scratch space, and mutating it caused those words to be silently ignored in unrelated contexts. Reverted in favour of the dynamic filter.
 
@@ -219,7 +219,7 @@ Because satellite cycling updates `_openCuesCurrent` in memory immediately, flip
 | `_openCuesSatTips` | `_reloadCuesConfig` (value entries under `values:` in `opencues.md` `settings:`) | Per-value satellite tip display |
 | `_openCuesVersion` | `_reloadCuesConfig` (`version:` top-level key) | Format version marker |
 
-Tips are the single source for selector/satellite tip display. See [Tip Priority](../../../docs/features/tip-priority.md) for how they interact with other tip sources (control blanks, cue-blank keywords, local cues, LLM).
+Tips are the single source for selector/satellite tip display. See [Tip Priority](../../../docs/features/tip-priority.md) for how they interact with other tip sources (cue-blank values, cue-blank keywords, local cues, LLM).
 
 ## CC-Specific: New Metadata Fields on WordDef
 
@@ -230,7 +230,7 @@ Tips are the single source for selector/satellite tip display. See [Tip Priority
 | `metadata.childIndex: number` | selector | Points at the satellite. Updated on index shift during insertion. |
 | `metadata.parentIndex: number` | satellite | Points back at the selector. Updated on index shift during insertion. |
 | `metadata.currentSetting: string` | selector | Authoritative logical state (which setting the selector represents). Distinct from `word`, which is the display text. Read by satellite cycling to know which setting to write. |
-| `metadata.selectorControl: true` | `CueResult` from `BlankSource` | Internal handoff flag from the resolver to auto-populate. Converted to `selectorWord: true` on the runtime WordDef. |
+| `metadata.selectorBlank: true` | `CueResult` from `BlankSource` | Internal handoff flag from the resolver to auto-populate. Converted to `selectorWord: true` on the runtime WordDef. |
 | `metadata.satelliteValue: string` | `CueResult` from `BlankSource` | Carries the satellite's initial value through the resolver callback to `_pendingAutoPopulate`. |
 | `metadata.blankClearOnEdit: boolean` | both | If true, pair cleanup removes the spawned words from text (via `_pendingClearOnEdit`). |
 

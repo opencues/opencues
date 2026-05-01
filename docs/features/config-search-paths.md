@@ -62,7 +62,7 @@ they're **merged**, not replaced. The merge rule is:
 - Top-level frontmatter and `## Tips` blocks → project wins per-key
 - `cues/<name>/cue.md` folder cues → project layer's `<name>` wins on
   conflict; uniquely-named cues from each layer all load
-- `blanks/<name>/cue.md` controls → same as folder cues
+- `blanks/<name>/cue.md` cue-blanks → same as folder cues
 
 Missing layers are silently skipped — there's never a "config
 missing" error from the layering itself. A user with no `.opencues/`
@@ -91,7 +91,7 @@ entry, or `$OPENCUES_HOME` when set).
   skips it
 - A 0-byte `opencues.md` is treated as missing — `seed-configs`
   re-seeds it, and `setup.sh` self-heals on every install. The
-  `OpenCuesSettingsControl` silently no-ops on null/empty content
+  `OpenCuesSettingsBlank` silently no-ops on null/empty content
   (correct behavior for "no file"), so an empty file would otherwise
   silently break `opencues ___` / `config ___` blank-fills on every
   native host. Chrome is unaffected — its storage adapter falls back
@@ -142,10 +142,10 @@ that doesn't already exist at the destination. Flags:
 
 Run `seed-configs` once after a fresh install; the host integrations
 work without it (they degrade to empty config), but you'll have no
-example tips, no domain cues, no controls until you do.
+example tips, no domain cues, no cue-blanks until you do.
 
 The shipped defaults under `defaults/` cover all four hosts. Per-host
-filtering (e.g., excluding `.sh`-based controls from chrome) is
+filtering (e.g., excluding `.sh`-based blanks from chrome) is
 handled at install / sync time via [host-compat](host-compat.md).
 
 ---

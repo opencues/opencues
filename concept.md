@@ -28,9 +28,9 @@ That's it. Every feature in OpenCues is one of these two things, dressed up.
                          │
         you → system     ▼
         "fill this       Blanks  (substitutions)
-         slot for me"    ├── control blanks (volume, hn, stocks…)  ← external state
-                         ├── fluid blank   (free-form LLM lookup)
-                         └── settings      (opencues _, voice-mode _)
+         slot for me"    ├── stateful blanks (volume, hn, stocks…)  ← external state
+                         ├── fluid blank      (free-form LLM lookup)
+                         └── settings         (opencues _, voice-mode _)
 ```
 
 ## Why the split matters
@@ -51,12 +51,10 @@ The two surfaces have **fundamentally different contracts**:
 |---|---|
 | Synonyms for a class of words | a domain cue source: `defaults/cues/<name>/cue.md` with `match:` regex |
 | A new spell-check style cue | a TS class implementing `CueSource` (mirror `SpellingSource`) |
-| External state lookup (API / system / file) | a runtime blank class implementing `Blank` (mirror `StocksControl`*) + cue.md with `blankKeywords:` |
+| External state lookup (API / system / file) | a runtime blank class implementing `Blank` (mirror `StocksBlank`) + cue.md with `blankKeywords:` |
 | External state via a shell script (native hosts only) | drop a `<name>-blank.sh` next to a cue.md with `blankScript:` |
 | A pre-baked rotation list | cue.md with `blankKeywords:` + `stepValues: [...]` |
 | A whole new opt-in cue surface | a `CueSource` + `BuildSourcesOptions` flag + opencues.md toggle |
-
-\* class names still say `*Control` — see Open Simplifications below.
 
 ## Non-extension points (deliberately removed)
 
@@ -79,14 +77,3 @@ classified-blanks-mode: off   # legacy classifier — fluid covers it
 
 Missing setting → off. Every surface defaults off. The user opts in to what they want.
 
-## Open simplifications (all resolved)
-
-These predated the concept-cleanup pass; the names disagreed with the dual-direction model.
-
-**Done (concept-aligned):**
-- ✅ Class names `*Control` → `*Blank` (StocksControl → StocksBlank, etc. — all 9 classes)
-- ✅ `controlsRegistry` → `blanksRegistry`
-- ✅ `metadata.controlName` → `metadata.blankName`
-- ✅ `BlankValuesCache` deleted (it was dead after the word-cycling removal)
-- ✅ cue.md frontmatter `type: blank` is canonical. Redundant `control: <name>` field dropped from all 12 shipped defaults (dirname/name already identifies the blank).
-- ✅ Wire format: `'control-invoke'` JSON-RPC method → `'blank-invoke'`; `"controlName"` JSON key → `"blankName"`. Codex Rust bridge updated in lockstep (`integrations/codex/patches/opencues-bridge/src/lib.rs` `invoke_blank`). `BlankConfig.control` field renamed to `BlankConfig.name`. `controlsByWord` map → `blanksByWord`. `lookupControl` → `lookupBlank`.

@@ -61,7 +61,7 @@ dynamicHighlightAutoSubmit?: boolean;
 dynamicHighlightDebounceMs?: number;
 ttsSpeed?: number;
 ttsScript?: string;
-cueControlOverrides?: { [word: string]: { control: string; scriptPath?: string; upArgs?: string[]; downArgs?: string[]; }; };
+// (Cue-blanks are loaded from .opencues/blanks/<name>/cue.md at runtime — no settings.json entry)
 ```
 
 ---
@@ -93,7 +93,7 @@ misc: {
   dynamicHighlightDebounceMs: 500,
   ttsSpeed: 2,
   ttsScript: '',
-  cueControlOverrides: { volume: { control: 'volume', upArgs: ['up', '5'], downArgs: ['down', '5'] } },
+  // Cue-blanks load from .opencues/blanks/<name>/cue.md at runtime — no defaultSettings entry.
 
   // ... rest of existing misc defaults
 ```
@@ -226,9 +226,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
     if ((result = writeCursorStateExport(content, exportPath))) content = result;
   }
 
-  // Step 2 + Step 3: wordHighlight — navigation + bare-numbers dim
-  // (Step 3 is a one-line swap inside wordHighlight.ts: the _stepPatterns read
-  //  was replaced with a hardcoded /^-?\d+(\.\d+)?$/ — no orchestration here.)
+  // Step 2: wordHighlight — navigation + dim rendering
   if (config.settings.misc?.enableWordHighlight) {
     const highlightConfig = {
       enableWordHighlight: config.settings.misc.enableWordHighlight,
@@ -243,7 +241,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
       highlightExportEnabled: config.settings.misc.highlightExportEnabled,
       highlightExportPath: config.settings.misc.highlightExportPath,
       numberDimming: config.settings.misc.numberDimming,
-      cueControlOverrides: config.settings.misc.cueControlOverrides,
+      // Cue-blanks load from .opencues/blanks/<name>/cue.md at runtime
     };
     if ((result = writeWordHighlight(content, highlightConfig))) content = result;
   }

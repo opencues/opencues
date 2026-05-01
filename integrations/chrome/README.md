@@ -2,7 +2,7 @@
 
 `@opencues/chrome` — an MV3 extension that adds real-time word alternatives, blanks, and cue-blanks to any `contenteditable` on the web. Renders via the CSS Custom Highlight API; no DOM mutation, no caret disruption.
 
-> **What works in Chrome vs native hosts**: cycling, blanks, step blanks, opencues-settings (`opencues settings _`), prompt-improver, stocks/weather/HackerNews — all work. **What doesn't**: brightness / volume controls (no subprocess access in browsers — these spawn shell scripts on native hosts). TTS uses the Web Speech API (not `speak.sh`). Configs come from chrome.storage with bake-time fallback — no filesystem reads.
+> **What works in Chrome vs native hosts**: cycling, blanks, opencues-settings (`opencues settings _`), prompt-improver, stocks/weather/HackerNews — all work. **What doesn't**: brightness / volume cue-blanks (no subprocess access in browsers — these spawn shell scripts on native hosts). TTS uses the Web Speech API (not `speak.sh`). Configs come from chrome.storage with bake-time fallback — no filesystem reads.
 
 | Field | Value |
 |---|---|

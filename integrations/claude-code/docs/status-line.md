@@ -68,7 +68,7 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 |-------|------|--------|
 | `active` | boolean | `_hlState.active` |
 | `highlightedWord` | string | Current word text |
-| `cueControl` | boolean | `true` if word is a cue-blank (step control or custom). When set, `tip`/`alts`/`altCueTips` are null. |
+| `cueBlank` | boolean | `true` if word is a cue-blank (auto-populated value or registered keyword). When set, `tip`/`alts`/`altCueTips` are null. |
 | `tip` | string | `_dynDefs.words[i].tip` (from local cues, null for cue-blanks) |
 | `alts` | string[] | `_dynDefs.words[i].alts` (local or remote cues, null for cue-blanks) |
 | `currentAltIndex` | number | Updated by cycling and per-word clearing |
@@ -76,15 +76,15 @@ Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it 
 
 ## Display Format
 
-The status line script formats the display based on control type:
+The status line script formats the display based on word type:
 
 | Condition | Format | Example |
 |-----------|--------|---------|
-| `cueControl: true` | `{cueTip}` | `system volume control` |
+| `cueBlank: true` | `{cueTip}` | `system volume` |
 | Alt-cycling word | `{word} ({N}/{total}) - {cueTip}` | `agents (1/3) - Spawn parallel workers` |
 | No tip | `{word} ({N}/{total})` | `happy (2/4)` |
 
-Cue-blanks (custom blanks, blanks, step blanks, list blanks, dynamic list blanks, read-only blanks) all show just the `cueTip` text — the word is already highlighted in the input so repeating it in the status line is redundant.
+Cue-blanks (auto-populated values, list blanks, dynamic list blanks, read-only blanks) all show just the `cueTip` text — the word is already highlighted in the input so repeating it in the status line is redundant.
 
 ## Tips Source
 

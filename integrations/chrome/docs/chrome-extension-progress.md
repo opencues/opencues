@@ -33,11 +33,11 @@ Tracking what has been manually verified in the Chrome extension integration.
 | # | Feature | Notes |
 |---|---------|-------|
 | 14 | Blanks | ✅ | `2 + 2 = _` fills with `4` |
-| 15 | Weather control | ✅ | `london weather _` fills with temp + condition, keyword cleared, rAF render fix |
-| 16 | Stocks control | ✅ | `reddit stock _` fills with price, multi-word ticker map, closest-match proximity |
-| 17 | Hackernews control | ✅ | `hackernews _` fills first headline, cycle through 20, expansion (`hn`→`HackerNews`), span cleanup on cycle |
+| 15 | Weather blank | ✅ | `london weather _` fills with temp + condition, keyword cleared, rAF render fix |
+| 16 | Stocks blank | ✅ | `reddit stock _` fills with price, multi-word ticker map, closest-match proximity |
+| 17 | Hackernews blank | ✅ | `hackernews _` fills first headline, cycle through 20, expansion (`hn`→`HackerNews`), span cleanup on cycle |
 | 18 | Prompt improver | ✅ | `improve prompt write a poem _` → 3 improved versions, consume-all cycling, span-safe |
-| 19 | Volume control | ✅ | Standalone "volume" word navigable + cyclable, blank "volume _" fills with %, tab audio via Web Audio GainNode |
+| 19 | Volume blank | ✅ | `volume _` fills with %, tab audio via Web Audio GainNode |
 | 20 | Selector/satellite | ✅ | `opencues settings _` fills paired selector+satellite, multi-word spans, blankClearOnEdit collapses both on edit |
 | 21 | Hot-reload | ✅ | Popup save → chrome.storage.onChanged → re-bootstrap. TTS checkbox syncs with voice-mode. Cycling persists back to storage. |
 | 22 | Input swapping | N/A | Contenteditable only — textarea/input not supported (CSS Highlight API limitation). Dead swap code removed. |
@@ -62,14 +62,14 @@ Tracking what has been manually verified in the Chrome extension integration.
 | HN: span breaks on space | `lookupTipsSync` now skips non-origin span positions |
 | HN: stale span entries on cycle | Clean up old span entries beyond new span length when cycling to shorter headline |
 | Prompt: span breaks on typing | Consume-all cleanup now word-level (only clears when span words change, not trailing spaces/appended words) — matches Claude Code |
-| Prompt: not cycling | Consume-all WordDef had `controlName` → navigator routed to `controlAction()` (no-op). Added `consumeAll: true` metadata flag to bypass |
-| Prompt: LLM/tips overwriting span words | Re-added `controlName` to consume-all WordDef for LLM protection; `consumeAll` flag routes cycling correctly |
+| Prompt: not cycling | Consume-all WordDef had `blankName` → navigator routed to blank-invoke path (no-op). Added `consumeAll: true` metadata flag to bypass |
+| Prompt: LLM/tips overwriting span words | Re-added `blankName` to consume-all WordDef for LLM protection; `consumeAll` flag routes cycling correctly |
 | Consume-all: stale def clearing deleted span entry | Skip stale def clearing for consume-all fills (entire text replaced, no context word to clear) |
-| Volume: not navigable | Blanks with `controlName` and `!blankReadOnly` now navigable |
-| Volume: number not updating in text | Navigator controlAction path now replaces word in DOM with returned value |
-| Volume: LLM giving word alts for "volume" | Standalone control words skipped in tips + LLM analysis; minimal WordDef created for renderer dimming |
+| Volume: not navigable | Blanks with `blankName` and `!blankReadOnly` now navigable |
+| Volume: number not updating in text | Navigator blankInvoke path now replaces word in DOM with returned value |
+| Volume: LLM giving word alts for "volume" | Cue-blank keywords skipped in tips + LLM analysis; minimal WordDef created for renderer dimming |
 | Selector/satellite: not auto-populating | Implemented satellite branch in checkBlanks, paired WordDefs, span setup |
-| Selector/satellite: not cycling | selectorWord/satelliteWord skip controlAction path, fall through to cycleSelector/cycleSatellite |
+| Selector/satellite: not cycling | selectorWord/satelliteWord skip blank-dispatch path, fall through to cycleSelector/cycleSatellite |
 | Selector/satellite: spans not updating on cycle | cycleSelector now clears old spans, shifts span keys, rebuilds for new word counts |
 | Selector/satellite: blankClearOnEdit not firing | Added `invalidateWordsSync()` for immediate per-word invalidation (not 50ms timer) |
 | Selector/satellite: executeClearOnEdit returning "" treated as falsy | Changed `if (cleaned)` to `if (cleaned !== null)` |
@@ -142,7 +142,7 @@ Default-source isolation + bundle precedence over bake-time.
 - All shipped configs flip from `← bake-time` to `← bundle`:
   - `cues.md`, `blanks.md`
   - `cues/{financial,grammar,legal,medical}/cue.md`
-  - All 9 controls
+  - All 9 blanks
 - `opencues.md` correctly stays `← storage` (writable file — voice-mode /
   debug-mode persist there).
 - `cues/sync-demo/cue.md ← bundle (494 chars)` — this folder doesn't exist

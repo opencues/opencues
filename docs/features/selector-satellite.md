@@ -12,13 +12,13 @@ This is the mechanism behind `opencues settings _`, which becomes `opencues sett
 
 ---
 
-## Why This Is Not Linked Words, a Span, or a List Control
+## Why This Is Not Linked Words, a Span, or a List Blank
 
 | Feature | Shape | Cycle behaviour |
 |---|---|---|
 | **Linked words** | N independent words already in the text, each with an alts list. Siblings share a `currentAltIndex` (e.g. `boy`/`his` → `girl`/`her`). | Symmetric. All siblings step to the **same index** in lock-step. |
 | **Multi-word span** | One alternative whose value is physically multiple words (e.g. `"Jeff Bezos"`). Only the origin index is navigable. | One cycle replaces the whole span as a unit. |
-| **List control** | One blank cycling a flat, static or dynamically-fetched list. | One position, one list, no second word. |
+| **List blank** | One blank cycling a flat, static or dynamically-fetched list. | One position, one list, no second word. |
 | **Selector + satellite** | **Two independent words** where one `_` was. Each has its own alts list. Cycling the selector **swaps the satellite's entire alts list** to the new setting's valid values. | Asymmetric. Selector cycle → satellite follows (new text, new alts). Satellite cycle → persists to config; selector unaffected. |
 
 The sharp distinction from linked words: with linked words the alts lists are aligned index-for-index and fixed. With selector+satellite the **satellite's alts list itself is replaced** when the selector moves — "valid values for `voice-mode`" and "valid values for `debug-mode`" are different universes. There is no shared cycle index, no lock-step. They are yoked by semantics (parent→child), not by aligned position.
@@ -81,7 +81,7 @@ The word-count change between old and new values is handled on every cycle: if t
 
 1. User types a phrase containing the blank's keyword and a `_`.
 2. The blank source matches the keyword within proximity of the `_`, shells out to the blank's script, and receives a two-word response: `"<setting> <value>"`.
-3. Because the control declares `blankSatellite: true` and the script output contains a space, the source emits a blank-fill result whose metadata carries both the selector value *and* the satellite value.
+3. Because the blank declares `blankSatellite: true` and the script output contains a space, the source emits a blank-fill result whose metadata carries both the selector value *and* the satellite value.
 4. The integration's auto-populate layer replaces the `_` with `<setting> <value>` (two words in place of one), then constructs the two word definitions with their flags, cross-pointers, and alts lists.
 
 The satellite's initial alts list is the integration's in-memory record of "valid values for this setting." Without that record the satellite degrades to a non-cyclable single-value label — cleanly, not crashing.
@@ -169,11 +169,11 @@ The backing script accepts three command forms:
 
 `<sep>` is the configured separator (see below). Both the setting name and the current value may contain internal spaces — multi-word selectors and multi-word satellites are fully supported.
 
-Because the generic control-blank pipeline passes the matched keyword as the first argument to `get`, the script must treat unrecognised keys as "fall through to bare `get`" rather than error. Otherwise the initial capture fails.
+Because the generic cue-blank pipeline passes the matched keyword as the first argument to `get`, the script must treat unrecognised keys as "fall through to bare `get`" rather than error. Otherwise the initial capture fails.
 
 ### Separator Configuration
 
-The separator between selector and satellite in the script's `get` output defaults to **tab** (`\t`). This can be overridden per control via `blankSatelliteSeparator` in `cue.md`:
+The separator between selector and satellite in the script's `get` output defaults to **tab** (`\t`). This can be overridden per blank via `blankSatelliteSeparator` in `cue.md`:
 
 ```yaml
 blankSatelliteSeparator: ' | '
@@ -289,8 +289,8 @@ Step 3 is optional at creation time. The selector+satellite UI picks up the new 
 ## When To Use This vs. Alternatives
 
 - **Fixed enum of cases, each with its own fixed enum of values** → selector + satellite.
-- **One cyclable list, keyword tells you which list** → list control (static `stepValues` or dynamic list).
-- **One blank showing one value that writes back** → standard control-blank with `blankAutoPopulate`.
+- **One cyclable list, keyword tells you which list** → list blank (static `stepValues` or dynamic list).
+- **One blank showing one value that writes back** → standard cue-blank with `blankAutoPopulate`.
 - **Two words that must change together on a shared axis with shared cycle state** → linked words.
 - **Your "value" is semantically a multi-word phrase** → multi-word span.
 

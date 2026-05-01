@@ -4,7 +4,7 @@ last_updated: 2026-04-06
 
 # Cursor Position Preservation
 
-When a word changes length during cycling or step control increment/decrement, the cursor position must adjust so the user's editing position does not jump. The system calculates a length delta and applies it conditionally based on where the replacement occurs relative to the cursor.
+When a word changes length during cycling, the cursor position must adjust so the user's editing position does not jump. The system calculates a length delta and applies it conditionally based on where the replacement occurs relative to the cursor.
 
 ---
 
