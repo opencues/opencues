@@ -7,11 +7,11 @@ the process — not just the final files — and see why the prompt
 looks the way it does.
 
 > **What is fluid blank?** Today's `_` blanks are bound to a
-> declared control via `blankKeywords` (e.g. `100 celsius in
+> declared blank via `blankKeywords` (e.g. `100 celsius in
 > fahrenheit _`). Fluid blank lets the user drop `_` next to any
 > natural-language lookup phrase ("unicode for ampersand _",
 > "rgb for navy blue _"), and the system figures out the question,
-> wipes the right span, and substitutes the answer. No control
+> wipes the right span, and substitutes the answer. No blank
 > declaration; the LLM does the segmentation.
 
 > **Where P1 sits.** Option A 3-pass refinement pipeline:

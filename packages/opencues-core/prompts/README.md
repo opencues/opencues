@@ -15,7 +15,7 @@ This folder contains reference prompts and documentation. **All active prompts a
 | Math blanks | `blanks.md` | `## Prompt ### math` |
 | Factual blanks | `blanks.md` | `## Prompt ### factual` |
 | Grammar blanks | `blanks.md` | `## Prompt ### grammar` |
-| Cue-blanks | `blanks.md` | `## Controls` |
+| Cue-blanks | `blanks.md` | `## Blanks` |
 
 There are **no hardcoded prompt constants** in opencues-core. `ConfigSource` instances are driven entirely by `SourceConfig` parsed from `.md` files via `buildSourcesFromConfig()`.
 

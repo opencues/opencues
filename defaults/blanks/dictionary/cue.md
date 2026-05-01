@@ -9,8 +9,8 @@ blankReadOnly: true
 blankProximity: 3
 ---
 
-Dispatched by the shared runtime `DictionaryControl`
-(`packages/opencues-runtime/src/controls/dictionary.ts`). Looks up
+Dispatched by the shared runtime `DictionaryBlank`
+(`packages/opencues-runtime/src/blanks/dictionary.ts`). Looks up
 the highlighted/contextual word at https://api.dictionaryapi.dev/
 (no API key, no signup), returns the first definition truncated to
 ~100 chars.

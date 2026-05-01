@@ -103,7 +103,7 @@ type: blank
 # logic, do NOT write a script — implement a TS class instead:
 #   1. packages/opencues-runtime/src/blanks/{{NAME}}.ts (implements Blank)
 #   2. Register in each host's blanksRegistry (see daemon.ts for codex,
-#      opencues-bootstrap.ts for OC, controls/index.ts for chrome)
+#      opencues-bootstrap.ts for OC, blanks/index.ts for chrome)
 #   3. cue.md declares blankKeywords + blankReadOnly + blankFormat —
 #      no blankScript: at all.
 #

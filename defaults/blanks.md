@@ -1,15 +1,15 @@
 ---
-name: claude-code-controls
+name: claude-code-blanks
 domain: claude-code
 version: 1
 ---
 
-# controls.md
+# blanks.md
 
-OpenCues controls configuration. Defines cue-controls — words that trigger
-system-level controls (volume, brightness, etc.) when cycled with arrow keys.
-
-<!-- volume, brightness moved to controls/ folders -->
+OpenCues blanks configuration. Each entry pairs a `_`-trigger keyword
+with a runtime `Blank` class or `blankScript`. Most blanks live as
+folders under `blanks/<name>/` (cue.md + colocated script). The inline
+`## Blanks` JSON block below is for one-off entries with no script.
 
 ## Blanks
 

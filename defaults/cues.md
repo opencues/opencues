@@ -7,7 +7,7 @@ version: 1
 # cues.md
 
 OpenCues configuration for Claude Code. Defines word tips and LLM prompt customizations.
-For cue-controls see controls.md. For blank-fill behaviour see blanks.md.
+For blank-fill behaviour see blanks.md.
 
 ## Tips
 

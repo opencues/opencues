@@ -31,7 +31,7 @@ settings:
       on: Debug output emitted to console
       off: Debug logging suppressed
   tips-mode:
-    tip: Controls tip display level
+    tip: Toggles tip display
     values:
       on: All tips shown
       off: Tips hidden
@@ -76,5 +76,5 @@ settings:
     tip: Classifier-routed blank modes from blanks.md (math/factual/translation/...)
     values:
       on: Enabled — classifier picks one specialised mode per `_`
-      off: Disabled — fluid-blank + spelling + controls cover this ground
+      off: Disabled — fluid-blank + spelling + blanks cover this ground
 ---

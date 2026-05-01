@@ -11,9 +11,9 @@ blankDismissible: true
 blankProximity: 3
 ---
 
-Dispatched by the shared runtime `HackerNewsControl`
-(`packages/opencues-runtime/src/controls/hackernews.ts`). No `blankScript:`
-field — every host wires `HackerNewsControl` into its controls registry,
-the runtime dispatches via `controlInvoke`. The previous `hn-blank.sh`
+Dispatched by the shared runtime `HackerNewsBlank`
+(`packages/opencues-runtime/src/blanks/hackernews.ts`). No `blankScript:`
+field — every host wires `HackerNewsBlank` into its blanks registry,
+the runtime dispatches via `blankInvoke`. The previous `hn-blank.sh`
 shell script was deleted on 2026-04-18 once chrome + opencode were both
 verified green on the runtime path.

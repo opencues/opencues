@@ -24,8 +24,8 @@ blankKeywordExpansions.trx: TRON
 blankKeywordExpansions.shib: Shiba Inu
 ---
 
-Dispatched by the shared runtime `CryptoControl`
-(`packages/opencues-runtime/src/controls/crypto.ts`). Hits CoinGecko's
+Dispatched by the shared runtime `CryptoBlank`
+(`packages/opencues-runtime/src/blanks/crypto.ts`). Hits CoinGecko's
 free public API (no key, no signup) for live USD prices. 60-second
 cache per coin.
 
@@ -34,6 +34,6 @@ Examples:
 - `eth _` → `Ethereum $3,521.40`
 - `doge _` → `Dogecoin $0.1245`
 
-Mirrors the StocksControl pattern — keyword expansions render the
+Mirrors the StocksBlank pattern — keyword expansions render the
 short ticker as the friendly display name. ReadOnly: cycling is no-op
 (refresh by typing a new `_`).

@@ -9,7 +9,7 @@ blankSatellite: true
 blankSatelliteSeparator: ' '
 blankClearKeywords: true
 blankClearOnEdit: true
-# Chrome routes this control through OpenCuesSettingsControl in
+# Chrome routes this blank through OpenCuesSettingsBlank in
 # @opencues/runtime (chrome.storage-backed) — the .sh is only used
 # by native hosts as a standalone fallback. Override host-compat
 # auto-detection (which would flag this as "not chrome" because of

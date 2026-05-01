@@ -86,7 +86,7 @@ export function parseMath(response: string): string[] {
 /**
  * ⚠️ UNSAFE: Parse COMPUTE=expression and evaluate using Function().
  * Can execute arbitrary JavaScript. Only use in trusted environments
- * where the LLM response is controlled. Prefer `parser: math` for
+ * where the LLM response shape is fixed. Prefer `parser: math` for
  * arithmetic. Use `parser: compute` only when you need JS expressions
  * beyond basic arithmetic (e.g., Math.pow, Math.sqrt, ternary operators).
  */

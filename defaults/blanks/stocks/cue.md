@@ -16,8 +16,8 @@ blankKeywordExpansions.amzn: Amazon
 blankKeywordExpansions.tsla: Tesla
 ---
 
-Dispatched by the shared runtime `StocksControl`
-(`packages/opencues-runtime/src/controls/stocks.ts`). The keyword → ticker
+Dispatched by the shared runtime `StocksBlank`
+(`packages/opencues-runtime/src/blanks/stocks.ts`). The keyword → ticker
 map lives in the runtime class; the legacy `tickers.json` and
 `stock-blank.sh` were deleted on 2026-04-18 once chrome + opencode were
 verified green on the runtime path.

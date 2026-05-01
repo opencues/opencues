@@ -26,7 +26,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Cue-blanks (word-based)
 
-- [ ] Type `volume` — navigate to it, shows tip "system volume control"
+- [ ] Type `volume` — navigate to it, shows tip "system volume"
 - [ ] Up/Down — actual volume changes, Windows OSD appears
 - [ ] TTS speaks the tip (if `speak: true` in config)
 - [ ] Type `brightness` — navigate to it, shows live tip e.g. "brightness: 70%"
@@ -56,16 +56,16 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ### Ownership model
 - [ ] `volume _` populates with e.g. "64%"
-- [ ] Delete "64", type `hello` — "hello" gets normal grammar alts, NOT stuck as control-blank
+- [ ] Delete "64", type `hello` — "hello" gets normal grammar alts, NOT stuck as a blank
 - [ ] Clear entire input — no ghost blank positions
-- [ ] Type `the happy dog` — normal behaviour, no stale control-blank at any index
+- [ ] Type `the happy dog` — normal behaviour, no stale blank at any index
 
 ### Brightness blank
 - [ ] `brightness _` — blank auto-populates with actual screen brightness (e.g. `70`)
 - [ ] `bright _` — also matches
 - [ ] Navigate to value, Up/Down — brightness changes by 10, displayed value updates
 
-### Both controls in same input
+### Both blanks in same input
 - [ ] Type `volume _` — "volume" is word-blank, number is blank-blank
 - [ ] Cycle "volume" — volume changes via key presses (OSD)
 - [ ] Cycle the number — volume changes via exact set (no OSD)
@@ -122,7 +122,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Add a new valid value under `settings: voice-mode: values:` — add `muted: TTS muted`
 - [ ] Save, wait ~2s, re-trigger — cycling the satellite now includes `muted`
 
-## Read-only API controls (stocks)
+## Read-only API blanks (stocks)
 
 - [ ] `Reddit Stock _` — blank auto-populates with RDDT stock price (e.g. `$133.44`) (requires `FINNHUB_API_KEY`)
 - [ ] `NVDA _` — blank auto-populates with Nvidia stock price
@@ -136,7 +136,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] `reddit stock _` → `Reddit stock $133.44` (multi-word keyword, full name — no expansion needed)
 - [ ] `Msft _` → `Microsoft $...` (spot-check another ticker)
 
-## Read-only API controls (weather)
+## Read-only API blanks (weather)
 
 - [ ] `London weather _` — blank auto-populates with current London weather (no API key needed)
 - [ ] `Tokyo forecast tomorrow _` — tomorrow's Tokyo forecast
@@ -177,6 +177,6 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Edge cases
 
-- [ ] Type `_` alone — should trigger blanks (grammar mode), NOT control-blank
+- [ ] Type `_` alone — should trigger blanks (grammar mode), NOT a blank
 - [ ] Very long input with `volume _` at the end — still works
 - [ ] Rapid cycling (hold Up) — volume changes smoothly, no errors

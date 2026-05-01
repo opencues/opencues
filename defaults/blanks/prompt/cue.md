@@ -14,8 +14,8 @@ altCount: 3
 includeOriginal: true
 ---
 
-> Dispatched by the shared runtime `PromptImproverControl`
-> (`packages/opencues-runtime/src/controls/prompt-improver.ts`). The two
+> Dispatched by the shared runtime `PromptImproverBlank`
+> (`packages/opencues-runtime/src/blanks/prompt-improver.ts`). The two
 > system prompts below are duplicated inside the runtime class for now
 > — a future improvement is to plumb them from this cue.md so this is
 > the single source of truth. The legacy `prompt-blank.sh` was deleted

@@ -9,8 +9,8 @@ blankReadOnly: true
 blankProximity: 3
 ---
 
-Dispatched by the shared runtime `CountriesControl`
-(`packages/opencues-runtime/src/controls/countries.ts`). One control,
+Dispatched by the shared runtime `CountriesBlank`
+(`packages/opencues-runtime/src/blanks/countries.ts`). One blank,
 many facts: the keyword phrase tells the runtime which field to extract
 from REST Countries (https://restcountries.com — no auth, no signup).
 24h cache per country.

@@ -11,7 +11,7 @@ version: 1
 # settings are system-wide: one voice-mode value applies across every
 # integration (Claude Code, OpenCode, Chrome, Codex).
 #
-# The runtime auto-manages this file via OpenCuesSettingsControl: when
+# The runtime auto-manages this file via OpenCuesSettingsBlank: when
 # you cycle a setting through the selector/satellite UI, the runtime
 # rewrites the matching `name: value` line in place. `opencues
 # seed-configs` (no flag) can also re-seed defaults if the file is
@@ -84,7 +84,7 @@ settings:
       active: TTS reads tips aloud on navigation
       inactive: TTS is silenced
   tips-mode:
-    tip: Controls tip display level
+    tip: Toggles tip display
     values:
       on: All tips shown in statusline
       off: Tips hidden
