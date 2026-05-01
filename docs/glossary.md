@@ -44,7 +44,7 @@ All three share the same navigable system — you move between words and interac
 
 Blanks are automatically computed and **re-evaluated on every edit**. When the surrounding text changes, the blank's value updates. This means a blank is never permanently filled — it can always return to `_` and be re-evaluated in its new context.
 
-Blanks can be math (`4 * 12 = _` → `48`), factual (`capital of France is _` → `Paris`), grammar (`The _ dog` → `big, small, brown`), or anything an LLM or external source can resolve (stock prices, addresses, lookups).
+Blanks come in two flavours: **keyword-bound** (a registered keyword next to `_` claims the slot — `volume _`, `nvda _`, `define X _`) and **fluid** (no keyword match — `FluidBlankSource` segments the lookup phrase and answers it: `capital of france _` → `Paris`, `4 * 12 = _` → `48`, `unicode for em dash _` → `U+2014`).
 
 **Think of blanks as user-placed autocomplete.** Unlike traditional autocomplete that guesses what comes next, blanks let you decide *where* the completion appears. This works anywhere — LLM prompts, documents, mobile text fields — and enables new interaction paradigms where the user and system collaborate fluidly before submission.
 
@@ -94,7 +94,11 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **Remote Cues** — Alternatives computed externally using an LLM (~200-500ms). Each `### section` in `cues.md` or `blanks.md` becomes a config-driven source that sends a prompt to the LLM and parses the response. In code: `ConfigSource`.
 
-**ClassifiedSourceGroup** — Wraps multiple config-driven sources for blanks. Picks one mode per input via fast heuristics (regex/keywords) or LLM classifier fallback. Blank modes are **mutually exclusive** — an input is math OR factual OR grammar, so classifying and routing to one source is correct.
+**BlankSource** — Keyword-bound blank dispatcher. Watches every `_` and claims the slot when any registered blank's `blankKeywords` matches a phrase within `blankProximity` words of the `_`. Auto-populates with the blank's current value via `blankScript get` or runtime-class `blankInvoke`. Up/Down cycling writes back. Priority 95 (above fluid-blank).
+
+**FluidBlankSource** — Free-form `_` lookup. Two-pass pipeline: P1 SEGMENT identifies the lookup span, P3 ANSWER produces the canonical short answer. Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots no `BlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
+
+**ClassifiedSourceGroup** (legacy, opt-in) — Pre-fluid-blank dispatcher that picked one of N specialised modes (math/factual/translation/spelling/color/http/timezone/roman/grammar) per input via fast heuristics + LLM classifier. Off by default since fluid-blank covers the same ground without the routing call. Flip on via `classified-blanks-mode: on` for the sharper per-mode prompts.
 
 **RoutedWordSourceGroup** — Wraps multiple `### alternatives` word-cue sources and dispatches each highlighted word to ONE child source via per-word routing. Mirrors `ClassifiedSourceGroup` (blanks) but uses fast-path rules only — no LLM classifier. Domain sources (with `match:` or `keywords:`) get checked first in priority order; the highest-priority **default** catches everything else; words with no matching source produce no cue. Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-alt-routing.md`.
 
@@ -102,9 +106,9 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **Domain Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (legal, medical, formal connectors). Higher priority wins ties.
 
-**buildSourcesFromConfig** — Factory function that takes parsed `cues.md` and `blanks.md` configs and returns `CueSource[]`. Uses two strategies:
-- **Words**: Each `### alternatives` section becomes its own `ConfigSource`; all of them are wrapped in ONE `RoutedWordSourceGroup` that dispatches per-word.
-- **Blanks**: Routes to one mode via `ClassifiedSourceGroup` (modes are mutually exclusive).
+**buildSourcesFromConfig** — Factory function that takes parsed `cues.md` and `blanks.md` configs and returns `CueSource[]`. Wires:
+- **Word cues**: Each `### alternatives` section / `cues/<name>/cue.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
+- **Blanks**: Keyword-bound entries from `blanks/<name>/cue.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. `SpellingSource` (priority 80) flags misspelled words on plain text. `ClassifiedSourceGroup` is constructed only when `enableClassifiedBlanks: true` (legacy opt-in).
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 

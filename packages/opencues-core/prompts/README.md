@@ -1,60 +1,58 @@
 ---
-last_updated: 2026-04-03
+last_updated: 2026-05-01
 ---
 
 # Prompt References
 
-This folder contains reference prompts and documentation. **All active prompts are defined in `.md` config files** — not in code or `.txt` files.
+This folder contains design notes for the prompts shipped in `defaults/`. **All active prompts live in `.md` config files** — not in code or `.txt` files.
 
-## Where Prompts Live
+## Where prompts actually live (current state)
 
-| Prompt | Config File | Section |
-|--------|-------------|---------|
-| Word alternatives (synonyms) | `cues.md` | `## Prompt ### grammar` |
-| Blank classifier | `blanks.md` | `## Prompt ### classifier` |
-| Math blanks | `blanks.md` | `## Prompt ### math` |
-| Factual blanks | `blanks.md` | `## Prompt ### factual` |
-| Grammar blanks | `blanks.md` | `## Prompt ### grammar` |
-| Cue-blanks | `blanks.md` | `## Blanks` |
+| Prompt | File | Section |
+|---|---|---|
+| Word alternatives (per-domain synonyms) | `cues/<name>/cue.md` (folder-based) or inline `cues.md ## Prompt ### <name>` | one source per file/section, dispatched per-word by `RoutedWordSourceGroup` |
+| Keyword-bound blanks (volume, stocks, hn, …) | `blanks/<name>/cue.md` | one folder per blank; matched by `BlankSource` via `blankKeywords` |
+| Free-form `_` lookup | `packages/opencues-core/src/sources/fluid-blank-source.ts` | `FluidBlankSource` two-pass (P1 SEGMENT + P3 ANSWER), prompts in TS |
+| Spell-check on plain text | `packages/opencues-core/src/sources/spelling-source.ts` | `SpellingSource`, prompt in TS |
+| Legacy classifier blank modes (math/factual/translation/…) | `blanks.md ## Prompt ### <mode>` | dormant — opt in via `classified-blanks-mode: on` in `opencues.md` |
 
-There are **no hardcoded prompt constants** in opencues-core. `ConfigSource` instances are driven entirely by `SourceConfig` parsed from `.md` files via `buildSourcesFromConfig()`.
+There are **no hardcoded prompt constants in `ConfigSource`**. ConfigSource instances are driven entirely by `SourceConfig` parsed from `.md` files via `buildSourcesFromConfig()`. `FluidBlankSource` and `SpellingSource` are the exceptions — their prompts live in TS because they're not user-customisable per-source.
 
-## Remaining Files
+## Files in this folder
 
 ```
 prompts/
 ├── README.md            # This file
 ├── linked.txt           # Linked words prompt (gender/number agreement)
-├── claude_code.txt      # Legacy — replaced by per-word tips lookup
-└── references/          # Prompt design documentation
+└── references/          # Prompt design documentation (LEGACY — see below)
+    ├── classifier.md    # Classifier routing prompt
+    ├── grammar.md       # Word-alternatives + grammar-blank prompts
+    ├── factual.md       # Factual-blank answer prompt
+    └── math.md          # Math-blank compute prompt
 ```
 
-## Adding New Modes
+## About `references/` (legacy)
 
-To add a new blank mode (e.g., "code"), add a `### code` subsection to `blanks.md`:
+The four files in `references/` document the prompts the legacy classifier-routed blank pipeline ships with. That pipeline (`ClassifiedSourceGroup`) is **off by default** — `fluid-blank-mode: on` covers most blank-fill ground without the routing LLM call. Read these references only if you opt into the classifier (`classified-blanks-mode: on`) or are studying the prompt-design history.
 
-```markdown
-### code
+## Adding a new domain word source
 
-\`\`\`yaml
-priority: 80
-parser: alternatives
-match: function|class|import|export|const|let|var
-keywords: implement, refactor, debug
-\`\`\`
-
-Your prompt text here...
-```
-
-To add a new word-alternatives domain (e.g., "legal"), add a `### legal` subsection to `cues.md`:
+Create `cues/<name>/cue.md`:
 
 ```markdown
-### legal
-
-\`\`\`yaml
-match: contract|agreement|clause
+---
+name: legal
+scope: words
 priority: 70
-\`\`\`
+match: contract|agreement|clause|indemnify
+classify: Legal terminology
+---
 
-Your prompt text here...
+Your prompt instructions here...
 ```
+
+`RoutedWordSourceGroup` will pick it up — words matching the `match:` regex route to this source.
+
+## Adding a new keyword-bound blank
+
+Create `blanks/<name>/cue.md` and either a script or a runtime class. See [docs/guides/adding-a-cue-blank.md](../../../docs/guides/adding-a-cue-blank.md) for the four shapes and step-by-step.

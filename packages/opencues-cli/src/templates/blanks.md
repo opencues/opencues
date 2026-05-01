@@ -24,9 +24,9 @@ version: 1
 #
 # 2. Monolithic (THIS FILE — only useful for minimal zero-script blanks):
 #
-#    Single `## Blanks` block with JSON declarations. Good for simple
-#    step blanks that just transform matched words; not good for
-#    anything needing a script or long frontmatter.
+#    Single `## Blanks` block with JSON declarations. Good for short
+#    list/keyword entries with no script. Anything needing a script or
+#    longer frontmatter belongs in a folder.
 #
 # Folder-based entries merge with monolithic ones — folder wins on
 # name conflicts.

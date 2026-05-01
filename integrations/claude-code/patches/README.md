@@ -98,7 +98,7 @@ After installation:
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Step blanks (configurable increment), cycle alternatives |
+| Ctrl+Alt+Up/Down | Cycle alternatives, step blank values (configurable increment) |
 | Escape | Clear highlight |
 
 Words with LLM alternatives appear dimmed. Type `_` for fill-in-the-blank.

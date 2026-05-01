@@ -11,26 +11,22 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Ctrl+Alt+Up/Down — cycles through alternatives
 - [ ] Escape — clears highlight
 
-## Step blanks
+## Spell-check (plain text)
 
-- [ ] Type `1.5f` — dimmed (dark gray), navigable
-- [ ] Navigate to it, Up — `2f`, Up — `2.5f`, Up — `3f` (step 0.5)
-- [ ] Down back to `0f` — floors at 0 (`stepMin`)
-- [ ] Plain numbers (`42`, `1.5`) should NOT dim or be navigable (no hardcoded number stepping)
+(Requires `spelling-mode: on` in `~/.opencues/opencues.md`.)
 
-## Blanks (fill-in-the-blank)
+- [ ] Type `the boy jumpved` — `jumpved` dims with `jumped` as the alternative
+- [ ] Up/Down on `jumpved` — cycles to `jumped`, back to `jumpved`
 
-- [ ] `2 + 2 = _` — fills with `4` (math mode)
-- [ ] `capital of France is _` — fills with `Paris` (factual mode)
-- [ ] `The _ dog` — fills with grammar alternatives (big, small, brown)
+## Fluid blank (free-form `_` lookup)
 
-## Cue-blanks (word-based)
+(Requires `fluid-blank-mode: on`.)
 
-- [ ] Type `volume` — navigate to it, shows tip "system volume"
-- [ ] Up/Down — actual volume changes, Windows OSD appears
-- [ ] TTS speaks the tip (if `speak: true` in config)
-- [ ] Type `brightness` — navigate to it, shows live tip e.g. "brightness: 70%"
-- [ ] Up/Down — actual screen brightness changes
+- [ ] `2 + 2 = _` — fills with `4`
+- [ ] `capital of France is _` — fills with `Paris`
+- [ ] `unicode for em dash _` — fills with `U+2014`
+- [ ] `100 celsius in fahrenheit _` — fills with `212`
+- [ ] `_ alone with no lookup phrase` — stays as `_` (P1 bails on no recognisable lookup)
 
 ## Blanks
 
@@ -65,10 +61,6 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] `bright _` — also matches
 - [ ] Navigate to value, Up/Down — brightness changes by 10, displayed value updates
 
-### Both blanks in same input
-- [ ] Type `volume _` — "volume" is word-blank, number is blank-blank
-- [ ] Cycle "volume" — volume changes via key presses (OSD)
-- [ ] Cycle the number — volume changes via exact set (no OSD)
 
 ## List blanks
 
@@ -177,6 +169,6 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Edge cases
 
-- [ ] Type `_` alone — should trigger blanks (grammar mode), NOT a blank
+- [ ] Type `_` alone — stays as `_` (no keyword binding, fluid-blank P1 bails on lone underscore)
 - [ ] Very long input with `volume _` at the end — still works
 - [ ] Rapid cycling (hold Up) — volume changes smoothly, no errors

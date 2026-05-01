@@ -139,15 +139,14 @@ When an alternative contains spaces (e.g., "Sundar Pichai" replacing "Sundar"), 
 3. When cycling, replace ALL words in the span range, not just the highlighted word
 4. Non-original span positions (e.g., "Pichai" at index 6) should NOT be independently navigable
 
-### Blank classification pipeline
+### Blank dispatch order
 
-When a `_` is present, the `ClassifiedSourceGroup` runs:
-1. **Fast heuristics first** — regex `match` patterns and keyword lookup (instant, no LLM)
-2. **LLM classifier fallback** — if no fast match, sends text to classifier prompt which returns `MODE=MATH`, `MODE=FACTUAL`, etc.
-3. **Route to one source** — blank modes are mutually exclusive (math OR factual OR grammar)
-4. **Default fallback** — if classifier returns unknown mode, falls back to grammar
+When a `_` is present, sources fire in priority order (highest first):
+1. **`BlankSource` (95)** — keyword-bound. If any registered blank's `blankKeywords` matches a phrase within `blankProximity` words of the `_`, that blank claims the slot. Auto-populates via the blank's script or runtime class.
+2. **`FluidBlankSource` (92)** — free-form lookup. Two-pass LLM (P1 SEGMENT + P3 ANSWER) for any `_` no keyword-bound blank claimed.
+3. **`ClassifiedSourceGroup` (90, legacy opt-in)** — pre-fluid-blank dispatcher. Off by default; opt in with `classified-blanks-mode: on` for sharper per-mode prompts.
 
-Fast classification failures are **silent** — the blank just gets grammar treatment. Debug by checking if keywords/regex match first.
+The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives. The host doesn't need to know which source fired — `CueResult.source` carries that information.
 
 ### Per-word clearing
 
