@@ -211,7 +211,7 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **`<CC_FORK>/.opencues/tweakcc/`** — tweakcc install lives inside the CC fork (re-cloned every from-scratch install — no global `~/tweakcc/` dir to manage)
 - **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21+ feature concepts (one file each)
-- **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), seven cycling paths, the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
+- **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), the cycling priority order (selector/satellite → spanFill → list blank → blankStep DynDef → static alts), the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
 
 ---
 
@@ -268,7 +268,7 @@ work. Self-deleting once codex hits beta.
 
 ## Testing — write the SCENARIO that triggered the bug
 
-The runtime has 400+ tests. Most are unit tests, which are good at
+The runtime has 500+ tests. Most are unit tests, which are good at
 pinning module behaviour but **structurally bad at catching the bug
 class we keep hitting**: state inconsistencies across multiple modules
 during multi-step user journeys (cycle → cycle → type → cycle, two
@@ -468,8 +468,10 @@ Why per-word dispatch (not the old "combine into one prompt"):
   every word. Sync-demo's "always output bundled,deployed,shipped"
   used to swap `happy → bundled`. With routing, that prompt only
   affects words its source is called for.
-- **Symmetry**: blanks already use a `ClassifiedSourceGroup`; word-alts
-  follow the same model now.
+- **Symmetry**: each word gets ONE source (a domain match or the
+  default), the way each `_` gets ONE blank (`BlankSource` matches
+  on `blankKeywords`, falling back to `FluidBlankSource` for
+  unbound `_`).
 
 Surfaces that enforce + surface this:
 - `@opencues/core` `RoutedWordSourceGroup` — runtime routing class
@@ -608,4 +610,4 @@ See `~/.claude/opencues-auto/CLAUDE.md` for full documentation.
 
 ---
 
-*Last updated: April 2026*
+*Last updated: May 2026*

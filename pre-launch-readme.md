@@ -12,7 +12,7 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [x] Create Reddit — [r/OpenCues](https://www.reddit.com/r/OpenCues/) (private until launch)
 - [x] Contact email — hello@opencues.com
 - [ ] Website — opencues.com (not yet live)
-- [ ] Record demo GIF/video — 30s clip showing navigation, cycling, blanks, controls
+- [ ] Record demo GIF/video — 30s clip showing navigation, cycling, blanks (typed + fluid)
 - [ ] Add demo GIF to README — below the tagline, before "The Standard"
 
 ## GitHub Project Setup (cannot do now)

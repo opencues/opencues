@@ -36,9 +36,9 @@ OpenCues is built on `.md` config files — monolithic or folder-based. All prom
 | Config | What it defines | Example |
 |--------|----------------|---------|
 | **cues.md** | Word tips and LLM prompt sources for word alternatives | `### grammar` with synonym/opposite/creative prompt |
-| **blanks.md** | Fill-in-the-blank modes with prompt + parser per mode | `### math` with `parser: compute` |
+| **blanks.md** | Inline `## Blanks` JSON for short-config keyword-bound blanks | `{"units": {"blankKeywords": "px,em,rem"}}` |
 | **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
-| **blanks/{name}/** | Self-contained cue-blank with colocated script | `blanks/volume/cue.md` + `volume-blank.sh` |
+| **blanks/{name}/** | Folder-based blank with colocated script or runtime class | `blanks/volume/cue.md` + `volume-blank.sh` |
 
 Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -105,7 +105,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 | Keys | Action |
 |------|--------|
 | Ctrl+Alt+Left/Right | Navigate between words |
-| Ctrl+Alt+Up/Down | Step blanks (configurable increment), cycle alternatives |
+| Ctrl+Alt+Up/Down | Cycle alternatives, step blank values (configurable increment) |
 | Escape | Clear highlight |
 
 ### What you get
@@ -234,9 +234,11 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 
 - **CueResolver** — orchestrates multiple sources, merges results
 - **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
-- **ClassifiedSourceGroup** — wraps blank modes with fast/LLM classification
-- **BlankSource** — bridges blanks with cue-blanks (auto-populate + cycling)
-- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + cue-blanks → `CueSource[]`
+- **BlankSource** — keyword-bound blank dispatcher (auto-populate + cycling for `volume _`, `stocks aapl _`, etc.)
+- **FluidBlankSource** — free-form `_` lookup (P1 segment + P3 answer pipeline) for any unmatched blank
+- **SpellingSource** — typo correction on plain text
+- **RoutedWordSourceGroup** — per-word dispatch of word-alt sources via `match`/`keywords`/priority
+- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + folder configs → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
 ### `@opencues/runtime`
@@ -280,11 +282,10 @@ Your user-level OpenCues config lives at `~/.opencues/`:
 ```
 ~/.opencues/
 ├── opencues.md         # System settings (voice-mode, tips-mode, debug-mode, cursor-navigate)
-├── cues.md             # Word alternatives + tips (## Tips JSON block)
-├── blanks.md           # Blank-fill modes (math, factual, grammar, …)
-├── blanks.md         # Inline cue-blank definitions
+├── cues.md             # Word alternatives + tips (## Tips JSON block, `### alternatives` LLM sources)
+├── blanks.md           # Inline `## Blanks` JSON (one-off keyword-bound blanks with no script)
 ├── cues/<name>/cue.md  # Folder-based word cue sources (legal, medical, …)
-└── blanks/<name>/    # Folder-based cue-blanks (with colocated scripts)
+└── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
 ```
 
 Project-level overrides live at `<cwd>/.opencues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
@@ -420,26 +421,22 @@ EOF
 pnpm exec opencues install claude-code
 ```
 
-## Extending blanks.md
+## Adding blanks
 
-`blanks.md` ships with 10 blank modes: math, factual, translation, unit conversion, spelling, color codes, HTTP codes, timezone, roman numerals, and grammar. You can add your own.
+A blank is a `_`-triggered slot. There are four shapes; pick by what your blank does:
 
-Each `### section` under `## Prompt` is a blank mode. The system picks which mode to use via a three-stage pipeline:
+| Shape | Trigger | Implementation |
+|---|---|---|
+| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/cue.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
+| **List blank** (no script) | `affirmation _` | `blanks/<name>/cue.md` with `stepValues: [...]` |
+| **Selector + Satellite** | `opencues settings _` → expands to `<setting> <value>` | `blanks/<name>/cue.md` with `blankSatellite: true` |
+| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _`, `define X _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/cue.md` declaring `blankKeywords` |
 
-1. **`match` regex** — instant. If the text matches, that mode is selected immediately.
-2. **`keywords`** — instant. Checked if no regex matches.
-3. **`### classifier` LLM** — ~200ms fallback for ambiguous inputs.
+For free-form `_` lookups (`capital of france _`, `unicode for em dash _`) there's no per-blank config — `FluidBlankSource` handles any `_` the keyword-bound blanks didn't claim.
 
-**When adding a new mode, you must update two things:**
+**Word sources** in `cues.md` use per-word routing — domain sources with `match:` or `keywords:` claim words they recognise; a default source (no `match`/`keywords`) catches everything else. See `docs/features/word-alt-routing.md`.
 
-1. Add your `### section` with `match`/`keywords`/`parser`/`priority` and a prompt
-2. Update `### classifier` — add examples for your mode AND add it to the `Output ONLY: MODE=...` line
-
-If you skip step 2, inputs that miss your fast-match keywords will silently fall to grammar instead of your new mode. The classifier won't know your mode exists.
-
-**Word sources** in `cues.md` are simpler — all word-scoped `alternatives`-parser sources get combined into a single LLM call automatically. Domain sources should include a `match` regex so the LLM only applies their instructions for matching words. Sources without `match` are treated as base instructions that apply to every word — make sure they don't contradict each other.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full details and pitfalls.
+See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 
 ## Contributing
 

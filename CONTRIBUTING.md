@@ -8,28 +8,27 @@ OpenCues has three areas of contribution, each with different expectations. Pick
 
 If you're new, look for issues labelled **`good first issue`** on GitHub. These are typically:
 
-- Adding a new word source to `cues.md` (no code changes)
-- Adding a new blank mode to `blanks.md` (config + prompt only)
-- Adding a new cue-blank in `blanks/{name}/` (config + shell script)
+- Adding a new domain word source under `cues/{name}/cue.md` (no code changes)
+- Adding a new keyword-bound blank under `blanks/{name}/cue.md` (config + script or runtime class)
 - Fixing typos or improving docs
 - Adding test cases to `tests/user-test.md`
 
 ## Your first contribution
 
-The easiest way to contribute is adding a new word source to `cues.md`. This requires no code changes — just add a `### section` and the system picks it up automatically.
+The easiest way to contribute is adding a new domain word source. This requires no code changes — just create a folder under `cues/` and the system picks it up automatically via per-word routing.
 
-**Example: adding a "formal" source that suggests formal alternatives**
+**Example: adding a "formal" source that claims informal words and suggests formal alternatives**
 
-Add this under `## Prompt` in your `cues.md`:
+Create `cues/formal/cue.md`:
 
 ````markdown
-### formal
-
-```yaml
-match: \b(hi|hey|yeah|cool|ok|gonna|wanna)\b
-keywords: informal, casual, slang
+---
+name: formal
+scope: words
 priority: 60
-```
+match: \b(hi|hey|yeah|cool|ok|gonna|wanna)\b
+classify: Informal-to-formal substitutions
+---
 
 Suggest formal alternatives for informal words. Return one line per word:
 INDEX:formal1,formal2
@@ -39,7 +38,7 @@ Examples:
 - "gonna" → 0:going to,will
 ````
 
-That's it. When a user types a word matching the pattern, the LLM will suggest formal alternatives. Test it by saving the file — config changes hot-reload within ~2 seconds on the next keystroke (no restart needed).
+When a user types one of those words, `RoutedWordSourceGroup` dispatches it to your source (the `match:` regex claims the word). Words not claimed by any domain source fall through to the default source (if `default-word-alts: on` in `opencues.md`) or stay uncoloured. Test by saving the file — configs hot-reload within ~2.5s on the next keystroke (no restart needed).
 
 For details on the config fields, see [SourceConfig fields](#sourceconfig-fields) below.
 
@@ -51,14 +50,12 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 
 | File/Folder | What it defines |
 |------|-----------------|
-| `cues.md` | Word tips (`## Tips`) and base LLM prompt (`## Prompt`). Domain sources can also be `### sections` here. |
+| `cues.md` | Word tips (`## Tips`) and any inline `### alternatives` LLM sources. Domain sources are usually folder-based instead. |
 | `cues/{name}/cue.md` | Folder-based word source — config in YAML frontmatter, prompt in body. Overrides same-name monolithic section. |
-| `blanks.md` | Cue-blanks JSON header (rare; almost everything is folder-based — can be empty). |
-| `blanks/{name}/cue.md` | Folder-based cue-blank with colocated script (e.g., `blankScript: ./volume-blank.sh`). |
+| `blanks.md` | Inline `## Blanks` JSON for short-config keyword-bound blanks (no script). Rare — most blanks are folder-based. |
+| `blanks/{name}/cue.md` | Folder-based blank with colocated script (e.g., `blankScript: ./volume-blank.sh`) or pointing at a runtime class. |
 
 ### Adding a new word source
-
-**Option A: Folder (recommended for domain sources)**
 
 Create `cues/{name}/cue.md`:
 
@@ -74,59 +71,40 @@ classify: Legal terminology
 Your prompt instructions here...
 ```
 
-**Option B: Monolithic section in cues.md**
+Picked up automatically by `buildSourcesFromConfig()`. Inline `### sections` in `cues.md` work too, but folder-based is preferred.
 
-Add a `### section` under `## Prompt` in `cues.md`:
+**Per-word routing.** `RoutedWordSourceGroup` dispatches each highlighted word to ONE child source — never combines them into a giant prompt. The first domain whose `match:` or `keywords:` claims the word wins (highest priority breaks ties). A source with neither `match:` nor `keywords:` is the *default* source — it catches words no domain claimed (only fires when `default-word-alts: on` in `opencues.md`).
 
-```markdown
-### legal
+Add a `match` regex (or `keywords:` list) on every domain source so it only fires on words it can meaningfully alt. A source without `match`/`keywords` is the default catch-all and should be paired with a broad prompt; don't ship two defaults.
 
-\`\`\`yaml
-match: contract|agreement|clause|indemnify
-classify: Legal terminology
-priority: 70
-\`\`\`
+### Adding a new blank
 
-Your prompt instructions here...
+Pick a shape:
+
+| Shape | Trigger | Implementation |
+|---|---|---|
+| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/cue.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
+| **List blank** (no script) | `affirmation _` | `blanks/<name>/cue.md` with `stepValues: [...]` |
+| **Selector + Satellite** | `opencues settings _` | `blanks/<name>/cue.md` with `blankSatellite: true` |
+| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/cue.md` declaring `blankKeywords` (no `blankScript:`) |
+
+The cue.md frontmatter:
+
+```yaml
+---
+name: <name>
+type: blank
+blankKeywords: <comma-separated triggers>
+blankScript: ./<name>-blank.sh    # for shape 1
+# or: stepValues: ["a", "b", "c"]  # for shape 2
+# or: blankSatellite: true         # for shape 3
+# or: (nothing extra)              # for shape 4 — class is registered in code
+---
 ```
 
-Both are picked up automatically by `buildSourcesFromConfig()`. Folder configs override same-name monolithic sections.
+`BlankSource` watches every `_` in the input. If any `blankKeywords` phrase sits within `blankProximity` words of the `_`, that blank claims the slot. Otherwise the slot falls through to `FluidBlankSource` (free-form LLM lookup) when `fluid-blank-mode: on`.
 
-**Important:** All word-scoped `alternatives`-parser sources get combined into a single LLM call. Domain sources (with a `match` regex) get a conditional header ("When the input contains terms like ..."), so the LLM only applies them for matching words. But sources **without** a `match` regex are treated as base instructions — their prompts are concatenated unconditionally. If you add a second base source (e.g., `### creative` alongside `### grammar`), both prompts will apply to every word. Make sure their instructions are complementary, not contradictory — "prefer concise synonyms" and "suggest wild unexpected alternatives" in the same prompt will confuse the LLM. If your new source is domain-specific, always include a `match` regex.
-
-### Adding a new blank mode
-
-Add a `### section` under `## Prompt` in `blanks.md`:
-
-```markdown
-### code
-
-\`\`\`yaml
-priority: 80
-parser: alternatives
-match: function|class|import|export
-keywords: implement, refactor, debug
-\`\`\`
-
-Your prompt instructions here...
-```
-
-Then you **must** also update `### classifier` in two places:
-
-1. Add examples for your mode so the LLM knows when to select it
-2. Add your mode name to the `Output ONLY: MODE=...` line
-
-**If you skip this step**, inputs that miss your `match`/`keywords` fast-path will fall through to the LLM classifier, which won't know your mode exists and will route to grammar instead. Your mode will only work for inputs that hit the fast-match — anything ambiguous will silently misclassify.
-
-### How blank classification works
-
-When a blank (`_`) is encountered, the system picks which mode to use via a three-stage pipeline:
-
-1. **`match` (regex)** — fastest. If the surrounding text matches a mode's `match` pattern, that mode is selected immediately. No LLM call needed.
-2. **`keywords`** — fast. If no `match` hits, the system checks if any mode's keywords appear in the surrounding text.
-3. **`### classifier` (LLM fallback)** — if neither heuristic matches, the classifier prompt is sent to the LLM, which returns the mode name.
-
-When adding a blank mode, provide good `match` and `keywords` values to avoid unnecessary LLM calls. The classifier is a safety net, not the primary routing mechanism.
+See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) for the full step-by-step.
 
 ### SourceConfig fields
 
@@ -188,79 +166,71 @@ pnpm --filter @opencues/runtime test     # runtime tests (350)
 pnpm test                                # all packages, via turbo
 ```
 
-The test suite has four layers:
+The test suite covers parsers, source building, per-word routing, blank dispatch, the fluid-blank pipeline, and end-to-end LLM behaviour with mocks. ~365 unit tests in core.
 
-| File | Tests | What it covers |
-|------|-------|----------------|
-| `src/sources/parsers.test.ts` | 43 | Response parsers: COMPUTE, ANSWER, alternatives, raw |
-| `src/sources/build-sources.test.ts` | 56 | Source combining, building, error handling, resolver integration |
-| `src/sources/output.test.ts` | 67 | Exact output verification for words and blanks with mocked LLM |
-| `src/sources/sentences.test.ts` | 41 | Full sentence integration tests with mocked LLM |
-| `src/sources/classifier.test.ts` | 196 | Fast-match routing (96) + live LLM classifier (100) |
-| `src/sources/local-cue-source.test.ts` | 15 | Tips lookup, parsing, validation |
-
-**Live LLM classifier tests** require `GROQ_API_KEY` — they call the real Groq API to verify the classifier routes ambiguous inputs correctly. Without the key, these tests are skipped automatically.
+**Live LLM classifier tests** require `GROQ_API_KEY` — they exercise the legacy `ClassifiedSourceGroup` against real Groq. Without the key they auto-skip.
 
 ```bash
-# Run with live LLM classifier tests
+# Run with live LLM tests
 GROQ_API_KEY=xxx pnpm --filter @opencues/core test
 ```
 
-### Live benchmark
+### Live benchmarks
 
-The benchmark runs 390 real sentences through the full pipeline with live LLM calls and saves results for comparison:
+Live LLM benchmarks live under `tests/benchmarks/`:
 
 ```bash
-GROQ_API_KEY=xxx npx tsx tests/benchmarks/opencues-core-benchmark.ts
+GROQ_API_KEY=xxx tests/benchmarks/run-all.sh    # full sweep
+GROQ_API_KEY=xxx tests/benchmarks/word.sh       # word-alt accuracy
+GROQ_API_KEY=xxx tests/benchmarks/factual.sh    # factual blank accuracy
+GROQ_API_KEY=xxx tests/benchmarks/math.sh       # math blank accuracy
+GROQ_API_KEY=xxx tests/benchmarks/prompt-improve.sh   # prompt-improver blank
+GROQ_API_KEY=xxx tsx tests/benchmarks/cues-core-benchmark.ts   # full pipeline
 ```
 
-Results are saved to `tests/results/cuescore-{model}-{timestamp}.json`. Compare runs to detect regressions.
+The fluid-blank pipeline (`tests/benchmarks/fluid-blank/`) has its own harness — generator, P1 + P3 + judges, 9 specialised baselines, ~600 cases.
 
-Current categories benchmarked (30 tests each): word-adj, word-verb, word-noun, word-finance, blank-math, blank-factual, blank-translate, blank-unit, blank-spell, blank-color, blank-http, blank-tz, blank-roman, blank-grammar.
-
-**Benchmark stability note:** Structured blank domains (math, factual, translation, color, HTTP, etc.) are highly stable — deterministic answers, consistent pass rates across runs. Word alternatives are inherently non-deterministic (~41% of word tests are flaky across runs) because the LLM returns valid synonyms that may not be in the expected list. Use the benchmark for **trend detection** (did a change make word accuracy worse overall?) not as a strict pass/fail gate. The total pass rate should stay above ~90%; a significant drop indicates a regression.
+Results land in `tests/results/`. Compare runs to detect regressions. Word alternatives are inherently non-deterministic across runs; treat the score as a trend signal, not a pass/fail gate.
 
 ### Key source files
 
 | File | Purpose |
 |------|---------|
 | `src/sources/config-source.ts` | Generic config-driven LLM source |
-| `src/sources/classified-source-group.ts` | Blank mode classification |
-| `src/sources/build-sources.ts` | Factory: .md configs to CueSource[] |
+| `src/sources/routed-word-source-group.ts` | Per-word routing for `### alternatives` cues |
+| `src/sources/blank-source.ts` | Keyword-bound blank dispatcher (auto-populate + cycling) |
+| `src/sources/fluid-blank-source.ts` | Free-form `_` lookup (P1 segment + P3 answer) |
+| `src/sources/spelling-source.ts` | Typo correction on plain text |
+| `src/sources/classified-source-group.ts` | Legacy classifier-routed blank modes (off by default) |
+| `src/sources/build-sources.ts` | Factory: .md configs → CueSource[] |
 | `src/sources/parsers.ts` | Response parsers (math, compute, answer, alternatives, raw) |
 | `src/cues-md.ts` | .md config file parser |
 | `src/resolver.ts` | CueResolver orchestration |
 | `src/types.ts` | Core interfaces (CueSource, CueContext, CueResult) |
 
-### Architecture: combining vs classifying
+### Architecture: per-word routing for cues, keyword binding for blanks
 
-opencues-core uses two strategies for multi-source inputs. Understanding this is critical when adding sources.
+opencues-core has two dispatch strategies aligned with the dual-direction concept (see [concept.md](concept.md)).
 
-**Words (combining)**: All word-scoped `alternatives`-parser sources from `cues.md` are merged into a **single LLM call** at build time. Domain prompts (grammar, legal, medical, financial) become conditional sections in one combined prompt. This is because domains can overlap — "the contract covers the diagnosis" needs grammar, legal, AND medical alternatives in the same response.
+**Words (per-word routing — `RoutedWordSourceGroup`).** Each highlighted word goes to ONE child source: the first domain whose `match:` or `keywords:` claims the word wins; otherwise the highest-priority default catches it. Words destined for the same source batch into one parallel LLM call — request rate stays linear in source count, not exponential. Resolver runs with `parallel: true`.
 
-**Blanks (classifying)**: Blank-fill modes are **mutually exclusive** — an input is math OR factual OR grammar, never both. `ClassifiedSourceGroup` picks one mode via fast heuristics (regex/keywords) or LLM classifier fallback, then routes to that single source.
+**Blanks (keyword binding — `BlankSource`).** Each `_` is bound to ONE blank: the first registered blank whose `blankKeywords` matches a phrase within `blankProximity` words of the `_` claims the slot. No classifier LLM call — the match is a substring scan. Slots no blank claimed fall through to `FluidBlankSource` (P1 segment + P3 answer — two LLM calls for free-form lookups) when `fluid-blank-mode: on`.
 
-**Why blanks can't be combined like words**: Word combining works because every domain uses the **same output format** (`INDEX:alt1,alt2,alt3`). Blank modes use **different parsers** — math outputs `COMPUTE=expression`, factual outputs `ANSWER=value`, grammar outputs `INDEX:word1,word2,word3`. Combining them into one prompt would force the LLM to pick the right format AND produce the answer — two decisions in one call. With 10 blank domains, that's 10 conflicting output formats in one prompt, which would overwhelm the LLM and degrade accuracy. Classifying first (one cheap decision) then routing to a focused prompt (one clear task) keeps each call simple and reliable.
+**Why no combining.** Earlier OpenCues combined word sources into one prompt. That broke down past ~5 sources (LLM confused by overlapping instructions) and let one bad source poison every word. Per-word routing is isolation-safe and scales linearly.
 
-**Why combining instead of parallel execution**: The resolver runs with `parallel: false`. An alternative fix for the 3x word-source slowdown would have been `parallel: true`, but that fires N concurrent API calls per keystroke — tripling the request rate to Groq and risking rate limits during fast typing. Combining into one call keeps the request rate at 1:1 and produces better results since the LLM sees all domain context together.
+**Why no classifier for blanks.** Earlier OpenCues classified blanks into modes (math / factual / translation / etc.) via an LLM. After the fluid-blank pipeline shipped, fluid-blank's general P1+P3 prompts beat the classifier on benchmarks while saving the routing LLM call. The classifier path is still in code (`ClassifiedSourceGroup`) but off by default — flip `classified-blanks-mode: on` in `opencues.md` to opt back in.
 
-If you add a new `### section` to `cues.md`, it gets combined automatically — no extra LLM call. If you add a new `### section` to `blanks.md`, it becomes a new classification target. See `build-sources.ts` for the combining logic and `classified-source-group.ts` for the classification logic.
+If you add a new `cues/<name>/cue.md`, `RoutedWordSourceGroup` picks it up at next config load. If you add `blanks/<name>/cue.md` with `blankKeywords:`, `BlankSource` registers it. See `build-sources.ts` for the wiring.
 
-### Pitfalls discovered during testing
+### Pitfalls
 
-These issues were found during development and are worth knowing about:
+**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. `ConfigSource`, `FluidBlankSource`, `SpellingSource` and `ClassifiedSourceGroup` all check both fields and pass `reasoning_effort: "low"` in their request bodies — Groq-specific and ignored by other providers.
 
-**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. The classifier now checks both fields and uses `max_tokens: 200`. ConfigSource uses `max_tokens: 800` for alternatives. Both `ConfigSource` and `ClassifiedSourceGroup` now include `reasoning_effort: "low"` in their request bodies — this is a Groq-specific field that non-Groq providers ignore. This ensures opencues-core works correctly out of the box without requiring the integration's HTTP adapter to inject provider overrides.
+**Keyword matching needs word boundaries.** `"in french"` as a keyword would match inside `"frozen in french toast"`. `BlankSource.blankKeywords` matches whole words/phrases (split on whitespace, consecutive match). When adding keywords, test for false positives with embedded matches.
 
-**The classifier reasoning field echoes the full prompt.** When checking the reasoning field for `MODE=GRAMMAR`, the reasoning text contains the classifier prompt which lists ALL mode names. Matching bare mode names (e.g., `raw.includes('MATH')`) would always hit the first entry. Only match the `MODE=X` pattern in reasoning.
+**Priority breaks ties between domain sources.** When multiple `cues/<name>/cue.md` domains could match the same word, the highest-priority `priority:` wins. Default sources (no `match:`/`keywords:`) only fire on words no domain claimed.
 
-**Keyword matching needs word boundaries.** `"in french"` as a keyword would match inside `"frozen in french toast"`. The fast classifier uses word-boundary checks (non-alphanumeric characters at both ends of the match). When adding keywords, test for false positives with embedded matches.
-
-**Fast-match priority matters.** When multiple domains have keywords that could match the same input, the highest-priority source wins. For example, math (priority 90) would beat translation (priority 85) if both match. Keep domain-specific terms in the right source's keywords — `celsius`/`fahrenheit` belong in unit conversion, not math.
-
-**The factual regex was too broad.** The original pattern `the .+ of .+ is` matched any sentence with that structure, including "The opposite of hot is _" (spelling, not factual). Tighten regexes to include domain-specific nouns: `the (capital|ceo|founder|author|...) of .+ is`.
-
-**Combined word sources must use the same parser.** Only sources with `parser: alternatives` and `scope: words` get combined. A source with `parser: raw` or `scope: all` stays separate and adds an extra sequential LLM call.
+**`blankProximity` defines how far the keyword can sit from `_`.** Default 0 (adjacent). For phrases that need looser matching ("dictionary _" elsewhere in a sentence), bump it: `blankProximity: 5`.
 
 ### After making changes
 
