@@ -61,8 +61,8 @@ describe('opencues seed-configs', () => {
     // scripts/ — the shared utility dir.
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
-    // Tip groups exist as folders under cues/.
-    expect(fs.existsSync(path.join(userDir, 'cues/extended-thinking/cue.md'))).toBe(true);
+    // Tip groups live consolidated under cues/tips/cue.md.
+    expect(fs.existsSync(path.join(userDir, 'cues/tips/cue.md'))).toBe(true);
   });
 
   it('SEED phase: preserves a user-edited .md file (does NOT overwrite content)', () => {

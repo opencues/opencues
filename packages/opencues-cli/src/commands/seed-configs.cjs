@@ -401,25 +401,21 @@ function migrateLegacyLayout(targetDir, log) {
   fs.writeFileSync(cuesPath, newCuesMd);
   log(`  rewrote ${cuesPath}`);
 
-  // Spawn each tip group as a folder.
-  const cuesFolderDir = path.join(targetDir, 'cues');
-  fs.mkdirSync(cuesFolderDir, { recursive: true });
-  for (const group of tipsGroups) {
-    const id = group.id;
-    if (!id) continue;
-    const folder = path.join(cuesFolderDir, id);
-    if (fs.existsSync(folder)) {
-      log(`  skip cues/${id}/ (already exists)`);
-      continue;
+  // Consolidate all tip groups into ONE folder: cues/tips/cue.md.
+  // Body is the legacy array shape `[{id, words?, groups?}]` — the
+  // parser still accepts it directly.
+  if (tipsGroups.length > 0) {
+    const tipsFolder = path.join(targetDir, 'cues', 'tips');
+    const tipsCueMd = path.join(tipsFolder, 'cue.md');
+    if (fs.existsSync(tipsCueMd)) {
+      log(`  skip cues/tips/ (already exists)`);
+    } else {
+      fs.mkdirSync(tipsFolder, { recursive: true });
+      const bodyJson = JSON.stringify(tipsGroups, null, 2);
+      const content = `---\nname: tips\n---\n\n\`\`\`json\n${bodyJson}\n\`\`\`\n`;
+      fs.writeFileSync(tipsCueMd, content);
+      log(`  created cues/tips/cue.md (${tipsGroups.length} groups)`);
     }
-    fs.mkdirSync(folder, { recursive: true });
-    // Body JSON is the full section minus the id (id becomes folder name).
-    const sectionData = { ...group };
-    delete sectionData.id;
-    const bodyJson = JSON.stringify(sectionData, null, 2);
-    const content = `---\nname: ${id}\n---\n\n\`\`\`json\n${bodyJson}\n\`\`\`\n`;
-    fs.writeFileSync(path.join(folder, 'cue.md'), content);
-    log(`  created cues/${id}/cue.md`);
   }
 
   // Drop legacy files.
