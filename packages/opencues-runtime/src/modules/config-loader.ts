@@ -612,14 +612,20 @@ export class ConfigLoader {
         const full = `${dir}/${e.name}`;
         if (e.isDirectory) {
           await prewalk(full, depth + 1);
-        } else if (e.name === 'cue.md') {
+        } else if (e.name.endsWith('.md')) {
+          // Cache any .md file: the new flat layout has <name>.md at
+          // <base>/{words,blanks}/, while the legacy folder layout had
+          // <base>/{cues,blanks}/<name>/cue.md. Both shapes flow
+          // through discoverFolderConfigs's scanDir.
           const content = await this._safeReadFile(full);
           fileCache.set(full, content);
         }
       }
     };
 
-    for (const sub of ['cues', 'blanks']) {
+    // Walk both the new (`words`) and legacy (`cues`) scope dirs plus
+    // `blanks`. Missing dirs are no-ops via prewalk's null check.
+    for (const sub of ['words', 'cues', 'blanks']) {
       await prewalk(`${cwd}/${sub}`, 0);
     }
 
