@@ -189,6 +189,30 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     expect(loader.opencuesState.tipsMode).toBe('on');
   });
 
+  // Regression: when ConfigLoader._discoverFolders' pre-walk only matched
+  // files literally named `cue.md`, the new flat <name>.md shape was
+  // invisible, ConfigLoader logged "loaded 0 cue entries", and every
+  // BlankSource match (weather, hn, prompt, …) silently fell through
+  // to FluidBlank. discover.test.ts in @opencues/core covered the flat
+  // shape end-to-end, but its tests bypassed the runtime pre-walk —
+  // the bug only existed in the pre-walk's filename filter.
+  it('discovers tips from a flat words/<name>.md (post-OpenStandard)', async () => {
+    const flatTips = `---\nname: tips\n---\n\n` +
+      '```json\n' +
+      JSON.stringify([{ id: 'g', words: { howdy: { tip: 'a greeting', alts: ['hello'] } } }]) +
+      '\n```\n';
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/proj/.cues/words/tips.md': flatTips,
+      },
+    });
+    const loader = new ConfigLoader(adapter, { configSearchPaths: ['/proj/.cues'] });
+    await loader.load();
+    expect(loader.cueMap.size).toBeGreaterThan(0);
+    expect(loader.lookup('howdy')?.cueTip).toBe('a greeting');
+  });
+
   it('continues loading other files when one .md file is malformed', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',

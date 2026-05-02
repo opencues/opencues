@@ -44,6 +44,10 @@ describe('TTS shared-path contract', () => {
     expect(ttsLine!).toContain('"/.cues"');
     expect(ttsLine!).toContain('"/scripts/speak.sh"');
     expect(ttsLine!).toContain('OPENCUES_HOME');
+    // Anti-regression for the OpenStandard rename: legacy `.opencues`
+    // literal must NOT be on the ttsScriptPath line (it would silently
+    // break TTS after seed-configs migrated the dir to `.cues/`).
+    expect(ttsLine!).not.toContain('".opencues"');
     // Anti-regression: no require.resolve trick (coupled TTS to CC's
     // install layout) and no <fork>/.cues/scripts/ hardcode (CC-only).
     expect(ttsLine!).not.toMatch(/require.*\.resolve/);
@@ -60,6 +64,14 @@ describe('TTS shared-path contract', () => {
     expect(src).not.toContain('claude-code-cues');                    // no piggybacking on CC
     expect(src).not.toContain('.claude/opencues/');                   // no pre-compact-footprint paths
     expect(src).not.toContain('.claude/actions/');                    // no legacy paths
+    // Anti-regression for the OpenStandard rename: legacy ~/.opencues/
+    // moved to ~/.cues/ + ~/.opencuesrc. The TTS path lives under the
+    // new `.cues/` library dir, NOT the old `.opencues/`. Without this
+    // positive assertion, an unrenamed resolveTtsScript() that still
+    // pointed at `.opencues/scripts/` would silently break TTS after
+    // seed-configs migrated the dir away.
+    expect(src).toContain('".cues"');                                 // new user-level dir literal
+    expect(src).not.toContain('".opencues"');                         // legacy literal is gone
     // Positive: reference the canonical user-level path.
     expect(src).toContain('scripts/speak.sh');
     expect(src).toContain('OPENCUES_HOME');
