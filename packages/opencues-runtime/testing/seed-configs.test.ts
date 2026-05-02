@@ -53,12 +53,16 @@ describe('opencues seed-configs', () => {
 
     const userDir = path.join(tmpHome, '.opencues');
     expect(fs.existsSync(path.join(userDir, 'cues.md'))).toBe(true);
-    expect(fs.existsSync(path.join(userDir, 'opencues.md'))).toBe(true);
+    // opencues.md and blanks.md are gone post-unification.
+    expect(fs.existsSync(path.join(userDir, 'opencues.md'))).toBe(false);
+    expect(fs.existsSync(path.join(userDir, 'blanks.md'))).toBe(false);
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/cue.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness-blank.sh'))).toBe(true);
-    // scripts/ — the new shared utility dir (added in this session).
+    // scripts/ — the shared utility dir.
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
+    // Tip groups exist as folders under cues/.
+    expect(fs.existsSync(path.join(userDir, 'cues/extended-thinking/cue.md'))).toBe(true);
   });
 
   it('SEED phase: preserves a user-edited .md file (does NOT overwrite content)', () => {
@@ -74,16 +78,16 @@ describe('opencues seed-configs', () => {
     expect(fs.readFileSync(path.join(userDir, 'cues.md'), 'utf8')).toBe(userCues);
   });
 
-  it('HEAL phase: re-seeds a 0-byte opencues.md from defaults', () => {
+  it('HEAL phase: re-seeds a 0-byte cues.md from defaults', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userDir = path.join(tmpHome, '.opencues');
     fs.mkdirSync(userDir, { recursive: true });
-    fs.writeFileSync(path.join(userDir, 'opencues.md'), '');
-    expect(fs.statSync(path.join(userDir, 'opencues.md')).size).toBe(0);
+    fs.writeFileSync(path.join(userDir, 'cues.md'), '');
+    expect(fs.statSync(path.join(userDir, 'cues.md')).size).toBe(0);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    const after = fs.readFileSync(path.join(userDir, 'opencues.md'), 'utf8');
+    const after = fs.readFileSync(path.join(userDir, 'cues.md'), 'utf8');
     expect(after.length).toBeGreaterThan(0);
     // Sanity: looks like the shipped settings template.
     expect(after).toContain('settings:');
@@ -127,7 +131,7 @@ describe('opencues seed-configs', () => {
     expect(fs.existsSync(path.join(ctlDir, 'brightness-blank.sh'))).toBe(true);
   });
 
-  it('--project flag scopes to <cwd>/.opencues and skips opencues.md (runtime-owned)', () => {
+  it('--project flag scopes to <cwd>/.opencues (settings stay user-level via cues.md frontmatter)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const projectDir = path.join(tmpHome, 'my-project');
     fs.mkdirSync(projectDir, { recursive: true });

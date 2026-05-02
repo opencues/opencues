@@ -9,12 +9,12 @@ Features and values that are hardcoded in patch code or opencues-core rather tha
 ### Stop-words list
 - **What:** Common words skipped during LLM analysis (`the`, `a`, `an`, `to`, `is`, `was`, `of`, `and`, `in`, `on`, `at`, `for`, `it`, `its`, `be`, `am`, `are`, `were`, `been`, `has`, `had`, `have`, `do`, `did`, `does`, `not`, `but`, `or`, `if`, `so`, `no`, `my`, `we`, `he`, `she`, `me`, `us`, `them`, `this`, `that`, `with`, `from`, `by`, `as`)
 - **Where:** `dynamicHighlight.ts` line ~698
-- **Proposed:** `cues.md` frontmatter or `## Ignore` section (partially exists for user-defined ignores)
+- **Proposed:** extend `cues.md` frontmatter `ignore:` array (already exists for user-defined ignores)
 
 ### Blank marker character
 - **What:** `_` is the blank placeholder
 - **Where:** Hardcoded throughout opencues-core and patches (~20 locations)
-- **Proposed:** `blanks.md` frontmatter `blankMarker: _`
+- **Proposed:** `cues.md` frontmatter `blankMarker: _`
 
 ### Number-to-word conversion
 - **What:** Numbers 0-20 converted to English words before sending to LLM for word-scoped analysis
@@ -24,12 +24,12 @@ Features and values that are hardcoded in patch code or opencues-core rather tha
 ### Answer length limit
 - **What:** `ANSWER=` responses longer than 100 characters are rejected
 - **Where:** `parsers.ts` line 115
-- **Proposed:** `blanks.md` per-mode config `maxLength: 100`
+- **Proposed:** per-blank `cue.md` config `maxLength: 100`
 
 ### Math precision
 - **What:** Math results rounded to 4 decimal places
 - **Where:** `parsers.ts` line 82
-- **Proposed:** `blanks.md` math mode config `precision: 4`
+- **Proposed:** per-blank `cue.md` config `precision: 4`
 
 ---
 

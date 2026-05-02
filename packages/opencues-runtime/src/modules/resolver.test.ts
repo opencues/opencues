@@ -295,13 +295,12 @@ describe('Resolver.resolveAndApply', () => {
     void dynDefs;
   });
 
-  it('opencues.md `llm-endpoint:` and `llm-model:` override options', async () => {
+  it('cues.md frontmatter `llm-endpoint:` and `llm-model:` override options', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
         '/mock/cues.md': TIPS,
-        '/proj/cues.md': CUES_MD,
-        '/proj/opencues.md': '---\nllm-endpoint: https://other.example.com/v1\nllm-model: openai/custom-model\n---\n',
+        '/proj/cues.md': '---\nllm-endpoint: https://other.example.com/v1\nllm-model: openai/custom-model\n---\n',
       },
     });
     const hlState = new HighlightState();

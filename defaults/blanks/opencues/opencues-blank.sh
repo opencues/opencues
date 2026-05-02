@@ -4,13 +4,14 @@
 # Commands:
 #   get                        → "<firstSettingName>\t<currentValue>"  (tab-delimited)
 #   get <settingName>          → "<currentValue>"
-#   set <settingName> <value>  → (writes to opencues.md, no output)
+#   set <settingName> <value>  → (writes to cues.md frontmatter, no output)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# opencues.md is user-level only (system-wide settings owned by the
-# runtime). This blank always lives at ~/.opencues/blanks/opencues/
-# so the target file is deterministically two levels up.
-OPENCUES_MD="$SCRIPT_DIR/../../opencues.md"
+# Settings live in the user-level cues.md frontmatter (system-wide,
+# runtime-owned schema). This blank always lives at
+# ~/.opencues/blanks/opencues/ so the target file is deterministically
+# two levels up.
+OPENCUES_MD="$SCRIPT_DIR/../../cues.md"
 
 cmd="${1:-get}"
 setting="${2:-}"

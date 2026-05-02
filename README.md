@@ -31,16 +31,15 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 
 ## The Standard
 
-OpenCues is built on `.md` config files — monolithic or folder-based. All prompts, modes, and behaviour live here, not in code.
+OpenCues is built on `.md` config files — one top-level file plus folder-based sources. All prompts, modes, and behaviour live here, not in code.
 
 | Config | What it defines | Example |
 |--------|----------------|---------|
-| **cues.md** | Word tips and LLM prompt sources for word alternatives | `### grammar` with synonym/opposite/creative prompt |
-| **blanks.md** | Inline `## Blanks` JSON for short-config keyword-bound blanks | `{"units": {"blankKeywords": "px,em,rem"}}` |
-| **cues/{name}/cue.md** | Folder-based word source (config in frontmatter, prompt in body) | `cues/legal/cue.md` for legal terminology |
+| **cues.md** | Top-level system settings in frontmatter (`voice-mode`, `tips-mode`, etc.), the nested `settings:` block, and the `ignore:` array. No cue/blank data. | `voice-mode: active`, `ignore: [the, a, of]` |
+| **cues/{name}/cue.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `cues/legal/cue.md` for legal terminology, `cues/grammar/cue.md` with a synonym prompt |
 | **blanks/{name}/** | Folder-based blank with colocated script or runtime class | `blanks/volume/cue.md` + `volume-blank.sh` |
 
-Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered and merge with monolithic files (folder wins on name conflict). To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered. To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Install
 
@@ -93,7 +92,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.opencues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/codex-cues/` | Codex fork the integration clones + patches |
-| `~/.opencues/` | User-level configs — `cues.md`, `blanks.md`, `opencues.md`, plus `cues/` and `blanks/` folders. Read by every host. |
+| `~/.opencues/` | User-level configs — `cues.md` (top-level settings) plus `cues/` and `blanks/` folders. Read by every host. |
 | `<cwd>/.opencues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, codex) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
@@ -133,7 +132,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │                                                             │
 │  packages/opencues-core/      LLM analysis library            │
 │  ├── resolver.ts              CueResolver orchestration       │
-│  ├── cues-md.ts               Config parser (cues/blanks.md)  │
+│  ├── cues-md.ts               Config parser (cues.md frontmatter) │
 │  ├── node-http-adapter.ts     HTTPS with keep-alive           │
 │  └── sources/                 ConfigSource, parsers...        │
 │                                                               │
@@ -238,7 +237,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **FluidBlankSource** — free-form `_` lookup (P1 segment + P3 answer pipeline) for any unmatched blank
 - **SpellingSource** — typo correction on plain text
 - **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority
-- **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + folder configs → `CueSource[]`
+- **buildSourcesFromConfig** — factory: parses `cues.md` frontmatter + folder configs (`cues/<name>/`, `blanks/<name>/`) → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
 ### `@opencues/runtime`
@@ -281,16 +280,16 @@ Your user-level OpenCues config lives at `~/.opencues/`:
 
 ```
 ~/.opencues/
-├── opencues.md         # System settings (voice-mode, tips-mode, debug-mode, cursor-navigate)
-├── cues.md             # Word alternatives + tips (## Tips JSON block, `### alternatives` LLM sources)
-├── blanks.md           # Inline `## Blanks` JSON (one-off keyword-bound blanks with no script)
-├── cues/<name>/cue.md  # Folder-based word cue sources (legal, medical, …)
+├── cues.md             # Top-level system settings (frontmatter): voice-mode, tips-mode,
+│                       # debug-mode, cursor-navigate, fluid-blank-mode, spelling-mode,
+│                       # word-cues-mode, the nested `settings:` block, and `ignore:` array
+├── cues/<name>/cue.md  # Folder-based cue sources (static body JSON or LLM prompt)
 └── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
 ```
 
 Project-level overrides live at `<cwd>/.opencues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
 
-System settings (in `~/.opencues/opencues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
+System settings (in `~/.opencues/cues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
 
 | Setting | Values | Description |
 |---|---|---|

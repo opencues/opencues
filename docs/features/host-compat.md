@@ -24,8 +24,8 @@ That covers every cue + blank we ship today without a single annotation:
 
 | Entry | Auto-detected hosts | Why |
 |---|---|---|
-| `cues.md ### grammar` (LLM only) | all | no script |
-| `blanks.md ### math` (compute parser) | all | no script |
+| `cues/grammar/cue.md` (LLM only) | all | no script |
+| `blanks/math/cue.md` (compute parser) | all | no script |
 | `blanks/affirmations/cue.md` (list) | all | no script |
 | `blanks/stocks/cue.md` (runtime class) | all | no script |
 | `blanks/volume/cue.md` (`blankScript: ./volume-blank.sh`) | claude-code, codex, opencode | `.sh` |

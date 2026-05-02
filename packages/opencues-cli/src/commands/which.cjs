@@ -34,7 +34,7 @@ module.exports = function which(argv, ctx) {
       ['TTS helper (compiled)',      path.join(HOME, '.opencues', 'scripts', 'SpeakCtl.exe')],
       ['Brightness blank dir',       path.join(HOME, '.opencues', 'blanks', 'brightness')],
       ['Volume blank dir',           path.join(HOME, '.opencues', 'blanks', 'volume')],
-      ['OpenCues settings (.md)',    path.join(HOME, '.opencues', 'opencues.md')],
+      ['Master config (settings + ignore + project metadata)', path.join(HOME, '.opencues', 'cues.md')],
     ]],
     ['OC install state (per fork)', [
       ['Default fork dir',           path.join(HOME, 'opencode-cues')],

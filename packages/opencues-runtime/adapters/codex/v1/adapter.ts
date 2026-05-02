@@ -43,6 +43,7 @@ import {
   type RenderContext,
   type RenderDirectives,
   type TextChangeEvent,
+  type CursorChangeEvent,
   type Unsubscribe,
   HOST_ADAPTER_INTERFACE_VERSION,
 } from '../../../src/adapter';
@@ -73,6 +74,7 @@ interface KeySub {
   handler: (e: KeyEvent) => boolean;
 }
 interface TextSub { handler: (e: TextChangeEvent) => void }
+interface CursorSub { handler: (e: CursorChangeEvent) => void }
 interface RenderSub { handler: (ctx: RenderContext) => RenderDirectives | null }
 
 const CODEX_BASE_CAPABILITIES: readonly Capability[] = [
@@ -114,6 +116,7 @@ export class CodexAdapter implements HostAdapter {
   // daemon's RPC handlers will fan into these once Tier 3.F-I lands.
   private readonly _keySubs: KeySub[] = [];
   private readonly _textSubs: TextSub[] = [];
+  private readonly _cursorSubs: CursorSub[] = [];
   private readonly _renderSubs: RenderSub[] = [];
 
   constructor(opts: CodexAdapterOptions) {
@@ -172,6 +175,15 @@ export class CodexAdapter implements HostAdapter {
     return () => {
       const i = this._textSubs.indexOf(sub);
       if (i >= 0) this._textSubs.splice(i, 1);
+    };
+  }
+
+  onCursorChange(handler: (e: CursorChangeEvent) => void): Unsubscribe {
+    const sub: CursorSub = { handler };
+    this._cursorSubs.push(sub);
+    return () => {
+      const i = this._cursorSubs.indexOf(sub);
+      if (i >= 0) this._cursorSubs.splice(i, 1);
     };
   }
 
@@ -267,6 +279,16 @@ export class CodexAdapter implements HostAdapter {
     this._cursor = cursor;
     for (const sub of this._textSubs) {
       sub.handler({ text, previousText, cursorOffset: cursor, source });
+    }
+  }
+
+  /** Daemon received a `cursor-change` notification (cursor moved
+   *  without text changing) — flow it to subscribed handlers. */
+  notifyCursorChangeFromBridge(text: string, cursor: number, source: 'user' | 'runtime'): void {
+    this._text = text;
+    this._cursor = cursor;
+    for (const sub of this._cursorSubs) {
+      sub.handler({ text, cursorOffset: cursor, source });
     }
   }
 

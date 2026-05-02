@@ -4,7 +4,7 @@ last_updated: 2026-04-03
 
 # Response Parser Types
 
-When adding a source to `cues.md` or `blanks.md`, the `parser` field tells opencues-core how to interpret the LLM's response. There are four parser types.
+When adding a folder-based source (`cues/<name>/cue.md` or `blanks/<name>/cue.md`), the `parser` field tells opencues-core how to interpret the LLM's response. There are four parser types.
 
 ## alternatives (default)
 

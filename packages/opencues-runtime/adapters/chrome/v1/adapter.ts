@@ -29,6 +29,7 @@ import type {
   RenderContext,
   RenderDirectives,
   TextChangeEvent,
+  CursorChangeEvent,
   Unsubscribe,
   ProcessSpec,
   ProcessHandle,
@@ -66,6 +67,7 @@ export interface ChromeBindings {
   registerKeyHandler(cb: (e: KeyEvent) => boolean): Unsubscribe;
   /** Registers a text-change handler — fires from input/MutationObserver. */
   registerTextChangeHandler(cb: (e: TextChangeEvent) => void): Unsubscribe;
+  registerCursorChangeHandler(cb: (e: CursorChangeEvent) => void): Unsubscribe;
   /** Registers a render handler — fires when the content script computes
    *  its next frame of highlights/dims. */
   registerRenderHandler(cb: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
@@ -163,6 +165,9 @@ export class ChromeV1Adapter implements HostAdapter {
   }
   onTextChange(handler: (e: TextChangeEvent) => void): Unsubscribe {
     return this.bindings.registerTextChangeHandler(handler);
+  }
+  onCursorChange(handler: (e: CursorChangeEvent) => void): Unsubscribe {
+    return this.bindings.registerCursorChangeHandler(handler);
   }
   onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {
     return this.bindings.registerRenderHandler(handler);

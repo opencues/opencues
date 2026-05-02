@@ -44,12 +44,9 @@ import { createBlanks, type BrowserBlank } from './blanks';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
-// Bake-time defines from esbuild — same data the legacy CueEngine
-// reads via DEFAULT_CONFIG. Re-using them keeps a single source of
-// truth for the project's cues.md / blanks.md / opencues.md.
+// Bake-time defines from esbuild. cues.md holds settings frontmatter +
+// project metadata; per-cue and per-blank folders live in __DEFAULT_*_FOLDERS__.
 declare const __DEFAULT_CUES_MD__: string;
-declare const __DEFAULT_BLANKS_MD__: string;
-declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
 
@@ -69,17 +66,17 @@ function parseDebugMode(content: string | null | undefined): boolean {
 }
 async function refreshReadTraceFromStorage(): Promise<void> {
   try {
-    const key = `${STORAGE_PREFIX}${ROOT}/opencues.md`;
+    const key = `${STORAGE_PREFIX}${ROOT}/cues.md`;
     const result = await chrome.storage.local.get(key);
     const v = typeof result[key] === 'string' && result[key].length > 0
       ? result[key]
-      : __DEFAULT_OPENCUES_MD__;
+      : __DEFAULT_CUES_MD__;
     _readTrace = parseDebugMode(v);
   } catch { _readTrace = false; }
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  const key = `${STORAGE_PREFIX}${ROOT}/opencues.md`;
+  const key = `${STORAGE_PREFIX}${ROOT}/cues.md`;
   if (key in changes && typeof changes[key].newValue === 'string') {
     _readTrace = parseDebugMode(changes[key].newValue);
   }
@@ -205,7 +202,7 @@ async function readFile(path: string): Promise<string | null> {
     return null;
   }
 
-  // 3. Writable files (opencues.md — OpenCuesSettingsBlank cycles
+  // 3. Writable files (cues.md — OpenCuesSettingsBlank cycles
   //    voice-mode / tips-mode / debug-mode via writeFile). Storage
   //    wins so the user's saved setting persists across reloads,
   //    falling back to bake-time before the first write.
@@ -236,8 +233,9 @@ async function readFile(path: string): Promise<string | null> {
 function isReadOnlyPath(path: string): boolean {
   if (!path.startsWith(ROOT + '/')) return false;
   const rel = path.slice(ROOT.length + 1);
-  if (rel === 'opencues.md') return false;       // OpenCuesSettingsBlank writes
-  if (rel === 'blanks.md') return false;         // legacy monolithic; write-safe fallback
+  // cues.md is writable: OpenCuesSettingsBlank cycles voice-mode /
+  // tips-mode / debug-mode etc. by rewriting the frontmatter scalar.
+  if (rel === 'cues.md') return false;
   return true;
 }
 
@@ -246,8 +244,6 @@ function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
   if (rel === 'cues.md') return __DEFAULT_CUES_MD__ || null;
-  if (rel === 'blanks.md') return __DEFAULT_BLANKS_MD__ || null;
-  if (rel === 'opencues.md') return __DEFAULT_OPENCUES_MD__ || null;
   const cueMatch = rel.match(/^cues\/([^/]+)\/cue\.md$/);
   if (cueMatch) return __DEFAULT_CUE_FOLDERS__[cueMatch[1]] ?? null;
   const ctrlMatch = rel.match(/^blanks\/([^/]+)\/cue\.md$/);
@@ -435,9 +431,9 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
     } : undefined,
     // OpenCues settings selector/satellite (`opencues settings _`)
-    // reads/writes the seeded opencues.md in chrome.storage.
-    opencuesMdReadFile: () => readFile(`${ROOT}/opencues.md`),
-    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/opencues.md`, content),
+    // reads/writes the seeded cues.md in chrome.storage.
+    opencuesMdReadFile: () => readFile(`${ROOT}/cues.md`),
+    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/cues.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 
@@ -566,6 +562,18 @@ export function notifyOpenCuesTextChange(
   // dim/highlight ranges stay stale until the user presses a navigation
   // key. CSS Highlight API writes are cheap and idempotent so an extra
   // paint per keystroke is fine.
+  runtimeRender();
+}
+
+/** Notify runtime of cursor-only moves (mouse click, arrow keys without
+ *  typing). Fired by the content script's selectionchange listener.
+ *  Drives cursor-navigate auto-highlight. */
+export function notifyOpenCuesCursorChange(
+  text: string,
+  cursorOffset: number,
+  source: 'user' | 'runtime' = 'user',
+): void {
+  bootResult?.notifyCursorChange(text, cursorOffset, source);
   runtimeRender();
 }
 

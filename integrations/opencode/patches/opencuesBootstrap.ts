@@ -80,17 +80,17 @@ const sourceReclassifier = createSourceReclassifier()
 // shell scripts (blanks/<name>/*.sh) once every host has parity.
 // OS-level blanks (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
-// opencues.md holds system-wide settings (voice-mode, tips-mode, …)
-// whose schema is owned by the OpenCues runtime. It lives only at
-// user-level so one settings value applies across every integration —
-// projects cannot override it. Auto-created on first write by
-// OpenCuesSettingsBlank.
+// cues.md frontmatter holds system-wide settings (voice-mode, tips-mode,
+// …) whose schema is owned by the OpenCues runtime. The user-level
+// cues.md is the source of truth — one value applies across every
+// integration. Project-level cues.md can override per-source content
+// but NOT the system settings.
 function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
   if (process.env.OPENCUES_HOME) {
-    return path.join(process.env.OPENCUES_HOME, "opencues.md")
+    return path.join(process.env.OPENCUES_HOME, "cues.md")
   }
-  return path.join(process.env.HOME ?? "~", ".opencues", "opencues.md")
+  return path.join(process.env.HOME ?? "~", ".opencues", "cues.md")
 }
 
 // TTS script lives at user-level (~/.opencues/scripts/speak.sh), seeded
@@ -310,6 +310,13 @@ export function dispatchOpenCuesKey(evt: any): boolean {
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
   const actualSource = sourceReclassifier.reclassify(text, source)
   bootResult?.notifyTextChange(text, cursor, actualSource)
+}
+
+/** Notify runtime of cursor-only moves (no text change). Mouse click,
+ *  arrow keys, focus etc. — opentui's EditBufferRenderable.onCursorChange
+ *  fires these. Drives cursor-navigate auto-highlight. */
+export function notifyOpenCuesCursorChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
+  bootResult?.notifyCursorChange(text, cursor, source)
 }
 
 function normaliseKeyName(evt: any): string {

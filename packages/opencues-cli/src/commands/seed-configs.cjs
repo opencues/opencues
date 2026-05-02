@@ -39,9 +39,12 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
-// First-time copy targets. opencues.md is user-level only (skipped under --project).
-const SEED_FILES_USER = ['cues.md', 'blanks.md', 'opencues.md', 'cues', 'blanks', 'scripts'];
-const SEED_FILES_PROJECT = ['cues.md', 'blanks.md', 'cues', 'blanks'];
+// First-time copy targets. cues.md is the master config (settings +
+// ignore + project metadata in frontmatter). cues/ + blanks/ are the
+// per-source folders. scripts/ holds shared shell helpers (TTS, …),
+// user-level only.
+const SEED_FILES_USER = ['cues.md', 'cues', 'blanks', 'scripts'];
+const SEED_FILES_PROJECT = ['cues.md', 'cues', 'blanks'];
 
 module.exports = function seedConfigs(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -66,6 +69,13 @@ module.exports = function seedConfigs(argv, ctx) {
   log(`  source: ${sourceDir}`);
   log(`  target: ${targetDir}`);
   log('');
+
+  // ── 0. MIGRATE — old layout (opencues.md + cues.md ## Tips +
+  // blanks.md) → new unified layout. Idempotent: re-running after
+  // migration is a no-op (signals are gone). User-scope only.
+  if (!projectScope && !dryRun) {
+    migrateLegacyLayout(targetDir, log);
+  }
 
   // ── 1. SEED — first-time copy ──────────────────────────────────────
   const seedFiles = projectScope ? SEED_FILES_PROJECT : SEED_FILES_USER;
@@ -172,13 +182,13 @@ module.exports = function seedConfigs(argv, ctx) {
 
   if (synced === 0) log('  (no changes — library files current)');
 
-  // ── 3. HEAL — self-heal empty opencues.md ──────────────────────────
+  // ── 3. HEAL — self-heal empty cues.md ──────────────────────────────
   log('');
-  const userOcMd = path.join(HOME, '.opencues/opencues.md');
-  const repoOcMd = path.join(sourceDir, 'opencues.md');
-  if (fs.existsSync(userOcMd) && fs.statSync(userOcMd).size === 0 && hasContent(repoOcMd)) {
-    fs.copyFileSync(repoOcMd, userOcMd);
-    log(`Self-heal: reseeded empty ${userOcMd} from defaults`);
+  const userCuesMd = path.join(HOME, '.opencues/cues.md');
+  const repoCuesMd = path.join(sourceDir, 'cues.md');
+  if (fs.existsSync(userCuesMd) && fs.statSync(userCuesMd).size === 0 && hasContent(repoCuesMd)) {
+    fs.copyFileSync(repoCuesMd, userCuesMd);
+    log(`Self-heal: reseeded empty ${userCuesMd} from defaults`);
   }
 
   // ── 4. COMPILE — colocated .cs → .exe (WSL only) ───────────────────
@@ -295,6 +305,164 @@ function compileExe(csc, csFile, outDir, log) {
     try { fs.unlinkSync(stagedExe); } catch {}
   }
   return false;
+}
+
+// ─── Migration: legacy layout → unified cues.md ──────────────────────────
+//
+// Old shape:
+//   ~/.opencues/opencues.md     — settings frontmatter
+//   ~/.opencues/cues.md         — `## Tips` JSON + `## Ignore` body
+//   ~/.opencues/blanks.md       — empty/legacy
+//
+// New shape:
+//   ~/.opencues/cues.md         — settings frontmatter + ignore: array
+//                                 (no body sections — tips moved out)
+//   ~/.opencues/cues/<id>/cue.md — one folder per tip group
+//   blanks.md gone entirely
+//
+// Migration steps (all idempotent):
+//   1. If opencues.md exists, read its frontmatter and merge it into
+//      the cues.md frontmatter (cues.md wins on duplicate keys).
+//   2. If cues.md has a `## Tips` JSON block, split each group into
+//      cues/<group-id>/cue.md.
+//   3. If cues.md has a `## Ignore` body section, move it into the
+//      frontmatter as `ignore: [...]`.
+//   4. Strip the migrated body sections from cues.md, leaving frontmatter
+//      and any remaining markdown.
+//   5. Delete opencues.md and blanks.md after the merge succeeds.
+function migrateLegacyLayout(targetDir, log) {
+  const opencuesPath = path.join(targetDir, 'opencues.md');
+  const cuesPath = path.join(targetDir, 'cues.md');
+  const blanksPath = path.join(targetDir, 'blanks.md');
+
+  const hasOldOpencues = fs.existsSync(opencuesPath);
+  const hasOldCues = fs.existsSync(cuesPath);
+  const hasOldBlanks = fs.existsSync(blanksPath);
+
+  // Quick exit when nothing to migrate. Look for any signal that the
+  // old layout is still present — opencues.md OR cues.md with a `## Tips`
+  // body section OR blanks.md (assumed legacy if it exists).
+  let cuesContent = hasOldCues ? fs.readFileSync(cuesPath, 'utf8') : null;
+  const hasTipsSection = cuesContent ? /^## Tips/m.test(cuesContent) : false;
+  const hasIgnoreSection = cuesContent ? /^## Ignore/m.test(cuesContent) : false;
+  const hasBlanksSection = cuesContent ? /^## Blanks/m.test(cuesContent) : false;
+
+  if (!hasOldOpencues && !hasTipsSection && !hasIgnoreSection && !hasBlanksSection && !hasOldBlanks) {
+    return; // already migrated
+  }
+
+  log('Migrating legacy layout (opencues.md + ## Tips + ## Ignore + blanks.md → unified cues.md):');
+
+  // Read the two source files.
+  const opencuesContent = hasOldOpencues ? fs.readFileSync(opencuesPath, 'utf8') : '';
+  if (!cuesContent) cuesContent = '---\nname: cues\n---\n\n# cues.md\n';
+
+  // Parse frontmatters.
+  const opencuesFm = extractFrontmatterRaw(opencuesContent);
+  const cuesParsed = splitFrontmatter(cuesContent);
+
+  // Merge frontmatters: cues.md frontmatter wins on duplicate keys (the
+  // user's local cues.md overrides shipped opencues.md). The opencues.md
+  // frontmatter is multi-line YAML (settings: block); preserve it as a
+  // raw block.
+  const cuesFmKeys = new Set();
+  for (const line of cuesParsed.frontmatter.split('\n')) {
+    const m = line.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):/);
+    if (m) cuesFmKeys.add(m[1]);
+  }
+  const opencuesFmFiltered = opencuesFm.split('\n')
+    .filter(line => {
+      const m = line.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):/);
+      // Drop lines whose key is already in cues.md frontmatter; keep
+      // indented lines (they belong to the settings: block above).
+      return !m || !cuesFmKeys.has(m[1]) || /^\s/.test(line);
+    })
+    .join('\n');
+
+  // Walk the cues.md body: pull out ## Tips JSON groups, ## Ignore list.
+  // Strip those sections from the body.
+  const body = cuesParsed.body;
+  const tipsGroups = extractTipsJsonGroups(body);
+  const ignoreList = extractIgnoreList(body);
+  let strippedBody = stripSection(body, 'Tips');
+  strippedBody = stripSection(strippedBody, 'Ignore');
+  strippedBody = stripSection(strippedBody, 'Blanks');
+
+  // Build new frontmatter: cues frontmatter (minus version which is
+  // a single-source-of-truth for the master file) + opencues frontmatter
+  // + ignore: array if any.
+  const newFmLines = [];
+  newFmLines.push(cuesParsed.frontmatter.replace(/\s+$/, ''));
+  if (opencuesFmFiltered.trim()) newFmLines.push(opencuesFmFiltered.replace(/\s+$/, ''));
+  if (ignoreList.length > 0) newFmLines.push(`ignore: ${JSON.stringify(ignoreList)}`);
+  const newFm = newFmLines.filter(Boolean).join('\n');
+
+  const newCuesMd = `---\n${newFm}\n---\n${strippedBody.replace(/^\s+/, '\n')}`;
+  fs.writeFileSync(cuesPath, newCuesMd);
+  log(`  rewrote ${cuesPath}`);
+
+  // Spawn each tip group as a folder.
+  const cuesFolderDir = path.join(targetDir, 'cues');
+  fs.mkdirSync(cuesFolderDir, { recursive: true });
+  for (const group of tipsGroups) {
+    const id = group.id;
+    if (!id) continue;
+    const folder = path.join(cuesFolderDir, id);
+    if (fs.existsSync(folder)) {
+      log(`  skip cues/${id}/ (already exists)`);
+      continue;
+    }
+    fs.mkdirSync(folder, { recursive: true });
+    // Body JSON is the full section minus the id (id becomes folder name).
+    const sectionData = { ...group };
+    delete sectionData.id;
+    const bodyJson = JSON.stringify(sectionData, null, 2);
+    const content = `---\nname: ${id}\n---\n\n\`\`\`json\n${bodyJson}\n\`\`\`\n`;
+    fs.writeFileSync(path.join(folder, 'cue.md'), content);
+    log(`  created cues/${id}/cue.md`);
+  }
+
+  // Drop legacy files.
+  if (hasOldOpencues) {
+    fs.unlinkSync(opencuesPath);
+    log(`  deleted ${opencuesPath}`);
+  }
+  if (hasOldBlanks) {
+    fs.unlinkSync(blanksPath);
+    log(`  deleted ${blanksPath}`);
+  }
+  log('');
+}
+
+function extractFrontmatterRaw(content) {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  return m ? m[1] : '';
+}
+
+function splitFrontmatter(content) {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) return { frontmatter: '', body: content };
+  return { frontmatter: m[1], body: content.slice(m[0].length) };
+}
+
+function extractTipsJsonGroups(body) {
+  const m = body.match(/^## Tips\s*\n+```json\n([\s\S]*?)\n```/m);
+  if (!m) return [];
+  try {
+    const data = JSON.parse(m[1]);
+    return Array.isArray(data) ? data : [];
+  } catch { return []; }
+}
+
+function extractIgnoreList(body) {
+  const m = body.match(/^## Ignore\s*\n([\s\S]*?)(?=\n## |\n*$)/m);
+  if (!m) return [];
+  return m[1].split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+}
+
+function stripSection(body, heading) {
+  const re = new RegExp(`^## ${heading}[\\s\\S]*?(?=^## |$(?![\\s\\S]))`, 'm');
+  return body.replace(re, '');
 }
 
 function printHelp() {

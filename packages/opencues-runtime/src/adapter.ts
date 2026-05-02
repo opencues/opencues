@@ -28,6 +28,19 @@ export interface TextChangeEvent {
   readonly source: 'user' | 'runtime' | 'host' | 'unknown';
 }
 
+/**
+ * Cursor-only change — fired when the cursor moves WITHOUT the text
+ * changing (mouse click, arrow keys without typing, programmatic cursor
+ * jump). Hosts that can't distinguish cursor-only moves from text
+ * changes can omit `onCursorChange` entirely; the runtime degrades to
+ * "highlight follows typing only".
+ */
+export interface CursorChangeEvent {
+  readonly text: string;
+  readonly cursorOffset: number;
+  readonly source: 'user' | 'runtime' | 'host' | 'unknown';
+}
+
 export interface RenderContext {
   readonly text: string;
   readonly cursor: number;
@@ -203,6 +216,13 @@ export interface HostAdapter {
 
   onKey(filter: KeyFilter | null, handler: (event: KeyEvent) => boolean): Unsubscribe;
   onTextChange(handler: (event: TextChangeEvent) => void): Unsubscribe;
+  /**
+   * Optional cursor-only event. Hosts that can detect cursor moves
+   * without text changes (selection-change events, focus subscription,
+   * etc.) emit this; hosts that can't omit the property entirely.
+   * Subscribers must handle the missing-method case gracefully.
+   */
+  onCursorChange?(handler: (event: CursorChangeEvent) => void): Unsubscribe;
   onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
 
   spawnProcess(spec: ProcessSpec): ProcessHandle;

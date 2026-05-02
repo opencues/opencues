@@ -122,12 +122,14 @@ describe('Statusline cue-tip plumbing', () => {
     expect(p.cueTip).toBeNull();
   });
 
-  it('cueTip is null when opencues.md sets tips-mode: off', async () => {
+  it('cueTip is null when cues.md sets tips-mode: off', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': TIPS,
-        '/proj/opencues.md': '---\ntips-mode: off\n---\n',
+        '/proj/cues.md': wrapTipsAsCuesMd({
+          domain: 'test', version: 1,
+          concepts: [{ id: 'g', words: { opus: { tip: 'Most capable model', alts: ['sonnet'] } } }],
+        }, { 'tips-mode': 'off' }),
       },
     });
     adapter.pushText('opus');
@@ -241,7 +243,7 @@ settings:
       cwd: '/proj',
       files: {
         '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
-        '/proj/opencues.md': OPENCUES_MD,
+        '/proj/cues.md': OPENCUES_MD,
       },
     });
     adapter.pushText('voice-mode active');
@@ -286,7 +288,7 @@ settings:
       cwd: '/proj',
       files: {
         '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
-        '/proj/opencues.md': OPENCUES_MD,
+        '/proj/cues.md': OPENCUES_MD,
       },
     });
     adapter.pushText('voice-mode active');

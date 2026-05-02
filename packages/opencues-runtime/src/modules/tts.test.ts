@@ -111,12 +111,14 @@ describe('TTS', () => {
     expect(spawnSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('does not speak when opencues.md sets voice-mode: inactive', async () => {
+  it('does not speak when cues.md sets voice-mode: inactive', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': TIPS,
-        '/proj/opencues.md': '---\nvoice-mode: inactive\n---\n',
+        '/proj/cues.md': wrapTipsAsCuesMd({
+          domain: 'test', version: 1,
+          concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
+        }, { 'voice-mode': 'inactive' }),
       },
     });
     adapter.pushText('ultrathink');
@@ -130,12 +132,14 @@ describe('TTS', () => {
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
-  it('opencues.md `tts-rate:` overrides options.rate', async () => {
+  it('cues.md `tts-rate:` overrides options.rate', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': TIPS,
-        '/proj/opencues.md': '---\ntts-rate: 7\n---\n',
+        '/proj/cues.md': wrapTipsAsCuesMd({
+          domain: 'test', version: 1,
+          concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
+        }, { 'tts-rate': '7' }),
       },
     });
     adapter.pushText('ultrathink');
@@ -152,12 +156,14 @@ describe('TTS', () => {
     expect(spawnSpy.mock.calls[0][0].args).toEqual(['/speak.sh', 'Maximum reasoning', '7']);
   });
 
-  it('opencues.md `tts-script:` overrides options.scriptPath', async () => {
+  it('cues.md `tts-script:` overrides options.scriptPath', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': TIPS,
-        '/proj/opencues.md': '---\ntts-script: /custom/say.sh\n---\n',
+        '/proj/cues.md': wrapTipsAsCuesMd({
+          domain: 'test', version: 1,
+          concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
+        }, { 'tts-script': '/custom/say.sh' }),
       },
     });
     adapter.pushText('ultrathink');
@@ -171,7 +177,7 @@ describe('TTS', () => {
     expect(spawnSpy.mock.calls[0][0].args[0]).toBe('/custom/say.sh');
   });
 
-  it('falls back to options.rate when opencues.md has no `tts-rate:`', async () => {
+  it('falls back to options.rate when cues.md has no `tts-rate:`', async () => {
     const { hlState, tts, spawnSpy } = await setup('ultrathink');
     hlState.activate(0, 'ultrathink');
     tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });
@@ -235,9 +241,12 @@ describe('TTS', () => {
     expect(logSpy).toHaveBeenCalledWith('error', expect.stringContaining('TTS speakFn threw'), expect.any(Error));
   });
 
-  it('opencues.md tts-rate flows to speakFn (same precedence as spawn path)', async () => {
+  it('cues.md tts-rate flows to speakFn (same precedence as spawn path)', async () => {
     const adapter = new MockAdapter({
-      files: { '/proj/cues.md': TIPS, '/proj/opencues.md': '---\ntts-rate: 5\n---\n' },
+      files: { '/proj/cues.md': wrapTipsAsCuesMd({
+        domain: 'test', version: 1,
+        concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
+      }, { 'tts-rate': '5' }) },
       cwd: '/proj',
     });
     adapter.pushText('ultrathink');

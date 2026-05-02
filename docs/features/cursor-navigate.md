@@ -12,7 +12,7 @@ This is an optional mode that complements manual navigation (feature 1). When ac
 
 ## How It Works
 
-1. **Gate**: cursor-navigate only runs when `cursor-navigate: active` is set in `opencues.md`
+1. **Gate**: cursor-navigate only runs when `cursor-navigate: active` is set in `cues.md` frontmatter
 2. **Offset to word**: On each text change or cursor movement, the cursor's character offset is mapped to a word index by walking the whitespace-split word array
 3. **Change detection**: The system tracks `_cursorNavLastWordIdx`. If the cursor is on the same word as last time, no action is taken — this avoids redundant re-evaluation
 4. **Navigability check**: The word at the cursor is checked against the same sources as manual navigation:
@@ -37,7 +37,7 @@ Cursor-navigate and manual navigation (Ctrl+Alt+Left/Right) coexist:
 
 ## Configuration
 
-In `opencues.md`:
+In `cues.md` frontmatter (under the `settings:` block):
 
 ```yaml
 cursor-navigate:

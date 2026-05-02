@@ -67,15 +67,15 @@ and runnable standalone whenever you suspect drift.
 
 Four phases on every invocation:
 
-1. **SEED** — first-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.opencues/`. Skips files that already exist with content (preserves user edits).
+1. **SEED** — first-time copy of `defaults/cues.md + cues/ + blanks/ + scripts/` → `~/.opencues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.opencues/opencues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.opencues/cues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
 |---|---|
 | (none) | User-level. Runs all four phases. |
-| `--project` | Writes into `<cwd>/.opencues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `opencues.md` (runtime-owned, no project-level overrides). |
+| `--project` | Writes into `<cwd>/.opencues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `cues.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
 | `--silent` | Suppress non-error output (used when chained from `opencues install`). |
 | `--dry-run` | Print the plan; do not copy / compile anything. |
 
@@ -114,9 +114,9 @@ whether the key or the network is the problem.
 
 ### `init` — scaffold `<cwd>/.opencues/`
 
-Creates the directory + starter `cues.md` and `blanks.md` with
-comments explaining each block. Idempotent — won't clobber existing
-files.
+Creates the directory + starter folder layout (`cues/` and `blanks/`)
+with comments explaining each block. Idempotent — won't clobber
+existing files.
 
 ```bash
 cd ~/my-project
@@ -144,7 +144,7 @@ Walks every search-path layer (env / project / user), parses every
 - Host-compat contradictions (`on-host:` lists chrome but the
   blank has `blankScript: ./*.sh`)
 - Multiple defaults without a priority discriminator
-- Tip JSON parse failures inside `## Tips` blocks
+- Tip JSON parse failures inside folder-based `cues/<name>/cue.md` body blocks
 
 Exit 0 on success, 1 on errors. Suitable for CI.
 
@@ -257,9 +257,9 @@ opencues show math
 ### `edit <file>` — open `~/.opencues/<file>.md` in `$EDITOR`
 
 ```bash
-opencues edit cues
-opencues edit cues/legal     # for folder-based configs
-opencues edit blanks/volume
+opencues edit cues               # opens ~/.opencues/cues.md (top-level settings)
+opencues edit cues/legal         # opens ~/.opencues/cues/legal/cue.md
+opencues edit blanks/volume      # opens ~/.opencues/blanks/volume/cue.md
 ```
 
 ### `logs [--tail]` — show `/tmp/opencues.log`
@@ -270,7 +270,7 @@ opencues logs --tail         # follow live (Ctrl+C to exit)
 ```
 
 Logging goes through the runtime regardless of host; gating is by
-`debug-mode` in `opencues.md`.
+`debug-mode` in `cues.md` frontmatter.
 
 ### `debug [on|off]` — toggle runtime `debug-mode`
 
@@ -280,7 +280,7 @@ opencues debug on           # enable verbose logging
 opencues debug off          # disable
 ```
 
-Updates `~/.opencues/opencues.md`; hot-reload picks it up on the
+Updates `~/.opencues/cues.md`; hot-reload picks it up on the
 next keystroke. Same effect as cycling `debug-mode` in-text via
 the OpenCues Settings blank.
 

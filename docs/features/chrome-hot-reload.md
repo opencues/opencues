@@ -192,10 +192,10 @@ tab per minute, all served locally so cheap).
 - Editing `dist/configs/*` directly — `sync` overwrites these on next
   run, and `.version` won't update without a sync
 - Re-running `sync chrome` with identical inputs — hash is stable
-- Editing `opencues.md` user-level scalars (voice-mode, debug-mode,
-  etc.) — those round-trip through `chrome.storage.local`, NOT the
-  bundle. The bootstrap's storage-change listener picks them up
-  separately. See `OpenCuesSettingsBlank` for the storage path.
+- Editing `cues.md` frontmatter user-level scalars (voice-mode,
+  debug-mode, etc.) — those round-trip through `chrome.storage.local`,
+  NOT the bundle. The bootstrap's storage-change listener picks them
+  up separately. See `OpenCuesSettingsBlank` for the storage path.
 
 ---
 

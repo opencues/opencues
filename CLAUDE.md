@@ -8,7 +8,7 @@ This document provides context for Claude sessions working on this project.
 
 **Architecture** (two libraries + integrations):
 - **`@opencues/core`** — *what alternatives exist*. Pure TypeScript: parsers
-  (cues.md / blanks.md / opencues.md), the LLM `Resolver`,
+  (cues.md frontmatter + folder cue.md / blank.md), the LLM `Resolver`,
   prompt templates, sources (ConfigSource, BlankSource, etc.),
   HTTP adapter. Given text + config, answers "what should we suggest for
   this word?" Knows nothing about editors, key events, or rendering.
@@ -66,14 +66,13 @@ opencues/
 │   │                              # self-dogfood via `<cwd>/.opencues` anymore. Devs working
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
-│   ├── cues.md                    # OpenCues config (tips, prompts, ignore)
-│   ├── blanks.md                  # Cue-blanks header (can be empty if using folders)
-│   │                              # (opencues.md is user-level only — ~/.opencues/opencues.md)
-│   ├── cues/                      # Folder-based word cue configs
-│   │   ├── grammar/cue.md         # Base word alternatives
-│   │   ├── legal/cue.md           # Legal terminology alternatives
-│   │   ├── medical/cue.md         # Clinical terminology alternatives
-│   │   └── financial/cue.md       # Financial terminology alternatives
+│   ├── cues.md                    # Master config: settings frontmatter + ignore: array + project metadata
+│   ├── cues/                      # Folder-based cue configs (LLM word-cues + static tip groups)
+│   │   ├── extended-thinking/cue.md  # type: tips, words: { ultrathink: { tip, alts } }
+│   │   ├── …                      # 38 shipped tip-group folders
+│   │   ├── legal/cue.md           # Legal terminology word-cues (LLM)
+│   │   ├── medical/cue.md         # Clinical terminology word-cues
+│   │   └── financial/cue.md       # Financial terminology word-cues
 │   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state)
 │       ├── volume/
 │       │   ├── cue.md             # type: blank, blankKeywords: volume, …
@@ -175,7 +174,7 @@ export GROQ_API_KEY="your-key"
 
 1. **`opencues seed-configs --silent`** — owns all writes to `~/.opencues/`
    (shared by every native host: CC, OC, Codex). First-time copy +
-   library-script sync + 0-byte opencues.md self-heal + colocated `.cs`
+   library-script sync + 0-byte cues.md self-heal + colocated `.cs`
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
    Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code@2.1.110`
@@ -379,28 +378,27 @@ A user with no `.opencues/` anywhere gets empty config (CC/OC/codex)
 — not a crash. Hot-reload polls every search path on every keystroke
 (same `maybeReload` mechanism as before).
 
-The OpenCuesSettingsBlank read/write of `opencues.md` is a special
-case: it is user-level only. `opencues.md` holds system-wide settings
-(voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is
+The OpenCuesSettingsBlank read/write of system settings now happens
+on the user-level `cues.md` frontmatter. The frontmatter holds system-
+wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate,
+fluid-blank-mode, spelling-mode, word-cues-mode) whose schema is
 owned by the OpenCues runtime. A single value applies across every
 integration, so projects cannot override it. The file lives at
-`~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set).
+`~/.opencues/cues.md` (or `$OPENCUES_HOME/cues.md` when set).
 
-- `opencues init` does NOT scaffold `opencues.md` — neither at
-  project nor user level.
-- `opencues seed-configs` (no flag) copies it from `defaults/opencues.md`
-  to `~/.opencues/`; `seed-configs --project` skips it.
-- **A 0-byte `opencues.md` is treated as missing** by both `seed-configs`
-  AND `setup.sh` (section 7a-bis self-heal). The `OpenCuesSettingsBlank`
-  silently no-ops on null/empty content (correct behavior for "no file
-  exists"), so an empty seed used to silently break `opencues ___` /
-  `config ___` blank-fills on every native host. Chrome was unaffected
-  because its storage adapter falls back to the bake-time
-  `__DEFAULT_OPENCUES_MD__` constant. Both the seed-configs check and
-  the setup.sh self-heal now ensure `opencues.md` is always non-empty
-  on disk.
-- `ConfigLoader._loadOnce` reads it only from the last search path
-  (the user-level entry).
+- `opencues seed-configs` copies `defaults/cues.md` to `~/.opencues/`
+  and runs an idempotent migration that splits any legacy
+  `opencues.md` + `## Tips` / `## Ignore` / `## Blanks` sections into
+  the new layout (tip groups become folders under `cues/<id>/cue.md`,
+  ignore moves to a frontmatter array, opencues.md and blanks.md are
+  deleted).
+- **A 0-byte `cues.md` is treated as missing** — `OpenCuesSettingsBlank`
+  silently no-ops on null/empty content, which would otherwise break
+  `opencues ___` / `config ___` blank-fills on every native host.
+  Chrome falls back to the bake-time `__DEFAULT_CUES_MD__` constant.
+  The seed-configs HEAL phase ensures `cues.md` is always non-empty.
+- `ConfigLoader._loadOnce` reads settings from the last search path's
+  cues.md frontmatter (the user-level entry).
 
 ---
 

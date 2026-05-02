@@ -8,7 +8,7 @@
 // globalThis._localCueMap etc.). Navigation targets all non-empty words. Cue
 // filtering returns in a later phase once DynDefs is populated.
 
-import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, TextChangeEvent, CursorChangeEvent, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
@@ -26,6 +26,7 @@ export class Navigation {
   private _unsubLeft: Unsubscribe | null = null;
   private _unsubRight: Unsubscribe | null = null;
   private _unsubText: Unsubscribe | null = null;
+  private _unsubCursor: Unsubscribe | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -61,12 +62,36 @@ export class Navigation {
       e => this.onArrowRight(e),
     );
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
+    // Cursor-only events (mouse click, arrow keys) are optional — hosts
+    // that can't distinguish them omit the method, in which case
+    // cursor-navigate falls back to "highlight follows typing".
+    if (this.adapter.onCursorChange) {
+      this._unsubCursor = this.adapter.onCursorChange(e => this.onCursorChange(e));
+    }
   }
 
   unsubscribe(): void {
     if (this._unsubLeft) { this._unsubLeft(); this._unsubLeft = null; }
     if (this._unsubRight) { this._unsubRight(); this._unsubRight = null; }
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+    if (this._unsubCursor) { this._unsubCursor(); this._unsubCursor = null; }
+  }
+
+  /**
+   * Cursor-only move (no text change). When cursor-navigate is on,
+   * update the highlight to track the new cursor position. When off,
+   * no-op — manual Ctrl+Alt nav owns the highlight.
+   */
+  onCursorChange(event: CursorChangeEvent): void {
+    if (event.source === 'runtime') return;
+    if (this.configLoader?.opencuesState.cursorNavigate !== 'active') return;
+    const target = this.findWordAtCursor(event.text, event.cursorOffset);
+    if (target !== null) {
+      this.hlState.activate(target, event.text);
+    } else if (this.hlState.active) {
+      this.hlState.deactivate();
+    }
+    this.adapter.forceRender();
   }
 
   /**
@@ -90,9 +115,46 @@ export class Navigation {
    */
   onTextChange(event: TextChangeEvent): void {
     if (event.source === 'runtime') return;
-    if (this.hlState.active) this.hlState.deactivate();
-    if (this.dynDefs.size === 0) return;
-    this.dynDefs.pruneStale(splitWords(event.text));
+    if (this.dynDefs.size > 0) {
+      this.dynDefs.pruneStale(splitWords(event.text));
+    }
+    // cursor-navigate: when ON, the highlight follows the cursor across
+    // edits — find the word at the cursor and activate (or deactivate
+    // when in whitespace). When OFF, fall back to the legacy "drop the
+    // highlight on every edit" behaviour so manual Ctrl+Alt navigation
+    // doesn't drift across keystrokes.
+    if (this.configLoader?.opencuesState.cursorNavigate === 'active') {
+      const target = this.findWordAtCursor(event.text, event.cursorOffset);
+      if (target !== null) {
+        this.hlState.activate(target, event.text);
+      } else if (this.hlState.active) {
+        this.hlState.deactivate();
+      } else {
+        // Keep hlState in sync with the latest text even when nothing
+        // is highlighted (so the next Ctrl+Alt nav uses fresh text).
+        this.hlState.setText(event.text);
+      }
+      this.adapter.forceRender();
+    } else {
+      if (this.hlState.active) this.hlState.deactivate();
+    }
+  }
+
+  /** Pick the navigable word containing `cursorOffset`, or null. Cursor
+   *  is treated as "in" a word when it's inside [start, end] inclusive
+   *  (so being right next to either edge also counts). Whitespace
+   *  positions return null so the highlight clears. */
+  private findWordAtCursor(text: string, cursorOffset: number): number | null {
+    const words = splitWords(text);
+    if (words.length === 0) return null;
+    const targets = this.computeTargets(words);
+    if (targets.length === 0) return null;
+    const targetSet = new Set<number>(targets);
+    for (const w of words) {
+      if (!targetSet.has(w.index)) continue;
+      if (cursorOffset >= w.start && cursorOffset <= w.end) return w.index;
+    }
+    return null;
   }
 
   onArrowLeft(event: KeyEvent): boolean {

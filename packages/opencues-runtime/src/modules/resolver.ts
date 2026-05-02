@@ -160,7 +160,10 @@ export class Resolver {
       continueOnError: true,
     });
     this._lastBuildKey = this.computeBuildKey();
-    this.adapter.log('info', `Resolver: built with ${sources.length} sources`);
+    // BlankSource isn't in this list — keyword-bound blanks dispatch
+    // synchronously through BlankFill, separate from the resolver.
+    const ids = sources.map(s => (s as { id?: string }).id ?? '?').join(', ');
+    this.adapter.log('info', `Resolver: built with ${sources.length} sources [${ids}]`);
   }
 
   /** Stable string fingerprint of the source-affecting settings. When this

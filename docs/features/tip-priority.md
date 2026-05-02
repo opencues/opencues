@@ -12,12 +12,12 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 
 | Priority | Word type | Example | Tip shown | Source |
 |---|---|---|---|---|
-| 1 | Satellite (per-value) | `active` under selector `voice-mode` | "TTS reads tips aloud on navigation" | `opencues.md` `tips:` block, nested value line |
-| 2 | Satellite (fallback) | `on` under selector `debug-mode`, no per-value tip defined | "Enable debug logging output" | `opencues.md` `tips:` block, setting-level line |
-| 3 | Selector | `voice-mode` | "Gates TTS globally" | `opencues.md` `tips:` block, setting-level line |
+| 1 | Satellite (per-value) | `active` under selector `voice-mode` | "TTS reads tips aloud on navigation" | `cues.md` `settings:` block, nested value line |
+| 2 | Satellite (fallback) | `on` under selector `debug-mode`, no per-value tip defined | "Enable debug logging output" | `cues.md` `settings:` block, setting-level line |
+| 3 | Selector | `voice-mode` | "Gates TTS globally" | `cues.md` `settings:` block, setting-level line |
 | 4 | Cue-blank value | `72` after `volume` | "System volume" | Blank's `cue.md` `blankTip` field |
 | 5 | Cue-blank keyword | `volume` (the trigger word) | "85" (live reading) | `blankInvoke get` output; falls back to `tip` in `cue.md` |
-| 6 | Local cue (`cues.md ## Tips`) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `cues.md` `## Tips` JSON block via `cueMap` (built in `ConfigLoader`) |
+| 6 | Local cue (folder-based) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `cues/<name>/cue.md` body JSON via `cueMap` (built in `ConfigLoader`) |
 | 7 | LLM-analyzed word | `happy` | "glad, joyful, content" | LLM response via opencues-core resolver |
 
 ---
@@ -29,7 +29,7 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 The navigation export code checks three branches in order. The first match wins; the rest are skipped:
 
 1. **Blank-bound word** — the WordDef has `metadata.blankName` set (auto-populated by the blank pipeline)
-   - Selector/satellite sub-branch (`metadata.selectorWord` or `metadata.satelliteWord`): reads `opencues.md` `tips:` block (priorities 1-3)
+   - Selector/satellite sub-branch (`metadata.selectorWord` or `metadata.satelliteWord`): reads `cues.md` `settings:` block (priorities 1-3)
    - Regular cue-blank value: reads `cueTip` from the WordDef, set by `blankTip` in the blank's `cue.md` (priority 4)
 2. **Cue-blank keyword** — the word text matches a registered `blankKeywords` entry
    - Calls `blankInvoke({ action: 'get' })` for a live reading; falls back to `tip` from `cue.md` (priority 5)
@@ -49,7 +49,7 @@ The same word types are protected from unnecessary LLM analysis, but using diffe
 | **Cue-blank value** (including selector/satellite) | `_hasAlts` check | WordDef already has `alts.length > 1` from auto-populate, so it's treated as already resolved |
 | **Local cue match** | `_tipsHandled` check | `lookupMultiple` found a match in `_localCueMap`, so no LLM needed |
 | **Common word** (the, a, is, ...) | Stopword regex | Hard-coded skip list |
-| **Ignored word** | `_cuesIgnoreWords` set | User-authored `## Ignore` list from `cues.md` |
+| **Ignored word** | `_cuesIgnoreWords` set | User-authored `ignore:` array in `cues.md` frontmatter |
 
 The result is consistent: blank-bound words, cue-blank keywords, and locally-resolved words are never sent to the LLM, and their tips are never overwritten by LLM results.
 
@@ -64,9 +64,9 @@ When a word is cycled, the tip is updated inline within each cycling branch:
 
 ---
 
-## The `opencues.md` Settings Block
+## The `cues.md` Settings Block
 
-Settings, valid values, and tips are defined together in `opencues.md` under a unified `settings:` block. Each setting is self-contained:
+Settings, valid values, and tips are defined together in `cues.md` frontmatter under a unified `settings:` block. Each setting is self-contained:
 
 ```yaml
 ---
@@ -107,12 +107,12 @@ Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openC
 - `CueResult.cueTip` carries the primary tip for any word
 - `CueResult.altCueTips` maps each alternative to its own tip (for per-alt display during cycling)
 - Cue-blanks use `blankTip` from the blank's config
-- Selector/satellite tips are read from the backing config file (`opencues.md`), not from `cue.md`
+- Selector/satellite tips are read from `cues.md` frontmatter `settings:` block, not from per-cue `cue.md` files
 
 ### Integration responsibilities
 
 - Implement the three-branch display priority: blank-bound words first, then cue-blank keywords, then general words
 - Ensure blank-bound words and cue-blank keywords are excluded from LLM analysis (either by explicit skip or by the `_hasAlts` guard)
-- For selector/satellite words, read tips from the backing config's `tips:` block and hot-reload them
+- For selector/satellite words, read tips from the backing config's `settings:` block and hot-reload them
 - Update the cycling tip inline within each cycling branch — don't rely on a separate refresh
 - When no tip resolves for a word, suppress the secondary display entirely (don't show an empty tip)

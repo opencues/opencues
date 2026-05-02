@@ -600,9 +600,9 @@ describe('parseCuesMd: real cues.md', () => {
     assert.ok(!cfg.promptConfig?.sources || Object.keys(cfg.promptConfig.sources).length === 0);
   });
 
-  (cuesExists ? it : it.skip)('should have tips data', () => {
+  (cuesExists ? it : it.skip)('does not store inline tips (tips are folder-based)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    assert.ok(cfg.tips && cfg.tips.length > 0, 'cues.md should have tips');
+    assert.ok(!cfg.tips || cfg.tips.length === 0, 'tips moved to cues/<id>/cue.md folders');
   });
 
   (cuesExists ? it : it.skip)('should pass validation', () => {

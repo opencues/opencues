@@ -14,7 +14,7 @@ OpenCues has two directions of intent: **Cues** (LLM → user — alternatives o
 
 The architecture has two layers:
 
-1. **Config Standard** (`cues.md`, `blanks.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
+1. **Config Standard** (`cues.md` + `cues/<name>/cue.md` + `blanks/<name>/cue.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
 2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
 
 Integrations (Claude Code, future editors) use opencues-core to load the config standard and provide the UI layer.
@@ -138,13 +138,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Load tips from cues.md's ## Tips JSON block
-const cuesPath = path.join(os.homedir(), '.opencues', 'cues.md');
-const cuesConfig = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
+// Load tips from folder-based cues/<name>/cue.md (body JSON)
+const cuesDir = path.join(os.homedir(), '.opencues', 'cues');
+const folderConfigs = await discoverFolderConfigs(cuesDir, fsAdapter);
+const localCueData = aggregateLocalCueData(folderConfigs);
 
 // Create resolver with the tips source
 const resolver = new CueResolver([
-  new LocalCueSource(cuesConfig.tips!, { priority: 100 })
+  new LocalCueSource(localCueData, { priority: 100 })
 ]);
 
 // Resolve cues for input text
@@ -174,10 +175,11 @@ import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } f
 // Tips source (high priority, instant)
 const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
 
-// Config-driven sources from .md files
+// Config-driven sources from .md files (folder-based)
 const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
-const blanksCfg = fs.existsSync('blanks.md') ? parseCuesMd(fs.readFileSync('blanks.md', 'utf8')) : undefined;
-const configSources = buildSourcesFromConfig(cuesCfg, blanksCfg, {
+const cuesFolders = await discoverFolderConfigs('.opencues/cues', fsAdapter);
+const blanksFolders = await discoverFolderConfigs('.opencues/blanks', fsAdapter);
+const configSources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, {
   httpAdapter, endpoint, apiKey, defaultModel: 'openai/gpt-oss-120b',
 });
 
@@ -194,10 +196,10 @@ const result = await resolver.resolve(context);
 // Browser integration example
 import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'opencues-core';
 
-// Load tips and config
+// Load tips and config (chrome reads from the synced bundle, not the filesystem)
 const tipsData = parseLocalCueFile(tipsJson);
 const cuesCfg = parseCuesMd(cuesMdContent);
-const sources = buildSourcesFromConfig(cuesCfg, undefined, { httpAdapter, endpoint, apiKey, defaultModel });
+const sources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, { httpAdapter, endpoint, apiKey, defaultModel });
 const resolver = createResolver([new LocalCueSource(tipsData), ...sources]);
 
 // Use in content script
@@ -297,16 +299,16 @@ The `LocalCueSource` can be combined with file watching for hot reload:
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { parseCuesMd } from '@opencues/core';
+import { discoverFolderConfigs, aggregateLocalCueData } from '@opencues/core';
 
-const cuesPath = path.join(os.homedir(), '.opencues', 'cues.md');
-const initial = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-const source = new LocalCueSource(initial.tips!);
+const cuesDir = path.join(os.homedir(), '.opencues', 'cues');
+const initial = aggregateLocalCueData(await discoverFolderConfigs(cuesDir, fsAdapter));
+const source = new LocalCueSource(initial);
 
 // Watch for changes
-fs.watch(cuesPath, () => {
-  const next = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-  if (next.tips) source.updateData(next.tips);
+fs.watch(cuesDir, { recursive: true }, async () => {
+  const next = aggregateLocalCueData(await discoverFolderConfigs(cuesDir, fsAdapter));
+  source.updateData(next);
   console.log('Tips reloaded');
 });
 ```
@@ -405,11 +407,11 @@ opencues-core is used directly from the injected cli.js code (no shell scripts).
 
 ```typescript
 // In dynamicHighlight.ts writeCuesCoreInit:
-// 1. Load tips file into LocalCueSource
-// 2. Parse cues.md, blanks.md
+// 1. Aggregate folder-based local cue data into a LocalCueSource
+// 2. Parse cues.md frontmatter (settings + ignore) + discover cues/<name>/ + blanks/<name>/
 // 3. Create NodeHttpAdapter (keep-alive, Groq provider config)
-// 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → sources
-//    - Word sources: each `### alternatives` becomes its own ConfigSource;
+// 4. buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, options) → sources
+//    - Word sources: each cues/<name>/cue.md becomes its own ConfigSource;
 //      all wrapped in ONE RoutedWordSourceGroup that dispatches per-word
 //    - Blank sources: BlankSource (keyword-bound) + FluidBlankSource (free-form)
 // 5. createResolver([...sources]) → globalThis._cueResolver

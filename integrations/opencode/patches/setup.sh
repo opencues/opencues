@@ -150,19 +150,20 @@ PY
 
 patch_prompt_tsx() {
   local prompt="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx"
-  if grep -q "publishPromptAccess" "$prompt"; then return 0; fi
   python3 - "$prompt" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'publishPromptAccess' in src: sys.exit(0)
-src = src.replace(
-  'import { useArgs } from "@tui/context/args"',
-  'import { useArgs } from "@tui/context/args"\nimport { publishPromptAccess, notifyOpenCuesTextChange, triggerOpenCuesRender } from "../../opencues"',
-)
-src = src.replace(
-  'ref={(r: TextareaRenderable) => {\n                input = r',
-  '''ref={(r: TextareaRenderable) => {
+# Per-edit idempotency: each block guarded by its own marker so adding
+# new edits to existing patched files works without a full re-apply.
+if 'publishPromptAccess' not in src:
+    src = src.replace(
+      'import { useArgs } from "@tui/context/args"',
+      'import { useArgs } from "@tui/context/args"\nimport { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
+    )
+    src = src.replace(
+      'ref={(r: TextareaRenderable) => {\n                input = r',
+      '''ref={(r: TextareaRenderable) => {
                 input = r
                 publishPromptAccess({
                   read: () => input.plainText,
@@ -175,15 +176,36 @@ src = src.replace(
                   textarea: input,
                   syntax: useTheme().syntax() as any,
                 })''',
-)
-src = src.replace(
-  'onContentChange={() => {\n                const value = input.plainText\n                setStore("prompt", "input", value)',
-  '''onContentChange={() => {
+    )
+    src = src.replace(
+      'onContentChange={() => {\n                const value = input.plainText\n                setStore("prompt", "input", value)',
+      '''onContentChange={() => {
                 const value = input.plainText
                 setStore("prompt", "input", value)
                 notifyOpenCuesTextChange(value, input.cursorOffset ?? 0, "user")
                 triggerOpenCuesRender(value, input.cursorOffset ?? 0)''',
-)
+    )
+# Add notifyOpenCuesCursorChange to the existing import if missing.
+if 'notifyOpenCuesCursorChange' not in src:
+    src = src.replace(
+      'import { publishPromptAccess, notifyOpenCuesTextChange, triggerOpenCuesRender } from "../../opencues"',
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
+    )
+# Wire onCursorChange on the textarea so cursor-only moves (mouse click,
+# arrow keys without typing) update the highlight when cursor-navigate
+# is on. opentui's EditBufferRenderable exposes the prop directly.
+if 'onCursorChange={' not in src:
+    src = src.replace(
+      'onContentChange={() => {\n                const value = input.plainText\n                setStore("prompt", "input", value)\n                notifyOpenCuesTextChange',
+      '''onCursorChange={() => {
+                notifyOpenCuesCursorChange(input.plainText, input.cursorOffset ?? 0, "user")
+                triggerOpenCuesRender(input.plainText, input.cursorOffset ?? 0)
+              }}
+              onContentChange={() => {
+                const value = input.plainText
+                setStore("prompt", "input", value)
+                notifyOpenCuesTextChange'''
+    )
 open(p, 'w').write(src)
 PY
 }

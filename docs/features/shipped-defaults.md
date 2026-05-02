@@ -18,13 +18,13 @@ Same shape as any user-level `~/.opencues/` or project-level `.opencues/`:
 
 ```
 defaults/
-├── cues.md              # Monolithic: static tips JSON + ### grammar prompt
-├── blanks.md            # Monolithic cue-blanks (inline list/step ones)
-├── opencues.md          # NOTE: runtime-owned system settings; user-level only at runtime.
-│                        # Ships here only so `seed-configs` can drop a skeleton file.
-├── cues/                # Folder-based cue sources
-│   ├── grammar/cue.md
-│   ├── legal/cue.md
+├── cues.md              # Top-level settings + nested settings: block + ignore: array
+│                        # (frontmatter only; body is human-readable description).
+│                        # Runtime-owned for the system-settings half — user-level only at runtime.
+│                        # Ships here so `seed-configs` can drop a starter file.
+├── cues/                # Folder-based cue sources (one folder per source)
+│   ├── grammar/cue.md   # Static cues: body JSON words map
+│   ├── legal/cue.md     # LLM cues: match:/keywords: in frontmatter, prompt in body
 │   ├── medical/cue.md
 │   └── financial/cue.md
 └── blanks/              # Folder-based cue-blanks + colocated scripts
@@ -52,9 +52,9 @@ defaults/
 
 | Consumer | When | What it does |
 |---|---|---|
-| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy to `~/.opencues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed 0-byte `opencues.md`; (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). |
-| Chrome `esbuild.config.mjs` | Every `pnpm --filter @opencues/chrome build` | Inlines `defaults/cues/*`, `defaults/blanks/*`, `defaults/cues.md`, `defaults/blanks.md`, `defaults/opencues.md` into the bundle as `__DEFAULT_*__` constants. The runtime uses these as fallbacks when the bundled `configs/` dir is absent or hasn't been sync'd. |
-| `packages/opencues-core/src/sources/classifier.test.ts` | Unit test | Reads `defaults/blanks.md` as a real-world fixture. |
+| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy to `~/.opencues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed 0-byte `cues.md`; (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). |
+| Chrome `esbuild.config.mjs` | Every `pnpm --filter @opencues/chrome build` | Inlines `defaults/cues/*`, `defaults/blanks/*`, and `defaults/cues.md` into the bundle as `__DEFAULT_*__` constants. The runtime uses these as fallbacks when the bundled `configs/` dir is absent or hasn't been sync'd. |
+| `packages/opencues-core/src/sources/classifier.test.ts` | Unit test | Reads `defaults/blanks/<name>/cue.md` files as real-world fixtures. |
 
 Nothing reads `defaults/` at host runtime. The runtime only reads `~/.opencues/` (user-level), `<cwd>/.opencues/` (project-level), and — for chrome — the synced `dist/configs/` bundle.
 

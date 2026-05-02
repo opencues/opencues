@@ -15,6 +15,9 @@ export interface CuesMdFrontmatter {
   name?: string;
   domain?: string;
   version?: number;
+  /** Words to never suggest alternatives for (frontmatter form, replaces
+   *  the legacy `## Ignore` body section). */
+  ignore?: string[];
 }
 
 /**
@@ -221,6 +224,7 @@ function parseFrontmatter(content: string): { frontmatter: CuesMdFrontmatter; bo
     if (key === 'name') fm.name = value;
     else if (key === 'domain') fm.domain = value;
     else if (key === 'version') fm.version = parseInt(value, 10) || undefined;
+    else if (key === 'ignore') fm.ignore = parseHostList(value); // JSON array OR comma-sep
   }
 
   return { frontmatter: fm, body };
@@ -484,11 +488,21 @@ export function parseCuesMd(content: string): CuesMdConfig {
     sections: {},
   };
 
+  // Frontmatter `ignore: [...]` is the canonical source. Body `## Ignore`
+  // is still parsed below as a backward-compat fallback.
+  if (frontmatter.ignore && frontmatter.ignore.length > 0) {
+    result.ignore = frontmatter.ignore;
+  }
+
   for (const section of sections) {
     const heading = section.heading.toLowerCase();
 
     switch (heading) {
       case 'tips': {
+        // Legacy `## Tips` JSON section. New format is folder-based —
+        // each tip group lives in `cues/<id>/cue.md` with type:tips.
+        // Kept here only so old user installs parse cleanly until
+        // seed-configs migration runs.
         result.tips = parseTipsSection(section.content);
         break;
       }
@@ -497,11 +511,18 @@ export function parseCuesMd(content: string): CuesMdConfig {
         break;
       }
       case 'blanks': {
+        // Legacy `## Blanks` JSON section. New format is folder-based.
+        // Kept for backward compat during migration.
         result.blanks = parseBlanksSection(section.content);
         break;
       }
       case 'ignore': {
-        result.ignore = parseIgnoreSection(section.content);
+        // Legacy `## Ignore` body section. New format is the
+        // `ignore: [...]` array in frontmatter — already populated
+        // above. Body section overrides only if frontmatter empty.
+        if (!result.ignore || result.ignore.length === 0) {
+          result.ignore = parseIgnoreSection(section.content);
+        }
         break;
       }
       default: {
@@ -523,9 +544,10 @@ export function parseCuesMd(content: string): CuesMdConfig {
  * Config lives in frontmatter instead of YAML code blocks.
  */
 export interface SingleCueFrontmatter extends CuesMdFrontmatter {
-  /** Cue type: 'prompt' (default), 'tips', or 'blank'.
-   *  'blank' identifies a `_`-triggered config in defaults/blanks/<name>/cue.md. */
-  type?: 'prompt' | 'tips' | 'blank';
+  /** Discriminator for `_`-triggered blanks. Cue sources (both static
+   *  and LLM-driven) are inferred from data shape — body JSON ⇒ static,
+   *  otherwise prompt-driven. Only `'blank'` is meaningful here. */
+  type?: 'blank';
   scope?: 'words' | 'blanks' | 'all';
   parser?: BlankParser;
   priority?: number;
@@ -656,7 +678,6 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
  */
 export function parseSingleCueMd(content: string, folderPath: string): CuesMdConfig {
   const { frontmatter, body } = parseExtendedFrontmatter(content);
-  const type = frontmatter.type || 'prompt';
   const name = frontmatter.name || 'unknown';
 
   const result: CuesMdConfig = {
@@ -674,11 +695,13 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
     result.ignore = parseIgnoreSection(ignoreContent);
   }
 
+  // `type: blank` is the only explicit discriminator — `_`-triggered
+  // blanks have a different runtime contract. Static vs LLM cue sources
+  // are inferred from data shape: a body JSON code block ⇒ static
+  // (hand-curated word → tip/alts/speak entries), otherwise LLM prompt.
+  const type = frontmatter.type;
+
   switch (type) {
-    case 'tips': {
-      result.tips = parseTipsSection(body);
-      break;
-    }
     case 'blank': {
       const blank: BlankConfig = {
         name,
@@ -733,7 +756,29 @@ export function parseSingleCueMd(content: string, folderPath: string): CuesMdCon
       break;
     }
     default: {
-      // Prompt type — frontmatter fields become SourceConfig, body is promptText
+      // Cue source — inferred from data shape:
+      //   - body JSON code block present ⇒ static cue (hand-curated
+      //     words map, populates result.tips)
+      //   - otherwise ⇒ LLM cue source (prompt in body, match/keywords
+      //     in frontmatter, populates result.promptConfig)
+      const jsonBlock = extractCodeBlock(body, 'json');
+      if (jsonBlock) {
+        try {
+          const data = JSON.parse(jsonBlock);
+          if (Array.isArray(data)) {
+            result.tips = data as LocalCueData;
+          } else if (data && typeof data === 'object') {
+            const hasSectionFields = 'words' in data || 'groups' in data;
+            result.tips = hasSectionFields
+              ? [{ id: name, ...data }]
+              : [{ id: name, words: data as Record<string, unknown> }];
+          }
+          break; // static cue — done
+        } catch { /* malformed JSON — fall through to prompt parsing */ }
+      }
+
+      // LLM prompt source — frontmatter fields become SourceConfig,
+      // body text outside code blocks is the prompt.
       const source: SourceConfig = { name };
       if (frontmatter.match) source.match = frontmatter.match;
       if (frontmatter.keywords) source.keywords = frontmatter.keywords;

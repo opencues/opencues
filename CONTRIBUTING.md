@@ -50,9 +50,8 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 
 | File/Folder | What it defines |
 |------|-----------------|
-| `cues.md` | Word tips (`## Tips`) and any inline `### alternatives` LLM sources. Domain sources are usually folder-based instead. |
-| `cues/{name}/cue.md` | Folder-based word source — config in YAML frontmatter, prompt in body. Overrides same-name monolithic section. |
-| `blanks.md` | Inline `## Blanks` JSON for short-config keyword-bound blanks (no script). Rare — most blanks are folder-based. |
+| `cues.md` | Top-level system settings (frontmatter only): `voice-mode`, `tips-mode`, `debug-mode`, etc., the nested `settings:` block, and the `ignore:` array. No cue/blank data. |
+| `cues/{name}/cue.md` | Folder-based cue source — config in YAML frontmatter. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. |
 | `blanks/{name}/cue.md` | Folder-based blank with colocated script (e.g., `blankScript: ./volume-blank.sh`) or pointing at a runtime class. |
 
 ### Adding a new word source
@@ -71,7 +70,7 @@ classify: Legal terminology
 Your prompt instructions here...
 ```
 
-Picked up automatically by `buildSourcesFromConfig()`. Inline `### sections` in `cues.md` work too, but folder-based is preferred.
+Picked up automatically by `buildSourcesFromConfig()` via folder discovery.
 
 **Per-word routing.** `RoutedWordSourceGroup` dispatches each highlighted word to ONE child source — never combines them into a giant prompt. The first source whose `match:` or `keywords:` claims the word wins (highest priority breaks ties). Words no source claims get no cue — they're not navigable.
 
@@ -93,7 +92,6 @@ The cue.md frontmatter:
 ```yaml
 ---
 name: <name>
-type: blank
 blankKeywords: <comma-separated triggers>
 blankScript: ./<name>-blank.sh    # for shape 1
 # or: stepValues: ["a", "b", "c"]  # for shape 2
@@ -108,7 +106,7 @@ See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) for t
 
 ### SourceConfig fields
 
-Each `### section` supports these yaml fields:
+Each `cues/<name>/cue.md` supports these YAML frontmatter fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -127,13 +125,13 @@ Integrations bring OpenCues into specific editors or tools. See `docs/guides/add
 The minimal integration:
 
 ```typescript
-import { createResolver, buildSourcesFromConfig, parseCuesMd } from 'opencues-core';
+import { createResolver, buildSourcesFromConfig, parseCuesMd, discoverFolderConfigs } from 'opencues-core';
 
 const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
-const blanksCfg = fs.existsSync('blanks.md')
-  ? parseCuesMd(fs.readFileSync('blanks.md', 'utf8')) : undefined;
+const cuesFolders = await discoverFolderConfigs('.opencues/cues', fsAdapter);
+const blanksFolders = await discoverFolderConfigs('.opencues/blanks', fsAdapter);
 
-const sources = buildSourcesFromConfig(cuesCfg, blanksCfg, {
+const sources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, {
   httpAdapter, endpoint, apiKey, defaultModel,
 });
 const resolver = createResolver(sources);
@@ -190,7 +188,7 @@ Results land in `tests/results/`. Compare runs to detect regressions. Word alter
 | File | Purpose |
 |------|---------|
 | `src/sources/config-source.ts` | Generic config-driven LLM source |
-| `src/sources/routed-word-source-group.ts` | Per-word routing for `### alternatives` cues |
+| `src/sources/routed-word-source-group.ts` | Per-word routing for folder-based cue sources |
 | `src/sources/blank-source.ts` | Keyword-bound blank dispatcher (auto-populate + cycling) |
 | `src/sources/fluid-blank-source.ts` | Free-form `_` lookup (P1 segment + P3 answer) |
 | `src/sources/spelling-source.ts` | Typo correction on plain text |

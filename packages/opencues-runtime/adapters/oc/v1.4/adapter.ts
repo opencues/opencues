@@ -17,6 +17,7 @@ import type {
   RenderContext,
   RenderDirectives,
   TextChangeEvent,
+  CursorChangeEvent,
   Unsubscribe,
   ProcessSpec,
   ProcessHandle,
@@ -48,6 +49,7 @@ export interface OpenCodeBindings {
   registerKeyHandler(cb: (e: KeyEvent) => boolean): Unsubscribe;
   /** Registers a text-change handler — fires when prompt input changes. */
   registerTextChangeHandler(cb: (e: TextChangeEvent) => void): Unsubscribe;
+  registerCursorChangeHandler(cb: (e: CursorChangeEvent) => void): Unsubscribe;
   /** Registers a render handler — fires per-render with directives target. */
   registerRenderHandler(cb: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
   /** Optional file I/O. */
@@ -139,6 +141,9 @@ export class OpenCodeV14Adapter implements HostAdapter {
   }
   onTextChange(handler: (e: TextChangeEvent) => void): Unsubscribe {
     return this.bindings.registerTextChangeHandler(handler);
+  }
+  onCursorChange(handler: (e: CursorChangeEvent) => void): Unsubscribe {
+    return this.bindings.registerCursorChangeHandler(handler);
   }
   onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {
     return this.bindings.registerRenderHandler(handler);

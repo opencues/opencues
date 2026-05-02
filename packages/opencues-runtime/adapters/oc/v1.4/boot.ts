@@ -17,6 +17,7 @@ import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
+import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
   KeyEvent,
@@ -53,6 +54,11 @@ export interface BootResult {
   dispatchKey(event: KeyEvent): boolean;
   /** Call when the prompt input value changes (from onInput). */
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  /** Call when the cursor moves WITHOUT the text changing (mouse click,
+   *  arrow keys, focus). The patched Prompt component watches its
+   *  cursor offset and fires this when it changes alone. Idempotent —
+   *  no-op when the offset matches the last-seen value. */
+  notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   /**
    * O.4 — collect render directives from all subscribed handlers
    * (DimRender + future modules). The patch turns the result into
@@ -79,9 +85,10 @@ export function boot(host: HostInfo): BootResult {
       : !!process.env.DEBUG_OPENCUES,
   });
 
-  const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
-  const textHandlers: Array<(e: TextChangeEvent) => void> = [];
-  const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
+  const keyEvents = new EventEmitter<KeyEvent, boolean>();
+  const textEvents = new EventEmitter<TextChangeEvent>();
+  const cursorEvents = new EventEmitter<import('../../../src/adapter').CursorChangeEvent>();
+  const renderEvents = new EventEmitter<RenderContext, RenderDirectives | null>();
 
   // Text observation tracking. Used to populate `previousText` on
   // notifyTextChange events. We do NOT synthesise text-change events
@@ -95,22 +102,22 @@ export function boot(host: HostInfo): BootResult {
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
   const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
-    const event: TextChangeEvent = {
-      text,
-      cursorOffset: cursor,
-      previousText: lastSeenText ?? '',
-      source,
-    };
-    for (const h of textHandlers) {
-      try { h(event); } catch (err) { log('error', 'text handler threw', err); }
-    }
+    textEvents.emit(
+      { text, cursorOffset: cursor, previousText: lastSeenText ?? '', source },
+      err => log('error', 'text handler threw', err),
+    );
     lastSeenText = text;
     lastSeenCursor = cursor;
   };
 
-  const removeFrom = <T>(arr: T[], item: T): void => {
-    const i = arr.indexOf(item);
-    if (i >= 0) arr.splice(i, 1);
+  const fireCursorChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+    if (cursor === lastSeenCursor && text === lastSeenText) return;
+    cursorEvents.emit(
+      { text, cursorOffset: cursor, source },
+      err => log('error', 'cursor handler threw', err),
+    );
+    lastSeenCursor = cursor;
+    lastSeenText = text;
   };
 
   const bindings: OpenCodeBindings = {
@@ -121,18 +128,10 @@ export function boot(host: HostInfo): BootResult {
     setText: host.setText,
     setCursorOffset: host.setCursorOffset,
     forceRender: host.forceRender,
-    registerKeyHandler: (cb) => {
-      keyHandlers.push(cb);
-      return () => removeFrom(keyHandlers, cb);
-    },
-    registerTextChangeHandler: (cb) => {
-      textHandlers.push(cb);
-      return () => removeFrom(textHandlers, cb);
-    },
-    registerRenderHandler: (cb) => {
-      renderHandlers.push(cb);
-      return () => removeFrom(renderHandlers, cb);
-    },
+    registerKeyHandler: cb => keyEvents.subscribe(cb),
+    registerTextChangeHandler: cb => textEvents.subscribe(cb),
+    registerCursorChangeHandler: cb => cursorEvents.subscribe(cb),
+    registerRenderHandler: cb => renderEvents.subscribe(cb),
     readFile: host.readFile,
     readDir: host.readDir,
     writeFile: host.writeFile,
@@ -213,15 +212,13 @@ export function boot(host: HostInfo): BootResult {
 
   return {
     dispatchKey(event) {
-      for (const h of keyHandlers) {
-        try { if (h(event)) return true; } catch (err) {
-          log('error', 'key handler threw', err);
-        }
-      }
-      return false;
+      return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },
     notifyTextChange(text, cursorOffset, source) {
       fireTextChange(text, cursorOffset, source);
+    },
+    notifyCursorChange(text, cursorOffset, source) {
+      fireCursorChange(text, cursorOffset, source);
     },
     collectRenderDirectives(text, cursor) {
       // Observe-only — never synthesise textChange here (see comment by
@@ -230,22 +227,14 @@ export function boot(host: HostInfo): BootResult {
       lastSeenText = text;
       lastSeenCursor = cursor;
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
-      const out: RenderDirectives[] = [];
-      for (const h of renderHandlers) {
-        try {
-          const d = h(ctx);
-          if (d) out.push(d);
-        } catch (err) {
-          log('error', 'render handler threw', err);
-        }
-      }
-      return out;
+      return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
     },
     dispose() {
       adapter.dispose();
-      keyHandlers.length = 0;
-      textHandlers.length = 0;
-      renderHandlers.length = 0;
+      keyEvents.clear();
+      textEvents.clear();
+      cursorEvents.clear();
+      renderEvents.clear();
     },
   };
 }

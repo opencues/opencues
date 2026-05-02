@@ -56,10 +56,11 @@ shipped `defaults/` into `~/.opencues/`).
 
 ## Precedence on name conflicts
 
-Where two layers define the same file (e.g. both have `cues.md`),
-they're **merged**, not replaced. The merge rule is:
+Where two layers define the same file or folder, they're **merged**,
+not replaced. The merge rule is:
 
-- Top-level frontmatter and `## Tips` blocks → project wins per-key
+- `cues.md` frontmatter (project-level): the `ignore:` array is
+  union-merged; system-settings keys are user-level only
 - `cues/<name>/cue.md` folder cues → project layer's `<name>` wins on
   conflict; uniquely-named cues from each layer all load
 - `blanks/<name>/cue.md` cue-blanks → same as folder cues
@@ -75,27 +76,26 @@ The merge is implemented in `discoverFolderConfigs` and
 
 ---
 
-## Special case: `opencues.md`
+## Special case: `cues.md` system settings
 
-`opencues.md` holds **system-wide settings** owned by the runtime —
-voice-mode, tips-mode, debug-mode, cursor-navigate, and any
-host-supplied scalars. Because these settings apply across every
-integration, projects can't override them. The runtime reads
-`opencues.md` only from the **last search path** (the user-level
-entry, or `$OPENCUES_HOME` when set).
+The frontmatter of `cues.md` holds **system-wide settings** owned by
+the runtime — voice-mode, fluid-blank-mode, spelling-mode,
+word-cues-mode, tips-mode, debug-mode, cursor-navigate, and any
+host-supplied scalars (plus the nested `settings:` declarations and
+the `ignore:` array). Because these settings apply across every
+integration, projects can't override them. The runtime reads the
+system-settings half of `cues.md` only from the **last search path**
+(the user-level entry, or `$OPENCUES_HOME` when set).
 
-- `opencues init` does NOT scaffold `opencues.md` — neither at
-  project nor user level
-- `opencues seed-configs` (no flag) copies it from
-  `defaults/opencues.md` to `~/.opencues/`; `seed-configs --project`
-  skips it
-- A 0-byte `opencues.md` is treated as missing — `seed-configs`
-  re-seeds it, and `setup.sh` self-heals on every install. The
+- `opencues seed-configs` (no flag) copies `defaults/cues.md` to
+  `~/.opencues/`; `seed-configs --project` skips it
+- A 0-byte `cues.md` is treated as missing — `seed-configs` re-seeds
+  it, and `setup.sh` self-heals on every install. The
   `OpenCuesSettingsBlank` silently no-ops on null/empty content
   (correct behavior for "no file"), so an empty file would otherwise
   silently break `opencues ___` / `config ___` blank-fills on every
   native host. Chrome is unaffected — its storage adapter falls back
-  to the bake-time `__DEFAULT_OPENCUES_MD__` constant
+  to the bake-time `__DEFAULT_CUES_MD__` constant
 
 ---
 
@@ -137,7 +137,7 @@ that doesn't already exist at the destination. Flags:
 | Flag | Effect |
 |---|---|
 | (no flag) | Copies into `~/.opencues/` (user-level). Skips files that already exist. |
-| `--project` | Copies into `<cwd>/.opencues/` instead. Skips `opencues.md` (system-wide settings don't belong at project level). |
+| `--project` | Copies into `<cwd>/.opencues/` instead. Skips `cues.md` (its frontmatter holds system-wide settings, which don't belong at project level). |
 | `--force` | Overwrite existing files. Use with care. |
 
 Run `seed-configs` once after a fresh install; the host integrations

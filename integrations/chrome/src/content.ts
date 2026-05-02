@@ -103,6 +103,24 @@ async function init(): Promise<void> {
     });
   });
 
+  // Cursor-only moves (mouse click, arrow keys without typing) — fire
+  // selectionchange. Drives cursor-navigate auto-highlight when on.
+  document.addEventListener('selectionchange', () => {
+    const target = currentTarget;
+    if (!target) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!target.contains(range.startContainer)) return;
+    // Compute cursor as plain-text offset from start of target.
+    const pre = range.cloneRange();
+    pre.selectNodeContents(target);
+    pre.setEnd(range.startContainer, range.startOffset);
+    const cursor = pre.toString().length;
+    const text = target.textContent ?? '';
+    runtimeNotifyCursor(text, cursor);
+  });
+
   // React to popup saves. The runtime's ConfigLoader hot-reloads from
   // chrome.storage on its own; we just need to re-publish the target
   // in case the targetSelector changed.
@@ -120,9 +138,12 @@ async function init(): Promise<void> {
 // Forward declared — defined as the bootstrap re-export to avoid
 // circular import at module load. The runtime owns text-change
 // dispatch but we only need to call it once per actual change.
-import { notifyOpenCuesTextChange } from './opencues-bootstrap';
+import { notifyOpenCuesTextChange, notifyOpenCuesCursorChange } from './opencues-bootstrap';
 function runtimeNotify(text: string): void {
   notifyOpenCuesTextChange(text, 0, 'user');
+}
+function runtimeNotifyCursor(text: string, cursor: number): void {
+  notifyOpenCuesCursorChange(text, cursor, 'user');
 }
 
 init();

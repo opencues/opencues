@@ -352,6 +352,12 @@ function keyMatchesFilter(event: KeyEvent, filter: KeyFilter | null): boolean {
  * `/tips.json` file needed. Test fixture for the post-refactor world
  * where tips come exclusively from cues.md.
  */
-export function wrapTipsAsCuesMd(tipsData: unknown): string {
-  return `# tips fixture\n\n## Tips\n\`\`\`json\n${JSON.stringify(tipsData)}\n\`\`\`\n`;
+export function wrapTipsAsCuesMd(
+  tipsData: unknown,
+  frontmatter?: Record<string, string>,
+): string {
+  const fm = frontmatter
+    ? `---\n${Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n\n`
+    : '';
+  return `${fm}# tips fixture\n\n## Tips\n\`\`\`json\n${JSON.stringify(tipsData)}\n\`\`\`\n`;
 }

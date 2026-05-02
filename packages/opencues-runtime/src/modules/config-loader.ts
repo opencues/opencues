@@ -404,31 +404,30 @@ export class ConfigLoader {
     // adapter bands keep working unchanged.
     const searchPaths = this.options.configSearchPaths ?? [this.adapter.cwd];
 
-    // opencues.md is system-wide (voice-mode, tips-mode, debug-mode, …)
-    // — schema owned by the OpenCues runtime, not by users or projects.
-    // It lives at user-level only. We read it from the LAST search path
-    // (which is user-level by CC/OC adapter convention:
-    // [OPENCUES_HOME?, project, user]). If the caller provided a single-
-    // entry searchPaths (e.g. the fallback [adapter.cwd]), that's both
-    // project and user and the read still resolves correctly.
+    // System settings (voice-mode, fluid-blank-mode, …) live in the
+    // user-level cues.md frontmatter. Schema is owned by the OpenCues
+    // runtime, not by users or projects — projects cannot override.
+    // user-level path = LAST search path by CC/OC adapter convention
+    // ([OPENCUES_HOME?, project, user]).
     const userLevelPath = searchPaths[searchPaths.length - 1];
 
-    // Fan out per-path .md reads + user-level opencues.md. Each search
-    // path contributes 2 .md files (cues, blanks); opencues.md
-    // is a singleton from the user-level path. Tips come from each
-    // cues.md's `## Tips` block — no separate JSON file.
+    // Fan out per-path .md reads. Each search path contributes a cues.md.
+    // blanks.md is legacy — still read so old user installs parse cleanly
+    // until seed-configs migration deletes the file.
     const allReads = await Promise.all([
-      this._safeReadFile(`${userLevelPath}/opencues.md`),
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
         this._safeReadFile(`${p}/blanks.md`),
       ]),
     ]);
-    const opencuesMdContent = allReads[0];
     const perPath = searchPaths.map((_searchPath, i) => ({
-      cuesMd: allReads[1 + i * 2],
-      blanksMd: allReads[2 + i * 2],
+      cuesMd: allReads[i * 2],
+      blanksMd: allReads[i * 2 + 1],
     }));
+    // Settings come from the user-level cues.md frontmatter. Project-level
+    // cues.md frontmatter is ignored for settings (system-wide, runtime-
+    // owned schema).
+    const userLevelCuesMdContent = perPath[perPath.length - 1]?.cuesMd ?? null;
 
     // Per-path .md parses. Project (index 0) is highest priority; user
     // (index 1+) is fallback. We fold from LOW to HIGH so the high-priority
@@ -438,25 +437,19 @@ export class ConfigLoader {
       perPath.map(p => this._safeParseCuesMd(p.cuesMd, 'cues.md')),
     );
 
-    // Build cueMap from cues.md's `## Tips` JSON block (now the sole
-    // source of truth — no more claude-code-tips.json). Project-level
-    // cues.md's tips win on word conflicts via mergeConfigs above.
+    // cueMap is built below after folder configs are merged in — tips
+    // now live in folder cue.md files (cues/<id>/cue.md with type:tips).
     const cueMap = new Map<string, LocalCueLookupResult>();
-    if (cuesConfig?.tips) {
-      try {
-        for (const [k, v] of buildLookupMap(cuesConfig.tips)) cueMap.set(k, v);
-      } catch (err) {
-        this.adapter.log('error', 'ConfigLoader: cues.md ## Tips buildLookupMap failed', err);
-      }
-    }
     const blanksConfig = this._mergeConfigsAcrossPaths(
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
     );
 
-    // opencues.md state — read above from the user-level search path.
-    // The file is system-wide and runtime-owned; projects cannot override
-    // it.
-    const opencuesState = opencuesMdContent !== null ? parseOpenCuesMd(opencuesMdContent) : DEFAULT_OPENCUES_STATE;
+    // System settings — parsed from the user-level cues.md frontmatter.
+    // Same parser as before; the file moved but the frontmatter shape is
+    // unchanged (top-level scalars + nested `settings:` block).
+    const opencuesState = userLevelCuesMdContent !== null
+      ? parseOpenCuesMd(userLevelCuesMdContent)
+      : DEFAULT_OPENCUES_STATE;
 
     // Folder discovery: walk each search path, then merge with project-
     // precedence (same fold-low-to-high rule as .md configs).
@@ -486,9 +479,16 @@ export class ConfigLoader {
     const mergedCuesConfig = mergedDiscovered.cuesConfig ?? null;
     const mergedBlanksConfig = mergedDiscovered.blanksConfig ?? null;
 
-    // TODO Phase B+: merge folderConfigs.cuesConfig into cueMap (folder cues
-    // become navigable via the same lookup). Not done yet because folder
-    // configs use the LLM resolver shape, not the static-tip shape.
+    // Build cueMap from the merged config's tips. Folder-based tips
+    // (cues/<id>/cue.md with type:tips) flow through here. The legacy
+    // `## Tips` JSON in master cues.md still works during migration.
+    if (mergedCuesConfig?.tips && mergedCuesConfig.tips.length > 0) {
+      try {
+        for (const [k, v] of buildLookupMap(mergedCuesConfig.tips)) cueMap.set(k, v);
+      } catch (err) {
+        this.adapter.log('error', 'ConfigLoader: tips buildLookupMap failed', err);
+      }
+    }
 
     // Build the navigable-words set + blanksByWord map from cueMap
     // keys, folder blanks, and blanks.md frontmatter.
@@ -541,6 +541,7 @@ export class ConfigLoader {
       voiceMode: opencuesState.voiceMode,
       tipsMode: opencuesState.tipsMode,
       debugMode: opencuesState.debugMode,
+      cursorNavigate: opencuesState.cursorNavigate,
     })}`);
   }
 

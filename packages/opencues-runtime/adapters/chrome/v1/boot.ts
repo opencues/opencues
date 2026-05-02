@@ -25,6 +25,7 @@ import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
+import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
   BlankInvokeSpec,
@@ -66,6 +67,8 @@ export interface HostInfo extends CommonHostInfo {
 export interface BootResult {
   dispatchKey(event: KeyEvent): boolean;
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  /** Cursor-only move (no text change). Drives cursor-navigate. */
+  notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
   /**
    * Re-read configs from disk (or chrome.storage, whichever the adapter
@@ -91,29 +94,30 @@ export function boot(host: HostInfo): BootResult {
       && configLoaderRef.opencuesState.debugMode === 'on',
   });
 
-  const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
-  const textHandlers: Array<(e: TextChangeEvent) => void> = [];
-  const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
+  const keyEvents = new EventEmitter<KeyEvent, boolean>();
+  const textEvents = new EventEmitter<TextChangeEvent>();
+  const cursorEvents = new EventEmitter<import('../../../src/adapter').CursorChangeEvent>();
+  const renderEvents = new EventEmitter<RenderContext, RenderDirectives | null>();
 
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
   const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
-    const event: TextChangeEvent = {
-      text,
-      cursorOffset: cursor,
-      previousText: lastSeenText ?? '',
-      source,
-    };
-    for (const h of textHandlers) {
-      try { h(event); } catch (err) { log('error', 'text handler threw', err); }
-    }
+    textEvents.emit(
+      { text, cursorOffset: cursor, previousText: lastSeenText ?? '', source },
+      err => log('error', 'text handler threw', err),
+    );
     lastSeenText = text;
     lastSeenCursor = cursor;
   };
 
-  const removeFrom = <T>(arr: T[], item: T): void => {
-    const i = arr.indexOf(item);
-    if (i >= 0) arr.splice(i, 1);
+  const fireCursorChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+    if (cursor === lastSeenCursor && text === lastSeenText) return;
+    cursorEvents.emit(
+      { text, cursorOffset: cursor, source },
+      err => log('error', 'cursor handler threw', err),
+    );
+    lastSeenCursor = cursor;
+    lastSeenText = text;
   };
 
   const bindings: ChromeBindings = {
@@ -124,18 +128,10 @@ export function boot(host: HostInfo): BootResult {
     setText: host.setText,
     setCursorOffset: host.setCursorOffset,
     forceRender: host.forceRender,
-    registerKeyHandler: (cb) => {
-      keyHandlers.push(cb);
-      return () => removeFrom(keyHandlers, cb);
-    },
-    registerTextChangeHandler: (cb) => {
-      textHandlers.push(cb);
-      return () => removeFrom(textHandlers, cb);
-    },
-    registerRenderHandler: (cb) => {
-      renderHandlers.push(cb);
-      return () => removeFrom(renderHandlers, cb);
-    },
+    registerKeyHandler: cb => keyEvents.subscribe(cb),
+    registerTextChangeHandler: cb => textEvents.subscribe(cb),
+    registerCursorChangeHandler: cb => cursorEvents.subscribe(cb),
+    registerRenderHandler: cb => renderEvents.subscribe(cb),
     readFile: host.readFile,
     readDir: host.readDir,
     writeFile: host.writeFile,
@@ -209,15 +205,13 @@ export function boot(host: HostInfo): BootResult {
 
   return {
     dispatchKey(event) {
-      for (const h of keyHandlers) {
-        try { if (h(event)) return true; } catch (err) {
-          log('error', 'key handler threw', err);
-        }
-      }
-      return false;
+      return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },
     notifyTextChange(text, cursorOffset, source) {
       fireTextChange(text, cursorOffset, source);
+    },
+    notifyCursorChange(text, cursorOffset, source) {
+      fireCursorChange(text, cursorOffset, source);
     },
     collectRenderDirectives(text, cursor) {
       // Observe-only: update lastSeenText/Cursor without synthesising
@@ -226,16 +220,7 @@ export function boot(host: HostInfo): BootResult {
       lastSeenText = text;
       lastSeenCursor = cursor;
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
-      const out: RenderDirectives[] = [];
-      for (const h of renderHandlers) {
-        try {
-          const d = h(ctx);
-          if (d) out.push(d);
-        } catch (err) {
-          log('error', 'render handler threw', err);
-        }
-      }
-      return out;
+      return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
     },
     async reloadConfig() {
       // ConfigLoader.load() re-reads every search path, re-parses, and
@@ -245,9 +230,10 @@ export function boot(host: HostInfo): BootResult {
     },
     dispose() {
       adapter.dispose();
-      keyHandlers.length = 0;
-      textHandlers.length = 0;
-      renderHandlers.length = 0;
+      keyEvents.clear();
+      textEvents.clear();
+      cursorEvents.clear();
+      renderEvents.clear();
     },
   };
 }

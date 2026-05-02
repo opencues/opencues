@@ -51,16 +51,13 @@ try {
   }
 } catch { /* no blanks/ dir */ }
 
-// Tips ship inside defaults/cues.md's `## Tips` block — no separate
-// JSON file. The runtime's ConfigLoader extracts them from the parsed
-// cues.md just like every other section.
+// Tips and word-cues ship as folders under defaults/cues/. The master
+// cues.md holds settings frontmatter + ignore list + project metadata.
 
 const envDefines = {
   '__GROQ_API_KEY__': JSON.stringify(envVars['GROQ_API_KEY'] || ''),
   '__FINNHUB_API_KEY__': JSON.stringify(envVars['FINNHUB_API_KEY'] || ''),
   '__DEFAULT_CUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/cues.md', '')),
-  '__DEFAULT_BLANKS_MD__': JSON.stringify(readOr(projectRoot + 'defaults/blanks.md', '')),
-  '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/opencues.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_BLANK_FOLDERS__': JSON.stringify(blankFolders),
   // Stub Node globals the runtime modules reference. Content scripts

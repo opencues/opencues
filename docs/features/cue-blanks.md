@@ -59,7 +59,7 @@ TypeScript classes living in
 | `weather` | `WeatherBlank` | Forecast via Open-Meteo |
 | `answer` | `AnswerBlank` | LLM-formatted answer in place |
 | `prompt` | `PromptImproverBlank` | LLM-rewritten prompt in place |
-| `opencues` | `OpenCuesSettingsBlank` | Read/write `opencues.md` scalars |
+| `opencues` | `OpenCuesSettingsBlank` | Read/write `cues.md` frontmatter scalars |
 | `countries` | `CountriesBlank` | Country lookup |
 | `crypto` | `CryptoBlank` | Live crypto prices |
 | `dictionary` | `DictionaryBlank` | Word definitions |
@@ -135,11 +135,7 @@ in `packages/opencues-runtime/src/blanks/index.ts`.
 | `blankConsumeAll` | boolean | false | Clear all input on populate (see consume-all-blanks.md) |
 | `blankConsumeContext` | boolean | false | Clear words between keyword and `_` (see consume-context-blanks.md) |
 
-Cue-blanks can be defined in two ways:
-- **Folder-based** (canonical) — `blanks/{name}/cue.md` with YAML frontmatter (`type: blank`, plus config fields). Scripts colocated in the same folder.
-- **`blanks.md`** — a JSON `## Blanks` block mapping blank names to `BlankConfig` objects (rare; useful for zero-script config-only blanks).
-
-Both parse into the same `BlankConfig` structure and merge into the runtime's blanks registry at config load time.
+Cue-blanks are folder-based: `blanks/{name}/cue.md` with YAML frontmatter (config fields) and any colocated scripts. Folder name = blank id. Discovered automatically by `discoverFolderConfigs` and merged into the runtime's blanks registry at config load time.
 
 ---
 
@@ -184,7 +180,6 @@ TTS (`speak: true`) fires once on navigation, not on each cycle update.
 - `BlankConfig` type defines all blank fields
 - `parseSingleCueMd` parses `cue.md` frontmatter into a typed `BlankConfig`
 - `discoverFolderConfigs` finds `blanks/{name}/cue.md` files and returns parsed configs
-- `blanks.md` JSON block parsing produces the same `BlankConfig` structure
 
 ### Integration responsibilities
 

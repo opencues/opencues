@@ -485,7 +485,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     const hlState = new HighlightState();
@@ -533,7 +533,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     const hlState = new HighlightState();
@@ -577,7 +577,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('output-format plain text');
     const hlState = new HighlightState();
@@ -620,7 +620,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('output-format plain text');
     const hlState = new HighlightState();
@@ -660,7 +660,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('display mode split pane');
     const hlState = new HighlightState();
@@ -727,7 +727,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     // Host stubs blankInvoke for the selector get; spawn must NOT be hit.
@@ -773,7 +773,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/opencues.md': OPENCUES_MD },
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     // No stub registered → blankInvoke returns null → spawnProcess used.

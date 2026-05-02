@@ -10,11 +10,11 @@ Alternatives computed locally on your machine, returning near-instantly (~0ms). 
 
 ## How It Works
 
-1. **Load**: At startup, `cues.md` is parsed by `parseCuesMd()`. The `## Tips` section contains a JSON code block whose payload matches `LocalCueData`; `parseCuesMd` returns it as `cuesConfig.tips`. (For standalone use, `parseLocalCueFile()` parses the same shape from a bare JSON string.)
-2. **Build map**: `buildLookupMap(cuesConfig.tips)` constructs an O(1) hash map in two passes (see Lookup below). The runtime stores it as `ConfigLoader.cueMap`.
+1. **Load**: At startup, each `cues/<name>/cue.md` with a body JSON code block is parsed by `parseSingleCueMd()`. The body's JSON shape matches `LocalCueData`; the runtime aggregates these per-folder entries. (For standalone use, `parseLocalCueFile()` parses the same shape from a bare JSON string.)
+2. **Build map**: `buildLookupMap(localCueData)` constructs an O(1) hash map in two passes (see Lookup below). The runtime stores it as `ConfigLoader.cueMap`.
 3. **Resolve**: On each analysis trigger, `lookupMultiple()` runs first against the hash map. Words with matches get instant alternatives and cue-tips. Words without matches are collected in `missingIndices` for LLM fallback
 4. **Merge**: `mergeWordDefs()` combines local results with LLM results. Local entries (source `"tips"`) are protected from overwrite (see Merge Behaviour)
-5. **Hot-reload**: `cues.md` is re-parsed on the next config-load cycle and `cueMap` is rebuilt from scratch — deletions take effect immediately.
+5. **Hot-reload**: Folder configs are re-discovered on the next config-load cycle and `cueMap` is rebuilt from scratch — deletions take effect immediately.
 
 Words in the same sentence can have different sources: "quick" served by the LLM, "ultrathink" served locally.
 
@@ -124,10 +124,10 @@ Additionally, the integration layer (`dynamicHighlight.ts`) enforces this at mer
 
 ### Integration responsibilities
 
-- Read `cues.md` at startup; pass `parseCuesMd(content).tips` to `buildLookupMap()` (or, for standalone tips data, parse directly with `parseLocalCueFile()`)
+- Discover `cues/<name>/cue.md` folders at startup; aggregate parsed `LocalCueData` from any folder whose body is a JSON words map, and pass to `buildLookupMap()` (or, for standalone tips data, parse directly with `parseLocalCueFile()`)
 - Store the resulting map (the runtime exposes it as `ConfigLoader.cueMap`) for use during navigation and cycling
 - Run local lookup before LLM sources so that local results are in place before merge
 - Merge local and LLM results using `mergeWordDefs()`, ensuring tip-sourced words are never overwritten
 - Handle per-alternative cue-tips by reading the `altCueTips` record when the user cycles to a different alt
 - Trigger TTS for words where `speak` is true when the user navigates to them
-- Support hot-reload by re-parsing `cues.md` and rebuilding the map when the file changes
+- Support hot-reload by re-discovering folder configs and rebuilding the map when any source folder changes

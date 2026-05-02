@@ -62,11 +62,9 @@ opencues/
 │       └── ...
 │
 ├── configs/                     # Shipped default configs (was: at repo root)
-│   ├── cues.md
-│   ├── blanks.md
-│   ├── opencues.md
-│   ├── cues/
-│   └── blanks/
+│   ├── cues.md                  # Top-level settings + ignore: array (frontmatter)
+│   ├── cues/                    # Folder-based cue sources
+│   └── blanks/                  # Folder-based cue-blanks
 │
 ├── docs/
 │   ├── architecture/            # THIS FILE lives here

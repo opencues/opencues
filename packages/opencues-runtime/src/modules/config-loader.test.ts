@@ -78,7 +78,7 @@ settings:
       active: x
 ---
 
-# opencues.md
+# cues.md
 some prose
 `;
     const state = parseOpenCuesMd(md);
@@ -167,12 +167,12 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     expect(loader.blanksConfig?.frontmatter.name).toBe('my-blanks');
   });
 
-  it('reads opencues.md state when present', async () => {
+  it('reads cues.md state when present', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
         '/tips.json': TIPS,
-        '/proj/opencues.md': '---\nvoice-mode: inactive\ntips-mode: off\n---\n',
+        '/proj/cues.md': '---\nvoice-mode: inactive\ntips-mode: off\n---\n',
       },
     });
     const loader = new ConfigLoader(adapter);
@@ -181,7 +181,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     expect(loader.opencuesState.tipsMode).toBe('off');
   });
 
-  it('opencuesState is the default when opencues.md is missing', async () => {
+  it('opencuesState is the default when cues.md is missing', async () => {
     const adapter = new MockAdapter({ cwd: '/proj', files: { '/tips.json': TIPS } });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -252,7 +252,7 @@ describe('ConfigLoader hot-reload', () => {
     // so the write has time to land.
     const FILE_INACTIVE = `---\nvoice-mode: inactive\n---\n`;
     const adapter = new MockAdapter({
-      files: { '/tips.json': '{"concepts":[]}', '/proj/opencues.md': FILE_INACTIVE },
+      files: { '/tips.json': '{"concepts":[]}', '/proj/cues.md': FILE_INACTIVE },
       cwd: '/proj',
     });
     const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
@@ -274,7 +274,7 @@ describe('ConfigLoader hot-reload', () => {
     // land, hot-reload picks back up so future file edits propagate.
     const FILE = `---\nvoice-mode: inactive\n---\n`;
     const adapter = new MockAdapter({
-      files: { '/tips.json': '{"concepts":[]}', '/proj/opencues.md': FILE },
+      files: { '/tips.json': '{"concepts":[]}', '/proj/cues.md': FILE },
       cwd: '/proj',
     });
     const loader = new ConfigLoader(adapter, { reloadDebounceMs: 0 });
@@ -286,7 +286,7 @@ describe('ConfigLoader hot-reload', () => {
     // Bypass time by reaching into the private field — wall-clock
     // sleep would slow the test suite. Equivalent to "2.6s elapsed".
     (loader as unknown as { _suppressReloadUntil: number })._suppressReloadUntil = Date.now() - 1;
-    await adapter.writeFile('/proj/opencues.md', `---\nvoice-mode: inactive\n---\n`);
+    await adapter.writeFile('/proj/cues.md', `---\nvoice-mode: inactive\n---\n`);
     await loader.maybeReload();
     // File-driven reload took precedence post-suppression.
     expect(loader.opencuesState.voiceMode).toBe('inactive');
