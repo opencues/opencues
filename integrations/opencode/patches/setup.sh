@@ -200,54 +200,6 @@ if 'notifyOpenCuesCursorChange' not in src:
       'import { publishPromptAccess, notifyOpenCuesTextChange, triggerOpenCuesRender } from "../../opencues"',
       'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
     )
-# Migration: setText → replaceText. setText is opentui's "clean slate"
-# API that clears undo history; replaceText preserves it. Both reset
-# the cursor (the cursor preservation lives in the next migration).
-if 'input.setText(t)\n                    setStore' in src:
-    src = src.replace(
-      'write: (t) => {\n                    input.setText(t)\n                    setStore("prompt", "input", t)\n                  },',
-      '''write: (t) => {
-                    input.replaceText(t)
-                    setStore("prompt", "input", t)
-                  },''',
-    )
-# Migration: add cursor preservation around replaceText. opentui's
-# replaceText resets the cursor to 0 in practice, regardless of what
-# the d.ts hints about "preserves undo history". Capture+restore so
-# async pushText (no follow-up setCursor) keeps cursor on the cycled
-# word instead of snapping to 0.
-if 'input.replaceText(t)\n                    setStore("prompt", "input", t)\n                  },' in src:
-    src = src.replace(
-      'input.replaceText(t)\n                    setStore("prompt", "input", t)\n                  },',
-      '''const cBefore = input.cursorOffset ?? 0
-                    input.replaceText(t)
-                    setStore("prompt", "input", t)
-                    input.cursorOffset = Math.min(cBefore, t.length)
-                  },''',
-    )
-# Migration: strip the cursor tracer from installs that picked it up
-# during the cursor-jumps debug session. The tracer served its purpose
-# (root-caused replaceText resetting cursor) and is no longer needed
-# in production. Idempotent: matches only when the trace block is
-# present, no-op otherwise.
-if 'OPENCUES_TRACE_CURSOR' in src:
-    import re
-    # Strip the if-block inside write() (after the Math.min cursor restore).
-    src = re.sub(
-        r'\n {20}if \(process\.env\.OPENCUES_TRACE_CURSOR.*?\n {20}\}',
-        '',
-        src,
-        count=2,
-        flags=re.DOTALL,
-    )
-    # Collapse the verbose setCursor body back to the one-liner.
-    src = src.replace(
-        '''setCursor: (c) => {
-                    const before = input.cursorOffset ?? 0
-                    input.cursorOffset = c
-                  },''',
-        'setCursor: (c) => { input.cursorOffset = c },',
-    )
 # Wire onCursorChange on the textarea so cursor-only moves (mouse click,
 # arrow keys without typing) update the highlight when cursor-navigate
 # is on. opentui's EditBufferRenderable exposes the prop directly.
