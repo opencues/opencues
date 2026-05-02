@@ -159,9 +159,16 @@ function writeText(text: string): void {
   const target = currentTarget;
   if (!target) return;
   target.focus();
+  // Capture caret BEFORE textContent assignment (which wipes it) and
+  // restore it AFTER, clamped to new length. The sync cycling/BlankFill
+  // path follows with an explicit setCursorOffset that will override;
+  // async pushText (cycling's script-result update) passes no cursor and
+  // relies on this preservation to keep cursor on the cycled word.
+  // Mirrors the OC fix: the textContent reset has the same shape as
+  // opentui's replaceText reset there.
+  const cBefore = readCursorOffset();
   target.textContent = text;
-  // Caret is wiped by textContent assignment; the runtime calls
-  // setCursorOffset(cursor) right after this for cycle/blank fills.
+  writeCursorOffset(Math.min(cBefore, text.length));
   sourceReclassifier.markRuntimeWrite(text);
   // Schedule a post-reconciliation re-render. The current synchronous
   // task continues to the runtime's forceRender (sync, walks DOM as
