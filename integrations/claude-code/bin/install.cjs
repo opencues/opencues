@@ -132,7 +132,7 @@ function doInstall() {
 
   // Delegate to setup.sh — strictly CC-specific work now (cli.js patching,
   // statusline install, tweakcc build/apply, settings.json fixup). All the
-  // shared ~/.opencues/ writes (blank library scripts, opencues.md
+  // shared ~/.cues/ + ~/.opencuesrc writes (blank library scripts, settings
   // self-heal, .cs compilation, TTS speak.sh) live in `opencues seed-configs`,
   // which the top-level `opencues install` invokes BEFORE this script runs.
   //
@@ -251,62 +251,15 @@ function doUninstall() {
 
 // --- SEED CONFIGS ---------------------------------------------------------
 
+// Thin wrapper that delegates to the canonical `opencues seed-configs`.
+// User-level seeding (~/.cues/ + ~/.opencuesrc) is shared across every
+// native host — owning it here would drift from OC + Codex.
 function doSeedConfigs() {
-  const userConfigDir = path.join(HOME, '.opencues');
-  const repoConfigDir = path.join(REPO_ROOT, 'defaults');
-  const sources = listConfigSources();
-
-  console.log(`Seeding user-level configs to: ${userConfigDir}/`);
-  console.log(`Sources: ${repoConfigDir}\n`);
-
-  const seedPlan = sources.map(s => ({
-    src: path.join(repoConfigDir, s),
-    dst: path.join(userConfigDir, s),
-    exists: false,
-    willCopy: false,
-  }));
-
-  for (const entry of seedPlan) {
-    if (!fs.existsSync(entry.src)) continue;
-    entry.exists = targetExistsWithContent(entry.dst);
-    entry.willCopy = !entry.exists; // never overwrite non-empty user edits
-  }
-
-  console.log('Seed plan:');
-  for (const e of seedPlan) {
-    if (!fs.existsSync(e.src)) console.log(`  (no source) ${e.src}`);
-    else if (e.exists) console.log(`  SKIP (target exists) ${e.dst}`);
-    else if (fs.existsSync(e.dst)) console.log(`  RESEED (empty file) ${e.dst}`);
-    else console.log(`  COPY ${e.src} → ${e.dst}`);
-  }
-  if (args.dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
-
-  console.log('');
-  fs.mkdirSync(userConfigDir, { recursive: true });
-  let copied = 0, skipped = 0;
-  for (const e of seedPlan) {
-    if (!fs.existsSync(e.src) || e.exists) { if (e.exists) skipped++; continue; }
-    if (fs.statSync(e.src).isDirectory()) {
-      copyDir(e.src, e.dst);
-    } else {
-      fs.mkdirSync(path.dirname(e.dst), { recursive: true });
-      fs.copyFileSync(e.src, e.dst);
-    }
-    copied++;
-    console.log(`  copied ${path.relative(REPO_ROOT, e.src)}`);
-  }
-
-  console.log(`\nSeeded ${copied} configs, skipped ${skipped} (already present).`);
-  console.log('Edit any of these to change global defaults; hot-reload picks up on the next keystroke.');
-  console.log('For project-specific overrides, create <project>/.opencues/ in your project root.');
-}
-
-function listConfigSources() {
-  // Files + dirs inside <repo>/.opencues/ that ConfigLoader expects
-  // under ~/.opencues/. Names here are relative to the .opencues/ root
-  // — both source (`<REPO>/.opencues/<name>`) and dest (`~/.opencues/<name>`)
-  // share the same suffix. Order is informational only.
-  return ['cues.md', 'blanks.md', 'opencues.md', 'cues', 'blanks'];
+  const seedScript = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands/seed-configs.cjs');
+  const seedConfigs = require(seedScript);
+  const argv = [];
+  if (args.dryRun) argv.push('--dry-run');
+  seedConfigs(argv, { REPO_ROOT });
 }
 
 function copyDir(src, dst) {
@@ -441,7 +394,7 @@ function printHelp() {
   console.log('Commands:');
   console.log('  install (default)   Build, install runtime + support files into the CC fork, patch cli.js');
   console.log('  uninstall           Revert cli.js + remove all installed paths');
-  console.log('  seed-configs        Copy repo defaults to ~/.opencues/ (skips files that exist)');
+  console.log('  seed-configs        Copy repo defaults to ~/.cues/ + ~/.opencuesrc (skips files with content)');
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');

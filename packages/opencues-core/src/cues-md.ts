@@ -668,17 +668,23 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
 }
 
 /**
- * Parse a single cue.md file (folder-based layout).
+ * Parse a single cue.md file (folder-based or flat-file layout).
  *
- * Unlike parseCuesMd() which expects ## sections, this reads config from
- * extended frontmatter and treats the body as content (prompt text or tips JSON).
+ * Two supported shapes:
+ *   - Folder: `<dir>/<name>/cue.md` — `folderPath` is `<dir>/<name>`.
+ *     Source name comes from frontmatter `name:` or the folder basename.
+ *   - Flat: `<dir>/<name>.md` — `folderPath` is `<dir>` (no per-source
+ *     subdir). Pass the inferred name via `nameOverride`.
  *
  * @param content - File content string
- * @param folderPath - Absolute path to the containing folder (for resolving relative paths)
+ * @param folderPath - Absolute path used for resolving relative paths
+ *   (e.g. `blankScript: ./helper.sh`). For flat files, the parent dir.
+ * @param nameOverride - Source id when frontmatter omits `name:`
+ *   (filename minus `.md` for flat, folder basename for folder).
  */
-export function parseSingleCueMd(content: string, folderPath: string): CuesMdConfig {
+export function parseSingleCueMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
   const { frontmatter, body } = parseExtendedFrontmatter(content);
-  const name = frontmatter.name || 'unknown';
+  const name = frontmatter.name || nameOverride || 'unknown';
 
   const result: CuesMdConfig = {
     frontmatter,

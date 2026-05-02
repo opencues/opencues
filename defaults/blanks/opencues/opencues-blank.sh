@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # runtime-owned schema). This blank always lives at
 # ~/.opencues/blanks/opencues/ so the target file is deterministically
 # two levels up.
-OPENCUES_MD="$SCRIPT_DIR/../../cues.md"
+OPENCUES_MD="$SCRIPT_DIR/../../../.opencuesrc"
 
 cmd="${1:-get}"
 setting="${2:-}"

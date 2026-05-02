@@ -309,18 +309,16 @@ export function createDaemon(opts: CreateDaemonOptions): DaemonHandle {
  * hitting the real filesystem.
  */
 /**
- * Resolve the path to cues.md for the OpenCuesSettingsBlank.
- * Mirrors `findCuesMdPath` in
- * `integrations/opencode/patches/opencuesBootstrap.ts:88-94` exactly:
- * - $OPENCUES_HOME wins if set (CI / container deploys / tests)
- * - else ~/.opencues/cues.md (user-level only — see CLAUDE.md
- *   "Config search paths — who reads what" for the rationale)
+ * Resolve the path to .opencuesrc for the OpenCuesSettingsBlank.
+ * - $OPENCUES_HOME wins if set (CI / container deploys / tests).
+ * - else ~/.opencuesrc (user-level only — system settings are
+ *   runtime-owned; projects cannot override).
  */
 function findOpenCuesMdPath(): string {
   if (process.env.OPENCUES_HOME) {
-    return path.join(process.env.OPENCUES_HOME, 'cues.md');
+    return path.join(process.env.OPENCUES_HOME, 'opencuesrc');
   }
-  return path.join(process.env.HOME ?? '~', '.opencues', 'cues.md');
+  return path.join(process.env.HOME ?? '~', '.opencuesrc');
 }
 
 /**

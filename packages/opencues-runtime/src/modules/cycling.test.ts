@@ -37,7 +37,7 @@ async function setup(text: string) {
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter);
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
   await loader.load();
   const cycling = new Cycling(adapter, hlState, dynDefs, loader);
   cycling.subscribe();
@@ -147,7 +147,7 @@ describe('Cycling static-alt multi-word spans', () => {
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const spanFillState = new SpanFillState();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
     cycling.subscribe();
@@ -373,7 +373,7 @@ describe('Cycling consume-all (Step 31)', () => {
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const consumeAll = new SpanFillState();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, consumeAll);
     cycling.subscribe();
@@ -445,7 +445,7 @@ describe('Cycling consume-all (Step 31)', () => {
     const dynDefs = new DynDefs();
     const span = new SpanFillState();
     const dismissed = new DismissedBlanks();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, span, dismissed);
     cycling.subscribe();
@@ -503,7 +503,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -551,7 +551,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -595,7 +595,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'output-format plain text');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -638,7 +638,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'output-format plain text');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -678,7 +678,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'display mode split pane');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -746,7 +746,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -791,7 +791,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
     cycling.subscribe();

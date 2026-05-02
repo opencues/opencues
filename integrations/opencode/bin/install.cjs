@@ -194,9 +194,9 @@ function doUninstall() {
 
 function doSeedConfigs() {
   const HOME = require('node:os').homedir();
-  const userConfigDir = path.join(HOME, '.opencues');
+  const userConfigDir = path.join(HOME, '.cues');
   const repoConfigDir = path.join(REPO_ROOT, 'defaults');
-  const sources = ['cues.md', 'cues', 'blanks'];
+  const sources = ['words', 'blanks'];
 
   console.log(`Seeding user-level configs to: ${userConfigDir}/`);
   console.log(`Sources: ${repoConfigDir}\n`);
@@ -229,7 +229,7 @@ function doSeedConfigs() {
 
   console.log(`\nSeeded ${copied} configs, skipped ${skipped} (already present).`);
   console.log('Edit any of these to change global defaults; hot-reload picks up on the next keystroke.');
-  console.log('For project-specific overrides, create <project>/.opencues/ in your project root.');
+  console.log('For project-specific overrides, create <project>/.cues/ in your project root.');
 }
 
 function copyDir(src, dst) {
@@ -287,7 +287,7 @@ function printHelp() {
   console.log('Commands:');
   console.log('  install (default)   Clone opencode fork (if missing), build runtime, patch fork in place');
   console.log('  uninstall           git checkout the 3 patched files, rm bootstrap copy, rm node_modules entries');
-  console.log('  seed-configs        Copy repo defaults to ~/.opencues/ (skips files that exist)');
+  console.log('  seed-configs        Copy repo defaults to ~/.cues/ (skips files that exist)');
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');

@@ -116,10 +116,13 @@ export interface BuildSharedRuntimeOptions {
   /** Same log function the host uses. Errors from ConfigLoader.load
    *  + BlankFill.subscribe wiring flow through it. */
   readonly log: (level: LogLevel, msg: string, data?: unknown) => void;
-  /** Search paths for `.opencues/` config dirs, in priority order
+  /** Search paths for `.cues/` config dirs, in priority order
    *  (project first, user second). Falls back to `[adapter.cwd]` when
    *  unset for backwards compat. See ConfigLoaderOptions. */
   readonly configSearchPaths?: readonly string[];
+  /** Path to `.opencuesrc` (user-level rc-style runtime config). When
+   *  unset, settings stay at runtime defaults. */
+  readonly settingsFile?: string;
 }
 
 /**
@@ -135,11 +138,11 @@ export function buildSharedRuntime(
   adapter: HostAdapter,
   opts: BuildSharedRuntimeOptions,
 ): SharedRuntime {
-  const { log, configSearchPaths } = opts;
+  const { log, configSearchPaths, settingsFile } = opts;
 
   // ConfigLoader first — every other module depends on it. load() runs
   // async; modules tolerate the empty pre-load window.
-  const configLoader = new ConfigLoader(adapter, { configSearchPaths });
+  const configLoader = new ConfigLoader(adapter, { configSearchPaths, settingsFile });
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 

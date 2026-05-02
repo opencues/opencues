@@ -287,19 +287,22 @@ export function boot(host: HostInfo): BootResult {
   const selectorSatelliteState = new SelectorSatelliteState();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
-  // map (returns false from step) until load resolves. Tips come from
-  // cues.md's `## Tips` block — no separate JSON file.
-  // Search paths in priority order. Project-level `.opencues/` wins on
-  // name conflicts; user-level `~/.opencues/` is the global default.
+  // map (returns false from step) until load resolves.
+  // Search paths in priority order. Project-level `.cues/` wins on name
+  // conflicts; user-level `~/.cues/` is the global default. System
+  // settings live separately at `~/.opencuesrc` (or $OPENCUES_HOME/opencuesrc).
   // OPENCUES_HOME env var takes top priority for power users / CI.
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
     ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
-    `${host.cwd}/.opencues`,
-    `${HOME}/.opencues`,
+    `${host.cwd}/.cues`,
+    `${HOME}/.cues`,
   ];
-  const configLoader = new ConfigLoader(adapter, { configSearchPaths });
-  configLoaderRef = configLoader; // wire isDebugEnabled to opencues.md
+  const settingsFile = process.env.OPENCUES_HOME
+    ? `${process.env.OPENCUES_HOME}/opencuesrc`
+    : `${HOME}/.opencuesrc`;
+  const configLoader = new ConfigLoader(adapter, { configSearchPaths, settingsFile });
+  configLoaderRef = configLoader; // wire isDebugEnabled to .opencuesrc
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 

@@ -80,17 +80,15 @@ const sourceReclassifier = createSourceReclassifier()
 // shell scripts (blanks/<name>/*.sh) once every host has parity.
 // OS-level blanks (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
-// cues.md frontmatter holds system-wide settings (voice-mode, tips-mode,
-// …) whose schema is owned by the OpenCues runtime. The user-level
-// cues.md is the source of truth — one value applies across every
-// integration. Project-level cues.md can override per-source content
-// but NOT the system settings.
+// .opencuesrc holds system-wide settings (voice-mode, tips-mode, …)
+// whose schema is owned by the OpenCues runtime. User-level only;
+// projects cannot override.
 function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
   if (process.env.OPENCUES_HOME) {
-    return path.join(process.env.OPENCUES_HOME, "cues.md")
+    return path.join(process.env.OPENCUES_HOME, "opencuesrc")
   }
-  return path.join(process.env.HOME ?? "~", ".opencues", "cues.md")
+  return path.join(process.env.HOME ?? "~", ".opencuesrc")
 }
 
 // TTS script lives at user-level (~/.opencues/scripts/speak.sh), seeded

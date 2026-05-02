@@ -4,7 +4,7 @@
 // Usage:
 //   opencues-codex install              # default; clones fork if missing
 //   opencues-codex uninstall            # rolls back fork patches
-//   opencues-codex seed-configs         # populate ~/.opencues/
+//   opencues-codex seed-configs         # populate ~/.cues/
 //
 // Common flags:
 //   --target <path>     Path to codex fork (default: $HOME/codex-cues)
@@ -189,9 +189,9 @@ function doUninstall() {
 // --- SEED CONFIGS (shared shape with cc/oc) ------------------------------
 
 function doSeedConfigs() {
-  const userConfigDir = path.join(HOME, '.opencues');
+  const userConfigDir = path.join(HOME, '.cues');
   const repoConfigDir = path.join(REPO_ROOT, 'defaults');
-  const sources = ['cues.md', 'cues', 'blanks'];
+  const sources = ['words', 'blanks'];
 
   console.log(`Seeding user-level configs to: ${userConfigDir}/`);
   console.log(`Sources: ${repoConfigDir}\n`);
@@ -272,7 +272,7 @@ function printHelp() {
   console.log('Commands:');
   console.log('  install (default)   Clone codex fork, build runtime, add bridge crate');
   console.log('  uninstall           git checkout patched files, rm bridge crate');
-  console.log('  seed-configs        Copy repo defaults to ~/.opencues/');
+  console.log('  seed-configs        Copy repo defaults to ~/.cues/');
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');

@@ -151,10 +151,13 @@ export function boot(host: HostInfo): BootResult {
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
     ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
-    `${host.cwd}/.opencues`,
-    `${HOME}/.opencues`,
+    `${host.cwd}/.cues`,
+    `${HOME}/.cues`,
   ];
-  const shared = buildSharedRuntime(adapter, { log, configSearchPaths });
+  const settingsFile = process.env.OPENCUES_HOME
+    ? `${process.env.OPENCUES_HOME}/opencuesrc`
+    : `${HOME}/.opencuesrc`;
+  const shared = buildSharedRuntime(adapter, { log, configSearchPaths, settingsFile });
   configLoaderRef = shared.configLoader; // wires isDebugEnabled to opencues.md
 
   const {

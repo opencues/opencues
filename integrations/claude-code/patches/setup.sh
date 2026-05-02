@@ -15,7 +15,7 @@
 #   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pinned 2.1.110)
 #
 # State that survives every install:
-#   ~/.opencues/                                         user content (your cue.md edits etc.)
+#   ~/.cues/  + ~/.opencuesrc                            user content (your cue.md edits etc.)
 #   ~/claude-code-cues/package.json                      version pin
 #   <repo>/integrations/claude-code/patches/             repo source (not touched)
 #

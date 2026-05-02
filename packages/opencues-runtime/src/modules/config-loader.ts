@@ -36,21 +36,28 @@ export interface ConfigLoaderOptions {
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
   /**
-   * Directories searched for .md configs and `cues/*` / `blanks/*`
-   * folders, in priority order. Earlier entries win on name conflicts.
+   * Directories searched for `words/*` and `blanks/*` folders, in
+   * priority order. Earlier entries win on name conflicts.
    *
    * Convention (host-agnostic, mirrors `.editorconfig` / `.npmrc`):
-   *   - project-level: `<cwd>/.opencues`
-   *   - user-level:    `~/.opencues`
+   *   - project-level: `<cwd>/.cues`
+   *   - user-level:    `~/.cues`
    *
    * When unset, falls back to `[adapter.cwd]` for backwards compat.
    *
    * Missing directories are silently skipped — a user with no
-   * `~/.opencues` and no `.opencues` in their cwd just gets bake-time
+   * `~/.cues` and no `.cues` in their cwd just gets bake-time
    * defaults (chrome) or empty config (CC/OC) and the runtime degrades
    * gracefully.
    */
   readonly configSearchPaths?: readonly string[];
+  /**
+   * Path to the user-level runtime config file (`.opencuesrc`). Read
+   * once on load; parsed by `parseOpenCuesMd` for top-level scalars +
+   * the nested `settings:` block. When unset, opencuesState is the
+   * runtime defaults.
+   */
+  readonly settingsFile?: string;
 }
 
 /**
@@ -98,16 +105,23 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
 };
 
 /**
- * Parse opencues.md's frontmatter — top-level scalars (current values)
- * AND the nested `settings:` block (definitions for selector/satellite
- * cycling).
+ * Parse the runtime config file. Two formats accepted:
+ *
+ *   - **`.opencuesrc`** — pure YAML, no fences. Lines are scanned
+ *     directly. The new format used at user-level (`~/.opencuesrc`).
+ *   - **Markdown frontmatter** — `---` ... `---` fences. Legacy from
+ *     when settings lived inside `cues.md`. Kept so old user files
+ *     parse cleanly until `seed-configs` migration runs.
  *
  * Exported for unit testing.
  */
 export function parseOpenCuesMd(content: string): OpenCuesState {
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return DEFAULT_OPENCUES_STATE;
-  const lines = fmMatch[1].split('\n');
+  // Fence-less format: parse the whole file. Empty content stays
+  // DEFAULT_OPENCUES_STATE.
+  const yamlBody = fmMatch ? fmMatch[1] : content;
+  if (!yamlBody.trim()) return DEFAULT_OPENCUES_STATE;
+  const lines = yamlBody.split('\n');
   const settings = new Map<string, string>();
   for (const line of lines) {
     if (!line || line.startsWith('#')) continue;
@@ -404,16 +418,19 @@ export class ConfigLoader {
     // adapter bands keep working unchanged.
     const searchPaths = this.options.configSearchPaths ?? [this.adapter.cwd];
 
-    // System settings (voice-mode, fluid-blank-mode, …) live in the
-    // user-level cues.md frontmatter. Schema is owned by the OpenCues
-    // runtime, not by users or projects — projects cannot override.
-    // user-level path = LAST search path by CC/OC adapter convention
-    // ([OPENCUES_HOME?, project, user]).
-    const userLevelPath = searchPaths[searchPaths.length - 1];
+    // System settings live in the user-level `.opencuesrc` (rc-style
+    // YAML, system-wide, runtime-owned schema). Read separately from
+    // the cue library — settings are tool config, sources are the
+    // standard's data.
+    const settingsContent = this.options.settingsFile
+      ? await this._safeReadFile(this.options.settingsFile)
+      : null;
 
-    // Fan out per-path .md reads. Each search path contributes a cues.md.
-    // blanks.md is legacy — still read so old user installs parse cleanly
-    // until seed-configs migration deletes the file.
+    // Per-search-path master file reads — kept for project manifest
+    // (`<cwd>/cues.md`, planned) and the legacy `cues.md` / `blanks.md`
+    // shape so old installs parse cleanly until seed-configs migration
+    // runs. Each search path contributes a cues.md and a blanks.md;
+    // both are optional and may be null.
     const allReads = await Promise.all([
       ...searchPaths.flatMap(p => [
         this._safeReadFile(`${p}/cues.md`),
@@ -424,10 +441,6 @@ export class ConfigLoader {
       cuesMd: allReads[i * 2],
       blanksMd: allReads[i * 2 + 1],
     }));
-    // Settings come from the user-level cues.md frontmatter. Project-level
-    // cues.md frontmatter is ignored for settings (system-wide, runtime-
-    // owned schema).
-    const userLevelCuesMdContent = perPath[perPath.length - 1]?.cuesMd ?? null;
 
     // Per-path .md parses. Project (index 0) is highest priority; user
     // (index 1+) is fallback. We fold from LOW to HIGH so the high-priority
@@ -444,11 +457,10 @@ export class ConfigLoader {
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
     );
 
-    // System settings — parsed from the user-level cues.md frontmatter.
-    // Same parser as before; the file moved but the frontmatter shape is
-    // unchanged (top-level scalars + nested `settings:` block).
-    const opencuesState = userLevelCuesMdContent !== null
-      ? parseOpenCuesMd(userLevelCuesMdContent)
+    // System settings — parsed from `.opencuesrc` (or legacy
+    // cues.md frontmatter when transitioning from old layout).
+    const opencuesState = settingsContent !== null
+      ? parseOpenCuesMd(settingsContent)
       : DEFAULT_OPENCUES_STATE;
 
     // Folder discovery: walk each search path, then merge with project-

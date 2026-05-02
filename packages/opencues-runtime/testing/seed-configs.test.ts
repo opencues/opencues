@@ -46,59 +46,50 @@ describe('opencues seed-configs', () => {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   });
 
-  it('SEED phase: copies defaults into a fresh ~/.opencues/', () => {
-    // Suppress chatty console output — assertions check filesystem state.
+  it('SEED phase: copies defaults into a fresh ~/.cues/', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    const userDir = path.join(tmpHome, '.opencues');
-    expect(fs.existsSync(path.join(userDir, 'cues.md'))).toBe(true);
-    // opencues.md and blanks.md are gone post-unification.
-    expect(fs.existsSync(path.join(userDir, 'opencues.md'))).toBe(false);
-    expect(fs.existsSync(path.join(userDir, 'blanks.md'))).toBe(false);
+    const userDir = path.join(tmpHome, '.cues');
+    // .opencuesrc lives at $HOME, outside .cues/.
+    expect(fs.existsSync(path.join(tmpHome, '.opencuesrc'))).toBe(true);
+    // Old layout files are gone.
+    expect(fs.existsSync(path.join(tmpHome, '.opencues'))).toBe(false);
+    // Library shape: words/ + blanks/ + scripts/ under .cues/.
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/cue.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness-blank.sh'))).toBe(true);
-    // scripts/ — the shared utility dir.
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
-    // Tip groups live consolidated under cues/tips/cue.md.
-    expect(fs.existsSync(path.join(userDir, 'cues/tips/cue.md'))).toBe(true);
+    // Tips consolidated under words/tips.md (flat).
+    expect(fs.existsSync(path.join(userDir, 'words/tips.md'))).toBe(true);
   });
 
-  it('SEED phase: preserves a user-edited .md file (does NOT overwrite content)', () => {
+  it('SEED phase: preserves a user-edited .opencuesrc (does NOT overwrite content)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    // Pre-seed cues.md with custom user content.
-    const userDir = path.join(tmpHome, '.opencues');
-    fs.mkdirSync(userDir, { recursive: true });
-    const userCues = '# my own custom cues\nfoo: bar\n';
-    fs.writeFileSync(path.join(userDir, 'cues.md'), userCues);
+    const userRc = '# my own custom rc\nvoice-mode: inactive\n';
+    fs.writeFileSync(path.join(tmpHome, '.opencuesrc'), userRc);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    expect(fs.readFileSync(path.join(userDir, 'cues.md'), 'utf8')).toBe(userCues);
+    expect(fs.readFileSync(path.join(tmpHome, '.opencuesrc'), 'utf8')).toBe(userRc);
   });
 
-  it('HEAL phase: re-seeds a 0-byte cues.md from defaults', () => {
+  it('HEAL phase: re-seeds a 0-byte .opencuesrc from defaults', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const userDir = path.join(tmpHome, '.opencues');
-    fs.mkdirSync(userDir, { recursive: true });
-    fs.writeFileSync(path.join(userDir, 'cues.md'), '');
-    expect(fs.statSync(path.join(userDir, 'cues.md')).size).toBe(0);
+    fs.writeFileSync(path.join(tmpHome, '.opencuesrc'), '');
+    expect(fs.statSync(path.join(tmpHome, '.opencuesrc')).size).toBe(0);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    const after = fs.readFileSync(path.join(userDir, 'cues.md'), 'utf8');
+    const after = fs.readFileSync(path.join(tmpHome, '.opencuesrc'), 'utf8');
     expect(after.length).toBeGreaterThan(0);
-    // Sanity: looks like the shipped settings template.
     expect(after).toContain('settings:');
     expect(after).toContain('voice-mode');
   });
 
   it('SYNC phase: refreshes a stale library script with repo content', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    // Pre-seed the user-level dir + a stale brightness-blank.sh (no find_helper
-    // — simulates the pre-colocated-helpers layout from earlier in this session).
-    const userDir = path.join(tmpHome, '.opencues');
+    const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
     fs.writeFileSync(path.join(ctlDir, 'cue.md'), '---\nname: brightness\ntype: blank\n---\n');
@@ -108,7 +99,6 @@ describe('opencues seed-configs', () => {
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    // After sync, brightness-blank.sh should match the repo's defaults — not the stale stub.
     const after = fs.readFileSync(path.join(ctlDir, 'brightness-blank.sh'), 'utf8');
     const repo = fs.readFileSync(path.join(REPO_ROOT, 'defaults/blanks/brightness/brightness-blank.sh'), 'utf8');
     expect(after).toBe(repo);
@@ -117,21 +107,19 @@ describe('opencues seed-configs', () => {
 
   it('SYNC phase: never overwrites a .md file (user content boundary)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const userDir = path.join(tmpHome, '.opencues');
+    const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
-    // Custom cue.md content that differs from defaults.
     const customCueMd = '---\nname: brightness\ntype: blank\ntip: my custom tip\n---\n';
     fs.writeFileSync(path.join(ctlDir, 'cue.md'), customCueMd);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    // .md preserved; library scripts synced.
     expect(fs.readFileSync(path.join(ctlDir, 'cue.md'), 'utf8')).toBe(customCueMd);
     expect(fs.existsSync(path.join(ctlDir, 'brightness-blank.sh'))).toBe(true);
   });
 
-  it('--project flag scopes to <cwd>/.opencues (settings stay user-level via cues.md frontmatter)', () => {
+  it('--project flag scopes to <cwd>/.cues (settings stay user-level)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const projectDir = path.join(tmpHome, 'my-project');
     fs.mkdirSync(projectDir, { recursive: true });
@@ -142,9 +130,12 @@ describe('opencues seed-configs', () => {
     } finally {
       process.chdir(cwd);
     }
-    expect(fs.existsSync(path.join(projectDir, '.opencues/cues.md'))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, '.opencues/opencues.md'))).toBe(false);
-    // User-level untouched.
-    expect(fs.existsSync(path.join(tmpHome, '.opencues/opencues.md'))).toBe(false);
+    // Project-level: words/ + blanks/ are seeded under <cwd>/.cues/.
+    // No .opencuesrc at project level (settings are runtime-owned, user-only).
+    expect(fs.existsSync(path.join(projectDir, '.cues/words/tips.md'))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, '.opencuesrc'))).toBe(false);
+    // User-level untouched (no defaults seeded since this run was --project).
+    expect(fs.existsSync(path.join(tmpHome, '.opencuesrc'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpHome, '.cues/words/tips.md'))).toBe(false);
   });
 });

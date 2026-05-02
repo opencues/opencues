@@ -201,12 +201,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // (without blanks/) still load — blankInvoke just stays null in
   // that case and BlankFill falls back to spawnProcess.
   const blanksPath = `"@opencues/runtime/dist/src/blanks/index.js"`;
-  // opencues.md is system-wide, user-level only. Schema is runtime-owned;
+  // .opencuesrc is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
   const opencuesMdPathExpr =
-    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/opencues.md"):` +
-    `((process.env.HOME||"~")+"/.opencues/opencues.md"))`;
+    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/opencuesrc"):` +
+    `((process.env.HOME||"~")+"/.opencuesrc"))`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
@@ -262,10 +262,10 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // opencues-auto harness reads this. Last-writer-wins is fine
     // because the harness only drives one CC at a time.
     `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
-    // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.opencues/scripts/),
+    // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.cues/scripts/),
     // shared with OpenCode + Codex. seed-configs ships them there + compiles
     // SpeakCtl.cs colocated. Honors OPENCUES_HOME for env-driven overrides.
-    `ttsScriptPath:(process.env.OPENCUES_HOME||((process.env.HOME||"~")+"/.opencues"))+"/scripts/speak.sh",` +
+    `ttsScriptPath:(process.env.OPENCUES_HOME||((process.env.HOME||"~")+"/.cues"))+"/scripts/speak.sh",` +
     `ttsRate:2,` +
     // LLM resolver. Resolver only constructs if llmApiKey is set; otherwise
     // the runtime stays static-cue-only. Endpoint + model match v1's defaults.

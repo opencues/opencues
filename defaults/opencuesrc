@@ -1,6 +1,7 @@
----
-name: claude-code-cues
-domain: claude-code
+# OpenCues runtime configuration
+# Pure YAML — system-wide settings owned by the OpenCues runtime.
+# See openstandard-notes.md for the full schema.
+
 voice-mode: active
 debug-mode: off
 tips-mode: on
@@ -52,11 +53,3 @@ settings:
     values:
       on: Enabled — words matching a cue source's match/keywords get cycled alternatives
       off: Disabled — no word-cue LLM calls fire
-ignore: []
----
-
-# cues.md
-
-OpenCues master config. Settings + ignore list in frontmatter.
-Per-source configs live as folders under cues/<name>/cue.md
-(both static tip groups and LLM word-cue domains).

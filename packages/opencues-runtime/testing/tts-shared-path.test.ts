@@ -6,7 +6,7 @@
 // SpeakCtl.cs from CC's patches/actions/ into defaults/scripts/, and made
 // every host resolve TTS to the same user-level path:
 //
-//   ~/.opencues/scripts/speak.sh   (or $OPENCUES_HOME/scripts/speak.sh)
+//   ~/.cues/scripts/speak.sh   (or $OPENCUES_HOME/scripts/speak.sh)
 //
 // These tests verify each host's bootstrap source resolves to that one
 // path. Source-level checks instead of runtime invocation because the
@@ -29,7 +29,7 @@ describe('TTS shared-path contract', () => {
     expect(fs.existsSync(path.join(REPO_ROOT, 'integrations/claude-code/patches/actions/SpeakCtl.cs'))).toBe(false);
   });
 
-  it('CC opencuesRuntime.ts ttsScriptPath resolves to ~/.opencues/scripts/speak.sh', () => {
+  it('CC opencuesRuntime.ts ttsScriptPath resolves to ~/.cues/scripts/speak.sh', () => {
     const src = fs.readFileSync(
       path.join(REPO_ROOT, 'integrations/claude-code/patches/opencuesRuntime.ts'),
       'utf8',
@@ -39,9 +39,9 @@ describe('TTS shared-path contract', () => {
     // can't anti-grep file-wide.
     const ttsLine = src.split('\n').find(l => l.includes('ttsScriptPath:'));
     expect(ttsLine).toBeDefined();
-    // Path is built as ".opencues" + "/scripts/speak.sh" via template
+    // Path is built as ".cues" + "/scripts/speak.sh" via template
     // concatenation. Honors OPENCUES_HOME for env-driven overrides.
-    expect(ttsLine!).toContain('"/.opencues"');
+    expect(ttsLine!).toContain('"/.cues"');
     expect(ttsLine!).toContain('"/scripts/speak.sh"');
     expect(ttsLine!).toContain('OPENCUES_HOME');
     // Anti-regression: no require.resolve trick (coupled TTS to CC's

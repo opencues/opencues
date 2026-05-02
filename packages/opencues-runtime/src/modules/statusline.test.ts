@@ -82,7 +82,7 @@ describe('Statusline cue-tip plumbing', () => {
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/test-statusline.json',
@@ -136,7 +136,7 @@ describe('Statusline cue-tip plumbing', () => {
     const hlState = new HighlightState();
     hlState.activate(0, 'opus');
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const sl = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/x.json',
@@ -247,7 +247,7 @@ settings:
       },
     });
     adapter.pushText('voice-mode active');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
@@ -292,7 +292,7 @@ settings:
       },
     });
     adapter.pushText('voice-mode active');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();

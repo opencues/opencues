@@ -146,7 +146,11 @@ export function boot(host: HostInfo): BootResult {
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args.
-  const shared = buildSharedRuntime(adapter, { log });
+  const shared = buildSharedRuntime(adapter, {
+    log,
+    configSearchPaths: ['/chrome-storage/.cues'],
+    settingsFile: '/chrome-storage/.opencuesrc',
+  });
   configLoaderRef = shared.configLoader;
 
   const {

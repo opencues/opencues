@@ -19,45 +19,49 @@ if (existsSync(envPath)) {
 const projectRoot = new URL('../../', import.meta.url).pathname;
 const readOr = (path, fallback) => { try { return readFileSync(path, 'utf8'); } catch { return fallback; } };
 
-// Also load folder-based cue configs (cues/*.md)
+// Load word-cue sources from defaults/words/. Both flat <name>.md
+// and folder <name>/cue.md are accepted.
 const cuesFolders = {};
-const cuesDir = projectRoot + 'defaults/cues/';
+const wordsDir = projectRoot + 'defaults/words/';
 try {
-  const dirs = readdirSync(cuesDir, { withFileTypes: true });
-  for (const d of dirs) {
+  const entries = readdirSync(wordsDir, { withFileTypes: true });
+  for (const d of entries) {
     if (d.isDirectory()) {
-      const cueMd = readOr(cuesDir + d.name + '/cue.md', '');
+      const cueMd = readOr(wordsDir + d.name + '/cue.md', '');
       if (cueMd) cuesFolders[d.name] = cueMd;
+    } else if (d.name.endsWith('.md')) {
+      const cueMd = readOr(wordsDir + d.name, '');
+      if (cueMd) cuesFolders[d.name.slice(0, -3)] = cueMd;
     }
   }
   if (Object.keys(cuesFolders).length > 0) {
-    console.log('Loaded cue folders:', Object.keys(cuesFolders).join(', '));
+    console.log('Loaded word cues:', Object.keys(cuesFolders).join(', '));
   }
-} catch { /* no cues/ dir */ }
+} catch { /* no words/ dir */ }
 
-// Also load folder-based blank configs (blanks/*.md)
+// Load blank sources from defaults/blanks/. Both flat and folder shapes.
 const blankFolders = {};
 const blanksDir = projectRoot + 'defaults/blanks/';
 try {
-  const dirs = readdirSync(blanksDir, { withFileTypes: true });
-  for (const d of dirs) {
+  const entries = readdirSync(blanksDir, { withFileTypes: true });
+  for (const d of entries) {
     if (d.isDirectory()) {
       const cueMd = readOr(blanksDir + d.name + '/cue.md', '');
       if (cueMd) blankFolders[d.name] = cueMd;
+    } else if (d.name.endsWith('.md')) {
+      const cueMd = readOr(blanksDir + d.name, '');
+      if (cueMd) blankFolders[d.name.slice(0, -3)] = cueMd;
     }
   }
   if (Object.keys(blankFolders).length > 0) {
-    console.log('Loaded blank folders:', Object.keys(blankFolders).join(', '));
+    console.log('Loaded blanks:', Object.keys(blankFolders).join(', '));
   }
 } catch { /* no blanks/ dir */ }
-
-// Tips and word-cues ship as folders under defaults/cues/. The master
-// cues.md holds settings frontmatter + ignore list + project metadata.
 
 const envDefines = {
   '__GROQ_API_KEY__': JSON.stringify(envVars['GROQ_API_KEY'] || ''),
   '__FINNHUB_API_KEY__': JSON.stringify(envVars['FINNHUB_API_KEY'] || ''),
-  '__DEFAULT_CUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/cues.md', '')),
+  '__DEFAULT_OPENCUESRC__': JSON.stringify(readOr(projectRoot + 'defaults/opencuesrc', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_BLANK_FOLDERS__': JSON.stringify(blankFolders),
   // Stub Node globals the runtime modules reference. Content scripts

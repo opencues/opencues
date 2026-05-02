@@ -111,20 +111,21 @@ describe('TTS', () => {
     expect(spawnSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('does not speak when cues.md sets voice-mode: inactive', async () => {
+  it('does not speak when .opencuesrc sets voice-mode: inactive', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
         '/proj/cues.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
-        }, { 'voice-mode': 'inactive' }),
+        }),
+        '/proj/.opencuesrc': 'voice-mode: inactive\n',
       },
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.opencuesrc' });
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -132,20 +133,21 @@ describe('TTS', () => {
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
-  it('cues.md `tts-rate:` overrides options.rate', async () => {
+  it('.opencuesrc `tts-rate:` overrides options.rate', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
         '/proj/cues.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
-        }, { 'tts-rate': '7' }),
+        }),
+        '/proj/.opencuesrc': 'tts-rate: 7\n',
       },
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.opencuesrc' });
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, {
       scriptPath: '/speak.sh',
@@ -156,20 +158,21 @@ describe('TTS', () => {
     expect(spawnSpy.mock.calls[0][0].args).toEqual(['/speak.sh', 'Maximum reasoning', '7']);
   });
 
-  it('cues.md `tts-script:` overrides options.scriptPath', async () => {
+  it('.opencuesrc `tts-script:` overrides options.scriptPath', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
         '/proj/cues.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
-        }, { 'tts-script': '/custom/say.sh' }),
+        }),
+        '/proj/.opencuesrc': 'tts-script: /custom/say.sh\n',
       },
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.opencuesrc' });
     await loader.load();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { scriptPath: '/default/speak.sh' });
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -241,18 +244,21 @@ describe('TTS', () => {
     expect(logSpy).toHaveBeenCalledWith('error', expect.stringContaining('TTS speakFn threw'), expect.any(Error));
   });
 
-  it('cues.md tts-rate flows to speakFn (same precedence as spawn path)', async () => {
+  it('.opencuesrc tts-rate flows to speakFn (same precedence as spawn path)', async () => {
     const adapter = new MockAdapter({
-      files: { '/proj/cues.md': wrapTipsAsCuesMd({
-        domain: 'test', version: 1,
-        concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
-      }, { 'tts-rate': '5' }) },
+      files: {
+        '/proj/cues.md': wrapTipsAsCuesMd({
+          domain: 'test', version: 1,
+          concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
+        }),
+        '/proj/.opencuesrc': 'tts-rate: 5\n',
+      },
       cwd: '/proj',
     });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.opencuesrc' });
     await loader.load();
     const speakFn = vi.fn();
     const tts = new TTS(adapter, hlState, new DynDefs(), loader, { speakFn, rate: '2' });

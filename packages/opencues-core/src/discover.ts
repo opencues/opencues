@@ -41,8 +41,12 @@ export interface DiscoveredConfigs {
 const CUE_FILENAME = 'cue.md';
 
 /**
- * Scan a directory for subdirectories containing cue.md files.
- * Returns an array of parsed CuesMdConfig, one per discovered cue.md.
+ * Scan a directory for cue sources. Two shapes accepted:
+ *
+ *   - Flat: `<dirPath>/<name>.md` — source name = filename minus `.md`.
+ *   - Folder: `<dirPath>/<name>/cue.md` — source name = folder name.
+ *
+ * Returns an array of parsed CuesMdConfig, one per discovered source.
  */
 function scanDir(
   dirPath: string,
@@ -54,23 +58,40 @@ function scanDir(
   const results: CuesMdConfig[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory) continue;
+    let cuePath: string;
+    let configPath: string;
+    let inferredName: string;
 
-    const cuePath = dirPath + '/' + entry.name + '/' + CUE_FILENAME;
+    if (entry.isDirectory) {
+      // Folder shape: <dir>/<name>/cue.md
+      cuePath = dirPath + '/' + entry.name + '/' + CUE_FILENAME;
+      configPath = dirPath + '/' + entry.name;
+      inferredName = entry.name;
+    } else if (entry.name.endsWith('.md')) {
+      // Flat shape: <dir>/<name>.md
+      cuePath = dirPath + '/' + entry.name;
+      configPath = dirPath;
+      inferredName = entry.name.slice(0, -3); // strip .md
+    } else {
+      continue;
+    }
+
     const content = opts.readFile(cuePath);
     if (!content) continue;
 
-    const folderPath = dirPath + '/' + entry.name;
-    const config = parseSingleCueMd(content, folderPath);
+    const config = parseSingleCueMd(content, configPath, inferredName);
 
-    // Default the name to the folder name if not set in frontmatter
+    // Default frontmatter.name when not set; rename the source key
+    // from 'unknown' if needed (parser uses 'unknown' as the
+    // fallback source name when neither frontmatter nor nameOverride
+    // are set — but with nameOverride passed above, this is only
+    // reached if BOTH are missing, which shouldn't happen).
     if (!config.frontmatter.name) {
-      config.frontmatter.name = entry.name;
-      // Also update the source name if it was 'unknown'
+      config.frontmatter.name = inferredName;
       if (config.promptConfig?.sources['unknown']) {
         const source = config.promptConfig.sources['unknown'];
-        source.name = entry.name;
-        config.promptConfig.sources[entry.name] = source;
+        source.name = inferredName;
+        config.promptConfig.sources[inferredName] = source;
         delete config.promptConfig.sources['unknown'];
       }
     }
@@ -123,24 +144,35 @@ function combineCueConfigs(configs: CuesMdConfig[]): CuesMdConfig {
 // ============================================================================
 
 /**
- * Discover folder-based configs by scanning cues/, blanks/ directories.
+ * Discover folder-based configs by scanning words/, blanks/ directories
+ * inside `<basePath>` (e.g. `~/.cues/`).
  *
- * Each subdirectory containing a cue.md file is parsed as an individual cue.
- * Returns discovered configs ready for merging with monolithic file configs.
+ * Each .md file (flat) or subdirectory with a cue.md (folder) is parsed
+ * as an individual cue source. Returns discovered configs ready for
+ * merging with project-level configs.
+ *
+ * Legacy support: if `<basePath>/cues/` exists (the old subdir name
+ * before the words/blanks scope split), it's scanned too. seed-configs
+ * migrates this away on the first run.
  */
 export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs {
   const result: DiscoveredConfigs = {};
   const allIgnore: string[] = [];
 
-  // Scan cues/ directory
-  const cueConfigs = scanDir(opts.basePath + '/cues', opts);
-  if (cueConfigs.length > 0) {
-    const combined = combineCueConfigs(cueConfigs);
+  // Scan words/ directory (post-migration name).
+  const wordConfigs = scanDir(opts.basePath + '/words', opts);
+  // Legacy: scan cues/ directory (pre-migration name) too. Sources
+  // discovered there are word-cues (the legacy layout split LLM cues
+  // from blanks; `cues/` held both static + LLM word-cues).
+  const legacyCueConfigs = scanDir(opts.basePath + '/cues', opts);
+  const allWordConfigs = [...wordConfigs, ...legacyCueConfigs];
+  if (allWordConfigs.length > 0) {
+    const combined = combineCueConfigs(allWordConfigs);
     result.cuesConfig = combined;
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
 
-  // Scan blanks/ directory
+  // Scan blanks/ directory.
   const blankConfigs = scanDir(opts.basePath + '/blanks', opts);
   if (blankConfigs.length > 0) {
     const combined = combineCueConfigs(blankConfigs);

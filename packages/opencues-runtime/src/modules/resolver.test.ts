@@ -40,7 +40,7 @@ function setupResolver(scriptedResults: MockResult[]) {
   adapter.pushText('alpha');
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter);
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
 
   // Inject a mock resolver factory so we don't load real opencues-core sources.
   // The Resolver class still calls require('@opencues/core').createResolver, so we
@@ -147,7 +147,7 @@ describe('Resolver.resolveAndApply', () => {
     adapter.pushText('alpha beta gamma');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     const spanFillState = new SpanFillState();
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
@@ -193,7 +193,7 @@ describe('Resolver.resolveAndApply', () => {
     adapter.pushText('the lawyer filed');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -223,7 +223,7 @@ describe('Resolver.resolveAndApply', () => {
     adapter.pushText('the legal eagle filed');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -251,7 +251,7 @@ describe('Resolver.resolveAndApply', () => {
     adapter.pushText('weather _ paris');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -274,7 +274,7 @@ describe('Resolver.resolveAndApply', () => {
     ]);
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     let resolveDelay = 50;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -305,7 +305,7 @@ describe('Resolver.resolveAndApply', () => {
     });
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
 
     let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
@@ -332,7 +332,7 @@ describe('Resolver.resolveAndApply', () => {
     });
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
     await loader.load();
     let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {

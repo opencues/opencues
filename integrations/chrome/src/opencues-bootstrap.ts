@@ -44,9 +44,10 @@ import { createBlanks, type BrowserBlank } from './blanks';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
-// Bake-time defines from esbuild. cues.md holds settings frontmatter +
-// project metadata; per-cue and per-blank folders live in __DEFAULT_*_FOLDERS__.
-declare const __DEFAULT_CUES_MD__: string;
+// Bake-time defines from esbuild. .opencuesrc holds runtime settings
+// (system-wide YAML); per-cue and per-blank source files live in
+// __DEFAULT_WORD_CUES__ and __DEFAULT_BLANKS__ (post-layout-migration).
+declare const __DEFAULT_OPENCUESRC__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
 
@@ -66,17 +67,17 @@ function parseDebugMode(content: string | null | undefined): boolean {
 }
 async function refreshReadTraceFromStorage(): Promise<void> {
   try {
-    const key = `${STORAGE_PREFIX}${ROOT}/cues.md`;
+    const key = `${STORAGE_PREFIX}${ROOT}/.opencuesrc`;
     const result = await chrome.storage.local.get(key);
     const v = typeof result[key] === 'string' && result[key].length > 0
       ? result[key]
-      : __DEFAULT_CUES_MD__;
+      : __DEFAULT_OPENCUESRC__;
     _readTrace = parseDebugMode(v);
   } catch { _readTrace = false; }
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  const key = `${STORAGE_PREFIX}${ROOT}/cues.md`;
+  const key = `${STORAGE_PREFIX}${ROOT}/.opencuesrc`;
   if (key in changes && typeof changes[key].newValue === 'string') {
     _readTrace = parseDebugMode(changes[key].newValue);
   }
@@ -233,9 +234,9 @@ async function readFile(path: string): Promise<string | null> {
 function isReadOnlyPath(path: string): boolean {
   if (!path.startsWith(ROOT + '/')) return false;
   const rel = path.slice(ROOT.length + 1);
-  // cues.md is writable: OpenCuesSettingsBlank cycles voice-mode /
-  // tips-mode / debug-mode etc. by rewriting the frontmatter scalar.
-  if (rel === 'cues.md') return false;
+  // .opencuesrc is writable: OpenCuesSettingsBlank cycles voice-mode /
+  // tips-mode / debug-mode etc. by rewriting the YAML scalar.
+  if (rel === '.opencuesrc') return false;
   return true;
 }
 
@@ -243,11 +244,15 @@ function isReadOnlyPath(path: string): boolean {
 function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
-  if (rel === 'cues.md') return __DEFAULT_CUES_MD__ || null;
-  const cueMatch = rel.match(/^cues\/([^/]+)\/cue\.md$/);
-  if (cueMatch) return __DEFAULT_CUE_FOLDERS__[cueMatch[1]] ?? null;
-  const ctrlMatch = rel.match(/^blanks\/([^/]+)\/cue\.md$/);
-  if (ctrlMatch) return __DEFAULT_BLANK_FOLDERS__[ctrlMatch[1]] ?? null;
+  if (rel === '.opencuesrc') return __DEFAULT_OPENCUESRC__ || null;
+  // New layout: .cues/words/<name>.md (flat) and .cues/blanks/<name>/cue.md
+  // (folder, when scripts colocated) or .cues/blanks/<name>.md (flat).
+  const wordsFlat = rel.match(/^\.cues\/words\/([^/]+)\.md$/);
+  if (wordsFlat) return __DEFAULT_CUE_FOLDERS__[wordsFlat[1]] ?? null;
+  const blanksFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/cue\.md$/);
+  if (blanksFolder) return __DEFAULT_BLANK_FOLDERS__[blanksFolder[1]] ?? null;
+  const blanksFlat = rel.match(/^\.cues\/blanks\/([^/]+)\.md$/);
+  if (blanksFlat) return __DEFAULT_BLANK_FOLDERS__[blanksFlat[1]] ?? null;
   return null;
 }
 
@@ -323,15 +328,28 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   const bundled = await readBundledDir(path);
   if (bundled) return bundled;
 
+  // New layout: `.cues/words/<name>.md` (flat) + `.cues/blanks/<name>/`
+  // or `.cues/blanks/<name>.md`.
+  if (path === `${ROOT}/.cues/words`) {
+    return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({
+      name: `${name}.md`,
+      isDirectory: false,
+    }));
+  }
+  if (path === `${ROOT}/.cues/blanks`) {
+    return Object.keys(__DEFAULT_BLANK_FOLDERS__).map(name => ({
+      name: `${name}.md`,
+      isDirectory: false,
+    }));
+  }
+  // Legacy layout (pre-migration): cues/<name>/cue.md, blanks/<name>/cue.md.
+  // Kept so users mid-migration don't see broken state.
   if (path === `${ROOT}/cues`) {
     return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({ name, isDirectory: true }));
   }
   if (path === `${ROOT}/blanks`) {
     return Object.keys(__DEFAULT_BLANK_FOLDERS__).map(name => ({ name, isDirectory: true }));
   }
-  // ConfigLoader's prewalk descends into each folder name and lists it
-  // again expecting a `cue.md` entry. Without this branch the discovery
-  // returns 0 blanks and BlankFill never matches any keyword.
   const cuesPrefix = `${ROOT}/cues/`;
   const blanksPrefix = `${ROOT}/blanks/`;
   if (path.startsWith(cuesPrefix)) {
@@ -431,9 +449,9 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
     } : undefined,
     // OpenCues settings selector/satellite (`opencues settings _`)
-    // reads/writes the seeded cues.md in chrome.storage.
-    opencuesMdReadFile: () => readFile(`${ROOT}/cues.md`),
-    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/cues.md`, content),
+    // reads/writes the seeded .opencuesrc in chrome.storage.
+    opencuesMdReadFile: () => readFile(`${ROOT}/.opencuesrc`),
+    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/.opencuesrc`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 
