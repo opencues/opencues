@@ -168,7 +168,13 @@ if 'publishPromptAccess' not in src:
                 publishPromptAccess({
                   read: () => input.plainText,
                   write: (t) => {
-                    input.setText(t)
+                    // replaceText preserves cursor + undo history;
+                    // setText is the "clean slate" API that resets the
+                    // buffer state including cursor to 0. Cycling +
+                    // BlankFill rely on the cursor staying put across
+                    // a write/setCursor pair (and across async pushText
+                    // calls that don't pass a cursor).
+                    input.replaceText(t)
                     setStore("prompt", "input", t)
                   },
                   cursor: () => input.cursorOffset ?? 0,
@@ -190,6 +196,18 @@ if 'notifyOpenCuesCursorChange' not in src:
     src = src.replace(
       'import { publishPromptAccess, notifyOpenCuesTextChange, triggerOpenCuesRender } from "../../opencues"',
       'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
+    )
+# Migration for installs patched before the setText → replaceText switch.
+# setText resets the textarea buffer (incl. cursor to 0); replaceText
+# preserves cursor + undo history. Pre-migration installs see the cursor
+# jump to 0 on every async pushText (cycling, BlankFill etc.).
+if 'input.setText(t)\n                    setStore' in src:
+    src = src.replace(
+      'write: (t) => {\n                    input.setText(t)\n                    setStore("prompt", "input", t)\n                  },',
+      '''write: (t) => {
+                    input.replaceText(t)
+                    setStore("prompt", "input", t)
+                  },''',
     )
 # Wire onCursorChange on the textarea so cursor-only moves (mouse click,
 # arrow keys without typing) update the highlight when cursor-navigate
