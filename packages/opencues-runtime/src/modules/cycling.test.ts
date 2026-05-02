@@ -512,6 +512,7 @@ settings:
       kill: () => {},
     }));
     hlState.activate(0, 'voice-mode active'); // selector
+    adapter.setCursorOffset('voice-mode'.length); // cursor on selector word, end-of-word
     adapter.fireKey('up', { ctrl: true, alt: true });
     // Synchronous part: text now has the next setting name + first declared value.
     expect(adapter.setTextCalls.at(-1)).toBe('debug-mode on');
@@ -519,6 +520,14 @@ settings:
     // Async script `get debug-mode` was spawned.
     expect(spawnSpy).toHaveBeenCalled();
     expect(spawnSpy.mock.calls[0][0].args).toEqual(['/tmp/oc.sh', 'get', 'debug-mode']);
+    // Cursor lands at end of the NEW selector ('debug-mode' is 10 chars,
+    // ending at offset 10), NOT at end of the new region (would be 13 —
+    // past 'on'). Why this matters: under cursor-navigate, snapping past
+    // the satellite would auto-highlight whatever word follows the pair
+    // on the next render, throwing focus off the selector the user was
+    // cycling. Multi-word selectors share this rule (end of last
+    // selector word).
+    expect(adapter.setCursorCalls.at(-1)).toBe('debug-mode'.length);
   });
 
   it('Phase G.b: cycling satellite rotates values + spawns set script', async () => {
@@ -557,11 +566,17 @@ settings:
     cycling.subscribe();
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     hlState.activate(1, 'voice-mode active'); // satellite
+    adapter.setCursorOffset('voice-mode active'.length); // cursor on satellite, end-of-word
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
     expect(ss.current?.currentValue).toBe('inactive');
     expect(spawnSpy.mock.calls[0][0].args).toEqual(['/tmp/oc.sh', 'set', 'voice-mode', 'inactive']);
     expect(spawnSpy.mock.calls[0][0].detached).toBe(true);
+    // Satellite cycle keeps the cursor on the satellite word — landing
+    // at end of 'inactive' (= end of region, 'voice-mode inactive'
+    // length 19). Symmetry with the selector cycle: each cycle direction
+    // keeps the cursor on the word the user was cycling.
+    expect(adapter.setCursorCalls.at(-1)).toBe('voice-mode inactive'.length);
   });
 
   it('Phase G.b: satellite cycle handles multi-word values (e.g. plain text → rich markdown)', async () => {

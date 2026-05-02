@@ -161,7 +161,13 @@ export class Cycling {
       const oldRegionStart = selStartWord.start;
       const oldRegionEnd = satEndWord.end;
       const newRegionEnd = selStartWord.start + nextSetting.length + entry.separator.length + provisionalValue.length;
-      const newCursor = preservedCursor(event.cursorOffset, oldRegionStart, oldRegionEnd, newRegionEnd, newText.length);
+      // Cycling the selector keeps the cursor on the selector word(s),
+      // not the satellite — otherwise cursor-navigate auto-highlights
+      // whatever follows the satellite after each cycle. End-of-selector
+      // works for multi-word selectors too because we count chars from
+      // selStartWord.start (lands on last char of last selector word).
+      const newSelectorEnd = selStartWord.start + nextSetting.length;
+      const newCursor = preservedCursor(event.cursorOffset, oldRegionStart, oldRegionEnd, newRegionEnd, newText.length, newSelectorEnd);
 
       entry.currentSetting = nextSetting;
       entry.currentValue = provisionalValue;
@@ -547,25 +553,32 @@ export class Cycling {
  */
 /**
  * Cursor placement after a region [oldStart..oldEnd] in `oldText` is
- * replaced with content ending at `newEnd` in `newText`:
+ * replaced. Two anchor points matter:
+ *
+ *   - `newRegionEnd` — end of the WHOLE replaced region. Used to compute
+ *     the length delta for cursors past the old region.
+ *   - `snapTo` — where to land a cursor that was INSIDE the old region.
+ *     Defaults to `newRegionEnd` (end-of-region), but the selector cycle
+ *     passes end-of-selector so the cursor stays on the selector word(s)
+ *     instead of being thrown forward onto the satellite (which then
+ *     leaks into cursor-navigate auto-highlight on the next neighbour).
  *
  *   - cursor before oldStart → unchanged.
- *   - cursor past oldEnd → shifted by lenDiff so it stays at the same
- *     "position relative to the right side".
- *   - cursor inside [oldStart..oldEnd] → snapped to newEnd (end of the
- *     replaced region in the new text).
+ *   - cursor past oldEnd → shifted by (newRegionEnd - oldEnd).
+ *   - cursor inside [oldStart..oldEnd] → snapped to `snapTo`.
  */
 function preservedCursor(
   oldCursor: number,
   oldStart: number,
   oldEnd: number,
-  newEnd: number,
+  newRegionEnd: number,
   newTextLength: number,
+  snapTo: number = newRegionEnd,
 ): number {
   let result: number;
   if (oldCursor <= oldStart) result = oldCursor;
-  else if (oldCursor >= oldEnd) result = oldCursor + (newEnd - oldEnd);
-  else result = newEnd;
+  else if (oldCursor >= oldEnd) result = oldCursor + (newRegionEnd - oldEnd);
+  else result = snapTo;
   return Math.max(0, Math.min(result, newTextLength));
 }
 
