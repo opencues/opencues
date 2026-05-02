@@ -225,11 +225,15 @@ describe('Navigation cue filtering (Bucket B)', () => {
     expect(hlState.wordIndex).toBe(1); // clamps at first target
   });
 
-  it('falls back to all words when no cue-mapped words present', async () => {
+  it('does nothing when no word has cues or DynDefs', async () => {
+    // No cue-mapped words, no DynDefs → no targets → navigation is a
+    // no-op. (Previously fell back to all words, but that let users
+    // hop between plain text even though Up/Down had nothing to cycle.
+    // Silence > pointless navigation.)
     const { adapter, hlState } = await setupWithCues('alpha beta gamma');
     adapter.fireKey('left', { ctrl: true, alt: true });
-    expect(hlState.active).toBe(true);
-    expect(hlState.wordIndex).toBe(2); // gamma — fallback to all words, rightmost
+    expect(hlState.active).toBe(false);
+    expect(hlState.wordIndex).toBeNull();
   });
 
   it('DynDefs entries also count as targets even without cueMap match', async () => {

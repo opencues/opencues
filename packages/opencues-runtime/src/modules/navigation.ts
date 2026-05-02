@@ -146,16 +146,21 @@ export class Navigation {
   /**
    * Decide which word indices should be navigable.
    *
-   * Priority filter (mirrors v1 wordHighlight.ts:461):
-   *   1. Word lowercased is in cueMap (tip-having words).
-   *   2. DynDefs has an entry for that index (cycling state).
-   *   3. Step-pattern match (e.g. "0.5f").
-   * Fallback: all whitespace-separated words.
+   * A word is navigable when something has an opinion about it:
+   *   1. Word lowercased is in cueMap (tip-having word).
+   *   2. DynDefs has an entry for that index (cycling state — LLM alts,
+   *      blank-fill substitution, selector/satellite, span fill).
    *
-   * Step 33 layer: when a span fill is active, also force-add the span
-   * origin (so the span is always reachable even if its first word
-   * isn't in cueMap), and drop any inner span positions from the
-   * result so each multi-word span counts as exactly one nav stop.
+   * No cues, no DynDefs → no navigable words → Ctrl+Alt+Left/Right does
+   * nothing. Earlier we fell through to all whitespace-separated words
+   * when nothing matched, but that lets users hop between plain words
+   * even though Up/Down has nothing to cycle. Silence is better than
+   * pointless navigation.
+   *
+   * Span layer: when a span fill is active, force-add the span origin
+   * (so the span is always reachable even if its first word isn't in
+   * cueMap), and drop any inner span positions from the result so each
+   * multi-word span counts as exactly one nav stop.
    *
    * Exposed for unit testing.
    */
@@ -165,9 +170,16 @@ export class Navigation {
       span !== null && idx > span.index && idx < span.index + span.spanLength;
 
     const baseTargets: number[] = (() => {
-      if (!this.configLoader && this.dynDefs.size === 0) {
-        return words.map(w => w.index);
-      }
+      // Decision tree:
+      //   1. Some word matched cueMap or has a DynDef → target only those.
+      //   2. cueMap is loaded + non-empty but no word in this input matches
+      //      → return [] (silence). User's `default-word-alts: off` + no
+      //      domain match means no source has an opinion; navigation
+      //      should not hop between plain words.
+      //   3. cueMap missing or empty (test scaffold / fresh install with
+      //      no tips) → fall back to all words so the system isn't dead
+      //      out of the box and unit tests without a wired ConfigLoader
+      //      still navigate.
       const navigable = this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
@@ -175,8 +187,8 @@ export class Navigation {
         // navigation lands only on the origin so the span behaves as
         // one unit. Same semantics as SpanFillState span handling
         // below (which handles blank-fills).
-        const span = this.dynDefs.findSpanContaining(w.index);
-        if (span && span.originIdx !== w.index) continue;
+        const innerSpan = this.dynDefs.findSpanContaining(w.index);
+        if (innerSpan && innerSpan.originIdx !== w.index) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
         if (navigable?.has(lc)) {
@@ -186,7 +198,12 @@ export class Navigation {
         }
       }
       if (filtered.length > 0) return filtered;
-      return words.map(w => w.index);
+      const cueMapEmpty = !navigable || navigable.size === 0;
+      const noDynDefs = this.dynDefs.size === 0;
+      // Production path: cueMap is populated → silence.
+      // Test scaffold path: no cueMap, no DynDefs → fall back.
+      if (cueMapEmpty && noDynDefs) return words.map(w => w.index);
+      return [];
     })();
 
     // Phase G.b — force-include selector-start + satellite-start. Drop
