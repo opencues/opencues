@@ -61,6 +61,12 @@ export class Resolver {
    *  can bypass the debounce and fire fluid-blank resolution immediately. */
   private _lastInputText = '';
 
+  /** Snapshot of the opt-in settings the resolver was last built with.
+   *  Re-computed on every resolve; mismatch → rebuildResolver before
+   *  running so `opencues.md` flag flips take effect on the next
+   *  keystroke (no host restart required). */
+  private _lastBuildKey: string | null = null;
+
   constructor(
     private adapter: HostAdapter,
     private hlState: HighlightState,
@@ -155,7 +161,25 @@ export class Resolver {
       timeout: 30000,
       continueOnError: true,
     });
+    this._lastBuildKey = this.computeBuildKey();
     this.adapter.log('info', `Resolver: built with ${sources.length} sources`);
+  }
+
+  /** Stable string fingerprint of the source-affecting settings. When this
+   *  changes between resolves (user flipped a flag in `opencues.md` and
+   *  ConfigLoader hot-reloaded), rebuild the resolver so the new flag
+   *  state takes effect without a host restart. */
+  private computeBuildKey(): string {
+    const s = this.configLoader.opencuesState.settings;
+    return [
+      s.get('fluid-blank-mode') ?? '',
+      s.get('spelling-mode') ?? '',
+      s.get('word-alts-mode') ?? '',
+      s.get('default-word-alts') ?? '',
+      s.get('classified-blanks-mode') ?? '',
+      s.get('llm-endpoint') ?? '',
+      s.get('llm-model') ?? '',
+    ].join('|');
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────
@@ -163,6 +187,17 @@ export class Resolver {
   private onTextChange(e: TextChangeEvent): void {
     if (e.source !== 'user') return; // ignore our own setText echoes
     if (!this._resolver) return;
+
+    // If opencues.md flags changed since last build, rebuild before
+    // dispatching. ConfigLoader hot-reloads opencuesState on text-change
+    // but doesn't notify Resolver, so without this check a flag flip
+    // (`fluid-blank-mode: off → on`, `default-word-alts: off → on`, …)
+    // would only take effect on next host restart.
+    const currentKey = this.computeBuildKey();
+    if (currentKey !== this._lastBuildKey) {
+      this.adapter.log('info', `Resolver: opencues.md flags changed — rebuilding sources`);
+      this.rebuildResolver();
+    }
 
     // Fluid-blank fast-path: when the user just typed `_` (it's at the
     // trailing edge AND wasn't there before), bypass the debounce and
