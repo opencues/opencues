@@ -530,6 +530,82 @@ settings:
     expect(adapter.setCursorCalls.at(-1)).toBe('debug-mode'.length);
   });
 
+  it('Phase G.b: selector cycle ALWAYS lands cursor on selector (cursor-was-at-0 / cursor-was-past-region)', async () => {
+    // User-reported bug: cursor at 0 → selector cycle "throws cursor
+    // to start of text" (= cursor stays at 0). And cursor past the
+    // region drifts cycle-by-cycle as length deltas accumulate.
+    // The fix: cycling tracks the WORD, not edit semantics — cursor
+    // always lands at end-of-new-selector regardless of where it was.
+    const OPENCUES_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: t
+    values:
+      active: a
+      inactive: i
+  debug-mode:
+    tip: t
+    values:
+      on: o
+      off: f
+---`;
+    const setup = (initialCursor: number): { adapter: MockAdapter; ss: SelectorSatelliteState; hlState: HighlightState } => {
+      const adapter = new MockAdapter({
+        cwd: '/proj',
+        files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      });
+      adapter.pushText('voice-mode active');
+      const hlState = new HighlightState();
+      const dynDefs = new DynDefs();
+      const ss = new SelectorSatelliteState();
+      ss.set({
+        blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+        selectorIndex: 0, selectorLength: 1,
+        satelliteIndex: 1, satelliteLength: 1,
+        currentSetting: 'voice-mode', currentValue: 'active',
+        separator: ' ', clearOnEdit: false,
+      }, 'voice-mode active');
+      const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+      // load synchronously — pre-load opencuesState used by cycling.
+      void loader.load();
+      const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+      cycling.subscribe();
+      vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+        result: Promise.resolve({ exitCode: 0, stdout: 'off\n', stderr: '', timedOut: false }),
+        kill: () => {},
+      }));
+      hlState.activate(0, 'voice-mode active'); // selector
+      adapter.setCursorOffset(initialCursor);
+      return { adapter, ss, hlState };
+    };
+
+    // Case 1: cursor at offset 0 (start of selector). Old preservedCursor
+    // returned cursor unchanged (case `<= oldStart`); user perceived this
+    // as cursor "thrown to start of text".
+    {
+      const { adapter } = setup(0);
+      await new Promise(r => setImmediate(r));
+      adapter.fireKey('up', { ctrl: true, alt: true });
+      expect(adapter.setCursorCalls.at(-1)).toBe('debug-mode'.length);
+    }
+
+    // Case 2: cursor at end of "active" (offset 17). Old preservedCursor
+    // shifted by length delta; cursor drifted to end of new region
+    // (offset 13), then 12, then 11 across consecutive cycles.
+    {
+      const { adapter, ss } = setup(17);
+      await new Promise(r => setImmediate(r));
+      adapter.fireKey('up', { ctrl: true, alt: true });
+      expect(adapter.setCursorCalls.at(-1)).toBe('debug-mode'.length);
+      // Second cycle: cursor MUST land at end-of-new-selector again,
+      // not drift further.
+      adapter.fireKey('up', { ctrl: true, alt: true });
+      expect(adapter.setCursorCalls.at(-1)).toBe(ss.current!.currentSetting.length);
+    }
+  });
+
   it('Phase G.b: cycling satellite rotates values + spawns set script', async () => {
     const OPENCUES_MD = `---
 voice-mode: active

@@ -158,16 +158,16 @@ export class Cycling {
       const provisionalValue = nextDef?.valueOrder[0] ?? '';
 
       const newText = spliceSelectorSatellite(event.text, selStartWord, selEndWord, satEndWord, nextSetting, provisionalValue, entry.separator);
-      const oldRegionStart = selStartWord.start;
-      const oldRegionEnd = satEndWord.end;
       const newRegionEnd = selStartWord.start + nextSetting.length + entry.separator.length + provisionalValue.length;
-      // Cycling the selector keeps the cursor on the selector word(s),
-      // not the satellite — otherwise cursor-navigate auto-highlights
-      // whatever follows the satellite after each cycle. End-of-selector
-      // works for multi-word selectors too because we count chars from
-      // selStartWord.start (lands on last char of last selector word).
-      const newSelectorEnd = selStartWord.start + nextSetting.length;
-      const newCursor = preservedCursor(event.cursorOffset, oldRegionStart, oldRegionEnd, newRegionEnd, newText.length, newSelectorEnd);
+      // Cycling tracks the WORD, not edit-semantic offsets. Whatever the
+      // user's cursor was doing before, after a selector cycle it lands
+      // at end-of-new-selector — the same word the highlight is on.
+      // Anything else (preserving char offset, shifting by length delta)
+      // leaks the cursor onto neighbouring words and trips cursor-navigate
+      // auto-highlight. End-of-selector handles multi-word selectors too:
+      // selStartWord.start + nextSetting.length is end of the last char
+      // of the last selector word.
+      const newCursor = Math.min(selStartWord.start + nextSetting.length, newText.length);
 
       entry.currentSetting = nextSetting;
       entry.currentValue = provisionalValue;
@@ -218,10 +218,13 @@ export class Cycling {
     const nextValue = def.valueOrder[nextValIdx];
 
     const newText = spliceSelectorSatellite(event.text, selStartWord, selEndWord, satEndWord, entry.currentSetting, nextValue, entry.separator);
-    const oldRegionStart = selStartWord.start;
-    const oldRegionEnd = satEndWord.end;
     const newRegionEnd = selStartWord.start + entry.currentSetting.length + entry.separator.length + nextValue.length;
-    const newCursor = preservedCursor(event.cursorOffset, oldRegionStart, oldRegionEnd, newRegionEnd, newText.length);
+    // Same rule as the selector branch: cycling tracks the word, so
+    // cursor lands at end-of-new-satellite (= newRegionEnd, since the
+    // region ends at the satellite). Stable across cycles regardless of
+    // where the cursor was before — no jumping, no cursor-navigate
+    // bleed onto neighbour words.
+    const newCursor = Math.min(newRegionEnd, newText.length);
 
     entry.currentValue = nextValue;
     entry.satelliteLength = Math.max(1, nextValue.split(/\s+/).filter(Boolean).length);
@@ -548,40 +551,9 @@ export class Cycling {
 
 /**
  * Replace selector + separator + satellite in `text` using the current
- * char positions of the two anchor words. Cleaner than a 5-arg slice
- * call in two places.
+ * char positions of the two anchor words. Range replaced is
+ * [selStartWord.start .. satEndWord.end].
  */
-/**
- * Cursor placement after a region [oldStart..oldEnd] in `oldText` is
- * replaced. Two anchor points matter:
- *
- *   - `newRegionEnd` — end of the WHOLE replaced region. Used to compute
- *     the length delta for cursors past the old region.
- *   - `snapTo` — where to land a cursor that was INSIDE the old region.
- *     Defaults to `newRegionEnd` (end-of-region), but the selector cycle
- *     passes end-of-selector so the cursor stays on the selector word(s)
- *     instead of being thrown forward onto the satellite (which then
- *     leaks into cursor-navigate auto-highlight on the next neighbour).
- *
- *   - cursor before oldStart → unchanged.
- *   - cursor past oldEnd → shifted by (newRegionEnd - oldEnd).
- *   - cursor inside [oldStart..oldEnd] → snapped to `snapTo`.
- */
-function preservedCursor(
-  oldCursor: number,
-  oldStart: number,
-  oldEnd: number,
-  newRegionEnd: number,
-  newTextLength: number,
-  snapTo: number = newRegionEnd,
-): number {
-  let result: number;
-  if (oldCursor <= oldStart) result = oldCursor;
-  else if (oldCursor >= oldEnd) result = oldCursor + (newRegionEnd - oldEnd);
-  else result = snapTo;
-  return Math.max(0, Math.min(result, newTextLength));
-}
-
 function spliceSelectorSatellite(
   text: string,
   selStartWord: { start: number; end: number },
