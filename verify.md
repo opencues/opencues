@@ -132,8 +132,7 @@ opencues logs --tail               # follows /tmp/opencues.log
 
 ## H. Migration boundary (no back-compat)
 
-- [ ] Move `~/.opencues/blanks.md` to `~/.opencues/controls.md`, restart host. Confirm: zero blanks load (no fallback). Restore.
-- [ ] Move `~/.opencues/blanks/` to `~/.opencues/controls/`, restart host. Confirm: zero blanks load. Restore.
+- [x] Moved `~/.opencues/blanks.md` + `~/.opencues/blanks/` out (no rename to legacy paths needed — purge is total). Typed `volume _ brightness _ nvda _` → all three stayed as `_`, zero `BlankFill: substituting` lines. Resolver alive, just no blanks loaded. Restored, hot-reload picked up. ✓ (commit 7190a15 / preceding back-compat drop verified live.)
 
 ---
 
