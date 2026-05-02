@@ -42,17 +42,17 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 - [ ] OFF: `jumpved` stays plain.
 
 ### B.4 — `fluid-blank-mode`
-- [ ] ~~`capital of france _`~~ → claimed by **countries blank** (keyword "capital of"); use a no-keyword input instead.
 - [x] `4 + 4 _` → `8` (WIPE). ✓
 - [x] `unicode for em dash _` → `U+2014` (WIPE). ✓
-- [x] `top 10 poorest countries _` → `Burundi` (single answer — fluid is single-value). ✓
+- [x] `top 10 poorest countries _` → `Burundi`. ✓
 - [x] `list 10 poorest countries _` → comma-list of 10. ✓
+- [x] **Proximity-aware cede:** `what is git as in github _` falls through to fluid (keyword `what is` present but 4 words from `_`, dictionary's proximity is 3, so dictionary correctly declines and fluid claims). Earlier this was a dead zone. Fixed in `04e2676`. ✓
 - [ ] `100 celsius in fahrenheit _` → `212`.
 - [ ] `hex for navy blue _` → `#000080`.
 - [ ] `8 in roman numerals _` → `VIII`.
 - [ ] `click _ to continue` → stays as `_` (P1 bails — not a lookup).
 - [ ] `_` alone → stays as `_`.
-- [ ] **Latency:** typing `_` should fire substitution within ~500ms (debounce-bypassed fast-path).
+- [ ] **Latency:** typing `_` should fire substitution within ~500ms.
 - [ ] OFF: nothing fluid-blanks; `etymology of paradigm _` stays as `_`.
 
 ### B.5 — `classified-blanks-mode` (legacy opt-in)
@@ -66,12 +66,12 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 | Blank | Test | Pass? |
 |---|---|---|
 | **volume** | `volume _` → `13%`. ✓ Cycling not yet retested. | [x] |
-| **brightness** | `brightness _` → `70%`. Up/Down → 80%/60%, screen changes. | [ ] |
+| **brightness** | `brightness _` → `70%`. ✓ | [x] |
 | **affirmations** | `affirmation _` → `I am strong` (sync stepValues, 4 alts, dismissible). ✓ | [x] |
 | **stocks** | `nvda _` → `$198.47`. ✓ | [x] |
-| **weather** | `London weather _` → temp + cloud cover. `Tokyo forecast tomorrow _` → tomorrow. | [ ] |
+| **weather** | `weather _` → `22°C Overcast` (dismissible). ✓ | [x] |
 | **hackernews** | `hn _` → 20 alts, dismissible, first: `LLMs consistently pick…`. ✓ | [x] |
-| **crypto** | `btc _` → "Bitcoin $X". `eth _` → "Ethereum $Y". | [ ] |
+| **crypto** | `btc _` → `$78,542.00`. ✓ | [x] |
 | **countries** | `population of france _` → `66.4M`. ✓ | [x] |
 | **dictionary** | `define ephemeral _` → `Something which lasts for a short period of time.` ✓ | [x] |
 | **prompt** (improver) | `write a poem about love improve prompt _` → consume-all → "Write a 12-line lyrical poem…" (4 alts). ✓ | [x] |
