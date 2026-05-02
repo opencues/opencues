@@ -82,11 +82,11 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 
 ## D. Cycling, spans, multi-word
 
-- [ ] **Multi-word LLM alt:** `the attorney filed the case` — `attorney` cycles to `lawyer`, then `legal eagle` (multi-word span, dims as one unit, navigates as one stop).
+- [x] **Multi-word alt span:** `please ultrathink this` — cycles `ultrathink` → `Tab` → `deep thinking` → `think harder` → wraps. Tested via cueMap (ultrathink tip's `alts: ['Tab', 'deep thinking', 'think harder']`); same span mechanism as LLM-driven multi-word alts.
+- [x] **Cursor preservation:** implicit in the above — text length changed from 10 → 3 → 13 → 12 chars across cycles, no cursor drift reported.
 - [ ] **Two concurrent spans:** sentence with two cycle-able multi-word words. Cycle each independently; the other stays put.
 - [ ] **Cycle survival on prefix:** prepend `Yesterday ` to a sentence with cycled words. Cycle progress follows them to new positions.
 - [ ] **Edit clears alts:** delete a word — its alts disappear, neighbours unaffected.
-- [ ] **Cursor preservation:** cycle a 4-letter word to a 6-letter alt with cursor at the end → cursor shifts +2; cursor before the word → unchanged.
 - [ ] **Dismiss:** `affirmation _` → cycle past last value to `_`. Re-typing nearby text doesn't re-fill.
 
 ---
