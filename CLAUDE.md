@@ -100,7 +100,7 @@ opencues/
 │   │   │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
 │   │   │   ├── discover.ts        # Folder-based config discovery
 │   │   │   ├── node-http-adapter.ts  # HTTPS with keep-alive
-│   │   │   └── sources/           # ConfigSource, ClassifiedSourceGroup, BlankSource, parsers
+│   │   │   └── sources/           # ConfigSource, RoutedWordSourceGroup, BlankSource, FluidBlankSource, SpellingSource, parsers
 │   │   ├── prompts/               # Prompt references + documentation
 │   │   │   ├── linked.txt         # Linked words prompt
 │   │   │   └── references/        # Prompt documentation
@@ -479,7 +479,7 @@ Surfaces that enforce + surface this:
 - `opencues list` — marks each source `domain` / `default`
 - `opencues validate` — warns on zero defaults + multi-default priority ties
 
-Full spec: `docs/features/word-alt-routing.md`. Glossary entries:
+Full spec: `docs/features/word-cue-routing.md`. Glossary entries:
 `docs/glossary.md § RoutedWordSourceGroup, Default Cue Source, Domain Cue Source`.
 
 > **Don't** introduce code paths that rebuild the merged-prompt model

@@ -1,11 +1,10 @@
 /**
  * opencues-core/sources/routed-word-source-group.ts
  *
- * Wraps multiple word-alts ConfigSource children and dispatches each
+ * Wraps multiple word-cue ConfigSource children and dispatches each
  * highlighted word to ONE of them based on per-source `match:` /
- * `keywords:` rules + priority. Mirrors `ClassifiedSourceGroup` (used
- * for blanks) but the routing is purely fast-path — no LLM classifier
- * is consulted.
+ * `keywords:` rules + priority. Routing is purely fast-path — no LLM
+ * classifier is consulted.
  *
  * Why not "combine all sources into one giant prompt" (the previous
  * approach in build-sources.ts):
@@ -14,29 +13,15 @@
  *   could affect ALL words. (See sync-demo class of bug.)
  * - Scaling: combined prompts grow linearly with source count and
  *   start confusing the LLM at ~5+ domains.
- * - Symmetry: blanks already use a classified-source-group; word-alts
- *   should follow the same model.
  *
  * Routing rules (per word):
  *
- * 1. Domain sources (have `match:` OR `keywords:`):
- *      - Try each entry in priority-descending order
- *      - First entry whose match-regex hits the word OR whose keyword
- *        list contains the word wins
- *
- * 2. Default sources (have NEITHER `match:` NOR `keywords:`):
- *      - Highest priority default catches everything else
- *
- * 3. No source matched + no default exists:
- *      - Word produces no cue (not navigable; correct for opt-in projects)
- *
- * Multi-word dispatch:
- *
- *   For a text with N highlighted words, route each one, GROUP by
- *   destination source, and dispatch ONE LLM call per group with a
- *   sub-context containing only that group's words (renumbered 0..k).
- *   Results are mapped back to the original word indices before
- *   returning. Calls run in parallel (Promise.all).
+ *   - Try each source in priority-descending order.
+ *   - First source whose `match:` regex hits the word OR whose
+ *     `keywords:` list contains it wins.
+ *   - No match → no cue. The word is not navigable. Sources without
+ *     `match:`/`keywords:` are rejected by the constructor; every
+ *     cue source must declare its scope.
  */
 
 import {
@@ -48,7 +33,7 @@ import {
 import { ConfigSource } from './config-source';
 
 export interface RoutedWordSourceGroupConfig {
-  /** Group identifier (default: 'word-alts'). */
+  /** Group identifier (default: 'word-cues'). */
   id?: string;
   /** Child sources — one per ### alternatives section, scope: words. */
   sources: ConfigSource[];
@@ -65,17 +50,14 @@ export class RoutedWordSourceGroup implements CueSource {
   readonly id: string;
   readonly priority: number;
 
-  /** Sources with `match:` or `keywords:` — checked first, priority desc. */
-  private readonly domainEntries: readonly RouteEntry[];
-  /** Sources with NEITHER `match:` nor `keywords:` — fallback, priority desc. */
-  private readonly defaultEntries: readonly RouteEntry[];
+  /** Sources with `match:` or `keywords:` — checked priority desc. */
+  private readonly entries: readonly RouteEntry[];
 
   constructor(config: RoutedWordSourceGroupConfig) {
-    this.id = config.id ?? 'word-alts';
+    this.id = config.id ?? 'word-cues';
     this.priority = config.sources.reduce((m, s) => Math.max(m, s.priority), 0);
 
-    const domain: RouteEntry[] = [];
-    const defaults: RouteEntry[] = [];
+    const entries: RouteEntry[] = [];
     for (const source of config.sources) {
       const cfg = source.sourceConfig;
       const entry: RouteEntry = { source, priority: source.priority };
@@ -85,23 +67,21 @@ export class RoutedWordSourceGroup implements CueSource {
       if (cfg.keywords) {
         entry.keywords = cfg.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
       }
-      if (entry.matchRe || (entry.keywords && entry.keywords.length > 0)) {
-        domain.push(entry);
-      } else {
-        defaults.push(entry);
-      }
+      // Reject sources with neither match nor keywords — every cue source
+      // must declare what it cares about. Catch-all "default" sources
+      // were removed; use an explicit `match: .*` or a keyword list.
+      if (!entry.matchRe && (!entry.keywords || entry.keywords.length === 0)) continue;
+      entries.push(entry);
     }
-    // Highest priority first — first match wins.
-    this.domainEntries = [...domain].sort((a, b) => b.priority - a.priority);
-    this.defaultEntries = [...defaults].sort((a, b) => b.priority - a.priority);
+    this.entries = [...entries].sort((a, b) => b.priority - a.priority);
   }
 
-  /** Word-alts apply when there's plain text to alt. Skip:
+  /** Word-cues apply when there's plain text to alt. Skip:
    *   - empty inputs
    *   - inputs containing a `_` blank — the user is invoking a lookup,
-   *     not asking for synonyms on surrounding words. Fluid-blank /
-   *     classified blank handlers own that resolve; word-alt LLM calls
-   *     just add latency without contributing to the lookup answer. */
+   *     not asking for synonyms on surrounding words. Fluid-blank or
+   *     keyword-bound blank handlers own that resolve; word-cue LLM
+   *     calls just add latency without contributing to the answer. */
   supports(context: CueContext): boolean {
     if (!context.words || context.words.length === 0) return false;
     if (context.words.some(w => w === '_')) return false;
@@ -121,8 +101,8 @@ export class RoutedWordSourceGroup implements CueSource {
       .filter(({ word }) => word !== '_' && word.length > 0);
 
     // Route each word. Words with no matching source are silently dropped
-    // (= no cue / not navigable). That's the user's choice when they opt
-    // out of having a default source.
+    // (= no cue / not navigable). That's the user's choice when they don't
+    // configure a source that covers the word.
     const groups = new Map<ConfigSource, { word: string; idx: number }[]>();
     for (const item of items) {
       const dest = this.classify(item.word);
@@ -160,20 +140,20 @@ export class RoutedWordSourceGroup implements CueSource {
 
   /**
    * Pick the destination source for one word. Public for testability.
-   * Order: highest-priority domain match > highest-priority default >
-   * null (no source).
+   * Highest-priority source whose match/keywords cover the word wins;
+   * null if no source claims it.
    */
   classify(word: string): ConfigSource | null {
     const lower = word.toLowerCase();
-    for (const entry of this.domainEntries) {
+    for (const entry of this.entries) {
       if (entry.matchRe && entry.matchRe.test(word)) return entry.source;
       if (entry.keywords && entry.keywords.includes(lower)) return entry.source;
     }
-    return this.defaultEntries[0]?.source ?? null;
+    return null;
   }
 
-  /** Public for tests / debug — counts of domain vs default sources. */
-  get routingStats(): { domains: number; defaults: number } {
-    return { domains: this.domainEntries.length, defaults: this.defaultEntries.length };
+  /** Public for tests / debug — count of routed sources. */
+  get routingStats(): { sources: number } {
+    return { sources: this.entries.length };
   }
 }

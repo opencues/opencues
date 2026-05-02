@@ -4,24 +4,23 @@
  * Factory that creates CueSource[] from parsed .md configs.
  * Single entry point — replaces manual source construction in integrations.
  *
- * ## Two strategies for multi-source inputs
+ * ## How sources are assembled
  *
- * **Words (combining)**: Domain prompts (grammar, legal, medical) are combined
- * into a single LLM call. Domains can overlap in the same input — "the contract
- * shall indemnify the diagnosis" needs grammar, legal, AND medical alternatives
- * for different words simultaneously. Combining produces one response covering
- * all words/domains in a single pass.
+ * **Word cues (per-word routing)**: Domain prompts (legal, medical, …) live
+ * as `### alternatives` sections in `cues.md` (or folder-based
+ * `cues/<name>/cue.md`). They get wrapped in ONE RoutedWordSourceGroup that
+ * dispatches each highlighted word to one source via match/keywords.
  *
- * **Blanks (classifying)**: Blank-fill modes (math, factual, grammar) are
- * mutually exclusive — an input is math OR factual OR grammar, never both.
- * ClassifiedSourceGroup picks one mode via fast heuristics or LLM classifier,
- * then routes to that single source.
+ * **Blanks (`_`-gated)**: Two paths:
+ *   - Keyword-bound blanks (`blankKeywords:` in a folder cue.md) flow through
+ *     BlankSource — fast, deterministic, no LLM needed.
+ *   - Free-form lookups go through FluidBlankSource (P1 SEGMENT + P3 ANSWER
+ *     LLM pipeline). It cedes when a keyword-bound blank would claim the slot.
  */
 
 import { CueSource, HttpAdapter } from '../types';
 import { CuesMdConfig, SourceConfig, BlankConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
-import { ClassifiedSourceGroup } from './classified-source-group';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource } from './blank-source';
 import { FluidBlankSource } from './fluid-blank-source';
@@ -44,28 +43,16 @@ export interface BuildSourcesOptions {
    * Defaults to false; flip on per-integration.
    */
   enableFluidBlank?: boolean;
-  /** Enable ClassifiedSourceGroup (the classifier-routed blank modes from
-   * blanks.md: math/factual/translation/unit/color/http/timezone/roman/
-   * grammar). Defaults to false — fluid-blank + spelling + blank
-   * blanks cover most ground without the extra classifier LLM call.
-   * Flip on via opencues.md `classified-blanks-mode: on`. */
-  enableClassifiedBlanks?: boolean;
   /** Enable SpellingSource — word-scope spell-checker. Flags misspelled
    * words in plain text and offers corrections as cycling alternatives.
    * Priority 80 (above typical domain max ~75). Defaults to false; flip
    * on via opencues.md `spelling-mode: on`. */
   enableSpelling?: boolean;
-  /** Enable RoutedWordSourceGroup (word-alts on plain text). When false,
-   * NO word-alt LLM calls fire — words are not navigable as alternatives.
+  /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
+   * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
-   * flip on via opencues.md `word-alts-mode: on`. */
-  enableWordAlts?: boolean;
-  /** Within RoutedWordSourceGroup, include sources with NO `match:`/
-   * `keywords:` (the catch-everything default like grammar). When false,
-   * only domain sources fire — words not matching any domain stay
-   * uncoloured. Defaults to false; flip on via opencues.md
-   * `default-word-alts: on`. */
-  enableDefaultWordAlts?: boolean;
+   * flip on via opencues.md `word-cues-mode: on`. */
+  enableWordCues?: boolean;
 }
 
 /**
@@ -99,17 +86,16 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
  * - cues.md word-scoped alternatives ### sections → one ConfigSource
  *   each, all wrapped in ONE RoutedWordSourceGroup. The group routes
  *   each highlighted word to one child source via match/keywords/
- *   priority/default and dispatches one LLM call per source group
- *   (parallel). See routed-word-source-group.ts for the full rules.
+ *   priority and dispatches one LLM call per source group (parallel).
+ *   See routed-word-source-group.ts for the full rules.
  * - cues.md other ### sections (non-default scope/parser) → individual
  *   ConfigSource instances (not routed; called directly by the resolver).
- * - blanks.md ### sections → ClassifiedSourceGroup (scope: blanks).
- *   - ### classifier → group's classifier prompt.
- *   - other ### sections → child ConfigSource instances.
+ * - blanks: keyword-bound entries → BlankSource. Free-form `_` →
+ *   FluidBlankSource (opt-in via `fluid-blank-mode: on`).
  */
 export function buildSourcesFromConfig(
   cuesConfig: CuesMdConfig | undefined,
-  blanksConfig: CuesMdConfig | undefined,
+  _blanksConfig: CuesMdConfig | undefined,
   options: BuildSourcesOptions,
 ): CueSource[] {
   const sources: CueSource[] = [];
@@ -117,12 +103,12 @@ export function buildSourcesFromConfig(
   // From cues.md: collect all word-scope alternatives sources into one
   // RoutedWordSourceGroup. Other sources (different scope/parser) stay
   // individual ConfigSource instances.
-  // Gate the entire word-alts block on enableWordAlts. Non-word-alt
+  // Gate the entire word-cue block on enableWordCues. Non-word-cue
   // sources (different scope/parser) still pass through — they're not
-  // the "everything coloured" surface, so they obey their own enable
-  // flag in cue.md frontmatter as before.
+  // the per-word surface, so they obey their own enable flag in cue.md
+  // frontmatter as before.
   if (cuesConfig?.promptConfig?.sources) {
-    const wordAltSources: ConfigSource[] = [];
+    const wordCueSources: ConfigSource[] = [];
 
     for (const [, srcCfg] of Object.entries(cuesConfig.promptConfig.sources)) {
       if (srcCfg.enabled === false || !srcCfg.promptText) continue;
@@ -130,12 +116,13 @@ export function buildSourcesFromConfig(
       const parser = srcCfg.parser ?? 'alternatives';
 
       if (scope === 'words' && parser === 'alternatives') {
-        if (!options.enableWordAlts) continue;
-        // Default sources (NO match: AND NO keywords:) are the catch-
-        // everything surface. Skip them when enableDefaultWordAlts=false.
-        const isDefault = !srcCfg.match && !srcCfg.keywords;
-        if (isDefault && !options.enableDefaultWordAlts) continue;
-        wordAltSources.push(new ConfigSource({
+        if (!options.enableWordCues) continue;
+        // Every word-cue source must declare what it cares about via
+        // match: or keywords:. Catch-all "default" sources were removed —
+        // an explicit `match: .*` is required if the user really wants
+        // a fall-through cue.
+        if (!srcCfg.match && !srcCfg.keywords) continue;
+        wordCueSources.push(new ConfigSource({
           sourceConfig: { ...srcCfg, scope },
           ...options,
         }));
@@ -148,38 +135,8 @@ export function buildSourcesFromConfig(
       }
     }
 
-    if (wordAltSources.length > 0) {
-      sources.push(new RoutedWordSourceGroup({ sources: wordAltSources }));
-    }
-  }
-
-  // From blanks.md: build ClassifiedSourceGroup (opt-in).
-  if (options.enableClassifiedBlanks && blanksConfig?.promptConfig?.sources) {
-    const blankSources: ConfigSource[] = [];
-    let classifierPrompt: string | undefined;
-
-    for (const [name, srcCfg] of Object.entries(blanksConfig.promptConfig.sources)) {
-      if (name === 'classifier') {
-        classifierPrompt = srcCfg.promptText;
-        continue;
-      }
-      if (srcCfg.enabled === false || !srcCfg.promptText) continue;
-      blankSources.push(new ConfigSource({
-        sourceConfig: { ...srcCfg, scope: srcCfg.scope ?? 'blanks' },
-        ...options,
-      }));
-    }
-
-    if (blankSources.length > 0) {
-      sources.push(new ClassifiedSourceGroup({
-        id: 'blanks',
-        classifierPrompt,
-        sources: blankSources,
-        httpAdapter: options.httpAdapter,
-        endpoint: options.endpoint,
-        apiKey: options.apiKey,
-        model: blanksConfig.promptConfig.model ?? options.defaultModel,
-      }));
+    if (wordCueSources.length > 0) {
+      sources.push(new RoutedWordSourceGroup({ sources: wordCueSources }));
     }
   }
 
@@ -201,7 +158,7 @@ export function buildSourcesFromConfig(
 
   // Spelling: word-scope spell-checker. Flags misspelled words in plain
   // text and offers corrections as cycling alternatives. Priority 80 —
-  // above domain word-alts (~75) so corrections beat synonyms on the
+  // above domain word-cues (~75) so corrections beat synonyms on the
   // same wordIndex.
   if (options.enableSpelling) {
     sources.push(new SpellingSource({
@@ -212,16 +169,10 @@ export function buildSourcesFromConfig(
     }));
   }
 
-  // Fluid-blank: free-form lookup handler (P1 SEGMENT + P3 ANSWER).
-  // Priority 50 — sits between the classifier-based modes (whose results
-  // win on regex match) and grammar fallback. Catches inputs that don't
-  // match any structured mode AND inputs the structured modes can't fully
-  // handle (conversational shapes, ?-marker, ellipsis, etc.).
+  // Fluid-blank: free-form `_` lookup handler (P1 SEGMENT + P3 ANSWER).
+  // Cedes to keyword-bound BlankSource when a registered blank would
+  // claim the slot (keyword within blankProximity of the `_`).
   if (options.enableFluidBlank) {
-    // Pass the full blanks map so fluid can do proximity-aware ceding —
-    // only step out when a registered blank would actually claim the
-    // slot (keyword within `blankProximity` of the `_`). See
-    // FluidBlankSource.supports().
     sources.push(new FluidBlankSource({
       httpAdapter: options.httpAdapter,
       endpoint: options.endpoint,

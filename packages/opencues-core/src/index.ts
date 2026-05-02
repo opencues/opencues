@@ -18,11 +18,6 @@ export {
 } from './sources/config-source';
 
 export {
-  ClassifiedSourceGroup,
-  type ClassifiedSourceGroupConfig,
-} from './sources/classified-source-group';
-
-export {
   BlankSource,
   type BlankSourceConfig,
 } from './sources/blank-source';
@@ -45,8 +40,6 @@ export {
 
 // Response parsers
 export {
-  parseCompute,
-  parseAnswer,
   parseAlternatives,
   parseRaw,
 } from './sources/parsers';

@@ -173,9 +173,8 @@ export class Navigation {
       // Decision tree:
       //   1. Some word matched cueMap or has a DynDef → target only those.
       //   2. cueMap is loaded + non-empty but no word in this input matches
-      //      → return [] (silence). User's `default-word-alts: off` + no
-      //      domain match means no source has an opinion; navigation
-      //      should not hop between plain words.
+      //      → return [] (silence). No cue source has an opinion on the
+      //      word, so navigation should not hop between plain words.
       //   3. cueMap missing or empty (test scaffold / fresh install with
       //      no tips) → fall back to all words so the system isn't dead
       //      out of the box and unit tests without a wired ConfigLoader

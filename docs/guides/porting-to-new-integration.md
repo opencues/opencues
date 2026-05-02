@@ -16,7 +16,7 @@ opencues-core is pure TypeScript with no I/O dependencies. It provides:
 - **Source building** — `buildSourcesFromConfig()` returns `CueSource[]` from parsed configs
 - **Resolution** — `CueResolver.resolve()` queries sources and merges results
 - **Local lookup** — `lookupMultiple()`, `buildLookupMap()` for O(1) tips lookup
-- **Response parsing** — `parseAlternatives`, `parseCompute`, `parseAnswer`, `parseRaw`
+- **Response parsing** — `parseAlternatives`, `parseRaw`
 
 The integration provides I/O adapters (HTTP, filesystem) and handles all rendering, navigation, and user interaction.
 
@@ -116,7 +116,7 @@ Sources are queried in priority order (highest first). When two sources return r
 - **Higher priority wins** — lower priority result is discarded
 - **Same priority** — alternatives are deduplicated and merged (case-sensitive)
 
-Key priorities: `BlankSource` (95) > `ClassifiedSourceGroup` (90) > `ConfigSource`/grammar (50-75)
+Key priorities: `BlankSource` (95) > `FluidBlankSource` (92) > `SpellingSource` (80) > `ConfigSource`/word-cues (50-75)
 
 ### Tips protection
 
@@ -144,7 +144,6 @@ When an alternative contains spaces (e.g., "Sundar Pichai" replacing "Sundar"), 
 When a `_` is present, sources fire in priority order (highest first):
 1. **`BlankSource` (95)** — keyword-bound. If any registered blank's `blankKeywords` matches a phrase within `blankProximity` words of the `_`, that blank claims the slot. Auto-populates via the blank's script or runtime class.
 2. **`FluidBlankSource` (92)** — free-form lookup. Two-pass LLM (P1 SEGMENT + P3 ANSWER) for any `_` no keyword-bound blank claimed.
-3. **`ClassifiedSourceGroup` (90, legacy opt-in)** — pre-fluid-blank dispatcher. Off by default; opt in with `classified-blanks-mode: on` for sharper per-mode prompts.
 
 The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives. The host doesn't need to know which source fired — `CueResult.source` carries that information.
 
@@ -168,16 +167,9 @@ Each blank mode has a `parser` type. The parser expects a specific LLM response 
 | Parser | Expected format | Example |
 |--------|----------------|---------|
 | `alternatives` | `INDEX:alt1,alt2,alt3` | `0:happy,sad,excited` |
-| `compute` | `COMPUTE=expression` | `COMPUTE=4*12` |
-| `answer` | `ANSWER=value` | `ANSWER=Paris` |
-| `math` | `COMPUTE=expression` (safe eval) | `COMPUTE=2+2` |
 | `raw` | Full response verbatim | `The answer is 42.` |
 
 If the parser doesn't match the response format, it silently returns empty results. No error is raised. The prompt and parser type MUST agree.
-
-### `parseCompute` uses `Function()` eval
-
-The `compute` parser evaluates arbitrary JavaScript via `new Function()`. This is a **security risk** in browser contexts. For Chrome extensions, prefer the `math` parser (which strips non-arithmetic characters before eval) or implement a sandboxed evaluator.
 
 ### `parseAlternatives` skips cue-blank keyword positions
 

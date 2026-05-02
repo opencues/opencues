@@ -244,9 +244,9 @@ export interface FluidBlankSourceConfig {
   endpoint: string;
   apiKey: string;
   model: string;
-  /** Source priority. Default 92 — above ClassifiedSourceGroup (max 90 from
-   * factual/math) so fluid-blank wins when it produces a result, but falls
-   * back to classifier-routed modes when P1 bails (SPAN: NONE → no result). */
+  /** Source priority. Default 92 — sits below keyword-bound BlankSource
+   * (95) so a blank claims a slot whose keyword is in proximity, fluid
+   * handles everything else. */
   priority?: number;
   /** All registered keyword-bound blanks. fluid-blank cedes the slot when a
    * blank would actually claim the `_` (its keyword matches AND fits within

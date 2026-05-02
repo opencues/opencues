@@ -21,8 +21,8 @@ export interface CuesMdFrontmatter {
  * A prompt source defined as a ### subsection under ## Prompt.
  * Each source has optional classification rules and a prompt.
  */
-/** How to parse the LLM response for a blank mode */
-export type BlankParser = 'math' | 'compute' | 'answer' | 'alternatives' | 'raw';
+/** How to parse the LLM response for a cue source */
+export type BlankParser = 'alternatives' | 'raw';
 
 export interface SourceConfig {
   /** Source name (from ### heading, e.g. "grammar", "legal", "medical") */
@@ -814,19 +814,6 @@ export function validateCuesMd(config: CuesMdConfig): string[] {
       }
     }
 
-    // Warn if multiple blank modes exist but no classifier prompt
-    const blankModes = sourceNames.filter(n => n !== 'classifier' && config.promptConfig!.sources[n].scope === 'blanks');
-    const hasBlankParsers = sourceNames.some(n =>
-      n !== 'classifier' && ['math', 'compute', 'answer'].includes(config.promptConfig!.sources[n].parser ?? '')
-    );
-    if ((blankModes.length > 1 || hasBlankParsers) && !sourceNames.includes('classifier')) {
-      errors.push('Multiple blank modes found but no ### classifier section. Ambiguous inputs will fall to grammar instead of being routed to the correct mode. Add a ### classifier with mode examples.');
-    }
-
-    // Warn if classifier exists but has no promptText
-    if (sourceNames.includes('classifier') && !config.promptConfig.sources.classifier.promptText) {
-      errors.push('### classifier section exists but has no prompt text. The LLM classifier needs instructions to route ambiguous inputs.');
-    }
   }
 
   return errors;

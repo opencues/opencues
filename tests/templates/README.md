@@ -76,4 +76,4 @@ the cue's prompt is the problem. Follow grammar's structure:
 - No "Distinguish between: A vs B, C vs D" lists — those look like
   input to the LLM. Put domain nuance in a shell of examples instead.
 
-Full authoring guide: `docs/features/word-alt-routing.md`.
+Full authoring guide: `docs/features/word-cue-routing.md`.

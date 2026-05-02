@@ -19,8 +19,6 @@ Every `_` slot routes through the same priority chain:
    - **P3 ANSWER** produces the canonical short answer.
    The whole span is replaced with the answer (WIPE mode) or just the `_` is filled (FILL mode), determined heuristically by the input shape (`is _` / `= _` / `? _` → FILL; `<phrase> _` → WIPE). Opt-in via `fluid-blank-mode: on`.
 
-3. **`ClassifiedSourceGroup` (priority 90, legacy opt-in)** — pre-fluid-blank dispatcher that picked one of N specialised modes (math / factual / translation / spelling / color / http / timezone / roman / grammar) per input via fast heuristics + LLM classifier fallback. Off by default. Flip on via `classified-blanks-mode: on` for the sharper per-mode prompts when fluid-blank's general prompts aren't tight enough.
-
 ---
 
 ## Scope filtering
@@ -29,7 +27,7 @@ Every `ConfigSource` has a `scope` field (`'words'`, `'blanks'`, `'all'`) that g
 
 | Scope | Activates when… | Purpose |
 |-------|-----------------|---------|
-| `words` | No word equals `_` | Word alternatives. Skipped on `_` so word-alts don't compete with blank-fill. |
+| `words` | No word equals `_` | Word alternatives. Skipped on `_` so word-cues don't compete with blank-fill. |
 | `blanks` | At least one word equals `_` | Blank-fill modes. |
 | `all` | Always | Sources that apply regardless. |
 
@@ -37,17 +35,12 @@ The check is literal string equality (`w === '_'`), not a regex. A word must be 
 
 ---
 
-## Parser types (used by `ConfigSource` blank modes)
+## Parser types (used by `ConfigSource`)
 
 | Parser | Input format | Response format | Evaluator | Use case |
 |--------|-------------|-----------------|-----------|----------|
-| `math` | Text with `_` replaced by `BLANK` | `COMPUTE=<expression>` | Safe recursive-descent (`+ - * / % ()`) | Arithmetic: `4 * 12 = _` |
-| `compute` | Text with `_` replaced by `BLANK` | `COMPUTE=<expression>` | `Function()` (unsafe; supports `Math.pow`) | Advanced math only in trusted environments |
-| `answer` | Text with `_` replaced by `BLANK` | `ANSWER=<value>` | Literal string, capped at 100 chars | Factual: `Capital of France is _` |
-| `alternatives` | Indexed format `0=word1 1=word2` | `INDEX:alt1,alt2,alt3` per line | Regex extraction; original prepended for non-blank positions | Word alternatives + grammar fill |
-| `raw` | Text with `_` replaced by `BLANK` | Full response | Trimmed string | Free-form single-answer blanks |
-
-For `math`, `compute`, and `answer` parsers, the result is a single alternative attached to the first `_` position. `alternatives` can return results for multiple positions.
+| `alternatives` | Indexed format `0=word1 1=word2` | `INDEX:alt1,alt2,alt3` per line | Regex extraction; original prepended for non-blank positions | Word alternatives (default for word-cue sources) |
+| `raw` | Text with `_` replaced by `BLANK` | Full response | Trimmed string | Free-form single-answer cases |
 
 ---
 

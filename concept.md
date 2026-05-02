@@ -18,7 +18,7 @@ That's it. Every feature in OpenCues is one of these two things, dressed up.
                          │
         LLM → you        ▼
         "here are        Cues  (highlights)
-         suggestions"    ├── word-alts (domain synonyms via cues/<name>/cue.md)
+         suggestions"    ├── word-cues (domain synonyms via cues/<name>/cue.md)
                          └── spelling (typo corrections via SpellingSource)
 
 
@@ -60,8 +60,8 @@ The two surfaces have **fundamentally different contracts**:
 
 - ❌ Word-cycling without `_` — typing "volume" and pressing Up to call a script. **All external state is `_`-gated.**
 - ❌ Numeric stepping on plain words ("15.5f" → "16.0f")
-- ❌ Default catch-everything word-alts (off by default — opt in via `default-word-alts: on`)
-- ❌ Classifier-routed blanks — fluid-blank covers the territory (off by default)
+- ❌ Catch-everything default word-cues (every cue source must declare `match:` or `keywords:` — no implicit catch-all)
+- ❌ Classifier-routed blanks — fluid-blank covers the territory (the legacy `ClassifiedSourceGroup` was removed entirely)
 
 The shape: **`_` for anything that touches the world. Plain text is LLM-only. Nothing else.**
 
@@ -70,10 +70,8 @@ The shape: **`_` for anything that touches the world. Plain text is LLM-only. No
 ```yaml
 fluid-blank-mode: on          # free-form `_` lookups
 spelling-mode: on             # spell-check on plain text
-word-alts-mode: on            # domain synonym cycling on plain text
-default-word-alts: off        # don't colour every word
-classified-blanks-mode: off   # legacy classifier — fluid covers it
+word-cues-mode: on            # domain synonym cycling on plain text (per-source match/keywords)
 ```
 
-Missing setting → off. Every surface defaults off. The user opts in to what they want.
+Missing setting → off. Shipped defaults turn all three on; flip to `off` to disable a surface.
 

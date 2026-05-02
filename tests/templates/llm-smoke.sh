@@ -33,7 +33,7 @@
 #     lists in the prompt body (fixed in Apr 2026 domain-cue rewrite).
 #   - Indexing drift (prompt examples use 1-based, runtime sends
 #     0-based, parser rejects out-of-range indices).
-# See docs/features/word-alt-routing.md for the routing model, and
+# See docs/features/word-cue-routing.md for the routing model, and
 # defaults/cues/grammar/cue.md for the canonical example-heavy prompt
 # style.
 #

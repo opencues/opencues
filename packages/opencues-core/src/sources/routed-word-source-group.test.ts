@@ -1,6 +1,7 @@
 /**
- * Tests for RoutedWordSourceGroup — per-word routing of word-alts to one
- * of N child ConfigSources via match/keywords/priority/default.
+ * Tests for RoutedWordSourceGroup — per-word routing of word-cues to one
+ * of N child ConfigSources via match/keywords/priority. Catch-all
+ * defaults are not supported; every source must declare its scope.
  *
  * Run with: node --test dist/sources/routed-word-source-group.test.js
  */
@@ -11,10 +12,6 @@ import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { ConfigSource } from './config-source';
 import { CueContext, CueSourceResult, HttpAdapter } from '../types';
 import { SourceConfig } from '../cues-md';
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
 
 const stubAdapter: HttpAdapter = { post: async () => '{"choices":[{"message":{"content":""}}]}' };
 
@@ -41,87 +38,65 @@ function mkContext(words: string[]): CueContext {
 }
 
 // ---------------------------------------------------------------------------
-// Routing — domain vs default precedence
+// classify
 // ---------------------------------------------------------------------------
 
 describe('RoutedWordSourceGroup: classification', () => {
-  it('routes domain match (regex) over default', () => {
-    const grammar = mkSource('grammar', { priority: 50 });                          // default
-    const sync = mkSource('sync', { match: '\\b(synced|bundled)\\b', priority: 80 }); // domain
-    const group = new RoutedWordSourceGroup({ sources: [grammar, sync] });
+  it('routes by regex match', () => {
+    const sync = mkSource('sync', { match: '\\b(synced|bundled)\\b', priority: 80 });
+    const legal = mkSource('legal', { keywords: 'contract', priority: 70 });
+    const group = new RoutedWordSourceGroup({ sources: [sync, legal] });
     assert.strictEqual(group.classify('synced')?.id, 'sync');
-    assert.strictEqual(group.classify('happy')?.id, 'grammar'); // falls through to default
-  });
-
-  it('routes domain match (keywords) over default', () => {
-    const grammar = mkSource('grammar', { priority: 50 });
-    const legal = mkSource('legal', { keywords: 'contract, plaintiff, tort', priority: 70 });
-    const group = new RoutedWordSourceGroup({ sources: [grammar, legal] });
     assert.strictEqual(group.classify('contract')?.id, 'legal');
-    assert.strictEqual(group.classify('plaintiff')?.id, 'legal');
-    assert.strictEqual(group.classify('happy')?.id, 'grammar');
   });
 
-  it('keyword matching is case-insensitive', () => {
+  it('routes by keywords (case-insensitive)', () => {
     const legal = mkSource('legal', { keywords: 'Contract, Plaintiff' });
-    const grammar = mkSource('grammar');
-    const group = new RoutedWordSourceGroup({ sources: [grammar, legal] });
+    const group = new RoutedWordSourceGroup({ sources: [legal] });
     assert.strictEqual(group.classify('contract')?.id, 'legal');
     assert.strictEqual(group.classify('CONTRACT')?.id, 'legal');
   });
 
-  it('priority breaks ties between two matching domains', () => {
+  it('priority breaks ties between two matching sources', () => {
     const a = mkSource('a', { keywords: 'word', priority: 60 });
-    const b = mkSource('b', { keywords: 'word', priority: 90 });   // wins
+    const b = mkSource('b', { keywords: 'word', priority: 90 });
     const c = mkSource('c', { keywords: 'word', priority: 50 });
     const group = new RoutedWordSourceGroup({ sources: [a, b, c] });
     assert.strictEqual(group.classify('word')?.id, 'b');
   });
 
-  it('falls through to default when no domain matches', () => {
-    const grammar = mkSource('grammar', { priority: 50 });
-    const legal = mkSource('legal', { keywords: 'contract', priority: 70 });
-    const group = new RoutedWordSourceGroup({ sources: [grammar, legal] });
-    assert.strictEqual(group.classify('happy')?.id, 'grammar');
-  });
-
-  it('returns null when no domain matches AND no default exists', () => {
-    // No catch-all — opt-in projects (e.g. only legal terms get cues).
+  it('returns null when no source matches', () => {
     const legal = mkSource('legal', { keywords: 'contract' });
     const group = new RoutedWordSourceGroup({ sources: [legal] });
     assert.strictEqual(group.classify('contract')?.id, 'legal');
     assert.strictEqual(group.classify('happy'), null);
   });
 
-  it('picks highest-priority default when multiple defaults exist', () => {
-    const grammar = mkSource('grammar', { priority: 50 });
-    const myStyle = mkSource('my-style', { priority: 60 });    // wins
-    const group = new RoutedWordSourceGroup({ sources: [grammar, myStyle] });
-    assert.strictEqual(group.classify('happy')?.id, 'my-style');
+  it('a source with both match AND keywords is routable by either', () => {
+    const both = mkSource('both', { match: '\\bfoo\\b', keywords: 'bar, baz' });
+    const group = new RoutedWordSourceGroup({ sources: [both] });
+    assert.strictEqual(group.classify('foo')?.id, 'both');
+    assert.strictEqual(group.classify('bar')?.id, 'both');
+    assert.strictEqual(group.classify('happy'), null);
   });
 
-  it('classifies a source with both match AND keywords as a domain', () => {
-    // Either rule can fire it.
-    const both = mkSource('both', {
-      match: '\\bfoo\\b',
-      keywords: 'bar, baz',
-    });
-    const grammar = mkSource('grammar');
-    const group = new RoutedWordSourceGroup({ sources: [grammar, both] });
-    assert.strictEqual(group.classify('foo')?.id, 'both');     // regex hit
-    assert.strictEqual(group.classify('bar')?.id, 'both');     // keyword hit
-    assert.strictEqual(group.classify('happy')?.id, 'grammar'); // neither → default
+  it('drops sources with neither match: nor keywords:', () => {
+    // Catch-all sources are no longer permitted — group rejects on construct.
+    const catchAll = mkSource('catchAll', { priority: 50 });
+    const legal = mkSource('legal', { keywords: 'contract', priority: 70 });
+    const group = new RoutedWordSourceGroup({ sources: [catchAll, legal] });
+    assert.strictEqual(group.routingStats.sources, 1);
+    assert.strictEqual(group.classify('contract')?.id, 'legal');
+    assert.strictEqual(group.classify('happy'), null);
   });
 
   it('handles malformed match regex gracefully (skips that entry)', () => {
-    const bad = mkSource('bad', { match: '[invalid' });        // unbalanced bracket
-    const grammar = mkSource('grammar');
-    const group = new RoutedWordSourceGroup({ sources: [grammar, bad] });
-    // 'bad' has no usable matchRe and no keywords → treated as a SECOND default,
-    // grammar (priority tie) — first registered wins by sort stability when equal.
-    // Either default returning is acceptable; what matters is no throw.
-    const r = group.classify('anything');
-    assert.ok(r !== null);
+    // Bad regex AND no keywords → entry has no usable rule, gets rejected.
+    const bad = mkSource('bad', { match: '[invalid' });
+    const legal = mkSource('legal', { keywords: 'contract' });
+    const group = new RoutedWordSourceGroup({ sources: [bad, legal] });
+    assert.strictEqual(group.routingStats.sources, 1);
+    assert.strictEqual(group.classify('contract')?.id, 'legal');
   });
 });
 
@@ -130,7 +105,7 @@ describe('RoutedWordSourceGroup: classification', () => {
 // ---------------------------------------------------------------------------
 
 describe('RoutedWordSourceGroup: supports()', () => {
-  const group = new RoutedWordSourceGroup({ sources: [mkSource('grammar')] });
+  const group = new RoutedWordSourceGroup({ sources: [mkSource('legal', { keywords: 'contract' })] });
 
   it('supports a context with at least one cycleable word', () => {
     assert.strictEqual(group.supports(mkContext(['happy'])), true);
@@ -141,14 +116,11 @@ describe('RoutedWordSourceGroup: supports()', () => {
     assert.strictEqual(group.supports(mkContext([])), false);
   });
 
-  it('rejects when only blanks are present (those go through ClassifiedSourceGroup)', () => {
+  it('rejects when only blanks are present', () => {
     assert.strictEqual(group.supports(mkContext(['_'])), false);
   });
 
-  it('rejects mixed text + blank — blank handlers (fluid-blank, blank-bound) own the slot', () => {
-    // Word-alts skip when `_` is present so the blank-fill handler can
-    // take over without competing word-alt LLM calls. See
-    // routed-word-source-group.ts supports() rationale.
+  it('rejects mixed text + blank — blank handlers own the slot', () => {
     assert.strictEqual(group.supports(mkContext(['happy', '_'])), false);
   });
 });
@@ -158,15 +130,14 @@ describe('RoutedWordSourceGroup: supports()', () => {
 // ---------------------------------------------------------------------------
 
 describe('RoutedWordSourceGroup: routingStats', () => {
-  it('counts domain vs default sources', () => {
+  it('counts the routed sources', () => {
     const sources = [
-      mkSource('grammar'),                                            // default
-      mkSource('legal', { keywords: 'contract' }),                    // domain
-      mkSource('medical', { match: '\\b(diagnosis|prescription)\\b' }), // domain
-      mkSource('my-style'),                                           // default
+      mkSource('legal', { keywords: 'contract' }),
+      mkSource('medical', { match: '\\b(diagnosis|prescription)\\b' }),
+      mkSource('financial', { keywords: 'stock,bond' }),
     ];
     const group = new RoutedWordSourceGroup({ sources });
-    assert.deepStrictEqual(group.routingStats, { domains: 2, defaults: 2 });
+    assert.deepStrictEqual(group.routingStats, { sources: 3 });
   });
 });
 
@@ -175,9 +146,6 @@ describe('RoutedWordSourceGroup: routingStats', () => {
 // ---------------------------------------------------------------------------
 
 describe('RoutedWordSourceGroup: getCues()', () => {
-  // A fake ConfigSource that records the sub-context it received and
-  // returns canned alts. Lets us verify grouping + index-remapping
-  // without standing up an LLM.
   class RecordingSource {
     readonly id: string;
     readonly priority: number;
@@ -191,8 +159,6 @@ describe('RoutedWordSourceGroup: getCues()', () => {
     supports() { return true; }
     async getCues(context: CueContext): Promise<CueSourceResult> {
       this.received.push(context);
-      // Return one alt per word, indexed by the SUB-context's positions.
-      // RoutedWordSourceGroup must remap these to original indices.
       return {
         results: context.words.map((w, i) => ({
           wordIndex: i,
@@ -207,49 +173,42 @@ describe('RoutedWordSourceGroup: getCues()', () => {
   }
 
   it('groups words by routed source and dispatches one call per group', async () => {
-    const grammar = new RecordingSource('grammar');                                   // default
-    const legal = new RecordingSource('legal', { keywords: 'contract, plaintiff' });  // domain
-    const group = new RoutedWordSourceGroup({ sources: [grammar as any, legal as any] });
+    const legal = new RecordingSource('legal', { keywords: 'contract, plaintiff' });
+    const medical = new RecordingSource('medical', { keywords: 'diagnosis' });
+    const group = new RoutedWordSourceGroup({ sources: [legal as any, medical as any] });
 
-    // 4 words: 2 default → grammar, 2 domain → legal.
-    const ctx = mkContext(['happy', 'contract', 'sad', 'plaintiff']);
+    const ctx = mkContext(['happy', 'contract', 'diagnosis', 'plaintiff']);
     const out = await group.getCues(ctx);
 
-    assert.strictEqual(grammar.received.length, 1, 'grammar called once');
     assert.strictEqual(legal.received.length, 1, 'legal called once');
-    assert.deepStrictEqual(grammar.received[0].words, ['happy', 'sad']);
+    assert.strictEqual(medical.received.length, 1, 'medical called once');
     assert.deepStrictEqual(legal.received[0].words, ['contract', 'plaintiff']);
+    assert.deepStrictEqual(medical.received[0].words, ['diagnosis']);
 
-    // Verify index remap: each result's wordIndex is the position in the
-    // ORIGINAL context, not the sub-context.
     const byOriginal = new Map(out.results.map(r => [r.wordIndex, r.source]));
-    assert.strictEqual(byOriginal.get(0), 'grammar');  // happy
-    assert.strictEqual(byOriginal.get(1), 'legal');    // contract
-    assert.strictEqual(byOriginal.get(2), 'grammar');  // sad
-    assert.strictEqual(byOriginal.get(3), 'legal');    // plaintiff
+    assert.strictEqual(byOriginal.get(1), 'legal');
+    assert.strictEqual(byOriginal.get(2), 'medical');
+    assert.strictEqual(byOriginal.get(3), 'legal');
+    assert.strictEqual(byOriginal.has(0), false); // happy → no source → dropped
   });
 
   it('skips blank ("_") words and zero-length entries', async () => {
-    const grammar = new RecordingSource('grammar');
-    const group = new RoutedWordSourceGroup({ sources: [grammar as any] });
-    const out = await group.getCues(mkContext(['happy', '_', 'sad', '']));
+    const legal = new RecordingSource('legal', { keywords: 'contract,plaintiff,happy' });
+    const group = new RoutedWordSourceGroup({ sources: [legal as any] });
+    const out = await group.getCues(mkContext(['happy', '_', 'plaintiff', '']));
 
-    assert.strictEqual(grammar.received.length, 1);
-    assert.deepStrictEqual(grammar.received[0].words, ['happy', 'sad']);
+    assert.strictEqual(legal.received.length, 1);
+    assert.deepStrictEqual(legal.received[0].words, ['happy', 'plaintiff']);
     assert.strictEqual(out.results.length, 2);
-    assert.deepStrictEqual(
-      out.results.map(r => r.wordIndex).sort(),
-      [0, 2],
-    );
+    assert.deepStrictEqual(out.results.map(r => r.wordIndex).sort(), [0, 2]);
   });
 
   it('returns no results when no source can handle any word', async () => {
-    // Domain-only config (no default). Words that don't match are silently dropped.
     const legal = new RecordingSource('legal', { keywords: 'contract' });
     const group = new RoutedWordSourceGroup({ sources: [legal as any] });
     const out = await group.getCues(mkContext(['happy', 'sad', 'angry']));
     assert.strictEqual(out.results.length, 0);
-    assert.strictEqual(legal.received.length, 0, 'no dispatch when nothing routed');
+    assert.strictEqual(legal.received.length, 0);
   });
 
   it('partial routing: some words route, others drop', async () => {
@@ -259,13 +218,13 @@ describe('RoutedWordSourceGroup: getCues()', () => {
     assert.strictEqual(legal.received.length, 1);
     assert.deepStrictEqual(legal.received[0].words, ['contract']);
     assert.strictEqual(out.results.length, 1);
-    assert.strictEqual(out.results[0].wordIndex, 1);  // original index of 'contract'
+    assert.strictEqual(out.results[0].wordIndex, 1);
   });
 
   it('priority is the max across child sources', () => {
-    const a = mkSource('a', { priority: 30 });
-    const b = mkSource('b', { priority: 90 });
-    const c = mkSource('c', { priority: 60 });
+    const a = mkSource('a', { keywords: 'foo', priority: 30 });
+    const b = mkSource('b', { keywords: 'bar', priority: 90 });
+    const c = mkSource('c', { keywords: 'baz', priority: 60 });
     const group = new RoutedWordSourceGroup({ sources: [a, b, c] });
     assert.strictEqual(group.priority, 90);
   });

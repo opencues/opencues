@@ -240,8 +240,7 @@ opencues list --cues          # filter by kind
 opencues list --blanks
 ```
 
-Output marks each entry as `domain` / `default` (for word-alt
-sources) and lists its `on-host:` compat (so you can see what'll
+Output lists each entry's `on-host:` compat (so you can see what'll
 work in chrome vs CC).
 
 ### `show <name>` — full config for one entry

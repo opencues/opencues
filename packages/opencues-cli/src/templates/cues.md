@@ -116,25 +116,23 @@ version: 1
 #
 # Multiple `### alternatives` cue sources can coexist. The runtime
 # routes each highlighted word to ONE source (not all of them) based
-# on whether the source is a "domain" or a "default":
+# on per-source `match:` (regex) / `keywords:` (list).
 #
-#   match:    OR keywords:  set  → DOMAIN source
-#                                  (only fires for words that match)
-#   neither match nor keywords    → DEFAULT source
-#                                  (catches words no domain claimed)
+# Every source MUST set match: or keywords:. Sources with neither are
+# dropped at runtime. If you really want a catch-all that fires on
+# every word, declare it explicitly with `match: .*`.
 #
 # Routing per word:
-#   1. Highest-priority domain whose match-regex hits OR whose
+#   1. Highest-priority source whose match-regex hits OR whose
 #      keywords list contains the word wins.
-#   2. If nothing in step 1 matched → highest-priority default wins.
-#   3. If no default exists → no cue. Word isn't navigable.
+#   2. If nothing matched → no cue. Word isn't navigable.
 #
 # Examples:
-#   "happy"    → matches no domain → grammar (the default below)
+#   "contract" → keyword in legal → legal wins
 #   "however"  → keyword in formal → formal wins
-#   "synced"   → no domain match   → grammar (the default)
+#   "happy"    → no source claims it → no cue
 #
-# See docs/features/word-alt-routing.md for the full spec.
+# See docs/features/word-cue-routing.md for the full spec.
 
 # ─────────────────────────────────────────────────────────────────────
 # OUTPUT FORMAT — IMPORTANT FOR `parser: alternatives`

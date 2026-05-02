@@ -14,7 +14,7 @@ import {
   HttpAdapter,
 } from '../types';
 import { SourceConfig, BlankParser } from '../cues-md';
-import { parseMath, parseCompute, parseAnswer, parseAlternatives, parseRaw } from './parsers';
+import { parseAlternatives, parseRaw } from './parsers';
 
 /**
  * The canonical output-format reminder for `parser: alternatives`
@@ -122,15 +122,14 @@ export class ConfigSource implements CueSource {
       // instructs the LLM on content but forgets to constrain the output
       // shape gets interpreted as "write a reference essay" — classic
       // failure mode for domain cues authored naively. See
-      // docs/features/word-alt-routing.md § OUTPUT FORMAT.
+      // docs/features/word-cue-routing.md § OUTPUT FORMAT.
       const ensuredPrompt = this.parser === 'alternatives' && !hasFormatSpec(promptText)
         ? `${promptText.trimEnd()}\n\n${ALT_FORMAT_SPEC}`
         : promptText.trimEnd();
       const fullPrompt = ensuredPrompt + separator + input;
 
-      const shortResponse = this.parser === 'math' || this.parser === 'compute' || this.parser === 'answer';
-      const maxTokens = shortResponse ? 200 : 800;
-      const temperature = shortResponse ? 0.1 : 0.3;
+      const maxTokens = 800;
+      const temperature = 0.3;
 
       const body = JSON.stringify({
         model: this.model,
@@ -172,33 +171,12 @@ export class ConfigSource implements CueSource {
       }
       return context.words.map((w, i) => `${i}=${w}`).join(' ');
     }
-    // math/compute/answer/raw: send text with _ replaced by BLANK
+    // raw parser: send text with _ replaced by BLANK
     return context.text.replace(/_/g, 'BLANK');
   }
 
   private parseResponse(response: string, words: string[]): CueResult[] {
     switch (this.parser) {
-      case 'math': {
-        const alts = parseMath(response);
-        if (!alts.length) return [];
-        const blankIdx = words.indexOf('_');
-        if (blankIdx < 0) return [];
-        return [{ wordIndex: blankIdx, word: '_', alternatives: ['_', ...alts], source: this.id, priority: this.priority }];
-      }
-      case 'compute': {
-        const alts = parseCompute(response);
-        if (!alts.length) return [];
-        const blankIdx = words.indexOf('_');
-        if (blankIdx < 0) return [];
-        return [{ wordIndex: blankIdx, word: '_', alternatives: ['_', ...alts], source: this.id, priority: this.priority }];
-      }
-      case 'answer': {
-        const alts = parseAnswer(response);
-        if (!alts.length) return [];
-        const blankIdx = words.indexOf('_');
-        if (blankIdx < 0) return [];
-        return [{ wordIndex: blankIdx, word: '_', alternatives: ['_', ...alts], source: this.id, priority: this.priority }];
-      }
       case 'alternatives': {
         const results = parseAlternatives(response, words);
         results.forEach(r => { r.source = this.id; r.priority = this.priority; });

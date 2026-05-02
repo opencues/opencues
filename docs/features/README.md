@@ -28,7 +28,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 19 | [Consume-All Blanks](consume-all-blanks.md) | Blanks that consume surrounding text and replace it with multi-word cycling alternatives |
 | 20 | [Consume-Context Blanks](consume-context-blanks.md) | Blanks that collapse keyword + context between keyword and blank, preserving surrounding text |
 | 21 | [Cursor Navigate](cursor-navigate.md) | Highlight automatically follows cursor to navigable words |
-| 22 | [Word-Alt Routing](word-alt-routing.md) | Per-word dispatch of `### alternatives` cue sources via match/keywords/priority/default |
+| 22 | [Word-Cue Routing](word-cue-routing.md) | Per-word dispatch of `### alternatives` cue sources via per-source match/keywords/priority |
 | 23 | [Chrome Sync](chrome-sync.md) | How `opencues sync chrome` picks which `.opencues/` dirs feed the browser extension (user-only by default; opt-in for projects) |
 | 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source; the repo no longer self-dogfoods via an in-tree `.opencues/` |
 | 25 | [Chrome Hot-Reload](chrome-hot-reload.md) | Content-addressable `.version` polling so chrome picks up `sync chrome --watch` edits in already-open tabs (~2.5s) |

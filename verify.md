@@ -4,7 +4,7 @@ Walk-through to confirm the system works end-to-end after the rename + simplific
 
 Setup expected:
 - `~/.opencues/` freshly seeded (no `controls.md`, no `controls/`)
-- `~/.opencues/opencues.md` has all 5 flags: `fluid-blank-mode: on`, `spelling-mode: on`, `word-alts-mode: on`, `default-word-alts: off`, `classified-blanks-mode: off`
+- `~/.opencues/opencues.md` has 3 flags: `fluid-blank-mode: on`, `spelling-mode: on`, `word-cues-mode: on`
 - OpenCode patched + launched
 
 If you don't have a working install, see the very-bottom "Reset" recipe.
@@ -25,21 +25,17 @@ If you don't have a working install, see the very-bottom "Reset" recipe.
 
 Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (triggers hot-reload), verify behaviour.
 
-### B.1 — `word-alts-mode`
-- [ ] ON: type `the boy jumped over the dog` → some content words dim with synonyms (Up cycles).
-- [ ] OFF: type the same → no words dim.
-
-### B.2 — `default-word-alts` (the "everything coloured" toggle)
-- [ ] OFF + word-alts ON: `the contract shall indemnify the diagnosis` → only `contract`, `shall`, `indemnify`, `diagnosis` colour (legal + medical match). `the` stays plain.
-- [ ] OFF + word-alts ON: `the boy jumped over the dog` → nothing colours (no domain matches, no default to catch).
-- [ ] ON: same input as above → every content word colours.
+### B.1 — `word-cues-mode`
+- [x] ON (post-refactor `word-cues-mode`): `the contract shall indemnify the diagnosis` → `contract`/`shall`/`indemnify` (legal) + `diagnosis` (medical) colour via per-source match/keywords. Plain words stay uncoloured (no catch-all default). ✓
+- [x] ON: `the boy jumped over the dog` → nothing colours (no domain matches). 0 results. ✓
+- [x] OFF: type either → no words dim, no LLM calls. ✓
 
 ### B.3 — `spelling-mode`
-- [ ] `the boy jumpved` → `jumpved` dims with `jumped`.
-- [ ] `i recieve definately accomodate` → three corrections offered.
-- [ ] `Paris is great` → proper noun NOT flagged.
-- [ ] `the API returned 200` → acronym + number NOT flagged.
-- [ ] OFF: `jumpved` stays plain.
+- [x] `the boy jumpved over the thingy` → spelling source returns 1 result (flags misspelling). ✓
+- [x] `i recieve definately accomodate` → 3 results for 4 cleanWords (three corrections offered). ✓
+- [x] `Paris is great` → 0 results (proper noun NOT flagged). ✓
+- [x] `the API returned 200` → 0 results (acronym + number NOT flagged). ✓
+- [x] OFF: `the boy jumpved over the fox` → 0 results, nothing flagged. ✓ (Build-key rebuild fires: `opencues.md flags changed — rebuilding sources`.)
 
 ### B.4 — `fluid-blank-mode`
 - [x] `4 + 4 _` → `8` (WIPE). ✓
@@ -47,17 +43,13 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 - [x] `top 10 poorest countries _` → `Burundi`. ✓
 - [x] `list 10 poorest countries _` → comma-list of 10. ✓
 - [x] **Proximity-aware cede:** `what is git as in github _` falls through to fluid (keyword `what is` present but 4 words from `_`, dictionary's proximity is 3, so dictionary correctly declines and fluid claims). Earlier this was a dead zone. Fixed in `04e2676`. ✓
-- [ ] `100 celsius in fahrenheit _` → `212`.
-- [ ] `hex for navy blue _` → `#000080`.
-- [ ] `8 in roman numerals _` → `VIII`.
-- [ ] `click _ to continue` → stays as `_` (P1 bails — not a lookup).
-- [ ] `_` alone → stays as `_`.
+- [x] `100 celsius in fahrenheit _` → `212`. ✓
+- [x] `hex for navy blue _` → `#000080`. ✓
+- [x] `8 in roman numerals _` → `VIII`. ✓
+- [x] `click _ to continue` → stays as `_` (P1 bails — not a lookup). ✓
+- [x] `_` alone → stays as `_`. ✓
 - [ ] **Latency:** typing `_` should fire substitution within ~500ms.
 - [ ] OFF: nothing fluid-blanks; `etymology of paradigm _` stays as `_`.
-
-### B.5 — `classified-blanks-mode` (legacy opt-in)
-- [ ] OFF: skip — covered by fluid-blank.
-- [ ] ON (optional): `2 + 2 = _` → `4` via classifier. Confirms the dormant path still works for users who opt in.
 
 ---
 
@@ -85,9 +77,9 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 - [x] **Multi-word alt span:** `please ultrathink this` — cycles `ultrathink` → `Tab` → `deep thinking` → `think harder` → wraps. Tested via cueMap (ultrathink tip's `alts: ['Tab', 'deep thinking', 'think harder']`); same span mechanism as LLM-driven multi-word alts.
 - [x] **Cursor preservation:** implicit in the above — text length changed from 10 → 3 → 13 → 12 chars across cycles, no cursor drift reported.
 - [ ] **Two concurrent spans:** sentence with two cycle-able multi-word words. Cycle each independently; the other stays put.
-- [ ] **Cycle survival on prefix:** prepend `Yesterday ` to a sentence with cycled words. Cycle progress follows them to new positions.
-- [ ] **Edit clears alts:** delete a word — its alts disappear, neighbours unaffected.
-- [ ] **Dismiss:** `affirmation _` → cycle past last value to `_`. Re-typing nearby text doesn't re-fill.
+- [x] **Cycle survival on prefix:** `please use ultrathink` → prepend `yesterday ` → cycle on `ultrathink` → `think harder` lands at the new position. ✓
+- [x] **Edit clears alts:** `please use ultrathink wisely` → cycle `ultrathink → deep thinking` → delete `wisely` → `please use deep thinking` survives intact. ✓
+- [x] **Dismiss:** `affirmation _` → cycle past last to `_`, text stays `affirmation _ ` with no re-fill. Wipe + re-type → fills again. ✓
 
 ---
 
@@ -103,9 +95,9 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 
 ## F. Hot-reload
 
-- [ ] Edit `~/.opencues/cues.md` (add a tip in the JSON block) — type a space in the host, tip surfaces within ~2.5s.
-- [ ] Edit `~/.opencues/blanks/volume/cue.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows.
-- [ ] Edit `~/.opencues/opencues.md` — flip `fluid-blank-mode: off`. `capital of france _` now stays as `_`. Flip back on.
+- [x] Edit `~/.opencues/cues.md` (added `foobar` tip with alts) — typed `please foobar this`, dimmed + cycleable within ~2.5s. ✓
+- [x] Edit `~/.opencues/blanks/volume/cue.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows. ✓
+- [x] Edit `~/.opencues/opencues.md` — flip `fluid-blank-mode: off`. `etymology of paradigm _` stays as `_` (countries doesn't claim it). Flip back on, fills. ✓
 
 ---
 

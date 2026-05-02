@@ -139,9 +139,7 @@ export class Resolver {
       // each flag gates.
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableSpelling: settings.get('spelling-mode') === 'on',
-      enableWordAlts: settings.get('word-alts-mode') === 'on',
-      enableDefaultWordAlts: settings.get('default-word-alts') === 'on',
-      enableClassifiedBlanks: settings.get('classified-blanks-mode') === 'on',
+      enableWordCues: settings.get('word-cues-mode') === 'on',
     };
     let sources: unknown[];
     try {
@@ -174,9 +172,7 @@ export class Resolver {
     return [
       s.get('fluid-blank-mode') ?? '',
       s.get('spelling-mode') ?? '',
-      s.get('word-alts-mode') ?? '',
-      s.get('default-word-alts') ?? '',
-      s.get('classified-blanks-mode') ?? '',
+      s.get('word-cues-mode') ?? '',
       s.get('llm-endpoint') ?? '',
       s.get('llm-model') ?? '',
     ].join('|');
@@ -191,7 +187,7 @@ export class Resolver {
     // If opencues.md flags changed since last build, rebuild before
     // dispatching. ConfigLoader hot-reloads opencuesState on text-change
     // but doesn't notify Resolver, so without this check a flag flip
-    // (`fluid-blank-mode: off → on`, `default-word-alts: off → on`, …)
+    // (`fluid-blank-mode: off → on`, `word-cues-mode: off → on`, …)
     // would only take effect on next host restart.
     const currentKey = this.computeBuildKey();
     if (currentKey !== this._lastBuildKey) {

@@ -75,7 +75,6 @@ See the top-level [README.md](../README.md) for the full quickstart.
 │   │   │   └── sources/
 │   │   │       ├── local-cue-source.ts   # LocalCueSource
 │   │   │       ├── config-source.ts     # ConfigSource (generic, config-driven)
-│   │   │       ├── classified-source-group.ts # ClassifiedSourceGroup
 │   │   │       ├── build-sources.ts     # buildSourcesFromConfig factory
 │   │   │       └── parsers.ts           # Response parsers
 │       └── dist/               # Compiled output
@@ -412,7 +411,7 @@ opencues-core is used directly from the injected cli.js code (no shell scripts).
 // 4. buildSourcesFromConfig(cuesCfg, blanksCfg, options) → sources
 //    - Word sources: each `### alternatives` becomes its own ConfigSource;
 //      all wrapped in ONE RoutedWordSourceGroup that dispatches per-word
-//    - Blank sources: ClassifiedSourceGroup (classify → route to one mode)
+//    - Blank sources: BlankSource (keyword-bound) + FluidBlankSource (free-form)
 // 5. createResolver([...sources]) → globalThis._cueResolver
 ```
 
@@ -444,4 +443,4 @@ The migration to opencues-core is complete:
 1. Existing cue source JSON format is fully supported
 2. All LLM calls go through CueResolver + NodeHttpAdapter (no more bash scripts)
 3. Output format matches existing `_dynDefs` structure
-4. Classification via `ClassifiedSourceGroup` with fast heuristics + LLM fallback (no more wink-pos-tagger)
+4. Blank dispatch via keyword-bound `BlankSource` + free-form `FluidBlankSource` (no more classifier LLM call, no more wink-pos-tagger)

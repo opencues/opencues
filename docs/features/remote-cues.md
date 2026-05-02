@@ -18,7 +18,7 @@ Remote cues are alternatives computed externally via an LLM or other system, typ
 
 ---
 
-## Word-Alt Routing (replaces the old "combine into one prompt" model)
+## Word-Cue Routing (replaces the old "combine into one prompt" model)
 
 Each `### alternatives` section in `cues.md` (or `cues/<name>/cue.md`) becomes its OWN `ConfigSource`. They are wrapped in a single `RoutedWordSourceGroup` that **dispatches each highlighted word to exactly one child source** based on the source's `match` / `keywords` / `priority` fields.
 
@@ -27,9 +27,9 @@ Words destined for the same source are batched into one parallel LLM call; resul
 Why per-word dispatch (not the old "combine into one prompt"):
 
 - **Isolation**: a hijacking prompt in one source can no longer poison every word. With the old combine model, a prompt in `cues/sync-demo/cue.md` saying "always output `bundled,deployed,shipped`" would swap `happy → bundled`. With routing, that prompt only affects words its source is called for.
-- **Symmetry**: blanks already use a `ClassifiedSourceGroup`; word-alts now follow the same model.
+- **Scaling**: combined prompts grow linearly with source count and start confusing the LLM at ~5+ domains. Per-source calls keep each prompt small and focused.
 
-See [Word-Alt Routing](word-alt-routing.md) for the full classification + dispatch spec, and the `RoutedWordSourceGroup` source in `@opencues/core` for the implementation.
+See [Word-Cue Routing](word-cue-routing.md) for the full classification + dispatch spec, and the `RoutedWordSourceGroup` source in `@opencues/core` for the implementation.
 
 > The legacy `combineWordSources()` export in `build-sources.ts` is a no-op shim kept only for external callers mid-migration; new code should not call it.
 
@@ -44,15 +44,14 @@ See [Word-Alt Routing](word-alt-routing.md) for the full classification + dispat
 | `name` | string | (required) | Source identifier (e.g., "grammar", "math") |
 | `priority` | number | 50 | Higher wins; same-priority results merge |
 | `scope` | `'words'` \| `'blanks'` \| `'all'` | `'words'` | When the source activates |
-| `parser` | `'alternatives'` \| `'math'` \| `'compute'` \| `'answer'` \| `'raw'` | `'alternatives'` | How the LLM response is parsed |
-| `match` | string | (none) | Regex used for two purposes: (1) by `ClassifiedSourceGroup.classifyFast()` for blank mode classification, and (2) by `RoutedWordSourceGroup` to classify a source as **domain** (matching words route here) vs **default** (catches everything else). It does NOT gate `ConfigSource.supports()` directly. |
+| `parser` | `'alternatives'` \| `'raw'` | `'alternatives'` | How the LLM response is parsed |
+| `match` | string | (none) | Regex used by `RoutedWordSourceGroup` to claim words for this source. Required (or `keywords:`) for word-cue sources — sources with neither are dropped. Does NOT gate `ConfigSource.supports()` directly. |
 | `model` | string | (from promptConfig) | LLM model override for this source |
 | `promptText` | string | (none) | The prompt template; input is appended after it |
 | `enabled` | boolean | true | Set to `false` to disable without removing |
 
 **Parser behavior:**
 - `alternatives` — expects `index:alt1,alt2,alt3` lines; returns one `CueResult` per word
-- `math`, `compute`, `answer` — expects a short response; maps the result to the blank (`_`) position with `max_tokens: 200` and `temperature: 0.1`
 - `raw` — passes the full response as a single alternative for the blank position
 
 ---

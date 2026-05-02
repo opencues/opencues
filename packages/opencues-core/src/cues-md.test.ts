@@ -461,66 +461,6 @@ describe('validateCuesMd', () => {
     assert.ok(errors.some(e => e.includes('missing required "name"')));
   });
 
-  it('should warn when multiple blank modes exist but no classifier', () => {
-    const cfg = parseCuesMd([
-      '## Prompt',
-      '### math',
-      '```yaml',
-      'parser: math',
-      '```',
-      'Solve.',
-      '### grammar',
-      'Fill blank.',
-    ].join('\n'));
-    const errors = validateCuesMd(cfg);
-    assert.ok(errors.some(e => e.includes('no ### classifier')), 'Should warn about missing classifier');
-  });
-
-  it('should warn when classifier exists but has no prompt text', () => {
-    const cfg = parseCuesMd([
-      '## Prompt',
-      '### classifier',
-      '```yaml',
-      'priority: 100',
-      '```',
-      '### math',
-      '```yaml',
-      'parser: math',
-      '```',
-      'Solve.',
-    ].join('\n'));
-    const errors = validateCuesMd(cfg);
-    assert.ok(errors.some(e => e.includes('no prompt text')), 'Should warn about empty classifier');
-  });
-
-  it('should not warn when classifier is present with prompt', () => {
-    const cfg = parseCuesMd([
-      '## Prompt',
-      '### classifier',
-      'Classify the input.',
-      '### math',
-      '```yaml',
-      'parser: math',
-      '```',
-      'Solve.',
-      '### grammar',
-      'Fill blank.',
-    ].join('\n'));
-    const errors = validateCuesMd(cfg);
-    assert.ok(!errors.some(e => e.includes('classifier')), 'Should not warn when classifier exists with prompt');
-  });
-
-  it('should not warn for word-only configs (no blank parsers)', () => {
-    const cfg = parseCuesMd([
-      '## Prompt',
-      '### grammar',
-      'Word alternatives.',
-      '### legal',
-      'Legal alternatives.',
-    ].join('\n'));
-    const errors = validateCuesMd(cfg);
-    assert.ok(!errors.some(e => e.includes('classifier')), 'Word-only configs need no classifier');
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -653,11 +593,11 @@ describe('parseCuesMd: real cues.md', () => {
   const cuesPath = path.resolve(__dirname, '../../../defaults/cues.md');
   const cuesExists = fs.existsSync(cuesPath);
 
-  (cuesExists ? it : it.skip)('should parse grammar word source (domain sources in cues/ folders)', () => {
+  (cuesExists ? it : it.skip)('parses cleanly (sources live in cues/<name>/cue.md folders, not inline)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    const names = Object.keys(cfg.promptConfig!.sources);
-    assert.ok(names.includes('grammar'));
-    assert.ok(!cfg.promptConfig!.sources.grammar.match, 'grammar should have no match (base source)');
+    assert.ok(cfg);
+    // No inline word sources expected — everything is folder-based now.
+    assert.ok(!cfg.promptConfig?.sources || Object.keys(cfg.promptConfig.sources).length === 0);
   });
 
   (cuesExists ? it : it.skip)('should have tips data', () => {

@@ -38,7 +38,7 @@ Examples:
 - "gonna" → 0:going to,will
 ````
 
-When a user types one of those words, `RoutedWordSourceGroup` dispatches it to your source (the `match:` regex claims the word). Words not claimed by any domain source fall through to the default source (if `default-word-alts: on` in `opencues.md`) or stay uncoloured. Test by saving the file — configs hot-reload within ~2.5s on the next keystroke (no restart needed).
+When a user types one of those words, `RoutedWordSourceGroup` dispatches it to your source (the `match:` regex claims the word). Words not claimed by any source stay uncoloured. Test by saving the file — configs hot-reload within ~2.5s on the next keystroke (no restart needed).
 
 For details on the config fields, see [SourceConfig fields](#sourceconfig-fields) below.
 
@@ -73,9 +73,9 @@ Your prompt instructions here...
 
 Picked up automatically by `buildSourcesFromConfig()`. Inline `### sections` in `cues.md` work too, but folder-based is preferred.
 
-**Per-word routing.** `RoutedWordSourceGroup` dispatches each highlighted word to ONE child source — never combines them into a giant prompt. The first domain whose `match:` or `keywords:` claims the word wins (highest priority breaks ties). A source with neither `match:` nor `keywords:` is the *default* source — it catches words no domain claimed (only fires when `default-word-alts: on` in `opencues.md`).
+**Per-word routing.** `RoutedWordSourceGroup` dispatches each highlighted word to ONE child source — never combines them into a giant prompt. The first source whose `match:` or `keywords:` claims the word wins (highest priority breaks ties). Words no source claims get no cue — they're not navigable.
 
-Add a `match` regex (or `keywords:` list) on every domain source so it only fires on words it can meaningfully alt. A source without `match`/`keywords` is the default catch-all and should be paired with a broad prompt; don't ship two defaults.
+Every word-cue source MUST declare `match:` or `keywords:` — sources without either are dropped at runtime (`opencues validate` warns). If you genuinely want a catch-all, declare it explicitly (`match: .*`).
 
 ### Adding a new blank
 
@@ -168,20 +168,13 @@ pnpm test                                # all packages, via turbo
 
 The test suite covers parsers, source building, per-word routing, blank dispatch, the fluid-blank pipeline, and end-to-end LLM behaviour with mocks. ~365 unit tests in core.
 
-**Live LLM classifier tests** require `GROQ_API_KEY` — they exercise the legacy `ClassifiedSourceGroup` against real Groq. Without the key they auto-skip.
-
-```bash
-# Run with live LLM tests
-GROQ_API_KEY=xxx pnpm --filter @opencues/core test
-```
-
 ### Live benchmarks
 
 Live LLM benchmarks live under `tests/benchmarks/`:
 
 ```bash
 GROQ_API_KEY=xxx tests/benchmarks/run-all.sh    # full sweep
-GROQ_API_KEY=xxx tests/benchmarks/word.sh       # word-alt accuracy
+GROQ_API_KEY=xxx tests/benchmarks/word.sh       # word-cue accuracy
 GROQ_API_KEY=xxx tests/benchmarks/factual.sh    # factual blank accuracy
 GROQ_API_KEY=xxx tests/benchmarks/math.sh       # math blank accuracy
 GROQ_API_KEY=xxx tests/benchmarks/prompt-improve.sh   # prompt-improver blank
@@ -201,7 +194,6 @@ Results land in `tests/results/`. Compare runs to detect regressions. Word alter
 | `src/sources/blank-source.ts` | Keyword-bound blank dispatcher (auto-populate + cycling) |
 | `src/sources/fluid-blank-source.ts` | Free-form `_` lookup (P1 segment + P3 answer) |
 | `src/sources/spelling-source.ts` | Typo correction on plain text |
-| `src/sources/classified-source-group.ts` | Legacy classifier-routed blank modes (off by default) |
 | `src/sources/build-sources.ts` | Factory: .md configs → CueSource[] |
 | `src/sources/parsers.ts` | Response parsers (math, compute, answer, alternatives, raw) |
 | `src/cues-md.ts` | .md config file parser |
@@ -218,13 +210,13 @@ opencues-core has two dispatch strategies aligned with the dual-direction concep
 
 **Why no combining.** Earlier OpenCues combined word sources into one prompt. That broke down past ~5 sources (LLM confused by overlapping instructions) and let one bad source poison every word. Per-word routing is isolation-safe and scales linearly.
 
-**Why no classifier for blanks.** Earlier OpenCues classified blanks into modes (math / factual / translation / etc.) via an LLM. After the fluid-blank pipeline shipped, fluid-blank's general P1+P3 prompts beat the classifier on benchmarks while saving the routing LLM call. The classifier path is still in code (`ClassifiedSourceGroup`) but off by default — flip `classified-blanks-mode: on` in `opencues.md` to opt back in.
+**Why no classifier for blanks.** Earlier OpenCues classified blanks into modes (math / factual / translation / etc.) via an LLM. After the fluid-blank pipeline shipped, fluid-blank's general P1+P3 prompts beat the classifier on benchmarks while saving the routing LLM call. The classifier pipeline (`ClassifiedSourceGroup`) was removed entirely.
 
 If you add a new `cues/<name>/cue.md`, `RoutedWordSourceGroup` picks it up at next config load. If you add `blanks/<name>/cue.md` with `blankKeywords:`, `BlankSource` registers it. See `build-sources.ts` for the wiring.
 
 ### Pitfalls
 
-**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. `ConfigSource`, `FluidBlankSource`, `SpellingSource` and `ClassifiedSourceGroup` all check both fields and pass `reasoning_effort: "low"` in their request bodies — Groq-specific and ignored by other providers.
+**Reasoning models consume tokens differently.** Models like `openai/gpt-oss-120b` on Groq put their thinking in a `reasoning` field, not `content`. If `max_tokens` is too low, all tokens go to reasoning and `content` is empty. `ConfigSource`, `FluidBlankSource`, and `SpellingSource` all check both fields and pass `reasoning_effort: "low"` in their request bodies — Groq-specific and ignored by other providers.
 
 **Keyword matching needs word boundaries.** `"in french"` as a keyword would match inside `"frozen in french toast"`. `BlankSource.blankKeywords` matches whole words/phrases (split on whitespace, consecutive match). When adding keywords, test for false positives with embedded matches.
 

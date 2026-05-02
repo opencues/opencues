@@ -14,7 +14,6 @@ This folder contains design notes for the prompts shipped in `defaults/`. **All 
 | Keyword-bound blanks (volume, stocks, hn, …) | `blanks/<name>/cue.md` | one folder per blank; matched by `BlankSource` via `blankKeywords` |
 | Free-form `_` lookup | `packages/opencues-core/src/sources/fluid-blank-source.ts` | `FluidBlankSource` two-pass (P1 SEGMENT + P3 ANSWER), prompts in TS |
 | Spell-check on plain text | `packages/opencues-core/src/sources/spelling-source.ts` | `SpellingSource`, prompt in TS |
-| Legacy classifier blank modes (math/factual/translation/…) | `blanks.md ## Prompt ### <mode>` | dormant — opt in via `classified-blanks-mode: on` in `opencues.md` |
 
 There are **no hardcoded prompt constants in `ConfigSource`**. ConfigSource instances are driven entirely by `SourceConfig` parsed from `.md` files via `buildSourcesFromConfig()`. `FluidBlankSource` and `SpellingSource` are the exceptions — their prompts live in TS because they're not user-customisable per-source.
 
@@ -24,16 +23,15 @@ There are **no hardcoded prompt constants in `ConfigSource`**. ConfigSource inst
 prompts/
 ├── README.md            # This file
 ├── linked.txt           # Linked words prompt (gender/number agreement)
-└── references/          # Prompt design documentation (LEGACY — see below)
-    ├── classifier.md    # Classifier routing prompt
+└── references/          # Prompt design documentation (historical)
     ├── grammar.md       # Word-alternatives + grammar-blank prompts
     ├── factual.md       # Factual-blank answer prompt
     └── math.md          # Math-blank compute prompt
 ```
 
-## About `references/` (legacy)
+## About `references/`
 
-The four files in `references/` document the prompts the legacy classifier-routed blank pipeline ships with. That pipeline (`ClassifiedSourceGroup`) is **off by default** — `fluid-blank-mode: on` covers most blank-fill ground without the routing LLM call. Read these references only if you opt into the classifier (`classified-blanks-mode: on`) or are studying the prompt-design history.
+The files in `references/` document the prompts that shipped with the now-removed classifier-routed blank pipeline. They're kept for prompt-design history. Active blank handling lives in `FluidBlankSource` (free-form `_`) and per-blank `cue.md` files (keyword-bound).
 
 ## Adding a new domain word source
 

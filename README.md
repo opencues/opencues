@@ -237,7 +237,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **BlankSource** — keyword-bound blank dispatcher (auto-populate + cycling for `volume _`, `stocks aapl _`, etc.)
 - **FluidBlankSource** — free-form `_` lookup (P1 segment + P3 answer pipeline) for any unmatched blank
 - **SpellingSource** — typo correction on plain text
-- **RoutedWordSourceGroup** — per-word dispatch of word-alt sources via `match`/`keywords`/priority
+- **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority
 - **buildSourcesFromConfig** — factory: parses `cues.md` + `blanks.md` + folder configs → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
@@ -434,7 +434,7 @@ A blank is a `_`-triggered slot. There are four shapes; pick by what your blank 
 
 For free-form `_` lookups (`capital of france _`, `unicode for em dash _`) there's no per-blank config — `FluidBlankSource` handles any `_` the keyword-bound blanks didn't claim.
 
-**Word sources** in `cues.md` use per-word routing — domain sources with `match:` or `keywords:` claim words they recognise; a default source (no `match`/`keywords`) catches everything else. See `docs/features/word-alt-routing.md`.
+**Word sources** in `cues.md` use per-word routing — every source declares `match:` or `keywords:`, and the highest-priority matching source claims each word. Words no source claims get no cue (not navigable). See `docs/features/word-cue-routing.md`.
 
 See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 

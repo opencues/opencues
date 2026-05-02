@@ -6,22 +6,18 @@
 #
 # A folder-based cue source. The runtime merges this with the monolithic
 # cues.md; folder wins on name conflicts. For a real reference, cat any
-# of the shipped sources in ~/.opencues/cues/{grammar,legal,medical,financial}/.
+# of the shipped sources in ~/.opencues/cues/{legal,medical,financial}/.
 
 # ─────────────────────────────────────────────────────────────────────
 # REQUIRED FIELDS
 # ─────────────────────────────────────────────────────────────────────
 # name:    must match the folder name (the runtime uses this as the key)
-# parser:  alternatives | compute | answer | raw
+# parser:  alternatives | raw
 #
 #   alternatives — comma-separated options the user cycles through.
 #                  Output: INDEX:alt1,alt2,alt3 (1-based; |-separated batches
 #                  for multi-word responses). Default for word-cue sources.
-#   compute      — LLM returns COMPUTE=<js-expr>, runtime evaluates.
-#                  e.g. COMPUTE=50*1.20 → "60". Used by math blanks.
-#   answer       — LLM returns ANSWER=<text>, displayed verbatim.
-#                  e.g. ANSWER=Paris. Used by factual blanks.
-#   raw          — LLM's raw string is the output (no parsing).
+#   raw          — LLM's raw string is the output verbatim (rare).
 
 name: {{NAME}}
 parser: alternatives
@@ -39,31 +35,24 @@ parser: alternatives
 scope: words
 
 # ─────────────────────────────────────────────────────────────────────
-# TRIGGERS — also decide DEFAULT vs DOMAIN routing
+# TRIGGERS — required for word-cue sources
 # ─────────────────────────────────────────────────────────────────────
-# For `parser: alternatives` sources, the presence (or absence) of
-# match:/keywords: classifies the source for per-word routing:
+# For `parser: alternatives` sources, you MUST set match: (regex) or
+# keywords: (list). Sources without either are dropped at runtime.
 #
-#   match: OR keywords: set    → DOMAIN source
-#                                Only fires for words that match the
-#                                regex / keyword list. Use for narrow
-#                                vocabularies (legal, medical, formal).
-#                                See defaults/cues/legal/cue.md for a
-#                                production example.
+#   match: regex             — only fires for words matching the regex.
+#                              See defaults/cues/legal/cue.md for an
+#                              example.
+#   keywords: a, b, c        — case-insensitive word list.
+#   match: .*                — explicit catch-all. If you really want a
+#                              source that fires on every word, declare
+#                              it explicitly so it's visible in tools.
 #
-#   neither match nor keywords → DEFAULT source
-#                                Catches every word no domain claimed.
-#                                Most projects want exactly ONE default
-#                                (e.g. a general "synonyms" source).
-#                                See defaults/cues/grammar/cue.md.
+# Routing per word: highest priority among matching sources wins. If
+# nothing matches, the word gets no cue (not navigable).
 #
-# Routing per word (highest priority wins within each tier):
-#   1. Domain whose match/keyword hits the word → that source.
-#   2. No domain hit → highest-priority default.
-#   3. No default exists → no cue (word isn't navigable).
-#
-# `opencues validate` warns when a project has zero defaults or
-# multiple defaults at the same priority. See docs/features/word-alt-routing.md.
+# `opencues validate` warns when a word-cue source declares neither
+# match: nor keywords:. See docs/features/word-cue-routing.md.
 
 # match: \b(contract|agreement|clause|indemnify|warrant|liability|shall|herein|whereas)\b
 # keywords: therefore, however, moreover
@@ -78,7 +67,7 @@ scope: words
 # Defaults/cues/legal/cue.md:
 #   classify: Legal terminology, contract drafting, statutory definitions
 #
-# Skip for plain default sources (the LLM doesn't need extra framing).
+# Skip for broad catch-all sources (`match: .*`) — the LLM doesn't need extra framing.
 
 # classify: Description of this source's domain
 
@@ -87,8 +76,8 @@ scope: words
 # ─────────────────────────────────────────────────────────────────────
 # priority: number (default 50)
 #   Higher priority wins on merge conflicts (e.g. monolithic cues.md
-#   with same name vs this folder source). Domain sources usually use
-#   70-80, defaults 50, classifier 100.
+#   with same name vs this folder source). Narrow domain sources usually
+#   use 70-80, broad catch-alls 50, classifier 100.
 
 priority: 50
 

@@ -109,7 +109,7 @@ describe('ConfigSource: format-spec auto-append (parser: alternatives)', () => {
     // Those parsers have their own output contracts (COMPUTE=, ANSWER=,
     // raw strings). Appending an INDEX:alt reminder would confuse the
     // LLM. Only the alternatives parser gets the guard.
-    for (const parser of ['compute', 'answer', 'raw', 'math'] as const) {
+    for (const parser of ['raw'] as const) {
       const { adapter, sent } = mkCapturingAdapter();
       const source = mkSource({
         promptText: 'Some prompt without a format spec.',

@@ -98,17 +98,13 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **FluidBlankSource** — Free-form `_` lookup. Two-pass pipeline: P1 SEGMENT identifies the lookup span, P3 ANSWER produces the canonical short answer. Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots no `BlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
 
-**ClassifiedSourceGroup** (legacy, opt-in) — Pre-fluid-blank dispatcher that picked one of N specialised modes (math/factual/translation/spelling/color/http/timezone/roman/grammar) per input via fast heuristics + LLM classifier. Off by default since fluid-blank covers the same ground without the routing call. Flip on via `classified-blanks-mode: on` for the sharper per-mode prompts.
+**RoutedWordSourceGroup** — Wraps multiple `### alternatives` word-cue sources and dispatches each highlighted word to ONE child source via per-word routing. Uses fast-path rules only — no LLM classifier. Every source MUST declare `match:` (regex) or `keywords:` (list); sources without either are dropped. Words that no source claims produce no cue (not navigable). Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-cue-routing.md`.
 
-**RoutedWordSourceGroup** — Wraps multiple `### alternatives` word-cue sources and dispatches each highlighted word to ONE child source via per-word routing. Mirrors `ClassifiedSourceGroup` (blanks) but uses fast-path rules only — no LLM classifier. Domain sources (with `match:` or `keywords:`) get checked first in priority order; the highest-priority **default** catches everything else; words with no matching source produce no cue. Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-alt-routing.md`.
-
-**Default Cue Source** — A `parser: alternatives` source with NEITHER `match:` NOR `keywords:` set. Catches every word that no domain source claimed. Most projects want exactly one default (typically a general "synonyms" source); `opencues validate` warns when a project has zero defaults or multiple defaults at the same priority.
-
-**Domain Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (legal, medical, formal connectors). Higher priority wins ties.
+**Word-Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (legal, medical, formal connectors). Higher priority wins ties. Catch-all sources (no match, no keywords) are not supported — declare an explicit `match: .*` if you really want one.
 
 **buildSourcesFromConfig** — Factory function that takes parsed `cues.md` and `blanks.md` configs and returns `CueSource[]`. Wires:
 - **Word cues**: Each `### alternatives` section / `cues/<name>/cue.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
-- **Blanks**: Keyword-bound entries from `blanks/<name>/cue.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. `SpellingSource` (priority 80) flags misspelled words on plain text. `ClassifiedSourceGroup` is constructed only when `enableClassifiedBlanks: true` (legacy opt-in).
+- **Blanks**: Keyword-bound entries from `blanks/<name>/cue.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. `SpellingSource` (priority 80) flags misspelled words on plain text.
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 

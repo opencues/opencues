@@ -367,10 +367,10 @@ describe('mergeConfigs', () => {
 
   it('should return folders when no monolithic', () => {
     const folders: ReturnType<typeof discoverFolderConfigs> = {
-      blanksConfig: { frontmatter: {}, sections: {}, promptConfig: { sources: { math: { name: 'math', parser: 'math' } } } },
+      blanksConfig: { frontmatter: {}, sections: {}, promptConfig: { sources: { custom: { name: 'custom', parser: 'raw' } } } },
     };
     const result = mergeConfigs({}, folders);
-    assert.strictEqual(result.blanksConfig!.promptConfig!.sources['math'].parser, 'math');
+    assert.strictEqual(result.blanksConfig!.promptConfig!.sources['custom'].parser, 'raw');
   });
 
   it('should let folder override monolithic source by name', () => {

@@ -11,9 +11,7 @@ display mode: split pane
 # each one gates.
 fluid-blank-mode: on
 spelling-mode: on
-word-alts-mode: on
-default-word-alts: off
-classified-blanks-mode: off
+word-cues-mode: on
 # Optional overrides — uncomment to override patch-supplied defaults.
 # tts-rate: 2
 # tts-script: ~/claude-code-cues/.opencues/scripts/speak.sh
@@ -62,19 +60,9 @@ settings:
     values:
       on: Enabled — "the boy jumpved over the dog" cues "jumpved" → "jumped"
       off: Disabled
-  word-alts-mode:
-    tip: Word-level alternatives (RoutedWordSourceGroup) on plain text
+  word-cues-mode:
+    tip: Per-word cues (RoutedWordSourceGroup) on plain text — domain alternatives, synonyms
     values:
-      on: Enabled — words get cycled alternatives from cues.md sources
-      off: Disabled — no word-alt LLM calls fire
-  default-word-alts:
-    tip: Within word-alts, include catch-everything default sources (no match/keywords)
-    values:
-      on: Default sources (e.g. grammar) colour every word
-      off: Only domain sources (with match/keywords) fire
-  classified-blanks-mode:
-    tip: Classifier-routed blank modes from blanks.md (math/factual/translation/...)
-    values:
-      on: Enabled — classifier picks one specialised mode per `_`
-      off: Disabled — fluid-blank + spelling + blanks cover this ground
+      on: Enabled — words matching a cue source's match/keywords get cycled alternatives
+      off: Disabled — no word-cue LLM calls fire
 ---
