@@ -75,7 +75,7 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 | **countries** | `population of france _` → `66.4M`. ✓ | [x] |
 | **dictionary** | `define ephemeral _` → `Something which lasts for a short period of time.` ✓ | [x] |
 | **prompt** (improver) | `write a poem about love improve prompt _` → consume-all → "Write a 12-line lyrical poem…" (4 alts). ✓ | [x] |
-| **answer** | round-trip Q&A | [ ] |
+| **answer** | `what is the word for suprise _` → `astonishment` (3 alts cycleable). ✓ | [x] |
 | **opencues** | `opencues settings _` → `voice-mode active`. ✓ Selector/satellite cycling not yet retested. | [x] |
 
 ---
