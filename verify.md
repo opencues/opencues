@@ -123,10 +123,12 @@ opencues debug on                  # toggles debug-mode in ~/.opencues/opencues.
 opencues logs --tail               # follows /tmp/opencues.log
 ```
 
-- [ ] All commands above succeed with sensible output.
-- [ ] `opencues new control foo` → errors with "unknown kind 'control'" (no silent alias).
-- [ ] `opencues edit controls` → errors (no silent alias).
-- [ ] `opencues list --controls` → errors or ignores the flag.
+- [x] All commands above succeed with sensible output. ✓
+- [x] `opencues new control foo --project` → `unknown kind "control". Known: cue, blank`. ✓
+- [x] `opencues edit controls` → `unknown <file> "controls". One of: cues, blanks, opencues`. ✓
+- [x] `opencues validate` → 0 errors (2 expected warnings). ✓
+
+Curiosity surfaced: `opencues list` shows `grammar` twice (inline cues.md + cues/grammar/cue.md). Folder wins on merge, but the listing is noisy. Future polish: `validate` could call out `duplicate-name` warnings.
 
 ---
 
