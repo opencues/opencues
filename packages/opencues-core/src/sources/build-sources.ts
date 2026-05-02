@@ -218,20 +218,16 @@ export function buildSourcesFromConfig(
   // match any structured mode AND inputs the structured modes can't fully
   // handle (conversational shapes, ?-marker, ellipsis, etc.).
   if (options.enableFluidBlank) {
-    // Collect blankKeywords from all declared blanks so fluid-blank can
-    // cede the slot to BlankFill when the input matches a known trigger.
-    const allKeywords: string[] = [];
-    if (options.blanks) {
-      for (const blk of Object.values(options.blanks)) {
-        if (blk.blankKeywords?.length) allKeywords.push(...blk.blankKeywords);
-      }
-    }
+    // Pass the full blanks map so fluid can do proximity-aware ceding —
+    // only step out when a registered blank would actually claim the
+    // slot (keyword within `blankProximity` of the `_`). See
+    // FluidBlankSource.supports().
     sources.push(new FluidBlankSource({
       httpAdapter: options.httpAdapter,
       endpoint: options.endpoint,
       apiKey: options.apiKey,
       model: options.defaultModel,
-      blankKeywords: allKeywords,
+      blanks: options.blanks ?? {},
     }));
   }
 

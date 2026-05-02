@@ -82,6 +82,26 @@ describe('FluidBlankSource', () => {
     assert.strictEqual(src.supports(ctxFromText('no blank here')), false);
   });
 
+  it('supports() cedes only when a registered blank would actually claim the slot (proximity-aware)', () => {
+    // Dictionary blank with `what is` keyword + blankProximity 3.
+    const blanks = {
+      dictionary: { name: 'dictionary', blankKeywords: ['what is'], blankProximity: 3 },
+    };
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([]),
+      blanks,
+    });
+    // Within proximity → BlankSource will claim, fluid cedes.
+    assert.strictEqual(src.supports(ctxFromText('what is git _')), false);
+    assert.strictEqual(src.supports(ctxFromText('what is the answer _')), false);
+    // Out of proximity → BlankSource declines, fluid handles it (was the
+    // dead zone before this fix).
+    assert.strictEqual(src.supports(ctxFromText('what is git as in github _')), true);
+    // No keyword in input → fluid handles.
+    assert.strictEqual(src.supports(ctxFromText('etymology of paradigm _')), true);
+  });
+
   it('runs P1 + P3 and returns answer for FILL mode', async () => {
     const src = new FluidBlankSource({
       ...baseConfig,

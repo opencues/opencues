@@ -24,6 +24,7 @@
  */
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
+import { BlankConfig } from '../cues-md';
 
 const P1_SYSTEM_PROMPT = `You identify a SPAN of text that will be wiped and replaced with an answer.
 
@@ -247,12 +248,14 @@ export interface FluidBlankSourceConfig {
    * factual/math) so fluid-blank wins when it produces a result, but falls
    * back to classifier-routed modes when P1 bails (SPAN: NONE → no result). */
   priority?: number;
-  /** All declared blank keywords (single-word OR multi-word phrases).
-   * When ANY of these match the input, fluid-blank stays out and lets the
-   * blank's BlankFill handle the slot. Without this, slow blanks (hn,
-   * weather, stocks) lose the race because fluid-blank substitutes first
-   * and BlankFill arrives later to find no `_`. */
-  blankKeywords?: string[];
+  /** All registered keyword-bound blanks. fluid-blank cedes the slot when a
+   * blank would actually claim the `_` (its keyword matches AND fits within
+   * `blankProximity`). Earlier we ceded on any keyword match anywhere in the
+   * input — that left a dead zone for inputs like `what is git as in github
+   * _` where dictionary's `what is` was present but too far from `_` to
+   * claim. Now fluid mirrors BlankSource's claim rules so the dead zone is
+   * gone. */
+  blanks?: Record<string, BlankConfig>;
 }
 
 export class FluidBlankSource implements CueSource {
@@ -263,7 +266,7 @@ export class FluidBlankSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
-  private blankKeywords: string[];
+  private blanks: Record<string, BlankConfig>;
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -271,29 +274,32 @@ export class FluidBlankSource implements CueSource {
     this.apiKey = config.apiKey;
     this.model = config.model;
     this.priority = config.priority ?? 92;
-    this.blankKeywords = (config.blankKeywords ?? []).map(k => k.toLowerCase());
+    this.blanks = config.blanks ?? {};
   }
 
   supports(context: CueContext): boolean {
-    if (!context.words.some(w => w === '_')) return false;
-    // Cede the slot to BlankFill if any blank's keyword matches.
-    // Without this, slow blanks (hn, weather, stocks API) lose the race —
-    // fluid-blank substitutes first, BlankFill arrives later, can't find `_`.
-    if (this.blankKeywords.length > 0) {
-      const lower = context.words.map(w => w.toLowerCase());
-      for (const phrase of this.blankKeywords) {
-        const parts = phrase.split(/\s+/);
-        if (parts.length === 1) {
-          if (lower.includes(parts[0])) return false;
-        } else {
-          // Multi-word phrase: check for consecutive match
-          for (let i = 0; i <= lower.length - parts.length; i++) {
-            let ok = true;
-            for (let j = 0; j < parts.length; j++) {
-              if (lower[i + j] !== parts[j]) { ok = false; break; }
-            }
-            if (ok) return false;
+    const lower = context.words.map(w => w.toLowerCase());
+    const blankIndex = lower.indexOf('_');
+    if (blankIndex === -1) return false;
+    // Cede the slot to BlankFill if any registered blank would actually
+    // claim it. Mirror BlankSource's claim rules: keyword present AND
+    // within `blankProximity` words of the `_`. Loose-match (keyword
+    // present anywhere) leaves a dead zone for inputs like `what is git
+    // as in github _` where the keyword is too far to claim.
+    for (const blk of Object.values(this.blanks)) {
+      if (!blk.blankKeywords?.length) continue;
+      const proximity = blk.blankProximity ?? 0;
+      for (const phrase of blk.blankKeywords) {
+        const parts = phrase.toLowerCase().split(/\s+/);
+        for (let i = 0; i <= lower.length - parts.length; i++) {
+          let ok = true;
+          for (let j = 0; j < parts.length; j++) {
+            if (lower[i + j] !== parts[j]) { ok = false; break; }
           }
+          if (!ok) continue;
+          const endIdx = i + parts.length - 1;
+          const gap = Math.abs(endIdx - blankIndex) - 1;
+          if (gap <= proximity) return false;   // BlankSource will claim
         }
       }
     }
