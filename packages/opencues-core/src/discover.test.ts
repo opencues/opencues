@@ -75,11 +75,10 @@ promptPath: /opt/prompts/legal.txt
   });
 });
 
-describe('parseSingleCueMd: tips type', () => {
-  it('should parse tips JSON from body', () => {
+describe('parseSingleCueMd: static cue (body JSON)', () => {
+  it('should parse tips data from body JSON (legacy array shape)', () => {
     const content = `---
 name: extended-thinking
-type: tips
 ---
 
 \`\`\`json
@@ -92,10 +91,9 @@ type: tips
     assert.strictEqual(config.tips![0].id, 'thinking');
   });
 
-  it('should return no promptConfig for tips type', () => {
+  it('should infer static cue from body JSON without setting promptConfig', () => {
     const content = `---
 name: tips
-type: tips
 ---
 
 \`\`\`json
