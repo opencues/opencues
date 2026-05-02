@@ -91,12 +91,12 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env.HOME ?? "~", ".opencuesrc")
 }
 
-// TTS script lives at user-level (~/.opencues/scripts/speak.sh), seeded
+// TTS script lives at user-level (~/.cues/scripts/speak.sh), seeded
 // + kept current by `opencues seed-configs` (which all host installers
 // invoke). One canonical path, no walking, no integration coupling —
 // works whether CC is installed or not.
 function resolveTtsScript(): string {
-  const root = process.env.OPENCUES_HOME ?? path.join(process.env.HOME ?? "~", ".opencues")
+  const root = process.env.OPENCUES_HOME ?? path.join(process.env.HOME ?? "~", ".cues")
   return path.join(root, "scripts/speak.sh")
 }
 

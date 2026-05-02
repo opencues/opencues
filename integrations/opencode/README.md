@@ -2,7 +2,7 @@
 
 `@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-blanks inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
 
-> **Shares user-level state with CC + Codex**: `~/.opencues/` (cue/blank configs) and `~/.opencues/scripts/speak.sh` (TTS) are common across all three native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on OpenCode because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC + Codex use. You can install OpenCode standalone (no CC required) and TTS still works.
+> **Shares user-level state with CC + Codex**: `~/.cues/` (cue/blank configs) and `~/.cues/scripts/speak.sh` (TTS) are common across all three native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on OpenCode because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC + Codex use. You can install OpenCode standalone (no CC required) and TTS still works.
 
 | Field | Value |
 |---|---|
@@ -90,19 +90,19 @@ If something fails, the runtime writes diagnostics to `/tmp/opencues.log`.
 
 ## Configuration
 
-OpenCues reads configs from **one or more `.opencues/` directories** in priority order:
+OpenCues reads configs from **one or more `.cues/` directories** in priority order:
 
 | Source | Location | Purpose |
 |---|---|---|
 | `$OPENCUES_HOME` env var | wherever you set it | Top-priority override (CI / power users / dotfiles repo) |
-| Project-level | `<cwd>/.opencues/` | Per-project overrides — cd into your project, those configs apply |
-| User-level | `~/.opencues/` | Global defaults — apply everywhere unless overridden |
+| Project-level | `<cwd>/.cues/` | Per-project overrides — cd into your project, those configs apply |
+| User-level | `~/.cues/` | Global defaults — apply everywhere unless overridden |
 
 Project-level wins on name conflicts (cue source name, blank mode name, blank name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
 
 Each directory has the same shape:
 ```
-.opencues/
+.cues/
 ├── cues.md          word sources + LLM prompts
 ├── blanks.md        cue-blank declarations
 ├── cues/            folder-based cue sources (one folder per source)
@@ -113,7 +113,7 @@ Each directory has the same shape:
 
 `opencues.md` (voice-mode, tips-mode, debug-mode, cursor-navigate) is **system-wide**, runtime-owned, and lives only at user-level — the runtime auto-manages it.
 
-**Seed `~/.opencues/` from the repo's defaults:**
+**Seed `~/.cues/` from the repo's defaults:**
 
 ```bash
 opencues seed-configs        # user-level
@@ -135,7 +135,7 @@ Idempotent — copies any file that doesn't already exist at the destination.
 | `~/opencode-cues/packages/opencode/src/cli/cmd/tui/app.tsx` | **Patched in place** — mounts the runtime + forwards keyboard events |
 | `~/opencode-cues/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` | **Patched in place** — publishes textarea ref + onContentChange handler |
 | `~/opencode-cues/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx` | **Patched in place** — renders OpenCues tip alongside MCP status |
-| `~/.opencues/` | User-level configs (see Configuration above) |
+| `~/.cues/` | User-level configs (see Configuration above) |
 | `/tmp/opencues.log` | Runtime debug log (created on first launch) |
 | `/tmp/opencues-install-oc.log` | Installer log from the most recent install |
 

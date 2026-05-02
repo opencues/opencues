@@ -9,7 +9,7 @@ version: 1
 # Project cue sources. Defines static word tips (for instant lookup)
 # and LLM-backed cue sources (for dynamic alternatives).
 #
-# Files in .opencues/ are hot-reloaded — edit any of this and the next
+# Files in .cues/ are hot-reloaded — edit any of this and the next
 # keystroke in claude-code / opencode / codex picks up the change
 # within ~2s. No restart needed.
 #

@@ -1,4 +1,4 @@
-// `opencues update-configs` — pull new shipped defaults into ~/.opencues/.
+// `opencues update-configs` — pull new shipped defaults into ~/.cues/.
 //
 // Discoverable name for the workflow: "I just pulled new opencues code,
 // get any new shipped cues/blanks onto my disk."
@@ -12,7 +12,7 @@
 // Why not chain into `update`? Because `update` rebuilds + redeploys a
 // host integration — that's a different concern. Mixing the two means a
 // user running `update opencode` to debug a fork issue would also
-// silently rewrite `~/.opencues/`, which is surprising. Keeping them
+// silently rewrite `~/.cues/`, which is surprising. Keeping them
 // separate makes each command's blast radius obvious.
 
 'use strict';
@@ -30,7 +30,7 @@ module.exports = function updateConfig(argv, ctx) {
 function printHelp() {
   console.log('opencues update-configs [--project] [--dry-run] [--silent]');
   console.log('');
-  console.log('Pull new shipped defaults into ~/.opencues/. Run this after `git pull`');
+  console.log('Pull new shipped defaults into ~/.cues/. Run this after `git pull`');
   console.log('on the opencues repo to pick up any new cues or blanks');
   console.log('that landed in defaults/ since your last seed.');
   console.log('');
@@ -41,7 +41,7 @@ function printHelp() {
   console.log('  4. HEAL      re-seed a 0-byte opencues.md from defaults');
   console.log('  5. COMPILE   colocated .cs → .exe (WSL only)');
   console.log('');
-  console.log('  --project   Run against <cwd>/.opencues/ instead of ~/.opencues/');
+  console.log('  --project   Run against <cwd>/.cues/ instead of ~/.cues/');
   console.log('  --dry-run   Print the plan; do not copy or compile anything');
   console.log('  --silent    Suppress non-error output');
   console.log('  --help      Show this message');

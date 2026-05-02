@@ -224,15 +224,15 @@ describe('codex daemon — Tier 3.A: ConfigLoader wiring', () => {
       method: 'boot',
       params: {
         cwd: '/proj',
-        configSearchPaths: ['/tmp/proj-a/.opencues', '/home/x/.opencues'],
+        configSearchPaths: ['/tmp/proj-a/.cues', '/home/x/.cues'],
       },
       id: 1,
     }));
     expect(buildRuntimeCalls).toHaveLength(1);
     expect(buildRuntimeCalls[0].cwd).toBe('/proj');
     expect(buildRuntimeCalls[0].configSearchPaths).toEqual([
-      '/tmp/proj-a/.opencues',
-      '/home/x/.opencues',
+      '/tmp/proj-a/.cues',
+      '/home/x/.cues',
     ]);
   });
 
@@ -598,7 +598,7 @@ describe('codex daemon — Tier 3.E: blank-invoke RPC', () => {
 
   it('end-to-end: real registry — opencues "get voice-mode" returns the user-config value', async () => {
     // Default buildRuntime → real OpenCuesSettingsBlank → reads
-    // ~/.opencues/opencues.md. Returns whatever the live file contains.
+    // ~/.opencuesrc. Returns whatever the live file contains.
     const frames: Frame[] = [];
     const daemon = createDaemon({ send: (f) => { frames.push(f); } });
     await daemon.handleLine(JSON.stringify({

@@ -2,7 +2,7 @@
 //
 // The bug this guards against: the historic `e.exists = fs.existsSync(dst)`
 // check classified a 0-byte file as "exists", so seed-configs would skip it
-// forever — leaving the user with an empty ~/.opencues/opencues.md. That
+// forever — leaving the user with an empty ~/.opencuesrc. That
 // empty file silently breaks `opencues ___` / `config ___` blank-fills on
 // every native host (the OpenCuesSettingsBlank no-ops on empty content).
 //

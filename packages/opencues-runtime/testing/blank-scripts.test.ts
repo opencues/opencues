@@ -28,7 +28,7 @@ const DEFAULTS_SCRIPTS = path.join(REPO_ROOT, 'defaults/scripts');
 // Shipped scripts the colocated contract applies to. speak.sh + SpeakCtl.cs
 // were moved out of CC's patches/actions/ into defaults/scripts/ as part of
 // the cross-host shared-utilities refactor — TTS is now seeded by
-// `opencues seed-configs` to ~/.opencues/scripts/ and used by every native
+// `opencues seed-configs` to ~/.cues/scripts/ and used by every native
 // host (CC, OC, Codex), not piggybacked on CC's install.
 const SHIPPED_SCRIPTS: { path: string; helpers: readonly string[] }[] = [
   { path: path.join(DEFAULTS_BLANKS, 'brightness/brightness-blank.sh'), helpers: ['BrightCtl.exe', 'brightness-set.ps1'] },
@@ -123,14 +123,14 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
     // happens on a real install.
     it.skipIf(skip)('opencues-blank.sh get: silently exits 1 when cues.md is 0 bytes', () => {
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
-      const ctlDir = path.join(tmpHome, '.opencues/blanks/opencues');
+      const ctlDir = path.join(tmpHome, '.cues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
       fs.copyFileSync(
         path.join(DEFAULTS_BLANKS, 'opencues/opencues-blank.sh'),
         path.join(ctlDir, 'opencues-blank.sh'),
       );
       fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
-      fs.writeFileSync(path.join(tmpHome, '.opencues/cues.md'), '');
+      fs.writeFileSync(path.join(tmpHome, 'cues.md'), '');
 
       const result = spawnSync('bash', [path.join(ctlDir, 'opencues-blank.sh'), 'get'], {
         encoding: 'utf8',

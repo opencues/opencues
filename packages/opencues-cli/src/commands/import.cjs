@@ -7,7 +7,7 @@
 //   https://....tar.gz    raw tarball URL
 //   ./local-path/         local dir (for testing your own packs)
 //
-// Where it lands: ~/.opencues/packs/<name>/  (or <cwd>/.opencues/packs/<name>/
+// Where it lands: ~/.cues/packs/<name>/  (or <cwd>/.cues/packs/<name>/
 // with --project). Pack identity preserved for `opencues remove <name>` later.
 //
 // Safety: imported packs CANNOT contain absolute or traversing script: /
@@ -49,8 +49,8 @@ module.exports = function importCmd(argv, ctx) {
 
   const HOME = os.homedir();
   const installRoot = projectScope
-    ? path.join(process.cwd(), '.opencues', 'packs')
-    : path.join(HOME, '.opencues', 'packs');
+    ? path.join(process.cwd(), '.cues', 'packs')
+    : path.join(HOME, '.cues', 'packs');
 
   let resolved;
   try {
@@ -119,7 +119,7 @@ module.exports = function importCmd(argv, ctx) {
       installedAt: new Date().toISOString(),
       scope: projectScope ? 'project' : 'user',
     };
-    fs.writeFileSync(path.join(target, '.opencues-pack.json'), JSON.stringify(meta, null, 2));
+    fs.writeFileSync(path.join(target, '.cues-pack.json'), JSON.stringify(meta, null, 2));
 
     const summary = summariseContents(target);
     console.log(`\nInstalled pack "${packName}" at ${target}`);
@@ -127,7 +127,7 @@ module.exports = function importCmd(argv, ctx) {
     console.log('');
     console.log('Note: ConfigLoader does not yet walk packs/<name>/ subfolders automatically');
     console.log('— it will after the next ConfigLoader update. Symlink contents into the');
-    console.log('parent .opencues/ dir for now if you want them active immediately.');
+    console.log('parent .cues/ dir for now if you want them active immediately.');
   } catch (err) {
     fs.rmSync(stageDir, { recursive: true, force: true });
     console.error(`opencues import: ${err.message}`);
@@ -324,7 +324,7 @@ function printHelp() {
   console.log('opencues import <source> [options]');
   console.log('');
   console.log('Download a community OpenCues config pack and install it under');
-  console.log('~/.opencues/packs/<name>/ (or <cwd>/.opencues/packs/<name>/ with');
+  console.log('~/.cues/packs/<name>/ (or <cwd>/.cues/packs/<name>/ with');
   console.log('--project).');
   console.log('');
   console.log('Sources:');
@@ -335,7 +335,7 @@ function printHelp() {
   console.log('');
   console.log('Flags:');
   console.log('  --name <override>            install as a different pack name');
-  console.log('  --project                    install under <cwd>/.opencues/ (default: ~/.opencues/)');
+  console.log('  --project                    install under <cwd>/.cues/ (default: ~/.cues/)');
   console.log('  --force                      overwrite existing pack');
   console.log('  --dry-run                    print plan, do not execute');
   console.log('  --unsafe-allow-scripts       allow absolute/traversing script: paths');

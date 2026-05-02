@@ -97,7 +97,7 @@ For continuous development, `pnpm --filter @opencues/chrome watch` runs esbuild 
 
 ## Updating configs without rebuilding
 
-Editing `~/.opencues/cues.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
+Editing `~/.cues/cues.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
 
 ```bash
 pnpm exec opencues sync chrome --wsl                    # user-level only (default)
@@ -106,11 +106,11 @@ pnpm exec opencues sync chrome --wsl --watch            # auto re-sync on file c
 
 The extension polls `dist/configs/.version` every ~2.5s and hot-reloads on change — no Chrome reload, no page refresh.
 
-By default, **only `~/.opencues/` is bundled.** Chrome is a global browser extension with no cwd, so the project-level (`<cwd>/.opencues/`) discovery the native hosts use is deliberately OFF. To opt projects in:
+By default, **only `~/.cues/` is bundled.** Chrome is a global browser extension with no cwd, so the project-level (`<cwd>/.cues/`) discovery the native hosts use is deliberately OFF. To opt projects in:
 
 ```bash
-pnpm exec opencues sync chrome --include ~/work/proj/.opencues --wsl   # explicit path
-pnpm exec opencues sync chrome --project --wsl                         # <cwd>/.opencues
+pnpm exec opencues sync chrome --include ~/work/proj/.cues --wsl   # explicit path
+pnpm exec opencues sync chrome --project --wsl                         # <cwd>/.cues
 pnpm exec opencues sync chrome --pack demo-pack --wsl                  # one pack only
 ```
 

@@ -351,10 +351,10 @@ These work across all cue types and all hosts:
 
 ## Config Files
 
-Lives at `~/.opencues/` (user-level) and optionally `<cwd>/.opencues/` (project-level — merged on top for native hosts; explicitly opt-in for Chrome via `opencues sync chrome --include`).
+Lives at `~/.cues/` (user-level) and optionally `<cwd>/.cues/` (project-level — merged on top for native hosts; explicitly opt-in for Chrome via `opencues sync chrome --include`).
 
 ```
-~/.opencues/
+~/.cues/
 ├── opencues.md     — System settings (voice-mode, tips-mode, debug-mode, cursor-navigate, opt-in flags)
 ├── cues.md         — Tips (## Tips JSON block) + inline `### alternatives` sources + ignore list
 ├── cues/           — Folder-based word cue configs (grammar, legal, medical, financial)
@@ -367,7 +367,7 @@ Lives at `~/.opencues/` (user-level) and optionally `<cwd>/.opencues/` (project-
         └── state.txt         — Runtime state (gitignored)
 ```
 
-The repo's `defaults/` directory ships the seed configs — the same files get baked into the Chrome extension at build time and copied to `~/.opencues/` by `opencues seed-configs`. The repo no longer self-dogfoods via an in-tree `.opencues/`.
+The repo's `defaults/` directory ships the seed configs — the same files get baked into the Chrome extension at build time and copied to `~/.cues/` by `opencues seed-configs`. The repo no longer self-dogfoods via an in-tree `.cues/`.
 
 Each cue / blank / cue or blank declares which hosts it works on (`on-host: [chrome, claude-code, …]`) so chrome doesn't try to spawn a `.sh` script and native hosts don't ignore a TS-only blank.
 
@@ -403,26 +403,26 @@ $ opencues --help
 Setup:
   install <host>          Install a host integration (claude-code|opencode|codex|chrome|--all)
   uninstall <host>        Roll back an installation
-  seed-configs            Copy repo defaults into ~/.opencues/
+  seed-configs            Copy repo defaults into ~/.cues/
   update                  Pull, rebuild, redeploy installed integrations
-  set-key <provider>      Store an API key in ~/.opencues/.env
+  set-key <provider>      Store an API key in ~/.cues/.env
   check-keys              Verify configured API keys against provider endpoints
 
 Authoring:
-  init                    Scaffold <cwd>/.opencues/ with templates
+  init                    Scaffold <cwd>/.cues/ with templates
   new <kind> <name>       Scaffold a single cue / blank
   validate                Lint configs across search paths
   import <source>         Download a community config pack (gist/github/url/local)
 
 Run / inspect:
   run <host>              Launch the patched host
-  sync <host>             Bundle .opencues/ into a host that doesn't auto-discover (chrome)
+  sync <host>             Bundle .cues/ into a host that doesn't auto-discover (chrome)
   which                   Print every relevant path (installs, configs, logs)
   version                 Print CLI version + per-integration versions/compat
   doctor                  Cross-host diagnostics + suggested fixes
   list                    List every defined cue / blank with source path
   show <name>             Print full config for one cue / blank by name
-  edit <file>             Open ~/.opencues/<file>.md in $EDITOR
+  edit <file>             Open ~/.cues/<file>.md in $EDITOR
   logs [--tail]           Show /tmp/opencues.log
   debug [on|off]          Toggle runtime debug-mode
   completion <shell>      Print shell completion script (bash | zsh | fish)
@@ -430,9 +430,9 @@ Run / inspect:
 
 Three high-level surfaces:
 
-**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.opencues/` from the shipped `defaults/` so you start with the same `cues.md` / `blanks.md` / `blanks.md` that ship with the project.
+**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.cues/` from the shipped `defaults/` so you start with the same `cues.md` / `blanks.md` / `blanks.md` that ship with the project.
 
-**Authoring** — for users *building* their own cues. `init` scaffolds a `.opencues/` directory in any project. `new blank hackernews-rss` (or `new cue legal`) writes a starter file with comments. `validate` lints the configs across every search path before you start the host. `import gh:someone/cool-cues` pulls a community pack.
+**Authoring** — for users *building* their own cues. `init` scaffolds a `.cues/` directory in any project. `new blank hackernews-rss` (or `new cue legal`) writes a starter file with comments. `validate` lints the configs across every search path before you start the host. `import gh:someone/cool-cues` pulls a community pack.
 
 **Run / inspect** — day-to-day operations. `which` is the "where does X live?" answer (paths to every install, config, log, key file). `list` shows every cue/blank plus where it was loaded from (so you can see project-level overriding user-level). `show <name>` dumps one entry's full config. `doctor` walks every installation and points at fixable problems. `logs --tail` is for live debugging.
 

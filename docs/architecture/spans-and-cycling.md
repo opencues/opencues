@@ -470,7 +470,7 @@ that needs cued words.
 ### Static-alt span fixture (`spantest`)
 
 Live in `defaults/cues/span-test/cue.md` (and copied to
-`~/.opencues/cues/span-test/cue.md` after seeding) for manual testing
+`~/.cues/words/span-test/cue.md` after seeding) for manual testing
 in chrome / opencode:
 
 ```json

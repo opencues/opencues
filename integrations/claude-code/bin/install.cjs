@@ -36,12 +36,12 @@ const CLAUDE_DIR = path.join(HOME, '.claude');
 //     ├── node_modules/
 //     │   ├── @anthropic-ai/claude-code/cli.js   ← patched in place
 //     │   └── @opencues/{core,runtime}/          ← runtime install
-//     └── .opencues/                              ← all support files
+//     └── .cues/                              ← all support files
 //         ├── statusline.sh
 //         ├── scripts/                            ← speak.sh + WSL .exe shims
 //         └── patch-state/                        ← tweakcc backup + config
 //
-// Uninstall = `rm -rf <CC_FORK>` (or tweakcc --revert + `rm -rf .opencues`
+// Uninstall = `rm -rf <CC_FORK>` (or tweakcc --revert + `rm -rf .cues`
 // if the user wants to keep the CC binary itself).
 //
 // We don't know <CC_FORK> until we've located cli.js, so the install root
@@ -51,7 +51,7 @@ function computeInstallRoot(cliJsPath) {
   if (!cliJsPath) return null;
   // cli.js sits at <fork>/node_modules/@anthropic-ai/claude-code/cli.js.
   // Walk up 4 levels to get the fork dir.
-  return path.join(path.resolve(path.dirname(cliJsPath), '..', '..', '..'), '.opencues');
+  return path.join(path.resolve(path.dirname(cliJsPath), '..', '..', '..'), '.cues');
 }
 
 // Legacy paths from prior install layouts — removed on every install
@@ -411,7 +411,7 @@ function printHelp() {
   console.log('      │   └── @opencues/');
   console.log('      │       ├── core/        built @opencues/core');
   console.log('      │       └── runtime/     built @opencues/runtime');
-  console.log('      └── .opencues/');
+  console.log('      └── .cues/');
   console.log('          ├── statusline.sh    wire via /statusline in CC');
   console.log('          ├── scripts/         OS-bound shell scripts + WSL .exe shims');
   console.log('          └── patch-state/     tweakcc config + cli.js.backup');

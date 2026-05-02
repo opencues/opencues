@@ -9,7 +9,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Settings live in the user-level cues.md frontmatter (system-wide,
 # runtime-owned schema). This blank always lives at
-# ~/.opencues/blanks/opencues/ so the target file is deterministically
+# ~/.cues/blanks/opencues/ so the target file is deterministically
 # two levels up.
 OPENCUES_MD="$SCRIPT_DIR/../../../.opencuesrc"
 

@@ -20,11 +20,11 @@ that decide *what* gets bundled in the first place, see
 
 ## Why it's different from native hosts
 
-Native hosts read `~/.opencues/` and `<cwd>/.opencues/` directly. They
+Native hosts read `~/.cues/` and `<cwd>/.cues/` directly. They
 can poll mtimes, watch dirents, or just re-stat files cheaply.
 
 Chrome content scripts run inside the page's renderer process under a
-strict sandbox. They can't read `~/.opencues/`. Everything they see
+strict sandbox. They can't read `~/.cues/`. Everything they see
 must be inside the extension's bundle (`dist/configs/`), which gets
 populated by `opencues sync chrome`.
 
@@ -33,7 +33,7 @@ So the hot-reload story for chrome is two cooperating loops:
 ```
 WSL/macOS side                      Chrome content script side
 ───────────────                      ───────────────────────────
-~/.opencues/cues.md edited           tick every 2.5s:
+~/.cues/cues.md edited           tick every 2.5s:
         ↓                                fetch dist/configs/.version
 fs.watch fires (250ms debounce)          if hash changed:
         ↓                                    invalidate bundle index
@@ -177,8 +177,8 @@ tab per minute, all served locally so cheap).
 
 ## What triggers reload
 
-- Editing any file inside a source dir (`~/.opencues/`, an
-  `--include`'d path, or `<cwd>/.opencues/` under `--project`)
+- Editing any file inside a source dir (`~/.cues/`, an
+  `--include`'d path, or `<cwd>/.cues/` under `--project`)
 - Adding or removing a folder cue (`cues/<name>/cue.md`) or blank (`blanks/<name>/cue.md`)
 - Running `opencues sync chrome` manually (the `.version` flips even
   outside `--watch`)
@@ -304,7 +304,7 @@ the constant if you find yourself wishing edits propagated faster.
 
 End-to-end pass-through is verified in
 `integrations/chrome/docs/chrome-extension-progress.md` § "Phase 6
-verification" (2026-04-22). Edit `~/.opencues/cues.md`, observe
+verification" (2026-04-22). Edit `~/.cues/cues.md`, observe
 `.version` flip, observe Chrome pick up the change without page
 refresh, revert the edit, observe `.version` round-trip back to its
 original hash.

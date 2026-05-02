@@ -110,7 +110,7 @@ Project layout mirrors user layout under `.cues/`. The visible `cues.md` at proj
 
 - **Naming:** matches the `SourceConfig.scope` field exactly. The directory IS the scope.
 - **Symmetry:** both plural, both scope-named, both can contain flat `.md` files or folders. Visual semantic is honest: `ls .cues/` → `words/  blanks/`.
-- **Why not "cues" / "blanks":** the parent already says "cues" (`.cues/`). Repeating "cues" inside is redundant and creates the `.cues/cues/` collision. Using scope names (the runtime's existing terminology) avoids both problems.
+- **Why not "cues" / "blanks":** the parent already says "cues" (`.cues/`). Repeating "cues" inside is redundant and creates the `.cues/words/` collision. Using scope names (the runtime's existing terminology) avoids both problems.
 
 ### Source files inside `words/` and `blanks/`
 
@@ -186,9 +186,9 @@ There's no `type:` discriminator in frontmatter. Inference > declaration.
 
 ## 8. Migration path from the old layout
 
-For users with the pre-OpenStandard layout (`.opencues/` with `cues.md` + `cues/<name>/cue.md` + `blanks/<name>/`), `opencues seed-configs` runs an **idempotent migration** that:
+For users with the pre-OpenStandard layout (`.cues/` with `cues.md` + `cues/<name>/cue.md` + `blanks/<name>/`), `opencues seed-configs` runs an **idempotent migration** that:
 
-1. Renames `~/.opencues/` → `~/.cues/`
+1. Renames `~/.cues/` → `~/.cues/`
 2. Extracts settings from `cues.md` frontmatter → writes `~/.opencuesrc` (YAML, no fences)
 3. Renames `cues/` subdir → `words/`
 4. Flattens single-file source folders: `cues/legal/cue.md` → `words/legal.md`

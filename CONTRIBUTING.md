@@ -128,8 +128,8 @@ The minimal integration:
 import { createResolver, buildSourcesFromConfig, parseCuesMd, discoverFolderConfigs } from 'opencues-core';
 
 const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
-const cuesFolders = await discoverFolderConfigs('.opencues/cues', fsAdapter);
-const blanksFolders = await discoverFolderConfigs('.opencues/blanks', fsAdapter);
+const cuesFolders = await discoverFolderConfigs('.cues/cues', fsAdapter);
+const blanksFolders = await discoverFolderConfigs('.cues/blanks', fsAdapter);
 
 const sources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, {
   httpAdapter, endpoint, apiKey, defaultModel,

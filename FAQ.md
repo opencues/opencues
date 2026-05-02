@@ -21,7 +21,7 @@ That covers everything the host needs. Specifically:
 
 | Host | What the installer does |
 |---|---|
-| `claude-code` | `opencues seed-configs` (shared `~/.opencues/`) → nuke prior CC state + reinstall pinned `@anthropic-ai/claude-code@2.1.110` → clone tweakcc into `<CC_FORK>/.opencues/tweakcc/` → patch tweakcc (every stock patch disabled, only OpenCues v2 wiring) → build `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/` → install statusline.sh into `<CC_FORK>/.opencues/` → apply tweakcc to cli.js + verify v2 boot landed. ~1m warm. tweakcc is just our patcher tool. |
+| `claude-code` | `opencues seed-configs` (shared `~/.cues/`) → nuke prior CC state + reinstall pinned `@anthropic-ai/claude-code@2.1.110` → clone tweakcc into `<CC_FORK>/.opencues/tweakcc/` → patch tweakcc (every stock patch disabled, only OpenCues v2 wiring) → build `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/` → install statusline.sh into `<CC_FORK>/.opencues/` → apply tweakcc to cli.js + verify v2 boot landed. ~1m warm. tweakcc is just our patcher tool. |
 | `opencode` | Clone `sst/opencode` fork → `bun install` the fork's deps → build `@opencues/{core,runtime}` → install into `<fork>/node_modules/@opencues/` → patch 3 TSX files in place |
 | `chrome` | Build MV3 extension → copy `dist/` to `--target` if provided |
 | `codex` | **Pre-alpha** — clone fork + build Rust bridge. TUI patches TODO; see [`integrations/codex/HANDOFF.md`](integrations/codex/HANDOFF.md) |
@@ -60,7 +60,7 @@ Installer hints automatically print whichever form works in your shell.
 
 **No.** `opencues.md` holds system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is defined by the OpenCues runtime — not by users or projects. One value applies across every integration. It's runtime-owned:
 
-- Lives at user-level only: `~/.opencues/opencues.md`
+- Lives at user-level only: `~/.opencuesrc`
 - Seeded from `defaults/opencues.md` by `opencues seed-configs` (and re-seeded automatically if the file is 0-bytes — the `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills)
 - `setup.sh` self-heals an empty `opencues.md` on every install (section 7a-bis)
 - `opencues init` scaffolds only `cues.md`, `blanks.md`, `README.md` in a project
@@ -100,7 +100,7 @@ Yes: `opencues uninstall <host>` (or `--all`). Each integration reverts its patc
 ### What does uninstall NOT remove?
 
 By design:
-- **User configs** (`~/.opencues/`) — your cues/blanks survive so re-install doesn't lose settings
+- **User configs** (`~/.cues/`) — your cues/blanks survive so re-install doesn't lose settings
 - **The OpenCues clone** (`~/opencues/`) — that's your repo, not an installer artefact
 - **Cloned forks** (`~/opencode-cues/`, `~/codex-cues/`) — those are your host checkouts, not OpenCues's to manage
 - **`claude-code-cues`** (your optional local Claude Code install) — same reasoning
@@ -111,7 +111,7 @@ See `README.md § Removing § Fully removing OpenCues`. Four steps:
 
 ```bash
 opencues uninstall --all
-rm -rf ~/.opencues          # user configs
+rm -rf ~/.cues          # user configs
 rm -rf ~/opencues           # the repo
 rm -rf ~/opencode-cues ~/codex-cues ~/claude-code-cues    # cloned forks (only what you have)
 ```
@@ -132,20 +132,20 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 | `~/claude-code-cues/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
 | `~/opencode-cues/` | OpenCode fork (cloned on install) | Patched fork; `~/opencode-cues/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
 | `~/codex-cues/` | Codex fork (cloned on install) | Similar to opencode-cues. Pre-alpha. |
-| `~/.opencues/` | You (user configs) | Your cues/blanks + user-level `opencues.md`. Shared by every host. |
-| `<cwd>/.opencues/` | Your project | Project-level overrides for cues/blanks. |
+| `~/.cues/` | You (user configs) | Your cues/blanks + user-level `opencues.md`. Shared by every host. |
+| `<cwd>/.cues/` | Your project | Project-level overrides for cues/blanks. |
 | `/tmp/opencues.log` | Runtime | Debug log from whichever host is actively running. |
 | `/tmp/opencues-install-<host>.log` | Installer | Most recent install output (kept on success too for re-inspection). |
 | `/tmp/opencues-cursor-state.json`, `/tmp/opencues-highlight-state-<pid>.json` | Runtime | Host-agnostic IPC files; created while a patched host runs. |
 
 For a live view: `opencues which` prints every path with ✓ / − markers showing what actually exists.
 
-### Why isn't `~/.opencues/` the one install dir for everything?
+### Why isn't `~/.cues/` the one install dir for everything?
 
 Two reasons:
 
 1. **Host integrations need to touch host-specific spots** — CC patches a `cli.js` sitting under `~/.claude/` or wherever Claude Code was installed; OpenCode patches TSX files inside a fork directory; Chrome builds into the repo's own `integrations/chrome/dist/`. None of those are "user config" — they're patched-host artefacts.
-2. **`~/.opencues/` is purely config**. Cues, blanks, and settings you edit. Conceptually separate from compiled runtime and patched binaries.
+2. **`~/.cues/` is purely config**. Cues, blanks, and settings you edit. Conceptually separate from compiled runtime and patched binaries.
 
 ### Where are the OpenCode bits specifically?
 
@@ -178,7 +178,7 @@ opencues logs --tail
 opencues debug on    # or: off
 ```
 
-That rewrites `~/.opencues/opencues.md`'s `debug-mode:` scalar. Hot-reload picks it up within ~2s on the next keystroke.
+That rewrites `~/.opencuesrc`'s `debug-mode:` scalar. Hot-reload picks it up within ~2s on the next keystroke.
 
 ### Something's broken — what do I run first?
 
@@ -192,9 +192,9 @@ Cross-host diagnostics with suggested fixes. Then `opencues which` for the live 
 
 ## Configuration
 
-### What's the difference between `~/.opencues/cues.md` and `<cwd>/.opencues/cues.md`?
+### What's the difference between `~/.cues/cues.md` and `<cwd>/.cues/cues.md`?
 
-User-level (`~/.opencues/`) is your global default — applies everywhere. Project-level (`<cwd>/.opencues/`) applies only when you run a host from inside that project. Project wins on name conflicts (cue source name, blank mode name, blank name).
+User-level (`~/.cues/`) is your global default — applies everywhere. Project-level (`<cwd>/.cues/`) applies only when you run a host from inside that project. Project wins on name conflicts (cue source name, blank mode name, blank name).
 
 The load precedence is `$OPENCUES_HOME` → project → user, in that order.
 
@@ -205,8 +205,8 @@ You can edit the *scalar values* (`voice-mode: active ↔ inactive`, etc.) if yo
 ### How do I scaffold a new cue / blank?
 
 ```bash
-opencues new cue my-synonyms            # → ~/.opencues/cues/my-synonyms/cue.md
-opencues new blank my-answer --project   # → ./.opencues/blanks/my-answer/cue.md
+opencues new cue my-synonyms            # → ~/.cues/words/my-synonyms/cue.md
+opencues new blank my-answer --project   # → ./.cues/blanks/my-answer/cue.md
 ```
 
 The scaffolded `cue.md` is a thorough schema reference — every frontmatter field documented with examples. Validate after editing:

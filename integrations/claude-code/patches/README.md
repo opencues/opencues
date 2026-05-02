@@ -21,14 +21,14 @@ pnpm exec opencues install claude-code --target /path/to/cli.js
 
 `opencues install claude-code` runs two scripts in order:
 
-1. **`opencues seed-configs --silent`** (top-level CLI, owns shared `~/.opencues/` writes)
-   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.opencues/`
+1. **`opencues seed-configs --silent`** (top-level CLI, owns shared `~/.cues/` writes)
+   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.cues/`
    - Sync of library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` — overwrites stale, never overwrites `.md`
-   - Self-heal: re-seed a 0-byte `~/.opencues/opencues.md` (would otherwise silently break `opencues ___` blank-fills)
+   - Self-heal: re-seed a 0-byte `~/.opencuesrc` (would otherwise silently break `opencues ___` blank-fills)
    - Compile colocated `.cs` → `.exe` (WSL only — `BrightCtl.exe`, `VolCtl.exe`, `SpeakCtl.exe`)
 
 2. **`integrations/claude-code/patches/setup.sh`** (CC-specific only)
-   - Default behavior: nuke + rebuild from scratch (`~/claude-code-cues/{node_modules/@anthropic-ai, node_modules/@opencues, .opencues/}`). `--keep-state` flag skips the nuke for dev iteration.
+   - Default behavior: nuke + rebuild from scratch (`~/claude-code-cues/{node_modules/@anthropic-ai, node_modules/@opencues, .cues/}`). `--keep-state` flag skips the nuke for dev iteration.
    - `npm install @anthropic-ai/claude-code` — pinned to exact version 2.1.110 (no caret) so cli.js is bit-identical every install.
    - `git clone tweakcc` into `<CC_FORK>/.opencues/tweakcc/` — the patcher lives inside the fork too (compact footprint).
    - Patch tweakcc's `types.ts` (add OpenCues fields), `defaultSettings.ts` (set OpenCues defaults + flip `showTweakcc{Version,PatchesApplied}` to false), `src/patches/index.ts` (wire `writeOpenCuesRuntimeV2` into the orchestrator + disable every other tweakcc patch).

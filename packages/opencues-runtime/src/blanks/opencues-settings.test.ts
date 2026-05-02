@@ -88,7 +88,7 @@ describe('OpenCuesSettingsBlank', () => {
   });
 
   // Regression contract: an empty-string read result (e.g. a 0-byte
-  // ~/.opencues/cues.md left by an interrupted seed) is functionally
+  // ~/.cues/cues.md left by an interrupted seed) is functionally
   // equivalent to "no file" — the blank silently no-ops on both `get`
   // and `set`. This is intentional (it avoids fabricating a settings
   // schema that the host doesn't know about), but it means the host MUST

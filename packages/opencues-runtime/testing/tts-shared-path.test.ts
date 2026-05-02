@@ -45,7 +45,7 @@ describe('TTS shared-path contract', () => {
     expect(ttsLine!).toContain('"/scripts/speak.sh"');
     expect(ttsLine!).toContain('OPENCUES_HOME');
     // Anti-regression: no require.resolve trick (coupled TTS to CC's
-    // install layout) and no <fork>/.opencues/scripts/ hardcode (CC-only).
+    // install layout) and no <fork>/.cues/scripts/ hardcode (CC-only).
     expect(ttsLine!).not.toMatch(/require.*\.resolve/);
     expect(ttsLine!).not.toContain('claude-code-cues');
   });

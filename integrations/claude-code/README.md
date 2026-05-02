@@ -31,10 +31,10 @@ pnpm --filter @opencues/claude-code dev-install -- \
 
 The installer (`opencues install claude-code`) chains two scripts:
 
-1. **`opencues seed-configs --silent`** (shared `~/.opencues/` writes — used by all native hosts)
-   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.opencues/`
+1. **`opencues seed-configs --silent`** (shared `~/.cues/` writes — used by all native hosts)
+   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.cues/`
    - Sync of library files (`.sh` / `.cs` / `.ps1`) every install — overwrites stale, never overwrites your `.md` edits
-   - Self-heal a 0-byte `~/.opencues/opencues.md`
+   - Self-heal a 0-byte `~/.opencuesrc`
    - Compile colocated `.cs` → `.exe` (WSL only)
 
 2. **CC-specific setup.sh** (default behavior: nuke + rebuild from scratch)
@@ -64,7 +64,7 @@ After install, restart `claude-cues` (or whichever Claude CLI you patched) and t
 | Type `volume _`, cycle Up | Cue-blank: auto-populates with system volume, Up/Down changes it |
 | Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
 | Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
-| Cycle any cyclable word | TTS announces the cycled value (uses `~/.opencues/scripts/speak.sh` — shared by all native hosts) |
+| Cycle any cyclable word | TTS announces the cycled value (uses `~/.cues/scripts/speak.sh` — shared by all native hosts) |
 | Verify highlighted word shows tip in the status bar | Statusline export → `highlight-statusline.sh` |
 
 If any of these fail, tail `/tmp/opencues.log` in another shell — the runtime writes diagnostics there regardless of whether the TUI swallows stderr.
@@ -73,19 +73,19 @@ If any of these fail, tail `/tmp/opencues.log` in another shell — the runtime 
 
 ## Configuration — where your `.md` files live
 
-OpenCues reads configs from **one or more `.opencues/` directories** in priority order:
+OpenCues reads configs from **one or more `.cues/` directories** in priority order:
 
 | Source | Location | Purpose |
 |---|---|---|
 | `$OPENCUES_HOME` env var | wherever you set it | Top-priority override (CI / power users / dotfiles repo) |
-| Project-level | `<cwd>/.opencues/` | Per-project overrides — cd into your project, those configs apply |
-| User-level | `~/.opencues/` | Global defaults — apply everywhere unless overridden |
+| Project-level | `<cwd>/.cues/` | Per-project overrides — cd into your project, those configs apply |
+| User-level | `~/.cues/` | Global defaults — apply everywhere unless overridden |
 
 Project-level wins on name conflicts (cue source name, blank mode name, blank name). Hot-reload polls every search path on every keystroke — edit any file, changes take effect within ~2s.
 
 **Each directory has the same shape:**
 ```
-.opencues/
+.cues/
 ├── cues.md          word sources + LLM prompts
 ├── blanks.md        cue-blank declarations
 ├── opencues.md      settings / state (voice-mode, tips-mode, etc.)
@@ -95,7 +95,7 @@ Project-level wins on name conflicts (cue source name, blank mode name, blank na
     └── <name>/cue.md
 ```
 
-**Seed `~/.opencues/` from the repo's defaults:**
+**Seed `~/.cues/` from the repo's defaults:**
 
 ```bash
 pnpm --filter @opencues/claude-code seed-configs
@@ -106,8 +106,8 @@ Idempotent — copies any file that doesn't already exist at the destination, sk
 **Per-project example:**
 
 ```bash
-mkdir -p ~/projects/legal-review/.opencues/cues/legal-doc
-cat > ~/projects/legal-review/.opencues/cues/legal-doc/cue.md <<'EOF'
+mkdir -p ~/projects/legal-review/.cues/words/legal-doc
+cat > ~/projects/legal-review/.cues/words/legal-doc/cue.md <<'EOF'
 ---
 match: \b(plaintiff|defendant|tort|estoppel)\b
 ---
@@ -116,10 +116,10 @@ EOF
 
 cd ~/projects/legal-review
 claude-cues
-# .opencues/cues/legal-doc/cue.md is now active alongside ~/.opencues defaults
+# .cues/words/legal-doc/cue.md is now active alongside ~/.cues defaults
 ```
 
-The OpenCues Settings blank (`opencues.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.opencues/opencues.md` (or `$OPENCUES_HOME/opencues.md` when set), seeded from `defaults/opencues.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
+The OpenCues Settings blank (`opencues.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.opencuesrc` (or `$OPENCUES_HOME/opencues.md` when set), seeded from `defaults/opencues.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
 
 ---
 
@@ -149,13 +149,13 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 │   └── @opencues/
 │       ├── core/                  built @opencues/core (CueResolver, parsers, sources)
 │       └── runtime/               built @opencues/runtime (Navigation, Cycling, BlankFill)
-└── .opencues/
+└── .cues/
     ├── statusline.sh              CC's statusline command (absolute path baked into
     │                              ~/.claude/settings.json — works from any cwd)
     ├── tweakcc/                   our patcher tool (re-cloned every install)
     └── patch-state/               tweakcc's config + cli.js.backup
 
-~/.opencues/                        (USER-LEVEL — shared by CC + OpenCode + Codex)
+~/.cues/                        (USER-LEVEL — shared by CC + OpenCode + Codex)
 ├── cues.md, blanks.md, opencues.md   user-editable config (never overwritten)
 ├── cues/<name>/cue.md             folder-based cue configs
 ├── blanks/<name>/               folder-based cue-blanks — colocated with their helpers:
@@ -166,8 +166,8 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 ```
 
 **Compact, decoupled, predictable**:
-- Uninstalling CC (`rm -rf ~/claude-code-cues`) doesn't break OC or Codex — they read `~/.opencues/` independently
-- TTS works on OC/Codex even if CC was never installed (`~/.opencues/scripts/speak.sh` is shared)
+- Uninstalling CC (`rm -rf ~/claude-code-cues`) doesn't break OC or Codex — they read `~/.cues/` independently
+- TTS works on OC/Codex even if CC was never installed (`~/.cues/scripts/speak.sh` is shared)
 - `require("@opencues/runtime")` from cli.js resolves via Node's standard upward `node_modules` walk — no symlinks
 - The statusline path in `~/.claude/settings.json` is absolute, so it works from every project you launch claude-cues in
 

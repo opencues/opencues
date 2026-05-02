@@ -22,7 +22,7 @@ fail() { printf "  FAIL %s\n" "$1" >&2; exit 1; }
 # Leaves bare `#` lines and live markdown headers (`## Prompt`,
 # `## Tips`) untouched, since those start with `##` not `# `.
 python3 - <<'PY'
-path = '.opencues/cues.md'
+path = 'cues.md'
 with open(path) as f:
     lines = f.readlines()
 out = []
@@ -64,14 +64,14 @@ sys.exit(1 if re.search(r'\b[a-z]{4,}\b', 'cat') else 0)
 pass "synonym match regex filters words < 4 chars"
 
 echo "=== keywords from ### formal contain 'however' ==="
-grep -qE "^keywords:.*however" .opencues/cues.md \
+grep -qE "^keywords:.*however" cues.md \
   || fail "formal keywords missing 'however' in scaffolded template"
 pass "formal keywords contain 'however' as documented"
 
 echo "=== tips JSON declares example words + alternatives ==="
 python3 - <<'PY'
 import re, json, sys
-text = open('.opencues/cues.md').read()
+text = open('cues.md').read()
 # Find the JSON array between ## Tips and the next ```
 m = re.search(r'## Tips.*?```json\s*\n(.*?)\n```', text, re.DOTALL)
 assert m, f"Tips JSON block not found. First 500 chars after '## Tips':\n{text[text.find('## Tips'):text.find('## Tips')+500] if '## Tips' in text else 'NO ## Tips'}"

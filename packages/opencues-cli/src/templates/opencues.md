@@ -5,7 +5,7 @@ version: 1
 # opencues.md — system settings (runtime-owned)
 # ─────────────────────────────────────────────────────────────────────
 #
-# This file lives at user-level ONLY (~/.opencues/opencues.md). The
+# This file lives at user-level ONLY (~/.opencuesrc). The
 # schema (voice-mode, tips-mode, debug-mode, cursor-navigate, …) is
 # defined by the OpenCues runtime — not by users or projects — and
 # settings are system-wide: one voice-mode value applies across every
@@ -57,7 +57,7 @@ cursor-navigate: inactive
 # Uncomment to override the integration's built-in defaults.
 #
 # tts-rate: 2
-# tts-script: ~/.opencues/scripts/speak.sh
+# tts-script: ~/.cues/scripts/speak.sh
 # llm-model: openai/gpt-oss-120b
 # llm-endpoint: https://api.groq.com/openai/v1/chat/completions
 

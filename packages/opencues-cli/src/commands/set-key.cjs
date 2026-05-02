@@ -1,5 +1,5 @@
 // `opencues set-key <provider> <key>` — store an API key in
-// ~/.opencues/.env. Avoids the user editing their shell rc.
+// ~/.cues/.env. Avoids the user editing their shell rc.
 
 'use strict';
 
@@ -29,7 +29,7 @@ module.exports = function setKey(argv) {
     process.exit(2);
   }
 
-  const envFile = path.join(os.homedir(), '.opencues', '.env');
+  const envFile = path.join(os.homedir(), '.cues', '.env');
   fs.mkdirSync(path.dirname(envFile), { recursive: true });
 
   // Read existing, replace or append the line for this var.
@@ -46,7 +46,7 @@ module.exports = function setKey(argv) {
   console.log(`Stored ${envName} in ${envFile}`);
   console.log('');
   console.log('Note: integrations (CC, OC, chrome) currently read API keys from process env vars,');
-  console.log(`not from ~/.opencues/.env directly. Until they're updated to load this file, you'll`);
+  console.log(`not from ~/.cues/.env directly. Until they're updated to load this file, you'll`);
   console.log('still need to export the key in your shell:');
   console.log(`  export ${envName}=...`);
   console.log('');
@@ -57,7 +57,7 @@ module.exports = function setKey(argv) {
 function printHelp() {
   console.log('opencues set-key <provider> <key>');
   console.log('');
-  console.log('Store an API key in ~/.opencues/.env (chmod 600). Replaces any existing');
+  console.log('Store an API key in ~/.cues/.env (chmod 600). Replaces any existing');
   console.log('value for the same provider.');
   console.log('');
   console.log(`Providers: ${Object.keys(PROVIDERS).join(', ')}`);

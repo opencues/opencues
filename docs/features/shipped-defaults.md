@@ -2,19 +2,19 @@
 
 The `<repo>/defaults/` directory holds the grammar / legal / medical / volume / etc. configs that OpenCues ships to every new user. It is **a seed source, not an ambient project config.**
 
-Before April 2026 these files lived at `<repo>/.opencues/`. That path was ambiguous — it served three roles at once:
+Before April 2026 these files lived at `<repo>/.cues/`. That path was ambiguous — it served three roles at once:
 
-1. **Seed source** for `opencues seed-configs` (copied into `~/.opencues/` on first install).
+1. **Seed source** for `opencues seed-configs` (copied into `~/.cues/` on first install).
 2. **Bake-time source** for the Chrome extension's inlined fallback (`__DEFAULT_CUE_FOLDERS__` et al).
 3. **Implicit dev config** — when a dev was `cd`'d into the opencues repo, the native hosts' cwd-based project-level merge picked it up as if it were a normal project.
 
-Role #3 caused confusion ("why does editing `<repo>/.opencues/grammar/cue.md` change behaviour in my CC session but not in chrome?") and leaked dev-specific edits into the shipped defaults. Moving the directory to `defaults/` removes that third role — the repo no longer has an in-tree project config.
+Role #3 caused confusion ("why does editing `<repo>/.cues/grammar/cue.md` change behaviour in my CC session but not in chrome?") and leaked dev-specific edits into the shipped defaults. Moving the directory to `defaults/` removes that third role — the repo no longer has an in-tree project config.
 
 ---
 
 ## What lives in `defaults/`
 
-Same shape as any user-level `~/.opencues/` or project-level `.opencues/`:
+Same shape as any user-level `~/.cues/` or project-level `.cues/`:
 
 ```
 defaults/
@@ -52,11 +52,11 @@ defaults/
 
 | Consumer | When | What it does |
 |---|---|---|
-| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy to `~/.opencues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed 0-byte `cues.md`; (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). |
+| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy to `~/.cues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed 0-byte `cues.md`; (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). |
 | Chrome `esbuild.config.mjs` | Every `pnpm --filter @opencues/chrome build` | Inlines `defaults/cues/*`, `defaults/blanks/*`, and `defaults/cues.md` into the bundle as `__DEFAULT_*__` constants. The runtime uses these as fallbacks when the bundled `configs/` dir is absent or hasn't been sync'd. |
 | `packages/opencues-core/src/sources/classifier.test.ts` | Unit test | Reads `defaults/blanks/<name>/cue.md` files as real-world fixtures. |
 
-Nothing reads `defaults/` at host runtime. The runtime only reads `~/.opencues/` (user-level), `<cwd>/.opencues/` (project-level), and — for chrome — the synced `dist/configs/` bundle.
+Nothing reads `defaults/` at host runtime. The runtime only reads `~/.cues/` (user-level), `<cwd>/.cues/` (project-level), and — for chrome — the synced `dist/configs/` bundle.
 
 ---
 
@@ -65,32 +65,32 @@ Nothing reads `defaults/` at host runtime. The runtime only reads `~/.opencues/`
 If you're iterating on, say, the grammar prompt:
 
 1. Edit `defaults/cues/grammar/cue.md` in the repo.
-2. Run `pnpm exec opencues seed-configs` — idempotent; SKIPS files that already exist in `~/.opencues/` (empty 0-byte files re-seed automatically). If you've already seeded a non-empty file and want the update to land, either delete the user-level file first (or `truncate -s 0` it) or edit `~/.opencues/cues/grammar/cue.md` directly for fast iteration and copy back to `defaults/` when ready to ship.
+2. Run `pnpm exec opencues seed-configs` — idempotent; SKIPS files that already exist in `~/.cues/` (empty 0-byte files re-seed automatically). If you've already seeded a non-empty file and want the update to land, either delete the user-level file first (or `truncate -s 0` it) or edit `~/.cues/words/grammar/cue.md` directly for fast iteration and copy back to `defaults/` when ready to ship.
 3. Re-run the integration (CC / OC / chrome) — changes picked up on next keystroke via hot-reload.
 
-For Chrome specifically, you can also re-run `pnpm exec opencues sync chrome --wsl` to pick up changes from `~/.opencues/` without rebuilding the extension. Or rebuild the extension to refresh the baked-in defaults.
+For Chrome specifically, you can also re-run `pnpm exec opencues sync chrome --wsl` to pick up changes from `~/.cues/` without rebuilding the extension. Or rebuild the extension to refresh the baked-in defaults.
 
 ---
 
-## Why not just symlink `.opencues/` → `defaults/`?
+## Why not just symlink `.cues/` → `defaults/`?
 
-Tempting but loses the win. A symlink restores role #3 — `<cwd>/.opencues/` still resolves from the repo dir, and the native hosts' cwd-based merge kicks in again. The confusion returns.
+Tempting but loses the win. A symlink restores role #3 — `<cwd>/.cues/` still resolves from the repo dir, and the native hosts' cwd-based merge kicks in again. The confusion returns.
 
-Separate names mean separate roles. `defaults/` is for code (the install / build pipeline), `~/.opencues/` and per-project `.opencues/` are for runtime configuration. A dev on opencues is, from the runtime's perspective, just another user.
+Separate names mean separate roles. `defaults/` is for code (the install / build pipeline), `~/.cues/` and per-project `.cues/` are for runtime configuration. A dev on opencues is, from the runtime's perspective, just another user.
 
 ---
 
 ## Migration notes for contributors
 
-- **Seed your user-level configs once.** After pulling a branch that renames the dir, `opencues seed-configs` into `~/.opencues/`. If you'd previously been relying on `<repo>/.opencues/` for your day-to-day CC/OC use, that's gone — your shell no longer picks up those configs implicitly.
-- **`<repo>/.opencues/` is deleted.** `git rm` hooked into the rename; no orphan dir.
-- **The shape of `defaults/` matches `~/.opencues/`.** Anything that works in one works in the other. Files are portable via straight copy.
+- **Seed your user-level configs once.** After pulling a branch that renames the dir, `opencues seed-configs` into `~/.cues/`. If you'd previously been relying on `<repo>/.cues/` for your day-to-day CC/OC use, that's gone — your shell no longer picks up those configs implicitly.
+- **`<repo>/.cues/` is deleted.** `git rm` hooked into the rename; no orphan dir.
+- **The shape of `defaults/` matches `~/.cues/`.** Anything that works in one works in the other. Files are portable via straight copy.
 - **New cues ship here.** Add a new `defaults/cues/<name>/cue.md`, commit, and it's in the next release's seed for users + bake-time defaults for chrome.
 
 ---
 
 ## Related
 
-- `docs/features/chrome-sync.md` — how `sync chrome` bundles configs for the extension (reads from `~/.opencues/` at sync time, `defaults/` at build time).
+- `docs/features/chrome-sync.md` — how `sync chrome` bundles configs for the extension (reads from `~/.cues/` at sync time, `defaults/` at build time).
 - `docs/features/host-compat.md` — per-entry host filtering; applies equally to files in `defaults/` during chrome bake.
-- `docs/glossary.md § .opencues directory` — user-level / project-level conventions.
+- `docs/glossary.md § .cues directory` — user-level / project-level conventions.

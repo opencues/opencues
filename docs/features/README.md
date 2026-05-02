@@ -29,12 +29,12 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 20 | [Consume-Context Blanks](consume-context-blanks.md) | Blanks that collapse keyword + context between keyword and blank, preserving surrounding text |
 | 21 | [Cursor Navigate](cursor-navigate.md) | Highlight automatically follows cursor to navigable words |
 | 22 | [Word-Cue Routing](word-cue-routing.md) | Per-word dispatch of folder-based cue sources via per-source match/keywords/priority |
-| 23 | [Chrome Sync](chrome-sync.md) | How `opencues sync chrome` picks which `.opencues/` dirs feed the browser extension (user-only by default; opt-in for projects) |
-| 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source; the repo no longer self-dogfoods via an in-tree `.opencues/` |
+| 23 | [Chrome Sync](chrome-sync.md) | How `opencues sync chrome` picks which `.cues/` dirs feed the browser extension (user-only by default; opt-in for projects) |
+| 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source; the repo no longer self-dogfoods via an in-tree `.cues/` |
 | 25 | [Chrome Hot-Reload](chrome-hot-reload.md) | Content-addressable `.version` polling so chrome picks up `sync chrome --watch` edits in already-open tabs (~2.5s) |
 | 26 | [Resolver Skip Filter](resolver-skip-filter.md) | The four-condition check that prevents the LLM from re-resolving words already owned by cycling — keeps cycle tracks stable and saves tokens |
 | 27 | [Deterministic Relocate](deterministic-relocate.md) | Cycle progress survives prefix/middle text edits — DynDefs are re-anchored to their content's new position when (and only when) the match is unambiguous |
-| 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.opencues → ~/.opencues`), the `cues.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.opencues/` |
+| 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.cues → ~/.cues`), the `cues.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.cues/` |
 
 ## Adding a new feature
 

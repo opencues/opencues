@@ -1,10 +1,10 @@
 // ConfigLoader — Phase A.
 //
-// Loads (across $OPENCUES_HOME → <cwd>/.opencues → ~/.opencues):
+// Loads (across $OPENCUES_HOME → <cwd>/.cues → ~/.cues):
 //   - cues.md / blanks.md  (frontmatter parsed by @opencues/core).
 //     Tips live inside cues.md's `## Tips` JSON block — there is no
 //     separate tips.json file any more.
-//   - ~/.opencues/opencues.md (user-level only — system settings owned
+//   - ~/.opencuesrc (user-level only — system settings owned
 //     by the runtime; project-level opencues.md is ignored)
 //   - cues/<name>/ and blanks/<name>/ folders (per-folder cue.md via
 //     @opencues/core's discoverFolderConfigs)

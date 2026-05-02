@@ -1,7 +1,7 @@
 // `opencues new <kind> <name>` — scaffold a single cue / blank.
 //
-// Default destination: ~/.opencues/<kind>s/<name>/cue.md.
-// `--project` writes to <cwd>/.opencues/<kind>s/<name>/cue.md instead.
+// Default destination: ~/.cues/<kind>s/<name>/cue.md.
+// `--project` writes to <cwd>/.cues/<kind>s/<name>/cue.md instead.
 
 'use strict';
 
@@ -40,8 +40,8 @@ module.exports = function newCmd(argv, ctx) {
   }
 
   const baseDir = projectScope
-    ? path.join(process.cwd(), '.opencues')
-    : path.join(os.homedir(), '.opencues');
+    ? path.join(process.cwd(), '.cues')
+    : path.join(os.homedir(), '.cues');
   const targetDir = path.join(baseDir, KIND_TO_DIR[kind], name);
   const targetFile = path.join(targetDir, 'cue.md');
 
@@ -76,7 +76,7 @@ function printHelp() {
   console.log('');
   console.log('  <kind>      cue | blank');
   console.log('  <name>      lowercase, hyphens, no spaces (e.g. legal-doc)');
-  console.log('  --project   Scaffold under <cwd>/.opencues/ (default: ~/.opencues/)');
+  console.log('  --project   Scaffold under <cwd>/.cues/ (default: ~/.cues/)');
   console.log('  --dry-run   Print the plan; do not create anything');
   console.log('');
   console.log('Examples:');

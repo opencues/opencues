@@ -80,17 +80,17 @@ For all `BlankConfig` fields see the [Adding a Cue-Blank](../../../docs/guides/a
 
 ### Script Resolution
 
-`blankScript: ./<name>-blank.sh` is resolved relative to the cue.md location, which seeds to `~/.opencues/blanks/<name>/<name>-blank.sh`. OS helper binaries (`*.exe`, `*.ps1`) live colocated in the same folder and are looked up via `${SCRIPT_DIR}/<helper>` inside the script — no path walking, no install-layout coupling.
+`blankScript: ./<name>-blank.sh` is resolved relative to the cue.md location, which seeds to `~/.cues/blanks/<name>/<name>-blank.sh`. OS helper binaries (`*.exe`, `*.ps1`) live colocated in the same folder and are looked up via `${SCRIPT_DIR}/<helper>` inside the script — no path walking, no install-layout coupling.
 
 ## Script Implementation
 
 ### Script Interface
 
 ```bash
-~/.opencues/blanks/volume/volume-blank.sh get          # → "50"
-~/.opencues/blanks/volume/volume-blank.sh set 75       # apply
-~/.opencues/blanks/volume/volume-blank.sh up           # increment
-~/.opencues/blanks/volume/volume-blank.sh down         # decrement
+~/.cues/blanks/volume/volume-blank.sh get          # → "50"
+~/.cues/blanks/volume/volume-blank.sh set 75       # apply
+~/.cues/blanks/volume/volume-blank.sh up           # increment
+~/.cues/blanks/volume/volume-blank.sh down         # decrement
 ```
 
 If `get` returns empty or fails, the static `tip:` from `cue.md` is used as fallback.
@@ -126,25 +126,25 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 1. Check script exists and is executable:
    ```bash
-   ls -la ~/.opencues/blanks/volume/volume-blank.sh
+   ls -la ~/.cues/blanks/volume/volume-blank.sh
    ```
 
 2. Test script directly:
    ```bash
-   ~/.opencues/blanks/volume/volume-blank.sh up
+   ~/.cues/blanks/volume/volume-blank.sh up
    ```
 
 3. Check for Windows line endings (WSL):
    ```bash
-   sed -i 's/\r$//' ~/.opencues/blanks/volume/volume-blank.sh
+   sed -i 's/\r$//' ~/.cues/blanks/volume/volume-blank.sh
    ```
 
 ### Volume/Brightness Not Changing (WSL)
 
 1. **Test the exe directly** from WSL:
    ```bash
-   ~/.opencues/blanks/volume/VolCtl.exe up 10
-   ~/.opencues/blanks/brightness/BrightCtl.exe up 10
+   ~/.cues/blanks/volume/VolCtl.exe up 10
+   ~/.cues/blanks/brightness/BrightCtl.exe up 10
    ```
 2. **Check VolCtl.exe get returns a value** — if it returns 0 or empty on first call, that's the COM init delay (retry logic in volume-blank.sh handles this automatically)
 3. **Verify setup.sh compiled the executables** — re-run `setup.sh` if the `.exe` files are missing
@@ -173,8 +173,8 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 | Executable | Source | Compiled to | Purpose |
 |------------|--------|-------------|---------|
-| `VolCtl.exe` | `defaults/blanks/volume/VolCtl.cs` | `~/.opencues/blanks/volume/VolCtl.exe` | Volume via Core Audio API (colocated with `volume-blank.sh`) |
-| `BrightCtl.exe` | `defaults/blanks/brightness/BrightCtl.cs` | `~/.opencues/blanks/brightness/BrightCtl.exe` | Brightness via powrprof.dll (colocated with `brightness-blank.sh`) |
+| `VolCtl.exe` | `defaults/blanks/volume/VolCtl.cs` | `~/.cues/blanks/volume/VolCtl.exe` | Volume via Core Audio API (colocated with `volume-blank.sh`) |
+| `BrightCtl.exe` | `defaults/blanks/brightness/BrightCtl.cs` | `~/.cues/blanks/brightness/BrightCtl.exe` | Brightness via powrprof.dll (colocated with `brightness-blank.sh`) |
 | `SpeakCtl.exe` | `integrations/claude-code/patches/actions/SpeakCtl.cs` | `<CC_FORK>/.opencues/scripts/SpeakCtl.exe` | TTS via System.Speech (host runtime utility, not a user-blank) |
 
 Blank-colocated executables (`VolCtl`, `BrightCtl`) sit in the same folder as the script that calls them — `volume-blank.sh` does `"${SCRIPT_DIR}/VolCtl.exe"`. No path walking, no fallback list.

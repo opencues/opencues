@@ -161,19 +161,19 @@ pnpm exec opencues set-key bogus xxx
 # → unknown provider; exit 2
 
 pnpm exec opencues set-key groq test_value_delete_me
-# → "Stored GROQ_API_KEY in /home/<you>/.opencues/.env"
+# → "Stored GROQ_API_KEY in /home/<you>/.cues/.env"
 
-cat ~/.opencues/.env
+cat ~/.cues/.env
 # → contains: GROQ_API_KEY=test_value_delete_me
 
-ls -l ~/.opencues/.env
+ls -l ~/.cues/.env
 # → permission 600 (rw-------)
 
 pnpm exec opencues set-key groq another_test
 # → updates same line; cat .env again to confirm only one GROQ_API_KEY line
 
 # CLEANUP: restore your real key or:
-sed -i '/^GROQ_API_KEY=test/d; /^GROQ_API_KEY=another/d' ~/.opencues/.env
+sed -i '/^GROQ_API_KEY=test/d; /^GROQ_API_KEY=another/d' ~/.cues/.env
 ```
 
 ### `check-keys`
@@ -210,25 +210,25 @@ pnpm exec opencues update --no-pull
 
 ```bash
 pnpm exec opencues debug
-# → prints current state from ~/.opencues/opencues.md
+# → prints current state from ~/.opencuesrc
 
 pnpm exec opencues debug on
-# → "Set debug-mode: on in /home/<you>/.opencues/opencues.md"
+# → "Set debug-mode: on in /home/<you>/.cues/opencues.md"
 
-cat ~/.opencues/opencues.md
+cat ~/.opencuesrc
 # → frontmatter contains "debug-mode: on"
 
 pnpm exec opencues debug off
 # → frontmatter now "debug-mode: off"
 
 pnpm exec opencues debug on --project
-# → writes to <cwd>/.opencues/opencues.md instead
+# → writes to <cwd>/.cues/opencues.md instead
 
-cat .opencues/opencues.md | head
+cat .opencuesrc | head
 # → check the project file got the update
 
 # CLEANUP: revert
-git checkout -- .opencues/opencues.md
+git checkout -- .opencuesrc
 ```
 
 ---
@@ -252,13 +252,13 @@ pnpm exec opencues doctor --help
 
 ```bash
 EDITOR=cat pnpm exec opencues edit cues
-# → cats ~/.opencues/cues.md (or auto-creates a stub if missing then cats)
+# → cats ~/.cues/cues.md (or auto-creates a stub if missing then cats)
 
 pnpm exec opencues edit garbage
 # → unknown <file> error; exit 2
 
 pnpm exec opencues edit opencues --project
-# → opens <cwd>/.opencues/opencues.md (the repo's own one)
+# → opens <cwd>/.cues/opencues.md (the repo's own one)
 ```
 
 ### `logs`
@@ -280,7 +280,7 @@ pnpm exec opencues logs --tail
 
 ```bash
 pnpm exec opencues list
-# → CUES section with names + source files (from <repo>/.opencues + ~/.opencues if seeded)
+# → CUES section with names + source files (from <repo>/defaults + ~/.cues if seeded)
 # → BLANKS / CONTROLS sections similarly
 
 pnpm exec opencues list --cues
@@ -310,7 +310,7 @@ pnpm exec opencues show nonsense-name-xyz
 
 ```bash
 pnpm exec opencues validate
-# → checks both project (<cwd>/.opencues) and user (~/.opencues)
+# → checks both project (<cwd>/.cues) and user (~/.cues)
 # → prints "Checking ..." per path, then errors/warnings, then summary
 # → 0 errors should be expected on a clean checkout
 # → exit 0 if no errors
@@ -322,15 +322,15 @@ pnpm exec opencues validate --strict
 # → treats warnings as errors (e.g. "user dir does not exist" becomes fatal)
 
 # Force a parse error to verify error reporting works:
-echo "INVALID YAML\n---broken" > /tmp/test.opencues
-mkdir -p /tmp/test/.opencues
-cp /tmp/test.opencues /tmp/test/.opencues/cues.md
+echo "INVALID YAML\n---broken" > /tmp/test.cues
+mkdir -p /tmp/test/.cues
+cp /tmp/test.cues /tmp/test/cues.md
 ( cd /tmp/test && pnpm exec --dir=/home/wilfred/opencues opencues validate --project )
-# → Should report parse error for /tmp/test/.opencues/cues.md
+# → Should report parse error for /tmp/test/cues.md
 # (use `node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs validate --project` from /tmp/test if pnpm exec --dir doesn't work)
 
 # CLEANUP:
-rm -rf /tmp/test /tmp/test.opencues
+rm -rf /tmp/test /tmp/test.cues
 ```
 
 ### `import`
@@ -339,31 +339,31 @@ rm -rf /tmp/test /tmp/test.opencues
 pnpm exec opencues import --help
 # → usage with all source forms
 
-pnpm exec opencues import ./.opencues --dry-run
+pnpm exec opencues import ./.cues --dry-run
 # → shows source/target/install plan; exits without changes
 
 # Test local-pack import (the safest source — your own dir):
-pnpm exec opencues import ./.opencues --name test-pack-delete-me
+pnpm exec opencues import ./.cues --name test-pack-delete-me
 # → downloads (just copies for local), validates, installs
 # → expected: refused if any blank's cue.md has "script: ./X.sh" — that's
 #   relative-but-valid; if test fails check the validation logic.
-# → if it succeeds: ls ~/.opencues/packs/test-pack-delete-me/
+# → if it succeeds: ls ~/.cues/packs/test-pack-delete-me/
 
 # Test --force and --unsafe-allow-scripts behaviour with controlled inputs:
-pnpm exec opencues import ./.opencues --name test-pack-delete-me
+pnpm exec opencues import ./.cues --name test-pack-delete-me
 # → "already installed" error; exit 1
 
-pnpm exec opencues import ./.opencues --name test-pack-delete-me --force
+pnpm exec opencues import ./.cues --name test-pack-delete-me --force
 # → overwrites
 
 # CLEANUP:
-rm -rf ~/.opencues/packs/test-pack-delete-me
+rm -rf ~/.cues/packs/test-pack-delete-me
 
 # Live test (requires network) — skip if you'd rather not:
 # pnpm exec opencues import gist:<some-real-gist-id-with-cues> --dry-run
 ```
 
-⚠️ **Known limitation flagged in commit message:** ConfigLoader doesn't yet walk `packs/<name>/` subdirs, so installed packs aren't auto-discovered. The CLI prints a note about this. Symlink the contents into the parent `.opencues/` to test runtime behaviour.
+⚠️ **Known limitation flagged in commit message:** ConfigLoader doesn't yet walk `packs/<name>/` subdirs, so installed packs aren't auto-discovered. The CLI prints a note about this. Symlink the contents into the parent `.cues/` to test runtime behaviour.
 
 ---
 
@@ -380,19 +380,19 @@ node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs init --dry-run
 node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs init
 # → creates all 5 files
 
-ls .opencues
+ls .cues
 # → 5 files present
 
 node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs init
 # → all 5 SKIP (idempotent — never overwrites)
 
-cat .opencues/cues.md
+cat cues.md
 # → comment-heavy template explaining frontmatter shape
 
 # Test --minimal:
-rm -rf .opencues
+rm -rf .cues
 node /home/wilfred/opencues/packages/opencues-cli/bin/cli.cjs init --minimal
-cat .opencues/cues.md
+cat cues.md
 # → empty (just the README is templated)
 
 # CLEANUP:
@@ -404,12 +404,12 @@ rm -rf /tmp/opencues-init-test
 
 ```bash
 pnpm exec opencues new cue test-cue --dry-run
-# → "CREATE /home/<you>/.opencues/cues/test-cue/cue.md"
+# → "CREATE /home/<you>/.cues/words/test-cue/cue.md"
 
 pnpm exec opencues new cue test-cue
 # → file created with {{NAME}} → "test-cue" substituted
 
-cat ~/.opencues/cues/test-cue/cue.md
+cat ~/.cues/words/test-cue/cue.md
 # → frontmatter + prompt body, references "test-cue"
 
 pnpm exec opencues new cue test-cue
@@ -422,11 +422,11 @@ pnpm exec opencues new cue Bad_Name
 # → name validation error (must match /^[a-z][a-z0-9-]*$/); exit 2
 
 pnpm exec opencues new blank my-control --project
-# → creates <cwd>/.opencues/blanks/my-control/cue.md (in repo)
+# → creates <cwd>/.cues/blanks/my-control/cue.md (in repo)
 
 # CLEANUP:
-rm -rf ~/.opencues/cues/test-cue
-rm -rf .opencues/blanks/my-control
+rm -rf ~/.cues/words/test-cue
+rm -rf .cues/blanks/my-control
 ```
 
 ### `run`
@@ -525,16 +525,16 @@ pnpm exec opencues which | grep -E '✓|-'
 
 ```bash
 pnpm exec opencues seed-configs --dry-run
-# → plan: copies everything from <repo>/.opencues to ~/.opencues
-# → if ~/.opencues exists: shows SKIP for each existing file
+# → plan: copies everything from <repo>/defaults to ~/.cues
+# → if ~/.cues exists: shows SKIP for each existing file
 
 pnpm exec opencues seed-configs --project --dry-run
-# → would write to <cwd>/.opencues — should mostly SKIP (we're in the repo)
+# → would write to <cwd>/.cues — should mostly SKIP (we're in the repo)
 
 pnpm exec opencues seed-configs
-# → real run; populates ~/.opencues if not already there
+# → real run; populates ~/.cues if not already there
 
-ls ~/.opencues
+ls ~/.cues
 # → cues.md, blanks.md, opencues.md, cues/, controls/
 
 pnpm exec opencues seed-configs
@@ -553,14 +553,14 @@ pnpm exec opencues which
 
 ## ⑦ Earlier landed work (commits `a96853e`, `848bcec`, `c37512b`)
 
-### Shipped defaults (repo dir, formerly `.opencues/`, now `defaults/`)
+### Shipped defaults (repo dir, formerly `.cues/`, now `defaults/`)
 
 ```bash
 ls defaults
 # → cues.md, blanks.md, opencues.md, cues/, controls/
 #   (these are the seed source — NOT an ambient project config anymore)
 
-ls .opencues 2>&1
+ls .cues 2>&1
 # → "No such file or directory" (repo no longer ships a project config)
 
 ls cues.md 2>&1
@@ -575,14 +575,14 @@ pnpm exec opencues seed-configs --dry-run 2>&1 | grep source
 # → source: /home/<you>/opencues/defaults
 ```
 
-### `.opencues/` convention (`c37512b`)
+### `.cues/` convention (`c37512b`)
 
 ```bash
 # Verify the search-paths model: drop a project-level config that overrides
 # user-level on a name conflict. (Only meaningful if you've run seed-configs.)
 
 pnpm exec opencues list --cues
-# → grammar shows up multiple times if both ~/.opencues and <cwd>/.opencues
+# → grammar shows up multiple times if both ~/.cues and <cwd>/.cues
 #   have it. Folder cue.md wins over monolithic .md within each scope;
 #   project wins over user across scopes.
 

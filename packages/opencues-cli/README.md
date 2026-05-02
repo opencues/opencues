@@ -23,14 +23,14 @@ npm i -g opencues               # global install
 |---|---|
 | `opencues install <host>` | Install. `<host>` = `cc`, `oc`, `chrome`, or `--all`. All flags pass through to the per-host installer. |
 | `opencues uninstall <host>` | Roll back. Same shape as install. |
-| `opencues seed-configs` | Copy `<repo>/.opencues/` defaults into `~/.opencues/`. `--project` writes to `<cwd>/.opencues/` instead. |
+| `opencues seed-configs` | Copy `<repo>/.cues/` defaults into `~/.cues/`. `--project` writes to `<cwd>/.cues/` instead. |
 | `opencues which` | Show every relevant path (configs, installs, runtime IPC) with ✓/- markers for what exists. |
 | `opencues version` | CLI version + per-integration version + declared host compatibility ranges. |
 | `opencues help [<command>]` | Discoverable help. |
 
 ## Coming (Tier 2)
 
-`import` (download cue packs from URL/gist/github), `init` (scaffold `<cwd>/.opencues/`), `new <kind> <name>` (scaffold a single cue/blank), `validate` (lint configs), `run <host>` (orchestrate launch).
+`import` (download cue packs from URL/gist/github), `init` (scaffold `<cwd>/.cues/`), `new <kind> <name>` (scaffold a single cue/blank), `validate` (lint configs), `run <host>` (orchestrate launch).
 
 ## Coming (Tier 3+)
 
@@ -44,7 +44,7 @@ packages/opencues-cli/
 └── src/commands/
     ├── install.cjs           shells out to integrations/<host>/bin/install.cjs
     ├── uninstall.cjs         same; uninstall action
-    ├── seed-configs.cjs      cross-cutting; reads <repo>/.opencues/, writes ~/.opencues/
+    ├── seed-configs.cjs      cross-cutting; reads <repo>/.cues/, writes ~/.cues/
     ├── which.cjs             pure inspection
     ├── version.cjs           pure inspection
     └── help.cjs              top-level + per-command

@@ -61,7 +61,7 @@ Both accept:
 - A runtime-class blank that ALSO has a shell fallback for native
   hosts. Without `on-host:`, auto-detect sees the `.sh` and excludes
   chrome — the override re-includes it. See
-  `.opencues/blanks/opencues/cue.md` for a real example.
+  `.cues/blanks/opencues/cue.md` for a real example.
 
 ### When you'd use `not-on-host:`
 

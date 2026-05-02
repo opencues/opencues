@@ -56,16 +56,16 @@ Type `volume _` — auto-populates with your system volume. Cycle Up/Down to cha
 
 ## 4. Configure
 
-All behaviour is defined in `.md` config files that hot-reload (~2s, no restart). They live under `.opencues/`:
+All behaviour is defined in `.md` config files that hot-reload (~2s, no restart). They live under `.cues/`:
 
 | Path | Purpose |
 |------|---------|
-| `~/.opencues/cues.md` | Word tips and LLM prompts for alternatives (user-level) |
-| `~/.opencues/blanks.md` | Fill-in-the-blank modes (math, factual, etc.) |
-| `~/.opencues/blanks/<name>/cue.md` | Hardware/API cue-blanks |
-| `<project>/.opencues/...` | Project-level overrides — wins over user-level on name conflicts |
+| `~/.cues/cues.md` | Word tips and LLM prompts for alternatives (user-level) |
+| `~/.cues/blanks.md` | Fill-in-the-blank modes (math, factual, etc.) |
+| `~/.cues/blanks/<name>/cue.md` | Hardware/API cue-blanks |
+| `<project>/.cues/...` | Project-level overrides — wins over user-level on name conflicts |
 
-To populate `~/.opencues/` with the repo's defaults: `pnpm exec opencues seed-configs`.
+To populate `~/.cues/` with the repo's defaults: `pnpm exec opencues seed-configs`.
 For a fresh project-level config: `cd <project> && pnpm exec opencues init`.
 
 ## 5. Inspect

@@ -44,7 +44,7 @@ The three-tier trigger (see feature 12) is implemented in the input handler:
 ## CC-Specific: Tips File
 
 Tips ship inside `cues.md`'s `## Tips` JSON block (loaded from
-`~/.opencues/cues.md` and the project-level `<cwd>/.opencues/cues.md`).
+`~/.cues/cues.md` and the project-level `<cwd>/.cues/cues.md`).
 The legacy standalone `~/.claude/claude-code-tips.json` was removed
 during the April 2026 arc (commit `b6b1951`); CC patches read tips
 through `ConfigLoader.cueMap` like every other host.

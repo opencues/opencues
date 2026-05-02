@@ -91,9 +91,9 @@ re-verified end-to-end via a phased test plan.
 | 0 | Clean slate | Remove the extension + Windows-side install dir | n/a (prep) |
 | 1 | Fresh install | `pnpm exec opencues install chrome --wsl`, load unpacked, runtime boots | ✅ Verified — `[opencues][info] OpenCues runtime starting (Chrome v1)` shows in DevTools |
 | 2 | Bake-time defaults + multi-source routing | No sync run; type a sentence with legal/medical/financial/grammar words, verify 4 parallel LLM calls and per-source alts | ✅ **Verified 2026-04-22** — see "Phase 2 verification" below |
-| 3 | First sync (user-level only) | Add a tip to `~/.opencues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ✅ **Verified 2026-04-22** — see "Phase 3 verification" below |
+| 3 | First sync (user-level only) | Add a tip to `~/.cues/cues.md`, run `opencues sync chrome --wsl`, verify it overlays bake-time | ✅ **Verified 2026-04-22** — see "Phase 3 verification" below |
 | 4 | Negative test: cwd doesn't leak | `cd ~/anywhere`, `sync chrome --dry-run`, verify only `source: user` (project-level not auto-included) | ✅ **Verified 2026-04-22** — see "Phase 4 verification" below |
-| 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.opencues --wsl`, verify project content lands in bundle | ✅ **Verified 2026-04-22** — see "Phase 5 verification" below |
+| 5 | Explicit opt-in via `--include` | `sync chrome --include ~/some-project/.cues --wsl`, verify project content lands in bundle | ✅ **Verified 2026-04-22** — see "Phase 5 verification" below |
 | 6 | Watch-mode propagation | `sync chrome --wsl --watch`, edit a file, verify chrome picks up the change within ~2.5s | ✅ **Verified 2026-04-22** — see "Phase 6 verification" below |
 
 ### Phase 2 verification (2026-04-22)
@@ -128,7 +128,7 @@ Default-source isolation + bundle precedence over bake-time.
 
 **CLI side:**
 - `pnpm exec opencues sync chrome --dry-run` → exactly one source listed:
-  `source: user /home/wilfred/.opencues`. No `project`, no `include` —
+  `source: user /home/wilfred/.cues`. No `project`, no `include` —
   cwd-leak structurally absent.
 - `pnpm exec opencues sync chrome --wsl` → 16 files synced, mirrored to
   `C:\Users\wilfred\AppData\Local\opencues-chrome\dist\configs` (Windows
@@ -146,7 +146,7 @@ Default-source isolation + bundle precedence over bake-time.
 - `opencues.md` correctly stays `← storage` (writable file — voice-mode /
   debug-mode persist there).
 - `cues/sync-demo/cue.md ← bundle (494 chars)` — this folder doesn't exist
-  in `defaults/`; it lives only in `~/.opencues/cues/sync-demo/`. Its
+  in `defaults/`; it lives only in `~/.cues/words/sync-demo/`. Its
   presence in chrome proves user content overlays bake-time successfully.
 - `ConfigLoader: loaded 138 cue entries` — same count as bake-time
   baseline; no entries lost in translation.
@@ -164,17 +164,17 @@ Default-source isolation + bundle precedence over bake-time.
 Negative test — explicit-opt-in property holds.
 
 **Test 1** — `sync chrome --dry-run` from inside `/home/wilfred/opencues`
-(a directory that contains its own `.opencues/`):
-- Output: exactly one source line — `source: user /home/wilfred/.opencues`
+(a directory that contains its own `.cues/`):
+- Output: exactly one source line — `source: user /home/wilfred/.cues`
 - NO `source: project ...` line
-- 16 files, all from `~/.opencues/...`
+- 16 files, all from `~/.cues/...`
 
-**Test 2** — same command from `/tmp` (no `.opencues/` in cwd):
+**Test 2** — same command from `/tmp` (no `.cues/` in cwd):
 - Identical output, identical 16 files, same `source: user` line.
 
 **Confirms working:**
 - `sync chrome` default source set is user-level only — independent of cwd
-- No silent project leak from running inside a `.opencues/`-bearing dir
+- No silent project leak from running inside a `.cues/`-bearing dir
 - Watcher started from any cwd will bind to the same stable source set
   (matches the documented model in CLAUDE.md § "`opencues sync chrome`
   source discovery")
@@ -183,18 +183,18 @@ Negative test — explicit-opt-in property holds.
 
 Explicit opt-in via `--include` — project content overlays user.
 
-Test project: `~/testing/.opencues/` (contains `cues.md`, `blanks.md`,
+Test project: `~/testing/.cues/` (contains `cues.md`, `blanks.md`,
 `blanks.md`). Distinguishing marker: `cues.md` frontmatter
 `name: project-cues` (vs user-level `name: claude-code-cues`).
 
-**Dry-run first** — `sync chrome --include ~/testing/.opencues --dry-run`:
+**Dry-run first** — `sync chrome --include ~/testing/.cues --dry-run`:
 - Source list now shows TWO entries:
-  `source: user /home/wilfred/.opencues` + `source: include /home/wilfred/testing/.opencues`
+  `source: user /home/wilfred/.cues` + `source: include /home/wilfred/testing/.cues`
 - The 3 files where names collide (`cues.md`, `blanks.md`)
   flip to come from the include path; non-conflicting files still come
   from user.
 
-**Real sync** — `sync chrome --include ~/testing/.opencues --wsl`:
+**Real sync** — `sync chrome --include ~/testing/.cues --wsl`:
 - 16 files synced (same count — include overlays, doesn't add)
 - New version hash `0b4a8a3b6d79795c`
 - Both repo `dist/configs/cues.md` AND Windows-mirror
@@ -216,7 +216,7 @@ End-to-end watch-mode propagation — file edit → re-sync → bundle update
 **Setup**: `pnpm exec opencues sync chrome --wsl --watch` running.
 
 **Edit**: appended `[PHASE6]` marker to the `spantest` tip in
-`~/.opencues/cues.md`.
+`~/.cues/cues.md`.
 
 **Within ~2 seconds:**
 - `.version` flipped: `1ac5a116781d2757` → `0c47706bff306800`

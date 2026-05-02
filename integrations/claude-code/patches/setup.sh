@@ -48,7 +48,7 @@ for arg in "$@"; do
   fi
 done
 # TWEAKCC_DIR default is set below, AFTER we know the fork dir, so it can
-# default to <fork>/.opencues/tweakcc (compact-footprint — single blast
+# default to <fork>/.cues/tweakcc (compact-footprint — single blast
 # radius). Override (positional arg) is for hacking on a side checkout.
 
 # ─── progress + logging helpers ───────────────────────────────────────
@@ -121,7 +121,7 @@ if [[ "$PINNED_VERSION" =~ ^(\^|~) ]]; then
   echo "  Edit package.json to pin an EXACT version (e.g. \"2.1.110\")." >&4
 fi
 
-OC_INSTALL_ROOT="$CC_FORK_DIR/.opencues"
+OC_INSTALL_ROOT="$CC_FORK_DIR/.cues"
 OC_NM_DIR="$CC_FORK_DIR/node_modules/@opencues"
 TWEAKCC_DIR="${TWEAKCC_DIR_OVERRIDE:-$OC_INSTALL_ROOT/tweakcc}"
 export TWEAKCC_CONFIG_DIR="$OC_INSTALL_ROOT/patch-state"
@@ -129,7 +129,7 @@ export TWEAKCC_CONFIG_DIR="$OC_INSTALL_ROOT/patch-state"
 # ─── 1. Nuke prior state (default) or skip (--keep-state for dev) ────
 begin_step "Nuking prior install state"
 if $KEEP_STATE; then
-  echo "  --keep-state: keeping .opencues (incl. tweakcc) + fork node_modules"
+  echo "  --keep-state: keeping .cues (incl. tweakcc) + fork node_modules"
   mkdir -p "$OC_INSTALL_ROOT" "$TWEAKCC_CONFIG_DIR" "$OC_NM_DIR"
 else
   # Note: $TWEAKCC_DIR defaults to $OC_INSTALL_ROOT/tweakcc, so the
@@ -416,7 +416,7 @@ chmod +x "$OC_INSTALL_ROOT/statusline.sh"
 # path, so the statusline works from any cwd you launch claude-cues from.
 SETTINGS_JSON="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS_JSON" ] && grep -qE "highlight-statusline\.sh|\.claude/opencues/statusline\.sh" "$SETTINGS_JSON" 2>/dev/null; then
-  cp "$SETTINGS_JSON" "$SETTINGS_JSON.bak.opencues-statusline"
+  cp "$SETTINGS_JSON" "$SETTINGS_JSON.bak.cues-statusline"
   sed -i "s|$HOME/.claude/highlight-statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
   sed -i "s|$HOME/.claude/opencues/statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
   echo "Updated statusLine.command in $SETTINGS_JSON"

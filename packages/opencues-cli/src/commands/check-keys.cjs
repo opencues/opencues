@@ -11,8 +11,8 @@ const os = require('node:os');
 module.exports = async function checkKeys(argv) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
-  // Load ~/.opencues/.env into a local map (process.env wins if both set).
-  const envFile = path.join(os.homedir(), '.opencues', '.env');
+  // Load ~/.cues/.env into a local map (process.env wins if both set).
+  const envFile = path.join(os.homedir(), '.cues', '.env');
   const fileEnv = {};
   if (fs.existsSync(envFile)) {
     for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
@@ -74,6 +74,6 @@ function printHelp() {
   console.log('  - groq:    GET /openai/v1/models  (free, read-only)');
   console.log('  - finnhub: GET /quote?symbol=AAPL (free tier, 1 req)');
   console.log('');
-  console.log('Reads keys from process.env first, then ~/.opencues/.env. Exits 1 if any');
+  console.log('Reads keys from process.env first, then ~/.cues/.env. Exits 1 if any');
   console.log('configured key fails (unset keys are fine — they print "-").');
 }

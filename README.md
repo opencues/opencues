@@ -80,7 +80,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 
 | Host | Steps the installer runs | Runnable with `opencues run <host>` after? |
 |---|---|---|
-| `claude-code` | seed-configs (shared `~/.opencues/`) + nuke-and-rebuild from scratch inside `~/claude-code-cues/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues` / `claude`) |
+| `claude-code` | seed-configs (shared `~/.cues/`) + nuke-and-rebuild from scratch inside `~/claude-code-cues/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues` / `claude`) |
 | `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 3 TSX files | ✓ (runs `bun run dev` in the fork) |
 | `chrome` | Build MV3 extension + copy dist/ to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
 | `codex` | Clone the fork + build Rust bridge crate + apply TUI patches via diff + drop launch helper | **Alpha** — pinned to codex-rs `d58d3cc`; full build needs `libcap-dev` (Linux) |
@@ -89,11 +89,11 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 
 | Path | Purpose |
 |---|---|
-| `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.opencues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
+| `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.cues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/codex-cues/` | Codex fork the integration clones + patches |
-| `~/.opencues/` | User-level configs — `cues.md` (top-level settings) plus `cues/` and `blanks/` folders. Read by every host. |
-| `<cwd>/.opencues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, codex) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
+| `~/.cues/` | User-level configs — `cues.md` (top-level settings) plus `cues/` and `blanks/` folders. Read by every host. |
+| `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, codex) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
 
@@ -276,10 +276,10 @@ See [status line docs](integrations/claude-code/docs/status-line.md) for details
 
 ## Configuration
 
-Your user-level OpenCues config lives at `~/.opencues/`:
+Your user-level OpenCues config lives at `~/.cues/`:
 
 ```
-~/.opencues/
+~/.cues/
 ├── cues.md             # Top-level system settings (frontmatter): voice-mode, tips-mode,
 │                       # debug-mode, cursor-navigate, fluid-blank-mode, spelling-mode,
 │                       # word-cues-mode, the nested `settings:` block, and `ignore:` array
@@ -287,9 +287,9 @@ Your user-level OpenCues config lives at `~/.opencues/`:
 └── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
 ```
 
-Project-level overrides live at `<cwd>/.opencues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
+Project-level overrides live at `<cwd>/.cues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
 
-System settings (in `~/.opencues/cues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
+System settings (in `~/.cues/cues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
 
 | Setting | Values | Description |
 |---|---|---|
@@ -298,7 +298,7 @@ System settings (in `~/.opencues/cues.md`) — the same scalars are cyclable ins
 | `debug-mode` | `on` / `off` | Verbose logging in the host's debug surface |
 | `cursor-navigate` | `active` / `inactive` | Highlight follows cursor to navigable words |
 
-Run `pnpm exec opencues seed-configs` to populate `~/.opencues/` from the shipped defaults the first time. Hot-reloads on every edit (~2.5s for native hosts; chrome polls a `.version` hash — see `docs/features/chrome-hot-reload.md`).
+Run `pnpm exec opencues seed-configs` to populate `~/.cues/` from the shipped defaults the first time. Hot-reloads on every edit (~2.5s for native hosts; chrome polls a `.version` hash — see `docs/features/chrome-hot-reload.md`).
 
 CC-specific patch toggles (e.g. `enableWordHighlight`, `numberDimming`) live in tweakcc's config under `~/claude-code-cues/.opencues/patch-state/config.json`. They're rarely changed; defaults work for everyone.
 
@@ -319,7 +319,7 @@ It does **not** touch your user configs, the cloned OpenCues repo, or
 re-install without losing settings.
 
 ```bash
-pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/claude-code-cues/{node_modules/@opencues,.opencues}/
+pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/claude-code-cues/{node_modules/@opencues,.cues}/
 pnpm exec opencues uninstall opencode      # git checkout 3 patched files + removes fork node_modules entries
 pnpm exec opencues uninstall chrome        # removes integrations/chrome/dist + (if --target was used) the deploy
 pnpm exec opencues uninstall --all         # all three
@@ -338,7 +338,7 @@ each layer explicitly:
 pnpm exec opencues uninstall --all
 
 # 2. Remove user-level configs (voice-mode, tips, custom cues, ...)
-rm -rf ~/.opencues
+rm -rf ~/.cues
 
 # 3. Remove the OpenCues clone itself
 rm -rf ~/opencues

@@ -27,7 +27,7 @@ These must be explicitly set — they default to `undefined` (off) if missing.
 | `highlightAutoScroll` | boolean | undefined | No | Auto-scroll to highlighted word |
 | `highlightClearOnNavigation` | boolean | undefined | No | Clear on cursor navigation |
 | `highlightWordPattern` | string | undefined | No | Custom word boundary pattern |
-| (cue-blank registry) | (built from `.opencues/blanks/*/cue.md`) | (none) | No | Cue-blanks are loaded from folder configs at runtime; no legacy override block in `config.json` |
+| (cue-blank registry) | (built from `.cues/blanks/*/cue.md`) | (none) | No | Cue-blanks are loaded from folder configs at runtime; no legacy override block in `config.json` |
 
 ### Dynamic Highlight (requires `enableWordHighlight: true`)
 
@@ -93,10 +93,10 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 
 ## Cue-Blank Discovery
 
-Cue-blanks live as folders under `~/.opencues/blanks/<name>/cue.md` (user-level) and `<cwd>/.opencues/blanks/<name>/cue.md` (project-level). The runtime's `ConfigLoader` discovers them on each hot-reload cycle.
+Cue-blanks live as folders under `~/.cues/blanks/<name>/cue.md` (user-level) and `<cwd>/.cues/blanks/<name>/cue.md` (project-level). The runtime's `ConfigLoader` discovers them on each hot-reload cycle.
 
 ```yaml
-# ~/.opencues/blanks/volume/cue.md
+# ~/.cues/blanks/volume/cue.md
 ---
 name: volume
 type: blank

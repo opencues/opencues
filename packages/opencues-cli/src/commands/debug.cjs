@@ -25,8 +25,8 @@ module.exports = function debug(argv) {
   }
 
   const baseDir = projectScope
-    ? path.join(process.cwd(), '.opencues')
-    : path.join(os.homedir(), '.opencues');
+    ? path.join(process.cwd(), '.cues')
+    : path.join(os.homedir(), '.cues');
   const file = path.join(baseDir, 'opencues.md');
 
   fs.mkdirSync(baseDir, { recursive: true });
@@ -43,8 +43,8 @@ module.exports = function debug(argv) {
 
 function printCurrent(projectScope) {
   const baseDir = projectScope
-    ? path.join(process.cwd(), '.opencues')
-    : path.join(os.homedir(), '.opencues');
+    ? path.join(process.cwd(), '.cues')
+    : path.join(os.homedir(), '.cues');
   const file = path.join(baseDir, 'opencues.md');
   if (!fs.existsSync(file)) {
     console.log(`${file}: not present (debug-mode would default to 'off')`);
@@ -80,7 +80,7 @@ function printHelp() {
   console.log('current setting.');
   console.log('');
   console.log('  on / off     New value');
-  console.log('  --project    Edit <cwd>/.opencues/opencues.md instead of ~/.opencues/');
+  console.log('  --project    Edit <cwd>/.cues/opencues.md instead of ~/.cues/');
   console.log('');
   console.log('Examples:');
   console.log('  opencues debug              # print current');

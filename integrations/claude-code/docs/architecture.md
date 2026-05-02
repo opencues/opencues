@@ -293,7 +293,7 @@ STATE (globalThis):
 CONFIG:
   • highlightMode: 'numbers' | 'words'
   • highlightColor: 'white' | 'cyan' | 'yellow' | ...
-  • Cue-blanks loaded from .opencues/blanks/<name>/cue.md (folder-based)
+  • Cue-blanks loaded from .cues/blanks/<name>/cue.md (folder-based)
 
 EXTERNAL SCRIPTS:
   • Folder-based: <CC_FORK>/.opencues/blanks/<name>/<name>-blank.sh (resolved via blankInvoke spawn fallback)

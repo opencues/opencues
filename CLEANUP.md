@@ -17,8 +17,8 @@ architecture doc instead. Walk this list before launch.
 | Item | Where | Decision needed |
 |---|---|---|
 | `spantest` static tip (`one word`, `two words`, etc.) | `defaults/cues.md` ## Tips block | **Keep but mark.** It's a deterministic span fixture useful for re-verification by anyone who picks up the project later. Wrap with a comment line like `(test fixture — safe to remove for production seed)`, OR move to `defaults/cues/test/cue.md` where it's clearly a folder-isolated fixture. |
-| `spantest` static tip | `~/.opencues/cues.md` (user-level) | **Local-only — no action.** Not in the repo; lives on Wilfred's machine only. |
-| `cues/sync-demo/` folder | `~/.opencues/cues/sync-demo/` | **Local-only — no action.** Same — left over from earlier sync testing, doesn't ship. |
+| `spantest` static tip | `~/.cues/cues.md` (user-level) | **Local-only — no action.** Not in the repo; lives on Wilfred's machine only. |
+| `cues/sync-demo/` folder | `~/.cues/words/sync-demo/` | **Local-only — no action.** Same — left over from earlier sync testing, doesn't ship. |
 
 ---
 

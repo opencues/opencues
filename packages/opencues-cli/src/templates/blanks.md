@@ -16,7 +16,7 @@ version: 1
 #
 # 1. Folder-based (PREFERRED for anything with a script or multi-field config):
 #
-#    .opencues/blanks/<name>/
+#    .cues/blanks/<name>/
 #      cue.md        — blank config in YAML frontmatter
 #      <name>.sh     — optional colocated script (OS-bound blanks only)
 #
@@ -67,7 +67,7 @@ version: 1
 # can sit next to the cue.md and be referenced with a relative path.
 # Layout for a "volume" blank:
 #
-#   .opencues/blanks/volume/
+#   .cues/blanks/volume/
 #     cue.md              ← frontmatter below
 #     volume-blank.sh     ← responds to `get` and `set <value>`
 #

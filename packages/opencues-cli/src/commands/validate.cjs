@@ -30,8 +30,8 @@ module.exports = function validate(argv, ctx) {
 
   const HOME = os.homedir();
   const searchPaths = [];
-  if (!userOnly) searchPaths.push({ label: 'project', dir: path.join(process.cwd(), '.opencues') });
-  if (!projectOnly) searchPaths.push({ label: 'user', dir: path.join(HOME, '.opencues') });
+  if (!userOnly) searchPaths.push({ label: 'project', dir: path.join(process.cwd(), '.cues') });
+  if (!projectOnly) searchPaths.push({ label: 'user', dir: path.join(HOME, '.cues') });
 
   const errors = [];
   const warnings = [];
@@ -139,7 +139,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
     catch (err) { errors.push(`${opencuesMdPath}: read failed — ${err.message}`); }
   }
 
-  // Folder discoveries: .opencues/{cues,blanks}/<name>/cue.md
+  // Folder discoveries: .cues/{cues,blanks}/<name>/cue.md
   // Folder name IS the cue/blank name. Within the same dir,
   // can't have two folders with the same name (filesystem prevents it).
   // Folder + monolithic same name is FINE — folder overrides.
@@ -239,11 +239,11 @@ function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, err
 function printHelp() {
   console.log('opencues validate [--project] [--user] [--strict]');
   console.log('');
-  console.log('Walk the .opencues/ search paths, parse every .md, report issues.');
+  console.log('Walk the .cues/ search paths, parse every .md, report issues.');
   console.log('Exit 0 on success, 1 on errors (or warnings with --strict).');
   console.log('');
-  console.log('  --project    Only check <cwd>/.opencues/');
-  console.log('  --user       Only check ~/.opencues/');
+  console.log('  --project    Only check <cwd>/.cues/');
+  console.log('  --user       Only check ~/.cues/');
   console.log('  --strict     Treat warnings as errors');
   console.log('  --help       Show this message');
   console.log('');

@@ -37,7 +37,7 @@ Otherwise `rustup update stable`. Codex-rs needs edition2024
 ### 3. opencues-installed configs
 
 ```bash
-pnpm exec opencues seed-configs   # populate ~/.opencues/ if not already
+pnpm exec opencues seed-configs   # populate ~/.cues/ if not already
 ```
 
 ## Build + run
@@ -96,7 +96,7 @@ the LLM resolver is wired.
 - [ ] **T4 — Selector + Satellite blanks.** Type `voice-mode _`. The
       `_` should auto-populate with the current value (`active` or
       `inactive`) within ~500ms. `Ctrl+Alt+Up` cycles between values
-      and writes back to `~/.opencues/opencues.md` via the
+      and writes back to `~/.opencuesrc` via the
       OpenCuesSettingsControl (verify the file changed).
 
 - [ ] **T5 — Hoisted control end-to-end.** Type `HN posts _`. The
@@ -105,7 +105,7 @@ the LLM resolver is wired.
       headlines.
 
 - [ ] **T6 — Hot-reload.** With codex still open, edit
-      `~/.opencues/cues.md` (e.g. add a tip). The daemon's
+      `~/.cues/cues.md` (e.g. add a tip). The daemon's
       ConfigLoader polls every ~2s; the next text-change you trigger
       should pick up the new tip without restarting codex.
 

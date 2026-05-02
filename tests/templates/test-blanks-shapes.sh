@@ -66,18 +66,18 @@ make_stub() {
 # ─── SHAPE 1: Typed blank with script (volume-style) ──────────────
 echo "=== SHAPE 1: typed blank ==="
 "$OPENCUES" new blank my-typed --project >/dev/null 2>&1
-uncomment_shape .opencues/blanks/my-typed/cue.md "Typed blank"
-make_stub .opencues/blanks/my-typed/my-typed-blank.sh
-assert_field .opencues/blanks/my-typed/cue.md "blankKeywords"
-assert_field .opencues/blanks/my-typed/cue.md "blankScript"
-assert_field .opencues/blanks/my-typed/cue.md "blankAutoPopulate"
+uncomment_shape .cues/blanks/my-typed/cue.md "Typed blank"
+make_stub .cues/blanks/my-typed/my-typed-blank.sh
+assert_field .cues/blanks/my-typed/cue.md "blankKeywords"
+assert_field .cues/blanks/my-typed/cue.md "blankScript"
+assert_field .cues/blanks/my-typed/cue.md "blankAutoPopulate"
 
 # ─── SHAPE 2: List blank (no script — fixed cycle list) ───────────
 echo "=== SHAPE 2: list blank ==="
 "$OPENCUES" new blank my-list --project >/dev/null 2>&1
-uncomment_shape .opencues/blanks/my-list/cue.md "List blank"
-assert_field .opencues/blanks/my-list/cue.md "blankKeywords"
-assert_field .opencues/blanks/my-list/cue.md "stepValues"
+uncomment_shape .cues/blanks/my-list/cue.md "List blank"
+assert_field .cues/blanks/my-list/cue.md "blankKeywords"
+assert_field .cues/blanks/my-list/cue.md "stepValues"
 
 echo "=== validate both shapes together ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || { "$OPENCUES" validate --project; fail "validate failed"; }

@@ -10,7 +10,7 @@ const { spawnSync } = require('node:child_process');
 // `cues` covers everything that used to be split across cues.md /
 // opencues.md / blanks.md: settings frontmatter, ignore list, project
 // metadata. Legacy `opencues` and `blanks` aliases are gone post-
-// migration — every user file ends up at ~/.opencues/cues.md.
+// migration — every user file ends up at ~/.cues/cues.md.
 const VALID = new Set(['cues']);
 
 module.exports = function edit(argv) {
@@ -30,8 +30,8 @@ module.exports = function edit(argv) {
   }
 
   const baseDir = projectScope
-    ? path.join(process.cwd(), '.opencues')
-    : path.join(os.homedir(), '.opencues');
+    ? path.join(process.cwd(), '.cues')
+    : path.join(os.homedir(), '.cues');
   const file = path.join(baseDir, `${name}.md`);
 
   if (!fs.existsSync(file)) {
@@ -49,11 +49,11 @@ module.exports = function edit(argv) {
 function printHelp() {
   console.log('opencues edit <file> [--project]');
   console.log('');
-  console.log('Open a .opencues/ config file in $EDITOR (or $VISUAL, or vi as fallback).');
+  console.log('Open a .cues/ config file in $EDITOR (or $VISUAL, or vi as fallback).');
   console.log('Auto-creates the file with a stub header if it doesn\'t exist.');
   console.log('');
   console.log('  <file>      cues   (the only top-level config — settings + ignore list + tips/blanks live in folders)');
-  console.log('  --project   Edit <cwd>/.opencues/<file>.md instead of ~/.opencues/<file>.md');
+  console.log('  --project   Edit <cwd>/.cues/<file>.md instead of ~/.cues/<file>.md');
   console.log('');
   console.log('Examples:');
   console.log('  opencues edit cues');

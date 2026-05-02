@@ -100,7 +100,7 @@ does for OpenCode. Use OC as the structural template.
       constructs the runtime bundle (CodexAdapter + ConfigLoader),
       calls `subscribe()` + awaits `load()`, and only then sends the
       `{ok:true}` response. Boot failures return `-32001` instead of
-      crashing. Live-verified: loading `~/.opencues/` produced
+      crashing. Live-verified: loading `~/.cues/` produced
       "ConfigLoader: loaded 138 cue entries, opencuesState={...}".
       Companion fix: `startDaemon` now tracks in-flight handleLine
       promises and awaits them on stdin close — single-line stdin
@@ -128,7 +128,7 @@ does for OpenCode. Use OC as the structural template.
       (HackerNews, Stocks, Weather, Answer, PromptImprover,
       OpenCuesSettings) with identical constructor args.
       `findOpenCuesMdPath()` mirrors OC's resolution
-      ($OPENCUES_HOME → ~/.opencues/opencues.md). `createControlInvoke`
+      ($OPENCUES_HOME → ~/.opencuesrc). `createControlInvoke`
       wraps the registry; `CodexAdapter` accepts the binding + adds
       `'control-invoke'` to capabilities when supplied. Same
       per-instance capability pattern OC uses in
@@ -142,7 +142,7 @@ does for OpenCode. Use OC as the structural template.
       `-32603` internal failure); control-execution failures stay
       in the result body (non-zero `exitCode`) per the Control
       interface contract. Live-verified against real
-      `OpenCuesSettingsControl` reading `~/.opencues/opencues.md`.
+      `OpenCuesSettingsControl` reading `~/.opencuesrc`.
       Bonus: caught + fixed an FIFO ordering bug — readline 'line'
       events now process serially through a chained promise queue.
       6 new unit tests.
@@ -253,7 +253,7 @@ the diff will be regenerated when bumping PINNED_SHA.
 - [x] **F. `new_with_config` starts the bridge** — gated on
       `OPENCUES_DAEMON_PATH` env (set by the launch helper). Failures
       drop to vanilla codex behaviour. Builds configSearchPaths from
-      `$OPENCUES_HOME / cwd/.opencues / $HOME/.opencues` (mirrors OC
+      `$OPENCUES_HOME / cwd/.cues / $HOME/.cues` (mirrors OC
       and the runtime convention).
 - [x] **G. dispatch_key BEFORE normal handling** — at the top of
       `handle_key_event`. Crossterm KeyCode → stable name string via
@@ -303,12 +303,12 @@ After Tiers 3-5 land, verify in this order:
       to cycle. Text should mutate in place.
 - [ ] **F. Type `voice-mode _`** — should auto-populate with a value
       from the OpenCuesSettings control. Cycling should toggle and
-      write back to `~/.opencues/opencues.md`.
+      write back to `~/.opencuesrc`.
 - [ ] **G. Type `volume _`** — control-bound blank should auto-populate
       with the live value. Cycling should call `volume.sh up/down`.
 - [ ] **H. Type `HN posts _`** — HackerNewsControl should populate
       with live RSS headlines.
-- [ ] **I. Edit `~/.opencues/cues.md`** — hot-reload should pick up
+- [ ] **I. Edit `~/.cues/cues.md`** — hot-reload should pick up
       the change within ~2s without TUI restart.
 - [ ] **J. Edit text outside a cycled word** — cycle progress should
       survive prefix edits (deterministic relocate).

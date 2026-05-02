@@ -1,4 +1,4 @@
-// `opencues init` — scaffold <cwd>/.opencues/ with templates.
+// `opencues init` — scaffold <cwd>/.cues/ with templates.
 // Idempotent: skips files that already exist.
 
 'use strict';
@@ -12,7 +12,7 @@ module.exports = function init(argv, ctx) {
   const minimal = argv.includes('--minimal');
 
   const cwd = process.cwd();
-  const targetDir = path.join(cwd, '.opencues');
+  const targetDir = path.join(cwd, '.cues');
   const templateDir = path.join(ctx.PKG_DIR, 'src/templates');
 
   // Files we scaffold. README is informational; .md files are usable
@@ -20,12 +20,12 @@ module.exports = function init(argv, ctx) {
   //
   // Note: opencues.md is NOT scaffolded here. Its schema (voice-mode,
   // tips-mode, debug-mode, …) is defined by the OpenCues runtime — not
-  // by users or projects — and it lives only at user-level (~/.opencues/
+  // by users or projects — and it lives only at user-level (~/.cues/
   // opencues.md), auto-managed by OpenCuesSettingsBlank on first
   // settings write.
   const files = ['cues.md', 'blanks.md', 'README.md'];
 
-  console.log(`Initialising .opencues/ in ${cwd}\n`);
+  console.log(`Initialising .cues/ in ${cwd}\n`);
   console.log('Plan:');
   const plan = files.map(name => ({
     name,
@@ -54,7 +54,7 @@ module.exports = function init(argv, ctx) {
   console.log(`\nCreated ${created} files, skipped ${skipped} (already present).`);
   console.log('');
   console.log('Next:');
-  console.log('  Edit .opencues/cues.md (or use `opencues new cue <name> --project`)');
+  console.log('  Edit cues.md (or use `opencues new cue <name> --project`)');
   console.log('  Run `opencues validate --project` to lint your config');
   console.log('  Launch: `opencues run <host>` (or whichever you have installed)');
 };
@@ -62,7 +62,7 @@ module.exports = function init(argv, ctx) {
 function printHelp() {
   console.log('opencues init [--minimal] [--dry-run]');
   console.log('');
-  console.log('Scaffold a `.opencues/` directory in the current working directory with');
+  console.log('Scaffold a `.cues/` directory in the current working directory with');
   console.log('comment-only template files explaining each schema. Idempotent — files');
   console.log('that already exist are skipped, never overwritten.');
   console.log('');

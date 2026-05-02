@@ -59,23 +59,23 @@ opencues uninstall claude-code
 opencues uninstall --all
 ```
 
-### `seed-configs` — manage `~/.opencues/`
+### `seed-configs` — manage `~/.cues/`
 
-Owns all writes to the user-level `~/.opencues/` tree. Idempotent + safe to
+Owns all writes to the user-level `~/.cues/` tree. Idempotent + safe to
 re-run. Invoked automatically (with `--silent`) by every `opencues install <host>`,
 and runnable standalone whenever you suspect drift.
 
 Four phases on every invocation:
 
-1. **SEED** — first-time copy of `defaults/cues.md + cues/ + blanks/ + scripts/` → `~/.opencues/`. Skips files that already exist with content (preserves user edits).
+1. **SEED** — first-time copy of `defaults/cues.md + cues/ + blanks/ + scripts/` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.opencues/cues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.cues/cues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
 |---|---|
 | (none) | User-level. Runs all four phases. |
-| `--project` | Writes into `<cwd>/.opencues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `cues.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
+| `--project` | Writes into `<cwd>/.cues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `cues.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
 | `--silent` | Suppress non-error output (used when chained from `opencues install`). |
 | `--dry-run` | Print the plan; do not copy / compile anything. |
 
@@ -93,7 +93,7 @@ opencues update
 
 ### `set-key <provider> <key>` — store an API key
 
-Writes the key into `~/.opencues/.env` so you don't have to put it
+Writes the key into `~/.cues/.env` so you don't have to put it
 in your shell rc. Hosts read this file at startup.
 
 ```bash
@@ -112,7 +112,7 @@ whether the key or the network is the problem.
 
 ## Authoring
 
-### `init` — scaffold `<cwd>/.opencues/`
+### `init` — scaffold `<cwd>/.cues/`
 
 Creates the directory + starter folder layout (`cues/` and `blanks/`)
 with comments explaining each block. Idempotent — won't clobber
@@ -126,10 +126,10 @@ opencues init
 ### `new <kind> <name>` — scaffold one cue / blank
 
 ```bash
-opencues new cue legal-jargon            # → ~/.opencues/cues/legal-jargon/cue.md
-opencues new blank my-script             # → ~/.opencues/blanks/my-script/cue.md
-opencues new blank physics               # → ~/.opencues/blanks/physics/cue.md
-opencues new cue legal --project         # write under <cwd>/.opencues/ instead
+opencues new cue legal-jargon            # → ~/.cues/words/legal-jargon/cue.md
+opencues new blank my-script             # → ~/.cues/blanks/my-script/cue.md
+opencues new blank physics               # → ~/.cues/blanks/physics/cue.md
+opencues new cue legal --project         # write under <cwd>/.cues/ instead
 ```
 
 The template includes a `match:` regex placeholder, a sample prompt,
@@ -150,7 +150,7 @@ Exit 0 on success, 1 on errors. Suitable for CI.
 
 ### `import <source>` — install a community config pack
 
-Pulls a tarball or local dir into `~/.opencues/`. Sources accepted:
+Pulls a tarball or local dir into `~/.cues/`. Sources accepted:
 
 ```bash
 opencues import gist:abc123
@@ -183,13 +183,13 @@ exists so you don't need to remember each one's path.
 ### `sync <host>` — push configs into a host that can't read them
 
 Today only matters for **chrome**. Browser content scripts can't
-read `~/.opencues/`, so the configs have to be bundled into the
+read `~/.cues/`, so the configs have to be bundled into the
 extension at sync time.
 
 ```bash
 opencues sync chrome --wsl                            # default: user-level only
-opencues sync chrome --include ~/work/proj/.opencues  # add a project
-opencues sync chrome --project                        # add <cwd>/.opencues
+opencues sync chrome --include ~/work/proj/.cues  # add a project
+opencues sync chrome --project                        # add <cwd>/.cues
 opencues sync chrome --pack demo-pack                 # ONLY that pack
 opencues sync chrome --watch                          # re-sync on file changes
 opencues sync chrome --dry-run                        # show what would be synced
@@ -254,12 +254,12 @@ opencues show volume
 opencues show math
 ```
 
-### `edit <file>` — open `~/.opencues/<file>.md` in `$EDITOR`
+### `edit <file>` — open `~/.cues/<file>.md` in `$EDITOR`
 
 ```bash
-opencues edit cues               # opens ~/.opencues/cues.md (top-level settings)
-opencues edit cues/legal         # opens ~/.opencues/cues/legal/cue.md
-opencues edit blanks/volume      # opens ~/.opencues/blanks/volume/cue.md
+opencues edit cues               # opens ~/.cues/cues.md (top-level settings)
+opencues edit cues/legal         # opens ~/.cues/words/legal/cue.md
+opencues edit blanks/volume      # opens ~/.cues/blanks/volume/cue.md
 ```
 
 ### `logs [--tail]` — show `/tmp/opencues.log`
@@ -280,7 +280,7 @@ opencues debug on           # enable verbose logging
 opencues debug off          # disable
 ```
 
-Updates `~/.opencues/cues.md`; hot-reload picks it up on the
+Updates `~/.cues/cues.md`; hot-reload picks it up on the
 next keystroke. Same effect as cycling `debug-mode` in-text via
 the OpenCues Settings blank.
 

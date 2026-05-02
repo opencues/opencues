@@ -63,7 +63,7 @@ opencues/
 ├── defaults/                      # Shipped defaults — seed source for `opencues seed-configs`
 │   │                              # AND the Chrome extension's bake-time bundled fallbacks.
 │   │                              # NOT an ambient project-level config — the repo does not
-│   │                              # self-dogfood via `<cwd>/.opencues` anymore. Devs working
+│   │                              # self-dogfood via `<cwd>/.cues` anymore. Devs working
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
 │   ├── cues.md                    # Master config: settings frontmatter + ignore: array + project metadata
@@ -172,7 +172,7 @@ export GROQ_API_KEY="your-key"
 
 `opencues install claude-code` chains two scripts:
 
-1. **`opencues seed-configs --silent`** — owns all writes to `~/.opencues/`
+1. **`opencues seed-configs --silent`** — owns all writes to `~/.cues/`
    (shared by every native host: CC, OC, Codex). First-time copy +
    library-script sync + 0-byte cues.md self-heal + colocated `.cs`
    compile (WSL only).
@@ -186,7 +186,7 @@ export GROQ_API_KEY="your-key"
 
 **Compact footprint**: everything CC-specific lives inside `~/claude-code-cues/`.
 Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert. OpenCode + Codex
-keep working (they read shared `~/.opencues/` independently).
+keep working (they read shared `~/.cues/` independently).
 
 For non-standard cli.js paths: `--target /path/to/cli.js`.
 For dev iteration on patch sources: `--keep-state` (skips nuke; ~39s).
@@ -345,7 +345,7 @@ two paths behave differently:
 
 | Host | Sources at runtime | How project configs get in |
 |---|---|---|
-| **claude-code** | `$OPENCUES_HOME` → `<cwd>/.opencues/` → `~/.opencues/` | Automatic (cwd-based merge) |
+| **claude-code** | `$OPENCUES_HOME` → `<cwd>/.cues/` → `~/.cues/` | Automatic (cwd-based merge) |
 | **opencode** | same | same |
 | **codex** | same | same |
 | **chrome** | `<extension>/dist/configs/` (sync'd) + bake-time defaults from `<repo>/defaults/` | Explicit — `opencues sync chrome [--include <path>]` |
@@ -355,7 +355,7 @@ silently skipped; the runtime degrades gracefully. Hot-reload polls
 every search path on every keystroke.
 
 Chrome has NO runtime filesystem access, so its "search path" is
-whatever `sync chrome` wrote last. By default that's `~/.opencues/`
+whatever `sync chrome` wrote last. By default that's `~/.cues/`
 only — project dirs are opted in explicitly (see
 `docs/features/chrome-sync.md`). The extension also carries bake-time
 defaults inlined from `<repo>/defaults/` at esbuild time, so a user
@@ -366,15 +366,15 @@ who installs but never syncs still gets grammar/legal/medical etc.
 
 ```
 $OPENCUES_HOME           ← env override (top priority; for CI / power users)
-<cwd>/.opencues          ← project-level (cd into your project)
-~/.opencues              ← user-level (global defaults)
+<cwd>/.cues          ← project-level (cd into your project)
+~/.cues              ← user-level (global defaults)
 ```
 
 The convention mirrors `.editorconfig` / `.npmrc` / `.claude/skills/` — opaque
 host-neutral dir at the project root. Missing dirs are silently skipped; the
 runtime degrades gracefully.
 
-A user with no `.opencues/` anywhere gets empty config (CC/OC/codex)
+A user with no `.cues/` anywhere gets empty config (CC/OC/codex)
 — not a crash. Hot-reload polls every search path on every keystroke
 (same `maybeReload` mechanism as before).
 
@@ -384,9 +384,9 @@ wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate,
 fluid-blank-mode, spelling-mode, word-cues-mode) whose schema is
 owned by the OpenCues runtime. A single value applies across every
 integration, so projects cannot override it. The file lives at
-`~/.opencues/cues.md` (or `$OPENCUES_HOME/cues.md` when set).
+`~/.cues/cues.md` (or `$OPENCUES_HOME/cues.md` when set).
 
-- `opencues seed-configs` copies `defaults/cues.md` to `~/.opencues/`
+- `opencues seed-configs` copies `defaults/cues.md` to `~/.cues/`
   and runs an idempotent migration that splits any legacy
   `opencues.md` + `## Tips` / `## Ignore` / `## Blanks` sections into
   the new layout (tip groups become folders under `cues/<id>/cue.md`,
@@ -430,7 +430,7 @@ Full spec: `docs/features/host-compat.md`. Glossary entry:
 `inferHostCompat()`, `formatHostList()`, `unknownHostNames()`,
 `HOSTS`, `NATIVE_HOSTS`.
 
-Real-world example: `.opencues/blanks/opencues/cue.md` has
+Real-world example: `.cues/blanks/opencues/cue.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a
 runtime-class implementation in `@opencues/runtime`. Auto-detect
 would exclude chrome because of the `.sh`; the file adds
@@ -544,7 +544,7 @@ Then reload the extension at `chrome://extensions` and hard-refresh the page.
 Chrome is a global browser extension — it runs across every tab, has
 no cwd, and isn't scoped to any single project. So `sync chrome`
 deliberately breaks from the user+project search-paths model the
-native hosts use (see above). By default, **only `~/.opencues/`
+native hosts use (see above). By default, **only `~/.cues/`
 feeds into the chrome bundle.** The cwd you happen to run sync from
 does NOT get mixed in.
 
@@ -552,16 +552,16 @@ To bundle project configs, opt them in explicitly:
 
 ```bash
 opencues sync chrome --wsl                              # user-level only (default)
-opencues sync chrome --include ~/work/proj/.opencues --wsl    # + one project
-opencues sync chrome --include ~/a/.opencues --include ~/b/.opencues --wsl  # + several
-opencues sync chrome --project --wsl                    # + <cwd>/.opencues
+opencues sync chrome --include ~/work/proj/.cues --wsl    # + one project
+opencues sync chrome --include ~/a/.cues --include ~/b/.cues --wsl  # + several
+opencues sync chrome --project --wsl                    # + <cwd>/.cues
 opencues sync chrome --pack demo-pack --wsl             # ONLY that pack
-opencues sync chrome --source ~/custom/.opencues --wsl  # ONLY that dir
+opencues sync chrome --source ~/custom/.cues --wsl  # ONLY that dir
 ```
 
 Why this matters — `sync chrome --watch` is a long-running process.
 Under the old cwd-default model, starting the watcher from `~/scratch`
-would bind it to `~/scratch/.opencues` forever, silently missing edits
+would bind it to `~/scratch/.cues` forever, silently missing edits
 in the project the user actually cares about. The explicit
 `--include` / `--project` model makes the watched paths part of the
 command, not a side-effect of startup cwd.
@@ -569,7 +569,7 @@ command, not a side-effect of startup cwd.
 Rule of thumb: if you're iterating on configs *inside this repo*, use
 
 ```bash
-opencues sync chrome --include ~/opencues/.opencues --wsl --watch
+opencues sync chrome --include ~/opencues/.cues --wsl --watch
 ```
 
 so the watcher's path list is stable regardless of shell cwd.

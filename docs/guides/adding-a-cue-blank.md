@@ -65,7 +65,7 @@ Relative `blankScript` paths (starting with `./`) are resolved against the folde
 
 ## 2. Write the blank script (OS-level)
 
-The script accepts `get`, `set`, `up`, `down`. setup.sh seeds it from `defaults/blanks/<name>/<name>-blank.sh` into `~/.opencues/blanks/<name>/`, where helper binaries are colocated and resolved via `${SCRIPT_DIR}/<helper>`.
+The script accepts `get`, `set`, `up`, `down`. setup.sh seeds it from `defaults/blanks/<name>/<name>-blank.sh` into `~/.cues/blanks/<name>/`, where helper binaries are colocated and resolved via `${SCRIPT_DIR}/<helper>`.
 
 ```bash
 #!/bin/bash

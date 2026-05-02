@@ -103,7 +103,7 @@ In a running codex session (post-TUI-patch):
 | `<fork>/Cargo.toml` patches | Workspace member added | ✓ via git checkout |
 | `<fork>/codex-rs/tui/src/...` patches | TUI hooks (when implemented) | ✓ via git checkout |
 | `<fork>/target/` | Cargo build cache | leave |
-| `~/.opencues/` user configs | shared with cc/oc | unchanged |
+| `~/.cues/` user configs | shared with cc/oc | unchanged |
 
 Runtime state during a session: `/tmp/opencues.log`, `/tmp/opencues-codex-<pid>.sock` (the daemon socket).
 

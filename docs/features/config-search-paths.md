@@ -6,13 +6,13 @@ last_updated: 2026-04-22
 
 OpenCues looks for your `.md` configs in up to three locations, in
 this precedence order. The runtime polls every layer on every
-keystroke — so adding a `.opencues/` to a new project takes effect
+keystroke — so adding a `.cues/` to a new project takes effect
 within ~2 seconds, no restart.
 
 ```
 $OPENCUES_HOME           ← env override (top priority)
-<cwd>/.opencues          ← project-level
-~/.opencues              ← user-level (always loaded last unless overridden)
+<cwd>/.cues          ← project-level
+~/.cues              ← user-level (always loaded last unless overridden)
 ```
 
 This convention deliberately mirrors `.editorconfig`, `.npmrc`, and
@@ -36,21 +36,21 @@ project and user paths are ignored. Used by:
 OPENCUES_HOME=/some/fixed/path opencues run claude-code
 ```
 
-### 2. `<cwd>/.opencues` (project-level)
+### 2. `<cwd>/.cues` (project-level)
 
 The runtime checks the directory the host process was launched from.
-A `.opencues/` at the project root scopes its configs to that project.
+A `.cues/` at the project root scopes its configs to that project.
 Project-level files **win on name conflicts** with user-level
 (matching the precedence model used by `.npmrc` etc.).
 
 Created with `opencues init` (which scaffolds the directory
 structure with starter templates).
 
-### 3. `~/.opencues` (user-level)
+### 3. `~/.cues` (user-level)
 
 The global default. Configs here apply to every project unless
 overridden. Created with `opencues seed-configs` (which copies the
-shipped `defaults/` into `~/.opencues/`).
+shipped `defaults/` into `~/.cues/`).
 
 ---
 
@@ -66,7 +66,7 @@ not replaced. The merge rule is:
 - `blanks/<name>/cue.md` cue-blanks → same as folder cues
 
 Missing layers are silently skipped — there's never a "config
-missing" error from the layering itself. A user with no `.opencues/`
+missing" error from the layering itself. A user with no `.cues/`
 anywhere gets empty config (CC/OC/codex), which is a valid degraded
 state.
 
@@ -88,7 +88,7 @@ system-settings half of `cues.md` only from the **last search path**
 (the user-level entry, or `$OPENCUES_HOME` when set).
 
 - `opencues seed-configs` (no flag) copies `defaults/cues.md` to
-  `~/.opencues/`; `seed-configs --project` skips it
+  `~/.cues/`; `seed-configs --project` skips it
 - A 0-byte `cues.md` is treated as missing — `seed-configs` re-seeds
   it, and `setup.sh` self-heals on every install. The
   `OpenCuesSettingsBlank` silently no-ops on null/empty content
@@ -104,7 +104,7 @@ system-settings half of `cues.md` only from the **last search path**
 Chrome content scripts can't read the filesystem, so the layered
 search-path model doesn't apply. Instead, `opencues sync chrome`
 bundles a snapshot of your config into the extension's
-`dist/configs/` directory. By default, only `~/.opencues/` feeds
+`dist/configs/` directory. By default, only `~/.cues/` feeds
 that bundle — projects are opt-in via `--include`. See
 [Chrome Sync](chrome-sync.md) for the full source-discovery rules.
 
@@ -129,15 +129,15 @@ mechanism details.
 
 ---
 
-## `seed-configs` — populate `~/.opencues/` from the repo
+## `seed-configs` — populate `~/.cues/` from the repo
 
 `opencues seed-configs` walks `<repo>/defaults/` and copies any file
 that doesn't already exist at the destination. Flags:
 
 | Flag | Effect |
 |---|---|
-| (no flag) | Copies into `~/.opencues/` (user-level). Skips files that already exist. |
-| `--project` | Copies into `<cwd>/.opencues/` instead. Skips `cues.md` (its frontmatter holds system-wide settings, which don't belong at project level). |
+| (no flag) | Copies into `~/.cues/` (user-level). Skips files that already exist. |
+| `--project` | Copies into `<cwd>/.cues/` instead. Skips `cues.md` (its frontmatter holds system-wide settings, which don't belong at project level). |
 | `--force` | Overwrite existing files. Use with care. |
 
 Run `seed-configs` once after a fresh install; the host integrations

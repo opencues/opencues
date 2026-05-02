@@ -30,7 +30,7 @@ fail() { printf "  FAIL %s\n" "$1" >&2; exit 1; }
 # (`## Prompt`) and bare `#` lines stay intact since they don't start
 # with `# `.
 python3 - <<'PY'
-path = '.opencues/blanks.md'
+path = ''
 with open(path) as f:
     lines = f.readlines()
 out = []

@@ -1,6 +1,6 @@
 // Pins the four phases of `opencues seed-configs`:
 //
-//   1. SEED   — first-time copy of repo defaults to ~/.opencues/. Skips
+//   1. SEED   — first-time copy of repo defaults to ~/.cues/. Skips
 //               files that exist with content.
 //   2. SYNC   — overwrites stale library files (.sh / .cs / .ps1)
 //               from defaults/{blanks,scripts}/ every run. Never

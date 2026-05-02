@@ -3,8 +3,8 @@
 Walk-through to confirm the system works end-to-end after the rename + simplification chain (`6bdfd18..f3e6413`). Tick each box as it passes, leave failing ones unchecked + add a note. Self-deleting (`git rm verify.md`) once everything's green.
 
 Setup expected:
-- `~/.opencues/` freshly seeded (no `controls.md`, no `controls/`)
-- `~/.opencues/cues.md` has 3 flags: `fluid-blank-mode: on`, `spelling-mode: on`, `word-cues-mode: on`
+- `~/.cues/` freshly seeded (no `controls.md`, no `controls/`)
+- `~/.cues/cues.md` has 3 flags: `fluid-blank-mode: on`, `spelling-mode: on`, `word-cues-mode: on`
 - OpenCode patched + launched
 
 If you don't have a working install, see the very-bottom "Reset" recipe.
@@ -23,7 +23,7 @@ If you don't have a working install, see the very-bottom "Reset" recipe.
 
 ## B. Cue surfaces — each opt-in flag
 
-Flip each flag in `~/.opencues/cues.md`, save, type a space in the host (triggers hot-reload), verify behaviour.
+Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers hot-reload), verify behaviour.
 
 ### B.1 — `word-cues-mode`
 - [x] ON (post-refactor `word-cues-mode`): `the contract shall indemnify the diagnosis` → `contract`/`shall`/`indemnify` (legal) + `diagnosis` (medical) colour via per-source match/keywords. Plain words stay uncoloured (no catch-all default). ✓
@@ -53,7 +53,7 @@ Flip each flag in `~/.opencues/cues.md`, save, type a space in the host (trigger
 
 ---
 
-## C. Every shipped blank (`~/.opencues/blanks/`)
+## C. Every shipped blank (`~/.cues/blanks/`)
 
 | Blank | Test | Pass? |
 |---|---|---|
@@ -86,7 +86,7 @@ Flip each flag in `~/.opencues/cues.md`, save, type a space in the host (trigger
 ## E. Selector + Satellite (`opencues settings _`)
 
 - [x] `opencues settings _` → expands to `voice-mode active`. ✓
-- [x] **Satellite cycling:** Up on `active` → `inactive`. Disk-write to `~/.opencues/cues.md` confirmed by user. ✓
+- [x] **Satellite cycling:** Up on `active` → `inactive`. Disk-write to `~/.cues/cues.md` confirmed by user. ✓
 - [x] **Hot-reload race guard:** post-cycle hot-reload didn't clobber the new value (no flicker reported). ✓
 - [ ] **Selector cycling:** Up on `voice-mode` → cycles through other settings (debug-mode, tips-mode, etc.). (Implicit if cycling worked at all.)
 - [ ] **Pair cleanup:** delete `active` → both `voice-mode` and `active` removed (`blankClearOnEdit`).
@@ -95,9 +95,9 @@ Flip each flag in `~/.opencues/cues.md`, save, type a space in the host (trigger
 
 ## F. Hot-reload
 
-- [x] Edit `~/.opencues/cues.md` (added `foobar` tip with alts) — typed `please foobar this`, dimmed + cycleable within ~2.5s. ✓
-- [x] Edit `~/.opencues/blanks/volume/cue.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows. ✓
-- [x] Edit `~/.opencues/cues.md` — flip `fluid-blank-mode: off`. `etymology of paradigm _` stays as `_` (countries doesn't claim it). Flip back on, fills. ✓
+- [x] Edit `~/.cues/cues.md` (added `foobar` tip with alts) — typed `please foobar this`, dimmed + cycleable within ~2.5s. ✓
+- [x] Edit `~/.cues/blanks/volume/cue.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows. ✓
+- [x] Edit `~/.cues/cues.md` — flip `fluid-blank-mode: off`. `etymology of paradigm _` stays as `_` (countries doesn't claim it). Flip back on, fills. ✓
 
 ---
 
@@ -106,12 +106,12 @@ Flip each flag in `~/.opencues/cues.md`, save, type a space in the host (trigger
 ```bash
 opencues list                      # cues + blanks listed; no "controls" section
 opencues list --blanks             # only blanks
-opencues new blank foo --project   # scaffolds .opencues/blanks/foo/cue.md
-opencues edit blanks               # opens ~/.opencues/blanks.md in $EDITOR
+opencues new blank foo --project   # scaffolds .cues/blanks/foo/cue.md
+opencues edit blanks               # opens ~/.cues/blanks.md in $EDITOR
 opencues validate                  # 0 errors on a fresh install
 opencues which                     # all paths exist with ✓
 opencues doctor                    # passes
-opencues debug on                  # toggles debug-mode in ~/.opencues/cues.md
+opencues debug on                  # toggles debug-mode in ~/.cues/cues.md
 opencues logs --tail               # follows /tmp/opencues.log
 ```
 
@@ -126,7 +126,7 @@ Curiosity surfaced: `opencues list` shows `grammar` twice (inline cues.md + cues
 
 ## H. Migration boundary (no back-compat)
 
-- [x] Moved `~/.opencues/blanks.md` + `~/.opencues/blanks/` out (no rename to legacy paths needed — purge is total). Typed `volume _ brightness _ nvda _` → all three stayed as `_`, zero `BlankFill: substituting` lines. Resolver alive, just no blanks loaded. Restored, hot-reload picked up. ✓ (commit 7190a15 / preceding back-compat drop verified live.)
+- [x] Moved `~/.cues/blanks.md` + `~/.cues/blanks/` out (no rename to legacy paths needed — purge is total). Typed `volume _ brightness _ nvda _` → all three stayed as `_`, zero `BlankFill: substituting` lines. Resolver alive, just no blanks loaded. Restored, hot-reload picked up. ✓ (commit 7190a15 / preceding back-compat drop verified live.)
 
 ---
 
@@ -148,23 +148,23 @@ bash tests/templates/run.sh                  # init-flow + blanks-shapes
 
 ```bash
 opencues uninstall --all
-rm -rf ~/.opencues
-opencues install opencode    # chains seed-configs which creates fresh ~/.opencues/
+rm -rf ~/.cues
+opencues install opencode    # chains seed-configs which creates fresh ~/.cues/
 ```
 
-`opencues uninstall` reverts host patches but **does not touch `~/.opencues/`**. The user-config wipe (`rm -rf ~/.opencues`) is what makes seed-configs do work.
+`opencues uninstall` reverts host patches but **does not touch `~/.cues/`**. The user-config wipe (`rm -rf ~/.cues`) is what makes seed-configs do work.
 
 ---
 
 ## Known gotcha: `seed-configs` is first-time-only
 
-The SEED phase **skips files that already exist with content** to preserve user customisations. That means when shipped defaults gain new fields (e.g. `fluid-blank-mode`, `spelling-mode` were added to `opencues.md` after initial install), your existing `~/.opencues/cues.md` silently lacks them. Every cue surface defaults to OFF when its flag is missing, so this surfaces as "feature doesn't fire" with no error.
+The SEED phase **skips files that already exist with content** to preserve user customisations. That means when shipped defaults gain new fields (e.g. `fluid-blank-mode`, `spelling-mode` were added to `opencues.md` after initial install), your existing `~/.cues/cues.md` silently lacks them. Every cue surface defaults to OFF when its flag is missing, so this surfaces as "feature doesn't fire" with no error.
 
-**How it bit me here:** my install pre-dated the new flags. `~/.opencues/cues.md` existed without them. Re-running `opencues seed-configs` skipped the file. Re-running `opencues install opencode` chained `seed-configs` which still skipped the file. Spelling + fluid-blank were silently off until I `rm -rf ~/.opencues && opencues install opencode`.
+**How it bit me here:** my install pre-dated the new flags. `~/.cues/cues.md` existed without them. Re-running `opencues seed-configs` skipped the file. Re-running `opencues install opencode` chained `seed-configs` which still skipped the file. Spelling + fluid-blank were silently off until I `rm -rf ~/.cues && opencues install opencode`.
 
 The CLI now warns about this on every `seed-configs` run when any file is skipped — points at:
-- `rm ~/.opencues/<file> && opencues seed-configs` (re-seed one file, lose only that file's customisations)
-- `rm -rf ~/.opencues && opencues seed-configs` (full reset)
+- `rm ~/.cues/<file> && opencues seed-configs` (re-seed one file, lose only that file's customisations)
+- `rm -rf ~/.cues && opencues seed-configs` (full reset)
 - merge by hand from `<repo>/defaults/<file>`
 
 Followup item I want eventually: an UPDATE phase in seed-configs that injects missing keys into existing opencues.md without touching customisations.

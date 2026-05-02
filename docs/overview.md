@@ -139,7 +139,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 // Load tips from folder-based cues/<name>/cue.md (body JSON)
-const cuesDir = path.join(os.homedir(), '.opencues', 'cues');
+const cuesDir = path.join(os.homedir(), '.cues', 'cues');
 const folderConfigs = await discoverFolderConfigs(cuesDir, fsAdapter);
 const localCueData = aggregateLocalCueData(folderConfigs);
 
@@ -177,8 +177,8 @@ const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
 
 // Config-driven sources from .md files (folder-based)
 const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
-const cuesFolders = await discoverFolderConfigs('.opencues/cues', fsAdapter);
-const blanksFolders = await discoverFolderConfigs('.opencues/blanks', fsAdapter);
+const cuesFolders = await discoverFolderConfigs('.cues/cues', fsAdapter);
+const blanksFolders = await discoverFolderConfigs('.cues/blanks', fsAdapter);
 const configSources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, {
   httpAdapter, endpoint, apiKey, defaultModel: 'openai/gpt-oss-120b',
 });
@@ -301,7 +301,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { discoverFolderConfigs, aggregateLocalCueData } from '@opencues/core';
 
-const cuesDir = path.join(os.homedir(), '.opencues', 'cues');
+const cuesDir = path.join(os.homedir(), '.cues', 'cues');
 const initial = aggregateLocalCueData(await discoverFolderConfigs(cuesDir, fsAdapter));
 const source = new LocalCueSource(initial);
 

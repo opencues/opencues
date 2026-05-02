@@ -141,7 +141,7 @@ see REPAIR.md IL-3; one `sudo apt install -y libcap-dev` fixes it).
 - Type `voice-mode _` → blank auto-populates with 'active' (or current value)
 - Type `volume _` → BlankFill calls volume control via spawn fallthrough → currently degrades to "exit 127" per LF-5 (volume not hoisted)
 - Type `HN posts _` → HackerNewsControl populates with live RSS headlines (works via control-invoke)
-- Edit `~/.opencues/cues.md` while codex is running → hot-reload picks up change
+- Edit `~/.cues/cues.md` while codex is running → hot-reload picks up change
 - Edit text outside a cycled word → cycle progress survives prefix edits (deterministic relocate)
 
 The infrastructure layer is end-to-end verified via the smoke test

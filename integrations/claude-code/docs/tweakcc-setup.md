@@ -61,7 +61,7 @@ dynamicHighlightAutoSubmit?: boolean;
 dynamicHighlightDebounceMs?: number;
 ttsSpeed?: number;
 ttsScript?: string;
-// (Cue-blanks are loaded from .opencues/blanks/<name>/cue.md at runtime — no settings.json entry)
+// (Cue-blanks are loaded from .cues/blanks/<name>/cue.md at runtime — no settings.json entry)
 ```
 
 ---
@@ -93,7 +93,7 @@ misc: {
   dynamicHighlightDebounceMs: 500,
   ttsSpeed: 2,
   ttsScript: '',
-  // Cue-blanks load from .opencues/blanks/<name>/cue.md at runtime — no defaultSettings entry.
+  // Cue-blanks load from .cues/blanks/<name>/cue.md at runtime — no defaultSettings entry.
 
   // ... rest of existing misc defaults
 ```
@@ -241,7 +241,7 @@ import { writeDynamicHighlight } from './dynamicHighlight';
       highlightExportEnabled: config.settings.misc.highlightExportEnabled,
       highlightExportPath: config.settings.misc.highlightExportPath,
       numberDimming: config.settings.misc.numberDimming,
-      // Cue-blanks load from .opencues/blanks/<name>/cue.md at runtime
+      // Cue-blanks load from .cues/blanks/<name>/cue.md at runtime
     };
     if ((result = writeWordHighlight(content, highlightConfig))) content = result;
   }
