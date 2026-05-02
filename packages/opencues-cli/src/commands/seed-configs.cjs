@@ -99,6 +99,21 @@ module.exports = function seedConfigs(argv, ctx) {
   }
   log(`Seeded ${copied}, skipped ${skipped}.`);
 
+  // If we skipped anything, surface the gotcha. SEED is first-time-only by
+  // design (preserves user customisations), but that means new fields added
+  // to shipped defaults DON'T flow into existing user files. Common bite:
+  // opencues.md gets new opt-in flags (fluid-blank-mode, spelling-mode,
+  // etc.) and the user's existing opencues.md silently lacks them →
+  // surfaces as "feature off" with no error.
+  if (skipped > 0 && !silent) {
+    log('');
+    log('Note: existing files were preserved (your customisations stay).');
+    log('If a recent update added new fields you want, options are:');
+    log(`  - rm ${targetDir}/<file> && opencues seed-configs   (re-seed one file)`);
+    log(`  - rm -rf ${targetDir} && opencues seed-configs       (full reset — loses customisations)`);
+    log(`  - or merge new fields by hand from ${sourceDir}/<file>`);
+  }
+
   // The remaining steps only apply to user-scope (project-scope is for
   // overrides, not library/utility files which stay user-level).
   if (projectScope) return;

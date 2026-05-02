@@ -157,6 +157,23 @@ rm -rf ~/.opencues
 opencues install opencode    # chains seed-configs which creates fresh ~/.opencues/
 ```
 
+`opencues uninstall` reverts host patches but **does not touch `~/.opencues/`**. The user-config wipe (`rm -rf ~/.opencues`) is what makes seed-configs do work.
+
+---
+
+## Known gotcha: `seed-configs` is first-time-only
+
+The SEED phase **skips files that already exist with content** to preserve user customisations. That means when shipped defaults gain new fields (e.g. `fluid-blank-mode`, `spelling-mode` were added to `opencues.md` after initial install), your existing `~/.opencues/opencues.md` silently lacks them. Every cue surface defaults to OFF when its flag is missing, so this surfaces as "feature doesn't fire" with no error.
+
+**How it bit me here:** my install pre-dated the new flags. `~/.opencues/opencues.md` existed without them. Re-running `opencues seed-configs` skipped the file. Re-running `opencues install opencode` chained `seed-configs` which still skipped the file. Spelling + fluid-blank were silently off until I `rm -rf ~/.opencues && opencues install opencode`.
+
+The CLI now warns about this on every `seed-configs` run when any file is skipped — points at:
+- `rm ~/.opencues/<file> && opencues seed-configs` (re-seed one file, lose only that file's customisations)
+- `rm -rf ~/.opencues && opencues seed-configs` (full reset)
+- merge by hand from `<repo>/defaults/<file>`
+
+Followup item I want eventually: an UPDATE phase in seed-configs that injects missing keys into existing opencues.md without touching customisations.
+
 ---
 
 ## Failures log
