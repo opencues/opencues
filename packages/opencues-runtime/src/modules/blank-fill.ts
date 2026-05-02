@@ -306,10 +306,7 @@ export class BlankFill {
 
     // Step 30 — consume-all short-circuits the splice/expand/clear pipeline.
     if (blank?.blankConsumeAll === true) {
-      this.adapter.log('debug', `BlankFill: consume-all ${slot.blankName}`, {
-        altCount: lines.length,
-        firstAltLen: primaryFill.length,
-      });
+      this.adapter.log('info', `BlankFill: consume-all ${slot.blankName} → "${preview(primaryFill, 60)}" (${lines.length} alt(s))`);
       const newText = primaryFill;
       const newCursor = newText.length;
       const altsForSpan = isDismissible ? [...lines, '_'] : lines;
@@ -335,18 +332,7 @@ export class BlankFill {
     }
 
     const { clearEnd, expansion } = computeFillRange(blank ?? {}, slot);
-    this.adapter.log('debug', `BlankFill: applyAsyncFill ${slot.blankName}`, {
-      currentTextLen: currentText.length,
-      cleanedLen: cleaned.length,
-      slotIndex: slot.index,
-      targetWord: target.word,
-      fillValueLen: primaryFill.length,
-      altCount: lines.length,
-      dismissible: isDismissible,
-      hasPushText: !!this.adapter.pushText,
-      clearEnd: clearEnd ?? null,
-      expansion: expansion ?? null,
-    });
+    this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
       ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
@@ -588,11 +574,7 @@ export class BlankFill {
         }, newText);
       }
     }
-    this.adapter.log('debug', `BlankFill: satellite ${slot.blankName}`, {
-      selector: selectorRaw,
-      satellite: satelliteRaw,
-      sep,
-    });
+    this.adapter.log('info', `BlankFill: selector+satellite ${slot.blankName} → "${preview(selectorRaw, 30)}${sep}${preview(satelliteRaw, 30)}"`);
     if (this.adapter.pushText) {
       this.adapter.pushText(newText, newCursor);
     } else {
@@ -680,6 +662,7 @@ export class BlankFill {
       }
     }
 
+    this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(fillValue, 60)}" (blank=${slot.blankName}, sync stepValues, ${stepValues.length} alt(s)${dismissible ? ', dismissible' : ''})`);
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
@@ -865,4 +848,11 @@ function findUnderscoreAtChar(text: string, charOffset: number): { index: number
     }
   }
   return null;
+}
+
+/** Truncate a substituted value for the info-level log so a long
+ *  paragraph (prompt-improver, dictionary) doesn't blow out the line. */
+function preview(s: string, max: number): string {
+  const oneLine = s.replace(/\s+/g, ' ').trim();
+  return oneLine.length <= max ? oneLine : oneLine.slice(0, max) + '…';
 }
