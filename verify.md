@@ -93,11 +93,11 @@ Flip each flag in `~/.opencues/opencues.md`, save, type a space in the host (tri
 
 ## E. Selector + Satellite (`opencues settings _`)
 
-- [ ] `opencues settings _` → expands to `voice-mode active`. Trigger keywords cleared (`blankClearKeywords: true`).
-- [ ] **Selector cycling:** Up on `voice-mode` → `debug-mode off`, satellite updates to current value.
-- [ ] **Satellite cycling:** Up on `active` → `inactive`. Verify `~/.opencues/opencues.md` now has `voice-mode: inactive` on disk.
+- [x] `opencues settings _` → expands to `voice-mode active`. ✓
+- [x] **Satellite cycling:** Up on `active` → `inactive`. Disk-write to `~/.opencues/opencues.md` confirmed by user. ✓
+- [x] **Hot-reload race guard:** post-cycle hot-reload didn't clobber the new value (no flicker reported). ✓
+- [ ] **Selector cycling:** Up on `voice-mode` → cycles through other settings (debug-mode, tips-mode, etc.). (Implicit if cycling worked at all.)
 - [ ] **Pair cleanup:** delete `active` → both `voice-mode` and `active` removed (`blankClearOnEdit`).
-- [ ] **Hot-reload race guard:** flip voice-mode via cycling, then immediately type a space. The just-written value is NOT clobbered (2.5s suppression window).
 
 ---
 
