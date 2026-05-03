@@ -24,6 +24,7 @@ import { runExtract } from './pass1-extract';
 import { runApply } from './pass2-apply';
 import { runVerify } from './pass3-verify';
 import { runSingleCall } from './single-call';
+import { runMinimalExtract, runMinimalApply, runMinimalVerify } from './minimal-prompts';
 import { judge, JudgeInput } from './judge';
 import { MODEL } from './groq';
 
@@ -34,8 +35,12 @@ const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 
-type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify' | 'extract-apply-verify-skip-easy' | 'single-call';
-const VALID_MODES: Mode[] = ['rewrite', 'extract-apply', 'extract-apply-verify', 'extract-apply-verify-skip-easy', 'single-call'];
+type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify' | 'extract-apply-verify-skip-easy' | 'single-call'
+  | 'minimal-extract' | 'minimal-apply' | 'minimal-verify' | 'minimal-all';
+const VALID_MODES: Mode[] = [
+  'rewrite', 'extract-apply', 'extract-apply-verify', 'extract-apply-verify-skip-easy', 'single-call',
+  'minimal-extract', 'minimal-apply', 'minimal-verify', 'minimal-all',
+];
 
 interface Args {
   mode: Mode;
@@ -181,8 +186,22 @@ async function runCaseSingleCall(c: TransformCase): Promise<RunOutcome> {
   }, r.raw);
 }
 
-async function runCaseExtractApply(c: TransformCase, withVerify: boolean, skipEasy = false): Promise<RunOutcome> {
-  const ext = await runExtract(c.input);
+interface PromptOverrides {
+  extract?: typeof runExtract;
+  apply?: typeof runApply;
+  verify?: typeof runVerify;
+}
+
+async function runCaseExtractApply(
+  c: TransformCase,
+  withVerify: boolean,
+  skipEasy = false,
+  prompts: PromptOverrides = {},
+): Promise<RunOutcome> {
+  const extractFn = prompts.extract ?? runExtract;
+  const applyFn = prompts.apply ?? runApply;
+  const verifyFn = prompts.verify ?? runVerify;
+  const ext = await extractFn(c.input);
 
   if (ext.verdict === 'NONE') {
     const judgeInput: JudgeInput = {
@@ -209,7 +228,7 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean, skipEa
   let currentTarget = ext.target;
   let lastApplyRewrite = '';
   for (const inst of instructionParts) {
-    const stepApp = await runApply(inst, currentTarget);
+    const stepApp = await applyFn(inst, currentTarget);
     totalApplyMs += stepApp.latencyMs;
     lastApplyRaw = lastApplyRaw ? `${lastApplyRaw}\n---STEP---\n${stepApp.raw}` : stepApp.raw;
     lastApplyRewrite = stepApp.rewrite;
@@ -232,7 +251,7 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean, skipEa
     // (not pipe-joined) and the ORIGINAL target — so it can check both
     // transforms were applied to the correct starting text.
     const verifyInstruction = instructionParts.join(' and ');
-    const ver = await runVerify(verifyInstruction, ext.target, app.rewrite);
+    const ver = await verifyFn(verifyInstruction, ext.target, app.rewrite);
     // OK = trust the draft (don't re-trust verify's echo, which sometimes
     // mangles good drafts). REPAIR = use verify's correction, BUT only if
     // the repair looks plausible. The model occasionally emits two kinds
@@ -363,6 +382,18 @@ async function main() {
     if (args.mode === 'extract-apply-verify') return runCaseExtractApply(c, true);
     if (args.mode === 'extract-apply-verify-skip-easy') return runCaseExtractApply(c, true, /*skipEasy*/ true);
     if (args.mode === 'single-call') return runCaseSingleCall(c);
+    if (args.mode === 'minimal-extract')
+      return runCaseExtractApply(c, true, false, { extract: runMinimalExtract });
+    if (args.mode === 'minimal-apply')
+      return runCaseExtractApply(c, true, false, { apply: runMinimalApply });
+    if (args.mode === 'minimal-verify')
+      return runCaseExtractApply(c, true, false, { verify: runMinimalVerify });
+    if (args.mode === 'minimal-all')
+      return runCaseExtractApply(c, true, false, {
+        extract: runMinimalExtract,
+        apply: runMinimalApply,
+        verify: runMinimalVerify,
+      });
     return runCaseRewrite(c);
   }, args.parallel);
   const wallMs = Date.now() - wallStart;
