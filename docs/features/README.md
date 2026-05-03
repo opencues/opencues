@@ -36,6 +36,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 27 | [Deterministic Relocate](deterministic-relocate.md) | Cycle progress survives prefix/middle text edits — DynDefs are re-anchored to their content's new position when (and only when) the match is unambiguous |
 | 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.cues → ~/.cues`), the `cues.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.cues/` |
 | 29 | [Transform Blanks](transform-blank.md) | Imperative-instruction blanks at `_` — 3-pass LLM pipeline (EXTRACT → APPLY → VERIFY) that rewrites the surrounding text per the instruction. Plus a generative branch for "write a poem _" / "compose an email _" prompts. The third leg of the blank trio alongside BlankSource (keyword) and FluidBlankSource (lookup). |
+| 30 | [Agent Tasks](agent-task.md) | Continuously-running agent loop declared in plain English (`agentically <X> _`). Re-evaluates the doc on every debounce settle; applies edits as dimmed words you can revert via cycling. Per-task invalidation cache keyed on (textHash, taskId). Built on the same DynDef-backed ownership primitives the rest of the runtime uses. |
 
 ## Adding a new feature
 
