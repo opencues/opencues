@@ -675,8 +675,18 @@ export class BlankFill {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
-        const blankProximity = (blank as { blankProximity?: number }).blankProximity;
-        if (blankProximity != null && (blankIdx - j - 1) > blankProximity) continue;
+        // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
+        // to _, no words between) when not explicitly set. The previous
+        // default (no limit, when the field was undefined) caused
+        // accidental claims when a registered keyword appeared earlier
+        // in the user's prose — e.g. a poem containing "bright" 13 words
+        // back claimed `_` for the brightness blank. Blanks that
+        // legitimately need wider proximity (e.g. "what is X _"
+        // dictionary, where the user types extra words between the
+        // trigger phrase and `_`) MUST set blankProximity explicitly.
+        // Matches the cede default in blank-source.ts.
+        const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
+        if ((blankIdx - j - 1) > blankProximity) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
           const kwWords = kwLc.split(/\s+/);

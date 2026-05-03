@@ -3,7 +3,7 @@ name: volume
 type: blank
 tip: system volume
 speak: true
-blankKeywords: volume, vol, sound, audio
+blankKeywords: volume
 blankStep: 6
 blankAutoPopulate: true
 blankSuffix: %

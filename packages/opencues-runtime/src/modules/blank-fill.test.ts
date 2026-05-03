@@ -12,6 +12,7 @@ const VOLUME_CUE = `---
 type: blank
 name: volume
 blankKeywords: volume, vol, sound, audio
+blankProximity: 10
 ---
 `;
 
@@ -19,6 +20,7 @@ const AFFIRM_CUE = `---
 type: blank
 name: affirmations
 blankKeywords: affirmation, affirm
+blankProximity: 10
 stepValues: ["I am strong", "I am brave"]
 ---
 `;
@@ -297,6 +299,7 @@ describe('BlankFill auto-populate (Step 24)', () => {
 type: blank
 name: stocks
 blankKeywords: stock, ticker
+blankProximity: 10
 blankScript: ./stocks.sh
 ---
 `;
@@ -322,6 +325,7 @@ blankScript: ./stocks.sh
 type: blank
 name: stocks
 blankKeywords: stock, ticker
+blankProximity: 10
 blankScript: ./stocks.sh
 ---
 `;
@@ -352,6 +356,7 @@ blankScript: ./stocks.sh
 type: blank
 name: weather
 blankKeywords: weather
+blankProximity: 10
 blankScript: ./weather.sh
 ---
 `;
@@ -376,6 +381,7 @@ blankScript: ./weather.sh
 type: blank
 name: stocks
 blankKeywords: reddit stock
+blankProximity: 10
 blankScript: ./stocks.sh
 ---
 `;
@@ -399,6 +405,7 @@ blankScript: ./stocks.sh
 type: blank
 name: stocks
 blankKeywords: stock
+blankProximity: 10
 blankScript: ~/.claude/actions/stock.sh
 ---
 `;
@@ -424,6 +431,7 @@ blankScript: ~/.claude/actions/stock.sh
 type: blank
 name: prompt
 blankKeywords: prompt
+blankProximity: 10
 blankScript: ./prompt.sh
 model: openai/gpt-4
 apiUrl: https://example.com
@@ -466,6 +474,7 @@ generate alts
 type: blank
 name: stocks
 blankKeywords: stock
+blankProximity: 10
 blankScript: ./stocks.sh
 ---
 `;
@@ -488,6 +497,7 @@ blankScript: ./stocks.sh
 type: blank
 name: cheer
 blankKeywords: cheer
+blankProximity: 10
 stepValues: ["yay"]
 blankClearKeywords: true
 ---
@@ -511,6 +521,7 @@ blankClearKeywords: true
 type: blank
 name: temp
 blankKeywords: weather
+blankProximity: 10
 stepValues: ["15°C"]
 blankClearKeywords: true
 ---
@@ -533,6 +544,7 @@ blankClearKeywords: true
 type: blank
 name: greet
 blankKeywords: say hello
+blankProximity: 10
 stepValues: ["hi"]
 blankClearKeywords: true
 ---
@@ -555,6 +567,7 @@ blankClearKeywords: true
 type: blank
 name: weather
 blankKeywords: weather
+blankProximity: 10
 blankScript: ./weather.sh
 blankClearKeywords: true
 ---
@@ -583,6 +596,7 @@ blankClearKeywords: true
 type: blank
 name: weather2
 blankKeywords: weather
+blankProximity: 10
 blankScript: ./weather.sh
 ---
 `;
@@ -609,6 +623,7 @@ blankScript: ./weather.sh
 type: blank
 name: greeting
 blankKeywords: hi
+blankProximity: 10
 stepValues: ["world"]
 blankKeywordExpansions.hi: Hello
 ---
@@ -631,6 +646,7 @@ blankKeywordExpansions.hi: Hello
 type: blank
 name: bye
 blankKeywords: bye
+blankProximity: 10
 stepValues: ["see ya"]
 blankClearKeywords: true
 blankKeywordExpansions.bye: Goodbye
@@ -655,6 +671,7 @@ blankKeywordExpansions.bye: Goodbye
 type: blank
 name: stocks
 blankKeywords: rddt
+blankProximity: 10
 blankScript: ./stocks.sh
 blankKeywordExpansions.rddt: Reddit
 ---
@@ -681,6 +698,7 @@ blankKeywordExpansions.rddt: Reddit
 type: blank
 name: answer
 blankKeywords: how to say
+blankProximity: 10
 blankScript: ./answer.sh
 blankConsumeContext: true
 blankClearKeywords: true
@@ -708,6 +726,7 @@ blankClearKeywords: true
 type: blank
 name: ctxsync
 blankKeywords: how to say
+blankProximity: 10
 stepValues: ["hi"]
 blankConsumeContext: true
 ---
@@ -730,6 +749,7 @@ blankConsumeContext: true
 type: blank
 name: prompt
 blankKeywords: improve prompt
+blankProximity: 10
 blankScript: ./prompt.sh
 blankConsumeAll: true
 blankClearKeywords: true
@@ -777,6 +797,7 @@ blankClearKeywords: true
 type: blank
 name: hn
 blankKeywords: hn
+blankProximity: 10
 blankAutoPopulate: true
 ---
 `;
@@ -814,6 +835,7 @@ blankAutoPopulate: true
 type: blank
 name: prompt
 blankKeywords: improve prompt
+blankProximity: 10
 blankScript: ./prompt.sh
 blankConsumeAll: true
 blankClearKeywords: true
@@ -854,6 +876,7 @@ blankClearKeywords: true
 type: blank
 name: prompt
 blankKeywords: improve prompt
+blankProximity: 10
 blankScript: ./prompt.sh
 blankConsumeAll: true
 ---
@@ -882,6 +905,7 @@ blankConsumeAll: true
 type: blank
 name: affirmations
 blankKeywords: affirm
+blankProximity: 10
 stepValues: ["I am strong", "I am brave"]
 ---
 `;
@@ -917,6 +941,7 @@ stepValues: ["I am strong", "I am brave"]
 type: blank
 name: lone
 blankKeywords: lone
+blankProximity: 10
 stepValues: ["only"]
 ---
 `;
@@ -944,6 +969,7 @@ stepValues: ["only"]
 type: blank
 name: affirmations
 blankKeywords: affirm
+blankProximity: 10
 stepValues: ["I am strong", "I am brave"]
 blankDismissible: true
 blankTip: Daily affirmations
@@ -974,6 +1000,7 @@ blankTip: Daily affirmations
 type: blank
 name: a
 blankKeywords: a
+blankProximity: 10
 stepValues: ["x", "y"]
 blankDismissible: true
 ---
@@ -1005,6 +1032,7 @@ blankDismissible: true
 type: blank
 name: weather
 blankKeywords: weather
+blankProximity: 10
 blankScript: ./weather.sh
 blankDismissible: true
 ---
@@ -1029,6 +1057,7 @@ blankDismissible: true
 type: blank
 name: hackernews
 blankKeywords: hn
+blankProximity: 10
 blankScript: ./hn.sh
 blankDismissible: true
 blankTip: Hacker News
@@ -1070,6 +1099,7 @@ blankTip: Hacker News
 type: blank
 name: stocks
 blankKeywords: stock
+blankProximity: 10
 blankScript: ./stocks.sh
 ---
 `;
@@ -1098,6 +1128,7 @@ blankScript: ./stocks.sh
 type: blank
 name: opencues
 blankKeywords: opencues settings
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 blankSatelliteSeparator: ' '
@@ -1138,6 +1169,7 @@ blankClearOnEdit: true
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 blankSatelliteSeparator: '='
@@ -1166,6 +1198,7 @@ blankSatelliteSeparator: '='
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 blankClearOnEdit: true
@@ -1201,6 +1234,7 @@ blankClearOnEdit: true
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 blankClearOnEdit: true
@@ -1237,6 +1271,7 @@ blankClearOnEdit: true
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 ---
@@ -1268,6 +1303,7 @@ blankSatellite: true
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 blankClearOnEdit: true
@@ -1303,6 +1339,7 @@ blankClearOnEdit: true
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 ---
@@ -1334,6 +1371,7 @@ blankSatellite: true
 type: blank
 name: opencues
 blankKeywords: cfg
+blankProximity: 10
 blankScript: ./oc.sh
 blankSatellite: true
 ---
@@ -1363,6 +1401,7 @@ blankSatellite: true
 type: blank
 name: prompt
 blankKeywords: improve prompt
+blankProximity: 10
 blankScript: ./prompt.sh
 blankConsumeAll: true
 ---
@@ -1398,6 +1437,7 @@ blankConsumeAll: true
 type: blank
 name: prompt
 blankKeywords: improve prompt
+blankProximity: 10
 blankScript: ./prompt.sh
 blankConsumeAll: true
 ---
@@ -1428,6 +1468,7 @@ blankConsumeAll: true
 type: blank
 name: noauto
 blankKeywords: noauto
+blankProximity: 10
 stepValues: ["X"]
 blankAutoPopulate: false
 ---
