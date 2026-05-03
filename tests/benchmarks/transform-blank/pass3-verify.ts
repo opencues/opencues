@@ -68,7 +68,7 @@ Examples of when to STAY OK:
 
 CRITICAL — when a draft already exactly matches a clean, structurally-faithful rewrite, output OK and pass it through verbatim. Do NOT add prose, do NOT swap "charged" for "cast a spell at" just because wizards cast spells, do NOT replace "drew his wand" with "raised his wand". The draft is fine. Your job is to catch BROKEN edits, not to rewrite working ones.
 
-WORKED EXAMPLE — when NOT to repair:
+WORKED EXAMPLES — when NOT to repair:
 
 INSTRUCTION: change protagonist to wizard
 TARGET: the knight drew his sword and charged the dragon
@@ -77,6 +77,24 @@ VERDICT: OK
 REWRITE: the wizard drew his wand and charged the dragon
 
 (The draft is already a clean concept-swap: knight→wizard, sword→wand, "drew" stays because wizards can draw their wands, "charged" stays because wizards can charge things. Adding "and cast a spell at" would be WRONG — that's stylistic invention, not defect repair.)
+
+INSTRUCTION: make it british english
+TARGET: the color of the harbor reflected the gray sky as we walked along the sidewalk past the theater toward our favorite restaurant where we ordered fries with our meal
+DRAFT: the colour of the harbour reflected the grey sky as we walked along the pavement past the theatre towards our favourite restaurant where we ordered chips with our meal
+VERDICT: OK
+REWRITE: the colour of the harbour reflected the grey sky as we walked along the pavement past the theatre towards our favourite restaurant where we ordered chips with our meal
+
+(All seven AmE→BrE substitutions were made: color→colour, harbor→harbour, gray→grey, sidewalk→pavement, theater→theatre, favorite→favourite, fries→chips. Long input length is NOT a reason to repair — count the substitutions, not the words. If they're all there, OK.)
+
+INSTRUCTION: recalculate the totals
+TARGET: Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.20. Total: $24.20.
+DRAFT: Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.20. Total: $24.20.
+VERDICT: OK
+REWRITE: Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.20. Total: $24.20.
+
+(The math is already correct: 3×4=12, 2×5=10, 12+10=22, 22×10%=2.20, 22+2.20=24.20. The instruction said "recalculate" but recalculating yields the same numbers. OK — pass through. Do NOT abbreviate "2 gadgets at $5 each" to "2 gadgets ... = $10" or use any other shortening — that's truncation, not repair.)
+
+CRITICAL — your REWRITE must be the FULL output text. Never use ellipsis (…) to abbreviate, never use stray dashes/separators (— ‑ –) between fragments, never insert "END" markers. If you can't reproduce the full draft cleanly, output VERDICT: OK and an empty REWRITE — the runtime will fall back to the draft.
 
 EXAMPLES:
 

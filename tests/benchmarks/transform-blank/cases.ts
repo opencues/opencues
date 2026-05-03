@@ -13,7 +13,7 @@
 
 export interface TransformCase {
   id: string;
-  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts';
+  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text';
   input: string;
   expected: {
     /** Final text after applying edits + wiping the instruction phrase. */
@@ -587,6 +587,227 @@ export const CASES: TransformCase[] = [
       finalTextAlternates: [
         'I drove my car to school and my seat belt kept me safe',
         'I drove my car to school and my airbag kept me safe',
+      ],
+    },
+  },
+
+  // ============================================================
+  // LONG-TEXT — 4 buckets, 5 cases each (20 total)
+  //
+  // Bucket A: Pure length stress — same edit type, but over 30+ words
+  // Bucket B: Multi-sentence scope — instruction must apply across sentences
+  // Bucket C: Mixed-edit composition — instruction combines two transforms
+  // Bucket D: Long math — recalc across multiple line items / dependent values
+  // ============================================================
+
+  // ---- Bucket A: Pure length stress ----
+  {
+    id: 'long-A1',
+    category: 'long-text',
+    input: 'change boy to girl _ the boy ran to the park where the boy met another boy and the three of them played games until the boy had to go home for dinner',
+    expected: {
+      finalText: 'the girl ran to the park where the girl met another girl and the three of them played games until the girl had to go home for dinner',
+    },
+  },
+  {
+    id: 'long-A2',
+    category: 'long-text',
+    input: 'make past tense _ I wake up early and brush my teeth then I go downstairs and make coffee while my dog watches me from the kitchen door wagging his tail',
+    expected: {
+      finalText: 'I woke up early and brushed my teeth then I went downstairs and made coffee while my dog watched me from the kitchen door wagging his tail',
+    },
+  },
+  {
+    id: 'long-A3',
+    category: 'long-text',
+    input: 'capitalize proper nouns _ last summer i visited paris with my friend james and we went to the louvre then took a train to london where we met sarah at heathrow airport',
+    expected: {
+      finalText: 'last summer I visited Paris with my friend James and we went to the Louvre then took a train to London where we met Sarah at Heathrow Airport',
+    },
+  },
+  {
+    id: 'long-A4',
+    category: 'long-text',
+    input: 'make it british english _ the color of the harbor reflected the gray sky as we walked along the sidewalk past the theater toward our favorite restaurant where we ordered fries with our meal',
+    expected: {
+      finalText: 'the colour of the harbour reflected the grey sky as we walked along the pavement past the theatre toward our favourite restaurant where we ordered chips with our meal',
+      finalTextAlternates: [
+        'the colour of the harbour reflected the grey sky as we walked along the pavement past the theatre towards our favourite restaurant where we ordered chips with our meal',
+      ],
+    },
+  },
+  {
+    id: 'long-A5',
+    category: 'long-text',
+    input: 'change he to she _ he came home from work and he opened the door then he saw the cat waiting for him on the couch and he smiled because he had missed her all day',
+    expected: {
+      finalText: 'she came home from work and she opened the door then she saw the cat waiting for her on the couch and she smiled because she had missed her all day',
+    },
+  },
+
+  // ---- Bucket B: Multi-sentence scope ----
+  {
+    id: 'long-B1',
+    category: 'long-text',
+    input: 'change boy to girl _ The boy walked into the kitchen. He poured himself a glass of milk. Then the boy sat at the table and read his book until his mother called him for dinner.',
+    expected: {
+      finalText: 'The girl walked into the kitchen. She poured herself a glass of milk. Then the girl sat at the table and read her book until her mother called her for dinner.',
+    },
+  },
+  {
+    id: 'long-B2',
+    category: 'long-text',
+    input: 'make past tense _ I wake up at six. I make breakfast for the family. After everyone eats, I leave for work and drive across town. I arrive at the office by eight thirty.',
+    expected: {
+      finalText: 'I woke up at six. I made breakfast for the family. After everyone ate, I left for work and drove across town. I arrived at the office by eight thirty.',
+    },
+  },
+  {
+    id: 'long-B3',
+    category: 'long-text',
+    input: 'make it formal _ hey wanna grab coffee tomorrow? been ages since we caught up. lemme know if morning works for you. cool, see ya then.',
+    expected: {
+      finalText: 'Hello, would you like to have coffee tomorrow? It has been a long time since we last spoke. Please let me know if the morning is convenient for you. Wonderful, I will see you then.',
+      finalTextAlternates: [
+        'Hello, would you like to get coffee tomorrow? It has been a long time since we caught up. Please let me know if morning works for you. Wonderful, I will see you then.',
+        'Hello, would you like to grab coffee tomorrow? It has been a long time since we caught up. Please let me know if morning is convenient for you. Excellent, I will see you then.',
+      ],
+      note: 'register transform across multiple sentences; accept any clearly-formal version',
+    },
+  },
+  {
+    id: 'long-B4',
+    category: 'long-text',
+    input: 'change setting to ocean _ The camel walked across the dunes. The sand burned its hooves. In the distance, the camel saw an oasis where it could rest and drink before continuing its journey.',
+    expected: {
+      finalText: 'The fish swam across the waves. The water cooled its scales. In the distance, the fish saw a coral reef where it could rest and drink before continuing its journey.',
+      finalTextAlternates: [
+        'The whale swam across the waves. The water cooled its skin. In the distance, the whale saw a coral reef where it could rest before continuing its journey.',
+        'The fish swam across the waves. The water cooled its scales. In the distance, the fish saw a reef where it could rest before continuing its journey.',
+      ],
+      note: 'open-ended; accept any consistent desert→ocean rewrite that preserves sentence structure',
+    },
+  },
+  {
+    id: 'long-B5',
+    category: 'long-text',
+    input: 'pluralize _ The child found one mouse in the garden. The mouse ran away. Then the child saw a butterfly land on a flower and watched it for a long time.',
+    expected: {
+      finalText: 'The children found mice in the garden. The mice ran away. Then the children saw butterflies land on flowers and watched them for a long time.',
+      finalTextAlternates: [
+        'The children found mice in the garden. The mice ran away. Then the children saw butterflies land on the flowers and watched them for a long time.',
+      ],
+    },
+  },
+
+  // ---- Bucket C: Mixed-edit composition ----
+  {
+    id: 'long-C1',
+    category: 'long-text',
+    input: 'make past tense and remove pronouns _ I run to the store and I buy milk then I walk home and I pet my dog before I go to bed',
+    expected: {
+      finalText: 'ran to the store and bought milk then walked home and pet the dog before going to bed',
+      finalTextAlternates: [
+        'ran to the store and bought milk then walked home and petted the dog before going to bed',
+        'ran to the store and bought milk then walked home and pet the dog before bed',
+      ],
+      note: 'two transforms composed; accept reasonable variants',
+    },
+  },
+  {
+    id: 'long-C2',
+    category: 'long-text',
+    input: 'expand contractions and capitalize proper nouns _ i won\'t go to paris because i can\'t find my passport but maybe james can lend me his copy of the map',
+    expected: {
+      finalText: 'I will not go to Paris because I cannot find my passport but maybe James can lend me his copy of the map',
+    },
+  },
+  {
+    id: 'long-C3',
+    category: 'long-text',
+    input: 'make it british english and past tense _ I drive my car to the harbor and watch the gray waves roll in while I drink coffee from a paper cup',
+    expected: {
+      finalText: 'I drove my car to the harbour and watched the grey waves roll in while I drank coffee from a paper cup',
+    },
+  },
+  {
+    id: 'long-C4',
+    category: 'long-text',
+    input: 'pluralize and make past tense _ the child runs to the park and finds one mouse hiding under a leaf then chases it across the grass',
+    expected: {
+      finalText: 'the children ran to the parks and found mice hiding under leaves then chased them across the grass',
+      finalTextAlternates: [
+        'the children ran to the park and found mice hiding under leaves then chased them across the grass',
+      ],
+      note: 'pluralization across long target with verb agreement',
+    },
+  },
+  {
+    id: 'long-C5',
+    category: 'long-text',
+    input: 'swap genders and make past tense _ the king walks through his castle and visits his queen who is reading a book in her chambers near the south tower',
+    expected: {
+      finalText: 'the queen walked through her castle and visited her king who was reading a book in his chambers near the south tower',
+      finalTextAlternates: [
+        'the queen walked through her castle and visited his king who was reading a book in her chambers near the south tower',
+      ],
+      note: 'pronoun coreference is ambiguous after swap',
+    },
+  },
+
+  // ---- Bucket D: Long math ----
+  {
+    id: 'long-D1',
+    category: 'long-text',
+    input: 'recalculate the totals _ Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.20. Total: $24.20.',
+    expected: {
+      finalText: 'Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.20. Total: $24.20.',
+      finalTextAlternates: [],
+      note: 'math is already correct; rewrite should preserve verbatim. Tests over-eagerness on long math.',
+    },
+  },
+  {
+    id: 'long-D2',
+    category: 'long-text',
+    input: 'fix the math _ Item A: 3 widgets at $4 each = $10. Item B: 2 gadgets at $5 each = $8. Subtotal: $20. Tax (10%): $2. Total: $25.',
+    expected: {
+      finalText: 'Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.20. Total: $24.20.',
+      finalTextAlternates: [
+        'Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10. Subtotal: $22. Tax (10%): $2.2. Total: $24.2.',
+      ],
+    },
+  },
+  {
+    id: 'long-D3',
+    category: 'long-text',
+    input: 'change tax rate to 20% _ Item A: $30. Item B: $50. Item C: $20. Subtotal: $100. Tax (10%): $10. Total: $110.',
+    expected: {
+      finalText: 'Item A: $30. Item B: $50. Item C: $20. Subtotal: $100. Tax (20%): $20. Total: $120.',
+    },
+  },
+  {
+    id: 'long-D4',
+    category: 'long-text',
+    input: 'apply 25% discount _ Apples: $4. Bananas: $3. Cherries: $5. Subtotal: $12. Total: $12.',
+    expected: {
+      finalText: 'Apples: $4. Bananas: $3. Cherries: $5. Subtotal: $12. Discount (25%): $3. Total: $9.',
+      finalTextAlternates: [
+        'Apples: $3. Bananas: $2.25. Cherries: $3.75. Subtotal: $9. Total: $9.',
+        'Apples: $3. Bananas: $2.25. Cherries: $3.75. Subtotal: $9. Total: $9.00.',
+      ],
+      note: 'two valid interpretations: discount as separate line, or discount applied per-item',
+    },
+  },
+  {
+    id: 'long-D5',
+    category: 'long-text',
+    input: 'convert all to euros at 1 USD = 0.9 EUR _ Coffee: $5. Sandwich: $10. Tip: $3. Total: $18.',
+    expected: {
+      finalText: 'Coffee: €4.50. Sandwich: €9. Tip: €2.70. Total: €16.20.',
+      finalTextAlternates: [
+        'Coffee: €4.5. Sandwich: €9. Tip: €2.7. Total: €16.2.',
+        'Coffee: 4.50 EUR. Sandwich: 9 EUR. Tip: 2.70 EUR. Total: 16.20 EUR.',
+        'Coffee: €4.50. Sandwich: €9.00. Tip: €2.70. Total: €16.20.',
       ],
     },
   },

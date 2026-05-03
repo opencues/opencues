@@ -61,6 +61,34 @@ function parseArgs(): Args {
 
 const sep = (ch = '─') => console.log(ch.repeat(78));
 
+/**
+ * Repair is suspiciously shorter than the draft AND target — model
+ * truncated mid-sentence rather than emitting a real correction.
+ */
+function repairLooksTruncated(repair: string, draft: string, target: string): boolean {
+  return repair.length < draft.length * 0.5 && repair.length < target.length * 0.5;
+}
+
+/**
+ * Repair has telltale signs of model going off the rails mid-rewrite:
+ * runs of whitespace, hidden zero-width chars, mid-sentence ellipsis used
+ * as omission marker, repeated dash separators, or stray "END" tokens.
+ */
+function repairLooksGarbled(repair: string): boolean {
+  // Long whitespace runs (4+) — model emitted padding instead of words
+  if (/\s{4,}/.test(repair)) return true;
+  // Zero-width / hidden control chars
+  if (/[\u200B-\u200F\uFEFF\u2028\u2029]/.test(repair)) return true;
+  // Mid-sentence ellipsis-of-omission (3+ dots followed by more content)
+  if (/\.{3,}\s*\S/.test(repair)) return true;
+  // Repeated non-ASCII separator dashes (model uses ‑ ‑ ‑ between fragments)
+  const dashes = repair.match(/[‑–—]/g) ?? [];
+  if (dashes.length >= 3) return true;
+  // Stray "END" tokens model sometimes emits when it loses structure
+  if (/\?END\?|END\?\s*END|END\s+END/.test(repair)) return true;
+  return false;
+}
+
 interface RunOutcome {
   pass: boolean;
   modelMs: number;     // total model latency for the pipeline (excl. judge)
@@ -115,17 +143,17 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean): Promi
     const ver = await runVerify(ext.instruction, ext.target, app.rewrite);
     // OK = trust the draft (don't re-trust verify's echo, which sometimes
     // mangles good drafts). REPAIR = use verify's correction, BUT only if
-    // it looks plausible — VERIFY occasionally emits truncated garbage like
-    // "water" or "the" while saying REPAIR. When the repair is suspiciously
-    // shorter than the draft (under half its length AND under 20 chars
-    // shorter than target), reject the repair and pass the draft through.
+    // the repair looks plausible. The model occasionally emits two kinds
+    // of bad repair: TRUNCATED ("water" instead of full sentence) and
+    // GARBLED (right length, but full of separator dashes, ellipsis-of-
+    // omission, zero-width chars, or stray "END" markers). Both indicate
+    // the model lost its place; in either case fall back to the draft.
     if (ver.verdict === 'OK' || !ver.rewrite) {
       finalRewrite = app.rewrite;
     } else {
-      const repairLooksTruncated =
-        ver.rewrite.length < app.rewrite.length * 0.5 &&
-        ver.rewrite.length < ext.target.length * 0.5;
-      finalRewrite = repairLooksTruncated ? app.rewrite : ver.rewrite;
+      const isBadRepair = repairLooksTruncated(ver.rewrite, app.rewrite, ext.target)
+        || repairLooksGarbled(ver.rewrite);
+      finalRewrite = isBadRepair ? app.rewrite : ver.rewrite;
     }
     verifyVerdict = ver.verdict;
     verifyMs = ver.latencyMs;
