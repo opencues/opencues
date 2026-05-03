@@ -764,27 +764,33 @@ export function computeFillRange(
 }
 
 /**
- * Steps 27 + 28 + 29 — word-array reconstruction that handles keyword
- * clearing, keyword expansion, and consume-context in one pass.
+ * Steps 27 + 28 + 29 — char-position splice that handles keyword
+ * clearing, keyword expansion, and consume-context while preserving
+ * surrounding whitespace structure (newlines, paragraph breaks,
+ * indentation, bullet markers). v1 used a word-split + word-join
+ * approach which collapsed all whitespace runs to single spaces —
+ * that destroyed bullet/paragraph layouts whenever `config _` (or any
+ * blank with blankClearKeywords / blankConsumeContext) fired inside
+ * formatted prose. Char-position splice fixes it.
  *
- *   - The range [keywordStart..clearEnd] is dropped (default clearEnd =
- *     keywordEnd, which clears just the keyword span — Step 27). When
- *     `clearEnd = slot.index - 1`, words between keyword and blank are
- *     also dropped — that's Step 29's blankConsumeContext.
- *   - If `expansion` is given, it's placed at keywordStart in the output
- *     (replacing the dropped keyword) — that's Step 28. Callers should
- *     suppress `expansion` when consume-context is widening clearEnd to
- *     the blank, since dropping context with an expansion still floating
- *     at the start reads weirdly. v1 didn't combine the two; we follow.
- *   - The slot.index entry is replaced with `fillValue`.
+ *   - The range [keywordStart..clearEnd] (word indices) is dropped
+ *     (default clearEnd = keywordEnd → clears just the keyword span).
+ *     When clearEnd = slot.index - 1, words between keyword and blank
+ *     are also dropped — that's blankConsumeContext.
+ *   - If `expansion` is given, it's inserted at keywordStart (replacing
+ *     the dropped keyword). Callers should suppress `expansion` when
+ *     consume-context is widening clearEnd to the blank — dropping
+ *     context with an expansion still floating reads weirdly.
+ *   - The slot.index entry (the `_` token) is replaced with `fillValue`.
  *
- * Joining with a single space collapses any whitespace runs around the
- * modified positions — same trade-off v1 made when it switched off
- * char-position splice.
- *
- * If both blankClearKeywords and blankKeywordExpansions are set, the
- * caller passes `expansion: undefined` (clear wins). Matches v1's "same
- * net result" note.
+ * Whitespace handling:
+ *   - When the cleared range is contiguous with the blank (consumeContext
+ *     case), one drop+insert: drop chars [kwStart..blankEnd), insert
+ *     fillValue. Surrounding whitespace preserved as-is.
+ *   - When the cleared range is NOT contiguous with the blank
+ *     (clearKeywords-only case), drop the keyword + one trailing
+ *     horizontal whitespace char (space/tab — NOT newline) so we don't
+ *     leave a double-space behind. Newlines stay intact.
  */
 export function buildClearKeywordText(
   text: string,
@@ -794,23 +800,47 @@ export function buildClearKeywordText(
   clearEnd?: number,
 ): { newText: string; newCursor: number } {
   const cleaned = text.replace(/[\u200B\u200C]/g, '');
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  const end = clearEnd ?? slot.keywordEnd;
-  const out: string[] = [];
-  let cursor = 0;
-  for (let i = 0; i < words.length; i += 1) {
-    if (i >= slot.keywordStart && i <= end) {
-      if (i === slot.keywordStart && expansion) out.push(expansion);
-      continue;
-    }
-    if (i === slot.index) {
-      out.push(fillValue);
-      cursor = out.join(' ').length;
-    } else {
-      out.push(words[i]);
-    }
+  const wordSpans = splitWords(cleaned);
+  const lastClearedWord = clearEnd ?? slot.keywordEnd;
+
+  const kwStart = wordSpans[slot.keywordStart]?.start ?? 0;
+  const kwEnd = wordSpans[lastClearedWord]?.end ?? kwStart;
+  const blankStart = wordSpans[slot.index]?.start ?? kwEnd;
+  const blankEnd = wordSpans[slot.index]?.end ?? blankStart;
+
+  // When the cleared range reaches up to (or past) the blank, do a
+  // single contiguous drop. consumeContext sets clearEnd = slot.index - 1
+  // explicitly; clearKeywords + adjacent keyword (kwEnd === slot.index)
+  // also collapses to this case.
+  const clearReachesBlank = lastClearedWord >= slot.index - 1;
+
+  let newText: string;
+  let cursor: number;
+
+  if (clearReachesBlank) {
+    const expansionPart = expansion ?? '';
+    // Space between expansion and fillValue when both present, so
+    // "Reddit" + "$180.50" reads "Reddit $180.50" not "Reddit$180.50".
+    const sep = expansionPart && fillValue ? ' ' : '';
+    newText = cleaned.slice(0, kwStart) + expansionPart + sep + fillValue + cleaned.slice(blankEnd);
+    cursor = kwStart + expansionPart.length + sep.length + fillValue.length;
+  } else {
+    // Drop keyword + one trailing horizontal whitespace char so we don't
+    // leave a double-space when the kept text follows. Newlines NEVER
+    // get consumed — formatted prose stays intact.
+    let kwSkipEnd = kwEnd;
+    const trailing = cleaned[kwSkipEnd];
+    if (trailing === ' ' || trailing === '\t') kwSkipEnd += 1;
+    const middle = cleaned.slice(kwSkipEnd, blankStart);
+    const expansionPart = expansion ?? '';
+    // If we have an expansion AND middle doesn't already start with a
+    // separator, add a space so expansion + middle don't run together.
+    const expansionSep = expansionPart && middle && !/^\s/.test(middle) ? ' ' : '';
+    const prefix = cleaned.slice(0, kwStart) + expansionPart + expansionSep + middle;
+    newText = prefix + fillValue + cleaned.slice(blankEnd);
+    cursor = prefix.length + fillValue.length;
   }
-  return { newText: out.join(' '), newCursor: cursor };
+  return { newText, newCursor: cursor };
 }
 
 /**
