@@ -138,8 +138,14 @@ export class Resolver {
       // See packages/opencues-core/src/sources/build-sources.ts for what
       // each flag gates.
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
+      enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableSpelling: settings.get('spelling-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
+      // Debug log sink — surfaces TransformBlankSource pipeline traces
+      // when opencues.md `debug-mode: on`. The adapter.log gates 'debug'
+      // level via isDebugEnabled (set up in boot-common.ts), so off-mode
+      // users get no log spam.
+      log: (msg: string) => this.adapter.log('debug', msg),
     };
     let sources: unknown[];
     try {
@@ -174,6 +180,7 @@ export class Resolver {
     const s = this.configLoader.opencuesState.settings;
     return [
       s.get('fluid-blank-mode') ?? '',
+      s.get('transform-blank-mode') ?? '',
       s.get('spelling-mode') ?? '',
       s.get('word-cues-mode') ?? '',
       s.get('llm-endpoint') ?? '',
@@ -319,6 +326,7 @@ export class Resolver {
         && typeof r.spanEnd === 'number'
         && r.spanEnd > r.spanStart;
       const isFluidBlank = r.source === 'fluid-blank';
+      const isTransformBlank = r.source === 'transform-blank';
       // Fluid-blank substitutes inline (BlankFill-style). For WIPE mode the
       // text shrinks so the wordIndex shifts — we have to compute the def's
       // FINAL position in the new text and key the def there, not at the
@@ -371,6 +379,63 @@ export class Resolver {
           this.adapter.forceRender();
         }
         continue; // skip the generic def-creation below
+      }
+
+      // TransformBlank: imperative-instruction handler. Source returns
+      //   alternatives = [originalFullText, rewrittenText]
+      //   spanStart=0, spanEnd=originalFullText.length
+      // Auto-substitutes the rewrite in place (same magical-helper feel
+      // as fluid-blank), then registers a def keyed at index 0 so the
+      // user can cycle Down to revert to the original instruction +
+      // target text.
+      if (isTransformBlank && r.alternatives.length >= 2) {
+        const originalText = r.alternatives[0];
+        const rewrittenText = r.alternatives[1];
+        const liveText = this.adapter.getText();
+
+        // Race guard — if the live text no longer matches what we
+        // analyzed, another module already touched it. Skip.
+        if (liveText !== originalText) {
+          this.adapter.log('info', `TransformBlank: skipping — live text changed since resolve (live len=${liveText.length}, original len=${originalText.length})`);
+          continue;
+        }
+
+        // Find which word the rewrite's first word lands at in the new
+        // text (for keying the def). Default to index 0 since the entire
+        // text is being replaced.
+        const newWords = splitWords(rewrittenText);
+        const newWordIndex = newWords.length > 0 ? newWords[0].index : 0;
+        const newSpanEnd = newWords.length > 0 ? newWords[newWords.length - 1].end : rewrittenText.length;
+
+        const transformDef: WordDef = {
+          originalWord: originalText,
+          // alternatives[0] = original full text (cycle Down to revert)
+          // alternatives[1] = rewritten text (currently showing)
+          alternatives: [originalText, rewrittenText],
+          currentIndex: 1,            // showing rewrite
+          spanStart: 0,
+          spanEnd: newSpanEnd,
+          // blankName locks this def from re-resolution by the LLM —
+          // same mechanism fluid-blank uses.
+          blankName: 'transform-blank',
+        };
+        this.dynDefs.set(newWordIndex, transformDef);
+        wrote++;
+
+        const previewLen = 60;
+        const origPreview = originalText.length > previewLen ? originalText.slice(0, previewLen) + '…' : originalText;
+        const rewritePreview = rewrittenText.length > previewLen ? rewrittenText.slice(0, previewLen) + '…' : rewrittenText;
+        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${rewrittenText.length}, defAt=${newWordIndex})`);
+
+        const newCursor = rewrittenText.length;
+        if (this.adapter.pushText) {
+          this.adapter.pushText(rewrittenText, newCursor);
+        } else {
+          this.adapter.setText(rewrittenText);
+          this.adapter.setCursorOffset(newCursor);
+          this.adapter.forceRender();
+        }
+        continue;
       }
 
       const def: WordDef = isMultiWordSpan ? {

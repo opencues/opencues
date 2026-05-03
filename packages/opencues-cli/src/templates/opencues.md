@@ -46,6 +46,8 @@ voice-mode: active
 tips-mode: on
 debug-mode: off
 cursor-navigate: inactive
+fluid-blank-mode: off
+transform-blank-mode: off
 
 # Example custom scalars (uncomment + add matching settings block entries):
 # output-format: rich markdown
@@ -98,6 +100,16 @@ settings:
     values:
       active: Highlight follows cursor to navigable words
       inactive: Manual navigation only (Ctrl+Alt+arrows)
+  fluid-blank-mode:
+    tip: Free-form lookups at _ (e.g. "capital of france _" → Paris)
+    values:
+      on: Fluid-blank LLM pipeline answers free-form lookup queries
+      off: _ tokens are not auto-resolved by the fluid-blank source
+  transform-blank-mode:
+    tip: Imperative-instruction edits at _ (e.g. "change boy to girl _ the boy ran")
+    values:
+      on: Transform-blank LLM pipeline rewrites the surrounding text per the imperative instruction
+      off: Imperative blanks are not auto-resolved
 
   # Example custom setting — uncomment the matching scalar above to activate:
   # output-format:

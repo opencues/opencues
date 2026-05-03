@@ -24,6 +24,7 @@ import { ConfigSource } from './config-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource } from './blank-source';
 import { FluidBlankSource } from './fluid-blank-source';
+import { TransformBlankSource } from './transform-blank-source';
 import { SpellingSource } from './spelling-source';
 
 export interface BuildSourcesOptions {
@@ -43,6 +44,17 @@ export interface BuildSourcesOptions {
    * Defaults to false; flip on per-integration.
    */
   enableFluidBlank?: boolean;
+  /**
+   * Enable the transform-blank source — a 3-pass (EXTRACT + APPLY + VERIFY)
+   * handler for IMPERATIVE instructions placed next to `_`. Where
+   * fluid-blank handles "capital of france _", transform-blank handles
+   * "change boy to girl _ the boy ran fast". Priority 93 — sits ABOVE
+   * fluid-blank (92) and only claims when the surrounding text starts
+   * with an imperative verb. See transform-blank-source.ts and
+   * tests/benchmarks/transform-blank/.
+   * Defaults to false; flip on per-integration.
+   */
+  enableTransformBlank?: boolean;
   /** Enable SpellingSource — word-scope spell-checker. Flags misspelled
    * words in plain text and offers corrections as cycling alternatives.
    * Priority 80 (above typical domain max ~75). Defaults to false; flip
@@ -53,6 +65,14 @@ export interface BuildSourcesOptions {
    * Domain blanks/fluid-blank still work. Defaults to false;
    * flip on via opencues.md `word-cues-mode: on`. */
   enableWordCues?: boolean;
+  /**
+   * Optional debug-log sink. Currently consumed by TransformBlankSource
+   * to emit per-pipeline-stage traces (P1 EXTRACT verdict, P2 APPLY
+   * step results, P3 VERIFY decision). Wire to the host's debug log
+   * (e.g. `(msg) => adapter.log('debug', msg)`) so `debug-mode: on` in
+   * opencues.md surfaces the trace. Silent when omitted.
+   */
+  log?: (msg: string) => void;
 }
 
 /**
@@ -179,6 +199,23 @@ export function buildSourcesFromConfig(
       apiKey: options.apiKey,
       model: options.defaultModel,
       blanks: options.blanks ?? {},
+    }));
+  }
+
+  // Transform-blank: IMPERATIVE-instruction handler (EXTRACT + APPLY +
+  // VERIFY). Priority 93 — sits ABOVE fluid-blank (92), so an
+  // imperative-shaped input ("change boy to girl _ ...") routes here
+  // instead of being treated as a lookup. Cedes to keyword-bound
+  // BlankSource if applicable AND only claims when the surrounding text
+  // starts with an imperative verb (heuristic in supports()).
+  if (options.enableTransformBlank) {
+    sources.push(new TransformBlankSource({
+      httpAdapter: options.httpAdapter,
+      endpoint: options.endpoint,
+      apiKey: options.apiKey,
+      model: options.defaultModel,
+      blanks: options.blanks ?? {},
+      log: options.log,
     }));
   }
 

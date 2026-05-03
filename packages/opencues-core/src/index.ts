@@ -29,6 +29,11 @@ export {
 } from './sources/fluid-blank-source';
 
 export {
+  TransformBlankSource,
+  type TransformBlankSourceConfig,
+} from './sources/transform-blank-source';
+
+export {
   SpellingSource,
   type SpellingSourceConfig,
 } from './sources/spelling-source';
