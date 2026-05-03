@@ -53,6 +53,14 @@ VERDICT: TRANSFORM | NONE
 INSTRUCTION: <the imperative phrase, _ removed; or empty when NONE>
 TARGET: <the rest of the input text after removing the instruction phrase + _; or empty when NONE>
 
+LAYOUT — the imperative may appear in TWO positions:
+  (a) BEFORE _ at the start: "<INSTRUCTION> _ <TARGET>"
+      e.g. "change boy to girl _ the boy ran fast"
+  (b) BEFORE _ at the end:   "<TARGET> <INSTRUCTION> _"
+      e.g. "the boy ran fast change boy to girl _"
+
+In layout (b), TARGET is everything BEFORE the instruction phrase, NOT after the underscore. There is nothing after the underscore in this layout. Detect by looking at where the imperative verb sits relative to the rest of the text: if the verb is in the LAST few words right before the underscore, it's layout (b) and TARGET is the leading text.
+
 COMPOSED INSTRUCTIONS — when the imperative phrase joins TWO transforms with "and" ("make past tense and remove pronouns", "pluralize and make past tense", "make it british english and past tense"), output the two transforms pipe-joined in INSTRUCTION:
 
 INSTRUCTION: make past tense | remove pronouns
@@ -71,6 +79,26 @@ INPUT: change boy to girl _ the boy ran fast
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
 TARGET: the boy ran fast
+
+INPUT: the boy ran fast change boy to girl _
+VERDICT: TRANSFORM
+INSTRUCTION: change boy to girl
+TARGET: the boy ran fast
+
+INPUT: The boy ran across the road with his big dog. He loved them lots. make all text lower case _
+VERDICT: TRANSFORM
+INSTRUCTION: make all text lower case
+TARGET: The boy ran across the road with his big dog. He loved them lots.
+
+INPUT: The boy ran across the road with his big dog. He loved them lots. full caps all words _
+VERDICT: TRANSFORM
+INSTRUCTION: full caps all words
+TARGET: The boy ran across the road with his big dog. He loved them lots.
+
+INPUT: i bought apple and samsung phones online uppercase the brands _
+VERDICT: TRANSFORM
+INSTRUCTION: uppercase the brands
+TARGET: i bought apple and samsung phones online
 
 INPUT: he/she swap _ he gave the book to John
 VERDICT: TRANSFORM
@@ -379,26 +407,47 @@ function repairLooksGarbled(repair: string): boolean {
 // ============================================================================
 
 /**
- * Verbs that typically introduce a transform instruction. When one of
- * these appears within ~5 words BEFORE the `_`, we claim the slot.
- * Otherwise we cede (likely a fluid-blank lookup or keyword blank).
+ * Verbs that typically introduce a transform instruction. Checked in the
+ * 8 words before the `_` AND the first 8 words of the input — covers
+ * both "<verb> _ <target>" and "<target> <verb> _" layouts.
  */
 const IMPERATIVE_VERBS = new Set([
-  'change', 'replace', 'swap', 'rename', 'switch',
+  'change', 'replace', 'swap', 'rename', 'switch', 'turn', 'flip',
   'make', 'convert', 'fix', 'recalculate', 'double', 'halve',
   'capitalize', 'capitalise', 'uppercase', 'lowercase',
-  'pluralize', 'pluralise', 'expand', 'contract', 'remove', 'add', 'apply',
-  'update', 'match', 'use', 'title', 'titlecase',
+  'pluralize', 'pluralise', 'expand', 'contract', 'remove', 'delete',
+  'strip', 'format', 'add', 'apply', 'update', 'match', 'use',
+  'title', 'titlecase', 'shorten', 'lengthen', 'rewrite',
 ]);
 
-function looksLikeImperative(words: string[], blankIdx: number): boolean {
-  // Look at up to 5 words BEFORE the _ (model usually places instruction
-  // first, "<verb> <args> _ <target>"). Also check the first 5 words of
-  // the input — instructions sometimes start with whitespace prefix.
-  const upTo = Math.min(blankIdx, 5);
+/**
+ * Case-transform phrases — multi-word markers that don't start with a
+ * verb but unambiguously signal an imperative ("full caps all words",
+ * "lower case the names"). Lower-case here for case-insensitive match.
+ */
+const CASE_TRANSFORM_PHRASES = [
+  'all caps', 'full caps', 'small caps', 'fullcaps', 'allcaps',
+  'lower case', 'upper case', 'title case', 'sentence case',
+  'in caps', 'in lowercase', 'in uppercase',
+  'to lower', 'to upper', 'to caps', 'to title',
+];
+
+function looksLikeImperative(words: string[], blankIdx: number, fullText: string): boolean {
+  // Window: 8 words on each side of the `_`. Catches both "<verb> _ <target>"
+  // (verb in first ~5 words) and "<target> <verb> _" (verb in last ~5
+  // words before `_`). Wider window than v1 to handle longer prefaces.
+  const upTo = Math.min(blankIdx, 8);
   for (let i = 0; i < upTo; i++) {
     if (IMPERATIVE_VERBS.has(words[i].toLowerCase())) return true;
     if (IMPERATIVE_VERBS.has(words[blankIdx - 1 - i].toLowerCase())) return true;
+  }
+  // Phrase fallback — multi-word case-transform markers ("full caps",
+  // "lower case", etc.) that don't start with a verb but unambiguously
+  // signal a transform. Case-insensitive substring match on the input
+  // (not word-by-word) so "fullcaps", "FULL CAPS", etc. all match.
+  const lowerText = fullText.toLowerCase();
+  for (const phrase of CASE_TRANSFORM_PHRASES) {
+    if (lowerText.includes(phrase)) return true;
   }
   return false;
 }
@@ -476,10 +525,17 @@ export class TransformBlankSource implements CueSource {
       }
     }
 
-    // Imperative-verb heuristic: only claim when surrounding text near
-    // the `_` looks like an imperative instruction. Otherwise let
-    // FluidBlankSource (priority 92) handle it as a lookup.
-    return looksLikeImperative(lower, blankIndex);
+    // Always claim. EXTRACT is the authoritative classifier — if the
+    // input isn't actually a transform, EXTRACT returns VERDICT: NONE
+    // and getCues() bails with an empty result. The keyword heuristic
+    // we used to gate on was brittle (missed "full caps", "fullcaps",
+    // etc.) so we let the LLM decide. Cost: one extra ~400ms LLM call
+    // per non-transform `_` typed. We previously called this a
+    // heuristic via looksLikeImperative() — kept the helper for
+    // potential future fast-path uses. See git history for the prior
+    // verb/phrase list.
+    void looksLikeImperative;  // keep export reachable
+    return true;
   }
 
   async getCues(context: CueContext): Promise<CueSourceResult> {

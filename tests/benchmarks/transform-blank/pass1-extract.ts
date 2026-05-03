@@ -28,6 +28,14 @@ VERDICT: TRANSFORM | NONE
 INSTRUCTION: <the imperative phrase, _ removed; or empty when NONE>
 TARGET: <the rest of the input text after removing the instruction phrase + _; or empty when NONE>
 
+LAYOUT — the imperative may appear in TWO positions:
+  (a) BEFORE _ at the start: "<INSTRUCTION> _ <TARGET>"
+      e.g. "change boy to girl _ the boy ran fast"
+  (b) BEFORE _ at the end:   "<TARGET> <INSTRUCTION> _"
+      e.g. "the boy ran fast change boy to girl _"
+
+In layout (b), TARGET is everything BEFORE the instruction phrase, NOT after the underscore. There is nothing after the underscore in this layout. Detect by looking at where the imperative verb sits relative to the rest of the text: if the verb is in the LAST few words right before the underscore, it's layout (b) and TARGET is the leading text.
+
 COMPOSED INSTRUCTIONS — when the imperative phrase joins TWO transforms with "and" ("make past tense and remove pronouns", "pluralize and make past tense", "make it british english and past tense"), output the two transforms pipe-joined in INSTRUCTION:
 
 INSTRUCTION: make past tense | remove pronouns
@@ -46,6 +54,26 @@ INPUT: change boy to girl _ the boy ran fast
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
 TARGET: the boy ran fast
+
+INPUT: the boy ran fast change boy to girl _
+VERDICT: TRANSFORM
+INSTRUCTION: change boy to girl
+TARGET: the boy ran fast
+
+INPUT: The boy ran across the road with his big dog. He loved them lots. make all text lower case _
+VERDICT: TRANSFORM
+INSTRUCTION: make all text lower case
+TARGET: The boy ran across the road with his big dog. He loved them lots.
+
+INPUT: The boy ran across the road with his big dog. He loved them lots. full caps all words _
+VERDICT: TRANSFORM
+INSTRUCTION: full caps all words
+TARGET: The boy ran across the road with his big dog. He loved them lots.
+
+INPUT: i bought apple and samsung phones online uppercase the brands _
+VERDICT: TRANSFORM
+INSTRUCTION: uppercase the brands
+TARGET: i bought apple and samsung phones online
 
 INPUT: he/she swap _ he gave the book to John
 VERDICT: TRANSFORM

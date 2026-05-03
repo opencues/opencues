@@ -13,7 +13,7 @@
 
 export interface TransformCase {
   id: string;
-  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring';
+  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring' | 'trailing-instruction';
   input: string;
   expected: {
     /** Final text after applying edits + wiping the instruction phrase. */
@@ -1216,5 +1216,76 @@ export const CASES: TransformCase[] = [
       ],
       note: 'first sentence is upbeat/excited; match that tone in the rest',
     },
+  },
+
+  // ============================================================
+  // TRAILING-INSTRUCTION — instruction at the END (right before _),
+  // target text BEFORE the instruction. The natural typing flow:
+  // "<text the user already wrote> <imperative> _"
+  // ============================================================
+  {
+    id: 'trail-1',
+    category: 'trailing-instruction',
+    input: 'the boy ran fast change boy to girl _',
+    expected: { finalText: 'the girl ran fast' },
+  },
+  {
+    id: 'trail-2',
+    category: 'trailing-instruction',
+    input: 'i bought apple and samsung phones online uppercase the brands _',
+    expected: { finalText: 'i bought APPLE and SAMSUNG phones online' },
+  },
+  {
+    id: 'trail-3',
+    category: 'trailing-instruction',
+    input: 'I went to the store and I bought milk make past tense and remove pronouns _',
+    expected: {
+      finalText: 'went to the store and bought milk',
+      finalTextAlternates: [
+        'went to the store and bought the milk',
+      ],
+    },
+  },
+  {
+    id: 'trail-4',
+    category: 'trailing-instruction',
+    input: 'The boy ran across the road with his big dog. He loved them lots. make all text lower case _',
+    expected: { finalText: 'the boy ran across the road with his big dog. he loved them lots.' },
+  },
+  {
+    id: 'trail-5',
+    category: 'trailing-instruction',
+    input: 'The boy ran across the road. full caps all words _',
+    expected: { finalText: 'THE BOY RAN ACROSS THE ROAD.' },
+  },
+  {
+    id: 'trail-6',
+    category: 'trailing-instruction',
+    input: 'i had lunch with james and sarah at the new restaurant capitalize the names _',
+    expected: { finalText: 'i had lunch with James and Sarah at the new restaurant' },
+  },
+  {
+    id: 'trail-7',
+    category: 'trailing-instruction',
+    input: 'the color of the harbor is gray make it british english _',
+    expected: { finalText: 'the colour of the harbour is grey' },
+  },
+  {
+    id: 'trail-8',
+    category: 'trailing-instruction',
+    input: 'I run to the store every day make past tense _',
+    expected: { finalText: 'I ran to the store every day' },
+  },
+  {
+    id: 'trail-9',
+    category: 'trailing-instruction',
+    input: 'he gave the book to John he/she swap _',
+    expected: { finalText: 'she gave the book to John' },
+  },
+  {
+    id: 'trail-10',
+    category: 'trailing-instruction',
+    input: 'the child found one mouse pluralize _',
+    expected: { finalText: 'the children found mice' },
   },
 ];
