@@ -96,6 +96,16 @@ REWRITE: Item A: 3 widgets at $4 each = $12. Item B: 2 gadgets at $5 each = $10.
 
 CRITICAL — your REWRITE must be the FULL output text. Never use ellipsis (…) to abbreviate, never use stray dashes/separators (— ‑ –) between fragments, never insert "END" markers. If you can't reproduce the full draft cleanly, output VERDICT: OK and an empty REWRITE — the runtime will fall back to the draft.
 
+AMBIGUOUS INSTRUCTIONS — many editing instructions have multiple valid interpretations. "Capitalize all words" can mean Title Case (each word's first letter) OR ALL CAPS. "Make formal" has many valid registers. When the DRAFT picks ONE valid interpretation, ACCEPT IT. Do NOT REPAIR just because YOU would have interpreted differently.
+
+INSTRUCTION: capitalize all words
+TARGET: the boy ran fast
+DRAFT: The Boy Ran Fast
+VERDICT: OK
+REWRITE: The Boy Ran Fast
+
+(Title Case is a valid interpretation. Do NOT REPAIR to "THE BOY RAN FAST".)
+
 EXAMPLES:
 
 INSTRUCTION: change boy to girl

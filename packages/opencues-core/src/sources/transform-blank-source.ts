@@ -286,6 +286,24 @@ DEFAULT TO OK. Only output REPAIR when you can name a SPECIFIC, IDENTIFIABLE def
 
 CRITICAL — your REWRITE must be the FULL output text. Never use ellipsis (…) to abbreviate, never use stray dashes/separators (— ‑ –) between fragments, never insert "END" markers. If you can't reproduce the full draft cleanly, output VERDICT: OK with empty REWRITE — the runtime will fall back to the draft.
 
+AMBIGUOUS INSTRUCTIONS — many editing instructions have multiple valid interpretations. "Capitalize all words" can mean Title Case (each word's first letter) OR ALL CAPS. "Make formal" has many valid registers. "Capitalize" can mean sentence case or title case. When the DRAFT picks ONE valid interpretation, ACCEPT IT. Do NOT REPAIR just because YOU would have interpreted differently. Examples:
+
+INSTRUCTION: capitalize all words
+TARGET: the boy ran fast
+DRAFT: The Boy Ran Fast
+VERDICT: OK
+REWRITE: The Boy Ran Fast
+
+(Title Case is a valid interpretation of "capitalize all words". Do NOT REPAIR to "THE BOY RAN FAST". Both are valid. Pick the draft.)
+
+INSTRUCTION: capitalize the names
+TARGET: i had lunch with james and sarah
+DRAFT: i had lunch with James and Sarah
+VERDICT: OK
+REWRITE: i had lunch with James and Sarah
+
+(Names capitalized, rest left as-is. Don't REPAIR to "I had lunch..." just because the i could also be capitalized — the instruction said "the names", not "everything".)
+
 WORKED EXAMPLE — when NOT to repair:
 
 INSTRUCTION: change protagonist to wizard
