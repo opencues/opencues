@@ -114,9 +114,19 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean): Promi
   if (withVerify) {
     const ver = await runVerify(ext.instruction, ext.target, app.rewrite);
     // OK = trust the draft (don't re-trust verify's echo, which sometimes
-    // mangles good drafts). REPAIR = use verify's correction; fall back to
-    // draft only when verify came back empty.
-    finalRewrite = ver.verdict === 'OK' ? app.rewrite : (ver.rewrite || app.rewrite);
+    // mangles good drafts). REPAIR = use verify's correction, BUT only if
+    // it looks plausible — VERIFY occasionally emits truncated garbage like
+    // "water" or "the" while saying REPAIR. When the repair is suspiciously
+    // shorter than the draft (under half its length AND under 20 chars
+    // shorter than target), reject the repair and pass the draft through.
+    if (ver.verdict === 'OK' || !ver.rewrite) {
+      finalRewrite = app.rewrite;
+    } else {
+      const repairLooksTruncated =
+        ver.rewrite.length < app.rewrite.length * 0.5 &&
+        ver.rewrite.length < ext.target.length * 0.5;
+      finalRewrite = repairLooksTruncated ? app.rewrite : ver.rewrite;
+    }
     verifyVerdict = ver.verdict;
     verifyMs = ver.latencyMs;
     verifyRaw = ver.raw;

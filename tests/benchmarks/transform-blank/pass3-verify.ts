@@ -51,7 +51,32 @@ Check the DRAFT against THREE consistency rules:
    - "change vehicle from bike to car" on "I rode my bike and my helmet kept me safe" — draft "I rode my car and my helmet kept me safe" is BROKEN (you drive cars, you wear seatbelts). Repair to "I drove my car and my seatbelt kept me safe".
    - LITERAL swap instructions (no category word — "change boy to girl", "rename foo to bar") do NOT trigger propagation. Only swap the literal tokens for those.
 
-ALWAYS output the rewrite — never bail to NONE, never refuse. If you have doubts, lean toward REPAIR with your best correction. P1 already decided this is a valid transform; you cannot revisit that.
+ALWAYS output the rewrite — never bail to NONE, never refuse. P1 already decided this is a valid transform; you cannot revisit that.
+
+DEFAULT TO OK. Only output REPAIR when you can name a SPECIFIC, IDENTIFIABLE defect from the four checks above (a wrong agreement, a missed span, an incomplete restructure, an unpropagated category swap). If the draft looks fine — even if you could rephrase it more elegantly — output OK and pass it through. Stylistic improvement is NOT your job. You are a defect catcher, not a writer.
+
+Examples of when to REPAIR:
+- Draft says "they is going" → REPAIR (agreement broken)
+- Draft kept "one mice" → REPAIR (quantifier doesn't match new noun)
+- Draft only changed first occurrence of "boy" → REPAIR (incomplete coverage)
+- Draft has "the cat barked" after a dog→cat swap → REPAIR (cats don't bark)
+
+Examples of when to STAY OK:
+- Draft is a valid rewrite that follows the instruction → OK (don't second-guess)
+- Draft made a creative-but-correct word choice → OK (your taste is irrelevant)
+- Draft preserved a verb that works for both old and new categories ("the wizard charged the dragon" after knight→wizard) → OK (the verb still fits)
+
+CRITICAL — when a draft already exactly matches a clean, structurally-faithful rewrite, output OK and pass it through verbatim. Do NOT add prose, do NOT swap "charged" for "cast a spell at" just because wizards cast spells, do NOT replace "drew his wand" with "raised his wand". The draft is fine. Your job is to catch BROKEN edits, not to rewrite working ones.
+
+WORKED EXAMPLE — when NOT to repair:
+
+INSTRUCTION: change protagonist to wizard
+TARGET: the knight drew his sword and charged the dragon
+DRAFT: the wizard drew his wand and charged the dragon
+VERDICT: OK
+REWRITE: the wizard drew his wand and charged the dragon
+
+(The draft is already a clean concept-swap: knight→wizard, sword→wand, "drew" stays because wizards can draw their wands, "charged" stays because wizards can charge things. Adding "and cast a spell at" would be WRONG — that's stylistic invention, not defect repair.)
 
 EXAMPLES:
 

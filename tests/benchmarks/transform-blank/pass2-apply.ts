@@ -27,9 +27,19 @@ RULES:
 4. Output ONLY the rewritten TARGET. Do not include the instruction.
 5. CONCEPT-SWAP PROPAGATION — when the instruction names a CATEGORY rather than just two words (e.g. "change pet from dog to cat", "change vehicle from bike to car", "change profession from X to Y", "change era to medieval", "switch sport from X to Y", "change country from X to Y", "change setting to ocean", "change protagonist to wizard"), update not only the named noun but also the verbs, objects, sounds, and properties that go with it. Cats meow and swish their tails (dogs bark and wag); cars use seatbelts and are driven (bikes use helmets and are ridden); teachers assign homework (doctors prescribe medicine); medieval messages travel by messenger (modern ones by email). Propagate all the dependent vocabulary that would naturally change, not just the literal swap.
 
+   THREE SUB-RULES for CONCEPT-SWAP:
+
+   (a) MINIMAL EDIT — propagate ONLY what's actually inappropriate for the new category. Words that work equally well for both should stay UNCHANGED. A wizard can still "draw" his wand and "charge" the dragon; a cat can still "look" at the postman; a teacher can still "talk" to the student. Don't add prose that wasn't there. Don't get creative — only edit the vocabulary that becomes WRONG after the swap.
+
+   (b) PRESERVE STRUCTURE — keep the sentence skeleton (subject-verb-object pattern, possessives, modifiers, phrase boundaries). If the original is "the camel walked across the dunes carrying water in its hump", an ocean version stays as "the FISH SWAM across the WAVES carrying water in its GILLS" — same structural template, only the desert-bound vocabulary swapped for ocean-bound vocabulary. Possessives like "my", "his", "its" are part of the structure — keep them; don't drop "my" → "a".
+
+   (c) COMPLETE THE ACTION — when a verb is sport/activity-specific, the new verb must complete the action naturally in the new context. "Dunked the ball" (basketball) → "kicked the ball INTO THE GOAL" (soccer), not just "kicked the ball" (incomplete in soccer). "Hit a home run" (baseball) → "scored a goal" (football), not "hit a goal".
+
 How to tell a CATEGORY swap from a LITERAL swap:
 - LITERAL: "change boy to girl", "rename foo to bar", "replace USD with EUR" — just the two words, no framing word. Do NOT propagate; only swap those literal tokens.
 - CATEGORY: "change pet from dog to cat", "change vehicle from bike to car", "change era to medieval" — names a category (pet, vehicle, era, profession, country, setting, sport, protagonist). DO propagate dependent vocabulary.
+
+6. ROLE PRESERVATION (numbers/labels) — when the instruction modifies SOME numbers but the target labels them with roles (e.g. "original price 100, final price 100" — original vs final are distinct roles), update ONLY the numbers tied to the role the instruction names. "Add 10%" applied to "original price 100, final price 100" only changes the FINAL price (to 110); the original stays 100. Same for "before/after", "input/output", "subtotal/total", etc.
 
 EXAMPLES:
 
@@ -91,7 +101,35 @@ REWRITE: the wizard drew his wand and charged the dragon
 
 INSTRUCTION: switch sport from basketball to soccer
 TARGET: he dribbled past defenders and dunked the ball
-REWRITE: he dribbled past defenders and kicked the ball into the goal`;
+REWRITE: he dribbled past defenders and kicked the ball into the goal
+
+INSTRUCTION: change protagonist to wizard
+TARGET: the knight drew his sword and charged the dragon
+REWRITE: the wizard drew his wand and charged the dragon
+
+INSTRUCTION: change setting to ocean
+TARGET: the camel walked across the dunes carrying water in its hump
+REWRITE: the fish swam across the waves carrying water in its gills
+
+INSTRUCTION: switch to winter
+TARGET: I love summer afternoons swimming at the beach in my swimsuit
+REWRITE: I love winter afternoons skiing at the slopes in my coat
+
+INSTRUCTION: convert to vegetarian
+TARGET: I made a burger with bacon and a beef patty
+REWRITE: I made a burger with mushrooms and a bean patty
+
+INSTRUCTION: switch sport from basketball to soccer
+TARGET: he stole the rebound and dunked the ball
+REWRITE: he stole the pass and kicked the ball into the goal
+
+INSTRUCTION: add 10%
+TARGET: original price 100, final price 100
+REWRITE: original price 100, final price 110
+
+INSTRUCTION: double it
+TARGET: I had 5 cookies before lunch and 5 cookies after lunch
+REWRITE: I had 10 cookies before lunch and 10 cookies after lunch`;
 
 export interface ApplyResult {
   rewrite: string;

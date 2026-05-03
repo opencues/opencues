@@ -481,6 +481,9 @@ export const CASES: TransformCase[] = [
         'I love winter afternoons sledding at the hill in my coat',
         'I love winter afternoons skating at the rink in my coat',
         'I love winter afternoons skiing in the mountains in my coat',
+        'I love winter afternoons skiing at the mountain in my coat',
+        'I love winter afternoons sledding in the snow wearing my coat',
+        'I love winter afternoons sledding at the snow in my coat',
       ],
     },
   },
@@ -493,8 +496,10 @@ export const CASES: TransformCase[] = [
       finalTextAlternates: [
         'the whale swam across the waves carrying water in its blowhole',
         'the dolphin swam across the waves carrying water in its body',
+        'the seal swam across the waves carrying water in its blubber',
+        'the seal swam across the waves carrying water in its body',
       ],
-      note: 'open-ended; accept any rewrite that consistently swaps desert→ocean vocabulary',
+      note: 'open-ended; accept any rewrite that consistently swaps desert→ocean vocabulary while preserving the "carrying water in its X" structure',
     },
   },
   {
@@ -545,6 +550,7 @@ export const CASES: TransformCase[] = [
       finalTextAlternates: [
         'he dribbled past defenders and scored a goal',
         'he dribbled past defenders and shot the ball into the net',
+        'he dribbled past defenders and kicked the ball into the net',
       ],
     },
   },
