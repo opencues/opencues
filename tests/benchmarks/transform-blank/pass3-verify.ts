@@ -46,6 +46,11 @@ Check the DRAFT against THREE consistency rules:
    - "make it passive" must reorder subject/object, not just swap verbs
    - "make it formal" / "make it casual" must change vocabulary AND register, not only one word
 
+4. CONCEPT-SWAP PROPAGATION — when the instruction names a CATEGORY (pet, vehicle, profession, era, country, setting, sport, protagonist, etc. — e.g. "change pet from dog to cat"), the draft must update not just the named noun but ALL dependent vocabulary that goes with it: verbs, sounds, objects, properties.
+   - "change pet from dog to cat" on "the dog wagged its tail and barked" — draft "the cat wagged its tail and barked" is BROKEN (cats don't wag or bark). Repair to "the cat swished its tail and meowed".
+   - "change vehicle from bike to car" on "I rode my bike and my helmet kept me safe" — draft "I rode my car and my helmet kept me safe" is BROKEN (you drive cars, you wear seatbelts). Repair to "I drove my car and my seatbelt kept me safe".
+   - LITERAL swap instructions (no category word — "change boy to girl", "rename foo to bar") do NOT trigger propagation. Only swap the literal tokens for those.
+
 ALWAYS output the rewrite — never bail to NONE, never refuse. If you have doubts, lean toward REPAIR with your best correction. P1 already decided this is a valid transform; you cannot revisit that.
 
 EXAMPLES:
@@ -90,7 +95,25 @@ INSTRUCTION: make it british english
 TARGET: the color of the harbor is gray
 DRAFT: the colour of the harbour is grey
 VERDICT: OK
-REWRITE: the colour of the harbour is grey`;
+REWRITE: the colour of the harbour is grey
+
+INSTRUCTION: change pet from dog to cat
+TARGET: the dog wagged its tail and barked at the postman
+DRAFT: the cat wagged its tail and barked at the postman
+VERDICT: REPAIR
+REWRITE: the cat swished its tail and meowed at the postman
+
+INSTRUCTION: change vehicle from bike to car
+TARGET: I rode my bike to school and my helmet kept me safe
+DRAFT: I rode my car to school and my helmet kept me safe
+VERDICT: REPAIR
+REWRITE: I drove my car to school and my seatbelt kept me safe
+
+INSTRUCTION: change profession from doctor to teacher
+TARGET: the doctor prescribed medicine for the patient
+DRAFT: the teacher prescribed medicine for the patient
+VERDICT: REPAIR
+REWRITE: the teacher assigned homework for the student`;
 
 export interface VerifyResult {
   verdict: 'OK' | 'REPAIR';
