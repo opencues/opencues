@@ -211,9 +211,12 @@ export interface ApplyResult {
 }
 
 export async function runApply(instruction: string, target: string): Promise<ApplyResult> {
+  // Dynamic max_tokens. Floor 768 ensures reasoning headroom; +400 token
+  // overhead covers reasoning_effort: 'low' (200-800 tokens internal).
+  const maxTokens = Math.max(768, Math.min(4096, Math.ceil((target.length * 1.5) / 3) + 400));
   const r = await chat(
     sysUser(SYSTEM_PROMPT, `INSTRUCTION: ${instruction}\nTARGET: ${target}`),
-    { maxTokens: 2048 },
+    { maxTokens },
   );
   return parseApplyOutput(r.text, r.latencyMs);
 }

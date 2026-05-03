@@ -176,9 +176,13 @@ export interface VerifyResult {
 }
 
 export async function runVerify(instruction: string, target: string, draft: string): Promise<VerifyResult> {
+  // Dynamic max_tokens. Floor 768 ensures reasoning headroom; +400 token
+  // overhead covers reasoning_effort: 'low' (200-800 tokens internal).
+  const src = Math.max(target.length, draft.length);
+  const maxTokens = Math.max(768, Math.min(4096, Math.ceil((src * 1.5) / 3) + 400));
   const r = await chat(
     sysUser(SYSTEM_PROMPT, `INSTRUCTION: ${instruction}\nTARGET: ${target}\nDRAFT: ${draft}`),
-    { maxTokens: 2048 },
+    { maxTokens },
   );
   return parseVerifyOutput(r.text, r.latencyMs);
 }

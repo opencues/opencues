@@ -149,7 +149,11 @@ export interface ExtractResult {
 }
 
 export async function runExtract(input: string): Promise<ExtractResult> {
-  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens: 2048 });
+  // Dynamic max_tokens. Budget = output_chars/3 + 400 for reasoning
+  // headroom (reasoning_effort: 'low' uses 200-800 tokens internally).
+  // Floor 768 ensures every call has room for reasoning + short output.
+  const maxTokens = Math.max(768, Math.min(4096, Math.ceil(input.length / 3) + 400));
+  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens });
   return parseExtractOutput(r.text, r.latencyMs);
 }
 

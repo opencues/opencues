@@ -348,6 +348,47 @@ function repairLooksTruncated(repair: string, draft: string, target: string): bo
 }
 
 /**
+ * Decide whether the APPLY draft looks "structurally faithful" enough
+ * that VERIFY can be skipped. Saves ~600-1500ms per case (~30% of
+ * pipeline latency) when applicable.
+ *
+ * Heuristic: skip VERIFY when ALL hold:
+ *  - draft length within ±15% of target length
+ *    → if rewrite is much shorter/longer, model probably reshaped
+ *      (translate, summarize, expand) — VERIFY's structural checks help
+ *  - target+draft contain no \n\n
+ *    → multi-paragraph cases need VERIFY's structure-preservation check
+ *  - instruction is a single edit (no pipe split)
+ *    → composed instructions need VERIFY to catch agreement failures
+ *      between the two transforms
+ *  - instruction matches a "low-stakes" pattern: literal swap, simple
+ *    case change, simple convert. These rarely need REPAIR.
+ *
+ * If any check fails, fall through to VERIFY.
+ */
+function shouldSkipVerify(instruction: string, target: string, draft: string): boolean {
+  if (!draft) return false;
+  // Length sanity — diverging length means structural change happened
+  const targetLen = target.length;
+  const draftLen = draft.length;
+  const ratio = draftLen / Math.max(targetLen, 1);
+  if (ratio < 0.85 || ratio > 1.15) return false;
+  // Multi-paragraph cases — VERIFY catches paragraph-collapse bugs
+  if (target.includes('\n\n') || draft.includes('\n\n')) return false;
+  // Composed instructions ("X | Y") — let VERIFY catch agreement
+  // issues between the two transforms
+  if (instruction.includes('|')) return false;
+  // Low-stakes instruction patterns where VERIFY rarely fires REPAIR
+  const i = instruction.toLowerCase().trim();
+  if (/^(change|replace|swap|rename)\s+\S+\s+(to|with|for)\s+\S+$/.test(i)) return true;
+  if (/^(uppercase|lowercase|capitalize|title.case)/.test(i)) return true;
+  if (/^make\s+(it\s+)?(past|present|future)\s+tense$/.test(i)) return true;
+  if (/^make\s+it\s+british\s+english$/.test(i)) return true;
+  if (/^make\s+it\s+american\s+english$/.test(i)) return true;
+  return false;
+}
+
+/**
  * Repair has telltale signs of model going off the rails: runs of
  * horizontal whitespace, hidden zero-width chars, mid-sentence ellipsis
  * (… or "..."), repeated dash separators, or stray "END" markers.
@@ -362,6 +403,41 @@ function repairLooksGarbled(repair: string): boolean {
   if (dashes.length >= 3) return true;
   if (/\?END\?|END\?\s*END|END\s+END/.test(repair)) return true;
   return false;
+}
+
+// ============================================================================
+// Token budgeting — dynamic max_tokens per call
+// ============================================================================
+
+/**
+ * Estimate output token budget given an expected output length in chars.
+ * The budget must cover BOTH reasoning tokens (`reasoning_effort: 'low'`
+ * consumes 200-800 tokens internally before emitting output) AND the
+ * actual output (rewrite + format labels).
+ *
+ * Formula:
+ *   budget = max(FLOOR, ceil(chars × multiplier / 3) + REASONING_HEADROOM)
+ *
+ * - FLOOR (768): always enough for reasoning + a short rewrite + labels
+ * - REASONING_HEADROOM (400): typical 'low' reasoning budget on this model
+ * - chars × multiplier / 3: the rewrite portion (rough char-to-token of 3)
+ * - CEILING (4096): cap for the longest multi-paragraph rewrites
+ *
+ * Even at FLOOR, this is 4× lower than the previous flat 2048-token
+ * budget on short inputs — saves ~50-200ms per call on Groq via lower
+ * planning/TTFT overhead. Long inputs scale up automatically.
+ *
+ * History: an earlier version used FLOOR=128 + REASONING_HEADROOM=100,
+ * which truncated mid-output on multi-paragraph cases (long-text
+ * accuracy dropped 85% → 50%). The current floor leaves enough budget
+ * for the model to finish reasoning AND emit a short reply.
+ */
+function budgetForOutput(expectedChars: number, multiplier: number = 1.0): number {
+  const REASONING_HEADROOM = 400;
+  const FLOOR = 768;
+  const CEILING = 4096;
+  const est = Math.ceil((expectedChars * multiplier) / 3) + REASONING_HEADROOM;
+  return Math.max(FLOOR, Math.min(CEILING, est));
 }
 
 // ============================================================================
@@ -512,18 +588,24 @@ export class TransformBlankSource implements CueSource {
       this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx})`);
 
       // P1 EXTRACT — split into instruction (pipe-joined for composed)
-      // and target.
+      // and target. Token budget: target text contributes ~chars/4
+      // tokens, plus ~100 token overhead for VERDICT/INSTRUCTION
+      // labels and formatting. The target field echoes most of the
+      // input back verbatim so we need roughly 1× the input size.
+      const p1Tokens = budgetForOutput(context.text.length, 1.0);
       const p1Start = Date.now();
-      const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${context.text}`, 2048);
+      const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${context.text}`, p1Tokens);
       const ext = parseExtract(extractRaw);
-      this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
+      this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
       if (ext.verdict === 'NONE' || !ext.instruction || !ext.target) {
         this.log(`TransformBlank: bailing — P1 verdict=NONE or empty fields`);
         return { results: [], timing: Date.now() - startTime, model: this.model };
       }
 
       // P2 APPLY — sequential composition for "X | Y" instructions.
-      // Output of step N feeds target of step N+1.
+      // Output of step N feeds target of step N+1. Token budget: rewrite
+      // is usually same length as target, but transforms can stretch it
+      // (e.g. "expand contractions" adds chars). Use 1.5× headroom.
       const parts = ext.instruction.split('|').map(s => s.trim()).filter(Boolean);
       this.log(`TransformBlank P2 APPLY: ${parts.length} step(s) — [${parts.map(p => `"${p}"`).join(', ')}]`);
       let currentTarget = ext.target;
@@ -531,13 +613,14 @@ export class TransformBlankSource implements CueSource {
       for (let i = 0; i < parts.length; i++) {
         const inst = parts[i];
         const stepStart = Date.now();
+        const p2Tokens = budgetForOutput(currentTarget.length, 1.5);
         const applyRaw = await this.callLLM(
           P2_APPLY_SYSTEM,
           `INSTRUCTION: ${inst}\nTARGET: ${currentTarget}`,
-          2048,
+          p2Tokens,
         );
         const draft = parseApply(applyRaw).rewrite;
-        this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms): "${preview(draft)}"`);
+        this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
         if (!draft) {
           this.log(`TransformBlank: bailing — APPLY step ${i + 1} returned empty`);
           break;
@@ -551,15 +634,29 @@ export class TransformBlankSource implements CueSource {
 
       // P3 VERIFY — check the final draft. Pass instruction in original
       // "X and Y" form (not pipe-joined) for clearer prompt context.
+      // Budget: rewrite is bounded by max(target, draft) length, +50%.
       const verifyInstruction = parts.join(' and ');
-      const p3Start = Date.now();
-      const verifyRaw = await this.callLLM(
-        P3_VERIFY_SYSTEM,
-        `INSTRUCTION: ${verifyInstruction}\nTARGET: ${ext.target}\nDRAFT: ${lastRewrite}`,
-        2048,
-      );
-      const ver = parseVerify(verifyRaw);
-      this.log(`TransformBlank P3 VERIFY (${Date.now() - p3Start}ms): verdict=${ver.verdict}, rewrite="${preview(ver.rewrite)}"`);
+
+      // SKIP VERIFY when the draft is "structurally faithful" and the
+      // instruction is low-stakes (literal swap, simple case change,
+      // simple tense). Saves ~600-1500ms per case (~30% of pipeline
+      // latency). Falls through to VERIFY for anything ambiguous.
+      let ver: VerifyResult;
+      if (shouldSkipVerify(verifyInstruction, ext.target, lastRewrite)) {
+        ver = { verdict: 'OK', rewrite: lastRewrite };
+        this.log(`TransformBlank P3 VERIFY: SKIPPED (low-stakes instruction + faithful draft)`);
+      } else {
+        const verifyBudgetSrc = Math.max(ext.target.length, lastRewrite.length);
+        const p3Tokens = budgetForOutput(verifyBudgetSrc, 1.5);
+        const p3Start = Date.now();
+        const verifyRaw = await this.callLLM(
+          P3_VERIFY_SYSTEM,
+          `INSTRUCTION: ${verifyInstruction}\nTARGET: ${ext.target}\nDRAFT: ${lastRewrite}`,
+          p3Tokens,
+        );
+        ver = parseVerify(verifyRaw);
+        this.log(`TransformBlank P3 VERIFY (${Date.now() - p3Start}ms, max_tokens=${p3Tokens}): verdict=${ver.verdict}, rewrite="${preview(ver.rewrite)}"`);
+      }
 
       // Decide final rewrite: OK → trust draft. REPAIR → use verify's
       // correction unless it looks truncated/garbled (safety net).
