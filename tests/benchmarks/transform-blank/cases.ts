@@ -13,7 +13,7 @@
 
 export interface TransformCase {
   id: string;
-  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring' | 'trailing-instruction';
+  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring' | 'trailing-instruction' | 'code-transform' | 'tone-shift' | 'format-transform' | 'creative-rewrite' | 'adversarial';
   input: string;
   expected: {
     /** Final text after applying edits + wiping the instruction phrase. */
@@ -1499,5 +1499,640 @@ export const CASES: TransformCase[] = [
     category: 'trailing-instruction',
     input: 'the child found one mouse pluralize _',
     expected: { finalText: 'the children found mice' },
+  },
+
+  // ============================================================
+  // CODE-TRANSFORM — programming-specific edits. Tests whether
+  // the pipeline handles syntactic structure (functions, vars,
+  // brackets) without mangling it.
+  // ============================================================
+  {
+    id: 'code-1',
+    category: 'code-transform',
+    input: 'rename variable x to userId _ const x = getUser(); return x.name',
+    expected: { finalText: 'const userId = getUser(); return userId.name' },
+  },
+  {
+    id: 'code-2',
+    category: 'code-transform',
+    input: 'convert var to const _ var name = "alice"; var age = 30;',
+    expected: { finalText: 'const name = "alice"; const age = 30;' },
+  },
+  {
+    id: 'code-3',
+    category: 'code-transform',
+    input: 'rename function hello to greet _ function hello() { return "hi" }',
+    expected: { finalText: 'function greet() { return "hi" }' },
+  },
+  {
+    id: 'code-4',
+    category: 'code-transform',
+    input: 'remove all comments _ // setup\nconst x = 5; // initial value\nreturn x;',
+    expected: {
+      finalText: 'const x = 5;\nreturn x;',
+      finalTextAlternates: [
+        'const x = 5; \nreturn x;',
+        '\nconst x = 5; \nreturn x;',
+        'const x = 5;\n return x;',
+      ],
+    },
+  },
+  {
+    id: 'code-5',
+    category: 'code-transform',
+    input: 'convert to arrow function _ function add(a, b) { return a + b }',
+    expected: {
+      finalText: 'const add = (a, b) => a + b',
+      finalTextAlternates: [
+        'const add = (a, b) => { return a + b }',
+        'const add = (a, b) => a + b;',
+      ],
+    },
+  },
+  {
+    id: 'code-6',
+    category: 'code-transform',
+    input: 'extract magic number to const MAX _ if (count > 100) { warn() }',
+    expected: {
+      finalText: 'const MAX = 100; if (count > MAX) { warn() }',
+      finalTextAlternates: [
+        'const MAX = 100;\nif (count > MAX) { warn() }',
+        'const MAX = 100;\n\nif (count > MAX) { warn() }',
+      ],
+    },
+  },
+  {
+    id: 'code-7',
+    category: 'code-transform',
+    input: 'add error handling _ const data = JSON.parse(input); return data.value',
+    expected: {
+      finalText: 'try { const data = JSON.parse(input); return data.value } catch (e) { return null }',
+      finalTextAlternates: [
+        'try {\n  const data = JSON.parse(input);\n  return data.value;\n} catch (e) {\n  return null;\n}',
+        'let data; try { data = JSON.parse(input); } catch (e) { return null; } return data.value;',
+      ],
+      note: 'open-ended; accept any reasonable error-handling wrapper',
+    },
+  },
+  {
+    id: 'code-8',
+    category: 'code-transform',
+    input: 'convert tabs to spaces _ if (x) {\n\treturn true\n}',
+    expected: {
+      finalText: 'if (x) {\n  return true\n}',
+      finalTextAlternates: [
+        'if (x) {\n    return true\n}',
+      ],
+    },
+  },
+  {
+    id: 'code-9',
+    category: 'code-transform',
+    input: 'add JSDoc _ function multiply(a, b) { return a * b }',
+    expected: {
+      finalText: '/**\n * @param {number} a\n * @param {number} b\n * @returns {number}\n */\nfunction multiply(a, b) { return a * b }',
+      finalTextAlternates: [
+        '/** @param {number} a @param {number} b @returns {number} */\nfunction multiply(a, b) { return a * b }',
+        '/**\n * Multiply two numbers.\n * @param {number} a\n * @param {number} b\n * @returns {number}\n */\nfunction multiply(a, b) { return a * b }',
+      ],
+      note: 'open-ended; accept any reasonable JSDoc block',
+    },
+  },
+  {
+    id: 'code-10',
+    category: 'code-transform',
+    input: 'convert callback to async/await _ getData((err, result) => { if (err) throw err; console.log(result) })',
+    expected: {
+      finalText: 'const result = await getData(); console.log(result)',
+      finalTextAlternates: [
+        'try { const result = await getData(); console.log(result) } catch (err) { throw err }',
+        'const result = await getData();\nconsole.log(result);',
+      ],
+      note: 'open-ended; accept any reasonable async/await rewrite',
+    },
+  },
+
+  // ============================================================
+  // TONE-SHIFT — change register / emotion / confidence. Tests
+  // whether the model can do stylistic rewriting beyond simple
+  // formal/casual.
+  // ============================================================
+  {
+    id: 'tone-1',
+    category: 'tone-shift',
+    input: 'make it more confident _ I think maybe we should perhaps consider this option',
+    expected: {
+      finalText: 'We should choose this option',
+      finalTextAlternates: [
+        'We must consider this option',
+        'This is the right option',
+        'We should take this option',
+      ],
+      note: 'open-ended; accept any rewrite that removes hedging',
+    },
+  },
+  {
+    id: 'tone-2',
+    category: 'tone-shift',
+    input: 'remove all hedging _ It seems possibly the data might suggest we could try a new approach',
+    expected: {
+      finalText: 'The data shows we should try a new approach',
+      finalTextAlternates: [
+        'The data suggests we should try a new approach',
+        'The data shows we need a new approach',
+        'The data indicates a new approach is needed',
+      ],
+    },
+  },
+  {
+    id: 'tone-3',
+    category: 'tone-shift',
+    input: 'make it more polite _ Send me the report now',
+    expected: {
+      finalText: 'Could you please send me the report?',
+      finalTextAlternates: [
+        'Please send me the report when you can.',
+        'Would you mind sending me the report?',
+        'I would appreciate it if you could send me the report.',
+      ],
+    },
+  },
+  {
+    id: 'tone-4',
+    category: 'tone-shift',
+    input: 'make it more direct _ I was wondering if perhaps you might consider helping me with this thing',
+    expected: {
+      finalText: 'Help me with this',
+      finalTextAlternates: [
+        'Please help me with this',
+        'Can you help me with this?',
+        'I need help with this',
+      ],
+    },
+  },
+  {
+    id: 'tone-5',
+    category: 'tone-shift',
+    input: 'remove all adverbs _ He quickly ran to the conveniently located store and happily bought milk',
+    expected: {
+      finalText: 'He ran to the located store and bought milk',
+      finalTextAlternates: [
+        'He ran to the store and bought milk',
+        'He ran to the convenient store and bought milk',
+      ],
+      note: 'adverbs: quickly, conveniently, happily — all should go',
+    },
+  },
+  {
+    id: 'tone-6',
+    category: 'tone-shift',
+    input: 'add hedging language _ The medication will cure your symptoms',
+    expected: {
+      finalText: 'The medication may help relieve your symptoms',
+      finalTextAlternates: [
+        'The medication might cure your symptoms',
+        'The medication could potentially help with your symptoms',
+        'The medication may help your symptoms',
+      ],
+    },
+  },
+  {
+    id: 'tone-7',
+    category: 'tone-shift',
+    input: 'make it sarcastic _ Great work on finishing the project on time',
+    expected: {
+      finalText: 'Wow, what a shock — you actually finished on time',
+      finalTextAlternates: [
+        'Oh great, you finished on time, what a miracle',
+        'Stunning — finished on time for once',
+        'Amazing how you managed to finish on time',
+      ],
+      note: 'open-ended; accept any clearly sarcastic rewrite',
+    },
+  },
+  {
+    id: 'tone-8',
+    category: 'tone-shift',
+    input: 'make it more dramatic _ I went to the store and bought milk',
+    expected: {
+      finalText: 'I journeyed to the store and acquired milk',
+      finalTextAlternates: [
+        'I ventured to the store and bought milk',
+        'I made the long trek to the store and brought home milk',
+        'I trudged to the store and bought milk',
+      ],
+      note: 'open-ended; accept any rewrite with elevated/dramatic vocabulary',
+    },
+  },
+  {
+    id: 'tone-9',
+    category: 'tone-shift',
+    input: 'add humor _ The meeting is tomorrow at 3pm in conference room B',
+    expected: {
+      finalText: 'The meeting is tomorrow at 3pm in conference room B (bring snacks)',
+      finalTextAlternates: [
+        'Brace yourselves: the meeting is tomorrow at 3pm in conference room B',
+        'The meeting is tomorrow at 3pm in conference room B — pray for us',
+        'Mark your calendars: tomorrow at 3pm in conference room B (yes, again)',
+      ],
+      note: 'open-ended; accept any rewrite with a humorous addition',
+    },
+  },
+  {
+    id: 'tone-10',
+    category: 'tone-shift',
+    input: 'make it sincere _ The food was, uh, fine I guess, you know',
+    expected: {
+      finalText: 'The food was good',
+      finalTextAlternates: [
+        'The food was excellent',
+        'The food was delicious',
+        'I really enjoyed the food',
+      ],
+    },
+  },
+
+  // ============================================================
+  // FORMAT-TRANSFORM — structural rewrites (lists, tables, dates,
+  // measurements). Tests whether the model can produce well-formed
+  // structured output, not just prose.
+  // ============================================================
+  {
+    id: 'format-1',
+    category: 'format-transform',
+    input: 'convert to bullet points _ I need eggs, milk, bread, and cheese from the store',
+    expected: {
+      finalText: '- eggs\n- milk\n- bread\n- cheese',
+      finalTextAlternates: [
+        '* eggs\n* milk\n* bread\n* cheese',
+        'I need from the store:\n- eggs\n- milk\n- bread\n- cheese',
+        '- eggs\n- milk\n- bread\n- cheese (from the store)',
+      ],
+    },
+  },
+  {
+    id: 'format-2',
+    category: 'format-transform',
+    input: 'convert to numbered list _ first wake up then make coffee then read the news',
+    expected: {
+      finalText: '1. wake up\n2. make coffee\n3. read the news',
+      finalTextAlternates: [
+        '1. Wake up\n2. Make coffee\n3. Read the news',
+        '1. wake up\n2. make coffee\n3. read the news\n',
+      ],
+    },
+  },
+  {
+    id: 'format-3',
+    category: 'format-transform',
+    input: 'combine into one sentence _ I went to the store. I bought milk. I came home.',
+    expected: {
+      finalText: 'I went to the store, bought milk, and came home.',
+      finalTextAlternates: [
+        'I went to the store, bought milk and came home.',
+        'I went to the store and bought milk and came home.',
+        'I went to the store, bought milk, and then came home.',
+      ],
+    },
+  },
+  {
+    id: 'format-4',
+    category: 'format-transform',
+    input: 'split into separate sentences _ I went to the store and bought milk and came home and put it in the fridge',
+    expected: {
+      finalText: 'I went to the store. I bought milk. I came home. I put it in the fridge.',
+      finalTextAlternates: [
+        'I went to the store. I bought milk. I came home and put it in the fridge.',
+        'I went to the store. I bought milk. Then I came home. I put it in the fridge.',
+      ],
+    },
+  },
+  {
+    id: 'format-5',
+    category: 'format-transform',
+    input: 'convert to a markdown table _ Apples cost $3, bananas cost $2, cherries cost $5',
+    expected: {
+      finalText: '| Item | Price |\n|---|---|\n| Apples | $3 |\n| Bananas | $2 |\n| Cherries | $5 |',
+      finalTextAlternates: [
+        '| Fruit | Price |\n|---|---|\n| Apples | $3 |\n| Bananas | $2 |\n| Cherries | $5 |',
+        '| Item | Price |\n| --- | --- |\n| Apples | $3 |\n| Bananas | $2 |\n| Cherries | $5 |',
+      ],
+    },
+  },
+  {
+    id: 'format-6',
+    category: 'format-transform',
+    input: 'add a markdown heading _ This document explains how the system works in detail',
+    expected: {
+      finalText: '# Overview\n\nThis document explains how the system works in detail',
+      finalTextAlternates: [
+        '# How the System Works\n\nThis document explains how the system works in detail',
+        '# Documentation\n\nThis document explains how the system works in detail',
+      ],
+      note: 'any reasonable heading + the original body',
+    },
+  },
+  {
+    id: 'format-7',
+    category: 'format-transform',
+    input: 'convert to ISO date _ March 15, 2024',
+    expected: { finalText: '2024-03-15' },
+  },
+  {
+    id: 'format-8',
+    category: 'format-transform',
+    input: 'use 24-hour format _ The meeting is at 3:30 PM and ends at 5 PM',
+    expected: {
+      finalText: 'The meeting is at 15:30 and ends at 17:00',
+      finalTextAlternates: [
+        'The meeting is at 15:30 and ends at 17:00.',
+      ],
+    },
+  },
+  {
+    id: 'format-9',
+    category: 'format-transform',
+    input: 'convert all measurements to metric _ I am 6 feet 2 inches tall and weigh 180 pounds',
+    expected: {
+      finalText: 'I am 188 cm tall and weigh 82 kg',
+      finalTextAlternates: [
+        'I am 188cm tall and weigh 82kg',
+        'I am 1.88 m tall and weigh 81.6 kg',
+        'I am 1.88 metres tall and weigh 81.6 kilograms',
+        'I am 188 centimeters tall and weigh 82 kilograms',
+      ],
+    },
+  },
+  {
+    id: 'format-10',
+    category: 'format-transform',
+    input: 'alphabetize _ banana, apple, cherry, date, elderberry',
+    expected: { finalText: 'apple, banana, cherry, date, elderberry' },
+  },
+
+  // ============================================================
+  // CREATIVE-REWRITE — linguistic creativity. Pushes the model
+  // beyond mechanical edits into stylistic territory.
+  // ============================================================
+  {
+    id: 'creative-1',
+    category: 'creative-rewrite',
+    input: 'translate to pirate speak _ Hello, where is the bathroom please?',
+    expected: {
+      finalText: 'Ahoy matey, where be the head?',
+      finalTextAlternates: [
+        'Arrr, where be the head, ye scurvy dog?',
+        'Ahoy, where be the privy?',
+        'Yarr, where be the head?',
+      ],
+      note: 'open-ended pirate-speak rewrite',
+    },
+  },
+  {
+    id: 'creative-2',
+    category: 'creative-rewrite',
+    input: 'make it sound like shakespeare _ I love you and want to be with you',
+    expected: {
+      finalText: 'I love thee and yearn to be with thee',
+      finalTextAlternates: [
+        'My love for thee burns bright; I would have thee by my side',
+        'I do love thee, and would be with thee always',
+        'Thou art my love; I would never leave thy side',
+      ],
+      note: 'open-ended; accept any rewrite using thee/thou/thy or Shakespearean cadence',
+    },
+  },
+  {
+    id: 'creative-3',
+    category: 'creative-rewrite',
+    input: 'convert legalese to plain english _ The party of the first part hereby agrees to indemnify the party of the second part against all claims',
+    expected: {
+      finalText: 'The first party agrees to cover the second party for any claims',
+      finalTextAlternates: [
+        'The first party will protect the second party from any claims',
+        'The first party will pay for any claims against the second party',
+        'The first party promises to cover the second party for any claims',
+      ],
+    },
+  },
+  {
+    id: 'creative-4',
+    category: 'creative-rewrite',
+    input: 'convert to gen-z slang _ This party is really exciting and fun',
+    expected: {
+      finalText: 'This party is fire',
+      finalTextAlternates: [
+        'This party slaps',
+        'This party is lit',
+        'This party is so vibey, no cap',
+        'No cap, this party is lit',
+      ],
+      note: 'open-ended; accept any clearly Gen-Z slang rewrite',
+    },
+  },
+  {
+    id: 'creative-5',
+    category: 'creative-rewrite',
+    input: 'convert to academic prose _ The dog ran fast and looked happy when he got the ball',
+    expected: {
+      finalText: 'The canine demonstrated rapid locomotion and exhibited apparent satisfaction upon retrieval of the ball',
+      finalTextAlternates: [
+        'The dog exhibited rapid locomotion and displayed evident contentment upon ball retrieval',
+        'The canine moved at considerable speed and appeared pleased upon obtaining the ball',
+      ],
+      note: 'open-ended; accept any rewrite with formal academic vocabulary',
+    },
+  },
+  {
+    id: 'creative-6',
+    category: 'creative-rewrite',
+    input: 'make it more poetic _ The sun set over the mountains and the sky turned orange',
+    expected: {
+      finalText: 'The sun melted into the mountains, painting the sky in shades of fire',
+      finalTextAlternates: [
+        'Behind the mountains the sun lay down, and the sky bloomed into orange',
+        'The dying sun kissed the mountains farewell as the heavens caught fire',
+        'The sun sank behind the mountains, setting the sky ablaze in orange',
+      ],
+      note: 'open-ended; accept any clearly poetic rewrite',
+    },
+  },
+  {
+    id: 'creative-7',
+    category: 'creative-rewrite',
+    input: 'make it sound urgent _ Please review the document when you have time',
+    expected: {
+      finalText: 'Review the document immediately',
+      finalTextAlternates: [
+        'Need you to review the document ASAP',
+        'Please review the document right away',
+        'URGENT: review the document now',
+      ],
+    },
+  },
+  {
+    id: 'creative-8',
+    category: 'creative-rewrite',
+    input: 'make it sound like a child wrote it _ Yesterday I attended a fascinating presentation about quantum mechanics',
+    expected: {
+      finalText: 'yesterday i went to a really cool talk about teeny tiny things',
+      finalTextAlternates: [
+        'yesterday i saw a super cool talk about how tiny stuff works',
+        'i went to a cool thing yesterday about really really small stuff',
+      ],
+      note: 'open-ended; accept any rewrite in childlike voice (lowercase, simple words)',
+    },
+  },
+  {
+    id: 'creative-9',
+    category: 'creative-rewrite',
+    input: 'rewrite without using the letter e _ The cat sat on the mat and looked happy',
+    expected: {
+      finalText: 'A cat sat on a mat and was so glad',
+      finalTextAlternates: [
+        'A cat sits on a rug and looks glad',
+        'A puss sat on a rug and was glad',
+        'My cat sat on a rug, looking jolly',
+      ],
+      note: 'open-ended; the rewrite must contain ZERO letter "e"',
+    },
+  },
+  {
+    id: 'creative-10',
+    category: 'creative-rewrite',
+    input: 'make it sound like a pirate is angry _ The meeting starts at 3pm',
+    expected: {
+      finalText: 'Arrr, ye scurvy dogs better be at the meetin\' by 3 bells or I\'ll have yer hides!',
+      finalTextAlternates: [
+        'Avast! The meetin\' starts at 3 and don\'t ye dare be late ye landlubbers!',
+        'Yarr, the meetin\' kicks off at 3pm sharp — woe betide any scallywag who shows up late!',
+      ],
+      note: 'open-ended; angry pirate voice',
+    },
+  },
+
+  // ============================================================
+  // ADVERSARIAL — edge cases, ambiguity, self-reference, and
+  // pathological inputs designed to break naive heuristics.
+  // ============================================================
+  {
+    id: 'adv-1',
+    category: 'adversarial',
+    input: 'change the word change to modify _ I want to change my approach but the change must be quick',
+    expected: {
+      finalText: 'I want to modify my approach but the modify must be quick',
+      finalTextAlternates: [
+        'I want to modify my approach but the modification must be quick',
+      ],
+      note: 'self-referential — instruction targets a word that also appears in the instruction',
+    },
+  },
+  {
+    id: 'adv-2',
+    category: 'adversarial',
+    input: 'make past tense _ change my mind',
+    expected: {
+      finalText: 'changed my mind',
+      finalTextAlternates: [
+        'I changed my mind',
+      ],
+      note: 'target looks like an instruction-shaped phrase ("change") but is actually narrative prose',
+    },
+  },
+  {
+    id: 'adv-3',
+    category: 'adversarial',
+    input: 'negate everything _ I am happy and the day is sunny',
+    expected: {
+      finalText: 'I am not happy and the day is not sunny',
+      finalTextAlternates: [
+        'I am sad and the day is gloomy',
+        'I am not happy and the day is cloudy',
+      ],
+    },
+  },
+  {
+    id: 'adv-4',
+    category: 'adversarial',
+    input: 'add commas where needed _ Hello world how are you today my friend',
+    expected: {
+      finalText: 'Hello, world, how are you today, my friend',
+      finalTextAlternates: [
+        'Hello world, how are you today, my friend',
+        'Hello, world. How are you today, my friend?',
+        'Hello, world, how are you today my friend?',
+      ],
+    },
+  },
+  {
+    id: 'adv-5',
+    category: 'adversarial',
+    input: 'reverse the order of words _ The quick brown fox jumps over the lazy dog',
+    expected: { finalText: 'dog lazy the over jumps fox brown quick The' },
+  },
+  {
+    id: 'adv-6',
+    category: 'adversarial',
+    input: 'pluralize but not the words in quotes _ the boy said "one apple" and ate the cookie',
+    expected: {
+      finalText: 'the boys said "one apple" and ate the cookies',
+      finalTextAlternates: [
+        'the boys said "one apple" and ate cookies',
+      ],
+      note: 'conditional with quote-scope exclusion',
+    },
+  },
+  {
+    id: 'adv-7',
+    category: 'adversarial',
+    input: 'change boy to girl _ a boy boyle boycott boyfriend boyhood',
+    expected: {
+      finalText: 'a girl boyle boycott boyfriend boyhood',
+      finalTextAlternates: [
+        'a girl girlle girlcott girlfriend girlhood',
+        'a girl Boyle boycott boyfriend boyhood',
+      ],
+      note: 'word-boundary discipline — only the standalone word should change, not substrings',
+    },
+  },
+  {
+    id: 'adv-8',
+    category: 'adversarial',
+    input: 'translate to spanish _ The cat sat on the mat',
+    expected: {
+      finalText: 'El gato se sentó en la alfombra',
+      finalTextAlternates: [
+        'El gato estaba sentado en la alfombra',
+        'El gato se sentó sobre la alfombra',
+        'El gato estaba en la alfombra',
+      ],
+      note: 'cross-language translation — instruction in English, output in Spanish',
+    },
+  },
+  {
+    id: 'adv-9',
+    category: 'adversarial',
+    input: 'rewrite with no vowels _ The cat sat',
+    expected: {
+      finalText: 'Th ct st',
+      finalTextAlternates: [
+        'Th ct st.',
+      ],
+      note: 'pure constraint task — no a/e/i/o/u allowed',
+    },
+  },
+  {
+    id: 'adv-10',
+    category: 'adversarial',
+    input: 'make this rhyme _ The cat sat on the mat',
+    expected: {
+      finalText: 'The cat sat on the mat and looked at the rat',
+      finalTextAlternates: [
+        'The cat sat on the mat next to a rat',
+        'The cat sat on the mat and chased a rat',
+        'The cat sat on the mat with a rat',
+      ],
+      note: 'open-ended; accept any rewrite that adds a rhyme',
+    },
   },
 ];
