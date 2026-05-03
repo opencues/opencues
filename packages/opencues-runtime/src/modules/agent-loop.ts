@@ -241,46 +241,75 @@ export class AgentLoop {
    * Or "EDITS: none" / empty when nothing needs editing.
    */
   private async callEditPass(text: string, prompt: string, candidateIndices: number[]): Promise<AgentEdit[]> {
-    const system = `You are an inline editor running continuously in the background of a user's document. You receive a TASK PROMPT (what the user wants you to do) and a DOC (the current text). Your job: emit a list of edits that fulfil the task.
+    const system = `You are an inline editor running continuously in the background of a user's document. You receive a TASK PROMPT (what the user wants you to do), a DOC (the current text), and a list of CANDIDATE INDICES you may edit. Your job: emit a verdict for EACH candidate — KEEP if no edit, or the edited word.
 
-Output exactly this format:
+Output format — ONE LINE PER CANDIDATE INDEX, in ascending order:
 
-EDITS:
+DECISIONS:
+<wordIndex> | <originalWord> | KEEP
 <wordIndex> | <originalWord> | <editedWord>
-<wordIndex> | <originalWord> | <editedWord>
+<wordIndex> | <originalWord> | KEEP
 ...
 END
 
-Where <wordIndex> is the 0-based word position in the doc (whitespace-split), <originalWord> is the current word at that position, and <editedWord> is your proposed replacement.
+This is a COMPLETENESS guarantee: by emitting one line per candidate, you can't accidentally drop the last item. If there are 10 candidates, output exactly 10 DECISIONS lines (one per index, in order from lowest to highest).
 
-Output "EDITS:" followed immediately by "END" (no edit rows) when nothing needs editing.
+Use KEEP when the word doesn't need editing under the task. Use the edited word when it does.
 
 RULES:
-1. Only emit edits for words YOU CAN SEE in the doc. Don't invent positions.
-2. Be conservative — when in doubt, leave it alone. Stylistic improvements aren't your job; the user asks for specific tasks (correct spelling, fix grammar, etc.) and you do exactly that.
-3. One edit per word. If a word doesn't need editing, don't list it.
-4. Don't edit words that are already correct under the task interpretation.
-5. Multi-word transformations (rewriting a sentence, etc.) are NOT supported in this format. Skip those — emit nothing rather than guessing.
+1. ONE LINE PER CANDIDATE. If 10 candidates were given, emit 10 lines. If 3, emit 3.
+2. Emit lines in ASCENDING order of wordIndex (0, 1, 2, ... in order).
+3. Each line: <wordIndex> | <originalWord> | <KEEP or editedWord>
+4. Use KEEP for any word that doesn't need editing.
+5. Be conservative on AMBIGUOUS edits — when in doubt, KEEP. But be exhaustive on UNAMBIGUOUS edits (typos, proper-noun capitalisation, etc.) — actually edit them.
+6. Multi-word transformations are NOT supported. KEEP words you can't fix in a single-word swap.
 
 EXAMPLES:
 
 TASK PROMPT: correct spelling
-DOC: I rite some stuff
-EDITS:
+DOC: [0]I [1]rite [2]some [3]stuff
+Candidate indices: [0, 1, 2, 3]
+DECISIONS:
+0 | I | KEEP
 1 | rite | write
+2 | some | KEEP
+3 | stuff | KEEP
 END
 
 TASK PROMPT: correct spelling
-DOC: This is fine
-EDITS:
+DOC: [0]This [1]is [2]fine
+Candidate indices: [0, 1, 2]
+DECISIONS:
+0 | This | KEEP
+1 | is | KEEP
+2 | fine | KEEP
 END
 
-TASK PROMPT: correct spelling AND remove unnecessary capitals
-DOC: I have Some MISSPELLED wrods
-EDITS:
-2 | Some | some
-3 | MISSPELLED | misspelled
-4 | wrods | words
+TASK PROMPT: capitalize the days
+DOC: [0]i [1]work [2]on [3]monday [4]and [5]friday [6]but [7]rest [8]on [9]sunday
+Candidate indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+DECISIONS:
+0 | i | KEEP
+1 | work | KEEP
+2 | on | KEEP
+3 | monday | Monday
+4 | and | KEEP
+5 | friday | Friday
+6 | but | KEEP
+7 | rest | KEEP
+8 | on | KEEP
+9 | sunday | Sunday
+END
+
+TASK PROMPT: correct spelling
+DOC: [0]thier [1]proposal [2]was [3]carefuly [4]recieved
+Candidate indices: [0, 1, 2, 3, 4]
+DECISIONS:
+0 | thier | their
+1 | proposal | KEEP
+2 | was | KEEP
+3 | carefuly | carefully
+4 | recieved | received
 END`;
 
     const wordSpans = splitWords(text);
@@ -290,13 +319,19 @@ DOC: ${docWithIndices}
 
 Candidate word indices (you MAY edit only these — others are owned by other systems): [${candidateIndices.join(', ')}]`;
 
+    // Dynamic max_tokens: DECISIONS format emits ONE LINE PER CANDIDATE,
+    // so the output scales with candidate count. ~30 tokens per line
+    // (idx + word + verdict + separators), plus reasoning headroom.
+    // Floor at 1024 for short docs, ceiling at 4096 for long ones.
+    const estLines = candidateIndices.length;
+    const maxTokens = Math.max(1024, Math.min(4096, estLines * 30 + 600));
     const body = JSON.stringify({
       model: this.options.defaultModel,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userMsg },
       ],
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       temperature: 0,
       reasoning_effort: 'low',
       seed: 42,
@@ -328,13 +363,17 @@ Candidate word indices (you MAY edit only these — others are owned by other sy
 }
 
 /**
- * Parse the EDITS: ... END block. Lenient — accepts trailing
- * whitespace, comments after END, missing END, etc.
+ * Parse either the EDITS: ... END block (legacy) or the DECISIONS:
+ * ... END block (new). DECISIONS format is more verbose (one line per
+ * candidate, KEEP for no-op) but guarantees the model can't drop the
+ * last item. We extract only the non-KEEP rows as edits.
+ *
+ * Lenient — accepts either marker, trailing whitespace, etc.
  */
 export function parseEditPassOutput(raw: string): AgentEdit[] {
   const edits: AgentEdit[] = [];
-  // Find EDITS: marker
-  const startMatch = raw.match(/EDITS:\s*\n/i);
+  // Find EDITS: or DECISIONS: marker
+  const startMatch = raw.match(/(EDITS|DECISIONS):\s*\n/i);
   if (!startMatch) return [];
   const start = startMatch.index! + startMatch[0].length;
   // Find END marker (or end of string)
@@ -346,7 +385,7 @@ export function parseEditPassOutput(raw: string): AgentEdit[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (/^none$/i.test(trimmed)) continue;
-    // Format: <idx> | <orig> | <edit>
+    // Format: <idx> | <orig> | <edit-or-KEEP>
     const parts = trimmed.split('|').map(s => s.trim());
     if (parts.length !== 3) continue;
     const idx = parseInt(parts[0], 10);
@@ -354,6 +393,9 @@ export function parseEditPassOutput(raw: string): AgentEdit[] {
     const orig = parts[1];
     const edit = parts[2];
     if (!orig || !edit) continue;
+    // KEEP marker — explicit no-op, don't include as an edit
+    if (/^keep$/i.test(edit)) continue;
+    if (edit === orig) continue;  // model emitted unchanged value, treat as no-op
     edits.push({ wordIndex: idx, originalWord: orig, editedWord: edit });
   }
   return edits;

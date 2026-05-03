@@ -136,9 +136,9 @@ export const CASES: AgentTaskCase[] = [
     prompt: 'correct spelling',
     text: 'I am looking forward to your reponse',
     expectedEdits: [
-      { wordIndex: 5, originalWord: 'reponse', acceptableEdits: ['response'] },
+      { wordIndex: 6, originalWord: 'reponse', acceptableEdits: ['response'] },
     ],
-    note: 'avoid the Im/I\'m ambiguity — write "I am" so the typo is the only edit',
+    note: '7 words: I am looking forward to your reponse — typo at idx 6',
   },
   {
     id: 'spell-10',
@@ -755,11 +755,10 @@ export const CASES: AgentTaskCase[] = [
     text: 'i bought apple and recieved samsung',
     expectedEdits: [
       { wordIndex: 2, originalWord: 'apple', acceptableEdits: ['APPLE'] },
-      { wordIndex: 3, originalWord: 'and', acceptableEdits: ['and'] },  // shouldn't change
       { wordIndex: 4, originalWord: 'recieved', acceptableEdits: ['received'] },
       { wordIndex: 5, originalWord: 'samsung', acceptableEdits: ['SAMSUNG'] },
     ],
-    note: '"and" deliberately listed but acceptableEdits=["and"] catches it as no-op',
+    note: '"and" stays — agent correctly skips no-op edits',
   },
   {
     id: 'mix-6',

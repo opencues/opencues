@@ -57,7 +57,13 @@ const sep = (ch = '─') => console.log(ch.repeat(78));
  */
 function makeMockAdapter(initialText: string, cursorPos: number) {
   let text = initialText;
-  let cursor = cursorPos === -1 ? text.length : cursorPos;
+  // Default (cursorPos === -1): cursor PAST end of all words. The
+  // benchmark default is "user is somewhere reading the doc, not
+  // typing in any specific word". Tests that exercise cursor-adjacent
+  // behavior set cursorPos explicitly. Otherwise the cursor falls
+  // outside every word's [start, end] range and findCursorWordIdx
+  // returns -1, making no word cursor-excluded.
+  let cursor = cursorPos === -1 ? text.length + 1 : cursorPos;
   const logs: string[] = [];
   const onTextChangeListeners: Array<(e: { text: string; source: string }) => void> = [];
 

@@ -147,6 +147,96 @@ Try prompt nudges in a follow-up experiment.
 
 ---
 
+## Experiment 3 — Chasing the "model misses last item" bug
+
+**Hypothesis:** the model has a model-variance issue where it
+consistently misses the LAST item in multi-item edit lists. Tried
+multiple fixes — prompt nudges, DECISIONS-format, dynamic max_tokens.
+
+**Variants tested:**
+
+1. **EDITS format with "be exhaustive" nudge** + worked example showing
+   3-item edit list with last item explicitly called out.
+2. **DECISIONS format** — model emits one verdict (KEEP or edit) per
+   candidate, in ascending order. Forces complete enumeration.
+3. **Dynamic max_tokens** sized to candidate count (30 × candidates +
+   600 reasoning headroom) so DECISIONS output isn't truncated.
+
+**Results were all stuck at ~75% total — until we found the actual
+root cause.**
+
+### The actual bug
+
+The "last item missed" pattern was 100% a TEST-AUTHOR BUG.
+
+The mock adapter defaulted `cursorPos: undefined` → `cursorPos: -1`
+→ `cursor = text.length`. For text "i was born in march and graduated
+in june", that's position 41 — exactly at the end of "june" (chars
+37-41). The runtime's `findCursorWordIdx` (correctly) treats
+`cursorPos <= w.end` as "cursor on this word", so word 8 ("june") was
+classified as cursor-adjacent and (correctly) excluded from candidates.
+
+The agent was doing exactly the right thing: respecting the
+cursor-adjacent rule. My benchmark was telling it to skip the word it
+was supposedly testing.
+
+### The fix
+
+```ts
+// Mock adapter default
+let cursor = cursorPos === -1 ? text.length + 1 : cursorPos;
+```
+
+`text.length + 1` is past every word's `[start, end]` range, so
+`findCursorWordIdx` returns `-1` and no word is cursor-excluded.
+
+Tests that explicitly want to exercise cursor-adjacent behavior
+continue to set `cursorPos` to a specific position.
+
+### Results after the fix
+
+```
+Category               Before fix   After fix
+─────────────────────────────────────────────
+spelling-task          70%          100%   (+30pp)
+cursor-adjacent        100%         100%
+no-op-recall           100%         100%
+ownership-respect      70%          100%   (+30pp)
+task-id-invalidation   80%          100%   (+20pp)
+caps-task              40%          100%   (+60pp)  ← biggest jump
+mixed-task             70%           90%   (+20pp)
+─────────────────────────────────────────────
+Total                  75.7%        98.6%  (+22.9pp)
+```
+
+The single remaining failure (mix-6) is genuine model variance on a
+"remove redundant words" task with a duplicated word.
+
+### What stayed in the implementation
+
+The DECISIONS format + dynamic max_tokens stayed even though the bug
+was elsewhere — they DO provide a stronger completeness guarantee for
+the cases where the cursor isn't tricking us. The model occasionally
+still drops items in long lists when output budget is tight; the
+DECISIONS format acts as defense in depth.
+
+Latency actually improved: 510ms → 398ms per case. The DECISIONS
+format parses cleanly and the model spends less reasoning effort
+deciding what to emit (it just walks the candidate list in order).
+
+### Lesson
+
+When a benchmark consistently fails the same way across many cases,
+suspect the benchmark itself before the model. The cursor-adjacent
+rule worked as designed in production; the test default was making
+EVERY test case implicitly cursor-edge.
+
+This is the same pattern as the transform-blank `\s* → [ \t]*` parser
+bug from earlier — looks like a model issue, turns out to be a
+serialization/test infrastructure issue.
+
+---
+
 ## Experiments deferred to later sessions
 
 These were marked as deferred in `docs/architecture/agent-task.md`.
