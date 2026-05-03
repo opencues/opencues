@@ -352,19 +352,25 @@ function repairLooksTruncated(repair: string, draft: string, target: string): bo
  * that VERIFY can be skipped. Saves ~600-1500ms per case (~30% of
  * pipeline latency) when applicable.
  *
- * Heuristic: skip VERIFY when ALL hold:
- *  - draft length within ±15% of target length
- *    → if rewrite is much shorter/longer, model probably reshaped
- *      (translate, summarize, expand) — VERIFY's structural checks help
- *  - target+draft contain no \n\n
- *    → multi-paragraph cases need VERIFY's structure-preservation check
- *  - instruction is a single edit (no pipe split)
- *    → composed instructions need VERIFY to catch agreement failures
- *      between the two transforms
- *  - instruction matches a "low-stakes" pattern: literal swap, simple
- *    case change, simple convert. These rarely need REPAIR.
+ * Conservative ruleset (Experiment 4 winner): only the truly mechanical
+ * edits skip VERIFY. Literal swaps and BrE↔AmE conversions have no
+ * agreement subtleties to check; broader rules (case changes, simple
+ * tense) showed −2.8pp accuracy in the variant benchmark because they
+ * sometimes have ambiguous interpretations VERIFY catches. The
+ * conservative rules cut 13% latency at < 1pp accuracy cost.
  *
- * If any check fails, fall through to VERIFY.
+ * Skip VERIFY when ALL hold:
+ *  - draft length within ±15% of target length
+ *  - no `\n\n` in target/draft (multi-paragraph needs VERIFY's
+ *    paragraph-preservation check)
+ *  - single instruction (composed `X | Y` needs VERIFY for cross-step
+ *    agreement)
+ *  - instruction is one of:
+ *      * literal swap: `change|replace|swap|rename A to|with|for B`
+ *      * BrE→AmE or AmE→BrE: `make it (british|american) english`
+ *
+ * Otherwise fall through to VERIFY. See
+ * tests/benchmarks/transform-blank/EXPERIMENTS.md, "Experiment 4".
  */
 function shouldSkipVerify(instruction: string, target: string, draft: string): boolean {
   if (!draft) return false;
@@ -378,13 +384,11 @@ function shouldSkipVerify(instruction: string, target: string, draft: string): b
   // Composed instructions ("X | Y") — let VERIFY catch agreement
   // issues between the two transforms
   if (instruction.includes('|')) return false;
-  // Low-stakes instruction patterns where VERIFY rarely fires REPAIR
+  // Truly mechanical instruction patterns where VERIFY essentially
+  // never fires REPAIR
   const i = instruction.toLowerCase().trim();
   if (/^(change|replace|swap|rename)\s+\S+\s+(to|with|for)\s+\S+$/.test(i)) return true;
-  if (/^(uppercase|lowercase|capitalize|title.case)/.test(i)) return true;
-  if (/^make\s+(it\s+)?(past|present|future)\s+tense$/.test(i)) return true;
-  if (/^make\s+it\s+british\s+english$/.test(i)) return true;
-  if (/^make\s+it\s+american\s+english$/.test(i)) return true;
+  if (/^make\s+it\s+(british|american)\s+english$/.test(i)) return true;
   return false;
 }
 

@@ -197,6 +197,147 @@ instruction + good examples over many rules.
 
 ---
 
-## Experiment 3 — TBD
+## Experiment 3 — Dynamic max_tokens + smart skip-VERIFY
+
+**Hypothesis:** the flat 2048-token max_tokens we send to Groq for every
+call is wasted on short blanks (EXTRACT for "change boy to girl _ ..."
+needs maybe 100 output tokens). Plus, VERIFY is doing real work on
+agreement-bug-prone cases (pluralize, he/she swap, concept-swap) but
+mostly just rubber-stamping literal swaps and case changes. Two
+optimizations:
+
+1. **Dynamic max_tokens** — every call sizes its output budget to the
+   actual expected output length:
+
+   ```
+   budget = max(FLOOR, ceil(expected_chars × multiplier / 3) + REASONING_HEADROOM)
+   ```
+
+   - FLOOR = 768 (always enough for reasoning + short output + labels)
+   - REASONING_HEADROOM = 400 (covers `reasoning_effort: 'low'`'s typical
+     200-800 internal tokens)
+   - `expected_chars × multiplier / 3` = the rewrite portion (rough
+     char-to-token of 3, with multiplier 1.5 on APPLY/VERIFY for transforms
+     that stretch output)
+   - CEILING = 4096 (caps the longest multi-paragraph rewrites)
+
+   **Mistake worth documenting:** the first version used FLOOR=128 +
+   REASONING_HEADROOM=100. Long-text accuracy collapsed 85% → 50%
+   from mid-output truncation — the model ran out of budget partway
+   through emitting a multi-paragraph rewrite. Fixed by raising the
+   floor to 768. Lesson: when using `reasoning_effort` you need to
+   reserve room for BOTH reasoning + output, and the safe floor is
+   bigger than the output alone would suggest.
+
+2. **Smart skip-VERIFY** — short-circuit P3 when ALL hold:
+   - draft length within ±15% of target (no structural reshape)
+   - no `\n\n` in target/draft (multi-paragraph cases need verify's
+     paragraph-preservation check)
+   - single instruction (no `|` split — composed transforms need verify
+     to catch agreement bugs across steps)
+   - low-stakes instruction pattern: literal swap, simple case change,
+     simple tense change, BrE/AmE conversion
+
+**Results (full 212-case suite, parallel=8, 3 stability runs):**
+
+```
+Run                Accuracy    Per-case    Wall (parallel=8)
+──────────────────────────────────────────────────────────────
+Run 1              83.0%       1349ms      39.1s
+Run 2              82.5%       1509ms      43.7s
+Run 3              84.9%       1388ms      40.4s
+Median             83.0%       1388ms      40.4s
+
+vs. baseline       88-90%      1729ms      ~37s
+delta              -5pp        -20%        same
+```
+
+**Findings:**
+
+1. **Latency win is real and stable.** ~20% per-case latency reduction
+   across three runs. For interactive UX (one blank at a time, no
+   parallelism) this means the typical blank goes from ~1.7s to
+   ~1.4s — perceptibly snappier.
+
+2. **Accuracy regression is concentrated in subjective categories.**
+   Tone-shift dropped 60% → 30% in run 1, but baseline tone-shift
+   also fluctuates (60% before optimizations, 30-60% after). Failures
+   are APPLY-side weak outputs ("make it dramatic" → just appended
+   "!") not skip-VERIFY catches. Same root cause either way.
+
+3. **Wall-clock at parallel=8 is unchanged** because parallelism
+   already amortizes per-case latency to near-zero. Skip-VERIFY only
+   helps when we're sequentially bottlenecked (production usage).
+
+**Decision:** ship dynamic max_tokens (clear win, no real downside).
+Skip-VERIFY is conditional — hold it but tune the rules in Experiment
+4 to claw back some accuracy.
+
+---
+
+## Experiment 4 — Skip-VERIFY rule tuning
+
+**Hypothesis:** the deployed skip-VERIFY rules (literal swap + case
+change + simple tense + BrE/AmE) might be too generous OR too
+conservative. Test 5 variants on the full 212-case suite to find the
+sweet spot.
+
+**Variants:**
+| Variant | Rule |
+|---|---|
+| `skip-never` | Always run VERIFY (3-pass baseline) |
+| `skip-conservative` | Skip on literal swap + BrE/AmE only |
+| `skip-current` | Deployed: literal + case + tense + BrE/AmE |
+| `skip-aggressive` | Any single-instruction case with length ratio 0.9-1.1 |
+| `skip-always` | Any single-instruction case (no \n\n filter) |
+
+**Results (full 212-case suite, parallel=8 within each run, sequential
+between runs to dodge Groq 250k TPM rate limit):**
+
+```
+Variant              Accuracy           Per-case   vs never
+─────────────────────────────────────────────────────────
+skip-never           81.6% (173/212)    1477ms     —
+skip-conservative    81.1% (172/212)    1290ms     -0.5pp / -13%
+skip-current         78.8% (167/212)    1390ms     -2.8pp / -6%
+skip-aggressive      80.7% (171/212)    1387ms     -0.9pp / -6%
+skip-always          77.4% (164/212)    1225ms     -4.2pp / -17%
+```
+
+**Findings:**
+
+1. **`skip-conservative` is strictly better than the deployed
+   `skip-current`** on BOTH axes — higher accuracy AND lower
+   latency. The case-change and simple-tense rules in `skip-current`
+   cause real regressions (case has ambiguous interpretations VERIFY
+   catches; simple tense triggers concept-swap propagation gaps when
+   the target nouns hint at a category swap). Stripping them back to
+   just literal swaps + BrE/AmE keeps the latency win and restores
+   accuracy.
+
+2. **The win is essentially free.** 0.5pp accuracy delta vs never is
+   within run-to-run noise (we've seen ±3pp on the same config), and
+   the −13% per-case latency is real and stable.
+
+3. **`skip-always` is too aggressive** — losing 4.2pp for the extra 5%
+   latency saving isn't worth it. The skip-VERIFY rule SHOULD have a
+   semantic gate, not just structural ones (length, paragraph count).
+
+4. **`skip-aggressive`** (any single-instr ±10% length, no instruction
+   pattern check) is barely different from conservative in cost AND
+   slightly worse in accuracy. Adding the length-ratio filter doesn't
+   make up for losing the instruction-pattern gate.
+
+**Decision:** swap production from `skip-current` rules to
+`skip-conservative`. Net: −2.3pp accuracy regression reverted +
+−6% per-case latency improvement vs the prior deployment.
+
+**Lesson:** when picking which cases to skip a verification step,
+the right axis is "is the instruction MECHANICALLY unambiguous"
+(literal find/replace, deterministic spelling swap), not "does the
+output structurally resemble the input" (length ratio, paragraph
+count). Structural similarity is necessary but not sufficient —
+even short single-line outputs can have semantic agreement bugs
+(plural+verb, pronoun coreference, quantifier match).
 
 

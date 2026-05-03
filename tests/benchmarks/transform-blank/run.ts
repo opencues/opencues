@@ -36,10 +36,12 @@ const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 
 type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify' | 'extract-apply-verify-skip-easy' | 'single-call'
-  | 'minimal-extract' | 'minimal-apply' | 'minimal-verify' | 'minimal-all';
+  | 'minimal-extract' | 'minimal-apply' | 'minimal-verify' | 'minimal-all'
+  | 'skip-never' | 'skip-conservative' | 'skip-current' | 'skip-aggressive' | 'skip-always';
 const VALID_MODES: Mode[] = [
   'rewrite', 'extract-apply', 'extract-apply-verify', 'extract-apply-verify-skip-easy', 'single-call',
   'minimal-extract', 'minimal-apply', 'minimal-verify', 'minimal-all',
+  'skip-never', 'skip-conservative', 'skip-current', 'skip-aggressive', 'skip-always',
 ];
 
 interface Args {
@@ -169,6 +171,70 @@ function isEasyInstruction(instruction: string): boolean {
   return false;
 }
 
+// ============================================================================
+// Skip-VERIFY rule variants for Experiment 4 — find the sweet spot
+// between accuracy and latency
+// ============================================================================
+
+type SkipMode = 'never' | 'conservative' | 'current' | 'aggressive' | 'always';
+
+function isSimpleLiteralSwap(instruction: string): boolean {
+  return /^(change|replace|swap|rename)\s+\S+\s+(to|with|for)\s+\S+$/.test(instruction.toLowerCase().trim());
+}
+
+function isBrEAmE(instruction: string): boolean {
+  return /^make\s+it\s+(british|american)\s+english$/.test(instruction.toLowerCase().trim());
+}
+
+function isCaseChange(instruction: string): boolean {
+  return /^(uppercase|lowercase|capitalize|title.case)/.test(instruction.toLowerCase().trim());
+}
+
+function isSimpleTense(instruction: string): boolean {
+  return /^make\s+(it\s+)?(past|present|future)\s+tense$/.test(instruction.toLowerCase().trim());
+}
+
+/**
+ * Decide whether to skip VERIFY based on the chosen rule mode.
+ * All modes (except 'never' and 'always') first require: no \n\n,
+ * single-instruction (no `|`), and draft length within window of target.
+ */
+function shouldSkipByMode(
+  mode: SkipMode,
+  instruction: string,
+  target: string,
+  draft: string,
+): boolean {
+  if (mode === 'never') return false;
+  // Common pre-filters — multi-paragraph and composed always need VERIFY
+  if (target.includes('\n\n') || draft.includes('\n\n')) return false;
+  if (instruction.includes('|')) return false;
+  if (mode === 'always') return true;
+
+  // Length sanity by mode
+  const targetLen = target.length || 1;
+  const ratio = draft.length / targetLen;
+
+  if (mode === 'aggressive') {
+    // Any single-instruction case with length ratio in 0.9-1.1
+    return ratio >= 0.9 && ratio <= 1.1;
+  }
+
+  // 'conservative' and 'current' both require ±15% length
+  if (ratio < 0.85 || ratio > 1.15) return false;
+
+  if (mode === 'conservative') {
+    // ONLY literal swaps + BrE/AmE — the truly mechanical edits
+    return isSimpleLiteralSwap(instruction) || isBrEAmE(instruction);
+  }
+
+  // 'current' = what's deployed: literal + case + simple tense + BrE/AmE
+  return isSimpleLiteralSwap(instruction) ||
+         isCaseChange(instruction) ||
+         isSimpleTense(instruction) ||
+         isBrEAmE(instruction);
+}
+
 async function runCaseSingleCall(c: TransformCase): Promise<RunOutcome> {
   const r = await runSingleCall(c.input);
   const judgeInput: JudgeInput = {
@@ -197,6 +263,7 @@ async function runCaseExtractApply(
   withVerify: boolean,
   skipEasy = false,
   prompts: PromptOverrides = {},
+  skipMode: SkipMode = 'never',
 ): Promise<RunOutcome> {
   const extractFn = prompts.extract ?? runExtract;
   const applyFn = prompts.apply ?? runApply;
@@ -246,7 +313,13 @@ async function runCaseExtractApply(
   const easySkipApplies = withVerify && skipEasy && instructionParts.length === 1
     && isEasyInstruction(instructionParts[0]);
 
-  if (withVerify && !easySkipApplies) {
+  // Skip-mode (Experiment 4 — variant skip rules). Composed-instruction
+  // case is already gated by shouldSkipByMode.
+  const verifyInstructionForSkip = instructionParts.join(' and ');
+  const modeSkipApplies = withVerify && skipMode !== 'never' &&
+    shouldSkipByMode(skipMode, verifyInstructionForSkip, ext.target, app.rewrite);
+
+  if (withVerify && !easySkipApplies && !modeSkipApplies) {
     // VERIFY sees the composed instruction in the original "X and Y" form
     // (not pipe-joined) and the ORIGINAL target — so it can check both
     // transforms were applied to the correct starting text.
@@ -394,6 +467,12 @@ async function main() {
         apply: runMinimalApply,
         verify: runMinimalVerify,
       });
+    // Skip-VERIFY rule variants (Experiment 4)
+    if (args.mode === 'skip-never') return runCaseExtractApply(c, true, false, {}, 'never');
+    if (args.mode === 'skip-conservative') return runCaseExtractApply(c, true, false, {}, 'conservative');
+    if (args.mode === 'skip-current') return runCaseExtractApply(c, true, false, {}, 'current');
+    if (args.mode === 'skip-aggressive') return runCaseExtractApply(c, true, false, {}, 'aggressive');
+    if (args.mode === 'skip-always') return runCaseExtractApply(c, true, false, {}, 'always');
     return runCaseRewrite(c);
   }, args.parallel);
   const wallMs = Date.now() - wallStart;
