@@ -15,7 +15,10 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const agent = new https.Agent({ keepAlive: true, maxSockets: 4 });
+// Bumped from 4 → 32 so the --parallel benchmark runner can fan out
+// without queueing at the HTTP layer. Groq tolerates this fine for
+// short-lived chat completions.
+const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 
 export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; }
 export interface ChatResult { text: string; latencyMs: number; }

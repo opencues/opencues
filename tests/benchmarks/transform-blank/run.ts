@@ -23,6 +23,7 @@ import { runRewrite } from './pass1-rewrite';
 import { runExtract } from './pass1-extract';
 import { runApply } from './pass2-apply';
 import { runVerify } from './pass3-verify';
+import { runSingleCall } from './single-call';
 import { judge, JudgeInput } from './judge';
 import { MODEL } from './groq';
 
@@ -33,18 +34,19 @@ const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 
-type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify';
-const VALID_MODES: Mode[] = ['rewrite', 'extract-apply', 'extract-apply-verify'];
+type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify' | 'extract-apply-verify-skip-easy' | 'single-call';
+const VALID_MODES: Mode[] = ['rewrite', 'extract-apply', 'extract-apply-verify', 'extract-apply-verify-skip-easy', 'single-call'];
 
 interface Args {
   mode: Mode;
   caseId?: string;
   category?: string;
+  parallel: number;
 }
 
 function parseArgs(): Args {
   const args = process.argv.slice(2);
-  const out: Args = { mode: 'rewrite' };
+  const out: Args = { mode: 'rewrite', parallel: 1 };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--mode') {
       const v = args[++i];
@@ -55,8 +57,41 @@ function parseArgs(): Args {
       out.mode = v as Mode;
     } else if (args[i] === '--case') out.caseId = args[++i];
     else if (args[i] === '--category') out.category = args[++i];
+    else if (args[i] === '--parallel') {
+      const v = parseInt(args[++i], 10);
+      if (Number.isNaN(v) || v < 1) {
+        console.error(`--parallel must be a positive integer, got: ${args[i]}`);
+        process.exit(2);
+      }
+      out.parallel = v;
+    }
   }
   return out;
+}
+
+/**
+ * Worker-pool concurrency. Returns results IN ORIGINAL ORDER even though
+ * the actual execution is interleaved. Each worker pulls the next item
+ * from a shared cursor, processes it, and writes to the result slot at
+ * its original index — so the printed output reads sequentially while
+ * `concurrency` cases run in parallel under the hood.
+ */
+async function runWithConcurrency<T, R>(
+  items: T[],
+  fn: (item: T, idx: number) => Promise<R>,
+  concurrency: number,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIdx = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const i = nextIdx++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 const sep = (ch = '─') => console.log(ch.repeat(78));
@@ -97,6 +132,7 @@ interface RunOutcome {
   pass: boolean;
   modelMs: number;     // total model latency for the pipeline (excl. judge)
   judgeMs: number;
+  output: string;      // formatted per-case lines (printed by main after parallel workers finish)
 }
 
 async function runCaseRewrite(c: TransformCase): Promise<RunOutcome> {
@@ -116,7 +152,36 @@ async function runCaseRewrite(c: TransformCase): Promise<RunOutcome> {
   }, r.raw);
 }
 
-async function runCaseExtractApply(c: TransformCase, withVerify: boolean): Promise<RunOutcome> {
+/**
+ * "Easy" instructions don't typically benefit from VERIFY's consistency
+ * checks — literal swaps ("change X to Y", "replace X with Y") have no
+ * agreement/coverage subtleties to repair. Skipping VERIFY on these
+ * saves ~300-500ms per case at no accuracy cost.
+ */
+function isEasyInstruction(instruction: string): boolean {
+  const i = instruction.toLowerCase().trim();
+  if (/^(change|replace|swap|rename)\s+\S+\s+(to|with|for)\s+\S+$/.test(i)) return true;
+  return false;
+}
+
+async function runCaseSingleCall(c: TransformCase): Promise<RunOutcome> {
+  const r = await runSingleCall(c.input);
+  const judgeInput: JudgeInput = {
+    input: c.input,
+    expected: c.expected.finalText ?? null,
+    alternates: c.expected.finalTextAlternates ?? [],
+    actual: r.verdict === 'TRANSFORM' ? r.rewrite : null,
+    actualBail: r.verdict === 'NONE',
+    expectedBail: !!c.expected.shouldFailSoft,
+  };
+  const j = await judge(judgeInput);
+  return printAndScore(c, j, [{ label: 'single', latencyMs: r.latencyMs }], {
+    'VERDICT': r.verdict,
+    'REWRITE': r.verdict === 'TRANSFORM' ? r.rewrite : '(bailed)',
+  }, r.raw);
+}
+
+async function runCaseExtractApply(c: TransformCase, withVerify: boolean, skipEasy = false): Promise<RunOutcome> {
   const ext = await runExtract(c.input);
 
   if (ext.verdict === 'NONE') {
@@ -158,7 +223,11 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean): Promi
   let verifyMs = 0;
   let verifyRaw = '';
 
-  if (withVerify) {
+  // Skip-easy mode: literal swaps don't need consistency repair.
+  const easySkipApplies = withVerify && skipEasy && instructionParts.length === 1
+    && isEasyInstruction(instructionParts[0]);
+
+  if (withVerify && !easySkipApplies) {
     // VERIFY sees the composed instruction in the original "X and Y" form
     // (not pipe-joined) and the ORIGINAL target — so it can check both
     // transforms were applied to the correct starting text.
@@ -236,22 +305,26 @@ function printAndScore(
       ? `${c.expected.finalText} ${DIM}(or: ${c.expected.finalTextAlternates.join(' | ')})${RESET}`
       : c.expected.finalText;
 
-  sep();
-  console.log(`${BOLD}${c.id}${RESET}  ${cat}  ${tag}`);
-  console.log(`  ${DIM}INPUT   :${RESET} ${c.input}`);
-  console.log(`  ${DIM}EXPECTED:${RESET} ${expFull}`);
+  // Buffer all output for this case into a string array so concurrent
+  // workers don't interleave their lines. The caller decides when to
+  // flush via console.log(lines.join('\n')).
+  const lines: string[] = [];
+  lines.push('─'.repeat(78));
+  lines.push(`${BOLD}${c.id}${RESET}  ${cat}  ${tag}`);
+  lines.push(`  ${DIM}INPUT   :${RESET} ${c.input}`);
+  lines.push(`  ${DIM}EXPECTED:${RESET} ${expFull}`);
   for (const [k, v] of Object.entries(fields)) {
-    console.log(`  ${DIM}${k.padEnd(8)}:${RESET} ${v}`);
+    lines.push(`  ${DIM}${k.padEnd(8)}:${RESET} ${v}`);
   }
-  console.log(`  ${DIM}JUDGE   :${RESET} ${j.rationale}`);
+  lines.push(`  ${DIM}JUDGE   :${RESET} ${j.rationale}`);
   const stepStr = steps.map(s => `${s.label}=${s.latencyMs}ms`).join('  ');
-  console.log(`  ${DIM}TIMING  :${RESET} ${stepStr}  judge=${j.latencyMs}ms`);
+  lines.push(`  ${DIM}TIMING  :${RESET} ${stepStr}  judge=${j.latencyMs}ms`);
   if (!pass) {
-    console.log(`  ${YELLOW}RAW     :${RESET} ${rawOnFail.replace(/\n/g, '\n           ')}`);
+    lines.push(`  ${YELLOW}RAW     :${RESET} ${rawOnFail.replace(/\n/g, '\n           ')}`);
   }
 
   const modelMs = steps.reduce((a, s) => a + s.latencyMs, 0);
-  return { pass, modelMs, judgeMs: j.latencyMs };
+  return { pass, modelMs, judgeMs: j.latencyMs, output: lines.join('\n') };
 }
 
 function filterCases(cases: TransformCase[], filter: { caseId?: string; category?: string }): TransformCase[] {
@@ -270,25 +343,42 @@ async function main() {
     process.exit(2);
   }
 
-  const modeLabel = args.mode === 'extract-apply-verify'
-    ? 'EXTRACT → APPLY → VERIFY (3-pass pipeline)'
-    : args.mode === 'extract-apply'
-      ? 'EXTRACT → APPLY (2-pass pipeline)'
-      : 'REWRITE (1-pass pipeline)';
+  const modeLabel = args.mode === 'extract-apply-verify-skip-easy'
+    ? 'EXTRACT → APPLY → VERIFY [skip-on-literal] (speed variant)'
+    : args.mode === 'single-call'
+      ? 'SINGLE-CALL (one prompt does extract+apply+verify)'
+      : args.mode === 'extract-apply-verify'
+        ? 'EXTRACT → APPLY → VERIFY (3-pass pipeline)'
+        : args.mode === 'extract-apply'
+          ? 'EXTRACT → APPLY (2-pass pipeline)'
+          : 'REWRITE (1-pass pipeline)';
   console.log(`${BOLD}transform-blank benchmark — ${modeLabel}${RESET}`);
   console.log(`Model: ${MODEL}`);
-  console.log(`Cases: ${selected.length}/${CASES.length}`);
+  console.log(`Cases: ${selected.length}/${CASES.length}  (parallel=${args.parallel})`);
   console.log();
+
+  const wallStart = Date.now();
+  const outcomes = await runWithConcurrency(selected, async (c) => {
+    if (args.mode === 'extract-apply') return runCaseExtractApply(c, false);
+    if (args.mode === 'extract-apply-verify') return runCaseExtractApply(c, true);
+    if (args.mode === 'extract-apply-verify-skip-easy') return runCaseExtractApply(c, true, /*skipEasy*/ true);
+    if (args.mode === 'single-call') return runCaseSingleCall(c);
+    return runCaseRewrite(c);
+  }, args.parallel);
+  const wallMs = Date.now() - wallStart;
+
+  // Print all per-case output in original order (workers stored results
+  // at their original index, so this reads sequentially even though the
+  // actual API calls were interleaved across workers).
+  for (const r of outcomes) console.log(r.output);
 
   let passed = 0;
   let totalModel = 0;
   let totalJudge = 0;
   const byCategory = new Map<string, { pass: number; total: number }>();
-
-  for (const c of selected) {
-    const r = args.mode === 'extract-apply' ? await runCaseExtractApply(c, false)
-      : args.mode === 'extract-apply-verify' ? await runCaseExtractApply(c, true)
-      : await runCaseRewrite(c);
+  for (let i = 0; i < outcomes.length; i++) {
+    const r = outcomes[i];
+    const c = selected[i];
     if (r.pass) passed++;
     totalModel += r.modelMs;
     totalJudge += r.judgeMs;
@@ -303,11 +393,13 @@ async function main() {
 
   sep('═');
   for (const [cat, s] of byCategory) {
-    console.log(`${BOLD}${cat.padEnd(12)}${RESET} ${s.pass}/${s.total} pass (${pct(s.pass, s.total)})`);
+    console.log(`${BOLD}${cat.padEnd(20)}${RESET} ${s.pass}/${s.total} pass (${pct(s.pass, s.total)})`);
   }
   sep('─');
   console.log(`${BOLD}Total:${RESET}      ${passed}/${selected.length} pass (${pct(passed, selected.length)})`);
-  console.log(`Avg model: ${avg(totalModel)}ms  Avg judge: ${avg(totalJudge)}ms  Avg total: ${avg(totalModel + totalJudge)}ms`);
+  console.log(`Avg model (per case): ${avg(totalModel)}ms  Avg judge: ${avg(totalJudge)}ms`);
+  console.log(`${BOLD}Wall-clock total:${RESET} ${(wallMs / 1000).toFixed(1)}s  (parallel=${args.parallel}, ${selected.length} cases)`);
+  console.log(`Throughput: ${(selected.length / (wallMs / 1000)).toFixed(2)} cases/sec`);
 
   process.exit(passed === selected.length ? 0 : 1);
 }

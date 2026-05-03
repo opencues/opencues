@@ -143,6 +143,18 @@ export const CASES: TransformCase[] = [
     input: 'rename user to account _ user.name = user.firstName + user.lastName',
     expected: { finalText: 'account.name = account.firstName + account.lastName' },
   },
+  {
+    id: 'multi-9',
+    category: 'multi-span',
+    input: 'rename file to document _ open file then save file then close file then create file backup',
+    expected: { finalText: 'open document then save document then close document then create document backup' },
+  },
+  {
+    id: 'multi-10',
+    category: 'multi-span',
+    input: 'change red to blue _ red apples and red cars and red shirts and red roses',
+    expected: { finalText: 'blue apples and blue cars and blue shirts and blue roses' },
+  },
 
   // ============================================================
   // CONCEPT — semantic swap (pronouns, gender, register pairs)  (10 cases)
@@ -644,6 +656,57 @@ export const CASES: TransformCase[] = [
       finalText: 'she came home from work and she opened the door then she saw the cat waiting for her on the couch and she smiled because she had missed her all day',
     },
   },
+  {
+    id: 'long-A6',
+    category: 'long-text',
+    input: 'replace dog with horse _ I walked my dog through the park where my dog met another dog and the three dogs played until my dog got tired and we walked home together',
+    expected: {
+      finalText: 'I walked my horse through the park where my horse met another horse and the three horses played until my horse got tired and we walked home together',
+    },
+  },
+  {
+    id: 'long-A7',
+    category: 'long-text',
+    input: 'capitalize proper nouns _ on monday in march james flew from london to new york via heathrow and arrived at jfk where his friend sarah picked him up in her tesla',
+    expected: {
+      finalText: 'on Monday in March James flew from London to New York via Heathrow and arrived at JFK where his friend Sarah picked him up in her Tesla',
+      finalTextAlternates: [
+        'on Monday in March James flew from London to New York via Heathrow and arrived at JFK where his friend Sarah picked him up in her tesla',
+      ],
+    },
+  },
+  {
+    id: 'long-A8',
+    category: 'long-text',
+    input: 'pluralize _ the chef cooked one dish and the waiter brought it to the customer who tasted it and asked for another bottle of wine before the meal arrived',
+    expected: {
+      finalText: 'the chefs cooked dishes and the waiters brought them to the customers who tasted them and asked for more bottles of wine before the meals arrived',
+      finalTextAlternates: [
+        'the chefs cooked dishes and the waiters brought them to the customers who tasted them and asked for another bottle of wine before the meals arrived',
+        'the chefs cooked dishes and the waiters brought them to the customers who tasted them and asked for more bottles of wine before the meals arrived',
+      ],
+    },
+  },
+  {
+    id: 'long-A9',
+    category: 'long-text',
+    input: 'make it future tense _ I walk to the office and sit at my desk where I check my email and respond to messages from my manager about the report I am writing',
+    expected: {
+      finalText: 'I will walk to the office and sit at my desk where I will check my email and respond to messages from my manager about the report I will be writing',
+      finalTextAlternates: [
+        'I will walk to the office and will sit at my desk where I will check my email and will respond to messages from my manager about the report I will be writing',
+        'I will walk to the office and sit at my desk where I will check my email and respond to messages from my manager about the report I will write',
+      ],
+    },
+  },
+  {
+    id: 'long-A10',
+    category: 'long-text',
+    input: 'change cat to dog _ my cat sat on the windowsill watching another cat in the garden while a third cat slept on the couch and my cat purred contentedly',
+    expected: {
+      finalText: 'my dog sat on the windowsill watching another dog in the garden while a third dog slept on the couch and my dog purred contentedly',
+    },
+  },
 
   // ---- Bucket B: Multi-sentence scope ----
   {
@@ -697,6 +760,54 @@ export const CASES: TransformCase[] = [
       finalTextAlternates: [
         'The children found mice in the garden. The mice ran away. Then the children saw butterflies land on the flowers and watched them for a long time.',
       ],
+    },
+  },
+  {
+    id: 'long-B6',
+    category: 'long-text',
+    input: 'change protagonist to wizard _ The knight rode through the forest. He carried his sword at his side.\n\nAt the edge of the woods, he saw the dragon and prepared for battle.',
+    expected: {
+      finalText: 'The wizard rode through the forest. He carried his staff at his side.\n\nAt the edge of the woods, he saw the dragon and prepared for battle.',
+      finalTextAlternates: [
+        'The wizard rode through the forest. He carried his wand at his side.\n\nAt the edge of the woods, he saw the dragon and prepared for battle.',
+      ],
+    },
+  },
+  {
+    id: 'long-B7',
+    category: 'long-text',
+    input: 'change he to she _ He drove to work. He parked his car. He walked into the office. His coworkers greeted him warmly. He smiled and headed to his desk.',
+    expected: {
+      finalText: 'She drove to work. She parked her car. She walked into the office. Her coworkers greeted her warmly. She smiled and headed to her desk.',
+    },
+  },
+  {
+    id: 'long-B8',
+    category: 'long-text',
+    input: 'make it british english _ The color of the harbor is gray. We walked along the sidewalk past the theater. The waiter brought us fries with our meal.',
+    expected: {
+      finalText: 'The colour of the harbour is grey. We walked along the pavement past the theatre. The waiter brought us chips with our meal.',
+    },
+  },
+  {
+    id: 'long-B9',
+    category: 'long-text',
+    input: 'make past tense _ The boy walks into the kitchen. He pours himself a glass of milk. Then he sits at the table and reads his book until his mother calls him for dinner.',
+    expected: {
+      finalText: 'The boy walked into the kitchen. He poured himself a glass of milk. Then he sat at the table and read his book until his mother called him for dinner.',
+    },
+  },
+  {
+    id: 'long-B10',
+    category: 'long-text',
+    input: 'capitalize names _ john visited paris in march. james met him at the airport. they took the metro to their hotel near sarah\'s apartment.',
+    expected: {
+      finalText: 'John visited Paris in March. James met him at the airport. they took the metro to their hotel near Sarah\'s apartment.',
+      finalTextAlternates: [
+        'John visited Paris in march. James met him at the airport. they took the metro to their hotel near Sarah\'s apartment.',
+        'John visited Paris in March. James met him at the airport. They took the Metro to their hotel near Sarah\'s apartment.',
+      ],
+      note: 'open-ended; accept any rewrite that capitalizes the proper-noun names',
     },
   },
 
@@ -754,6 +865,55 @@ export const CASES: TransformCase[] = [
       note: 'pronoun coreference is ambiguous after swap',
     },
   },
+  {
+    id: 'long-C6',
+    category: 'long-text',
+    input: 'capitalize names and make past tense _ john runs to the store and buys milk then sarah meets him at the corner and they walk home together while it rains heavily',
+    expected: {
+      finalText: 'John ran to the store and bought milk then Sarah met him at the corner and they walked home together while it rained heavily',
+    },
+  },
+  {
+    id: 'long-C7',
+    category: 'long-text',
+    input: 'make it british english and pluralize _ the color of the harbor changes with the season and one fries on the menu costs more than the cookie at the counter',
+    expected: {
+      finalText: 'the colours of the harbours change with the seasons and the chips on the menus cost more than the biscuits at the counters',
+      finalTextAlternates: [
+        'the colour of the harbours changes with the seasons and the chips on the menus cost more than the biscuits at the counters',
+      ],
+      note: 'composition with multi-span spelling change + pluralization',
+    },
+  },
+  {
+    id: 'long-C8',
+    category: 'long-text',
+    input: 'change boy to girl and make past tense _ the boy runs to the park and finds a ball under the bench then he kicks it across the grass to his friend',
+    expected: {
+      finalText: 'the girl ran to the park and found a ball under the bench then she kicked it across the grass to her friend',
+    },
+  },
+  {
+    id: 'long-C9',
+    category: 'long-text',
+    input: 'capitalize proper nouns and remove pronouns _ i visited paris with my friend james and we walked along the seine then we took the metro back to our hotel',
+    expected: {
+      finalText: 'visited Paris with friend James and walked along the Seine then took the Metro back to hotel',
+      finalTextAlternates: [
+        'visited Paris with the friend James and walked along the Seine then took the Metro back to the hotel',
+        'visited Paris with friend James and walked along the Seine then took the metro back to hotel',
+      ],
+      note: 'composed transforms; accept reasonable variants',
+    },
+  },
+  {
+    id: 'long-C10',
+    category: 'long-text',
+    input: 'make it future tense and capitalize the names _ john eats breakfast at six then james joins him at seven and sarah arrives by eight for the morning meeting',
+    expected: {
+      finalText: 'John will eat breakfast at six then James will join him at seven and Sarah will arrive by eight for the morning meeting',
+    },
+  },
 
   // ---- Bucket D: Long math ----
   {
@@ -808,6 +968,58 @@ export const CASES: TransformCase[] = [
         'Coffee: €4.5. Sandwich: €9. Tip: €2.7. Total: €16.2.',
         'Coffee: 4.50 EUR. Sandwich: 9 EUR. Tip: 2.70 EUR. Total: 16.20 EUR.',
         'Coffee: €4.50. Sandwich: €9.00. Tip: €2.70. Total: €16.20.',
+      ],
+    },
+  },
+  {
+    id: 'long-D6',
+    category: 'long-text',
+    input: 'add 5% tax to all items _ Apples: $4. Bananas: $3. Cherries: $5. Subtotal: $12. Total: $12.',
+    expected: {
+      finalText: 'Apples: $4. Bananas: $3. Cherries: $5. Subtotal: $12. Tax (5%): $0.60. Total: $12.60.',
+      finalTextAlternates: [
+        'Apples: $4.20. Bananas: $3.15. Cherries: $5.25. Subtotal: $12.60. Total: $12.60.',
+        'Apples: $4. Bananas: $3. Cherries: $5. Subtotal: $12. Tax: $0.60. Total: $12.60.',
+      ],
+    },
+  },
+  {
+    id: 'long-D7',
+    category: 'long-text',
+    input: 'triple the quantities _ I have 2 apples and 4 oranges and 1 pear in my basket and 5 grapes in the fridge for a total of 12 pieces of fruit',
+    expected: {
+      finalText: 'I have 6 apples and 12 oranges and 3 pears in my basket and 15 grapes in the fridge for a total of 36 pieces of fruit',
+    },
+  },
+  {
+    id: 'long-D8',
+    category: 'long-text',
+    input: 'fix totals for hourly rate of $20 _ Monday: 8 hours = $100. Tuesday: 6 hours = $80. Wednesday: 5 hours = $60. Total: $240.',
+    expected: {
+      finalText: 'Monday: 8 hours = $160. Tuesday: 6 hours = $120. Wednesday: 5 hours = $100. Total: $380.',
+    },
+  },
+  {
+    id: 'long-D9',
+    category: 'long-text',
+    input: 'convert all temperatures to celsius _ Boiling: 212 F. Body: 98.6 F. Room: 68 F. Freezing: 32 F.',
+    expected: {
+      finalText: 'Boiling: 100 C. Body: 37 C. Room: 20 C. Freezing: 0 C.',
+      finalTextAlternates: [
+        'Boiling: 100°C. Body: 37°C. Room: 20°C. Freezing: 0°C.',
+        'Boiling: 100 °C. Body: 37 °C. Room: 20 °C. Freezing: 0 °C.',
+        'Boiling: 100 celsius. Body: 37 celsius. Room: 20 celsius. Freezing: 0 celsius.',
+      ],
+    },
+  },
+  {
+    id: 'long-D10',
+    category: 'long-text',
+    input: 'recompute the budget for 50% staffing _ Engineering: 10 people at $100k = $1M. Sales: 6 people at $80k = $480k. Marketing: 4 people at $60k = $240k. Total headcount: 20. Total budget: $1.72M.',
+    expected: {
+      finalText: 'Engineering: 5 people at $100k = $500k. Sales: 3 people at $80k = $240k. Marketing: 2 people at $60k = $120k. Total headcount: 10. Total budget: $860k.',
+      finalTextAlternates: [
+        'Engineering: 5 people at $100k = $500k. Sales: 3 people at $80k = $240k. Marketing: 2 people at $60k = $120k. Total headcount: 10. Total budget: $0.86M.',
       ],
     },
   },
