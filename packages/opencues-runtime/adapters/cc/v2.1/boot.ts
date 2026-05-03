@@ -19,6 +19,7 @@ import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
+import { AgentLoop } from '../../../src/modules/agent-loop';
 import { BlankFill } from '../../../src/modules/blank-fill';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
@@ -26,6 +27,7 @@ import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
+import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
 import type {
   BlankInvokeSpec,
@@ -285,6 +287,7 @@ export function boot(host: HostInfo): BootResult {
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
+  const agentTaskState = new AgentTaskState();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
@@ -329,7 +332,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
-    }, configLoader, spanFillState, selectorSatelliteState);
+    }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
 
@@ -358,8 +361,17 @@ export function boot(host: HostInfo): BootResult {
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState);
+    }, spanFillState, agentTaskState);
     // Wait for first config load so resolver can see cues/blanks configs.
+    // AgentLoop — continuous re-eval against an armed task. Same gate
+    // as Resolver (llmApiKey present).
+    const agentLoop = new AgentLoop(adapter, agentTaskState, dynDefs, spanFillState, {
+      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: host.llmApiKey,
+      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      debounceMs: host.llmDebounceMs ?? 500,
+    });
+    agentLoop.subscribe();
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
   }
 

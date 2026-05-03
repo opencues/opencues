@@ -18,6 +18,7 @@ import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
+import type { AgentTaskState } from '../state/agent-task';
 import { splitWords } from './navigation';
 
 export interface ResolverOptions {
@@ -49,6 +50,9 @@ interface CueResultLike {
   spanEnd?: number;
   /** Source id — used to detect fluid-blank for auto-substitute. */
   source?: string;
+  /** Source-specific metadata. TransformBlank uses taskAction for agent
+   *  task commands (TASK_ARM/ADD/STOP/SHOW). */
+  metadata?: Record<string, unknown>;
 }
 
 export class Resolver {
@@ -74,11 +78,78 @@ export class Resolver {
     private configLoader: ConfigLoader,
     private options: ResolverOptions,
     private spanFillState?: SpanFillState,
+    private agentTaskState?: AgentTaskState,
   ) {}
 
   subscribe(): void {
     this.rebuildResolver();
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
+  }
+
+  /**
+   * Handle a TASK_* command from EXTRACT — mutate AgentTaskState and
+   * (where appropriate) substitute new buffer content. The trigger
+   * phrase + `_` is wiped from the buffer either way.
+   *
+   * - TASK_ARM   → arm a fresh task; wipe trigger from buffer
+   * - TASK_ADD   → append to existing task prompt; wipe trigger from buffer
+   * - TASK_STOP  → clear task; wipe trigger from buffer
+   * - TASK_SHOW  → substitute the current task prompt at the trigger position
+   */
+  private handleTaskCommand(action: string, payload: string, originalText: string, _liveText: string): void {
+    if (!this.agentTaskState) return;
+    const state = this.agentTaskState;
+
+    // Find the trigger phrase to wipe. The trigger is everything from
+    // the start of the matched imperative through the `_`. Simplest:
+    // drop the entire originalText since the user's intent for these
+    // commands is "consume and act on this".
+    let newText: string;
+    let newCursor: number;
+
+    switch (action) {
+      case 'TASK_ARM':
+        state.arm(payload);
+        this.adapter.log('info', `AgentTask: ARM (taskId=${state.taskId?.slice(0, 8)}…, prompt="${payload}")`);
+        newText = '';
+        newCursor = 0;
+        break;
+      case 'TASK_ADD':
+        if (!state.armed) {
+          // Treat add-without-prior-arm as an arm
+          state.arm(payload);
+          this.adapter.log('info', `AgentTask: ADD-as-ARM (no prior task; taskId=${state.taskId?.slice(0, 8)}…, prompt="${payload}")`);
+        } else {
+          state.appendToPrompt(payload);
+          this.adapter.log('info', `AgentTask: ADD (taskId=${state.taskId?.slice(0, 8)}…, prompt="${state.prompt}")`);
+        }
+        newText = '';
+        newCursor = 0;
+        break;
+      case 'TASK_STOP':
+        this.adapter.log('info', `AgentTask: STOP (was prompt="${state.prompt}")`);
+        state.stop();
+        newText = '';
+        newCursor = 0;
+        break;
+      case 'TASK_SHOW':
+        // Substitute the current prompt at the trigger position. If no
+        // task armed, show "(no task armed)".
+        newText = state.armed ? state.prompt : '(no task armed)';
+        newCursor = newText.length;
+        this.adapter.log('info', `AgentTask: SHOW (prompt="${newText}")`);
+        break;
+      default:
+        return;  // unknown action — defensive no-op
+    }
+
+    if (this.adapter.pushText) {
+      this.adapter.pushText(newText, newCursor);
+    } else {
+      this.adapter.setText(newText);
+      this.adapter.setCursorOffset(newCursor);
+      this.adapter.forceRender();
+    }
   }
 
   unsubscribe(): void {
@@ -397,6 +468,16 @@ export class Resolver {
         // analyzed, another module already touched it. Skip.
         if (liveText !== originalText) {
           this.adapter.log('info', `TransformBlank: skipping — live text changed since resolve (live len=${liveText.length}, original len=${originalText.length})`);
+          continue;
+        }
+
+        // TASK COMMAND ROUTING — TASK_ARM/TASK_ADD/TASK_STOP/TASK_SHOW
+        // mutate AgentTaskState instead of running the normal substitute
+        // path. The rewrittenText is computed from the live state.
+        const taskAction = r.metadata?.taskAction as string | undefined;
+        const taskPayload = (r.metadata?.taskPayload as string | undefined) ?? '';
+        if (taskAction && this.agentTaskState) {
+          this.handleTaskCommand(taskAction, taskPayload, originalText, liveText);
           continue;
         }
 

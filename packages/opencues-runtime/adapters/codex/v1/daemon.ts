@@ -27,6 +27,7 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Resolver } from '../../../src/modules/resolver';
+import { AgentLoop } from '../../../src/modules/agent-loop';
 import { Statusline } from '../../../src/modules/statusline';
 import {
   buildSharedRuntime,
@@ -386,7 +387,7 @@ async function defaultBuildRuntime(
   const statusFilePath = `/tmp/opencues-codex-${process.pid}.status.json`;
   const statusline = new Statusline(adapter, shared.hlState, shared.dynDefs, {
     exportPath: statusFilePath,
-  }, shared.configLoader, shared.spanFillState, shared.selectorSatelliteState);
+  }, shared.configLoader, shared.spanFillState, shared.selectorSatelliteState, shared.agentTaskState);
   statusline.subscribe();
   log('info', `Statusline export at ${statusFilePath}`);
 
@@ -399,8 +400,17 @@ async function defaultBuildRuntime(
       apiKey: process.env.GROQ_API_KEY,
       defaultModel: process.env.GROQ_DEFAULT_MODEL ?? 'openai/gpt-oss-120b',
       debounceMs: Number(process.env.GROQ_DEBOUNCE_MS ?? 500),
-    }, shared.spanFillState);
+    }, shared.spanFillState, shared.agentTaskState);
     shared.configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+
+    // AgentLoop — same llm gate as Resolver.
+    const agentLoop = new AgentLoop(adapter, shared.agentTaskState, shared.dynDefs, shared.spanFillState, {
+      endpoint: process.env.GROQ_ENDPOINT ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: process.env.GROQ_API_KEY,
+      defaultModel: process.env.GROQ_DEFAULT_MODEL ?? 'openai/gpt-oss-120b',
+      debounceMs: Number(process.env.GROQ_DEBOUNCE_MS ?? 500),
+    });
+    agentLoop.subscribe();
   }
 
   return {

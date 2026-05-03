@@ -13,6 +13,7 @@ import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
+import { AgentLoop } from '../../../src/modules/agent-loop';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
@@ -162,7 +163,7 @@ export function boot(host: HostInfo): BootResult {
 
   const {
     configLoader, hlState, dynDefs,
-    spanFillState, selectorSatelliteState,
+    spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
   // Phase O.7 — Statusline (file-based) + O.12 — in-process snapshot
@@ -174,7 +175,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
-    }, configLoader, spanFillState, selectorSatelliteState);
+    }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
 
@@ -201,10 +202,20 @@ export function boot(host: HostInfo): BootResult {
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState);
+    }, spanFillState, agentTaskState);
     // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
     // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+
+    // AgentLoop — continuous re-eval against an armed task. Subscribes
+    // alongside Resolver; lives or dies with the same llmApiKey gate.
+    const agentLoop = new AgentLoop(adapter, agentTaskState, dynDefs, spanFillState, {
+      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: host.llmApiKey,
+      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      debounceMs: host.llmDebounceMs ?? 500,
+    });
+    agentLoop.subscribe();
   }
 
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {

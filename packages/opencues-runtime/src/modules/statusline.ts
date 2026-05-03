@@ -15,6 +15,7 @@ import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
+import type { AgentTaskState } from '../state/agent-task';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -53,6 +54,9 @@ export interface StatuslinePayload {
   cueBlank?: boolean;
   wordCount?: number;
   timestamp: number;
+  /** Agent-task indicator. When armed, contains a truncated form of the
+   *  current task prompt (last ~40 chars). null when no task is armed. */
+  agentTask?: string | null;
 }
 
 export class Statusline {
@@ -78,6 +82,12 @@ export class Statusline {
      * per-value tip from opencues.md `settings:` block.
      */
     private selectorSatelliteState?: SelectorSatelliteState,
+    /**
+     * Optional. When provided + armed, statusline payload includes
+     * `agentTask: <truncated prompt>`. Lets the host display
+     * `[task: ...]` so the user can see which agent is running.
+     */
+    private agentTaskState?: AgentTaskState,
   ) {}
 
   subscribe(): void {
@@ -93,8 +103,9 @@ export class Statusline {
 
   /** Exposed for testing — build the payload from current state + render ctx. */
   buildPayload(ctx: RenderContext): StatuslinePayload {
+    const agentTask = this.formatAgentTask();
     if (!this.hlState.active || this.hlState.wordIndex === null) {
-      return { active: false, timestamp: Date.now() };
+      return { active: false, timestamp: Date.now(), agentTask };
     }
     // tips-mode: off → still expose word + alts but suppress tip text.
     const tipsHidden = this.configLoader?.opencuesState.tipsMode === 'off';
@@ -216,7 +227,21 @@ export class Statusline {
       cueBlank: isBlankWord,
       wordCount: words.filter(w => clean(w.word).length > 0).length,
       timestamp: Date.now(),
+      agentTask,
     };
+  }
+
+  /**
+   * Truncated form of the current agent task prompt — last ~40 chars
+   * with `…` prefix when longer. Returns null when no task is armed.
+   * Lets the consumer render `[task: <truncated>]` in the statusline.
+   */
+  private formatAgentTask(): string | null {
+    if (!this.agentTaskState?.armed) return null;
+    const prompt = this.agentTaskState.prompt;
+    const MAX = 40;
+    if (prompt.length <= MAX) return prompt;
+    return '…' + prompt.slice(-MAX);
   }
 
   private maybeWrite(ctx: RenderContext): void {

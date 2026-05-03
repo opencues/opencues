@@ -21,6 +21,7 @@ import { Runtime } from '../../../src/runtime';
 import { ChromeV1Adapter, type ChromeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
+import { AgentLoop } from '../../../src/modules/agent-loop';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
@@ -155,7 +156,7 @@ export function boot(host: HostInfo): BootResult {
 
   const {
     configLoader, hlState, dynDefs,
-    spanFillState, selectorSatelliteState,
+    spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
   // Statusline — Chrome has no filesystem, so exportPath is '' (empty).
@@ -165,7 +166,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '',
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
-    }, configLoader, spanFillState, selectorSatelliteState);
+    }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
 
@@ -197,8 +198,18 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
-    }, spanFillState);
+    }, spanFillState, agentTaskState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+
+    // AgentLoop — chrome runs in-browser; same module wiring.
+    const agentLoop = new AgentLoop(adapter, agentTaskState, dynDefs, spanFillState, {
+      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: host.llmApiKey,
+      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      debounceMs: host.llmDebounceMs ?? 500,
+      httpAdapter: host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> },
+    });
+    agentLoop.subscribe();
   }
 
   log('info', 'OpenCues runtime starting (Chrome v1)', {

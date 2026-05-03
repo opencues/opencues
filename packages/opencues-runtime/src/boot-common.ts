@@ -100,6 +100,7 @@ import { DynDefs } from './state/dyn-defs';
 import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
 import { SelectorSatelliteState } from './state/selector-satellite';
+import { AgentTaskState } from './state/agent-task';
 
 /** State + ConfigLoader the optional modules (Statusline / TTS / Resolver
  *  / CursorStateExport) and the host's BootResult need access to. */
@@ -110,6 +111,7 @@ export interface SharedRuntime {
   readonly spanFillState: SpanFillState;
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
+  readonly agentTaskState: AgentTaskState;
 }
 
 export interface BuildSharedRuntimeOptions {
@@ -153,6 +155,7 @@ export function buildSharedRuntime(
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
+  const agentTaskState = new AgentTaskState();
 
   // Universal modules — wired identically on every host.
   const navigation = new Navigation(
@@ -188,5 +191,6 @@ export function buildSharedRuntime(
     spanFillState,
     dismissedBlanks,
     selectorSatelliteState,
+    agentTaskState,
   };
 }

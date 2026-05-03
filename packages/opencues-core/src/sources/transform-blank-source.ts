@@ -51,11 +51,11 @@ import { BlankConfig } from '../cues-md';
 // question + 4 layout-spanning examples; benchmark improves +5-7pp
 // (88.9-90.1% vs 83.3% baseline) at zero latency cost. See
 // tests/benchmarks/transform-blank/EXPERIMENTS.md, "Experiment 2".
-const P1_EXTRACT_SYSTEM = `Read the input and identify whether it carries an IMPERATIVE INSTRUCTION the user wants applied to the surrounding text.
+const P1_EXTRACT_SYSTEM = `Read the input and identify whether it carries an IMPERATIVE INSTRUCTION the user wants applied to the surrounding text — OR a command to manage a continuously-running agent task.
 
 Output exactly three lines:
-VERDICT: TRANSFORM | NONE
-INSTRUCTION: <the imperative phrase, _ removed; or empty>
+VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
+INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
 TARGET: <the rest of the input after removing instruction + _; or empty>
 
 The instruction can sit BEFORE _ at the start (<INSTRUCTION> _ <TARGET>) OR right BEFORE _ at the end (<TARGET> <INSTRUCTION> _).
@@ -65,6 +65,27 @@ For composed instructions joined by "and" ("make past tense and remove pronouns"
 Bail to NONE for: UI placeholders, pure lookups (no instruction), idioms.
 
 GENERATIVE INSTRUCTIONS — when the imperative is a CREATE/GENERATE request ("write a poem", "compose an email", "give me 5 startup ideas", "draft a tweet about X"), there is NO target text to operate on. Output VERDICT: TRANSFORM with the instruction populated and TARGET empty. The downstream pipeline will route this to a generative branch.
+
+AGENT TASK COMMANDS — these arm or modify a continuously-running agent loop:
+
+- TASK_ARM: input contains "agentically <X>" — arms a fresh task with prompt = X.
+  Examples: "agentically correct spelling", "agentically fix humour", "agentically improve clarity".
+  Put the task description (without "agentically") in INSTRUCTION. TARGET is empty.
+
+- TASK_ADD: input contains "add task <X>" — appends X to the existing task prompt.
+  Examples: "add task fix grammar", "add task remove emojis".
+  Put the addition (without "add task") in INSTRUCTION. TARGET is empty.
+
+- TASK_STOP: input is "stop task" (with _ adjacent) — clears the active task.
+  INSTRUCTION and TARGET both empty.
+
+- TASK_SHOW: input is "current task" (with _ adjacent) — substitutes the current
+  task prompt at _ for the user to see.
+  INSTRUCTION and TARGET both empty.
+
+When you see one of these task-command shapes, ALWAYS use the matching TASK_*
+verdict — do NOT classify them as TRANSFORM (the runtime needs the verdict to
+route to the agent state machine, not to the regular edit pipeline).
 
 EXAMPLES:
 
@@ -96,6 +117,31 @@ TARGET:
 INPUT: write a poem _
 VERDICT: TRANSFORM
 INSTRUCTION: write a poem
+TARGET:
+
+INPUT: agentically correct spelling _
+VERDICT: TASK_ARM
+INSTRUCTION: correct spelling
+TARGET:
+
+INPUT: agentically fix humour and improve clarity _
+VERDICT: TASK_ARM
+INSTRUCTION: fix humour and improve clarity
+TARGET:
+
+INPUT: add task remove emojis _
+VERDICT: TASK_ADD
+INSTRUCTION: remove emojis
+TARGET:
+
+INPUT: stop task _
+VERDICT: TASK_STOP
+INSTRUCTION:
+TARGET:
+
+INPUT: current task _
+VERDICT: TASK_SHOW
+INSTRUCTION:
 TARGET:
 
 INPUT: compose an email asking for a meeting _
@@ -355,9 +401,11 @@ REWRITE: Does the meeting start at 3pm?`;
 // Parsers
 // ============================================================================
 
+type ExtractVerdict = 'TRANSFORM' | 'NONE' | 'TASK_ARM' | 'TASK_ADD' | 'TASK_STOP' | 'TASK_SHOW';
+
 interface ExtractResult {
-  verdict: 'TRANSFORM' | 'NONE';
-  instruction: string;  // pipe-joined for composed instructions
+  verdict: ExtractVerdict;
+  instruction: string;  // pipe-joined for composed instructions; task prompt for TASK_ARM/ADD
   target: string;
 }
 
@@ -377,11 +425,11 @@ function parseExtract(raw: string): ExtractResult {
   // production: model emitted "INSTRUCTION:\nTARGET:\n" (empty
   // instruction, empty target) and the regex captured "TARGET:" as
   // the instruction value.
-  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE)[ \t]*$/im);
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE|TASK_ARM|TASK_ADD|TASK_STOP|TASK_SHOW)[ \t]*$/im);
   const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
   // TARGET may span multiple lines; drop `m` so $ is end-of-string.
   const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)\s*$/i);
-  const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
+  const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as ExtractVerdict;
   return {
     verdict,
     instruction: instructionMatch ? instructionMatch[1].trim() : '',
@@ -670,6 +718,33 @@ export class TransformBlankSource implements CueSource {
       const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${context.text}`, p1Tokens);
       const ext = parseExtract(extractRaw);
       this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
+
+      // TASK BRANCH — agent-task commands. Route to the runtime via
+      // metadata.taskAction; no APPLY/VERIFY needed. The runtime's
+      // resolver substitute branch will mutate AgentTaskState and
+      // (for TASK_SHOW) substitute the current prompt at _.
+      if (ext.verdict === 'TASK_ARM' || ext.verdict === 'TASK_ADD'
+          || ext.verdict === 'TASK_STOP' || ext.verdict === 'TASK_SHOW') {
+        this.log(`TransformBlank: TASK branch (${ext.verdict}, instruction="${ext.instruction}")`);
+        const result: CueResult = {
+          wordIndex: blankIdx,
+          word: '_',
+          // Placeholder alternatives — the runtime will compute the real
+          // substitution based on taskAction (e.g. TASK_SHOW substitutes
+          // the current prompt; others wipe the trigger phrase).
+          alternatives: [context.text, ''],
+          source: this.id,
+          priority: this.priority,
+          spanStart: 0,
+          spanEnd: context.text.length,
+          metadata: {
+            taskAction: ext.verdict,
+            taskPayload: ext.instruction,  // task prompt for ARM/ADD; empty for STOP/SHOW
+          },
+        };
+        return { results: [result], timing: Date.now() - startTime, model: this.model };
+      }
+
       if (ext.verdict === 'NONE' || !ext.instruction) {
         this.log(`TransformBlank: bailing — P1 verdict=NONE or empty instruction`);
         return { results: [], timing: Date.now() - startTime, model: this.model };
