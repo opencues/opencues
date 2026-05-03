@@ -41,6 +41,15 @@ How to tell a CATEGORY swap from a LITERAL swap:
 
 6. ROLE PRESERVATION (numbers/labels) — when the instruction modifies SOME numbers but the target labels them with roles (e.g. "original price 100, final price 100" — original vs final are distinct roles), update ONLY the numbers tied to the role the instruction names. "Add 10%" applied to "original price 100, final price 100" only changes the FINAL price (to 110); the original stays 100. Same for "before/after", "input/output", "subtotal/total", etc.
 
+7. COMPOSED INSTRUCTIONS ("X and Y") — when the instruction joins two transforms with "and" ("make past tense and remove pronouns", "pluralize and make past tense", "make it british english and past tense"), apply BOTH transforms to the rewrite. Both must be visible in the output AND the result must be grammatical under BOTH constraints simultaneously.
+
+   Common compose mistakes to AVOID:
+   - "make past tense and remove pronouns": dropping "I" but leaving the next verb in present ("walk home" instead of "walked home"); using "before went to bed" (wrong — should be "before going to bed" because "before" takes a gerund, not a finite verb).
+   - "pluralize and make past tense": pluralizing nouns but forgetting verb agreement ("the children runs" — wrong); pluralizing the named noun but missing dependent ones ("one mouse" → "one mice" — should drop "one"). Verbs after the pluralized noun must agree (singular present "runs" → past plural "ran"); quantifiers must drop or update ("one" doesn't survive pluralization).
+   - "make it british english and past tense": doing only the BrE swap and leaving present-tense verbs.
+
+   Apply BOTH transforms in one pass — don't think of it as two sequential edits where one might forget the other.
+
 EXAMPLES:
 
 INSTRUCTION: change boy to girl
@@ -111,6 +120,12 @@ INSTRUCTION: change setting to ocean
 TARGET: the camel walked across the dunes carrying water in its hump
 REWRITE: the fish swam across the waves carrying water in its gills
 
+INSTRUCTION: change setting to ocean
+TARGET: The camel walked across the dunes. The sand burned its hooves. In the distance, the camel saw an oasis where it could rest and drink before continuing its journey.
+REWRITE: The fish swam across the waves. The water cooled its scales. In the distance, the fish saw a coral reef where it could rest and drink before continuing its journey.
+
+CRITICAL — when an environment-bound VERB appears in the target ("burned" only makes sense for sand/sun/fire, not water), you MUST flip the verb's meaning, not preserve it. Water does NOT burn — it cools, soothes, refreshes. Snow does NOT melt skin — it numbs. Asphalt does NOT freeze — but ice does. Pick the verb that matches the new environment's actual physical effect, even if it means using a different verb than the source. Don't be lazy — preserving "burned" because the model "wants to keep it" is wrong.
+
 INSTRUCTION: switch to winter
 TARGET: I love summer afternoons swimming at the beach in my swimsuit
 REWRITE: I love winter afternoons skiing at the slopes in my coat
@@ -129,7 +144,19 @@ REWRITE: original price 100, final price 110
 
 INSTRUCTION: double it
 TARGET: I had 5 cookies before lunch and 5 cookies after lunch
-REWRITE: I had 10 cookies before lunch and 10 cookies after lunch`;
+REWRITE: I had 10 cookies before lunch and 10 cookies after lunch
+
+INSTRUCTION: make past tense and remove pronouns
+TARGET: I run to the store and I buy milk then I walk home and I pet my dog before I go to bed
+REWRITE: ran to the store and bought milk then walked home and pet the dog before going to bed
+
+INSTRUCTION: pluralize and make past tense
+TARGET: the child runs to the park and finds one mouse hiding under a leaf then chases it across the grass
+REWRITE: the children ran to the parks and found mice hiding under leaves then chased them across the grass
+
+INSTRUCTION: make it british english and past tense
+TARGET: I drive my car to the harbor and watch the gray waves roll in while I drink coffee from a paper cup
+REWRITE: I drove my car to the harbour and watched the grey waves roll in while I drank coffee from a paper cup`;
 
 export interface ApplyResult {
   rewrite: string;

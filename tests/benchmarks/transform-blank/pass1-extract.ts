@@ -3,7 +3,9 @@
  *
  * Identifies the imperative instruction next to `_` and splits the input
  * into:
- *   - INSTRUCTION: the verb-phrase the user wants applied (without _)
+ *   - INSTRUCTION: the verb-phrase the user wants applied (without _).
+ *     Composed instructions ("X and Y") become a pipe-separated list:
+ *     "make past tense | remove pronouns" — APPLY runs each in sequence.
  *   - TARGET: the rest of the text the instruction should operate on
  *
  * Returns VERDICT: NONE when no instruction shape is present (lookup,
@@ -11,7 +13,7 @@
  *
  * Output format — three lines:
  *   VERDICT: TRANSFORM | NONE
- *   INSTRUCTION: <verb phrase>
+ *   INSTRUCTION: <verb phrase, optionally pipe-joined for composed ops>
  *   TARGET: <rest of text>
  */
 
@@ -25,6 +27,12 @@ Output exactly three lines, nothing else:
 VERDICT: TRANSFORM | NONE
 INSTRUCTION: <the imperative phrase, _ removed; or empty when NONE>
 TARGET: <the rest of the input text after removing the instruction phrase + _; or empty when NONE>
+
+COMPOSED INSTRUCTIONS — when the imperative phrase joins TWO transforms with "and" ("make past tense and remove pronouns", "pluralize and make past tense", "make it british english and past tense"), output the two transforms pipe-joined in INSTRUCTION:
+
+INSTRUCTION: make past tense | remove pronouns
+
+The downstream APPLY pass will run each transform in sequence. This is more reliable than asking one APPLY call to juggle both at once. ONLY split when the instruction is genuinely two distinct edits joined by "and" — do NOT split things like "change boy to girl" (one edit), "make it formal and clear" (one register edit), or "double the numbers" (one edit). The test: would the two halves each independently make sense as standalone instructions? If yes, split. If no, keep as one.
 
 NONE rules — bail when ANY of these apply:
 - _ is a UI placeholder ("click _ to continue")
@@ -53,6 +61,16 @@ INPUT: pluralize _ the child found one mouse
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize
 TARGET: the child found one mouse
+
+INPUT: make past tense and remove pronouns _ I run to the store and I buy milk
+VERDICT: TRANSFORM
+INSTRUCTION: make past tense | remove pronouns
+TARGET: I run to the store and I buy milk
+
+INPUT: pluralize and make past tense _ the child runs to the park and finds one mouse
+VERDICT: TRANSFORM
+INSTRUCTION: pluralize | make past tense
+TARGET: the child runs to the park and finds one mouse
 
 INPUT: capital of france _
 VERDICT: NONE

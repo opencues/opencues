@@ -13,7 +13,7 @@
 
 export interface TransformCase {
   id: string;
-  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text';
+  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted';
   input: string;
   expected: {
     /** Final text after applying edits + wiping the instruction phrase. */
@@ -809,6 +809,102 @@ export const CASES: TransformCase[] = [
         'Coffee: 4.50 EUR. Sandwich: 9 EUR. Tip: 2.70 EUR. Total: 16.20 EUR.',
         'Coffee: €4.50. Sandwich: €9.00. Tip: €2.70. Total: €16.20.',
       ],
+    },
+  },
+
+  // ============================================================
+  // TARGETED — transformations with explicit category-scope.
+  // Tests whether APPLY can correctly identify which words fall in scope
+  // (names, brands, months, etc.) and apply the operation only to those.
+  //
+  // Single-scope:    capitalize the names
+  // Multi-scope:     capitalize names, places, and months
+  // Composition:     capitalize the names and uppercase the brands
+  // Exclusion:       lowercase everything except the proper nouns
+  // Position scope:  capitalize the first letter of each sentence
+  // ============================================================
+
+  {
+    id: 'targeted-1',
+    category: 'targeted',
+    input: 'capitalize the names _ i had lunch with james and sarah at the new restaurant',
+    expected: {
+      finalText: 'i had lunch with James and Sarah at the new restaurant',
+    },
+  },
+  {
+    id: 'targeted-2',
+    category: 'targeted',
+    input: 'uppercase the brand names _ i bought apple and samsung phones online last week',
+    expected: {
+      finalText: 'i bought APPLE and SAMSUNG phones online last week',
+    },
+  },
+  {
+    id: 'targeted-3',
+    category: 'targeted',
+    input: 'lowercase the days _ I went to the gym on Monday and Friday this week',
+    expected: {
+      finalText: 'I went to the gym on monday and friday this week',
+    },
+  },
+  {
+    id: 'targeted-4',
+    category: 'targeted',
+    input: 'capitalize the months _ I was born in march and my brother in october',
+    expected: {
+      finalText: 'I was born in March and my brother in October',
+    },
+  },
+  {
+    id: 'targeted-5',
+    category: 'targeted',
+    input: 'title case the headline _ breaking news scientists discover new planet near earth',
+    expected: {
+      finalText: 'Breaking News Scientists Discover New Planet Near Earth',
+      finalTextAlternates: [
+        'Breaking News Scientists Discover a New Planet Near Earth',
+      ],
+    },
+  },
+  {
+    id: 'targeted-6',
+    category: 'targeted',
+    input: 'capitalize names, places, and months _ john visited paris in march for his birthday',
+    expected: {
+      finalText: 'John visited Paris in March for his birthday',
+    },
+  },
+  {
+    id: 'targeted-7',
+    category: 'targeted',
+    input: 'capitalize the names and uppercase the brands _ james bought apple stock and sarah bought tesla',
+    expected: {
+      finalText: 'James bought APPLE stock and Sarah bought TESLA',
+    },
+  },
+  {
+    id: 'targeted-8',
+    category: 'targeted',
+    input: 'capitalize names, uppercase brands, and lowercase days _ alice bought nike on monday and bob bought adidas on tuesday',
+    expected: {
+      finalText: 'Alice bought NIKE on monday and Bob bought ADIDAS on tuesday',
+    },
+  },
+  {
+    id: 'targeted-9',
+    category: 'targeted',
+    input: 'capitalize the first letter of each sentence _ hello there. how are you doing today. i am fine thanks for asking.',
+    expected: {
+      finalText: 'Hello there. How are you doing today. I am fine thanks for asking.',
+    },
+  },
+  {
+    id: 'targeted-10',
+    category: 'targeted',
+    input: 'lowercase everything except the proper nouns _ JOHN WENT TO PARIS LAST SUMMER WITH HIS FRIEND SARAH',
+    expected: {
+      finalText: 'John went to Paris last summer with his friend Sarah',
     },
   },
 ];

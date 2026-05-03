@@ -79,8 +79,10 @@ function repairLooksGarbled(repair: string): boolean {
   if (/\s{4,}/.test(repair)) return true;
   // Zero-width / hidden control chars
   if (/[\u200B-\u200F\uFEFF\u2028\u2029]/.test(repair)) return true;
-  // Mid-sentence ellipsis-of-omission (3+ dots followed by more content)
+  // Mid-sentence ellipsis-of-omission (3+ ASCII dots, OR any U+2026 …,
+  // OR multiple U+2026 chars in sequence)
   if (/\.{3,}\s*\S/.test(repair)) return true;
+  if (/…/.test(repair)) return true;
   // Repeated non-ASCII separator dashes (model uses ‑ ‑ ‑ between fragments)
   const dashes = repair.match(/[‑–—]/g) ?? [];
   if (dashes.length >= 3) return true;
@@ -132,7 +134,22 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean): Promi
     }, ext.raw);
   }
 
-  const app = await runApply(ext.instruction, ext.target);
+  // Composed instructions ("X | Y") run APPLY twice — output of first
+  // feeds target of second. Single instructions take one APPLY call.
+  const instructionParts = ext.instruction.split('|').map(s => s.trim()).filter(Boolean);
+  let lastApplyRaw = '';
+  let totalApplyMs = 0;
+  let currentTarget = ext.target;
+  let lastApplyRewrite = '';
+  for (const inst of instructionParts) {
+    const stepApp = await runApply(inst, currentTarget);
+    totalApplyMs += stepApp.latencyMs;
+    lastApplyRaw = lastApplyRaw ? `${lastApplyRaw}\n---STEP---\n${stepApp.raw}` : stepApp.raw;
+    lastApplyRewrite = stepApp.rewrite;
+    if (!stepApp.rewrite) break;       // bail if any step returns empty
+    currentTarget = stepApp.rewrite;   // chain output → next target
+  }
+  const app = { rewrite: lastApplyRewrite, raw: lastApplyRaw, latencyMs: totalApplyMs };
 
   let finalRewrite = app.rewrite;
   let verifyVerdict = '';
@@ -140,7 +157,11 @@ async function runCaseExtractApply(c: TransformCase, withVerify: boolean): Promi
   let verifyRaw = '';
 
   if (withVerify) {
-    const ver = await runVerify(ext.instruction, ext.target, app.rewrite);
+    // VERIFY sees the composed instruction in the original "X and Y" form
+    // (not pipe-joined) and the ORIGINAL target — so it can check both
+    // transforms were applied to the correct starting text.
+    const verifyInstruction = instructionParts.join(' and ');
+    const ver = await runVerify(verifyInstruction, ext.target, app.rewrite);
     // OK = trust the draft (don't re-trust verify's echo, which sometimes
     // mangles good drafts). REPAIR = use verify's correction, BUT only if
     // the repair looks plausible. The model occasionally emits two kinds
