@@ -153,9 +153,17 @@ export class AgentLoop {
     // Apply edits as DynDefs. The Resolver skip filter and DimRender
     // pick these up for free — agent gets ownership semantics without
     // any new ownership machinery.
+    //
+    // Defensive: even though we told the LLM "may edit only these"
+    // candidate indices, the model occasionally proposes edits OUTSIDE
+    // the candidate set (cache-hit indices, owned indices, cursor-
+    // adjacent). Enforce the constraint on the apply side too.
+    const candidateSet = new Set(candidates.map(c => c.wordIndex));
+
     let applied = 0;
     for (const edit of edits) {
       // Defensive checks against post-debounce text mutations:
+      if (!candidateSet.has(edit.wordIndex)) continue;      // outside candidate set
       const liveWord = liveWords[edit.wordIndex];
       if (!liveWord) continue;                              // index out of range now
       if (liveWord.word !== edit.originalWord) continue;    // word changed since LLM saw it
@@ -182,8 +190,12 @@ export class AgentLoop {
       // mutate the buffer. Build the new text by splicing each edit.
       let newText = liveText;
       // Apply right-to-left so earlier indices' offsets stay valid.
+      // Same candidateSet filter as above — only edits that survived
+      // the apply-loop's checks should mutate the buffer.
       const sorted = edits
-        .filter(e => liveWords[e.wordIndex] && liveWords[e.wordIndex].word === e.originalWord && e.editedWord !== e.originalWord)
+        .filter(e => candidateSet.has(e.wordIndex)
+          && liveWords[e.wordIndex] && liveWords[e.wordIndex].word === e.originalWord
+          && e.editedWord !== e.originalWord)
         .sort((a, b) => b.wordIndex - a.wordIndex);
       for (const edit of sorted) {
         const w = liveWords[edit.wordIndex];
