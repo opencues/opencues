@@ -105,8 +105,10 @@ export async function runRewrite(input: string): Promise<RewriteResult> {
 }
 
 export function parseRewriteOutput(raw: string, latencyMs: number): RewriteResult {
+  // VERDICT is single-line (m flag); REWRITE may span multiple lines
+  // — drop `m` so `$` is end-of-string, not end-of-line.
   const verdictMatch = raw.match(/^VERDICT:\s*(TRANSFORM|NONE)\s*$/im);
-  const rewriteMatch = raw.match(/^REWRITE:\s*(.*?)\s*$/im);
+  const rewriteMatch = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
   const rewrite = rewriteMatch ? rewriteMatch[1].trim() : '';
   return { verdict, rewrite, raw, latencyMs };

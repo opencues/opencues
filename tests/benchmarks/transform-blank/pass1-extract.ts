@@ -21,7 +21,7 @@ import { chat, sysUser } from './groq';
 
 const SYSTEM_PROMPT = `You read a sentence containing _ and identify whether it carries an IMPERATIVE INSTRUCTION the user wants applied to the surrounding text.
 
-Imperative instruction shapes: "change X to Y", "replace X with Y", "swap X for Y", "rename X to Y", "make it past tense", "make it formal", "make it british english", "capitalize proper nouns", "pluralize", "he/she swap", "swap genders", "change CATEGORY from X to Y" (e.g. "change pet from dog to cat", "change vehicle from bike to car"), "make it half", "double the numbers", "add 10%", "convert to celsius", "fix the math", "recalculate".
+Imperative instruction shapes: "change X to Y", "replace X with Y", "swap X for Y", "rename X to Y", "make it past tense", "make it formal", "make it british english", "capitalize proper nouns", "pluralize", "he/she swap", "swap genders", "change CATEGORY from X to Y" (e.g. "change pet from dog to cat", "change vehicle from bike to car"), "make it half", "double the numbers", "add 10%", "convert to celsius", "fix the math", "recalculate", CONDITIONAL shapes ("change X to Y BUT not in Z", "X EXCEPT Y", "X ONLY when Z"), CONTEXT-REFERRING shapes ("match the X of the first sentence", "use the same X as the introduction", "apply the case style of the first word", "use the same vocabulary level as Y").
 
 Output exactly three lines, nothing else:
 VERDICT: TRANSFORM | NONE
@@ -72,6 +72,26 @@ VERDICT: TRANSFORM
 INSTRUCTION: pluralize | make past tense
 TARGET: the child runs to the park and finds one mouse
 
+INPUT: change boy to girl but not in the second sentence _ The boy ran. The boy met another. They played.
+VERDICT: TRANSFORM
+INSTRUCTION: change boy to girl but not in the second sentence
+TARGET: The boy ran. The boy met another. They played.
+
+INPUT: pluralize except mass nouns _ the child drank water and ate one cookie
+VERDICT: TRANSFORM
+INSTRUCTION: pluralize except mass nouns
+TARGET: the child drank water and ate one cookie
+
+INPUT: match the tense of the first sentence in the rest _ I walked to the store. Then I buy milk.
+VERDICT: TRANSFORM
+INSTRUCTION: match the tense of the first sentence in the rest
+TARGET: I walked to the store. Then I buy milk.
+
+INPUT: use the same vocabulary level as the introduction _ The cat sat. He utilized the supplementary vestibule for ingress.
+VERDICT: TRANSFORM
+INSTRUCTION: use the same vocabulary level as the introduction
+TARGET: The cat sat. He utilized the supplementary vestibule for ingress.
+
 INPUT: capital of france _
 VERDICT: NONE
 INSTRUCTION:
@@ -106,9 +126,15 @@ export async function runExtract(input: string): Promise<ExtractResult> {
 }
 
 export function parseExtractOutput(raw: string, latencyMs: number): ExtractResult {
+  // VERDICT and INSTRUCTION are single-line (use `m` flag — `$` matches
+  // line end). TARGET may span multiple lines (multi-paragraph inputs).
+  // For TARGET: drop the `m` flag so `$` matches END OF STRING instead
+  // of end of line — otherwise lazy `[\s\S]*?` stops at the first
+  // newline. TARGET is always the final field, so capturing to end is
+  // correct.
   const verdictMatch = raw.match(/^VERDICT:\s*(TRANSFORM|NONE)\s*$/im);
   const instructionMatch = raw.match(/^INSTRUCTION:\s*(.*?)\s*$/im);
-  const targetMatch = raw.match(/^TARGET:\s*(.*?)\s*$/im);
+  const targetMatch = raw.match(/TARGET:\s*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
   const instruction = instructionMatch ? instructionMatch[1].trim() : '';
   const target = targetMatch ? targetMatch[1].trim() : '';

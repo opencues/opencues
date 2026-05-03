@@ -13,7 +13,7 @@
 
 export interface TransformCase {
   id: string;
-  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted';
+  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring';
   input: string;
   expected: {
     /** Final text after applying edits + wiping the instruction phrase. */
@@ -905,6 +905,316 @@ export const CASES: TransformCase[] = [
     input: 'lowercase everything except the proper nouns _ JOHN WENT TO PARIS LAST SUMMER WITH HIS FRIEND SARAH',
     expected: {
       finalText: 'John went to Paris last summer with his friend Sarah',
+    },
+  },
+
+  // ============================================================
+  // MULTI-PARAGRAPH — 50-200 word inputs, edits across multiple ¶s
+  // ============================================================
+  {
+    id: 'mp-1',
+    category: 'multi-paragraph',
+    input: 'make past tense _ I wake up at six. I make coffee. I sit at the kitchen table and read the news on my phone.\n\nLater I take the dog for a walk in the park. We see other people walking their dogs. The dog wags his tail at every passerby.',
+    expected: {
+      finalText: 'I woke up at six. I made coffee. I sat at the kitchen table and read the news on my phone.\n\nLater I took the dog for a walk in the park. We saw other people walking their dogs. The dog wagged his tail at every passerby.',
+    },
+  },
+  {
+    id: 'mp-2',
+    category: 'multi-paragraph',
+    input: 'change protagonist to wizard _ The knight rode his horse through the forest. He carried his sword at his side. The morning sun glinted off his armor.\n\nAt the edge of the woods, he saw the dragon. The knight drew his sword and charged.',
+    expected: {
+      finalText: 'The wizard rode his horse through the forest. He carried his staff at his side. The morning sun glinted off his robes.\n\nAt the edge of the woods, he saw the dragon. The wizard drew his staff and charged.',
+      finalTextAlternates: [
+        'The wizard rode his horse through the forest. He carried his wand at his side. The morning sun glinted off his robes.\n\nAt the edge of the woods, he saw the dragon. The wizard drew his wand and charged.',
+      ],
+    },
+  },
+  {
+    id: 'mp-3',
+    category: 'multi-paragraph',
+    input: 'change boy to girl _ The boy walked into the kitchen. His mother smiled at him.\n\nThe boy poured himself a glass of milk and sat at the table. His sister joined him. They ate breakfast together while the boy read his comic book.',
+    expected: {
+      finalText: 'The girl walked into the kitchen. Her mother smiled at her.\n\nThe girl poured herself a glass of milk and sat at the table. Her sister joined her. They ate breakfast together while the girl read her comic book.',
+    },
+  },
+  {
+    id: 'mp-4',
+    category: 'multi-paragraph',
+    input: 'make it british english _ The color of the harbor was gray under the afternoon sky. We walked along the sidewalk past the old theater toward our favorite restaurant.\n\nThe waiter brought us fries with our meal. We finished with cookies and a check that came to twenty dollars.',
+    expected: {
+      finalText: 'The colour of the harbour was grey under the afternoon sky. We walked along the pavement past the old theatre toward our favourite restaurant.\n\nThe waiter brought us chips with our meal. We finished with biscuits and a bill that came to twenty pounds.',
+      finalTextAlternates: [
+        'The colour of the harbour was grey under the afternoon sky. We walked along the pavement past the old theatre towards our favourite restaurant.\n\nThe waiter brought us chips with our meal. We finished with biscuits and a bill that came to twenty pounds.',
+        'The colour of the harbour was grey under the afternoon sky. We walked along the pavement past the old theatre toward our favourite restaurant.\n\nThe waiter brought us chips with our meal. We finished with biscuits and a bill that came to twenty dollars.',
+      ],
+    },
+  },
+  {
+    id: 'mp-5',
+    category: 'multi-paragraph',
+    input: 'change setting to ocean _ The camel walked slowly across the dunes. The sand burned its hooves with each step. In the distance shimmered an oasis.\n\nThe traveler had been riding for three days. He needed to find shelter from the desert sun before nightfall fell on the dunes.',
+    expected: {
+      finalText: 'The fish swam slowly across the waves. The water cooled its scales with each motion. In the distance shimmered a coral reef.\n\nThe traveler had been swimming for three days. He needed to find shelter from the ocean currents before nightfall fell on the waves.',
+      finalTextAlternates: [
+        'The dolphin swam slowly across the waves. The water cooled its skin with each motion. In the distance shimmered a coral reef.\n\nThe traveler had been swimming for three days. He needed to find shelter from the ocean currents before nightfall fell on the waves.',
+      ],
+      note: 'open-ended ocean rewrite preserving structure',
+    },
+  },
+  {
+    id: 'mp-6',
+    category: 'multi-paragraph',
+    input: 'change he to she _ He walked into the office and sat at his desk. He opened his laptop and checked his email. He had three messages from his manager.\n\nHe responded to each one carefully. He thought about what to say. He sent the replies and went to get coffee from the break room.',
+    expected: {
+      finalText: 'She walked into the office and sat at her desk. She opened her laptop and checked her email. She had three messages from her manager.\n\nShe responded to each one carefully. She thought about what to say. She sent the replies and went to get coffee from the break room.',
+    },
+  },
+  {
+    id: 'mp-7',
+    category: 'multi-paragraph',
+    input: 'capitalize names and proper nouns _ john and sarah went to paris last june. they visited the louvre and walked along the seine.\n\nin the evening they had dinner near notre dame. james joined them at the restaurant. afterwards they took the metro back to their hotel near the eiffel tower.',
+    expected: {
+      finalText: 'John and Sarah went to Paris last June. They visited the Louvre and walked along the Seine.\n\nIn the evening they had dinner near Notre Dame. James joined them at the restaurant. Afterwards they took the Metro back to their hotel near the Eiffel Tower.',
+      finalTextAlternates: [
+        'John and Sarah went to Paris last June. They visited the Louvre and walked along the Seine.\n\nIn the evening they had dinner near Notre Dame. James joined them at the restaurant. Afterwards they took the metro back to their hotel near the Eiffel Tower.',
+      ],
+    },
+  },
+  {
+    id: 'mp-8',
+    category: 'multi-paragraph',
+    input: 'pluralize _ The child found one mouse in the garden. The mouse ran away under a leaf.\n\nThen the child saw a butterfly land on a flower. The butterfly opened its wing and flew off when the child got close. The child sighed and walked back to the house.',
+    expected: {
+      finalText: 'The children found mice in the garden. The mice ran away under leaves.\n\nThen the children saw butterflies land on flowers. The butterflies opened their wings and flew off when the children got close. The children sighed and walked back to the houses.',
+      finalTextAlternates: [
+        'The children found mice in the garden. The mice ran away under leaves.\n\nThen the children saw butterflies land on flowers. The butterflies opened their wings and flew off when the children got close. The children sighed and walked back to the house.',
+      ],
+    },
+  },
+  {
+    id: 'mp-9',
+    category: 'multi-paragraph',
+    input: 'make past tense and remove pronouns _ I drive to the office every morning. I park my car in the garage. I take the elevator to the fifth floor.\n\nI greet my coworkers. I sit at my desk. I check my email and start working on the report that is due by noon.',
+    expected: {
+      finalText: 'drove to the office every morning. parked the car in the garage. took the elevator to the fifth floor.\n\ngreeted the coworkers. sat at the desk. checked the email and started working on the report that was due by noon.',
+      finalTextAlternates: [
+        'drove to the office every morning. parked car in the garage. took the elevator to the fifth floor.\n\ngreeted coworkers. sat at the desk. checked email and started working on the report that was due by noon.',
+      ],
+      note: 'composition over multiple paragraphs',
+    },
+  },
+  {
+    id: 'mp-10',
+    category: 'multi-paragraph',
+    input: 'double the numbers _ I bought 3 apples and 5 oranges at the market. The total came to 8 dollars.\n\nThe next day I went back. This time I bought 2 bananas and 4 pears. I spent another 7 dollars. By the end of the week I had eaten all 14 pieces of fruit.',
+    expected: {
+      finalText: 'I bought 6 apples and 10 oranges at the market. The total came to 16 dollars.\n\nThe next day I went back. This time I bought 4 bananas and 8 pears. I spent another 14 dollars. By the end of the week I had eaten all 28 pieces of fruit.',
+    },
+  },
+
+  // ============================================================
+  // CONDITIONAL — instructions with exclusions / scopes
+  // ============================================================
+  {
+    id: 'cond-1',
+    category: 'conditional',
+    input: 'change boy to girl but not in the second sentence _ The boy ran to the park. The boy met another boy there. They played until the boy went home.',
+    expected: {
+      finalText: 'The girl ran to the park. The boy met another boy there. They played until the girl went home.',
+    },
+  },
+  {
+    id: 'cond-2',
+    category: 'conditional',
+    input: 'capitalize names but only the first names _ john smith and sarah jones went to lunch with james taylor',
+    expected: {
+      finalText: 'John smith and Sarah jones went to lunch with James taylor',
+    },
+  },
+  {
+    id: 'cond-3',
+    category: 'conditional',
+    input: 'uppercase brands except apple _ i bought apple, samsung, and sony products',
+    expected: {
+      finalText: 'i bought apple, SAMSUNG, and SONY products',
+    },
+  },
+  {
+    id: 'cond-4',
+    category: 'conditional',
+    input: 'lowercase the days but keep weekend ones capitalized _ I work on Monday Tuesday Wednesday Thursday Friday Saturday Sunday',
+    expected: {
+      finalText: 'I work on monday tuesday wednesday thursday friday Saturday Sunday',
+    },
+  },
+  {
+    id: 'cond-5',
+    category: 'conditional',
+    input: 'pluralize except mass nouns _ the child drank water and ate one cookie at the table',
+    expected: {
+      finalText: 'the children drank water and ate cookies at the tables',
+      finalTextAlternates: [
+        'the children drank water and ate cookies at tables',
+      ],
+    },
+  },
+  {
+    id: 'cond-6',
+    category: 'conditional',
+    input: 'make past tense except in dialogue _ He walks into the room and says, "I am happy to see you." Then he sits down.',
+    expected: {
+      finalText: 'He walked into the room and said, "I am happy to see you." Then he sat down.',
+    },
+  },
+  {
+    id: 'cond-7',
+    category: 'conditional',
+    input: 'change he to she only when referring to the doctor _ He met the doctor at the clinic. He shook the doctor\'s hand. The doctor said he was running late.',
+    expected: {
+      finalText: 'He met the doctor at the clinic. He shook the doctor\'s hand. The doctor said she was running late.',
+    },
+  },
+  {
+    id: 'cond-8',
+    category: 'conditional',
+    input: 'remove pronouns except in quoted speech _ I went home. I told my mom, "I am tired and I want to sleep." Then I went to bed.',
+    expected: {
+      finalText: 'went home. told mom, "I am tired and I want to sleep." Then went to bed.',
+      finalTextAlternates: [
+        'went home. told the mom, "I am tired and I want to sleep." Then went to bed.',
+      ],
+    },
+  },
+  {
+    id: 'cond-9',
+    category: 'conditional',
+    input: 'capitalize only proper nouns not common nouns _ john visited paris and rome with his friend sarah and her dog',
+    expected: {
+      finalText: 'John visited Paris and Rome with his friend Sarah and her dog',
+    },
+  },
+  {
+    id: 'cond-10',
+    category: 'conditional',
+    input: 'change boy to girl but only in the first paragraph _ The boy ran to the park.\n\nThe boy met another boy there.',
+    expected: {
+      finalText: 'The girl ran to the park.\n\nThe boy met another boy there.',
+    },
+  },
+
+  // ============================================================
+  // CONTEXT-REFERRING — edits that depend on style/structure
+  // observable elsewhere in the input text
+  // ============================================================
+  {
+    id: 'ctx-1',
+    category: 'context-referring',
+    input: 'match the tense of the first sentence in the rest _ I walked to the store. Then I buy milk. Then I walk home.',
+    expected: {
+      finalText: 'I walked to the store. Then I bought milk. Then I walked home.',
+    },
+  },
+  {
+    id: 'ctx-2',
+    category: 'context-referring',
+    input: 'use the same person as the first sentence _ I went to the office. He sat at his desk. He checked his email.',
+    expected: {
+      finalText: 'I went to the office. I sat at my desk. I checked my email.',
+    },
+  },
+  {
+    id: 'ctx-3',
+    category: 'context-referring',
+    input: 'match the formality of the first sentence _ I would be most grateful for your assistance. yo can u help me out. thx fam.',
+    expected: {
+      finalText: 'I would be most grateful for your assistance. Could you please help me. Thank you very much.',
+      finalTextAlternates: [
+        'I would be most grateful for your assistance. May I please ask for your help. Thank you sincerely.',
+        'I would be most grateful for your assistance. Would you kindly help me. I thank you very much.',
+        'I would be most grateful for your assistance. Could you please help me out. Thank you very much.',
+      ],
+    },
+  },
+  {
+    id: 'ctx-4',
+    category: 'context-referring',
+    input: 'use the same number style throughout _ I have three apples and 5 oranges and twelve pears.',
+    expected: {
+      finalText: 'I have three apples and five oranges and twelve pears.',
+      finalTextAlternates: [
+        'I have 3 apples and 5 oranges and 12 pears.',
+      ],
+    },
+  },
+  {
+    id: 'ctx-5',
+    category: 'context-referring',
+    input: 'match the punctuation style of the first sentence _ Hey, how are you? I am fine thanks. What about you',
+    expected: {
+      finalText: 'Hey, how are you? I am fine, thanks? What about you?',
+      finalTextAlternates: [
+        'Hey, how are you? I am fine, thanks. What about you?',
+      ],
+      note: 'first sentence uses comma + question mark; match that pattern',
+    },
+  },
+  {
+    id: 'ctx-6',
+    category: 'context-referring',
+    input: 'match the british english spelling used at the start in the rest _ The colour of the sky is blue. The harbor is calm. The theater is empty.',
+    expected: {
+      finalText: 'The colour of the sky is blue. The harbour is calm. The theatre is empty.',
+    },
+  },
+  {
+    id: 'ctx-7',
+    category: 'context-referring',
+    input: 'use the same sentence length as the first sentence _ Short. The next sentence is way longer than it should be considering the context.',
+    expected: {
+      finalText: 'Short. Long.',
+      finalTextAlternates: [
+        'Short. Bad.',
+        'Short. Brief.',
+        'Short. Wordy.',
+        'Short. Concise.',
+        'Short. Lengthy.',
+        'Short. Verbose.',
+      ],
+      note: 'first sentence is one word; match that brevity',
+    },
+  },
+  {
+    id: 'ctx-8',
+    category: 'context-referring',
+    input: 'use the same vocabulary level as the introduction _ The cat sat. He utilized the supplementary vestibule for ingress.',
+    expected: {
+      finalText: 'The cat sat. He used the side door to come in.',
+      finalTextAlternates: [
+        'The cat sat. He used the back door to enter.',
+        'The cat sat. He used the side door to enter.',
+      ],
+    },
+  },
+  {
+    id: 'ctx-9',
+    category: 'context-referring',
+    input: 'apply the case style of the first word to all words _ HELLO world how are you today',
+    expected: {
+      finalText: 'HELLO WORLD HOW ARE YOU TODAY',
+    },
+  },
+  {
+    id: 'ctx-10',
+    category: 'context-referring',
+    input: 'use the same tone as the opening line throughout _ Thrilled to share our wonderful news! we got the job. it was kinda hard but whatever.',
+    expected: {
+      finalText: 'Thrilled to share our wonderful news! Delighted to announce we got the job. It was challenging but rewarding.',
+      finalTextAlternates: [
+        'Thrilled to share our wonderful news! Excited to say we got the job. The journey was challenging but ultimately rewarding.',
+        'Thrilled to share our wonderful news! Excited to announce we got the job. Though it was difficult, it was incredibly rewarding.',
+      ],
+      note: 'first sentence is upbeat/excited; match that tone in the rest',
     },
   },
 ];

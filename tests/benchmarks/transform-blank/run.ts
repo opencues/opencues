@@ -75,8 +75,10 @@ function repairLooksTruncated(repair: string, draft: string, target: string): bo
  * as omission marker, repeated dash separators, or stray "END" tokens.
  */
 function repairLooksGarbled(repair: string): boolean {
-  // Long whitespace runs (4+) — model emitted padding instead of words
-  if (/\s{4,}/.test(repair)) return true;
+  // Long horizontal-whitespace runs (4+ spaces/tabs) — model emitted
+  // padding. Newlines are legitimate in multi-paragraph rewrites, so
+  // exclude \n from this check.
+  if (/[ \t]{4,}/.test(repair)) return true;
   // Zero-width / hidden control chars
   if (/[\u200B-\u200F\uFEFF\u2028\u2029]/.test(repair)) return true;
   // Mid-sentence ellipsis-of-omission (3+ ASCII dots, OR any U+2026 …,

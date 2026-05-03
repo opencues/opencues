@@ -43,6 +43,14 @@ How to tell a CATEGORY swap from a LITERAL swap:
 
 7. COMPOSED INSTRUCTIONS ("X and Y") — when the instruction joins two transforms with "and" ("make past tense and remove pronouns", "pluralize and make past tense", "make it british english and past tense"), apply BOTH transforms to the rewrite. Both must be visible in the output AND the result must be grammatical under BOTH constraints simultaneously.
 
+8. PRESERVE STRUCTURE (paragraphs, line breaks) — if the TARGET contains paragraph breaks (\n\n) or line breaks (\n), preserve them VERBATIM in the rewrite. Multi-paragraph inputs must produce multi-paragraph outputs with the same paragraph boundaries. Do NOT collapse paragraphs into a single block. Do NOT add new paragraph breaks that weren't there.
+
+9. CONDITIONAL INSTRUCTIONS ("X but not Y", "X except Y", "X only when Z") — when the instruction includes an exception or scope-restriction clause, apply the transform ONLY where the condition holds. Examples:
+   - "change boy to girl but not in the second sentence" → only change boys outside the second sentence
+   - "uppercase brands except apple" → uppercase all brands EXCEPT the literal word "apple"
+   - "make past tense except in dialogue" → leave quoted speech unchanged, change everything else
+   - "change he to she only when referring to the doctor" → only swap pronouns whose referent is the doctor
+
    Common compose mistakes to AVOID:
    - "make past tense and remove pronouns": dropping "I" but leaving the next verb in present ("walk home" instead of "walked home"); using "before went to bed" (wrong — should be "before going to bed" because "before" takes a gerund, not a finite verb).
    - "pluralize and make past tense": pluralizing nouns but forgetting verb agreement ("the children runs" — wrong); pluralizing the named noun but missing dependent ones ("one mouse" → "one mice" — should drop "one"). Verbs after the pluralized noun must agree (singular present "runs" → past plural "ran"); quantifiers must drop or update ("one" doesn't survive pluralization).
@@ -156,7 +164,45 @@ REWRITE: the children ran to the parks and found mice hiding under leaves then c
 
 INSTRUCTION: make it british english and past tense
 TARGET: I drive my car to the harbor and watch the gray waves roll in while I drink coffee from a paper cup
-REWRITE: I drove my car to the harbour and watched the grey waves roll in while I drank coffee from a paper cup`;
+REWRITE: I drove my car to the harbour and watched the grey waves roll in while I drank coffee from a paper cup
+
+INSTRUCTION: make past tense
+TARGET: I wake up at six. I make coffee.
+
+Later I take the dog for a walk in the park.
+REWRITE: I woke up at six. I made coffee.
+
+Later I took the dog for a walk in the park.
+
+(Note the \n\n paragraph break is preserved verbatim.)
+
+INSTRUCTION: change protagonist to wizard
+TARGET: The knight rode his horse through the forest. He carried his sword at his side.
+
+At the edge of the woods, he saw the dragon.
+REWRITE: The wizard rode his horse through the forest. He carried his staff at his side.
+
+At the edge of the woods, he saw the dragon.
+
+(Horse is preserved — wizards can ride horses. Sword → staff because wizards don't carry swords. Paragraph break preserved.)
+
+INSTRUCTION: change boy to girl but not in the second sentence
+TARGET: The boy ran to the park. The boy met another boy there. They played until the boy went home.
+REWRITE: The girl ran to the park. The boy met another boy there. They played until the girl went home.
+
+(Sentences 1 and 3 changed; sentence 2 left untouched per the "but not in the second sentence" exception.)
+
+INSTRUCTION: pluralize except mass nouns
+TARGET: the child drank water and ate one cookie at the table
+REWRITE: the children drank water and ate cookies at the tables
+
+(Water is a mass noun — stays singular. "child" → "children", "cookie" → "cookies", "table" → "tables".)
+
+INSTRUCTION: uppercase brands except apple
+TARGET: i bought apple, samsung, and sony products
+REWRITE: i bought apple, SAMSUNG, and SONY products
+
+(Apple stays lowercase per the "except apple" exception. Samsung and Sony uppercase.)`;
 
 export interface ApplyResult {
   rewrite: string;
@@ -173,6 +219,9 @@ export async function runApply(instruction: string, target: string): Promise<App
 }
 
 export function parseApplyOutput(raw: string, latencyMs: number): ApplyResult {
-  const m = raw.match(/^REWRITE:\s*(.*?)\s*$/im);
+  // REWRITE may span multiple lines. Drop `m` flag so `$` is end-of-
+  // string, not end-of-line — otherwise lazy [\s\S]*? stops at the
+  // first newline.
+  const m = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
   return { rewrite: m ? m[1].trim() : '', raw, latencyMs };
 }
