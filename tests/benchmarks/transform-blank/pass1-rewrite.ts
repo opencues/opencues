@@ -105,10 +105,10 @@ export async function runRewrite(input: string): Promise<RewriteResult> {
 }
 
 export function parseRewriteOutput(raw: string, latencyMs: number): RewriteResult {
-  // VERDICT is single-line (m flag); REWRITE may span multiple lines
-  // — drop `m` so `$` is end-of-string, not end-of-line.
-  const verdictMatch = raw.match(/^VERDICT:\s*(TRANSFORM|NONE)\s*$/im);
-  const rewriteMatch = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
+  // Single-line VERDICT uses [ \t]* not \s* (see pass1-extract for the
+  // newline-swallowing bug). REWRITE is the last field so [\s\S]*? is fine.
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE)[ \t]*$/im);
+  const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
   const rewrite = rewriteMatch ? rewriteMatch[1].trim() : '';
   return { verdict, rewrite, raw, latencyMs };

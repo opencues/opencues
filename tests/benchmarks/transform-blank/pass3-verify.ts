@@ -184,10 +184,11 @@ export async function runVerify(instruction: string, target: string, draft: stri
 }
 
 export function parseVerifyOutput(raw: string, latencyMs: number): VerifyResult {
-  // VERDICT is single-line (m flag); REWRITE may span multiple lines
-  // — drop `m` so `$` is end-of-string.
-  const verdictMatch = raw.match(/^VERDICT:\s*(OK|REPAIR)\s*$/im);
-  const rewriteMatch = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
+  // Single-line VERDICT uses [ \t]* not \s* (see pass1-extract for the
+  // newline-swallowing bug). REWRITE is the last field so [\s\S]*? +
+  // \s*$ is fine.
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(OK|REPAIR)[ \t]*$/im);
+  const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'OK') as 'OK' | 'REPAIR';
   const rewrite = rewriteMatch ? rewriteMatch[1].trim() : '';
   return { verdict, rewrite, raw, latencyMs };

@@ -219,9 +219,10 @@ export async function runApply(instruction: string, target: string): Promise<App
 }
 
 export function parseApplyOutput(raw: string, latencyMs: number): ApplyResult {
-  // REWRITE may span multiple lines. Drop `m` flag so `$` is end-of-
-  // string, not end-of-line — otherwise lazy [\s\S]*? stops at the
-  // first newline.
-  const m = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
+  // REWRITE may span multiple lines. Use `[ \t]*` (NOT `\s*`) for the
+  // leading whitespace so we don't accidentally consume a leading
+  // newline before content; the trailing `\s*$` is fine since this is
+  // the last field.
+  const m = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   return { rewrite: m ? m[1].trim() : '', raw, latencyMs };
 }

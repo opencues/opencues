@@ -94,8 +94,10 @@ export async function runSingleCall(input: string): Promise<SingleCallResult> {
 }
 
 export function parseSingleCallOutput(raw: string, latencyMs: number): SingleCallResult {
-  const verdictMatch = raw.match(/^VERDICT:\s*(TRANSFORM|NONE)\s*$/im);
-  const rewriteMatch = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
+  // [ \t]* not \s* on single-line fields (see pass1-extract.ts for
+  // newline-swallowing bug).
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE)[ \t]*$/im);
+  const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
   const rewrite = rewriteMatch ? rewriteMatch[1].trim() : '';
   return { verdict, rewrite, raw, latencyMs };

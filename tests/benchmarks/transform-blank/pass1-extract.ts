@@ -154,15 +154,14 @@ export async function runExtract(input: string): Promise<ExtractResult> {
 }
 
 export function parseExtractOutput(raw: string, latencyMs: number): ExtractResult {
-  // VERDICT and INSTRUCTION are single-line (use `m` flag — `$` matches
-  // line end). TARGET may span multiple lines (multi-paragraph inputs).
-  // For TARGET: drop the `m` flag so `$` matches END OF STRING instead
-  // of end of line — otherwise lazy `[\s\S]*?` stops at the first
-  // newline. TARGET is always the final field, so capturing to end is
-  // correct.
-  const verdictMatch = raw.match(/^VERDICT:\s*(TRANSFORM|NONE)\s*$/im);
-  const instructionMatch = raw.match(/^INSTRUCTION:\s*(.*?)\s*$/im);
-  const targetMatch = raw.match(/TARGET:\s*([\s\S]*?)\s*$/i);
+  // Single-line fields use [ \t]* (NOT \s*) for trailing whitespace —
+  // \s* matches \n which makes the lazy .*? extend across line breaks
+  // and accidentally swallow the next field label. Production bug:
+  // model emitted "INSTRUCTION:\nTARGET:\n" (empty fields) and the
+  // regex captured "TARGET:" as the instruction value.
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE)[ \t]*$/im);
+  const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
+  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
   const instruction = instructionMatch ? instructionMatch[1].trim() : '';
   const target = targetMatch ? targetMatch[1].trim() : '';

@@ -81,6 +81,16 @@ VERDICT: TRANSFORM
 INSTRUCTION: pluralize | make past tense
 TARGET: the child runs to the park
 
+INPUT: build me a website, car, app, newsletter convert to numbered list _
+VERDICT: TRANSFORM
+INSTRUCTION: convert to numbered list
+TARGET: build me a website, car, app, newsletter
+
+INPUT: make me a website is this prompt detailed enough _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+
 INPUT: capital of france _
 VERDICT: NONE
 INSTRUCTION:
@@ -292,10 +302,16 @@ interface VerifyResult {
 }
 
 function parseExtract(raw: string): ExtractResult {
-  const verdictMatch = raw.match(/^VERDICT:\s*(TRANSFORM|NONE)\s*$/im);
-  const instructionMatch = raw.match(/^INSTRUCTION:\s*(.*?)\s*$/im);
+  // Single-line fields use [ \t]* (NOT \s*) for trailing whitespace —
+  // \s* matches \n which makes the lazy .*? extend across line breaks
+  // and accidentally swallow the next field label. Real bug seen in
+  // production: model emitted "INSTRUCTION:\nTARGET:\n" (empty
+  // instruction, empty target) and the regex captured "TARGET:" as
+  // the instruction value.
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE)[ \t]*$/im);
+  const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
   // TARGET may span multiple lines; drop `m` so $ is end-of-string.
-  const targetMatch = raw.match(/TARGET:\s*([\s\S]*?)\s*$/i);
+  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as 'TRANSFORM' | 'NONE';
   return {
     verdict,
@@ -305,13 +321,16 @@ function parseExtract(raw: string): ExtractResult {
 }
 
 function parseApply(raw: string): ApplyResult {
-  const m = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
+  // REWRITE is the LAST field — `[\s\S]*?` is fine here because there's
+  // nothing after it. Use `[ \t]*` for the leading whitespace to avoid
+  // accidentally consuming the newline before content.
+  const m = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   return { rewrite: m ? m[1].trim() : '' };
 }
 
 function parseVerify(raw: string): VerifyResult {
-  const verdictMatch = raw.match(/^VERDICT:\s*(OK|REPAIR)\s*$/im);
-  const rewriteMatch = raw.match(/REWRITE:\s*([\s\S]*?)\s*$/i);
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(OK|REPAIR)[ \t]*$/im);
+  const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'OK') as 'OK' | 'REPAIR';
   return { verdict, rewrite: rewriteMatch ? rewriteMatch[1].trim() : '' };
 }
