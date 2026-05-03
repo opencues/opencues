@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-02
+last_updated: 2026-05-03
 ---
 
 # Feature Concepts
@@ -35,6 +35,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 26 | [Resolver Skip Filter](resolver-skip-filter.md) | The four-condition check that prevents the LLM from re-resolving words already owned by cycling — keeps cycle tracks stable and saves tokens |
 | 27 | [Deterministic Relocate](deterministic-relocate.md) | Cycle progress survives prefix/middle text edits — DynDefs are re-anchored to their content's new position when (and only when) the match is unambiguous |
 | 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.cues → ~/.cues`), the `cues.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.cues/` |
+| 29 | [Transform Blanks](transform-blank.md) | Imperative-instruction blanks at `_` — 3-pass LLM pipeline (EXTRACT → APPLY → VERIFY) that rewrites the surrounding text per the instruction. Plus a generative branch for "write a poem _" / "compose an email _" prompts. The third leg of the blank trio alongside BlankSource (keyword) and FluidBlankSource (lookup). |
 
 ## Adding a new feature
 
