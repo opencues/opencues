@@ -133,14 +133,21 @@ TransformBlank: REPAIR rejected (truncated=false, garbled=true) — falling back
 
 ## Architecture references
 
+For the canonical implementation reference (3-pass design rationale,
+prompt design, parser quirks, runtime integration, all the
+experiments) see **`docs/architecture/transform-blank.md`**.
+
+Quick locator:
 - Source: `packages/opencues-core/src/sources/transform-blank-source.ts`
 - Wire-up: `packages/opencues-core/src/sources/build-sources.ts` (option
   `enableTransformBlank`, gated on `transform-blank-mode: on`)
 - Substitution: `packages/opencues-runtime/src/modules/resolver.ts`
   (search for `isTransformBlank`)
-- Benchmark: `tests/benchmarks/transform-blank/` — 130 cases, run via
+- Benchmark: `tests/benchmarks/transform-blank/` — 212 cases, run via
   `GROQ_API_KEY=… npx tsx tests/benchmarks/transform-blank/run.ts
-  --mode extract-apply-verify`
+  --mode extract-apply-verify --parallel 8`
+- Experiments + design decisions:
+  `tests/benchmarks/transform-blank/EXPERIMENTS.md`
 - Priority chain: BlankSource (95) > TransformBlankSource (93) >
   FluidBlankSource (92) > SpellingSource (80)
 

@@ -211,6 +211,7 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21+ feature concepts (one file each)
 - **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), the cycling priority order (selector/satellite → spanFill → list blank → blankStep DynDef → static alts), the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
+- **docs/architecture/transform-blank.md** ⚠️ Canonical reference for the imperative-blank pipeline (EXTRACT → APPLY → VERIFY). Covers the 3-pass design rationale, prompt design (why minimal-EXTRACT but verbose-APPLY), sequential composition for "X and Y", skip-VERIFY rules, parser quirks (`[ \t]*` not `\s*`), runtime substitution, debug logs, and 10 concrete lessons from the experiment log. Read this before touching `transform-blank-source.ts` or any of the prompts. Companion: `tests/benchmarks/transform-blank/EXPERIMENTS.md` for the empirical justification of every design decision.
 
 ---
 
