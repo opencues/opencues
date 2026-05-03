@@ -62,7 +62,9 @@ The instruction can sit BEFORE _ at the start (<INSTRUCTION> _ <TARGET>) OR righ
 
 For composed instructions joined by "and" ("make past tense and remove pronouns"), output them pipe-joined: "make past tense | remove pronouns".
 
-Bail to NONE for: UI placeholders, pure lookups (no instruction), instructions with no target, idioms.
+Bail to NONE for: UI placeholders, pure lookups (no instruction), idioms.
+
+GENERATIVE INSTRUCTIONS — when the imperative is a CREATE/GENERATE request ("write a poem", "compose an email", "give me 5 startup ideas", "draft a tweet about X"), there is NO target text to operate on. Output VERDICT: TRANSFORM with the instruction populated and TARGET empty. The downstream pipeline will route this to a generative branch.
 
 EXAMPLES:
 
@@ -89,6 +91,21 @@ TARGET: build me a website, car, app, newsletter
 INPUT: make me a website is this prompt detailed enough _
 VERDICT: NONE
 INSTRUCTION:
+TARGET:
+
+INPUT: write a poem _
+VERDICT: TRANSFORM
+INSTRUCTION: write a poem
+TARGET:
+
+INPUT: compose an email asking for a meeting _
+VERDICT: TRANSFORM
+INSTRUCTION: compose an email asking for a meeting
+TARGET:
+
+INPUT: give me 5 startup ideas _
+VERDICT: TRANSFORM
+INSTRUCTION: give me 5 startup ideas
 TARGET:
 
 INPUT: capital of france _
@@ -197,6 +214,58 @@ REWRITE: the children drank water and ate cookies at the tables
 INSTRUCTION: uppercase brands except apple
 TARGET: i bought apple, samsung, and sony products
 REWRITE: i bought apple, SAMSUNG, and SONY products`;
+
+// Generative APPLY — runs when EXTRACT returns TRANSFORM with empty
+// TARGET. The instruction is a create/generate request ("write a
+// poem", "compose an email"), not an edit. No target to transform,
+// no VERIFY pass downstream — the model just generates content.
+const P2_GENERATIVE_APPLY_SYSTEM = `You receive an INSTRUCTION that asks you to GENERATE or CREATE content. Produce the content. No commentary.
+
+Output exactly one line, nothing else:
+REWRITE: <generated content>
+
+RULES:
+- The output is the generated content itself, NOT a description of it
+- Be concrete and direct — no "Here is your poem:" preamble
+- Match the format the instruction implies (poem = verses; email = headers + body; list = numbered/bulleted lines; etc.)
+- Reasonable length — short for "tweet", longer for "email" or "essay"
+- Multi-line outputs are fine; preserve \\n where structure requires
+
+EXAMPLES:
+
+INSTRUCTION: write a haiku about autumn
+REWRITE: Crimson leaves drift down
+Whispering of summer's end
+Crisp wind stirs the trees
+
+INSTRUCTION: compose an email asking for a meeting
+REWRITE: Subject: Quick meeting request
+
+Hi,
+
+Could we set up a 30-minute call this week to discuss the project? I'm flexible on timing — Tuesday or Wednesday afternoon work best for me.
+
+Thanks,
+
+INSTRUCTION: give me 5 startup ideas
+REWRITE: 1. AI-powered code review tool for non-engineers
+2. Subscription box for indie game soundtracks
+3. Marketplace for verified second-hand kids' clothing
+4. Browser extension that summarizes long articles in your tone
+5. Local-first calendar app for freelancers
+
+INSTRUCTION: write a tweet announcing a product launch
+REWRITE: Excited to launch [Product] today — [one-line value prop]. Built for [target user] who [problem]. Try it free at [link]. 🚀
+
+INSTRUCTION: draft a thank you note for a job interview
+REWRITE: Dear [Interviewer],
+
+Thank you for taking the time to speak with me yesterday about the [Role] position. I enjoyed our conversation about [specific topic], and learning more about your team's work on [project] only deepened my interest.
+
+Please let me know if there's anything else I can provide.
+
+Best regards,
+[Name]`;
 
 const P3_VERIFY_SYSTEM = `You are reviewing a text-edit produced by another model. Your job: decide whether the draft rewrite correctly applies the instruction to the target — and if not, emit a fixed version.
 
@@ -601,9 +670,49 @@ export class TransformBlankSource implements CueSource {
       const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${context.text}`, p1Tokens);
       const ext = parseExtract(extractRaw);
       this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
-      if (ext.verdict === 'NONE' || !ext.instruction || !ext.target) {
-        this.log(`TransformBlank: bailing — P1 verdict=NONE or empty fields`);
+      if (ext.verdict === 'NONE' || !ext.instruction) {
+        this.log(`TransformBlank: bailing — P1 verdict=NONE or empty instruction`);
         return { results: [], timing: Date.now() - startTime, model: this.model };
+      }
+
+      // GENERATIVE BRANCH — instruction with no target = create/generate
+      // request ("write a poem _", "compose an email _"). Single-pass:
+      // one APPLY call with the generative prompt, no VERIFY (nothing
+      // to verify against — it's new content, not an edit of existing
+      // text). Returns the generated content as the rewrite.
+      if (!ext.target) {
+        this.log(`TransformBlank: GENERATIVE branch (instruction with no target)`);
+        const genTokens = budgetForOutput(800, 1.0);  // assume up to ~800 chars of generated content
+        const genStart = Date.now();
+        const genRaw = await this.callLLM(
+          P2_GENERATIVE_APPLY_SYSTEM,
+          `INSTRUCTION: ${ext.instruction}`,
+          genTokens,
+        );
+        const generated = parseApply(genRaw).rewrite;
+        this.log(`TransformBlank P2 GENERATIVE (${Date.now() - genStart}ms, max_tokens=${genTokens}): "${preview(generated)}"`);
+        if (!generated) {
+          this.log(`TransformBlank: bailing — GENERATIVE returned empty`);
+          return { results: [], timing: Date.now() - startTime, model: this.model };
+        }
+
+        const result: CueResult = {
+          wordIndex: blankIdx,
+          word: '_',
+          alternatives: [context.text, generated],
+          source: this.id,
+          priority: this.priority,
+          spanStart: 0,
+          spanEnd: context.text.length,
+          metadata: {
+            transformInstruction: ext.instruction,
+            transformTarget: '',
+            transformMode: 'generative',
+            verifyVerdict: 'OK',  // no verify on generative
+          },
+        };
+        this.log(`TransformBlank: GENERATIVE done (${Date.now() - startTime}ms total) — final="${preview(generated)}"`);
+        return { results: [result], timing: Date.now() - startTime, model: this.model };
       }
 
       // P2 APPLY — sequential composition for "X | Y" instructions.
