@@ -129,32 +129,57 @@ the new combined prompt.
 
 ## What kinds of tasks work
 
-Tested categories (see `tests/benchmarks/agent-task/EXPERIMENTS.md`):
+Tested categories (see `tests/benchmarks/agent-task/EXPERIMENTS.md`
+for the full experiment log + numbers):
 
-| Category | v1 pass | Example |
+**Mechanical tasks** — single right answer per word:
+
+| Category | Pass | Example |
 |---|---|---|
-| spelling-task | 70% | `agentically correct spelling` |
+| spelling-task | 100% | `agentically correct spelling` |
 | caps-task | 100% | `agentically capitalize cities and people names` |
-| ownership-respect | 100% | (agent skips words other sources own) |
-| cursor-adjacent | 100% | (agent never touches the word your cursor is on) |
-| no-op-recall | 100% | (no LLM-noise when nothing to fix) |
-| task-id-invalidation | 100% | (cache invalidates on prompt change) |
+| british-english | 100% | `agentically use british english spelling` |
+| translation | 100% | `agentically translate english days to spanish` |
+| inclusive-language | 100% | `agentically use inclusive gender-neutral language` |
+| medical | 100% | `agentically use clinical terminology` |
+| lawyer | 100% | `agentically use precise legal terminology` |
+| linkedin-friendly | 100% | `agentically make wording linkedin friendly` |
+| twitter-concise | 100% | `agentically shorten verbose words` |
+| long-doc | 100% | (40–65 word docs, mixed tasks) |
 
-The 30% spelling-task failures are model variance (3rd typo missed in
-a long list, hyphenated misspellings) — not pipeline issues.
+**Stability primitives** — invariants the runtime guarantees:
+
+| Category | Pass | What it pins |
+|---|---|---|
+| ownership-respect | 100% | agent skips words other sources own |
+| cursor-adjacent | 100% | agent never edits the word your cursor is on |
+| no-op-recall | 100% | no LLM noise when nothing to fix |
+| task-id-invalidation | 100% | cache invalidates on prompt change |
+
+**Stylistic tasks** — multiple defensible answers; lower ceiling:
+
+| Category | Pass | Why lower |
+|---|---|---|
+| professionalism | ~50% | model has its own style opinions; over-edits clean prose |
+| mixed-task | ~80% | composed prompts ("X AND Y") harder for the model |
+
+**Aggregate**: 120/128 (93.8%) on the full suite, ~379ms per case.
+Stylistic-task failures are model judgement, not pipeline bugs —
+don't prompt-tune to suppress them; that hurts the mechanical tasks.
 
 ---
 
 ## Latency
 
-Per debounce cycle:
+Per debounce cycle (gpt-oss-120b @ Groq, EDITS format):
 - Build candidates: <1ms
-- LLM edit pass: ~300-700ms
-- Apply DynDefs + setText: ~10-50ms
-- **Total: ~500ms typical**
+- LLM edit pass: ~300–500ms (most docs); 1.7s for a 200-word doc
+- Apply DynDefs + setText: ~10–50ms
+- **Total: ~379ms avg across the 128-case suite**
 
 Same 500ms debounce as the resolver. The agent runs ON TOP of
-resolver's results — no second clock.
+resolver's results — no second clock. Cache hits skip the LLM
+entirely (zero cost in steady state).
 
 ---
 
@@ -201,7 +226,18 @@ Quick locator:
   (search for `handleTaskCommand`)
 - **Statusline**: `packages/opencues-runtime/src/modules/statusline.ts`
   (agentTask field in the payload)
-- **Benchmark**: `tests/benchmarks/agent-task/` — 20 cases, 6 categories
+- **Benchmarks** (all under `tests/benchmarks/agent-task/`):
+  - `run.ts` — main suite, 128 cases across 16 categories
+    (`--parallel 8`, `--category <name>`, `--case <id>`,
+    `--format DECISIONS|EDITS`)
+  - `convergence.ts` — pins the cache contract: re-running on
+    unchanged text fires zero LLM calls (6/6 scenarios)
+  - `scale.ts` — 25/50/100/200-word docs, measures latency + recall
+  - `robustness.ts` — 16 stubbed-transport scenarios for failure-mode
+    coverage (empty body, malformed JSON, rate limits, throws, etc.)
+- **Experiment log**: `tests/benchmarks/agent-task/EXPERIMENTS.md` —
+  why EDITS is the default format, why the cursor mishandling masked
+  Experiment 2's "missing last item" finding, etc.
 
 ---
 

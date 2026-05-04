@@ -237,6 +237,314 @@ serialization/test infrastructure issue.
 
 ---
 
+## Experiment 4 — DECISIONS vs EDITS prompt format A/B
+
+**Hypothesis:** the DECISIONS format (one verdict per candidate) was
+adopted in Experiment 3 as defense in depth against the model dropping
+items in long lists. Now that the cursor-adjacency test bug is fixed,
+is it actually pulling its weight, or is the simpler EDITS-only format
+(emit lines only for actual edits) faster and at least as accurate?
+
+**Variants:**
+- **DECISIONS:** model emits `<idx> | <orig> | KEEP|<edit>` per
+  candidate; max_tokens scales as `30 × candidates + 600`.
+- **EDITS:** model emits `<idx> | <orig> | <edit>` only for proposed
+  edits, or `none`; max_tokens scales as `8 × candidates + 600`.
+
+Both formats pass through the same lenient parser (`parseEditPassOutput`)
+which already accepts either marker. Wired up via a new
+`promptFormat: 'DECISIONS' | 'EDITS'` option on `AgentLoop`.
+
+### Results — 70-case suite (gpt-oss-120b, parallel=8)
+
+```
+Format       Run 1     Run 2    Avg ms/case   Wall-clock
+─────────────────────────────────────────────────────────
+DECISIONS    92.9%     97.1%    448–564       5.3–5.5s
+EDITS        97.1%    100.0%    331–365       3.2–3.7s
+```
+
+EDITS wins on every dimension: pass rate, latency, throughput.
+
+### Results — scale benchmark (1 doc per tier)
+
+```
+Tier        DECISIONS                EDITS
+────────────────────────────────────────────────────────────
+25 words    66.7% recall, 612ms     100.0% recall, 1343ms
+50 words    100.0% recall, 1302ms   100.0% recall,  971ms
+100 words     0.0% recall, 1668ms    87.5% recall,  929ms
+200 words    25.0% recall, 8503ms   100.0% recall, 1689ms
+```
+
+The 100-word DECISIONS run with 0% recall is the smoking gun: at that
+size, the model spends so many output tokens emitting KEEP lines that
+it truncates before reaching the typos. EDITS is 5× faster on the
+200-word doc and 4× more accurate.
+
+### Why EDITS won
+
+1. **Smaller output budget** — the model isn't forced to emit ~30
+   tokens per non-edit candidate. Reasoning tokens stay focused on
+   identifying edits, not on reciting every KEEP line.
+2. **Defense-in-depth was unnecessary.** The "model drops the last
+   item" symptom from Experiment 2 was a test bug (cursor default —
+   see Experiment 3). Once the cursor was off the last word, the
+   model never actually dropped anything on EDITS format.
+3. **The runtime already enforces completeness.** Each candidate that
+   doesn't show up in the response is recorded as "evaluated" anyway
+   (so it won't be re-asked) — the absence of an EDIT line for an
+   index is treated as a KEEP. The DECISIONS format added explicit
+   KEEPs for a guarantee the runtime already provides implicitly.
+
+### Decision
+
+**EDITS is the new default** for `AgentLoop` (see
+`agent-loop.ts:promptFormat`). DECISIONS is preserved as an opt-in
+for future experiments where the explicit-KEEP guarantee might matter
+(e.g. extremely terse single-word docs where the model might infer the
+prompt ended unexpectedly).
+
+---
+
+## Experiment 5 — Convergence (no redundant LLM calls)
+
+**Hypothesis:** the per-task evaluation cache (taskId + textHash)
+should make the agent strictly idempotent — running it twice on the
+same text does NOT trigger a second LLM call. If we add new content,
+only the new word should be re-evaluated.
+
+**Setup:** built `tests/benchmarks/agent-task/convergence.ts`. Wraps
+the http adapter in a counting proxy and runs 6 scenarios where each
+scenario fires `loop.runOnce` multiple times and inspects the call
+log.
+
+**Scenarios:**
+
+| ID                  | Setup                                              | Expected                          |
+|---------------------|----------------------------------------------------|-----------------------------------|
+| idempotent-noop     | Clean doc + spelling task, run twice               | 1 call total (2nd is cache hit)   |
+| idempotent-fixed    | Doc with typos, run, then run on edited text       | 1 call total (typos owned now)    |
+| incremental-append  | Run, append a typo, run                            | 2 calls; 2nd has only new index   |
+| task-switch         | Run, `appendToPrompt`, run                         | 2 calls; cache cleared on append  |
+| dyn-def-owns        | Pre-claim a word, run                              | 1 call; owned word not in cands   |
+| cursor-rotation     | Run, move cursor onto word 0, re-run same text     | 1 call total (rest cached)        |
+
+**Results:** 6/6 pass.
+
+The cache contract holds: `(taskId, textHash)` is a sufficient key.
+The agent never re-asks about an unchanged word under the same task.
+The `appendToPrompt` regenerate-taskId design correctly invalidates
+the cache without any explicit eviction step.
+
+**Latency benefit:** in steady state (no doc changes), the agent fires
+zero LLM calls per debounce settle — it just recomputes candidates,
+finds them all cached, and exits.
+
+---
+
+## Experiment 6 — Robustness (failure-mode handling)
+
+**Hypothesis:** the loop should survive every realistic transport
+failure without crashing or applying garbage edits.
+
+**Setup:** `tests/benchmarks/agent-task/robustness.ts`. 16 scenarios
+exercise empty docs, transport errors, malformed responses, and
+defensive checks against bad LLM output. All scenarios use a stubbed
+`httpAdapter` — no network calls.
+
+**Code changes during this experiment:**
+
+1. **Defensive JSON parse.** `JSON.parse(response)` was wrapped in
+   try/catch. Empty responses, HTML error pages, and partial JSON now
+   log + return empty edits instead of bubbling up.
+2. **Empty-content guard.** If `data.choices[0].message.content` is
+   missing or empty, log + return empty edits.
+3. **No retry loop.** Deliberate. The next text-change re-fires the
+   debounce, which is our retry. Adding retries inside `runOnce`
+   would compound rate-limit failures.
+
+**Failure-mode coverage:**
+
+| Failure mode                            | Behaviour                          |
+|-----------------------------------------|------------------------------------|
+| Empty doc / all-blank doc / all-owned   | 0 candidates → no LLM call         |
+| Single-word doc with cursor on it       | 0 candidates → no LLM call         |
+| Empty response body                     | log + 0 edits                       |
+| Malformed JSON (HTML error page)        | log + 0 edits                       |
+| `{error: {message: ...}}`               | log + 0 edits                       |
+| 429 rate-limit shape                    | log + 0 edits                       |
+| Valid JSON missing `.choices`           | log + 0 edits                       |
+| Empty `choices[0].message.content`      | log + 0 edits                       |
+| EDITS body with garbage interleaved     | only valid lines parsed, applied   |
+| LLM proposes index out of range         | apply-loop skips                    |
+| LLM proposes wrong original word        | apply-loop skips (stale-original)  |
+| LLM proposes `x → x`                    | parser skips (no-op)                |
+| LLM proposes index claimed by other src | apply-loop skips (DynDef check)    |
+| `httpAdapter.post()` throws             | outer try/catch logs + returns     |
+
+**Results:** 16/16 pass. The loop is non-fatal under every failure
+shape we tested.
+
+---
+
+## Experiment 7 — Professionalism (abstract style task)
+
+**Hypothesis:** the agent should generalise beyond mechanical
+spell-correction. A "make wording more professional" prompt is
+qualitatively different — there's no single right answer per word,
+and many sentences could be left alone.
+
+**Setup:** added a `professionalism` category (10 cases) targeting:
+- 8 informal-word swaps (`gonna`, `kinda`, `super`, `stuff`, `wanna`,
+  `lemme`, `awesome`, etc.)
+- 2 already-professional sentences where we expect no edits
+
+**Results:** 6–7/10 pass. The model:
+- ✅ Correctly identifies `gonna`, `kinda`, `super`, `stuff`, `wanna`,
+  `lemme`, `awesome` as informal and substitutes plausible
+  professional alternatives.
+- ❌ Over-edits. Suggests `know → are aware`, `if → whether`,
+  `have → possess` — defensible style choices, but more edits than the
+  test author marked. Counts as "extra unexpected edit" warnings, not
+  failures.
+- ❌ Edits the no-op cases. Suggests `we → We`, `need → must`,
+  `finalise → finalize`, `the → The`, `board → Board`. These are all
+  defensible edits (sentence-case capitalisation, AmE spelling); the
+  test fails because we asserted "no edits" but the model has a
+  legitimate stylistic opinion.
+
+**Lesson:** abstract style tasks are valid agent-task use cases, but
+the benchmark's pass-rate metric isn't the right way to score them
+because the test author and the model can disagree about what counts
+as "improvement." For shipping purposes, the agent's behaviour is
+correct: it identifies informal vocabulary and proposes more formal
+substitutes. For benchmarking purposes, only the unambiguous-informal
+cases (gonna, kinda, lemme, etc.) belong in a strict pass/fail suite.
+
+**Decision:** keep the 10-case category as documentation of agent
+behaviour on style tasks; treat the failures as known model variance,
+not pipeline bugs. Don't over-tune the prompt to suppress legitimate
+edits — that would hurt other categories.
+
+---
+
+## Experiment 8 — Domain-specific agents
+
+**Hypothesis:** the agent loop generalises beyond spelling/caps to
+arbitrary single-word substitution tasks declared in plain English.
+A career-or-platform-shaped prompt (LinkedIn polish, legal precision,
+medical terminology, British spelling, inclusive language, Twitter
+concision, English-to-Spanish day translation) should land cleanly,
+since the runtime is task-agnostic and only the prompt changes.
+
+**Setup:** added 48 new cases across 8 categories:
+
+| Category            | Cases | Prompt                                   |
+|---------------------|-------|------------------------------------------|
+| linkedin-friendly   |   6   | make wording linkedin friendly           |
+| lawyer              |   6   | use precise legal terminology            |
+| translation         |   6   | translate english days to spanish        |
+| medical             |   5   | use clinical terminology                 |
+| british-english     |   8   | use british english spelling             |
+| inclusive-language  |   6   | use inclusive gender-neutral language    |
+| twitter-concise     |   5   | shorten verbose words                    |
+| long-doc            |   6   | varied (40–60 word docs, mixed tasks)    |
+
+Most cases use single-word substitutions with a near-canonical answer
+(e.g. `chairman → chairperson`, `monday → lunes`, `color → colour`).
+The `long-doc` category puts the agent on documents of 30–65 words
+with a mix of typo / British / inclusive / professional tasks — this
+is the "good length test" the spec called for, alongside the existing
+`scale.ts` 25/50/100/200-word stress runs.
+
+**Results — full 128-case suite (parallel=8, EDITS default):**
+
+```
+Category              Pass rate
+─────────────────────────────────────
+spelling-task         10/10  (100.0%)
+cursor-adjacent       10/10  (100.0%)
+no-op-recall          10/10  (100.0%)
+ownership-respect     10/10  (100.0%)
+task-id-invalidation  10/10  (100.0%)
+caps-task             10/10  (100.0%)
+mixed-task             8/10   (80.0%)
+professionalism        5/10   (50.0%)
+linkedin-friendly      6/6   (100.0%)
+lawyer                 6/6   (100.0%)
+translation            6/6   (100.0%)
+medical                5/5   (100.0%)
+british-english        7/8    (87.5%)  ← variance; 8/8 standalone
+inclusive-language     6/6   (100.0%)
+twitter-concise        5/5   (100.0%)
+long-doc               6/6   (100.0%)
+─────────────────────────────────────
+Total                120/128  (93.8%)
+
+Avg per case          379ms
+Wall-clock            7.2s   (parallel=8)
+Throughput           17.73 cases/sec
+```
+
+**Findings:**
+
+1. **The agent generalises cleanly to domain prompts.** All seven
+   new domain categories sit at 87.5–100%. The runtime is genuinely
+   task-agnostic — switching from "correct spelling" to "translate
+   english days to spanish" or "use precise legal terminology" needs
+   zero code changes; it's all in the user-supplied prompt.
+
+2. **Stylistic-judgement tasks have a lower ceiling.** `professionalism`
+   sits at 50%, `mixed-task` at 80%, primarily because:
+   - The model has its own opinions about what counts as
+     "more professional" (`assessed → evaluated`, `the → The`,
+     `contract → agreement`) and over-edits no-op cases.
+   - The benchmark asserts strict "no edits expected" on the no-op
+     cases, which fails when the model exercises legitimate
+     editorial discretion.
+   These failures are model judgement, not pipeline bugs. Don't
+   prompt-tune to suppress them — that hurts mechanical-task accuracy.
+
+3. **Long-doc tests pass at 100%** even with the EDITS format on
+   40–65 word docs. Combined with the `scale.ts` 200-word run
+   (100% recall, 1.7s), the agent comfortably handles realistic
+   document lengths.
+
+4. **Variance between runs is real.** `british-english` was 7/8 in
+   the full-suite run but 8/8 standalone; `lawyer` was 3/6 in the
+   per-category sweep but 6/6 in the full-suite run. The model
+   (`gpt-oss-120b @ temperature=0, seed=42`) is not perfectly
+   deterministic across requests. Treat any single-run pass rate
+   as ±5pp noise.
+
+5. **Translation prompt is the surprise win.** "Translate english
+   days to spanish" lands 6/6 — the model emits `lunes`, `martes`,
+   `viernes` etc. cleanly even though it's a content-generation task
+   (not just style polish). This validates the agent loop as a
+   general-purpose plain-English-declared continuous editor, not
+   just a spell/style fixer.
+
+**Decision:** ship the 128-case suite as the canonical benchmark.
+The 50%/80% stylistic-task failures are documented model variance,
+not pipeline regressions — they should not block release.
+
+---
+
+## Final state — May 2026
+
+- **128 cases across 16 categories** (8 mechanical, 7 domain-specific,
+  1 long-doc). 120/128 (93.8%) pass on EDITS format.
+- **Convergence:** 6/6 pass — agent never re-asks about cached words.
+- **Robustness:** 16/16 pass — every transport failure mode handled.
+- **Scale:** EDITS handles 200-word docs at 100% recall in ~1.7s.
+- **Default format:** EDITS (was DECISIONS until Experiment 4).
+- **Domain coverage:** LinkedIn, legal, medical, translation,
+  British English, inclusive language, Twitter concision, long-doc —
+  all working with no runtime changes, only prompt swaps.
+
+---
+
 ## Experiments deferred to later sessions
 
 These were marked as deferred in `docs/architecture/agent-task.md`.

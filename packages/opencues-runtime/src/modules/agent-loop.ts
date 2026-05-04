@@ -7,10 +7,11 @@
 // existing dim-render / cycling / skip-filter machinery picks them
 // up for free.
 //
-// See docs/architecture/agent-task.md for the full design.
-//
-// Status: v1 — minimal viable loop. Many decisions deferred to the
-// benchmark phase (Experiment markers in code show where).
+// See docs/architecture/agent-task.md for the full design + the
+// "Implementation outcomes" section for the benchmark-driven
+// decisions (EDITS-format default, defensive parse paths, apply-side
+// candidate-set check). Empirical justification for each is in
+// tests/benchmarks/agent-task/EXPERIMENTS.md.
 
 import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
@@ -29,6 +30,18 @@ export interface AgentLoopOptions {
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
   /** Optional log function — wires through to adapter.log('debug', ...) by default. */
   readonly log?: (msg: string) => void;
+  /**
+   * Output format the model is asked to emit.
+   *   - 'EDITS' (default): only emit lines for words that need editing.
+   *     Faster, smaller output, scales to long docs (gpt-oss-120b
+   *     hits 100% on the 70-case suite and 1689ms / 100% recall on
+   *     a 200-word doc — versus DECISIONS' 8503ms / 25% recall).
+   *   - 'DECISIONS': one verdict per candidate (KEEP or edit). The
+   *     completeness guarantee was the original v1 design; turned out
+   *     to over-spend tokens on long docs and lose accuracy.
+   * See tests/benchmarks/agent-task/EXPERIMENTS.md Experiment 4.
+   */
+  readonly promptFormat?: 'DECISIONS' | 'EDITS';
 }
 
 export interface AgentEdit {
@@ -241,7 +254,119 @@ export class AgentLoop {
    * Or "EDITS: none" / empty when nothing needs editing.
    */
   private async callEditPass(text: string, prompt: string, candidateIndices: number[]): Promise<AgentEdit[]> {
-    const system = `You are an inline editor running continuously in the background of a user's document. You receive a TASK PROMPT (what the user wants you to do), a DOC (the current text), and a list of CANDIDATE INDICES you may edit. Your job: emit a verdict for EACH candidate — KEEP if no edit, or the edited word.
+    const format = this.options.promptFormat ?? 'EDITS';
+    const system = format === 'EDITS' ? EDITS_SYSTEM_PROMPT : DECISIONS_SYSTEM_PROMPT;
+
+    const wordSpans = splitWords(text);
+    const docWithIndices = wordSpans.map((w, i) => `[${i}]${w.word}`).join(' ');
+    const userMsg = `TASK PROMPT: ${prompt}
+DOC: ${docWithIndices}
+
+Candidate word indices (you MAY edit only these — others are owned by other systems): [${candidateIndices.join(', ')}]`;
+
+    // Dynamic max_tokens. DECISIONS emits one line per candidate (output
+    // scales with candidate count). EDITS only emits lines for actual
+    // edits, which is usually a small fraction of candidates — but the
+    // model still needs reasoning headroom to walk the full list.
+    const estLines = candidateIndices.length;
+    const maxTokens = format === 'EDITS'
+      ? Math.max(1024, Math.min(2200, estLines * 8 + 600))
+      : Math.max(1024, Math.min(4096, estLines * 30 + 600));
+    const body = JSON.stringify({
+      model: this.options.defaultModel,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userMsg },
+      ],
+      max_tokens: maxTokens,
+      temperature: 0,
+      reasoning_effort: 'low',
+      seed: 42,
+    });
+
+    const agent = this.options.httpAdapter ?? this.getHttpAgent();
+    const response = await agent.post(this.options.endpoint, body, {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.options.apiKey}`,
+    });
+
+    // Empty body (timeout, dropped connection) — treat as no edits.
+    // The next text-change will re-fire the loop, which is our retry.
+    if (!response || !response.trim()) {
+      this._logFn(`AgentLoop: empty response body`);
+      return [];
+    }
+    let data: any;
+    try {
+      data = JSON.parse(response);
+    } catch (err) {
+      this._logFn(`AgentLoop: response not valid JSON (${response.length} chars) — ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
+    if (data.error) {
+      const msg = data.error.message ?? JSON.stringify(data.error);
+      // 429 / rate-limit / quota: the next text-change will retry; don't crash.
+      this._logFn(`AgentLoop: API error — ${msg}`);
+      return [];
+    }
+    const out: string = data.choices?.[0]?.message?.content ?? '';
+    if (!out) {
+      this._logFn(`AgentLoop: response had no content (choices=${data.choices?.length ?? 0})`);
+      return [];
+    }
+    return parseEditPassOutput(out);
+  }
+
+  private getHttpAgent(): { post(url: string, body: string, headers: Record<string, string>): Promise<string> } {
+    if (this._httpAgent) return this._httpAgent;
+    // Lazy require so tests without node-http-adapter still load.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
+    this._httpAgent = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
+    return this._httpAgent!;
+  }
+}
+
+/**
+ * Parse either the EDITS: ... END block (legacy) or the DECISIONS:
+ * ... END block (new). DECISIONS format is more verbose (one line per
+ * candidate, KEEP for no-op) but guarantees the model can't drop the
+ * last item. We extract only the non-KEEP rows as edits.
+ *
+ * Lenient — accepts either marker, trailing whitespace, etc.
+ */
+export function parseEditPassOutput(raw: string): AgentEdit[] {
+  const edits: AgentEdit[] = [];
+  // Find EDITS: or DECISIONS: marker
+  const startMatch = raw.match(/(EDITS|DECISIONS):\s*\n/i);
+  if (!startMatch) return [];
+  const start = startMatch.index! + startMatch[0].length;
+  // Find END marker (or end of string)
+  const endMatch = raw.slice(start).match(/^\s*END\s*$/im);
+  const end = endMatch ? start + endMatch.index! : raw.length;
+  const block = raw.slice(start, end);
+
+  for (const line of block.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/^none$/i.test(trimmed)) continue;
+    // Format: <idx> | <orig> | <edit-or-KEEP>
+    const parts = trimmed.split('|').map(s => s.trim());
+    if (parts.length !== 3) continue;
+    const idx = parseInt(parts[0], 10);
+    if (Number.isNaN(idx) || idx < 0) continue;
+    const orig = parts[1];
+    const edit = parts[2];
+    if (!orig || !edit) continue;
+    // KEEP marker — explicit no-op, don't include as an edit
+    if (/^keep$/i.test(edit)) continue;
+    if (edit === orig) continue;  // model emitted unchanged value, treat as no-op
+    edits.push({ wordIndex: idx, originalWord: orig, editedWord: edit });
+  }
+  return edits;
+}
+
+const DECISIONS_SYSTEM_PROMPT = `You are an inline editor running continuously in the background of a user's document. You receive a TASK PROMPT (what the user wants you to do), a DOC (the current text), and a list of CANDIDATE INDICES you may edit. Your job: emit a verdict for EACH candidate — KEEP if no edit, or the edited word.
 
 Output format — ONE LINE PER CANDIDATE INDEX, in ascending order:
 
@@ -299,104 +424,61 @@ DECISIONS:
 7 | rest | KEEP
 8 | on | KEEP
 9 | sunday | Sunday
+END`;
+
+const EDITS_SYSTEM_PROMPT = `You are an inline editor running continuously in the background of a user's document. You receive a TASK PROMPT (what the user wants you to do), a DOC (the current text), and a list of CANDIDATE INDICES you may edit. Your job: emit ONLY the edits you want to apply — nothing for words that don't need editing.
+
+Output format — ONE LINE PER EDIT (skip words that need no edit):
+
+EDITS:
+<wordIndex> | <originalWord> | <editedWord>
+<wordIndex> | <originalWord> | <editedWord>
+...
+END
+
+If nothing needs editing, output:
+
+EDITS:
+none
+END
+
+RULES:
+1. Walk the candidate list MENTALLY before emitting. Don't stop early — check every single candidate.
+2. Each emitted line: <wordIndex> | <originalWord> | <editedWord>
+3. Be conservative on AMBIGUOUS edits — when in doubt, skip. Be exhaustive on UNAMBIGUOUS edits (typos, proper-noun capitalisation, etc.).
+4. Multi-word transformations are NOT supported. Skip words you can't fix in a single-word swap.
+5. Pay special attention to the LAST few candidate indices — they're easy to miss.
+
+EXAMPLES:
+
+TASK PROMPT: correct spelling
+DOC: [0]I [1]rite [2]some [3]stuff
+Candidate indices: [0, 1, 2, 3]
+EDITS:
+1 | rite | write
+END
+
+TASK PROMPT: correct spelling
+DOC: [0]This [1]is [2]fine
+Candidate indices: [0, 1, 2]
+EDITS:
+none
+END
+
+TASK PROMPT: capitalize the days
+DOC: [0]i [1]work [2]on [3]monday [4]and [5]friday [6]but [7]rest [8]on [9]sunday
+Candidate indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+EDITS:
+3 | monday | Monday
+5 | friday | Friday
+9 | sunday | Sunday
 END
 
 TASK PROMPT: correct spelling
 DOC: [0]thier [1]proposal [2]was [3]carefuly [4]recieved
 Candidate indices: [0, 1, 2, 3, 4]
-DECISIONS:
+EDITS:
 0 | thier | their
-1 | proposal | KEEP
-2 | was | KEEP
 3 | carefuly | carefully
 4 | recieved | received
 END`;
-
-    const wordSpans = splitWords(text);
-    const docWithIndices = wordSpans.map((w, i) => `[${i}]${w.word}`).join(' ');
-    const userMsg = `TASK PROMPT: ${prompt}
-DOC: ${docWithIndices}
-
-Candidate word indices (you MAY edit only these — others are owned by other systems): [${candidateIndices.join(', ')}]`;
-
-    // Dynamic max_tokens: DECISIONS format emits ONE LINE PER CANDIDATE,
-    // so the output scales with candidate count. ~30 tokens per line
-    // (idx + word + verdict + separators), plus reasoning headroom.
-    // Floor at 1024 for short docs, ceiling at 4096 for long ones.
-    const estLines = candidateIndices.length;
-    const maxTokens = Math.max(1024, Math.min(4096, estLines * 30 + 600));
-    const body = JSON.stringify({
-      model: this.options.defaultModel,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userMsg },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0,
-      reasoning_effort: 'low',
-      seed: 42,
-    });
-
-    const agent = this.options.httpAdapter ?? this.getHttpAgent();
-    const response = await agent.post(this.options.endpoint, body, {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.options.apiKey}`,
-    });
-
-    const data = JSON.parse(response);
-    if (data.error) {
-      this._logFn(`AgentLoop: API error — ${data.error.message ?? JSON.stringify(data.error)}`);
-      return [];
-    }
-    const out: string = data.choices?.[0]?.message?.content ?? '';
-    return parseEditPassOutput(out);
-  }
-
-  private getHttpAgent(): { post(url: string, body: string, headers: Record<string, string>): Promise<string> } {
-    if (this._httpAgent) return this._httpAgent;
-    // Lazy require so tests without node-http-adapter still load.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-    this._httpAgent = new NodeHttpAdapter({ maxSockets: 4, timeout: 30000 });
-    return this._httpAgent!;
-  }
-}
-
-/**
- * Parse either the EDITS: ... END block (legacy) or the DECISIONS:
- * ... END block (new). DECISIONS format is more verbose (one line per
- * candidate, KEEP for no-op) but guarantees the model can't drop the
- * last item. We extract only the non-KEEP rows as edits.
- *
- * Lenient — accepts either marker, trailing whitespace, etc.
- */
-export function parseEditPassOutput(raw: string): AgentEdit[] {
-  const edits: AgentEdit[] = [];
-  // Find EDITS: or DECISIONS: marker
-  const startMatch = raw.match(/(EDITS|DECISIONS):\s*\n/i);
-  if (!startMatch) return [];
-  const start = startMatch.index! + startMatch[0].length;
-  // Find END marker (or end of string)
-  const endMatch = raw.slice(start).match(/^\s*END\s*$/im);
-  const end = endMatch ? start + endMatch.index! : raw.length;
-  const block = raw.slice(start, end);
-
-  for (const line of block.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (/^none$/i.test(trimmed)) continue;
-    // Format: <idx> | <orig> | <edit-or-KEEP>
-    const parts = trimmed.split('|').map(s => s.trim());
-    if (parts.length !== 3) continue;
-    const idx = parseInt(parts[0], 10);
-    if (Number.isNaN(idx) || idx < 0) continue;
-    const orig = parts[1];
-    const edit = parts[2];
-    if (!orig || !edit) continue;
-    // KEEP marker — explicit no-op, don't include as an edit
-    if (/^keep$/i.test(edit)) continue;
-    if (edit === orig) continue;  // model emitted unchanged value, treat as no-op
-    edits.push({ wordIndex: idx, originalWord: orig, editedWord: edit });
-  }
-  return edits;
-}

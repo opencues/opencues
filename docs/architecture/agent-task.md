@@ -528,3 +528,94 @@ When we start building, the order should be:
   command?" pre-pass?
 
 We'll resolve these during implementation, document the decisions.
+
+---
+
+## Implementation outcomes (post-experiment)
+
+The plan above shipped largely intact. The benchmark loop drove a
+handful of decisions worth pinning here so future readers don't have
+to reverse-engineer them from `tests/benchmarks/agent-task/EXPERIMENTS.md`.
+
+### Output format: EDITS, not DECISIONS
+
+The plan didn't commit to a wire format. v1 shipped with a DECISIONS
+format (one verdict per candidate, KEEP or edit) for completeness
+guarantees against the model dropping items in long lists. Experiment 4
+A/B'd that against an EDITS format (only emit lines for actual edits).
+EDITS won on every dimension:
+
+- **97–100% pass rate vs 93–97%** on the 70-case suite
+- **30% lower latency** (~365ms vs ~564ms avg)
+- **5× faster on 200-word docs** (1.7s vs 8.5s) at 100% recall vs 25%
+
+Why DECISIONS lost: at high candidate counts the model spent its
+output budget reciting `<idx> | <word> | KEEP` lines and ran out of
+tokens before reaching real edits. The runtime already provides
+implicit completeness — every candidate index that doesn't appear in
+the response is recorded as evaluated and won't be re-asked.
+
+The format is opt-in via `AgentLoopOptions.promptFormat`. EDITS is the
+default; DECISIONS is preserved for future experiments.
+
+### Defensive parse paths
+
+`callEditPass` wraps `JSON.parse(response)` in try/catch and short-
+circuits empty bodies, missing `.choices`, and `data.error` shapes
+(rate limits / invalid keys). All return empty edits + log; the next
+text-change debounce is the implicit retry. **No retry loop inside
+`runOnce`** — that would compound rate-limit failures.
+
+Pinned by `tests/benchmarks/agent-task/robustness.ts` (16 stubbed-
+transport scenarios, all passing).
+
+### Apply-side defence in depth
+
+The model occasionally proposes edits OUTSIDE the candidate list
+(cache-hit indices, owned indices, cursor-adjacent). The apply loop
+re-checks `candidateSet.has(edit.wordIndex)` AND re-fetches live text
+to verify `liveWord.word === edit.originalWord` — both checks were
+added during Experiment 2 after `task-id-invalidation` regressed.
+
+### Cursor-adjacency rule (the test-bug story)
+
+Experiment 3 caught a benchmark-author bug that masked agent accuracy:
+the mock adapter defaulted `cursorPos` to `text.length`, which falls
+within the last word's `[start, end]` span, so `findCursorWordIdx`
+correctly classified the last word as cursor-adjacent and excluded
+it. Symptom: agent appeared to "miss the last item" in 5+ test
+categories. Fix: mock now defaults to `text.length + 1` (past every
+word). Real-world cursor-adjacency works as designed.
+
+### Per-task invalidation cache contract
+
+The cache contract (`(taskId, textHash)` → evaluated) holds tightly
+in practice. `tests/benchmarks/agent-task/convergence.ts` pins six
+scenarios — same text twice = zero LLM calls; appendToPrompt
+regenerates taskId and forces full re-eval; cursor moves don't
+invalidate already-cached words.
+
+### Scope of tested tasks
+
+The plan only listed spelling/caps/grammar. The benchmark proved the
+loop generalises with no code changes to: British English, inclusive
+language, medical terminology, legal precision, LinkedIn polish,
+Twitter concision, and English-to-Spanish day translation. The
+runtime is genuinely task-agnostic; everything is in the prompt.
+
+### Open questions — answers
+
+- **MAX prompt length before capping appendToPrompt:** not yet hit a
+  problem; left uncapped. The cache invalidation on every append
+  means runaway concatenation only costs one extra LLM call per
+  text-change, not exponential blowup.
+- **Stop task clears existing edits?** No (per original spec). Edits
+  live as DynDefs the user can revert via cycling Down. Confirmed
+  good UX — user often wants to keep what the agent already fixed.
+- **Skip line vs word at cursor?** Word-only, as planned. The
+  cursor-adjacency rule + the 500ms debounce + the `_` blank exclusion
+  together cover all the typing-in-progress cases without needing
+  line-level skipping.
+- **TASK as 5th EXTRACT verdict vs separate pre-pass?** 5th verdict
+  on the existing classifier. Worked cleanly — the EXTRACT prompt's
+  examples cover all four TASK_* shapes (ARM/ADD/STOP/SHOW).

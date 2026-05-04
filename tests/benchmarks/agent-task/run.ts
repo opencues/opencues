@@ -37,6 +37,7 @@ interface Args {
   caseId?: string;
   category?: string;
   parallel: number;
+  format?: 'DECISIONS' | 'EDITS';
 }
 
 function parseArgs(): Args {
@@ -46,6 +47,14 @@ function parseArgs(): Args {
     if (args[i] === '--case') out.caseId = args[++i];
     else if (args[i] === '--category') out.category = args[++i];
     else if (args[i] === '--parallel') out.parallel = parseInt(args[++i], 10) || 1;
+    else if (args[i] === '--format') {
+      const f = args[++i];
+      if (f !== 'DECISIONS' && f !== 'EDITS') {
+        console.error(`--format must be DECISIONS or EDITS, got ${f}`);
+        process.exit(2);
+      }
+      out.format = f;
+    }
   }
   return out;
 }
@@ -100,6 +109,8 @@ interface RunOutcome {
   latencyMs: number;
 }
 
+let RUN_FORMAT: 'DECISIONS' | 'EDITS' | undefined;
+
 async function runCase(c: AgentTaskCase): Promise<RunOutcome> {
   const t0 = Date.now();
 
@@ -146,6 +157,7 @@ async function runCase(c: AgentTaskCase): Promise<RunOutcome> {
     defaultModel: MODEL,
     httpAdapter,
     log: () => {},
+    promptFormat: RUN_FORMAT,
   });
 
   // Run the agent
@@ -270,8 +282,11 @@ async function main() {
     process.exit(2);
   }
 
+  RUN_FORMAT = args.format;
+
   console.log(`${BOLD}agent-task benchmark${RESET}`);
   console.log(`Model: ${MODEL}`);
+  console.log(`Format: ${args.format ?? 'DECISIONS (default)'}`);
   console.log(`Cases: ${selected.length}/${CASES.length}  (parallel=${args.parallel})`);
   console.log();
 
