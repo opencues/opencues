@@ -76,7 +76,7 @@ integrations/claude-code/patches/
 └── highlight-statusline.sh   # CC's statusline command — copied to <CC_FORK>/.opencues/statusline.sh
 ```
 
-Cross-host scripts (`speak.sh`, `SpeakCtl.cs`, brightness/volume helpers) live under `defaults/blanks/<name>/` and `defaults/scripts/`, NOT here — they're managed by `opencues seed-configs` and shared by every native host (CC + OC + Codex).
+Cross-host scripts (`speak.sh`, `SpeakCtl.cs`, brightness/volume helpers) live under `defaults/blanks/<name>/` and `defaults/scripts/`, NOT here — they're managed by `opencues seed-configs` and shared by every native host (CC + OC).
 
 ## Manual installation (fallback)
 

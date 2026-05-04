@@ -26,8 +26,8 @@
 //               to the script that uses them via "${SCRIPT_DIR}/<helper>".
 //
 // Why this command (not the per-host installer) owns these:
-//   ~/.opencues/ is shared across CC + OC + Codex. Putting these writes
-//   inside CC's setup.sh meant OC + Codex users only got refreshes if
+//   ~/.opencues/ is shared across CC + OC. Putting these writes
+//   inside CC's setup.sh meant OC users only got refreshes if
 //   they happened to also install CC. That coupling is gone — every host
 //   installer invokes seed-configs first, and standalone `opencues
 //   seed-configs` does the same work.

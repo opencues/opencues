@@ -155,7 +155,7 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
     ├── tweakcc/                   our patcher tool (re-cloned every install)
     └── patch-state/               tweakcc's config + cli.js.backup
 
-~/.cues/                        (USER-LEVEL — shared by CC + OpenCode + Codex)
+~/.cues/                        (USER-LEVEL — shared by CC + OpenCode)
 ├── cues.md, blanks.md, opencues.md   user-editable config (never overwritten)
 ├── cues/<name>/cue.md             folder-based cue configs
 ├── blanks/<name>/               folder-based cue-blanks — colocated with their helpers:
@@ -166,8 +166,8 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 ```
 
 **Compact, decoupled, predictable**:
-- Uninstalling CC (`rm -rf ~/claude-code-cues`) doesn't break OC or Codex — they read `~/.cues/` independently
-- TTS works on OC/Codex even if CC was never installed (`~/.cues/scripts/speak.sh` is shared)
+- Uninstalling CC (`rm -rf ~/claude-code-cues`) doesn't break OC — it reads `~/.cues/` independently
+- TTS works on OC even if CC was never installed (`~/.cues/scripts/speak.sh` is shared)
 - `require("@opencues/runtime")` from cli.js resolves via Node's standard upward `node_modules` walk — no symlinks
 - The statusline path in `~/.claude/settings.json` is absolute, so it works from every project you launch claude-cues in
 

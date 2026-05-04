@@ -173,7 +173,7 @@ export GROQ_API_KEY="your-key"
 `opencues install claude-code` chains two scripts:
 
 1. **`opencues seed-configs --silent`** — owns all writes to `~/.cues/`
-   (shared by every native host: CC, OC, Codex). First-time copy +
+   (shared by every native host: CC, OC). First-time copy +
    library-script sync + 0-byte cues.md self-heal + colocated `.cs`
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
@@ -185,8 +185,8 @@ export GROQ_API_KEY="your-key"
    verified at build AND apply time. ~1m 5s warm install.
 
 **Compact footprint**: everything CC-specific lives inside `~/claude-code-cues/`.
-Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert. OpenCode + Codex
-keep working (they read shared `~/.cues/` independently).
+Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert. OpenCode
+keeps working (it reads shared `~/.cues/` independently).
 
 For non-standard cli.js paths: `--target /path/to/cli.js`.
 For dev iteration on patch sources: `--keep-state` (skips nuke; ~39s).
@@ -254,15 +254,8 @@ launch — test fixtures embedded in shipped configs, dead code paths
 left over from the option B refactor, dated "April 2026" commentary in
 code comments, doc tidy-ups, and test consolidation. Walk the list
 once Chrome + OpenCode are fully verified on phases 1–6, before
-extending verification to Claude Code + Codex. The file is
+extending verification to Claude Code. The file is
 self-deleting: `git rm CLEANUP.md` once everything inside is done.
-
-`CODEX-CHECKLIST.md` (repo root) is the parallel tracker for the
-codex integration's path from pre-alpha scaffolding to OpenCode
-parity. 7 tiers ordered easy → hard, with severities + file
-citations. Tiers 1–2 are done; Tier 3 onward (daemon module wiring,
-Rust bridge fixes, TUI patches, verification) is the remaining
-work. Self-deleting once codex hits beta.
 
 ---
 
@@ -340,7 +333,7 @@ the table of regressions and which scenario test now pins each one.
 
 ## Config search paths — who reads what
 
-Native hosts (CC / OC / codex) read the filesystem directly. Chrome
+Native hosts (CC / OC) read the filesystem directly. Chrome
 can't — it runs in the browser — so it reads a pre-built bundle. The
 two paths behave differently:
 
@@ -348,7 +341,6 @@ two paths behave differently:
 |---|---|---|
 | **claude-code** | `$OPENCUES_HOME` → `<cwd>/.cues/` → `~/.cues/` | Automatic (cwd-based merge) |
 | **opencode** | same | same |
-| **codex** | same | same |
 | **chrome** | `<extension>/dist/configs/` (sync'd) + bake-time defaults from `<repo>/defaults/` | Explicit — `opencues sync chrome [--include <path>]` |
 
 For the native hosts, project wins on name conflicts. Missing dirs are
@@ -375,7 +367,7 @@ The convention mirrors `.editorconfig` / `.npmrc` / `.claude/skills/` — opaque
 host-neutral dir at the project root. Missing dirs are silently skipped; the
 runtime degrades gracefully.
 
-A user with no `.cues/` anywhere gets empty config (CC/OC/codex)
+A user with no `.cues/` anywhere gets empty config (CC/OC)
 — not a crash. Hot-reload polls every search path on every keystroke
 (same `maybeReload` mechanism as before).
 
@@ -406,8 +398,8 @@ integration, so projects cannot override it. The file lives at
 ## Host compatibility — which integrations a cue/blank runs on
 
 Every cue / blank has an implicit (or explicit) host-compat
-list: which of `{chrome, claude-code, codex, opencode}` it works on.
-Native hosts (CC, OC, codex) can spawn subprocesses + read the
+list: which of `{chrome, claude-code, opencode}` it works on.
+Native hosts (CC, OC) can spawn subprocesses + read the
 filesystem; chrome can't.
 
 Default: auto-detected from `script:` / `blankScript:` extension.
@@ -417,7 +409,7 @@ else → all hosts.
 Override via frontmatter:
 
 ```yaml
-on-host: [chrome, claude-code, codex, opencode]   # allow-list
+on-host: [chrome, claude-code, opencode]   # allow-list
 not-on-host: [chrome]                              # deny-list
 ```
 
@@ -435,7 +427,7 @@ Real-world example: `.cues/blanks/opencues/cue.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a
 runtime-class implementation in `@opencues/runtime`. Auto-detect
 would exclude chrome because of the `.sh`; the file adds
-`on-host: chrome, claude-code, codex, opencode` to override. The
+`on-host: chrome, claude-code, opencode` to override. The
 validator warns about the contradiction (on-host + .sh), which is
 the expected nudge for readers to check.
 

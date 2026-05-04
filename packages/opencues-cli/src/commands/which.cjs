@@ -29,7 +29,7 @@ module.exports = function which(argv, ctx) {
       ['tweakcc clone',              path.join(HOME, 'claude-code-cues', '.opencues', 'tweakcc')],
       ['tweakcc state + cli backup', path.join(HOME, 'claude-code-cues', '.opencues', 'patch-state')],
     ]],
-    ['Shared user-level (used by CC + OC + Codex)', [
+    ['Shared user-level (used by CC + OC)', [
       ['TTS script',                 path.join(HOME, '.opencues', 'scripts', 'speak.sh')],
       ['TTS helper (compiled)',      path.join(HOME, '.opencues', 'scripts', 'SpeakCtl.exe')],
       ['Brightness blank dir',       path.join(HOME, '.opencues', 'blanks', 'brightness')],
@@ -39,13 +39,6 @@ module.exports = function which(argv, ctx) {
     ['OC install state (per fork)', [
       ['Default fork dir',           path.join(HOME, 'opencode-cues')],
       ['(actual fork install lives at <fork>/node_modules/@opencues/{core,runtime}/ + 3 patched .tsx files)', ''],
-    ]],
-    ['Codex install state (per fork)', [
-      ['Default fork dir',           path.join(HOME, 'codex-cues')],
-      ['Bridge crate',               path.join(HOME, 'codex-cues', 'codex-rs', 'opencues-bridge')],
-      ['Launch helper',              path.join(HOME, 'codex-cues', 'launch.sh')],
-      ['Daemon source',              path.join(ctx.REPO_ROOT, 'packages/opencues-runtime/dist/adapters/codex/v1/daemon.js')],
-      ['(TUI patches: pre-alpha — see integrations/codex/HANDOFF.md)', ''],
     ]],
     ['Chrome state', [
       ['Repo build output',          path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist')],

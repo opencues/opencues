@@ -14,7 +14,7 @@ Yes. From a fresh OpenCues clone:
 
 ```bash
 pnpm install
-opencues install <host>   # claude-code | opencode | chrome | codex | --all
+opencues install <host>   # claude-code | opencode | chrome | --all
 ```
 
 That covers everything the host needs. Specifically:
@@ -24,7 +24,6 @@ That covers everything the host needs. Specifically:
 | `claude-code` | `opencues seed-configs` (shared `~/.cues/`) → nuke prior CC state + reinstall pinned `@anthropic-ai/claude-code@2.1.110` → clone tweakcc into `<CC_FORK>/.opencues/tweakcc/` → patch tweakcc (every stock patch disabled, only OpenCues v2 wiring) → build `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/` → install statusline.sh into `<CC_FORK>/.opencues/` → apply tweakcc to cli.js + verify v2 boot landed. ~1m warm. tweakcc is just our patcher tool. |
 | `opencode` | Clone `sst/opencode` fork → `bun install` the fork's deps → build `@opencues/{core,runtime}` → install into `<fork>/node_modules/@opencues/` → patch 3 TSX files in place |
 | `chrome` | Build MV3 extension → copy `dist/` to `--target` if provided |
-| `codex` | **Pre-alpha** — clone fork + build Rust bridge. TUI patches TODO; see [`integrations/codex/HANDOFF.md`](integrations/codex/HANDOFF.md) |
 
 After install, launch with `opencues run <host>` (except Chrome, which you load manually in `chrome://extensions`).
 
@@ -38,10 +37,9 @@ Per-integration (the HOST's requirements, not OpenCues's):
 |---|---|
 | `claude-code` | Claude Code CLI on PATH |
 | `opencode` | [bun](https://bun.sh) (OpenCode itself is a bun app) |
-| `codex` | [Rust toolchain](https://rustup.rs/) |
 | `chrome` | Chrome 121+ |
 
-A claude-code-only user never needs bun or Rust. See `README.md § Requirements` for the full table.
+A claude-code-only user never needs bun. See `README.md § Requirements` for the full table.
 
 ### Can I use `opencues` directly instead of `pnpm exec opencues`?
 
@@ -95,14 +93,13 @@ Yes: `opencues uninstall <host>` (or `--all`). Each integration reverts its patc
 | `claude-code` | Revert `cli.js` from backup → `rm -rf ~/claude-code-cues/.opencues/` |
 | `opencode` | `git checkout --` on 3 patched TSX files → remove `<fork>/node_modules/@opencues/` → remove bootstrap |
 | `chrome` | Remove the Chrome extension's `dist/` in the repo; remove the `--target` deploy if one was used |
-| `codex` | Revert patches → remove bridge crate |
 
 ### What does uninstall NOT remove?
 
 By design:
 - **User configs** (`~/.cues/`) — your cues/blanks survive so re-install doesn't lose settings
 - **The OpenCues clone** (`~/opencues/`) — that's your repo, not an installer artefact
-- **Cloned forks** (`~/opencode-cues/`, `~/codex-cues/`) — those are your host checkouts, not OpenCues's to manage
+- **Cloned forks** (`~/opencode-cues/`) — that's your host checkout, not OpenCues's to manage
 - **`claude-code-cues`** (your optional local Claude Code install) — same reasoning
 
 ### How do I fully remove OpenCues from my machine?
@@ -113,7 +110,7 @@ See `README.md § Removing § Fully removing OpenCues`. Four steps:
 opencues uninstall --all
 rm -rf ~/.cues          # user configs
 rm -rf ~/opencues           # the repo
-rm -rf ~/opencode-cues ~/codex-cues ~/claude-code-cues    # cloned forks (only what you have)
+rm -rf ~/opencode-cues ~/claude-code-cues    # cloned forks (only what you have)
 ```
 
 ### Uninstall failed partway — what now?
@@ -131,7 +128,6 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 | `~/claude-code-cues/.opencues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
 | `~/claude-code-cues/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
 | `~/opencode-cues/` | OpenCode fork (cloned on install) | Patched fork; `~/opencode-cues/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
-| `~/codex-cues/` | Codex fork (cloned on install) | Similar to opencode-cues. Pre-alpha. |
 | `~/.cues/` | You (user configs) | Your cues/blanks + user-level `opencues.md`. Shared by every host. |
 | `<cwd>/.cues/` | Your project | Project-level overrides for cues/blanks. |
 | `/tmp/opencues.log` | Runtime | Debug log from whichever host is actively running. |

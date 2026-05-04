@@ -19,7 +19,7 @@ specific host's quirks and the shared nervous system).
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  HOST  (Claude Code, OpenCode, Chrome, Codex)            │
+│  HOST  (Claude Code, OpenCode, Chrome)                   │
 │  Per-editor patches / extensions — the "spinal cord"     │
 └──────────────────────────────────────────────────────────┘
                          │ (single API)
@@ -72,8 +72,6 @@ specific host's quirks and the shared nervous system).
   pinned SHA; runtime loaded inline.
 - **`integrations/chrome/`** — Manifest V3 extension; uses CSS Custom Highlight
   API for in-page rendering (no DOM mutation).
-- **`integrations/codex/`** — alpha; Rust bridge + TUI patches; pinned to
-  codex-rs at a specific commit.
 
 Each integration is **a few hundred lines of bridge code**, not thousands. That's
 the structural payoff of pushing complexity into the runtime.
@@ -95,8 +93,7 @@ opencues/
 ├── integrations/             # Per-host bridges
 │   ├── claude-code/
 │   ├── opencode/
-│   ├── chrome/
-│   └── codex/
+│   └── chrome/
 ├── docs/
 │   ├── overview.md           # Dual-layer architecture
 │   ├── glossary.md           # All terminology
@@ -132,11 +129,11 @@ defaults/
 
 ## The `opencues` CLI — single front-door
 
-A single CLI normalizes "install / update / debug" across four hosts with very
+A single CLI normalizes "install / update / debug" across three hosts with very
 different install models:
 
 ```
-opencues install <host>     # claude-code | opencode | codex | chrome | --all
+opencues install <host>     # claude-code | opencode | chrome | --all
 opencues seed-configs       # copy defaults to ~/.cues/
 opencues sync chrome        # bundle .cues/ into Chrome extension
 opencues validate           # lint configs across search paths

@@ -4,8 +4,8 @@ For blog post #16: "Seamlessly integration".
 
 ## The claim
 
-OpenCues runs in **four very different hosts** (Claude Code, OpenCode, Chrome,
-Codex), each with completely different rendering, IPC, and install models —
+OpenCues runs in **three very different hosts** (Claude Code, OpenCode, Chrome),
+each with completely different rendering, IPC, and install models —
 but the same `.md` config files work in all of them, the same runtime
 features ship to all of them, and the same `opencues install <host>`
 command sets each one up.
@@ -14,18 +14,17 @@ That's the seamlessness story. Read [`02-why-the-structure-is-magical.md`](02-wh
 for the architectural underpinning; this file focuses on the integration
 mechanics specifically.
 
-## The four hosts (and how different they are)
+## The three hosts (and how different they are)
 
 | Host | Rendering | IPC | Install |
 |---|---|---|---|
 | **Claude Code** | ANSI escape sequences in a TTY | Direct in-process (Node.js) | `tweakcc` patches injected into `cli.js` |
 | **OpenCode** | TUI in a terminal | Direct in-process (Bun) | Patched fork at a pinned SHA |
 | **Chrome** | CSS Custom Highlight API in `<textarea>` / `contenteditable` | Web extension messaging | Manifest V3 unpacked extension |
-| **Codex** | Rust TUI | Rust ↔ Node JSON-RPC bridge | Rust crate + TUI patches |
 
 These are about as different as host environments get. Two terminals, one
-browser, one Rust TUI. Two Node-based, one Bun, one Rust. Two patch-injection
-models, one fork, one extension manifest.
+browser. Two Node-based, one Bun. Two patch-injection models, one extension
+manifest.
 
 ## The single API that connects them all
 
@@ -65,8 +64,7 @@ The runtime keeps adapter-specific code in versioned bands:
 packages/opencues-runtime/adapters/
 ├── cc/v2.1/      # Claude Code 2.1.x adapter
 ├── oc/v1.4/      # OpenCode 1.4.x adapter
-├── chrome/v1/    # Chrome extension adapter
-└── codex/...     # Codex adapter (alpha)
+└── chrome/v1/    # Chrome extension adapter
 ```
 
 Each band can pin to a specific host version. When CC bumps from 2.1 to 2.2,
@@ -88,7 +86,7 @@ priority: 80
 Provide 3 alternative legal terms for each word: synonym, formal, informal.
 ```
 
-This file is identical for CC, OC, Chrome, and Codex. The runtime parses it,
+This file is identical for CC, OC, and Chrome. The runtime parses it,
 builds a `ConfigSource`, plugs it into `RoutedWordSourceGroup`, and the host
 inherits the cue automatically.
 
@@ -99,7 +97,7 @@ shell-script blanks (volume, brightness) don't work there. From
 `docs/features/host-compat.md`:
 
 ```yaml
-on-host: [chrome, claude-code, codex, opencode]   # allow-list
+on-host: [chrome, claude-code, opencode]   # allow-list
 not-on-host: [chrome]                              # deny-list
 ```
 
@@ -133,15 +131,15 @@ consistent across hosts. The host's bootstrap registers the TS classes; if
 
 From `damon.md`:
 
-> Single front-door for managing every host integration. OpenCues spans four
+> Single front-door for managing every host integration. OpenCues spans three
 > hosts with very different install models — CC patches `cli.js` via
 > `tweakcc`, OpenCode patches a forked source tree, Chrome bundles configs
-> into the extension, Codex patches a Rust TUI. The `opencues` CLI normalizes
+> into the extension. The `opencues` CLI normalizes
 > "install / update / debug" so you don't have to remember each
 > integration's quirks.
 
 ```
-opencues install claude-code     # or: opencode | chrome | codex | --all
+opencues install claude-code     # or: opencode | chrome | --all
 opencues update                  # pull, rebuild, redeploy installed integrations
 opencues seed-configs            # copy repo defaults to ~/.cues/
 opencues which                   # print every relevant path (installs, configs, logs)
@@ -154,7 +152,7 @@ command.
 ## Hot-reload across hosts
 
 `.md` config changes hot-reload within ~2 seconds on the next keystroke for
-native hosts (CC, OC, Codex). Chrome polls a content-addressable `.version`
+native hosts (CC, OC). Chrome polls a content-addressable `.version`
 hash so `opencues sync chrome --watch` propagates edits into already-open
 tabs. **No restart needed in any host.**
 
@@ -181,9 +179,8 @@ Type `volume _` in:
   system volume, dimmed.
 - **OpenCode** — same.
 - **Chrome** in Gmail — same.
-- **Codex** — same.
 
-Same script (`volume-blank.sh`) runs in CC / OC / Codex (subprocess capable).
+Same script (`volume-blank.sh`) runs in CC / OC (subprocess capable).
 TS class would run in Chrome (can't spawn) — but volume specifically is OS-
 bound, so it's filtered out via `not-on-host: [chrome]`. Where TS-class
 versions exist (stocks, weather, HN, etc.), Chrome gets full functionality.
@@ -220,9 +217,6 @@ versions exist (stocks, weather, HN, etc.), Chrome gets full functionality.
 - **Chrome's bundle-via-sync model means edit propagation isn't truly
   realtime.** ~1-2s polling. For most cases imperceptible; for rapid
   iteration it's noticeable.
-- **Codex (Rust) is hardest to port.** The Rust ↔ Node JSON-RPC bridge is
-  thicker than the other adapters. Worth highlighting if the post wants to
-  show the "structure pays off when you push it" angle.
 - **Some shell scripts are intrinsically OS-bound** (volume, brightness). No
   amount of hoisting fixes that — they need the OS audio API. The `host-
   compat` system honestly surfaces the limit.
@@ -236,12 +230,12 @@ versions exist (stocks, weather, HN, etc.), Chrome gets full functionality.
 - `docs/features/chrome-sync.md` — chrome bundling spec
 - `docs/features/cue-blanks.md` § "Blanks Architecture" — TS classes vs
   scripts
-- `integrations/{claude-code,opencode,chrome,codex}/docs/*.md` — per-host
+- `integrations/{claude-code,opencode,chrome}/docs/*.md` — per-host
   implementation notes
 
 ## Quotable lines
 
-- "Same runtime, four host adapters."
+- "Same runtime, three host adapters."
 - "Same code, every host."
 - "A few hundred lines of bridge code, not thousands."
 - "Hot-reload picks up changes — no restart needed in any host."

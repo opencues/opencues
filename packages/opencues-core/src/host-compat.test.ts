@@ -107,8 +107,8 @@ describe('inferHostCompat: explicit not-on-host (deny)', () => {
   });
 
   it('not-on-host stacks with auto-detected subprocess restriction', () => {
-    const r = inferHostCompat({ script: './volume.sh', 'not-on-host': ['codex'] });
-    assert.deepStrictEqual(r.hosts, ['claude-code', 'opencode']);
+    const r = inferHostCompat({ script: './volume.sh', 'not-on-host': ['opencode'] });
+    assert.deepStrictEqual(r.hosts, ['claude-code']);
     assert.strictEqual(r.source, 'auto+not-on-host');
   });
 
@@ -138,7 +138,7 @@ describe('unknownHostNames', () => {
   });
 
   it('returns the bad names', () => {
-    assert.deepStrictEqual(unknownHostNames(['chrome', 'fake-host', 'codex']), ['fake-host']);
+    assert.deepStrictEqual(unknownHostNames(['chrome', 'fake-host', 'mythical-host']), ['fake-host', 'mythical-host']);
   });
 
   it('handles undefined / null input', () => {
@@ -159,8 +159,8 @@ describe('formatHostList', () => {
     assert.strictEqual(formatHostList(SORTED_HOSTS), 'all');
   });
 
-  it('three native hosts → comma-separated alphabetical', () => {
-    assert.strictEqual(formatHostList(SORTED_NATIVE), 'claude-code, codex, opencode');
+  it('native hosts → comma-separated alphabetical', () => {
+    assert.strictEqual(formatHostList(SORTED_NATIVE), 'claude-code, opencode');
   });
 
   it('single host → just the name', () => {

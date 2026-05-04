@@ -253,7 +253,7 @@ function doUninstall() {
 
 // Thin wrapper that delegates to the canonical `opencues seed-configs`.
 // User-level seeding (~/.cues/ + ~/.opencuesrc) is shared across every
-// native host — owning it here would drift from OC + Codex.
+// native host — owning it here would drift from OC.
 function doSeedConfigs() {
   const seedScript = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands/seed-configs.cjs');
   const seedConfigs = require(seedScript);

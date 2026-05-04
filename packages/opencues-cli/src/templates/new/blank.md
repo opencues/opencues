@@ -102,8 +102,8 @@ type: blank
 # For blanks backed by an LLM call, HTTP API, or any host-runtime
 # logic, do NOT write a script — implement a TS class instead:
 #   1. packages/opencues-runtime/src/blanks/{{NAME}}.ts (implements Blank)
-#   2. Register in each host's blanksRegistry (see daemon.ts for codex,
-#      opencues-bootstrap.ts for OC, blanks/index.ts for chrome)
+#   2. Register in each host's blanksRegistry (see opencues-bootstrap.ts
+#      for OC, blanks/index.ts for chrome)
 #   3. cue.md declares blankKeywords + blankReadOnly + blankFormat —
 #      no blankScript: at all.
 #
@@ -141,10 +141,10 @@ type: blank
 # routes through chrome.storage instead of the .sh fallback). The
 # opencues blank does this — `blankScript: ./opencues-blank.sh` for
 # native hosts, OpenCuesSettingsBlank in TS for chrome, and
-# `on-host: chrome, claude-code, codex, opencode` to override the
+# `on-host: chrome, claude-code, opencode` to override the
 # auto-detect that would otherwise exclude chrome.
 # See docs/features/host-compat.md.
 
-# on-host: chrome, claude-code, codex, opencode
+# on-host: chrome, claude-code, opencode
 # not-on-host: chrome
 ---

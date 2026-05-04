@@ -9,7 +9,7 @@ An alternative can be multiple words (e.g., `_` to "Sundar Pichai", "toy" to "st
 > **Two implementations.** The `globalThis._dynSpans` model described
 > below is **Claude Code's local implementation** inside the tweakcc
 > patches. The system-wide model used by `@opencues/runtime`
-> (Chrome, OpenCode, Codex, and the future CC v3.x adapter) is
+> (Chrome, OpenCode, and the future CC v3.x adapter) is
 > different: spans live inside `DynDefs` (`packages/opencues-runtime/src/state/dyn-defs.ts`),
 > N spans can be active concurrently, and stale defs are pruned via
 > `pruneStale` with deterministic relocate. See

@@ -6,7 +6,7 @@ last_updated: 2026-04-22
 
 Config edits propagate into already-open Chrome tabs within ~2.5
 seconds without an extension reload, page refresh, or user action.
-The mechanism is different from the native hosts (CC, OC, codex) —
+The mechanism is different from the native hosts (CC, OC) —
 those poll the filesystem on every keystroke (see `hot-reload-config.md`).
 Chrome content scripts have no filesystem access, so the extension
 polls a content-addressable hash file (`dist/configs/.version`)

@@ -2,7 +2,7 @@
 // host that doesn't read the filesystem on its own.
 //
 // Today this only matters for chrome (browser content scripts can't
-// read ~/.cues/). CC/OC/codex have native ConfigLoader hot-reload
+// read ~/.cues/). CC/OC have native ConfigLoader hot-reload
 // and don't need a sync step.
 //
 // ── Chrome source discovery ──────────────────────────────────────────
@@ -61,7 +61,7 @@ module.exports = function sync(argv, ctx) {
   }
   if (!HOSTS.includes(host)) {
     console.error(`opencues sync: unsupported host "${host}". Supported today: ${HOSTS.join(', ')}`);
-    console.error('CC/OC/codex hot-reload natively from ~/.cues/ — no sync needed.');
+    console.error('CC/OC hot-reload natively from ~/.cues/ — no sync needed.');
     process.exit(2);
   }
 
@@ -477,7 +477,7 @@ function printHelp() {
   console.log('opencues sync <host> [options]');
   console.log('');
   console.log('Push your local .cues/ configs into a host that can\'t read the');
-  console.log('filesystem on its own (today: chrome). CC/OC/codex hot-reload from');
+  console.log('filesystem on its own (today: chrome). CC/OC hot-reload from');
   console.log('~/.cues/ natively — no sync needed.');
   console.log('');
   console.log('Hosts:');

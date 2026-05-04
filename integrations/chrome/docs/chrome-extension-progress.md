@@ -7,7 +7,7 @@ last_updated: 2026-04-22
 Tracking what has been manually verified in the Chrome extension integration.
 
 > **Current testing scope:** Chrome + OpenCode are the primary verification
-> targets through the post-refactor test arc. Claude Code and Codex will be
+> targets through the post-refactor test arc. Claude Code will be
 > tested after both of these are fully green on every phase.
 
 ## Verified Working
@@ -254,6 +254,6 @@ have been confirmed in **Chrome AND OpenCode**:
 | Deterministic relocate on prefix/middle edits | ✅ | ✅ |
 | Resolver skips cycled alts (no track drift) | ✅ | ✅ |
 
-Claude Code and Codex inherit the same runtime fixes via
+Claude Code inherits the same runtime fixes via
 `buildSharedRuntime` and will be re-verified after Chrome + OpenCode
 phases 3-6 are complete.

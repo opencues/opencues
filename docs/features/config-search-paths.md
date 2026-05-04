@@ -67,7 +67,7 @@ not replaced. The merge rule is:
 
 Missing layers are silently skipped — there's never a "config
 missing" error from the layering itself. A user with no `.cues/`
-anywhere gets empty config (CC/OC/codex), which is a valid degraded
+anywhere gets empty config (CC/OC), which is a valid degraded
 state.
 
 The merge is implemented in `discoverFolderConfigs` and

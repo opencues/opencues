@@ -7,7 +7,7 @@ last_updated: 2026-04-22
 The `opencues` command is the front door for everything: installing
 host integrations, scaffolding cues, validating configs, inspecting
 state, day-to-day operations. One CLI normalizes "install / update
-/ debug" across four hosts (CC, OpenCode, Chrome, Codex), each with
+/ debug" across three hosts (CC, OpenCode, Chrome), each with
 very different install models underneath.
 
 For the high-level mental model see `damon.md` § "The `opencues` CLI";
@@ -36,7 +36,6 @@ opencues install claude-code         # patch the local Claude Code install
 opencues install opencode            # patch the OpenCode fork at ~/opencode-cues
 opencues install chrome              # build the MV3 extension into integrations/chrome/dist/
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
-opencues install codex               # pre-alpha; see HANDOFF.md
 opencues install --all               # install every detected host
 ```
 
@@ -69,7 +68,7 @@ Four phases on every invocation:
 
 1. **SEED** — first-time copy of `defaults/cues.md + cues/ + blanks/ + scripts/` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.cues/cues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC + Codex). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.cues/cues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
@@ -195,7 +194,7 @@ opencues sync chrome --watch                          # re-sync on file changes
 opencues sync chrome --dry-run                        # show what would be synced
 ```
 
-CC / OC / codex have native filesystem hot-reload — no sync needed.
+CC / OC have native filesystem hot-reload — no sync needed.
 See [Chrome Sync](../features/chrome-sync.md) for the full
 source-discovery rules and [Chrome Hot-Reload](../features/chrome-hot-reload.md)
 for how `--watch` lands edits in already-open browser tabs.
@@ -321,7 +320,6 @@ opencues list --blanks | grep -c domain  # how many domain blanks exist
 | `claude-code` | Builds `@opencues/core` + `@opencues/runtime`, copies them into `~/claude-code-cues/.opencues/`, builds tweakcc with the patches, applies to `cli.js` | Targets `~/claude-code-cues` (NOT the native `claude` install) |
 | `opencode` | Patches the fork at `~/opencode-cues` | Quiet by default; `--verbose` for full output |
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
-| `codex` | Builds + applies Rust TUI patches | **Pre-alpha** — see `integrations/codex/HANDOFF.md` |
 
 ---
 

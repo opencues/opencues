@@ -2,7 +2,7 @@
 
 `@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-blanks inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
 
-> **Shares user-level state with CC + Codex**: `~/.cues/` (cue/blank configs) and `~/.cues/scripts/speak.sh` (TTS) are common across all three native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on OpenCode because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC + Codex use. You can install OpenCode standalone (no CC required) and TTS still works.
+> **Shares user-level state with CC**: `~/.cues/` (cue/blank configs) and `~/.cues/scripts/speak.sh` (TTS) are common across both native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on OpenCode because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC uses. You can install OpenCode standalone (no CC required) and TTS still works.
 
 | Field | Value |
 |---|---|

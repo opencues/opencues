@@ -1,6 +1,6 @@
 # Chrome Sync
 
-`opencues sync chrome` bundles your local `.cues/` configs into the Chrome extension's `dist/configs/` directory so a browser content script can read them. The native hosts (claude-code, opencode, codex) don't need this — they have filesystem access and hot-reload from `~/.cues/` natively. Chrome content scripts can't, so the configs have to be shipped into the extension build.
+`opencues sync chrome` bundles your local `.cues/` configs into the Chrome extension's `dist/configs/` directory so a browser content script can read them. The native hosts (claude-code, opencode) don't need this — they have filesystem access and hot-reload from `~/.cues/` natively. Chrome content scripts can't, so the configs have to be shipped into the extension build.
 
 This doc is about **which `.cues/` dirs feed that bundle** — not what gets bundled (that's host-compat's job: see `docs/features/host-compat.md`).
 

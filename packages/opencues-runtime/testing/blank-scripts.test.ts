@@ -29,7 +29,7 @@ const DEFAULTS_SCRIPTS = path.join(REPO_ROOT, 'defaults/scripts');
 // were moved out of CC's patches/actions/ into defaults/scripts/ as part of
 // the cross-host shared-utilities refactor — TTS is now seeded by
 // `opencues seed-configs` to ~/.cues/scripts/ and used by every native
-// host (CC, OC, Codex), not piggybacked on CC's install.
+// host (CC, OC), not piggybacked on CC's install.
 const SHIPPED_SCRIPTS: { path: string; helpers: readonly string[] }[] = [
   { path: path.join(DEFAULTS_BLANKS, 'brightness/brightness-blank.sh'), helpers: ['BrightCtl.exe', 'brightness-set.ps1'] },
   { path: path.join(DEFAULTS_BLANKS, 'volume/volume-blank.sh'),         helpers: ['VolCtl.exe'] },

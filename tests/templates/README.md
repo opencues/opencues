@@ -28,7 +28,7 @@ stdout. Non-zero exit on any failure.
 ## Non-goals
 
 - These are NOT LLM-quality benchmarks (use `tests/benchmarks/` for that).
-- They do NOT exercise the integrations (CC, OC, Chrome, Codex) — just
+- They do NOT exercise the integrations (CC, OC, Chrome) — just
   the template + CLI + config-loader contract.
 - They do NOT assert deterministic LLM output content — only shape.
 

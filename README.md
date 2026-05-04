@@ -83,7 +83,6 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `claude-code` | seed-configs (shared `~/.cues/`) + nuke-and-rebuild from scratch inside `~/claude-code-cues/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues` / `claude`) |
 | `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 3 TSX files | ✓ (runs `bun run dev` in the fork) |
 | `chrome` | Build MV3 extension + copy dist/ to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
-| `codex` | Clone the fork + build Rust bridge crate + apply TUI patches via diff + drop launch helper | **Alpha** — pinned to codex-rs `d58d3cc`; full build needs `libcap-dev` (Linux) |
 
 ### Where things land
 
@@ -91,9 +90,8 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 |---|---|
 | `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.cues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
-| `~/codex-cues/` | Codex fork the integration clones + patches |
 | `~/.cues/` | User-level configs — `cues.md` (top-level settings) plus `cues/` and `blanks/` folders. Read by every host. |
-| `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, codex) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
+| `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
 
@@ -197,7 +195,6 @@ need whether or not you used OpenCues:
 |-------------|---------------------|-------|
 | `claude-code` | Claude Code CLI 2.1.110+ on PATH | `claude --version` |
 | `opencode`    | OpenCode fork checkout + [bun](https://bun.sh/) | `bun --version` |
-| `codex`       | codex-rs checkout + [Rust toolchain](https://rustup.rs/) | `cargo --version` |
 | `chrome`      | Chrome 121+ | `chrome://version` |
 
 A Claude-Code-only user never needs bun or Rust. An OpenCode user needs
@@ -217,7 +214,6 @@ Only if you're modifying the patches for a specific integration:
 | Touching... | Extra tool |
 |-------------|-----------|
 | `integrations/opencode/` patches | bun |
-| `integrations/codex/` crates | Rust toolchain (1.75+) |
 | `integrations/chrome/` extension | (none — pure TS/rollup) |
 | `integrations/claude-code/` patches | (none — pure TS via tweakcc) |
 
@@ -287,7 +283,7 @@ Your user-level OpenCues config lives at `~/.cues/`:
 └── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
 ```
 
-Project-level overrides live at `<cwd>/.cues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode, codex). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
+Project-level overrides live at `<cwd>/.cues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
 
 System settings (in `~/.cues/cues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
 

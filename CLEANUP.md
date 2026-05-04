@@ -2,7 +2,7 @@
 
 > **When to do this:** after Chrome + OpenCode are fully green on every
 > verification phase (1–6), and before extending verification to Claude
-> Code + Codex. This file gets deleted once the cleanup is done.
+> Code. This file gets deleted once the cleanup is done.
 
 The April 2026 simplification + bug-fix arc shipped a lot of useful
 fixes but also left scaffolding behind: test fixtures embedded in
@@ -100,7 +100,7 @@ After everything above is done:
 1. Run `pnpm test` from the repo root — must pass.
 2. Run the 6-phase chrome verification once more (should be a quick re-pass).
 3. Run the equivalent for OpenCode (no formal phase plan yet — basically: install, type, cycle, verify dim/nav/cycling all work).
-4. **Then** extend verification to Claude Code + Codex per
+4. **Then** extend verification to Claude Code per
    `chrome-extension-progress.md` § "Cross-host runtime fixes verified".
 
 ---

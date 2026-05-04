@@ -2,14 +2,13 @@
 
 OpenCues adds real-time word guidance to text editors. As you type, it dims words that have alternatives, lets you navigate between them, and cycles through suggestions with arrow keys — all without leaving the input.
 
-It currently runs inside four hosts:
+It currently runs inside three hosts:
 
 - **Claude Code** (the CLI) — patched via `tweakcc`
 - **OpenCode** (terminal-based AI coding tool) — patched fork at `~/opencode-cues`
 - **Chrome** — Manifest V3 browser extension (works in any `<textarea>` / `contenteditable`)
-- **Codex** (OpenAI's TUI) — alpha, pinned to codex-rs `d58d3cc`
 
-Same runtime, four host adapters. The architecture deliberately keeps the host glue thin so adding new editors is mostly a few hundred lines of bridge code.
+Same runtime, three host adapters. The architecture deliberately keeps the host glue thin so adding new editors is mostly a few hundred lines of bridge code.
 
 ---
 
@@ -26,7 +25,7 @@ The two surfaces have fundamentally different contracts — see `concept.md` at 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  USER  (typing in Claude Code, OpenCode, Chrome, or Codex)       │
+│  USER  (typing in Claude Code, OpenCode, or Chrome)              │
 │  "The dog was _ and the volume _"                                │
 └──────────────────────────────────┬───────────────────────────────┘
                                    │ keystrokes
@@ -345,7 +344,7 @@ These work across all cue types and all hosts:
 - **Auto-Submit** — Analysis fires automatically after a pause in typing. Only unseen words are sent to the LLM.
 - **Selector + Satellite Blanks** — A single `_` can become two linked words: a selector picks a setting, a satellite shows/writes its value. How `voice-mode active` toggles work in-text.
 - **Tip Priority** — When a word matches multiple tip sources, a fixed priority decides which one wins (selector > satellite > blank > cue-blank keyword > local cue > LLM).
-- **Hot-Reload Config** — `.md` config files reload within ~2 seconds for native hosts (CC, OC, codex). Chrome polls a content-addressable `.version` hash so `opencues sync chrome --watch` propagates edits into already-open tabs in the same window. No restart needed.
+- **Hot-Reload Config** — `.md` config files reload within ~2 seconds for native hosts (CC, OC). Chrome polls a content-addressable `.version` hash so `opencues sync chrome --watch` propagates edits into already-open tabs in the same window. No restart needed.
 
 ---
 
@@ -395,13 +394,13 @@ Each cue / blank / cue or blank declares which hosts it works on (`on-host: [chr
 
 ## The `opencues` CLI
 
-Single front-door for managing every host integration. OpenCues spans four hosts with very different install models — CC patches `cli.js` via `tweakcc`, OpenCode patches a forked source tree, Chrome bundles configs into the extension, Codex patches a Rust TUI. The `opencues` CLI normalizes "install / update / debug" so you don't have to remember each integration's quirks.
+Single front-door for managing every host integration. OpenCues spans three hosts with very different install models — CC patches `cli.js` via `tweakcc`, OpenCode patches a forked source tree, Chrome bundles configs into the extension. The `opencues` CLI normalizes "install / update / debug" so you don't have to remember each integration's quirks.
 
 ```
 $ opencues --help
 
 Setup:
-  install <host>          Install a host integration (claude-code|opencode|codex|chrome|--all)
+  install <host>          Install a host integration (claude-code|opencode|chrome|--all)
   uninstall <host>        Roll back an installation
   seed-configs            Copy repo defaults into ~/.cues/
   update                  Pull, rebuild, redeploy installed integrations
@@ -452,7 +451,6 @@ Per-host integrations (under `integrations/`):
 - **`integrations/claude-code/`** — `tweakcc` patches injected into Claude Code's `cli.js` at build time
 - **`integrations/opencode/`** — Patches applied to a forked OpenCode source tree (`~/opencode-cues`)
 - **`integrations/chrome/`** — MV3 extension; CSS Custom Highlight API for in-page rendering; bundle hot-reload via `.version` polling
-- **`integrations/codex/`** — Alpha; TUI patches landed (Rust ↔ Node JSON-RPC bridge); pinned to codex-rs `d58d3cc`
 
 Other:
 

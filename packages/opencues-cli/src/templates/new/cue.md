@@ -95,18 +95,18 @@ priority: 50
 # ─────────────────────────────────────────────────────────────────────
 # HOST COMPATIBILITY (advanced)
 # ─────────────────────────────────────────────────────────────────────
-# Most cues run on every integration (claude-code, opencode, codex,
-# chrome). Pure LLM cues like this one have no host-specific dependencies
+# Most cues run on every integration (claude-code, opencode, chrome).
+# Pure LLM cues like this one have no host-specific dependencies
 # — leave the fields below alone.
 #
 # When you need to declare:
 #   on-host:     [chrome, claude-code, ...]   — allow-list (overrides auto)
 #   not-on-host: [chrome]                     — deny-list (filters from auto / on-host)
 #
-# Host names: chrome, claude-code, codex, opencode.
+# Host names: chrome, claude-code, opencode.
 # See docs/features/host-compat.md.
 
-# on-host: chrome, claude-code, codex, opencode
+# on-host: chrome, claude-code, opencode
 # not-on-host: chrome
 ---
 Suggest 3 alternatives for each highlighted word, considering the

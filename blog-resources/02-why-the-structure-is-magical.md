@@ -28,10 +28,10 @@ implement the **HostAdapter contract** for its specific editor. Everything else
 is shared.
 
 From `damon.md`:
-> Same runtime, four host adapters. The architecture deliberately keeps the host
+> Same runtime, three host adapters. The architecture deliberately keeps the host
 > glue thin so adding new editors is mostly a few hundred lines of bridge code.
 
-The four current hosts (Claude Code, OpenCode, Chrome, Codex) all read the same
+The three current hosts (Claude Code, OpenCode, Chrome) all read the same
 `.md` config standard and use the same runtime modules. Chrome's bridge looks
 *different* from Claude Code's bridge (one renders via CSS Custom Highlight API,
 the other via ANSI escape codes), but both call the same `boot()`.
@@ -52,7 +52,7 @@ Concrete example — TS-class blanks. `cue-blanks.md` documents this directly:
 
 `HackerNewsBlank`, `StocksBlank`, `WeatherBlank`, `OpenCuesSettingsBlank`,
 `PromptImproverBlank`, `AnswerBlank` — all written once, work in CC + OC +
-Chrome + Codex without any host-specific adaptation.
+Chrome without any host-specific adaptation.
 
 ## 3. The two-direction model collapses N features into 2 primitives
 

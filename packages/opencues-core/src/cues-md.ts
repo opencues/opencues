@@ -146,7 +146,7 @@ export interface BlankConfig {
   prompts?: Record<string, string>;
   /**
    * Explicit host allow-list. When set, takes precedence over auto-detection.
-   * Use the canonical host names: claude-code, opencode, codex, chrome.
+   * Use the canonical host names: claude-code, opencode, chrome.
    * See @opencues/core's `inferHostCompat()` for the resolution rules.
    */
   onHost?: string[];

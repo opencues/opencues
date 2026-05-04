@@ -6,9 +6,6 @@
 > and switched the default, hardened the loop's error handling, and
 > updated the architecture + feature docs to match.
 
-The repo-root `CONTINUE.md` is from a different (codex) session and
-is unrelated to this work — leave it alone.
-
 ---
 
 ## Where we left off (2026-05-04)

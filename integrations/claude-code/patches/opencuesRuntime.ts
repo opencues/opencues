@@ -263,7 +263,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // because the harness only drives one CC at a time.
     `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
     // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.cues/scripts/),
-    // shared with OpenCode + Codex. seed-configs ships them there + compiles
+    // shared with OpenCode. seed-configs ships them there + compiles
     // SpeakCtl.cs colocated. Honors OPENCUES_HOME for env-driven overrides.
     `ttsScriptPath:(process.env.OPENCUES_HOME||((process.env.HOME||"~")+"/.cues"))+"/scripts/speak.sh",` +
     `ttsRate:2,` +

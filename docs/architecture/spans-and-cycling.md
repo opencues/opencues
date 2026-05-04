@@ -15,7 +15,7 @@ something that looks the same — start here.
 ## Where the code lives
 
 **Everything is in `@opencues/runtime`.** Adapters (chrome, claude-code,
-opencode, codex) wire it up via `buildSharedRuntime()` and never
+opencode) wire it up via `buildSharedRuntime()` and never
 re-implement the cycling/span/dim/nav logic. `@opencues/core` is a
 separate concern: it does LLM resolution and produces alternatives.
 
@@ -35,7 +35,7 @@ packages/opencues-runtime/
 │       ├── blank-fill.ts         ← detects `_`, runs scripts/LLM, registers
 │       │                            spans, owns SpanFillState invalidation
 │       └── resolver.ts           ← runs the LLM Resolver, populates DynDefs
-└── adapters/{cc,oc,chrome,codex}/v*/boot.ts ← per-host wiring
+└── adapters/{cc,oc,chrome}/v*/boot.ts ← per-host wiring
 ```
 
 ---

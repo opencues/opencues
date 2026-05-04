@@ -9,7 +9,7 @@ version: 1
 # schema (voice-mode, tips-mode, debug-mode, cursor-navigate, …) is
 # defined by the OpenCues runtime — not by users or projects — and
 # settings are system-wide: one voice-mode value applies across every
-# integration (Claude Code, OpenCode, Chrome, Codex).
+# integration (Claude Code, OpenCode, Chrome).
 #
 # The runtime auto-manages this file via OpenCuesSettingsBlank: when
 # you cycle a setting through the selector/satellite UI, the runtime

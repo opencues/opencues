@@ -1,8 +1,8 @@
 # Host Compatibility
 
-The OpenStandard runs on four integration hosts — `claude-code`, `opencode`,
-`codex`, `chrome` — that share the same `.md` config format but differ in
-runtime capabilities. Native hosts (CC, OC, codex) can spawn subprocesses
+The OpenStandard runs on three integration hosts — `claude-code`, `opencode`,
+`chrome` — that share the same `.md` config format but differ in
+runtime capabilities. Native hosts (CC, OC) can spawn subprocesses
 and read arbitrary filesystem paths; chrome can't.
 
 A cue or blank can declare which hosts it works on. Most entries
@@ -28,8 +28,8 @@ That covers every cue + blank we ship today without a single annotation:
 | `blanks/math/cue.md` (compute parser) | all | no script |
 | `blanks/affirmations/cue.md` (list) | all | no script |
 | `blanks/stocks/cue.md` (runtime class) | all | no script |
-| `blanks/volume/cue.md` (`blankScript: ./volume-blank.sh`) | claude-code, codex, opencode | `.sh` |
-| `blanks/brightness/cue.md` (`blankScript: ./brightness-blank.sh`) | claude-code, codex, opencode | `.sh` |
+| `blanks/volume/cue.md` (`blankScript: ./volume-blank.sh`) | claude-code, opencode | `.sh` |
+| `blanks/brightness/cue.md` (`blankScript: ./brightness-blank.sh`) | claude-code, opencode | `.sh` |
 
 ---
 
@@ -88,17 +88,17 @@ Both accept:
 ---
 # Optional. Overrides auto-detect. When set, the listed hosts are the
 # only ones this entry runs on. Omit if you want the auto-detect default.
-on-host: [chrome, claude-code, codex, opencode]   # array
+on-host: [chrome, claude-code, opencode]   # array
 on-host: chrome, claude-code                       # comma-separated
 on-host: chrome                                    # single value
 
 # Optional. Removes hosts from the resolved set (after on-host or auto).
 not-on-host: [chrome]
-not-on-host: chrome, codex
+not-on-host: chrome, opencode
 ---
 ```
 
-Valid host names: **`chrome`**, **`claude-code`**, **`codex`**, **`opencode`**.
+Valid host names: **`chrome`**, **`claude-code`**, **`opencode`**.
 
 Unknown names are silently dropped at runtime; `opencues validate` prints
 warnings about them so typos are caught.
@@ -115,28 +115,28 @@ import { inferHostCompat, formatHostList, HOSTS, NATIVE_HOSTS } from '@opencues/
 const result = inferHostCompat({
   script: './volume.sh',
   // optional: 'on-host': ['chrome'],
-  // optional: 'not-on-host': ['codex'],
+  // optional: 'not-on-host': ['opencode'],
 });
 // → {
-//     hosts: ['claude-code', 'codex', 'opencode'],
+//     hosts: ['claude-code', 'opencode'],
 //     all: false,
 //     source: 'auto'   // or 'on-host' / 'auto+not-on-host'
 //   }
 
 formatHostList(result.hosts);
-// → 'claude-code, codex, opencode'   (or 'all' if every host)
+// → 'claude-code, opencode'   (or 'all' if every host)
 ```
 
 | Constant | Value |
 |---|---|
-| `HOSTS` | `['chrome', 'claude-code', 'codex', 'opencode']` |
-| `NATIVE_HOSTS` | `['claude-code', 'opencode', 'codex']` (subprocess + filesystem capable) |
+| `HOSTS` | `['chrome', 'claude-code', 'opencode']` |
+| `NATIVE_HOSTS` | `['claude-code', 'opencode']` (subprocess + filesystem capable) |
 
 | Function | Returns |
 |---|---|
 | `inferHostCompat(input)` | `{ hosts, all, source }` |
 | `unknownHostNames(value)` | `string[]` of host names that aren't in `HOSTS` (validator helper) |
-| `formatHostList(hosts)` | Human display: `"all"` or `"claude-code, codex, opencode"` |
+| `formatHostList(hosts)` | Human display: `"all"` or `"claude-code, opencode"` |
 
 ---
 

@@ -35,10 +35,7 @@ When it was extended to Chrome (browser, full DOM), the abstractions
 *didn't have to bend* to accommodate richer rendering — Chrome simply
 implemented `setText` / `getCursorOffset` / etc. with browser primitives.
 
-When extended to Codex (Rust TUI), the same thing — a Rust ↔ Node JSON-RPC
-bridge satisfies the contract; the contract didn't have to grow.
-
-> Same runtime, four host adapters. *— `damon.md`*
+> Same runtime, three host adapters. *— `damon.md`*
 
 ## What had to work in terminal first
 
@@ -46,15 +43,14 @@ bridge satisfies the contract; the contract didn't have to grow.
 
 Highlighting a word as "has alternatives" requires zero pixel-level rendering.
 The terminal version uses an ANSI dim escape sequence. The Chrome version
-uses CSS Custom Highlight API. The Codex version uses Rust TUI styling.
-Three completely different rendering approaches; the same `WordDef` data
-structure feeds all of them.
+uses CSS Custom Highlight API. Two completely different rendering approaches;
+the same `WordDef` data structure feeds both of them.
 
 ### Input: keystroke handlers
 
 `Ctrl+Alt+Right`, `Up`, `Down` — chosen because every host has them, and
 they don't conflict with the host's existing keymap (in CC's case, after
-careful patch design). Browser, terminal, Rust TUI all expose the same
+careful patch design). Browser and terminal both expose the same
 keystrokes through their respective input layers.
 
 ### Output: text-only substitution
@@ -64,8 +60,7 @@ alternatives. Cycling Up replaces the substring in the buffer. That's it.
 No animation, no transition, no "diff view." Just text.
 
 That works in a terminal because terminals are text. It also works in
-Chrome because `value = newText` works on `<textarea>`. It works in Codex
-because Rust strings are strings.
+Chrome because `value = newText` works on `<textarea>`.
 
 ### Status line: secondary display
 
@@ -75,8 +70,8 @@ From `docs/glossary.md`:
 > a status bar, tooltip, hover panel, sidebar, etc.
 
 Generic name, deliberately. In CC it's the bash status line script. In
-Chrome it's a popup. In Codex it's a TUI footer. The runtime emits "show
-this tip"; the host decides where.
+Chrome it's a popup. The runtime emits "show this tip"; the host decides
+where.
 
 ### Configuration: files
 

@@ -86,7 +86,6 @@ Each host wires its registry in its bootstrap:
 - `integrations/chrome/src/opencues-bootstrap.ts` — Chrome registry
 - `integrations/opencode/patches/opencuesBootstrap.ts` — OpenCode registry
 - `integrations/claude-code/patches/opencuesRuntime.ts` — CC registry
-- `integrations/codex/...` — Codex registry (pre-alpha)
 
 The shared `createBlankInvoke` factory in
 `@opencues/runtime/src/boot-common.ts` keeps the registry-then-spawn

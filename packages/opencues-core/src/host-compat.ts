@@ -2,10 +2,10 @@
  * Host-compat: which OpenCues integrations a cue or blank runs on.
  *
  * The OpenStandard supports multiple host integrations — claude-code,
- * opencode, codex, chrome — that share the same .md config format but
+ * opencode, chrome — that share the same .md config format but
  * have different runtime capabilities. The most consequential split is:
  *
- *   - Native hosts (claude-code, opencode, codex) can spawn subprocesses
+ *   - Native hosts (claude-code, opencode) can spawn subprocesses
  *     and read arbitrary filesystem paths. Shell-script-backed blanks
  *     (volume.sh, brightness.sh, …) only run here.
  *
@@ -41,11 +41,11 @@
  */
 
 /** Every integration host. Keep alphabetical for stable equality checks. */
-export const HOSTS = ['chrome', 'claude-code', 'codex', 'opencode'] as const;
+export const HOSTS = ['chrome', 'claude-code', 'opencode'] as const;
 export type Host = typeof HOSTS[number];
 
 /** Native hosts can spawn subprocesses + access the filesystem. */
-export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'opencode', 'codex'];
+export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'opencode'];
 
 /** Script extensions that imply subprocess execution → not chrome. */
 const SUBPROCESS_EXTS = ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', '.rb', '.pl'];
@@ -83,13 +83,13 @@ export interface HostCompatResult {
  * Examples:
  *
  *   inferHostCompat({})
- *     → { hosts: [chrome, claude-code, codex, opencode], all: true, source: 'auto' }
+ *     → { hosts: [chrome, claude-code, opencode], all: true, source: 'auto' }
  *
  *   inferHostCompat({ script: './volume.sh' })
- *     → { hosts: [claude-code, codex, opencode], all: false, source: 'auto' }
+ *     → { hosts: [claude-code, opencode], all: false, source: 'auto' }
  *
- *   inferHostCompat({ script: './foo.sh', 'not-on-host': ['codex'] })
- *     → { hosts: [claude-code, opencode], all: false, source: 'auto+not-on-host' }
+ *   inferHostCompat({ script: './foo.sh', 'not-on-host': ['opencode'] })
+ *     → { hosts: [claude-code], all: false, source: 'auto+not-on-host' }
  *
  *   inferHostCompat({ 'on-host': ['chrome'] })
  *     → { hosts: [chrome], all: false, source: 'on-host' }
@@ -155,7 +155,7 @@ export function unknownHostNames(v: readonly string[] | string | undefined): str
     .filter(s => !known.has(s));
 }
 
-/** Format the host list for human display: "all" or "claude-code, opencode, codex". */
+/** Format the host list for human display: "all" or "claude-code, opencode". */
 export function formatHostList(hosts: readonly Host[]): string {
   if (hosts.length === HOSTS.length) return 'all';
   return [...hosts].sort().join(', ');

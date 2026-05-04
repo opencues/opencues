@@ -2,7 +2,7 @@
 //
 // Prior bug class: each host's bootstrap walked a candidate path list to
 // find speak.sh — which often piggybacked on CC's installed copy. Result:
-// uninstalling CC silently broke OC + Codex TTS. The fix moved speak.sh +
+// uninstalling CC silently broke OC TTS. The fix moved speak.sh +
 // SpeakCtl.cs from CC's patches/actions/ into defaults/scripts/, and made
 // every host resolve TTS to the same user-level path:
 //

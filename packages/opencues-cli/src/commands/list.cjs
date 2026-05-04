@@ -95,7 +95,7 @@ function collect(dir, tools, results) {
 }
 
 // Format the host-compat result for one entry. Returns the joined host
-// string ("all", "claude-code, opencode, codex", etc.).
+// string ("all", "claude-code, opencode", etc.).
 function hostsLabel(input, inferHostCompat, formatHostList) {
   const r = inferHostCompat(input || {});
   return formatHostList(r.hosts);

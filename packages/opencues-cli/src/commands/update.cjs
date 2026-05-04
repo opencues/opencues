@@ -25,10 +25,9 @@ const compatLib = require('../lib/compat.cjs');
 const HOST_ALIASES = {
   'claude-code': 'claude-code', claudecode: 'claude-code', claude: 'claude-code', cc: 'claude-code',
   opencode: 'opencode', oc: 'opencode',
-  codex: 'codex',
   chrome: 'chrome',
 };
-const ALL_HOSTS = ['claude-code', 'opencode', 'codex', 'chrome'];
+const ALL_HOSTS = ['claude-code', 'opencode', 'chrome'];
 
 module.exports = async function update(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -376,10 +375,6 @@ function detectInstalled(HOME, REPO_ROOT) {
   const ocFork = path.join(HOME, 'opencode-cues');
   if (fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime'))) {
     out.push({ host: 'opencode', folder: 'opencode', evidence: `${ocFork}/node_modules/@opencues/runtime exists` });
-  }
-  const codexFork = path.join(HOME, 'codex-cues');
-  if (fs.existsSync(path.join(codexFork, 'codex-rs/opencues-bridge'))) {
-    out.push({ host: 'codex', folder: 'codex', evidence: `${codexFork}/codex-rs/opencues-bridge exists` });
   }
   if (fs.existsSync(path.join(REPO_ROOT, 'integrations/chrome/dist/content.js'))) {
     out.push({ host: 'chrome', folder: 'chrome', evidence: 'integrations/chrome/dist/content.js exists' });

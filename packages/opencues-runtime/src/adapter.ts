@@ -93,9 +93,7 @@ export interface ProcessSpec {
  * stdout (same exitCode/timedOut semantics).
  *
  * The `blankName` field identifies which blank to invoke (declared in
- * blanks/<name>/cue.md, e.g. "volume"). The codex Rust bridge mirrors
- * this on the wire (see integrations/codex/patches/opencues-bridge/
- * src/lib.rs).
+ * blanks/<name>/cue.md, e.g. "volume").
  */
 export interface BlankInvokeSpec {
   /** Blank name as declared in blanks/<name>/cue.md (e.g. "volume"). */

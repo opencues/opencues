@@ -79,4 +79,4 @@ The primary `.md` sources used to build these extracts (paths from repo root):
 - `docs/prompt-design-learnings.md` — LLM optimization principles
 - `docs/features/cue-blanks.md`, `transform-blank.md`, `agent-task.md`, `consume-all-blanks.md`, `word-cue-routing.md`, `host-compat.md`, `chrome-sync.md`
 - `docs/architecture/agent-task.md`, `transform-blank.md`, `spans-and-cycling.md`, `repo-structure.md`
-- `integrations/{claude-code,opencode,chrome,codex}/docs/*.md`
+- `integrations/{claude-code,opencode,chrome}/docs/*.md`
