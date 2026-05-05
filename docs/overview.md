@@ -413,7 +413,9 @@ opencues-core is used directly from the injected cli.js code (no shell scripts).
 // 4. buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, options) → sources
 //    - Word sources: each cues/<name>/cue.md becomes its own ConfigSource;
 //      all wrapped in ONE RoutedWordSourceGroup that dispatches per-word
-//    - Blank sources: BlankSource (keyword-bound) + FluidBlankSource (free-form)
+//    - Blank sources: BlankSource (keyword-bound, 95) +
+//      TransformBlankSource (imperative + generative + agent-task, 93) +
+//      FluidBlankSource (free-form lookup, 92)
 // 5. createResolver([...sources]) → globalThis._cueResolver
 ```
 
@@ -445,4 +447,4 @@ The migration to opencues-core is complete:
 1. Existing cue source JSON format is fully supported
 2. All LLM calls go through CueResolver + NodeHttpAdapter (no more bash scripts)
 3. Output format matches existing `_dynDefs` structure
-4. Blank dispatch via keyword-bound `BlankSource` + free-form `FluidBlankSource` (no more classifier LLM call, no more wink-pos-tagger)
+4. Blank dispatch via three sources at descending priority — keyword-bound `BlankSource` (95), imperative `TransformBlankSource` (93), free-form `FluidBlankSource` (92). No more classifier LLM call, no more wink-pos-tagger.

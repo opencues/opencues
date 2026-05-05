@@ -148,10 +148,16 @@ yes, split the input into `instruction` and `target`. If no, bail with
 
 **Output format:**
 ```
-VERDICT: TRANSFORM | NONE
+VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
 INSTRUCTION: <imperative phrase, _ removed; or empty>
 TARGET: <text the instruction should apply to; or empty>
 ```
+
+The six verdicts split into three branches:
+
+- **`TRANSFORM`** — the imperative path. EXTRACT splits into INSTRUCTION + TARGET; APPLY rewrites; VERIFY checks. If TARGET is empty, the **generative branch** fires instead (single-pass APPLY, no VERIFY) — covers cases like "write a poem _", "compose an email _", "give me 5 startup ideas _".
+- **`TASK_ARM` / `TASK_ADD` / `TASK_STOP` / `TASK_SHOW`** — the agent-task path. Routes to the runtime's agent state machine via `metadata.taskAction` + `metadata.taskPayload`; APPLY and VERIFY do not run. See `docs/architecture/agent-task.md` for the task semantics.
+- **`NONE`** — the source bails immediately and FluidBlankSource (priority 92) takes the slot.
 
 ### Why minimal prompts win here (Experiment 2)
 
@@ -517,7 +523,10 @@ packages/opencues-runtime/src/modules/resolver.ts
   metadata: {
     transformInstruction: <pipe-joined or single>,
     transformTarget:      <original target>,
-    verifyVerdict:        <'OK' | 'REPAIR'>,
+    verifyVerdict:        <'OK' | 'REPAIR'>,        // omitted in generative mode
+    transformMode:        <'generative'>,            // present only when TARGET was empty
+    taskAction:           <'arm' | 'add' | 'stop' | 'show'>,  // TASK_* branches
+    taskPayload:          <task-action-specific data>,
   },
 }
 ```
@@ -799,5 +808,6 @@ benchmarkable.
 
 ---
 
-*Last updated: May 2026. Authoritative for the production pipeline at
-commit `0580880` and beyond.*
+*Last updated: 2026-05-05. Authoritative for the production pipeline
+including the generative branch (`f85dad7`) and the TASK_* verdicts
+that route into the agent-task state machine.*

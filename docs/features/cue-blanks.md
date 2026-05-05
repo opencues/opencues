@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-29
+last_updated: 2026-05-05
 ---
 
 # Cue-Blanks
@@ -9,7 +9,7 @@ A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The use
 There are five flavours:
 
 - **Auto-populated cue-blanks** — `_` populates from `blankInvoke('<name>', { action: 'get' })` (or `blankScript get` for the shell-script style). Up/Down call `set` / `up` / `down`. Example: `volume _` → `50%`.
-- **List blanks** — cue.md has `stepValues: ["I am brave", "I am strong", …]`. No script; the runtime cycles through the list. Multi-word values are span-tracked.
+- **List blanks** — BLANK.md has `stepValues: ["I am brave", "I am strong", …]`. No script; the runtime cycles through the list. Multi-word values are span-tracked.
 - **Dynamic list blanks** — `blankInvoke get` returns multiple lines, each becoming a cycling alternative (e.g., HN front-page titles).
 - **Read-only blanks** — `blankReadOnly: true` fetches data once and disables cycling (e.g., stock prices via Finnhub).
 - **Consume-all blanks** — `blankConsumeAll: true` clears the entire input and replaces it with multi-word cycling alternatives (e.g., the prompt improver). Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md).
@@ -39,11 +39,11 @@ identical; the difference is where the work happens.
 operating-system-bound (changing system audio, toggling display
 brightness, calling `osascript` / `pactl` / `pwsh` …) ship as
 `.sh` / `.ps1` scripts under `blanks/<name>/`. The blank's
-`cue.md` references them via `blankScript:`. The runtime
+`BLANK.md` references them via `blankScript:`. The runtime
 `spawnProcess`-es them on each cycle.
 
 These can't run in the chrome adapter (no subprocess capability), so
-their `cue.md` includes `not-on-host: [chrome]` and chrome's bundle
+their `BLANK.md` includes `not-on-host: [chrome]` and chrome's bundle
 filter excludes them at sync time.
 
 ### API / LLM-bound blanks → TypeScript classes in the runtime
@@ -97,7 +97,7 @@ fallback consistent across hosts.
    implementing the `Blank` interface.
 2. Export it from `packages/opencues-runtime/src/blanks/index.ts`.
 3. Register it in each host's `blanksRegistry`.
-4. Add `blanks/<name>/cue.md` under `defaults/blanks/` with
+4. Add `blanks/<name>/BLANK.md` under `defaults/blanks/` with
    `impl: @opencues/runtime <ClassName>` so the validator + the
    docs-tools know it's a hoisted blank.
 
@@ -115,7 +115,7 @@ in `packages/opencues-runtime/src/blanks/index.ts`.
 |-------|------|---------|-------------|
 | `name` | string | (required) | Blank identifier (e.g., "volume", "stocks") — usually inferred from folder name |
 | `tip` | string | name | Tip text shown in the secondary display when focused |
-| `blankScript` | string | (required for OS-bound blanks) | Path to the script for `get` / `set` / `up` / `down`. Use `./{name}-blank.sh` for folder-based blanks — relative to the cue.md location |
+| `blankScript` | string | (required for OS-bound blanks) | Path to the script for `get` / `set` / `up` / `down`. Use `./{name}-blank.sh` for folder-based blanks — relative to the BLANK.md location |
 | `speak` | boolean | false | Read the tip aloud via TTS on navigation |
 | `blankKeywords` | string[] | (none) | Context words that bind a `_` to this blank (e.g., `volume, vol, sound`). Multi-word phrases allowed. |
 | `blankStep` | number | (none) | Increment/decrement step size for numeric blanks |
@@ -134,7 +134,7 @@ in `packages/opencues-runtime/src/blanks/index.ts`.
 | `blankConsumeAll` | boolean | false | Clear all input on populate (see consume-all-blanks.md) |
 | `blankConsumeContext` | boolean | false | Clear words between keyword and `_` (see consume-context-blanks.md) |
 
-Cue-blanks are folder-based: `blanks/{name}/cue.md` with YAML frontmatter (config fields) and any colocated scripts. Folder name = blank id. Discovered automatically by `discoverFolderConfigs` and merged into the runtime's blanks registry at config load time.
+Cue-blanks are folder-based: `blanks/{name}/BLANK.md` with YAML frontmatter (config fields) and any colocated scripts. Folder name = blank id. Discovered automatically by `discoverFolderConfigs` and merged into the runtime's blanks registry at config load time.
 
 ---
 
@@ -154,7 +154,7 @@ bash {blankScript} {action} {args...}
 **Spawn behavior:**
 - **`get` is synchronous** — the runtime awaits stdout to populate the blank
 - **`up` / `down` / `set` are detached fire-and-forget** for OS-state changes; debounced to one spawn per ~50ms
-- **Path resolution** — `~` is expanded to `$HOME`. Folder-based blanks use `./{name}-blank.sh` relative to the cue.md
+- **Path resolution** — `~` is expanded to `$HOME`. Folder-based blanks use `./{name}-blank.sh` relative to the BLANK.md
 - **WSL** — scripts run in the Linux environment. To talk to Windows applications, use `powershell.exe` or compiled `.exe` helpers inside the script
 
 Example script:
@@ -177,8 +177,8 @@ TTS (`speak: true`) fires once on navigation, not on each cycle update.
 ### Standard (opencues-core)
 
 - `BlankConfig` type defines all blank fields
-- `parseSingleCueMd` parses `cue.md` frontmatter into a typed `BlankConfig`
-- `discoverFolderConfigs` finds `blanks/{name}/cue.md` files and returns parsed configs
+- `parseSingleCueMd` parses `BLANK.md` frontmatter into a typed `BlankConfig`
+- `discoverFolderConfigs` finds `blanks/{name}/BLANK.md` files and returns parsed configs
 
 ### Integration responsibilities
 
