@@ -454,11 +454,10 @@ isn't navigable). Words destined for the same source are batched into
 one parallel LLM call, then results are index-remapped back to the
 original positions.
 
-Why per-word dispatch (not the old "combine into one prompt"):
-- **Isolation**: a hijacking prompt in one source can no longer poison
-  every word. Sync-demo's "always output bundled,deployed,shipped"
-  used to swap `happy → bundled`. With routing, that prompt only
-  affects words its source is called for.
+Why per-word dispatch:
+- **Isolation**: a hijacking prompt in one source cannot poison words
+  that source isn't called for. A prompt of the form "always output
+  bundled,deployed,shipped" only affects words its source claims.
 - **Symmetry**: each word gets ONE source (a domain match or the
   default), the way each `_` gets ONE blank (`BlankSource` matches
   on `blankKeywords`, falling back to `FluidBlankSource` for
@@ -466,18 +465,17 @@ Why per-word dispatch (not the old "combine into one prompt"):
 
 Surfaces that enforce + surface this:
 - `@opencues/core` `RoutedWordSourceGroup` — runtime routing class
-- `cues.md` / `new/cue.md` templates — teach the distinction at scaffold time
+- `cues.md` / `new/CUE.md` templates — teach the distinction at scaffold time
 - `opencues list` — marks each source `domain` / `default`
 - `opencues validate` — warns on zero defaults + multi-default priority ties
 
 Full spec: `docs/features/word-cue-routing.md`. Glossary entries:
 `docs/glossary.md § RoutedWordSourceGroup, Default Cue Source, Domain Cue Source`.
 
-> **Don't** introduce code paths that rebuild the merged-prompt model
-> (e.g. concatenating multiple `### alternatives` bodies into one
-> `ConfigSource`). The `combineWordSources` export in
-> `build-sources.ts` is a no-op shim kept only for external callers
-> mid-migration; new code should not call it.
+> **Don't** introduce code paths that concatenate multiple
+> `### alternatives` bodies into one `ConfigSource`. Per-word dispatch
+> is the structural property that gives us isolation; merging prompts
+> defeats it.
 
 ---
 

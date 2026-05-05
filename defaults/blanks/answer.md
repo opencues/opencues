@@ -11,5 +11,4 @@ blankProximity: 20
 ---
 
 Dispatched by the shared runtime `AnswerBlank`
-(`packages/opencues-runtime/src/blanks/answer.ts`). The legacy
-`answer-blank.sh` was deleted on 2026-04-18.
+(`packages/opencues-runtime/src/blanks/answer.ts`).

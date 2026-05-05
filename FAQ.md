@@ -227,7 +227,7 @@ Re-run with `OPENCUES_INSTALL_VERBOSE=1` to stream live.
 
 ### `opencues run opencode` says "preload not found @opentui/solid/preload"
 
-Means the fork's `bun install` hasn't run. If you upgraded from an older install (pre-Apr 2026), re-run `opencues install opencode` — the current installer includes a `bun install` step inside the fork that was missing previously.
+Means the fork's `bun install` hasn't run. Re-run `opencues install opencode` — the installer runs `bun install` inside the fork as part of the install flow.
 
 ### `opencues run opencode` silently exits 0 with no output
 
