@@ -53,6 +53,30 @@ export interface AgentEdit {
 /**
  * Cheap content preview for log output (don't dump 5000-char doc).
  */
+/**
+ * Distinguish DynDef ownership: active substitution vs passive cue offer.
+ *
+ * "Active substitution" — the visible word at this index has been replaced by
+ * another source. Examples: a blank-fill from BlankSource (volume, brightness),
+ * a transform-blank rewrite, a fluid-blank lookup. Overwriting these would
+ * fight whatever the user just summoned.
+ *
+ * "Passive cue offer" — the original word is still visible; the DynDef only
+ * carries cycleable alternatives the user has not yet accepted. Examples:
+ * SpellingSource flagging a typo, a word-cue source offering domain synonyms,
+ * a LocalCueSource tip group. The agent CAN edit these — the user hasn't
+ * committed to any alternative.
+ *
+ * Discriminator: `blankName` is set by sources that perform active
+ * substitution; passive cue sources leave it undefined. The agent's own
+ * prior edits use `blankName='agent-task'`, which we let pass — the
+ * task cache prevents re-eval within the same task, and a new task should
+ * be free to revisit the same word.
+ */
+function isOwnedByOtherSource(def: WordDef): boolean {
+  return def.blankName !== undefined && def.blankName !== 'agent-task';
+}
+
 function preview(s: string, n = 80): string {
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
@@ -102,8 +126,12 @@ export class AgentLoop {
     // Build candidate word indices: every word EXCLUDING:
     //  - blanks (`_`)
     //  - cursor-adjacent word (incomplete typing)
-    //  - words owned by SpanFillState (active blank-fill)
-    //  - words owned by DynDefs (any other source)
+    //  - words inside an active blank-fill span (SpanFillState)
+    //  - words inside a multi-word static-alt span
+    //  - words owned by an *active substitution* DynDef from another source
+    //    (BlankFill, fluid-blank, transform-blank, etc.) — but NOT passive
+    //    cue offers (spelling, word-cues, tip groups), which only suggest
+    //    alternatives without changing the visible word
     //  - words already-evaluated under the current taskId (cache hit)
     const wordSpans = splitWords(text);
     const cursorPos = this.adapter.getCursorOffset();
@@ -117,7 +145,8 @@ export class AgentLoop {
       if (i === cursorWordIdx) continue;                    // cursor-adjacent
       if (activeSpan && i >= activeSpan.index && i < activeSpan.index + activeSpan.spanLength) continue;
       if (this.dynDefs.findSpanContaining(i)) continue;     // multi-word static-alt span
-      if (this.dynDefs.get(i)) continue;                    // any DynDef owns this index
+      const def = this.dynDefs.get(i);
+      if (def && isOwnedByOtherSource(def)) continue;       // active substitution from another source
       const hash = hashWordText(word);
       if (this.state.isEvaluated(i, hash)) continue;        // already-checked under current task
       candidates.push({ wordIndex: i, word, hash });
@@ -181,7 +210,8 @@ export class AgentLoop {
       if (!liveWord) continue;                              // index out of range now
       if (liveWord.word !== edit.originalWord) continue;    // word changed since LLM saw it
       if (edit.editedWord === edit.originalWord) continue;  // no-op edit
-      if (this.dynDefs.get(edit.wordIndex)) continue;       // claimed by something else now
+      const existingDef = this.dynDefs.get(edit.wordIndex);
+      if (existingDef && isOwnedByOtherSource(existingDef)) continue; // active substitution from another source landed since
 
       const def: WordDef = {
         originalWord: edit.originalWord,
