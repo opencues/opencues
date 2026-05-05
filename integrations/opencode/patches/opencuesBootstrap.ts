@@ -135,19 +135,58 @@ export function startOpenCues(opts: {
       // Swallow — TUI swallows stderr anyway.
     }
   }
+  // Cursor tracer — diagnostic instrumentation for the cursor-jumps
+  // class of bugs. Writes one line per cursor/text touchpoint so we
+  // can reconstruct the full sequence when something goes wrong.
+  // Disable by setting OPENCUES_TRACE_CURSOR=0; default on for now.
+  const TRACE_FILE = "/tmp/opencues-cursor-trace.log"
+  const traceEnabled = process.env.OPENCUES_TRACE_CURSOR !== "0"
+  const trace = (event: string, info: Record<string, unknown> = {}): void => {
+    if (!traceEnabled) return
+    try {
+      const ts = new Date().toISOString().slice(11, 23)
+      const line = `[${ts}] ${event} ${JSON.stringify(info).slice(0, 400)}\n`
+      require("fs").appendFileSync(TRACE_FILE, line)
+    } catch { /* swallow */ }
+  }
+  // Mark a clear session boundary in the trace so a fresh repro is
+  // easy to find at the tail.
+  trace("--- runtime boot ---", { hostVersion: opts.hostVersion })
+
   bootResult = boot({
     hostVersion: opts.hostVersion,
     cwd: opts.cwd || process.cwd(),
     getText: () => opts.promptAccess.read(),
-    getCursorOffset: () => opts.promptAccess.cursor(),
-    setText: (text) => { sourceReclassifier.markRuntimeWrite(text); opts.promptAccess.write(text) },
-    setCursorOffset: (offset) => opts.promptAccess.setCursor(offset),
+    getCursorOffset: () => {
+      const c = opts.promptAccess.cursor()
+      trace("getCursorOffset", { cursor: c })
+      return c
+    },
+    setText: (text) => {
+      const before = opts.promptAccess.cursor()
+      trace("setText:in", { len: text.length, cursorBefore: before, preview: text.slice(0, 40) })
+      sourceReclassifier.markRuntimeWrite(text)
+      opts.promptAccess.write(text)
+      const after = opts.promptAccess.cursor()
+      trace("setText:out", { len: text.length, cursorAfter: after, delta: after - before })
+    },
+    setCursorOffset: (offset) => {
+      const before = opts.promptAccess.cursor()
+      trace("setCursorOffset:in", { request: offset, cursorBefore: before })
+      opts.promptAccess.setCursor(offset)
+      const after = opts.promptAccess.cursor()
+      trace("setCursorOffset:out", { cursorAfter: after, accepted: after === offset })
+    },
     // BlankFill needs pushText to deposit async script results back into
     // the prompt. Same plumbing as setText + cursor reposition.
     pushText: (text: string, cursor?: number) => {
+      const before = opts.promptAccess.cursor()
+      trace("pushText:in", { len: text.length, requestedCursor: cursor ?? null, cursorBefore: before, preview: text.slice(0, 40) })
       sourceReclassifier.markRuntimeWrite(text)
       opts.promptAccess.write(text)
       if (cursor !== undefined) opts.promptAccess.setCursor(cursor)
+      const after = opts.promptAccess.cursor()
+      trace("pushText:out", { cursorAfter: after, delta: after - before })
     },
     // forceRender on OpenCode means: re-fire OpenCues render handlers
     // (DimRender, Statusline) so async state changes (Resolver alts,
@@ -306,6 +345,15 @@ export function dispatchOpenCuesKey(evt: any): boolean {
 /** Notify runtime of text changes from the prompt component. */
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
   const actualSource = sourceReclassifier.reclassify(text, source)
+  try {
+    if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
+      const ts = new Date().toISOString().slice(11, 23)
+      require("fs").appendFileSync(
+        "/tmp/opencues-cursor-trace.log",
+        `[${ts}] notifyTextChange ${JSON.stringify({ cursor, source, actualSource, len: text.length, preview: text.slice(0, 40) }).slice(0, 400)}\n`,
+      )
+    }
+  } catch { /* swallow */ }
   bootResult?.notifyTextChange(text, cursor, actualSource)
 }
 
@@ -313,6 +361,15 @@ export function notifyOpenCuesTextChange(text: string, cursor: number, source: "
  *  arrow keys, focus etc. — opentui's EditBufferRenderable.onCursorChange
  *  fires these. Drives cursor-navigate auto-highlight. */
 export function notifyOpenCuesCursorChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
+  try {
+    if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
+      const ts = new Date().toISOString().slice(11, 23)
+      require("fs").appendFileSync(
+        "/tmp/opencues-cursor-trace.log",
+        `[${ts}] notifyCursorChange ${JSON.stringify({ cursor, source, len: text.length }).slice(0, 400)}\n`,
+      )
+    }
+  } catch { /* swallow */ }
   bootResult?.notifyCursorChange(text, cursor, source)
 }
 
