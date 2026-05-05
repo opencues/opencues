@@ -235,9 +235,7 @@ Quick locator:
   - `scale.ts` — 25/50/100/200-word docs, measures latency + recall
   - `robustness.ts` — 16 stubbed-transport scenarios for failure-mode
     coverage (empty body, malformed JSON, rate limits, throws, etc.)
-- **Experiment log**: `tests/benchmarks/agent-task/EXPERIMENTS.md` —
-  why EDITS is the default format, why the cursor mishandling masked
-  Experiment 2's "missing last item" finding, etc.
+- **Implementation reference**: `docs/architecture/agent-task.md` — pipeline shape, prompt design rationale, response format choice, and the empirical lessons that justify each.
 
 ---
 

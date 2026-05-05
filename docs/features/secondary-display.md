@@ -42,7 +42,7 @@ The JSON file (`_hlExport`) contains these fields:
 | `highlightedWordIndex` | number \| null | Index into the whitespace-split word array |
 | `highlightedWord` | string \| null | The highlighted word's text |
 | `wordCount` | number | Total number of words in the input |
-| `originalNumber` | number \| null | Reserved (unused — step blanks were removed). |
+| `originalNumber` | number \| null | Reserved (unused). |
 | `cueTip` | string \| null | Tip text for the highlighted word (source depends on word type — see table above) |
 | `altCueTips` | object \| null | Map of each alternative to its own tip (for per-alternative tip display during cycling) |
 | `alts` | string[] \| null | Alternatives list for the highlighted word |

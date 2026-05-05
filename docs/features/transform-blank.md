@@ -82,7 +82,7 @@ P3 VERIFY     →  OK | REPAIR
 
                  SKIPPED on literal swaps (`change X to Y`) and
                  BrE↔AmE conversions — saves ~13% latency at no
-                 measurable accuracy cost (Experiment 4).
+                 measurable accuracy cost.
 ```
 
 Returns a single CueResult with:

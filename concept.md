@@ -61,7 +61,7 @@ The two surfaces have **fundamentally different contracts**:
 - ❌ Word-cycling without `_` — typing "volume" and pressing Up to call a script. **All external state is `_`-gated.**
 - ❌ Numeric stepping on plain words ("15.5f" → "16.0f")
 - ❌ Catch-everything default word-cues (every cue source must declare `match:` or `keywords:` — no implicit catch-all)
-- ❌ Classifier-routed blanks — fluid-blank covers the territory (the legacy `ClassifiedSourceGroup` was removed entirely)
+- ❌ Classifier-routed blanks — fluid-blank covers the territory
 
 The shape: **`_` for anything that touches the world. Plain text is LLM-only. Nothing else.**
 

@@ -419,8 +419,6 @@ opencues-core is used directly from the injected cli.js code (no shell scripts).
 // 5. createResolver([...sources]) → globalThis._cueResolver
 ```
 
-> **HISTORICAL NOTE**: An earlier migration example showed wrapping opencues-core inside `llm-analyze-auto.sh`. That script-based approach is no longer used; all calls are inline.
-
 ## Testing
 
 Run the test suite:
@@ -439,12 +437,3 @@ pnpm --filter @opencues/runtime test     # runtime only
 3. **Database Source**: Implement `CueSource` for database-backed cues
 4. **Real-time Sync**: Use file watchers or WebSocket for live updates
 5. **Analytics**: Track which cues are most useful via metrics
-
-## Migration from Existing System
-
-The migration to opencues-core is complete:
-
-1. Existing cue source JSON format is fully supported
-2. All LLM calls go through CueResolver + NodeHttpAdapter (no more bash scripts)
-3. Output format matches existing `_dynDefs` structure
-4. Blank dispatch via three sources at descending priority — keyword-bound `BlankSource` (95), imperative `TransformBlankSource` (93), free-form `FluidBlankSource` (92). No more classifier LLM call, no more wink-pos-tagger.

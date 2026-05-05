@@ -26,12 +26,10 @@ Words destined for the same source are batched into one parallel LLM call; resul
 
 Why per-word dispatch (not the old "combine into one prompt"):
 
-- **Isolation**: a hijacking prompt in one source can no longer poison every word. With the old combine model, a prompt in `cues/sync-demo/cue.md` saying "always output `bundled,deployed,shipped`" would swap `happy → bundled`. With routing, that prompt only affects words its source is called for.
-- **Scaling**: combined prompts grow linearly with source count and start confusing the LLM at ~5+ domains. Per-source calls keep each prompt small and focused.
+- **Isolation**: a hijacking prompt in one source cannot poison words that source isn't called for. A prompt of the form `"always output bundled, deployed, shipped"` only affects words its source claims.
+- **Scaling**: each per-source call keeps its prompt small and focused, regardless of how many domains the project ships.
 
 See [Word-Cue Routing](word-cue-routing.md) for the full classification + dispatch spec, and the `RoutedWordSourceGroup` source in `@opencues/core` for the implementation.
-
-> The legacy `combineWordSources()` export in `build-sources.ts` is a no-op shim kept only for external callers mid-migration; new code should not call it.
 
 ---
 

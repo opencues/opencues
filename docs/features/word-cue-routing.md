@@ -12,7 +12,7 @@ The rule is one line:
 
 > **Every word-cue source MUST set `match:` (regex) or `keywords:` (list).** Sources without either are dropped at runtime.
 
-Catch-all "default" sources were removed — there is no implicit fall-through that colours every word. If you really want one, declare it explicitly: `match: .*`. That makes the catch-all visible in `opencues list` and `opencues validate` rather than hidden behind a flag.
+Catch-all "default" sources are not supported — there is no implicit fall-through that colours every word. If you really want one, declare it explicitly: `match: .*`. That makes the catch-all visible in `opencues list` and `opencues validate` rather than hidden behind a flag.
 
 `opencues validate` warns when a word-cue source declares neither `match:` nor `keywords:`.
 
@@ -71,14 +71,14 @@ For "the contract shall indemnify the diagnosis", that's:
 
 ---
 
-## Why not combine into one prompt?
+## Why per-word dispatch
 
-The previous model (`combineWordSources`, now deprecated) merged every source's prompt body into one giant prompt, passed the whole thing + all words to the LLM, and parsed one response. Two structural problems:
+Per-word dispatch is structural isolation. Two properties fall out of it:
 
-1. **Cross-contamination.** A sloppy or hijacking prompt in one source poisoned ALL words. During sync-demo testing, a prompt of the form *"always output exactly: bundled, deployed, shipped"* caused every word in the input to come back as those three words. Per-word dispatch structurally prevents this: a prompt can only affect words its source is called for.
-2. **Scale.** Combined prompts grow linearly with source count and start confusing the LLM at ~5+ domains. Per-source calls keep each prompt small and focused.
+1. **Cross-contamination is impossible.** A sloppy or hijacking prompt in one source can only affect words its source is called for. A prompt of the form `"always output exactly: bundled, deployed, shipped"` only ever colours words that match its `match:` / `keywords:`.
+2. **Prompts stay small.** Each LLM call carries one source's prompt and the words destined for it. Total prompt size doesn't grow with the number of registered sources.
 
-Isolation is the structural property that matters here.
+Isolation is the structural property that matters.
 
 ---
 

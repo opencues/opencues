@@ -2,13 +2,12 @@
 
 The `<repo>/defaults/` directory holds the grammar / legal / medical / volume / etc. configs that OpenCues ships to every new user. It is **a seed source, not an ambient project config.**
 
-Before April 2026 these files lived at `<repo>/.cues/`. That path was ambiguous — it served three roles at once:
+It plays two roles:
 
 1. **Seed source** for `opencues seed-configs` (copied into `~/.cues/` on first install).
 2. **Bake-time source** for the Chrome extension's inlined fallback (`__DEFAULT_CUE_FOLDERS__` et al).
-3. **Implicit dev config** — when a dev was `cd`'d into the opencues repo, the native hosts' cwd-based project-level merge picked it up as if it were a normal project.
 
-Role #3 caused confusion ("why does editing `<repo>/.cues/grammar/cue.md` change behaviour in my CC session but not in chrome?") and leaked dev-specific edits into the shipped defaults. Moving the directory to `defaults/` removes that third role — the repo no longer has an in-tree project config.
+It is *not* picked up as an ambient project config — devs working on opencues run `seed-configs` once just like any user.
 
 ---
 
@@ -82,7 +81,7 @@ Separate names mean separate roles. `defaults/` is for code (the install / build
 
 ## Migration notes for contributors
 
-- **Seed your user-level configs once.** After pulling a branch that renames the dir, `opencues seed-configs` into `~/.cues/`. If you'd previously been relying on `<repo>/.cues/` for your day-to-day CC/OC use, that's gone — your shell no longer picks up those configs implicitly.
+- **Seed your user-level configs once.** Run `opencues seed-configs` to populate `~/.cues/`. Your shell does not pick up `<repo>/defaults/` implicitly — the seed step is the canonical way to get the shipped configs into your environment.
 - **`<repo>/.cues/` is deleted.** `git rm` hooked into the rename; no orphan dir.
 - **The shape of `defaults/` matches `~/.cues/`.** Anything that works in one works in the other. Files are portable via straight copy.
 - **New cues ship here.** Add a new `defaults/cues/<name>/cue.md`, commit, and it's in the next release's seed for users + bake-time defaults for chrome.

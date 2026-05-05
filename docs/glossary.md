@@ -78,7 +78,7 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **blanks/{name}/BLANK.md** — One folder per blank. Defines `_`-gated cycling behaviour — script-triggered (volume, brightness), auto-populated (stock prices, weather), list (affirmations), read-only (live API values), and consume-all (prompt improver). Frontmatter holds the BlankConfig fields; scripts are colocated in the same folder. (Filename per the open standard at `spec/blank-spec.md`. Legacy `blank.md` and `cue.md` names are auto-migrated by `seed-configs`.)
 
-**Folder-based config** — Each cue / blank is a self-contained folder: cues use `CUE.md`, blanks use `BLANK.md` (YAML frontmatter for config, body for prompt or words JSON), with optional colocated scripts. Folders in `cues/` (or legacy `words/`) and `blanks/` are auto-discovered. This is the canonical authoring shape — there are no longer separate monolithic `## Tips` / `## Blanks` / `## Prompt` sections in any top-level file.
+**Folder-based config** — Each cue / blank is a self-contained folder: cues use `CUE.md`, blanks use `BLANK.md` (YAML frontmatter for config, body for prompt or words JSON), with optional colocated scripts. Folders in `cues/` and `blanks/` are auto-discovered.
 
 **Host** — One of the three OpenCues integrations: `claude-code`, `opencode`, `chrome`. They share the same `.md` config format but differ in runtime capabilities. Native hosts (CC, OC) can spawn subprocesses + read the filesystem; chrome can't.
 
