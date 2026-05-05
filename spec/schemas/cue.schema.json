@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/cue.schema.json",
+  "title": "OpenCues cue.md frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of a cue.md file. Spec: opencues/0.1-alpha. See /spec/cue-spec.md.",
+  "type": "object",
+  "required": ["name"],
+  "anyOf": [
+    { "required": ["match"] },
+    { "required": ["keywords"] }
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Unique identifier for this cue source. Lowercase, hyphens permitted."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable summary. NOT a trigger. Validators warn when absent."
+    },
+    "match": {
+      "type": "string",
+      "description": "ECMA regex. Word matches if the regex matches it (case-insensitive by default)."
+    },
+    "keywords": {
+      "oneOf": [
+        { "type": "string", "description": "Comma-separated list." },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "Word matches if it (case-insensitively) equals any keyword."
+    },
+    "priority": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 50,
+      "description": "Higher wins on routing ties."
+    },
+    "parser": {
+      "type": "string",
+      "enum": ["alternatives", "raw"],
+      "default": "alternatives",
+      "description": "LLM response wire format."
+    },
+    "model": {
+      "type": "string",
+      "description": "Override the runtime's default model for this source."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["words", "blanks", "all"],
+      "description": "Where this source applies. Inferred from path; explicit only when overriding."
+    },
+    "classify": {
+      "type": "string",
+      "description": "Free-text classification hint."
+    },
+    "type": {
+      "type": "string",
+      "description": "Discriminator for shared directories. Inferred from path; usually omitted."
+    },
+    "on-host": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "opencode"] },
+      "description": "Allow-list of host names that may load this source."
+    },
+    "not-on-host": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "opencode"] },
+      "description": "Deny-list, applied after on-host."
+    },
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha",
+      "description": "Spec version this file targets."
+    }
+  },
+  "additionalProperties": true
+}

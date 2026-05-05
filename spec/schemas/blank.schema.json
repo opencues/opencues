@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/blank.schema.json",
+  "title": "OpenCues blank.md frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of a blank.md file. Spec: opencues/0.1-alpha. See /spec/blank-spec.md.",
+  "type": "object",
+  "required": ["name", "blankKeywords"],
+  "oneOf": [
+    { "required": ["stepValues"] },
+    { "required": ["blankScript"] },
+    { "required": ["impl"] },
+    {
+      "description": "impl: implicit from name — name resolves to <PascalCase(name)>Blank in the runtime. Other runtimes MAY treat as unsupported.",
+      "not": { "anyOf": [
+        { "required": ["stepValues"] },
+        { "required": ["blankScript"] }
+      ] }
+    }
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Unique identifier. Implicit class name when impl: is omitted."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable summary. Validators warn when absent."
+    },
+    "blankKeywords": {
+      "oneOf": [
+        { "type": "string", "description": "Comma-separated list." },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "Words that, when adjacent to _, fire this blank."
+    },
+    "tip": {
+      "type": "string",
+      "description": "Short single-phrase display hint."
+    },
+    "blankTip": {
+      "type": "string",
+      "description": "Multi-line display hint for runtimes with a side pane."
+    },
+    "type": {
+      "type": "string",
+      "const": "blank",
+      "description": "Discriminator. Usually inferred from path."
+    },
+    "blankStep": {
+      "type": "number",
+      "description": "Increment size for numeric blanks."
+    },
+    "blankFormat": {
+      "type": "string",
+      "enum": ["integer", "float", "string"],
+      "default": "string"
+    },
+    "blankSuffix": {
+      "type": "string",
+      "default": ""
+    },
+    "blankAutoPopulate": {
+      "type": "boolean",
+      "default": true
+    },
+    "blankSatellite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Two-word selector + value pattern."
+    },
+    "blankDismissible": {
+      "type": "boolean",
+      "default": false,
+      "description": "_ becomes the last cycling option."
+    },
+    "blankReadOnly": {
+      "type": "boolean",
+      "default": false,
+      "description": "Skip set/up/down."
+    },
+    "blankProximity": {
+      "type": "number",
+      "minimum": 0,
+      "default": 1,
+      "description": "Word distance from _ allowed for keyword match."
+    },
+    "blankClearKeywords": {
+      "type": "boolean",
+      "default": false,
+      "description": "After fill, strip the keyword from the resulting text."
+    },
+    "blankKeywordExpansions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Map short-form keywords to expanded forms (e.g. nvda → Nvidia)."
+    },
+    "stepValues": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Binding profile — declarative rotation list."
+    },
+    "blankScript": {
+      "type": "string",
+      "description": "Binding profile — relative path to a shell script."
+    },
+    "impl": {
+      "type": "string",
+      "description": "Binding profile — in-process class name."
+    },
+    "speak": {
+      "type": "boolean",
+      "default": false,
+      "description": "Per-blank TTS hint. Reserved; TTS itself is non-standard."
+    },
+    "on-host": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "opencode"] }
+    },
+    "not-on-host": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "opencode"] }
+    },
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha"
+    }
+  },
+  "additionalProperties": true
+}
