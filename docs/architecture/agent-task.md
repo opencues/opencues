@@ -328,6 +328,30 @@ No backoff after no-ops in v1 (we'll see in benchmarks if it's needed).
 
 ---
 
+## Cursor translation across edits
+
+The agent mutates the buffer mid-document while the user may be typing somewhere else (or far away from any edit). The buffer mutation runs through `pushText(newText, cursor)`, where `cursor` is the offset where the host should place the caret in the *new* text.
+
+`getCursorOffset()` returns the cursor's offset in the *old* text. Passing that value through unchanged is wrong when an edit before the cursor changed length — the cursor would land at the same numeric offset but now point at a different character.
+
+**Rule:** before calling `pushText`, walk the applied edits and adjust the cursor by the cumulative length delta of edits whose end position is at or before the cursor. Edits after the cursor leave the offset alone.
+
+```
+old text:  I rite some text witth typos|        cursor=28 (after final s)
+edit:      rite (offset 2..6, length 4) → write (length 5)    delta=+1
+                ^^^^ end=6 ≤ cursor=28, so cursor shifts +1
+
+new text:  I write some text witth typos|       cursor=29 (after final s)
+```
+
+Without translation the cursor would land at offset 28 of the new text — between `o` and `s` of `typos` — and the next keystroke would insert in the wrong place. Multiple edits compound: three before-cursor edits each adding a character → cursor needs +3.
+
+This is not a render concern (the host's `pushText` literally sets the caret to the offset given); it's the runtime's responsibility to compute the correct offset. The `AgentLoop: buffer mutated …` log line surfaces both the raw `cursor before→after` and any `[translated N→M]` adjustment so the cursor's path is auditable in the trace.
+
+The same translation rule would apply to any future module that does inline buffer edits while the user might be elsewhere.
+
+---
+
 ## Stop semantics
 
 `stop task _`:

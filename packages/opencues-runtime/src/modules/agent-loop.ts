@@ -153,11 +153,11 @@ export class AgentLoop {
     }
 
     if (candidates.length === 0) {
-      this._logFn(`AgentLoop: no candidates (textLen=${text.length}, allWords=${wordSpans.length})`);
+      this._logFn(`AgentLoop: no candidates (textLen=${text.length}, allWords=${wordSpans.length}, cursor=${cursorPos}@word${cursorWordIdx})`);
       return;
     }
 
-    this._logFn(`AgentLoop: starting (textLen=${text.length}, candidates=${candidates.length}/${wordSpans.length}, taskId=${this.state.taskId?.slice(0, 8)}…)`);
+    this._logFn(`AgentLoop: starting (textLen=${text.length}, candidates=${candidates.length}/${wordSpans.length}, cursor=${cursorPos}@word${cursorWordIdx}, taskId=${this.state.taskId?.slice(0, 8)}…)`);
 
     // Stale check before LLM call.
     if (generation !== this._generation) return;
@@ -245,12 +245,38 @@ export class AgentLoop {
         newText = newText.slice(0, w.start) + edit.editedWord + newText.slice(w.end);
       }
       if (newText !== liveText) {
+        const cursorBefore = this.adapter.getCursorOffset();
+        // Translate the cursor across the splice. The offset we got from
+        // getCursorOffset() refers to the OLD text frame; pushText needs
+        // an offset in the NEW text frame. Any edit whose end position is
+        // at or before the cursor shifts the cursor by its length delta.
+        // Edits after the cursor leave the offset alone.
+        //
+        // Without this translation, edits before the cursor make the
+        // cursor "drift" — `rite`→`write` (+1 char) at offset 2 with
+        // cursor at offset 28 would land the cursor at offset 28 in the
+        // new text, which is one character earlier than where the user
+        // logically was. Multiple edits compound the drift.
+        let cursorAdjusted = cursorBefore;
+        for (const edit of sorted) {
+          const w = liveWords[edit.wordIndex];
+          if (w.end <= cursorBefore) {
+            cursorAdjusted += edit.editedWord.length - edit.originalWord.length;
+          }
+        }
         if (this.adapter.pushText) {
-          this.adapter.pushText(newText, this.adapter.getCursorOffset());
+          this.adapter.pushText(newText, cursorAdjusted);
         } else {
           this.adapter.setText(newText);
           this.adapter.forceRender();
         }
+        const cursorAfter = this.adapter.getCursorOffset();
+        const lenDelta = newText.length - liveText.length;
+        this._logFn(
+          `AgentLoop: buffer mutated (textLen ${liveText.length}→${newText.length}, delta=${lenDelta >= 0 ? '+' : ''}${lenDelta}, cursor ${cursorBefore}→${cursorAfter}` +
+          (cursorAdjusted !== cursorBefore ? ` [translated ${cursorBefore}→${cursorAdjusted}]` : '') +
+          `)`
+        );
       }
     }
   }
