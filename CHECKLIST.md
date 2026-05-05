@@ -207,7 +207,7 @@ pnpm exec opencues list --blanks
 pnpm exec opencues show grammar
 # → if grammar exists: prints "Matches for 'grammar'" with each occurrence
 #   in priority order. May show TWO entries if it appears in both
-#   cues.md AND cues/grammar/cue.md (folder wins).
+#   cues.md AND cues/grammar/CUE.md (folder wins).
 
 pnpm exec opencues show nonsense-name-xyz
 # → "no cue/blank/control named ... found"; exit 1
@@ -315,12 +315,12 @@ rm -rf /tmp/opencues-init-test
 
 ```bash
 pnpm exec opencues new cue test-cue --dry-run
-# → "CREATE /home/<you>/.cues/words/test-cue/cue.md"
+# → "CREATE /home/<you>/.cues/words/test-cue/CUE.md"
 
 pnpm exec opencues new cue test-cue
 # → file created with {{NAME}} → "test-cue" substituted
 
-cat ~/.cues/words/test-cue/cue.md
+cat ~/.cues/words/test-cue/CUE.md
 # → frontmatter + prompt body, references "test-cue"
 
 pnpm exec opencues new cue test-cue
@@ -333,7 +333,7 @@ pnpm exec opencues new cue Bad_Name
 # → name validation error (must match /^[a-z][a-z0-9-]*$/); exit 2
 
 pnpm exec opencues new blank my-control --project
-# → creates <cwd>/.cues/blanks/my-control/cue.md (in repo)
+# → creates <cwd>/.cues/blanks/my-control/BLANK.md (in repo)
 
 # CLEANUP:
 rm -rf ~/.cues/words/test-cue

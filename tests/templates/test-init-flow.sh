@@ -31,12 +31,12 @@ pass "fresh init validates 0 errors"
 
 echo "=== opencues new cue ==="
 "$OPENCUES" new cue my-synonyms --project >/dev/null 2>&1 || fail "new cue failed"
-[[ -f .cues/words/my-synonyms/cue.md ]] || fail "new cue did not create cue.md"
+[[ -f .cues/words/my-synonyms/CUE.md ]] || fail "new cue did not create cue.md"
 pass "new cue scaffolds cue.md"
 
 echo "=== opencues new blank ==="
 "$OPENCUES" new blank my-answer --project >/dev/null 2>&1 || fail "new blank failed"
-[[ -f .cues/blanks/my-answer/cue.md ]] || fail "new blank did not create cue.md"
+[[ -f .cues/blanks/my-answer/BLANK.md ]] || fail "new blank did not create cue.md"
 pass "new blank scaffolds cue.md"
 
 echo "=== validate after new ==="

@@ -20,14 +20,14 @@ const projectRoot = new URL('../../', import.meta.url).pathname;
 const readOr = (path, fallback) => { try { return readFileSync(path, 'utf8'); } catch { return fallback; } };
 
 // Load word-cue sources from defaults/words/. Both flat <name>.md
-// and folder <name>/cue.md are accepted.
+// and folder <name>/CUE.md are accepted.
 const cuesFolders = {};
 const wordsDir = projectRoot + 'defaults/words/';
 try {
   const entries = readdirSync(wordsDir, { withFileTypes: true });
   for (const d of entries) {
     if (d.isDirectory()) {
-      const cueMd = readOr(wordsDir + d.name + '/cue.md', '');
+      const cueMd = readOr(wordsDir + d.name + '/CUE.md', '');
       if (cueMd) cuesFolders[d.name] = cueMd;
     } else if (d.name.endsWith('.md')) {
       const cueMd = readOr(wordsDir + d.name, '');
@@ -40,17 +40,18 @@ try {
 } catch { /* no words/ dir */ }
 
 // Load blank sources from defaults/blanks/. Both flat and folder shapes.
+// Folder shape uses BLANK.md per the open standard.
 const blankFolders = {};
 const blanksDir = projectRoot + 'defaults/blanks/';
 try {
   const entries = readdirSync(blanksDir, { withFileTypes: true });
   for (const d of entries) {
     if (d.isDirectory()) {
-      const cueMd = readOr(blanksDir + d.name + '/cue.md', '');
-      if (cueMd) blankFolders[d.name] = cueMd;
+      const blankMd = readOr(blanksDir + d.name + '/BLANK.md', '');
+      if (blankMd) blankFolders[d.name] = blankMd;
     } else if (d.name.endsWith('.md')) {
-      const cueMd = readOr(blanksDir + d.name, '');
-      if (cueMd) blankFolders[d.name.slice(0, -3)] = cueMd;
+      const blankMd = readOr(blanksDir + d.name, '');
+      if (blankMd) blankFolders[d.name.slice(0, -3)] = blankMd;
     }
   }
   if (Object.keys(blankFolders).length > 0) {

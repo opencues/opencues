@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CUE_MD="$SCRIPT_DIR/../../defaults/blanks/prompt/cue.md"
+CUE_MD="$SCRIPT_DIR/../../defaults/blanks/prompt/BLANK.md"
 PROMPT_SCRIPT="$SCRIPT_DIR/../../defaults/blanks/prompt/prompt-blank.sh"
 
 FILTER_CATEGORY="${1:-}"

@@ -24,12 +24,12 @@ That covers every cue + blank we ship today without a single annotation:
 
 | Entry | Auto-detected hosts | Why |
 |---|---|---|
-| `cues/grammar/cue.md` (LLM only) | all | no script |
-| `blanks/math/cue.md` (compute parser) | all | no script |
-| `blanks/affirmations/cue.md` (list) | all | no script |
-| `blanks/stocks/cue.md` (runtime class) | all | no script |
-| `blanks/volume/cue.md` (`blankScript: ./volume-blank.sh`) | claude-code, opencode | `.sh` |
-| `blanks/brightness/cue.md` (`blankScript: ./brightness-blank.sh`) | claude-code, opencode | `.sh` |
+| `cues/grammar/CUE.md` (LLM only) | all | no script |
+| `blanks/math/BLANK.md` (compute parser) | all | no script |
+| `blanks/affirmations/BLANK.md` (list) | all | no script |
+| `blanks/stocks/BLANK.md` (runtime class) | all | no script |
+| `blanks/volume/BLANK.md` (`blankScript: ./volume-blank.sh`) | claude-code, opencode | `.sh` |
+| `blanks/brightness/BLANK.md` (`blankScript: ./brightness-blank.sh`) | claude-code, opencode | `.sh` |
 
 ---
 
@@ -61,7 +61,7 @@ Both accept:
 - A runtime-class blank that ALSO has a shell fallback for native
   hosts. Without `on-host:`, auto-detect sees the `.sh` and excludes
   chrome — the override re-includes it. See
-  `.cues/blanks/opencues/cue.md` for a real example.
+  `.cues/blanks/opencues/BLANK.md` for a real example.
 
 ### When you'd use `not-on-host:`
 

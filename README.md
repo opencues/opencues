@@ -36,8 +36,8 @@ OpenCues is built on `.md` config files — one top-level file plus folder-based
 | Config | What it defines | Example |
 |--------|----------------|---------|
 | **cues.md** | Top-level system settings in frontmatter (`voice-mode`, `tips-mode`, etc.), the nested `settings:` block, and the `ignore:` array. No cue/blank data. | `voice-mode: active`, `ignore: [the, a, of]` |
-| **cues/{name}/cue.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `cues/legal/cue.md` for legal terminology, `cues/grammar/cue.md` with a synonym prompt |
-| **blanks/{name}/** | Folder-based blank with colocated script or runtime class | `blanks/volume/cue.md` + `volume-blank.sh` |
+| **cues/{name}/cue.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `cues/legal/CUE.md` for legal terminology, `cues/grammar/CUE.md` with a synonym prompt |
+| **blanks/{name}/** | Folder-based blank with colocated script or runtime class | `blanks/volume/BLANK.md` + `volume-blank.sh` |
 
 Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered. To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

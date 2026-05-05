@@ -11,7 +11,7 @@
 // BlankFill's consume-all replaces with no observable change instead
 // of erasing the user's input.
 //
-// The prompts here mirror what blanks/prompt/cue.md
+// The prompts here mirror what blanks/prompt/BLANK.md
 // declares in its `## Extract` and `## Transform` sections. A future
 // improvement is to read those from the cue.md frontmatter so this
 // class doesn't drift; for now they're inlined to match the chrome

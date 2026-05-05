@@ -205,13 +205,37 @@ module.exports = function seedConfigs(argv, ctx) {
 
   if (synced === 0) log('  (no changes — library files current)');
 
-  // ── 3. HEAL — self-heal empty .opencuesrc ─────────────────────────
+  // ── 3. HEAL — self-heal empty .opencuesrc + rename legacy cue.md → blank.md ──
   log('');
   if (settingsTarget && hasContent(settingsSource)) {
     if (fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size === 0) {
       fs.copyFileSync(settingsSource, settingsTarget);
       log(`Self-heal: reseeded empty ${settingsTarget} from defaults`);
     }
+  }
+
+  // Migrate legacy `<userDir>/blanks/<name>/{cue.md,blank.md}` → `BLANK.md`
+  // per the open standard (spec/blank-spec.md). Idempotent: if BLANK.md
+  // already exists, skip the source; otherwise rename whichever legacy
+  // form exists. Two legacy names are recognised because the standard
+  // moved cue.md → blank.md → BLANK.md across two minor revisions.
+  const userBlanksDir = path.join(targetDir, 'blanks');
+  if (fs.existsSync(userBlanksDir)) {
+    let renamed = 0;
+    for (const subDir of listChildDirs(userBlanksDir)) {
+      const targetPath = path.join(subDir, 'BLANK.md');
+      if (fs.existsSync(targetPath)) continue;
+      for (const legacyName of ['blank.md', 'cue.md']) {
+        const legacyPath = path.join(subDir, legacyName);
+        if (fs.existsSync(legacyPath)) {
+          fs.renameSync(legacyPath, targetPath);
+          renamed++;
+          log(`  migrated ${path.basename(subDir)}/${legacyName} → BLANK.md`);
+          break;
+        }
+      }
+    }
+    if (renamed > 0) log(`Self-heal: renamed ${renamed} legacy blank file → BLANK.md`);
   }
 
   // ── 4. COMPILE — colocated .cs → .exe (WSL only) ───────────────────

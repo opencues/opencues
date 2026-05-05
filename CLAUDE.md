@@ -66,31 +66,31 @@ opencues/
 │   │                              # self-dogfood via `<cwd>/.cues` anymore. Devs working
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
-│   ├── cues.md                    # Master config: settings frontmatter + ignore: array + project metadata
+│   ├── CUES.md                    # Master config: settings frontmatter + ignore: array + project metadata
 │   ├── cues/                      # Folder-based cue configs (LLM word-cues + static tip groups)
-│   │   ├── extended-thinking/cue.md  # type: tips, words: { ultrathink: { tip, alts } }
+│   │   ├── extended-thinking/CUE.md  # type: tips, words: { ultrathink: { tip, alts } }
 │   │   ├── …                      # 38 shipped tip-group folders
-│   │   ├── legal/cue.md           # Legal terminology word-cues (LLM)
-│   │   ├── medical/cue.md         # Clinical terminology word-cues
-│   │   └── financial/cue.md       # Financial terminology word-cues
+│   │   ├── legal/CUE.md           # Legal terminology word-cues (LLM)
+│   │   ├── medical/CUE.md         # Clinical terminology word-cues
+│   │   └── financial/CUE.md       # Financial terminology word-cues
 │   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state)
 │       ├── volume/
-│       │   ├── cue.md             # type: blank, blankKeywords: volume, …
+│       │   ├── BLANK.md           # type: blank, blankKeywords: volume, …
 │       │   ├── volume-blank.sh    # Blank script: get/set system volume
 │       │   └── VolCtl.cs          # C# source for Windows Core Audio API (compiled by setup.sh)
 │       ├── brightness/
-│       │   ├── cue.md
+│       │   ├── BLANK.md
 │       │   └── brightness-blank.sh
-│       ├── affirmations/cue.md    # List blank (stepValues: [...])
-│       ├── stocks/cue.md          # impl: @opencues/runtime StocksBlank
-│       ├── weather/cue.md         # impl: @opencues/runtime WeatherBlank
-│       ├── hackernews/cue.md      # impl: @opencues/runtime HackerNewsBlank
-│       ├── prompt/cue.md          # impl: @opencues/runtime PromptImproverBlank
-│       ├── answer/cue.md          # impl: @opencues/runtime AnswerBlank
-│       ├── countries/cue.md       # impl: @opencues/runtime CountriesBlank
-│       ├── crypto/cue.md          # impl: @opencues/runtime CryptoBlank
-│       ├── dictionary/cue.md      # impl: @opencues/runtime DictionaryBlank
-│       └── opencues/cue.md        # impl: @opencues/runtime OpenCuesSettingsBlank
+│       ├── affirmations.md        # List blank (stepValues: [...])
+│       ├── stocks.md              # impl: @opencues/runtime StocksBlank
+│       ├── weather.md             # impl: @opencues/runtime WeatherBlank
+│       ├── hackernews.md          # impl: @opencues/runtime HackerNewsBlank
+│       ├── prompt.md              # impl: @opencues/runtime PromptImproverBlank
+│       ├── answer.md              # impl: @opencues/runtime AnswerBlank
+│       ├── countries.md           # impl: @opencues/runtime CountriesBlank
+│       ├── crypto.md              # impl: @opencues/runtime CryptoBlank
+│       ├── dictionary.md          # impl: @opencues/runtime DictionaryBlank
+│       └── opencues/BLANK.md      # impl: @opencues/runtime OpenCuesSettingsBlank
 │
 ├── packages/                      # Core packages (publish as @opencues/*)
 │   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core
@@ -423,7 +423,7 @@ Full spec: `docs/features/host-compat.md`. Glossary entry:
 `inferHostCompat()`, `formatHostList()`, `unknownHostNames()`,
 `HOSTS`, `NATIVE_HOSTS`.
 
-Real-world example: `.cues/blanks/opencues/cue.md` has
+Real-world example: `.cues/blanks/opencues/BLANK.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a
 runtime-class implementation in `@opencues/runtime`. Auto-detect
 would exclude chrome because of the `.sh`; the file adds

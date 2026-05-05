@@ -238,7 +238,7 @@ if (globalThis._dynDefs && globalThis._dynDefs.words) {
 
 The prompt improver is a consume-all blank that clears the entire input and replaces it with an LLM-improved version of the user's prompt.
 
-### Config (`blanks/prompt/cue.md`)
+### Config (`blanks/prompt/BLANK.md`)
 ```yaml
 ---
 name: prompt

@@ -43,16 +43,16 @@ version: 1
 #    Fields: blankKeywords, blankScript, blankAutoPopulate, blankFormat,
 #            blankSuffix, blankStep, blankReadOnly, blankProximity,
 #            blankTip, blankDismissible
-#    Example: defaults/blanks/volume/cue.md
+#    Example: defaults/blanks/volume/BLANK.md
 #
 # 2. List blank (no script — fixed cycle list)
 #    Fields: blankKeywords, stepValues, tip, blankDismissible
-#    Example: defaults/blanks/affirmations/cue.md
+#    Example: defaults/blanks/affirmations/BLANK.md
 #
 # 3. Selector + Satellite (two-word span)
 #    Adds: blankSatellite, blankSatelliteSeparator, blankClearKeywords,
 #          blankClearOnEdit
-#    Example: defaults/blanks/opencues/cue.md
+#    Example: defaults/blanks/opencues/BLANK.md
 #
 # 4. Runtime-class blank (LLM/HTTP-backed — TS class, no script)
 #    Implementation: packages/opencues-runtime/src/blanks/<name>.ts

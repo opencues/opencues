@@ -38,19 +38,24 @@ export interface DiscoveredConfigs {
 // Folder scanning
 // ============================================================================
 
-const CUE_FILENAME = 'cue.md';
+const CUE_FILENAME = 'CUE.md';
+const BLANK_FILENAME = 'BLANK.md';
 
 /**
  * Scan a directory for cue sources. Two shapes accepted:
  *
  *   - Flat: `<dirPath>/<name>.md` — source name = filename minus `.md`.
- *   - Folder: `<dirPath>/<name>/cue.md` — source name = folder name.
+ *   - Folder: `<dirPath>/<name>/<filename>` — source name = folder name.
+ *
+ * `filename` selects the per-folder file: `cue.md` for cue dirs,
+ * `blank.md` for blank dirs.
  *
  * Returns an array of parsed CuesMdConfig, one per discovered source.
  */
 function scanDir(
   dirPath: string,
-  opts: DiscoverOptions
+  opts: DiscoverOptions,
+  filename: string = CUE_FILENAME
 ): CuesMdConfig[] {
   const entries = opts.readDir(dirPath);
   if (!entries) return [];
@@ -63,8 +68,8 @@ function scanDir(
     let inferredName: string;
 
     if (entry.isDirectory) {
-      // Folder shape: <dir>/<name>/cue.md
-      cuePath = dirPath + '/' + entry.name + '/' + CUE_FILENAME;
+      // Folder shape: <dir>/<name>/<filename>
+      cuePath = dirPath + '/' + entry.name + '/' + filename;
       configPath = dirPath + '/' + entry.name;
       inferredName = entry.name;
     } else if (entry.name.endsWith('.md')) {
@@ -172,8 +177,8 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
 
-  // Scan blanks/ directory.
-  const blankConfigs = scanDir(opts.basePath + '/blanks', opts);
+  // Scan blanks/ directory. Folder shape uses `blank.md` (not `cue.md`).
+  const blankConfigs = scanDir(opts.basePath + '/blanks', opts, BLANK_FILENAME);
   if (blankConfigs.length > 0) {
     const combined = combineCueConfigs(blankConfigs);
     result.blanksConfig = combined;
@@ -181,9 +186,9 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
   }
 
   // Scan blanks/ directory for blank overrides (post-rename, the same
-  // path scanned above for blanksConfig — folder cue.md files with
+  // path scanned above for blanksConfig — folder blank.md files with
   // `type: blank` are funnelled into result.blankOverrides here).
-  const blankFolderConfigs = scanDir(opts.basePath + '/blanks', opts);
+  const blankFolderConfigs = scanDir(opts.basePath + '/blanks', opts, BLANK_FILENAME);
   if (blankFolderConfigs.length > 0) {
     const combined = combineCueConfigs(blankFolderConfigs);
     if (combined.blanks) {

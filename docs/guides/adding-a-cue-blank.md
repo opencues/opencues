@@ -20,7 +20,7 @@ blanks/volume/
 └── volume-blank.sh    # Script colocated (blankScript: ./volume-blank.sh)
 ```
 
-**`blanks/volume/cue.md`:**
+**`blanks/volume/BLANK.md`:**
 ```yaml
 ---
 name: volume
@@ -115,7 +115,7 @@ esac
 
 List blanks cycle through an ordered set of values on a blank — no script, no arithmetic. Type a keyword + `_` and the blank auto-populates with the first value; Up/Down cycles. Multi-word values are span-tracked automatically.
 
-**`blanks/affirmations/cue.md`:**
+**`blanks/affirmations/BLANK.md`:**
 ```yaml
 ---
 name: affirmations

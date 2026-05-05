@@ -96,7 +96,7 @@ If `enableWordHighlight` is falsy, both word highlight and dynamic highlight are
 Cue-blanks live as folders under `~/.cues/blanks/<name>/cue.md` (user-level) and `<cwd>/.cues/blanks/<name>/cue.md` (project-level). The runtime's `ConfigLoader` discovers them on each hot-reload cycle.
 
 ```yaml
-# ~/.cues/blanks/volume/cue.md
+# ~/.cues/blanks/volume/BLANK.md
 ---
 name: volume
 type: blank

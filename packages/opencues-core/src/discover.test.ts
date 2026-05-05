@@ -214,7 +214,7 @@ function mockFs(files: Record<string, string>): DiscoverOptions {
 describe('discoverFolderConfigs', () => {
   it('should discover blanks from blanks/ directory', () => {
     const opts = mockFs({
-      '/project/blanks/math/cue.md': `---
+      '/project/blanks/math/BLANK.md': `---
 name: math
 scope: blanks
 parser: math
@@ -223,7 +223,7 @@ priority: 90
 
 Solve math.
 `,
-      '/project/blanks/factual/cue.md': `---
+      '/project/blanks/factual/BLANK.md': `---
 name: factual
 scope: blanks
 parser: answer
@@ -246,7 +246,7 @@ Answer factual questions.
 
   it('should discover blanks with resolved blankScript paths', () => {
     const opts = mockFs({
-      '/project/blanks/volume/cue.md': `---
+      '/project/blanks/volume/BLANK.md': `---
 name: volume
 type: blank
 tip: volume
@@ -266,7 +266,7 @@ blankScript: ./volume-blank.sh
 
   it('should discover cues from cues/ directory', () => {
     const opts = mockFs({
-      '/project/cues/grammar/cue.md': `---
+      '/project/cues/grammar/CUE.md': `---
 name: grammar
 scope: words
 priority: 50
@@ -294,9 +294,9 @@ Give alternatives.
     assert.strictEqual(result.blankOverrides, undefined);
   });
 
-  it('should skip directories without cue.md', () => {
+  it('should skip directories without BLANK.md', () => {
     const opts = mockFs({
-      '/project/blanks/math/cue.md': `---
+      '/project/blanks/math/BLANK.md': `---
 name: math
 parser: math
 ---
@@ -314,7 +314,7 @@ Solve.
 
   it('should default name to folder name when frontmatter has no name', () => {
     const opts = mockFs({
-      '/project/blanks/custom-mode/cue.md': `---
+      '/project/blanks/custom-mode/BLANK.md': `---
 parser: answer
 priority: 80
 ---
@@ -329,9 +329,9 @@ Answer questions.
     assert.strictEqual(sources['custom-mode'].name, 'custom-mode');
   });
 
-  it('should collect ignore words from folder cue.md files', () => {
+  it('should collect ignore words from folder CUE.md files', () => {
     const opts = mockFs({
-      '/project/cues/grammar/cue.md': `---
+      '/project/cues/grammar/CUE.md': `---
 name: grammar
 ---
 

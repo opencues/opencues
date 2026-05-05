@@ -27,7 +27,7 @@ describe('inferHostCompat: auto-detection', () => {
   });
 
   it('runtime-class blank (no script) → all hosts', () => {
-    // e.g. blanks/stocks/cue.md with `name: stocks` resolves
+    // e.g. blanks/stocks.md with `name: stocks` resolves
     // by name in the runtime's blanksRegistry; no script = chrome OK.
     const r = inferHostCompat({});
     assert.strictEqual(r.all, true);

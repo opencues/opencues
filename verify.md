@@ -96,7 +96,7 @@ Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers ho
 ## F. Hot-reload
 
 - [x] Edit `~/.cues/cues.md` (added `foobar` tip with alts) — typed `please foobar this`, dimmed + cycleable within ~2.5s. ✓
-- [x] Edit `~/.cues/blanks/volume/cue.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows. ✓
+- [x] Edit `~/.cues/blanks/volume/BLANK.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows. ✓
 - [x] Edit `~/.cues/cues.md` — flip `fluid-blank-mode: off`. `etymology of paradigm _` stays as `_` (countries doesn't claim it). Flip back on, fills. ✓
 
 ---
@@ -106,7 +106,7 @@ Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers ho
 ```bash
 opencues list                      # cues + blanks listed; no "controls" section
 opencues list --blanks             # only blanks
-opencues new blank foo --project   # scaffolds .cues/blanks/foo/cue.md
+opencues new blank foo --project   # scaffolds .cues/blanks/foo/BLANK.md
 opencues edit blanks               # opens ~/.cues/blanks.md in $EDITOR
 opencues validate                  # 0 errors on a fresh install
 opencues which                     # all paths exist with ✓
@@ -120,7 +120,7 @@ opencues logs --tail               # follows /tmp/opencues.log
 - [x] `opencues edit controls` → `unknown <file> "controls". One of: cues, blanks, opencues`. ✓
 - [x] `opencues validate` → 0 errors (2 expected warnings). ✓
 
-Curiosity surfaced: `opencues list` shows `grammar` twice (inline cues.md + cues/grammar/cue.md). Folder wins on merge, but the listing is noisy. Future polish: `validate` could call out `duplicate-name` warnings.
+Curiosity surfaced: `opencues list` shows `grammar` twice (inline cues.md + cues/grammar/CUE.md). Folder wins on merge, but the listing is noisy. Future polish: `validate` could call out `duplicate-name` warnings.
 
 ---
 

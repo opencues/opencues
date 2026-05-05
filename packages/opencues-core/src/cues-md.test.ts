@@ -593,7 +593,7 @@ describe('parseCuesMd: real cues.md', () => {
   const cuesPath = path.resolve(__dirname, '../../../defaults/cues.md');
   const cuesExists = fs.existsSync(cuesPath);
 
-  (cuesExists ? it : it.skip)('parses cleanly (sources live in cues/<name>/cue.md folders, not inline)', () => {
+  (cuesExists ? it : it.skip)('parses cleanly (sources live in words/<name>.md or cues/<name>/cue.md, not inline)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
     assert.ok(cfg);
     // No inline word sources expected — everything is folder-based now.
@@ -602,7 +602,7 @@ describe('parseCuesMd: real cues.md', () => {
 
   (cuesExists ? it : it.skip)('does not store inline tips (tips are folder-based)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    assert.ok(!cfg.tips || cfg.tips.length === 0, 'tips moved to cues/<id>/cue.md folders');
+    assert.ok(!cfg.tips || cfg.tips.length === 0, 'tips moved to words/<id>.md or cues/<id>/cue.md');
   });
 
   (cuesExists ? it : it.skip)('should pass validation', () => {

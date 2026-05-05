@@ -141,7 +141,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 ## Hot-reload
 
 - [ ] Edit `cues.md` — changes take effect in ~2s without restart
-- [ ] Edit `blanks/volume/cue.md` — changes take effect in ~2s without restart
+- [ ] Edit `blanks/volume/BLANK.md` — changes take effect in ~2s without restart
 
 ## Prompt improver (consume-all blank)
 

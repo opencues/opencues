@@ -201,8 +201,8 @@ You can edit the *scalar values* (`voice-mode: active ↔ inactive`, etc.) if yo
 ### How do I scaffold a new cue / blank?
 
 ```bash
-opencues new cue my-synonyms            # → ~/.cues/words/my-synonyms/cue.md
-opencues new blank my-answer --project   # → ./.cues/blanks/my-answer/cue.md
+opencues new cue my-synonyms            # → ~/.cues/words/my-synonyms/CUE.md
+opencues new blank my-answer --project   # → ./.cues/blanks/my-answer/BLANK.md
 ```
 
 The scaffolded `cue.md` is a thorough schema reference — every frontmatter field documented with examples. Validate after editing:

@@ -11,14 +11,14 @@
 # and reference with a relative path.
 #
 # Real shipped examples (cat any to see the pattern in production):
-#   defaults/blanks/volume/cue.md         — SHAPE 1: typed blank + script
-#   defaults/blanks/brightness/cue.md     — SHAPE 1: same pattern
-#   defaults/blanks/affirmations/cue.md   — SHAPE 2: list (no script)
-#   defaults/blanks/opencues/cue.md       — SHAPE 3: selector + satellite
-#   defaults/blanks/stocks/cue.md         — SHAPE 4: runtime-class (TS)
-#   defaults/blanks/weather/cue.md        — SHAPE 4: runtime-class
-#   defaults/blanks/hackernews/cue.md     — SHAPE 4: runtime-class
-#   defaults/blanks/prompt/cue.md         — SHAPE 4: runtime-class (consume-all)
+#   defaults/blanks/volume/BLANK.md         — SHAPE 1: typed blank + script
+#   defaults/blanks/brightness/BLANK.md     — SHAPE 1: same pattern
+#   defaults/blanks/affirmations/BLANK.md   — SHAPE 2: list (no script)
+#   defaults/blanks/opencues/BLANK.md       — SHAPE 3: selector + satellite
+#   defaults/blanks/stocks/BLANK.md         — SHAPE 4: runtime-class (TS)
+#   defaults/blanks/weather/BLANK.md        — SHAPE 4: runtime-class
+#   defaults/blanks/hackernews/BLANK.md     — SHAPE 4: runtime-class
+#   defaults/blanks/prompt/BLANK.md         — SHAPE 4: runtime-class (consume-all)
 
 name: {{NAME}}
 type: blank
@@ -57,7 +57,7 @@ type: blank
 # SHAPE 2: List blank — cycles a fixed list (no script)
 # ─────────────────────────────────────────────────────────────────────
 # Combines a typed-blank keyword trigger with a fixed cycle list.
-# No script needed. See defaults/blanks/affirmations/cue.md.
+# No script needed. See defaults/blanks/affirmations/BLANK.md.
 #
 # Fields:
 #   blankKeywords:    comma-separated triggers
@@ -77,7 +77,7 @@ type: blank
 # Cycle the SELECTOR (first word) to switch settings; cycle the
 # SATELLITE (second word) to change the current setting's value. Used
 # by the opencues blank for runtime settings (voice-mode, debug-mode, etc.).
-# See defaults/blanks/opencues/cue.md.
+# See defaults/blanks/opencues/BLANK.md.
 #
 # Extra fields:
 #   blankSatellite:           true — enable selector+satellite shape
@@ -107,7 +107,7 @@ type: blank
 #   3. cue.md declares blankKeywords + blankReadOnly + blankFormat —
 #      no blankScript: at all.
 #
-# See defaults/blanks/stocks/cue.md (real-world: 7 ticker keyword
+# See defaults/blanks/stocks/BLANK.md (real-world: 7 ticker keyword
 # expansions, blankReadOnly: true so cycling is no-op, all dispatch
 # happens in StocksBlank in TS).
 #

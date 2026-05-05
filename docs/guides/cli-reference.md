@@ -125,9 +125,9 @@ opencues init
 ### `new <kind> <name>` — scaffold one cue / blank
 
 ```bash
-opencues new cue legal-jargon            # → ~/.cues/words/legal-jargon/cue.md
-opencues new blank my-script             # → ~/.cues/blanks/my-script/cue.md
-opencues new blank physics               # → ~/.cues/blanks/physics/cue.md
+opencues new cue legal-jargon            # → ~/.cues/words/legal-jargon/CUE.md
+opencues new blank my-script             # → ~/.cues/blanks/my-script/BLANK.md
+opencues new blank physics               # → ~/.cues/blanks/physics/BLANK.md
 opencues new cue legal --project         # write under <cwd>/.cues/ instead
 ```
 
@@ -257,8 +257,8 @@ opencues show math
 
 ```bash
 opencues edit cues               # opens ~/.cues/cues.md (top-level settings)
-opencues edit cues/legal         # opens ~/.cues/words/legal/cue.md
-opencues edit blanks/volume      # opens ~/.cues/blanks/volume/cue.md
+opencues edit cues/legal         # opens ~/.cues/words/legal/CUE.md
+opencues edit blanks/volume      # opens ~/.cues/blanks/volume/BLANK.md
 ```
 
 ### `logs [--tail]` — show `/tmp/opencues.log`

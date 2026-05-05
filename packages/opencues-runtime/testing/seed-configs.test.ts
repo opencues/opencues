@@ -56,7 +56,7 @@ describe('opencues seed-configs', () => {
     // Old layout files are gone.
     expect(fs.existsSync(path.join(tmpHome, '.opencues'))).toBe(false);
     // Library shape: words/ + blanks/ + scripts/ under .cues/.
-    expect(fs.existsSync(path.join(userDir, 'blanks/brightness/cue.md'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'blanks/brightness/BLANK.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness-blank.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
@@ -87,12 +87,42 @@ describe('opencues seed-configs', () => {
     expect(after).toContain('voice-mode');
   });
 
+  it('HEAL phase: renames legacy blanks/<name>/cue.md to BLANK.md', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.cues');
+    const ctlDir = path.join(userDir, 'blanks/brightness');
+    fs.mkdirSync(ctlDir, { recursive: true });
+    const userBlankMd = '---\nname: brightness\ntype: blank\ntip: legacy filename\n---\n';
+    fs.writeFileSync(path.join(ctlDir, 'cue.md'), userBlankMd);
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    expect(fs.existsSync(path.join(ctlDir, 'cue.md'))).toBe(false);
+    expect(fs.existsSync(path.join(ctlDir, 'BLANK.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8')).toBe(userBlankMd);
+  });
+
+  it('HEAL phase: rename is idempotent — BLANK.md already present, cue.md absent', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.cues');
+    const ctlDir = path.join(userDir, 'blanks/brightness');
+    fs.mkdirSync(ctlDir, { recursive: true });
+    const userBlankMd = '---\nname: brightness\ntype: blank\n---\n';
+    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), userBlankMd);
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    expect(fs.existsSync(path.join(ctlDir, 'cue.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8')).toBe(userBlankMd);
+  });
+
   it('SYNC phase: refreshes a stale library script with repo content', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
-    fs.writeFileSync(path.join(ctlDir, 'cue.md'), '---\nname: brightness\ntype: blank\n---\n');
+    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), '---\nname: brightness\ntype: blank\n---\n');
     const staleScript = '#!/bin/bash\n# stale\necho "stale"\n';
     fs.writeFileSync(path.join(ctlDir, 'brightness-blank.sh'), staleScript);
     fs.chmodSync(path.join(ctlDir, 'brightness-blank.sh'), 0o755);
@@ -110,12 +140,12 @@ describe('opencues seed-configs', () => {
     const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
-    const customCueMd = '---\nname: brightness\ntype: blank\ntip: my custom tip\n---\n';
-    fs.writeFileSync(path.join(ctlDir, 'cue.md'), customCueMd);
+    const customBLANKMd = '---\nname: brightness\ntype: blank\ntip: my custom tip\n---\n';
+    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), customBLANKMd);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    expect(fs.readFileSync(path.join(ctlDir, 'cue.md'), 'utf8')).toBe(customCueMd);
+    expect(fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8')).toBe(customBLANKMd);
     expect(fs.existsSync(path.join(ctlDir, 'brightness-blank.sh'))).toBe(true);
   });
 
