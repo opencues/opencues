@@ -17,6 +17,34 @@ export interface WordDef {
   readonly blankName?: string;
 }
 
+/**
+ * Tokenise the def's currently-shown alt into words, caching the result on
+ * the def so the regex split runs once per (def, currentIndex) instead of
+ * once per call. Hot path — DimRender + pruneStale + findSpanContaining
+ * call this O(W × D) times per keystroke; without the cache, ~7,700 splits
+ * per keypress on a doc with 88 words and 88 defs.
+ *
+ * Cache invalidates whenever `currentIndex` changes (cycling), since that
+ * picks a different alt string. Stored on the def directly via a
+ * non-enumerable backdoor property; GC'd along with the def.
+ */
+function altWordsOf(def: WordDef): string[] {
+  const cache = def as WordDef & { _altWordsCache?: { idx: number; words: string[] } };
+  const idx = def.currentIndex;
+  if (cache._altWordsCache !== undefined && cache._altWordsCache.idx === idx) {
+    return cache._altWordsCache.words;
+  }
+  const words = (def.alternatives[idx] ?? '').split(/\s+/).filter(Boolean);
+  // Non-enumerable so JSON.stringify and deep-equality assertions ignore it.
+  Object.defineProperty(cache, '_altWordsCache', {
+    value: { idx, words },
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
+  return words;
+}
+
 export class DynDefs {
   private _defs = new Map<number, WordDef>();
 
@@ -85,8 +113,7 @@ export class DynDefs {
   findSpanContaining(index: number): { originIdx: number; spanLength: number; def: WordDef } | null {
     for (const [originIdx, def] of this._defs.entries()) {
       if (originIdx > index) continue;
-      const currentAlt = def.alternatives[def.currentIndex] ?? '';
-      const altWords = currentAlt.split(/\s+/).filter(Boolean);
+      const altWords = altWordsOf(def);
       if (altWords.length <= 1) continue;
       if (index >= originIdx + altWords.length) continue;
       return { originIdx, spanLength: altWords.length, def };
@@ -172,9 +199,8 @@ export class DynDefs {
     const actual = words[index]?.word;
     if (actual === undefined) return false;
     if (def.originalWord === actual) return true;
-    const currentAlt = def.alternatives[def.currentIndex] ?? '';
-    const altWords = currentAlt.split(/\s+/).filter(Boolean);
-    if (altWords.length === 1) return currentAlt === actual;
+    const altWords = altWordsOf(def);
+    if (altWords.length === 1) return altWords[0] === actual;
     if (altWords.length > 1) {
       return altWords.every((w, k) => words[index + k]?.word === w);
     }
@@ -187,8 +213,7 @@ export class DynDefs {
    * exists. Conservative: ambiguity = no relocate.
    */
   private _findUniqueMatch(def: WordDef, words: readonly { word: string }[]): number | null {
-    const currentAlt = def.alternatives[def.currentIndex] ?? '';
-    const altWords = currentAlt.split(/\s+/).filter(Boolean);
+    const altWords = altWordsOf(def);
     if (altWords.length === 0) return null;
     let foundAt: number | null = null;
     for (let i = 0; i <= words.length - altWords.length; i += 1) {

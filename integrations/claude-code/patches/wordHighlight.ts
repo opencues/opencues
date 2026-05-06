@@ -752,7 +752,7 @@ globalThis._openCuesCurrent=_ocCurrent;
 globalThis._openCuesTips=_ocTips;
 globalThis._openCuesSatTips=_ocSatTips;
 globalThis._openCuesVersion=_ocVersion;
-globalThis._debugLog=function(_dMsg){if(!globalThis._openCuesCurrent||globalThis._openCuesCurrent["debug-mode"]!=="on")return;try{${requireFuncName}("fs").appendFileSync("/tmp/claude-cues-debug-"+process.pid+".log","["+new Date().toISOString()+"] "+_dMsg+"\\n");}catch(_dle){}};
+globalThis._debugLog=function(_dMsg){if(!globalThis._openCuesCurrent||globalThis._openCuesCurrent["debug-mode"]!=="on")return;try{${requireFuncName}("fs").appendFile("/tmp/claude-cues-debug-"+process.pid+".log","["+new Date().toISOString()+"] "+_dMsg+"\\n",function(){});}catch(_dle){}};
 }
 try{
 var _mergedDC=_cues.mergeConfigs({cuesConfig:_parsedCues||undefined,blanksConfig:_parsedBlanks||undefined},_folderCfgs);

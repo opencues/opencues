@@ -12,6 +12,12 @@ cursor-navigate: inactive
 fluid-blank-mode: on
 spelling-mode: on
 word-cues-mode: on
+# Agent-task cache policy. Default 'off' caches every word the agent
+# evaluates (suits idempotent prompts like "correct spelling"). Flip to
+# 'on' for non-idempotent transforms (translate, paraphrase, "make it
+# more formal") so words the LLM skipped on pass 1 get reconsidered on
+# subsequent passes.
+agent-retry-mode: off
 # Optional overrides — uncomment to override patch-supplied defaults.
 # tts-rate: 2
 # tts-script: ~/claude-code-cues/.opencues/scripts/speak.sh
@@ -53,3 +59,8 @@ settings:
     values:
       on: Enabled — words matching a cue source's match/keywords get cycled alternatives
       off: Disabled — no word-cue LLM calls fire
+  agent-retry-mode:
+    tip: Agent re-considers skipped words each pass (better for translate/paraphrase)
+    values:
+      off: Cache every evaluated word (default — best for spelling/idempotent prompts)
+      on: Cache only words the LLM actually edited — improves recall on transforms

@@ -19,6 +19,50 @@ import type { SpanFillState } from '../state/span-fill';
 import type { AgentTaskState } from '../state/agent-task';
 import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
+import { TASK_TRIGGER_KEYWORDS } from './resolver';
+
+/**
+ * Words that form a TASK_* trigger phrase, kept editable-protected so
+ * the agent can't accidentally rename them. Built from
+ * TASK_TRIGGER_KEYWORDS (single source of truth for trigger patterns).
+ *
+ * - Single-word triggers (e.g. "agentically") protect themselves wherever
+ *   they appear.
+ * - Multi-word triggers (e.g. "add task") protect each word ONLY when
+ *   both halves appear adjacent in the buffer — so prose like "I want
+ *   to track this task" doesn't lock "task" out of edits, only the
+ *   literal phrase "add task" / "stop task" / "current task" does.
+ */
+const TRIGGER_PHRASES: readonly string[] = Object.values(TASK_TRIGGER_KEYWORDS);
+
+function normaliseLower(s: string): string {
+  // Strip non-letters so "stop." or "task," still match.
+  return s.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function isTriggerWord(words: ReturnType<typeof splitWords>, idx: number): boolean {
+  const cur = normaliseLower(words[idx]?.word ?? '');
+  if (cur === '') return false;
+  for (const phrase of TRIGGER_PHRASES) {
+    const phraseWords = phrase.toLowerCase().split(/\s+/).filter(Boolean);
+    if (phraseWords.length === 0) continue;
+    // For each role idx within the phrase, check whether `idx` corresponds
+    // to that role given the surrounding words form a contiguous match.
+    for (let role = 0; role < phraseWords.length; role += 1) {
+      const start = idx - role;
+      if (start < 0 || start + phraseWords.length > words.length) continue;
+      let match = true;
+      for (let k = 0; k < phraseWords.length; k += 1) {
+        if (normaliseLower(words[start + k].word) !== phraseWords[k]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return true;
+    }
+  }
+  return false;
+}
 
 export interface AgentLoopOptions {
   readonly endpoint: string;
@@ -42,6 +86,17 @@ export interface AgentLoopOptions {
    * See tests/benchmarks/agent-task/EXPERIMENTS.md Experiment 4.
    */
   readonly promptFormat?: 'DECISIONS' | 'EDITS';
+  /**
+   * Lazy gate: when it returns true, only words that received an edit
+   * on a pass are cached as evaluated; words the LLM skipped get
+   * reconsidered next pass. Trades extra tokens for higher recall on
+   * non-idempotent prompts (translate, paraphrase, formality). Wired
+   * to `opencues.md` `agent-retry-mode: on/off` via the lazy
+   * `() => configLoader.opencuesState.agentRetryMode === 'on'` thunk
+   * so a frontmatter flip takes effect on the next pass without a
+   * host restart.
+   */
+  readonly retryModeEnabled?: () => boolean;
 }
 
 export interface AgentEdit {
@@ -133,6 +188,13 @@ export class AgentLoop {
     //    cue offers (spelling, word-cues, tip groups), which only suggest
     //    alternatives without changing the visible word
     //  - words already-evaluated under the current taskId (cache hit)
+    //  - words that form a TASK_* trigger phrase (`agentically`,
+    //    `add task`, `stop task`, `current task`). Editing these mid-
+    //    typing would silently break the user's ability to issue task
+    //    commands — e.g. if `agentically` got translated to `agentisch`,
+    //    a subsequent `agentisch translate to french _` wouldn't match
+    //    EXTRACT's TASK_ARM regex. Only protected while the agent is
+    //    armed (this whole method bails early if !state.armed).
     const wordSpans = splitWords(text);
     const cursorPos = this.adapter.getCursorOffset();
     const cursorWordIdx = this.findCursorWordIdx(wordSpans, cursorPos);
@@ -147,6 +209,7 @@ export class AgentLoop {
       if (this.dynDefs.findSpanContaining(i)) continue;     // multi-word static-alt span
       const def = this.dynDefs.get(i);
       if (def && isOwnedByOtherSource(def)) continue;       // active substitution from another source
+      if (isTriggerWord(wordSpans, i)) continue;            // task-trigger keyword (agentically, add task, ...)
       const hash = hashWordText(word);
       if (this.state.isEvaluated(i, hash)) continue;        // already-checked under current task
       candidates.push({ wordIndex: i, word, hash });
@@ -186,10 +249,27 @@ export class AgentLoop {
     const liveText = this.adapter.getText();
     const liveWords = splitWords(liveText);
 
-    // Record evaluations for ALL candidates (we asked, we got an answer
-    // — even "no edit" counts as evaluated under this taskId).
-    for (const c of candidates) {
-      this.state.recordEvaluation(c.wordIndex, c.hash);
+    // Record evaluations. Default cache policy is aggressive — every
+    // candidate counts as evaluated under this taskId, including words
+    // the LLM left alone. Suits idempotent prompts ("correct spelling")
+    // where a clean verdict means clean forever.
+    //
+    // When `retryModeEnabled` is on (opencues.md `agent-retry-mode: on`),
+    // skip caching for words the LLM didn't edit so they get reconsidered
+    // on the next pass. Required for non-idempotent transforms (translate,
+    // paraphrase, "make it more formal") where the first pass can miss
+    // words and the apply-side filter would otherwise reject the LLM's
+    // belated catch-up edits.
+    //
+    // Edited words in retry mode are cached at their NEW index with the
+    // NEW word's hash AFTER the apply block below — that way the next
+    // pass's lookup against the post-edit visible word hits and the
+    // agent doesn't re-translate already-translated text.
+    const retryMode = this.options.retryModeEnabled?.() ?? false;
+    if (!retryMode) {
+      for (const c of candidates) {
+        this.state.recordEvaluation(c.wordIndex, c.hash);
+      }
     }
 
     // Apply edits as DynDefs. The Resolver skip filter and DimRender
@@ -202,9 +282,23 @@ export class AgentLoop {
     // adjacent). Enforce the constraint on the apply side too.
     const candidateSet = new Set(candidates.map(c => c.wordIndex));
 
-    let applied = 0;
+    // Filter once — the same survival rules apply to BOTH the buffer
+    // splice and the DynDef placement. Storing the def list ahead of
+    // application also lets us index in the new text frame after the
+    // splice (correct word positions for multi-word edits).
+    //
+    // Dedupe by wordIndex: if the LLM emits two edits for the same
+    // slot in a single batch, only keep the first. Applying both
+    // produces visible duplication artefacts like
+    // `collaborating collaborativelyatively` or `strongngng` because
+    // the second splice operates on the post-edit-1 frame using OLD
+    // `w.start`/`w.end` from `liveWords`. The tail of edit-1's
+    // `editedWord` beyond the original word's length is left behind,
+    // then edit-2 lands on top of the leftover. LLM-side bug; we
+    // refuse to compose them.
+    const surviving: AgentEdit[] = [];
+    const seenIndices = new Set<number>();
     for (const edit of edits) {
-      // Defensive checks against post-debounce text mutations:
       if (!candidateSet.has(edit.wordIndex)) continue;      // outside candidate set
       const liveWord = liveWords[edit.wordIndex];
       if (!liveWord) continue;                              // index out of range now
@@ -212,37 +306,83 @@ export class AgentLoop {
       if (edit.editedWord === edit.originalWord) continue;  // no-op edit
       const existingDef = this.dynDefs.get(edit.wordIndex);
       if (existingDef && isOwnedByOtherSource(existingDef)) continue; // active substitution from another source landed since
-
-      const def: WordDef = {
-        originalWord: edit.originalWord,
-        alternatives: [edit.originalWord, edit.editedWord],
-        currentIndex: 1,                                    // showing edit
-        spanStart: liveWord.start,
-        spanEnd: liveWord.start + edit.editedWord.length,
-        blankName: 'agent-task',                            // locks against re-resolution
-      };
-      this.dynDefs.set(edit.wordIndex, def);
-      applied += 1;
+      if (seenIndices.has(edit.wordIndex)) {                // LLM emitted a duplicate for this slot
+        this._logFn(`AgentLoop: dropping duplicate edit at idx ${edit.wordIndex} ("${edit.editedWord}")`);
+        continue;
+      }
+      seenIndices.add(edit.wordIndex);
+      surviving.push(edit);
     }
 
+    const applied = surviving.length;
     if (applied > 0) {
       this._logFn(`AgentLoop: applied ${applied}/${edits.length} edit(s) as DynDefs`);
 
-      // Apply edits to the actual buffer text. We have to do this via
-      // setText since DynDefs only declare ownership — they don't
-      // mutate the buffer. Build the new text by splicing each edit.
+      // Splice right-to-left so earlier indices' char offsets stay
+      // valid. (The OLD wordSpans are computed once over `liveText` so
+      // each edit's start/end refer to the pre-splice frame.)
+      const sortedDesc = surviving.slice().sort((a, b) => b.wordIndex - a.wordIndex);
       let newText = liveText;
-      // Apply right-to-left so earlier indices' offsets stay valid.
-      // Same candidateSet filter as above — only edits that survived
-      // the apply-loop's checks should mutate the buffer.
-      const sorted = edits
-        .filter(e => candidateSet.has(e.wordIndex)
-          && liveWords[e.wordIndex] && liveWords[e.wordIndex].word === e.originalWord
-          && e.editedWord !== e.originalWord)
-        .sort((a, b) => b.wordIndex - a.wordIndex);
-      for (const edit of sorted) {
+      for (const edit of sortedDesc) {
         const w = liveWords[edit.wordIndex];
         newText = newText.slice(0, w.start) + edit.editedWord + newText.slice(w.end);
+      }
+
+      // Re-derive word positions in the NEW text and store DynDefs at
+      // their NEW word indices. A single multi-word edit (e.g. `will`
+      // → `ich werde`) shifts every downstream word right by N-1; if
+      // we stored later edits' defs at their OLD indices, DimRender's
+      // findSpanContaining would see the lower-index multi-word span
+      // swallow them and they'd never get reached. Process LEFT-TO-
+      // RIGHT, accumulating the word-count delta as we go, so each
+      // def lands at its post-splice position.
+      const newWords = splitWords(newText);
+      const sortedAsc = surviving.slice().sort((a, b) => a.wordIndex - b.wordIndex);
+      let cumulativeWordDelta = 0;
+      for (const edit of sortedAsc) {
+        const altWordCount = edit.editedWord.split(/\s+/).filter(Boolean).length;
+        const newWordIndex = edit.wordIndex + cumulativeWordDelta;
+        const startWord = newWords[newWordIndex];
+        const endWord = newWords[newWordIndex + Math.max(0, altWordCount - 1)];
+        // Defensive: if our shift miscalculated and the position is
+        // out of range (shouldn't happen for surviving edits), drop
+        // the def rather than store at a bogus index.
+        if (!startWord || !endWord) {
+          this._logFn(`AgentLoop: skipping def store — newWordIndex ${newWordIndex} out of range (${newWords.length} words)`);
+          continue;
+        }
+        // Shift PRIOR defs at higher indices BEFORE storing the new
+        // one. A multi-word edit (1 → N words) shifts every later
+        // word position right by N-1, so DynDefs from earlier passes
+        // would otherwise end up off-by-(N-1) and either render the
+        // dim on the wrong word or get pruned on the next user
+        // text-change. Done strictly before the set() so the new
+        // def we're about to insert at newWordIndex isn't itself
+        // shifted (shiftAfter only touches idx > newWordIndex).
+        const wordDelta = altWordCount - 1;
+        if (wordDelta !== 0) {
+          this.dynDefs.shiftAfter(newWordIndex, wordDelta);
+        }
+        const def: WordDef = {
+          originalWord: edit.originalWord,
+          alternatives: [edit.originalWord, edit.editedWord],
+          currentIndex: 1,                                  // showing edit
+          spanStart: startWord.start,
+          spanEnd: endWord.end,
+          blankName: 'agent-task',                          // locks against re-resolution
+        };
+        this.dynDefs.set(newWordIndex, def);
+        // Retry-mode cache: record at the NEW index using the hash of
+        // the post-edit visible word (first word of the edited phrase).
+        // Without this, the next pass would compute hash of the new
+        // word, miss the cache (which had OLD hash), and re-ask the LLM
+        // about something it just translated. The original "skip
+        // un-edited" branch above already left those un-cached on
+        // purpose — they're the words we actually want reconsidered.
+        if (retryMode) {
+          this.state.recordEvaluation(newWordIndex, hashWordText(startWord.word));
+        }
+        cumulativeWordDelta += wordDelta;
       }
       if (newText !== liveText) {
         const cursorBefore = this.adapter.getCursorOffset();
@@ -258,7 +398,7 @@ export class AgentLoop {
         // new text, which is one character earlier than where the user
         // logically was. Multiple edits compound the drift.
         let cursorAdjusted = cursorBefore;
-        for (const edit of sorted) {
+        for (const edit of sortedDesc) {
           const w = liveWords[edit.wordIndex];
           if (w.end <= cursorBefore) {
             cursorAdjusted += edit.editedWord.length - edit.originalWord.length;

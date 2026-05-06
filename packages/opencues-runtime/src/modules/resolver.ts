@@ -88,22 +88,21 @@ export class Resolver {
 
   /**
    * Handle a TASK_* command from EXTRACT — mutate AgentTaskState and
-   * (where appropriate) substitute new buffer content. The trigger
-   * phrase + `_` is wiped from the buffer either way.
+   * substitute new buffer content. Only the trailing trigger phrase
+   * (`agentically <X> _`, `add task <X> _`, `stop task _`, `current task
+   * _`) is stripped from the buffer; any prose the user typed before
+   * the trigger is preserved so the agent can act on it.
    *
-   * - TASK_ARM   → arm a fresh task; wipe trigger from buffer
-   * - TASK_ADD   → append to existing task prompt; wipe trigger from buffer
-   * - TASK_STOP  → clear task; wipe trigger from buffer
-   * - TASK_SHOW  → substitute the current task prompt at the trigger position
+   * - TASK_ARM   → arm a fresh task; strip trigger fragment
+   * - TASK_ADD   → append to existing task prompt; strip trigger fragment
+   * - TASK_STOP  → clear task; strip trigger fragment
+   * - TASK_SHOW  → strip trigger fragment, append current task prompt
    */
   private handleTaskCommand(action: string, payload: string, originalText: string, _liveText: string): void {
     if (!this.agentTaskState) return;
     const state = this.agentTaskState;
 
-    // Find the trigger phrase to wipe. The trigger is everything from
-    // the start of the matched imperative through the `_`. Simplest:
-    // drop the entire originalText since the user's intent for these
-    // commands is "consume and act on this".
+    const prefix = trimTriggerFromText(action, originalText);
     let newText: string;
     let newCursor: number;
 
@@ -111,8 +110,8 @@ export class Resolver {
       case 'TASK_ARM':
         state.arm(payload);
         this.adapter.log('info', `AgentTask: ARM (taskId=${state.taskId?.slice(0, 8)}…, prompt="${payload}")`);
-        newText = '';
-        newCursor = 0;
+        newText = prefix;
+        newCursor = newText.length;
         break;
       case 'TASK_ADD':
         if (!state.armed) {
@@ -123,22 +122,24 @@ export class Resolver {
           state.appendToPrompt(payload);
           this.adapter.log('info', `AgentTask: ADD (taskId=${state.taskId?.slice(0, 8)}…, prompt="${state.prompt}")`);
         }
-        newText = '';
-        newCursor = 0;
+        newText = prefix;
+        newCursor = newText.length;
         break;
       case 'TASK_STOP':
         this.adapter.log('info', `AgentTask: STOP (was prompt="${state.prompt}")`);
         state.stop();
-        newText = '';
-        newCursor = 0;
+        newText = prefix;
+        newCursor = newText.length;
         break;
-      case 'TASK_SHOW':
+      case 'TASK_SHOW': {
         // Substitute the current prompt at the trigger position. If no
         // task armed, show "(no task armed)".
-        newText = state.armed ? state.prompt : '(no task armed)';
+        const promptText = state.armed ? state.prompt : '(no task armed)';
+        newText = prefix ? `${prefix} ${promptText}` : promptText;
         newCursor = newText.length;
-        this.adapter.log('info', `AgentTask: SHOW (prompt="${newText}")`);
+        this.adapter.log('info', `AgentTask: SHOW (prompt="${promptText}")`);
         break;
+      }
       default:
         return;  // unknown action — defensive no-op
     }
@@ -287,7 +288,7 @@ export class Resolver {
     const blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
     if (blankJustTyped) {
       if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
-      this.adapter.log('info', 'Resolver: _ trigger — bypassing debounce');
+      this.adapter.log('debug', 'Resolver: _ trigger — bypassing debounce');
       void this.resolveAndApply(text);
       return;
     }
@@ -307,7 +308,7 @@ export class Resolver {
   async resolveAndApply(text: string): Promise<void> {
     if (!this._resolver) return;
     const generation = ++this._generation;
-    this.adapter.log('info', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
+    this.adapter.log('debug', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out
@@ -354,7 +355,7 @@ export class Resolver {
       return;
     }
 
-    this.adapter.log('info', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
+    this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
 
     // Stale check — a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;
@@ -540,4 +541,50 @@ export class Resolver {
     // loop (e.g. OpenCode's onContentChange-only path) need this.
     if (wrote > 0) this.adapter.forceRender();
   }
+}
+
+// Trigger keywords that EXTRACT pattern-matches to produce each TASK_*
+// verdict. Used at apply time to find where in the buffer the trailing
+// trigger fragment starts so we can strip ONLY that fragment instead of
+// wiping any prose the user typed before it. Source-of-truth for the
+// patterns lives in transform-blank-source.ts's EXTRACT prompt.
+//
+// Exported so AgentLoop can protect these literal phrases from being
+// translated/edited mid-typing. If the agent translated `agentically`
+// to `agentisch`, the user could no longer type a TASK_ARM trigger.
+export const TASK_TRIGGER_KEYWORDS: Record<string, string> = {
+  TASK_ARM: 'agentically',
+  TASK_ADD: 'add task',
+  TASK_STOP: 'stop task',
+  TASK_SHOW: 'current task',
+};
+
+function trimTriggerFromText(action: string, originalText: string): string {
+  const kw = TASK_TRIGGER_KEYWORDS[action];
+  if (!kw) return '';
+  const start = originalText.toLowerCase().lastIndexOf(kw);
+  // Defensive fallback: if the keyword isn't present (shouldn't happen
+  // — EXTRACT only emits TASK_* when it saw the trigger), preserve the
+  // pre-fix legacy behaviour of wiping the buffer.
+  if (start < 0) return '';
+  // The trigger phrase ends at the next `_` after the keyword (the blank
+  // is the universal terminator: "stop task _", "add task <X> _",
+  // "agentically <X> _", "current task _"). Strip [start, blankIdx+1]
+  // and stitch the surrounding text back together so prose typed AFTER
+  // the trigger isn't dropped.
+  //
+  // Trim ONLY space chars on each flank — preserving newlines so that
+  // paragraph structure ("para1\n\nstop task _\n\npara2") survives the
+  // strip. Insert ONE space at the join only when both sides end up
+  // non-whitespace (mid-sentence trigger) so we don't run words
+  // together.
+  const blankIdx = originalText.indexOf('_', start);
+  if (blankIdx < 0) {
+    return originalText.slice(0, start).replace(/ +$/, '');
+  }
+  const before = originalText.slice(0, start).replace(/ +$/, '');
+  const after = originalText.slice(blankIdx + 1).replace(/^ +/, '');
+  const needsSpace = before.length > 0 && after.length > 0
+    && !/\s$/.test(before) && !/^\s/.test(after);
+  return needsSpace ? `${before} ${after}` : `${before}${after}`;
 }

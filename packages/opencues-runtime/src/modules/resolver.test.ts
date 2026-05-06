@@ -4,6 +4,7 @@ import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
+import { AgentTaskState } from '../state/agent-task';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({ concepts: [] });
@@ -348,5 +349,152 @@ describe('Resolver.resolveAndApply', () => {
     resolver.rebuildResolver();
     expect(capturedOpts?.endpoint).toBe('https://patch-default.example.com');
     expect(capturedOpts?.defaultModel).toBe('patch-default-model');
+  });
+});
+
+describe('Resolver TASK_* commands', () => {
+  type TaskAction = 'TASK_ARM' | 'TASK_ADD' | 'TASK_STOP' | 'TASK_SHOW';
+
+  function setupTaskScenario(initialText: string, taskAction: TaskAction, taskPayload: string) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/cues.md': TIPS, '/proj/cues.md': CUES_MD },
+    });
+    adapter.pushText(initialText);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const agentTaskState = new AgentTaskState();
+    const wordCount = initialText.trim().split(/\s+/).length;
+    const blankWordIndex = Math.max(0, wordCount - 1);
+    const resolver = new Resolver(
+      adapter, hlState, dynDefs, loader,
+      { endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {} },
+      undefined, agentTaskState,
+    );
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async () => ({
+        results: [{
+          wordIndex: blankWordIndex,
+          word: '_',
+          alternatives: [initialText, ''],
+          spanStart: 0,
+          spanEnd: initialText.length,
+          source: 'transform-blank',
+          metadata: { taskAction, taskPayload },
+        }],
+      }),
+    };
+    return { adapter, agentTaskState, resolver };
+  }
+
+  it('TASK_ADD preserves prose typed before the "add task" trigger', async () => {
+    // Bug repro: the user has typed prose, then appends "add task <X> _"
+    // at the end. The runtime was wiping the entire buffer instead of
+    // just stripping the trailing trigger fragment. See cursor-trace
+    // 22:11:33 — pushText("") with delta=-127 the moment AgentTask: ADD
+    // fired.
+    const prose = "I write some text with typos let's see how the system does. So far so good it al";
+    const proseAndTrigger = `${prose} add task make it more formal _`;
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      proseAndTrigger, 'TASK_ADD', 'make it more formal',
+    );
+    agentTaskState.arm('correct spelling'); // pre-arm so ADD goes through append branch
+
+    await resolver.resolveAndApply(proseAndTrigger);
+
+    expect(adapter.getText()).toBe(prose);
+    expect(agentTaskState.prompt).toBe('correct spelling AND make it more formal');
+  });
+
+  it('TASK_ARM preserves prose typed before the "agentically" trigger', async () => {
+    const prose = 'rough draft of an email';
+    const proseAndTrigger = `${prose} agentically improve clarity _`;
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      proseAndTrigger, 'TASK_ARM', 'improve clarity',
+    );
+
+    await resolver.resolveAndApply(proseAndTrigger);
+
+    expect(adapter.getText()).toBe(prose);
+    expect(agentTaskState.armed).toBe(true);
+    expect(agentTaskState.prompt).toBe('improve clarity');
+  });
+
+  it('TASK_STOP preserves prose typed before the "stop task" trigger', async () => {
+    const prose = 'some content here';
+    const proseAndTrigger = `${prose} stop task _`;
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      proseAndTrigger, 'TASK_STOP', '',
+    );
+    agentTaskState.arm('correct spelling');
+
+    await resolver.resolveAndApply(proseAndTrigger);
+
+    expect(adapter.getText()).toBe(prose);
+    expect(agentTaskState.armed).toBe(false);
+  });
+
+  it('TASK_STOP preserves prose typed AFTER the "stop task _" trigger', async () => {
+    // Bug repro: user has prose, types `stop task _` in the middle, has more
+    // prose after. Earlier fix was sliced only [0, triggerStart], dropping
+    // the suffix.
+    const proseBefore = 'some content here';
+    const proseAfter = 'more content after';
+    const buffer = `${proseBefore} stop task _ ${proseAfter}`;
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      buffer, 'TASK_STOP', '',
+    );
+    agentTaskState.arm('correct spelling');
+
+    await resolver.resolveAndApply(buffer);
+
+    expect(adapter.getText()).toBe(`${proseBefore} ${proseAfter}`);
+    expect(agentTaskState.armed).toBe(false);
+  });
+
+  it('TASK_ADD preserves prose AFTER the "add task <X> _" trigger', async () => {
+    const proseBefore = 'rough draft email';
+    const proseAfter = 'and more text';
+    const buffer = `${proseBefore} add task make it formal _ ${proseAfter}`;
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      buffer, 'TASK_ADD', 'make it formal',
+    );
+    agentTaskState.arm('correct spelling');
+
+    await resolver.resolveAndApply(buffer);
+
+    expect(adapter.getText()).toBe(`${proseBefore} ${proseAfter}`);
+    expect(agentTaskState.prompt).toBe('correct spelling AND make it formal');
+  });
+
+  it('TASK_STOP preserves paragraph breaks around the trigger', async () => {
+    // Bug repro: regex used \s+ which ate newlines, collapsing
+    // "para1\n\nstop task _\n\npara2" → "para1 para2" — looked like the
+    // second paragraph had been wiped.
+    const buffer = 'para1\n\nstop task _\n\npara2';
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      buffer, 'TASK_STOP', '',
+    );
+    agentTaskState.arm('correct spelling');
+
+    await resolver.resolveAndApply(buffer);
+
+    expect(adapter.getText()).toBe('para1\n\n\n\npara2');
+    expect(agentTaskState.armed).toBe(false);
+  });
+
+  it('TASK_ARM with no prose still produces an empty buffer (bare trigger)', async () => {
+    // Sanity: the "no prose" path that already worked must keep working.
+    const trigger = 'agentically correct spelling _';
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      trigger, 'TASK_ARM', 'correct spelling',
+    );
+
+    await resolver.resolveAndApply(trigger);
+
+    expect(adapter.getText()).toBe('');
+    expect(agentTaskState.armed).toBe(true);
+    expect(agentTaskState.prompt).toBe('correct spelling');
   });
 });

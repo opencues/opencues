@@ -792,7 +792,7 @@ var _prevWords=globalThis._dynPrevWords||[];
 var _debugPath="/tmp/claude-auto-debug-"+process.pid+".txt";
 
 // Debug: log state
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"["+Date.now()+"] text="+JSON.stringify(_dynText)+" cur="+_curWords.length+" last="+_lastAnalyzed.length+"\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"["+Date.now()+"] text="+JSON.stringify(_dynText)+" cur="+_curWords.length+" last="+_lastAnalyzed.length+"\\n",function(){});}catch(_e){}
 
 // Clear final pause timer on any text change
 if(globalThis._dynFinalPauseTimer){
@@ -811,7 +811,7 @@ var _completedWord=_curWords[_completeIdx];
 var _analyzedWord=_lastAnalyzed[_completeIdx]||"";
 if(_completedWord!==_analyzedWord){
 _needsAnalysis=true;
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"  space-trigger: idx="+_completeIdx+" '"+_completedWord+"' != '"+_analyzedWord+"'\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"  space-trigger: idx="+_completeIdx+" '"+_completedWord+"' != '"+_analyzedWord+"'\\n",function(){});}catch(_e){}
 }
 }
 // Also trigger if we have more words than ever analyzed
@@ -826,7 +826,7 @@ if(!_needsAnalysis&&_curWords.length===_lastAnalyzed.length&&_curWords.length>0)
 for(var _ci=0;_ci<_curWords.length;_ci++){
 if(_curWords[_ci]!==_lastAnalyzed[_ci]){
 _needsAnalysis=true;
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"  edit-trigger: idx="+_ci+" '"+_curWords[_ci]+"' != '"+(_lastAnalyzed[_ci]||"")+"'\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"  edit-trigger: idx="+_ci+" '"+_curWords[_ci]+"' != '"+(_lastAnalyzed[_ci]||"")+"'\\n",function(){});}catch(_e){}
 break;
 }
 }
@@ -851,19 +851,19 @@ if(_udef){_udef.alts=null;_udef.currentAltIndex=0;}
 if(globalThis._dynSpans)delete globalThis._dynSpans[_ui];
 }
 }
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"  underscore-invalidate: context changed, cleared alts\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"  underscore-invalidate: context changed, cleared alts\\n",function(){});}catch(_e){}
 }
 
 if(globalThis._dynPending){
 // Request in flight - queue re-analysis if context changed
 if(_contextChanged){
 globalThis._dynUnderscoreQueued=true;
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"  underscore-queued: context changed while pending\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"  underscore-queued: context changed while pending\\n",function(){});}catch(_e){}
 }
 }else if(_contextChanged){
 // Context changed and not pending - trigger analysis
 _needsAnalysis=true;
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"  underscore-trigger: context changed\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"  underscore-trigger: context changed\\n",function(){});}catch(_e){}
 }
 }
 
@@ -883,7 +883,7 @@ var _curW=globalThis._hlText.split(/\\s+/).filter(function(w){return w;});
 var _laW=globalThis._dynLastAnalyzed||[];
 // Re-check that last word still differs
 if(_curW.length>0&&_curW[_curW.length-1]!==(_laW[_curW.length-1]||"")){
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"["+Date.now()+"] final-pause-trigger\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"["+Date.now()+"] final-pause-trigger\\n",function(){});}catch(_e){}
 globalThis._dynTriggerAnalysis&&globalThis._dynTriggerAnalysis();
 }
 }
@@ -892,7 +892,7 @@ globalThis._dynTriggerAnalysis&&globalThis._dynTriggerAnalysis();
 }
 
 // Debug: log decision
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"  needsAnalysis="+_needsAnalysis+" pending="+globalThis._dynPending+"\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"  needsAnalysis="+_needsAnalysis+" pending="+globalThis._dynPending+"\\n",function(){});}catch(_e){}
 
 // Define the analysis trigger function (used by both debounce and final pause)
 if(!globalThis._dynTriggerAnalysis){
@@ -938,7 +938,7 @@ for(var _ndi=0;_ndi<_newWords.length;_ndi++){var _od=_oldDefs.find(function(d){r
 globalThis._dynDefs={words:_newWords,_model:"tips-only",_timing:"0ms"};
 globalThis._dynLastAnalyzed=_sentWords;
 var _timingPath="/tmp/claude-llm-timing-"+process.pid+".txt";
-try{${requireFuncName}("fs").writeFileSync(_timingPath,"0ms (tips-only) | "+_lookup.found.length+" words\\n",{flag:"a"});}catch(_te){}
+try{${requireFuncName}("fs").appendFile(_timingPath,"0ms (tips-only) | "+_lookup.found.length+" words\\n",function(){});}catch(_te){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
 return;
@@ -961,7 +961,7 @@ return;
 // This prevents sending partial/incomplete words to the LLM
 var _currentText=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
 if(_currentText.join(" ")!==_sentWords.join(" ")){
-try{${requireFuncName}("fs").appendFileSync(_debugPath,"["+Date.now()+"] word-stability: text changed, aborting\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath,"["+Date.now()+"] word-stability: text changed, aborting\\n",function(){});}catch(_e){}
 return;
 }
 
@@ -1008,7 +1008,7 @@ var _debugPath2="/tmp/claude-auto-debug-"+process.pid+".txt";
 
 // === UNIFIED CueResolver path for ALL modes ===
 if(globalThis._cueResolver){
-try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolver: "+(_hasBlank?"blank":"grammar")+" mode, "+(_hasBlank?_sentWords.length:_needLlmIndices.length)+"/"+_sentWords.length+" targets\\n");}catch(_e){}
+try{${requireFuncName}("fs").appendFile(_debugPath2,"["+Date.now()+"] resolver: "+(_hasBlank?"blank":"grammar")+" mode, "+(_hasBlank?_sentWords.length:_needLlmIndices.length)+"/"+_sentWords.length+" targets\\n",function(){});}catch(_e){}
 globalThis._dynPending=true;
 globalThis._dynPollStart=Date.now();
 globalThis._dynSentWords=_sentWords;
@@ -1095,11 +1095,11 @@ globalThis._dynLastAnalyzed=globalThis._dynSentWords||[];
 var _timingPath2="/tmp/claude-llm-timing-"+process.pid+".txt";
 var _wAlts=_words.filter(function(w){return w.alts&&w.alts.length>1;}).length;
 var _srcModel=(_resolved.metrics&&_resolved.metrics.length>0)?_resolved.metrics[_resolved.metrics.length-1].sourceId||"resolver":"resolver";
-try{${requireFuncName}("fs").writeFileSync(_timingPath2,_elapsed+"ms (resolver) | "+_wAlts+" words | "+_srcModel+"\\n",{flag:"a"});}catch(_te2){}
+try{${requireFuncName}("fs").appendFile(_timingPath2,_elapsed+"ms (resolver) | "+_wAlts+" words | "+_srcModel+"\\n",function(){});}catch(_te2){}
 if(globalThis._triggerStatusLineRefresh)globalThis._triggerStatusLineRefresh();
 if(globalThis._forceInputRefresh)globalThis._forceInputRefresh();
 }catch(_pe){
-try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolver-parse-error: "+_pe.message+"\\n");}catch(_e3){}
+try{${requireFuncName}("fs").appendFile(_debugPath2,"["+Date.now()+"] resolver-parse-error: "+_pe.message+"\\n",function(){});}catch(_e3){}
 }
 globalThis._dynPending=false;
 // Re-trigger if text changed while we were pending (typing during LLM call)
@@ -1111,14 +1111,14 @@ setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis
 }
 }).catch(function(_err){
 globalThis._dynPending=false;
-try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] resolver-error: "+_err.message+"\\n");}catch(_e4){}
+try{${requireFuncName}("fs").appendFile(_debugPath2,"["+Date.now()+"] resolver-error: "+_err.message+"\\n",function(){});}catch(_e4){}
 var _errWords=(globalThis._hlText||"").split(/\\s+/).filter(function(w){return w;});
 var _errChanged=_errWords.length!==globalThis._dynLastAnalyzed.length||_errWords.some(function(w,i){return w!==globalThis._dynLastAnalyzed[i];});
 if(_errChanged){setTimeout(function(){if(!globalThis._dynPending&&globalThis._dynTriggerAnalysis){globalThis._dynTriggerAnalysis();}},100);}
 });
 }else{
 // Fallback: no resolver/prompt available
-try{${requireFuncName}("fs").appendFileSync(_debugPath2,"["+Date.now()+"] no-resolver: skipping LLM call\\n");}catch(_e5){}
+try{${requireFuncName}("fs").appendFile(_debugPath2,"["+Date.now()+"] no-resolver: skipping LLM call\\n",function(){});}catch(_e5){}
 }
 }catch(_e){console.error("autoSubmit error:",_e);}
 };

@@ -128,9 +128,12 @@ export function startOpenCues(opts: {
     try {
       const ts = new Date().toISOString().slice(11, 23)
       const line = `[${ts}][${level}] ${msg} ${data ? JSON.stringify(data).slice(0, 400) : ""}\n`
-      // Append to a known location; matches Claude Code's pattern.
+      // Async append — keystroke path must not block on disk I/O.
+      // O_APPEND is atomic for line-sized writes on Linux, so concurrent
+      // appenders can't tear lines (ordering across writers may wobble,
+      // which is fine for a debug log).
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      require("fs").appendFileSync("/tmp/opencues.log", line)
+      require("fs").appendFile("/tmp/opencues.log", line, () => {})
     } catch {
       // Swallow — TUI swallows stderr anyway.
     }
@@ -146,7 +149,7 @@ export function startOpenCues(opts: {
     try {
       const ts = new Date().toISOString().slice(11, 23)
       const line = `[${ts}] ${event} ${JSON.stringify(info).slice(0, 400)}\n`
-      require("fs").appendFileSync(TRACE_FILE, line)
+      require("fs").appendFile(TRACE_FILE, line, () => {})
     } catch { /* swallow */ }
   }
   // Mark a clear session boundary in the trace so a fresh repro is
@@ -167,6 +170,8 @@ export function startOpenCues(opts: {
       trace("setText:in", { len: text.length, cursorBefore: before, preview: text.slice(0, 40) })
       sourceReclassifier.markRuntimeWrite(text)
       opts.promptAccess.write(text)
+      // editBuffer.setText nukes extmarks (see comment in pushText).
+      ocOwnedExtmarks = new Map()
       const after = opts.promptAccess.cursor()
       trace("setText:out", { len: text.length, cursorAfter: after, delta: after - before })
     },
@@ -185,6 +190,16 @@ export function startOpenCues(opts: {
       sourceReclassifier.markRuntimeWrite(text)
       opts.promptAccess.write(text)
       if (cursor !== undefined) opts.promptAccess.setCursor(cursor)
+      // OpenTUI's ExtmarksController wraps `editBuffer.setText` with a
+      // `this.clear()` call that nukes every extmark before applying the
+      // new content. Our `ocOwnedExtmarks` map still has the IDs but
+      // they point at extmarks that no longer exist — without this
+      // reset, the next triggerOpenCuesRender's diff would say "we
+      // already own d:4:7, skip create" and the dim wouldn't repaint.
+      // Symptom: dims survive same-line typing (insertChar shifts
+      // extmarks) but die on any agent edit or Enter (setText clears
+      // them). Clear the owned map here so the next render rebuilds.
+      ocOwnedExtmarks = new Map()
       const after = opts.promptAccess.cursor()
       trace("pushText:out", { cursorAfter: after, delta: after - before })
     },
@@ -348,9 +363,10 @@ export function notifyOpenCuesTextChange(text: string, cursor: number, source: "
   try {
     if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
       const ts = new Date().toISOString().slice(11, 23)
-      require("fs").appendFileSync(
+      require("fs").appendFile(
         "/tmp/opencues-cursor-trace.log",
         `[${ts}] notifyTextChange ${JSON.stringify({ cursor, source, actualSource, len: text.length, preview: text.slice(0, 40) }).slice(0, 400)}\n`,
+        () => {},
       )
     }
   } catch { /* swallow */ }
@@ -364,9 +380,10 @@ export function notifyOpenCuesCursorChange(text: string, cursor: number, source:
   try {
     if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
       const ts = new Date().toISOString().slice(11, 23)
-      require("fs").appendFileSync(
+      require("fs").appendFile(
         "/tmp/opencues-cursor-trace.log",
         `[${ts}] notifyCursorChange ${JSON.stringify({ cursor, source, len: text.length }).slice(0, 400)}\n`,
+        () => {},
       )
     }
   } catch { /* swallow */ }
@@ -381,15 +398,69 @@ function normaliseKeyName(evt: any): string {
 
 // ─── O.4: extmark applier ──────────────────────────────────────────────
 
-/** Track our own extmarks so we can remove them on the next render. */
-let ocOwnedExtmarks: number[] = []
+/**
+ * Track our own extmarks keyed by `kind:start:end` so successive renders
+ * can DIFF (keep unchanged, delete stale, create new) instead of
+ * clearing all and recreating. With ~14-30 dim ranges and the agent
+ * armed, the clear-and-recreate path was burning 100-300 ms per
+ * keystroke on extmark layout work — clearly visible as input lag.
+ *
+ * Stable case: typing at the end of the buffer with a fixed DynDef set
+ * doesn't shift any earlier dim range, so the diff produces zero
+ * mutations. Mid-buffer insertions only invalidate ranges downstream
+ * of the edit; everything before is reused.
+ *
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * OpenTUI extmark contract — read this before touching this section.
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *
+ * `ExtmarksController` (in @opentui/core/src/lib/extmarks.ts) wraps
+ * every editBuffer mutation method and either ADJUSTS or CLEARS our
+ * extmarks. Two distinct categories:
+ *
+ *   ADJUSTS (extmarks survive, offsets shift):
+ *     - insertChar / insertText
+ *     - deleteChar / deleteCharBackward / deleteRange / deleteLine
+ *     - newLine                ← Enter key path
+ *     - deleteSelectedText
+ *     - undo / redo
+ *
+ *   CLEARS (every extmark is wiped before the new content lands):
+ *     - setText        ← `editBuffer.setText(text)` calls `this.clear()`
+ *     - replaceText    ← same
+ *     - clear          ← obvious
+ *
+ * Our `setText` and `pushText` adapter methods funnel through
+ * `promptAccess.write(text)` which calls `editBuffer.setText` — so any
+ * runtime-driven text replacement (agent edit, BlankFill substitute,
+ * cycling, etc.) silently nukes every extmark we own. The diff in
+ * `triggerOpenCuesRender` would then say "owned matches desired,
+ * skip create" and leave the dim/highlight INVISIBLE because the
+ * underlying extmarks are gone.
+ *
+ * Mitigation: `setText` and `pushText` reset `ocOwnedExtmarks = new Map()`
+ * at the bottom of their adapter implementations. The next render
+ * rebuilds from scratch. User-typed character paths are unaffected
+ * because they go through `insertChar`, which preserves extmarks.
+ *
+ * Symptom this fixed: dims survived same-line typing but vanished the
+ * moment the agent applied any edit (or after Enter, because the agent
+ * usually settled and fired during the post-newline pause).
+ */
+type OcExtmarkKey = string // `${kind}:${start}:${end}`
+let ocOwnedExtmarks = new Map<OcExtmarkKey, number>()
 let ocStyleIdsCache: { dim?: number; highlight?: number; typeId?: number } = {}
+// Tracked so we can drop stale extmark IDs whenever the prompt re-mounts
+// (Solid.js reactive replacement of the textarea instance). Without this
+// guard, the diff sees a "match" by key for an extmark whose ID is dead
+// in the new textarea — and skips the create, leaving the dim invisible.
+let ocLastTextarea: unknown = null
 
 /**
  * Called by the patched Prompt component on every onContentChange
  * (and after our own setText). Pulls render directives from the
- * runtime, clears our previous extmarks, and creates new ones for
- * dim ranges + the active highlight.
+ * runtime, diffs against currently-owned extmarks: keeps unchanged
+ * ones, removes stale ones, creates only what's new.
  */
 export function triggerOpenCuesRender(text: string, cursor: number): void {
   if (!bootResult) return
@@ -399,6 +470,16 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   const syntax = access.syntax
   const textarea = access.textarea
   if (textarea.isDestroyed) return
+
+  // Textarea swap detection — Solid.js can replace the prompt component,
+  // which leaves our recorded extmark IDs pointing at a dead instance.
+  // When that happens, drop the cache + style IDs (styles are registered
+  // per-textarea) and start fresh.
+  if (ocLastTextarea !== textarea) {
+    ocOwnedExtmarks = new Map()
+    ocStyleIdsCache = {}
+    ocLastTextarea = textarea
+  }
 
   // Lazy-register styles + extmark type on first call.
   if (ocStyleIdsCache.dim === undefined) {
@@ -413,33 +494,39 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     ocStyleIdsCache.typeId = textarea.extmarks.registerType("opencues")
   }
 
-  // Clear previous extmarks before re-applying.
-  for (const id of ocOwnedExtmarks) {
-    try { (textarea.extmarks as any).delete?.(id) } catch { /* swallow */ }
-  }
-  ocOwnedExtmarks = []
-
+  // Build the desired set from the current directive output.
+  type Spec = { kind: "d" | "h"; start: number; end: number }
+  const desired = new Map<OcExtmarkKey, Spec>()
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
     if (directives.dimRanges) {
       for (const r of directives.dimRanges) {
-        const id = textarea.extmarks.create({
-          start: r.start,
-          end: r.end,
-          styleId: ocStyleIdsCache.dim,
-          typeId: ocStyleIdsCache.typeId,
-        })
-        ocOwnedExtmarks.push(id)
+        desired.set(`d:${r.start}:${r.end}`, { kind: "d", start: r.start, end: r.end })
       }
     }
     if (directives.highlight) {
-      const id = textarea.extmarks.create({
-        start: directives.highlight.start,
-        end: directives.highlight.end,
-        styleId: ocStyleIdsCache.highlight,
-        typeId: ocStyleIdsCache.typeId,
-      })
-      ocOwnedExtmarks.push(id)
+      const h = directives.highlight
+      desired.set(`h:${h.start}:${h.end}`, { kind: "h", start: h.start, end: h.end })
     }
+  }
+
+  // Delete extmarks no longer wanted.
+  for (const [key, id] of ocOwnedExtmarks) {
+    if (desired.has(key)) continue
+    try { (textarea.extmarks as any).delete?.(id) } catch { /* swallow */ }
+    ocOwnedExtmarks.delete(key)
+  }
+
+  // Create extmarks newly wanted (anything already present is reused).
+  for (const [key, spec] of desired) {
+    if (ocOwnedExtmarks.has(key)) continue
+    const styleId = spec.kind === "d" ? ocStyleIdsCache.dim : ocStyleIdsCache.highlight
+    const id = textarea.extmarks.create({
+      start: spec.start,
+      end: spec.end,
+      styleId,
+      typeId: ocStyleIdsCache.typeId,
+    })
+    ocOwnedExtmarks.set(key, id)
   }
 }
