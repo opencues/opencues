@@ -303,7 +303,9 @@ export class AgentLoop {
       const liveWord = liveWords[edit.wordIndex];
       if (!liveWord) continue;                              // index out of range now
       if (liveWord.word !== edit.originalWord) continue;    // word changed since LLM saw it
-      if (edit.editedWord === edit.originalWord) continue;  // no-op edit
+      // No-op filter: editedWord exactly matches originalWord. Empty
+      // editedWord is the DELETE sentinel — handled explicitly later.
+      if (edit.editedWord !== '' && edit.editedWord === edit.originalWord) continue;
       const existingDef = this.dynDefs.get(edit.wordIndex);
       if (existingDef && isOwnedByOtherSource(existingDef)) continue; // active substitution from another source landed since
       if (seenIndices.has(edit.wordIndex)) {                // LLM emitted a duplicate for this slot
@@ -321,11 +323,27 @@ export class AgentLoop {
       // Splice right-to-left so earlier indices' char offsets stay
       // valid. (The OLD wordSpans are computed once over `liveText` so
       // each edit's start/end refer to the pre-splice frame.)
+      //
+      // DELETE (`editedWord === ''`): also consume ONE adjacent
+      // whitespace char so the surrounding text closes up cleanly
+      // ("the the cat" → "the cat", not "the  cat"). Prefer the
+      // trailing whitespace; fall back to leading when the deleted
+      // word is at the end of the doc / line.
       const sortedDesc = surviving.slice().sort((a, b) => b.wordIndex - a.wordIndex);
       let newText = liveText;
       for (const edit of sortedDesc) {
         const w = liveWords[edit.wordIndex];
-        newText = newText.slice(0, w.start) + edit.editedWord + newText.slice(w.end);
+        if (edit.editedWord === '') {
+          let cutStart = w.start;
+          let cutEnd = w.end;
+          const next = newText.charAt(cutEnd);
+          const prev = cutStart > 0 ? newText.charAt(cutStart - 1) : '';
+          if (next === ' ' || next === '\t') cutEnd += 1;
+          else if (prev === ' ' || prev === '\t') cutStart -= 1;
+          newText = newText.slice(0, cutStart) + newText.slice(cutEnd);
+        } else {
+          newText = newText.slice(0, w.start) + edit.editedWord + newText.slice(w.end);
+        }
       }
 
       // Re-derive word positions in the NEW text and store DynDefs at
@@ -340,8 +358,18 @@ export class AgentLoop {
       const sortedAsc = surviving.slice().sort((a, b) => a.wordIndex - b.wordIndex);
       let cumulativeWordDelta = 0;
       for (const edit of sortedAsc) {
-        const altWordCount = edit.editedWord.split(/\s+/).filter(Boolean).length;
         const newWordIndex = edit.wordIndex + cumulativeWordDelta;
+        // DELETE: drop the def at this idx (was the deleted word's
+        // own def, if any) and shift downstream defs LEFT by 1. No
+        // new def gets stored — there's no word here anymore. wordDelta
+        // is -1 for the cumulative tracker.
+        if (edit.editedWord === '') {
+          this.dynDefs.delete(newWordIndex);
+          this.dynDefs.shiftAfter(newWordIndex, -1);
+          cumulativeWordDelta += -1;
+          continue;
+        }
+        const altWordCount = edit.editedWord.split(/\s+/).filter(Boolean).length;
         const startWord = newWords[newWordIndex];
         const endWord = newWords[newWordIndex + Math.max(0, altWordCount - 1)];
         // Defensive: if our shift miscalculated and the position is
@@ -401,7 +429,14 @@ export class AgentLoop {
         for (const edit of sortedDesc) {
           const w = liveWords[edit.wordIndex];
           if (w.end <= cursorBefore) {
-            cursorAdjusted += edit.editedWord.length - edit.originalWord.length;
+            if (edit.editedWord === '') {
+              // DELETE removes the word + ONE adjacent whitespace char,
+              // so the cursor (if past the deleted span) shifts left by
+              // (word.length + 1).
+              cursorAdjusted -= (w.end - w.start) + 1;
+            } else {
+              cursorAdjusted += edit.editedWord.length - edit.originalWord.length;
+            }
           }
         }
         if (this.adapter.pushText) {
@@ -546,17 +581,25 @@ export function parseEditPassOutput(raw: string): AgentEdit[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (/^none$/i.test(trimmed)) continue;
-    // Format: <idx> | <orig> | <edit-or-KEEP>
+    // Format: <idx> | <orig> | <edit-or-KEEP-or-DELETE>
     const parts = trimmed.split('|').map(s => s.trim());
     if (parts.length !== 3) continue;
     const idx = parseInt(parts[0], 10);
     if (Number.isNaN(idx) || idx < 0) continue;
     const orig = parts[1];
     const edit = parts[2];
-    if (!orig || !edit) continue;
+    if (!orig) continue;
     // KEEP marker — explicit no-op, don't include as an edit
     if (/^keep$/i.test(edit)) continue;
-    if (edit === orig) continue;  // model emitted unchanged value, treat as no-op
+    // DELETE marker — emit an edit with empty editedWord. The apply
+    // path uses '' to mean "remove this word + one adjacent whitespace
+    // char so the surrounding text closes up cleanly".
+    if (/^delete$/i.test(edit)) {
+      edits.push({ wordIndex: idx, originalWord: orig, editedWord: '' });
+      continue;
+    }
+    if (!edit) continue;            // empty third column AND not DELETE → malformed line
+    if (edit === orig) continue;    // model emitted unchanged value, treat as no-op
     edits.push({ wordIndex: idx, originalWord: orig, editedWord: edit });
   }
   return edits;
@@ -642,8 +685,9 @@ RULES:
 1. Walk the candidate list MENTALLY before emitting. Don't stop early — check every single candidate.
 2. Each emitted line: <wordIndex> | <originalWord> | <editedWord>
 3. Be conservative on AMBIGUOUS edits — when in doubt, skip. Be exhaustive on UNAMBIGUOUS edits (typos, proper-noun capitalisation, etc.).
-4. Multi-word transformations are NOT supported. Skip words you can't fix in a single-word swap.
-5. Pay special attention to the LAST few candidate indices — they're easy to miss.
+4. EXPANSIONS allowed: edit one word into multiple words by emitting the new phrase as <editedWord>, e.g. "1 | will | ich werde" replaces "will" with "ich werde". Use this for translations and for inserting words ("I went store" → emit "2 | store | to the store" to fill in missing words).
+5. DELETIONS allowed: emit "DELETE" as <editedWord> to remove a redundant word, e.g. "1 | the | DELETE" turns "the the cat" into "the cat". Use for grammar fixes that require removing a word entirely. The runtime tidies the surrounding whitespace.
+6. Pay special attention to the LAST few candidate indices — they're easy to miss.
 
 EXAMPLES:
 
@@ -677,4 +721,18 @@ EDITS:
 0 | thier | their
 3 | carefuly | carefully
 4 | recieved | received
+END
+
+TASK PROMPT: fix grammar
+DOC: [0]the [1]the [2]cat [3]sat
+Candidate indices: [0, 1, 2, 3]
+EDITS:
+1 | the | DELETE
+END
+
+TASK PROMPT: fix grammar
+DOC: [0]I [1]went [2]store
+Candidate indices: [0, 1, 2]
+EDITS:
+2 | store | to the store
 END`;

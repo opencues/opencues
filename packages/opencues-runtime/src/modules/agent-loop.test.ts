@@ -486,6 +486,203 @@ describe('AgentLoop multi-word edit: DynDef shift on apply', () => {
     expect(dynDefs.get(3)?.originalWord).not.toBe('D');
   });
 
+  it('DELETE marker: removes word + trailing whitespace', async () => {
+    // "the the cat sat" → "the cat sat" — drop redundant "the" at idx 1
+    const TEXT = 'the the cat sat ';
+    const LLM_EDITS = 'EDITS:\n1 | the | DELETE\nEND';
+    const { adapter, dynDefs, loop, state } = setupMultiEdit(TEXT, LLM_EDITS);
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('the cat sat ');
+    // No def stored at the deleted position.
+    expect(dynDefs.get(1)).toBeUndefined();
+  });
+
+  it('DELETE marker: removes word + leading whitespace when at end of buffer', async () => {
+    // No trailing whitespace to consume; fall back to leading.
+    // Cursor parked elsewhere so "extra" isn't cursor-adjacent.
+    const TEXT = 'the cat extra';  // wordIndex: 0=the 1=cat 2=extra
+    const adapter = new MockAdapter({});
+    adapter.pushText(TEXT, 0); // cursor at start, "the" is cursor-adjacent (excluded)
+    const state = new AgentTaskState();
+    const dynDefs = new DynDefs();
+    const httpAdapter = { post: async () => llmResponse('EDITS:\n2 | extra | DELETE\nEND') };
+    const loop = new AgentLoop(adapter, state, dynDefs, undefined, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 1, httpAdapter,
+    });
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    // Leading space before "extra" got consumed.
+    expect(adapter.getText()).toBe('the cat');
+  });
+
+  it('DELETE marker: shifts prior defs at higher indices left by 1', async () => {
+    // Pre-existing def at idx 3. Delete at idx 1 should shift idx 3 → idx 2.
+    const TEXT = 'A B C D ';
+    const adapter = new MockAdapter({});
+    adapter.pushText(TEXT, TEXT.length + 1);
+    const state = new AgentTaskState();
+    const dynDefs = new DynDefs();
+    dynDefs.set(3, { originalWord: 'D', alternatives: ['D', 'd!'], currentIndex: 1, spanStart: 6, spanEnd: 8, blankName: 'agent-task' });
+    const httpAdapter = { post: async () => llmResponse('EDITS:\n1 | B | DELETE\nEND') };
+    const loop = new AgentLoop(adapter, state, dynDefs, undefined, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 1, httpAdapter,
+    });
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('A C D ');
+    expect(dynDefs.get(2)?.originalWord).toBe('D');  // shifted from 3 → 2
+    expect(dynDefs.get(3)).toBeUndefined();          // vacated
+  });
+
+  it('DELETE marker: drops the existing def at the deleted index', async () => {
+    // Prior agent edit at idx 1 (B → BB). Now LLM emits DELETE on the
+    // same position — the prior def should be dropped (the word is gone).
+    const TEXT = 'A B C ';
+    const adapter = new MockAdapter({});
+    adapter.pushText(TEXT, TEXT.length + 1);
+    const state = new AgentTaskState();
+    const dynDefs = new DynDefs();
+    // Pre-existing agent def at idx 1 — but the live word IS still "B"
+    // (the def's currentIndex would normally be 1 showing "BB", but for
+    // this test we just need a def to verify it gets dropped).
+    dynDefs.set(1, { originalWord: 'B', alternatives: ['B', 'BB'], currentIndex: 0, spanStart: 2, spanEnd: 3, blankName: 'agent-task' });
+    const httpAdapter = { post: async () => llmResponse('EDITS:\n1 | B | DELETE\nEND') };
+    const loop = new AgentLoop(adapter, state, dynDefs, undefined, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 1, httpAdapter,
+    });
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('A C ');
+    expect(dynDefs.get(1)).toBeUndefined();
+  });
+
+  it('DELETE marker: cursor translation accounts for the +1 whitespace removed', async () => {
+    // Cursor sits past the deleted word — should shift left by
+    // (wordLen + 1) for the consumed whitespace.
+    const TEXT = 'the the cat sat ';
+    const adapter = new MockAdapter({});
+    adapter.pushText(TEXT, TEXT.length); // cursor at end (16)
+    const state = new AgentTaskState();
+    const dynDefs = new DynDefs();
+    const httpAdapter = { post: async () => llmResponse('EDITS:\n1 | the | DELETE\nEND') };
+    const loop = new AgentLoop(adapter, state, dynDefs, undefined, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 1, httpAdapter,
+    });
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    // "the" (3 chars) + space (1) = 4 chars removed. Cursor 16 → 12.
+    expect(adapter.getText()).toBe('the cat sat ');
+    expect(adapter.getCursorOffset()).toBe(12);
+  });
+
+  it('DELETE + multi-word edit in same batch: cumulative word delta is correct', async () => {
+    // text:  0=A 1=B 2=C 3=D 4=E
+    // edits: B → DELETE (1→0 words), C → "C1 C2" (1→2 words)
+    // post:  0=A 1=C1 2=C2 3=D 4=E (5 words, B gone)
+    const TEXT = 'A B C D E ';
+    const LLM_EDITS = 'EDITS:\n1 | B | DELETE\n2 | C | C1 C2\nEND';
+    const { adapter, dynDefs, loop, state } = setupMultiEdit(TEXT, LLM_EDITS);
+    state.arm('expand');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('A C1 C2 D E ');
+    // C → "C1 C2" lands at NEW idx 1 (was OLD 2, shifted -1 by the delete)
+    expect(dynDefs.get(1)?.alternatives).toEqual(['C', 'C1 C2']);
+    // No def for the deleted word
+    expect(dynDefs.get(2)?.originalWord).not.toBe('B');
+  });
+
+  it('DELETE marker in retry mode: does NOT add an evaluation for the deleted slot', async () => {
+    // retry mode caches edited words at NEW idx with NEW hash. For a
+    // DELETE there's no NEW word at that idx (the next word slid up),
+    // so we must not record a stale evaluation that would confuse the
+    // next pass.
+    const TEXT = 'the the cat ';
+    const adapter = new MockAdapter({});
+    adapter.pushText(TEXT, TEXT.length + 1);
+    const state = new AgentTaskState();
+    const dynDefs = new DynDefs();
+    const httpAdapter = { post: async () => llmResponse('EDITS:\n1 | the | DELETE\nEND') };
+    const loop = new AgentLoop(adapter, state, dynDefs, undefined, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm',
+      debounceMs: 1, httpAdapter,
+      retryModeEnabled: () => true,
+    });
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('the cat ');
+    // The agent stored 0 evaluations: the deleted word's slot is gone,
+    // and un-edited candidates aren't cached in retry mode.
+    expect(state.evaluationCount()).toBe(0);
+  });
+
+  it('DELETE marker case-insensitive (Delete / delete / DELETE all parse the same)', async () => {
+    const TEXT = 'a b c ';
+    const LLM_EDITS = 'EDITS:\n1 | b | Delete\nEND';
+    const { adapter, loop, state } = setupMultiEdit(TEXT, LLM_EDITS);
+    state.arm('test');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('a c ');
+  });
+
+  it('parser: empty third column (without DELETE) is treated as malformed and dropped', async () => {
+    // "1 | foo |" with empty third column — could be a model artefact
+    // (truncation, format glitch). We don't silently DELETE on empty
+    // because that would be too easy to trigger by accident; explicit
+    // "DELETE" is required.
+    const TEXT = 'foo bar baz ';
+    const LLM_EDITS = 'EDITS:\n1 | bar | \nEND';
+    const { adapter, loop, state } = setupMultiEdit(TEXT, LLM_EDITS);
+    state.arm('test');
+
+    await loop.runOnce(TEXT);
+
+    // Buffer unchanged — malformed line dropped at parse time.
+    expect(adapter.getText()).toBe('foo bar baz ');
+  });
+
+  it('two consecutive DELETEs collapse two redundant words', async () => {
+    // "I I really really love it" → "I really love it"
+    // wordIndex: 0=I 1=I 2=really 3=really 4=love 5=it
+    // Delete idx 1 and idx 3.
+    const TEXT = 'I I really really love it ';
+    const LLM_EDITS = 'EDITS:\n1 | I | DELETE\n3 | really | DELETE\nEND';
+    const { adapter, loop, state } = setupMultiEdit(TEXT, LLM_EDITS);
+    state.arm('fix grammar');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('I really love it ');
+  });
+
+  it('DELETE marker: dedupe protects against duplicate DELETEs at same idx', async () => {
+    const TEXT = 'a b c ';
+    // Two DELETEs at idx 1. Dedupe drops the second; net effect is one delete.
+    const LLM_EDITS = 'EDITS:\n1 | b | DELETE\n1 | b | DELETE\nEND';
+    const { adapter, loop, state } = setupMultiEdit(TEXT, LLM_EDITS);
+    state.arm('test');
+
+    await loop.runOnce(TEXT);
+
+    expect(adapter.getText()).toBe('a c ');
+  });
+
   it('span/spanStart point at NEW char offsets after splice', async () => {
     // The def's spanStart/spanEnd are read by Cycling when reverting.
     // After multi-word splice, they must reflect the NEW char frame —
