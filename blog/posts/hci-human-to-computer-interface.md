@@ -1,109 +1,99 @@
-# HCI (Human to computer interface)
+---
+title: HCI (Human to Computer Interface)
+date: 2026-05-06
+description: HCI is any means through which we interface with a computer. The sharpest framework I know for evaluating one is borrowed from fighting games.
+tags: [hci, framework, fighting-games, foundational]
+cross_links: [inline-cues-continuous-onboarding, inline-prompting-blank, inline-agents, cross-domain-pollination, seamlessly-integration]
+---
 
-Inventing new "HCIs" is my passion.
+# HCI (Human to Computer Interface)
 
-Often when meeting people at events or describing what me and the team at Command Stick specialise in I am met with a subtle blank stair. I usually recognise their subtle "cue" and try to elaborate that human to computer interface design is not necessarily hardware. It is any means through which we interface with a computer system.
+A human-to-computer interface is any means through which we interface with a computer system, not just hardware. Sliders, dials, buttons, widgets, touchscreens, keyboards, chat windows, dropdown menus, command palettes, swipe gestures, swipe-to-type: all are HCIs, all were invented by someone, all were chosen over alternatives.
 
-In the modern times human computer interfaces are the software based interfaces through which we interface with our various technologies on a daily basis. E.g. slides, buttons, touch screens, keyboards, mice, chat windows, tabs, dropdowns, etc… (exhaustive list) All of these HCIs were engineered by individuals and have stood the test of time as means of interfacing with computers.
-
-Over the passage of time new HCIs are invented to fit different form factors and accommodate additional functionality. As user preferences and behaviour patterns change different HCIs fall in and out of favour.
-
-I have been inventing and patenting novel HCIs for over 7 years of designing and the breadth of platforms through which me and my team have designed HCIs on spans from desktop, mobile, tablet and smartwatch.
-
-Over the years we have developed a framework for evaluating HCIs which has allowed us to identify gaps in the market or rooms for improvement.
-
-Though there are over N parameters you could evaluate a HCI from, I like to simplify it to:
-
-- Start-up frames
-- Active window
-- Cool down (end-lag)
-
-If you're a keen fighting game player these terms may seem familiar to you.
-
-When building my first HCI I sort out to gamify the experience of controlling a system through making a more seamless, fluid control experience. So I looked towards video game design to determine how HCIs could be improved.
-
-Start-up frames: Initially a term from fighting games refers to how much time needs to pass/ how many pre-requisite actions must be performed for a user to be able to engage in a HCI.
-
-On its surface it could be taken as 'my button is immediately responsive', there are no 'start-up frames' but this disregards the user's 'state' prior to needing your button and the variance in the user's need for your button when performing other tasks.
-
-You can read more in detail about start-up frames and the video game parallels: here (Link to other article)
-
-Active window: Also a term from fight games is duration of an action and how it prevents a user from different actions asynchronously. E.g. If you require a user to wait for an action to be performed after they have issued a request this limits the user's ability to multi-task or perform additional requests. An ideal HCI does not prevent a user from performing future actions as a current action is being processed as this limits the user's ability to multi-task or chain together actions seamlessly.
-
-You can read more in detail about Active window and the video game parallels: here (Link to other article)
-
-Cool down (end-lag): Needless to say another video game term is the concept when designing a HCI after the user has completed a task utilising your HCI how much time, effort or actions are required for a user to get back to their original state or future intended state. An ideal HCI does not require a user to 'reset' themselves to perform a desired action.
-
-You can read more in detail about Cool down (end-lag) and the video game parallels: here (Link to other article)
-
-Through balancing these aspects of a HCI you are able to create an experience which feels 'gamified' with the goal of allowing a user to feel in the "zone" as the system is not stifling a user's ability to interface with a computer system.
-
-I consider the above framework is the most basic means of evaluating a HCI, in a future article I will go into more detail about advanced means of breaking down HCIs.
-
-As we enter the modern era of novel LLM based systems it is interesting to explore what is possible, what new problems and HCIs are now made relevant which were previously impossible to implement.
+I have spent seven years inventing and patenting HCIs at Command Stick, across desktop, mobile, tablet, and smartwatch platforms. The work taught me to evaluate HCIs more rigorously than my discipline typically does, and that rigour came from an unexpected place.
 
 ---
 
-## STAGING NOTES (not yet formatted)
+### Prior to the framework
 
-### A. Applying the 3-axis framework to OpenCues
+HCI evaluation in design schools and product teams tends to lean on heuristic checklists: Nielsen's ten heuristics, Fitts's law, the speed-accuracy tradeoff. These are useful, but they answer a different question than the one I needed answered. They tell you whether a HCI is *usable*. They don't tell you whether using it makes a user feel *fluent*: in the zone, mid-task, doing the thing.
 
-A worked example of using start-up / active window / cool-down on the new HCI I'm building. The blog series is going to keep coming back to this, so applying the framework once here grounds it.
+What I kept needing to say:
 
-**Cues (LLM → user, on plain text)**
+> It's usable, but within a workflow it's the slowest part.
 
-- *Start-up frames* — zero. Tips appear automatically as you type. The user does not have to "summon" a cue; static cues are looked up in RAM (~0ms), remote cues fire on the existing 500ms debounce that they were already going to hit by pausing typing. No pre-requisite action.
-- *Active window* — zero. Cues are advisory. The user can keep typing while the LLM is in flight; when the dim arrives, they take it or ignore it. The cycling primitive (Up/Down on a dimmed word) is in-place — no popup, no menu — so even acting on a cue does not block future input.
-- *Cool-down* — zero. After cycling a word, the cursor stays where it was, the rest of the input is untouched, and the next cue is already armed for the next word. There is no "close the picker", no "dismiss the suggestion", no return-to-typing transition.
+> Each step works on its own; using them in sequence works, but it's missing something.
 
-**Blanks (user → system, on `_`)**
+### With the framework
 
-- *Start-up frames* — one keystroke (`_`). On every standard keyboard layout. No modifier, no menu, no command palette.
-- *Active window* — sub-second to ~1.5s depending on which blank fired. The user can keep typing while the blank resolves; when it lands, the value drops in at the position they put the `_`. The contract is sub-second precisely because this axis is felt — too long here breaks the gamified feel.
-- *Cool-down* — zero. The filled value lives in the text. Editing around it does not require dismissing it. The user can cycle through alternatives in place if there are any; otherwise the value is just text now.
+I borrowed three terms from fighting-game design. Players in those games have spent thirty-plus years refining language for exactly the property I needed to name: how committal is each move, and what does it cost the player who throws it?
 
-The framework's prediction matched the implementation's choices and rejection list. The non-extension points (no word-cycling without `_`, no modal pickers, no auto-revert on stop) all read as decisions that *protect* the three axes.
+The three terms map cleanly onto HCI evaluation as axes: **start-up frames**, **active window duration**, and **end-lag**. Once I had them, gaps in existing HCIs became obvious in ways they hadn't been before.
 
-### B. The two-direction model as the answer to the closing line
+---
 
-The closing line teases "what new HCIs are now made relevant" by LLMs. The answer the rest of the series develops:
+### Start-up frames
 
-> Two directions of intent on text. Cues are LLM → user (the system offers alternatives the user did not ask for). Blanks are user → system (the user places `_` to summon a value). Same character, infinite uses, dispatched contextually.
+How long the user must wait, or how many pre-requisite actions they must take, before they can engage the HCI at all.
 
-Worth flagging up front because:
-- It is the spine of every other post in the series.
-- It makes the closing line concrete instead of rhetorical.
-- It is itself a fresh HCI primitive in the framework sense — the "direction of intent" is the new axis that LLMs unlocked.
+The naive read is "my button responds instantly so start-up frames are zero." That misses the actual cost. Start-up frames count *from where the user already is*, not from where the HCI sits. A button on a different screen has high start-up frames even if its click latency is zero, because the user must navigate, refocus, locate. A keyboard shortcut depends on hand position: near-zero start-up frames if the user is already typing; the switch from the mouse adds additional start-up frames.
 
-### C. Additional evaluation parameters beyond the three axes
+Reducing start-up frames is the HCI design decision that makes a HCI feel "always accessible" at a moment's notice.
 
-The post says "there are over N parameters" without enumerating them. A short bulleted "honourable mentions" list would carry the claim:
+### Active window duration
 
-- **Cognitive load** — how much of the user's working memory the HCI consumes. Procedural memory is cheap (the keyboard); declarative memory is expensive (remembering keyboard shortcuts).
-- **Hand occlusion** — whether the operating hand blocks the user's view of the input. Touch screens are notoriously bad here.
-- **Ambiguous recipient** — whether the user can tell which on-screen element the input applies to. Voice assistants suffer from this.
-- **Scale-independence** — whether the HCI ports across screen sizes (desktop / tablet / mobile / watch) without breaking procedural memory.
-- **Discoverability** — whether the user can find the available functionality without referring to documentation. Gestures fail this; menus pass it.
-- **Cancellability** — whether the user can abort a partially-formed input. Most click-execute systems fail this; CommandStick passes it.
-- **Affordance** — whether the HCI signals how to use it without instruction. A door handle has affordance; a swipe gesture does not.
+How long the HCI's process actually takes to finish, from the moment the user initiates the action to the moment the result is returned.
 
-The 3-axis framework is the *first* lens; this is a partial second lens. A future post can give them their own treatment.
+A blocking modal is the canonical bad case: the user initiates the action and is prevented from doing anything else until it completes. Active window duration cannot be circumvented with background processes. If the user needs the result to proceed, they are still waiting for it to return. Allowing them to keep typing while the operation runs softens the perceived cost but does not shorten the actual duration. The operation's time-to-completion governs how soon the user can move onto the next task.
 
-### D. HCIs that have fallen in / out of favour
+Reducing active window duration is the HCI design decision that lets the user get onto their next task sooner, and extends where the HCI can be applied (as does optimising start-up frames and end-lag).
 
-Concrete examples of the "user preferences and behaviour patterns change" claim:
+### End-lag
 
-- **Stylus → finger touch.** Stylus was the smartphone HCI of 2003. Finger displaced it within 4 years of the iPhone.
-- **Command line → GUI → CLI renaissance.** The terminal was supposed to die in 1995. It did not. Developer tooling is currently *more* CLI-centric than at any point since the early 90s.
-- **Dropdown menus → search-everywhere.** Cmd+K / Ctrl+K palettes have started replacing nested menus in tools the user navigates frequently (Linear, Notion, VSCode, GitHub).
-- **Right-click → swipe / long-press / kebab menu.** Right-click as a discovery surface is collapsing on mobile-first interfaces.
-- **Hover → tap / focus.** Tooltips on hover assume a pointer device. Touch interfaces have had to find different surfaces (long-press preview, swipe to reveal).
-- **Floppy save icon → no save icon at all.** Auto-save displaced the explicit save action; the floppy disk icon is now a fossil that points at a behaviour most users do not perform.
+How much effort the user must spend to return to their pre-HCI interaction state.
 
-The pattern: HCIs do not fall out of favour because they are bad. They fall out of favour because the *substrate* shifted — a new device class, a new latency budget, a new set of user expectations — and the HCI no longer fits the constraints it was designed for.
+Modals that demand to be dismissed have end-lag. Tools that pop the user out of their current focus have end-lag. Anything that requires a "now I'll go back to what I was doing" navigation has end-lag. The ideal HCI has zero end-lag: the user finishes the action and is *already where they want to be next*.
 
-### F. Cross-domain pollination as the meta-move
+Reducing end-lag is the HCI design decision that lets users chain actions without breaking flow.
 
-The fighting-game → HCI borrowing is itself the strongest argument for cross-domain pollination as a design practice. Worth a one-paragraph note here, then a forward-pointer to post #13 ("Cross domain pollination & `_` shaped people"):
+---
 
-The 3-axis framework would not have appeared from inside HCI design. It came from a domain (competitive fighting games) where the language for "this move is committal in a way that gets you punished" had been refined for 30+ years by players who had to get it right under pressure. Borrowing that vocabulary did not just give me a label — it gave me an *evaluative grammar* that HCI did not have. The blog post on cross-domain pollination explores this further; the short version is that the most useful design tools tend to come from outside design.
+### Why these three?
+
+You could evaluate HCIs on dozens of parameters. I chose these three because they collectively measure *the user's freedom around the HCI*: before, during, after. Together they answer one question: how much of the user's time and attention does this HCI lay claim to? A HCI that scores low on all three feels fluent. A HCI that scores high on any single axis breaks flow.
+
+> A great HCI takes nothing from the user that the work itself didn't already demand.
+
+### Lineage: fighting games
+
+This framework didn't come from within HCI design. It came from a domain (competitive fighting) where the language for *committal moves* had been refined for thirty-plus years by players who had to get it right under pressure. Borrowing that vocabulary didn't just hand me a label; it handed me a well-documented way of drawing parallels between the experiences I was having with a system and what the fighting-game community had spent decades analysing.
+
+This is a strong example of [cross-domain pollination](cross-domain-pollination.md) as a design practice. The frameworks that sharpen design thinking often come from outside design.
+
+### Beyond the three axes
+
+The three axes are the first lens, not the only one. A second, partial lens looks like this:
+
+- **Cognitive load:** how much working memory the HCI consumes. Procedural memory is cheap (the keyboard); declarative memory is expensive (remembering shortcuts).
+- **Hand occlusion:** does the operating hand block the user's view of the input? (Touchscreens suffer.)
+- **Ambiguous recipient:** can the user tell which on-screen element the input applies to? (Voice assistants suffer.)
+- **Scale-independence:** does the HCI port across screen sizes without breaking procedural memory?
+- **Discoverability:** can the user find the functionality without docs? (Gestures fail; menus pass.)
+- **Cancellability:** can the user abort a partially-formed input?
+- **Affordance:** does the HCI signal how to use it without instruction? (Door handle, yes. Swipe gesture, no.)
+
+These get their own treatment later. For now they sit beside the three axes as honourable mentions.
+
+---
+
+> **Note:** HCIs that fall out of favour usually don't fail on usability. They fail because the *substrate* shifted. The stylus didn't become bad; the iPhone arrived and the substrate became the finger. Right-click as a discovery surface is collapsing on mobile. The HCIs that endure are the ones whose constraints generalise across substrates.
+
+---
+
+### What LLMs unlock?
+
+We are entering an era where the substrate is shifting again. LLMs unlock a class of HCI that wasn't possible before: interfaces that respond to *intent* rather than to fixed gestures. The rest of this blog series is about that shift, the new HCIs it enables, and how the HCI 3-Axis Analysis predicts which of them will stick and which might fade away.
+
+---
+
+See Also: [Inline Cues](inline-cues-continuous-onboarding.md) · [Inline Prompting](inline-prompting-blank.md) · [Inline Agents](inline-agents.md) · [Cross-domain Pollination](cross-domain-pollination.md) · [Seamless Integration](seamlessly-integration.md)

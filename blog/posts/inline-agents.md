@@ -89,7 +89,7 @@ What this means concretely: the agent feature did not require any new visual cod
 - A loop module subscribing to text-change.
 - Three new EXTRACT verdicts so transform-blank routes task-arming inputs to the agent.
 
-Everything else — visibility, cycling, ownership, filtering — was already there for the cues, fluid blanks, transform blanks. It was load-bearing in a way the original designers did not have to plan for. **A two-direction framework that holds the right shape makes new affordances multiply** without proportional code growth.
+Everything else — visibility, cycling, ownership, filtering — was already there for the cues, fluid blanks, transform blanks. It was doing structural work in a way the original designers did not have to plan for. **A two-direction framework that holds the right shape makes new affordances multiply** without proportional code growth.
 
 ### D. Sharpen "never press enter" — the irreducible safety primitive
 
@@ -208,7 +208,7 @@ The post claims this is a "lightweight agentic process." Concrete numbers:
 - **Apply-side defence in depth** — the loop re-validates every edit against the live text and the candidate set before applying. Defends against the model proposing edits to indices it was not asked about.
 - **Soft-fail on rate-limit** — empty response or rate-limit error returns empty edits and logs. Next text-change debounce is the implicit retry. No retry loop inside `runOnce` — that would compound rate-limit failures.
 
-This is what makes "lightweight" load-bearing instead of marketing. The user is paying ~365ms per debounce pulse for the agent presence, not seconds.
+This is what makes "lightweight" substantive instead of marketing. The user is paying ~365ms per debounce pulse for the agent presence, not seconds.
 
 ### L. No chat window — the negative-space UX claim
 
