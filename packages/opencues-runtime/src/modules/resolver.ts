@@ -579,9 +579,11 @@ export class Resolver {
 // wiping any prose the user typed before it. Source-of-truth for the
 // patterns lives in transform-blank-source.ts's EXTRACT prompt.
 //
-// Exported so AgentLoop can protect these literal phrases from being
-// translated/edited mid-typing. If the agent translated `agentically`
-// to `agentisch`, the user could no longer type a TASK_ARM trigger.
+// Exported as the canonical trigger map; agent-rewrite uses its
+// presence in the prompt's task instructions but doesn't need explicit
+// "protection" — its full-rewrite + three-way-merge architecture
+// can't accidentally translate these keywords mid-stream the way the
+// legacy per-keystroke AgentLoop could.
 export const TASK_TRIGGER_KEYWORDS: Record<string, string> = {
   TASK_ARM: 'agentically',
   TASK_ADD: 'add task',

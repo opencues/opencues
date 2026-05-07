@@ -84,15 +84,6 @@ export interface OpenCuesState {
   readonly debugMode: 'on' | 'off';
   readonly tipsMode: 'on' | 'off';
   readonly cursorNavigate: 'active' | 'inactive';
-  /**
-   * When 'on', the AgentLoop only caches words that actually received an
-   * edit on a given pass. Words the LLM skipped get reconsidered on the
-   * next pass — useful for non-idempotent transforms (translate,
-   * paraphrase, "make it more formal") where the first pass can miss
-   * words. Default 'off' keeps the cache aggressive (suits "correct
-   * spelling"-style idempotent prompts).
-   */
-  readonly agentRetryMode: 'on' | 'off';
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
   /**
@@ -109,7 +100,6 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   debugMode: 'off',
   tipsMode: 'on',
   cursorNavigate: 'inactive',
-  agentRetryMode: 'off',
   settings: new Map(),
   definitions: new Map(),
 };
@@ -148,9 +138,8 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const debugMode = get('debug-mode', 'off') === 'on' ? 'on' : 'off';
   const tipsMode = get('tips-mode', 'on') === 'off' ? 'off' : 'on';
   const cursorNavigate = get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive';
-  const agentRetryMode = get('agent-retry-mode', 'off') === 'on' ? 'on' : 'off';
   const definitions = parseSettingsBlock(lines);
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, agentRetryMode, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, settings, definitions };
 }
 
 /**
@@ -347,7 +336,6 @@ export class ConfigLoader {
       debugMode: (get('debug-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
       cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
-      agentRetryMode: (get('agent-retry-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       settings: newSettings as ReadonlyMap<string, string>,
       definitions: cur.definitions,
     };

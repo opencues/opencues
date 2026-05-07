@@ -1,6 +1,7 @@
 /**
- * Minimal Groq client — copy of transform-blank/groq.ts. Self-contained
- * so this benchmark can evolve independently.
+ * Minimal Groq client — copied from fluid-blank/groq.ts to keep this
+ * benchmark self-contained. Pinned to gpt-oss-120b for apples-to-apples
+ * comparison with the fluid-blank baseline.
  */
 
 import * as https from 'https';
@@ -14,6 +15,9 @@ if (!API_KEY) {
   process.exit(1);
 }
 
+// Bumped from 4 → 32 so the --parallel benchmark runner can fan out
+// without queueing at the HTTP layer. Groq tolerates this fine for
+// short-lived chat completions.
 const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 
 export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; }
@@ -24,7 +28,7 @@ export async function chat(messages: ChatMessage[], opts: { temperature?: number
     model: MODEL,
     messages,
     temperature: opts.temperature ?? 0,
-    max_tokens: opts.maxTokens ?? 1024,
+    max_tokens: opts.maxTokens ?? 512,
     reasoning_effort: 'low',
     seed: opts.seed ?? 42,
   });
@@ -56,6 +60,8 @@ export async function chat(messages: ChatMessage[], opts: { temperature?: number
   let parsed: any;
   try { parsed = JSON.parse(data); } catch { throw new Error(`Bad Groq response: ${data.slice(0, 200)}`); }
   if (parsed.error) {
+    // Soft-fail Groq-side parse errors so one bad response doesn't kill a
+    // 50-case benchmark. Caller's parser will treat empty text as a bail.
     const msg = parsed.error.message ?? JSON.stringify(parsed.error);
     if (/Parsing failed|model generated output that could not be parsed/i.test(msg)) {
       return { text: '', latencyMs };
@@ -67,25 +73,5 @@ export async function chat(messages: ChatMessage[], opts: { temperature?: number
   return { text, latencyMs };
 }
 
-/** Adapter shape that AgentLoop expects via its httpAdapter option. */
-export const httpAdapter = {
-  async post(url: string, body: string, headers: Record<string, string>): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const u = new URL(url);
-      const req = https.request({
-        hostname: u.hostname,
-        path: u.pathname,
-        method: 'POST',
-        headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
-        agent,
-      }, (res) => {
-        let buf = '';
-        res.on('data', (c: Buffer) => { buf += c; });
-        res.on('end', () => resolve(buf));
-      });
-      req.on('error', reject);
-      req.write(body);
-      req.end();
-    });
-  },
-};
+export const sysUser = (system: string, user: string): ChatMessage[] =>
+  [{ role: 'system', content: system }, { role: 'user', content: user }];

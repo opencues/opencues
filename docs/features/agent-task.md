@@ -99,72 +99,36 @@ stop task _
 
 ## How it works
 
-```
-On user text-change:
-  Resolver runs as normal (existing behavior — fluid-blank, transform-blank,
-  spelling source, etc).
+`AgentRewrite` is the single agent module. While a task is armed,
+every 1.5 s it:
 
-  After 250ms debounce settle:
-    Agent loop runs (only if a task is armed)
-      1. Build candidates: words EXCLUDING:
-         - blanks (`_`)
-         - cursor-adjacent word (incomplete typing)
-         - words owned by other DynDefs (other LLM sources' edits, blank fills, etc)
-         - words already-evaluated under the CURRENT taskId (cache hit)
-         - task-trigger words (`agentically`, `add task`, `stop task`,
-           `current task`) — protected so the agent can't translate
-           them and silently break your ability to issue task commands
-      2. If no candidates: no-op
-      3. One LLM call: "given task prompt + doc + candidates, what edits?"
-      4. Apply each edit as a DynDef with blankName='agent-task'
-         → DimRender automatically dims it
-         → Resolver skip filter automatically protects it
-         → Cycling Down reverts to original
-      5. Record evaluations under current taskId
+```
+1. Snapshots the live buffer (A) and the current task prompt.
+2. Makes ONE LLM call: "given DOC and TASK, return the rewritten DOC."
+3. Three-way merges:
+     - diff A → B  (the LLM's hunks)
+     - diff A → C  (where C is the live buffer at apply time)
+     - drops any LLM hunk that overlaps a user hunk in A's frame
+     - splices surviving LLM hunks into C with cursor translation
+4. Places a DynDef per applied hunk (Down-arrow reverts each).
 ```
 
-**Per-task invalidation** — the cache is keyed by both word-text-hash
-AND task-id. When you `add task X _`, the taskId regenerates and ALL
-evaluations are invalidated. The agent re-reads the whole doc against
-the new combined prompt.
+User typing during the LLM call is **never clobbered** — the merge
+layer drops any LLM hunk that touches a region the user has been
+editing. See `docs/architecture/agent-task.md` for the design and
+the structural invariants the merge layer enforces.
 
-### Edit shapes the agent can emit
-
-The EDITS format the LLM emits supports four shapes — all parsed and
-applied by the same loop:
-
-| Shape | Format | Example | Meaning |
-|---|---|---|---|
-| Single-word swap | `<idx> \| orig \| new` | `1 \| rite \| write` | Replace one word with another |
-| Multi-word expansion | `<idx> \| orig \| word1 word2` | `1 \| will \| ich werde` | Replace one word with a phrase |
-| Range rewrite | `<startIdx>-<endIdx> \| origSpan \| newSpan` | `2-3 \| any way \| anyway` | Merge / rewrite a contiguous span |
-| DELETE | `<idx>[-<endIdx>] \| orig \| DELETE` | `1 \| the \| DELETE` | Remove a word (or range); adjacent whitespace is tidied |
-
-Range edits unblock grammar fixes that span word boundaries
-(`"any way" → "anyway"`, `"the the cat" → "the cat"`,
-`"I went store" → "I went to the store"`). DELETE handles the
-"redundant word" case the LLM previously couldn't express.
-
-### Cache mode (`agent-retry-mode`)
-
-Default behaviour caches every word the agent has looked at — once the
-LLM verifies a word is "fine" under the current task, it won't be
-re-checked. Suits idempotent prompts ("correct spelling": clean stays
-clean).
-
-For non-idempotent transforms (translate, paraphrase, "make it more
-formal"), the LLM occasionally misses words on the first pass. Setting
-`agent-retry-mode: on` (or cycling `opencues agent-retry-mode _`) flips
-the cache policy so only words the LLM actually edited get cached;
-words it skipped get reconsidered next pass. Trade-off: more tokens per
-pass on long stable docs, but higher recall.
+Edits are user-visible (dimmed) and user-reversible (cycle Down).
+`stop task _` clears the task; existing dimmed edits stay so the
+user can decide whether to revert each.
 
 ---
 
 ## What kinds of tasks work
 
-Tested categories (see `tests/benchmarks/agent-task/EXPERIMENTS.md`
-for the full experiment log + numbers):
+Tested categories (the legacy AgentLoop benchmark harness is gone;
+these are the categories that worked then and continue to work under
+AgentRewrite):
 
 **Mechanical tasks** — single right answer per word:
 
@@ -223,9 +187,9 @@ With `debug-mode: on` the runtime emits to `/tmp/opencues.log`:
 
 ```
 AgentTask: ARM (taskId=8a2f1b3c…, prompt="correct spelling")
-AgentLoop: starting (textLen=42, candidates=8/9, taskId=8a2f1b3c…)
-AgentLoop: edit-pass returned 2 edit(s)
-AgentLoop: applied 2/2 edit(s) as DynDefs
+AgentRewrite: started (cadence=1500 ms)
+AgentRewrite: round start (textLen=42, cursor=42, taskId=8a2f1b3c…)
+AgentRewrite: merge result (applied=2, dropped=0, userHunks=0)
 ```
 
 When the user adds:
@@ -288,8 +252,8 @@ Quick locator:
 - **No streaming.** Edits arrive in a single batch per cycle.
 - **No persistence.** Stop the agent, restart the host, agent forgets
   everything.
-- **Oscillation on subjective grammar choices.** With `agent-retry-mode:
-  on` and prompts like "fix grammar", the LLM may flip-flop between
-  equally-valid forms (`"you'll" ↔ "you will"`) on consecutive
-  passes. Default-mode caching prevents this; retry-mode trades it
-  for higher recall on translation tasks.
+- **Subjective grammar choices**. Under prompts like "fix grammar"
+  the LLM may pick equally-valid forms (`"you'll" ↔ "you will"`)
+  differently from one round to the next. Each round is independent,
+  so the buffer reflects the most-recent choice; cycling Down on the
+  DynDef reverts to the user's original phrasing.

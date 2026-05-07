@@ -13,7 +13,7 @@ import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
-import { AgentLoop } from '../../../src/modules/agent-loop';
+import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
@@ -207,24 +207,16 @@ export function boot(host: HostInfo): BootResult {
     // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
-    // AgentLoop — continuous re-eval against an armed task. Subscribes
-    // alongside Resolver; lives or dies with the same llmApiKey gate.
-    const agentLoop = new AgentLoop(adapter, agentTaskState, dynDefs, spanFillState, {
+    // AgentRewrite — cadence-driven holistic rewrite with three-way
+    // merge. Single agent path; the legacy AgentLoop / Judge were
+    // removed once AgentRewrite proved its merge layer made the
+    // per-edit guards structurally unnecessary.
+    const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // debounceMs / finalPauseMs default to the legacy CC tiered
-      // cadence (50ms / 300ms). host.llmDebounceMs overrides Tier 1
-      // when set; finalPauseMs follows the default.
-      debounceMs: host.llmDebounceMs,
-      // Lazy gate so a `~/.cues/cues.md` `agent-retry-mode` flip takes
-      // effect on the next pass without a host restart (mirrors the
-      // debug-gate plumbing).
-      retryModeEnabled: () => configLoader.opencuesState.agentRetryMode === 'on',
-      // shapeGuardEnabled defaults to ON — explicit opt-out only in
-      // unit tests that pre-date the guard. Production gets it free.
     });
-    agentLoop.subscribe();
+    agentRewrite.start();
   }
 
   log('info', 'OpenCues runtime starting (OpenCode v1.4)', {

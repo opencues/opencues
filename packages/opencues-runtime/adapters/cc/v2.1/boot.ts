@@ -19,7 +19,7 @@ import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
-import { AgentLoop } from '../../../src/modules/agent-loop';
+import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { BlankFill } from '../../../src/modules/blank-fill';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
@@ -362,22 +362,13 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs ?? 500,
     }, spanFillState, agentTaskState);
-    // Wait for first config load so resolver can see cues/blanks configs.
-    // AgentLoop — continuous re-eval against an armed task. Same gate
-    // as Resolver (llmApiKey present).
-    const agentLoop = new AgentLoop(adapter, agentTaskState, dynDefs, spanFillState, {
+    // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
+    const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // Tiered cadence — see AgentLoopOptions; default 50ms tier-1 / 300ms tier-2.
-      debounceMs: host.llmDebounceMs,
-      // Lazy gate so a `~/.cues/cues.md` `agent-retry-mode` flip takes
-      // effect on the next pass without a host restart (mirrors the
-      // debug-gate plumbing).
-      retryModeEnabled: () => configLoader.opencuesState.agentRetryMode === 'on',
-      // shapeGuardEnabled defaults to ON.
     });
-    agentLoop.subscribe();
+    agentRewrite.start();
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
   }
 

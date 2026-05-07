@@ -21,7 +21,7 @@ import { Runtime } from '../../../src/runtime';
 import { ChromeV1Adapter, type ChromeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
-import { AgentLoop } from '../../../src/modules/agent-loop';
+import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
@@ -201,16 +201,14 @@ export function boot(host: HostInfo): BootResult {
     }, spanFillState, agentTaskState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
-    // AgentLoop — chrome runs in-browser; same module wiring.
-    const agentLoop = new AgentLoop(adapter, agentTaskState, dynDefs, spanFillState, {
+    const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
+    const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      debounceMs: host.llmDebounceMs ?? 500,
-      httpAdapter: host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> },
-      // shapeGuardEnabled defaults to ON.
+      httpAdapter,
     });
-    agentLoop.subscribe();
+    agentRewrite.start();
   }
 
   log('info', 'OpenCues runtime starting (Chrome v1)', {
