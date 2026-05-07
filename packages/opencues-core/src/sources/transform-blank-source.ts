@@ -713,11 +713,22 @@ export class TransformBlankSource implements CueSource {
       // tokens, plus ~100 token overhead for VERDICT/INSTRUCTION
       // labels and formatting. The target field echoes most of the
       // input back verbatim so we need roughly 1× the input size.
-      const p1Tokens = budgetForOutput(context.text.length, 1.0);
+      //
+      // Run EXTRACT against the AS-TYPED view of the buffer when one
+      // is available. Agent-edited words are reverted to their
+      // originalWord here, so commands like `agentically X _` are
+      // recognised even if the agent has translated `agentically` to
+      // something else in the visible buffer. For the TRANSFORM /
+      // GENERATIVE branches the as-typed view is also fine — APPLY
+      // works on whatever TARGET the user logically meant. The
+      // substitute path uses context.text (the visible buffer) for
+      // length checks and stripping, so visible-side state is intact.
+      const extractText = context.asTypedText ?? context.text;
+      const p1Tokens = budgetForOutput(extractText.length, 1.0);
       const p1Start = Date.now();
-      const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${context.text}`, p1Tokens);
+      const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${extractText}`, p1Tokens);
       const ext = parseExtract(extractRaw);
-      this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
+      this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${context.asTypedText ? 'as-typed' : 'visible'}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
 
       // TASK BRANCH — agent-task commands. Route to the runtime via
       // metadata.taskAction; no APPLY/VERIFY needed. The runtime's

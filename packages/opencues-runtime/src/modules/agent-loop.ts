@@ -68,8 +68,18 @@ export interface AgentLoopOptions {
   readonly endpoint: string;
   readonly apiKey: string;
   readonly defaultModel: string;
-  /** Debounce. Reuse the same 500ms the resolver uses by default. */
+  /**
+   * Word-completion debounce — fires after a space / newline lands.
+   * Mirrors CC's `dynamicHighlight.ts` Tier 1 cadence so the agent
+   * behaves like the other cues. Default 50 ms.
+   */
   readonly debounceMs?: number;
+  /**
+   * Final-pause debounce — fires when the user stops typing without
+   * committing the last word with a space. Mirrors CC's Tier 2.
+   * Default 300 ms.
+   */
+  readonly finalPauseMs?: number;
   /** Optional injection seam for tests. */
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
   /** Optional log function — wires through to adapter.log('debug', ...) by default. */
@@ -97,12 +107,65 @@ export interface AgentLoopOptions {
    * host restart.
    */
   readonly retryModeEnabled?: () => boolean;
+  /**
+   * Lazy gate for the shape-based locality guard:
+   *   SHRINK/DELETE only in TERMINATED sentences; ADDITION only in
+   *   sentences strictly past the cursor.
+   *
+   * Defaults to ON — safety is the default. Mechanical unit tests that
+   * pre-date the guard (using non-terminated fixtures to exercise the
+   * splice / cursor / dyndef-shift logic) opt out explicitly with
+   * `() => false`.
+   */
+  readonly shapeGuardEnabled?: () => boolean;
 }
 
 export interface AgentEdit {
+  /** Start word index of the edit (inclusive). */
   readonly wordIndex: number;
+  /**
+   * End word index of the edit (inclusive). When undefined, the edit
+   * covers the single word at `wordIndex` — the historical
+   * 1-to-N-words shape. When set and `> wordIndex`, the edit covers
+   * the contiguous range `[wordIndex, endIndex]` and `originalWord`
+   * holds the space-joined span. Used for grammar fixes that need
+   * to merge or replace multiple words at once ("any way" →
+   * "anyway", "I went the store" → drop "the").
+   */
+  readonly endIndex?: number;
+  /**
+   * The literal text the LLM saw at this position. For ranges, this
+   * is the space-joined sequence of the live words covered. The apply
+   * path validates `originalWord === liveWords[start..end].map(...)
+   * .join(' ')` before splicing — a mismatch means the user has
+   * touched the span since the LLM looked, so we drop the edit.
+   */
   readonly originalWord: string;
+  /** Replacement text (may be multi-word). Empty string means DELETE. */
   readonly editedWord: string;
+}
+
+/**
+ * Strip flanking (leading/trailing) punctuation/symbols from a word.
+ * Internal punctuation (apostrophes in "don't", periods in "U.S.A")
+ * stays in `core` because it sits between letters/digits.
+ *
+ * Used to make agent-edit matching tolerant to trailing periods,
+ * commas, etc. The LLM commonly emits `dramaticly | dramatically`
+ * even when the live word is `dramaticly.` — without this strip the
+ * survival filter rejects on `liveWord.word !== edit.originalWord`
+ * and we lose the fix entirely.
+ */
+function stripFlankPunct(word: string): { lead: string; core: string; trail: string } {
+  const leadMatch = word.match(/^[^\p{L}\p{N}]+/u);
+  const trailMatch = word.match(/[^\p{L}\p{N}]+$/u);
+  const lead = leadMatch ? leadMatch[0] : '';
+  // If the whole word IS punctuation, leadMatch eats everything;
+  // protect against negative-length core slice.
+  if (lead.length === word.length) return { lead: '', core: word, trail: '' };
+  const trail = trailMatch ? trailMatch[0] : '';
+  const core = word.slice(lead.length, word.length - trail.length);
+  return { lead, core, trail };
 }
 
 /**
@@ -136,9 +199,164 @@ function preview(s: string, n = 80): string {
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
+/**
+ * Locate the sentence containing `charPos`, returning its trimmed text,
+ * char-range, and whether the sentence is TERMINATED (closed by `.`,
+ * `?`, `!`, or a newline) versus running off the end of the buffer
+ * (the user is still typing it).
+ *
+ * Used by:
+ *  - Sentence-fingerprint invalidation: snapshot vs live sentence text
+ *    comparison. Catches user-typed-into-sentence and prior-edit-in-
+ *    sentence drift between LLM-call and apply.
+ *  - Shape-based apply guard: SHRINK/DELETE only allowed in terminated
+ *    sentences; ADDITION only allowed in sentences strictly past the
+ *    cursor (terminated AND ending before cursorPos).
+ *
+ * `text` is trimmed of flanking whitespace so a trailing typed space
+ * doesn't trip a false fingerprint mismatch. `start`/`end` are the
+ * UN-trimmed char positions, so callers can compare end-position to
+ * cursor.
+ */
+export function sentenceInfoAt(text: string, charPos: number): {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+  readonly isTerminated: boolean;
+} {
+  // Walk back to start: previous sentence terminator OR newline OR start.
+  let start = 0;
+  for (let i = Math.min(charPos - 1, text.length - 1); i >= 0; i -= 1) {
+    const c = text.charAt(i);
+    if (c === '\n') { start = i + 1; break; }
+    if (c === '.' || c === '?' || c === '!') {
+      // Only treat as terminator when followed by whitespace or EOF —
+      // avoids "U.S.A" splitting mid-acronym.
+      const next = text.charAt(i + 1);
+      if (next === '' || /\s/.test(next)) { start = i + 1; break; }
+    }
+  }
+  // Walk forward to end + remember whether we hit a terminator (vs EOF).
+  let end = text.length;
+  let isTerminated = false;
+  for (let i = charPos; i < text.length; i += 1) {
+    const c = text.charAt(i);
+    if (c === '\n') { end = i; isTerminated = true; break; }
+    if (c === '.' || c === '?' || c === '!') {
+      const next = text.charAt(i + 1);
+      if (next === '' || /\s/.test(next)) { end = i + 1; isTerminated = true; break; }
+    }
+  }
+  return { text: text.slice(start, end).trim(), start, end, isTerminated };
+}
+
+/**
+ * Return the text of the sentence containing `charPos`. Thin wrapper
+ * around `sentenceInfoAt` for callers that only care about the text.
+ * Kept as the existing public API so nothing breaks.
+ */
+export function sentenceContaining(text: string, charPos: number): string {
+  return sentenceInfoAt(text, charPos).text;
+}
+
+/**
+ * Classify an edit by how it RESHAPES the buffer. Used to decide where
+ * the edit is allowed to land:
+ *
+ *   SWAP      — word count unchanged AND core token unchanged or
+ *               substituted. Reversible via cycling. Allowed anywhere
+ *               (including the user's in-flight sentence).
+ *   SHRINK    — word count REDUCED (DELETE = 1→0, range 2→1, etc.).
+ *               Destructive. Only allowed in TERMINATED sentences.
+ *   ADDITION  — word count GREW (1→2, range 2→3, etc.) OR a same-count
+ *               edit that ONLY ADDS flank punctuation ("Hi" → "Hi,",
+ *               "for" → "for."). The latter looks like a swap but
+ *               shifts register/punctuation density; the LLM tends to
+ *               propose these in cascades under formality prompts.
+ *               Only allowed in sentences TERMINATED AND ending strictly
+ *               before the cursor.
+ */
+export type EditShape = 'swap' | 'shrink' | 'addition';
+
+/**
+ * Decoration: a single-word edit that doesn't change the word's core
+ * letters/digits but adds flank punctuation. Examples:
+ *   "Hi"  → "Hi,"   (trailing comma)
+ *   "for" → "for."  (trailing period)
+ *   "yes" → "(yes)" (leading + trailing parens)
+ *
+ * Excluded:
+ *   - Range edits (single-word only — multi-word range edits with
+ *     unchanged count are usually structural rewrites, not decoration).
+ *   - Cases where punctuation count is equal or smaller (those are
+ *     handled by anti-oscillation or by ordinary swap/shrink rules).
+ *   - Cases where cores differ (e.g. "rite" → "write" — real swap).
+ */
+export function isPunctuationDecoration(edit: AgentEdit): boolean {
+  if (edit.endIndex !== undefined && edit.endIndex !== edit.wordIndex) return false;
+  if (edit.editedWord === '') return false;
+  const o = stripFlankPunct(edit.originalWord);
+  const e = stripFlankPunct(edit.editedWord);
+  if (o.core !== e.core) return false;
+  return (e.lead.length + e.trail.length) > (o.lead.length + o.trail.length);
+}
+
+/**
+ * Detect "edge duplication": an edit whose editedWord begins with a
+ * token equal to the previous live word, or ends with a token equal to
+ * the next live word. Applying such an edit produces visible duplicates
+ * like `I → I am` landing on a buffer where the next word is already
+ * `am` (yields `I am am considering`).
+ *
+ * The model emits these when its snapshot of the buffer is stale OR
+ * when the prior pass already added the missing word. The sentence-
+ * fingerprint and anti-oscillation guards don't catch this class —
+ * the sentence may be unchanged, and the inverse hasn't been applied.
+ *
+ * Comparison is on stripped cores (case-insensitive) so trailing
+ * punctuation on either side doesn't mask the match. DELETE edits are
+ * skipped (empty editedWord can't duplicate).
+ */
+export function wouldDuplicateAdjacent(
+  edit: AgentEdit,
+  liveWords: ReadonlyArray<{ word: string }>,
+): boolean {
+  if (edit.editedWord === '') return false;
+  const tokens = edit.editedWord.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  const startIdx = edit.wordIndex;
+  const endIdx = edit.endIndex ?? edit.wordIndex;
+  const eqCore = (a?: string, b?: string): boolean => {
+    if (a === undefined || b === undefined) return false;
+    const ac = stripFlankPunct(a).core.toLowerCase();
+    const bc = stripFlankPunct(b).core.toLowerCase();
+    return ac.length > 0 && ac === bc;
+  };
+  // Trailing duplication: last edited token vs next live word.
+  const nextLive = liveWords[endIdx + 1]?.word;
+  if (eqCore(tokens[tokens.length - 1], nextLive)) return true;
+  // Leading duplication: first edited token vs previous live word.
+  const prevLive = startIdx > 0 ? liveWords[startIdx - 1]?.word : undefined;
+  if (eqCore(tokens[0], prevLive)) return true;
+  return false;
+}
+
+export function classifyEdit(edit: AgentEdit): EditShape {
+  const origCount = (edit.endIndex ?? edit.wordIndex) - edit.wordIndex + 1;
+  const editedCount = edit.editedWord === ''
+    ? 0
+    : edit.editedWord.split(/\s+/).filter(Boolean).length;
+  if (editedCount < origCount) return 'shrink';
+  if (editedCount > origCount) return 'addition';
+  // Same word count: distinguish real swaps from punctuation decoration.
+  if (isPunctuationDecoration(edit)) return 'addition';
+  return 'swap';
+}
+
 export class AgentLoop {
   private _unsubText: Unsubscribe | null = null;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _lastSeenLength = 0;
   private _generation = 0;
   private _httpAgent: { post(url: string, body: string, headers: Record<string, string>): Promise<string> } | null = null;
   private _logFn: (msg: string) => void;
@@ -166,8 +384,27 @@ export class AgentLoop {
     if (e.source !== 'user') return;          // ignore our own setText echoes
     if (!this.state.armed) return;            // no task → nothing to do
 
+    // Tiered firing matching the other cues' (CC dynamicHighlight)
+    // pattern:
+    //   Tier 1 — Space / newline typed (word-complete) → fast (50 ms)
+    //   Tier 2 — Final pause without word-complete → slower (300 ms)
+    // The slow tier exists so the LAST word eventually gets evaluated
+    // even when the user stops typing without a trailing space.
+    //
+    // Mid-word pauses no longer fire on partial words: a 60 ms pause
+    // mid-word starts the Tier 2 timer, which gets reset by the next
+    // keystroke; only when the user actually settles AND has typed
+    // beyond a word boundary does the agent run.
+    const prevLen = this._lastSeenLength;
+    const grew = e.text.length > prevLen;
+    const lastChar = e.text.charAt(e.text.length - 1);
+    const wordCompleted = grew && (lastChar === ' ' || lastChar === '\t' || lastChar === '\n');
+    this._lastSeenLength = e.text.length;
+
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
-    const delay = this.options.debounceMs ?? 500;
+    const delay = wordCompleted
+      ? (this.options.debounceMs ?? 50)
+      : (this.options.finalPauseMs ?? 300);
     this._debounceTimer = setTimeout(() => {
       void this.runOnce(e.text);
     }, delay);
@@ -222,6 +459,18 @@ export class AgentLoop {
 
     this._logFn(`AgentLoop: starting (textLen=${text.length}, candidates=${candidates.length}/${wordSpans.length}, cursor=${cursorPos}@word${cursorWordIdx}, taskId=${this.state.taskId?.slice(0, 8)}…)`);
 
+    // Snapshot the SENTENCE TEXT containing each candidate. After the
+    // LLM call returns, we re-derive the same sentence in liveText and
+    // drop edits whose sentence has drifted (user typed into it OR a
+    // prior edit landed in it). This prevents the "are → are you?"
+    // class of bugs where the LLM autocompletes mid-typed prose and
+    // the user's continued typing appears to be duplicated.
+    const sentenceSnapshot = new Map<number, string>();
+    for (const c of candidates) {
+      const span = wordSpans[c.wordIndex];
+      if (span) sentenceSnapshot.set(c.wordIndex, sentenceContaining(text, span.start));
+    }
+
     // Stale check before LLM call.
     if (generation !== this._generation) return;
 
@@ -243,7 +492,14 @@ export class AgentLoop {
       return;
     }
 
-    this._logFn(`AgentLoop: edit-pass returned ${edits.length} edit(s)`);
+    this._logFn(
+      `AgentLoop: edit-pass returned ${edits.length} edit(s)` +
+      (edits.length > 0
+        ? `: ${edits.map(e =>
+            `[${e.wordIndex}${e.endIndex !== undefined && e.endIndex !== e.wordIndex ? `-${e.endIndex}` : ''}] "${e.originalWord}" → "${e.editedWord || 'DELETE'}"`
+          ).join(', ')}`
+        : '')
+    );
 
     // Re-fetch live text — user might have typed during the LLM call.
     const liveText = this.adapter.getText();
@@ -296,23 +552,148 @@ export class AgentLoop {
     // `editedWord` beyond the original word's length is left behind,
     // then edit-2 lands on top of the leftover. LLM-side bug; we
     // refuse to compose them.
+    // Survival filter for both single-word and range edits.
+    //
+    // Range edits (`endIndex` set) cover [wordIndex, endIndex] inclusive.
+    // The LLM's `originalWord` for a range is the space-joined live span;
+    // we check it against the actual `liveWords` content so an edit
+    // computed against stale text gets rejected.
+    //
+    // Dedupe: track every idx already CLAIMED by a surviving edit.
+    // An incoming edit (single OR range) gets dropped if its span
+    // overlaps any claimed idx — this protects the apply loop from the
+    // strongngng-class composition bug regardless of edit shape.
     const surviving: AgentEdit[] = [];
-    const seenIndices = new Set<number>();
-    for (const edit of edits) {
-      if (!candidateSet.has(edit.wordIndex)) continue;      // outside candidate set
-      const liveWord = liveWords[edit.wordIndex];
-      if (!liveWord) continue;                              // index out of range now
-      if (liveWord.word !== edit.originalWord) continue;    // word changed since LLM saw it
-      // No-op filter: editedWord exactly matches originalWord. Empty
-      // editedWord is the DELETE sentinel — handled explicitly later.
+    const claimedIndices = new Set<number>();
+    for (const rawEdit of edits) {
+      let edit = rawEdit;
+      const startIdx = edit.wordIndex;
+      const endIdx = edit.endIndex ?? edit.wordIndex;
+      // Range bounds sanity (parser should have caught endIdx < startIdx, but defensive).
+      if (endIdx < startIdx) continue;
+      // Every index in the span must be a candidate. The candidate set
+      // already excludes cursor-adjacent / span-owned / trigger-word
+      // / cache-hit indices, so this single check enforces ALL of them
+      // for the whole range at once.
+      let allInCandidates = true;
+      for (let i = startIdx; i <= endIdx; i += 1) {
+        if (!candidateSet.has(i)) { allInCandidates = false; break; }
+      }
+      if (!allInCandidates) continue;
+      // Index range must still resolve in liveWords.
+      if (!liveWords[startIdx] || !liveWords[endIdx]) continue;
+      // Validate originalWord matches the joined live span. First try
+      // exact match; on drift, fall back to PUNCTUATION-TOLERANT match
+      // (LLMs commonly emit `dramaticly` when the live word is
+      // `dramaticly.`). When that succeeds, rewrite the edit to use
+      // the live span verbatim and re-attach the live word's flanking
+      // punctuation to the LLM's replacement so the buffer ends up
+      // with `dramatically.` not `dramatically`.
+      const liveSpan = liveWords.slice(startIdx, endIdx + 1).map(w => w.word).join(' ');
+      if (liveSpan !== edit.originalWord) {
+        // Single-word punctuation rescue (range edits drift less commonly).
+        if (startIdx === endIdx) {
+          const live = stripFlankPunct(liveSpan);
+          const orig = stripFlankPunct(edit.originalWord);
+          if (live.core.length > 0 && live.core === orig.core) {
+            const editedStripped = stripFlankPunct(edit.editedWord);
+            edit = {
+              ...edit,
+              originalWord: liveSpan,
+              editedWord: edit.editedWord === ''
+                ? ''  // DELETE preserved
+                : live.lead + editedStripped.core + live.trail,
+            };
+          } else {
+            continue;
+          }
+        } else {
+          continue;
+        }
+      }
+      // No-op filter (single-word and range share this rule).
       if (edit.editedWord !== '' && edit.editedWord === edit.originalWord) continue;
-      const existingDef = this.dynDefs.get(edit.wordIndex);
-      if (existingDef && isOwnedByOtherSource(existingDef)) continue; // active substitution from another source landed since
-      if (seenIndices.has(edit.wordIndex)) {                // LLM emitted a duplicate for this slot
-        this._logFn(`AgentLoop: dropping duplicate edit at idx ${edit.wordIndex} ("${edit.editedWord}")`);
+      // No def in the range may be owned by another source (BlankFill,
+      // transform-blank, etc.). Single-word case = the original
+      // existingDef check; for ranges, ANY position with such a def
+      // disqualifies the whole edit.
+      let blockedByOwner = false;
+      for (let i = startIdx; i <= endIdx; i += 1) {
+        const def = this.dynDefs.get(i);
+        if (def && isOwnedByOtherSource(def)) { blockedByOwner = true; break; }
+      }
+      if (blockedByOwner) continue;
+      // Sentence-fingerprint guard. The agent reasoned about an edit
+      // against the SNAPSHOT sentence; if that sentence has changed in
+      // any way since (user typed into it, prior edit landed in it),
+      // the edit's reasoning is stale — drop it. Catches the "are →
+      // are you?" autocompletion-into-typed-suffix duplication bug.
+      // Edits in untouched sentences are unaffected.
+      const snapSentence = sentenceSnapshot.get(startIdx);
+      if (snapSentence !== undefined) {
+        const liveSentence = sentenceContaining(liveText, liveWords[startIdx].start);
+        if (liveSentence !== snapSentence) {
+          this._logFn(`AgentLoop: dropping edit at idx ${startIdx}${endIdx > startIdx ? `-${endIdx}` : ''} ("${edit.editedWord}") — sentence invalidated`);
+          continue;
+        }
+      }
+      // Shape-based locality guard. Different edit kinds carry different
+      // risk and are restricted to sentences where they're safe:
+      //   SWAP      → anywhere (word count unchanged, reversible).
+      //   SHRINK    → only in TERMINATED sentences (don't destroy words
+      //               from a sentence the user hasn't closed yet — e.g.
+      //               typed "Cool so " → agent shouldn't DELETE "so").
+      //   ADDITION  → only in sentences strictly PAST the cursor
+      //               (terminated AND ending before cursorPos). Catches
+      //               the autocompletion class: "are" → "are you?" sits
+      //               in the user's in-flight sentence and would clash
+      //               with whatever they type next.
+      const shapeGuardOn = this.options.shapeGuardEnabled?.() ?? true;
+      const shape = classifyEdit(edit);
+      if (shapeGuardOn && shape !== 'swap') {
+        const liveInfo = sentenceInfoAt(liveText, liveWords[startIdx].start);
+        if (!liveInfo.isTerminated) {
+          this._logFn(`AgentLoop: dropping ${shape} edit at idx ${startIdx}${endIdx > startIdx ? `-${endIdx}` : ''} ("${edit.originalWord}" → "${edit.editedWord || 'DELETE'}") — sentence not terminated`);
+          continue;
+        }
+        if (shape === 'addition') {
+          const cursorPos = this.adapter.getCursorOffset();
+          if (liveInfo.end >= cursorPos) {
+            this._logFn(`AgentLoop: dropping addition edit at idx ${startIdx}${endIdx > startIdx ? `-${endIdx}` : ''} ("${edit.originalWord}" → "${edit.editedWord}") — sentence not strictly past cursor`);
+            continue;
+          }
+        }
+      }
+      // Anti-oscillation guard. If a prior pass applied the INVERSE of
+      // this edit (e.g. earlier turned "Later" into "Later," and this
+      // edit wants to turn "Later," back into "Later"), drop it. Stops
+      // the visible add-then-remove churn that comes from model
+      // vacillation across appendToPrompt-refreshed caches.
+      if (this.state.wouldInvertRecent(edit.originalWord, edit.editedWord)) {
+        this._logFn(`AgentLoop: dropping edit at idx ${startIdx}${endIdx > startIdx ? `-${endIdx}` : ''} ("${edit.originalWord}" → "${edit.editedWord}") — would invert a recent edit (oscillation)`);
         continue;
       }
-      seenIndices.add(edit.wordIndex);
+      // Edge-duplication guard. The LLM sometimes emits an addition
+      // whose first/last token already exists adjacent to the edit
+      // span — e.g. `[7] "I" → "I am"` lands on a live buffer where
+      // [8]="am" (because a prior pass turned "was" → "am"), producing
+      // `I am am considering`. Drop these before they corrupt the buffer.
+      if (wouldDuplicateAdjacent(edit, liveWords)) {
+        this._logFn(`AgentLoop: dropping edit at idx ${startIdx}${endIdx > startIdx ? `-${endIdx}` : ''} ("${edit.originalWord}" → "${edit.editedWord}") — would duplicate adjacent live word`);
+        continue;
+      }
+      // Overlap dedupe — if any idx in this edit's span has been
+      // claimed by an earlier surviving edit, drop this one. Logs the
+      // skip so duplicates / overlaps are visible in debug output.
+      let overlap = false;
+      for (let i = startIdx; i <= endIdx; i += 1) {
+        if (claimedIndices.has(i)) { overlap = true; break; }
+      }
+      if (overlap) {
+        this._logFn(`AgentLoop: dropping overlapping edit at idx ${startIdx}${endIdx > startIdx ? `-${endIdx}` : ''} ("${edit.editedWord}")`);
+        continue;
+      }
+      for (let i = startIdx; i <= endIdx; i += 1) claimedIndices.add(i);
       surviving.push(edit);
     }
 
@@ -332,17 +713,26 @@ export class AgentLoop {
       const sortedDesc = surviving.slice().sort((a, b) => b.wordIndex - a.wordIndex);
       let newText = liveText;
       for (const edit of sortedDesc) {
-        const w = liveWords[edit.wordIndex];
+        const wStart = liveWords[edit.wordIndex];
+        const wEnd = liveWords[edit.endIndex ?? edit.wordIndex];
         if (edit.editedWord === '') {
-          let cutStart = w.start;
-          let cutEnd = w.end;
+          // DELETE: drop chars [wStart.start, wEnd.end) plus one
+          // adjacent whitespace (trailing preferred; leading at end of
+          // buffer). For range deletes, this drops the whole span +
+          // the surrounding whitespace so "the I really love" with
+          // "1-2 | I really | DELETE" → "the love".
+          let cutStart = wStart.start;
+          let cutEnd = wEnd.end;
           const next = newText.charAt(cutEnd);
           const prev = cutStart > 0 ? newText.charAt(cutStart - 1) : '';
           if (next === ' ' || next === '\t') cutEnd += 1;
           else if (prev === ' ' || prev === '\t') cutStart -= 1;
           newText = newText.slice(0, cutStart) + newText.slice(cutEnd);
         } else {
-          newText = newText.slice(0, w.start) + edit.editedWord + newText.slice(w.end);
+          // Replace [wStart.start, wEnd.end) with editedWord. Single-
+          // word edits collapse this to the historical [w.start, w.end)
+          // splice; range edits replace the whole multi-word span.
+          newText = newText.slice(0, wStart.start) + edit.editedWord + newText.slice(wEnd.end);
         }
       }
 
@@ -358,38 +748,47 @@ export class AgentLoop {
       const sortedAsc = surviving.slice().sort((a, b) => a.wordIndex - b.wordIndex);
       let cumulativeWordDelta = 0;
       for (const edit of sortedAsc) {
-        const newWordIndex = edit.wordIndex + cumulativeWordDelta;
-        // DELETE: drop the def at this idx (was the deleted word's
-        // own def, if any) and shift downstream defs LEFT by 1. No
-        // new def gets stored — there's no word here anymore. wordDelta
-        // is -1 for the cumulative tracker.
+        const startIdx = edit.wordIndex;
+        const endIdx = edit.endIndex ?? edit.wordIndex;
+        const rangeLength = endIdx - startIdx + 1;
+        const altWordCount = edit.editedWord === ''
+          ? 0
+          : edit.editedWord.split(/\s+/).filter(Boolean).length;
+        const wordDelta = altWordCount - rangeLength;
+        const newStartIdx = startIdx + cumulativeWordDelta;
+        const newEndIdx = newStartIdx + rangeLength - 1;
+
+        // Drop ALL existing defs in the range — those words are gone
+        // (replaced or deleted). For a single-word edit this matches
+        // the legacy single-slot drop; for a range it sweeps the
+        // whole span.
+        for (let i = newStartIdx; i <= newEndIdx; i += 1) {
+          this.dynDefs.delete(i);
+        }
+        // Shift PRIOR defs at idx > newEndIdx by wordDelta. Done
+        // BEFORE storing the new def so the just-stored def at
+        // newStartIdx isn't itself shifted.
+        if (wordDelta !== 0) {
+          this.dynDefs.shiftAfter(newEndIdx, wordDelta);
+        }
+
+        // DELETE: no replacement def to store. Cumulative delta
+        // tracks the -rangeLength so subsequent edits' newStartIdx
+        // is correct.
         if (edit.editedWord === '') {
-          this.dynDefs.delete(newWordIndex);
-          this.dynDefs.shiftAfter(newWordIndex, -1);
-          cumulativeWordDelta += -1;
+          cumulativeWordDelta += wordDelta;
           continue;
         }
-        const altWordCount = edit.editedWord.split(/\s+/).filter(Boolean).length;
-        const startWord = newWords[newWordIndex];
-        const endWord = newWords[newWordIndex + Math.max(0, altWordCount - 1)];
+
+        const startWord = newWords[newStartIdx];
+        const endWord = newWords[newStartIdx + Math.max(0, altWordCount - 1)];
         // Defensive: if our shift miscalculated and the position is
         // out of range (shouldn't happen for surviving edits), drop
         // the def rather than store at a bogus index.
         if (!startWord || !endWord) {
-          this._logFn(`AgentLoop: skipping def store — newWordIndex ${newWordIndex} out of range (${newWords.length} words)`);
+          this._logFn(`AgentLoop: skipping def store — newWordIndex ${newStartIdx} out of range (${newWords.length} words)`);
+          cumulativeWordDelta += wordDelta;
           continue;
-        }
-        // Shift PRIOR defs at higher indices BEFORE storing the new
-        // one. A multi-word edit (1 → N words) shifts every later
-        // word position right by N-1, so DynDefs from earlier passes
-        // would otherwise end up off-by-(N-1) and either render the
-        // dim on the wrong word or get pruned on the next user
-        // text-change. Done strictly before the set() so the new
-        // def we're about to insert at newWordIndex isn't itself
-        // shifted (shiftAfter only touches idx > newWordIndex).
-        const wordDelta = altWordCount - 1;
-        if (wordDelta !== 0) {
-          this.dynDefs.shiftAfter(newWordIndex, wordDelta);
         }
         const def: WordDef = {
           originalWord: edit.originalWord,
@@ -399,7 +798,10 @@ export class AgentLoop {
           spanEnd: endWord.end,
           blankName: 'agent-task',                          // locks against re-resolution
         };
-        this.dynDefs.set(newWordIndex, def);
+        this.dynDefs.set(newStartIdx, def);
+        // Anti-oscillation: remember "originalWord → editedWord" so a
+        // future inverse edit (editedWord → originalWord) gets dropped.
+        this.state.recordEditSignature(edit.originalWord, edit.editedWord);
         // Retry-mode cache: record at the NEW index using the hash of
         // the post-edit visible word (first word of the edited phrase).
         // Without this, the next pass would compute hash of the new
@@ -408,7 +810,7 @@ export class AgentLoop {
         // un-edited" branch above already left those un-cached on
         // purpose — they're the words we actually want reconsidered.
         if (retryMode) {
-          this.state.recordEvaluation(newWordIndex, hashWordText(startWord.word));
+          this.state.recordEvaluation(newStartIdx, hashWordText(startWord.word));
         }
         cumulativeWordDelta += wordDelta;
       }
@@ -427,15 +829,20 @@ export class AgentLoop {
         // logically was. Multiple edits compound the drift.
         let cursorAdjusted = cursorBefore;
         for (const edit of sortedDesc) {
-          const w = liveWords[edit.wordIndex];
-          if (w.end <= cursorBefore) {
+          const wStart = liveWords[edit.wordIndex];
+          const wEnd = liveWords[edit.endIndex ?? edit.wordIndex];
+          // Cursor shifts only when the entire edit span sits at or
+          // before the cursor. (Edits that straddle the cursor would
+          // need finer-grained translation; in practice the candidate
+          // filter already excludes the cursor-adjacent word so this
+          // is a non-issue.)
+          if (wEnd.end <= cursorBefore) {
+            const oldSpanLen = wEnd.end - wStart.start;
             if (edit.editedWord === '') {
-              // DELETE removes the word + ONE adjacent whitespace char,
-              // so the cursor (if past the deleted span) shifts left by
-              // (word.length + 1).
-              cursorAdjusted -= (w.end - w.start) + 1;
+              // DELETE removes the span + ONE adjacent whitespace char.
+              cursorAdjusted -= oldSpanLen + 1;
             } else {
-              cursorAdjusted += edit.editedWord.length - edit.originalWord.length;
+              cursorAdjusted += edit.editedWord.length - oldSpanLen;
             }
           }
         }
@@ -581,11 +988,18 @@ export function parseEditPassOutput(raw: string): AgentEdit[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (/^none$/i.test(trimmed)) continue;
-    // Format: <idx> | <orig> | <edit-or-KEEP-or-DELETE>
+    // Format: <idx>[-<endIdx>] | <orig> | <edit-or-KEEP-or-DELETE>
     const parts = trimmed.split('|').map(s => s.trim());
     if (parts.length !== 3) continue;
-    const idx = parseInt(parts[0], 10);
+    // Index field accepts "<n>" or "<n>-<m>" with m >= n. Anything else
+    // (negative, malformed) drops the line.
+    const idxMatch = parts[0].match(/^(\d+)(?:-(\d+))?$/);
+    if (!idxMatch) continue;
+    const idx = parseInt(idxMatch[1], 10);
+    const endIdxRaw = idxMatch[2];
+    const endIdx = endIdxRaw !== undefined ? parseInt(endIdxRaw, 10) : undefined;
     if (Number.isNaN(idx) || idx < 0) continue;
+    if (endIdx !== undefined && (Number.isNaN(endIdx) || endIdx < idx)) continue;
     const orig = parts[1];
     const edit = parts[2];
     if (!orig) continue;
@@ -593,14 +1007,15 @@ export function parseEditPassOutput(raw: string): AgentEdit[] {
     if (/^keep$/i.test(edit)) continue;
     // DELETE marker — emit an edit with empty editedWord. The apply
     // path uses '' to mean "remove this word + one adjacent whitespace
-    // char so the surrounding text closes up cleanly".
+    // char so the surrounding text closes up cleanly". Works for both
+    // single words and ranges (delete a multi-word phrase).
     if (/^delete$/i.test(edit)) {
-      edits.push({ wordIndex: idx, originalWord: orig, editedWord: '' });
+      edits.push({ wordIndex: idx, endIndex: endIdx, originalWord: orig, editedWord: '' });
       continue;
     }
     if (!edit) continue;            // empty third column AND not DELETE → malformed line
     if (edit === orig) continue;    // model emitted unchanged value, treat as no-op
-    edits.push({ wordIndex: idx, originalWord: orig, editedWord: edit });
+    edits.push({ wordIndex: idx, endIndex: endIdx, originalWord: orig, editedWord: edit });
   }
   return edits;
 }
@@ -681,13 +1096,24 @@ EDITS:
 none
 END
 
+BASELINE EDITS — ALWAYS make these alongside the task prompt, even if it doesn't ask:
+- Capitalise the first word of any sentence (the doc-start word, OR any word immediately after a sentence terminator \`.\` \`?\` \`!\` or a paragraph break).
+- Capitalise proper nouns (names of people, places, brands, days, months).
+- Fix obvious typos and misspellings (\`teh\` → \`the\`, \`recieve\` → \`receive\`, \`adn\` → \`and\`).
+- Collapse duplicated stop-words (\`the the\` → \`the\`, \`I I\` → \`I\`).
+- Add a missing terminator at the END of a clearly-complete sentence (only when it's followed by a paragraph break, another capitalised sentence, or end-of-document — never to a sentence the user is still typing).
+
+The TASK PROMPT runs ON TOP OF these baselines, not instead of them. If the task prompt is "translate to German", you still capitalise sentence-starts and fix typos in the resulting German text.
+
 RULES:
-1. Walk the candidate list MENTALLY before emitting. Don't stop early — check every single candidate.
-2. Each emitted line: <wordIndex> | <originalWord> | <editedWord>
+1. Walk the candidate list MENTALLY in ORDER from FIRST to LAST. Don't stop early. Before you emit your final line, mentally re-check the LAST 3 indices in the candidate list — those are the ones the model most often drops.
+2. Each emitted line: <wordIndex>[-<endIdx>] | <originalSpan> | <editedSpan>
 3. Be conservative on AMBIGUOUS edits — when in doubt, skip. Be exhaustive on UNAMBIGUOUS edits (typos, proper-noun capitalisation, etc.).
-4. EXPANSIONS allowed: edit one word into multiple words by emitting the new phrase as <editedWord>, e.g. "1 | will | ich werde" replaces "will" with "ich werde". Use this for translations and for inserting words ("I went store" → emit "2 | store | to the store" to fill in missing words).
-5. DELETIONS allowed: emit "DELETE" as <editedWord> to remove a redundant word, e.g. "1 | the | DELETE" turns "the the cat" into "the cat". Use for grammar fixes that require removing a word entirely. The runtime tidies the surrounding whitespace.
-6. Pay special attention to the LAST few candidate indices — they're easy to miss.
+4. EXPANSIONS allowed: edit one word into multiple words by emitting the new phrase as <editedSpan>, e.g. "1 | will | ich werde" replaces "will" with "ich werde". Use this for translations and for inserting words ("I went store" → emit "2 | store | to the store" to fill in missing words).
+5. DELETIONS allowed: emit "DELETE" as <editedSpan> to remove a redundant word, e.g. "1 | the | DELETE" turns "the the cat" into "the cat". Use for grammar fixes that require removing a word entirely. The runtime tidies the surrounding whitespace.
+6. RANGES allowed: edit a CONTIGUOUS span of words by writing <startIdx>-<endIdx> in the index column. <originalSpan> is the live words space-joined. Use this to MERGE words ("1-2 | any way | anyway"), to REWRITE a phrase ("3-5 | I went store | I went to the store"), or to DELETE a phrase ("1-2 | really really | DELETE"). Every index in the range MUST be in the candidate list — if even one isn't, skip the edit entirely. Ranges replace single-index edits where applicable; do not emit overlapping edits on the same word.
+7. ORIGINAL WORDS preserve trailing punctuation. If the live word in the doc is "tomorrow." (with a period), your <originalSpan> is "tomorrow." NOT "tomorrow". The runtime is tolerant of this (it strips trailing punctuation for matching) but be precise when you can.
+8. DO NOT add stylistic punctuation (extra commas, salutation commas like "Hi, " → "Hi, ,", em dashes, etc.) unless the task prompt EXPLICITLY asks for it. The baselines above are limited to capitalisation, typos, dup-removal, and terminal punctuation only.
 
 EXAMPLES:
 
@@ -735,4 +1161,58 @@ DOC: [0]I [1]went [2]store
 Candidate indices: [0, 1, 2]
 EDITS:
 2 | store | to the store
+END
+
+TASK PROMPT: fix grammar
+DOC: [0]we [1]went [2]any [3]way [4]we [5]could
+Candidate indices: [0, 1, 2, 3, 4, 5]
+EDITS:
+2-3 | any way | anyway
+END
+
+TASK PROMPT: tighten prose
+DOC: [0]he [1]really [2]really [3]wanted [4]to [5]go
+Candidate indices: [0, 1, 2, 3, 4, 5]
+EDITS:
+1-2 | really really | really
+END
+
+TASK PROMPT: fix grammar
+DOC: [0]I [1]went [2]the [3]the [4]store
+Candidate indices: [0, 1, 2, 3, 4]
+EDITS:
+2-3 | the the | the
+END
+
+TASK PROMPT: correct spelling
+DOC: [0]The [1]team [2]worked [3]on [4]the [5]itteration [6]and [7]made [8]significnt [9]progress [10]over [11]two [12]weeks [13]on [14]the [15]new [16]platform [17]launching [18]next [19]month [20]which [21]definately [22]impressed [23]everyone [24]on [25]the [26]team [27]and [28]our [29]customrs
+Candidate indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+EDITS:
+5 | itteration | iteration
+8 | significnt | significant
+21 | definately | definitely
+29 | customrs | customers
+END
+[Note: 4 typos total. The LAST one (idx 29) is at the very end of the candidate list — easy to miss if you stop walking early. ALWAYS finish the list.]
+
+TASK PROMPT: make formal
+DOC: [0]hi [1]john [2]how's [3]it [4]going? [5]i [6]hope [7]you [8]got [9]home [10]safe.
+Candidate indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+[Baselines apply: sentence-start capitalisation at idx 0 and idx 5, proper-noun capitalisation at idx 1. The TASK is "make formal" — that justifies "how's it going?" → "how are you?" but does NOT justify adding stylistic salutation commas to "Hi" or appositive commas to "John".]
+EDITS:
+0 | hi | Hi
+1 | john | John
+2 | how's | how are
+3 | it | you
+4 | going? | doing?
+5 | i | I
+END
+
+TASK PROMPT: translate to spanish
+DOC: [0]hi [1]john [2]how [3]are [4]you?
+Candidate indices: [0, 1, 2, 3, 4]
+[Translation runs ON TOP OF baselines: sentence-start cap at idx 0 still applies in the Spanish output. Proper noun "John" is unchanged across languages. Greeting "hi" → "Hola" capitalised correctly.]
+EDITS:
+0 | hi | Hola
+2-4 | how are you? | cómo estás?
 END`;

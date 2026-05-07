@@ -104,13 +104,16 @@ On user text-change:
   Resolver runs as normal (existing behavior — fluid-blank, transform-blank,
   spelling source, etc).
 
-  After 500ms debounce settle:
+  After 250ms debounce settle:
     Agent loop runs (only if a task is armed)
       1. Build candidates: words EXCLUDING:
          - blanks (`_`)
          - cursor-adjacent word (incomplete typing)
          - words owned by other DynDefs (other LLM sources' edits, blank fills, etc)
          - words already-evaluated under the CURRENT taskId (cache hit)
+         - task-trigger words (`agentically`, `add task`, `stop task`,
+           `current task`) — protected so the agent can't translate
+           them and silently break your ability to issue task commands
       2. If no candidates: no-op
       3. One LLM call: "given task prompt + doc + candidates, what edits?"
       4. Apply each edit as a DynDef with blankName='agent-task'
@@ -124,6 +127,37 @@ On user text-change:
 AND task-id. When you `add task X _`, the taskId regenerates and ALL
 evaluations are invalidated. The agent re-reads the whole doc against
 the new combined prompt.
+
+### Edit shapes the agent can emit
+
+The EDITS format the LLM emits supports four shapes — all parsed and
+applied by the same loop:
+
+| Shape | Format | Example | Meaning |
+|---|---|---|---|
+| Single-word swap | `<idx> \| orig \| new` | `1 \| rite \| write` | Replace one word with another |
+| Multi-word expansion | `<idx> \| orig \| word1 word2` | `1 \| will \| ich werde` | Replace one word with a phrase |
+| Range rewrite | `<startIdx>-<endIdx> \| origSpan \| newSpan` | `2-3 \| any way \| anyway` | Merge / rewrite a contiguous span |
+| DELETE | `<idx>[-<endIdx>] \| orig \| DELETE` | `1 \| the \| DELETE` | Remove a word (or range); adjacent whitespace is tidied |
+
+Range edits unblock grammar fixes that span word boundaries
+(`"any way" → "anyway"`, `"the the cat" → "the cat"`,
+`"I went store" → "I went to the store"`). DELETE handles the
+"redundant word" case the LLM previously couldn't express.
+
+### Cache mode (`agent-retry-mode`)
+
+Default behaviour caches every word the agent has looked at — once the
+LLM verifies a word is "fine" under the current task, it won't be
+re-checked. Suits idempotent prompts ("correct spelling": clean stays
+clean).
+
+For non-idempotent transforms (translate, paraphrase, "make it more
+formal"), the LLM occasionally misses words on the first pass. Setting
+`agent-retry-mode: on` (or cycling `opencues agent-retry-mode _`) flips
+the cache policy so only words the LLM actually edited get cached;
+words it skipped get reconsidered next pass. Trade-off: more tokens per
+pass on long stable docs, but higher recall.
 
 ---
 
@@ -247,9 +281,15 @@ Quick locator:
 - **Dies on host restart.** Task state lives in memory only.
 - **Set-and-forget.** No conversational refinement ("no, leave that
   joke alone") in v1.
-- **Single-word edits only.** The agent emits per-word swaps, not
-  sentence rewrites. Multi-word transforms (rewrite a paragraph)
-  belong in transform-blank's one-shot pipeline.
+- **Word-level edits.** The agent operates on words and contiguous
+  word ranges (single swap / multi-word expand / range rewrite /
+  delete). Sentence-level structural rewrites still belong in
+  transform-blank's one-shot pipeline.
 - **No streaming.** Edits arrive in a single batch per cycle.
 - **No persistence.** Stop the agent, restart the host, agent forgets
   everything.
+- **Oscillation on subjective grammar choices.** With `agent-retry-mode:
+  on` and prompts like "fix grammar", the LLM may flip-flop between
+  equally-valid forms (`"you'll" ↔ "you will"`) on consecutive
+  passes. Default-mode caching prevents this; retry-mode trades it
+  for higher recall on translation tasks.

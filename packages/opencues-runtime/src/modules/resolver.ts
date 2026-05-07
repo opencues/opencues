@@ -16,6 +16,7 @@
 import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
+import { reconstructAsTyped, reconstructAsTypedWithMap } from '../state/dyn-defs';
 import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
 import type { AgentTaskState } from '../state/agent-task';
@@ -102,7 +103,21 @@ export class Resolver {
     if (!this.agentTaskState) return;
     const state = this.agentTaskState;
 
-    const prefix = trimTriggerFromText(action, originalText);
+    // If the buffer has agent-edited words, the trigger keyword may
+    // not be findable directly in `originalText` (the visible buffer).
+    // Build the as-typed view + mapping; trim uses asTyped to LOCATE
+    // the trigger and the mapping to translate the strip range back
+    // to visible chars (preserving the agent's other edits).
+    let asTyped: string | undefined;
+    let asTypedToVisible: readonly number[] | undefined;
+    if (this.dynDefs.size > 0) {
+      const recon = reconstructAsTypedWithMap(originalText, this.dynDefs, splitWords);
+      if (recon.asTyped !== originalText) {
+        asTyped = recon.asTyped;
+        asTypedToVisible = recon.asTypedToVisible;
+      }
+    }
+    const prefix = trimTriggerFromText(action, originalText, asTyped, asTypedToVisible);
     let newText: string;
     let newCursor: number;
 
@@ -343,12 +358,27 @@ export class Resolver {
       return cleaned;
     });
 
+    // "As-typed" reconstruction: visible buffer with every agent-edited
+    // word reverted to its originalWord. transform-blank's EXTRACT
+    // uses this to detect TASK_* triggers against what the user TYPED,
+    // not what the agent rendered — so commands work even if the agent
+    // edited some of their constituent words.
+    //
+    // Only build it when there's at least one DynDef (the typical case
+    // is empty); skip the work otherwise.
+    let asTypedText: string | undefined;
+    if (this.dynDefs.size > 0) {
+      const reconstructed = reconstructAsTyped(text, this.dynDefs, splitWords);
+      if (reconstructed !== text) asTypedText = reconstructed;
+    }
+
     let result;
     try {
       result = await this._resolver.resolve({
         text,
         words: cleanWords,
         domain: 'claude-code',
+        asTypedText,
       });
     } catch (err) {
       this.adapter.log('error', 'Resolver.resolve threw', err);
@@ -559,31 +589,54 @@ export const TASK_TRIGGER_KEYWORDS: Record<string, string> = {
   TASK_SHOW: 'current task',
 };
 
-function trimTriggerFromText(action: string, originalText: string): string {
+function trimTriggerFromText(
+  action: string,
+  visibleText: string,
+  asTyped?: string,
+  asTypedToVisible?: readonly number[],
+): string {
   const kw = TASK_TRIGGER_KEYWORDS[action];
   if (!kw) return '';
-  const start = originalText.toLowerCase().lastIndexOf(kw);
-  // Defensive fallback: if the keyword isn't present (shouldn't happen
-  // — EXTRACT only emits TASK_* when it saw the trigger), preserve the
-  // pre-fix legacy behaviour of wiping the buffer.
-  if (start < 0) return '';
-  // The trigger phrase ends at the next `_` after the keyword (the blank
-  // is the universal terminator: "stop task _", "add task <X> _",
-  // "agentically <X> _", "current task _"). Strip [start, blankIdx+1]
-  // and stitch the surrounding text back together so prose typed AFTER
-  // the trigger isn't dropped.
-  //
-  // Trim ONLY space chars on each flank — preserving newlines so that
-  // paragraph structure ("para1\n\nstop task _\n\npara2") survives the
-  // strip. Insert ONE space at the join only when both sides end up
-  // non-whitespace (mid-sentence trigger) so we don't run words
-  // together.
-  const blankIdx = originalText.indexOf('_', start);
-  if (blankIdx < 0) {
-    return originalText.slice(0, start).replace(/ +$/, '');
+
+  // Locate the trigger keyword. Prefer the as-typed view when one is
+  // supplied — it's robust to agent-edited trigger words (e.g. agent
+  // translated `agentically` → `agentisch` in the visible buffer; the
+  // user's typed `agentically` is still in `asTyped`). When the user's
+  // trigger keyword survives in visible (the typical case), the visible
+  // search succeeds the same way it always did.
+  let start: number;
+  let blankIdx: number;
+  if (asTyped && asTypedToVisible) {
+    const asTypedKwStart = asTyped.toLowerCase().lastIndexOf(kw);
+    if (asTypedKwStart < 0) {
+      // Fall through to visible search as a fallback.
+      start = visibleText.toLowerCase().lastIndexOf(kw);
+      blankIdx = start >= 0 ? visibleText.indexOf('_', start) : -1;
+    } else {
+      const asTypedBlankIdx = asTyped.indexOf('_', asTypedKwStart);
+      // Map both anchors back to visible char positions.
+      start = asTypedToVisible[asTypedKwStart] ?? visibleText.toLowerCase().lastIndexOf(kw);
+      blankIdx = asTypedBlankIdx >= 0
+        ? (asTypedToVisible[asTypedBlankIdx] ?? visibleText.indexOf('_', start))
+        : -1;
+    }
+  } else {
+    start = visibleText.toLowerCase().lastIndexOf(kw);
+    blankIdx = start >= 0 ? visibleText.indexOf('_', start) : -1;
   }
-  const before = originalText.slice(0, start).replace(/ +$/, '');
-  const after = originalText.slice(blankIdx + 1).replace(/^ +/, '');
+  // Defensive fallback: if the keyword still isn't findable, preserve
+  // the pre-fix legacy behaviour of wiping the buffer.
+  if (start < 0) return '';
+  if (blankIdx < 0) {
+    return visibleText.slice(0, start).replace(/ +$/, '');
+  }
+  // Strip [start, blankIdx+1] from visible. Trim ONLY space chars on
+  // each flank — preserving newlines so paragraph structure
+  // ("para1\n\nstop task _\n\npara2") survives. Insert ONE space at the
+  // join only when both sides end up non-whitespace (mid-sentence
+  // trigger) so we don't run words together.
+  const before = visibleText.slice(0, start).replace(/ +$/, '');
+  const after = visibleText.slice(blankIdx + 1).replace(/^ +/, '');
   const needsSpace = before.length > 0 && after.length > 0
     && !/\s$/.test(before) && !/^\s/.test(after);
   return needsSpace ? `${before} ${after}` : `${before}${after}`;

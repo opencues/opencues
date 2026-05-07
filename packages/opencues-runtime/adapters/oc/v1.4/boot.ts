@@ -213,11 +213,16 @@ export function boot(host: HostInfo): BootResult {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey,
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      debounceMs: host.llmDebounceMs ?? 250,
+      // debounceMs / finalPauseMs default to the legacy CC tiered
+      // cadence (50ms / 300ms). host.llmDebounceMs overrides Tier 1
+      // when set; finalPauseMs follows the default.
+      debounceMs: host.llmDebounceMs,
       // Lazy gate so a `~/.cues/cues.md` `agent-retry-mode` flip takes
       // effect on the next pass without a host restart (mirrors the
       // debug-gate plumbing).
       retryModeEnabled: () => configLoader.opencuesState.agentRetryMode === 'on',
+      // shapeGuardEnabled defaults to ON — explicit opt-out only in
+      // unit tests that pre-date the guard. Production gets it free.
     });
     agentLoop.subscribe();
   }

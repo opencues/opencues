@@ -385,7 +385,7 @@ describe('Resolver TASK_* commands', () => {
         }],
       }),
     };
-    return { adapter, agentTaskState, resolver };
+    return { adapter, agentTaskState, resolver, dynDefs };
   }
 
   it('TASK_ADD preserves prose typed before the "add task" trigger', async () => {
@@ -482,6 +482,110 @@ describe('Resolver TASK_* commands', () => {
 
     expect(adapter.getText()).toBe('para1\n\n\n\npara2');
     expect(agentTaskState.armed).toBe(false);
+  });
+
+  // ─── trigger-trim against agent-edited buffers ────────────────────────────
+  // These tests pin the asTyped→visible mapping path: when the agent has
+  // already substituted words in the visible buffer, the trim must still
+  // locate the trigger fragment (via asTyped) AND splice the right visible
+  // range (via the position map), so the agent's other edits survive.
+
+  it('TASK_ARM strips trigger when agent translated the trigger keyword itself', async () => {
+    // Visible:  "agentisch improve clarity _"  (agent translated "agentically")
+    // As-typed: "agentically improve clarity _"
+    const visible = 'agentisch improve clarity _';
+    const { adapter, agentTaskState, resolver, dynDefs } = setupTaskScenario(
+      visible, 'TASK_ARM', 'improve clarity',
+    );
+    dynDefs.set(0, {
+      originalWord: 'agentically', alternatives: ['agentically', 'agentisch'], currentIndex: 1,
+      spanStart: 0, spanEnd: 9, blankName: 'agent-task',
+    });
+
+    await resolver.resolveAndApply(visible);
+
+    expect(adapter.getText()).toBe('');
+    expect(agentTaskState.armed).toBe(true);
+    expect(agentTaskState.prompt).toBe('improve clarity');
+  });
+
+  it('TASK_ARM strips trigger when agent edited a word BETWEEN the trigger keyword and `_`', async () => {
+    // Visible:  "agentically übersetzen to german _"
+    // As-typed: "agentically translate to german _"
+    // The intervening word's edit must not cause the trim to miss the `_`.
+    const visible = 'agentically übersetzen to german _';
+    const { adapter, agentTaskState, resolver, dynDefs } = setupTaskScenario(
+      visible, 'TASK_ARM', 'translate to german',
+    );
+    dynDefs.set(1, {
+      originalWord: 'translate', alternatives: ['translate', 'übersetzen'], currentIndex: 1,
+      spanStart: 12, spanEnd: 22, blankName: 'agent-task',
+    });
+
+    await resolver.resolveAndApply(visible);
+
+    expect(adapter.getText()).toBe('');
+    expect(agentTaskState.armed).toBe(true);
+  });
+
+  it('TASK_ARM preserves agent-edited prose BEFORE the trigger', async () => {
+    // The user typed: "rite stuff agentically improve clarity _".
+    // The agent fixed "rite" → "write" earlier (currentIndex=1).
+    // After trim, the visible "write stuff" half must remain intact —
+    // not collapse back to the typed "rite stuff".
+    const visible = 'write stuff agentically improve clarity _';
+    const { adapter, agentTaskState, resolver, dynDefs } = setupTaskScenario(
+      visible, 'TASK_ARM', 'improve clarity',
+    );
+    dynDefs.set(0, {
+      originalWord: 'rite', alternatives: ['rite', 'write'], currentIndex: 1,
+      spanStart: 0, spanEnd: 5, blankName: 'agent-task',
+    });
+
+    await resolver.resolveAndApply(visible);
+
+    expect(adapter.getText()).toBe('write stuff');
+    expect(agentTaskState.armed).toBe(true);
+  });
+
+  it('TASK_STOP preserves agent-edited prose AFTER the trigger', async () => {
+    // Visible:  "some text stop task _ more witth typos"
+    // (agent has not yet edited "witth" — it's just typed prose).
+    // Agent DID translate "stop" → "halt"... wait, "stop task" is the
+    // trigger keyword and must remain matchable. Let's edit the AFTER half:
+    // Visible:  "some text stop task _ more with typos"  (agent fixed "witth")
+    // As-typed: "some text stop task _ more witth typos"
+    // Trim must keep "more with typos" (the agent-edited form).
+    const visible = 'some text stop task _ more with typos';
+    const { adapter, agentTaskState, resolver, dynDefs } = setupTaskScenario(
+      visible, 'TASK_STOP', '',
+    );
+    agentTaskState.arm('correct spelling');
+    dynDefs.set(6, {
+      originalWord: 'witth', alternatives: ['witth', 'with'], currentIndex: 1,
+      spanStart: 27, spanEnd: 31, blankName: 'agent-task',
+    });
+
+    await resolver.resolveAndApply(visible);
+
+    expect(adapter.getText()).toBe('some text more with typos');
+    expect(agentTaskState.armed).toBe(false);
+  });
+
+  it('TASK_ARM with NO trigger-keyword edit + NO intervening edit behaves identically to the no-dynDefs path', async () => {
+    // Sanity: the asTyped wiring must not regress the typical case where
+    // dynDefs is empty (no agent edits at all). When asTyped === visible,
+    // the function should fall back to the visible-only path.
+    const visible = 'agentically improve clarity _';
+    const { adapter, agentTaskState, resolver } = setupTaskScenario(
+      visible, 'TASK_ARM', 'improve clarity',
+    );
+    // dynDefs intentionally NOT populated.
+
+    await resolver.resolveAndApply(visible);
+
+    expect(adapter.getText()).toBe('');
+    expect(agentTaskState.armed).toBe(true);
   });
 
   it('TASK_ARM with no prose still produces an empty buffer (bare trigger)', async () => {

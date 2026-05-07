@@ -1,8 +1,10 @@
-# Agent Task — Implementation Plan
+# Agent Task — Implementation Reference
 
-> **Status: PLAN / NOT YET IMPLEMENTED.** This is the design doc. Once
-> the feature ships, this will become the canonical implementation
-> reference (same role as `transform-blank.md`).
+> **Status: SHIPPED.** Original design plan preserved below; the
+> "Implementation outcomes" section at the bottom captures what
+> diverged in practice and what was added in subsequent hardening
+> passes (range edits, DELETE, retry-mode, trigger-word protection,
+> apply-side correctness fixes).
 
 ---
 
@@ -643,3 +645,152 @@ runtime is genuinely task-agnostic; everything is in the prompt.
 - **TASK as 5th EXTRACT verdict vs separate pre-pass?** 5th verdict
   on the existing classifier. Worked cleanly — the EXTRACT prompt's
   examples cover all four TASK_* shapes (ARM/ADD/STOP/SHOW).
+
+---
+
+## Implementation outcomes — May 2026 hardening pass
+
+After v1 shipped, several rounds of live use surfaced issues that
+needed fixes the original design didn't anticipate. Documented here so
+the WHY survives the original-design framing.
+
+### EDITS format extension: ranges + DELETE
+
+The v1 EDITS format was strictly `<idx> | <orig> | <edit>` — one
+word in, one word (or phrase) out. That's enough for most spelling /
+casing / translation work, but blocks three grammar-fix shapes the
+LLM kept trying to express:
+
+- **MERGE**: `"any way" → "anyway"` (2 words → 1)
+- **DELETE**: `"the the cat" → "the cat"` (drop a redundant word)
+- **RANGE REWRITE**: `"What you thinkin?" → "What do you think?"`
+
+The format was extended additively. Both new shapes parse via the
+same line-format and share the same apply pipeline:
+
+```
+EDITS:
+<startIdx>[-<endIdx>] | <originalSpan> | <editedSpan-or-DELETE>
+```
+
+- `<endIdx>` optional — when omitted, single-word (the v1 shape, fully
+  preserved).
+- `originalSpan` is the space-joined live words covered by the range.
+- `DELETE` (case-insensitive) in the third column is the sentinel for
+  removal; the apply path also consumes one adjacent whitespace char
+  so `"the the cat"` → `"the cat"`, not `"the  cat"`.
+
+The LLM is taught the new shapes via examples in `EDITS_SYSTEM_PROMPT`.
+The runtime parser, survival filter, splice loop, def placement, and
+cursor translation were all extended to handle ranges. **30+ scenario
+tests** in `agent-loop.test.ts` cover the matrix (parser edge cases,
+merge / rewrite / delete, def-shift correctness, cursor math, retry-
+mode interaction, regression guards on single-word).
+
+Limit acknowledged: **the LLM still occasionally flip-flops** on
+subjective grammar choices (`"you'll" ↔ "you will"`) when retry-mode
+is on. Default mode caches the first verdict and avoids the
+oscillation. Documented in the user-facing limits section.
+
+### `agent-retry-mode` setting
+
+Default cache policy records every candidate the agent looked at —
+even ones the LLM left alone. For idempotent prompts (`correct
+spelling`: clean is clean forever), that's the right default. For
+non-idempotent transforms (translate, paraphrase, "make it more
+formal"), the LLM occasionally misses words on the first pass and the
+cache then permanently hides them.
+
+`agent-retry-mode: on` (frontmatter setting in `~/.opencuesrc`, also
+cyclable via `opencues agent-retry-mode _`) flips the cache policy:
+only words that received an edit get cached. Words the LLM skipped
+get reconsidered on the next pass.
+
+Critical implementation detail discovered during testing: in retry
+mode, edited words must be cached at their **NEW index** with the
+**hash of the post-edit visible word** — not the OLD index/hash. The
+v1 cache was keyed by what the LLM saw; after the edit, the visible
+word at that index has different content and a different hash, so
+the next pass would always cache-miss and re-ask the LLM about
+already-translated words ("stuck on earlier text" symptom). Pinned by
+two scenario tests: cache key correctness + spy on the next-pass LLM
+prompt to confirm idx N is absent from candidates.
+
+### Multi-word edit shift on apply
+
+When an edit batch contains a multi-word edit (`"will" → "ich werde"`,
+1→2 words), every downstream word position shifts right by N-1. The
+v1 apply path stored each edit's DynDef at its **OLD** word index, so
+later defs in the batch ended up at indices that had nothing to do
+with their new visible words. DimRender's `findSpanContaining` would
+see the lower-index multi-word span swallow them, and their dim
+silently disappeared.
+
+Fix: process surviving edits **left-to-right** with a cumulative
+word-count delta, place each new def at `OLD startIdx + cumulativeDelta`,
+and call `dynDefs.shiftAfter(newEndIdx, wordDelta)` BEFORE the set
+so prior defs at higher indices ride along. This ensures both
+current-batch defs and pre-existing defs end up at correct
+post-splice positions.
+
+Same machinery handles range edits (multi-word in, M-word out) and
+DELETE (multi-word in, 0 out) — the cumulative delta is just
+`altWordCount - rangeLength`.
+
+### Duplicate edit dedupe (the `strongngng` bug)
+
+When the LLM emitted two edits for the same `wordIndex` in one batch
+(model glitch), the apply loop's right-to-left splice composed them
+catastrophically: edit-2's splice operated on the post-edit-1 frame
+using OLD `w.start`/`w.end` from `liveWords`. The tail of edit-1's
+`editedWord` beyond the original word's length leaked past edit-2's
+replacement, producing user-visible artefacts like `strongngng` or
+`collaborating collaborativelyatively`.
+
+Fix: dedupe by claimed indices in the survival filter. First edit
+wins, subsequent overlapping edits get logged and dropped. Range
+edits use the same logic with each range's full span tracked in the
+claimed-set.
+
+### Task-trigger word protection
+
+If the agent ever translated/edited the literal words `agentically`,
+`add task`, `stop task`, or `current task`, the user would silently
+lose the ability to issue task commands (e.g. `agentisch translate
+to french _` wouldn't match EXTRACT's TASK_ARM regex). The candidate
+filter now excludes any word that's part of a recognisable trigger
+phrase, data-driven from the exported `TASK_TRIGGER_KEYWORDS`
+constant.
+
+Multi-word triggers (`add task`) are protected only when both halves
+appear adjacent — so prose like "every task gets translated" doesn't
+lock `task` out of edits, only the literal phrase `add task` does.
+Single-word triggers (`agentically`) are always protected.
+
+The protection only fires while a task is armed (`runOnce` bails early
+when not). Adding a new task type to `TASK_TRIGGER_KEYWORDS` later
+will auto-extend the protection.
+
+### TASK_* prose preservation
+
+Original implementation of TASK_ARM/ADD/STOP wiped the entire buffer
+because the resolver assumed the trigger phrase WAS the buffer.
+Real-world use almost always has prose around the trigger:
+
+```
+para1
+add task make it more formal _
+para2
+```
+
+Fix in `resolver.ts` `trimTriggerFromText`: find the trigger keyword,
+find the next `_` after it, slice OUT just that fragment, and stitch
+the surrounding text back together. Trim only space chars on flanks
+(not newlines), so paragraph structure (`\n\n`) survives.
+
+### Apply-pipeline correctness sweep summary
+
+The above outcomes are the durable lessons. Inline comments in
+`agent-loop.ts` walk readers through the splice / def-placement /
+cursor-translation logic in detail; `agent-loop.test.ts` (60+ tests)
+pins each edge case with a self-explaining scenario name.

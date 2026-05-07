@@ -249,3 +249,100 @@ export class DynDefs {
     return this._defs.size;
   }
 }
+
+/**
+ * Build the "as the user typed it" view of `visible` by replacing every
+ * word the agent has edited (DynDef with `currentIndex > 0`) with its
+ * `originalWord`. Multi-word agent edits collapse back to a single
+ * word in the as-typed view (the def's currentAlt covers multiple
+ * visible words; only the originalWord goes into the reconstruction).
+ *
+ * Used by transform-blank's EXTRACT pass: TASK_* commands resolve
+ * against what the user TYPED, not what the agent rendered. So if
+ * the agent translated `agentically` to `agentisch` for some reason,
+ * `agentically X _` typed by the user is still recognised as
+ * TASK_ARM.
+ *
+ * Whitespace and punctuation are preserved verbatim. Only word
+ * content swaps.
+ */
+export function reconstructAsTyped(
+  visible: string,
+  dynDefs: DynDefs,
+  splitWordsFn: (text: string) => Array<{ start: number; end: number; word: string; index: number }>,
+): string {
+  return reconstructAsTypedWithMap(visible, dynDefs, splitWordsFn).asTyped;
+}
+
+/**
+ * Same reconstruction as `reconstructAsTyped` but also returns a
+ * char-by-char mapping `asTypedToVisible[i]` = the visible char index
+ * that asTyped char `i` represents. Used by `trimTriggerFromText` to
+ * find a trigger keyword in the as-typed view, then strip the
+ * corresponding span from the visible buffer (preserving the agent's
+ * other edits).
+ *
+ * Mapping rule: identity for whitespace/punctuation between words.
+ * Inside an agent-edited word, asTyped chars map proportionally to
+ * the visible word's character range (`visibleStart + j * vlen /
+ * altLen`). The exact distribution doesn't matter for trim — we
+ * use the START of the trigger word and the position of the `_`,
+ * both of which fall on word boundaries where the mapping is exact.
+ */
+export interface AsTypedReconstruction {
+  readonly asTyped: string;
+  readonly asTypedToVisible: readonly number[];
+}
+
+export function reconstructAsTypedWithMap(
+  visible: string,
+  dynDefs: DynDefs,
+  splitWordsFn: (text: string) => Array<{ start: number; end: number; word: string; index: number }>,
+): AsTypedReconstruction {
+  const words = splitWordsFn(visible);
+  const visited = new Set<number>();
+  let asTyped = '';
+  const map: number[] = [];
+  let lastEnd = 0;
+  for (let i = 0; i < words.length; i += 1) {
+    if (visited.has(i)) continue;
+    const w = words[i];
+    // Whitespace gap before this word — identity mapping.
+    const ws = visible.slice(lastEnd, w.start);
+    for (let j = 0; j < ws.length; j += 1) {
+      asTyped += ws[j];
+      map.push(lastEnd + j);
+    }
+    let writeWord = w.word;
+    let visibleStart = w.start;
+    let visibleEnd = w.end;
+    const def = dynDefs.get(i);
+    if (def && def.currentIndex > 0 && def.originalWord) {
+      writeWord = def.originalWord;
+      const span = dynDefs.findSpanContaining(i);
+      if (span && span.originIdx === i && span.spanLength > 1) {
+        for (let k = i; k < i + span.spanLength; k += 1) visited.add(k);
+        const lastSpanWord = words[i + span.spanLength - 1];
+        if (lastSpanWord) visibleEnd = lastSpanWord.end;
+      }
+    }
+    // Map each asTyped char of the (possibly substituted) word to a
+    // visible char in the span [visibleStart, visibleEnd).
+    const visibleLen = visibleEnd - visibleStart;
+    for (let j = 0; j < writeWord.length; j += 1) {
+      asTyped += writeWord[j];
+      const vc = writeWord.length === 0
+        ? visibleStart
+        : visibleStart + Math.min(visibleLen - 1, Math.floor(j * visibleLen / writeWord.length));
+      map.push(Math.max(visibleStart, vc));
+    }
+    lastEnd = visibleEnd;
+  }
+  // Trailing whitespace.
+  const trail = visible.slice(lastEnd);
+  for (let j = 0; j < trail.length; j += 1) {
+    asTyped += trail[j];
+    map.push(lastEnd + j);
+  }
+  return { asTyped, asTypedToVisible: map };
+}

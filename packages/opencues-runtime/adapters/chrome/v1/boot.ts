@@ -208,6 +208,7 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> },
+      // shapeGuardEnabled defaults to ON.
     });
     agentLoop.subscribe();
   }

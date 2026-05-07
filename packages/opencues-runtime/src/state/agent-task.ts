@@ -20,11 +20,30 @@ export interface AgentTaskEvaluation {
   readonly taskId: string;
 }
 
+/** Max number of recent edit signatures we keep per task (anti-oscillation). */
+const MAX_EDIT_SIGNATURES = 64;
+
 export class AgentTaskState {
   private _taskId: string | null = null;
   private _prompt: string = '';
   private _evaluations = new Map<number, AgentTaskEvaluation>();
   private _armedAt = 0;
+
+  /**
+   * Recently-applied edit signatures, in insertion order. Each signature
+   * is "<originalWord>→<editedWord>". Used to detect oscillation: if a
+   * proposed edit's signature is the INVERSE of a recent one (i.e. would
+   * undo a prior agent edit), we drop it before apply.
+   *
+   * Survives appendToPrompt (oscillation often happens ACROSS task ADDs
+   * — each ADD freshens the cache, the LLM reconsiders the same word,
+   * and may flip its prior verdict). Cleared by arm() and stop() because
+   * a fresh task is allowed to undo prior decisions intentionally.
+   *
+   * Bounded by MAX_EDIT_SIGNATURES; oldest entries drop on overflow.
+   */
+  private _recentEditSignatures: string[] = [];
+  private _recentEditSignatureSet = new Set<string>();
 
   // ── Read API ─────────────────────────────────────────────────────────
 
@@ -58,6 +77,8 @@ export class AgentTaskState {
     this._taskId = generateTaskId();
     this._prompt = prompt.trim();
     this._evaluations.clear();
+    this._recentEditSignatures = [];
+    this._recentEditSignatureSet.clear();
     this._armedAt = Date.now();
   }
 
@@ -84,6 +105,8 @@ export class AgentTaskState {
     this._taskId = null;
     this._prompt = '';
     this._evaluations.clear();
+    this._recentEditSignatures = [];
+    this._recentEditSignatureSet.clear();
     this._armedAt = 0;
   }
 
@@ -105,6 +128,45 @@ export class AgentTaskState {
    */
   forgetEvaluation(wordIndex: number): void {
     this._evaluations.delete(wordIndex);
+  }
+
+  /**
+   * Record that an edit `originalWord → editedWord` was just applied.
+   * Subsequent edits whose signature is the inverse will be flagged by
+   * `wouldInvertRecent`.
+   *
+   * No-op when no task is armed (defensive — apply path shouldn't run).
+   * No-op for DELETE edits (`editedWord === ''`) — the inverse would be
+   * inserting deleted text, which never appears as an LLM-emitted edit
+   * anyway, and skipping them keeps the signature buffer focused on
+   * meaningful add-then-remove churn.
+   */
+  recordEditSignature(originalWord: string, editedWord: string): void {
+    if (!this._taskId) return;
+    if (editedWord === '') return;
+    const sig = `${originalWord}→${editedWord}`;
+    if (this._recentEditSignatureSet.has(sig)) return;     // already recorded
+    this._recentEditSignatures.push(sig);
+    this._recentEditSignatureSet.add(sig);
+    while (this._recentEditSignatures.length > MAX_EDIT_SIGNATURES) {
+      const dropped = this._recentEditSignatures.shift()!;
+      this._recentEditSignatureSet.delete(dropped);
+    }
+  }
+
+  /**
+   * True iff a previously-applied edit had the INVERSE of the proposed
+   * edit — i.e. some prior pass turned X into Y, and now the agent wants
+   * to turn Y back into X.
+   *
+   * Catches the comma-flip class (`Later` ↔ `Later,`) and similar
+   * model-vacillation across passes (often triggered by `add task`
+   * appending refinements to the prompt and freshening the cache).
+   */
+  wouldInvertRecent(originalWord: string, editedWord: string): boolean {
+    if (editedWord === '') return false;
+    const inverse = `${editedWord}→${originalWord}`;
+    return this._recentEditSignatureSet.has(inverse);
   }
 
   // ── Diagnostics ──────────────────────────────────────────────────────

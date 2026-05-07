@@ -38,15 +38,21 @@ interface Args {
   category?: string;
   parallel: number;
   format?: 'DECISIONS' | 'EDITS';
+  /** When true, fall back to the LLM judge for cases that the
+   *  hand-authored acceptable list rejects. Catches stylistic-prompt
+   *  variance (`gonna → "going to"` etc.). Costs 1 extra LLM call per
+   *  unmatched edit so we leave it opt-in. */
+  judge: boolean;
 }
 
 function parseArgs(): Args {
   const args = process.argv.slice(2);
-  const out: Args = { parallel: 1 };
+  const out: Args = { parallel: 1, judge: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--case') out.caseId = args[++i];
     else if (args[i] === '--category') out.category = args[++i];
     else if (args[i] === '--parallel') out.parallel = parseInt(args[++i], 10) || 1;
+    else if (args[i] === '--judge') out.judge = true;
     else if (args[i] === '--format') {
       const f = args[++i];
       if (f !== 'DECISIONS' && f !== 'EDITS') {
@@ -110,6 +116,11 @@ interface RunOutcome {
 }
 
 let RUN_FORMAT: 'DECISIONS' | 'EDITS' | undefined;
+let RUN_JUDGE = false;
+// Per-run judge call counters — surfaces extra LLM cost in the report.
+let JUDGE_CALLS = 0;
+let JUDGE_RESCUED = 0;
+let JUDGE_LATENCY_MS = 0;
 
 async function runCase(c: AgentTaskCase): Promise<RunOutcome> {
   const t0 = Date.now();
@@ -202,33 +213,91 @@ async function runCase(c: AgentTaskCase): Promise<RunOutcome> {
       messages.push(`expected no edits, got ${appliedEdits.length}: ${JSON.stringify(appliedEdits)}`);
     }
   } else {
-    // For each expected, find matching edit (strict on wordIndex; lenient on edited word via acceptable list)
+    // Match expected ↔ applied by ORIGINAL WORD CONTENT (shift-tolerant).
+    // When the LLM emits a multi-word edit upstream (e.g. "gonna →
+    // going to"), every downstream word's index shifts right by N-1.
+    // The runtime correctly stores the def at the post-splice index,
+    // so a strict idx match would fail the assertion even when the
+    // edit landed where it should. We match by original word and
+    // tie-break on idx-distance to pick the closest candidate.
+    const usedAppliedIndices = new Set<number>();
     for (const exp of expected) {
-      const got = appliedEdits.find(e => e.wordIndex === exp.wordIndex);
-      if (!got) {
+      // Match either:
+      //   (a) exact single-word match — applied.original === expected.original
+      //   (b) range edit covering the expected word — applied.original
+      //       (a space-joined span like "just wanna") contains the
+      //       expected word as one of its tokens. This handles the LLM
+      //       choosing a range edit (e.g. "0-1 | just wanna | I would
+      //       like to") when our case authored a single-word expectation.
+      //
+      // A SINGLE applied range edit can satisfy MULTIPLE expected edits
+      // (one applied for "any way" → "anyway" satisfies both
+      // expected[any] and expected[way]). We don't deduplicate by
+      // appliedIdx for matching — only for "extras" reporting at the
+      // end. Single-word applied edits naturally only match one
+      // expected because their `original` is a single token.
+      const candidates = appliedEdits
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) =>
+          (e.original === exp.originalWord ||
+            e.original.split(/\s+/).includes(exp.originalWord)),
+        );
+      if (candidates.length === 0) {
         pass = false;
-        messages.push(`missing edit at index ${exp.wordIndex} (expected: ${exp.originalWord} → ${exp.acceptableEdits.join(' / ')})`);
+        messages.push(`missing edit for "${exp.originalWord}" (expected at idx ${exp.wordIndex} → ${exp.acceptableEdits.join(' / ')})`);
         continue;
       }
-      if (got.original !== exp.originalWord) {
-        pass = false;
-        messages.push(`edit at index ${exp.wordIndex}: original mismatch (got "${got.original}", expected "${exp.originalWord}")`);
-        continue;
-      }
+      candidates.sort((a, b) =>
+        Math.abs(a.e.wordIndex - exp.wordIndex) - Math.abs(b.e.wordIndex - exp.wordIndex),
+      );
+      const { e: got, i: gotIdx } = candidates[0];
+      usedAppliedIndices.add(gotIdx);
+
       const acceptable = exp.acceptableEdits.map(s => s.toLowerCase());
       if (!acceptable.includes(got.edited.toLowerCase())) {
-        pass = false;
-        messages.push(`edit at index ${exp.wordIndex}: edited word "${got.edited}" not in acceptable list [${exp.acceptableEdits.join(', ')}]`);
+        if (RUN_JUDGE) {
+          // Fall back to the LLM judge: did the edit semantically
+          // fulfill the prompt? Catches stylistic-prompt variance
+          // where the hand-authored acceptable list is just one of
+          // many fine answers.
+          const t = Date.now();
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { judgeAgentEdit } = require('./judge') as typeof import('./judge');
+          // Note: this is the only async call in this otherwise
+          // synchronous block; the runner's outer concurrency keeps
+          // throughput high.
+          // eslint-disable-next-line no-await-in-loop
+          const verdict = await judgeAgentEdit({
+            task: c.prompt,
+            originalWord: got.original,
+            editedWord: got.edited,
+            acceptableHints: exp.acceptableEdits,
+            context: c.text,
+          });
+          JUDGE_CALLS += 1;
+          JUDGE_LATENCY_MS += verdict.latencyMs;
+          if (verdict.verdict === 'PASS') {
+            JUDGE_RESCUED += 1;
+            messages.push(`judge rescue: "${got.original}" → "${got.edited}" — ${verdict.rationale}`);
+          } else {
+            pass = false;
+            messages.push(`edit "${got.original}" at idx ${got.wordIndex}: "${got.edited}" not in [${exp.acceptableEdits.join(', ')}]; judge: ${verdict.rationale}`);
+          }
+          void t;
+        } else {
+          pass = false;
+          messages.push(`edit "${got.original}" at idx ${got.wordIndex}: "${got.edited}" not in [${exp.acceptableEdits.join(', ')}]`);
+        }
+      } else if (got.wordIndex !== exp.wordIndex) {
+        messages.push(`note: "${exp.originalWord}" edited at idx ${got.wordIndex} (expected ${exp.wordIndex}; shifted by upstream multi-word expansion — not a failure)`);
       }
     }
-    // Check no extra unexpected edits
-    for (const got of appliedEdits) {
-      const expected_ = expected.find(e => e.wordIndex === got.wordIndex);
-      if (!expected_) {
-        // Extra edit — could be acceptable (model finds something we didn't mark) or noisy
-        messages.push(`extra unexpected edit at index ${got.wordIndex}: ${got.original} → ${got.edited}`);
-        // Don't fail on extras unless forbidden
-      }
+    // Anything unmatched in appliedEdits is a true extra.
+    for (let i = 0; i < appliedEdits.length; i += 1) {
+      if (usedAppliedIndices.has(i)) continue;
+      const got = appliedEdits[i];
+      messages.push(`extra unexpected edit at index ${got.wordIndex}: ${got.original} → ${got.edited}`);
+      // Don't fail on extras unless they hit a forbidden idx (already checked above).
     }
   }
 
@@ -283,10 +352,12 @@ async function main() {
   }
 
   RUN_FORMAT = args.format;
+  RUN_JUDGE = args.judge;
 
   console.log(`${BOLD}agent-task benchmark${RESET}`);
   console.log(`Model: ${MODEL}`);
   console.log(`Format: ${args.format ?? 'DECISIONS (default)'}`);
+  console.log(`Judge:  ${args.judge ? 'ON (LLM-as-judge fallback for failed acceptable-list matches)' : 'OFF'}`);
   console.log(`Cases: ${selected.length}/${CASES.length}  (parallel=${args.parallel})`);
   console.log();
 
@@ -319,9 +390,26 @@ async function main() {
   }
   sep('─');
   console.log(`${BOLD}Total:${RESET}      ${passed}/${selected.length} pass (${pct(passed, selected.length)})`);
-  console.log(`Avg per case: ${avg(totalLatency)}ms`);
-  console.log(`${BOLD}Wall-clock total:${RESET} ${(wallMs / 1000).toFixed(1)}s  (parallel=${args.parallel})`);
-  console.log(`Throughput: ${(selected.length / (wallMs / 1000)).toFixed(2)} cases/sec`);
+  console.log();
+
+  // Accuracy vs cost report — separate the two concerns so a regression
+  // in either is easy to spot in CI output.
+  console.log(`${BOLD}── Accuracy ──${RESET}`);
+  console.log(`  pass rate:                    ${pct(passed, selected.length)} (${passed}/${selected.length})`);
+  if (RUN_JUDGE) {
+    console.log(`  judge calls:                  ${JUDGE_CALLS}`);
+    console.log(`  judge rescues (FAIL → PASS):  ${JUDGE_RESCUED}`);
+  }
+  console.log();
+  console.log(`${BOLD}── Cost ──${RESET}`);
+  console.log(`  avg primary call latency:     ${avg(totalLatency)}ms`);
+  if (RUN_JUDGE) {
+    console.log(`  total judge LLM calls:        ${JUDGE_CALLS}`);
+    console.log(`  total judge LLM time:         ${JUDGE_LATENCY_MS}ms`);
+    console.log(`  judge throughput share:       ${pct(JUDGE_LATENCY_MS, totalLatency + JUDGE_LATENCY_MS)} of all LLM time`);
+  }
+  console.log(`  ${BOLD}wall-clock total:${RESET}            ${(wallMs / 1000).toFixed(1)}s  (parallel=${args.parallel})`);
+  console.log(`  throughput:                   ${(selected.length / (wallMs / 1000)).toFixed(2)} cases/sec`);
 
   process.exit(passed === selected.length ? 0 : 1);
 }

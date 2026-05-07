@@ -53,6 +53,17 @@ export interface CueContext {
   /** Text split into words */
   words: string[];
 
+  /**
+   * Optional "as the user typed it" view of the buffer. Each word
+   * that has been altered by an agent (DynDef with currentIndex > 0)
+   * is reverted to its `originalWord`. Used by the transform-blank
+   * source to detect TASK_* triggers against what the user TYPED,
+   * not what the agent rendered. When undefined, sources fall back
+   * to `text`. Same-word-count guarantee is NOT promised — multi-
+   * word agent edits collapse back to single words here.
+   */
+  asTypedText?: string;
+
   /** Domain hint (e.g., 'claude-code', 'medical', 'legal') */
   domain?: string;
 
