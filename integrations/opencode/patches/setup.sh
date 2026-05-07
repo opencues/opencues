@@ -310,12 +310,59 @@ open(p, 'w').write(src)
 PY
 }
 
+patch_sidebar_footer_tsx() {
+  # OpenCode's TUI has TWO footer surfaces:
+  #   - feature-plugins/home/footer.tsx     → home_footer slot, rendered
+  #     when the user is on the home route (composing the FIRST prompt)
+  #   - feature-plugins/sidebar/footer.tsx  → sidebar_footer slot,
+  #     rendered when the user is in a session view (any subsequent
+  #     prompt input). Without patching BOTH, the OpenCues tip
+  #     vanishes the moment the user submits their first prompt and
+  #     starts a session — even though the prompt input is right there
+  #     in the same window.
+  local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx"
+  [[ -f "$footer" ]] || return 0
+  if grep -q "opencuesTip" "$footer"; then return 0; fi
+  python3 - "$footer" <<'PY'
+import sys
+p = sys.argv[1]
+src = open(p).read()
+if 'opencuesTip' in src: sys.exit(0)
+src = src.replace(
+  'import { Global } from "@/global"',
+  'import { Global } from "@/global"\nimport { opencuesTip } from "../../opencues"',
+)
+# The sidebar footer's box stacks vertically (path → version). Insert
+# the OpencuesTip line between them, mirroring the home footer's
+# OpencuesTip block (Show-gated, textMuted styling).
+src = src.replace(
+  '''      <text>
+        <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
+        <span style={{ fg: theme().text }}>{path().name}</span>
+      </text>
+      <text fg={theme().textMuted}>
+        <span style={{ fg: theme().success }}>•</span> <b>Open</b>''',
+  '''      <text>
+        <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
+        <span style={{ fg: theme().text }}>{path().name}</span>
+      </text>
+      <Show when={opencuesTip()}>
+        <text fg={theme().textMuted}>{opencuesTip()}</text>
+      </Show>
+      <text fg={theme().textMuted}>
+        <span style={{ fg: theme().success }}>•</span> <b>Open</b>''',
+)
+open(p, 'w').write(src)
+PY
+}
+
 patch_fork() {
   local tui_dir="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui"
   cp "$SCRIPT_DIR/opencuesBootstrap.ts" "$tui_dir/opencues.ts"
   patch_app_tsx
   patch_prompt_tsx
   patch_footer_tsx
+  patch_sidebar_footer_tsx
 }
 
 # ─── go ──────────────────────────────────────────────────────────────

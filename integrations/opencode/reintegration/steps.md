@@ -49,6 +49,37 @@ Upstream: `https://github.com/sst/opencode` (MIT).
 All four seams are TypeScript object references — no regex-parsing
 over minified JS like CC. Much tractable.
 
+## UI surfaces — where the OpenCues tip needs to land
+
+OpenCode's TUI has **two distinct footer surfaces** that render under
+the prompt input depending on which route the user is on. Both must
+be patched to inject the OpenCues tip; missing the second one was a
+silent bug for a while ("tip works in the empty UI but vanishes the
+moment I submit anything").
+
+| Surface | File | Slot name | Renders when |
+|---|---|---|---|
+| Home footer | `feature-plugins/home/footer.tsx` | `home_footer` | User is on the home route (composing the *first* prompt of a session) |
+| Sidebar footer | `feature-plugins/sidebar/footer.tsx` | `sidebar_footer` | User is in any session view (every subsequent prompt input) |
+
+The fork patches in `setup.sh`:
+- `patch_footer_tsx()` — wires `<OpencuesTip>` into the home footer.
+- `patch_sidebar_footer_tsx()` — wires `<Show>{opencuesTip()}</Show>` into the sidebar footer.
+
+Both pull from the same SolidJS signal (`opencuesTip` exported from
+`opencues.ts`), populated by the runtime's
+`statusSnapshotHook` callback in `opencuesBootstrap.ts`. So the
+runtime side is unchanged — only the fork-side rendering needs the
+second surface.
+
+If you discover a third location where the prompt input shows up
+(e.g. a future "split view" or modal prompt), add a third
+`patch_*_tsx` and import `opencuesTip` there. Heuristic for spotting
+candidates: search the fork for `import { Global } from "@/global"`
+inside files under `feature-plugins/**/footer.tsx` — the home and
+sidebar footers both share that import shape, and it's a stable
+landmark for the patch's `src.replace` anchor.
+
 ## Runtime side — reuse, don't rewrite
 
 The `HostAdapter` contract is host-agnostic. We just implement a new
