@@ -100,7 +100,9 @@ stop task _
 ## How it works
 
 `AgentRewrite` is the single agent module. While a task is armed,
-every 1.5 s it:
+each text-change event (re)schedules a tick. After a debounce window
+(default **1000 ms**, user-tunable via `agent-debounce-ms` in
+OPENCUES.md), the agent:
 
 ```
 1. Snapshots the live buffer (A) and the current task prompt.
@@ -113,6 +115,10 @@ every 1.5 s it:
 4. Places a DynDef per applied hunk (Down-arrow reverts each).
 ```
 
+Hot debounce: setting a different `agent-debounce-ms` (e.g. `500` for
+aggressive, `2000` for relaxed) takes effect on the next text-change
+event, no restart. Misparses or non-positive values fall back to 1000.
+
 User typing during the LLM call is **never clobbered** — the merge
 layer drops any LLM hunk that touches a region the user has been
 editing. See `docs/architecture/agent-task.md` for the design and
@@ -121,6 +127,44 @@ the structural invariants the merge layer enforces.
 Edits are user-visible (dimmed) and user-reversible (cycle Down).
 `stop task _` clears the task; existing dimmed edits stay so the
 user can decide whether to revert each.
+
+### `current task _` is a span
+
+Substitutes the current prompt at `_` and registers it as an atomic
+DynDef span. Two consequences:
+- **Cycling Down** on the inserted prompt reverts to empty (clean removal).
+- **Editing any character** of the prompt (typing inside, backspacing
+  into it) deletes the **whole** span as a unit — partial edits aren't
+  allowed to leave a half-state in the buffer. Surrounding prose stays
+  intact. Built-in behaviour, scoped to `task-*` spans only;
+  fluid-blank and transform-blank substitutions stay editable in place.
+
+### Trigger-keyword order matters
+
+The classifier matches canonical orderings only: `agentically X _`,
+`add task X _`, `stop task _`, `current task _`. Reversed-order typos
+(`task stop _`, `task add X _`) don't classify as task commands.
+
+A defensive guard in fluid-blank refuses to claim inputs containing
+either order, so a typo doesn't get hallucinated as a lookup query
+("task stop _" used to get substituted with the LLM's guess of
+"yes" — that's fixed). The buffer stays literal; correct the order
+and retry.
+
+### Statusline indicator
+
+While a task is armed, the statusline payload includes
+`agentTask: <truncated prompt>`. Hosts render this as a stable badge:
+
+```
+[task: <prompt>]
+```
+
+Visible across word-highlight states (the agent runs across the whole
+session, not per-word). No flicker — the badge doesn't toggle while
+LLM calls are in flight, since a per-tick spinner jitters on every
+keystroke pause. CC's `highlight-statusline.sh` and OpenCode's
+`statusSnapshotHook` both render the same format.
 
 ---
 
@@ -217,7 +261,7 @@ DynDef integration, per-task invalidation deep-dive) see
 
 Quick locator:
 - **State**: `packages/opencues-runtime/src/state/agent-task.ts`
-- **Loop**: `packages/opencues-runtime/src/modules/agent-loop.ts`
+- **Loop**: `packages/opencues-runtime/src/modules/agent-rewrite.ts`
 - **EXTRACT extension**: `packages/opencues-core/src/sources/transform-blank-source.ts`
   (TASK_ARM / TASK_ADD / TASK_STOP / TASK_SHOW verdicts)
 - **Resolver routing**: `packages/opencues-runtime/src/modules/resolver.ts`

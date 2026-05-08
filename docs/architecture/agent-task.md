@@ -14,8 +14,9 @@
 
 ## Architecture
 
-`AgentRewrite` is a single, cadence-driven module. Every 1.5 s while
-a task is armed:
+`AgentRewrite` is a single, debounce-driven module. While a task is
+armed, every text-change event reschedules a tick; after the user
+pauses for `agent-debounce-ms` (default 1000ms, OPENCUES.md-tunable):
 
 ```
 1. Snapshot the live buffer (A) and the active task prompt.
@@ -90,18 +91,25 @@ clears / reads the task state.
 
 ## Cadence
 
-Pure `setInterval(..., 1500ms)`. No debounce, no tier-1/tier-2
-heuristics. The user's typing speed has no effect on agent timing —
-the agent ticks regardless, and the merge handles whatever state the
-buffer is in at apply time.
+**Event-driven debounce.** Each user-source `onTextChange` resets a
+debounce timer; the tick fires only after the user pauses for
+`agent-debounce-ms` (default 1000ms, configurable in OPENCUES.md).
+Misparses or non-positive values fall back to 1000ms via
+`getCadenceMs()`. Idle = no ticks.
 
-If the user has just typed and the buffer hasn't settled, the merge
-will likely drop most LLM hunks (their A-region overlaps user hunks).
-That's the right behaviour: the agent does nothing during active
-typing, then catches up on the next round once the user pauses.
+A skip-on-stable guard short-circuits when `(snapshot, task, cursor)`
+matches the last applied state — no LLM call when there's nothing to
+do. A 64-entry LRU cache covers backspace+retype as well: identical
+input returns cached output, no network round-trip.
 
-If the LLM call takes ≥1.5 s, the next tick sees `_running === true`
-and bails. Only one LLM call is in flight at a time.
+If the LLM call takes longer than the next tick's debounce, the next
+tick sees `_running === true` and bails. Only one LLM call is in
+flight at a time.
+
+Earlier designs used `setInterval(..., 1500ms)` — pure cadence, no
+debounce. Replaced because idle ticks burned LLM calls when the user
+wasn't typing. The event-driven debounce + skip-on-stable + cache is
+strictly cheaper and not noticeably less responsive.
 
 ---
 

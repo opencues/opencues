@@ -146,6 +146,7 @@ opencues/
 │   │   ├── adding-a-feature.md    # How to add a new feature
 │   │   ├── adding-an-integration.md # How to add a new editor integration
 │   │   ├── adding-a-cue-blank.md # How to add a cue-blank (external script trigger)
+│   │   ├── adding-an-auditor.md  # How to add an auditor (inline-rewrite concern)
 │   │   ├── porting-to-new-integration.md # Porting guide: contracts, pitfalls, edge cases
 │   │   ├── parser-types.md        # Response parser types (alternatives, compute, answer, raw)
 │   │   └── llm-providers.md       # LLM provider setup & benchmarks
@@ -202,8 +203,9 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **CONTRIBUTING.md** — How to extend the standard, build integrations, modify opencues-core
 - **docs/overview.md** — System architecture, core interfaces, API usage
 - **docs/glossary.md** — All terminology (cues, blanks, sources, parsers, config files)
-- **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-blanks, parser types, LLM providers)
+- **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-blanks, auditors, parser types, LLM providers)
   - **`adding-a-cue-blank.md`** ⚠️ Must-read before adding any new cue-blank — covers blank routing, cycling pitfalls (list-only — no numeric stepping), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
+  - **`adding-an-auditor.md`** Reference for shipping a new inline-rewrite concern (grammar, clarity, tone, etc.). Explains the composition model (one LLM call per agent tick, all auditors concatenated by priority desc), what the frontmatter does, why per-auditor `provider:` / `match:` are inert, and `<project>/.cues/AUDITORS.md` `disable:` for project-level scoping.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
   - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
