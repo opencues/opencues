@@ -154,7 +154,7 @@ Per-project rules:
 - At most one DEFAULT source SHOULD exist. Validators warn on multiple defaults at the same priority.
 - A project with zero DEFAULT sources is valid; words outside any `match:`/`keywords:` simply produce no cue.
 
-For blanks, routing is by `blankKeywords` exact match, with `blankProximity` controlling word distance from `_`. Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback handles `_` with no `blankKeywords` match.
+For blanks, routing is by `blankKeywords` exact match, with `blankProximity` controlling word distance from `_`. Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` with no `blankKeywords` match. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`opencues-runtime.md` § Task-trigger guard](./opencues-runtime.md#task-trigger-guard) for the OpenCues runtime's implementation).
 
 ---
 

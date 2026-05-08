@@ -182,6 +182,27 @@ After ANSWER returns, the runtime decides how the result substitutes. The decisi
 
 The runtime emits character-offset `spanStart`/`spanEnd` on the resulting `CueResult` so the editor knows how much to replace.
 
+### Task-trigger guard
+
+Fluid blank's `supports()` refuses any input whose tail matches a transform-blank **task-trigger keyword**, in canonical *or* reversed-order forms:
+
+| Keyword | Canonical | Also matches (typo'd) |
+|---|---|---|
+| arm | `agentically <X> _` | — |
+| add | `add task <X> _` | `task add <X> _` |
+| stop | `stop task _` | `task stop _` |
+| show | `current task _` / `show task _` | `task current _` / `task show _` |
+
+Pattern (source of truth, `fluid-blank-source.ts`):
+
+```js
+const TASK_TRIGGER_GUARD = /\b(?:agentically|(?:stop|add|current|show)\s+task|task\s+(?:stop|add|current|show))\b/i;
+```
+
+**Rationale.** Without this guard, a mistyped trigger like `task stop _` falls through transform-blank's classifier (which only recognises canonical orderings), reaches fluid-blank, and gets hallucinated as a lookup query — the LLM might substitute the entire surrounding sentence with `"yes"` or similar. The guard ensures the buffer stays literal when the user intent is clearly task-lifecycle, even if the keyword order doesn't parse. The user can correct the order and retry; the alternative (silent prose-eating) was a real production bug.
+
+**False-positive avoidance.** The guard requires the trigger keyword as a whole word AND immediately adjacent to `task` (or, for `agentically`, as a standalone word). Sentences containing `task` in normal prose ("I have a task to finish _", "the task force was deployed _") still flow through fluid-blank as lookups.
+
 ### Settings
 
 Fluid blank is opt-in per integration via the `enableFluidBlank` flag passed to `buildSourcesFromConfig()`. The `OPENCUES.md` setting `fluid-blank-mode: on|off` toggles it at runtime; `fluid-blank-provider:` selects which model to use (defaults to the runtime's `default-provider`).

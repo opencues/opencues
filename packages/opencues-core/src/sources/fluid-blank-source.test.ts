@@ -104,6 +104,26 @@ describe('FluidBlankSource', () => {
     assert.strictEqual(src.supports(ctxFromText('etymology of paradigm _')), true);
   });
 
+  it('supports() refuses inputs containing transform-blank task triggers', () => {
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: makeMockAdapter([]) });
+    // Canonical orderings — transform-blank should claim, fluid declines.
+    assert.strictEqual(src.supports(ctxFromText('agentically correct spelling _')), false);
+    assert.strictEqual(src.supports(ctxFromText('add task make it more formal _')), false);
+    assert.strictEqual(src.supports(ctxFromText('stop task _')), false);
+    assert.strictEqual(src.supports(ctxFromText('current task _')), false);
+    // Reversed-order typos — fluid should still decline so the buffer
+    // stays literal instead of being hallucinated as a lookup. Real bug
+    // observed in the wild: "task stop _" got eaten as "yes" by the P3
+    // ANSWER pass when the user mis-spoke the keyword order.
+    assert.strictEqual(src.supports(ctxFromText('task stop _')), false);
+    assert.strictEqual(src.supports(ctxFromText('Testing if it works? You free tomorrow? task stop _')), false);
+    assert.strictEqual(src.supports(ctxFromText('task add some new behavior _')), false);
+    // Genuine prose containing the substring "task" but NOT a trigger
+    // keyword — fluid still claims (no false positives).
+    assert.strictEqual(src.supports(ctxFromText('I have a task to finish _')), true);
+    assert.strictEqual(src.supports(ctxFromText('the task force was deployed _')), true);
+  });
+
   it('runs P1 + P3 and returns answer for FILL mode', async () => {
     const src = new FluidBlankSource({
       ...baseConfig,

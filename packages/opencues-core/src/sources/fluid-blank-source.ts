@@ -226,6 +226,16 @@ export function determineReplaceMode(input: string): 'FILL' | 'WIPE' {
 }
 
 /**
+ * Pattern matching transform-blank task-trigger keywords (ARM / ADD /
+ * STOP / SHOW) and their reversed-order typos (e.g. `task stop` instead
+ * of `stop task`). Fluid-blank refuses any input matching this so a
+ * mistyped trigger stays literal in the buffer instead of being
+ * substituted with an LLM-guessed lookup. Source of truth for canonical
+ * orderings: transform-blank-source.ts EXTRACT prompt.
+ */
+const TASK_TRIGGER_GUARD = /\b(?:agentically|(?:stop|add|current|show)\s+task|task\s+(?:stop|add|current|show))\b/i;
+
+/**
  * Locate `span` inside `text` and return its character [start, end) offsets.
  * Returns null if the span isn't found verbatim.
  *
@@ -285,6 +295,15 @@ export class FluidBlankSource implements CueSource {
     const lower = context.words.map(w => w.toLowerCase());
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
+    // Cede the slot when the input looks like a transform-blank task
+    // command — reserved keywords for ARM/ADD/STOP/SHOW. Matches the
+    // canonical orderings AND their reversed forms (so a typo like
+    // `task stop _` doesn't get hallucinated as a lookup; it stays
+    // literal). transform-blank's EXTRACT will pick it up if its
+    // classifier recognises the variant; otherwise the buffer is
+    // preserved untouched, which is strictly better than substituting
+    // the entire sentence with an LLM-guessed answer.
+    if (TASK_TRIGGER_GUARD.test(context.text)) return false;
     // Cede the slot to BlankFill if any registered blank would actually
     // claim it. Mirror BlankSource's claim rules: keyword present AND
     // within `blankProximity` words of the `_`. Loose-match (keyword
