@@ -39,6 +39,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
+import { getProvider, type ProviderAdapter } from '../llm-provider';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -159,7 +160,7 @@ VERDICT: NONE
 INSTRUCTION:
 TARGET:`;
 
-const P2_APPLY_SYSTEM = `You receive:
+export const P2_APPLY_SYSTEM = `You receive:
 - INSTRUCTION: a short imperative editing command
 - TARGET: the text to apply the instruction to
 
@@ -618,6 +619,8 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
 
 export interface TransformBlankSourceConfig {
   httpAdapter: HttpAdapter;
+  /** Defaults to the Groq adapter when omitted (legacy single-provider wiring). */
+  provider?: ProviderAdapter;
   endpoint: string;
   apiKey: string;
   model: string;
@@ -644,6 +647,7 @@ export class TransformBlankSource implements CueSource {
   readonly priority: number;
 
   private httpAdapter: HttpAdapter;
+  private provider: ProviderAdapter;
   private endpoint: string;
   private apiKey: string;
   private model: string;
@@ -652,6 +656,7 @@ export class TransformBlankSource implements CueSource {
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
+    this.provider = config.provider ?? getProvider('groq')!;
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
@@ -906,23 +911,21 @@ export class TransformBlankSource implements CueSource {
   }
 
   private async callLLM(system: string, user: string, maxTokens: number): Promise<string> {
-    const body = JSON.stringify({
-      model: this.model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0,
-      reasoning_effort: 'low',
-      seed: 42,
-    });
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.apiKey}`,
-    };
-    const response = await this.httpAdapter.post(this.endpoint, body, headers);
-    const data = JSON.parse(response);
-    return data.choices?.[0]?.message?.content ?? '';
+    const built = this.provider.buildRequest(
+      {
+        model: this.model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        maxTokens,
+        temperature: 0,
+        reasoningEffort: 'low',
+        seed: 42,
+      },
+      { apiKey: this.apiKey, endpoint: this.endpoint },
+    );
+    const response = await this.httpAdapter.post(built.url, built.body, built.headers);
+    return this.provider.parseResponse(response);
   }
 }

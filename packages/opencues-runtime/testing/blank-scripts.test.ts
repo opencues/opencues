@@ -93,9 +93,9 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
       expect(out.trim()).toMatch(/^\d{1,3}$/);
     });
 
-    it.skipIf(skip)('opencues-blank.sh get: returns "<setting>\\t<value>" when a populated .opencuesrc is at $HOME', () => {
-      // opencues-blank.sh's contract: read .opencuesrc three levels up
-      // from the script (~/.cues/blanks/opencues/ → $HOME/.opencuesrc).
+    it.skipIf(skip)('opencues-blank.sh get: returns "<setting>\\t<value>" when a populated OPENCUES.md is at ~/.cues/', () => {
+      // opencues-blank.sh's contract: read OPENCUES.md two levels up
+      // from the script (~/.cues/blanks/opencues/ → ~/.cues/OPENCUES.md).
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
       const ctlDir = path.join(tmpHome, '.cues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
@@ -105,8 +105,8 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
       );
       fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
       fs.copyFileSync(
-        path.join(REPO_ROOT, 'defaults/opencuesrc'),
-        path.join(tmpHome, '.opencuesrc'),
+        path.join(REPO_ROOT, 'defaults/OPENCUES.md'),
+        path.join(tmpHome, '.cues', 'OPENCUES.md'),
       );
 
       const out = execFileSync('bash', [path.join(ctlDir, 'opencues-blank.sh'), 'get'], {

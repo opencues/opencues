@@ -43,8 +43,8 @@ const { spawnSync } = require('node:child_process');
 // `.cues/` library). Library contents: words/ + blanks/ + scripts/.
 // Project-level seeds the same library shape under <cwd>/.cues/ but
 // no `.opencuesrc` (system settings are runtime-owned, user-level only).
-const SEED_FILES_USER = ['words', 'blanks', 'scripts'];
-const SEED_FILES_PROJECT = ['words', 'blanks'];
+const SEED_FILES_USER = ['cues', 'blanks', 'scripts'];
+const SEED_FILES_PROJECT = ['cues', 'blanks'];
 
 module.exports = function seedConfigs(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -58,14 +58,22 @@ module.exports = function seedConfigs(argv, ctx) {
     ? path.join(process.cwd(), '.cues')
     : path.join(HOME, '.cues');
   const sourceDir = path.join(ctx.REPO_ROOT, 'defaults');
-  // The runtime config lives outside the cues library — at $HOME root
-  // (or $OPENCUES_HOME for env-overridden installs).
+  // The runtime config (OPENCUES.md) lives at the top of the cues
+  // library directory, alongside cues.md / blanks.md / auditors.md.
+  // (The old layout had `.opencuesrc` at $HOME root; that's migrated
+  // into $HOME/.cues/OPENCUES.md by the migration step below.)
   const settingsTarget = projectScope
+    ? null
+    : (process.env.OPENCUES_HOME
+        ? path.join(process.env.OPENCUES_HOME, 'OPENCUES.md')
+        : path.join(HOME, '.cues', 'OPENCUES.md'));
+  const settingsSource = path.join(sourceDir, 'OPENCUES.md');
+  // Legacy paths used by the migration step.
+  const legacySettingsTarget = projectScope
     ? null
     : (process.env.OPENCUES_HOME
         ? path.join(process.env.OPENCUES_HOME, 'opencuesrc')
         : path.join(HOME, '.opencuesrc'));
-  const settingsSource = path.join(sourceDir, 'opencuesrc');
 
   if (!fs.existsSync(sourceDir)) {
     console.error(`opencues seed-configs: source dir not found at ${sourceDir}`);
@@ -84,6 +92,16 @@ module.exports = function seedConfigs(argv, ctx) {
   // (signals are gone). User-scope only.
   if (!projectScope && !dryRun) {
     migrateOpenStandardLayout(HOME, settingsTarget, targetDir, log);
+    // ── 0b. MIGRATE — `.opencuesrc` at $HOME → $HOME/.cues/OPENCUES.md
+    // Settings file moved into the cues dir to sit alongside cues.md /
+    // blanks.md / auditors.md, and renamed/reformatted to a markdown
+    // file with frontmatter. Idempotent: skips when the target exists.
+    migrateOpencuesRcToOpencuesMd(legacySettingsTarget, settingsTarget, log);
+    // ── 0c. MIGRATE — `~/.cues/words/` → `~/.cues/cues/`. Restored
+    // symmetry with `cues.md` after the brief words/ era. Idempotent:
+    // merges file-by-file when both paths exist; cues/ wins on
+    // conflicts (it's the post-rename canonical location).
+    migrateWordsToCues(targetDir, log);
   }
 
   // ── 1. SEED — first-time copy ──────────────────────────────────────
@@ -118,8 +136,8 @@ module.exports = function seedConfigs(argv, ctx) {
   }
   log(`Seeded ${copied}, skipped ${skipped}.`);
 
-  // Seed `.opencuesrc` separately — it lives outside `targetDir`,
-  // at $HOME root.
+  // Seed `OPENCUES.md` separately — it's the system-settings file;
+  // sits at the top of `~/.cues/` next to cues.md / blanks.md.
   if (settingsTarget && fs.existsSync(settingsSource)) {
     if (hasContent(settingsTarget)) {
       log(`  SKIP (exists) ${settingsTarget}`);
@@ -133,8 +151,8 @@ module.exports = function seedConfigs(argv, ctx) {
   // If we skipped anything, surface the gotcha. SEED is first-time-only by
   // design (preserves user customisations), but that means new fields added
   // to shipped defaults DON'T flow into existing user files. Common bite:
-  // opencues.md gets new opt-in flags (fluid-blank-mode, spelling-mode,
-  // etc.) and the user's existing opencues.md silently lacks them →
+  // opencues.md gets new opt-in flags (fluid-blank-mode, etc.)
+  // and the user's existing opencues.md silently lacks them →
   // surfaces as "feature off" with no error.
   if (skipped > 0 && !silent) {
     log('');
@@ -205,7 +223,7 @@ module.exports = function seedConfigs(argv, ctx) {
 
   if (synced === 0) log('  (no changes — library files current)');
 
-  // ── 3. HEAL — self-heal empty .opencuesrc + rename legacy cue.md → blank.md ──
+  // ── 3. HEAL — self-heal empty OPENCUES.md + rename legacy cue.md → blank.md ──
   log('');
   if (settingsTarget && hasContent(settingsSource)) {
     if (fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size === 0) {
@@ -399,25 +417,31 @@ function migrateOpenStandardLayout(HOME, settingsTarget, newCuesDir, log) {
           return !['name', 'domain', 'version', 'ignore'].includes(m[1]);
         }).join('\n');
       fs.mkdirSync(path.dirname(settingsTarget), { recursive: true });
+      // settingsTarget is now ~/.cues/OPENCUES.md (markdown with
+      // frontmatter). Wrap the extracted YAML in `---` fences and add
+      // a brief body — matches the format of `defaults/OPENCUES.md`.
+      const yaml = settingsYaml.replace(/^\s+/, '').replace(/\n+$/, '');
       fs.writeFileSync(
         settingsTarget,
-        `# OpenCues runtime configuration\n` +
-        `# Pure YAML — system-wide settings owned by the OpenCues runtime.\n\n` +
-        settingsYaml.replace(/^\s+/, '').replace(/\n+$/, '\n'),
+        `---\n${yaml}\n---\n\n` +
+        `# OPENCUES.md — Runtime Configuration\n\n` +
+        `Migrated from a legacy \`cues.md\` frontmatter. See\n` +
+        `\`defaults/OPENCUES.md\` for the full annotated example.\n`,
       );
       log(`  wrote ${settingsTarget}`);
     }
     fs.unlinkSync(oldCuesMd);
   }
 
-  // Stage 3 — move ~/.opencues/cues/ → ~/.cues/words/, blanks/ stays
-  // as blanks/, scripts/ stays. Flatten single-file folders.
+  // Stage 3 — move ~/.opencues/cues/ → ~/.cues/cues/. blanks/ + scripts/
+  // stay. Flatten single-file folders. (Earlier code targeted words/;
+  // post-2026-05 we restored the symmetric cues/ name.)
   fs.mkdirSync(newCuesDir, { recursive: true });
   const oldCuesSubdir = path.join(oldDir, 'cues');
-  const newWordsDir = path.join(newCuesDir, 'words');
+  const newCuesSubdir = path.join(newCuesDir, 'cues');
   if (fs.existsSync(oldCuesSubdir)) {
-    fs.mkdirSync(newWordsDir, { recursive: true });
-    flattenInto(oldCuesSubdir, newWordsDir, log, 'words');
+    fs.mkdirSync(newCuesSubdir, { recursive: true });
+    flattenInto(oldCuesSubdir, newCuesSubdir, log, 'cues');
     fs.rmdirSync(oldCuesSubdir);
   }
   for (const sub of ['blanks', 'scripts']) {
@@ -444,6 +468,84 @@ function migrateOpenStandardLayout(HOME, settingsTarget, newCuesDir, log) {
     }
   } catch {}
   log('');
+}
+
+/**
+ * Migrate legacy ~/.opencuesrc (rc-style YAML at $HOME) → new location
+ * at ~/.cues/OPENCUES.md (markdown with frontmatter, sitting alongside
+ * cues.md / blanks.md / auditors.md).
+ *
+ * Wraps the existing rc-style content in `---` frontmatter fences and
+ * adds a doc body so the file matches the rest of the .cues/ layout.
+ * Drops the legacy file after a successful copy. Idempotent — skips
+ * when the new file already has content.
+ *
+ * `settingsTarget` is the new path; `legacy` is the old `.opencuesrc`
+ * at $HOME. Both can be null (project-scope seed); we no-op then.
+ */
+function migrateOpencuesRcToOpencuesMd(legacy, settingsTarget, log) {
+  if (!legacy || !settingsTarget) return;
+  if (!fs.existsSync(legacy)) return;
+  if (hasContent(settingsTarget)) {
+    // Target already populated; assume user is on the new layout. Drop
+    // the legacy file as a courtesy.
+    try { fs.unlinkSync(legacy); log(`  removed stale ${legacy}`); } catch {}
+    return;
+  }
+  const content = fs.readFileSync(legacy, 'utf8');
+  // If the legacy file already has fences (rare — pre-migration shape
+  // was supposed to be fence-less rc-style), pass through unchanged.
+  // Otherwise wrap it.
+  let body;
+  if (/^---\n[\s\S]*?\n---/.test(content)) {
+    body = content;
+  } else {
+    // Strip leading top-of-file comments (the legacy boilerplate
+    // header) so the YAML inside the frontmatter starts cleanly.
+    const yaml = content.replace(/^(?:[ \t]*#.*\n|\s*\n)+/, '');
+    body = `---\n${yaml.replace(/\n+$/, '')}\n---\n\n` +
+      `# OPENCUES.md — Runtime Configuration\n\n` +
+      `Migrated from \`~/.opencuesrc\`. See \`defaults/OPENCUES.md\` for the\n` +
+      `full annotated example with provider routing knobs and per-feature\n` +
+      `LLM overrides.\n`;
+  }
+  fs.mkdirSync(path.dirname(settingsTarget), { recursive: true });
+  fs.writeFileSync(settingsTarget, body);
+  try { fs.unlinkSync(legacy); } catch {}
+  log(`  migrated ${legacy} → ${settingsTarget}`);
+}
+
+/**
+ * Migrate `~/.cues/words/` → `~/.cues/cues/`. The post-2026-05 layout
+ * restores symmetry with `cues.md` (master file + per-item folder
+ * sharing the same name, like `blanks.md` + `blanks/`).
+ *
+ * Strategy: if `cues/` doesn't exist, simple rename. If both exist
+ * (rare — user manually created cues/ alongside words/), copy each
+ * words/* into cues/ unless a same-named entry is already there
+ * (cues/ wins), then remove the empty words/. Idempotent.
+ */
+function migrateWordsToCues(targetDir, log) {
+  const wordsDir = path.join(targetDir, 'words');
+  const cuesDir = path.join(targetDir, 'cues');
+  if (!fs.existsSync(wordsDir)) return;
+  if (!fs.existsSync(cuesDir)) {
+    fs.renameSync(wordsDir, cuesDir);
+    log(`  migrated ${wordsDir} → ${cuesDir}`);
+    return;
+  }
+  let merged = 0;
+  for (const entry of fs.readdirSync(wordsDir, { withFileTypes: true })) {
+    const src = path.join(wordsDir, entry.name);
+    const dst = path.join(cuesDir, entry.name);
+    if (fs.existsSync(dst)) continue;                            // cues/ wins
+    fs.renameSync(src, dst);
+    merged += 1;
+  }
+  // Drop words/ if empty after merge; otherwise leave with leftover
+  // entries so the user can resolve conflicts manually.
+  try { fs.rmdirSync(wordsDir); log(`  migrated ${wordsDir} → ${cuesDir} (${merged} entries merged, words/ removed)`); }
+  catch { log(`  partially migrated ${wordsDir} → ${cuesDir} (${merged} merged; words/ has remaining entries — resolve manually)`); }
 }
 
 /** Move every entry from `src` to `dst`, flattening single-file folders

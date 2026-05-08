@@ -66,8 +66,7 @@ name: <project-name>
 description: <short description>
 spec: opencues/0.1-alpha
 tips-mode: on             # whether static tip-group cues fire
-spelling-mode: on         # whether the spelling cue source fires
-word-cues-mode: on        # whether LLM word-cue sources fire
+word-cues-mode: on        # whether LLM word-cue sources fire (covers spelling — it's a regular word-cue)
 ignore: [TODO, FIXME]     # words never to cue, regardless of any source
 ---
 
@@ -95,9 +94,9 @@ Same defensive treatment: missing or 0-byte = treated as absent.
 
 | Field | Lives in | Why |
 |---|---|---|
-| `tips-mode`, `spelling-mode`, `word-cues-mode` | `cues.md` | Cue-surface only. |
+| `tips-mode`, `word-cues-mode` | `cues.md` | Cue-surface only. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling.md`.) |
 | `fluid-blank-mode`, `fluid-blank-provider` | `blanks.md` | Blank-surface only. |
-| Anything else (voice, debug, navigation) | `opencues.md` | Non-standard runtime knobs. |
+| Anything else (voice, debug, navigation) | `OPENCUES.md` | Non-standard runtime knobs. |
 
 A conformant runtime MUST refuse to honor cue-surface settings declared in `blanks.md` and vice versa.
 

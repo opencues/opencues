@@ -29,6 +29,7 @@ import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
+import { buildAgentLLMResolver } from '../../../src/boot-common';
 import type {
   BlankInvokeSpec,
   KeyEvent,
@@ -79,6 +80,15 @@ export interface HostInfo {
   llmDefaultModel?: string;
   /** Optional: resolver debounce ms (defaults to 500). */
   llmDebounceMs?: number;
+  /**
+   * Optional: API keys keyed by provider env-var name
+   * (GROQ_API_KEY / OPENROUTER_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY).
+   * The patch reads `process.env` and forwards whichever keys are set;
+   * the runtime picks the right one based on cues.md `llm-provider:` /
+   * `<feature>-provider:` settings. Legacy `llmApiKey` is still accepted
+   * and registered as GROQ_API_KEY when this map isn't supplied.
+   */
+  llmApiKeys?: Readonly<Record<string, string | undefined>>;
   /** Optional: absolute path for the statusline state-export JSON. */
   statusFilePath?: string;
   /**
@@ -293,7 +303,7 @@ export function boot(host: HostInfo): BootResult {
   // map (returns false from step) until load resolves.
   // Search paths in priority order. Project-level `.cues/` wins on name
   // conflicts; user-level `~/.cues/` is the global default. System
-  // settings live separately at `~/.opencuesrc` (or $OPENCUES_HOME/opencuesrc).
+  // settings live at `~/.cues/OPENCUES.md` (or $OPENCUES_HOME/OPENCUES.md).
   // OPENCUES_HOME env var takes top priority for power users / CI.
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
@@ -302,10 +312,10 @@ export function boot(host: HostInfo): BootResult {
     `${HOME}/.cues`,
   ];
   const settingsFile = process.env.OPENCUES_HOME
-    ? `${process.env.OPENCUES_HOME}/opencuesrc`
-    : `${HOME}/.opencuesrc`;
+    ? `${process.env.OPENCUES_HOME}/OPENCUES.md`
+    : `${HOME}/.cues/OPENCUES.md`;
   const configLoader = new ConfigLoader(adapter, { configSearchPaths, settingsFile });
-  configLoaderRef = configLoader; // wire isDebugEnabled to .opencuesrc
+  configLoaderRef = configLoader; // wire isDebugEnabled to OPENCUES.md
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
@@ -355,18 +365,29 @@ export function boot(host: HostInfo): BootResult {
   // Resolver: LLM-driven cycle population. Only constructed when an API key
   // is present. Subscribes once configLoader.load() resolves so the resolver
   // can build sources from cuesConfig + blanksConfig.
-  if (host.llmApiKey) {
+  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
+  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  if (hasAnyKey) {
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey,
+      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
     }, spanFillState, agentTaskState);
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey,
+      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      // Re-resolves per tick — picks up cues.md `agent-provider:` /
+      // `agent-model:` / `llm-provider:` edits without a restart.
+      resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      // Sliding-window mode (lazy thunk so cues.md edits take effect
+      // without a restart). 0 = full-buffer; e.g. 200 = cursor ± 100
+      // words, expanded to paragraph boundaries.
+      windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
     });
     agentRewrite.start();
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });

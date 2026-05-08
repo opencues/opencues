@@ -25,7 +25,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -150,7 +150,7 @@ export function boot(host: HostInfo): BootResult {
   const shared = buildSharedRuntime(adapter, {
     log,
     configSearchPaths: ['/chrome-storage/.cues'],
-    settingsFile: '/chrome-storage/.opencuesrc',
+    settingsFile: '/chrome-storage/.cues/OPENCUES.md',
   });
   configLoaderRef = shared.configLoader;
 
@@ -191,11 +191,15 @@ export function boot(host: HostInfo): BootResult {
   // Resolver — opt-in via llmApiKey. Chrome injects its own fetch-
   // based httpAdapter because NodeHttpAdapter (node:https) doesn't
   // exist in a content-script context.
-  if (host.llmApiKey) {
+  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
+  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  if (hasAnyKey) {
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey,
+      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
     }, spanFillState, agentTaskState);
@@ -204,9 +208,14 @@ export function boot(host: HostInfo): BootResult {
     const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey,
+      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       httpAdapter,
+      resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      // Sliding-window mode (lazy thunk so cues.md edits take effect
+      // without a restart). 0 = full-buffer; useful for long docs in
+      // textareas where token cost dominates.
+      windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
     });
     agentRewrite.start();
   }

@@ -30,31 +30,126 @@ import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
 import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-diff';
 
+/**
+ * Subset of the @opencues/core `ProviderAdapter` shape that
+ * AgentRewrite needs. Inlined here (rather than imported) so the
+ * runtime can be unit-tested without pulling the core package onto
+ * the test runner — the runtime's tests pass mock providers anyway.
+ *
+ * For real boots, the host loads @opencues/core and passes one of its
+ * built-in adapters (groq / openrouter / gemini / openai). Boot also
+ * has the option of selecting a per-feature override via cues.md
+ * frontmatter (`agent-provider:` / `agent-model:`).
+ */
+export interface AgentRewriteProviderAdapter {
+  readonly id: string;
+  readonly defaultModel: string;
+  buildRequest(
+    req: {
+      model: string;
+      messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+      maxTokens?: number;
+      temperature?: number;
+      seed?: number;
+      reasoningEffort?: 'low' | 'medium' | 'high';
+    },
+    ctx: { apiKey: string; endpoint?: string },
+  ): { url: string; body: string; headers: Record<string, string> };
+  parseResponse(rawJson: string): string;
+}
+
+export interface ResolvedAgentLLM {
+  readonly provider: AgentRewriteProviderAdapter;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly apiKey: string;
+  /**
+   * Optional auto-fallback target for transient failures (429, 5xx,
+   * network errors). When set, AgentRewrite re-issues against this
+   * provider on a transient primary failure. Same wire-shape required
+   * (OpenAI-compat ↔ OpenAI-compat). Boot-common populates this from
+   * `@opencues/core`'s `resolveLLM()`, which auto-pairs groq ↔
+   * cerebras when both keys are configured.
+   */
+  readonly fallback?: ResolvedAgentLLM | null;
+}
+
 export interface AgentRewriteOptions {
   readonly endpoint: string;
   readonly apiKey: string;
   readonly defaultModel: string;
-  /** Cadence in ms. Default 1500. */
+  /**
+   * Lazy resolver for the active provider/model/endpoint/key. Called
+   * before each LLM tick so the user can flip `agent-provider:` /
+   * `agent-model:` at runtime via cues.md without a restart. When
+   * unset (or returns null), AgentRewrite falls back to the static
+   * endpoint/apiKey/defaultModel above and the legacy Groq-shaped wire
+   * format — preserves back-compat for boot files that haven't
+   * migrated to multi-provider.
+   */
+  readonly resolveLLM?: () => ResolvedAgentLLM | null;
+  /** Min interval between ticks. Default 1500. */
   readonly cadenceMs?: number;
   /** Optional injection seam for tests. */
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
   /** Optional log function — wires through to adapter.log('debug', ...) by default. */
   readonly log?: (msg: string) => void;
+  /**
+   * Optional sliding-window mode: when set to a positive integer N, the
+   * LLM input is restricted to a window of approximately N words around
+   * the cursor (plus paragraph context). Cuts token cost ~10× on long
+   * docs at the price of losing global cross-paragraph context.
+   * Default 0 (full-buffer mode).
+   *
+   * Lazy thunk so users can flip the setting at runtime via cues.md.
+   */
+  readonly windowWords?: () => number;
 }
 
+/**
+ * Bounded LRU cap for the (snapshot, task) → rewrite cache. Each entry
+ * is roughly one buffer's worth of text; 64 covers backspace+retype and
+ * re-arming the same task on the same buffer without growing forever
+ * during a long writing session.
+ */
+const REWRITE_CACHE_MAX = 64;
+
 export class AgentRewrite {
-  private _timer: ReturnType<typeof setInterval> | null = null;
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _unsubText: (() => void) | null = null;
   private _running = false;
+  private _started = false;
   private _httpAgent: { post(url: string, body: string, headers: Record<string, string>): Promise<string> } | null = null;
   private _logFn: (msg: string) => void;
   /**
-   * Recent applied buffer states. If a new merge would put the buffer
-   * into a state we've already been in, skip — that's the oscillation
-   * pattern (LLM flipping between two valid forms across rounds, e.g.
-   * "you'll" vs "you will"). Without this, the user sees visible
-   * flicker as the buffer toggles each tick.
+   * Recent applied buffer states. Anti-oscillation guard.
    */
   private _recentApplied: string[] = [];
+  /**
+   * Cache of `(snapshot, task, cursor, window) → rewrite` results. Groq
+   * at temp=0+seed=42 is effectively deterministic, so identical input
+   * produces identical output. Caching means:
+   *   - Idle ticks (event-driven scheduler still fires once on arm):
+   *     snapshot equals last seen → cache hit, no LLM call.
+   *   - Backspace+retype: returning to a known state → cache hit.
+   *   - Re-arming the same task on the same buffer → cache hit.
+   * Bounded LRU; oldest entry drops on overflow. Insertion order =
+   * recency since Map preserves insertion order and we delete+reinsert
+   * on hit.
+   */
+  private _rewriteCache = new Map<string, string>();
+  /**
+   * Last (snapshot, task, cursor) tuple we saw stable across a tick (no
+   * surviving LLM hunks AFTER the merge dropped overlaps). Skipping the
+   * LLM call when the current state matches this is the bulk of the
+   * cost savings on idle keystrokes — no cache lookup, no token
+   * accounting, no I/O. Cursor is part of the key because the cursor
+   * sentinel changes the LLM input — same buffer with cursor in a
+   * different sentence may flip the terminal-punctuation decision.
+   */
+  private _lastStableSnapshot: string | null = null;
+  private _lastStableTask: string | null = null;
+  private _lastStableCursor: number = -1;
 
   constructor(
     private adapter: HostAdapter,
@@ -65,19 +160,53 @@ export class AgentRewrite {
     this._logFn = options.log ?? ((msg) => this.adapter.log('debug', msg));
   }
 
+  /**
+   * Subscribe to text-change events so ticks fire only when the buffer
+   * has actually moved. A debounce window (cadenceMs, default 1500) lets
+   * a burst of typing settle before the LLM call. Idle = no calls at
+   * all — the previous setInterval design burned an LLM call every
+   * 1.5 s even when the user wasn't typing.
+   *
+   * The first tick still fires on start() so the agent reacts to ARM
+   * even on a static buffer (the user typed before arming).
+   */
   start(): void {
-    if (this._timer) return;
+    if (this._started) return;
+    this._started = true;
     const cadence = this.options.cadenceMs ?? 1500;
-    this._timer = setInterval(() => { void this.tick(); }, cadence);
-    this._logFn(`AgentRewrite: started (cadence=${cadence} ms)`);
+    this._unsubText = this.adapter.onTextChange(() => this.scheduleTick());
+    // Kick a first tick: the user may have armed without typing.
+    this.scheduleTick();
+    this._logFn(`AgentRewrite: started (event-driven, debounce=${cadence} ms)`);
   }
 
   stop(): void {
-    if (this._timer) {
-      clearInterval(this._timer);
-      this._timer = null;
-      this._logFn('AgentRewrite: stopped');
+    if (!this._started) return;
+    this._started = false;
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
     }
+    if (this._unsubText) {
+      this._unsubText();
+      this._unsubText = null;
+    }
+    this._logFn('AgentRewrite: stopped');
+  }
+
+  /**
+   * Schedule a tick after the debounce window. Resetting the timer on
+   * every text-change event collapses a burst of keystrokes into one
+   * LLM call after the user pauses.
+   */
+  private scheduleTick(): void {
+    if (!this._started) return;
+    const cadence = this.options.cadenceMs ?? 1500;
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null;
+      void this.tick();
+    }, cadence);
   }
 
   /** Run one round. Exposed for tests + benchmark harness. */
@@ -91,20 +220,60 @@ export class AgentRewrite {
     try {
       const cursorAtSnapshot = this.adapter.getCursorOffset();
       const taskAtSnapshot = this.state.prompt;
+
+      // Skip-on-stable: if this exact (snapshot, task, cursor) was the
+      // result of our last applied round, the LLM has already converged
+      // on this state. No call, no merge, no further work.
+      if (
+        snapshot === this._lastStableSnapshot
+        && taskAtSnapshot === this._lastStableTask
+        && cursorAtSnapshot === this._lastStableCursor
+      ) {
+        this._logFn(`AgentRewrite: skipping (buffer stable since last round)`);
+        return;
+      }
+
       this._logFn(`AgentRewrite: round start (textLen=${snapshot.length}, cursor=${cursorAtSnapshot}, taskId=${this.state.taskId?.slice(0, 8)}…)`);
 
+      const windowWords = this.options.windowWords?.() ?? 0;
+      const cacheKey = makeCacheKey(snapshot, taskAtSnapshot, cursorAtSnapshot, windowWords);
       let rewrite: string | null;
-      try {
-        rewrite = await this.callLLM(snapshot, taskAtSnapshot);
-      } catch (err) {
-        this._logFn(`AgentRewrite: LLM call failed — ${err instanceof Error ? err.message : String(err)}`);
-        return;
+      const cached = this._rewriteCache.get(cacheKey);
+      if (cached !== undefined) {
+        // Refresh LRU order: re-insert moves the entry to most-recent.
+        this._rewriteCache.delete(cacheKey);
+        this._rewriteCache.set(cacheKey, cached);
+        this._logFn(`AgentRewrite: cache hit (${this._rewriteCache.size} entries) — skipping LLM call`);
+        rewrite = cached;
+      } else {
+        try {
+          rewrite = await this.callLLM(snapshot, taskAtSnapshot);
+        } catch (err) {
+          this._logFn(`AgentRewrite: LLM call failed — ${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+        if (rewrite !== null) {
+          this._rewriteCache.set(cacheKey, rewrite);
+          while (this._rewriteCache.size > REWRITE_CACHE_MAX) {
+            const oldest = this._rewriteCache.keys().next().value;
+            if (oldest === undefined) break;
+            this._rewriteCache.delete(oldest);
+          }
+        }
       }
       if (rewrite === null) return;
 
       const validation = validateLLMRewrite(snapshot, rewrite);
       if (!validation.ok) {
         this._logFn(`AgentRewrite: ${validation.reason}`);
+        // Identical-rewrite IS the stable signal — record it so future
+        // ticks can short-circuit. Other validation failures (truncation
+        // etc.) are LLM glitches, not stability signals.
+        if (rewrite === snapshot) {
+          this._lastStableSnapshot = snapshot;
+          this._lastStableTask = taskAtSnapshot;
+          this._lastStableCursor = cursorAtSnapshot;
+        }
         return;
       }
 
@@ -132,6 +301,11 @@ export class AgentRewrite {
 
       if (merged.newText === live) {
         // Either no surviving LLM hunks, or all merged into a no-op.
+        // Record stable so the next tick on the same buffer skips
+        // entirely (cache lookup avoided).
+        this._lastStableSnapshot = live;
+        this._lastStableTask = taskAtSnapshot;
+        this._lastStableCursor = this.adapter.getCursorOffset();
         return;
       }
 
@@ -147,6 +321,11 @@ export class AgentRewrite {
       this.applyMerged(merged.newText, live, merged.appliedLlmHunks, merged.userHunks);
       this._recentApplied.push(merged.newText);
       while (this._recentApplied.length > 3) this._recentApplied.shift();
+      // Buffer changed — old stability marker is invalid. Next tick
+      // will hit the LLM (or cache) for the new snapshot.
+      this._lastStableSnapshot = null;
+      this._lastStableTask = null;
+      this._lastStableCursor = -1;
     } finally {
       this._running = false;
     }
@@ -257,8 +436,10 @@ export class AgentRewrite {
 
   /**
    * Call the LLM with the rewrite prompt. Returns the rewritten buffer
-   * text, or null on parse / API failure (caller swallows null and
-   * waits for the next tick).
+   * text (always FULL-buffer-shaped — windowed mode splices the window
+   * rewrite back into the unchanged surrounding text before returning),
+   * or null on parse / API failure (caller swallows null and waits for
+   * the next tick).
    */
   private async callLLM(text: string, task: string): Promise<string | null> {
     // Insert a [CURSOR] sentinel so the LLM knows where the user is
@@ -266,42 +447,98 @@ export class AgentRewrite {
     // sentence" rule. The sentinel is stripped before the merge — see
     // parseRewriteOutput.
     const cursor = this.adapter.getCursorOffset();
-    const docWithCursor = text.slice(0, cursor) + CURSOR_SENTINEL + text.slice(cursor);
+    const windowWords = this.options.windowWords?.() ?? 0;
+    const window = computeWindow(text, cursor, windowWords);
+    const windowedText = text.slice(window.start, window.end);
+    const windowedCursor = cursor - window.start;
+    const docWithCursor = windowedText.slice(0, windowedCursor) + CURSOR_SENTINEL + windowedText.slice(windowedCursor);
+    if (window.start > 0 || window.end < text.length) {
+      this._logFn(`AgentRewrite: window mode (chars ${window.start}–${window.end} of ${text.length}, ~${windowWords} words)`);
+    }
     const userMsg = `TASK: ${task || '(none)'}\nDOCUMENT:\n${docWithCursor}`;
-    const body = JSON.stringify({
-      model: this.options.defaultModel,
+    const resolved = this.options.resolveLLM?.() ?? null;
+    const provider = resolved?.provider ?? null;
+    const model = resolved?.model ?? this.options.defaultModel;
+    const endpoint = resolved?.endpoint ?? this.options.endpoint;
+    const apiKey = resolved?.apiKey ?? this.options.apiKey;
+    const chatRequest = {
+      model,
       messages: [
-        { role: 'system', content: REWRITE_SYSTEM_PROMPT },
-        { role: 'user', content: userMsg },
+        { role: 'system' as const, content: REWRITE_SYSTEM_PROMPT },
+        { role: 'user' as const, content: userMsg },
       ],
-      max_tokens: Math.max(1024, Math.ceil(text.length * 1.5) + 256),
+      maxTokens: Math.max(1024, Math.ceil(windowedText.length * 1.5) + 256),
       temperature: 0,
-      reasoning_effort: 'low',
+      reasoningEffort: 'low' as const,
       seed: 42,
-    });
+    };
+    let url: string;
+    let body: string;
+    let headers: Record<string, string>;
+    if (provider) {
+      const built = provider.buildRequest(chatRequest, { apiKey, endpoint });
+      url = built.url;
+      body = built.body;
+      headers = built.headers;
+    } else {
+      // Legacy Groq-shaped path. Kept inline (rather than always going
+      // through a provider adapter) so the runtime has zero hard
+      // dependency on @opencues/core for boot files that haven't
+      // migrated to passing a provider thunk.
+      url = endpoint;
+      body = JSON.stringify({
+        model: chatRequest.model,
+        messages: chatRequest.messages,
+        max_tokens: chatRequest.maxTokens,
+        temperature: chatRequest.temperature,
+        reasoning_effort: chatRequest.reasoningEffort,
+        seed: chatRequest.seed,
+      });
+      headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
+    }
     const agent = this.options.httpAdapter ?? this.getHttpAgent();
-    const response = await agent.post(this.options.endpoint, body, {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.options.apiKey}`,
-    });
+    // Auto-fallback on transient failures (429, 5xx, network). Same
+    // wire-shape required — `resolveLLM()` only attaches a fallback
+    // when it's safe (groq ↔ cerebras at the moment).
+    const response = await postWithFallback(agent, { url, body, headers }, resolved?.fallback ?? null);
     if (!response || !response.trim()) return null;
-    let data: { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-    try {
-      data = JSON.parse(response);
-    } catch (err) {
-      this._logFn(`AgentRewrite: response not JSON — ${err instanceof Error ? err.message : String(err)}`);
-      return null;
+    let out: string;
+    if (provider) {
+      try {
+        out = provider.parseResponse(response);
+      } catch (err) {
+        this._logFn(`AgentRewrite: provider error — ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    } else {
+      let data: { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
+      try {
+        data = JSON.parse(response);
+      } catch (err) {
+        this._logFn(`AgentRewrite: response not JSON — ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+      if (data.error) {
+        this._logFn(`AgentRewrite: API error — ${data.error.message ?? JSON.stringify(data.error)}`);
+        return null;
+      }
+      out = data.choices?.[0]?.message?.content ?? '';
     }
-    if (data.error) {
-      this._logFn(`AgentRewrite: API error — ${data.error.message ?? JSON.stringify(data.error)}`);
-      return null;
-    }
-    const out = data.choices?.[0]?.message?.content ?? '';
     if (!out) {
       this._logFn(`AgentRewrite: response had no content`);
       return null;
     }
-    return parseRewriteOutput(out);
+    const windowedRewrite = parseRewriteOutput(out);
+    if (windowedRewrite === null) return null;
+    // Splice the window rewrite back into the surrounding (unchanged)
+    // text so the merge layer sees a full-buffer rewrite. The merge's
+    // diff against the snapshot will only produce hunks within the
+    // window region (outside-window slices match exactly), so this is
+    // structurally identical to non-windowed mode from the merge's POV.
+    if (window.start > 0 || window.end < text.length) {
+      return text.slice(0, window.start) + windowedRewrite + text.slice(window.end);
+    }
+    return windowedRewrite;
   }
 
   private getHttpAgent(): { post(url: string, body: string, headers: Record<string, string>): Promise<string> } {
@@ -324,6 +561,110 @@ export class AgentRewrite {
  *                                    stripping any leading code fence)
  */
 export const CURSOR_SENTINEL = '[CURSOR]';
+
+/**
+ * Heuristic — does `raw` look like a transient failure (rate-limit,
+ * server overload, network blip)? Conservative: false positives just
+ * waste a retry, false negatives mean the user sees the error.
+ *
+ * Mirrors the same check in `@opencues/core`'s `withFallback`. Inlined
+ * here so AgentRewrite keeps its zero-dep promise to the runtime.
+ */
+function looksTransientResponse(raw: string): boolean {
+  if (!raw || raw.trim().length === 0) return true;
+  if (/"code"\s*:\s*"?(429|5\d{2})"?/.test(raw)) return true;
+  if (/too[_ -]?many[_ -]?requests|rate[_ -]?limit/i.test(raw)) return true;
+  if (/server[_ -]?error|service[_ -]?unavailable|overloaded|timeout/i.test(raw)) return true;
+  if (/queue[_ -]?exceeded|queue[_ -]?full/i.test(raw)) return true;
+  return false;
+}
+
+/**
+ * POST + optionally retry against a fallback target on transient
+ * failure. Returns the primary's response when it's healthy, or
+ * the fallback's response when the primary returned a 429 / 5xx /
+ * empty body / network error.
+ *
+ * The fallback's wire shape must match the primary's (OpenAI-compat
+ * ↔ OpenAI-compat) — boot-common only sets `resolved.fallback` when
+ * that holds. The body is rewritten on retry to swap the model name
+ * (groq's `openai/gpt-oss-120b` ↔ cerebras's `gpt-oss-120b`); URL
+ * and bearer-auth header swap to the fallback's.
+ */
+async function postWithFallback(
+  agent: { post(url: string, body: string, headers: Record<string, string>): Promise<string> },
+  primary: { url: string; body: string; headers: Record<string, string> },
+  fallback: ResolvedAgentLLM | null,
+): Promise<string> {
+  const tryFallback = async (): Promise<string> => {
+    if (!fallback) throw new Error('postWithFallback: no fallback configured');
+    let fallbackBody = primary.body;
+    try {
+      const parsed = JSON.parse(primary.body) as { model?: string };
+      if (parsed.model && parsed.model !== fallback.model) {
+        parsed.model = fallback.model;
+        fallbackBody = JSON.stringify(parsed);
+      }
+    } catch { /* non-JSON body — pass through unchanged */ }
+    const fbHeaders = { ...primary.headers, Authorization: `Bearer ${fallback.apiKey}` };
+    return agent.post(fallback.endpoint, fallbackBody, fbHeaders);
+  };
+  let primaryRaw: string;
+  try {
+    primaryRaw = await agent.post(primary.url, primary.body, primary.headers);
+  } catch (err) {
+    if (!fallback) throw err;
+    try { return await tryFallback(); } catch { throw err; }
+  }
+  if (fallback && looksTransientResponse(primaryRaw)) {
+    try { return await tryFallback(); } catch { return primaryRaw; }
+  }
+  return primaryRaw;
+}
+
+/**
+ * Build a stable cache key for `(snapshot, task, cursor, window)`. The
+ * cursor is part of the key because the cursor sentinel changes the
+ * LLM's input — same buffer with cursor in a different sentence gets a
+ * different terminal-punctuation decision. Window size is keyed too so
+ * flipping the setting at runtime invalidates entries naturally.
+ *
+ * `\u0000`-separated to keep the components disambiguated without an
+ * expensive escape pass.
+ */
+function makeCacheKey(snapshot: string, task: string, cursor: number, windowWords: number): string {
+  return `${windowWords}\u0000${cursor}\u0000${task}\u0000${snapshot}`;
+}
+
+/**
+ * Compute the windowed slice of the buffer to send to the LLM. Returns
+ * the original full range [0, text.length] when:
+ *   - windowWords is 0 (window mode disabled), OR
+ *   - the buffer has fewer words than the window (no point slicing).
+ *
+ * Otherwise returns the cursor's containing paragraph (chars between
+ * the nearest \n\n breaks, or buffer edges). Paragraph is the atomic
+ * unit because:
+ *   - Terminal-punctuation decisions depend on what comes after a
+ *     sentence; sending half a paragraph would mislead the LLM.
+ *   - Real writing flows paragraph-by-paragraph; the user is editing
+ *     ONE paragraph at any given moment.
+ *
+ * `windowWords` is a TOGGLE-with-threshold: any positive value enables
+ * paragraph mode once the buffer crosses that word count. The number
+ * itself doesn't slice mid-paragraph.
+ */
+export function computeWindow(text: string, cursor: number, windowWords: number): { start: number; end: number } {
+  if (windowWords <= 0) return { start: 0, end: text.length };
+  const words = splitWords(text);
+  if (words.length <= windowWords) return { start: 0, end: text.length };
+  const probe = Math.max(0, cursor - 1);
+  const prevBreak = text.lastIndexOf('\n\n', probe);
+  const start = prevBreak === -1 ? 0 : prevBreak + 2;
+  const nextBreak = text.indexOf('\n\n', cursor);
+  const end = nextBreak === -1 ? text.length : nextBreak;
+  return { start, end };
+}
 
 /**
  * Validate the LLM's rewritten document against four sanity checks.

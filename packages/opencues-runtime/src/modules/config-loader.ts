@@ -4,8 +4,9 @@
 //   - cues.md / blanks.md  (frontmatter parsed by @opencues/core).
 //     Tips live inside cues.md's `## Tips` JSON block — there is no
 //     separate tips.json file any more.
-//   - ~/.opencuesrc (user-level only — system settings owned
-//     by the runtime; project-level opencues.md is ignored)
+//   - ~/.cues/OPENCUES.md (user-level only — system settings owned
+//     by the runtime; project-level overrides are intentionally not
+//     read because settings apply across every integration)
 //   - cues/<name>/ and blanks/<name>/ folders (per-folder cue.md via
 //     @opencues/core's discoverFolderConfigs)
 //
@@ -52,10 +53,10 @@ export interface ConfigLoaderOptions {
    */
   readonly configSearchPaths?: readonly string[];
   /**
-   * Path to the user-level runtime config file (`.opencuesrc`). Read
-   * once on load; parsed by `parseOpenCuesMd` for top-level scalars +
-   * the nested `settings:` block. When unset, opencuesState is the
-   * runtime defaults.
+   * Path to the user-level runtime config file (`OPENCUES.md`,
+   * formerly `.opencuesrc`). Read once on load; parsed by
+   * `parseOpenCuesMd` for top-level scalars + the nested `settings:`
+   * block. When unset, opencuesState is the runtime defaults.
    */
   readonly settingsFile?: string;
 }
@@ -107,11 +108,11 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
 /**
  * Parse the runtime config file. Two formats accepted:
  *
- *   - **`.opencuesrc`** — pure YAML, no fences. Lines are scanned
- *     directly. The new format used at user-level (`~/.opencuesrc`).
- *   - **Markdown frontmatter** — `---` ... `---` fences. Legacy from
- *     when settings lived inside `cues.md`. Kept so old user files
- *     parse cleanly until `seed-configs` migration runs.
+ *   - **Markdown frontmatter** (`OPENCUES.md`) — `---` ... `---`
+ *     fences with YAML inside; body is documentation. Current shape.
+ *   - **`.opencuesrc` (legacy)** — pure YAML, no fences. Lines scanned
+ *     directly. Pre-2026-05 layout; still parsed so users mid-migration
+ *     don't break before `seed-configs` runs.
  *
  * Exported for unit testing.
  */
@@ -418,10 +419,10 @@ export class ConfigLoader {
     // adapter bands keep working unchanged.
     const searchPaths = this.options.configSearchPaths ?? [this.adapter.cwd];
 
-    // System settings live in the user-level `.opencuesrc` (rc-style
-    // YAML, system-wide, runtime-owned schema). Read separately from
-    // the cue library — settings are tool config, sources are the
-    // standard's data.
+    // System settings live in the user-level `OPENCUES.md` (markdown
+    // with frontmatter, system-wide, runtime-owned schema). Read
+    // separately from the cue library — settings are tool config,
+    // sources are the standard's data.
     const settingsContent = this.options.settingsFile
       ? await this._safeReadFile(this.options.settingsFile)
       : null;
@@ -457,8 +458,8 @@ export class ConfigLoader {
       perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
     );
 
-    // System settings — parsed from `.opencuesrc` (or legacy
-    // cues.md frontmatter when transitioning from old layout).
+    // System settings — parsed from `OPENCUES.md` (or legacy
+    // `.opencuesrc` / cues.md frontmatter during a migration window).
     const opencuesState = settingsContent !== null
       ? parseOpenCuesMd(settingsContent)
       : DEFAULT_OPENCUES_STATE;

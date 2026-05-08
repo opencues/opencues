@@ -188,13 +188,14 @@ There's no `type:` discriminator in frontmatter. Inference > declaration.
 
 For users with the pre-OpenStandard layout (`.cues/` with `cues.md` + `cues/<name>/cue.md` + `blanks/<name>/`), `opencues seed-configs` runs an **idempotent migration** that:
 
-1. Renames `~/.cues/` → `~/.cues/`
-2. Extracts settings from `cues.md` frontmatter → writes `~/.opencuesrc` (YAML, no fences)
-3. Renames `cues/` subdir → `words/`
-4. Flattens single-file source folders: `cues/legal/CUE.md` → `words/legal.md`
-5. Consolidates the `tips/cue.md` body JSON into `words/tips.md` (already done in the previous arc)
+1. Renames `~/.opencues/` → `~/.cues/`
+2. Extracts settings from `cues.md` frontmatter → writes `~/.cues/OPENCUES.md` (markdown with frontmatter; was `~/.opencuesrc` rc-style YAML in an earlier arc)
+3. Renames `cues/` subdir → keeps as `cues/` (post-2026-05; an interim arc had it as `words/`)
+4. Flattens single-file source folders: `cues/legal/CUE.md` → `cues/legal.md`
+5. Consolidates the `tips/cue.md` body JSON into `cues/tips.md` (already done in the previous arc)
 6. Renames `blanks/` stays (already correct)
 7. Flattens script-less blank folders: `blanks/stocks/BLANK.md` → `blanks/stocks.md`
+8. Migrates legacy `~/.cues/words/` → `~/.cues/cues/` (for users who installed during the brief words/ era)
 
 Idempotent: re-running detects the new layout (presence of `~/.opencuesrc`) and skips.
 

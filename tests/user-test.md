@@ -13,7 +13,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Spell-check (plain text)
 
-(Requires `spelling-mode: on` in `~/.opencuesrc`.)
+(Spelling is shipped as a regular cue at `~/.cues/cues/spelling.md` and enabled by default.)
 
 - [ ] Type `the boy jumpved` — `jumpved` dims with `jumped` as the alternative
 - [ ] Up/Down on `jumpved` — cycles to `jumped`, back to `jumpved`

@@ -56,11 +56,11 @@ Installer hints automatically print whichever form works in your shell.
 
 ### Does `opencues init` scaffold `opencues.md`?
 
-**No.** `opencues.md` holds system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is defined by the OpenCues runtime — not by users or projects. One value applies across every integration. It's runtime-owned:
+**No.** `OPENCUES.md` holds system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is defined by the OpenCues runtime — not by users or projects. One value applies across every integration. It's runtime-owned:
 
-- Lives at user-level only: `~/.opencuesrc`
-- Seeded from `defaults/opencues.md` by `opencues seed-configs` (and re-seeded automatically if the file is 0-bytes — the `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills)
-- `setup.sh` self-heals an empty `opencues.md` on every install (section 7a-bis)
+- Lives at user-level only: `~/.cues/OPENCUES.md`
+- Seeded from `defaults/OPENCUES.md` by `opencues seed-configs` (and re-seeded automatically if the file is 0-bytes — the `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills)
+- `setup.sh` self-heals an empty `OPENCUES.md` on every install (section 7a-bis)
 - `opencues init` scaffolds only `cues.md`, `blanks.md`, `README.md` in a project
 
 ### Can I have project-level `opencues.md`?
@@ -174,7 +174,7 @@ opencues logs --tail
 opencues debug on    # or: off
 ```
 
-That rewrites `~/.opencuesrc`'s `debug-mode:` scalar. Hot-reload picks it up within ~2s on the next keystroke.
+That rewrites `~/.cues/OPENCUES.md`'s `debug-mode:` scalar. Hot-reload picks it up within ~2s on the next keystroke.
 
 ### Something's broken — what do I run first?
 
@@ -201,7 +201,7 @@ You can edit the *scalar values* (`voice-mode: active ↔ inactive`, etc.) if yo
 ### How do I scaffold a new cue / blank?
 
 ```bash
-opencues new cue my-synonyms            # → ~/.cues/words/my-synonyms/CUE.md
+opencues new cue my-synonyms            # → ~/.cues/cues/my-synonyms/CUE.md
 opencues new blank my-answer --project   # → ./.cues/blanks/my-answer/BLANK.md
 ```
 

@@ -19,7 +19,7 @@ That's it. Every feature in OpenCues is one of these two things, dressed up.
         LLM → you        ▼
         "here are        Cues  (highlights)
          suggestions"    ├── word-cues (domain synonyms via cues/<name>/cue.md)
-                         └── spelling (typo corrections via SpellingSource)
+                         └── spelling (typo corrections via cues/spelling.md)
 
 
               ┌──────────────────────┐
@@ -50,7 +50,7 @@ The two surfaces have **fundamentally different contracts**:
 | You want… | You build… |
 |---|---|
 | Synonyms for a class of words | a domain cue source: `defaults/cues/<name>/cue.md` with `match:` regex |
-| A new spell-check style cue | a TS class implementing `CueSource` (mirror `SpellingSource`) |
+| A new spell-check style cue | a regular `defaults/cues/<name>.md` with `match: .*` and a custom prompt (same shape as the shipped `defaults/cues/spelling.md`) |
 | External state lookup (API / system / file) | a runtime blank class implementing `Blank` (mirror `StocksBlank`) + cue.md with `blankKeywords:` |
 | External state via a shell script (native hosts only) | drop a `<name>-blank.sh` next to a cue.md with `blankScript:` |
 | A pre-baked rotation list | cue.md with `blankKeywords:` + `stepValues: [...]` |
@@ -65,12 +65,13 @@ The two surfaces have **fundamentally different contracts**:
 
 The shape: **`_` for anything that touches the world. Plain text is LLM-only. Nothing else.**
 
-## Settings (`opencues.md`) — every cue surface is opt-in
+## Settings (`OPENCUES.md` frontmatter) — every cue surface is opt-in
 
 ```yaml
 fluid-blank-mode: on          # free-form `_` lookups
-spelling-mode: on             # spell-check on plain text
 word-cues-mode: on            # domain synonym cycling on plain text (per-source match/keywords)
+# Spelling: ships as a regular cue at `~/.cues/cues/spelling.md` —
+# enabled by default like any other cue. No separate flag.
 ```
 
 Missing setting → off. Shipped defaults turn all three on; flip to `off` to disable a surface.

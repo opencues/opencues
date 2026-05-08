@@ -25,8 +25,9 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
+import { getProvider, type ProviderAdapter } from '../llm-provider';
 
-const P1_SYSTEM_PROMPT = `You identify a SPAN of text that will be wiped and replaced with an answer.
+export const P1_SYSTEM_PROMPT = `You identify a SPAN of text that will be wiped and replaced with an answer.
 
 The user is typing a casual note/sentence and has dropped an underscore (_) next to a TERSE LOOKUP PHRASE — something they want looked up, like a search query. Examples of lookup phrases: "unicode for ampersand", "ascii code for tab", "synonyms for happy", "hex for blue", "100 celsius in fahrenheit", "stock price of aapl", "etymology of paradigm", "capital of france", "atomic number of oxygen", "year apollo 11 landed on moon", "author of pride and prejudice". The SPAN is the lookup phrase together with the underscore — the chunk that should be wiped and replaced with the answer alone.
 
@@ -135,7 +136,7 @@ INPUT: click _ to continue and then submit the form
 SPAN: NONE
 CONTEXT: click _ to continue and then submit the form`;
 
-const P3_SYSTEM_PROMPT = `You answer a lookup query and produce the canonical SHORT answer that would substitute for the SPAN when it gets wiped.
+export const P3_SYSTEM_PROMPT = `You answer a lookup query and produce the canonical SHORT answer that would substitute for the SPAN when it gets wiped.
 
 You receive:
 - SPAN: the lookup query (contains a literal _ where the answer goes)
@@ -241,6 +242,8 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
 
 export interface FluidBlankSourceConfig {
   httpAdapter: HttpAdapter;
+  /** Defaults to the Groq adapter when omitted (legacy single-provider wiring). */
+  provider?: ProviderAdapter;
   endpoint: string;
   apiKey: string;
   model: string;
@@ -263,6 +266,7 @@ export class FluidBlankSource implements CueSource {
   readonly priority: number;
 
   private httpAdapter: HttpAdapter;
+  private provider: ProviderAdapter;
   private endpoint: string;
   private apiKey: string;
   private model: string;
@@ -270,6 +274,7 @@ export class FluidBlankSource implements CueSource {
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
+    this.provider = config.provider ?? getProvider('groq')!;
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
@@ -360,24 +365,22 @@ export class FluidBlankSource implements CueSource {
   }
 
   private async callLLM(system: string, user: string, maxTokens: number): Promise<string> {
-    const body = JSON.stringify({
-      model: this.model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0,
-      reasoning_effort: 'low',
-      seed: 42,
-    });
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.apiKey}`,
-    };
-    const response = await this.httpAdapter.post(this.endpoint, body, headers);
-    const data = JSON.parse(response);
-    return data.choices?.[0]?.message?.content ?? '';
+    const built = this.provider.buildRequest(
+      {
+        model: this.model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        maxTokens,
+        temperature: 0,
+        reasoningEffort: 'low',
+        seed: 42,
+      },
+      { apiKey: this.apiKey, endpoint: this.endpoint },
+    );
+    const response = await this.httpAdapter.post(built.url, built.body, built.headers);
+    return this.provider.parseResponse(response);
   }
 }
 

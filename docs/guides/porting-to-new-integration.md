@@ -116,7 +116,7 @@ Sources are queried in priority order (highest first). When two sources return r
 - **Higher priority wins** — lower priority result is discarded
 - **Same priority** — alternatives are deduplicated and merged (case-sensitive)
 
-Key priorities: `BlankSource` (95) > `FluidBlankSource` (92) > `SpellingSource` (80) > `ConfigSource`/word-cues (50-75)
+Key priorities: `BlankSource` (95) > `FluidBlankSource` (92) > shipped spelling cue (80, `ConfigSource`) > other word-cue `ConfigSource` instances (50-75)
 
 ### Tips protection
 

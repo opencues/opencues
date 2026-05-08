@@ -79,8 +79,8 @@ The merge is implemented in `discoverFolderConfigs` and
 ## Special case: `cues.md` system settings
 
 The frontmatter of `cues.md` holds **system-wide settings** owned by
-the runtime — voice-mode, fluid-blank-mode, spelling-mode,
-word-cues-mode, tips-mode, debug-mode, cursor-navigate, and any
+the runtime — voice-mode, fluid-blank-mode, word-cues-mode,
+tips-mode, debug-mode, cursor-navigate, and any
 host-supplied scalars (plus the nested `settings:` declarations and
 the `ignore:` array). Because these settings apply across every
 integration, projects can't override them. The runtime reads the

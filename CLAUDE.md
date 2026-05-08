@@ -372,9 +372,9 @@ A user with no `.cues/` anywhere gets empty config (CC/OC)
 (same `maybeReload` mechanism as before).
 
 The OpenCuesSettingsBlank read/write of system settings now happens
-on the user-level `cues.md` frontmatter. The frontmatter holds system-
-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate,
-fluid-blank-mode, spelling-mode, word-cues-mode) whose schema is
+on the user-level `OPENCUES.md` frontmatter. The frontmatter holds
+system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate,
+fluid-blank-mode, word-cues-mode) whose schema is
 owned by the OpenCues runtime. A single value applies across every
 integration, so projects cannot override it. The file lives at
 `~/.cues/cues.md` (or `$OPENCUES_HOME/cues.md` when set).

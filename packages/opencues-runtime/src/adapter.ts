@@ -181,11 +181,24 @@ export interface CommonHostInfo {
    *  (Web Speech) honour the same numeric scale. */
   ttsRate?: string | number;
   /** Optional LLM resolver fields. Resolver only constructs when
-   *  llmApiKey is set. */
+   *  at least one api key is available (either `llmApiKey` legacy or
+   *  any entry in `llmApiKeys`). */
   llmApiKey?: string;
   llmEndpoint?: string;
   llmDefaultModel?: string;
   llmDebounceMs?: number;
+  /**
+   * API keys keyed by provider env-var name (GROQ_API_KEY,
+   * OPENROUTER_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, …). Boot reads
+   * `process.env` and forwards whichever keys are set. The runtime's
+   * provider resolver picks the right one based on `llm-provider:` /
+   * `<feature>-provider:` cues.md settings.
+   *
+   * Hosts that can't read process.env (Chrome) populate this from a
+   * settings UI / chrome.storage. Legacy `llmApiKey` is still honoured
+   * as the GROQ_API_KEY when this map isn't supplied.
+   */
+  llmApiKeys?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface HostAdapter {

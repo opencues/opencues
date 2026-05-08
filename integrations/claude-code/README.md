@@ -34,7 +34,7 @@ The installer (`opencues install claude-code`) chains two scripts:
 1. **`opencues seed-configs --silent`** (shared `~/.cues/` writes — used by all native hosts)
    - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.cues/`
    - Sync of library files (`.sh` / `.cs` / `.ps1`) every install — overwrites stale, never overwrites your `.md` edits
-   - Self-heal a 0-byte `~/.opencuesrc`
+   - Self-heal a 0-byte `~/.cues/OPENCUES.md`
    - Compile colocated `.cs` → `.exe` (WSL only)
 
 2. **CC-specific setup.sh** (default behavior: nuke + rebuild from scratch)
@@ -106,8 +106,8 @@ Idempotent — copies any file that doesn't already exist at the destination, sk
 **Per-project example:**
 
 ```bash
-mkdir -p ~/projects/legal-review/.cues/words/legal-doc
-cat > ~/projects/legal-review/.cues/words/legal-doc/cue.md <<'EOF'
+mkdir -p ~/projects/legal-review/.cues/cues/legal-doc
+cat > ~/projects/legal-review/.cues/cues/legal-doc/cue.md <<'EOF'
 ---
 match: \b(plaintiff|defendant|tort|estoppel)\b
 ---
@@ -116,10 +116,10 @@ EOF
 
 cd ~/projects/legal-review
 claude-cues
-# .cues/words/legal-doc/cue.md is now active alongside ~/.cues defaults
+# .cues/cues/legal-doc/cue.md is now active alongside ~/.cues defaults
 ```
 
-The OpenCues Settings blank (`opencues.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.opencuesrc` (or `$OPENCUES_HOME/opencues.md` when set), seeded from `defaults/opencues.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
+The OpenCues Settings blank (`OPENCUES.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md` when set), seeded from `defaults/OPENCUES.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
 
 ---
 

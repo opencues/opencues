@@ -25,13 +25,61 @@ import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource } from './blank-source';
 import { FluidBlankSource } from './fluid-blank-source';
 import { TransformBlankSource } from './transform-blank-source';
-import { SpellingSource } from './spelling-source';
+import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
+
+/**
+ * Per-feature provider/model/endpoint trio. Each LLM-driven source
+ * (word cues, fluid blank, transform blank, agent) reads its own
+ * settings from cues.md root frontmatter; the caller flattens those
+ * into this struct before calling buildSourcesFromConfig.
+ *
+ * Example mapping in the boot layer (cues.md frontmatter → here):
+ *   word-cues-provider:    → wordCues.provider
+ *   word-cues-model:       → wordCues.model
+ *   word-cues-endpoint:    → wordCues.endpoint
+ *   …same for fluid-blank and transform-blank.
+ *
+ * Spelling is NOT here — it's a regular config-driven cue (see
+ * `defaults/cues/spelling.md`) and inherits per-cue / per-feature
+ * (`word-cues-*`) / global routing through the standard ConfigSource
+ * path. The dedicated `SpellingSource` class was retired in May 2026
+ * because it duplicated ConfigSource behavior with a hardcoded prompt.
+ */
+export interface FeatureLLMSetting {
+  readonly provider?: string;
+  readonly model?: string;
+  readonly endpoint?: string;
+}
 
 export interface BuildSourcesOptions {
   httpAdapter: HttpAdapter;
-  endpoint: string;
-  apiKey: string;
-  defaultModel: string;
+  /**
+   * API keys keyed by env-var name (GROQ_API_KEY, OPENROUTER_API_KEY,
+   * GEMINI_API_KEY, OPENAI_API_KEY). Boot populates from process.env;
+   * the runtime picks the right one based on the resolved provider.
+   */
+  apiKeys?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Global llm-provider/model/endpoint defaults from cues.md root
+   * frontmatter. The least-specific tier — overridden by per-feature
+   * and per-cue settings.
+   */
+  globalProvider?: string;
+  globalModel?: string;
+  globalEndpoint?: string;
+  /** Per-feature defaults read from cues.md root frontmatter. */
+  wordCues?: FeatureLLMSetting;
+  fluidBlank?: FeatureLLMSetting;
+  transformBlank?: FeatureLLMSetting;
+  /**
+   * @deprecated Legacy single-provider wiring. When `apiKeys` isn't
+   * supplied we synthesize one from these so callers that haven't
+   * migrated keep working — endpoint+apiKey+defaultModel still go to
+   * Groq. New callers should pass `apiKeys` plus `globalProvider/Model`.
+   */
+  endpoint?: string;
+  apiKey?: string;
+  defaultModel?: string;
   /** Merged blank configs */
   blanks?: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read current live blank value (raw string).
@@ -55,11 +103,6 @@ export interface BuildSourcesOptions {
    * Defaults to false; flip on per-integration.
    */
   enableTransformBlank?: boolean;
-  /** Enable SpellingSource — word-scope spell-checker. Flags misspelled
-   * words in plain text and offers corrections as cycling alternatives.
-   * Priority 80 (above typical domain max ~75). Defaults to false; flip
-   * on via opencues.md `spelling-mode: on`. */
-  enableSpelling?: boolean;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -120,6 +163,61 @@ export function buildSourcesFromConfig(
 ): CueSource[] {
   const sources: CueSource[] = [];
 
+  // Two wiring modes:
+  //   - NEW: caller passes `apiKeys` (keyed by env-var name) and per-tier
+  //     provider/model settings. We resolve per-source and skip sources
+  //     whose provider has no key.
+  //   - LEGACY: caller passes `endpoint` + `apiKey` + `defaultModel`
+  //     (single-provider Groq wiring). We pass them straight through —
+  //     no provider lookup, no key validation. Source classes default
+  //     `provider` to the Groq adapter when omitted.
+  const isLegacy = options.apiKeys === undefined;
+  const apiKeys: Record<string, string | undefined> = { ...(options.apiKeys ?? {}) };
+  if (options.apiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = options.apiKey;
+
+  const globalProvider = options.globalProvider
+    ?? (options.endpoint || options.defaultModel ? 'groq' : undefined);
+  const globalModel = options.globalModel ?? options.defaultModel;
+  const globalEndpoint = options.globalEndpoint ?? options.endpoint;
+
+  /**
+   * Resolve the provider/model/endpoint/key tuple for one source given
+   * its per-source override (frontmatter) and a per-feature default.
+   * Returns null in NEW mode when no api key is available; in LEGACY
+   * mode synthesizes a tuple that matches the pre-refactor wiring.
+   */
+  function resolveFor(featureSetting: FeatureLLMSetting | undefined, perSource?: SourceConfig): ResolvedLLM | null {
+    if (isLegacy) {
+      // Legacy: skip resolveLLM entirely. Use the perSource override for
+      // model only (the field that worked before); pass through legacy
+      // endpoint + apiKey unchanged.
+      const groq = getProvider('groq');
+      if (!groq) return null;                                            // unreachable
+      return {
+        provider: groq,
+        model: perSource?.model ?? options.defaultModel ?? groq.defaultModel,
+        endpoint: perSource?.endpoint ?? options.endpoint ?? groq.defaultEndpoint,
+        apiKey: options.apiKey ?? '',                                    // empty preserved on purpose for tests
+      };
+    }
+    return resolveLLM({
+      providerOverride: perSource?.provider,
+      modelOverride: perSource?.model,
+      endpointOverride: perSource?.endpoint,
+      featureProvider: featureSetting?.provider,
+      featureModel: featureSetting?.model,
+      globalProvider,
+      globalModel,
+      apiKeys,
+    });
+  }
+
+  function fallbackForLog(label: string, providerName: string): void {
+    const p = getProvider(providerName);
+    options.log?.(`buildSources: skipping ${label} — no API key for provider '${providerName}' (env ${p?.envKeyName ?? '?'} unset)`);
+  }
+
+
   // From cues.md: collect all word-scope alternatives sources into one
   // RoutedWordSourceGroup. Other sources (different scope/parser) stay
   // individual ConfigSource instances.
@@ -142,15 +240,37 @@ export function buildSourcesFromConfig(
         // an explicit `match: .*` is required if the user really wants
         // a fall-through cue.
         if (!srcCfg.match && !srcCfg.keywords) continue;
+        const resolved = resolveFor(options.wordCues, srcCfg);
+        if (!resolved) {
+          fallbackForLog(`word-cue '${srcCfg.name}'`, srcCfg.provider || options.wordCues?.provider || globalProvider || 'groq');
+          continue;
+        }
         wordCueSources.push(new ConfigSource({
           sourceConfig: { ...srcCfg, scope },
-          ...options,
+          // Wrap the http adapter with auto-fallback so transient errors
+          // (429 / 5xx / network) on the resolved provider re-issue
+          // against the wire-compatible peer (groq ↔ cerebras when both
+          // keys are configured). No-op for providers without a peer.
+          httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+          provider: resolved.provider,
+          endpoint: resolved.endpoint,
+          apiKey: resolved.apiKey,
+          model: resolved.model,
         }));
       } else {
         // Non-routable sources (different scope or parser) stay direct.
+        const resolved = resolveFor(options.wordCues, srcCfg);
+        if (!resolved) {
+          fallbackForLog(`source '${srcCfg.name}'`, srcCfg.provider || options.wordCues?.provider || globalProvider || 'groq');
+          continue;
+        }
         sources.push(new ConfigSource({
           sourceConfig: { ...srcCfg, scope },
-          ...options,
+          httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+          provider: resolved.provider,
+          endpoint: resolved.endpoint,
+          apiKey: resolved.apiKey,
+          model: resolved.model,
         }));
       }
     }
@@ -176,30 +296,28 @@ export function buildSourcesFromConfig(
     }
   }
 
-  // Spelling: word-scope spell-checker. Flags misspelled words in plain
-  // text and offers corrections as cycling alternatives. Priority 80 —
-  // above domain word-cues (~75) so corrections beat synonyms on the
-  // same wordIndex.
-  if (options.enableSpelling) {
-    sources.push(new SpellingSource({
-      httpAdapter: options.httpAdapter,
-      endpoint: options.endpoint,
-      apiKey: options.apiKey,
-      model: options.defaultModel,
-    }));
-  }
+  // Spelling has no dedicated source class anymore — it's a regular
+  // ConfigSource entry shipped at `defaults/cues/spelling.md` (a
+  // word-scope cue with `match: .*`, priority 80, parser
+  // alternatives). It loads through the same path as legal/medical/etc.
 
   // Fluid-blank: free-form `_` lookup handler (P1 SEGMENT + P3 ANSWER).
   // Cedes to keyword-bound BlankSource when a registered blank would
   // claim the slot (keyword within blankProximity of the `_`).
   if (options.enableFluidBlank) {
-    sources.push(new FluidBlankSource({
-      httpAdapter: options.httpAdapter,
-      endpoint: options.endpoint,
-      apiKey: options.apiKey,
-      model: options.defaultModel,
-      blanks: options.blanks ?? {},
-    }));
+    const resolved = resolveFor(options.fluidBlank);
+    if (!resolved) {
+      fallbackForLog('fluid-blank', options.fluidBlank?.provider || globalProvider || 'groq');
+    } else {
+      sources.push(new FluidBlankSource({
+        httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+        provider: resolved.provider,
+        endpoint: resolved.endpoint,
+        apiKey: resolved.apiKey,
+        model: resolved.model,
+        blanks: options.blanks ?? {},
+      }));
+    }
   }
 
   // Transform-blank: IMPERATIVE-instruction handler (EXTRACT + APPLY +
@@ -209,14 +327,20 @@ export function buildSourcesFromConfig(
   // BlankSource if applicable AND only claims when the surrounding text
   // starts with an imperative verb (heuristic in supports()).
   if (options.enableTransformBlank) {
-    sources.push(new TransformBlankSource({
-      httpAdapter: options.httpAdapter,
-      endpoint: options.endpoint,
-      apiKey: options.apiKey,
-      model: options.defaultModel,
-      blanks: options.blanks ?? {},
-      log: options.log,
-    }));
+    const resolved = resolveFor(options.transformBlank);
+    if (!resolved) {
+      fallbackForLog('transform-blank', options.transformBlank?.provider || globalProvider || 'groq');
+    } else {
+      sources.push(new TransformBlankSource({
+        httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+        provider: resolved.provider,
+        endpoint: resolved.endpoint,
+        apiKey: resolved.apiKey,
+        model: resolved.model,
+        blanks: options.blanks ?? {},
+        log: options.log,
+      }));
+    }
   }
 
   return sources;

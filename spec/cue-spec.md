@@ -32,7 +32,7 @@ Both shapes parse to the same in-memory model. Authors pick flat for tiny source
 └── scripts/, references/, assets/   (optional bundled resources — see core.md)
 ```
 
-> **Note:** OpenCues' default tree currently uses `<root>/words/` instead of `<root>/cues/`. Both names are accepted; `cues/` is the canonical name and `words/` is preserved for backward compatibility.
+> **Note:** `cues/` is the canonical name. `words/` is accepted as a legacy alias for users who installed during the brief words/-era; `seed-configs` migrates `words/` → `cues/` automatically.
 
 ---
 

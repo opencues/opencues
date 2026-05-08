@@ -4,7 +4,7 @@ Walk-through to confirm the system works end-to-end after the rename + simplific
 
 Setup expected:
 - `~/.cues/` freshly seeded (no `controls.md`, no `controls/`)
-- `~/.cues/cues.md` has 3 flags: `fluid-blank-mode: on`, `spelling-mode: on`, `word-cues-mode: on`
+- `~/.cues/OPENCUES.md` has 2 flags: `fluid-blank-mode: on`, `word-cues-mode: on` (spelling is now a regular cue at `~/.cues/cues/spelling.md`, no separate flag)
 - OpenCode patched + launched
 
 If you don't have a working install, see the very-bottom "Reset" recipe.
@@ -30,12 +30,12 @@ Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers ho
 - [x] ON: `the boy jumped over the dog` → nothing colours (no domain matches). 0 results. ✓
 - [x] OFF: type either → no words dim, no LLM calls. ✓
 
-### B.3 — `spelling-mode`
-- [x] `the boy jumpved over the thingy` → spelling source returns 1 result (flags misspelling). ✓
+### B.3 — spelling cue (now a regular word-cue at `~/.cues/cues/spelling.md`)
+- [x] `the boy jumpved over the thingy` → spelling cue returns 1 result (flags misspelling). ✓
 - [x] `i recieve definately accomodate` → 3 results for 4 cleanWords (three corrections offered). ✓
 - [x] `Paris is great` → 0 results (proper noun NOT flagged). ✓
 - [x] `the API returned 200` → 0 results (acronym + number NOT flagged). ✓
-- [x] OFF: `the boy jumpved over the fox` → 0 results, nothing flagged. ✓ (Build-key rebuild fires: `opencues.md flags changed — rebuilding sources`.)
+- [x] DISABLED via `enabled: false` in cues/spelling.md frontmatter: 0 results, nothing flagged. ✓
 
 ### B.4 — `fluid-blank-mode`
 - [x] `4 + 4 _` → `8` (WIPE). ✓
@@ -158,9 +158,9 @@ opencues install opencode    # chains seed-configs which creates fresh ~/.cues/
 
 ## Known gotcha: `seed-configs` is first-time-only
 
-The SEED phase **skips files that already exist with content** to preserve user customisations. That means when shipped defaults gain new fields (e.g. `fluid-blank-mode`, `spelling-mode` were added to `opencues.md` after initial install), your existing `~/.cues/cues.md` silently lacks them. Every cue surface defaults to OFF when its flag is missing, so this surfaces as "feature doesn't fire" with no error.
+The SEED phase **skips files that already exist with content** to preserve user customisations. That means when shipped defaults gain new fields (e.g. `fluid-blank-mode` was added to `OPENCUES.md` after initial install), your existing `~/.cues/OPENCUES.md` silently lacks them. Every cue surface defaults to OFF when its flag is missing, so this surfaces as "feature doesn't fire" with no error.
 
-**How it bit me here:** my install pre-dated the new flags. `~/.cues/cues.md` existed without them. Re-running `opencues seed-configs` skipped the file. Re-running `opencues install opencode` chained `seed-configs` which still skipped the file. Spelling + fluid-blank were silently off until I `rm -rf ~/.cues && opencues install opencode`.
+**How it bit me here:** my install pre-dated the new flags. `~/.cues/OPENCUES.md` existed without them. Re-running `opencues seed-configs` skipped the file. Re-running `opencues install opencode` chained `seed-configs` which still skipped the file. Spelling + fluid-blank were silently off until I `rm -rf ~/.cues && opencues install opencode`.
 
 The CLI now warns about this on every `seed-configs` run when any file is skipped — points at:
 - `rm ~/.cues/<file> && opencues seed-configs` (re-seed one file, lose only that file's customisations)

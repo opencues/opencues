@@ -7,11 +7,11 @@
 #   set <settingName> <value>  → (writes to cues.md frontmatter, no output)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Settings live in the user-level cues.md frontmatter (system-wide,
-# runtime-owned schema). This blank always lives at
+# Settings live in the user-level OPENCUES.md (markdown with frontmatter,
+# system-wide, runtime-owned schema). This blank always lives at
 # ~/.cues/blanks/opencues/ so the target file is deterministically
-# two levels up.
-OPENCUES_MD="$SCRIPT_DIR/../../../.opencuesrc"
+# two levels up at ~/.cues/OPENCUES.md.
+OPENCUES_MD="$SCRIPT_DIR/../../OPENCUES.md"
 
 cmd="${1:-get}"
 setting="${2:-}"

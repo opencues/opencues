@@ -22,9 +22,9 @@ pnpm exec opencues install claude-code --target /path/to/cli.js
 `opencues install claude-code` runs two scripts in order:
 
 1. **`opencues seed-configs --silent`** (top-level CLI, owns shared `~/.cues/` writes)
-   - First-time copy of `defaults/{cues,blanks,opencues}.md + cues/ + blanks/ + scripts/` → `~/.cues/`
+   - First-time copy of `defaults/{cues,blanks}.md + OPENCUES.md + cues/ + blanks/ + scripts/` → `~/.cues/`
    - Sync of library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` — overwrites stale, never overwrites `.md`
-   - Self-heal: re-seed a 0-byte `~/.opencuesrc` (would otherwise silently break `opencues ___` blank-fills)
+   - Self-heal: re-seed a 0-byte `~/.cues/OPENCUES.md` (would otherwise silently break `opencues ___` blank-fills)
    - Compile colocated `.cs` → `.exe` (WSL only — `BrightCtl.exe`, `VolCtl.exe`, `SpeakCtl.exe`)
 
 2. **`integrations/claude-code/patches/setup.sh`** (CC-specific only)

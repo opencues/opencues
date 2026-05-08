@@ -6,7 +6,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "find dist -name '*.test.js' | xargs node --test"
+    "test": "find dist -name '*.test.js' | xargs node --test",
+    "smoke:providers": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/smoke-providers.ts && node dist-smoke/scripts/smoke-providers.js",
+    "bench:providers": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/bench-providers.ts && node dist-smoke/scripts/bench-providers.js"
   },
   "keywords": ["cues", "alternatives", "tips"],
   "license": "UNLICENSED"

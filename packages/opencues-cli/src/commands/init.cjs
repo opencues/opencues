@@ -18,11 +18,11 @@ module.exports = function init(argv, ctx) {
   // Files we scaffold. README is informational; .md files are usable
   // templates with comment-only schema docs (or empty if --minimal).
   //
-  // Note: opencues.md is NOT scaffolded here. Its schema (voice-mode,
+  // Note: OPENCUES.md is NOT scaffolded here. Its schema (voice-mode,
   // tips-mode, debug-mode, …) is defined by the OpenCues runtime — not
-  // by users or projects — and it lives only at user-level (~/.cues/
-  // opencues.md), auto-managed by OpenCuesSettingsBlank on first
-  // settings write.
+  // by users or projects — and it lives only at user-level
+  // (~/.cues/OPENCUES.md), auto-managed by OpenCuesSettingsBlank on
+  // first settings write.
   const files = ['cues.md', 'blanks.md', 'README.md'];
 
   console.log(`Initialising .cues/ in ${cwd}\n`);

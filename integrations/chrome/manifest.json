@@ -6,6 +6,11 @@
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://api.groq.com/*",
+    "https://api.cerebras.ai/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://openrouter.ai/*",
+    "https://generativelanguage.googleapis.com/*",
     "https://finnhub.io/*",
     "https://hnrss.org/*",
     "https://geocoding-api.open-meteo.com/*",

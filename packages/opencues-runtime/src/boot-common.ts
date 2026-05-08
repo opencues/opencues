@@ -18,6 +18,8 @@
 // boot-common-specific test would mostly duplicate them.
 
 import type { HostAdapter, LogLevel } from './adapter';
+import type { ResolvedAgentLLM } from './modules/agent-rewrite';
+
 
 /* ─── Source reclassification helper ─────────────────────────────────────
  *
@@ -91,6 +93,44 @@ export function createLogFunction(
   };
 }
 import { ConfigLoader } from './modules/config-loader';
+
+/**
+ * Build the AgentRewrite `resolveLLM` thunk for boot files. Reads the
+ * current `agent-provider:` / `agent-model:` / `agent-endpoint:` cues.md
+ * frontmatter (with falls-through to global `llm-provider:` /
+ * `llm-model:` / `llm-endpoint:`), looks up the right ProviderAdapter
+ * from @opencues/core, and returns the resolved tuple. Returns null
+ * when no key is available for the resolved provider, OR when
+ * @opencues/core can't be require()'d (rare — usually a packaging
+ * misstep). The runtime falls back to its built-in Groq-shaped path
+ * in that case.
+ *
+ * Re-resolves on every tick (callers wrap this in an arrow), so
+ * cues.md hot-reload propagates without an integration restart.
+ */
+export function buildAgentLLMResolver(
+  configLoader: ConfigLoader,
+  apiKeys: Readonly<Record<string, string | undefined>>,
+): ResolvedAgentLLM | null {
+  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return null;
+  }
+  if (!core?.resolveLLM) return null;
+  const s = configLoader.opencuesState.settings;
+  const out = core.resolveLLM({
+    featureProvider: s.get('agent-provider'),
+    featureModel: s.get('agent-model'),
+    endpointOverride: s.get('agent-endpoint') ?? s.get('llm-endpoint'),
+    globalProvider: s.get('llm-provider'),
+    globalModel: s.get('llm-model'),
+    apiKeys,
+  }) as ResolvedAgentLLM | null;
+  return out;
+}
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
@@ -122,8 +162,8 @@ export interface BuildSharedRuntimeOptions {
    *  (project first, user second). Falls back to `[adapter.cwd]` when
    *  unset for backwards compat. See ConfigLoaderOptions. */
   readonly configSearchPaths?: readonly string[];
-  /** Path to `.opencuesrc` (user-level rc-style runtime config). When
-   *  unset, settings stay at runtime defaults. */
+  /** Path to `OPENCUES.md` (user-level runtime config, frontmatter
+   *  format). When unset, settings stay at runtime defaults. */
   readonly settingsFile?: string;
 }
 

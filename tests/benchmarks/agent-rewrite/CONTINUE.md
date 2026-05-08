@@ -25,7 +25,7 @@
   - `tests/benchmarks/agent-task/` whole directory
   - 3 dead settings (`agent-mode`, `agent-judge-mode`,
     `agent-retry-mode`) gone from `config-loader.ts`,
-    `defaults/opencuesrc`, and `~/.opencuesrc`.
+    `defaults/OPENCUES.md`, and `~/.cues/OPENCUES.md`.
 
 ---
 
@@ -56,7 +56,7 @@ gone — there's only one agent module to instantiate.
 
 Three settings deleted (`agent-mode`, `agent-judge-mode`,
 `agent-retry-mode`). The runtime no longer reads them from
-`opencuesrc`. Existing user files with these keys are silently
+`OPENCUES.md`. Existing user files with these keys are silently
 ignored — no migration needed.
 
 ### Docs
@@ -121,7 +121,7 @@ GROQ_API_KEY=... npx tsx tests/benchmarks/agent-rewrite/live-typing.ts
 
 ## Live observations from production logs (2026-05-07)
 
-After flipping `agent-mode: rewrite` ON in `~/.opencuesrc`:
+After flipping `agent-mode: rewrite` ON in `~/.cues/OPENCUES.md`:
 
 - **Zero** `clamping cursor` events across multi-hour sessions.
 - **Zero** `task changed mid-round` discards.

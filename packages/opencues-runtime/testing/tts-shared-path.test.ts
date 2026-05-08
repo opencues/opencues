@@ -65,7 +65,7 @@ describe('TTS shared-path contract', () => {
     expect(src).not.toContain('.claude/opencues/');                   // no pre-compact-footprint paths
     expect(src).not.toContain('.claude/actions/');                    // no legacy paths
     // Anti-regression for the OpenStandard rename: legacy ~/.opencues/
-    // moved to ~/.cues/ + ~/.opencuesrc. The TTS path lives under the
+    // moved to ~/.cues/ + ~/.cues/OPENCUES.md. The TTS path lives under the
     // new `.cues/` library dir, NOT the old `.opencues/`. Without this
     // positive assertion, an unrenamed resolveTtsScript() that still
     // pointed at `.opencues/scripts/` would silently break TTS after

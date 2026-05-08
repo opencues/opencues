@@ -121,12 +121,12 @@ pnpm exec opencues update --no-pull
 
 ```bash
 pnpm exec opencues debug
-# → prints current state from ~/.opencuesrc
+# → prints current state from ~/.cues/OPENCUES.md
 
 pnpm exec opencues debug on
 # → "Set debug-mode: on in /home/<you>/.cues/opencues.md"
 
-cat ~/.opencuesrc
+cat ~/.cues/OPENCUES.md
 # → frontmatter contains "debug-mode: on"
 
 pnpm exec opencues debug off
@@ -135,11 +135,11 @@ pnpm exec opencues debug off
 pnpm exec opencues debug on --project
 # → writes to <cwd>/.cues/opencues.md instead
 
-cat .opencuesrc | head
+cat OPENCUES.md | head
 # → check the project file got the update
 
 # CLEANUP: revert
-git checkout -- .opencuesrc
+git checkout -- OPENCUES.md
 ```
 
 ---
@@ -320,7 +320,7 @@ pnpm exec opencues new cue test-cue --dry-run
 pnpm exec opencues new cue test-cue
 # → file created with {{NAME}} → "test-cue" substituted
 
-cat ~/.cues/words/test-cue/CUE.md
+cat ~/.cues/cues/test-cue/CUE.md
 # → frontmatter + prompt body, references "test-cue"
 
 pnpm exec opencues new cue test-cue
@@ -336,7 +336,7 @@ pnpm exec opencues new blank my-control --project
 # → creates <cwd>/.cues/blanks/my-control/BLANK.md (in repo)
 
 # CLEANUP:
-rm -rf ~/.cues/words/test-cue
+rm -rf ~/.cues/cues/test-cue
 rm -rf .cues/blanks/my-control
 ```
 

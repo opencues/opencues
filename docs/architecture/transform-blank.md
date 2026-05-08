@@ -56,7 +56,7 @@ Priority chain (highest first):
   95  BlankSource          ← keyword-bound (volume, brightness, ...)
   93  TransformBlankSource ← NEW: imperative instructions
   92  FluidBlankSource     ← free-form lookups
-  80  SpellingSource       ← misspelled words on plain text
+  80  spelling cue         ← misspelled words on plain text (defaults/cues/spelling.md, ConfigSource)
 ```
 
 When the user types `_`, all sources whose `supports()` returns true

@@ -1,0 +1,709 @@
+/**
+ * Per-provider request/response shape tests.
+ *
+ * Each provider gets a request-shape test (URL, body, headers) and a
+ * response-shape test (extract assistant text from the wire format).
+ * The shapes are stable contracts — if a real provider changes its API
+ * we'd update the adapter; tests here pin the SHAPE we send/expect.
+ */
+import { describe, it } from 'node:test';
+import * as assert from 'node:assert';
+import {
+  buildProviderRequest,
+  parseProviderResponse,
+  getProvider,
+  listProviders,
+  resolveLLM,
+  withFallback,
+  PROVIDER_IDS,
+} from './llm-provider';
+
+describe('groq provider — OpenAI-compatible (the back-compat default)', () => {
+  it('buildRequest: chat-completions URL, bearer auth, OpenAI body', () => {
+    const built = buildProviderRequest(
+      'groq',
+      {
+        model: 'openai/gpt-oss-120b',
+        messages: [{ role: 'user', content: 'hi' }],
+        maxTokens: 100, temperature: 0, seed: 42, reasoningEffort: 'low',
+      },
+      { apiKey: 'gsk_test' },
+    );
+    assert.strictEqual(built.url, 'https://api.groq.com/openai/v1/chat/completions');
+    assert.deepStrictEqual(built.headers, { 'Content-Type': 'application/json', Authorization: 'Bearer gsk_test' });
+    const body = JSON.parse(built.body);
+    assert.deepStrictEqual(body, {
+      model: 'openai/gpt-oss-120b',
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 100, temperature: 0, seed: 42, reasoning_effort: 'low',
+    });
+  });
+
+  it('buildRequest: honours endpoint override', () => {
+    const built = buildProviderRequest(
+      'groq',
+      { model: 'm', messages: [{ role: 'user', content: 'x' }] },
+      { apiKey: 'k', endpoint: 'https://custom.example/v1/chat/completions' },
+    );
+    assert.strictEqual(built.url, 'https://custom.example/v1/chat/completions');
+  });
+
+  it('parseResponse: extracts choices[0].message.content', () => {
+    const raw = JSON.stringify({ choices: [{ message: { content: 'hello' } }] });
+    assert.strictEqual(parseProviderResponse('groq', raw), 'hello');
+  });
+
+  it('parseResponse: throws on { error }', () => {
+    const raw = JSON.stringify({ error: { message: 'rate limited' } });
+    assert.throws(() => parseProviderResponse('groq', raw), /rate limited/);
+  });
+});
+
+describe('openrouter provider — OpenAI-shape with attribution headers', () => {
+  it('buildRequest: openrouter URL + recommended headers', () => {
+    const built = buildProviderRequest(
+      'openrouter',
+      { model: 'deepseek/deepseek-chat-v3.1', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'or_test' },
+    );
+    assert.strictEqual(built.url, 'https://openrouter.ai/api/v1/chat/completions');
+    assert.strictEqual(built.headers.Authorization, 'Bearer or_test');
+    assert.strictEqual(built.headers['HTTP-Referer'], 'https://opencues.dev');
+    assert.strictEqual(built.headers['X-Title'], 'OpenCues');
+  });
+
+  it('parseResponse: same OpenAI shape', () => {
+    const raw = JSON.stringify({ choices: [{ message: { content: 'open' } }] });
+    assert.strictEqual(parseProviderResponse('openrouter', raw), 'open');
+  });
+});
+
+describe('openai provider — direct OpenAI', () => {
+  it('buildRequest: api.openai.com URL, bearer auth', () => {
+    const built = buildProviderRequest(
+      'openai',
+      { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'sk_test' },
+    );
+    assert.strictEqual(built.url, 'https://api.openai.com/v1/chat/completions');
+    assert.strictEqual(built.headers.Authorization, 'Bearer sk_test');
+  });
+
+  it('buildRequest: STRIPS reasoning_effort on non-reasoning models (gpt-4o-mini)', () => {
+    // OpenAI's chat-completions endpoint 400s on `reasoning_effort`
+    // for non-reasoning models. We must not forward it.
+    const built = buildProviderRequest(
+      'openai',
+      { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'low' },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.reasoning_effort, undefined);
+  });
+
+  it('buildRequest: uses `max_completion_tokens` for gpt-5/o-series (legacy `max_tokens` 400s)', () => {
+    for (const model of ['gpt-5.4-nano', 'gpt-5-mini', 'o3-mini', 'o1-mini']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], maxTokens: 100 },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.max_completion_tokens, 100, `expected max_completion_tokens for ${model}`);
+      assert.strictEqual(body.max_tokens, undefined, `legacy max_tokens leaked for ${model}`);
+    }
+  });
+
+  it('buildRequest: STRIPS `temperature` for gpt-5/o-series (model rejects non-default values)', () => {
+    for (const model of ['gpt-5.4-nano', 'o3-mini']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], temperature: 0 },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.temperature, undefined, `temperature leaked for ${model}`);
+    }
+  });
+
+  it('buildRequest: KEEPS `temperature` for gpt-4o / gpt-4 (model accepts it)', () => {
+    const built = buildProviderRequest(
+      'openai',
+      { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'x' }], temperature: 0.3 },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.temperature, 0.3);
+  });
+
+  it('buildRequest: uses legacy `max_tokens` for gpt-4o / gpt-4 (back-compat)', () => {
+    for (const model of ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], maxTokens: 100 },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.max_tokens, 100, `expected max_tokens for ${model}`);
+      assert.strictEqual(body.max_completion_tokens, undefined, `wrongly upgraded ${model}`);
+    }
+  });
+
+  it('buildRequest: KEEPS reasoning_effort for OpenAI reasoning models (o1, o3, gpt-5)', () => {
+    for (const model of ['o1-mini', 'o3-mini', 'gpt-5-thinking']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'low' },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.reasoning_effort, 'low', `expected pass-through for ${model}`);
+    }
+  });
+});
+
+describe('gemini provider — translates to/from Google’s shape', () => {
+  it('buildRequest: model in URL path, key in query string, no auth header', () => {
+    const built = buildProviderRequest(
+      'gemini',
+      { model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'gem_test' },
+    );
+    assert.strictEqual(
+      built.url,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=gem_test',
+    );
+    assert.deepStrictEqual(built.headers, { 'Content-Type': 'application/json' });
+  });
+
+  it('buildRequest: maps messages → contents (parts[].text), assistant → model', () => {
+    const built = buildProviderRequest(
+      'gemini',
+      {
+        model: 'gemini-2.5-flash',
+        messages: [
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: 'hi back' },
+          { role: 'user', content: 'how are you?' },
+        ],
+      },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.deepStrictEqual(body.contents, [
+      { role: 'user', parts: [{ text: 'hello' }] },
+      { role: 'model', parts: [{ text: 'hi back' }] },
+      { role: 'user', parts: [{ text: 'how are you?' }] },
+    ]);
+  });
+
+  it('buildRequest: pulls system message into systemInstruction', () => {
+    const built = buildProviderRequest(
+      'gemini',
+      {
+        model: 'gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'You are terse.' },
+          { role: 'user', content: 'explain X' },
+        ],
+      },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.deepStrictEqual(body.systemInstruction, { parts: [{ text: 'You are terse.' }] });
+    assert.deepStrictEqual(body.contents, [{ role: 'user', parts: [{ text: 'explain X' }] }]);
+  });
+
+  it('buildRequest: maxTokens/temperature → generationConfig', () => {
+    const built = buildProviderRequest(
+      'gemini',
+      { model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'x' }], maxTokens: 256, temperature: 0.2 },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.deepStrictEqual(body.generationConfig, { maxOutputTokens: 256, temperature: 0.2 });
+  });
+
+  it('buildRequest: omits OpenAI-only knobs (seed, reasoningEffort)', () => {
+    const built = buildProviderRequest(
+      'gemini',
+      { model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'x' }], seed: 42, reasoningEffort: 'low' },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.seed, undefined);
+    assert.strictEqual(body.reasoning_effort, undefined);
+  });
+
+  it('parseResponse: extracts candidates[0].content.parts[].text', () => {
+    const raw = JSON.stringify({ candidates: [{ content: { parts: [{ text: 'hello world' }] } }] });
+    assert.strictEqual(parseProviderResponse('gemini', raw), 'hello world');
+  });
+
+  it('parseResponse: concatenates multiple parts', () => {
+    const raw = JSON.stringify({ candidates: [{ content: { parts: [{ text: 'one ' }, { text: 'two' }] } }] });
+    assert.strictEqual(parseProviderResponse('gemini', raw), 'one two');
+  });
+
+  it('parseResponse: throws on { error }', () => {
+    const raw = JSON.stringify({ error: { message: 'invalid api key' } });
+    assert.throws(() => parseProviderResponse('gemini', raw), /invalid api key/);
+  });
+
+  it('parseResponse: throws on safety-blocked output', () => {
+    const raw = JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } });
+    assert.throws(() => parseProviderResponse('gemini', raw), /SAFETY/);
+  });
+
+  it('buildRequest: model name with slash gets URL-encoded', () => {
+    const built = buildProviderRequest(
+      'gemini',
+      { model: 'tunedModels/foo/bar', messages: [{ role: 'user', content: 'x' }] },
+      { apiKey: 'k' },
+    );
+    assert.match(built.url, /tunedModels%2Ffoo%2Fbar/);
+  });
+});
+
+describe('cerebras provider — OpenAI-shape, low-latency wafer-scale host', () => {
+  it('buildRequest: cerebras URL + bearer auth + OpenAI body', () => {
+    const built = buildProviderRequest(
+      'cerebras',
+      { model: 'qwen-3-235b-a22b-instruct-2507', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'csk_test' },
+    );
+    assert.strictEqual(built.url, 'https://api.cerebras.ai/v1/chat/completions');
+    assert.strictEqual(built.headers.Authorization, 'Bearer csk_test');
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.model, 'qwen-3-235b-a22b-instruct-2507');
+    assert.ok(Array.isArray(body.messages));
+  });
+
+  it('buildRequest: forwards reasoning_effort for gpt-oss models', () => {
+    const built = buildProviderRequest(
+      'cerebras',
+      { model: 'gpt-oss-120b', messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'low' },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.reasoning_effort, 'low');
+  });
+
+  it('parseResponse: OpenAI-shape (choices[0].message.content)', () => {
+    const raw = JSON.stringify({ choices: [{ message: { content: 'fast' } }] });
+    assert.strictEqual(parseProviderResponse('cerebras', raw), 'fast');
+  });
+});
+
+describe('anthropic provider — Messages API (different shape from OpenAI)', () => {
+  it('buildRequest: /v1/messages URL, x-api-key header, anthropic-version, browser-access header', () => {
+    const built = buildProviderRequest(
+      'anthropic',
+      { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'hi' }] },
+      { apiKey: 'sk-ant-test' },
+    );
+    assert.strictEqual(built.url, 'https://api.anthropic.com/v1/messages');
+    assert.strictEqual(built.headers['x-api-key'], 'sk-ant-test');
+    assert.strictEqual(built.headers['anthropic-version'], '2023-06-01');
+    // Required for Chrome-extension fetch() — server-side ignores it.
+    assert.strictEqual(built.headers['anthropic-dangerous-direct-browser-access'], 'true');
+    // No bearer auth — Anthropic uses x-api-key, not Authorization.
+    assert.strictEqual(built.headers.Authorization, undefined);
+  });
+
+  it('buildRequest: system message goes to top-level `system`, not `messages`', () => {
+    const built = buildProviderRequest(
+      'anthropic',
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [
+          { role: 'system', content: 'You are terse.' },
+          { role: 'user', content: 'explain X' },
+        ],
+      },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.system, 'You are terse.');
+    assert.deepStrictEqual(body.messages, [{ role: 'user', content: 'explain X' }]);
+  });
+
+  it('buildRequest: multiple system messages are joined with \\n\\n', () => {
+    const built = buildProviderRequest(
+      'anthropic',
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [
+          { role: 'system', content: 'Rule 1' },
+          { role: 'system', content: 'Rule 2' },
+          { role: 'user', content: 'go' },
+        ],
+      },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.system, 'Rule 1\n\nRule 2');
+  });
+
+  it('buildRequest: max_tokens defaulted to 1024 when caller omits it', () => {
+    // Anthropic REQUIRES max_tokens — request fails outright otherwise.
+    const built = buildProviderRequest(
+      'anthropic',
+      { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'x' }] },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.max_tokens, 1024);
+  });
+
+  it('buildRequest: caller-provided max_tokens overrides the default', () => {
+    const built = buildProviderRequest(
+      'anthropic',
+      { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'x' }], maxTokens: 4096 },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.max_tokens, 4096);
+  });
+
+  it('buildRequest: omits OpenAI-only knobs (seed, reasoningEffort)', () => {
+    const built = buildProviderRequest(
+      'anthropic',
+      { model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'x' }], seed: 42, reasoningEffort: 'low' },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.seed, undefined);
+    assert.strictEqual(body.reasoning_effort, undefined);
+  });
+
+  it('parseResponse: extracts content[].text blocks, concatenated', () => {
+    const raw = JSON.stringify({
+      content: [
+        { type: 'text', text: 'Hello, ' },
+        { type: 'text', text: 'world!' },
+      ],
+      stop_reason: 'end_turn',
+    });
+    assert.strictEqual(parseProviderResponse('anthropic', raw), 'Hello, world!');
+  });
+
+  it('parseResponse: ignores non-text blocks (tool_use, thinking)', () => {
+    const raw = JSON.stringify({
+      content: [
+        { type: 'thinking', thinking: '...' },
+        { type: 'text', text: 'visible answer' },
+        { type: 'tool_use', name: 'foo', input: {} },
+      ],
+    });
+    assert.strictEqual(parseProviderResponse('anthropic', raw), 'visible answer');
+  });
+
+  it('parseResponse: throws on { error }', () => {
+    const raw = JSON.stringify({ error: { type: 'invalid_request_error', message: 'invalid api key' } });
+    assert.throws(() => parseProviderResponse('anthropic', raw), /invalid api key/);
+  });
+
+  it('parseResponse: throws on { type: "error" } envelope', () => {
+    const raw = JSON.stringify({ type: 'error', error: { message: 'overloaded' } });
+    assert.throws(() => parseProviderResponse('anthropic', raw), /overloaded|error/);
+  });
+});
+
+describe('getProvider / listProviders / PROVIDER_IDS', () => {
+  it('getProvider returns null for unknown id', () => {
+    assert.strictEqual(getProvider('not-a-provider'), null);
+    assert.strictEqual(getProvider(''), null);
+    assert.strictEqual(getProvider(null), null);
+    assert.strictEqual(getProvider(undefined), null);
+  });
+
+  it('listProviders covers every PROVIDER_ID', () => {
+    assert.deepStrictEqual(
+      listProviders().map((p) => p.id).sort(),
+      [...PROVIDER_IDS].sort(),
+    );
+  });
+
+  it('every provider has a working defaults round-trip', () => {
+    for (const id of PROVIDER_IDS) {
+      const p = getProvider(id);
+      assert.ok(p, `provider missing: ${id}`);
+      const built = p!.buildRequest(
+        { model: p!.defaultModel, messages: [{ role: 'user', content: 'x' }] },
+        { apiKey: 'test' },
+      );
+      assert.match(built.url, /^https:\/\//);
+      assert.ok(built.body.length > 0);
+    }
+  });
+});
+
+describe('resolveLLM — settings-hierarchy precedence', () => {
+  const apiKeys = {
+    GROQ_API_KEY: 'groq_k',
+    OPENROUTER_API_KEY: 'or_k',
+    GEMINI_API_KEY: 'gem_k',
+    OPENAI_API_KEY: 'oai_k',
+    ANTHROPIC_API_KEY: 'ant_k',
+    CEREBRAS_API_KEY: 'cere_k',
+  };
+
+  it('per-source override wins over feature + global', () => {
+    const r = resolveLLM({
+      providerOverride: 'gemini',
+      modelOverride: 'gemini-1.5-pro',
+      featureProvider: 'openrouter',
+      featureModel: 'deepseek/deepseek-chat',
+      globalProvider: 'groq',
+      globalModel: 'openai/gpt-oss-120b',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'gemini');
+    assert.strictEqual(r?.model, 'gemini-1.5-pro');
+    assert.strictEqual(r?.apiKey, 'gem_k');
+  });
+
+  it('feature wins over global when no per-source', () => {
+    const r = resolveLLM({
+      featureProvider: 'openrouter',
+      featureModel: 'deepseek/foo',
+      globalProvider: 'groq',
+      globalModel: 'openai/gpt-oss-120b',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'openrouter');
+    assert.strictEqual(r?.model, 'deepseek/foo');
+    assert.strictEqual(r?.apiKey, 'or_k');
+  });
+
+  it('global wins when nothing more specific is set', () => {
+    const r = resolveLLM({ globalProvider: 'openai', globalModel: 'gpt-4o-mini', apiKeys });
+    assert.strictEqual(r?.provider.id, 'openai');
+    assert.strictEqual(r?.model, 'gpt-4o-mini');
+    assert.strictEqual(r?.apiKey, 'oai_k');
+  });
+
+  it('falls through to groq + provider default model when nothing set', () => {
+    const r = resolveLLM({ apiKeys });
+    assert.strictEqual(r?.provider.id, 'groq');
+    assert.strictEqual(r?.model, 'openai/gpt-oss-120b');
+  });
+
+  it('per-source provider override pulls THAT provider’s default model', () => {
+    const r = resolveLLM({
+      providerOverride: 'gemini',
+      globalProvider: 'groq',
+      globalModel: 'openai/gpt-oss-120b',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'gemini');
+    assert.strictEqual(r?.model, 'gemini-2.5-flash');
+  });
+
+  it('returns null when the resolved provider has no api key', () => {
+    const r = resolveLLM({
+      providerOverride: 'gemini',
+      apiKeys: { GROQ_API_KEY: 'g' },
+    });
+    assert.strictEqual(r, null);
+  });
+
+  it('returns null on unknown provider id', () => {
+    const r = resolveLLM({ providerOverride: 'not-a-real-provider', apiKeys });
+    assert.strictEqual(r, null);
+  });
+
+  it('per-feature provider override does NOT inherit a less-specific tier’s model', () => {
+    const r = resolveLLM({
+      featureProvider: 'gemini',
+      globalProvider: 'groq',
+      globalModel: 'openai/gpt-oss-120b',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'gemini');
+    assert.strictEqual(r?.model, 'gemini-2.5-flash');
+  });
+
+  it('per-source modelOverride applies to globally-set provider (model-only override)', () => {
+    const r = resolveLLM({
+      modelOverride: 'openai/gpt-oss-120b',
+      globalProvider: 'groq',
+      globalModel: 'openai/gpt-oss-20b',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'groq');
+    assert.strictEqual(r?.model, 'openai/gpt-oss-120b');
+  });
+
+  it('anthropic provider resolves to ANTHROPIC_API_KEY + claude default', () => {
+    const r = resolveLLM({ providerOverride: 'anthropic', apiKeys });
+    assert.strictEqual(r?.provider.id, 'anthropic');
+    assert.strictEqual(r?.apiKey, 'ant_k');
+    assert.strictEqual(r?.model, 'claude-haiku-4-5-20251001');
+    assert.strictEqual(r?.endpoint, 'https://api.anthropic.com/v1/messages');
+  });
+
+  it('endpointOverride passes through; otherwise picks provider default', () => {
+    const r1 = resolveLLM({ providerOverride: 'groq', apiKeys });
+    assert.strictEqual(r1?.endpoint, 'https://api.groq.com/openai/v1/chat/completions');
+    const r2 = resolveLLM({ providerOverride: 'groq', endpointOverride: 'https://custom/v1/chat/completions', apiKeys });
+    assert.strictEqual(r2?.endpoint, 'https://custom/v1/chat/completions');
+  });
+});
+
+describe('resolveLLM — auto-fallback (groq ↔ cerebras pairing)', () => {
+  const apiKeys = {
+    GROQ_API_KEY: 'groq_k',
+    CEREBRAS_API_KEY: 'cere_k',
+    OPENAI_API_KEY: 'oai_k',
+    ANTHROPIC_API_KEY: 'ant_k',
+  };
+
+  it('resolved groq attaches a cerebras fallback when CEREBRAS_API_KEY is set', () => {
+    const r = resolveLLM({ providerOverride: 'groq', apiKeys });
+    assert.strictEqual(r?.provider.id, 'groq');
+    assert.strictEqual(r?.fallback?.provider.id, 'cerebras');
+    assert.strictEqual(r?.fallback?.apiKey, 'cere_k');
+    // Model name was translated (groq's "openai/gpt-oss-120b" → cerebras's "gpt-oss-120b").
+    assert.strictEqual(r?.fallback?.model, 'gpt-oss-120b');
+  });
+
+  it('resolved cerebras attaches a groq fallback when GROQ_API_KEY is set', () => {
+    const r = resolveLLM({ providerOverride: 'cerebras', apiKeys });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+    assert.strictEqual(r?.fallback?.provider.id, 'groq');
+    assert.strictEqual(r?.fallback?.apiKey, 'groq_k');
+    assert.strictEqual(r?.fallback?.model, 'openai/gpt-oss-120b');
+  });
+
+  it('groq with no CEREBRAS_API_KEY → no fallback', () => {
+    const r = resolveLLM({ providerOverride: 'groq', apiKeys: { GROQ_API_KEY: 'g' } });
+    assert.strictEqual(r?.provider.id, 'groq');
+    assert.strictEqual(r?.fallback ?? null, null);
+  });
+
+  it('non-paired providers (openai, anthropic, gemini, openrouter) get no fallback', () => {
+    for (const id of ['openai', 'anthropic'] as const) {
+      const r = resolveLLM({ providerOverride: id, apiKeys });
+      assert.ok(r, `expected resolve for ${id}`);
+      assert.strictEqual(r?.fallback ?? null, null, `${id} should not auto-pair across wire shapes`);
+    }
+  });
+});
+
+describe('withFallback — HTTP adapter wrapper', () => {
+  function makeAdapter(responses: Array<{ url: string; body: string; status?: number }>) {
+    const calls: Array<{ url: string; body: string; headers: Record<string, string> }> = [];
+    let i = 0;
+    return {
+      adapter: {
+        post: async (url: string, body: string, headers: Record<string, string>): Promise<string> => {
+          calls.push({ url, body, headers });
+          const r = responses[i] ?? responses[responses.length - 1];
+          i += 1;
+          if (r.status && r.status >= 400) throw new Error(`HTTP ${r.status}`);
+          return r.body;
+        },
+      },
+      calls,
+    };
+  }
+  const fallback = {
+    provider: getProvider('cerebras')!,
+    model: 'gpt-oss-120b',
+    endpoint: 'https://api.cerebras.ai/v1/chat/completions',
+    apiKey: 'cere_k',
+  };
+
+  it('passes through when primary returns a healthy body', async () => {
+    const { adapter, calls } = makeAdapter([{ url: '', body: JSON.stringify({ choices: [{ message: { content: 'ok' } }] }) }]);
+    const wrapped = withFallback(adapter, fallback);
+    const result = await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', { Authorization: 'Bearer groq_k' });
+    assert.match(result, /"content":"ok"/);
+    assert.strictEqual(calls.length, 1);                          // no fallback retry
+  });
+
+  it('retries against fallback on rate-limit body (Cerebras 429 shape)', async () => {
+    const { adapter, calls } = makeAdapter([
+      { url: '', body: '{"message":"too_many_requests","type":"too_many_requests_error","code":"queue_exceeded"}' },
+      { url: '', body: JSON.stringify({ choices: [{ message: { content: 'cerebras-success' } }] }) },
+    ]);
+    const wrapped = withFallback(adapter, fallback);
+    const result = await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', { Authorization: 'Bearer groq_k' });
+    assert.match(result, /cerebras-success/);
+    assert.strictEqual(calls.length, 2);
+    // Fallback URL hit + bearer rewritten + model rewritten.
+    assert.strictEqual(calls[1].url, 'https://api.cerebras.ai/v1/chat/completions');
+    assert.strictEqual(calls[1].headers.Authorization, 'Bearer cere_k');
+    assert.match(calls[1].body, /"model":"gpt-oss-120b"/);
+  });
+
+  it('retries against fallback on 5xx-ish body (e.g. service_unavailable)', async () => {
+    const { adapter, calls } = makeAdapter([
+      { url: '', body: '{"error":{"code":503,"message":"service_unavailable"}}' },
+      { url: '', body: JSON.stringify({ choices: [{ message: { content: 'recovered' } }] }) },
+    ]);
+    const wrapped = withFallback(adapter, fallback);
+    const result = await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', {});
+    assert.match(result, /recovered/);
+    assert.strictEqual(calls.length, 2);
+  });
+
+  it('retries against fallback on empty body (timeout / EOF)', async () => {
+    const { adapter, calls } = makeAdapter([
+      { url: '', body: '' },
+      { url: '', body: JSON.stringify({ choices: [{ message: { content: 'recovered' } }] }) },
+    ]);
+    const wrapped = withFallback(adapter, fallback);
+    await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', {});
+    assert.strictEqual(calls.length, 2);
+  });
+
+  it('retries against fallback on thrown network error', async () => {
+    const calls: Array<{ url: string }> = [];
+    let i = 0;
+    const adapter = {
+      post: async (url: string, _b: string, _h: Record<string, string>): Promise<string> => {
+        calls.push({ url });
+        i += 1;
+        if (i === 1) throw new Error('ECONNRESET');
+        return JSON.stringify({ choices: [{ message: { content: 'recovered' } }] });
+      },
+    };
+    const wrapped = withFallback(adapter, fallback);
+    const result = await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', {});
+    assert.match(result, /recovered/);
+    assert.strictEqual(calls.length, 2);
+  });
+
+  it('returns primary body when both primary AND fallback fail (no error masking)', async () => {
+    const { adapter } = makeAdapter([
+      { url: '', body: '{"code":429,"message":"rate_limited"}' },
+      { url: '', body: '{"code":429,"message":"also_rate_limited"}' },
+    ]);
+    const wrapped = withFallback(adapter, fallback);
+    const result = await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', {});
+    // Both transient → return primary's body so caller sees the original error.
+    assert.match(result, /rate_limited/);
+  });
+
+  it('no-op when fallback is null (returns base adapter unchanged)', async () => {
+    const { adapter, calls } = makeAdapter([{ url: '', body: 'whatever' }]);
+    const wrapped = withFallback(adapter, null);
+    assert.strictEqual(wrapped, adapter);                          // identity — no proxy created
+    await wrapped.post('https://x', 'b', {});
+    assert.strictEqual(calls.length, 1);
+  });
+
+  it('does NOT retry when primary returns a non-transient client error (e.g. 400 in body)', async () => {
+    // 400 (e.g. invalid_request_error) means the request was malformed —
+    // retrying on the fallback would just fail the same way. Don't.
+    const { adapter, calls } = makeAdapter([
+      { url: '', body: '{"error":{"type":"invalid_request_error","message":"bad input"}}' },
+    ]);
+    const wrapped = withFallback(adapter, fallback);
+    await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', {});
+    assert.strictEqual(calls.length, 1, 'should not retry on 400-class client error');
+  });
+});

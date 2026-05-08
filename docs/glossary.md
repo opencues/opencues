@@ -72,7 +72,7 @@ Configured in `blanks/{name}/cue.md` with `blankKeywords`, `blankStep`, `blankAu
 
 OpenCues is configured via `.md` files in the project root. These files are the standard — all prompts, modes, and behaviour are defined here, not in code.
 
-**cues.md** — The single top-level config file. Holds **system settings** (voice-mode, fluid-blank-mode, spelling-mode, word-cues-mode, tips-mode, debug-mode, cursor-navigate), the nested `settings:` block (declarations for selector/satellite cycling: each setting's `tip:`, `values:`, and per-value tips), and the `ignore:` array — all in YAML frontmatter. Body is human-readable description, not parsed for cue data. Lives at user-level ONLY for the system-settings half (`~/.cues/cues.md`; overridable with `$OPENCUES_HOME`). Seeded from `defaults/cues.md` by `opencues seed-configs` and re-seeded if 0 bytes (`OpenCuesSettingsBlank` silently no-ops on empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on native hosts). Cycled live by `OpenCuesSettingsBlank`. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
+**cues.md** — The single top-level config file. Holds **system settings** (voice-mode, fluid-blank-mode, word-cues-mode, tips-mode, debug-mode, cursor-navigate), the nested `settings:` block (declarations for selector/satellite cycling: each setting's `tip:`, `values:`, and per-value tips), and the `ignore:` array — all in YAML frontmatter. Body is human-readable description, not parsed for cue data. Lives at user-level ONLY for the system-settings half (`~/.cues/cues.md`; overridable with `$OPENCUES_HOME`). Seeded from `defaults/cues.md` by `opencues seed-configs` and re-seeded if 0 bytes (`OpenCuesSettingsBlank` silently no-ops on empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on native hosts). Cycled live by `OpenCuesSettingsBlank`. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
 
 **cues/{name}/CUE.md** — One folder per cue source. Folder name = source id. Static cues have a body JSON code block (the words map: `{"ultrathink": {"tip": "...", "alts": [...], "speak": true}}`). LLM cues declare `match:` or `keywords:` in frontmatter and put prompt text in the body. The runtime infers static-vs-LLM from data shape (no `type:` discriminator).
 
@@ -108,7 +108,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **buildSourcesFromConfig** — Factory function that takes parsed `cues.md` plus discovered `cues/<name>/cue.md` and `blanks/<name>/cue.md` folders and returns `CueSource[]`. Wires:
 - **Word cues**: Each `cues/<name>/cue.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
-- **Blanks**: Keyword-bound entries from `blanks/<name>/cue.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. `SpellingSource` (priority 80) flags misspelled words on plain text.
+- **Blanks**: Keyword-bound entries from `blanks/<name>/cue.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling.md` cue (priority 80) flags misspelled words on plain text — same `ConfigSource` path as legal/medical/etc.
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 

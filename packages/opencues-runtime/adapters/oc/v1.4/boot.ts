@@ -17,7 +17,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -156,8 +156,8 @@ export function boot(host: HostInfo): BootResult {
     `${HOME}/.cues`,
   ];
   const settingsFile = process.env.OPENCUES_HOME
-    ? `${process.env.OPENCUES_HOME}/opencuesrc`
-    : `${HOME}/.opencuesrc`;
+    ? `${process.env.OPENCUES_HOME}/OPENCUES.md`
+    : `${HOME}/.cues/OPENCUES.md`;
   const shared = buildSharedRuntime(adapter, { log, configSearchPaths, settingsFile });
   configLoaderRef = shared.configLoader; // wires isDebugEnabled to opencues.md
 
@@ -195,12 +195,19 @@ export function boot(host: HostInfo): BootResult {
     tts.subscribe();
   }
 
-  // Phase O.7 — LLM Resolver. Opt-in via host.llmApiKey.
-  if (host.llmApiKey) {
+  // Phase O.7 — LLM Resolver. Opt-in via any LLM key being available
+  // (legacy `llmApiKey` OR any entry in the multi-provider `llmApiKeys`
+  // map). The resolver routes per-cue / per-blank / per-feature requests
+  // to whichever provider the user has configured in cues.md.
+  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
+  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  if (hasAnyKey) {
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey,
+      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
     }, spanFillState, agentTaskState);
     // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
@@ -213,8 +220,14 @@ export function boot(host: HostInfo): BootResult {
     // per-edit guards structurally unnecessary.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey,
+      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      // Re-resolves per tick so cues.md edits to `agent-provider:` /
+      // `agent-model:` / `llm-provider:` take effect without a restart.
+      // null means "use the static fallback" — usually transient until
+      // cues.md is fully loaded.
+      resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
     });
     agentRewrite.start();
   }

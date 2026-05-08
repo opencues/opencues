@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { SourceConfig, BlankParser } from '../cues-md';
 import { parseAlternatives, parseRaw } from './parsers';
+import { getProvider, type ProviderAdapter } from '../llm-provider';
 
 /**
  * The canonical output-format reminder for `parser: alternatives`
@@ -42,12 +43,24 @@ export interface ConfigSourceOptions {
   sourceConfig: SourceConfig;
   /** HTTP adapter for LLM requests */
   httpAdapter: HttpAdapter;
-  /** API endpoint */
+  /**
+   * Resolved provider adapter for this source. Defaults to the Groq
+   * adapter when omitted — preserves the legacy single-provider wiring
+   * for callers that pre-date the multi-provider abstraction.
+   */
+  provider?: ProviderAdapter;
+  /** Resolved endpoint URL. */
   endpoint: string;
-  /** API key */
+  /** Resolved API key (matches provider.envKeyName). */
   apiKey: string;
-  /** Default model (used when sourceConfig.model is not set) */
-  defaultModel: string;
+  /**
+   * Resolved model identifier. The legacy `defaultModel` field is also
+   * accepted for back-compat and is treated equivalently when `model`
+   * is omitted.
+   */
+  model?: string;
+  /** @deprecated Pass `model` instead. Both supported during migration. */
+  defaultModel?: string;
 }
 
 // ============================================================================
@@ -78,6 +91,7 @@ export class ConfigSource implements CueSource {
   readonly sourceConfig: SourceConfig;
   private parser: BlankParser;
   private httpAdapter: HttpAdapter;
+  private provider: ProviderAdapter;
   private endpoint: string;
   private apiKey: string;
   private model: string;
@@ -91,9 +105,14 @@ export class ConfigSource implements CueSource {
     this.parser = cfg.parser ?? 'alternatives';
     this.scope = cfg.scope ?? 'words';
     this.httpAdapter = opts.httpAdapter;
+    this.provider = opts.provider ?? getProvider('groq')!;
     this.endpoint = opts.endpoint;
     this.apiKey = opts.apiKey;
-    this.model = cfg.model ?? opts.defaultModel;
+    // Honor legacy `defaultModel` for back-compat AND let per-cue
+    // frontmatter `model:` override even the resolved model. The build
+    // factory already does this resolution; for callers that bypass it
+    // we still need the per-cue field to win.
+    this.model = cfg.model ?? opts.model ?? opts.defaultModel ?? this.provider.defaultModel;
 
     if (cfg.match) {
       try { this.matchRe = new RegExp(cfg.match, 'i'); } catch { /* invalid regex */ }
@@ -128,26 +147,20 @@ export class ConfigSource implements CueSource {
         : promptText.trimEnd();
       const fullPrompt = ensuredPrompt + separator + input;
 
-      const maxTokens = 800;
-      const temperature = 0.3;
-
-      const body = JSON.stringify({
-        model: this.model,
-        messages: [{ role: 'user', content: fullPrompt }],
-        max_tokens: maxTokens,
-        temperature,
-        // Groq reasoning models (e.g. openai/gpt-oss-120b) burn tokens on internal
-        // reasoning. Without this, max_tokens goes to reasoning and content is empty.
-        // Non-Groq providers ignore this field.
-        reasoning_effort: 'low',
-      });
-      const headers = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      };
-      const response = await this.httpAdapter.post(this.endpoint, body, headers);
-      const data = JSON.parse(response);
-      const raw = data.choices?.[0]?.message?.content || '';
+      const built = this.provider.buildRequest(
+        {
+          model: this.model,
+          messages: [{ role: 'user', content: fullPrompt }],
+          maxTokens: 800,
+          temperature: 0.3,
+          // Provider adapter passes this through only to providers that
+          // honor it (Groq); ignored by Gemini/OpenRouter/OpenAI.
+          reasoningEffort: 'low',
+        },
+        { apiKey: this.apiKey, endpoint: this.endpoint },
+      );
+      const response = await this.httpAdapter.post(built.url, built.body, built.headers);
+      const raw = this.provider.parseResponse(response);
 
       const results = this.parseResponse(raw, context.words);
       return { results, timing: Date.now() - startTime, model: this.model };

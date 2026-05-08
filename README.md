@@ -43,10 +43,12 @@ Integrations read these files via `@opencues/core` (the reference implementation
 
 ## Install
 
-**Prerequisites:** Node.js 18+, [pnpm](https://pnpm.io), a [Groq API key](https://console.groq.com) (free), plus the host editor you want to integrate with.
+**Prerequisites:** Node.js 18+, [pnpm](https://pnpm.io), at least one LLM provider API key, plus the host editor you want to integrate with.
+
+OpenCues supports **six LLM providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, and Gemini. Set the env key for whichever you want; pick different ones per feature in `~/.cues/cues.md` (see [docs/guides/llm-providers.md](docs/guides/llm-providers.md)). Setting both `GROQ_API_KEY` and `CEREBRAS_API_KEY` enables auto-fallback between them.
 
 ```bash
-# Get a Groq key on PATH before launching the host editor
+# Easiest path — Groq's free tier covers every feature
 echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
 
 # Clone + install (one time)
@@ -231,8 +233,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
 - **BlankSource** — keyword-bound blank dispatcher (auto-populate + cycling for `volume _`, `stocks aapl _`, etc.)
 - **FluidBlankSource** — free-form `_` lookup (P1 segment + P3 answer pipeline) for any unmatched blank
-- **SpellingSource** — typo correction on plain text
-- **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority
+- **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority. Spelling is just a regular ConfigSource cue at `defaults/cues/spelling.md` shipped at priority 80; no dedicated class.
 - **buildSourcesFromConfig** — factory: parses `cues.md` frontmatter + folder configs (`cues/<name>/`, `blanks/<name>/`) → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
@@ -276,11 +277,16 @@ Your user-level OpenCues config lives at `~/.cues/`:
 
 ```
 ~/.cues/
-├── cues.md             # Top-level system settings (frontmatter): voice-mode, tips-mode,
-│                       # debug-mode, cursor-navigate, fluid-blank-mode, spelling-mode,
-│                       # word-cues-mode, the nested `settings:` block, and `ignore:` array
-├── cues/<name>/cue.md  # Folder-based cue sources (static body JSON or LLM prompt)
-└── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
+├── OPENCUES.md         # Runtime settings (frontmatter): voice-mode, tips-mode,
+│                       # debug-mode, cursor-navigate, fluid-blank-mode,
+│                       # word-cues-mode, llm-provider, per-feature LLM keys,
+│                       # the nested `settings:` block. Body is documentation.
+├── cues.md             # Cue master file (project-level overridable)
+├── cues/<name>.md      # Per-cue files (legal, medical, financial, spelling, …)
+├── blanks.md           # Blank master file
+├── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
+├── auditors.md         # Agent task master (NEW — tasks the agent applies as you write)
+└── auditors/<name>.md  # Per-auditor task files (base + extras)
 ```
 
 Project-level overrides live at `<cwd>/.cues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.

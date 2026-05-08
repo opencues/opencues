@@ -201,12 +201,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // (without blanks/) still load — blankInvoke just stays null in
   // that case and BlankFill falls back to spawnProcess.
   const blanksPath = `"@opencues/runtime/dist/src/blanks/index.js"`;
-  // .opencuesrc is system-wide, user-level only. Schema is runtime-owned;
+  // OPENCUES.md is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
   const opencuesMdPathExpr =
-    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/opencuesrc"):` +
-    `((process.env.HOME||"~")+"/.opencuesrc"))`;
+    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/OPENCUES.md"):` +
+    `((process.env.HOME||"~")+"/.cues/OPENCUES.md"))`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
@@ -267,11 +267,23 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // SpeakCtl.cs colocated. Honors OPENCUES_HOME for env-driven overrides.
     `ttsScriptPath:(process.env.OPENCUES_HOME||((process.env.HOME||"~")+"/.cues"))+"/scripts/speak.sh",` +
     `ttsRate:2,` +
-    // LLM resolver. Resolver only constructs if llmApiKey is set; otherwise
-    // the runtime stays static-cue-only. Endpoint + model match v1's defaults.
+    // LLM resolver. Resolver only constructs if AT LEAST ONE provider
+    // key is available. Endpoint + model match v1's defaults (Groq);
+    // when a non-Groq provider is selected via cues.md `llm-provider:`,
+    // the runtime substitutes that provider's defaults.
     `llmApiKey:process.env.GROQ_API_KEY||undefined,` +
     `llmEndpoint:process.env.OPENCUES_LLM_ENDPOINT||"https://api.groq.com/openai/v1/chat/completions",` +
     `llmDefaultModel:process.env.OPENCUES_LLM_MODEL||"openai/gpt-oss-120b",` +
+    // Multi-provider key bag. Boot picks the right one per call based
+    // on the active provider for that source/feature.
+    `llmApiKeys:{` +
+      `GROQ_API_KEY:process.env.GROQ_API_KEY,` +
+      `OPENROUTER_API_KEY:process.env.OPENROUTER_API_KEY,` +
+      `GEMINI_API_KEY:process.env.GEMINI_API_KEY,` +
+      `OPENAI_API_KEY:process.env.OPENAI_API_KEY,` +
+      `ANTHROPIC_API_KEY:process.env.ANTHROPIC_API_KEY,` +
+      `CEREBRAS_API_KEY:process.env.CEREBRAS_API_KEY` +
+    `},` +
     // refreshStatusline calls the captured S6 useCallback (set by the
     // injection below) to trigger an immediate statusline re-render. Safe
     // no-op until S6 has run (which happens on the first React render of

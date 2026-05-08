@@ -26,7 +26,7 @@ fires on every typing pause until you stop it.
 
 ## Enable it
 
-Same setting as transform-blank in `~/.opencuesrc`:
+Same setting as transform-blank in `~/.cues/OPENCUES.md`:
 
 ```yaml
 transform-blank-mode: on   # required (agent commands route via transform-blank's EXTRACT)

@@ -34,11 +34,6 @@ export {
 } from './sources/transform-blank-source';
 
 export {
-  SpellingSource,
-  type SpellingSourceConfig,
-} from './sources/spelling-source';
-
-export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,
 } from './sources/build-sources';
@@ -92,6 +87,24 @@ export {
   type DiscoveredConfigs,
   type DirEntry,
 } from './discover';
+
+// LLM provider abstraction
+export {
+  PROVIDER_IDS,
+  getProvider,
+  listProviders,
+  buildProviderRequest,
+  parseProviderResponse,
+  resolveLLM,
+  withFallback,
+  type ProviderId,
+  type ProviderAdapter,
+  type ChatRequest,
+  type BuiltRequest,
+  type ResolveLLMOptions,
+  type ResolvedLLM,
+  type HttpAdapterShape,
+} from './llm-provider';
 
 // Host-compat: which integrations a cue or blank runs on
 export {

@@ -44,10 +44,10 @@ import { createBlanks, type BrowserBlank } from './blanks';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
-// Bake-time defines from esbuild. .opencuesrc holds runtime settings
+// Bake-time defines from esbuild. OPENCUES.md holds runtime settings
 // (system-wide YAML); per-cue and per-blank source files live in
 // __DEFAULT_WORD_CUES__ and __DEFAULT_BLANKS__ (post-layout-migration).
-declare const __DEFAULT_OPENCUESRC__: string;
+declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
 
@@ -67,17 +67,17 @@ function parseDebugMode(content: string | null | undefined): boolean {
 }
 async function refreshReadTraceFromStorage(): Promise<void> {
   try {
-    const key = `${STORAGE_PREFIX}${ROOT}/.opencuesrc`;
+    const key = `${STORAGE_PREFIX}${ROOT}/.cues/OPENCUES.md`;
     const result = await chrome.storage.local.get(key);
     const v = typeof result[key] === 'string' && result[key].length > 0
       ? result[key]
-      : __DEFAULT_OPENCUESRC__;
+      : __DEFAULT_OPENCUES_MD__;
     _readTrace = parseDebugMode(v);
   } catch { _readTrace = false; }
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  const key = `${STORAGE_PREFIX}${ROOT}/.opencuesrc`;
+  const key = `${STORAGE_PREFIX}${ROOT}/.cues/OPENCUES.md`;
   if (key in changes && typeof changes[key].newValue === 'string') {
     _readTrace = parseDebugMode(changes[key].newValue);
   }
@@ -241,9 +241,9 @@ async function readFile(path: string): Promise<string | null> {
 function isReadOnlyPath(path: string): boolean {
   if (!path.startsWith(ROOT + '/')) return false;
   const rel = path.slice(ROOT.length + 1);
-  // .opencuesrc is writable: OpenCuesSettingsBlank cycles voice-mode /
+  // OPENCUES.md is writable: OpenCuesSettingsBlank cycles voice-mode /
   // tips-mode / debug-mode etc. by rewriting the YAML scalar.
-  if (rel === '.opencuesrc') return false;
+  if (rel === '.cues/OPENCUES.md') return false;
   return true;
 }
 
@@ -251,11 +251,12 @@ function isReadOnlyPath(path: string): boolean {
 function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
-  if (rel === '.opencuesrc') return __DEFAULT_OPENCUESRC__ || null;
-  // New layout: .cues/words/<name>.md (flat) and .cues/blanks/<name>/cue.md
+  if (rel === '.cues/OPENCUES.md') return __DEFAULT_OPENCUES_MD__ || null;
+  // New layout: .cues/cues/<name>.md (flat) and .cues/blanks/<name>/cue.md
   // (folder, when scripts colocated) or .cues/blanks/<name>.md (flat).
-  const wordsFlat = rel.match(/^\.cues\/words\/([^/]+)\.md$/);
-  if (wordsFlat) return __DEFAULT_CUE_FOLDERS__[wordsFlat[1]] ?? null;
+  // `.cues/words/` accepted as a legacy alias for `.cues/cues/`.
+  const cuesFlat = rel.match(/^\.cues\/(?:cues|words)\/([^/]+)\.md$/);
+  if (cuesFlat) return __DEFAULT_CUE_FOLDERS__[cuesFlat[1]] ?? null;
   const blanksFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/cue\.md$/);
   if (blanksFolder) return __DEFAULT_BLANK_FOLDERS__[blanksFolder[1]] ?? null;
   const blanksFlat = rel.match(/^\.cues\/blanks\/([^/]+)\.md$/);
@@ -335,9 +336,9 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   const bundled = await readBundledDir(path);
   if (bundled) return bundled;
 
-  // New layout: `.cues/words/<name>.md` (flat) + `.cues/blanks/<name>/`
-  // or `.cues/blanks/<name>.md`.
-  if (path === `${ROOT}/.cues/words`) {
+  // New layout: `.cues/cues/<name>.md` (flat) + `.cues/blanks/<name>/`
+  // or `.cues/blanks/<name>.md`. `words/` accepted as a legacy alias.
+  if (path === `${ROOT}/.cues/cues` || path === `${ROOT}/.cues/words`) {
     return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({
       name: `${name}.md`,
       isDirectory: false,
@@ -421,6 +422,12 @@ export interface RuntimeStartOptions {
   llmEndpoint?: string;
   llmDefaultModel?: string;
   llmDebounceMs?: number;
+  /**
+   * Multi-provider key bag. The popup writes these to chrome.storage
+   * and the content-script forwards them through. Runtime picks the
+   * right one based on cues.md `llm-provider:` / `<feature>-provider:`.
+   */
+  llmApiKeys?: Readonly<Record<string, string | undefined>>;
   /** Finnhub API key for the stocks blank. */
   finnhubApiKey?: string;
   /** Custom ticker map for the stocks blank. */
@@ -456,9 +463,9 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
     } : undefined,
     // OpenCues settings selector/satellite (`opencues settings _`)
-    // reads/writes the seeded .opencuesrc in chrome.storage.
-    opencuesMdReadFile: () => readFile(`${ROOT}/.opencuesrc`),
-    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/.opencuesrc`, content),
+    // reads/writes the seeded OPENCUES.md in chrome.storage.
+    opencuesMdReadFile: () => readFile(`${ROOT}/.cues/OPENCUES.md`),
+    opencuesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/OPENCUES.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 
@@ -502,10 +509,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // FetchHttpAdapter so the runtime doesn't try to load the
     // node-http-adapter stub that throws.
     llmApiKey: opts.llmApiKey,
+    llmApiKeys: opts.llmApiKeys,
     llmEndpoint: opts.llmEndpoint,
     llmDefaultModel: opts.llmDefaultModel,
     llmDebounceMs: opts.llmDebounceMs,
-    httpAdapter: opts.llmApiKey ? new FetchHttpAdapter() : undefined,
+    httpAdapter: (opts.llmApiKey || (opts.llmApiKeys && Object.values(opts.llmApiKeys).some(Boolean)))
+      ? new FetchHttpAdapter() : undefined,
     // CE.8 — blankInvoke routes blank-fill + cycle script calls to
     // the chrome blanks registry above (volume / stocks / weather /
     // hackernews / prompt-improver). Returns null for unknown

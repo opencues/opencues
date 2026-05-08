@@ -146,7 +146,7 @@ Default-source isolation + bundle precedence over bake-time.
 - `opencues.md` correctly stays `← storage` (writable file — voice-mode /
   debug-mode persist there).
 - `cues/sync-demo/cue.md ← bundle (494 chars)` — this folder doesn't exist
-  in `defaults/`; it lives only in `~/.cues/words/sync-demo/`. Its
+  in `defaults/`; it lives only in `~/.cues/cues/sync-demo/`. Its
   presence in chrome proves user content overlays bake-time successfully.
 - `ConfigLoader: loaded 138 cue entries` — same count as bake-time
   baseline; no entries lost in translation.

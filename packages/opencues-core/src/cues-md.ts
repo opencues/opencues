@@ -56,6 +56,16 @@ export interface SourceConfig {
   model?: string;
 
   /**
+   * Provider override for this source (groq | openrouter | gemini | openai).
+   * Per-cue overrides take precedence over per-feature defaults; per-feature
+   * defaults take precedence over the global `llm-provider:` setting.
+   */
+  provider?: string;
+
+  /** Endpoint override (rare — most users only need provider + model). */
+  endpoint?: string;
+
+  /**
    * How to parse the LLM response for blank fill-in.
    * compute     — extract COMPUTE=expr and evaluate as JS math
    * answer      — extract ANSWER=value as a single alternative
@@ -417,6 +427,8 @@ function parsePromptSection(content: string): PromptConfig {
       if (kv.enabled !== undefined) source.enabled = kv.enabled !== 'false';
       if (kv.prompt) source.promptPath = kv.prompt;
       if (kv.model) source.model = kv.model;
+      if (kv.provider) source.provider = kv.provider;
+      if (kv.endpoint) source.endpoint = kv.endpoint;
       if (kv.parser) source.parser = kv.parser as BlankParser;
       if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
     }
@@ -440,6 +452,8 @@ function parsePromptSection(content: string): PromptConfig {
       if (kv.classify) source.classify = kv.classify;
       if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
       if (kv.model) source.model = kv.model;
+      if (kv.provider) source.provider = kv.provider;
+      if (kv.endpoint) source.endpoint = kv.endpoint;
       if (kv.parser) source.parser = kv.parser as BlankParser;
       if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
     }
@@ -555,6 +569,10 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   keywords?: string;
   classify?: string;
   model?: string;
+  /** Per-cue provider override (groq | openrouter | gemini | openai). */
+  provider?: string;
+  /** Per-cue endpoint override. Rare. */
+  endpoint?: string;
   enabled?: boolean;
   promptPath?: string;
   // Blank-specific fields
@@ -623,6 +641,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'keywords': fm.keywords = value; break;
       case 'classify': fm.classify = value; break;
       case 'model': fm.model = value; break;
+      case 'provider': fm.provider = value; break;
+      case 'endpoint': fm.endpoint = value; break;
       case 'enabled': fm.enabled = value !== 'false'; break;
       case 'promptPath': fm.promptPath = value; break;
       case 'tip': fm.tip = value; break;
@@ -792,6 +812,8 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.priority) source.priority = frontmatter.priority;
       if (frontmatter.enabled !== undefined) source.enabled = frontmatter.enabled;
       if (frontmatter.model) source.model = frontmatter.model;
+      if (frontmatter.provider) source.provider = frontmatter.provider;
+      if (frontmatter.endpoint) source.endpoint = frontmatter.endpoint;
       if (frontmatter.parser) source.parser = frontmatter.parser;
       if (frontmatter.scope) source.scope = frontmatter.scope;
 

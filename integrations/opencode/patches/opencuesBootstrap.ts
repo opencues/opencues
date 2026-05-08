@@ -80,15 +80,15 @@ const sourceReclassifier = createSourceReclassifier()
 // shell scripts (blanks/<name>/*.sh) once every host has parity.
 // OS-level blanks (volume, brightness) stay shell-bound on Node hosts
 // because the runtime classes don't ship them.
-// .opencuesrc holds system-wide settings (voice-mode, tips-mode, …)
+// OPENCUES.md holds system-wide settings (voice-mode, tips-mode, …)
 // whose schema is owned by the OpenCues runtime. User-level only;
 // projects cannot override.
 function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
   if (process.env.OPENCUES_HOME) {
-    return path.join(process.env.OPENCUES_HOME, "opencuesrc")
+    return path.join(process.env.OPENCUES_HOME, "OPENCUES.md")
   }
-  return path.join(process.env.HOME ?? "~", ".opencuesrc")
+  return path.join(process.env.HOME ?? "~", ".cues", "OPENCUES.md")
 }
 
 // TTS script lives at user-level (~/.cues/scripts/speak.sh), seeded
@@ -329,6 +329,15 @@ export function startOpenCues(opts: {
     llmApiKey: process.env.GROQ_API_KEY,
     llmEndpoint: process.env.OPENCUES_LLM_ENDPOINT,
     llmDefaultModel: process.env.OPENCUES_LLM_MODEL,
+    // Multi-provider key bag — runtime picks per cues.md `llm-provider:`.
+    llmApiKeys: {
+      GROQ_API_KEY: process.env.GROQ_API_KEY,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
+    },
   })
 
   return bootResult

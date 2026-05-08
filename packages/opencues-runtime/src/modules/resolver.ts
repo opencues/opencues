@@ -23,9 +23,18 @@ import type { AgentTaskState } from '../state/agent-task';
 import { splitWords } from './navigation';
 
 export interface ResolverOptions {
+  /** Legacy single-key endpoint. Prefer `apiKeys` for multi-provider. */
   readonly endpoint: string;
+  /** Legacy single-key. Plumbed in as GROQ_API_KEY when `apiKeys` is unset. */
   readonly apiKey: string;
+  /** Legacy default model when no per-feature override is configured. */
   readonly defaultModel: string;
+  /**
+   * API keys keyed by provider env-var name. Populated by boot from
+   * process.env (or settings UI). Lets cues.md frontmatter pick a
+   * non-Groq provider without rebuilding the patch.
+   */
+  readonly apiKeys?: Readonly<Record<string, string | undefined>>;
   /** Default 500ms — same as v1's auto-submit debounce. */
   readonly debounceMs?: number;
   /** Optional injection seam for tests. When set, runtime uses this instead
@@ -213,12 +222,48 @@ export class Resolver {
     // Endpoint + model precedence: opencues.md `llm-endpoint:` /
     // `llm-model:` > host-supplied default. Lets users switch providers
     // without re-applying the patch.
+    //
+    // Per-feature settings (resolution order, most → least specific):
+    //   per-cue/blank frontmatter (`provider:` / `model:`)
+    //     > per-feature (`agent-provider:`, `fluid-blank-model:`, …)
+    //       > global (`llm-provider:` / `llm-model:`)
+    //         > built-in default (groq / openai/gpt-oss-120b)
+    //
+    // The build-sources factory does the actual resolution; we just
+    // shovel the relevant settings down.
     const settings = this.configLoader.opencuesState.settings;
     const buildOpts = {
       httpAdapter: this._httpAdapter,
-      endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
+      // Multi-provider keys; `apiKey` (legacy) is still passed for the
+      // sources that ship-defaulted to Groq before the abstraction.
+      apiKeys: this.options.apiKeys,
       apiKey: this.options.apiKey,
+      endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
+      // Global tier (read once per build).
+      globalProvider: settings.get('llm-provider'),
+      globalModel: settings.get('llm-model') ?? this.options.defaultModel,
+      globalEndpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
+      // Per-feature tier.
+      wordCues: {
+        provider: settings.get('word-cues-provider'),
+        model: settings.get('word-cues-model'),
+        endpoint: settings.get('word-cues-endpoint'),
+      },
+      fluidBlank: {
+        provider: settings.get('fluid-blank-provider'),
+        model: settings.get('fluid-blank-model'),
+        endpoint: settings.get('fluid-blank-endpoint'),
+      },
+      transformBlank: {
+        provider: settings.get('transform-blank-provider'),
+        model: settings.get('transform-blank-model'),
+        endpoint: settings.get('transform-blank-endpoint'),
+      },
+      // Spelling is a regular config-driven cue now (defaults/cues/
+      // spelling.md). It inherits per-cue / `word-cues-*` / global LLM
+      // routing through the standard ConfigSource path — no per-feature
+      // wiring needed here.
       blanks: this.configLoader.folderConfigs?.blankOverrides ?? {},
       // ALL opt-in: every cue surface defaults to OFF. User flips on via
       // opencues.md. Missing settings → off. Explicit "on" → on.
@@ -226,7 +271,6 @@ export class Resolver {
       // each flag gates.
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
-      enableSpelling: settings.get('spelling-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // Debug log sink — surfaces TransformBlankSource pipeline traces
       // when opencues.md `debug-mode: on`. The adapter.log gates 'debug'
@@ -268,10 +312,13 @@ export class Resolver {
     return [
       s.get('fluid-blank-mode') ?? '',
       s.get('transform-blank-mode') ?? '',
-      s.get('spelling-mode') ?? '',
       s.get('word-cues-mode') ?? '',
       s.get('llm-endpoint') ?? '',
       s.get('llm-model') ?? '',
+      s.get('llm-provider') ?? '',
+      s.get('word-cues-provider') ?? '', s.get('word-cues-model') ?? '', s.get('word-cues-endpoint') ?? '',
+      s.get('fluid-blank-provider') ?? '', s.get('fluid-blank-model') ?? '', s.get('fluid-blank-endpoint') ?? '',
+      s.get('transform-blank-provider') ?? '', s.get('transform-blank-model') ?? '', s.get('transform-blank-endpoint') ?? '',
     ].join('|');
   }
 

@@ -19,7 +19,7 @@ Where **fluid-blank** answers questions at `_` ("capital of france _" → Paris)
 
 ## Enable it
 
-In `~/.opencuesrc` (created automatically by `opencues seed-configs`):
+In `~/.cues/OPENCUES.md` (created automatically by `opencues seed-configs`):
 
 ```yaml
 transform-blank-mode: on
@@ -247,7 +247,7 @@ Quick locator:
   comparison, prompt ablation, dynamic max_tokens, skip-VERIFY rule
   tuning
 - **Priority chain**: BlankSource (95) > TransformBlankSource (93) >
-  FluidBlankSource (92) > SpellingSource (80)
+  FluidBlankSource (92) > shipped spelling cue (80, ConfigSource)
 
 ---
 

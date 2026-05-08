@@ -132,7 +132,7 @@ function doInstall() {
 
   // Delegate to setup.sh — strictly CC-specific work now (cli.js patching,
   // statusline install, tweakcc build/apply, settings.json fixup). All the
-  // shared ~/.cues/ + ~/.opencuesrc writes (blank library scripts, settings
+  // shared ~/.cues/ + ~/.cues/OPENCUES.md writes (blank library scripts, settings
   // self-heal, .cs compilation, TTS speak.sh) live in `opencues seed-configs`,
   // which the top-level `opencues install` invokes BEFORE this script runs.
   //
@@ -252,7 +252,7 @@ function doUninstall() {
 // --- SEED CONFIGS ---------------------------------------------------------
 
 // Thin wrapper that delegates to the canonical `opencues seed-configs`.
-// User-level seeding (~/.cues/ + ~/.opencuesrc) is shared across every
+// User-level seeding (~/.cues/ + ~/.cues/OPENCUES.md) is shared across every
 // native host — owning it here would drift from OC.
 function doSeedConfigs() {
   const seedScript = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands/seed-configs.cjs');
@@ -394,7 +394,7 @@ function printHelp() {
   console.log('Commands:');
   console.log('  install (default)   Build, install runtime + support files into the CC fork, patch cli.js');
   console.log('  uninstall           Revert cli.js + remove all installed paths');
-  console.log('  seed-configs        Copy repo defaults to ~/.cues/ + ~/.opencuesrc (skips files with content)');
+  console.log('  seed-configs        Copy repo defaults to ~/.cues/ + ~/.cues/OPENCUES.md (skips files with content)');
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');

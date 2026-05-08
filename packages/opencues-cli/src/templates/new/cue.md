@@ -6,7 +6,7 @@
 #
 # A folder-based cue source. The runtime merges this with the monolithic
 # cues.md; folder wins on name conflicts. For a real reference, cat any
-# of the shipped sources in ~/.cues/words/{legal,medical,financial}/.
+# of the shipped sources in ~/.cues/cues/{legal,medical,financial}.md.
 
 # ─────────────────────────────────────────────────────────────────────
 # REQUIRED FIELDS

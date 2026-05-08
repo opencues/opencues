@@ -1,0 +1,671 @@
+/**
+ * LLM provider abstraction.
+ *
+ * Every LLM call site in OpenCues — the four cue/blank sources
+ * (config, fluid-blank, transform-blank, spelling) AND the runtime's
+ * AgentRewrite — used to hand-construct OpenAI-style chat-completions
+ * JSON and parse OpenAI-style responses. That worked when "the LLM"
+ * meant Groq, but Gemini's API shape is different (`contents` instead
+ * of `messages`, `parts[].text` instead of `choices[].message.content`),
+ * and adding a fifth "OpenAI-but-with-quirks" provider would have
+ * meant copy-pasting the request/response munging into every site.
+ *
+ * This module owns the per-provider request/response translation. Call
+ * sites build a single `ChatRequest`, hand it to `buildProviderRequest`
+ * along with the active provider, and get back `{ url, body, headers }`
+ * to POST. The response goes through `parseProviderResponse` and comes
+ * back as a plain string regardless of provider.
+ *
+ * To add a provider: add an entry to `PROVIDERS` with its endpoint /
+ * model defaults + request/response translators. Nothing else changes.
+ */
+
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'anthropic' | 'cerebras';
+
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras'];
+
+/**
+ * Internal chat-request shape — provider-neutral. Each provider's
+ * `buildRequest` translates this into the provider's wire format.
+ */
+export interface ChatRequest {
+  readonly model: string;
+  readonly messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  /** Hard cap on response tokens. Provider may not honor exactly. */
+  readonly maxTokens?: number;
+  /** 0 = greedy. Most providers accept 0–2. Gemini accepts 0–2. */
+  readonly temperature?: number;
+  /**
+   * Deterministic-sample seed. Honored by Groq + OpenAI; ignored by
+   * Gemini and (currently) OpenRouter — we still pass it because some
+   * providers may add support and ignoring unknown fields is the
+   * established convention.
+   */
+  readonly seed?: number;
+  /**
+   * Reasoning-model effort hint. Groq's `openai/gpt-oss-*` models read
+   * this; other providers ignore it. Pass-through.
+   */
+  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+}
+
+export interface BuiltRequest {
+  readonly url: string;
+  readonly body: string;
+  readonly headers: Record<string, string>;
+}
+
+export interface ProviderAdapter {
+  readonly id: ProviderId;
+  /** Default endpoint URL when the user hasn't overridden. Some providers (Gemini) substitute the model into the URL. */
+  readonly defaultEndpoint: string;
+  /** Default model when the user hasn't picked one. */
+  readonly defaultModel: string;
+  /** The env-var name the boot layer reads to find this provider's API key. */
+  readonly envKeyName: string;
+  /** Translate the neutral ChatRequest into wire format for this provider. */
+  buildRequest(req: ChatRequest, ctx: { apiKey: string; endpoint?: string }): BuiltRequest;
+  /** Extract the assistant's text from this provider's response shape. */
+  parseResponse(rawJson: string): string;
+}
+
+// ---------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------
+
+/**
+ * Build the OpenAI-style chat-completions body. Used by every
+ * OpenAI-compatible provider (Groq, OpenRouter, OpenAI proper, Cerebras,
+ * Together, Fireworks, etc.). Lifted out so adding a new compatible
+ * provider is a 6-line entry in PROVIDERS, not 30 lines of duplication.
+ *
+ * `reasoning_effort` is the awkward field: Groq's `openai/gpt-oss-*`
+ * models REQUIRE it (without it, max_tokens is consumed by reasoning
+ * and content comes back empty). OpenAI proper REJECTS it on
+ * non-reasoning models like `gpt-4o-mini` (HTTP 400, "Unrecognized
+ * request argument"). So providers that only host reasoning models
+ * pass `includeReasoningEffort: true`; others omit the field unless
+ * the model name suggests it's a reasoning model.
+ */
+function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean }): string {
+  const body: Record<string, unknown> = {
+    model: req.model,
+    messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+  };
+  if (req.maxTokens !== undefined) {
+    // OpenAI renamed `max_tokens` → `max_completion_tokens` for the
+    // gpt-5 / o-series chat-completions API. The old field 400s on
+    // those models. Other OpenAI-compatible hosts (Groq, OpenRouter,
+    // Cerebras) keep `max_tokens` even for the same models, so we
+    // can't blindly rewrite — let each adapter signal which field it
+    // wants based on its own routing.
+    body[opts?.useCompletionTokensName ? 'max_completion_tokens' : 'max_tokens'] = req.maxTokens;
+  }
+  // gpt-5 / o-series lock temperature to 1 — passing any other value
+  // (including 0) returns HTTP 400 "Only the default (1) value is
+  // supported." `useCompletionTokensName` correlates 1:1 with this
+  // restriction, so re-use the flag rather than threading a second.
+  if (req.temperature !== undefined && !opts?.useCompletionTokensName) body.temperature = req.temperature;
+  if (req.seed !== undefined) body.seed = req.seed;
+  // Pass reasoning_effort only when the provider opts in OR the model
+  // name suggests it's an OpenAI reasoning model (o1/o3/o4/gpt-5).
+  // Leaves gpt-4o-mini-class models alone, where the field 400s.
+  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking)/i.test(req.model);
+  if (req.reasoningEffort !== undefined && (opts?.includeReasoningEffort || isReasoningModelName)) {
+    body.reasoning_effort = req.reasoningEffort;
+  }
+  return JSON.stringify(body);
+}
+
+function parseOpenAIResponse(rawJson: string): string {
+  const data = JSON.parse(rawJson) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string };
+  };
+  if (data.error) throw new Error(`provider error: ${data.error.message ?? JSON.stringify(data.error)}`);
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+// ---------------------------------------------------------------------
+// Built-in providers
+// ---------------------------------------------------------------------
+
+const GROQ: ProviderAdapter = {
+  id: 'groq',
+  defaultEndpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  defaultModel: 'openai/gpt-oss-120b',
+  envKeyName: 'GROQ_API_KEY',
+  buildRequest(req, ctx) {
+    // Groq's gpt-oss-* models REQUIRE reasoning_effort; their
+    // non-reasoning models silently ignore it. Always-on is safe.
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req, { includeReasoningEffort: true }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
+const OPENROUTER: ProviderAdapter = {
+  id: 'openrouter',
+  defaultEndpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  // Free-tier non-llama default. `openai/gpt-oss-120b:free` is the same
+  // gpt-oss-120b model Groq ships, just hosted on OpenRouter's free
+  // tier — gives users a free fallback when their primary provider is
+  // rate-limited or down. Users override per-feature for paid models.
+  defaultModel: 'openai/gpt-oss-120b:free',
+  envKeyName: 'OPENROUTER_API_KEY',
+  buildRequest(req, ctx) {
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ctx.apiKey}`,
+        // OpenRouter recommends these for routing/analytics; safe no-ops elsewhere.
+        'HTTP-Referer': 'https://opencues.dev',
+        'X-Title': 'OpenCues',
+      },
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
+const OPENAI: ProviderAdapter = {
+  id: 'openai',
+  defaultEndpoint: 'https://api.openai.com/v1/chat/completions',
+  // gpt-5.4-nano (released March 2026) — fastest + cheapest in the
+  // OpenAI lineup at $0.20/$1.25 per 1M in/out, low single-digit ms
+  // latency on short inputs. Right fit for OpenCues's per-cue/per-blank
+  // round-trips. Users pick gpt-5.4 or gpt-5.4-mini for prose-heavy
+  // work, or stay on gpt-4o-mini for back-compat.
+  defaultModel: 'gpt-5.4-nano',
+  envKeyName: 'OPENAI_API_KEY',
+  buildRequest(req, ctx) {
+    // OpenAI renamed `max_tokens` to `max_completion_tokens` for the
+    // gpt-5 / o-series. Detect by model name so users on legacy
+    // gpt-4o-* keep working.
+    const useCompletionTokensName = /^(gpt-5|o\d)/i.test(req.model);
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req, { useCompletionTokensName }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
+/**
+ * Gemini's API takes a fundamentally different shape:
+ *   POST /v1beta/models/{model}:generateContent?key={apiKey}
+ *   { contents: [{ role, parts: [{ text }] }],
+ *     generationConfig: { maxOutputTokens, temperature } }
+ *
+ * Notable differences from OpenAI-shape:
+ *   - Auth via `?key=` query param (NOT bearer header).
+ *   - Model embedded in URL path (NOT request body).
+ *   - System role unsupported in `contents` — must go in
+ *     `systemInstruction` separately.
+ *   - Response under `candidates[0].content.parts[0].text`.
+ *   - Gemini collapses successive same-role messages, so
+ *     adjacent user messages get joined with newlines.
+ */
+const GEMINI: ProviderAdapter = {
+  id: 'gemini',
+  // Templated — model is substituted at buildRequest time.
+  defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+  defaultModel: 'gemini-2.5-flash',
+  envKeyName: 'GEMINI_API_KEY',
+  buildRequest(req, ctx) {
+    const endpointTemplate = ctx.endpoint ?? this.defaultEndpoint;
+    const url = endpointTemplate.replace('{model}', encodeURIComponent(req.model));
+    // System messages get pulled out into systemInstruction.
+    const systemMessages = req.messages.filter((m) => m.role === 'system');
+    const nonSystem = req.messages.filter((m) => m.role !== 'system');
+    const contents = nonSystem.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+    const body: Record<string, unknown> = { contents };
+    if (systemMessages.length > 0) {
+      body.systemInstruction = {
+        parts: [{ text: systemMessages.map((m) => m.content).join('\n\n') }],
+      };
+    }
+    const generationConfig: Record<string, unknown> = {};
+    if (req.maxTokens !== undefined) generationConfig.maxOutputTokens = req.maxTokens;
+    if (req.temperature !== undefined) generationConfig.temperature = req.temperature;
+    if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig;
+    return {
+      // Gemini auth is query param, not header. The api key never goes
+      // in a body field, so logging the body is safe.
+      url: `${url}?key=${encodeURIComponent(ctx.apiKey)}`,
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    };
+  },
+  parseResponse(rawJson) {
+    const data = JSON.parse(rawJson) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      error?: { message?: string };
+      promptFeedback?: { blockReason?: string };
+    };
+    if (data.error) throw new Error(`gemini error: ${data.error.message ?? JSON.stringify(data.error)}`);
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`gemini blocked: ${data.promptFeedback.blockReason}`);
+    }
+    const parts = data.candidates?.[0]?.content?.parts ?? [];
+    return parts.map((p) => p.text ?? '').join('');
+  },
+};
+
+/**
+ * Anthropic's Messages API — different shape from OpenAI:
+ *   POST /v1/messages
+ *   Headers:
+ *     x-api-key: <key>            (NOT Authorization: Bearer)
+ *     anthropic-version: 2023-06-01
+ *     content-type: application/json
+ *   Body:
+ *     { model, max_tokens, system?, messages: [{role, content}] }
+ *   Response:
+ *     { content: [{type: 'text', text: '...'}], stop_reason, ... }
+ *
+ * Notable differences:
+ *   - System message is a top-level `system` field, NOT in `messages`.
+ *     If multiple system messages are passed, they're joined with \n\n.
+ *   - `max_tokens` is REQUIRED (Anthropic rejects requests without it),
+ *     so we pass a sane default (1024) when the caller didn't set one.
+ *   - `temperature` accepts 0–1 (not 0–2 like OpenAI/Gemini); we pass
+ *     through and trust the caller — Anthropic clamps internally.
+ *   - Response is `content[]` of typed blocks; we concatenate `text`
+ *     blocks and ignore tool-use / thinking blocks.
+ *   - No `seed`, no `reasoning_effort` (those are OpenAI-only knobs).
+ */
+const ANTHROPIC: ProviderAdapter = {
+  id: 'anthropic',
+  defaultEndpoint: 'https://api.anthropic.com/v1/messages',
+  // Haiku 4.5 — fastest + cheapest Claude, well-suited to the
+  // sub-second cue / blank-fill round-trips OpenCues makes. Users
+  // override per-feature for Sonnet 4.6 (better writing) or Opus 4.7
+  // (deeper reasoning) on prose-heavy surfaces like agent-rewrite.
+  defaultModel: 'claude-haiku-4-5-20251001',
+  envKeyName: 'ANTHROPIC_API_KEY',
+  buildRequest(req, ctx) {
+    const systemMessages = req.messages.filter((m) => m.role === 'system');
+    const nonSystem = req.messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({ role: m.role, content: m.content }));
+    const body: Record<string, unknown> = {
+      model: req.model,
+      // Anthropic REQUIRES max_tokens. Default matches our other
+      // providers' floor when the caller didn't ask for a specific cap.
+      max_tokens: req.maxTokens ?? 1024,
+      messages: nonSystem,
+    };
+    if (systemMessages.length > 0) {
+      body.system = systemMessages.map((m) => m.content).join('\n\n');
+    }
+    if (req.temperature !== undefined) body.temperature = req.temperature;
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: JSON.stringify(body),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ctx.apiKey,
+        'anthropic-version': '2023-06-01',
+        // Required for direct browser calls (Chrome extension content
+        // script). Without it Anthropic blocks cross-origin requests
+        // even when CORS host permissions are set in the manifest.
+        // Server-side calls (CC, OC) accept it as a no-op.
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+    };
+  },
+  parseResponse(rawJson) {
+    const data = JSON.parse(rawJson) as {
+      content?: Array<{ type?: string; text?: string }>;
+      error?: { message?: string; type?: string };
+      type?: string;
+    };
+    if (data.error) {
+      throw new Error(`anthropic error: ${data.error.message ?? data.error.type ?? JSON.stringify(data.error)}`);
+    }
+    // Anthropic returns `{type: 'error', error: {...}}` on some failures.
+    if (data.type === 'error') {
+      throw new Error(`anthropic error: ${JSON.stringify(data)}`);
+    }
+    const blocks = data.content ?? [];
+    return blocks
+      .filter((b) => b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('');
+  },
+};
+
+/**
+ * Cerebras Inference — OpenAI-compatible. Notable for very low latency
+ * (their wafer-scale silicon) and Llama-family models. Same wire format
+ * as Groq / OpenAI / OpenRouter, just a different host.
+ *
+ * Catalogue (May 2026): `gpt-oss-120b`, `qwen-3-235b-a22b-instruct-2507`,
+ * `zai-glm-4.7`. `gpt-oss-120b` is the default — same model Groq
+ * ships, runs at ~3000 tokens/sec on Cerebras's wafer-scale silicon
+ * (their headline product). Honours `reasoning_effort: low|medium|high`
+ * per the OpenAI Responses API shape; 131K context window.
+ *
+ * Tier note: `gpt-oss-120b` and `zai-glm-4.7` are gated to paid plans.
+ * Free / credit-only accounts get HTTP 404 "model does not exist or
+ * you do not have access to it" — credits ≠ tier upgrade. Free-tier
+ * users override per feature with `cerebras-model:
+ * qwen-3-235b-a22b-instruct-2507` (universally available, 235B MoE).
+ */
+const CEREBRAS: ProviderAdapter = {
+  id: 'cerebras',
+  defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
+  defaultModel: 'gpt-oss-120b',
+  envKeyName: 'CEREBRAS_API_KEY',
+  buildRequest(req, ctx) {
+    // Unlike Groq (non-reasoning models silently ignore the field),
+    // Cerebras's non-reasoning models hard-error on `reasoning_effort`.
+    // Rely on the model-name heuristic so it's only forwarded for
+    // gpt-oss-* / qwen-3-thinking-* and similar.
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
+const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
+  groq: GROQ,
+  openrouter: OPENROUTER,
+  gemini: GEMINI,
+  openai: OPENAI,
+  anthropic: ANTHROPIC,
+  cerebras: CEREBRAS,
+};
+
+/**
+ * Look up a provider adapter by id. Unknown id → null (caller must
+ * decide whether to fall back to default or raise). The runtime's
+ * config-loader validates the setting at parse time so this rarely
+ * returns null in practice.
+ */
+export function getProvider(id: string | undefined | null): ProviderAdapter | null {
+  if (!id) return null;
+  return PROVIDERS[id as ProviderId] ?? null;
+}
+
+/** All built-in providers. Used by docs + the validate command. */
+export function listProviders(): ReadonlyArray<ProviderAdapter> {
+  return PROVIDER_IDS.map((id) => PROVIDERS[id]);
+}
+
+/**
+ * Convenience: build the wire request for `req` using `providerId`.
+ * Wraps `getProvider` + `buildRequest` so callers don't have to care
+ * about the lookup. Throws on unknown provider.
+ */
+export function buildProviderRequest(
+  providerId: ProviderId,
+  req: ChatRequest,
+  ctx: { apiKey: string; endpoint?: string },
+): BuiltRequest {
+  const p = PROVIDERS[providerId];
+  if (!p) throw new Error(`unknown provider: ${providerId}`);
+  return p.buildRequest(req, ctx);
+}
+
+/** Convenience companion to `buildProviderRequest`. */
+export function parseProviderResponse(providerId: ProviderId, rawJson: string): string {
+  const p = PROVIDERS[providerId];
+  if (!p) throw new Error(`unknown provider: ${providerId}`);
+  return p.parseResponse(rawJson);
+}
+
+/**
+ * Resolve a (provider, model, endpoint, apiKey) tuple from a
+ * settings hierarchy. Used by every LLM call site so the same precedence
+ * rules apply everywhere.
+ *
+ * Precedence (most specific wins):
+ *   1. Per-source override (`opts.providerOverride`, `opts.modelOverride`)
+ *      — read from per-cue or per-blank frontmatter by the caller.
+ *   2. Per-feature default (`opts.featureProvider`, `opts.featureModel`)
+ *      — read from the per-feature frontmatter key by the caller
+ *      (e.g. `agent-provider`, `fluid-blank-model`).
+ *   3. Global default (`opts.globalProvider`, `opts.globalModel`).
+ *   4. Built-in defaults (groq + openai/gpt-oss-120b).
+ *
+ * The endpoint follows the resolved provider — passing a custom
+ * endpoint with a non-matching provider is a misconfiguration that
+ * usually means the user typoed the provider name; we don't mix.
+ *
+ * API keys are pulled from `apiKeys` keyed by env-var name. The boot
+ * layer populates this map from `process.env`; tests can pass in a
+ * literal map.
+ */
+export interface ResolveLLMOptions {
+  readonly providerOverride?: string | null;
+  readonly modelOverride?: string | null;
+  readonly featureProvider?: string | null;
+  readonly featureModel?: string | null;
+  readonly globalProvider?: string | null;
+  readonly globalModel?: string | null;
+  readonly endpointOverride?: string | null;
+  readonly apiKeys: Readonly<Record<string, string | undefined>>;
+}
+
+export interface ResolvedLLM {
+  readonly provider: ProviderAdapter;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly apiKey: string;
+  /**
+   * Optional automatic fallback target. When the primary's HTTP layer
+   * returns a transient error (429 rate-limit, 5xx, network failure),
+   * `withFallback()` re-issues against this target. Currently only
+   * populated for OpenAI-shape ↔ OpenAI-shape pairs (groq ↔ cerebras),
+   * where the request body is wire-compatible with only URL + auth +
+   * model-name swaps needed.
+   *
+   * Skipped for cross-shape pairs (e.g. groq → gemini) because the
+   * body would have to be rebuilt from scratch — that's a different
+   * code path.
+   */
+  readonly fallback?: ResolvedLLM | null;
+}
+
+/**
+ * Default fallback pairs — providers with wire-compatible (OpenAI-shape)
+ * APIs that can stand in for each other without rebuilding the request
+ * body. Currently just groq ↔ cerebras (both run gpt-oss-120b at the
+ * exact same OpenAI-compat shape; only URL + auth + model-name differ).
+ *
+ * Intentionally NOT included:
+ *   - openai ↔ groq: openai's gpt-5/o-series uses `max_completion_tokens`
+ *     while groq still uses `max_tokens` — body would have to be
+ *     rewritten on fallback. Doable later; not critical.
+ *   - anthropic, gemini: completely different wire shape, no shared
+ *     body possible.
+ */
+const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
+  groq: 'cerebras',
+  cerebras: 'groq',
+  openrouter: undefined,
+  openai: undefined,
+  anthropic: undefined,
+  gemini: undefined,
+};
+
+/**
+ * Per-provider model-name translation for fallback. Same weights, but
+ * the namespace differs: Groq prefixes vendor-original names with
+ * `openai/`, Cerebras serves them bare. This map lets the fallback
+ * wrapper rewrite the model field on retry.
+ */
+const FALLBACK_MODEL_MAP: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  groq: {
+    'openai/gpt-oss-120b': 'gpt-oss-120b',
+    'openai/gpt-oss-20b': 'gpt-oss-20b',
+  },
+  cerebras: {
+    'gpt-oss-120b': 'openai/gpt-oss-120b',
+    'gpt-oss-20b': 'openai/gpt-oss-20b',
+  },
+};
+
+function translateModelToFallback(fromProvider: ProviderId, toProvider: ProviderId, model: string): string {
+  return FALLBACK_MODEL_MAP[fromProvider]?.[model] ?? model;
+}
+
+export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
+  // Three tiers, most → least specific. The Map index doubles as a
+  // specificity score (lower = more specific). Provider and model are
+  // resolved INDEPENDENTLY but with one constraint: a model is only
+  // honored if its tier is at least as specific as the tier that set
+  // the provider. This stops a less-specific (provider, model) pair
+  // from leaking its model into a more-specific provider override —
+  // e.g. `llm-model: gpt-oss` (groq) shouldn't apply to a per-feature
+  // `agent-provider: gemini` override.
+  const tiers: Array<{ p?: string | null; m?: string | null }> = [
+    { p: opts.providerOverride, m: opts.modelOverride },
+    { p: opts.featureProvider, m: opts.featureModel },
+    { p: opts.globalProvider, m: opts.globalModel },
+  ];
+  let providerTierIdx = -1;
+  for (let i = 0; i < tiers.length; i += 1) {
+    if (tiers[i].p) { providerTierIdx = i; break; }
+  }
+  const providerId = (providerTierIdx >= 0 ? tiers[providerTierIdx].p! : 'groq').trim() as ProviderId;
+  const provider = PROVIDERS[providerId];
+  if (!provider) return null;
+
+  let model: string | null = null;
+  for (let i = 0; i < tiers.length; i += 1) {
+    const m = tiers[i].m;
+    if (!m) continue;
+    // Only carry the model if it's at least as specific as the provider tier
+    // (or no provider tier was set, in which case we fell back to groq and
+    // any tier's model is fair game).
+    if (providerTierIdx === -1 || i <= providerTierIdx) {
+      model = m;
+      break;
+    }
+  }
+  const resolvedModel = (model ?? provider.defaultModel).trim();
+  const endpoint = opts.endpointOverride ?? provider.defaultEndpoint;
+  const apiKey = opts.apiKeys[provider.envKeyName];
+  if (!apiKey) return null;
+
+  // Auto-attach a fallback target when:
+  //   1. The resolved provider has a wire-compatible peer in FALLBACK_PAIRS.
+  //   2. That peer's API key is also present in apiKeys.
+  // No-op when the user is on a single provider.
+  let fallback: ResolvedLLM | null = null;
+  const peerId = FALLBACK_PAIRS[providerId];
+  if (peerId) {
+    const peer = PROVIDERS[peerId];
+    const peerKey = opts.apiKeys[peer.envKeyName];
+    if (peerKey) {
+      fallback = {
+        provider: peer,
+        // Map model name across providers (groq's `openai/gpt-oss-120b`
+        // ↔ cerebras's `gpt-oss-120b`). Falls through unchanged when no
+        // mapping exists — caller's model name is assumed compatible.
+        model: translateModelToFallback(providerId, peerId, resolvedModel),
+        endpoint: peer.defaultEndpoint,
+        apiKey: peerKey,
+      };
+    }
+  }
+
+  return { provider, model: resolvedModel, endpoint, apiKey, fallback };
+}
+
+/**
+ * Heuristic: does this response body indicate a TRANSIENT failure
+ * (rate-limit, server overload, network blip) where retrying on the
+ * fallback provider would help?
+ *
+ * Conservative — false positives mean wasted bandwidth, false negatives
+ * mean the user sees the failure when fallback could have rescued it.
+ * We err on the false-positive side because the fallback retry is
+ * cheap.
+ */
+function looksTransient(raw: string): boolean {
+  if (!raw || raw.trim().length === 0) return true;       // empty body = upstream timeout
+  // OpenAI-shape error envelopes (Groq, Cerebras, OpenAI, OpenRouter all use this).
+  if (/"code"\s*:\s*"?(429|5\d{2})"?/.test(raw)) return true;
+  if (/too[_ -]?many[_ -]?requests|rate[_ -]?limit/i.test(raw)) return true;
+  if (/server[_ -]?error|service[_ -]?unavailable|overloaded|timeout/i.test(raw)) return true;
+  if (/queue[_ -]?exceeded|queue[_ -]?full/i.test(raw)) return true;
+  return false;
+}
+
+/**
+ * Wrap an HTTP adapter so transient failures auto-retry against the
+ * fallback target. Pass `resolved.fallback` (returned by `resolveLLM`)
+ * — when null, the wrapper is a no-op and just delegates.
+ *
+ * The wrapper assumes wire-compatible providers (OpenAI-shape ↔
+ * OpenAI-shape). Cross-shape fallback (e.g. groq → gemini) requires
+ * rebuilding the request body, which lives elsewhere — `resolveLLM`
+ * intentionally won't pair across shapes.
+ *
+ * On retry the wrapper:
+ *   1. Swaps the URL to the fallback's endpoint.
+ *   2. Replaces the bearer auth header with the fallback's key.
+ *   3. Rewrites `body.model` to the fallback's model name (since groq
+ *      prefixes vendor-original names with `openai/` and cerebras
+ *      doesn't).
+ */
+export interface HttpAdapterShape {
+  post(url: string, body: string, headers: Record<string, string>): Promise<string>;
+}
+
+export function withFallback(base: HttpAdapterShape, fallback: ResolvedLLM | null | undefined): HttpAdapterShape {
+  if (!fallback) return base;
+  return {
+    post: async (url, body, headers) => {
+      const tryFallback = async (): Promise<string> => {
+        let fallbackBody = body;
+        try {
+          const parsed = JSON.parse(body) as { model?: string };
+          if (parsed.model && parsed.model !== fallback.model) {
+            parsed.model = fallback.model;
+            fallbackBody = JSON.stringify(parsed);
+          }
+        } catch { /* non-JSON body (Anthropic-shape) — pass through unchanged */ }
+        const fbHeaders = { ...headers };
+        // OpenAI-shape providers all use bearer auth; swap it.
+        fbHeaders.Authorization = `Bearer ${fallback.apiKey}`;
+        return base.post(fallback.endpoint, fallbackBody, fbHeaders);
+      };
+
+      let primary: string;
+      try {
+        primary = await base.post(url, body, headers);
+      } catch (err) {
+        // Network / timeout / agent error — try fallback.
+        try {
+          return await tryFallback();
+        } catch {
+          throw err;                                       // both failed → bubble the original
+        }
+      }
+      if (looksTransient(primary)) {
+        try {
+          return await tryFallback();
+        } catch {
+          return primary;                                  // fallback also failed → return primary's error body
+        }
+      }
+      return primary;
+    },
+  };
+}

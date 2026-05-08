@@ -51,40 +51,61 @@ describe('opencues seed-configs', () => {
     seedConfigs(['--silent'], { REPO_ROOT });
 
     const userDir = path.join(tmpHome, '.cues');
-    // .opencuesrc lives at $HOME, outside .cues/.
-    expect(fs.existsSync(path.join(tmpHome, '.opencuesrc'))).toBe(true);
+    // OPENCUES.md lives at the top of .cues/ alongside cues.md / blanks.md.
+    expect(fs.existsSync(path.join(userDir, 'OPENCUES.md'))).toBe(true);
     // Old layout files are gone.
     expect(fs.existsSync(path.join(tmpHome, '.opencues'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpHome, '.opencuesrc'))).toBe(false);
     // Library shape: words/ + blanks/ + scripts/ under .cues/.
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/BLANK.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness-blank.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
-    // Tips consolidated under words/tips.md (flat).
-    expect(fs.existsSync(path.join(userDir, 'words/tips.md'))).toBe(true);
+    // Tips consolidated under cues/tips.md (flat).
+    expect(fs.existsSync(path.join(userDir, 'cues/tips.md'))).toBe(true);
   });
 
-  it('SEED phase: preserves a user-edited .opencuesrc (does NOT overwrite content)', () => {
+  it('SEED phase: preserves a user-edited OPENCUES.md (does NOT overwrite content)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const userRc = '# my own custom rc\nvoice-mode: inactive\n';
-    fs.writeFileSync(path.join(tmpHome, '.opencuesrc'), userRc);
+    const userRc = '---\nvoice-mode: inactive\n---\n\n# my own custom config\n';
+    const userDir = path.join(tmpHome, '.cues');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'OPENCUES.md'), userRc);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    expect(fs.readFileSync(path.join(tmpHome, '.opencuesrc'), 'utf8')).toBe(userRc);
+    expect(fs.readFileSync(path.join(userDir, 'OPENCUES.md'), 'utf8')).toBe(userRc);
   });
 
-  it('HEAL phase: re-seeds a 0-byte .opencuesrc from defaults', () => {
+  it('HEAL phase: re-seeds a 0-byte OPENCUES.md from defaults', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    fs.writeFileSync(path.join(tmpHome, '.opencuesrc'), '');
-    expect(fs.statSync(path.join(tmpHome, '.opencuesrc')).size).toBe(0);
+    const userDir = path.join(tmpHome, '.cues');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'OPENCUES.md'), '');
+    expect(fs.statSync(path.join(userDir, 'OPENCUES.md')).size).toBe(0);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    const after = fs.readFileSync(path.join(tmpHome, '.opencuesrc'), 'utf8');
+    const after = fs.readFileSync(path.join(userDir, 'OPENCUES.md'), 'utf8');
     expect(after.length).toBeGreaterThan(0);
     expect(after).toContain('settings:');
     expect(after).toContain('voice-mode');
+  });
+
+  it('MIGRATE phase: legacy ~/.opencuesrc → ~/.cues/OPENCUES.md (with frontmatter)', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const legacyContent = '# legacy header\nvoice-mode: inactive\ndebug-mode: on\nsettings:\n  voice-mode:\n    tip: T\n    values:\n      active: A\n      inactive: I\n';
+    fs.writeFileSync(path.join(tmpHome, '.opencuesrc'), legacyContent);
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    // Legacy file is gone; new file exists with frontmatter wrapping.
+    expect(fs.existsSync(path.join(tmpHome, '.opencuesrc'))).toBe(false);
+    const userDir = path.join(tmpHome, '.cues');
+    const newContent = fs.readFileSync(path.join(userDir, 'OPENCUES.md'), 'utf8');
+    expect(newContent.startsWith('---\n')).toBe(true);
+    expect(newContent).toContain('voice-mode: inactive');
+    expect(newContent).toContain('debug-mode: on');
   });
 
   it('HEAL phase: renames legacy blanks/<name>/cue.md to BLANK.md', () => {
@@ -161,11 +182,11 @@ describe('opencues seed-configs', () => {
       process.chdir(cwd);
     }
     // Project-level: words/ + blanks/ are seeded under <cwd>/.cues/.
-    // No .opencuesrc at project level (settings are runtime-owned, user-only).
-    expect(fs.existsSync(path.join(projectDir, '.cues/words/tips.md'))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, '.opencuesrc'))).toBe(false);
+    // No OPENCUES.md at project level (settings are runtime-owned, user-only).
+    expect(fs.existsSync(path.join(projectDir, '.cues/cues/tips.md'))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, 'OPENCUES.md'))).toBe(false);
     // User-level untouched (no defaults seeded since this run was --project).
-    expect(fs.existsSync(path.join(tmpHome, '.opencuesrc'))).toBe(false);
-    expect(fs.existsSync(path.join(tmpHome, '.cues/words/tips.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpHome, '.cues/OPENCUES.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpHome, '.cues/cues/tips.md'))).toBe(false);
   });
 });

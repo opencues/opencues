@@ -64,7 +64,7 @@ Nothing reads `defaults/` at host runtime. The runtime only reads `~/.cues/` (us
 If you're iterating on, say, the grammar prompt:
 
 1. Edit `defaults/cues/grammar/cue.md` in the repo.
-2. Run `pnpm exec opencues seed-configs` — idempotent; SKIPS files that already exist in `~/.cues/` (empty 0-byte files re-seed automatically). If you've already seeded a non-empty file and want the update to land, either delete the user-level file first (or `truncate -s 0` it) or edit `~/.cues/words/grammar/cue.md` directly for fast iteration and copy back to `defaults/` when ready to ship.
+2. Run `pnpm exec opencues seed-configs` — idempotent; SKIPS files that already exist in `~/.cues/` (empty 0-byte files re-seed automatically). If you've already seeded a non-empty file and want the update to land, either delete the user-level file first (or `truncate -s 0` it) or edit `~/.cues/cues/grammar/cue.md` directly for fast iteration and copy back to `defaults/` when ready to ship.
 3. Re-run the integration (CC / OC / chrome) — changes picked up on next keystroke via hot-reload.
 
 For Chrome specifically, you can also re-run `pnpm exec opencues sync chrome --wsl` to pick up changes from `~/.cues/` without rebuilding the extension. Or rebuild the extension to refresh the baked-in defaults.

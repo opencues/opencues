@@ -164,13 +164,14 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
   const result: DiscoveredConfigs = {};
   const allIgnore: string[] = [];
 
-  // Scan words/ directory (post-migration name).
-  const wordConfigs = scanDir(opts.basePath + '/words', opts);
-  // Legacy: scan cues/ directory (pre-migration name) too. Sources
-  // discovered there are word-cues (the legacy layout split LLM cues
-  // from blanks; `cues/` held both static + LLM word-cues).
-  const legacyCueConfigs = scanDir(opts.basePath + '/cues', opts);
-  const allWordConfigs = [...wordConfigs, ...legacyCueConfigs];
+  // Scan cues/ directory (post-2026-05 rename — restored symmetry
+  // with cues.md after the brief words/ era).
+  const cueConfigs = scanDir(opts.basePath + '/cues', opts);
+  // Legacy: scan words/ directory (the interim name used while
+  // disambiguating from the now-defunct opencues.md settings file).
+  // Existing user dirs may still have it; seed-configs migrates them.
+  const legacyWordConfigs = scanDir(opts.basePath + '/words', opts);
+  const allWordConfigs = [...cueConfigs, ...legacyWordConfigs];
   if (allWordConfigs.length > 0) {
     const combined = combineCueConfigs(allWordConfigs);
     result.cuesConfig = combined;
