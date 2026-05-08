@@ -248,6 +248,45 @@ export class DynDefs {
   get size(): number {
     return this._defs.size;
   }
+
+  /**
+   * Find a span def whose content has been edited in `currentText` but
+   * cannot be located elsewhere in the buffer (i.e. the user mutated the
+   * span itself, not just inserted/deleted text around it).
+   *
+   * Spans that have shifted (because the user typed BEFORE the span)
+   * still exist verbatim somewhere in the new text — those are returned
+   * as `null` and left for `pruneStale` to relocate via word-walk.
+   *
+   * Spans whose current alt no longer appears as a substring anywhere
+   * are returned as edited — the runtime treats those as "delete the
+   * whole span" so user backspaces don't leave the buffer in a weird
+   * partial state. See navigation.onTextChange for the buffer mutation.
+   *
+   * Returns the FIRST edited span found, or null. One per text-change
+   * event is enough; the next event re-scans.
+   */
+  findEditedSpan(
+    currentText: string,
+    filter?: (def: WordDef) => boolean,
+  ): { defIndex: number; spanStart: number; spanEnd: number } | null {
+    for (const [index, def] of this._defs.entries()) {
+      // Only consider character-range spans (multi-word substitutions).
+      if (def.spanEnd <= def.spanStart) continue;
+      // Caller-supplied scope filter — e.g. only `task-*` spans.
+      if (filter && !filter(def)) continue;
+      const expected = def.alternatives[def.currentIndex];
+      if (!expected) continue; // empty alt — no content to defend
+      const slice = currentText.slice(def.spanStart, def.spanEnd);
+      if (slice === expected) continue; // intact at original position
+      // Span shifted? If the expected content appears verbatim somewhere
+      // else, the span just moved; let pruneStale relocate it.
+      if (currentText.indexOf(expected) >= 0) continue;
+      // Content not found anywhere → the span itself was mutated.
+      return { defIndex: index, spanStart: def.spanStart, spanEnd: def.spanEnd };
+    }
+    return null;
+  }
 }
 
 /**

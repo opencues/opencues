@@ -227,6 +227,38 @@ A second runtime-only blank source. Where fluid blank handles **interrogative** 
 
 If EXTRACT returns `NONE`, the source bails immediately and fluid blank gets its turn. If EXTRACT returns `TRANSFORM` with an empty TARGET, the source routes to a generative fallback.
 
+### Agent-task lifecycle keywords
+
+EXTRACT also recognises four task-lifecycle commands. These don't run APPLY/VERIFY — they mutate `AgentTaskState` directly via `metadata.taskAction` and strip just the trigger phrase from the buffer (the `trimTriggerFromText` helper in `resolver.ts`):
+
+| Verdict | Canonical trigger | Effect |
+|---|---|---|
+| `TASK_ARM` | `agentically <X> _` | Arm a fresh task with prompt = `<X>`. AgentRewrite starts ticking. |
+| `TASK_ADD` | `add task <X> _` | Append `<X>` to the active task prompt. |
+| `TASK_STOP` | `stop task _` | Clear the task. AgentRewrite stops. |
+| `TASK_SHOW` | `current task _` | Substitute the current prompt at `_` for inspection. Inserted text is registered as a `task-show` DynDef span. |
+
+The classifier matches **canonical orderings only**. Reversed-order typos (e.g. `task stop _` instead of `stop task _`) are rejected and would normally fall through to fluid-blank — but fluid-blank's task-trigger guard refuses those too (see § Task-trigger guard above), so the buffer stays literal. The user can correct the order and retry.
+
+#### TASK_SHOW span and the atomic-delete rule
+
+When `TASK_SHOW` substitutes the current prompt at `_`, the runtime registers a DynDef on the inserted text with `blankName: 'task-show'`, alternatives `['', <promptText>]`, and `currentIndex: 1`. Two consequences:
+
+1. **Cycling Down** on the prompt span reverts to alternatives[0] (empty) — removes the substitution as a unit.
+2. **Editing any character** of the span (typing inside it, backspacing into it) triggers `Navigation.onTextChange`'s atomic-delete path: the whole span splices out of the buffer in one runtime-source edit, surrounding prose preserved.
+
+This atomic-delete behaviour is **scoped to defs whose `blankName` starts with `task-`** — fluid-blank and transform-blank substitutions are NOT covered, because their results are intended as drop-in answers the user might tweak in place. The rule is built in to the runtime; it isn't user-configurable, and no `OPENCUES.md` flag exposes it.
+
+#### Agent-task statusline indicator
+
+While a task is armed, `Statusline.buildPayload` populates `agentTask: <truncated prompt>` (last ~40 chars, `…`-prefixed when longer) on every render — irrespective of whether a word is currently highlighted. Hosts render this as a stable badge alongside the regular tip:
+
+```
+[task: <prompt>]
+```
+
+Stable display is the contract. There is **no in-flight spinner** — the badge does not flicker as ticks fire, because that would jitter on every keystroke pause. Reference renderers: `integrations/claude-code/patches/highlight-statusline.sh` (bash, reads the JSON file) and `integrations/opencode/patches/opencuesBootstrap.ts`'s `statusSnapshotHook` (in-process, feeds a SolidJS signal).
+
 ### Prompt design — minimal EXTRACT, verbose APPLY
 
 A deliberate asymmetry, validated by experiment:

@@ -115,7 +115,37 @@ export class Navigation {
    */
   onTextChange(event: TextChangeEvent): void {
     if (event.source === 'runtime') return;
+    // Task-span atomic delete: when the user edits any character of an
+    // agent-task span (TASK_SHOW prompt insertion today, future task-*
+    // surfaces tomorrow), the whole span deletes as a unit. Scoped via
+    // `def.blankName?.startsWith('task-')`. Built-in — not a user-
+    // configurable knob. Fluid-blank and transform-blank spans are NOT
+    // covered; their substitutions are intended as drop-in answers the
+    // user might tweak in place, so partial edits leave them alone and
+    // pruneStale handles def cleanup.
     if (this.dynDefs.size > 0) {
+      const edited = this.dynDefs.findEditedSpan(
+        event.text,
+        (def) => def.blankName?.startsWith('task-') ?? false,
+      );
+      if (edited !== null) {
+        const newText = event.text.slice(0, edited.spanStart) + event.text.slice(edited.spanEnd);
+        // Drop the def first so subsequent pruneStale doesn't double-handle.
+        this.dynDefs.delete(edited.defIndex);
+        this.adapter.log('info', `Navigation: task span at [${edited.spanStart},${edited.spanEnd}] was edited — deleting whole span`);
+        if (this.adapter.pushText) {
+          this.adapter.pushText(newText, edited.spanStart);
+        } else {
+          this.adapter.setText(newText);
+          this.adapter.setCursorOffset(edited.spanStart);
+          this.adapter.forceRender();
+        }
+        // Don't pruneStale — the buffer just changed; the next text
+        // event (runtime-source-filtered out at the top of this method)
+        // will not re-enter, and the resolver's own onTextChange will
+        // re-prune on the next user keystroke.
+        return;
+      }
       this.dynDefs.pruneStale(splitWords(event.text));
     }
     // cursor-navigate: when ON, the highlight follows the cursor across

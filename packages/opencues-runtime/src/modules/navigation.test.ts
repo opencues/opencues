@@ -271,6 +271,66 @@ describe('Navigation span-fill filter (Phase F.a / Step 33)', () => {
     expect(hlState.wordIndex).toBe(0);
   });
 
+  describe('atomic task spans: edits inside a task span delete the whole span (built-in)', () => {
+    // Built-in behaviour, not user-configurable. Scoped to defs whose
+    // blankName starts with 'task-' (TASK_SHOW today; any future task-*
+    // surface). Fluid-blank and transform-blank spans are NOT covered —
+    // their substitutions are intended as drop-in answers the user
+    // might tweak in place, so partial edits leave them alone and
+    // pruneStale handles def cleanup.
+
+    it('TASK_SHOW span: typing inside removes the whole prompt', () => {
+      const { adapter, dynDefs } = setup('Working on this fix grammar errors');
+      // Prefix "Working on this " ends at 16; prompt "fix grammar errors" at 16..34.
+      dynDefs.set(3, {
+        originalWord: '_',
+        alternatives: ['', 'fix grammar errors'],
+        currentIndex: 1,
+        spanStart: 16,
+        spanEnd: 34,
+        blankName: 'task-show',
+      });
+      adapter.pushText('Working on this fix grammar erros', 33);
+      expect(adapter.getText()).toBe('Working on this ');
+      expect(dynDefs.size).toBe(0);
+    });
+
+    it('TASK_SHOW span: typing BEFORE leaves it intact (just shifts)', () => {
+      const { adapter, dynDefs } = setup('hello fix grammar errors');
+      dynDefs.set(1, {
+        originalWord: '_',
+        alternatives: ['', 'fix grammar errors'],
+        currentIndex: 1,
+        spanStart: 6,
+        spanEnd: 24,
+        blankName: 'task-show',
+      });
+      adapter.pushText('X hello fix grammar errors', 2);
+      expect(adapter.getText()).toBe('X hello fix grammar errors');
+      expect(dynDefs.size).toBe(1);
+    });
+
+    it('fluid-blank span: edits inside do NOT trigger atomic delete (out of scope)', () => {
+      const { adapter, dynDefs } = setup('hello capital of france world');
+      // Same shape as a TASK_SHOW span but blankName=fluid-blank — should
+      // be ignored by the atomic-task-spans rule and fall through to the
+      // legacy pruneStale-only path.
+      dynDefs.set(1, {
+        originalWord: '_',
+        alternatives: ['_', 'capital of france'],
+        currentIndex: 1,
+        spanStart: 6,
+        spanEnd: 23,
+        blankName: 'fluid-blank',
+      });
+      adapter.pushText('hello capital f france world', 14);
+      // Buffer NOT auto-edited; user keeps the partial state to fix manually.
+      expect(adapter.getText()).toBe('hello capital f france world');
+      // Def gets dropped by pruneStale (multi-word alt no longer matches).
+      expect(dynDefs.size).toBe(0);
+    });
+  });
+
   it('span origin is force-included even when not in cueMap', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const { SpanFillState } = await import('../state/span-fill');

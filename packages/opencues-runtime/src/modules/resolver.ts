@@ -175,6 +175,36 @@ export class Resolver {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
     }
+
+    // TASK_SHOW emits the substituted prompt as a DynDef span — same
+    // mechanic fluid-blank uses for WIPE substitutions. Press
+    // Ctrl+Alt+Down on the inserted prompt to cycle back to empty
+    // (deletes the whole substitution as a single unit, leaving any
+    // surrounding prose intact). Without this, the user would have to
+    // backspace each character of the prompt one at a time.
+    //
+    // We register the def AFTER pushText so the wordIndex is computed
+    // against the new text. alternatives[0] is the empty string (revert
+    // = remove the substitution) and alternatives[1] is the prompt
+    // itself (the currently-displayed value).
+    if (action === 'TASK_SHOW') {
+      const spanStart = prefix ? prefix.length + 1 : 0;
+      const spanEnd = newText.length;
+      const newWords = splitWords(newText);
+      const firstPromptWord = newWords.find(w => w.start >= spanStart);
+      if (firstPromptWord) {
+        this.dynDefs.set(firstPromptWord.index, {
+          originalWord: '_',
+          alternatives: ['', newText.slice(spanStart, spanEnd)],
+          currentIndex: 1,
+          spanStart,
+          spanEnd,
+          // Lock against re-resolution by other LLM-driven sources —
+          // same flag fluid-blank's substitutions use.
+          blankName: 'task-show',
+        });
+      }
+    }
   }
 
   unsubscribe(): void {
