@@ -56,7 +56,7 @@ Compile artefacts (`.exe`, `.dll`, etc.) are conventionally produced from siblin
 
 Each surface has a master file at the project root. The master files configure the surface as a whole and contribute project-wide settings.
 
-> **Note on `name:` / `description:`.** These fields appear at three levels — master file, per-source file, and (for runtime settings) `opencues.md`. They mean different things at each level. On the master file, they identify the **project** as a whole. On a per-source file, they identify the **individual source**. Validators MUST scope uniqueness checks to the level where the field appears: `name-collision` only fires for duplicate per-source names, never between a source name and a master name.
+> **Note on `name:` / `description:`.** These fields appear at three levels — master file, per-source file, and (for runtime settings) `OPENCUES.md`. They mean different things at each level. On the master file, they identify the **project** as a whole. On a per-source file, they identify the **individual source**. Validators MUST scope uniqueness checks to the level where the field appears: `name-collision` only fires for duplicate per-source names, never between a source name and a master name.
 
 ### `<root>/cues.md`
 
@@ -66,7 +66,7 @@ name: <project-name>
 description: <short description>
 spec: opencues/0.1-alpha
 tips-mode: on             # whether static tip-group cues fire
-word-cues-mode: on        # whether LLM word-cue sources fire (covers spelling — it's a regular word-cue)
+word-cues-mode: on        # whether LLM word-cue sources fire
 ignore: [TODO, FIXME]     # words never to cue, regardless of any source
 ---
 
@@ -74,6 +74,8 @@ Optional Markdown body — human-readable project notes.
 ```
 
 A missing `cues.md` is equivalent to one with no settings. A 0-byte `cues.md` MUST be treated as missing (defensive against truncation).
+
+> **Note on spelling.** Spelling correction is a regular word-cue source — a `cue.md` (or flat `cues/spelling.md`) with `match: .*` and a spell-check prompt — not a separate flag. The `word-cues-mode` toggle gates it alongside every other word-cue. Earlier drafts of this spec proposed a dedicated `spelling-mode` field; that was retired once it became clear spelling has no structural difference from other word-cues that warrants its own surface.
 
 ### `<root>/blanks.md`
 
@@ -200,14 +202,14 @@ Runtimes MAY add commands; the three above are the interop surface that authorin
 
 ## Promotion path — runtime-specific to standard
 
-Fields not in this spec live in `opencues.md` (see [`opencues-runtime.md`](./opencues-runtime.md)). Other runtimes ignore that file.
+Fields not in this spec live in `OPENCUES.md` (see [`opencues-runtime.md`](./opencues-runtime.md)). Other runtimes ignore that file.
 
 If a runtime-specific field proves universally useful, it can be **promoted** to this spec in a future version:
 
 1. Two or more independent runtime implementations adopt the field.
 2. A pull request against the spec adds the field to `cue-spec.md`, `blank-spec.md`, or `core.md` as appropriate.
 3. The spec version bumps (e.g. `0.1-alpha` → `0.2-alpha`).
-4. The promoted field MAY remain in `opencues.md` for backward compat for one minor version.
+4. The promoted field MAY remain in `OPENCUES.md` for backward compat for one minor version.
 
 Likely candidates for promotion in `0.2-alpha`: `voice-mode` (TTS), `debug-mode` (logging level). These are universal needs no runtime can honestly skip.
 
@@ -273,6 +275,6 @@ Runtimes MAY add their own implementation-specific rules under a vendor prefix (
 
 ## Out of scope
 
-- The runtime's own settings file (`opencues.md`) — see the runtime doc.
+- The runtime's own settings file (`OPENCUES.md`) — see the runtime doc.
 - Per-host install conventions (e.g. how Chrome bundles configs at build time).
 - Specific filesystem permissions / atomicity requirements beyond "skip in-flight files".

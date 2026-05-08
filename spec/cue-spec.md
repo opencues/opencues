@@ -73,7 +73,9 @@ A source with neither `match` nor `keywords` is unreachable. Validators MUST err
 |---|---|---|---|
 | `priority` | number | `50` | Higher wins on routing ties. Range 0–100 by convention. |
 | `parser` | `"alternatives"` \| `"raw"` | `"alternatives"` | LLM response shape. See § Wire format. |
-| `model` | string | runtime default | Override the default model for this source. |
+| `provider` | string | runtime default | Override the LLM provider for this source (e.g. `groq`, `openrouter`, `gemini`, `openai`, `anthropic`, `cerebras`). The set of recognised provider IDs is runtime-specific; runtimes that don't recognise the value MAY skip the source (`provider-unsupported` warn) or fall through to their default. Provider and `model:` are paired — when only one is set, the other defaults to the resolved provider's built-in default. |
+| `model` | string | provider default | Override the model for this source. When `provider:` is also set on the same tier, this MUST be a model the resolved provider serves. |
+| `endpoint` | string | provider default | Override the HTTP endpoint URL. Rare — only useful when pointing at a self-hosted gateway speaking the resolved provider's wire shape. |
 | `enabled` | boolean | `true` | `false` = source is disabled, kept on disk for documentation. |
 | `scope` | `"words"` \| `"blanks"` \| `"all"` | inferred from path | Where this source applies. Inferred from the parent directory (`cues/` → `words`, `blanks/` → `blanks`); explicit only when overriding. |
 | `classify` | string | none | Free-text classification hint surfaced to the LLM and validators (e.g. "Legal terminology, contract drafting"). |

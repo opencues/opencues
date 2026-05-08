@@ -8,19 +8,23 @@
 
 The standard ([`cue-spec.md`](./cue-spec.md), [`blank-spec.md`](./blank-spec.md), [`core.md`](./core.md)) describes only the two file formats and their runtime contracts. Anything that's purely an OpenCues-the-runtime concern — TTS voice selection, debug logging, cursor behavior — lives here, in a separate file that other implementations don't have to honor.
 
-A future "VimCues" or "EmacsCues" reads `cue.md` and `blank.md` and works. It can ignore `opencues.md` entirely and park its own knobs in `vimcues.md` / wherever fits its conventions.
+A future "VimCues" or "EmacsCues" reads `cue.md` and `blank.md` and works. It can ignore `OPENCUES.md` entirely and park its own knobs in `vimcues.md` / wherever fits its conventions.
 
 ---
 
 ## File location
 
-`<root>/opencues.md`. Resolved via the same search path as `cues.md` and `blanks.md` (see [`core.md`](./core.md) § Search path).
+**User-level only** — `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md` when the env override is set).
+
+Unlike `cues.md` / `blanks.md`, `OPENCUES.md` is **not resolved through the project search path**. Settings here apply across every integration (Claude Code, OpenCode, Chrome) and across every project — they're properties of the runtime install, not of any one project. A project-level override would silently change behaviour for any other project the user opens, which is a class of bug worth designing out.
+
+If a runtime needs project-scoped overrides for any of these knobs, it SHOULD promote the relevant fields to `cues.md` / `blanks.md` (which DO support project override) via the [promotion path in core.md](./core.md#promotion-path--runtime-specific-to-standard).
 
 ---
 
 ## Recognised settings
 
-All of these live in the frontmatter of `<root>/opencues.md`. Body content is documentation only.
+All of these live in the frontmatter of `~/.cues/OPENCUES.md`. Body content is documentation only.
 
 ```yaml
 ---
@@ -53,6 +57,54 @@ None of these affect file format or routing — they all sit downstream of the s
 
 ---
 
+## Multi-provider routing
+
+The OpenCues runtime ships six built-in LLM providers and routes each LLM call through a settings hierarchy. This is **runtime-specific** — other implementations of the standard are free to ship one provider, six, or zero, and to use any settings shape.
+
+### Built-in providers
+
+The runtime supports `groq`, `openrouter`, `gemini`, `openai`, `anthropic`, `cerebras`. Each is selected by name; the runtime maps the name to:
+
+- the API endpoint URL,
+- the auth header shape (`Authorization: Bearer …` for OpenAI-compatible hosts; `x-api-key` + `anthropic-version` for Anthropic; `?key=…` query string for Gemini),
+- the request/response shape (OpenAI chat-completions for the four OpenAI-compatible providers; `contents`/`parts` for Gemini; Messages API `content[].text` for Anthropic),
+- the env-var name for the API key (`<PROVIDER>_API_KEY` — e.g. `GROQ_API_KEY`, `CEREBRAS_API_KEY`).
+
+A conformant *OpenCues* install is expected to honour every selectable name. A conformant *standard* implementation is free to honour any subset.
+
+### Settings hierarchy (most → least specific)
+
+Per-call resolution walks four tiers; the first one that specifies a provider wins. Model resolution is paired — a tier's `model:` only counts when the same tier's `provider:` set the active provider, OR when the tier is at-least as specific as the one that did:
+
+1. **Per-cue / per-blank** frontmatter: `provider:`, `model:`, `endpoint:` on a single source file.
+2. **Per-feature** root-frontmatter keys: `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` for each LLM-driven feature the runtime exposes. The OpenCues runtime currently exposes:
+    - `word-cues-*` — domain word-cue sources
+    - `fluid-blank-*` — free-form `_` lookups
+    - `transform-blank-*` — imperative-instruction blanks
+    - `agent-*` — full-buffer agent rewrite
+3. **Global default**: `llm-provider:`, `llm-model:`, `llm-endpoint:` in `OPENCUES.md` frontmatter.
+4. **Runtime built-in default** (currently `groq` + `openai/gpt-oss-120b`).
+
+### API keys
+
+The runtime reads keys from `process.env` at boot (or from the host's settings UI on Chrome) and resolves the right one based on the active provider's env-var name. Multiple keys may be configured simultaneously; only the resolved provider's key is consulted per call.
+
+### Auto-fallback
+
+When a call's resolved provider has a wire-compatible peer (currently `groq` ↔ `cerebras`, both OpenAI chat-completions shape) and that peer's API key is also configured, the runtime automatically retries against the peer on transient failure — HTTP 429 (rate limit), 5xx (server overload), network errors, empty response body. The retry rewrites the request URL, swaps the bearer auth header to the peer's key, and translates the model-name field (e.g. `openai/gpt-oss-120b` ↔ `gpt-oss-120b`).
+
+400-class client errors are **never** retried — those mean the request itself is malformed and would fail the same way on the peer.
+
+This is OpenCues-specific; standard implementations are free to skip fallback or implement their own.
+
+### `reasoning_effort` handling
+
+OpenAI's gpt-5 / o-series, Groq's gpt-oss-* line, and Cerebras's gpt-oss-* models accept a `reasoning_effort` knob with values `low`/`medium`/`high` (some models add `none` and `xhigh`). Other providers don't. The runtime detects reasoning-capable models by name and forwards the field only where it's supported; for OpenAI's chat-completions endpoint, the runtime also strips `temperature` and renames `max_tokens` → `max_completion_tokens` for gpt-5 / o-series (those model variants reject the legacy fields).
+
+These are wire-format quirks, not protocol features — they get encoded once in the provider adapter and forgotten by callers.
+
+---
+
 ## Why these aren't in the standard (yet)
 
 | Setting | Reason it's runtime-specific |
@@ -60,7 +112,7 @@ None of these affect file format or routing — they all sit downstream of the s
 | `voice-mode`, `voice` | Browser hosts can't access OS TTS; native hosts can. Universal but heterogeneous. |
 | `debug-mode` | Every runtime debugs differently. |
 | `cursor-navigate`, `cursor-preservation` | The cursor-cycling state machine isn't part of the file format spec. |
-| `default-provider`, `default-model` | LLM provider config is a per-runtime concern. |
+| `default-provider`, `default-model`, `llm-provider`, `llm-model`, `llm-endpoint`, `<feature>-provider`, `<feature>-model`, `<feature>-endpoint` | LLM provider config is a per-runtime concern. The list of recognised providers, their wire formats, and their env-var conventions are runtime-specific; another runtime could ship a single provider with a hardcoded model and conform to the standard equally. |
 | `resolver-*` | Caching strategy is implementation-private. |
 
 Any of these could be promoted to the standard if multiple runtimes adopt them. See [`core.md`](./core.md) § Promotion path.
@@ -72,7 +124,9 @@ Any of these could be promoted to the standard if multiple runtimes adopt them. 
 For migrations from older OpenCues installs, the runtime accepts these legacy locations:
 
 - A 0-byte `cues.md` is treated as missing (defensive).
-- The legacy combined master file (`cues.md` with cue + blank + runtime settings mixed) is migrated on first `opencues seed-configs` run by splitting frontmatter into `cues.md`, `blanks.md`, and `opencues.md`.
+- The legacy combined master file (`cues.md` with cue + blank + runtime settings mixed) is migrated on first `opencues seed-configs` run by splitting frontmatter into `cues.md`, `blanks.md`, and `OPENCUES.md`.
+- The previous-arc rc-style settings file at `~/.opencuesrc` (introduced when settings were first split out of `cues.md`) is moved to `~/.cues/OPENCUES.md` on next `opencues seed-configs`. Content is preserved verbatim, wrapped in `---` frontmatter fences.
+- The interim `~/.cues/words/` per-cue folder name (used while disambiguating from "OpenCues settings") is renamed to `~/.cues/cues/` for symmetry with `cues.md`. Files are merged when both exist; `cues/` wins on conflicts.
 
 Implementers of other runtimes are not expected to honor any of these legacy paths.
 
@@ -82,7 +136,7 @@ Implementers of other runtimes are not expected to honor any of these legacy pat
 
 Some settings can be modified by the user from inside text — e.g. typing `opencues voice-mode _` in a buffer and accepting the alternative flips the in-file value. The OpenCues runtime ships a built-in `OpenCuesSettingsBlank` that targets this file.
 
-When the runtime writes to `opencues.md`, it MUST honor the [hot-reload write-race guard](./core.md#hot-reload) by suppressing its own re-read for at least 2 seconds after the write completes.
+When the runtime writes to `OPENCUES.md`, it MUST honor the [hot-reload write-race guard](./core.md#hot-reload) by suppressing its own re-read for at least 2 seconds after the write completes.
 
 Other runtimes are free to omit this self-mutation behavior entirely.
 
@@ -133,7 +187,7 @@ The runtime emits character-offset `spanStart`/`spanEnd` on the resulting `CueRe
 
 ### Settings
 
-Fluid blank is opt-in per integration via the `enableFluidBlank` flag passed to `buildSourcesFromConfig()`. The `opencues.md` setting `fluid-blank-mode: on|off` toggles it at runtime; `fluid-blank-provider:` selects which model to use (defaults to the runtime's `default-provider`).
+Fluid blank is opt-in per integration via the `enableFluidBlank` flag passed to `buildSourcesFromConfig()`. The `OPENCUES.md` setting `fluid-blank-mode: on|off` toggles it at runtime; `fluid-blank-provider:` selects which model to use (defaults to the runtime's `default-provider`).
 
 A future spec version may promote `fluid-blank-mode` to `blanks.md` if multiple runtimes adopt the same toggle.
 
@@ -216,3 +270,44 @@ The three runtime sources are independently disable-able. With all three off, `_
 ### Reference
 
 The architecture document at `docs/architecture/transform-blank.md` is the canonical implementation reference. The benchmark log at `tests/benchmarks/transform-blank/EXPERIMENTS.md` records every design decision with its accuracy delta.
+
+---
+
+## Future surfaces (design locked, implementation pending)
+
+### Auditors — ambient text rewrites
+
+A third paradigm beyond cues (LLM → user, suggesting alternatives) and blanks (user → LLM, gated by `_`): **ambient autonomous edits applied as you write**, driven by a user-curated list of always-on tasks.
+
+The OpenCues runtime today implements a single in-memory agent task (the `AgentRewrite` module). The proposed evolution: persist tasks to disk as a third file family symmetric with cues / blanks, so the user can declare named writing styles ("british english", "formal academic tone", "no em-dashes") and have them apply continuously across sessions.
+
+**Proposed file layout** — `auditors.md` master + `auditors/<name>.md` per-auditor:
+
+```
+~/.cues/
+├── auditors.md            # master file: frontmatter (defaults, ignore, …) + inline ## auditors
+└── auditors/<name>.md     # per-auditor: full frontmatter + body prompt
+```
+
+**Per-auditor frontmatter** (shape mirrors `cue.md`):
+
+```yaml
+---
+name: british-english
+enabled: true
+priority: 50
+provider: cerebras       # optional per-auditor LLM override
+model: gpt-oss-120b
+---
+Use British English spelling throughout: colour, organise, favourite, analogue.
+```
+
+**Lifecycle ops** — the existing transform-blank `TASK_ARM` / `TASK_ADD` / `TASK_STOP` verdicts gain disk persistence; a new `TASK_KILL` verdict deletes all extras while keeping the base auditor.
+
+**Status:** this is **runtime-specific**. The standard would gain a third surface only after a second runtime adopts it. Until then, auditors live in this document the same way fluid-blank and transform-blank do.
+
+The naming is deliberate: `auditors` avoids the strong existing convention around `agents.md` / `tasks.md` (used by AGENTS.md, snarktank/ai-dev-tasks, and similar AI-tooling files). An auditor watches the user's text against a rule and applies corrections — different from a generic "agent" which connotes broader autonomy.
+
+### Provider routing
+
+Already implemented and described above. Likely the next promotion candidate to the standard if a second runtime ships LLM support, since the file-format implications are minimal — just add `provider:` / `model:` / `endpoint:` to the recognised optional fields in `cue-spec.md` (already done in 0.1-alpha) and `blank-spec.md` (pending).
