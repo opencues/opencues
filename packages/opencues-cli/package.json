@@ -7,7 +7,8 @@
     "opencues": "./bin/cli.cjs"
   },
   "scripts": {
-    "_": "node bin/cli.cjs"
+    "_": "node bin/cli.cjs",
+    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "files": [
     "bin/",
@@ -18,5 +19,9 @@
     "type": "git",
     "url": "https://github.com/opencues/opencues",
     "directory": "packages/opencues-cli"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

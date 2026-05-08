@@ -12,7 +12,8 @@
   "scripts": {
     "dev-install": "node bin/install.cjs install",
     "dev-uninstall": "node bin/install.cjs uninstall",
-    "seed-configs": "node bin/install.cjs seed-configs"
+    "seed-configs": "node bin/install.cjs seed-configs",
+    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "files": [
     "bin/",
@@ -23,5 +24,9 @@
     "type": "git",
     "url": "https://github.com/opencues/opencues",
     "directory": "integrations/opencode"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

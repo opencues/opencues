@@ -17,7 +17,8 @@
     "build": "npm run typecheck && npm test && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "dev-install": "node bin/install.cjs install",
-    "dev-uninstall": "node bin/install.cjs uninstall"
+    "dev-uninstall": "node bin/install.cjs uninstall",
+    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "dependencies": {
     "@opencues/core": "workspace:*",
@@ -35,5 +36,9 @@
     "type": "git",
     "url": "https://github.com/opencues/opencues",
     "directory": "integrations/chrome"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }
