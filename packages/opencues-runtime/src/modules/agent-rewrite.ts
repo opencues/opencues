@@ -88,8 +88,13 @@ export interface AgentRewriteOptions {
    * migrated to multi-provider.
    */
   readonly resolveLLM?: () => ResolvedAgentLLM | null;
-  /** Min interval between ticks. Default 1500. */
-  readonly cadenceMs?: number;
+  /** Debounce window between text-change → tick. Reset on every
+   *  keystroke; the tick fires only after the user pauses for this long.
+   *  Default 1000ms. Accepts a number (static, used by tests) or a thunk
+   *  re-read on every scheduleTick (used by boots so the user-overridable
+   *  `agent-debounce-ms` setting in OPENCUES.md hot-reloads). Misparses /
+   *  non-positive values fall back to the default. */
+  readonly cadenceMs?: number | (() => number);
   /** Optional injection seam for tests. */
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
   /** Optional log function — wires through to adapter.log('debug', ...) by default. */
@@ -177,7 +182,7 @@ export class AgentRewrite {
 
   /**
    * Subscribe to text-change events so ticks fire only when the buffer
-   * has actually moved. A debounce window (cadenceMs, default 1500) lets
+   * has actually moved. A debounce window (cadenceMs, default 1000) lets
    * a burst of typing settle before the LLM call. Idle = no calls at
    * all — the previous setInterval design burned an LLM call every
    * 1.5 s even when the user wasn't typing.
@@ -185,10 +190,25 @@ export class AgentRewrite {
    * The first tick still fires on start() so the agent reacts to ARM
    * even on a static buffer (the user typed before arming).
    */
+  /**
+   * Read the configured cadence as a positive integer ms. Falls back to
+   * 1000ms on:
+   * - undefined (no option set)
+   * - thunk that returns a non-finite or non-positive value
+   * - parseInt-style misparse (NaN)
+   */
+  private getCadenceMs(): number {
+    const raw = typeof this.options.cadenceMs === 'function'
+      ? this.options.cadenceMs()
+      : this.options.cadenceMs;
+    if (raw === undefined || !Number.isFinite(raw) || raw <= 0) return 1000;
+    return raw;
+  }
+
   start(): void {
     if (this._started) return;
     this._started = true;
-    const cadence = this.options.cadenceMs ?? 1500;
+    const cadence = this.getCadenceMs();
     this._unsubText = this.adapter.onTextChange(() => this.scheduleTick());
     // Kick a first tick: the user may have armed without typing.
     this.scheduleTick();
@@ -216,7 +236,7 @@ export class AgentRewrite {
    */
   private scheduleTick(): void {
     if (!this._started) return;
-    const cadence = this.options.cadenceMs ?? 1500;
+    const cadence = this.getCadenceMs();
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     this._debounceTimer = setTimeout(() => {
       this._debounceTimer = null;

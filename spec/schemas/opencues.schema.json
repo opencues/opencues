@@ -46,7 +46,8 @@
     "auditors-model": { "type": "string" },
     "auditors-endpoint": { "type": "string", "format": "uri" },
 
-    "agent-window-words": { "type": ["string", "number"] },
+    "agent-window-words": { "type": ["string", "number"], "description": "Sliding-window mode: 0 = full-buffer, N>0 = ~N words around cursor." },
+    "agent-debounce-ms": { "type": ["string", "number"], "description": "Debounce after last keystroke before AgentRewrite ticks (ms). Misparse / non-positive → 1000." },
 
     "settings": {
       "type": "object",

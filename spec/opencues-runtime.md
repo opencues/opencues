@@ -50,6 +50,10 @@ default-model: claude-haiku-4-5
 # Resolver tuning
 resolver-skip-filter: on    # skip already-displayed words on subsequent passes
 resolver-cache-ttl: 300     # seconds
+
+# Agent (AgentRewrite) tuning
+agent-debounce-ms: 1000     # ms after last keystroke before AgentRewrite ticks. Misparse → 1000.
+agent-window-words: 0       # 0 = full-buffer; N>0 = sliding window of ~N words around cursor
 ---
 ```
 

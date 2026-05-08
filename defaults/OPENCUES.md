@@ -7,11 +7,19 @@ debug-mode: off
 tips-mode: on
 cursor-navigate: inactive
 
-# Cue-surface enable flags. Opt-in: omit or set to anything other than
-# "on" to disable. See packages/opencues-core/src/sources/build-sources.ts
-# for what each one gates.
+# Surface-availability flags. "on" means the surface is registered and
+# ready to fire when matching input appears; "off" (or omitted) means the
+# source is not built at all. The actual "is something running right now"
+# state — e.g. is an agent task armed — is per-buffer runtime state and
+# orthogonal to these flags.
+# See packages/opencues-core/src/sources/build-sources.ts for what each gates.
 fluid-blank-mode: on
 word-cues-mode: on
+transform-blank-mode: on
+
+# Agent tuning. Debounce after the last keystroke before AgentRewrite
+# fires (ms). Misparses or non-positive values fall back to 1000.
+agent-debounce-ms: 1000
 
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
@@ -48,6 +56,17 @@ settings:
     values:
       on: Enabled — words matching a cue source's match/keywords get cycled alternatives
       off: Disabled — no word-cue LLM calls fire
+  transform-blank-mode:
+    tip: Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`, `stop task _`)
+    values:
+      on: Enabled — `_` reaches transform-blank's classifier; agent tasks can be armed
+      off: Disabled — `_` skips classification; `agentically X _` falls through to fluid-blank as a lookup
+  agent-debounce-ms:
+    tip: Pause after last keystroke before AgentRewrite fires (ms). Misparse → 1000.
+    values:
+      "500": Aggressive — fires shortly after each pause
+      "1000": Default — balanced
+      "2000": Relaxed — only fires after a clear stop
 ---
 
 # OPENCUES.md — Runtime Configuration

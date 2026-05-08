@@ -216,6 +216,7 @@ export function boot(host: HostInfo): BootResult {
       // without a restart). 0 = full-buffer; useful for long docs in
       // textareas where token cost dominates.
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
+      cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
       auditorPrompts: () => configLoader.composeAuditorPrompts(),
     });
     agentRewrite.start();
