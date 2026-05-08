@@ -31,21 +31,47 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 
 ## The Standard
 
-OpenCues is built on `.md` config files — one top-level file plus folder-based sources. All prompts, modes, and behaviour live here, not in code.
+OpenCues is built on `.md` config files — three master files plus folder-based sources. All prompts, modes, and behaviour live here, not in code. Three surfaces: **cues** (system→user, suggested over plain text), **blanks** (user→system, gated by `_`), **auditors** (system→buffer, composed inline rewrites).
 
 | Config | What it defines | Example |
 |--------|----------------|---------|
-| **cues.md** | Top-level system settings in frontmatter (`voice-mode`, `tips-mode`, etc.), the nested `settings:` block, and the `ignore:` array. No cue/blank data. | `voice-mode: active`, `ignore: [the, a, of]` |
-| **cues/{name}/cue.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `cues/legal/CUE.md` for legal terminology, `cues/grammar/CUE.md` with a synonym prompt |
-| **blanks/{name}/** | Folder-based blank with colocated script or runtime class | `blanks/volume/BLANK.md` + `volume-blank.sh` |
+| **OPENCUES.md** | Runtime settings (voice-mode, tips-mode, debug-mode, cursor-navigate, surface enable flags, LLM routing). User-level only. | `voice-mode: active`, `transform-blank-mode: on` |
+| **CUES.md** | Cue-surface master: project metadata + `ignore:` (words never cued) + `disable:` (skip cue ids at this layer). | `name: my-project`, `disable: [spelling]` |
+| **BLANKS.md** | Blank-surface master: project metadata + `ignore:` + `disable:` for blank ids. | `disable: [stocks]` |
+| **AUDITORS.md** | Auditor-surface master: project metadata + `disable:` for auditor ids. | `disable: [grammar]` |
+| **cues/{name}/CUE.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `cues/legal/CUE.md` for legal terminology, `cues/grammar/CUE.md` with a synonym prompt |
+| **blanks/{name}/BLANK.md** | Folder-based blank with optional colocated script or runtime class. | `blanks/volume/BLANK.md` + `volume-blank.sh` |
+| **auditors/{name}/AUDITOR.md** | Inline-rewrite concern (grammar, clarity, tone, ...) — body is the prompt fragment. Multiple auditors compose into one LLM call per agent tick. | `auditors/grammar/AUDITOR.md` |
 
 Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered. To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Try it in 5 minutes
+
+Quickest path to a patched Claude Code with cues live. Replaces five separate commands with one chain you can paste:
+
+```bash
+# 1. Free LLM key — Groq's free tier covers every feature.
+#    https://console.groq.com/keys to grab one.
+export GROQ_API_KEY="your-key"
+
+# 2. Clone + bootstrap + patch Claude Code, one chain.
+git clone https://github.com/opencues/opencues ~/opencues && \
+  cd ~/opencues && pnpm install && pnpm build && \
+  pnpm exec opencues install claude-code
+
+# 3. Launch the patched fork.
+claude-cues
+```
+
+That's it. Type any prompt, navigate words with **Ctrl+Alt+Left/Right**, cycle alternatives with **Ctrl+Alt+Up/Down**. Try `volume _` for a system-volume blank, `weather london _` for a lookup, or `agentically correct spelling _` to arm the inline agent.
+
+> **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.4.11 (sha `5e9d5c7`), cloned into `~/opencode-cues/`. Both pins live in `integrations/<host>/pin.json`. Your native `claude` and your existing OpenCode install stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
 
 ## Install
 
 **Prerequisites:** Node.js 18+, [pnpm](https://pnpm.io), at least one LLM provider API key, plus the host editor you want to integrate with.
 
-OpenCues supports **six LLM providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, and Gemini. Set the env key for whichever you want; pick different ones per feature in `~/.cues/cues.md` (see [docs/guides/llm-providers.md](docs/guides/llm-providers.md)). Setting both `GROQ_API_KEY` and `CEREBRAS_API_KEY` enables auto-fallback between them.
+OpenCues supports **six LLM providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, and Gemini. Set the env key for whichever you want; pick different ones per feature in `~/.cues/OPENCUES.md` (see [docs/guides/llm-providers.md](docs/guides/llm-providers.md)). Setting both `GROQ_API_KEY` and `CEREBRAS_API_KEY` enables auto-fallback between them.
 
 ```bash
 # Easiest path — Groq's free tier covers every feature
@@ -92,7 +118,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 |---|---|
 | `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.cues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. Mirrors OpenCode's compact footprint. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
-| `~/.cues/` | User-level configs — `cues.md` (top-level settings) plus `cues/` and `blanks/` folders. Read by every host. |
+| `~/.cues/` | User-level configs — `OPENCUES.md` (runtime settings) plus the three master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) and their per-source folders (`cues/`, `blanks/`, `auditors/`). Read by every host. |
 | `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
@@ -118,6 +144,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 - **Dynamic list blanks** — `HN posts _` fetches live Hacker News titles; Up/Down scrolls through them
 - **Prompt improver** — `improve prompt _` uses LLM to rewrite your prompt; cycle through 3 improved versions
 - **API blanks** — `Tokyo weather _` fetches live weather; `Reddit Stock _` fetches stock price
+- **Inline agent** — `agentically correct spelling _` arms a continuous rewrite loop; the agent fixes your text on every typing pause until you `stop task _`. Auditors (`auditors/<name>/AUDITOR.md`) compose into the agent's prompt so the same loop can carry grammar/clarity/tone concerns at once. Statusline shows `[task: <prompt>]` while armed.
 - **Secondary display** — highlighted words show cue-tips
 - **Hot-reload config** — edit any `.md` config file and changes take effect in ~2s, no restart needed
 
@@ -132,7 +159,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │                                                             │
 │  packages/opencues-core/      LLM analysis library            │
 │  ├── resolver.ts              CueResolver orchestration       │
-│  ├── cues-md.ts               Config parser (cues.md frontmatter) │
+│  ├── cues-md.ts               Config parser (CUES.md, CUE.md, etc.) │
 │  ├── node-http-adapter.ts     HTTPS with keep-alive           │
 │  └── sources/                 ConfigSource, parsers...        │
 │                                                               │
@@ -234,7 +261,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **BlankSource** — keyword-bound blank dispatcher (auto-populate + cycling for `volume _`, `stocks aapl _`, etc.)
 - **FluidBlankSource** — free-form `_` lookup (P1 segment + P3 answer pipeline) for any unmatched blank
 - **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority. Spelling is just a regular ConfigSource cue at `defaults/cues/spelling.md` shipped at priority 80; no dedicated class.
-- **buildSourcesFromConfig** — factory: parses `cues.md` frontmatter + folder configs (`cues/<name>/`, `blanks/<name>/`) → `CueSource[]`
+- **buildSourcesFromConfig** — factory: parses master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) + per-source folders (`cues/<name>/CUE.md`, `blanks/<name>/BLANK.md`, `auditors/<name>/AUDITOR.md`) → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 
 ### `@opencues/runtime`
@@ -277,21 +304,21 @@ Your user-level OpenCues config lives at `~/.cues/`:
 
 ```
 ~/.cues/
-├── OPENCUES.md         # Runtime settings (frontmatter): voice-mode, tips-mode,
-│                       # debug-mode, cursor-navigate, fluid-blank-mode,
-│                       # word-cues-mode, llm-provider, per-feature LLM keys,
-│                       # the nested `settings:` block. Body is documentation.
-├── cues.md             # Cue master file (project-level overridable)
-├── cues/<name>.md      # Per-cue files (legal, medical, financial, spelling, …)
-├── blanks.md           # Blank master file
-├── blanks/<name>/      # Folder-based blanks (with colocated scripts or runtime classes)
-├── auditors.md         # Agent task master (NEW — tasks the agent applies as you write)
-└── auditors/<name>.md  # Per-auditor task files (base + extras)
+├── OPENCUES.md              # Runtime settings (frontmatter): voice-mode, tips-mode,
+│                            # debug-mode, cursor-navigate, fluid-blank-mode,
+│                            # transform-blank-mode, word-cues-mode, agent-debounce-ms,
+│                            # llm-provider + per-feature LLM keys, nested `settings:`.
+├── CUES.md                  # Cue master (project-level overridable). frontmatter only.
+├── cues/<name>/CUE.md       # Per-cue folder (legal, medical, financial, spelling, …)
+├── BLANKS.md                # Blank master.
+├── blanks/<name>/BLANK.md   # Per-blank folder (with optional colocated scripts or runtime classes)
+├── AUDITORS.md              # Auditor master.
+└── auditors/<name>/AUDITOR.md  # Per-auditor — body is the inline-rewrite prompt fragment
 ```
 
 Project-level overrides live at `<cwd>/.cues/` and merge on top of user-level for the native hosts (Claude Code, OpenCode). Chrome reads only what `opencues sync chrome` has bundled (user-level by default; opt-in for projects). See `docs/features/chrome-sync.md`.
 
-System settings (in `~/.cues/cues.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
+System settings (in `~/.cues/OPENCUES.md`) — the same scalars are cyclable inside the host via the `opencues` cue-blank:
 
 | Setting | Values | Description |
 |---|---|---|
@@ -299,6 +326,10 @@ System settings (in `~/.cues/cues.md`) — the same scalars are cyclable inside 
 | `tips-mode` | `on` / `off` | Show secondary-display tips |
 | `debug-mode` | `on` / `off` | Verbose logging in the host's debug surface |
 | `cursor-navigate` | `active` / `inactive` | Highlight follows cursor to navigable words |
+| `word-cues-mode` | `on` / `off` | LLM word-cue surface (legal, medical, ...) registered |
+| `fluid-blank-mode` | `on` / `off` | Free-form `_` lookup pipeline registered |
+| `transform-blank-mode` | `on` / `off` | Imperative `_` + agent-task lifecycle (`agentically X _`) registered |
+| `agent-debounce-ms` | number (default 1000) | Pause-after-keystroke before the inline agent fires. Misparse → 1000. |
 
 Run `pnpm exec opencues seed-configs` to populate `~/.cues/` from the shipped defaults the first time. Hot-reloads on every edit (~2.5s for native hosts; chrome polls a `.version` hash — see `docs/features/chrome-hot-reload.md`).
 
@@ -428,14 +459,14 @@ A blank is a `_`-triggered slot. There are four shapes; pick by what your blank 
 
 | Shape | Trigger | Implementation |
 |---|---|---|
-| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/cue.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
-| **List blank** (no script) | `affirmation _` | `blanks/<name>/cue.md` with `stepValues: [...]` |
-| **Selector + Satellite** | `opencues settings _` → expands to `<setting> <value>` | `blanks/<name>/cue.md` with `blankSatellite: true` |
-| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _`, `define X _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/cue.md` declaring `blankKeywords` |
+| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/BLANK.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
+| **List blank** (no script) | `affirmation _` | `blanks/<name>/BLANK.md` with `stepValues: [...]` |
+| **Selector + Satellite** | `opencues settings _` → expands to `<setting> <value>` | `blanks/<name>/BLANK.md` with `blankSatellite: true` |
+| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _`, `define X _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/BLANK.md` declaring `blankKeywords` |
 
 For free-form `_` lookups (`capital of france _`, `unicode for em dash _`) there's no per-blank config — `FluidBlankSource` handles any `_` the keyword-bound blanks didn't claim.
 
-**Word sources** in `cues.md` use per-word routing — every source declares `match:` or `keywords:`, and the highest-priority matching source claims each word. Words no source claims get no cue (not navigable). See `docs/features/word-cue-routing.md`.
+**Word sources** under `cues/<name>/CUE.md` use per-word routing — every source declares `match:` or `keywords:`, and the highest-priority matching source claims each word. Words no source claims get no cue (not navigable). See `docs/features/word-cue-routing.md`.
 
 See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 
