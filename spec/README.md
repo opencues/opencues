@@ -2,18 +2,19 @@
 
 > **Status:** `0.1-alpha`. Expect changes.
 
-This directory holds the open standard for **Cues** and **Blanks** — two file formats that any text editor, IDE, or LLM-pipeline can implement to interoperate. The standard is licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
+This directory holds the open standard for **Cues**, **Blanks**, and **Auditors** — three file formats that any text editor, IDE, or LLM-pipeline can implement to interoperate. The standard is licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 
 ## What the standard is
 
-OpenCues reduces to two ideas (see [`../concept.md`](../concept.md)):
+OpenCues defines three surfaces over text (see [`../concept.md`](../concept.md)):
 
-| Direction | Surface | File format | Trigger |
-|---|---|---|---|
-| LLM → user | **Cues** — alternatives surfaced over plain text | [`cue-spec.md`](./cue-spec.md) | regex `match` / `keywords` list |
-| user → system | **Blanks** — `_`-gated value substitutions | [`blank-spec.md`](./blank-spec.md) | `_` adjacent to `blankKeywords` |
+| Direction | Surface | Operates on | File format | Trigger |
+|---|---|---|---|---|
+| LLM → user | **Cues** — alternatives surfaced over plain text | one word | [`cue-spec.md`](./cue-spec.md) | regex `match` / `keywords` list |
+| user → system | **Blanks** — `_`-gated value substitutions | one `_` slot | [`blank-spec.md`](./blank-spec.md) | `_` adjacent to `blankKeywords` |
+| LLM → buffer | **Auditors** — composed inline rewrite concerns | the whole buffer | [`auditor-spec.md`](./auditor-spec.md) | every rewrite cycle (no per-source gating) |
 
-The standard covers two file shapes (`cue.md`, `blank.md`), the master files that aggregate them (`cues.md`, `blanks.md`), and the runtime contracts a conformant implementation must satisfy.
+The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDITOR.md`), the master files that aggregate them (`CUES.md`, `BLANKS.md`, `AUDITORS.md`), and the runtime contracts a conformant implementation must satisfy.
 
 ## What the standard is *not*
 
@@ -25,18 +26,24 @@ The standard covers two file shapes (`cue.md`, `blank.md`), the master files tha
 
 | File | What it covers |
 |---|---|
-| [`cue-spec.md`](./cue-spec.md) | The `cue.md` format and the cue runtime contract |
-| [`blank-spec.md`](./blank-spec.md) | The `blank.md` format and the blank runtime contract |
-| [`core.md`](./core.md) | Shared rules: search-path, host-compat, hot-reload, master `cues.md` / `blanks.md`, routing |
+| [`cue-spec.md`](./cue-spec.md) | The `CUE.md` format and the cue runtime contract |
+| [`blank-spec.md`](./blank-spec.md) | The `BLANK.md` format and the blank runtime contract |
+| [`auditor-spec.md`](./auditor-spec.md) | The `AUDITOR.md` format and the auditor runtime contract |
+| [`core.md`](./core.md) | Shared rules: search-path, host-compat, hot-reload, master `CUES.md` / `BLANKS.md` / `AUDITORS.md`, routing |
 | [`opencues-runtime.md`](./opencues-runtime.md) | **Non-standard.** OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation specs for fluid blank and transform blank. Documents the promotion path from runtime-specific to standard. |
-| [`schemas/cue.schema.json`](./schemas/cue.schema.json) | JSON Schema for `cue.md` frontmatter. Editor integrations may use this for live validation. |
-| [`schemas/blank.schema.json`](./schemas/blank.schema.json) | JSON Schema for `blank.md` frontmatter. |
+| [`schemas/cue.schema.json`](./schemas/cue.schema.json) | JSON Schema for `CUE.md` frontmatter. Editor integrations may use this for live validation. |
+| [`schemas/blank.schema.json`](./schemas/blank.schema.json) | JSON Schema for `BLANK.md` frontmatter. |
+| [`schemas/auditor.schema.json`](./schemas/auditor.schema.json) | JSON Schema for `AUDITOR.md` frontmatter. |
+| [`schemas/cues-master.schema.json`](./schemas/cues-master.schema.json) | JSON Schema for the `CUES.md` master file. |
+| [`schemas/blanks-master.schema.json`](./schemas/blanks-master.schema.json) | JSON Schema for the `BLANKS.md` master file. |
+| [`schemas/auditors-master.schema.json`](./schemas/auditors-master.schema.json) | JSON Schema for the `AUDITORS.md` master file. |
+| [`schemas/opencues.schema.json`](./schemas/opencues.schema.json) | JSON Schema for the `OPENCUES.md` runtime config file (non-standard — OpenCues-specific). |
 
 ## Reading order
 
-Implementers building a new runtime: read `cue-spec.md`, `blank-spec.md`, `core.md` in that order. `opencues-runtime.md` is reference-only and can be skipped.
+Implementers building a new runtime: read `cue-spec.md`, `blank-spec.md`, `auditor-spec.md`, `core.md` in that order. `opencues-runtime.md` is reference-only and can be skipped.
 
-Authors writing `cue.md` / `blank.md` files: read the §§ Configuration spec and Examples in each spec doc. Skip the Runtime contract sections — those are for runtime implementers.
+Authors writing `CUE.md` / `BLANK.md` / `AUDITOR.md` files: read the §§ Configuration spec and Examples in each spec doc. Skip the Runtime contract sections — those are for runtime implementers.
 
 ## Status & versioning
 

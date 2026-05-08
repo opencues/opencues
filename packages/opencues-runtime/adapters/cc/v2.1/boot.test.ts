@@ -56,7 +56,7 @@ describe('boot()', () => {
       // cwd is '/test' (fakeHost default), cc boot adds `.cues`
       // to every search path — serve TIPS from /test/.cues/cues.md
       // (mirrors what the adapter looks for in production).
-      readFile: async (p: string) => p === '/test/.cues/cues.md' ? TIPS : null,
+      readFile: async (p: string) => p === '/test/.cues/CUES.md' ? TIPS : null,
     });
     const result = boot(host);
     await new Promise(r => setImmediate(r));

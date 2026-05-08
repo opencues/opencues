@@ -14,7 +14,7 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { buildSourcesFromConfig } from './build-sources';
-import type { CuesMdConfig, BlankConfig } from '../cues-md';
+import type { CuesMdConfig } from '../cues-md';
 import type { CueSource, HttpAdapter } from '../types';
 
 interface CapturedCall { url: string; body: string; headers: Record<string, string> }
@@ -197,23 +197,3 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
   });
 });
 
-describe('buildSourcesFromConfig — legacy single-key wiring (backwards compat)', () => {
-  it('passes through endpoint/apiKey/defaultModel without provider lookup', async () => {
-    const { adapter, calls } = captureAdapter();
-    const blanks: Record<string, BlankConfig> = {};
-    const sources = buildSourcesFromConfig(undefined, undefined, {
-      httpAdapter: adapter,
-      endpoint: 'https://legacy.example/v1/chat/completions',
-      apiKey: 'sk_legacy',
-      defaultModel: 'legacy-model',
-      blanks,
-      enableFluidBlank: true,
-    });
-    const fluid = sources.find((s: CueSource) => s.id === 'fluid-blank')!;
-    await fluid.getCues({ text: 'capital of france _', words: ['capital', 'of', 'france', '_'] });
-    assert.strictEqual(calls[0].url, 'https://legacy.example/v1/chat/completions');
-    assert.strictEqual(calls[0].headers.Authorization, 'Bearer sk_legacy');
-    const body = JSON.parse(calls[0].body);
-    assert.strictEqual(body.model, 'legacy-model');
-  });
-});

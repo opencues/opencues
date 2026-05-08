@@ -33,11 +33,11 @@ const TIPS = wrapTipsAsCuesMd({
 });
 
 async function setup(text: string) {
-  const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+  const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
   await loader.load();
   const cycling = new Cycling(adapter, hlState, dynDefs, loader);
   cycling.subscribe();
@@ -142,12 +142,12 @@ describe('Cycling static-alt multi-word spans', () => {
   });
 
   async function setupMw(text: string) {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': MW_TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': MW_TIPS } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const spanFillState = new SpanFillState();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
     cycling.subscribe();
@@ -368,12 +368,12 @@ describe('Cycling static-alt multi-word spans', () => {
 
 describe('Cycling consume-all (Step 31)', () => {
   async function setupCa(initialText: string) {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText(initialText);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const consumeAll = new SpanFillState();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, consumeAll);
     cycling.subscribe();
@@ -439,13 +439,13 @@ describe('Cycling consume-all (Step 31)', () => {
   });
 
   it('Phase F.b: cycling to `_` adds slot to DismissedBlanks; cycling away removes it', async () => {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('foo');
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const span = new SpanFillState();
     const dismissed = new DismissedBlanks();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, span, dismissed);
     cycling.subscribe();
@@ -485,7 +485,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     const hlState = new HighlightState();
@@ -503,7 +503,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -554,7 +554,7 @@ settings:
     const setup = (initialCursor: number): { adapter: MockAdapter; ss: SelectorSatelliteState; hlState: HighlightState } => {
       const adapter = new MockAdapter({
         cwd: '/proj',
-        files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+        files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
       });
       adapter.pushText('voice-mode active');
       const hlState = new HighlightState();
@@ -567,7 +567,7 @@ settings:
         currentSetting: 'voice-mode', currentValue: 'active',
         separator: ' ', clearOnEdit: false,
       }, 'voice-mode active');
-      const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+      const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
       // load synchronously — pre-load opencuesState used by cycling.
       void loader.load();
       const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
@@ -618,7 +618,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     const hlState = new HighlightState();
@@ -636,7 +636,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -668,7 +668,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('output-format plain text');
     const hlState = new HighlightState();
@@ -686,7 +686,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'output-format plain text');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -711,7 +711,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('output-format plain text');
     const hlState = new HighlightState();
@@ -729,7 +729,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'output-format plain text');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -751,7 +751,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('display mode split pane');
     const hlState = new HighlightState();
@@ -769,7 +769,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'display mode split pane');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -818,7 +818,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     // Host stubs blankInvoke for the selector get; spawn must NOT be hit.
@@ -837,7 +837,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
     cycling.subscribe();
@@ -864,7 +864,7 @@ settings:
 ---`;
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': OPENCUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
     });
     adapter.pushText('voice-mode active');
     // No stub registered → blankInvoke returns null → spawnProcess used.
@@ -882,7 +882,7 @@ settings:
       separator: ' ',
       clearOnEdit: false,
     }, 'voice-mode active');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const cycling = new Cycling(adapter, hlState, new DynDefs(), loader, undefined, undefined, ss);
     cycling.subscribe();

@@ -228,6 +228,7 @@ export function boot(host: HostInfo): BootResult {
       // cues.md is fully loaded.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
+      auditorPrompts: () => configLoader.composeAuditorPrompts(),
     });
     agentRewrite.start();
   }

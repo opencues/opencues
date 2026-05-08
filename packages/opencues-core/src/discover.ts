@@ -1,13 +1,14 @@
 /**
  * opencues-core/discover.ts
  *
- * Folder-based config discovery. Scans cues/, blanks/ directories
- * for individual cue.md files and merges them into CuesMdConfig objects.
+ * Folder-based config discovery. Scans cues/, blanks/, auditors/
+ * directories for individual CUE.md / BLANK.md / AUDITOR.md files
+ * and merges them into CuesMdConfig objects.
  *
  * Pure TypeScript — I/O adapters are injected, no direct filesystem access.
  */
 
-import { CuesMdConfig, BlankConfig, parseSingleCueMd } from './cues-md';
+import { CuesMdConfig, BlankConfig, AuditorConfig, parseSingleCueMd, parseSingleAuditorMd } from './cues-md';
 
 // ============================================================================
 // Types
@@ -30,7 +31,9 @@ export interface DiscoverOptions {
 export interface DiscoveredConfigs {
   cuesConfig?: CuesMdConfig;
   blanksConfig?: CuesMdConfig;
+  auditorsConfig?: CuesMdConfig;
   blankOverrides?: Record<string, BlankConfig>;
+  auditorOverrides?: Record<string, AuditorConfig>;
   ignoreWords?: string[];
 }
 
@@ -40,15 +43,13 @@ export interface DiscoveredConfigs {
 
 const CUE_FILENAME = 'CUE.md';
 const BLANK_FILENAME = 'BLANK.md';
+const AUDITOR_FILENAME = 'AUDITOR.md';
 
 /**
- * Scan a directory for cue sources. Two shapes accepted:
+ * Scan a directory for cue sources. Folder-only shape:
  *
- *   - Flat: `<dirPath>/<name>.md` — source name = filename minus `.md`.
- *   - Folder: `<dirPath>/<name>/<filename>` — source name = folder name.
- *
- * `filename` selects the per-folder file: `cue.md` for cue dirs,
- * `blank.md` for blank dirs.
+ *   `<dirPath>/<name>/<filename>` where `<filename>` is `CUE.md` for
+ *   cue dirs and `BLANK.md` for blank dirs. Source name = folder name.
  *
  * Returns an array of parsed CuesMdConfig, one per discovered source.
  */
@@ -63,23 +64,10 @@ function scanDir(
   const results: CuesMdConfig[] = [];
 
   for (const entry of entries) {
-    let cuePath: string;
-    let configPath: string;
-    let inferredName: string;
-
-    if (entry.isDirectory) {
-      // Folder shape: <dir>/<name>/<filename>
-      cuePath = dirPath + '/' + entry.name + '/' + filename;
-      configPath = dirPath + '/' + entry.name;
-      inferredName = entry.name;
-    } else if (entry.name.endsWith('.md')) {
-      // Flat shape: <dir>/<name>.md
-      cuePath = dirPath + '/' + entry.name;
-      configPath = dirPath;
-      inferredName = entry.name.slice(0, -3); // strip .md
-    } else {
-      continue;
-    }
+    if (!entry.isDirectory) continue;
+    const cuePath = dirPath + '/' + entry.name + '/' + filename;
+    const configPath = dirPath + '/' + entry.name;
+    const inferredName = entry.name;
 
     const content = opts.readFile(cuePath);
     if (!content) continue;
@@ -104,6 +92,32 @@ function scanDir(
     results.push(config);
   }
 
+  return results;
+}
+
+/**
+ * Scan auditors/<name>/AUDITOR.md folders. Same folder-only shape as
+ * cues/blanks; parsed with parseSingleAuditorMd which puts the auditor
+ * under `auditors[<name>]`.
+ */
+function scanAuditorsDir(dirPath: string, opts: DiscoverOptions): CuesMdConfig[] {
+  const entries = opts.readDir(dirPath);
+  if (!entries) return [];
+
+  const results: CuesMdConfig[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory) continue;
+    const filePath = dirPath + '/' + entry.name + '/' + AUDITOR_FILENAME;
+    const folderPath = dirPath + '/' + entry.name;
+    const inferredName = entry.name;
+
+    const content = opts.readFile(filePath);
+    if (!content) continue;
+
+    const config = parseSingleAuditorMd(content, folderPath, inferredName);
+    if (!config.frontmatter.name) config.frontmatter.name = inferredName;
+    results.push(config);
+  }
   return results;
 }
 
@@ -134,6 +148,12 @@ function combineCueConfigs(configs: CuesMdConfig[]): CuesMdConfig {
       Object.assign(result.blanks, config.blanks);
     }
 
+    // Merge auditors
+    if (config.auditors) {
+      if (!result.auditors) result.auditors = {};
+      Object.assign(result.auditors, config.auditors);
+    }
+
     // Merge ignore
     if (config.ignore) {
       if (!result.ignore) result.ignore = [];
@@ -149,31 +169,20 @@ function combineCueConfigs(configs: CuesMdConfig[]): CuesMdConfig {
 // ============================================================================
 
 /**
- * Discover folder-based configs by scanning words/, blanks/ directories
+ * Discover folder-based configs by scanning cues/, blanks/ directories
  * inside `<basePath>` (e.g. `~/.cues/`).
  *
- * Each .md file (flat) or subdirectory with a cue.md (folder) is parsed
- * as an individual cue source. Returns discovered configs ready for
- * merging with project-level configs.
- *
- * Legacy support: if `<basePath>/cues/` exists (the old subdir name
- * before the words/blanks scope split), it's scanned too. seed-configs
- * migrates this away on the first run.
+ * Each subdirectory with a CUE.md / BLANK.md is parsed as an individual
+ * cue source. Returns discovered configs ready for merging with
+ * project-level configs.
  */
 export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs {
   const result: DiscoveredConfigs = {};
   const allIgnore: string[] = [];
 
-  // Scan cues/ directory (post-2026-05 rename — restored symmetry
-  // with cues.md after the brief words/ era).
   const cueConfigs = scanDir(opts.basePath + '/cues', opts);
-  // Legacy: scan words/ directory (the interim name used while
-  // disambiguating from the now-defunct opencues.md settings file).
-  // Existing user dirs may still have it; seed-configs migrates them.
-  const legacyWordConfigs = scanDir(opts.basePath + '/words', opts);
-  const allWordConfigs = [...cueConfigs, ...legacyWordConfigs];
-  if (allWordConfigs.length > 0) {
-    const combined = combineCueConfigs(allWordConfigs);
+  if (cueConfigs.length > 0) {
+    const combined = combineCueConfigs(cueConfigs);
     result.cuesConfig = combined;
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
@@ -196,6 +205,14 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
       result.blankOverrides = combined.blanks;
     }
     if (combined.ignore) allIgnore.push(...combined.ignore);
+  }
+
+  // Scan auditors/<name>/AUDITOR.md.
+  const auditorConfigs = scanAuditorsDir(opts.basePath + '/auditors', opts);
+  if (auditorConfigs.length > 0) {
+    const combined = combineCueConfigs(auditorConfigs);
+    result.auditorsConfig = combined;
+    if (combined.auditors) result.auditorOverrides = combined.auditors;
   }
 
   if (allIgnore.length > 0) {
@@ -226,11 +243,22 @@ export function mergeConfigs(
   // Merge blanks configs
   result.blanksConfig = mergeOneCuesMdConfig(monolithic.blanksConfig, folders.blanksConfig);
 
+  // Merge auditors configs
+  result.auditorsConfig = mergeOneCuesMdConfig(monolithic.auditorsConfig, folders.auditorsConfig);
+
   // Merge blank overrides
   if (monolithic.blankOverrides || folders.blankOverrides) {
     result.blankOverrides = {
       ...(monolithic.blankOverrides || {}),
       ...(folders.blankOverrides || {}),
+    };
+  }
+
+  // Merge auditor overrides — folder layer wins on name collision.
+  if (monolithic.auditorOverrides || folders.auditorOverrides) {
+    result.auditorOverrides = {
+      ...(monolithic.auditorOverrides || {}),
+      ...(folders.auditorOverrides || {}),
     };
   }
 
@@ -284,9 +312,26 @@ function mergeOneCuesMdConfig(
     };
   }
 
+  // Auditors: folder overwrites by key
+  if (mono.auditors || folder.auditors) {
+    result.auditors = {
+      ...(mono.auditors || {}),
+      ...(folder.auditors || {}),
+    };
+  }
+
   // Ignore: union
   if (mono.ignore || folder.ignore) {
     result.ignore = [...new Set([...(mono.ignore || []), ...(folder.ignore || [])])];
+  }
+
+  // disableAuditors: union (concat across layers — every layer's
+  // disable list applies; never elided by a higher layer).
+  if (mono.disableAuditors || folder.disableAuditors) {
+    result.disableAuditors = [...new Set([
+      ...(mono.disableAuditors || []),
+      ...(folder.disableAuditors || []),
+    ])];
   }
 
   return result;

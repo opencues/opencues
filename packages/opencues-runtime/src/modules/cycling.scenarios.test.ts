@@ -63,7 +63,7 @@ async function setupScenario(text: string): Promise<{
   bf: BlankFill;
   loader: ConfigLoader;
 }> {
-  const adapter = new MockAdapter({ files: { '/mock/cues.md': RICH_TIPS } });
+  const adapter = new MockAdapter({ files: { '/mock/CUES.md': RICH_TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();

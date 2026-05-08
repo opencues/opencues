@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/cues-master.schema.json",
+  "title": "OpenCues CUES.md master frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of a CUES.md master file. Spec: opencues/0.1-alpha. See /spec/core.md § Master files.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Identifies the project (or user library) as a whole."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable summary."
+    },
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha"
+    },
+    "tips-mode": {
+      "type": "string",
+      "enum": ["on", "off"],
+      "description": "Whether static tip-group cues fire."
+    },
+    "word-cues-mode": {
+      "type": "string",
+      "enum": ["on", "off"],
+      "description": "Whether LLM word-cue sources fire."
+    },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Words the runtime never cues, regardless of any source match."
+    },
+    "disable": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Cue source ids excluded at this layer. Symmetric across cues, blanks, auditors."
+    }
+  },
+  "additionalProperties": true
+}

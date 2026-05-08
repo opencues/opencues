@@ -91,8 +91,8 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
   // file = error. opencues.md uses a different schema; we just check
   // it's readable.
   for (const [filename, kind] of [
-    ['cues.md',   'cue'],
-    ['blanks.md', 'blank'],
+    ['CUES.md',   'cue'],
+    ['BLANKS.md', 'blank'],
   ]) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;

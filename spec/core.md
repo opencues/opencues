@@ -2,7 +2,7 @@
 
 > **Status:** `0.1-alpha`. Expect changes.
 
-This document covers concerns shared by both `cue-spec.md` and `blank-spec.md`: the project search-path, the master `cues.md` and `blanks.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
+This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
 ---
 
@@ -12,27 +12,31 @@ A conformant project tree:
 
 ```
 <root>/
-├── cues.md                  # master file — cue-surface settings + ignore[]
-├── blanks.md                # master file — blank-surface settings + ignore[]
+├── CUES.md                  # master — cue-surface settings + ignore[]
+├── BLANKS.md                # master — blank-surface settings + ignore[]
+├── AUDITORS.md              # master — auditor-surface settings + disable[]
 ├── cues/                    # one directory of cue sources
-│   ├── <name>.md            # flat cue
 │   └── <name>/
-│       └── cue.md           # folder cue (with optional bundled resources)
-└── blanks/                  # one directory of blank sources
-    ├── <name>.md            # flat blank
+│       └── CUE.md           # the source spec (with optional bundled resources)
+├── blanks/                  # one directory of blank sources
+│   └── <name>/
+│       └── BLANK.md         # the source spec (with optional bundled resources)
+└── auditors/                # one directory of auditor sources
     └── <name>/
-        └── blank.md         # folder blank (with optional bundled resources)
+        └── AUDITOR.md       # the source spec (with optional bundled resources)
 ```
 
-Runtimes MAY accept `<root>/words/` as a synonym for `<root>/cues/` for backward compatibility.
+Every cue, blank, and auditor source is a folder containing an uppercase entry file (`CUE.md`, `BLANK.md`, `AUDITOR.md`). The folder name is the source id. There is no flat-file shape: a source that ships nothing alongside its spec still gets its own folder, so adding a helper script later is a drop-in operation rather than a flat→folder migration.
+
+Every `.md` file in the standard is uppercase. Master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) declare the surface as a whole. Per-source entry files (`CUE.md`, `BLANK.md`, `AUDITOR.md`) declare individual sources. Same convention as `OPENCUES.md`, `CLAUDE.md`, `README.md` — uppercase signals "this file declares a unit"; lowercase paths (`cues/`, `blanks/`, `auditors/`) are containers for those units.
 
 ### Bundled resources
 
-A folder source — `cues/<name>/cue.md` or `blanks/<name>/blank.md` — MAY ship bundled resources alongside the spec file. The standard reserves three subdirectory names by convention; runtimes treat them per the table below.
+A source folder MAY ship bundled resources alongside its spec file. The standard reserves three subdirectory names by convention; runtimes treat them per the table below.
 
 ```
 <root>/blanks/<name>/
-├── blank.md              (required — the spec file)
+├── BLANK.md              (required — the spec file)
 ├── <name>-blank.sh       (or any sibling file referenced by frontmatter)
 ├── scripts/              (optional — additional executable code)
 ├── references/           (optional — documentation the runtime may load on demand)
@@ -41,24 +45,24 @@ A folder source — `cues/<name>/cue.md` or `blanks/<name>/blank.md` — MAY shi
 
 | Subdir | Purpose | Load semantics |
 |---|---|---|
-| sibling files | Direct dependencies of `blank.md` (e.g. `volume-blank.sh`). Referenced explicitly via `blankScript:`, `impl:` resolution, or compiled artefact path. | Loaded when the source loads. |
+| sibling files | Direct dependencies of `BLANK.md` (e.g. `volume-blank.sh`). Referenced explicitly via `blankScript:`, `impl:` resolution, or compiled artefact path. | Loaded when the source loads. |
 | `scripts/` | Additional supporting scripts. | Authors reference them by relative path; runtimes do not auto-load. |
 | `references/` | Long-form documentation, prompt fragments, examples. | Authors may load on demand (e.g. via `promptPath:`); not in context by default. |
 | `assets/` | Templates, fonts, sample data. | Not loaded into LLM context — used by scripts at runtime. |
 
-Bundled resources MUST be relative to the folder source. A `cue.md` or `blank.md` MUST NOT reference paths outside its folder; runtimes MAY reject sources that do.
+Bundled resources MUST be relative to the folder source. A `CUE.md` or `BLANK.md` MUST NOT reference paths outside its folder; runtimes MAY reject sources that do.
 
 Compile artefacts (`.exe`, `.dll`, etc.) are conventionally produced from sibling source files (`.cs`, `.cpp`) at install time. The standard does not specify the compile toolchain — that's a runtime concern.
 
 ---
 
-## Master files: `cues.md` and `blanks.md`
+## Master files: `CUES.md`, `BLANKS.md`, `AUDITORS.md`
 
 Each surface has a master file at the project root. The master files configure the surface as a whole and contribute project-wide settings.
 
 > **Note on `name:` / `description:`.** These fields appear at three levels — master file, per-source file, and (for runtime settings) `OPENCUES.md`. They mean different things at each level. On the master file, they identify the **project** as a whole. On a per-source file, they identify the **individual source**. Validators MUST scope uniqueness checks to the level where the field appears: `name-collision` only fires for duplicate per-source names, never between a source name and a master name.
 
-### `<root>/cues.md`
+### `<root>/CUES.md`
 
 ```yaml
 ---
@@ -73,34 +77,48 @@ ignore: [TODO, FIXME]     # words never to cue, regardless of any source
 Optional Markdown body — human-readable project notes.
 ```
 
-A missing `cues.md` is equivalent to one with no settings. A 0-byte `cues.md` MUST be treated as missing (defensive against truncation).
+A missing `CUES.md` is equivalent to one with no settings. A 0-byte `CUES.md` MUST be treated as missing (defensive against truncation).
 
-> **Note on spelling.** Spelling correction is a regular word-cue source — a `cue.md` (or flat `cues/spelling.md`) with `match: .*` and a spell-check prompt — not a separate flag. The `word-cues-mode` toggle gates it alongside every other word-cue. Earlier drafts of this spec proposed a dedicated `spelling-mode` field; that was retired once it became clear spelling has no structural difference from other word-cues that warrants its own surface.
+> **Note on spelling.** Spelling correction is a regular word-cue source — `cues/spelling/CUE.md` with `match: .*` and a spell-check prompt — not a separate flag. The `word-cues-mode` toggle gates it alongside every other word-cue.
 
-### `<root>/blanks.md`
+### `<root>/BLANKS.md`
 
 ```yaml
 ---
 name: <project-name>
 description: <short description>
 spec: opencues/0.1-alpha
-fluid-blank-mode: on      # whether free-form `_` falls back to LLM lookup
-fluid-blank-provider: groq
 ignore: [_placeholder]    # `_`-prefixed forms that never auto-fill
+disable: [stocks]         # blank ids excluded at this layer
 ---
 ```
 
 Same defensive treatment: missing or 0-byte = treated as absent.
 
+### `<root>/AUDITORS.md`
+
+```yaml
+---
+name: <project-name>
+description: <short description>
+spec: opencues/0.1-alpha
+disable: [grammar, jargon]  # auditor ids excluded at this layer
+---
+```
+
+Same defensive treatment: missing or 0-byte = treated as absent. See [`auditor-spec.md`](./auditor-spec.md) for the full surface specification, including how `disable:` SUBTRACTs auditors from the user→project ADD-by-default composition.
+
 ### Frontmatter ownership
 
 | Field | Lives in | Why |
 |---|---|---|
-| `tips-mode`, `word-cues-mode` | `cues.md` | Cue-surface only. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling.md`.) |
-| `fluid-blank-mode`, `fluid-blank-provider` | `blanks.md` | Blank-surface only. |
-| Anything else (voice, debug, navigation) | `OPENCUES.md` | Non-standard runtime knobs. |
+| `name`, `description`, `spec` | every master | Identifies the project / library + spec version. |
+| `tips-mode`, `word-cues-mode` | `CUES.md` | Cue-surface enable flags. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling/CUE.md`.) |
+| `ignore: [<word>, ...]` | `CUES.md`, `BLANKS.md` | Per-surface ignore lists. Words/blanks the runtime never surfaces, regardless of source matches. |
+| `disable: [<source-id>, ...]` | every master | Subtract a named source from this layer's composition without modifying the user-level library. Symmetric across cues, blanks, auditors. |
+| Anything else (voice, debug, navigation, fluid-/transform-blank toggles, per-feature LLM routing) | `OPENCUES.md` | Runtime knobs — not part of this standard. See [`opencues-runtime.md`](./opencues-runtime.md). |
 
-A conformant runtime MUST refuse to honor cue-surface settings declared in `blanks.md` and vice versa.
+A conformant runtime MUST refuse to honor surface settings declared in the wrong master file. Runtime-owned settings (TTS, debug, fluid-blank toggles, etc.) are NOT part of this spec and live in `OPENCUES.md`; another implementation that parks its runtime config in a different file is conformant.
 
 ---
 
@@ -193,7 +211,7 @@ A conformant runtime SHOULD ship a CLI exposing at least these commands. Names a
 | Command | Semantics |
 |---|---|
 | `validate [--path <dir>]` | Run the linting rules above against a search-path directory. Exit 0 if all pass (or only `info`/`warn`); exit 1 if any `error` rule fires. |
-| `list [--path <dir>] [--type cue\|blank]` | Enumerate discovered sources, one per line. MUST display `name`, `description`, source kind (cue/blank), and trigger summary (`match:` regex / `keywords:` / `blankKeywords:`). |
+| `list [--path <dir>] [--type cue\|blank\|auditor]` | Enumerate discovered sources, one per line. MUST display `name`, `description`, source kind (cue / blank / auditor), and trigger summary (`match:` / `keywords:` / `blankKeywords:` for cues and blanks; `priority:` for auditors). |
 | `seed-configs [--silent]` | Copy shipped defaults into the user search path on first install; idempotent on subsequent runs. Idempotently migrate legacy filenames. Runtime-specific in detail. |
 
 Runtimes MAY add commands; the three above are the interop surface that authoring tools (editors, CI, doc generators) can rely on.
@@ -207,11 +225,11 @@ Fields not in this spec live in `OPENCUES.md` (see [`opencues-runtime.md`](./ope
 If a runtime-specific field proves universally useful, it can be **promoted** to this spec in a future version:
 
 1. Two or more independent runtime implementations adopt the field.
-2. A pull request against the spec adds the field to `cue-spec.md`, `blank-spec.md`, or `core.md` as appropriate.
+2. A pull request against the spec adds the field to `cue-spec.md`, `blank-spec.md`, `auditor-spec.md`, or `core.md` as appropriate.
 3. The spec version bumps (e.g. `0.1-alpha` → `0.2-alpha`).
 4. The promoted field MAY remain in `OPENCUES.md` for backward compat for one minor version.
 
-Likely candidates for promotion in `0.2-alpha`: `voice-mode` (TTS), `debug-mode` (logging level). These are universal needs no runtime can honestly skip.
+Promotion candidates appear in [`opencues-runtime.md` § Future surfaces](./opencues-runtime.md#future-surfaces). The criterion is independent adoption: a setting becomes a candidate once a second conformant runtime ships it, not before.
 
 ---
 
@@ -241,25 +259,30 @@ A conformant validator (`opencues validate` or equivalent) MUST report the follo
 
 | Rule | Severity | What it checks |
 |---|---|---|
-| `cue-missing-name` | error | `cue.md` frontmatter has no `name`. |
-| `cue-missing-trigger` | error | `cue.md` declares neither `match:` nor `keywords:`. |
-| `cue-empty-body` | error | `cue.md` body has neither a JSON tip-group block nor non-empty prompt text. |
-| `cue-missing-description` | warn | `cue.md` lacks a `description:`. |
+| `cue-missing-name` | error | `CUE.md` frontmatter has no `name`. |
+| `cue-missing-trigger` | error | `CUE.md` declares neither `match:` nor `keywords:`. |
+| `cue-empty-body` | error | `CUE.md` body has neither a JSON tip-group block nor non-empty prompt text. |
+| `cue-missing-description` | warn | `CUE.md` lacks a `description:`. |
 | `cue-multiple-defaults` | warn | More than one DEFAULT cue source at the same priority. |
 | `cue-host-contradiction` | warn | Explicit `on-host` contradicts auto-detection from script extensions. |
-| `blank-missing-name` | error | `blank.md` lacks `name`. |
-| `blank-missing-keywords` | error | `blank.md` lacks `blankKeywords`. |
-| `blank-no-binding` | error | `blank.md` declares zero binding profiles (no `stepValues` / `blankScript` / `impl`). |
-| `blank-multiple-bindings` | error | `blank.md` declares more than one binding profile. |
+| `blank-missing-name` | error | `BLANK.md` lacks `name`. |
+| `blank-missing-keywords` | error | `BLANK.md` lacks `blankKeywords`. |
+| `blank-no-binding` | error | `BLANK.md` declares zero binding profiles (no `stepValues` / `blankScript` / `impl`). |
+| `blank-multiple-bindings` | error | `BLANK.md` declares more than one binding profile. |
 | `blank-script-missing` | error | `blankScript:` references a relative path that doesn't exist on disk. |
 | `blank-readonly-conflict` | warn | `blankReadOnly: true` paired with a binding that produces multiple values. |
 | `blank-script-on-chrome` | warn | `on-host: chrome` declared alongside `blankScript:` (browser can't spawn). |
-| `blank-missing-description` | warn | `blank.md` lacks a `description:`. |
+| `blank-missing-description` | warn | `BLANK.md` lacks a `description:`. |
+| `auditor-missing-name` | error | `AUDITOR.md` frontmatter has no `name`. |
+| `auditor-empty-body` | error | `AUDITOR.md` body is empty or whitespace-only. |
+| `auditor-missing-description` | warn | `AUDITOR.md` lacks a `description:`. |
+| `auditor-name-mismatch` | warn | `name:` differs from the folder basename. |
+| `disable-unknown` | warn | A master file's `disable:` lists a name with no corresponding source folder at any layer. |
 | `unknown-host` | error | A host name in `on-host` / `not-on-host` is not in the known set. |
 | `unknown-field` | warn | A frontmatter key is not in the canonical schema for this surface. Helps catch typos. |
-| `name-collision` | error | Two loaded sources share the same `name:`. |
+| `name-collision` | error | Two loaded sources share the same `name:` within a single layer. |
 | `spec-too-new` | error | File declares a `spec:` newer than the runtime supports. |
-| `master-zero-byte` | warn | `cues.md` or `blanks.md` exists but is 0 bytes. |
+| `master-zero-byte` | warn | `CUES.md`, `BLANKS.md`, or `AUDITORS.md` exists but is 0 bytes. |
 | `field-summary` | info | Summary count of sources discovered, broken down by type. |
 
 Runtimes MAY add their own implementation-specific rules under a vendor prefix (e.g. `opencues-cc-…`).

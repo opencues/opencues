@@ -68,6 +68,10 @@ export type { WordDef, LookupMultipleResult } from './types';
 export {
   parseCuesMd,
   parseSingleCueMd,
+  parseSingleAuditorMd,
+  parseCuesMaster,
+  parseBlanksMaster,
+  parseAuditorsMaster,
   validateCuesMd,
   type CuesMdConfig,
   type CuesMdFrontmatter,
@@ -76,6 +80,7 @@ export {
   type SourceConfig,
   type BlankConfig,
   type ActionConfig,
+  type AuditorConfig,
   type BlankParser,
 } from './cues-md';
 

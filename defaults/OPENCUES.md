@@ -128,7 +128,7 @@ agent-model:    gpt-oss-120b
 ```
 
 Spelling has no dedicated provider key — it's a regular word-scope
-cue at `defaults/cues/spelling.md` (was `defaults/words/spelling.md`
+cue at `defaults/cues/spelling.md`
 post-rename). It inherits per-cue frontmatter `provider:` / `model:`
 overrides plus the `word-cues-*` and global tiers. To use a
 different provider just for spelling, edit the cue file's

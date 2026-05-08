@@ -265,6 +265,10 @@ export class Resolver {
       // routing through the standard ConfigSource path — no per-feature
       // wiring needed here.
       blanks: this.configLoader.folderConfigs?.blankOverrides ?? {},
+      // disable lists from CUES.md / BLANKS.md. Each is the union across
+      // every search-path layer — ConfigLoader merged them in load().
+      disableCues: this.configLoader.folderConfigs?.cuesConfig?.disableCues ?? [],
+      disableBlanks: this.configLoader.folderConfigs?.blanksConfig?.disableBlanks ?? [],
       // ALL opt-in: every cue surface defaults to OFF. User flips on via
       // opencues.md. Missing settings → off. Explicit "on" → on.
       // See packages/opencues-core/src/sources/build-sources.ts for what

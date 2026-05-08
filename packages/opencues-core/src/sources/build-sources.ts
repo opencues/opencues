@@ -71,15 +71,6 @@ export interface BuildSourcesOptions {
   wordCues?: FeatureLLMSetting;
   fluidBlank?: FeatureLLMSetting;
   transformBlank?: FeatureLLMSetting;
-  /**
-   * @deprecated Legacy single-provider wiring. When `apiKeys` isn't
-   * supplied we synthesize one from these so callers that haven't
-   * migrated keep working — endpoint+apiKey+defaultModel still go to
-   * Groq. New callers should pass `apiKeys` plus `globalProvider/Model`.
-   */
-  endpoint?: string;
-  apiKey?: string;
-  defaultModel?: string;
   /** Merged blank configs */
   blanks?: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read current live blank value (raw string).
@@ -108,6 +99,16 @@ export interface BuildSourcesOptions {
    * Domain blanks/fluid-blank still work. Defaults to false;
    * flip on via opencues.md `word-cues-mode: on`. */
   enableWordCues?: boolean;
+  /**
+   * Source ids subtracted from this layer's composition. Mirrors
+   * AUDITORS.md `disable:` for cues and blanks: a name listed here is
+   * skipped at source-construction time, so editing CUES.md /
+   * BLANKS.md `disable: [...]` flips a source on/off without touching
+   * the source folders themselves. Project-level lists are merged
+   * upstream by ConfigLoader (UNION across layers).
+   */
+  disableCues?: ReadonlyArray<string>;
+  disableBlanks?: ReadonlyArray<string>;
   /**
    * Optional debug-log sink. Currently consumed by TransformBlankSource
    * to emit per-pipeline-stage traces (P1 EXTRACT verdict, P2 APPLY
@@ -163,43 +164,18 @@ export function buildSourcesFromConfig(
 ): CueSource[] {
   const sources: CueSource[] = [];
 
-  // Two wiring modes:
-  //   - NEW: caller passes `apiKeys` (keyed by env-var name) and per-tier
-  //     provider/model settings. We resolve per-source and skip sources
-  //     whose provider has no key.
-  //   - LEGACY: caller passes `endpoint` + `apiKey` + `defaultModel`
-  //     (single-provider Groq wiring). We pass them straight through —
-  //     no provider lookup, no key validation. Source classes default
-  //     `provider` to the Groq adapter when omitted.
-  const isLegacy = options.apiKeys === undefined;
-  const apiKeys: Record<string, string | undefined> = { ...(options.apiKeys ?? {}) };
-  if (options.apiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = options.apiKey;
-
-  const globalProvider = options.globalProvider
-    ?? (options.endpoint || options.defaultModel ? 'groq' : undefined);
-  const globalModel = options.globalModel ?? options.defaultModel;
-  const globalEndpoint = options.globalEndpoint ?? options.endpoint;
+  const apiKeys = options.apiKeys ?? {};
+  const globalProvider = options.globalProvider;
+  const globalModel = options.globalModel;
+  // globalEndpoint reserved for future per-call resolution; resolveLLM
+  // currently sources endpoint from the resolved provider's default.
 
   /**
    * Resolve the provider/model/endpoint/key tuple for one source given
    * its per-source override (frontmatter) and a per-feature default.
-   * Returns null in NEW mode when no api key is available; in LEGACY
-   * mode synthesizes a tuple that matches the pre-refactor wiring.
+   * Returns null when no api key is available — caller skips the source.
    */
   function resolveFor(featureSetting: FeatureLLMSetting | undefined, perSource?: SourceConfig): ResolvedLLM | null {
-    if (isLegacy) {
-      // Legacy: skip resolveLLM entirely. Use the perSource override for
-      // model only (the field that worked before); pass through legacy
-      // endpoint + apiKey unchanged.
-      const groq = getProvider('groq');
-      if (!groq) return null;                                            // unreachable
-      return {
-        provider: groq,
-        model: perSource?.model ?? options.defaultModel ?? groq.defaultModel,
-        endpoint: perSource?.endpoint ?? options.endpoint ?? groq.defaultEndpoint,
-        apiKey: options.apiKey ?? '',                                    // empty preserved on purpose for tests
-      };
-    }
     return resolveLLM({
       providerOverride: perSource?.provider,
       modelOverride: perSource?.model,
@@ -225,11 +201,15 @@ export function buildSourcesFromConfig(
   // sources (different scope/parser) still pass through — they're not
   // the per-word surface, so they obey their own enable flag in cue.md
   // frontmatter as before.
+  const cueDisableSet = new Set(options.disableCues ?? []);
+  const blankDisableSet = new Set(options.disableBlanks ?? []);
+
   if (cuesConfig?.promptConfig?.sources) {
     const wordCueSources: ConfigSource[] = [];
 
     for (const [, srcCfg] of Object.entries(cuesConfig.promptConfig.sources)) {
       if (srcCfg.enabled === false || !srcCfg.promptText) continue;
+      if (cueDisableSet.has(srcCfg.name)) continue;
       const scope = srcCfg.scope ?? 'words';
       const parser = srcCfg.parser ?? 'alternatives';
 
@@ -280,10 +260,12 @@ export function buildSourcesFromConfig(
     }
   }
 
-  // Keyword-bound blanks: blanks with blankKeywords get a BlankSource
+  // Keyword-bound blanks: blanks with blankKeywords get a BlankSource.
+  // Names in disableBlanks are skipped at this layer (BLANKS.md disable:).
   if (options.blanks && options.readBlankState) {
     const keywordBlanks: Record<string, BlankConfig> = {};
     for (const [name, blk] of Object.entries(options.blanks)) {
+      if (blankDisableSet.has(name)) continue;
       if (blk.blankKeywords?.length) {
         keywordBlanks[name] = blk;
       }

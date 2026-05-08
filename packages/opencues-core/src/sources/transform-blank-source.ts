@@ -39,7 +39,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import { getProvider, type ProviderAdapter } from '../llm-provider';
+import type { ProviderAdapter } from '../llm-provider';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -619,8 +619,7 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
 
 export interface TransformBlankSourceConfig {
   httpAdapter: HttpAdapter;
-  /** Defaults to the Groq adapter when omitted (legacy single-provider wiring). */
-  provider?: ProviderAdapter;
+  provider: ProviderAdapter;
   endpoint: string;
   apiKey: string;
   model: string;
@@ -656,7 +655,7 @@ export class TransformBlankSource implements CueSource {
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
-    this.provider = config.provider ?? getProvider('groq')!;
+    this.provider = config.provider;
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;

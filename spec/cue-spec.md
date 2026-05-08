@@ -2,24 +2,21 @@
 
 > **Status:** `0.1-alpha`. Expect changes.
 
-A **cue** is the LLM→user surface: while a user types plain text, a cue source proposes alternatives for words it recognises. The user can cycle through them with a keyboard input (or any runtime-defined trigger). This document specifies the `cue.md` file format and what a conformant runtime MUST do with one.
+A **cue** is the LLM→user surface: while a user types plain text, a cue source proposes alternatives for words it recognises. The user can cycle through them with a keyboard input (or any runtime-defined trigger). This document specifies the `CUE.md` file format and what a conformant runtime MUST do with one.
 
 ---
 
 ## The format
 
-A cue is one of:
+A cue is a folder at `<root>/cues/<name>/` containing a `CUE.md` entry file plus optional bundled resources (`scripts/`, `references/`, `assets/`). The folder name is the source id.
 
-- **Flat:** `<root>/cues/<name>.md` — the whole source is a single Markdown file.
-- **Folder:** `<root>/cues/<name>/cue.md` — a folder containing `cue.md` plus optional bundled resources (`scripts/`, `references/`, `assets/`).
-
-Both shapes parse to the same in-memory model. Authors pick flat for tiny sources, folder when they need to colocate scripts or reference files.
+Every cue is folder-shaped — there is no flat-file alternative. A source that ships nothing alongside its `CUE.md` still gets its own folder, so adding a helper later is a drop-in operation rather than a flat→folder migration. Uppercase entry filenames (`CUE.md`, `BLANK.md`) follow the same convention as `OPENCUES.md`, `CLAUDE.md`, `README.md`.
 
 ### Anatomy
 
 ```
 <root>/cues/<name>/
-├── cue.md                    (required)
+├── CUE.md                    (required)
 │   ├── YAML frontmatter      (required)
 │   │   ├── name              (required)
 │   │   ├── match | keywords  (one required — the trigger)
@@ -32,15 +29,14 @@ Both shapes parse to the same in-memory model. Authors pick flat for tiny source
 └── scripts/, references/, assets/   (optional bundled resources — see core.md)
 ```
 
-> **Note:** `cues/` is the canonical name. `words/` is accepted as a legacy alias for users who installed during the brief words/-era; `seed-configs` migrates `words/` → `cues/` automatically.
 
 ---
 
 ## Trigger model
 
-Cues fire on **deterministic structural matching**, not on LLM judgement. This is the load-bearing distinction from [SKILL.md](https://github.com/anthropics/skills): a SKILL.md `description` is read by the LLM to decide whether to invoke. A `cue.md` source fires when its `match:` regex or `keywords:` list literally matches a word the user typed.
+Cues fire on **deterministic structural matching**, not on LLM judgement. This is the load-bearing distinction from [SKILL.md](https://github.com/anthropics/skills): a SKILL.md `description` is read by the LLM to decide whether to invoke. A `CUE.md` source fires when its `match:` regex or `keywords:` list literally matches a word the user typed.
 
-The `description:` field in `cue.md` is documentation only — used by `opencues list`, validators, and human readers. It does NOT control invocation.
+The `description:` field in `CUE.md` is documentation only — used by `opencues list`, validators, and human readers. It does NOT control invocation.
 
 ---
 
@@ -81,12 +77,14 @@ A source with neither `match` nor `keywords` is unreachable. Validators MUST err
 | `classify` | string | none | Free-text classification hint surfaced to the LLM and validators (e.g. "Legal terminology, contract drafting"). |
 | `on-host` | list | auto-detected | Allow-list: which hosts may load this source. See `core.md`. |
 | `not-on-host` | list | none | Deny-list, applied after `on-host`. |
-| `type` | string | inferred from path | Discriminator. `cues/` paths default to a cue source; explicit `type:` is RECOMMENDED ONLY for flat files in shared directories. |
+| `type` | string | inferred from path | Discriminator. `cues/` paths default to a cue source; explicit `type:` is rarely needed. |
 | `spec` | string | `"opencues/0.1-alpha"` | Spec version this file targets. Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`. Runtimes MUST refuse files declaring a newer `spec:` than they support. |
 
 ### Body — required, at least one of two modes
 
 A cue source MUST declare a **behavior**. Trigger-only files (frontmatter, no body) are invalid; validators MUST error.
+
+A single `CUE.md` MAY use Mode 1, Mode 2, or **both combined**. In combined mode, matched words served by the static JSON block skip the LLM call; matched words NOT in the static block fall through to the prompt-body LLM call. Useful when a domain has a small set of curated overrides plus a long tail handled by the model — see § Examples for a worked example.
 
 #### Mode 1 — Static (in-file data)
 
@@ -240,7 +238,7 @@ For the `raw` parser, the response is opaque to the runtime; sources using `raw`
 
 ## Conformance
 
-A `cue.md` file is **valid** iff:
+A `CUE.md` file is **valid** iff:
 
 1. Frontmatter has `name` (string).
 2. At least one of `match:` (string parseable as regex) or `keywords:` (list) is present.
@@ -255,9 +253,9 @@ For the consolidated linting matrix (severity, rule names, what each rule checks
 
 ## Examples
 
-### Minimal LLM-mode source (flat)
+### Minimal LLM-mode source
 
-`cues/legal.md`:
+`cues/legal/CUE.md`:
 
 ```markdown
 ---
@@ -273,9 +271,9 @@ legal meaning. Prefer standard contract-drafting terminology.
 Format: INDEX:alt1,alt2,alt3
 ```
 
-### Minimal static-mode source (folder)
+### Minimal static-mode source
 
-`cues/extended-thinking/cue.md`:
+`cues/extended-thinking/CUE.md`:
 
 ```markdown
 ---
@@ -341,7 +339,7 @@ Resist the urge to write a regex that catches everything. A narrow, accurate `ma
 
 ## In scope
 
-- The `cue.md` file format and frontmatter schema.
+- The `CUE.md` file format and frontmatter schema.
 - The `CueResult` runtime output shape.
 - The LLM `alternatives` parser wire format.
 - Routing rules (DEFAULT vs DOMAIN, priority resolution — detailed in `core.md`).

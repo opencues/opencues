@@ -36,12 +36,12 @@ interface MockResult {
 function setupResolver(scriptedResults: MockResult[]) {
   const adapter = new MockAdapter({
     cwd: '/proj',
-    files: { '/mock/cues.md': TIPS, '/proj/cues.md': CUES_MD },
+    files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
   });
   adapter.pushText('alpha');
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
-  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
 
   // Inject a mock resolver factory so we don't load real opencues-core sources.
   // The Resolver class still calls require('@opencues/core').createResolver, so we
@@ -144,11 +144,11 @@ describe('Resolver.resolveAndApply', () => {
     // computed words (and words inside an active span-fill) as empty
     // strings. Downstream, RoutedWordSourceGroup + every other
     // CueSource skips empty entries — no LLM call, no token spend.
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('alpha beta gamma');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     const spanFillState = new SpanFillState();
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
@@ -190,11 +190,11 @@ describe('Resolver.resolveAndApply', () => {
     // sees "lawyer" as a fresh word, builds a new DynDef with "lawyer's
     // own alts (client, etc.), and the next cycle drifts onto a
     // different alt track. Now the filter ALSO checks current alt.
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('the lawyer filed');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -220,11 +220,11 @@ describe('Resolver.resolveAndApply', () => {
     // but is inside the span. Both should be skipped — re-resolving
     // "legal" or "eagle" as fresh words would build separate DynDefs
     // and corrupt the cycling state.
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('the legal eagle filed');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -248,11 +248,11 @@ describe('Resolver.resolveAndApply', () => {
   it('blanks (_) are always re-resolved, even if the runtime has cached alts', async () => {
     // Context for a `_` must pass through unchanged — its answer
     // depends on surrounding words that may have shifted on any edit.
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('weather _ paris');
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     let capturedContext: { words: string[] } | null = null;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -275,7 +275,7 @@ describe('Resolver.resolveAndApply', () => {
     ]);
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     let resolveDelay = 50;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
       endpoint: 'http://x', apiKey: 'k', defaultModel: 'm', debounceMs: 1,
@@ -300,13 +300,13 @@ describe('Resolver.resolveAndApply', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/mock/cues.md': TIPS,
-        '/proj/cues.md': '---\nllm-endpoint: https://other.example.com/v1\nllm-model: openai/custom-model\n---\n',
+        '/mock/CUES.md': TIPS,
+        '/proj/CUES.md': '---\nllm-endpoint: https://other.example.com/v1\nllm-model: openai/custom-model\n---\n',
       },
     });
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
 
     let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
@@ -329,11 +329,11 @@ describe('Resolver.resolveAndApply', () => {
   it('falls back to options.endpoint/defaultModel when opencues.md has no overrides', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': CUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
     });
     const hlState = new HighlightState();
     const dyn = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     let capturedOpts: { endpoint?: string; defaultModel?: string } | undefined;
     const resolver = new Resolver(adapter, hlState, dyn, loader, {
@@ -358,12 +358,12 @@ describe('Resolver TASK_* commands', () => {
   function setupTaskScenario(initialText: string, taskAction: TaskAction, taskPayload: string) {
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/cues.md': TIPS, '/proj/cues.md': CUES_MD },
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
     });
     adapter.pushText(initialText);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     const agentTaskState = new AgentTaskState();
     const wordCount = initialText.trim().split(/\s+/).length;
     const blankWordIndex = Math.max(0, wordCount - 1);

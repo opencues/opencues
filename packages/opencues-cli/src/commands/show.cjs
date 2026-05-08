@@ -34,7 +34,7 @@ module.exports = function show(argv, ctx) {
         matches.push({ kind: sub.replace(/s$/, ''), source: candidate, scope: dir });
       }
     }
-    for (const file of ['cues.md', 'blanks.md']) {
+    for (const file of ['CUES.md', 'BLANKS.md']) {
       const p = path.join(dir, file);
       if (!fs.existsSync(p)) continue;
       const content = fs.readFileSync(p, 'utf8');

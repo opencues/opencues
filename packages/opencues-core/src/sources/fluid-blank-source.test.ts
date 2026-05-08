@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { FluidBlankSource, determineReplaceMode } from './fluid-blank-source';
 import { HttpAdapter, CueContext } from '../types';
+import { getProvider } from '../llm-provider';
 
 function makeMockAdapter(responses: string[]): HttpAdapter {
   let i = 0;
@@ -68,6 +69,7 @@ describe('determineReplaceMode', () => {
 
 describe('FluidBlankSource', () => {
   const baseConfig = {
+    provider: getProvider('groq')!,
     endpoint: 'https://example.test/v1/chat/completions',
     apiKey: 'test-key',
     model: 'test-model',

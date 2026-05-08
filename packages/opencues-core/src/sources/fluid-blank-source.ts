@@ -25,7 +25,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import { getProvider, type ProviderAdapter } from '../llm-provider';
+import type { ProviderAdapter } from '../llm-provider';
 
 export const P1_SYSTEM_PROMPT = `You identify a SPAN of text that will be wiped and replaced with an answer.
 
@@ -242,8 +242,7 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
 
 export interface FluidBlankSourceConfig {
   httpAdapter: HttpAdapter;
-  /** Defaults to the Groq adapter when omitted (legacy single-provider wiring). */
-  provider?: ProviderAdapter;
+  provider: ProviderAdapter;
   endpoint: string;
   apiKey: string;
   model: string;
@@ -274,7 +273,7 @@ export class FluidBlankSource implements CueSource {
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
-    this.provider = config.provider ?? getProvider('groq')!;
+    this.provider = config.provider;
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;

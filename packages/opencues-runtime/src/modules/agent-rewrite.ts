@@ -104,6 +104,21 @@ export interface AgentRewriteOptions {
    * Lazy thunk so users can flip the setting at runtime via cues.md.
    */
   readonly windowWords?: () => number;
+  /**
+   * Optional auditor-prompt thunk. Returns the ordered list of auditor
+   * prompt fragments to compose into the rewrite system prompt. Each
+   * fragment is one concern — grammar, clarity, jargon, etc. — and they
+   * concatenate into ONE LLM call (never one call per auditor).
+   *
+   * Lazy thunk so the runtime re-reads on every tick: enabling/disabling
+   * an auditor or editing AUDITORS.md propagates without restart. The
+   * runtime's ConfigLoader exposes `composeAuditorPrompts()` which does
+   * the priority sort + disable filter; boots wire it as the thunk.
+   *
+   * Empty / absent → no auditor section is appended; the rewrite runs
+   * with only the baseline editor preamble. See spec/auditor-spec.md.
+   */
+  readonly auditorPrompts?: () => Array<{ name: string; promptText: string }>;
 }
 
 /**
@@ -461,10 +476,18 @@ export class AgentRewrite {
     const model = resolved?.model ?? this.options.defaultModel;
     const endpoint = resolved?.endpoint ?? this.options.endpoint;
     const apiKey = resolved?.apiKey ?? this.options.apiKey;
+    // Compose auditor prompts into the system message. Each auditor
+    // contributes one concern; they concatenate into ONE LLM call. The
+    // runtime owns the wrapping (heading delimiter); each AUDITOR.md
+    // body declares only its concern. See spec/auditor-spec.md.
+    const auditors = this.options.auditorPrompts?.() ?? [];
+    const systemContent = auditors.length === 0
+      ? REWRITE_SYSTEM_PROMPT
+      : `${REWRITE_SYSTEM_PROMPT}\n\nApply the following auditors in order. Each declares one concern; act on all of them in a single rewrite.\n\n${auditors.map(a => `## ${a.name}\n${a.promptText}`).join('\n\n')}`;
     const chatRequest = {
       model,
       messages: [
-        { role: 'system' as const, content: REWRITE_SYSTEM_PROMPT },
+        { role: 'system' as const, content: systemContent },
         { role: 'user' as const, content: userMsg },
       ],
       maxTokens: Math.max(1024, Math.ceil(windowedText.length * 1.5) + 256),

@@ -35,7 +35,7 @@ async function wordResult(sentence: string, llm: string): Promise<CueSourceResul
       medical: { name: 'medical', promptText: 'M.', priority: 75, match: 'diagnosis|prognosis|etiology|contraindication|prophylaxis|comorbidity|pathology' },
     }}),
     undefined,
-    { httpAdapter: { post: async () => json(llm) }, endpoint: '', apiKey: '', defaultModel: '', enableWordCues: true },
+    { httpAdapter: { post: async () => json(llm) }, apiKeys: { GROQ_API_KEY: 'k' }, globalProvider: 'groq', globalModel: 'm', enableWordCues: true },
   );
   return src[0].getCues(ctx(sentence));
 }

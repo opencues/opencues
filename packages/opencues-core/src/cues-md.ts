@@ -13,11 +13,17 @@ import { LocalCueData } from './types';
 
 export interface CuesMdFrontmatter {
   name?: string;
+  description?: string;
   domain?: string;
   version?: number;
   /** Words to never suggest alternatives for (frontmatter form, replaces
    *  the legacy `## Ignore` body section). */
   ignore?: string[];
+  /** Master-file only — source ids to subtract from this layer's
+   *  composition. Symmetric across CUES.md / BLANKS.md / AUDITORS.md.
+   *  Project-level `disable:` skips the named source for this project
+   *  without modifying the user-level library. */
+  disable?: string[];
 }
 
 /**
@@ -181,11 +187,54 @@ export interface CuesMdConfig {
   /** Blank definitions from ## Blanks JSON block */
   blanks?: Record<string, BlankConfig>;
 
+  /** Auditor definitions, keyed by name. Populated when discover walks
+   *  `auditors/<name>/AUDITOR.md`. See parseSingleAuditorMd. */
+  auditors?: Record<string, AuditorConfig>;
+
   /** Words to never suggest alternatives for from ## Ignore */
   ignore?: string[];
 
+  /** Cue source ids to subtract from this layer's composition.
+   *  Read from CUES.md frontmatter `disable: [...]`. */
+  disableCues?: string[];
+
+  /** Blank source ids to subtract from this layer's composition.
+   *  Read from BLANKS.md frontmatter `disable: [...]`. */
+  disableBlanks?: string[];
+
+  /** Auditor source ids to subtract from this layer's composition.
+   *  Read from AUDITORS.md frontmatter `disable: [...]`. */
+  disableAuditors?: string[];
+
   /** Raw section content for unknown/extensible sections */
   sections: Record<string, string>;
+}
+
+/**
+ * One entry per `auditors/<name>/AUDITOR.md`. Auditors are inline-rewrite
+ * concerns whose prompts compose into a single LLM call.
+ *
+ * No `match:` / `keywords:` / `parser:` — auditors operate on the whole
+ * buffer; gating is expressed in the prompt body. No per-auditor
+ * `provider:` / `model:` — composition is one LLM call, so the LLM
+ * choice lives at the feature level (`audits-provider:` / `audits-model:`
+ * in OPENCUES.md).
+ */
+export interface AuditorConfig {
+  /** Source id; matches the folder name. */
+  readonly name: string;
+  /** Documentation only — not read by the LLM. */
+  readonly description?: string;
+  /** Concat ordering (higher = earlier). Default 50. */
+  readonly priority?: number;
+  /** When false, the auditor is parsed but skipped during composition. */
+  readonly enabled?: boolean;
+  /** Prompt fragment — concatenated into the rewrite prompt. */
+  readonly promptText: string;
+  /** Host-compat allow-list (replaces auto-detect when present). */
+  readonly onHost?: string[];
+  /** Host-compat deny-list. */
+  readonly notOnHost?: string[];
 }
 
 // ============================================================================
@@ -204,12 +253,13 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
  * point them out by their original spelling.
  */
 function parseHostList(value: string): string[] {
-  const v = value.trim();
-  if (v.startsWith('[')) {
+  let v = value.trim();
+  if (v.startsWith('[') && v.endsWith(']')) {
     try {
       const parsed = JSON.parse(v);
       if (Array.isArray(parsed)) return parsed.map(String);
-    } catch { /* fall through to comma-split */ }
+    } catch { /* fall through to bare-bracket strip + comma-split */ }
+    v = v.slice(1, -1).trim();
   }
   return v.split(',').map(s => s.trim()).filter(s => s.length > 0);
 }
@@ -631,6 +681,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
 
     switch (key) {
       case 'name': fm.name = value; break;
+      case 'description': fm.description = value; break;
+      case 'disable': fm.disable = parseHostList(value); break;
       case 'domain': fm.domain = value; break;
       case 'version': fm.version = parseInt(value, 10) || undefined; break;
       case 'type': fm.type = value as SingleCueFrontmatter['type']; break;
@@ -688,19 +740,16 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
 }
 
 /**
- * Parse a single cue.md file (folder-based or flat-file layout).
+ * Parse a single CUE.md / BLANK.md file (folder-only layout).
  *
- * Two supported shapes:
- *   - Folder: `<dir>/<name>/cue.md` — `folderPath` is `<dir>/<name>`.
- *     Source name comes from frontmatter `name:` or the folder basename.
- *   - Flat: `<dir>/<name>.md` — `folderPath` is `<dir>` (no per-source
- *     subdir). Pass the inferred name via `nameOverride`.
+ *   `<dir>/<name>/{CUE,BLANK}.md` — `folderPath` is `<dir>/<name>`.
+ *   Source name comes from frontmatter `name:` or the folder basename.
  *
  * @param content - File content string
  * @param folderPath - Absolute path used for resolving relative paths
- *   (e.g. `blankScript: ./helper.sh`). For flat files, the parent dir.
+ *   (e.g. `blankScript: ./helper.sh`).
  * @param nameOverride - Source id when frontmatter omits `name:`
- *   (filename minus `.md` for flat, folder basename for folder).
+ *   (folder basename).
  */
 export function parseSingleCueMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
   const { frontmatter, body } = parseExtendedFrontmatter(content);
@@ -835,6 +884,68 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
 
   return result;
 }
+
+/**
+ * Parse a single AUDITOR.md file (folder-only layout).
+ *
+ *   `<dir>/auditors/<name>/AUDITOR.md` — `folderPath` is `<dir>/auditors/<name>`.
+ *   Source name comes from frontmatter `name:` or the folder basename.
+ *
+ * Returns a CuesMdConfig with the parsed auditor under `auditors[<name>]`.
+ * Body becomes the prompt fragment that the runtime concatenates into the
+ * rewrite call.
+ */
+export function parseSingleAuditorMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
+  void folderPath;
+  const { frontmatter, body } = parseExtendedFrontmatter(content);
+  const name = frontmatter.name || nameOverride || 'unknown';
+
+  const result: CuesMdConfig = {
+    frontmatter,
+    sections: {},
+  };
+
+  const auditor: AuditorConfig = {
+    name,
+    description: frontmatter.description,
+    promptText: body.trim(),
+    enabled: frontmatter.enabled !== false,
+    onHost: frontmatter.onHost as string[] | undefined,
+    notOnHost: frontmatter.notOnHost as string[] | undefined,
+  };
+  if (frontmatter.priority !== undefined) {
+    (auditor as { priority?: number }).priority = frontmatter.priority;
+  }
+
+  result.auditors = { [name]: auditor };
+  return result;
+}
+
+/**
+ * Parse one of the surface master files (CUES.md / BLANKS.md / AUDITORS.md).
+ * Frontmatter only — body is documentation. The `disable: [...]` array
+ * surfaces as the surface-specific field (`disableCues` / `disableBlanks`
+ * / `disableAuditors`) so the merge layer can subtract from composition
+ * at this layer without affecting other layers.
+ */
+function parseMasterFile(content: string, surface: 'cues' | 'blanks' | 'auditors'): CuesMdConfig {
+  const { frontmatter } = parseExtendedFrontmatter(content);
+  const result: CuesMdConfig = { frontmatter, sections: {} };
+  const disableRaw = (frontmatter as { disable?: unknown }).disable;
+  const disable = Array.isArray(disableRaw)
+    ? disableRaw.filter((x): x is string => typeof x === 'string')
+    : null;
+  if (disable !== null) {
+    if (surface === 'cues') result.disableCues = disable;
+    else if (surface === 'blanks') result.disableBlanks = disable;
+    else result.disableAuditors = disable;
+  }
+  return result;
+}
+
+export function parseCuesMaster(content: string): CuesMdConfig { return parseMasterFile(content, 'cues'); }
+export function parseBlanksMaster(content: string): CuesMdConfig { return parseMasterFile(content, 'blanks'); }
+export function parseAuditorsMaster(content: string): CuesMdConfig { return parseMasterFile(content, 'auditors'); }
 
 // ============================================================================
 // Validation

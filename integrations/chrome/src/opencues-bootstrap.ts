@@ -252,10 +252,9 @@ function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
   if (rel === '.cues/OPENCUES.md') return __DEFAULT_OPENCUES_MD__ || null;
-  // New layout: .cues/cues/<name>.md (flat) and .cues/blanks/<name>/cue.md
+  // .cues/cues/<name>.md (flat) and .cues/blanks/<name>/cue.md
   // (folder, when scripts colocated) or .cues/blanks/<name>.md (flat).
-  // `.cues/words/` accepted as a legacy alias for `.cues/cues/`.
-  const cuesFlat = rel.match(/^\.cues\/(?:cues|words)\/([^/]+)\.md$/);
+  const cuesFlat = rel.match(/^\.cues\/cues\/([^/]+)\.md$/);
   if (cuesFlat) return __DEFAULT_CUE_FOLDERS__[cuesFlat[1]] ?? null;
   const blanksFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/cue\.md$/);
   if (blanksFolder) return __DEFAULT_BLANK_FOLDERS__[blanksFolder[1]] ?? null;
@@ -336,9 +335,9 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   const bundled = await readBundledDir(path);
   if (bundled) return bundled;
 
-  // New layout: `.cues/cues/<name>.md` (flat) + `.cues/blanks/<name>/`
-  // or `.cues/blanks/<name>.md`. `words/` accepted as a legacy alias.
-  if (path === `${ROOT}/.cues/cues` || path === `${ROOT}/.cues/words`) {
+  // `.cues/cues/<name>.md` (flat) + `.cues/blanks/<name>/`
+  // or `.cues/blanks/<name>.md`.
+  if (path === `${ROOT}/.cues/cues`) {
     return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({
       name: `${name}.md`,
       isDirectory: false,
@@ -349,28 +348,6 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
       name: `${name}.md`,
       isDirectory: false,
     }));
-  }
-  // Legacy layout (pre-migration): cues/<name>/cue.md, blanks/<name>/cue.md.
-  // Kept so users mid-migration don't see broken state.
-  if (path === `${ROOT}/cues`) {
-    return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({ name, isDirectory: true }));
-  }
-  if (path === `${ROOT}/blanks`) {
-    return Object.keys(__DEFAULT_BLANK_FOLDERS__).map(name => ({ name, isDirectory: true }));
-  }
-  const cuesPrefix = `${ROOT}/cues/`;
-  const blanksPrefix = `${ROOT}/blanks/`;
-  if (path.startsWith(cuesPrefix)) {
-    const folder = path.slice(cuesPrefix.length);
-    if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_CUE_FOLDERS__, folder)) {
-      return [{ name: 'cue.md', isDirectory: false }];
-    }
-  }
-  if (path.startsWith(blanksPrefix)) {
-    const folder = path.slice(blanksPrefix.length);
-    if (folder && Object.prototype.hasOwnProperty.call(__DEFAULT_BLANK_FOLDERS__, folder)) {
-      return [{ name: 'cue.md', isDirectory: false }];
-    }
   }
   return null;
 }

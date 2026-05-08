@@ -11,6 +11,7 @@ import { ConfigSource } from './config-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { CuesMdConfig, SourceConfig, PromptConfig } from '../cues-md';
 import { HttpAdapter } from '../types';
+import { getProvider } from '../llm-provider';
 
 // Stub HTTP adapter (never called in these tests)
 const stubAdapter: HttpAdapter = {
@@ -19,10 +20,19 @@ const stubAdapter: HttpAdapter = {
 
 const defaultOptions = {
   httpAdapter: stubAdapter,
-  endpoint: 'https://api.example.com/v1/chat/completions',
-  apiKey: 'test-key',
-  defaultModel: 'test-model',
+  apiKeys: { GROQ_API_KEY: 'test-key' },
+  globalProvider: 'groq',
+  globalModel: 'test-model',
   enableWordCues: true,
+};
+
+// ConfigSource direct-construction options (for the `.supports()` unit tests).
+const configSourceWiring = {
+  httpAdapter: stubAdapter,
+  provider: getProvider('groq')!,
+  endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  apiKey: 'test-key',
+  model: 'test-model',
 };
 
 function mkConfig(promptConfig: PromptConfig): CuesMdConfig {
@@ -195,7 +205,7 @@ describe('ConfigSource.supports()', () => {
   it('words scope: supports non-blank text', () => {
     const src = new ConfigSource({
       sourceConfig: { name: 'grammar', promptText: 'Alts.', scope: 'words' },
-      ...defaultOptions,
+      ...configSourceWiring,
     });
     assert.strictEqual(src.supports({ text: 'hello world', words: ['hello', 'world'] }), true);
   });
@@ -203,7 +213,7 @@ describe('ConfigSource.supports()', () => {
   it('words scope: does not support blank text', () => {
     const src = new ConfigSource({
       sourceConfig: { name: 'grammar', promptText: 'Alts.', scope: 'words' },
-      ...defaultOptions,
+      ...configSourceWiring,
     });
     assert.strictEqual(src.supports({ text: 'hello _', words: ['hello', '_'] }), false);
   });
@@ -211,7 +221,7 @@ describe('ConfigSource.supports()', () => {
   it('blanks scope: supports blank text', () => {
     const src = new ConfigSource({
       sourceConfig: { name: 'grammar', promptText: 'Fill.', scope: 'blanks' },
-      ...defaultOptions,
+      ...configSourceWiring,
     });
     assert.strictEqual(src.supports({ text: 'hello _', words: ['hello', '_'] }), true);
   });
@@ -219,7 +229,7 @@ describe('ConfigSource.supports()', () => {
   it('blanks scope: does not support non-blank text', () => {
     const src = new ConfigSource({
       sourceConfig: { name: 'grammar', promptText: 'Fill.', scope: 'blanks' },
-      ...defaultOptions,
+      ...configSourceWiring,
     });
     assert.strictEqual(src.supports({ text: 'hello world', words: ['hello', 'world'] }), false);
   });
@@ -227,7 +237,7 @@ describe('ConfigSource.supports()', () => {
   it('all scope: supports both blank and non-blank', () => {
     const src = new ConfigSource({
       sourceConfig: { name: 'generic', promptText: 'Any.', scope: 'all' },
-      ...defaultOptions,
+      ...configSourceWiring,
     });
     assert.strictEqual(src.supports({ text: 'hello world', words: ['hello', 'world'] }), true);
     assert.strictEqual(src.supports({ text: 'hello _', words: ['hello', '_'] }), true);
@@ -236,7 +246,7 @@ describe('ConfigSource.supports()', () => {
   it('default scope is words', () => {
     const src = new ConfigSource({
       sourceConfig: { name: 'grammar', promptText: 'Alts.' },
-      ...defaultOptions,
+      ...configSourceWiring,
     });
     assert.strictEqual(src.scope, 'words');
   });

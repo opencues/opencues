@@ -6,20 +6,19 @@
 
 ## 1. Core concept
 
-The standard reduces to **two directions of intent** on text:
+The standard covers **three directions of intent** on text:
 
-| Direction | Surface | Trigger | What it is |
-|---|---|---|---|
-| **System → User** | **Cues** (highlights, alts) | plain text | The system offers alternatives the user didn't ask for |
-| **User → System** | **Blanks** (substitutions) | text containing `_` | The user explicitly summons a value into a slot |
+| Direction | Surface | Operates on | Trigger | What it is |
+|---|---|---|---|---|
+| **System → User** | **Cues** | one word | plain text | The system offers alternatives the user didn't ask for. The user cycles through them. |
+| **User → System** | **Blanks** | one `_` slot | text containing `_` | The user explicitly summons a value into a slot. |
+| **System → Buffer** | **Auditors** | the whole buffer | every rewrite cycle | Composed inline-rewrite concerns (grammar, clarity, tone). Multiple auditors concatenate into one LLM call. |
 
-Every feature of the standard is one of these two things, dressed up.
-
-The two **scopes** mirror the directions:
+The two scopes for cues mirror the first two directions:
 - `words` scope: cues fire on plain text (no `_` in input)
 - `blanks` scope: cues fire on `_` slots
 
-Cues and blanks are **sibling concepts**, not subtypes. They live as siblings in the layout (see §4).
+Cues, blanks, and auditors are **sibling concepts**, not subtypes. They live as siblings in the layout (see §4).
 
 ---
 
@@ -36,12 +35,12 @@ Two namespaces. Keeping them separate makes implementations interchangeable.
 
 | Brand-owned | Standard-owned |
 |---|---|
-| `~/.cues/OPENCUES.md` (user runtime config) | `~/.cues/cues.md` + `~/.cues/blanks.md` (user cue/blank libraries) |
-| `opencues install <host>` | `cues.md` (project manifest) |
-| `@opencues/core`, `@opencues/runtime` (npm packages) | The data format inside cue.md / cues.md / source files |
-| Settings schema (voice-mode, debug-mode, etc. — runtime-defined) | Source schema (match, keywords, scope, parser — standard-defined) |
+| `~/.cues/OPENCUES.md` (user runtime config) | `~/.cues/CUES.md` + `~/.cues/BLANKS.md` + `~/.cues/AUDITORS.md` (user libraries) |
+| `opencues install <host>` | `CUES.md` / `BLANKS.md` / `AUDITORS.md` (project manifests) |
+| `@opencues/core`, `@opencues/runtime` (npm packages) | The data format inside `CUE.md` / `BLANK.md` / `AUDITOR.md` source files and master files |
+| Settings schema (voice-mode, debug-mode, etc. — runtime-defined) | Source schema (match, keywords, scope, parser, priority — standard-defined) |
 
-A second OpenStandard implementation (FastCues, AnotherCues, …) would ship its own `~/.fastcuesrc` etc., but read the same `~/.cues/` library and the same `<project>/cues.md` manifests. The brand is replaceable; the standard isn't.
+A second OpenStandard implementation (FastCues, AnotherCues, …) would park its own runtime-config file (e.g. `~/.cues/FASTCUES.md`) alongside, but read the same `~/.cues/` library and the same project-level `CUES.md` / `BLANKS.md` / `AUDITORS.md` manifests. The brand is replaceable; the standard isn't.
 
 ---
 
@@ -50,37 +49,44 @@ A second OpenStandard implementation (FastCues, AnotherCues, …) would ship its
 ### User level (`$HOME`)
 
 ```
-~/.cues/                 # user cue library — the standard's data
+~/.cues/                 # user library — the standard's data
 ├── OPENCUES.md          # user runtime config — OpenCues tool's prefs (brand)
-├── cues.md              # cue master file (project-overridable)
-├── cues/                # per-cue files — domain word-cues
-│   ├── tips.md          # static cue source (body JSON)
-│   ├── legal.md         # LLM cue source (frontmatter match: + prompt body)
-│   ├── medical.md
-│   ├── financial.md
-│   └── spelling.md      # spell-correction cue (regular ConfigSource, priority 80)
-├── blanks.md            # blank master file
-└── blanks/              # per-blank files
-    ├── volume/          # folder when scripts are colocated
-    │   ├── BLANK.md
-    │   └── volume-blank.sh
-    ├── stocks.md        # flat file when no script needed (runtime class)
-    ├── weather.md
-    └── ...
+├── CUES.md              # cue master (project-overridable; frontmatter-only)
+├── cues/                # per-cue folders — every cue is its own dir
+│   ├── tips/CUE.md
+│   ├── legal/CUE.md
+│   ├── medical/CUE.md
+│   ├── financial/CUE.md
+│   └── spelling/CUE.md  # spell-correction cue (regular ConfigSource, priority 80)
+├── BLANKS.md            # blank master
+├── blanks/              # per-blank folders — every blank is its own dir
+│   ├── volume/                  # has a colocated script
+│   │   ├── BLANK.md
+│   │   └── volume-blank.sh
+│   ├── stocks/BLANK.md          # no script — pure runtime class
+│   ├── weather/BLANK.md
+│   └── ...
+├── AUDITORS.md          # auditor master
+└── auditors/            # per-auditor folders — every auditor is its own dir
+    ├── grammar/AUDITOR.md
+    └── clarity/AUDITOR.md
 ```
 
 ### Project level (a repo)
 
 ```
 <project>/.cues/
-├── cues.md              # project cue master (overrides user cues.md on conflicts)
+├── CUES.md              # project cue master (composes with user CUES.md)
 ├── cues/
-│   └── project-jargon.md
-├── blanks.md            # project blank master
-└── blanks/
-    └── project-blank/
-        ├── BLANK.md
-        └── project-blank.sh
+│   └── project-jargon/CUE.md
+├── BLANKS.md            # project blank master
+├── blanks/
+│   └── project-blank/
+│       ├── BLANK.md
+│       └── project-blank.sh
+├── AUDITORS.md          # project auditor master (with optional disable: list)
+└── auditors/
+    └── house-style/AUDITOR.md
 ```
 
 Project layout mirrors user layout under `.cues/`. There is **no project-level OPENCUES.md** — the runtime config is user-level only, since system-wide settings (voice-mode, debug-mode, llm-provider, …) shouldn't change behaviour silently when you `cd` into a project.
@@ -89,47 +95,56 @@ Project layout mirrors user layout under `.cues/`. There is **no project-level O
 
 ## 4. Naming conventions
 
+### File-naming convention — one rule
+
+Every `.md` file in the standard is uppercase. Master files are uppercase plurals; per-source entry files are uppercase singulars; folders that contain sources are lowercase plurals.
+
+| Layer | Master file | Source folder | Source entry |
+|---|---|---|---|
+| Cues | `CUES.md` | `cues/<name>/` | `CUE.md` |
+| Blanks | `BLANKS.md` | `blanks/<name>/` | `BLANK.md` |
+| Auditors | `AUDITORS.md` | `auditors/<name>/` | `AUDITOR.md` |
+
+Same convention as `OPENCUES.md`, `CLAUDE.md`, `README.md`, `LICENSE` — uppercase signals "this file declares a unit"; lowercase paths (`cues/`, `blanks/`, `auditors/`) are containers for those units.
+
 ### `OPENCUES.md` — user runtime config
 
-- **Format:** Markdown with YAML frontmatter; body is documentation. Sits alongside `cues.md` / `blanks.md` / `auditors.md` (planned) at the top of `~/.cues/`.
-- **Content:** system settings (voice-mode, debug-mode, tips-mode, cursor-navigate, fluid-blank-mode, word-cues-mode), nested `settings:` block (per-setting tip + values), LLM provider overrides (`llm-provider`, `llm-model`, per-feature `<feature>-provider` / `<feature>-model`).
+- **Format:** Markdown with YAML frontmatter; body is documentation. Sits alongside `CUES.md` / `BLANKS.md` / `AUDITORS.md` at the top of `~/.cues/`.
+- **Content:** system settings (voice-mode, debug-mode, tips-mode, cursor-navigate, fluid-blank-mode, transform-blank-mode, word-cues-mode), nested `settings:` block (per-setting tip + values), LLM provider overrides (`llm-provider`, `llm-model`, per-feature `<feature>-provider` / `<feature>-model`, including `auditors-provider` / `auditors-model`).
 - **Schema owner:** the OpenCues runtime. Users edit values; the schema is fixed by the implementation.
-- **Rationale for the name:** matches the repo's "uppercase-special, lowercase-content" convention (`CLAUDE.md`, `README.md`, `LICENSE`, `BLANK.md` for folder-blank masters). Uppercase signals "this configures the system, not category data." Sits inside `~/.cues/` rather than `$HOME` so the runtime install owns one consistent directory.
-- **Earlier names retired:** `.opencuesrc` (rc-style YAML at `$HOME`), `opencues.md` (lowercase, predecessor). `seed-configs` migrates both to the new location on first run.
+- **Rationale for the name:** uppercase + brand-prefixed signals "this configures the runtime, not the standard data." Sits inside `~/.cues/` rather than `$HOME` so the runtime install owns one consistent directory.
 
-### `cues.md` — project manifest
+### `CUES.md` / `BLANKS.md` / `AUDITORS.md` — surface masters
 
 - **Format:** Markdown with YAML frontmatter. Body is human-readable description.
-- **Content:** project metadata (`name`, `description`), `ignore` list, `disable` list (cue sources to suppress in this project), `requires` (compatibility gate), optional project-specific `words:` map, optional `llm-model` override.
+- **Content:** project metadata (`name`, `description`, `spec`), per-surface `ignore:` (cues/blanks only — word lists), `disable:` (every master — list of source ids to subtract from this layer's composition).
 - **Schema owner:** the standard.
-- **Rationale for the name:** matches `package.json`, `Cargo.toml`, `.editorconfig` — visible, generic, brand-neutral. Drops at the root of a repo and signals "this project speaks Cues" to any reader. Markdown body lets the project document its OpenCues setup inline (a tiny CONTRIBUTING.md for the cue domain).
+- **Rationale for the names:** uppercase plurals match `package.json`, `Cargo.toml`, `.editorconfig` in spirit — generic, visible at the project root, brand-neutral. Markdown body lets the project document its OpenCues setup inline.
 
-### `~/.cues/` and `<project>/.cues/` — cue library directory
+### `~/.cues/` and `<project>/.cues/` — library directory
 
 - **Naming:** standard-named (`cues`), no brand. Both implementations and projects use this layout.
-- **Asymmetry on visibility:** user-level is **dotted** (`.cues/`) per Unix convention for hidden user configs. Project-level is **dotted** (`.cues/`) so it doesn't clutter `ls` at a project root. Visibility comes from `cues.md` at the project root, not the cues directory.
-- **Contents:** two scope subdirectories, `words/` and `blanks/`. No other top-level entries.
+- **Visibility:** user-level is **dotted** (`.cues/`) per Unix convention for hidden user configs. Project-level is **dotted** (`.cues/`) so it doesn't clutter `ls` at a project root. Visibility comes from the masters (`CUES.md`, etc.) at the project root, not the cues directory.
+- **Contents:** three scope subdirectories — `cues/`, `blanks/`, `auditors/` — and the matching uppercase master files. No other top-level entries.
 
-### `cues/` and `blanks/` — per-item subdirs
+### `cues/`, `blanks/`, `auditors/` — per-item subdirs
 
-- **Naming:** matches the master file at the same level (`cues.md` + `cues/`, `blanks.md` + `blanks/`). The master file holds category-wide settings + inline definitions for short items; the folder holds standalone per-item files.
-- **Symmetry:** both plural, both can contain flat `.md` files or folders. Visual: `ls .cues/` → `cues.md  cues/  blanks.md  blanks/  OPENCUES.md`.
-- **Earlier name retired:** `words/` was used for an interim period to avoid confusion with the broader "cues" paradigm at a time when `.opencuesrc` lived as a sibling and "OpenCues settings" got conflated with "cues category." Once settings moved into `OPENCUES.md` (uppercase, distinct enough from `cues.md`), the naming-collision rationale dissolved and `cues/` was restored. `words/` is accepted as a legacy alias by the runtime and migrated by `seed-configs`.
+- **Naming:** lowercase plural, matches the master at the same level (`CUES.md` ↔ `cues/`, `BLANKS.md` ↔ `blanks/`, `AUDITORS.md` ↔ `auditors/`). The master holds surface-wide settings; the folder holds standalone per-item sources.
+- **Contents:** every entry is a folder. No flat `<name>.md` files at this level.
 
-### Source files inside `words/` and `blanks/`
+### Source files inside `cues/`, `blanks/`, `auditors/`
 
-- **Flat file (`<name>.md`)**: when the source has no colocated assets.
-  - All word-cues: flat. They never need scripts (LLM cues are pure prompts; static cues are pure data).
-  - Blanks backed by a runtime class (StocksBlank, WeatherBlank, etc.): flat.
-- **Folder (`<name>/cue.md`)**: when the source has colocated assets (scripts, helpers, .cs files for compilation).
-  - Most blanks with a `blankScript:` reference.
+Every source is a folder containing an uppercase entry file:
 
-The runtime accepts both shapes for any source. Folder-vs-flat is purely a "do I have stuff to colocate?" question.
+- **Cues:** `cues/<name>/CUE.md`
+- **Blanks:** `blanks/<name>/BLANK.md`
+- **Auditors:** `auditors/<name>/AUDITOR.md`
 
-### Source naming inside source files
+There is no flat-file shape. A source that ships nothing alongside its entry file (most word-cues, runtime-class-backed blanks like `stocks` / `weather`, most auditors) still gets its own folder. This mirrors the SKILLS.md convention — the folder *is* the unit, and adding a helper script later is a drop-in operation rather than a flat→folder migration.
 
-- Flat: filename **is** the source name. `legal.md` → source `legal`.
-- Folder: folder name is the source name. `volume/cue.md` → source `volume`. Frontmatter `name:` should match the folder name (the validator warns if not).
+### Source naming
+
+Folder name **is** the source name. `cues/legal/CUE.md` → source `legal`. `blanks/volume/BLANK.md` → source `volume`. `auditors/grammar/AUDITOR.md` → source `grammar`. Frontmatter `name:` should match the folder name (the validator warns if not).
 
 ---
 
@@ -140,11 +155,18 @@ Who is allowed to write each piece, and at what scope.
 | Path | Schema owner | Write scope | Hot-reload? |
 |---|---|---|---|
 | `~/.cues/OPENCUES.md` | runtime (OpenCues) | user-level only | yes (next keystroke) |
-| `~/.cues/cues/<name>.md` | standard | user (own library) | yes |
+| `~/.cues/CUES.md` | standard | user (own library) | yes |
+| `~/.cues/BLANKS.md` | standard | user (own library) | yes |
+| `~/.cues/AUDITORS.md` | standard | user (own library) | yes |
+| `~/.cues/cues/<name>/CUE.md` | standard | user (own library) | yes |
 | `~/.cues/blanks/<name>/...` | standard | user (own library) | yes |
-| `<project>/.cues/cues.md` | standard | project author | yes |
-| `<project>/.cues/cues/<name>.md` | standard | project author | yes |
+| `~/.cues/auditors/<name>/AUDITOR.md` | standard | user (own library) | yes |
+| `<project>/.cues/CUES.md` | standard | project author | yes |
+| `<project>/.cues/BLANKS.md` | standard | project author | yes |
+| `<project>/.cues/AUDITORS.md` | standard | project author | yes |
+| `<project>/.cues/cues/<name>/CUE.md` | standard | project author | yes |
 | `<project>/.cues/blanks/<name>/...` | standard | project author | yes |
+| `<project>/.cues/auditors/<name>/AUDITOR.md` | standard | project author | yes |
 
 ### What overrides what
 
@@ -156,59 +178,41 @@ Resolution order at runtime (highest priority first):
 
 Settings are user-level only — projects do **not** override `~/.cues/OPENCUES.md`. Projects override **content** (cue sources, blank registrations, ignore list) but never the runtime's behavior toggles. Reasoning: cd'ing into a project should not silently change whether TTS speaks, which LLM provider is used, etc. Those are user prefs.
 
-A project's `cues.md` ignore list **adds to** the user's ignore list. A project's `disable: [<source>]` removes specific cue sources from this project's resolution path without touching the user-level config.
+A project's `CUES.md` / `BLANKS.md` `ignore:` list **adds to** the user's ignore list (UNION across layers). A master's `disable: [<source>]` SUBTRACTs specific source ids from the resolution path at that layer, without touching other layers — same semantics across cues, blanks, and auditors.
 
 ---
 
-## 6. The two formats
+## 6. The one format
 
 | Format | Used for | Rationale |
 |---|---|---|
-| **Markdown frontmatter + body** | `~/.cues/OPENCUES.md`, `cues.md`, `blanks.md`, all source files (`cues/<name>.md`, `blanks/<name>/BLANK.md`) | Frontmatter for structured config; body for prose (descriptions, prompts), documentation, or JSON code blocks (static data). One parser, used everywhere data has both metadata and content. |
-| **YAML (no fences, legacy)** | Pre-2026-05 `~/.opencuesrc` | Retired. The runtime's parser still accepts the format during migration; `seed-configs` rewrites legacy files to frontmatter form on first run. |
+| **Markdown frontmatter + body** | `OPENCUES.md`, `CUES.md`, `BLANKS.md`, `AUDITORS.md`, all source files (`cues/<name>/CUE.md`, `blanks/<name>/BLANK.md`, `auditors/<name>/AUDITOR.md`) | Frontmatter for structured config; body for prose (descriptions, prompts), documentation, or JSON code blocks (static data). One parser shape, used everywhere data has both metadata and content. |
 
-The `parseSingleCueMd` parser:
-- Reads YAML frontmatter between `---` fences.
-- Reads body for: prose (LLM prompts), JSON code blocks (static data, the legacy array shape `[{id, words?, groups?}]`), `## Ignore` legacy section (back-compat).
-- Distinguishes static-vs-LLM cue sources by data shape: presence of body JSON ⇒ static, presence of `match:` / `keywords:` + prose body ⇒ LLM.
+Per-source body content:
+- **CUE.md:** prose for LLM-mode cues, fenced ` ```json ` block for static tip-group cues, or both (combined-mode files use static for matched words + LLM fallback for the rest).
+- **BLANK.md:** typically empty — the binding (`stepValues:` / `blankScript:` / `impl:`) lives in frontmatter. Body MAY hold `## <Name>` prompt sections for AI-driven blanks (transform-blank, fluid-blank).
+- **AUDITOR.md:** body is the prompt fragment that gets concatenated into the rewrite call.
 
-There's no `type:` discriminator in frontmatter. Inference > declaration.
+There's no `type:` discriminator in frontmatter. The parser infers source kind from path (`cues/` vs `blanks/` vs `auditors/`) and from data shape (body JSON ⇒ static cue, prose ⇒ LLM cue or auditor body).
 
 ---
 
 ## 7. What's gone (deliberately removed)
 
-- ❌ `opencues.md` (lowercase) and `.opencuesrc` (rc-style at `$HOME`) as the runtime config file name. Both retired in favour of `~/.cues/OPENCUES.md` (markdown + frontmatter, sits inside the cues library).
-- ❌ `blanks.md` as a separate file. Folder-based blanks under `blanks/<name>/`.
-- ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in cues.md. Frontmatter + folders only.
-- ❌ `type: tips` / `type: prompt` discriminators. Parser infers from data shape.
+- ❌ Flat `<name>.md` source files. Every source is `<name>/<UPPERCASE>.md`.
+- ❌ Lowercase master files (`cues.md`, `blanks.md`, `auditors.md`). Masters are uppercase plurals.
+- ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in master files. Frontmatter + folders only.
+- ❌ `type: tips` / `type: prompt` discriminators. Parser infers from path + data shape.
 - ❌ Catch-all "default" word-cue sources. Every cue source must declare `match:` or `keywords:`.
 - ❌ `ClassifiedSourceGroup` (legacy classifier-routed blank modes). Fluid-blank covers the territory.
 - ❌ `output-format` / `display mode` settings. Had no consumer.
 
 ---
 
-## 8. Migration path from the old layout
+## 8. Implementation pointers (for the OpenCues runtime)
 
-For users with the pre-OpenStandard layout (`.cues/` with `cues.md` + `cues/<name>/cue.md` + `blanks/<name>/`), `opencues seed-configs` runs an **idempotent migration** that:
-
-1. Renames `~/.opencues/` → `~/.cues/`
-2. Extracts settings from `cues.md` frontmatter → writes `~/.cues/OPENCUES.md` (markdown with frontmatter; was `~/.opencuesrc` rc-style YAML in an earlier arc)
-3. Renames `cues/` subdir → keeps as `cues/` (post-2026-05; an interim arc had it as `words/`)
-4. Flattens single-file source folders: `cues/legal/CUE.md` → `cues/legal.md`
-5. Consolidates the `tips/cue.md` body JSON into `cues/tips.md` (already done in the previous arc)
-6. Renames `blanks/` stays (already correct)
-7. Flattens script-less blank folders: `blanks/stocks/BLANK.md` → `blanks/stocks.md`
-8. Migrates legacy `~/.cues/words/` → `~/.cues/cues/` (for users who installed during the brief words/ era)
-
-Idempotent: re-running detects the new layout (presence of `~/.cues/OPENCUES.md` + `~/.cues/cues/`) and skips.
-
----
-
-## 9. Implementation pointers (for the OpenCues runtime)
-
-- Search paths in order: `$OPENCUES_HOME`, `<cwd>/.cues`, `~/.cues`. Folder discovery walks each, builds a CuesMdConfig, merges with project-precedence.
-- `OpenCuesSettingsBlank` reads/writes `~/.cues/OPENCUES.md` only. Project-level cues.md is read-only from this blank's perspective.
-- `parseSingleCueMd` accepts both flat `<name>.md` and `<name>/cue.md` shapes. Source name comes from the filename or folder name.
-- Folder-discovered configs merge into the master cuesConfig: `combineCueConfigs` concatenates `tips`, merges `promptConfig.sources`, merges `blanks`, concatenates `ignore`.
+- Search paths in order: `$OPENCUES_HOME`, `<cwd>/.cues`, `~/.cues`. Folder discovery walks each, builds a `CuesMdConfig`, merges with project-precedence.
+- `OpenCuesSettingsBlank` reads/writes `~/.cues/OPENCUES.md` only. Standard masters (`CUES.md`, etc.) are not edited by the runtime.
+- `parseSingleCueMd` / `parseSingleAuditorMd` accept folder-only `<name>/<UPPERCASE>.md`. Source name comes from the folder name.
+- Folder-discovered configs merge into a single `CuesMdConfig`: `combineCueConfigs` concatenates `tips`, merges `promptConfig.sources`, merges `blanks`, merges `auditors`, concatenates `ignore`, unions `disable` lists.
 - Hot-reload: `ConfigLoader` polls all search paths on every keystroke; reads change → triggers a rebuild.

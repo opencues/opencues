@@ -14,6 +14,7 @@ import * as assert from 'node:assert';
 import { ConfigSource } from './config-source';
 import { CueContext, HttpAdapter } from '../types';
 import { SourceConfig } from '../cues-md';
+import { getProvider } from '../llm-provider';
 
 // Capturing adapter: records every prompt sent to the LLM so we can
 // assert on what the LLM actually saw.
@@ -45,9 +46,10 @@ function mkSource(cfg: Partial<SourceConfig>, adapter: HttpAdapter): ConfigSourc
   return new ConfigSource({
     sourceConfig: full,
     httpAdapter: adapter,
+    provider: getProvider('groq')!,
     endpoint: 'https://example.test',
     apiKey: 'k',
-    defaultModel: 'm',
+    model: 'm',
   });
 }
 

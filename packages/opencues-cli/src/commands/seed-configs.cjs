@@ -43,8 +43,8 @@ const { spawnSync } = require('node:child_process');
 // `.cues/` library). Library contents: words/ + blanks/ + scripts/.
 // Project-level seeds the same library shape under <cwd>/.cues/ but
 // no `.opencuesrc` (system settings are runtime-owned, user-level only).
-const SEED_FILES_USER = ['cues', 'blanks', 'scripts'];
-const SEED_FILES_PROJECT = ['cues', 'blanks'];
+const SEED_FILES_USER = ['cues', 'blanks', 'auditors', 'scripts'];
+const SEED_FILES_PROJECT = ['cues', 'blanks', 'auditors'];
 
 module.exports = function seedConfigs(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -60,20 +60,12 @@ module.exports = function seedConfigs(argv, ctx) {
   const sourceDir = path.join(ctx.REPO_ROOT, 'defaults');
   // The runtime config (OPENCUES.md) lives at the top of the cues
   // library directory, alongside cues.md / blanks.md / auditors.md.
-  // (The old layout had `.opencuesrc` at $HOME root; that's migrated
-  // into $HOME/.cues/OPENCUES.md by the migration step below.)
   const settingsTarget = projectScope
     ? null
     : (process.env.OPENCUES_HOME
         ? path.join(process.env.OPENCUES_HOME, 'OPENCUES.md')
         : path.join(HOME, '.cues', 'OPENCUES.md'));
   const settingsSource = path.join(sourceDir, 'OPENCUES.md');
-  // Legacy paths used by the migration step.
-  const legacySettingsTarget = projectScope
-    ? null
-    : (process.env.OPENCUES_HOME
-        ? path.join(process.env.OPENCUES_HOME, 'opencuesrc')
-        : path.join(HOME, '.opencuesrc'));
 
   if (!fs.existsSync(sourceDir)) {
     console.error(`opencues seed-configs: source dir not found at ${sourceDir}`);
@@ -85,24 +77,6 @@ module.exports = function seedConfigs(argv, ctx) {
   log(`  source: ${sourceDir}`);
   log(`  target: ${targetDir}`);
   log('');
-
-  // ── 0. MIGRATE — old layout (~/.opencues/ with cues/ + blanks/) →
-  // OpenStandard layout (~/.cues/ with words/ + blanks/, ~/.opencuesrc
-  // at $HOME). Idempotent: re-running after migration is a no-op
-  // (signals are gone). User-scope only.
-  if (!projectScope && !dryRun) {
-    migrateOpenStandardLayout(HOME, settingsTarget, targetDir, log);
-    // ── 0b. MIGRATE — `.opencuesrc` at $HOME → $HOME/.cues/OPENCUES.md
-    // Settings file moved into the cues dir to sit alongside cues.md /
-    // blanks.md / auditors.md, and renamed/reformatted to a markdown
-    // file with frontmatter. Idempotent: skips when the target exists.
-    migrateOpencuesRcToOpencuesMd(legacySettingsTarget, settingsTarget, log);
-    // ── 0c. MIGRATE — `~/.cues/words/` → `~/.cues/cues/`. Restored
-    // symmetry with `cues.md` after the brief words/ era. Idempotent:
-    // merges file-by-file when both paths exist; cues/ wins on
-    // conflicts (it's the post-rename canonical location).
-    migrateWordsToCues(targetDir, log);
-  }
 
   // ── 1. SEED — first-time copy ──────────────────────────────────────
   const seedFiles = projectScope ? SEED_FILES_PROJECT : SEED_FILES_USER;
@@ -185,11 +159,10 @@ module.exports = function seedConfigs(argv, ctx) {
       const subSrc = path.join(srcParent, entry.name);
       const subDst = path.join(dstParent, entry.name);
       if (fs.existsSync(subDst)) continue; // user already has it (or opted out)
-      if (entry.isDirectory()) copyDir(subSrc, subDst);
-      else if (entry.isFile() && entry.name.endsWith('.md')) fs.copyFileSync(subSrc, subDst);
-      else continue;
+      if (!entry.isDirectory()) continue;
+      copyDir(subSrc, subDst);
       added++;
-      log(`  added ${parent}/${entry.name}${entry.isDirectory() ? '/' : ''}`);
+      log(`  added ${parent}/${entry.name}/`);
     }
   }
   if (added === 0) log('  (no new entries)');
@@ -371,364 +344,6 @@ function compileExe(csc, csFile, outDir, log) {
   }
   return false;
 }
-
-// ─── Migration: pre-OpenStandard → OpenStandard layout ─────────────────────
-//
-// Walks the user from any prior layout to the current OpenStandard:
-//
-//   ~/.opencuesrc          (system settings — was inside cues.md frontmatter
-//                           or in an opencues.md sibling)
-//   ~/.cues/words/         (was: ~/.opencues/cues/, with one folder per source)
-//   ~/.cues/blanks/        (was: ~/.opencues/blanks/)
-//   ~/.cues/scripts/       (was: ~/.opencues/scripts/)
-//
-// Idempotent. Three stages, applied in order:
-//   1. Inner-content migration on the OLD `~/.opencues/` (extract settings
-//      from cues.md frontmatter, split ## Tips into folders, etc.) — this
-//      is the previous unification arc, kept here for users still on the
-//      pre-unification shape.
-//   2. Move ~/.opencues/ → ~/.cues/, extract settings to ~/.opencuesrc.
-//   3. Rename inner cues/ → words/, flatten single-file folders.
-function migrateOpenStandardLayout(HOME, settingsTarget, newCuesDir, log) {
-  const oldDir = path.join(HOME, '.opencues');
-  const hasOldDir = fs.existsSync(oldDir);
-  // Quick exit: nothing to migrate.
-  if (!hasOldDir) return;
-
-  log('Migrating ~/.opencues/ → ~/.cues/ + ~/.opencuesrc:');
-
-  // Stage 1 — pre-unification migration (still applies to users who
-  // skipped the previous arc).
-  migrateLegacyContents(oldDir, log);
-
-  // Stage 2 — extract cues.md frontmatter into .opencuesrc, then move
-  // the dir over to .cues/.
-  const oldCuesMd = path.join(oldDir, 'cues.md');
-  if (settingsTarget && fs.existsSync(oldCuesMd) && !fs.existsSync(settingsTarget)) {
-    const cuesContent = fs.readFileSync(oldCuesMd, 'utf8');
-    const fmMatch = cuesContent.match(/^---\n([\s\S]*?)\n---/);
-    if (fmMatch) {
-      // Drop project-metadata fields (name/domain/version/ignore — those
-      // belong to project cues.md, not the runtime config file).
-      const settingsYaml = fmMatch[1].split('\n')
-        .filter(line => {
-          const m = line.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):/);
-          if (!m) return true;
-          return !['name', 'domain', 'version', 'ignore'].includes(m[1]);
-        }).join('\n');
-      fs.mkdirSync(path.dirname(settingsTarget), { recursive: true });
-      // settingsTarget is now ~/.cues/OPENCUES.md (markdown with
-      // frontmatter). Wrap the extracted YAML in `---` fences and add
-      // a brief body — matches the format of `defaults/OPENCUES.md`.
-      const yaml = settingsYaml.replace(/^\s+/, '').replace(/\n+$/, '');
-      fs.writeFileSync(
-        settingsTarget,
-        `---\n${yaml}\n---\n\n` +
-        `# OPENCUES.md — Runtime Configuration\n\n` +
-        `Migrated from a legacy \`cues.md\` frontmatter. See\n` +
-        `\`defaults/OPENCUES.md\` for the full annotated example.\n`,
-      );
-      log(`  wrote ${settingsTarget}`);
-    }
-    fs.unlinkSync(oldCuesMd);
-  }
-
-  // Stage 3 — move ~/.opencues/cues/ → ~/.cues/cues/. blanks/ + scripts/
-  // stay. Flatten single-file folders. (Earlier code targeted words/;
-  // post-2026-05 we restored the symmetric cues/ name.)
-  fs.mkdirSync(newCuesDir, { recursive: true });
-  const oldCuesSubdir = path.join(oldDir, 'cues');
-  const newCuesSubdir = path.join(newCuesDir, 'cues');
-  if (fs.existsSync(oldCuesSubdir)) {
-    fs.mkdirSync(newCuesSubdir, { recursive: true });
-    flattenInto(oldCuesSubdir, newCuesSubdir, log, 'cues');
-    fs.rmdirSync(oldCuesSubdir);
-  }
-  for (const sub of ['blanks', 'scripts']) {
-    const oldSub = path.join(oldDir, sub);
-    const newSub = path.join(newCuesDir, sub);
-    if (fs.existsSync(oldSub) && !fs.existsSync(newSub)) {
-      fs.renameSync(oldSub, newSub);
-      log(`  moved ${sub}/`);
-    }
-    // Flatten single-file folders inside blanks/ (script-less ones).
-    if (sub === 'blanks' && fs.existsSync(newSub)) {
-      flattenSingleFileFolders(newSub, log);
-    }
-  }
-
-  // Stage 4 — drop the now-empty ~/.opencues/ dir.
-  try {
-    const remaining = fs.readdirSync(oldDir);
-    if (remaining.length === 0) {
-      fs.rmdirSync(oldDir);
-      log(`  removed ${oldDir}`);
-    } else {
-      log(`  ${oldDir} not empty (${remaining.join(', ')}); left in place`);
-    }
-  } catch {}
-  log('');
-}
-
-/**
- * Migrate legacy ~/.opencuesrc (rc-style YAML at $HOME) → new location
- * at ~/.cues/OPENCUES.md (markdown with frontmatter, sitting alongside
- * cues.md / blanks.md / auditors.md).
- *
- * Wraps the existing rc-style content in `---` frontmatter fences and
- * adds a doc body so the file matches the rest of the .cues/ layout.
- * Drops the legacy file after a successful copy. Idempotent — skips
- * when the new file already has content.
- *
- * `settingsTarget` is the new path; `legacy` is the old `.opencuesrc`
- * at $HOME. Both can be null (project-scope seed); we no-op then.
- */
-function migrateOpencuesRcToOpencuesMd(legacy, settingsTarget, log) {
-  if (!legacy || !settingsTarget) return;
-  if (!fs.existsSync(legacy)) return;
-  if (hasContent(settingsTarget)) {
-    // Target already populated; assume user is on the new layout. Drop
-    // the legacy file as a courtesy.
-    try { fs.unlinkSync(legacy); log(`  removed stale ${legacy}`); } catch {}
-    return;
-  }
-  const content = fs.readFileSync(legacy, 'utf8');
-  // If the legacy file already has fences (rare — pre-migration shape
-  // was supposed to be fence-less rc-style), pass through unchanged.
-  // Otherwise wrap it.
-  let body;
-  if (/^---\n[\s\S]*?\n---/.test(content)) {
-    body = content;
-  } else {
-    // Strip leading top-of-file comments (the legacy boilerplate
-    // header) so the YAML inside the frontmatter starts cleanly.
-    const yaml = content.replace(/^(?:[ \t]*#.*\n|\s*\n)+/, '');
-    body = `---\n${yaml.replace(/\n+$/, '')}\n---\n\n` +
-      `# OPENCUES.md — Runtime Configuration\n\n` +
-      `Migrated from \`~/.opencuesrc\`. See \`defaults/OPENCUES.md\` for the\n` +
-      `full annotated example with provider routing knobs and per-feature\n` +
-      `LLM overrides.\n`;
-  }
-  fs.mkdirSync(path.dirname(settingsTarget), { recursive: true });
-  fs.writeFileSync(settingsTarget, body);
-  try { fs.unlinkSync(legacy); } catch {}
-  log(`  migrated ${legacy} → ${settingsTarget}`);
-}
-
-/**
- * Migrate `~/.cues/words/` → `~/.cues/cues/`. The post-2026-05 layout
- * restores symmetry with `cues.md` (master file + per-item folder
- * sharing the same name, like `blanks.md` + `blanks/`).
- *
- * Strategy: if `cues/` doesn't exist, simple rename. If both exist
- * (rare — user manually created cues/ alongside words/), copy each
- * words/* into cues/ unless a same-named entry is already there
- * (cues/ wins), then remove the empty words/. Idempotent.
- */
-function migrateWordsToCues(targetDir, log) {
-  const wordsDir = path.join(targetDir, 'words');
-  const cuesDir = path.join(targetDir, 'cues');
-  if (!fs.existsSync(wordsDir)) return;
-  if (!fs.existsSync(cuesDir)) {
-    fs.renameSync(wordsDir, cuesDir);
-    log(`  migrated ${wordsDir} → ${cuesDir}`);
-    return;
-  }
-  let merged = 0;
-  for (const entry of fs.readdirSync(wordsDir, { withFileTypes: true })) {
-    const src = path.join(wordsDir, entry.name);
-    const dst = path.join(cuesDir, entry.name);
-    if (fs.existsSync(dst)) continue;                            // cues/ wins
-    fs.renameSync(src, dst);
-    merged += 1;
-  }
-  // Drop words/ if empty after merge; otherwise leave with leftover
-  // entries so the user can resolve conflicts manually.
-  try { fs.rmdirSync(wordsDir); log(`  migrated ${wordsDir} → ${cuesDir} (${merged} entries merged, words/ removed)`); }
-  catch { log(`  partially migrated ${wordsDir} → ${cuesDir} (${merged} merged; words/ has remaining entries — resolve manually)`); }
-}
-
-/** Move every entry from `src` to `dst`, flattening single-file folders
- *  (folders containing only a `cue.md` and nothing else become flat
- *  `<name>.md` files). Folders with colocated assets (scripts, .cs)
- *  are moved as-is. */
-function flattenInto(src, dst, log, label) {
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    if (entry.isDirectory()) {
-      const cueMd = path.join(srcPath, 'cue.md');
-      const otherFiles = fs.existsSync(cueMd)
-        ? fs.readdirSync(srcPath).filter(f => f !== 'cue.md')
-        : null;
-      if (otherFiles && otherFiles.length === 0) {
-        // Single-file folder — flatten.
-        fs.renameSync(cueMd, path.join(dst, entry.name + '.md'));
-        fs.rmdirSync(srcPath);
-        log(`  flattened ${label}/${entry.name}.md`);
-      } else {
-        // Folder with assets — move as-is.
-        fs.renameSync(srcPath, path.join(dst, entry.name));
-        log(`  moved ${label}/${entry.name}/`);
-      }
-    } else if (entry.name.endsWith('.md')) {
-      fs.renameSync(srcPath, path.join(dst, entry.name));
-      log(`  moved ${label}/${entry.name}`);
-    }
-  }
-}
-
-/** Flatten any single-file <folder>/cue.md inside `dir` to <folder>.md.
- *  Used for blanks/ where some sources have scripts (kept as folders)
- *  and others don't (flattened). */
-function flattenSingleFileFolders(dir, log) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const sub = path.join(dir, entry.name);
-    const cueMd = path.join(sub, 'cue.md');
-    if (!fs.existsSync(cueMd)) continue;
-    const otherFiles = fs.readdirSync(sub).filter(f => f !== 'cue.md');
-    if (otherFiles.length === 0) {
-      fs.renameSync(cueMd, path.join(dir, entry.name + '.md'));
-      fs.rmdirSync(sub);
-      log(`  flattened ${path.basename(dir)}/${entry.name}.md`);
-    }
-  }
-}
-
-/** Pre-OpenStandard legacy migration (kept for users mid-migration).
- *  Pulls settings from opencues.md into cues.md, splits ## Tips into
- *  folders, etc. Operates in-place inside the OLD `~/.opencues/`. */
-function migrateLegacyContents(targetDir, log) {
-  const opencuesPath = path.join(targetDir, 'opencues.md');
-  const cuesPath = path.join(targetDir, 'cues.md');
-  const blanksPath = path.join(targetDir, 'blanks.md');
-
-  const hasOldOpencues = fs.existsSync(opencuesPath);
-  const hasOldCues = fs.existsSync(cuesPath);
-  const hasOldBlanks = fs.existsSync(blanksPath);
-
-  // Quick exit when nothing to migrate. Look for any signal that the
-  // old layout is still present — opencues.md OR cues.md with a `## Tips`
-  // body section OR blanks.md (assumed legacy if it exists).
-  let cuesContent = hasOldCues ? fs.readFileSync(cuesPath, 'utf8') : null;
-  const hasTipsSection = cuesContent ? /^## Tips/m.test(cuesContent) : false;
-  const hasIgnoreSection = cuesContent ? /^## Ignore/m.test(cuesContent) : false;
-  const hasBlanksSection = cuesContent ? /^## Blanks/m.test(cuesContent) : false;
-
-  if (!hasOldOpencues && !hasTipsSection && !hasIgnoreSection && !hasBlanksSection && !hasOldBlanks) {
-    return; // already migrated
-  }
-
-  log('Migrating legacy layout (opencues.md + ## Tips + ## Ignore + blanks.md → unified cues.md):');
-
-  // Read the two source files.
-  const opencuesContent = hasOldOpencues ? fs.readFileSync(opencuesPath, 'utf8') : '';
-  if (!cuesContent) cuesContent = '---\nname: cues\n---\n\n# cues.md\n';
-
-  // Parse frontmatters.
-  const opencuesFm = extractFrontmatterRaw(opencuesContent);
-  const cuesParsed = splitFrontmatter(cuesContent);
-
-  // Merge frontmatters: cues.md frontmatter wins on duplicate keys (the
-  // user's local cues.md overrides shipped opencues.md). The opencues.md
-  // frontmatter is multi-line YAML (settings: block); preserve it as a
-  // raw block.
-  const cuesFmKeys = new Set();
-  for (const line of cuesParsed.frontmatter.split('\n')) {
-    const m = line.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):/);
-    if (m) cuesFmKeys.add(m[1]);
-  }
-  const opencuesFmFiltered = opencuesFm.split('\n')
-    .filter(line => {
-      const m = line.match(/^([A-Za-z][A-Za-z0-9_\- ]*?):/);
-      // Drop lines whose key is already in cues.md frontmatter; keep
-      // indented lines (they belong to the settings: block above).
-      return !m || !cuesFmKeys.has(m[1]) || /^\s/.test(line);
-    })
-    .join('\n');
-
-  // Walk the cues.md body: pull out ## Tips JSON groups, ## Ignore list.
-  // Strip those sections from the body.
-  const body = cuesParsed.body;
-  const tipsGroups = extractTipsJsonGroups(body);
-  const ignoreList = extractIgnoreList(body);
-  let strippedBody = stripSection(body, 'Tips');
-  strippedBody = stripSection(strippedBody, 'Ignore');
-  strippedBody = stripSection(strippedBody, 'Blanks');
-
-  // Build new frontmatter: cues frontmatter (minus version which is
-  // a single-source-of-truth for the master file) + opencues frontmatter
-  // + ignore: array if any.
-  const newFmLines = [];
-  newFmLines.push(cuesParsed.frontmatter.replace(/\s+$/, ''));
-  if (opencuesFmFiltered.trim()) newFmLines.push(opencuesFmFiltered.replace(/\s+$/, ''));
-  if (ignoreList.length > 0) newFmLines.push(`ignore: ${JSON.stringify(ignoreList)}`);
-  const newFm = newFmLines.filter(Boolean).join('\n');
-
-  const newCuesMd = `---\n${newFm}\n---\n${strippedBody.replace(/^\s+/, '\n')}`;
-  fs.writeFileSync(cuesPath, newCuesMd);
-  log(`  rewrote ${cuesPath}`);
-
-  // Consolidate all tip groups into ONE folder: cues/tips/cue.md.
-  // Body is the legacy array shape `[{id, words?, groups?}]` — the
-  // parser still accepts it directly.
-  if (tipsGroups.length > 0) {
-    const tipsFolder = path.join(targetDir, 'cues', 'tips');
-    const tipsCueMd = path.join(tipsFolder, 'cue.md');
-    if (fs.existsSync(tipsCueMd)) {
-      log(`  skip cues/tips/ (already exists)`);
-    } else {
-      fs.mkdirSync(tipsFolder, { recursive: true });
-      const bodyJson = JSON.stringify(tipsGroups, null, 2);
-      const content = `---\nname: tips\n---\n\n\`\`\`json\n${bodyJson}\n\`\`\`\n`;
-      fs.writeFileSync(tipsCueMd, content);
-      log(`  created cues/tips/cue.md (${tipsGroups.length} groups)`);
-    }
-  }
-
-  // Drop legacy files.
-  if (hasOldOpencues) {
-    fs.unlinkSync(opencuesPath);
-    log(`  deleted ${opencuesPath}`);
-  }
-  if (hasOldBlanks) {
-    fs.unlinkSync(blanksPath);
-    log(`  deleted ${blanksPath}`);
-  }
-  log('');
-}
-
-function extractFrontmatterRaw(content) {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  return m ? m[1] : '';
-}
-
-function splitFrontmatter(content) {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) return { frontmatter: '', body: content };
-  return { frontmatter: m[1], body: content.slice(m[0].length) };
-}
-
-function extractTipsJsonGroups(body) {
-  const m = body.match(/^## Tips\s*\n+```json\n([\s\S]*?)\n```/m);
-  if (!m) return [];
-  try {
-    const data = JSON.parse(m[1]);
-    return Array.isArray(data) ? data : [];
-  } catch { return []; }
-}
-
-function extractIgnoreList(body) {
-  const m = body.match(/^## Ignore\s*\n([\s\S]*?)(?=\n## |\n*$)/m);
-  if (!m) return [];
-  return m[1].split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
-}
-
-function stripSection(body, heading) {
-  const re = new RegExp(`^## ${heading}[\\s\\S]*?(?=^## |$(?![\\s\\S]))`, 'm');
-  return body.replace(re, '');
-}
-
 function printHelp() {
   console.log('opencues seed-configs [--project] [--dry-run] [--silent]');
   console.log('');

@@ -220,8 +220,8 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
     copied++;
     // Categorise for the summary line.
     const rel = path.relative(distConfigs, p.dst);
-    if (rel.startsWith('cues') || rel === 'cues.md') summary.cue++;
-    else if (rel.startsWith('blanks') || rel === 'blanks.md') summary.blank++;
+    if (rel.startsWith('cues') || rel === 'CUES.md') summary.cue++;
+    else if (rel.startsWith('blanks') || rel === 'BLANKS.md') summary.blank++;
   }
 
   // Write index.json so the chrome extension can enumerate what's in
@@ -361,7 +361,7 @@ function walkSource(dir, core, cb) {
   // file or rebuild it from the chrome-compatible subset.
   // Today: include whole file if ANY section is chrome-compatible.
   // Folder-based configs (next loop) get per-entry filtering.
-  for (const filename of ['cues.md', 'blanks.md']) {
+  for (const filename of ['CUES.md', 'BLANKS.md']) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {

@@ -2,24 +2,21 @@
 
 > **Status:** `0.1-alpha`. Expect changes.
 
-A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `blank.md` file format and what a conformant runtime MUST do with one.
+A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `BLANK.md` file format and what a conformant runtime MUST do with one.
 
 ---
 
 ## The format
 
-A blank is one of:
+A blank is a folder at `<root>/blanks/<name>/` containing a `BLANK.md` entry file plus optional bundled resources. The folder name is the source id.
 
-- **Flat:** `<root>/blanks/<name>.md` — declarative blanks (lists, in-process classes).
-- **Folder:** `<root>/blanks/<name>/blank.md` — when a shell script or compiled helper sits alongside.
-
-Both shapes parse to the same in-memory model.
+Every blank is folder-shaped — there is no flat-file alternative. A declarative blank that ships nothing alongside its `BLANK.md` still gets its own folder, so adding a `<name>-blank.sh` helper later is a drop-in operation rather than a flat→folder migration.
 
 ### Anatomy
 
 ```
 <root>/blanks/<name>/
-├── blank.md                  (required)
+├── BLANK.md                  (required)
 │   ├── YAML frontmatter      (required)
 │   │   ├── name              (required)
 │   │   ├── blankKeywords     (required — the trigger)
@@ -44,7 +41,7 @@ A blank fires when **all** of these hold:
 
 Blanks fire deterministically. The `description:` field is documentation only — it does NOT control invocation. (Contrast with [SKILL.md](https://github.com/anthropics/skills), where `description` is the LLM's invocation hook.)
 
-When `_` matches no blank, a runtime MAY provide a **fluid-blank fallback** (typically a free-form LLM lookup). The fallback is a runtime feature, not a `blank.md` configurable. A runtime that provides no fallback MUST leave unmatched `_` literal. See [`opencues-runtime.md`](./opencues-runtime.md) for the OpenCues runtime's implementation.
+When `_` matches no blank, a runtime MAY provide a **fluid-blank fallback** (typically a free-form LLM lookup). The fallback is a runtime feature, not a `BLANK.md` configurable. A runtime that provides no fallback MUST leave unmatched `_` literal. See [`opencues-runtime.md`](./opencues-runtime.md) for the OpenCues runtime's implementation.
 
 ---
 
@@ -70,7 +67,9 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `type` | `"blank"` | inferred from path | Discriminator. Files under `blanks/` are blanks by location; explicit `type: blank` is RECOMMENDED only for flat files in shared directories. |
+| `type` | `"blank"` | inferred from path | Discriminator. Files under `blanks/` are blanks by location; explicit `type: blank` is rarely needed. |
+| `priority` | number | `50` | Higher wins on routing ties when multiple blanks could claim the same `_` slot (rare — usually disambiguated by `blankKeywords`). Range 0–100 by convention. |
+| `enabled` | boolean | `true` | `false` = blank is parsed but not registered. Use the master `BLANKS.md` `disable: [<id>]` to skip a blank from a project layer without modifying the source file itself. |
 | `blankStep` | number | none | Increment size for numeric blanks (Up/Down step). |
 | `blankFormat` | `"integer"` \| `"float"` \| `"string"` | `"string"` | Display formatting hint. |
 | `blankSuffix` | string | `""` | Appended to the displayed value (`"%"`, `"°C"`, `"$"`). |
@@ -94,6 +93,27 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 The body is typically a short human-readable description or stays empty. For declarative blanks (`stepValues`) and in-process blanks (`impl`), the body is purely documentation.
 
 For shell-script blanks, the body MAY include usage examples or version notes. Runtimes MUST ignore the body for execution; it's documentation-only.
+
+#### Named prompt sections
+
+A blank that drives an LLM-backed binding (an `impl:` class that calls a model, for instance) MAY declare named prompt fragments using `## <Name>` Markdown headings in the body:
+
+```markdown
+---
+name: my-blank
+impl: MyBlank
+---
+
+## Extract
+Identify the lookup phrase. Return SPAN: <text> or SPAN: NONE.
+
+## Answer
+Given the SPAN, return ANSWER: <terse value>.
+```
+
+Runtimes that recognise these names MUST parse them into a `prompts: { Extract: …, Answer: … }` map available to the bound implementation. Runtimes that don't recognise a section name MUST preserve it (no error) — it's documentation for the next reader.
+
+Section names are case-sensitive and MUST match the heading text after `## `. Sections are unordered; nested `### ` subheadings are content within their parent section.
 
 ---
 
@@ -146,7 +166,7 @@ Stderr SHOULD be ignored unless exit code is non-zero. The runtime MAY treat non
 impl: WeatherBlank
 ```
 
-`impl:` is a naming convention. The class lives in the runtime, not in `blank.md`. A class MUST satisfy the Blank interface (§ Runtime contract).
+`impl:` is a naming convention. The class lives in the runtime, not in `BLANK.md`. A class MUST satisfy the Blank interface (§ Runtime contract).
 
 By convention, when `impl:` is omitted, the runtime tries `<PascalCase(name)>Blank` (e.g. `name: stocks` → `StocksBlank`).
 
@@ -204,7 +224,7 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 
 ## Conformance
 
-A `blank.md` file is **valid** iff:
+A `BLANK.md` file is **valid** iff:
 
 1. Frontmatter has `name` and `blankKeywords`.
 2. **Exactly one** of `stepValues`, `blankScript`, or `impl` is present (or `impl` is implicit via name convention AND the runtime can resolve it).
@@ -221,7 +241,7 @@ For the consolidated linting matrix (severity, rule names, what each rule checks
 
 ### Minimal — declarative `stepValues`
 
-`blanks/affirmations.md`:
+`blanks/affirmations/BLANK.md`:
 
 ```markdown
 ---
@@ -235,7 +255,7 @@ blankDismissible: true
 
 ### Minimal — shell-script (folder shape)
 
-`blanks/volume/blank.md`:
+`blanks/volume/BLANK.md`:
 
 ```markdown
 ---
@@ -254,7 +274,7 @@ The folder also contains `volume-blank.sh`. Optional: a compiled helper (`VolCtl
 
 ### Minimal — in-process class
 
-`blanks/stocks.md`:
+`blanks/stocks/BLANK.md`:
 
 ```markdown
 ---
@@ -295,7 +315,7 @@ Pulls from Open-Meteo. Geocodes the location word in `context`.
 
 ## In scope
 
-- The `blank.md` file format and frontmatter schema.
+- The `BLANK.md` file format and frontmatter schema.
 - The Blank interface (`get` / `set` / `up` / `down`).
 - The three binding profiles.
 - Lifecycle (auto-populate → cycle → accept → dismiss).

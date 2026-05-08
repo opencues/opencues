@@ -47,7 +47,7 @@ function buildWordSources(response: string) {
       },
     }),
     undefined,
-    { httpAdapter: { post: async () => llmResponse(response) }, endpoint: '', apiKey: '', defaultModel: '', enableWordCues: true },
+    { httpAdapter: { post: async () => llmResponse(response) }, apiKeys: { GROQ_API_KEY: 'k' }, globalProvider: 'groq', globalModel: 'm', enableWordCues: true },
   );
 }
 

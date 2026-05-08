@@ -18,7 +18,7 @@ const SAMPLE_TIPS = wrapTipsAsCuesMd({
 
 describe('ConfigLoader', () => {
   it('loads tips from cues.md ## Tips and builds a case-insensitive lookup', async () => {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': SAMPLE_TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': SAMPLE_TIPS } });
     const loader = new ConfigLoader(adapter);
     await loader.load();
 
@@ -45,7 +45,7 @@ describe('ConfigLoader', () => {
 
   it('leaves map empty when ## Tips JSON is malformed', async () => {
     const malformedCuesMd = `# malformed\n\n## Tips\n\`\`\`json\nnot valid json{{{\n\`\`\`\n`;
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': malformedCuesMd } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': malformedCuesMd } });
     const loader = new ConfigLoader(adapter);
     await loader.load();
     expect(loader.loaded).toBe(true);
@@ -157,8 +157,8 @@ describe('ConfigLoader expanded — cwd .md files', () => {
       cwd: '/proj',
       files: {
         '/tips.json': TIPS,
-        '/proj/cues.md': '---\nname: my-cues\ndomain: test\nversion: 1\n---\n',
-        '/proj/blanks.md': '---\nname: my-blanks\nversion: 1\n---\n',
+        '/proj/CUES.md': '---\nname: my-cues\ndomain: test\nversion: 1\n---\n',
+        '/proj/BLANKS.md': '---\nname: my-blanks\nversion: 1\n---\n',
       },
     });
     const loader = new ConfigLoader(adapter);
@@ -172,7 +172,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
       cwd: '/proj',
       files: {
         '/tips.json': TIPS,
-        '/proj/.cues/OPENCUES.md': 'voice-mode: inactive\ntips-mode: off\n',
+        '/proj/.cues/OPENCUES.md': '---\nvoice-mode: inactive\ntips-mode: off\n---\n',
       },
     });
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
@@ -196,15 +196,15 @@ describe('ConfigLoader expanded — cwd .md files', () => {
   // to FluidBlank. discover.test.ts in @opencues/core covered the flat
   // shape end-to-end, but its tests bypassed the runtime pre-walk —
   // the bug only existed in the pre-walk's filename filter.
-  it('discovers tips from a flat words/<name>.md (post-OpenStandard)', async () => {
-    const flatTips = `---\nname: tips\n---\n\n` +
+  it('discovers tips from a folder cues/<name>/CUE.md', async () => {
+    const cueMd = `---\nname: tips\n---\n\n` +
       '```json\n' +
       JSON.stringify([{ id: 'g', words: { howdy: { tip: 'a greeting', alts: ['hello'] } } }]) +
       '\n```\n';
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/.cues/cues/tips.md': flatTips,
+        '/proj/.cues/cues/tips/CUE.md': cueMd,
       },
     });
     const loader = new ConfigLoader(adapter, { configSearchPaths: ['/proj/.cues'] });
@@ -217,8 +217,8 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': 'no frontmatter at all',
-        '/proj/blanks.md': '---\nname: ok\nversion: 1\n---\n',
+        '/proj/CUES.md': 'no frontmatter at all',
+        '/proj/BLANKS.md': '---\nname: ok\nversion: 1\n---\n',
       },
     });
     const loader = new ConfigLoader(adapter);
@@ -274,7 +274,7 @@ describe('ConfigLoader hot-reload', () => {
     // write lands, the in-memory update is reverted to the stale
     // file value. applyOpenCuesScalar arms a 2.5s suppression window
     // so the write has time to land.
-    const FILE_INACTIVE = `voice-mode: inactive\n`;
+    const FILE_INACTIVE = `---\nvoice-mode: inactive\n---\n`;
     const adapter = new MockAdapter({
       files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': FILE_INACTIVE },
       cwd: '/proj',
@@ -299,7 +299,7 @@ describe('ConfigLoader hot-reload', () => {
   it('reload resumes after the suppression window expires', async () => {
     // The suppression is bounded — once the write has had time to
     // land, hot-reload picks back up so future file edits propagate.
-    const FILE = `voice-mode: inactive\n`;
+    const FILE = `---\nvoice-mode: inactive\n---\n`;
     const adapter = new MockAdapter({
       files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': FILE },
       cwd: '/proj',
@@ -316,7 +316,7 @@ describe('ConfigLoader hot-reload', () => {
     // Bypass time by reaching into the private field — wall-clock
     // sleep would slow the test suite. Equivalent to "2.6s elapsed".
     (loader as unknown as { _suppressReloadUntil: number })._suppressReloadUntil = Date.now() - 1;
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `voice-mode: inactive\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nvoice-mode: inactive\n---\n`);
     await loader.maybeReload();
     // File-driven reload took precedence post-suppression.
     expect(loader.opencuesState.voiceMode).toBe('inactive');

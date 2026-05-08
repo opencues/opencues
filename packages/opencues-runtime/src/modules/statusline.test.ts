@@ -78,11 +78,11 @@ describe('Statusline cue-tip plumbing', () => {
   });
 
   async function setupWithTips(text: string) {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/test-statusline.json',
@@ -126,7 +126,7 @@ describe('Statusline cue-tip plumbing', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': wrapTipsAsCuesMd({
+        '/proj/CUES.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'g', words: { opus: { tip: 'Most capable model', alts: ['sonnet'] } } }],
         }, { 'tips-mode': 'off' }),
@@ -136,7 +136,7 @@ describe('Statusline cue-tip plumbing', () => {
     const hlState = new HighlightState();
     hlState.activate(0, 'opus');
     const dynDefs = new DynDefs();
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const sl = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/x.json',
@@ -243,11 +243,11 @@ settings:
       cwd: '/proj',
       files: {
         '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
-        '/proj/cues.md': OPENCUES_MD,
+        '/proj/CUES.md': OPENCUES_MD,
       },
     });
     adapter.pushText('voice-mode active');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
@@ -288,11 +288,11 @@ settings:
       cwd: '/proj',
       files: {
         '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }),
-        '/proj/cues.md': OPENCUES_MD,
+        '/proj/CUES.md': OPENCUES_MD,
       },
     });
     adapter.pushText('voice-mode active');
-    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/cues.md' });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     await loader.load();
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();

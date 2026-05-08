@@ -19,40 +19,30 @@ if (existsSync(envPath)) {
 const projectRoot = new URL('../../', import.meta.url).pathname;
 const readOr = (path, fallback) => { try { return readFileSync(path, 'utf8'); } catch { return fallback; } };
 
-// Load word-cue sources from defaults/words/. Both flat <name>.md
-// and folder <name>/CUE.md are accepted.
+// Load word-cue sources from defaults/cues/. Folder-only shape:
+// each subdir has a CUE.md. Source name = folder name.
 const cuesFolders = {};
-const wordsDir = projectRoot + 'defaults/words/';
+const cuesDir = projectRoot + 'defaults/cues/';
 try {
-  const entries = readdirSync(wordsDir, { withFileTypes: true });
-  for (const d of entries) {
-    if (d.isDirectory()) {
-      const cueMd = readOr(wordsDir + d.name + '/CUE.md', '');
-      if (cueMd) cuesFolders[d.name] = cueMd;
-    } else if (d.name.endsWith('.md')) {
-      const cueMd = readOr(wordsDir + d.name, '');
-      if (cueMd) cuesFolders[d.name.slice(0, -3)] = cueMd;
-    }
+  for (const d of readdirSync(cuesDir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const cueMd = readOr(cuesDir + d.name + '/CUE.md', '');
+    if (cueMd) cuesFolders[d.name] = cueMd;
   }
   if (Object.keys(cuesFolders).length > 0) {
     console.log('Loaded word cues:', Object.keys(cuesFolders).join(', '));
   }
-} catch { /* no words/ dir */ }
+} catch { /* no cues/ dir */ }
 
-// Load blank sources from defaults/blanks/. Both flat and folder shapes.
-// Folder shape uses BLANK.md per the open standard.
+// Load blank sources from defaults/blanks/. Folder-only shape:
+// each subdir has a BLANK.md. Source name = folder name.
 const blankFolders = {};
 const blanksDir = projectRoot + 'defaults/blanks/';
 try {
-  const entries = readdirSync(blanksDir, { withFileTypes: true });
-  for (const d of entries) {
-    if (d.isDirectory()) {
-      const blankMd = readOr(blanksDir + d.name + '/BLANK.md', '');
-      if (blankMd) blankFolders[d.name] = blankMd;
-    } else if (d.name.endsWith('.md')) {
-      const blankMd = readOr(blanksDir + d.name, '');
-      if (blankMd) blankFolders[d.name.slice(0, -3)] = blankMd;
-    }
+  for (const d of readdirSync(blanksDir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const blankMd = readOr(blanksDir + d.name + '/BLANK.md', '');
+    if (blankMd) blankFolders[d.name] = blankMd;
   }
   if (Object.keys(blankFolders).length > 0) {
     console.log('Loaded blanks:', Object.keys(blankFolders).join(', '));

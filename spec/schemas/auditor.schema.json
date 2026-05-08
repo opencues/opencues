@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/auditor.schema.json",
+  "title": "OpenCues AUDITOR.md frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of an AUDITOR.md file. Spec: opencues/0.1-alpha. See /spec/auditor-spec.md.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Unique identifier for this auditor. Lowercase, hyphens permitted. Should match the folder basename."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable summary. NOT read by the LLM. Validators warn when absent."
+    },
+    "priority": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 50,
+      "description": "Concat ordering — higher number appears earlier in the composed prompt. Ties broken by alphabetical folder name."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the auditor is parsed but skipped during composition."
+    },
+    "on-host": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "opencode"] },
+      "description": "Allow-list of host names that may load this auditor."
+    },
+    "not-on-host": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "opencode"] },
+      "description": "Deny-list, applied after on-host."
+    },
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha",
+      "description": "Spec version this file targets."
+    }
+  },
+  "additionalProperties": true
+}

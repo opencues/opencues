@@ -26,6 +26,9 @@ import {
   discoverFolderConfigs,
   mergeConfigs,
   parseCuesMd,
+  parseCuesMaster,
+  parseBlanksMaster,
+  parseAuditorsMaster,
   type LocalCueLookupResult,
   type CuesMdConfig,
   type BlankConfig,
@@ -106,23 +109,15 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
 };
 
 /**
- * Parse the runtime config file. Two formats accepted:
- *
- *   - **Markdown frontmatter** (`OPENCUES.md`) — `---` ... `---`
- *     fences with YAML inside; body is documentation. Current shape.
- *   - **`.opencuesrc` (legacy)** — pure YAML, no fences. Lines scanned
- *     directly. Pre-2026-05 layout; still parsed so users mid-migration
- *     don't break before `seed-configs` runs.
+ * Parse the runtime config file. Format: markdown with YAML frontmatter
+ * between `---` ... `---` fences. Body is documentation.
  *
  * Exported for unit testing.
  */
 export function parseOpenCuesMd(content: string): OpenCuesState {
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  // Fence-less format: parse the whole file. Empty content stays
-  // DEFAULT_OPENCUES_STATE.
-  const yamlBody = fmMatch ? fmMatch[1] : content;
-  if (!yamlBody.trim()) return DEFAULT_OPENCUES_STATE;
-  const lines = yamlBody.split('\n');
+  if (!fmMatch || !fmMatch[1].trim()) return DEFAULT_OPENCUES_STATE;
+  const lines = fmMatch[1].split('\n');
   const settings = new Map<string, string>();
   for (const line of lines) {
     if (!line || line.startsWith('#')) continue;
@@ -302,6 +297,35 @@ export class ConfigLoader {
   }
 
   /**
+   * Compose enabled auditor prompts in concatenation order.
+   *
+   * Sorts by `priority:` descending, alphabetical-by-name for ties.
+   * Skips `enabled: false` and any name in the merged disableAuditors
+   * list (the union of every layer's `AUDITORS.md` `disable: [...]`).
+   *
+   * Returned strings are the raw prompt bodies from each AUDITOR.md.
+   * The caller (AgentRewrite) wraps them with a delimiter like
+   * `## <name>\n<body>` before sending to the LLM. See spec/auditor-spec.md.
+   */
+  composeAuditorPrompts(): Array<{ name: string; promptText: string }> {
+    const folder = this._config.folderConfigs;
+    const auditors = folder?.auditorOverrides ?? {};
+    const disableSet = new Set(folder?.auditorsConfig?.disableAuditors ?? []);
+    const entries = Object.entries(auditors).filter(([name, a]) => {
+      if (a.enabled === false) return false;
+      if (disableSet.has(name)) return false;
+      return true;
+    });
+    entries.sort(([nameA, a], [nameB, b]) => {
+      const pa = a.priority ?? 50;
+      const pb = b.priority ?? 50;
+      if (pa !== pb) return pb - pa; // desc
+      return nameA.localeCompare(nameB);
+    });
+    return entries.map(([name, a]) => ({ name, promptText: a.promptText }));
+  }
+
+  /**
    * Look up a blank by a word — checks the blank's own name AND
    * blankKeywords synonyms. Returns null if no match.
    */
@@ -427,20 +451,21 @@ export class ConfigLoader {
       ? await this._safeReadFile(this.options.settingsFile)
       : null;
 
-    // Per-search-path master file reads — kept for project manifest
-    // (`<cwd>/cues.md`, planned) and the legacy `cues.md` / `blanks.md`
-    // shape so old installs parse cleanly until seed-configs migration
-    // runs. Each search path contributes a cues.md and a blanks.md;
-    // both are optional and may be null.
+    // Per-search-path master file reads. Master files declare the
+    // surface as a whole — project metadata, ignore[], disable[]. Each
+    // search path contributes one CUES.md, one BLANKS.md, one
+    // AUDITORS.md; all are optional and may be null.
     const allReads = await Promise.all([
       ...searchPaths.flatMap(p => [
-        this._safeReadFile(`${p}/cues.md`),
-        this._safeReadFile(`${p}/blanks.md`),
+        this._safeReadFile(`${p}/CUES.md`),
+        this._safeReadFile(`${p}/BLANKS.md`),
+        this._safeReadFile(`${p}/AUDITORS.md`),
       ]),
     ]);
     const perPath = searchPaths.map((_searchPath, i) => ({
-      cuesMd: allReads[i * 2],
-      blanksMd: allReads[i * 2 + 1],
+      cuesMd: allReads[i * 3],
+      blanksMd: allReads[i * 3 + 1],
+      auditorsMd: allReads[i * 3 + 2],
     }));
 
     // Per-path .md parses. Project (index 0) is highest priority; user
@@ -448,14 +473,14 @@ export class ConfigLoader {
     // path is the second arg of the final mergeConfigs call (which makes
     // it win on name conflicts — see discover.ts mergeOneCuesMdConfig).
     const cuesConfig = this._mergeConfigsAcrossPaths(
-      perPath.map(p => this._safeParseCuesMd(p.cuesMd, 'cues.md')),
+      perPath.map(p => this._safeParseCuesMd(p.cuesMd, 'CUES.md')),
     );
 
     // cueMap is built below after folder configs are merged in — tips
-    // now live in folder cue.md files (cues/<id>/cue.md with type:tips).
+    // live in folder CUE.md files (cues/<id>/CUE.md with type:tips).
     const cueMap = new Map<string, LocalCueLookupResult>();
     const blanksConfig = this._mergeConfigsAcrossPaths(
-      perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'blanks.md')),
+      perPath.map(p => this._safeParseCuesMd(p.blanksMd, 'BLANKS.md')),
     );
 
     // System settings — parsed from `OPENCUES.md` (or legacy
@@ -479,6 +504,57 @@ export class ConfigLoader {
           ? mergeConfigs(folderConfigs, perPathFolders[i])
           : perPathFolders[i];
       }
+    }
+
+    // Merge `disable:` lists from each surface's master file across
+    // every search-path layer. Master files are read above
+    // (perPath.cuesMd / blanksMd / auditorsMd); the lists from each
+    // layer UNION (concat-and-dedupe), then attach to the relevant
+    // merged surface config so the runtime can subtract them when
+    // building sources.
+    const cueDisableUnion = new Set<string>();
+    const blankDisableUnion = new Set<string>();
+    const auditorDisableUnion = new Set<string>();
+    for (const p of perPath) {
+      if (p.cuesMd) {
+        try {
+          for (const name of parseCuesMaster(p.cuesMd).disableCues ?? []) cueDisableUnion.add(name);
+        } catch { /* defensive */ }
+      }
+      if (p.blanksMd) {
+        try {
+          for (const name of parseBlanksMaster(p.blanksMd).disableBlanks ?? []) blankDisableUnion.add(name);
+        } catch { /* defensive */ }
+      }
+      if (p.auditorsMd) {
+        try {
+          for (const name of parseAuditorsMaster(p.auditorsMd).disableAuditors ?? []) auditorDisableUnion.add(name);
+        } catch { /* defensive */ }
+      }
+    }
+    if (cueDisableUnion.size > 0 || blankDisableUnion.size > 0 || auditorDisableUnion.size > 0) {
+      if (!folderConfigs) folderConfigs = {};
+    }
+    if (cueDisableUnion.size > 0) {
+      const existing = folderConfigs!.cuesConfig ?? { frontmatter: {}, sections: {} };
+      folderConfigs!.cuesConfig = {
+        ...existing,
+        disableCues: [...new Set([...(existing.disableCues ?? []), ...cueDisableUnion])],
+      };
+    }
+    if (blankDisableUnion.size > 0) {
+      const existing = folderConfigs!.blanksConfig ?? { frontmatter: {}, sections: {} };
+      folderConfigs!.blanksConfig = {
+        ...existing,
+        disableBlanks: [...new Set([...(existing.disableBlanks ?? []), ...blankDisableUnion])],
+      };
+    }
+    if (auditorDisableUnion.size > 0) {
+      const existing = folderConfigs!.auditorsConfig ?? { frontmatter: {}, sections: {} };
+      folderConfigs!.auditorsConfig = {
+        ...existing,
+        disableAuditors: [...new Set([...(existing.disableAuditors ?? []), ...auditorDisableUnion])],
+      };
     }
 
     // Merge .md configs with folder configs via opencues-core's mergeConfigs
@@ -624,9 +700,8 @@ export class ConfigLoader {
       }
     };
 
-    // Walk both the new (`words`) and legacy (`cues`) scope dirs plus
-    // `blanks`. Missing dirs are no-ops via prewalk's null check.
-    for (const sub of ['words', 'cues', 'blanks']) {
+    // Walk every scope dir. Missing dirs are no-ops via prewalk's null check.
+    for (const sub of ['cues', 'blanks', 'auditors']) {
       await prewalk(`${cwd}/${sub}`, 0);
     }
 

@@ -195,7 +195,7 @@ describe('Navigation cue filtering (Bucket B)', () => {
 
   async function setupWithCues(text: string) {
     const { ConfigLoader } = await import('./config-loader');
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText(text);
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();

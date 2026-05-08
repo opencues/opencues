@@ -12,6 +12,7 @@ import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { ConfigSource } from './config-source';
 import { CueContext, CueSourceResult, HttpAdapter } from '../types';
 import { SourceConfig } from '../cues-md';
+import { getProvider } from '../llm-provider';
 
 const stubAdapter: HttpAdapter = { post: async () => '{"choices":[{"message":{"content":""}}]}' };
 
@@ -27,9 +28,10 @@ function mkSource(name: string, partial: Partial<SourceConfig> = {}): ConfigSour
   return new ConfigSource({
     sourceConfig: cfg,
     httpAdapter: stubAdapter,
+    provider: getProvider('groq')!,
     endpoint: 'https://example.test',
     apiKey: 'k',
-    defaultModel: 'm',
+    model: 'm',
   });
 }
 

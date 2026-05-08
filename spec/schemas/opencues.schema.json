@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/opencues.schema.json",
+  "title": "OpenCues OPENCUES.md frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of OPENCUES.md, the runtime config file. NOT part of the standard — runtime-specific. See /spec/opencues-runtime.md.",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha"
+    },
+
+    "voice-mode": { "type": "string", "enum": ["active", "inactive", "on", "off"] },
+    "voice": { "type": "string", "description": "Platform-specific voice id." },
+    "tts-rate": { "type": ["string", "number"] },
+    "tts-script": { "type": "string" },
+    "debug-mode": { "type": "string", "enum": ["on", "off", "verbose"] },
+    "tips-mode": { "type": "string", "enum": ["on", "off"] },
+    "cursor-navigate": { "type": "string", "enum": ["active", "inactive", "on", "off"] },
+    "cursor-preservation": { "type": "string", "enum": ["on", "off"] },
+
+    "fluid-blank-mode": { "type": "string", "enum": ["on", "off"] },
+    "transform-blank-mode": { "type": "string", "enum": ["on", "off"] },
+    "word-cues-mode": { "type": "string", "enum": ["on", "off"] },
+
+    "llm-provider": { "type": "string", "enum": ["groq", "openrouter", "gemini", "openai", "anthropic", "cerebras"] },
+    "llm-model": { "type": "string" },
+    "llm-endpoint": { "type": "string", "format": "uri" },
+
+    "word-cues-provider": { "type": "string" },
+    "word-cues-model": { "type": "string" },
+    "word-cues-endpoint": { "type": "string", "format": "uri" },
+
+    "fluid-blank-provider": { "type": "string" },
+    "fluid-blank-model": { "type": "string" },
+    "fluid-blank-endpoint": { "type": "string", "format": "uri" },
+
+    "transform-blank-provider": { "type": "string" },
+    "transform-blank-model": { "type": "string" },
+    "transform-blank-endpoint": { "type": "string", "format": "uri" },
+
+    "auditors-provider": { "type": "string" },
+    "auditors-model": { "type": "string" },
+    "auditors-endpoint": { "type": "string", "format": "uri" },
+
+    "agent-window-words": { "type": ["string", "number"] },
+
+    "settings": {
+      "type": "object",
+      "description": "Nested per-setting metadata: { <key>: { tip, values: { <value>: <tip> } } }.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "tip": { "type": "string" },
+          "values": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

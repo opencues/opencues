@@ -388,6 +388,10 @@ export function boot(host: HostInfo): BootResult {
       // without a restart). 0 = full-buffer; e.g. 200 = cursor ± 100
       // words, expanded to paragraph boundaries.
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
+      // Auditor composition — concatenated into the rewrite system
+      // prompt. Lazy thunk so AUDITOR.md edits + AUDITORS.md disable[]
+      // edits propagate without restart. See spec/auditor-spec.md.
+      auditorPrompts: () => configLoader.composeAuditorPrompts(),
     });
     agentRewrite.start();
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });

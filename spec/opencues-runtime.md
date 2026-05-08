@@ -8,7 +8,7 @@
 
 The standard ([`cue-spec.md`](./cue-spec.md), [`blank-spec.md`](./blank-spec.md), [`core.md`](./core.md)) describes only the two file formats and their runtime contracts. Anything that's purely an OpenCues-the-runtime concern — TTS voice selection, debug logging, cursor behavior — lives here, in a separate file that other implementations don't have to honor.
 
-A future "VimCues" or "EmacsCues" reads `cue.md` and `blank.md` and works. It can ignore `OPENCUES.md` entirely and park its own knobs in `vimcues.md` / wherever fits its conventions.
+A future "VimCues" or "EmacsCues" reads `CUE.md`, `BLANK.md`, and `AUDITOR.md` and works. It can ignore `OPENCUES.md` entirely and park its own knobs in `VIMCUES.md` / wherever fits its conventions.
 
 ---
 
@@ -16,9 +16,9 @@ A future "VimCues" or "EmacsCues" reads `cue.md` and `blank.md` and works. It ca
 
 **User-level only** — `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md` when the env override is set).
 
-Unlike `cues.md` / `blanks.md`, `OPENCUES.md` is **not resolved through the project search path**. Settings here apply across every integration (Claude Code, OpenCode, Chrome) and across every project — they're properties of the runtime install, not of any one project. A project-level override would silently change behaviour for any other project the user opens, which is a class of bug worth designing out.
+Unlike the standard masters `CUES.md` / `BLANKS.md` / `AUDITORS.md`, `OPENCUES.md` is **not resolved through the project search path**. Settings here apply across every integration (Claude Code, OpenCode, Chrome) and across every project — they're properties of the runtime install, not of any one project. A project-level override would silently change behaviour for any other project the user opens, which is a class of bug worth designing out.
 
-If a runtime needs project-scoped overrides for any of these knobs, it SHOULD promote the relevant fields to `cues.md` / `blanks.md` (which DO support project override) via the [promotion path in core.md](./core.md#promotion-path--runtime-specific-to-standard).
+If a runtime needs project-scoped overrides for any of these knobs, it SHOULD promote the relevant fields to `CUES.md` / `BLANKS.md` / `AUDITORS.md` (which DO support project override) via the [promotion path in core.md](./core.md#promotion-path--runtime-specific-to-standard).
 
 ---
 
@@ -119,16 +119,9 @@ Any of these could be promoted to the standard if multiple runtimes adopt them. 
 
 ---
 
-## Backward compatibility
+## Defensive parsing
 
-For migrations from older OpenCues installs, the runtime accepts these legacy locations:
-
-- A 0-byte `cues.md` is treated as missing (defensive).
-- The legacy combined master file (`cues.md` with cue + blank + runtime settings mixed) is migrated on first `opencues seed-configs` run by splitting frontmatter into `cues.md`, `blanks.md`, and `OPENCUES.md`.
-- The previous-arc rc-style settings file at `~/.opencuesrc` (introduced when settings were first split out of `cues.md`) is moved to `~/.cues/OPENCUES.md` on next `opencues seed-configs`. Content is preserved verbatim, wrapped in `---` frontmatter fences.
-- The interim `~/.cues/words/` per-cue folder name (used while disambiguating from "OpenCues settings") is renamed to `~/.cues/cues/` for symmetry with `cues.md`. Files are merged when both exist; `cues/` wins on conflicts.
-
-Implementers of other runtimes are not expected to honor any of these legacy paths.
+A 0-byte `CUES.md`, `BLANKS.md`, `AUDITORS.md`, or `OPENCUES.md` MUST be treated as missing rather than as a parse error. The `OpenCuesSettingsBlank` silently no-ops on empty content; without this rule a truncated file would silently break `opencues ___` / `config ___` blank-fills on every native host.
 
 ---
 
@@ -189,13 +182,13 @@ The runtime emits character-offset `spanStart`/`spanEnd` on the resulting `CueRe
 
 Fluid blank is opt-in per integration via the `enableFluidBlank` flag passed to `buildSourcesFromConfig()`. The `OPENCUES.md` setting `fluid-blank-mode: on|off` toggles it at runtime; `fluid-blank-provider:` selects which model to use (defaults to the runtime's `default-provider`).
 
-A future spec version may promote `fluid-blank-mode` to `blanks.md` if multiple runtimes adopt the same toggle.
+A future spec version may promote `fluid-blank-mode` to `BLANKS.md` if multiple runtimes adopt the same toggle.
 
 ---
 
 ## Transform blank — runtime implementation
 
-A second runtime-only blank source. Where fluid blank handles **interrogative** patterns ("what is X?"), transform blank handles **imperative** ones ("change X to Y", "make this past tense", "translate to French"). Like fluid, it's a runtime feature with no `blank.md` configurable.
+A second runtime-only blank source. Where fluid blank handles **interrogative** patterns ("what is X?"), transform blank handles **imperative** ones ("change X to Y", "make this past tense", "translate to French"). Like fluid, it's a runtime feature with no `BLANK.md` configurable.
 
 `TransformBlankSource` (`packages/opencues-core/src/sources/transform-blank-source.ts`) registers at **priority 93** — above fluid (92), below keyword-bound blanks (95). When a `_` slot is up for grabs, the source chain races: keyword blank → transform blank → fluid blank.
 
@@ -273,41 +266,12 @@ The architecture document at `docs/architecture/transform-blank.md` is the canon
 
 ---
 
-## Future surfaces (design locked, implementation pending)
+## Future surfaces
 
-### Auditors — ambient text rewrites
+### Provider routing — `provider:` / `model:` / `endpoint:` for blanks
 
-A third paradigm beyond cues (LLM → user, suggesting alternatives) and blanks (user → LLM, gated by `_`): **ambient autonomous edits applied as you write**, driven by a user-curated list of always-on tasks.
+`cue-spec.md` 0.1-alpha already accepts `provider:` / `model:` / `endpoint:` on per-source frontmatter. `blank-spec.md` does not yet — adding the same trio to `BLANK.md` is the obvious next promotion. Low-risk: identical wire format to cues, same resolution hierarchy, no new validation rules.
 
-The OpenCues runtime today implements a single in-memory agent task (the `AgentRewrite` module). The proposed evolution: persist tasks to disk as a third file family symmetric with cues / blanks, so the user can declare named writing styles ("british english", "formal academic tone", "no em-dashes") and have them apply continuously across sessions.
+### Promotion candidates from this file
 
-**Proposed file layout** — `auditors.md` master + `auditors/<name>.md` per-auditor:
-
-```
-~/.cues/
-├── auditors.md            # master file: frontmatter (defaults, ignore, …) + inline ## auditors
-└── auditors/<name>.md     # per-auditor: full frontmatter + body prompt
-```
-
-**Per-auditor frontmatter** (shape mirrors `cue.md`):
-
-```yaml
----
-name: british-english
-enabled: true
-priority: 50
-provider: cerebras       # optional per-auditor LLM override
-model: gpt-oss-120b
----
-Use British English spelling throughout: colour, organise, favourite, analogue.
-```
-
-**Lifecycle ops** — the existing transform-blank `TASK_ARM` / `TASK_ADD` / `TASK_STOP` verdicts gain disk persistence; a new `TASK_KILL` verdict deletes all extras while keeping the base auditor.
-
-**Status:** this is **runtime-specific**. The standard would gain a third surface only after a second runtime adopts it. Until then, auditors live in this document the same way fluid-blank and transform-blank do.
-
-The naming is deliberate: `auditors` avoids the strong existing convention around `agents.md` / `tasks.md` (used by AGENTS.md, snarktank/ai-dev-tasks, and similar AI-tooling files). An auditor watches the user's text against a rule and applies corrections — different from a generic "agent" which connotes broader autonomy.
-
-### Provider routing
-
-Already implemented and described above. Likely the next promotion candidate to the standard if a second runtime ships LLM support, since the file-format implications are minimal — just add `provider:` / `model:` / `endpoint:` to the recognised optional fields in `cue-spec.md` (already done in 0.1-alpha) and `blank-spec.md` (pending).
+`voice-mode` and `debug-mode` are universal in every implementation we have. They are good candidates for promotion to the standard once a second runtime ships, but neither is in scope for `0.1-alpha`.

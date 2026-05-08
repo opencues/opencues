@@ -59,7 +59,7 @@ module.exports = function list(argv, ctx) {
 function collect(dir, tools, results) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList } = tools;
 
-  for (const [filename, kind] of [['cues.md', 'cue'], ['blanks.md', 'blank']]) {
+  for (const [filename, kind] of [['CUES.md', 'cue'], ['BLANKS.md', 'blank']]) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {

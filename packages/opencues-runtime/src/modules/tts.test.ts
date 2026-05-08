@@ -20,7 +20,7 @@ const TIPS = wrapTipsAsCuesMd({
 });
 
 async function setup(text: string) {
-  const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+  const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
   adapter.pushText(text);
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
@@ -115,11 +115,11 @@ describe('TTS', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': wrapTipsAsCuesMd({
+        '/proj/CUES.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
         }),
-        '/proj/.cues/OPENCUES.md': 'voice-mode: inactive\n',
+        '/proj/.cues/OPENCUES.md': '---\nvoice-mode: inactive\n---\n',
       },
     });
     adapter.pushText('ultrathink');
@@ -137,11 +137,11 @@ describe('TTS', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': wrapTipsAsCuesMd({
+        '/proj/CUES.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
         }),
-        '/proj/.cues/OPENCUES.md': 'tts-rate: 7\n',
+        '/proj/.cues/OPENCUES.md': '---\ntts-rate: 7\n---\n',
       },
     });
     adapter.pushText('ultrathink');
@@ -162,11 +162,11 @@ describe('TTS', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/cues.md': wrapTipsAsCuesMd({
+        '/proj/CUES.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
         }),
-        '/proj/.cues/OPENCUES.md': 'tts-script: /custom/say.sh\n',
+        '/proj/.cues/OPENCUES.md': '---\ntts-script: /custom/say.sh\n---\n',
       },
     });
     adapter.pushText('ultrathink');
@@ -189,7 +189,7 @@ describe('TTS', () => {
   });
 
   it('does not speak when spawn-process capability absent', async () => {
-    const adapter = new MockAdapter({ capabilities: ['file-read'], files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ capabilities: ['file-read'], files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
@@ -202,7 +202,7 @@ describe('TTS', () => {
   });
 
   it('speakFn is preferred over spawnProcess when supplied', async () => {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
@@ -218,7 +218,7 @@ describe('TTS', () => {
   });
 
   it('speakFn works without scriptPath (sandboxed host case)', async () => {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
@@ -231,7 +231,7 @@ describe('TTS', () => {
   });
 
   it('speakFn throws are logged and swallowed (does not break render loop)', async () => {
-    const adapter = new MockAdapter({ files: { '/mock/cues.md': TIPS } });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('ultrathink');
     const hlState = new HighlightState();
     hlState.activate(0, 'ultrathink');
@@ -247,11 +247,11 @@ describe('TTS', () => {
   it('OPENCUES.md tts-rate flows to speakFn (same precedence as spawn path)', async () => {
     const adapter = new MockAdapter({
       files: {
-        '/proj/cues.md': wrapTipsAsCuesMd({
+        '/proj/CUES.md': wrapTipsAsCuesMd({
           domain: 'test', version: 1,
           concepts: [{ id: 'sayables', words: { ultrathink: { tip: 'Maximum reasoning', alts: ['Tab'], speak: true } } }],
         }),
-        '/proj/.cues/OPENCUES.md': 'tts-rate: 5\n',
+        '/proj/.cues/OPENCUES.md': '---\ntts-rate: 5\n---\n',
       },
       cwd: '/proj',
     });

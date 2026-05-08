@@ -23,7 +23,7 @@ module.exports = function init(argv, ctx) {
   // by users or projects — and it lives only at user-level
   // (~/.cues/OPENCUES.md), auto-managed by OpenCuesSettingsBlank on
   // first settings write.
-  const files = ['cues.md', 'blanks.md', 'README.md'];
+  const files = ['CUES.md', 'BLANKS.md', 'AUDITORS.md', 'README.md'];
 
   console.log(`Initialising .cues/ in ${cwd}\n`);
   console.log('Plan:');
@@ -54,7 +54,7 @@ module.exports = function init(argv, ctx) {
   console.log(`\nCreated ${created} files, skipped ${skipped} (already present).`);
   console.log('');
   console.log('Next:');
-  console.log('  Edit cues.md (or use `opencues new cue <name> --project`)');
+  console.log('  Edit CUES.md (or use `opencues new cue <name> --project`)');
   console.log('  Run `opencues validate --project` to lint your config');
   console.log('  Launch: `opencues run <host>` (or whichever you have installed)');
 };
