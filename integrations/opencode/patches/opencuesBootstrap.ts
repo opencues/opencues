@@ -299,27 +299,40 @@ export function startOpenCues(opts: {
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // In-process statusline hook — feeds the active tip into the
     // SolidJS signal the patched home footer reads. Format matches
-    // Claude Code's statusline (highlight-statusline.sh:41-63):
+    // Claude Code's statusline (highlight-statusline.sh):
     //   - cueBlank=true: <tip> alone
     //   - alts.length > 1: "<word> (N/M) - <tip>"  (tip optional)
     //   - else (no alts, no blank): <tip> alone, or null
+    // PLUS a stable agent-task indicator while armed:
+    //   - agentTask null/missing: nothing appended
+    //   - agentTask present:      "[task: <prompt>]"  (no in-flight spinner)
     statusSnapshotHook: (payload: any) => {
-      if (!payload?.active) { setOpencuesTip(null); return }
-      const tip = payload?.cueTip as string | null | undefined
-      const word = payload?.highlightedWord as string | undefined
-      const alts = payload?.alts as readonly string[] | undefined
-      const cueBlank = !!payload?.cueBlank
-      if (cueBlank) {
-        setOpencuesTip(tip ?? null)
-        return
+      const agentTask = payload?.agentTask as string | null | undefined
+      const agentBadge = agentTask ? `[task: ${agentTask}]` : null
+
+      // Build the word/tip part (independent of agent state).
+      let wordPart: string | null = null
+      if (payload?.active) {
+        const tip = payload?.cueTip as string | null | undefined
+        const word = payload?.highlightedWord as string | undefined
+        const alts = payload?.alts as readonly string[] | undefined
+        const cueBlank = !!payload?.cueBlank
+        if (cueBlank) {
+          wordPart = tip ?? null
+        } else if (alts && alts.length > 1 && word) {
+          const idx = (payload?.currentAltIndex ?? 0) + 1
+          const head = `${word} (${idx}/${alts.length})`
+          wordPart = tip ? `${head} - ${tip}` : head
+        } else {
+          wordPart = tip ?? null
+        }
       }
-      if (alts && alts.length > 1 && word) {
-        const idx = (payload?.currentAltIndex ?? 0) + 1
-        const head = `${word} (${idx}/${alts.length})`
-        setOpencuesTip(tip ? `${head} - ${tip}` : head)
-        return
-      }
-      setOpencuesTip(tip ?? null)
+
+      // Combine — agent badge always wins a slot when present.
+      const combined = wordPart && agentBadge
+        ? `${wordPart} | ${agentBadge}`
+        : (agentBadge ?? wordPart ?? null)
+      setOpencuesTip(combined)
     },
     // Resolve TTS script across all known install layouts. OpenCode
     // doesn't ship its own speak.sh — it piggybacks on whichever

@@ -38,6 +38,14 @@ printf '%s' "${BOLD}${GREEN}$(whoami)@$(hostname -s)${RESET}:${BOLD}${BLUE}$(pwd
 if [ -f "$HIGHLIGHT_FILE" ]; then
   content=$(cat "$HIGHLIGHT_FILE" 2>/dev/null)
 
+  # Agent-task indicator. Renders even when no word is highlighted —
+  # the agent ticks across the whole session, not per-word. Stable
+  # display: no in-flight spinner toggle (would jitter on every tick).
+  agent_task=$(echo "$content" | sed -n 's/.*"agentTask":"\([^"]*\)".*/\1/p')
+  if [ -n "$agent_task" ]; then
+    printf ' %s|%s %s[task: %s]%s' "$YELLOW" "$RESET" "$DIM" "$agent_task" "$RESET"
+  fi
+
   if echo "$content" | grep -q '"active":true'; then
     word=$(echo "$content" | sed -n 's/.*"highlightedWord":"\([^"]*\)".*/\1/p')
     tip=$(echo "$content" | sed -n 's/.*"cueTip":"\([^"]*\)".*/\1/p')

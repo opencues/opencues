@@ -53,6 +53,7 @@ describe('Statusline.buildPayload', () => {
     expect(p.currentAltIndex).toBe(1);
     expect(p.alts).toEqual(['undo', '/rewind', 'revert']);
   });
+
 });
 
 describe('Statusline cue-tip plumbing', () => {
