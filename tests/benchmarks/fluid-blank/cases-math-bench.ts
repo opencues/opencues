@@ -1,6 +1,6 @@
 /**
- * Ported MATH benchmark cases (109 cases).
- * Sourced from tests/benchmarks/math.sh + math-edge.sh.
+ * MATH benchmark cases (109 cases) — formatted as FluidBlankCase
+ * so they run through the fluid-blank P1+P3 pipeline.
  */
 
 import { FluidBlankCase } from './cases';

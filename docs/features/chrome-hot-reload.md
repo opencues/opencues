@@ -302,9 +302,6 @@ the constant if you find yourself wishing edits propagated faster.
 
 ## Verification
 
-End-to-end pass-through is verified in
-`integrations/chrome/docs/chrome-extension-progress.md` § "Phase 6
-verification" (2026-04-22). Edit `~/.cues/cues.md`, observe
-`.version` flip, observe Chrome pick up the change without page
-refresh, revert the edit, observe `.version` round-trip back to its
-original hash.
+End-to-end: edit `~/.cues/cues.md`, observe `.version` flip, observe
+Chrome pick up the change without page refresh, revert the edit,
+observe `.version` round-trip back to its original hash.

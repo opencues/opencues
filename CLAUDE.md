@@ -148,12 +148,15 @@ opencues/
 │   │   └── llm-providers.md       # LLM provider setup & benchmarks
 │   └── prompt-design-learnings.md # Prompt engineering principles
 │
-└── tests/                         # Benchmarks & test data
+└── tests/                         # End-to-end + benchmark scaffolding
     ├── user-test.md               # Manual sanity checklist (run after code changes)
-    ├── benchmarks/                # LLM accuracy benchmarks
-    │   ├── prompt-improve.sh      # Prompt improver benchmark (99 cases, --category filter)
-    │   └── ...                    # Word/blank/factual/math benchmarks
-    └── results/                   # Benchmark results
+    ├── agentic/                   # Agentic test harness (`oc-launch-headless`,
+    │                              #   `oc-inject`, `oc-events`, scenario-runner.ts)
+    ├── benchmarks/                # LLM accuracy benchmarks (TS runners per pipeline)
+    │   ├── agent-rewrite/         # AgentRewrite cadence + merge
+    │   ├── transform-blank/       # 3-pass imperative pipeline
+    │   └── fluid-blank/           # Free-form `_` lookup
+    └── results/                   # Benchmark results + reports
 ```
 
 ---
@@ -202,7 +205,6 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **docs/guides/** — Task-oriented how-tos (adding features, integrations, cue-blanks, auditors, parser types, LLM providers)
   - **`adding-a-cue-blank.md`** ⚠️ Must-read before adding any new cue-blank — covers blank routing, cycling pitfalls (list-only — no numeric stepping), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`adding-an-auditor.md`** Reference for shipping a new inline-rewrite concern (grammar, clarity, tone, etc.). Explains the composition model (one LLM call per agent tick, all auditors concatenated by priority desc), what the frontmatter does, why per-auditor `provider:` / `match:` are inert, and `<project>/.cues/AUDITORS.md` `disable:` for project-level scoping.
-  - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
 - **`<CC_FORK>/.opencues/tweakcc/`** — tweakcc install lives inside the CC fork (re-cloned every from-scratch install — no global `~/tweakcc/` dir to manage)
 - **docs/features/** — 21+ feature concepts (one file each)
@@ -239,19 +241,10 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 
 ---
 
-> **Important:** See `integrations/claude-code/docs/architecture.md` § "Development Notes" for critical patch development rules (e.g., never use bare `require()` in patch files).
-
----
-
-## Pre-launch cleanup
-
-`CLEANUP.md` (repo root) tracks scaffolding that needs removing before
-launch — test fixtures embedded in shipped configs, dead code paths
-left over from the option B refactor, dated "April 2026" commentary in
-code comments, doc tidy-ups, and test consolidation. Walk the list
-once Chrome + OpenCode are fully verified on phases 1–6, before
-extending verification to Claude Code. The file is
-self-deleting: `git rm CLEANUP.md` once everything inside is done.
+> **Important:** Patch development rule: never use bare `require()` in
+> the cli.js bootstrap — cli.js is ESM-converted and `require` isn't
+> defined at module scope. Use the `createRequire`-derived var that
+> `getRequireFuncName(oldFile)` returns (see `opencuesRuntime.ts`).
 
 ---
 

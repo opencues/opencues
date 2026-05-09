@@ -2,8 +2,7 @@
 
 End-to-end test infrastructure that lets a non-human driver (a test
 runner, an agent, Claude itself) drive a running OpenCues host
-without a keyboard. Replaces the v1 `~/.claude/opencues-auto/`
-harness, which was stranded when the runtime moved to v2.
+without a keyboard.
 
 ## Architecture
 
@@ -323,30 +322,6 @@ When adding a new runtime feature:
 This is the no-human-in-the-loop development cycle. New features land
 with both unit tests AND end-to-end validation through OC; regressions
 in either layer block the merge.
-
-## Porting guide — translating v1 tests to scenarios
-
-The v1 `~/.claude/opencues-auto/claude-code/testing/` harness has 50+
-shell-scripted tests across `test-cues.sh`, `test-cues-cycling.sh`,
-`test-cues-transitions.sh`, `test-cursor-navigate.sh`,
-`test-cues-settings.sh`, etc. Each can be ported to a JSON scenario
-mechanically:
-
-| v1 (bash) | v2 scenario step |
-|---|---|
-| `inject "text"` | `{"action": "inject", "text": "..."}` |
-| `inject "text" 0` (highlight word 0) | injection alone — runtime resolves highlight automatically |
-| `cycle.sh up 0` | `{"action": "key", "key": "up", "modifiers": ["ctrl", "alt"]}` |
-| `wait_until "highlightedWord" "equals:lawyer"` | `{"action": "waitFor", "path": "highlightedWord", "equals": "lawyer", "timeoutMs": 5000}` |
-| `assert_eq "$(read_field tip)" "..."` | `{"action": "expect", "path": "tip", "equals": "..."}` |
-| `assert_match "$(read_text)" "pattern"` | `{"action": "expect", "path": "text", "matches": "pattern", "source": "dump"}` |
-
-The status-file field names mostly carry over: `highlightedWord`,
-`alts`, `currentAltIndex`, `cueTip`, `cueBlank`, `agentTask`. Where
-the v1 tests poked into v1-only globals (`_dynDefs`, `_consumeAllAlts`,
-`_cueControlTip`), the v2 dump exposes the same data through canonical
-state classes — see `dynDefs`, `spanFill`, `selectorSatellite` in the
-dump JSON.
 
 ## When to use this
 

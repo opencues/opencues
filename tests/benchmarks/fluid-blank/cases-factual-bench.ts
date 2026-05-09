@@ -1,20 +1,13 @@
 /**
- * Ported FACTUAL benchmark cases.
- *
- * All 102 cases from tests/benchmarks/factual.sh (51) and
- * tests/benchmarks/factual-edge.sh (51), reformatted as FluidBlankCase
- * so they can run through the fluid-blank P1+P3 pipeline.
- *
- * These are the cases the existing FACTUAL mode handles in production.
- * If fluid-blank's pass rate on this suite ≥ FACTUAL's, the upgrade is
- * safe to ship.
+ * FACTUAL benchmark cases (102 total) — formatted as FluidBlankCase
+ * so they run through the fluid-blank P1+P3 pipeline.
  *
  * Run: npx tsx tests/benchmarks/fluid-blank/run.ts --factual-bench --mode answer
  *
  * NOTE: ~14 cases have `_` in the MIDDLE (synthetic shape), e.g.
- * "Water boils at _ degrees Celsius". Real factual.sh inputs include
- * these; fluid-blank's P1 handles synthetic shape at ~95% so they
- * should mostly work, but expect some segmentation challenges.
+ * "Water boils at _ degrees Celsius". Fluid-blank's P1 handles
+ * synthetic shape at ~95% so they should mostly work, but expect
+ * some segmentation challenges.
  */
 
 import { FluidBlankCase } from './cases';

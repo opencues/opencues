@@ -209,7 +209,7 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 - [ ] `blankKeywords` set; `blankAutoPopulate` set if you want `_` to fill on analysis
 - [ ] For read-only blanks: `blankReadOnly: true`
 - [ ] For keyword expansion: `blankKeywordExpansions.<keyword>: Display Name`
-- [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true`. Requires dedicated cycling storage — see [creating-a-cue-type](creating-a-cue-type.md)
+- [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true`.
 - [ ] For TS-class blanks: registered in each host's `blanksRegistry`
 - [ ] For TS-class blanks: `setup.sh` re-run so the runtime build includes the new class
 - [ ] Restart the host (config hot-reloads in ~2s; class registration requires restart)

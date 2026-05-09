@@ -1,9 +1,9 @@
 /**
  * Minimal Groq chat-completions client for the fluid-blank benchmark.
- *
- * Mirrors tests/benchmarks/cues-core-benchmark.ts (direct https + keep-alive).
- * Pinned to gpt-oss-120b — do NOT add multi-model support; the benchmark's
- * point is comparing pass-counts within ONE model.
+ * Direct https + keep-alive. Pinned to gpt-oss-120b — do NOT add
+ * multi-model support here; the benchmark's point is comparing
+ * pass-counts within ONE model. Use the OPENCUES_BENCH_PROVIDER env
+ * switch (see groq.ts) to compare against a different provider.
  */
 
 import * as https from 'https';

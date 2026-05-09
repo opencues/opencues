@@ -191,7 +191,7 @@ export function boot(host: HostInfo): BootResult {
     statusline.subscribe();
   }
 
-  // CursorStateExport — opt-in. The opencues-auto test harness reads
+  // CursorStateExport — opt-in. The agentic test harness (tests/agentic/) reads
   // the export to drive automated runs; no in-tree consumer.
   if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
     const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });

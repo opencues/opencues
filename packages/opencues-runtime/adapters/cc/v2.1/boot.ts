@@ -95,7 +95,7 @@ export interface HostInfo {
   /**
    * Optional: absolute path for the cursor-state-export JSON
    * (e.g. /tmp/opencues-cursor-state.json). Consumed by the
-   * opencues-auto test harness; no in-tree consumer. When unset, the
+   * agentic test harness (tests/agentic/); no in-tree consumer. When unset, the
    * runtime doesn't write anything.
    */
   cursorStatePath?: string;
@@ -360,7 +360,7 @@ export function boot(host: HostInfo): BootResult {
     statusline.subscribe();
   }
 
-  // CursorStateExport — opt-in. The opencues-auto test harness reads
+  // CursorStateExport — opt-in. The agentic test harness (tests/agentic/) reads
   // the export to drive automated runs; no in-tree consumer.
   if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
     const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });

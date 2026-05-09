@@ -159,7 +159,7 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 **Auto-populate mechanism**: The resolver callback sets `globalThis._pendingAutoPopulate`. This is consumed in the render-cycle IIFE in `@opencues/runtime` (not in the resolver callback) because `onChange` must be called from a fresh React render context — stale closure references from `setTimeout` or async callbacks don't update the input.
 
-**Live state reads**: The runtime's `blankInvoke` dispatcher calls registered TS-class `get()` directly. For shell-script blanks, the spawn-fallback uses `execFileSync` via `${requireFuncName}("child_process")`, never bare `require()` — see `architecture.md` § Development Notes.
+**Live state reads**: The runtime's `blankInvoke` dispatcher calls registered TS-class `get()` directly. For shell-script blanks, the spawn-fallback uses `execFileSync` via the `createRequire`-derived var, never bare `require()` (cli.js is ESM-converted; bare `require` isn't defined at module scope).
 
 **Cycling**: The cycling handler calls `blankInvoke({ action: 'up' | 'down' | 'set' })` synchronously, then `blankInvoke({ action: 'get' })` for the new display value.
 
@@ -204,7 +204,7 @@ Blanks with `blankConsumeAll: true` replace the entire input text with a multi-w
 
 The alternatives flow through `_pendingAutoPopulate.consumeAllAlts` (set in the resolver callback) to `globalThis._consumeAllAlts` (set during auto-populate). The cycling path in `_cycleAlt` runs before dynamic alt cycling.
 
-State that must be updated after each cycle: `_hlText`, `_hlState.text`, `_hlState.wordIndex`, `_dynLastAnalyzed`, `_dynPrevWords`, `_dynSpans`, and `_consumeAllAlts.spanLength`. See [creating-a-cue-type](../../../docs/guides/creating-a-cue-type.md) for the full rationale.
+State that must be updated after each cycle: `_hlText`, `_hlState.text`, `_hlState.wordIndex`, `_dynLastAnalyzed`, `_dynPrevWords`, `_dynSpans`, and `_consumeAllAlts.spanLength`.
 
 **Example:** The prompt improver (`blanks/prompt/`, implemented as `PromptImproverBlank` in `@opencues/runtime`) uses a two-step LLM pipeline (extract → transform) to rewrite the user's prompt and returns 3 alternatives + the original.
 
@@ -213,7 +213,3 @@ State that must be updated after each cycle: `_hlText`, `_hlState.text`, `_hlSta
 - [Cue-Blanks feature spec](../../../docs/features/cue-blanks.md) — concept
 - [Consume-All Blanks](../../../docs/features/consume-all-blanks.md)
 - [Adding a Cue-Blank](../../../docs/guides/adding-a-cue-blank.md)
-- [Creating a Cue Type](../../../docs/guides/creating-a-cue-type.md)
-- `config.md` — all configuration options
-- `architecture.md` — architecture overview + development notes
-- `alternatives.md` — TTS details and external highlight preservation

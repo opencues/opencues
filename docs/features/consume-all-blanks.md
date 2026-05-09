@@ -53,7 +53,7 @@ The script returns multiple lines (newline-separated). Each line becomes a cycli
 
 ### Cycling state
 
-Consume-all results require **dedicated cycling storage** (`_consumeAllAlts` in Claude Code) because the standard `_dynDefs` WordDef array is overwritten by tips/grammar analysis after the text changes. See `docs/guides/creating-a-cue-type.md` for the full rationale.
+Consume-all results require **dedicated cycling storage** (`_consumeAllAlts` in Claude Code) because the standard `_dynDefs` WordDef array is overwritten by tips/grammar analysis after the text changes.
 
 ---
 
@@ -91,4 +91,3 @@ treats as cycling alternatives.
 
 **Original prompt preservation:** The class includes the extracted original prompt (minus activation keywords) as the last cycling alternative. This lets the user always get back to their original text without dismissing to `_`. The extraction step already separates the prompt from keywords, so the original is available at no extra cost.
 
-See `docs/guides/creating-a-cue-type.md` for the full implementation walkthrough.
