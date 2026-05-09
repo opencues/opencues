@@ -19,7 +19,7 @@ import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/__OPENCUES_BAND__/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
-import { createBlankInvoke, AnswerBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
+import { createBlankInvoke, AnswerBlank, ClaudeStatusBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -107,6 +107,7 @@ const blanksRegistry = new Map<string, Blank>([
   ['hackernews', new HackerNewsBlank()],
   ['stocks', new StocksBlank({ apiKey: process.env.FINNHUB_API_KEY })],
   ['weather', new WeatherBlank()],
+  ['claude-status', new ClaudeStatusBlank()],
   ['dictionary', new DictionaryBlank()],
   ['crypto', new CryptoBlank()],
   ['countries', new CountriesBlank()],
