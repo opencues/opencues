@@ -98,7 +98,7 @@ export class DimRender {
 
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
-        // Step 21: DynDefs entries (LLM-resolved alts) also count as
+        // DynDefs entries (LLM-resolved alts) also count as
         // navigable, so they should dim too.
         if (
           navigable.has(lc) ||
@@ -109,7 +109,7 @@ export class DimRender {
       }
     }
 
-    // Step 32 / Phase F.a — when a span fill is active, treat the whole
+    // When a span fill is active, treat the whole
     // span as one block. If the active highlight isn't inside it, dim
     // the whole span. If it IS inside, the highlight (below) covers it
     // and we skip the dim layer (avoid stacking attributes).
@@ -121,7 +121,7 @@ export class DimRender {
       }
     }
 
-    // Phase G.b — selector + satellite dim. Both sides can be multi-word
+    // Selector + satellite dim. Both sides can be multi-word
     // ("display mode" / "plain text"). Each side gets its own dim layer.
     if (hasDimCap && ss) {
       const ss0 = words[ss.selectorIndex];

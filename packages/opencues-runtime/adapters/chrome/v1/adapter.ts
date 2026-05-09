@@ -1,4 +1,4 @@
-// Chrome extension v1 HostAdapter — scaffold (Phase CE.0).
+// Chrome extension v1 HostAdapter.
 //
 // The Chrome extension content script runs inside a web page; it cannot
 // spawn processes or read files off disk. The adapter translates

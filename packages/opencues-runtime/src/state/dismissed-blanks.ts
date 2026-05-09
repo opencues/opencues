@@ -1,6 +1,6 @@
 /**
  * Tracks slot positions where the user has cycled the fill back to `_`
- * (Step 33 / blankDismissible). BlankFill.maybeRunScripts skips slots
+ * (blankDismissible). BlankFill.maybeRunScripts skips slots
  * whose word index is dismissed so the script doesn't immediately
  * re-fill what the user just dismissed.
  *

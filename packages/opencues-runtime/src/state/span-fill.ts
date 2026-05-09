@@ -1,11 +1,11 @@
 /**
- * State for any multi-word span fill — Step 30 (consume-all / prompt
- * improver) and Step 33 (multi-word stepValues / blankScript fills).
+ * State for any multi-word span fill — covers consume-all / prompt
+ * improver fills and multi-word stepValues / blankScript fills.
  *
  * Originally `ConsumeAllState`, narrowly scoped to the prompt improver.
- * Step 33 extended the same shape to cover affirmations ("I am strong"
- * → "I am brave") and any future multi-word fill, so the class was
- * renamed `SpanFillState`.
+ * Later extended to cover affirmations ("I am strong" → "I am brave")
+ * and any future multi-word fill, so the class was renamed
+ * `SpanFillState`.
  *
  * `index` is the word index where the consumed span starts. For
  * consume-all, that's 0 (fill replaces everything). For stepValues

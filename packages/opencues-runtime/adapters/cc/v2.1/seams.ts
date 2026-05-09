@@ -1,7 +1,6 @@
 // Seam predicates for Claude Code v2.1.x — see refactor.md §4.
 //
-// Phase 1 covers S1 (KeyDispatcher) and S2 (InputStateHandler). Later phases add
-// S3–S8. Predicates try a regex first (fast, matches the shape that's stayed
+// Predicates try a regex first (fast, matches the shape that's stayed
 // stable through current reintegration) and fall back to an acorn AST walk so
 // a renamed identifier doesn't break the match.
 //
@@ -99,8 +98,8 @@ function astFindKeyDispatcher(source: string): SeamMatch | null {
 //          { ... let X=EO, Y=OOC, Z=CLASS.fromText(V, COLS, X) ... return { handleKeyDown:HKD, renderedValue:... } ... }
 //
 // Injection points include both the IIFE area (before the return) and the
-// return object itself (for rendered-value wrapping). Phase 1 only needs the
-// bindings; later phases pick the exact anchor.
+// return object itself (for rendered-value wrapping). The seam exposes the
+// bindings; consumers pick the exact anchor as needed.
 
 const INPUT_STATE_REGEX =
   /function ([$\w]+)\(\{value:([$\w]+),onChange:([$\w]+),[^}]+externalOffset:([$\w]+),onOffsetChange:([$\w]+)[^}]+\}\)\{[^}]*let ([$\w]+)=\4,([$\w]+)=\5,([$\w]+)=([$\w]+)\.fromText\(\2,([$\w]+),\6\)/;

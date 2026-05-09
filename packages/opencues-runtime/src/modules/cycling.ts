@@ -1,10 +1,11 @@
-// Cycling module — Phase 3 (static alts) + Bucket C (blank-aware).
+// Cycling module — static-alt rotation + blank-aware paths
+// (selector/satellite, span-fill, list blank, blank-step).
 //
 // Ctrl+Alt+Up/Down dispatches based on what kind of word is highlighted:
 //
 //   1. List blank (e.g. affirmations): rotate through stepValues in-place.
 //   2. Blank-fill DynDef: cycle the originating blank's stepped value.
-//   3. Plain cue word: rotate through cueMap.alternatives (Phase 3 path).
+//   3. Plain cue word: rotate through cueMap.alternatives.
 //
 // Each path updates DynDefs as needed so subsequent cycles continue from
 // the right state.
@@ -88,7 +89,7 @@ export class Cycling {
     const target = words[wordIndex];
     if (!target) return false;
 
-    // -1. Selector / satellite — opencues "settings" pattern (Step 35).
+    // -1. Selector / satellite — opencues "settings" pattern.
     //     Highlight on selector cycles setting names; on satellite
     //     cycles values. Both write back via the blank's blankScript.
     if (this.selectorSatelliteState?.current && this.cycleSelectorSatellite(event, words, wordIndex, direction)) {
@@ -108,7 +109,7 @@ export class Cycling {
       return this.cycleListBlank(event, target, blank, direction, 'list-blank');
     }
 
-    // 2. Blank-fill DynDef with blankName attribution (Phase I.8) —
+    // 2. Blank-fill DynDef with blankName attribution —
     //    volume/brightness `50%` cycles via the originating blank's
     //    blankStep/Suffix/Script.
     const def = this.dynDefs.get(wordIndex);
@@ -123,7 +124,7 @@ export class Cycling {
     return this.cycleStaticAlts(event, target, wordIndex, direction);
   }
 
-  // ─── Path -1: selector / satellite (Step 35 / G.b) ──────────────────
+  // ─── Path -1: selector / satellite ──────────────────────────────────
 
   private cycleSelectorSatellite(
     event: KeyEvent,
@@ -328,7 +329,7 @@ export class Cycling {
       def.spanEnd = spanStartWord.start + nextAlt.length;
     }
 
-    // Phase F.b — if the user just cycled to `_`, mark the slot as
+    // If the user just cycled to `_`, mark the slot as
     // dismissed so BlankFill doesn't immediately re-fill (script path)
     // or auto-populate (sync path) on the next text-change. Cycling
     // away from `_` clears the flag.
@@ -455,7 +456,7 @@ export class Cycling {
     return true;
   }
 
-  // ─── Path 3: plain cue word (Phase 3 behaviour) ────────────────────────
+  // ─── Path 3: plain cue word (static-alt rotation) ──────────────────────
 
   private cycleStaticAlts(
     event: KeyEvent,

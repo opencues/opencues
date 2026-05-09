@@ -243,7 +243,7 @@ describe('Statusline write behaviour', () => {
     expect(written).toBeNull();
   });
 
-  it('Phase F.b: span-fill highlight emits blankTip + cueBlank=true', async () => {
+  it('span-fill highlight emits blankTip + cueBlank=true', async () => {
     const { SpanFillState } = await import('../state/span-fill');
     const adapter = new MockAdapter();
     adapter.pushText('affirm I am strong');
@@ -268,7 +268,7 @@ describe('Statusline write behaviour', () => {
     expect(p.currentAltIndex).toBe(0);
   });
 
-  it('Phase G.b: selector word emits setting-level tip', async () => {
+  it('selector word emits setting-level tip', async () => {
     const { SelectorSatelliteState } = await import('../state/selector-satellite');
     const OPENCUES_MD = `---
 voice-mode: active
@@ -313,7 +313,7 @@ settings:
     expect(p.cueBlank).toBe(true);
   });
 
-  it('Phase G.b: satellite word emits per-value tip', async () => {
+  it('satellite word emits per-value tip', async () => {
     const { SelectorSatelliteState } = await import('../state/selector-satellite');
     const OPENCUES_MD = `---
 voice-mode: active
@@ -358,7 +358,7 @@ settings:
     expect(p.cueBlank).toBe(true);
   });
 
-  it('Phase F.b: highlight outside the span uses cueMap (no span tip leakage)', async () => {
+  it('highlight outside the span uses cueMap (no span tip leakage)', async () => {
     const { SpanFillState } = await import('../state/span-fill');
     const adapter = new MockAdapter();
     adapter.pushText('foo I am strong');

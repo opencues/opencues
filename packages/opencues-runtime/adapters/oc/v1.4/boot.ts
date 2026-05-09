@@ -1,4 +1,4 @@
-// Single entry point for the OpenCode v1.4 host bootstrap (Phase O.1).
+// Single entry point for the OpenCode v1.4 host bootstrap.
 //
 // The OpenCode-side patch's only job:
 //   1. Build an OpenCodeBindings object from its TUI primitives
@@ -178,9 +178,9 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
-  // Phase O.7 — Statusline (file-based) + O.12 — in-process snapshot
-  // hook so the OpenCode footer can render the tip natively. Both sinks
-  // are opt-in; either or both can be wired.
+  // Statusline (file-based) + in-process snapshot hook so the OpenCode
+  // footer can render the tip natively. Both sinks are opt-in; either
+  // or both can be wired.
   if (host.statusFilePath || host.statusSnapshotHook) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath ?? '',
@@ -198,7 +198,7 @@ export function boot(host: HostInfo): BootResult {
     cse.subscribe();
   }
 
-  // Phase O.7 — TTS. Opt-in via host.ttsScriptPath + spawn-process cap.
+  // TTS. Opt-in via host.ttsScriptPath + spawn-process cap.
   if (host.ttsScriptPath && adapter.capabilities.includes('spawn-process')) {
     const tts = new TTS(adapter, hlState, dynDefs, configLoader, {
       scriptPath: host.ttsScriptPath,
@@ -207,7 +207,7 @@ export function boot(host: HostInfo): BootResult {
     tts.subscribe();
   }
 
-  // Phase O.7 — LLM Resolver. Opt-in via any LLM key being available
+  // LLM Resolver. Opt-in via any LLM key being available
   // (legacy `llmApiKey` OR any entry in the multi-provider `llmApiKeys`
   // map). The resolver routes per-cue / per-blank / per-feature requests
   // to whichever provider the user has configured in cues.md.

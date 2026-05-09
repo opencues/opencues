@@ -187,7 +187,7 @@ describe('Navigation', () => {
   });
 });
 
-describe('Navigation cue filtering (Bucket B)', () => {
+describe('Navigation cue filtering', () => {
   const TIPS = wrapTipsAsCuesMd({
     domain: 't', version: 1,
     concepts: [{ id: 'a', words: { volume: { tip: 'V', alts: [] }, brightness: { tip: 'B', alts: [] } } }],
@@ -251,7 +251,7 @@ describe('Navigation cue filtering (Bucket B)', () => {
   });
 });
 
-describe('Navigation span-fill filter (Phase F.a / Step 33)', () => {
+describe('Navigation span-fill filter', () => {
   it('skips inner span positions; treats span as one nav stop', async () => {
     const { SpanFillState } = await import('../state/span-fill');
     const adapter = new MockAdapter();

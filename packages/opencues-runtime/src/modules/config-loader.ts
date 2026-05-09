@@ -1,4 +1,4 @@
-// ConfigLoader — Phase A.
+// ConfigLoader — reads cues.md/blanks.md + folder-based cue/blank dirs.
 //
 // Loads (across $OPENCUES_HOME → <cwd>/.cues → ~/.cues):
 //   - cues.md / blanks.md  (frontmatter parsed by @opencues/core).
@@ -92,7 +92,7 @@ export interface OpenCuesState {
   readonly settings: ReadonlyMap<string, string>;
   /**
    * Parsed nested `settings:` block — the source of truth for selector/
-   * satellite cycling (Step 35). Empty when opencues.md has no settings
+   * satellite cycling. Empty when opencues.md has no settings
    * block. Setting names appear in declaration order so cycling matches
    * the document.
    */
@@ -337,7 +337,7 @@ export class ConfigLoader {
   get config(): LoadedConfig { return this._config; }
 
   /**
-   * Phase G.b/I.8 — apply an opencues.md scalar change in-memory before
+   * Apply an opencues.md scalar change in-memory before
    * the next file-based hot-reload runs. The selector/satellite cycle
    * spawns `script set <key> <value>` async (writes to disk), but TTS
    * and Statusline read opencuesState immediately on the next render.

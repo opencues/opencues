@@ -51,7 +51,7 @@ async function setup(text: string) {
   return { adapter, loader, bf };
 }
 
-describe('BlankFill detection (Step 23)', () => {
+describe('BlankFill detection', () => {
   it('matches single-word keyword: "affirm _" → affirmations', async () => {
     const { bf } = await setup('affirm _');
     const slots = bf.scan('affirm _');
@@ -121,7 +121,7 @@ describe('BlankFill detection (Step 23)', () => {
   });
 });
 
-describe('buildClearKeywordText helper (Step 27)', () => {
+describe('buildClearKeywordText helper', () => {
   it('drops single-word keyword and replaces blank', () => {
     const r = buildClearKeywordText('weather _', { index: 1, keywordStart: 0, keywordEnd: 0 }, '15°C');
     expect(r.newText).toBe('15°C');
@@ -146,20 +146,20 @@ describe('buildClearKeywordText helper (Step 27)', () => {
     const r = buildClearKeywordText('weather\u200B _', { index: 1, keywordStart: 0, keywordEnd: 0 }, 'x');
     expect(r.newText).toBe('x');
   });
-  it('Step 28: replaces single-word keyword with expansion when given', () => {
+  it('replaces single-word keyword with expansion when given', () => {
     const r = buildClearKeywordText('rddt _', { index: 1, keywordStart: 0, keywordEnd: 0 }, '$180.50', 'Reddit');
     expect(r.newText).toBe('Reddit $180.50');
     expect(r.newCursor).toBe(14);
   });
-  it('Step 28: collapses multi-word keyword span into single expansion entry', () => {
+  it('collapses multi-word keyword span into single expansion entry', () => {
     const r = buildClearKeywordText('big tech _', { index: 2, keywordStart: 0, keywordEnd: 1 }, '$100', 'BigTech');
     expect(r.newText).toBe('BigTech $100');
   });
-  it('Step 28: expansion preserves context words after keyword', () => {
+  it('expansion preserves context words after keyword', () => {
     const r = buildClearKeywordText('hn for today _', { index: 3, keywordStart: 0, keywordEnd: 0 }, 'Story', 'HackerNews');
     expect(r.newText).toBe('HackerNews for today Story');
   });
-  it('Step 29: clearEnd widens to slot.index-1 (consumes context)', () => {
+  it('clearEnd widens to slot.index-1 (consumes context)', () => {
     const r = buildClearKeywordText(
       'what is the word for happy _',
       { index: 6, keywordStart: 0, keywordEnd: 4 },
@@ -169,7 +169,7 @@ describe('buildClearKeywordText helper (Step 27)', () => {
     );
     expect(r.newText).toBe('glad');
   });
-  it('Step 29: trailing words after blank are kept', () => {
+  it('trailing words after blank are kept', () => {
     const r = buildClearKeywordText(
       'how to say hi _ to her',
       { index: 4, keywordStart: 0, keywordEnd: 2 },
@@ -181,7 +181,7 @@ describe('buildClearKeywordText helper (Step 27)', () => {
   });
 });
 
-describe('computeCleanupRange helper (Phase G.c)', () => {
+describe('computeCleanupRange helper', () => {
   it('user edits inside the pair → wipe range covers the whole pair', () => {
     const oldText = 'foo voice-mode active bar';
     const newText = 'foo voicE-mode active bar'; // capital E at offset 8
@@ -211,7 +211,7 @@ describe('computeCleanupRange helper (Phase G.c)', () => {
   // pairStart, end: newText.length}` would result; not asserting on it.
 });
 
-describe('computeFillRange (Step 29)', () => {
+describe('computeFillRange', () => {
   const slot = { index: 6, keyword: 'what is the word for', keywordEnd: 4 };
   it('blankConsumeContext sets clearEnd = slot.index - 1', () => {
     const r = computeFillRange({ blankConsumeContext: true }, slot);
@@ -251,7 +251,7 @@ describe('computeFillRange (Step 29)', () => {
   });
 });
 
-describe('BlankFill auto-populate (Step 24)', () => {
+describe('BlankFill auto-populate', () => {
   function makeKeyEvent(text: string, cursor: number, key = '_') {
     return {
       key,
@@ -900,7 +900,7 @@ blankConsumeAll: true
     expect(consumeAll.current).toBeNull();
   });
 
-  it('Phase F.a: multi-word stepValues fill registers a SpanFillState entry', async () => {
+  it('multi-word stepValues fill registers a SpanFillState entry', async () => {
     const AFFIRM_F = `---
 type: blank
 name: affirmations
@@ -935,7 +935,7 @@ stepValues: ["I am strong", "I am brave"]
     expect(span.lastFilledText).toBe('affirm I am strong');
   });
 
-  it('Phase F.a: single-stepValue fill does NOT register a span (no cycling needed)', async () => {
+  it('single-stepValue fill does NOT register a span (no cycling needed)', async () => {
     // Only one alt → cycling would be a no-op anyway.
     const ONE = `---
 type: blank
@@ -964,7 +964,7 @@ stepValues: ["only"]
     expect(span.current).toBeNull();
   });
 
-  it('Phase F.b: blankDismissible appends `_` to span alternatives (sync stepValues)', async () => {
+  it('blankDismissible appends `_` to span alternatives (sync stepValues)', async () => {
     const DISMISS = `---
 type: blank
 name: affirmations
@@ -995,7 +995,7 @@ blankTip: Daily affirmations
     expect(span.current?.blankTip).toBe('Daily affirmations');
   });
 
-  it('Phase F.b: dismissed slot blocks sync auto-populate on subsequent _ key', async () => {
+  it('dismissed slot blocks sync auto-populate on subsequent _ key', async () => {
     const DISMISS = `---
 type: blank
 name: a
@@ -1027,7 +1027,7 @@ blankDismissible: true
     expect(adapter.setTextCalls).toEqual([]);
   });
 
-  it('Phase F.b: dismissed slot blocks async script spawn', async () => {
+  it('dismissed slot blocks async script spawn', async () => {
     const SCRIPT = `---
 type: blank
 name: weather
@@ -1052,7 +1052,7 @@ blankDismissible: true
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
-  it('Phase F.b: async multi-line stdout populates span with all lines as alternatives', async () => {
+  it('async multi-line stdout populates span with all lines as alternatives', async () => {
     const HN = `---
 type: blank
 name: hackernews
@@ -1094,7 +1094,7 @@ blankTip: Hacker News
     expect(span.current?.spanLength).toBe(3);
   });
 
-  it('Phase F.b: async single-line non-dismissible single-word fill does NOT register span', async () => {
+  it('async single-line non-dismissible single-word fill does NOT register span', async () => {
     const STOCK = `---
 type: blank
 name: stocks
@@ -1123,7 +1123,7 @@ blankScript: ./stocks.sh
     expect(span.current).toBeNull();
   });
 
-  it('Phase G.a: tab-separated stdout under blankSatellite splits into selector + satellite', async () => {
+  it('tab-separated stdout under blankSatellite splits into selector + satellite', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1164,7 +1164,7 @@ blankClearOnEdit: true
     });
   });
 
-  it('Phase G.a: respects custom blankSatelliteSeparator', async () => {
+  it('respects custom blankSatelliteSeparator', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1193,7 +1193,7 @@ blankSatelliteSeparator: '='
     expect(adapter.getText()).toContain('k=v');
   });
 
-  it('Phase G.c: editing inside the pair wipes both words when blankClearOnEdit:true', async () => {
+  it('editing inside the pair wipes both words when blankClearOnEdit:true', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1229,7 +1229,7 @@ blankClearOnEdit: true
     expect(adapter.getText()).toBe('cfg ');
   });
 
-  it('Phase G.c: appending a space after the pair preserves the stash + updates lastFilledText', async () => {
+  it('appending a space after the pair preserves the stash + updates lastFilledText', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1266,7 +1266,7 @@ blankClearOnEdit: true
     expect(adapter.getText()).toBe('cfg voice-mode active '); // unchanged by us
   });
 
-  it('Phase G.c: prepending text before the pair preserves the stash + shifts positions', async () => {
+  it('prepending text before the pair preserves the stash + shifts positions', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1298,7 +1298,7 @@ blankSatellite: true
     expect(ss.current?.pairCharStart).toBe(beforeStart + 3);
   });
 
-  it('Phase G.c: cleanup preserves text BEFORE and AFTER the pair', async () => {
+  it('cleanup preserves text BEFORE and AFTER the pair', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1334,7 +1334,7 @@ blankClearOnEdit: true
     expect(ss.current).toBeNull();
   });
 
-  it('Phase G.c: blankClearOnEdit:false leaves the broken pair in place', async () => {
+  it('blankClearOnEdit:false leaves the broken pair in place', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1366,7 +1366,7 @@ blankSatellite: true
     expect(adapter.getText()).toBe('cfg K v');
   });
 
-  it('Phase G.a: missing tab in stdout does NOT trigger satellite path', async () => {
+  it('missing tab in stdout does NOT trigger satellite path', async () => {
     const SAT = `---
 type: blank
 name: opencues
@@ -1396,7 +1396,7 @@ blankSatellite: true
     expect(adapter.getText()).toContain('just-one-token');
   });
 
-  it('Step 31 invalidation: user editing the consume-all text clears the stash', async () => {
+  it('span-fill invalidation: user editing the consume-all text clears the stash', async () => {
     const PROMPT_CTRL = `---
 type: blank
 name: prompt
@@ -1432,7 +1432,7 @@ blankConsumeAll: true
     expect(consumeAll.current).toBeNull();
   });
 
-  it('Step 31 invalidation: matching text (e.g. after a cycle) keeps the stash', async () => {
+  it('span-fill invalidation: matching text (e.g. after a cycle) keeps the stash', async () => {
     const PROMPT_CTRL = `---
 type: blank
 name: prompt

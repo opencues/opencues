@@ -1,11 +1,11 @@
 // PromptImproverBlank — two-step LLM pipeline for the
 // `improve prompt _` consume-all flow.
 //
-// Step 1 (Extract): pull the user's actual prompt + any conditions
+// Extract pass: pull the user's actual prompt + any conditions
 // out of the surrounding text, ignoring the activation keywords.
 // Returns JSON: {prompt, conditions}.
 //
-// Step 2 (Transform): rewrite the extracted prompt into N improved
+// Transform pass: rewrite the extracted prompt into N improved
 // versions (default 3, one per line). When the LLM call fails or
 // returns < 2 lines, get() returns the original full context so
 // BlankFill's consume-all replaces with no observable change instead

@@ -366,7 +366,7 @@ describe('Cycling static-alt multi-word spans', () => {
   });
 });
 
-describe('Cycling consume-all (Step 31)', () => {
+describe('Cycling consume-all', () => {
   async function setupCa(initialText: string) {
     const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText(initialText);
@@ -438,7 +438,7 @@ describe('Cycling consume-all (Step 31)', () => {
     expect(consumeAll.current).not.toBeNull();
   });
 
-  it('Phase F.b: cycling to `_` adds slot to DismissedBlanks; cycling away removes it', async () => {
+  it('cycling to `_` adds slot to DismissedBlanks; cycling away removes it', async () => {
     const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
     adapter.pushText('foo');
     const hlState = new HighlightState();
@@ -467,7 +467,7 @@ describe('Cycling consume-all (Step 31)', () => {
     expect(dismissed.has(0)).toBe(false);
   });
 
-  it('Phase G.b: cycling selector rotates setting names + spawns get script', async () => {
+  it('cycling selector rotates setting names + spawns get script', async () => {
     const OPENCUES_MD = `---
 voice-mode: active
 debug-mode: off
@@ -530,7 +530,7 @@ settings:
     expect(adapter.setCursorCalls.at(-1)).toBe('debug-mode'.length);
   });
 
-  it('Phase G.b: selector cycle ALWAYS lands cursor on selector (cursor-was-at-0 / cursor-was-past-region)', async () => {
+  it('selector cycle ALWAYS lands cursor on selector (cursor-was-at-0 / cursor-was-past-region)', async () => {
     // User-reported bug: cursor at 0 → selector cycle "throws cursor
     // to start of text" (= cursor stays at 0). And cursor past the
     // region drifts cycle-by-cycle as length deltas accumulate.
@@ -606,7 +606,7 @@ settings:
     }
   });
 
-  it('Phase G.b: cycling satellite rotates values + spawns set script', async () => {
+  it('cycling satellite rotates values + spawns set script', async () => {
     const OPENCUES_MD = `---
 voice-mode: active
 settings:
@@ -655,7 +655,7 @@ settings:
     expect(adapter.setCursorCalls.at(-1)).toBe('voice-mode inactive'.length);
   });
 
-  it('Phase G.b: satellite cycle handles multi-word values (e.g. plain text → rich markdown)', async () => {
+  it('satellite cycle handles multi-word values (e.g. plain text → rich markdown)', async () => {
     const OPENCUES_MD = `---
 output-format: plain text
 settings:
@@ -699,7 +699,7 @@ settings:
     expect(ss.current?.satelliteLength).toBe(2);
   });
 
-  it('Phase G.b: cycling from inside a multi-word satellite still triggers cycle', async () => {
+  it('cycling from inside a multi-word satellite still triggers cycle', async () => {
     const OPENCUES_MD = `---
 output-format: plain text
 settings:
@@ -738,7 +738,7 @@ settings:
     expect(adapter.setTextCalls.at(-1)).toBe('output-format structured json');
   });
 
-  it('Phase G.b: multi-word selector + satellite cycle as units (display mode case)', async () => {
+  it('multi-word selector + satellite cycle as units (display mode case)', async () => {
     const OPENCUES_MD = `---
 display mode: split pane
 settings:

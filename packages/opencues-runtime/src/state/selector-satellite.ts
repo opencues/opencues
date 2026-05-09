@@ -1,5 +1,5 @@
 /**
- * State for the selector/satellite "settings" pattern (Step 35). When a
+ * State for the selector/satellite "settings" pattern. When a
  * blank with `blankSatellite: true` fills via a tab-separated script
  * output, the runtime spawns TWO words instead of one:
  *
@@ -45,7 +45,7 @@ export interface SelectorSatelliteEntry {
   readonly clearOnEdit: boolean;
   /**
    * Char position of the selector's first char in `lastFilledText`.
-   * Tracked so the clearOnEdit cleanup (Phase G.c) can splice the pair
+   * Tracked so the clearOnEdit cleanup can splice the pair
    * out by char range — robust to whatever word boundaries an edit
    * introduced. Updated on each cycle.
    */

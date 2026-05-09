@@ -1,13 +1,9 @@
-// CursorStateExport — Step 1.
+// CursorStateExport — writes a JSON snapshot of text + cursor offset
+// to a host-supplied path on every text/cursor change, debounced ~100ms
+// so a key-mash doesn't hammer the disk.
 //
-// Mirrors the original CC patch:
-// writes a JSON snapshot to a host-supplied path on every text/cursor
-// change, debounced ~100ms so a key-mash doesn't hammer the disk.
-//
-// The agentic test harness (tests/agentic/) reads this file to know what's in the
-// input box and where the cursor lives — without it, automated test
-// runs can't observe the editor state. No in-tree consumer; opt-in via
-// host.cursorStatePath in boot.ts.
+// External tooling can read this file for buffer + cursor inspection.
+// No in-tree consumer; opt-in via host.cursorStatePath in boot.ts.
 
 import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
 

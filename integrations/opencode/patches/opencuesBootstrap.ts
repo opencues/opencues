@@ -1,4 +1,4 @@
-// OpenCues bootstrap for OpenCode v1.4 — Phase O.1.
+// OpenCues bootstrap for OpenCode v1.4.
 //
 // What gets injected into the fork:
 //

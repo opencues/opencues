@@ -77,7 +77,7 @@ describe('OpenCode v1.4 boot()', () => {
     expect(caps).not.toContain('spawn-process');
   });
 
-  it('Phase O.3: Navigation subscribed — Ctrl+Alt+Left consumed when text has words', () => {
+  it('Navigation subscribed — Ctrl+Alt+Left consumed when text has words', () => {
     let text = 'alpha beta gamma';
     let cursor = 0;
     const result = boot({

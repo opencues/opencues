@@ -1,4 +1,4 @@
-// Content script entry point — Phase CE.9.
+// Content script entry point.
 //
 // All feature logic now lives in opencues-runtime via the chrome
 // adapter band. This file is the host shim:

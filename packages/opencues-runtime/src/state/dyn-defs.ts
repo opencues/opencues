@@ -149,7 +149,7 @@ export class DynDefs {
       | { kind: 'move'; to: number };
     const decisions = new Map<number, { def: WordDef; decision: Decision }>();
 
-    // Phase 1 — classify each entry without mutating.
+    // Pass 1 — classify each entry without mutating.
     for (const [index, def] of this._defs.entries()) {
       if (this._defMatchesAt(def, index, words)) {
         decisions.set(index, { def, decision: { kind: 'keep' } });
@@ -163,7 +163,7 @@ export class DynDefs {
       }
     }
 
-    // Phase 2 — resolve collisions. A move is dropped when:
+    // Pass 2 — resolve collisions. A move is dropped when:
     //  - another move targets the same destination (ambiguous outcome)
     //  - the destination is currently occupied by a 'keep' def
     //    (we don't overwrite a fresh def with a relocated one)
@@ -184,7 +184,7 @@ export class DynDefs {
       }
     }
 
-    // Phase 3 — apply. Delete first (clears slots for incoming moves),
+    // Pass 3 — apply. Delete first (clears slots for incoming moves),
     // then re-insert moved entries.
     for (const [idx, { decision }] of decisions) {
       if (decision.kind !== 'keep') this._defs.delete(idx);

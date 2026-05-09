@@ -74,7 +74,7 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out).toBe(`alpha beta \x1b[97mgamma\x1b[39m`);
   });
 
-  it('Step 32: dims the consume-all span as a single contiguous range', () => {
+  it('dims the consume-all span as a single contiguous range', () => {
     const adapter = new MockAdapter();
     adapter.pushText('Improved alpha bravo');
     const hlState = new HighlightState();
@@ -86,7 +86,7 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([{ start: 0, end: 20 }]);
   });
 
-  it('Phase F.a: active word inside span expands highlight to whole span; no inner dim', () => {
+  it('active word inside span expands highlight to whole span; no inner dim', () => {
     const adapter = new MockAdapter();
     adapter.pushText('Improved alpha bravo');
     const hlState = new HighlightState();
@@ -101,7 +101,7 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([]);
   });
 
-  it('Step 21: dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
+  it('dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const adapter = new MockAdapter({
       files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
@@ -125,7 +125,7 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([{ start: 4, end: 7 }]);
   });
 
-  it('Step 32: no consume-all dim when state is empty', () => {
+  it('no consume-all dim when state is empty', () => {
     const adapter = new MockAdapter();
     adapter.pushText('hello world');
     const hlState = new HighlightState();

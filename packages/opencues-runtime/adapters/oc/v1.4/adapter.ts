@@ -1,13 +1,13 @@
-// OpenCode v1.4 HostAdapter — minimum viable scaffold (Phase O.1).
+// OpenCode v1.4 HostAdapter.
 //
 // OpenCode's TUI is built on @opentui/core + @opentui/solid + solid-js.
 // The Prompt component (component/prompt/index.tsx) holds a
 // TextareaRenderable as `input` and the SolidJS store entry
 // `store.prompt.input`. We bridge HostAdapter through these.
 //
-// At O.1 only the methods used by the bootstrap path + Phase 1
-// Navigation are implemented for real. The rest stub out so the
-// runtime starts cleanly even on a partially-wired host.
+// Methods used by the bootstrap path + Navigation are implemented for
+// real; the rest stub out so the runtime starts cleanly even on a
+// partially-wired host.
 
 import type {
   HostAdapter,

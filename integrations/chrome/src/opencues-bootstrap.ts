@@ -1,9 +1,9 @@
-// Phase CE.1 — bootstrap the opencues-runtime alongside the existing
-// CueEngine. The runtime is opt-in: this file builds a HostInfo from
-// browser APIs, calls boot(), and exposes the BootResult for content.ts
-// to wire into its existing key/text/render plumbing.
+// Bootstrap the opencues-runtime in the Chrome content script context.
+// This file builds a HostInfo from browser APIs, calls boot(), and
+// exposes the BootResult for content.ts to wire into its key/text/render
+// plumbing.
 //
-// What runs at this phase:
+// What this layer provides:
 //   - boot() constructs the runtime: ConfigLoader, Navigation,
 //     DimRender, Cycling, BlankFill, etc. all subscribe.
 //   - getText/getCursorOffset are closures over a "current target"
@@ -12,19 +12,8 @@
 //     the path as the storage key.
 //   - log writes to console with [opencues] prefix.
 //
-// What does NOT run yet:
-//   - dispatchKey is exposed but no document-level keydown listener
-//     is registered — the existing WordNavigator still owns keys.
-//     CE.2 wires the listener and removes the navigator's left/right.
-//   - notifyOpenCuesTextChange is exposed but content.ts doesn't call
-//     it yet. CE.3+ wires it.
-//   - statusSnapshotHook fires; the floating StatusBar div doesn't
-//     read from it yet (CE.6).
-//
 // The runtime modules subscribe to onTextChange / onRender / onKey via
-// the adapter. Without text/key dispatch from content.ts they're
-// dormant — exactly what we want for CE.1: prove the boot path works
-// in a content-script context without changing observable behavior.
+// the adapter. content.ts forwards browser events into those subscriptions.
 
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/chrome/v1/boot';
 import type {

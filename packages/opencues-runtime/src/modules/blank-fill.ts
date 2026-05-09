@@ -1,12 +1,10 @@
-// BlankFill — Phase E foundation (Step 23).
+// BlankFill — auto-populate `_` slots when a keyword-bound blank claims them.
 //
 // Scans the input text on every change for `_` placeholders. For each `_`,
 // walks backward word-by-word looking for a match against any blank's
 // blankKeywords (single or multi-word). When matched, records a BlankSlot
 // with the blank name + match positions for downstream consumers
 // (auto-populate, blank-script fetch, span tracking, dismiss, etc.).
-//
-// This module is detection-only in E.1. Auto-fill behaviours come in E.2+.
 
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
@@ -49,7 +47,7 @@ export class BlankFill {
 
   subscribe(): void {
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
-    // Auto-populate path (Step 24): intercept the '_' key BEFORE the host
+    // Auto-populate path: intercept the '_' key BEFORE the host
     // applies it. If the simulated insertion would create a fillable slot,
     // we fill it ourselves and consume the keystroke. Otherwise return
     // false and let the host insert '_' normally.
@@ -81,7 +79,7 @@ export class BlankFill {
   }
 
   private onTextChange(e: TextChangeEvent): void {
-    // Step 31 / Phase F.b invalidation: if the span fill is live and the
+    // Span-fill invalidation: if the span fill is live and the
     // current text doesn't match what we last filled (cycle or initial),
     // try to preserve the span (user edited OUTSIDE it — just re-anchor
     // the word index). If preservation fails, drop the stash AND any
@@ -93,7 +91,7 @@ export class BlankFill {
         this.dismissedBlanks?.clear();
       }
     }
-    // Phase G.a / G.c — selector/satellite stash. Tolerate edits OUTSIDE
+    // Selector/satellite stash. Tolerate edits OUTSIDE
     // the pair (typing a space after, prepending text before): pair is
     // preserved, positions updated. Only invalidate when the edit
     // touches the pair itself; if blankClearOnEdit, splice the broken
@@ -115,9 +113,9 @@ export class BlankFill {
   }
 
   /**
-   * Step 25 — for any blank slot with a `blankScript` (and no
-   * `stepValues`, since stepValues path was already handled by E.2's
-   * onUnderscoreKey), spawn `bash <script> get <keyword>` async and splice
+   * For any blank slot with a `blankScript` (and no `stepValues`,
+   * since the stepValues path was already handled by onUnderscoreKey),
+   * spawn `bash <script> get <keyword>` async and splice
    * stdout into the `_` position when the call returns. The pendingScripts
    * dedupe stops repeated spawns for the same (text, slotIndex) pair.
    */
@@ -136,7 +134,7 @@ export class BlankFill {
     const home = process.env.HOME ?? '~';
 
     for (const slot of slots) {
-      // Step 33 / Phase F.b — skip slots the user has dismissed by cycling
+      // Skip slots the user has dismissed by cycling
       // the fill back to `_`. Without this, the script re-spawns immediately
       // and the dismissal sticks for ~zero milliseconds.
       if (this.dismissedBlanks?.has(slot.index)) continue;
@@ -171,7 +169,8 @@ export class BlankFill {
 
       // Context words: every word except the matched keyword span and the blank.
       // Index-based filter (vs v1's string-match) handles multi-word keywords
-      // correctly — REPAIR.md / steps.md Step 26 deviation note.
+      // correctly (multi-word keywords would be incorrectly filtered
+      // by a string-match approach).
       const contextWords: string[] = [];
       for (let wi = 0; wi < words.length; wi += 1) {
         if (wi >= slot.keywordStart && wi <= slot.keywordEnd) continue;
@@ -284,7 +283,7 @@ export class BlankFill {
     // (selector/satellite, consume-all, range-clear, char-splice).
     if (!target || target.word !== '_') return;
 
-    // Phase G.a — selector/satellite fill. When the script returns a
+    // Selector/satellite fill. When the script returns a
     // tab-separated `<setting>\t<value>` and the blank declares
     // blankSatellite, splice TWO words separated by blankSatelliteSeparator
     // (default ' ') and stash the pair so cycling can write back via
@@ -294,7 +293,7 @@ export class BlankFill {
       return;
     }
 
-    // Phase F.b — parse stdout into lines once. Both consume-all and
+    // Parse stdout into lines once. Both consume-all and
     // splice paths use line[0] as the visible fill; alternates stash if
     // the script returned multiple lines (hackernews) or the blank is
     // dismissible (so the user can cycle back to `_`).
@@ -309,7 +308,7 @@ export class BlankFill {
       primaryFill = primaryFill + blank.blankSuffix;
     }
 
-    // Step 30 — consume-all short-circuits the splice/expand/clear pipeline.
+    // Consume-all short-circuits the splice/expand/clear pipeline.
     if (blank?.blankConsumeAll === true) {
       this.adapter.log('info', `BlankFill: consume-all ${slot.blankName} → "${preview(primaryFill, 60)}" (${lines.length} alt(s))`);
       const newText = primaryFill;
@@ -352,7 +351,7 @@ export class BlankFill {
       : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
           newCursor: target.start + primaryFill.length };
 
-    // Phase F.b — populate span for non-consume-all fills when there's
+    // Populate span for non-consume-all fills when there's
     // anything cycleable to do: multi-word fill, multiple lines from
     // the script, or blankDismissible. Index = post-fill word index of
     // primaryFill's first word (re-derive from the new text since
@@ -377,7 +376,7 @@ export class BlankFill {
       }
     }
 
-    // Phase I.8 — when blankSuffix produced a numeric+unit fill (volume,
+    // When blankSuffix produced a numeric+unit fill (volume,
     // brightness), attribute the resulting word to its source blank
     // via a DynDef so cycling routes to the originating blank.
     if (this.dynDefs && startWord && blank?.blankSuffix && primaryFill.endsWith(blank.blankSuffix)) {
@@ -453,7 +452,7 @@ export class BlankFill {
   }
 
   /**
-   * Phase G.c — return true if the edit happened entirely OUTSIDE the
+   * Return true if the edit happened entirely OUTSIDE the
    * pair's char range (so the pair text is intact in newText). Mutates
    * the entry's char positions and word indices to match the new text
    * and updates lastFilledText. Returns false when the pair was
@@ -497,7 +496,7 @@ export class BlankFill {
   }
 
   /**
-   * Phase G.c — when a selector/satellite pair was edited and the
+   * When a selector/satellite pair was edited and the
    * blank declared `blankClearOnEdit`, splice the (broken) pair out
    * of the new text. Uses common-prefix/suffix matching against the
    * last filled text, with a min-of-(prefix, pairStart) / min-of-
@@ -526,10 +525,9 @@ export class BlankFill {
   }
 
   /**
-   * Phase G.a — splice `<selector><sep><satellite>` into the slot and
-   * stash a SelectorSatelliteEntry. Caller already verified blankSatellite
-   * + presence of \t. Honours `blankClearKeywords` (Step 27) on the
-   * keyword span.
+   * Splice `<selector><sep><satellite>` into the slot and stash a
+   * SelectorSatelliteEntry. Caller already verified blankSatellite
+   * + presence of \t. Honours `blankClearKeywords` on the keyword span.
    */
   private applySatelliteFill(
     slot: BlankSlot,
@@ -649,14 +647,13 @@ export class BlankFill {
       : { newText: insertedText.slice(0, insertedWord.start) + fillValue + insertedText.slice(insertedWord.end),
           newCursor: insertedWord.start + fillValue.length };
 
-    // Step 33 / Phase F.a — when the fill or the alternative pool is
-    // multi-word OR the blank is dismissible, register a span so
-    // Cycling and DimRender can treat the whole fill as a single
-    // navigable, cycleable unit. Affirmations are the canonical case:
-    // stepValues[0] = "I am strong" doesn't cycle via path 2
-    // (lookupBlank on inner words returns nothing). Without a span
-    // entry, Ctrl+Alt+Up after the fill falls through to no-op.
-    // Phase F.b: blankDismissible appends `_` so cycling can dismiss.
+    // When the fill or the alternative pool is multi-word OR the blank
+    // is dismissible, register a span so Cycling and DimRender can
+    // treat the whole fill as a single navigable, cycleable unit.
+    // Affirmations are the canonical case: stepValues[0] = "I am strong"
+    // doesn't cycle via path 2 (lookupBlank on inner words returns
+    // nothing). Without a span entry, Ctrl+Alt+Up after the fill falls
+    // through to no-op. blankDismissible appends `_` so cycling can dismiss.
     const dismissible = blank.blankDismissible === true;
     const altsForSpan = dismissible ? [...stepValues, '_'] : stepValues;
     if (this.spanFillState && altsForSpan.length > 1) {
@@ -746,8 +743,8 @@ function extraEnvKeys(blank: Record<string, unknown>): string[] {
 }
 
 /**
- * Step 27/28/29 — derive the (clearEnd, expansion) pair that the helper
- * loop will apply, given a blank's flags. Lets callers stay short.
+ * Derive the (clearEnd, expansion) pair that the helper loop will
+ * apply, given a blank's flags. Lets callers stay short.
  *
  *   - blankConsumeContext: clearEnd = slot.index - 1 (drop keyword +
  *     anything between it and the blank).
@@ -777,8 +774,8 @@ export function computeFillRange(
 }
 
 /**
- * Steps 27 + 28 + 29 — char-position splice that handles keyword
- * clearing, keyword expansion, and consume-context while preserving
+ * Char-position splice that handles keyword clearing, keyword
+ * expansion, and consume-context while preserving
  * surrounding whitespace structure (newlines, paragraph breaks,
  * indentation, bullet markers). v1 used a word-split + word-join
  * approach which collapsed all whitespace runs to single spaces —
@@ -857,7 +854,7 @@ export function buildClearKeywordText(
 }
 
 /**
- * Phase G.c — char-range diff for blankClearOnEdit cleanup. Computes
+ * Char-range diff for blankClearOnEdit cleanup. Computes
  * the slice of `newText` that the user "broke" relative to oldText's
  * pair range [pairStart..pairEnd]. The result is always ⊇ the
  * original pair, even when the user's edit happened entirely outside

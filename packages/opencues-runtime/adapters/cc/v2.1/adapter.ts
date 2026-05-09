@@ -1,11 +1,8 @@
-// Claude Code v2.1 HostAdapter — Phase 1 minimum viable surface.
+// Claude Code v2.1 HostAdapter.
 //
 // The adapter is a thin shim: cli.js bootstrap constructs a HostBindings object
 // carrying references to the host's internals (extracted via seam bindings),
 // and this adapter adapts those bindings to the HostAdapter interface.
-//
-// For Phase 1 we only implement what Navigation needs. Later phases extend
-// HostBindings and this adapter in parallel.
 
 import {
   AdapterUnsupportedError,
@@ -91,11 +88,12 @@ export interface HostBindings {
 }
 
 /**
- * Capabilities the v2.1 adapter advertises in Phase 1.
+ * Capabilities the v2.1 adapter advertises.
  *
- * `file-read` is listed because Runtime.create requires it, but the Phase 1
- * implementation resolves every read to null — the documented fallback. Phase 3
- * (ConfigLoader) wires real file access through HostBindings.
+ * `file-read` is listed because Runtime.create requires it; when the host
+ * doesn't supply a `readFile` binding the adapter resolves every read to
+ * null — the documented fallback. ConfigLoader wires real file access
+ * through HostBindings when available.
  */
 const V21_CAPABILITIES: readonly Capability[] = [
   'file-read',

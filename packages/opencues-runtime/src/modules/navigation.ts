@@ -1,12 +1,9 @@
-// Navigation module — Phase 1.
+// Navigation module.
 //
-// Ported from the original CC patch. Handles Ctrl+Alt+Left
-// and Ctrl+Alt+Right by walking the whitespace-separated word list from the
-// right-hand side and updating HighlightState.
-//
-// Phase 1 does NOT implement cue filtering (globalThis._isCueBlank,
-// globalThis._localCueMap etc.). Navigation targets all non-empty words. Cue
-// filtering returns in a later phase once DynDefs is populated.
+// Handles Ctrl+Alt+Left and Ctrl+Alt+Right by walking the
+// whitespace-separated word list from the right-hand side and updating
+// HighlightState. Cue filtering uses DynDefs + the cueMap to restrict
+// targets to navigable words.
 
 import type { HostAdapter, KeyEvent, TextChangeEvent, CursorChangeEvent, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
@@ -297,7 +294,7 @@ export class Navigation {
       return [];
     })();
 
-    // Phase G.b — force-include selector-start + satellite-start. Drop
+    // Force-include selector-start + satellite-start. Drop
     // inner words of either side (multi-word selectors like "display
     // mode" or values like "plain text" cycle as single units).
     const ss = this.selectorSatelliteState?.current ?? null;

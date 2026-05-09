@@ -1,4 +1,4 @@
-// Chrome extension v1 boot entry — Phase CE.0 scaffold.
+// Chrome extension v1 boot entry.
 //
 // The content script's only job:
 //   1. Build a ChromeBindings object from browser APIs (contenteditable,
@@ -13,7 +13,7 @@
 //   - No spawnProcess (see adapter.ts). TTS uses Web Speech; blanks
 //     that need external data (stocks/weather/HN) go through fetch().
 //   - No TTS script path either — Chrome bypasses the TTS module
-//     entirely for now (Phase CE.6 will wire Web Speech through it).
+//     entirely for now; Web Speech wiring is a future addition.
 //   - No live file watch — ConfigLoader.load() re-reads from
 //     chrome.storage whenever the popup writes.
 

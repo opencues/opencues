@@ -52,8 +52,8 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
   // Coalesce overlapping/adjacent dim ranges into a flat list of "dim on"
   // / "dim off" boundary points. Without this, a cue-word dim ([29,40])
   // sitting inside a consume-all dim ([0,130]) would emit DIM_OFF at 40
-  // and leave chars 40..130 undimmed. Step 32 surfaced this; the coalesce
-  // makes overlapping ranges safe in general.
+  // and leave chars 40..130 undimmed. The coalesce makes overlapping
+  // ranges safe in general.
   const dimBoundaries = coalesceRanges(directives.dimRanges ?? []);
 
   const insertions: Insertion[] = [];

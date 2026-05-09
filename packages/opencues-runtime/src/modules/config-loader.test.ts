@@ -110,7 +110,7 @@ tips-mode: maybe
     expect(state.tipsMode).toBe('on');      // anything ≠ 'off' = on
   });
 
-  it('Phase G.a: parses nested settings: block into definitions', () => {
+  it('parses nested settings: block into definitions', () => {
     const md = `---
 voice-mode: active
 debug-mode: off
@@ -137,7 +137,7 @@ settings:
     expect(dm?.valueOrder).toEqual(['on', 'off']);
   });
 
-  it('Phase G.a: empty/missing settings: block produces empty definitions', () => {
+  it('empty/missing settings: block produces empty definitions', () => {
     const md = `---
 voice-mode: active
 ---`;

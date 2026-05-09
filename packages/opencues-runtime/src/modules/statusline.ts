@@ -3,8 +3,8 @@
 //
 // The shape mirrors what the original CC patch wrote to
 // /tmp/opencues-highlight-state-<pid>.json so the existing shell consumer
-// keeps working unchanged. Phase 4 covers the navigation+cycling subset of
-// fields; LLM/blank fields land as their modules ship.
+// keeps working unchanged. The payload covers navigation, cycling,
+// LLM-resolved alternatives, and blank-fill state.
 //
 // Writes are deduped by content — only fires when the JSON actually changes,
 // so a busy render loop doesn't spam the disk.
@@ -73,11 +73,11 @@ export class Statusline {
     /**
      * Optional. When the highlight is on a span fill, the blank's
      * blankTip wins over cueMap lookup (which would miss filled words
-     * like "13.9°C" or "Reddit"). Phase F.b.
+     * like "13.9°C" or "Reddit").
      */
     private spanFillState?: SpanFillState,
     /**
-     * Optional. Selector/satellite tip routing (Step 35 / Phase G.b):
+     * Optional. Selector/satellite tip routing:
      * selector word shows the setting's `tip`; satellite shows the
      * per-value tip from opencues.md `settings:` block.
      */
@@ -122,7 +122,7 @@ export class Statusline {
     const clean = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
     const cleanHighlighted = clean(highlightedWord);
 
-    // Phase G.b — selector/satellite takes priority over both span and
+    // Selector/satellite takes priority over both span and
     // cue lookup. Selector word emits the setting's `tip`; satellite
     // emits the value-specific tip. cueBlank=true so the consumer
     // prints the tip alone.
@@ -153,7 +153,7 @@ export class Statusline {
       };
     }
 
-    // Phase F.b — span fill takes priority. When the highlight is on
+    // Span fill takes priority. When the highlight is on
     // any word inside an active span, render the blank's blankTip
     // (e.g. "Daily affirmations", "Prompt improver") and treat the
     // span as a single cycleable unit (cueBlank=true so the shell
@@ -177,7 +177,7 @@ export class Statusline {
       };
     }
 
-    // Phase I.8 — blank-attributed DynDef (volume/brightness blank
+    // Blank-attributed DynDef (volume/brightness blank
     // fill at "50%"): suppress the statusline tip entirely. The value
     // is already visible in the input ("50%") and the tip would be
     // redundant ("system volume blank 50%").

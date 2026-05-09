@@ -290,7 +290,7 @@ function parseStreamUsage(c: Candidate, raw: string): { completionTokens: number
   return { completionTokens: null };
 }
 
-// ── Phase 1: SPEED ────────────────────────────────────────────────────
+// ── SPEED ─────────────────────────────────────────────────────────────
 
 interface SpeedRow {
   cand: string;
@@ -366,7 +366,7 @@ async function runSpeed(candidates: Candidate[]): Promise<SpeedRow[]> {
   return rows;
 }
 
-// ── Phase 2: QUALITY ─────────────────────────────────────────────────
+// ── QUALITY ───────────────────────────────────────────────────────────
 
 interface QualityRow {
   cand: string;

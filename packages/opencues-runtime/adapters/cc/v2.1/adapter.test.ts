@@ -128,7 +128,7 @@ describe('ClaudeCodeV21Adapter', () => {
     expect(b.getCursorOffset()).toBe(0);
   });
 
-  it('readFile returns null and writeFile rejects in Phase 1 minimum', async () => {
+  it('readFile returns null and writeFile rejects when bindings omit fs methods', async () => {
     const a = new ClaudeCodeV21Adapter(new FakeBindings());
     await expect(a.readFile('/any/path')).resolves.toBeNull();
     await expect(a.writeFile('/x', 'y')).rejects.toThrow(/file-write/);
