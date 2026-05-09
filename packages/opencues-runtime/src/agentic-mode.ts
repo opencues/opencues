@@ -160,7 +160,14 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
         // sourceReclassifier path).
         b.adapter.setText(arg);
         const source: 'user' | 'runtime' = cmd === 'text-keep-hl' ? 'runtime' : 'user';
-        b.notifyTextChange?.(arg, b.adapter.getCursorOffset(), source);
+        const cursor = b.adapter.getCursorOffset();
+        log('notifyTextChange', {
+          source,
+          cursor,
+          hasCallback: typeof b.notifyTextChange === 'function',
+          textLen: arg.length,
+        });
+        b.notifyTextChange?.(arg, cursor, source);
         b.adapter.forceRender();
         break;
       }

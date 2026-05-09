@@ -91,10 +91,42 @@ state changes.
 | File | Contents | Updated by |
 |---|---|---|
 | `/tmp/opencues-agentic.pid` | Plain text — the active host's PID. Override path via `OPENCUES_AGENTIC_PID_FILE`. | Agentic harness on arm; deleted on stop |
-| `/tmp/opencues-status-<pid>.json` | Highlighted word, alts, tip, agent task. | `Statusline` module (every state change) |
+| `/tmp/opencues-status-<pid>.json` | Highlighted word, alts, tip, agent task. **Read this for alts** — see "Where to look for alts" below. | `Statusline` module (every highlight state change) |
 | `/tmp/opencues-cursor-state-<pid>.json` | Buffer text + cursor offset. | `CursorStateExport` module |
 | `/tmp/opencues-agentic-dump-<pid>.json` | Full state — text, cursor, highlight, dynDefs, spanFill, selectorSatellite, agentTask, capabilities, host info. | Agentic harness on `dump` command |
 | `/tmp/opencues.log` | Runtime debug log (info/warn/error/debug). | Every host |
+
+### Where to look for alts (gotcha)
+
+**Alts live in two different places depending on where they came from:**
+
+- **Local-lookup alts** (tips/CUE.md entries like `ultrathink`, spelling, etc.) — appear in
+  `/tmp/opencues-status-<pid>.json` `.alts` + `.altCueTips` ONLY AFTER the highlight
+  is active (Navigation has activated a word). They do NOT populate `dynDefs`.
+  Resolution is synchronous on lookup at cycle/nav time.
+
+- **LLM-resolved alts** (word-cues sources, fluid-blank, transform-blank — anything that
+  needs an HTTP round-trip) — populate `dynDefs.defs` in the agentic dump
+  AS SOON AS the resolver finishes (no need to navigate first). 500ms debounce
+  after the textChange event.
+
+If `dump.dynDefs.defs` is empty after an inject, that doesn't mean nothing resolved —
+it might just be a tips lookup. Activate the highlight (`key:right:ctrl+alt`) and
+read `oc-state $PID` to see the local alts.
+
+Inject sequence to verify a tips cue:
+
+```bash
+~/opencues/tests/agentic/oc-inject $PID 'text:we should ultrathink this approach'
+sleep 1
+~/opencues/tests/agentic/oc-inject $PID 'key:right:ctrl+alt'   # navigate to a word
+sleep 1
+~/opencues/tests/agentic/oc-state $PID --field '.alts'         # ← alts surface here
+~/opencues/tests/agentic/oc-state $PID --field '.altCueTips'   # ← all alts + tips
+~/opencues/tests/agentic/oc-inject $PID 'key:up:ctrl+alt'      # cycle to next alt
+sleep 1
+~/opencues/tests/agentic/oc-dump $PID --field '.text'          # buffer now reflects cycle
+```
 
 ## CLI tooling (Phase B)
 
