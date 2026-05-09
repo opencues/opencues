@@ -71,6 +71,8 @@ export interface AgenticHarnessHandle {
   readonly paths: {
     readonly inject: string;
     readonly dump: string;
+    /** Single canonical pidfile — `cat $pid` to learn the host's PID. */
+    readonly pid: string;
   };
 }
 
@@ -84,12 +86,29 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
   const pid = process.pid;
   const injectFile = `/tmp/opencues-inject-${pid}.txt`;
   const dumpFile = `/tmp/opencues-agentic-dump-${pid}.json`;
+  // Single canonical pidfile so callers don't have to grep the log or
+  // glob /tmp/opencues-status-*.json. Last-writer-wins (one armed host
+  // per pidfile path); per-host scoping comes for free via the
+  // OPENCUES_AGENTIC_PID_FILE env override (e.g. set it to
+  // `/tmp/opencues-agentic-cc.pid` when running CC alongside OC).
+  const pidFile = process.env.OPENCUES_AGENTIC_PID_FILE
+    ?? `/tmp/opencues-agentic.pid`;
 
   const log = (msg: string, data?: unknown): void => {
     try { b.adapter.log('info', `[agentic] ${msg}`, data); } catch { /* swallow */ }
   };
 
-  log('harness armed', { pid, injectFile, dumpFile });
+  // Write the pidfile up front. The agentic harness lives inside the
+  // host process, so process.pid IS the pid that owns
+  // /tmp/opencues-inject-<pid>.txt + the dump file. A test runner can
+  // do `PID=$(cat /tmp/opencues-agentic.pid)` instead of discovery.
+  try {
+    fs.writeFileSync(pidFile, String(pid));
+  } catch (err) {
+    log('pidfile write failed', { pidFile, err: String(err) });
+  }
+
+  log('harness armed', { pid, injectFile, dumpFile, pidFile });
 
   function runCommands(text: string): void {
     for (const raw of text.split('\n')) {
@@ -208,10 +227,20 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
       if (!active) return;
       active = false;
       clearInterval(interval);
+      // Best-effort pidfile cleanup. Only delete if the file's contents
+      // still match THIS process — avoids racing with a newer host
+      // instance that already overwrote the pidfile (we'd otherwise
+      // leave the new host with a missing pidfile).
+      try {
+        if (fs.existsSync(pidFile)) {
+          const owner = fs.readFileSync(pidFile, 'utf8').trim();
+          if (owner === String(pid)) fs.unlinkSync(pidFile);
+        }
+      } catch { /* swallow */ }
       log('harness stopped', { pid });
     },
     poll,
-    paths: { inject: injectFile, dump: dumpFile },
+    paths: { inject: injectFile, dump: dumpFile, pid: pidFile },
   };
 }
 

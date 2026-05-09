@@ -51,11 +51,13 @@ function makeStubAdapter(initial = { text: '', cursor: 0 }): HostAdapter & {
 
 const PID_INJECT = `/tmp/opencues-inject-${process.pid}.txt`;
 const PID_DUMP = `/tmp/opencues-agentic-dump-${process.pid}.json`;
+const PID_FILE = '/tmp/opencues-agentic.pid';
 
 function cleanupFiles(): void {
-  for (const p of [PID_INJECT, PID_DUMP]) {
+  for (const p of [PID_INJECT, PID_DUMP, PID_FILE]) {
     try { fs.unlinkSync(p); } catch { /* ignore */ }
   }
+  delete process.env.OPENCUES_AGENTIC_PID_FILE;
 }
 
 describe('agentic harness — startAgenticHarness', () => {
@@ -287,6 +289,43 @@ describe('agentic harness — startAgenticHarness', () => {
     const h = startAgenticHarness({ adapter, dispatchKey: () => false, state: {} });
     expect(h.paths.inject).toBe(`/tmp/opencues-inject-${process.pid}.txt`);
     expect(h.paths.dump).toBe(`/tmp/opencues-agentic-dump-${process.pid}.json`);
+    expect(h.paths.pid).toBe('/tmp/opencues-agentic.pid');
     h.stop();
+  });
+
+  it('writes the pidfile on arm + deletes it on stop', () => {
+    const adapter = makeStubAdapter();
+    const h = startAgenticHarness({ adapter, dispatchKey: () => false, state: {} });
+    expect(fs.existsSync(PID_FILE)).toBe(true);
+    expect(fs.readFileSync(PID_FILE, 'utf8').trim()).toBe(String(process.pid));
+    h.stop();
+    expect(fs.existsSync(PID_FILE)).toBe(false);
+  });
+
+  it('OPENCUES_AGENTIC_PID_FILE overrides the pidfile path', () => {
+    const customPath = '/tmp/opencues-agentic-test-override.pid';
+    process.env.OPENCUES_AGENTIC_PID_FILE = customPath;
+    try {
+      const adapter = makeStubAdapter();
+      const h = startAgenticHarness({ adapter, dispatchKey: () => false, state: {} });
+      expect(h.paths.pid).toBe(customPath);
+      expect(fs.existsSync(customPath)).toBe(true);
+      expect(fs.readFileSync(customPath, 'utf8').trim()).toBe(String(process.pid));
+      h.stop();
+      expect(fs.existsSync(customPath)).toBe(false);
+    } finally {
+      try { fs.unlinkSync(customPath); } catch { /* ignore */ }
+    }
+  });
+
+  it('stop() does not delete a pidfile owned by a different (newer) pid', () => {
+    const adapter = makeStubAdapter();
+    const h = startAgenticHarness({ adapter, dispatchKey: () => false, state: {} });
+    // Simulate a newer host having claimed the pidfile.
+    fs.writeFileSync(PID_FILE, '99999999');
+    h.stop();
+    // The newer host's pidfile must survive.
+    expect(fs.existsSync(PID_FILE)).toBe(true);
+    expect(fs.readFileSync(PID_FILE, 'utf8').trim()).toBe('99999999');
   });
 });

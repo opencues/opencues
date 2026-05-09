@@ -34,24 +34,38 @@ for free when `OPENCUES_AGENTIC=1` is set at launch.
 
 ```bash
 # 1. Launch a host with the harness armed
-OPENCUES_AGENTIC=1 opencues run claude-code &
-HOST_PID=$!
+OPENCUES_AGENTIC=1 opencues run opencode &
 sleep 3   # wait for the runtime to mount
 
-# 2. Find the PID (or use $HOST_PID directly)
-tests/agentic/oc-pid claude-code
+# 2. Read the canonical pidfile — written by the harness on arm.
+#    `$!` (the bash bg-job pid) is the LAUNCHER, not the host process
+#    where the harness lives, so don't rely on it.
+PID=$(cat /tmp/opencues-agentic.pid)
+echo "host pid = $PID"
 
 # 3. Inject + observe
-tests/agentic/oc-inject $HOST_PID 'text:the lawyer filed today'
+tests/agentic/oc-inject $PID 'text:the lawyer filed today'
 sleep 2   # let the resolver run
-tests/agentic/oc-state $HOST_PID
+tests/agentic/oc-state $PID
 
 # 4. Cycle + dump full state
-tests/agentic/oc-inject $HOST_PID 'key:up:ctrl+alt'
-tests/agentic/oc-dump $HOST_PID
+tests/agentic/oc-inject $PID 'key:up:ctrl+alt'
+tests/agentic/oc-dump $PID
 
 # 5. Tail the log to see what the runtime did
 tests/agentic/oc-tail --follow --grep agentic
+```
+
+The pidfile is overwritten each launch (last writer wins). For multi-host
+testing — e.g. running CC and OC simultaneously — set
+`OPENCUES_AGENTIC_PID_FILE` to a host-scoped path on each launch:
+
+```bash
+OPENCUES_AGENTIC=1 OPENCUES_AGENTIC_PID_FILE=/tmp/opencues-cc.pid \
+  opencues run claude-code &
+
+OPENCUES_AGENTIC=1 OPENCUES_AGENTIC_PID_FILE=/tmp/opencues-oc.pid \
+  opencues run opencode &
 ```
 
 ## Inject protocol
@@ -76,6 +90,7 @@ state changes.
 
 | File | Contents | Updated by |
 |---|---|---|
+| `/tmp/opencues-agentic.pid` | Plain text — the active host's PID. Override path via `OPENCUES_AGENTIC_PID_FILE`. | Agentic harness on arm; deleted on stop |
 | `/tmp/opencues-status-<pid>.json` | Highlighted word, alts, tip, agent task. | `Statusline` module (every state change) |
 | `/tmp/opencues-cursor-state-<pid>.json` | Buffer text + cursor offset. | `CursorStateExport` module |
 | `/tmp/opencues-agentic-dump-<pid>.json` | Full state — text, cursor, highlight, dynDefs, spanFill, selectorSatellite, agentTask, capabilities, host info. | Agentic harness on `dump` command |
