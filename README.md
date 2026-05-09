@@ -470,6 +470,47 @@ For free-form `_` lookups (`capital of france _`, `unicode for em dash _`) there
 
 See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 
+## Testing — agentic harness
+
+OpenCues ships a headless test harness that drives a running host
+without a keyboard, screen, or human attention. It lives inside
+`@opencues/runtime`, so every host that mounts the runtime gets it for
+free when launched with `OPENCUES_AGENTIC=1`.
+
+```bash
+# Boot a fully detached host
+PID=$(tests/agentic/oc-launch-headless opencode)
+
+# Drive it
+tests/agentic/oc-inject $PID 'text:we should ultrathink this'
+tests/agentic/oc-inject $PID 'key:right:ctrl+alt'
+tests/agentic/oc-inject $PID 'key:up:ctrl+alt'
+
+# Observe — every module emits structured events at lifecycle boundaries
+tests/agentic/oc-events $PID --type cycling.cycled,resolver.completed
+```
+
+Every shipped feature surfaces at least one observable event: cycling,
+resolver routing, blank fills, transform-blank / fluid-blank pipelines
+(per-pass timings + verdicts), TTS, hot-reload, agent-rewrite, and the
+file-write barriers (`statusline.snapshot`, `cursor-state.snapshot`).
+Scenarios in `tests/agentic/scenarios/` are JSON state machines you
+can write once and replay forever.
+
+**OpenCode is the reference platform.** The harness lives in the
+runtime and works against any host (CC, OC, future browser/electron
+hosts), but OC is where new runtime features land first:
+
+- TS + SolidJS + OpenTUI surface — least-friction redeploy via
+  `opencues install opencode` (~30 s warm).
+- Full feature surface — every module, every blank, agent-rewrite.
+- Sub-5-second test loop: `oc-launch-headless opencode` → drive →
+  assert → kill.
+
+See [`tests/agentic/README.md`](tests/agentic/README.md) for the full
+event taxonomy, scenario format, feature-coverage matrix, and the
+no-human-in-the-loop development cycle.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:
