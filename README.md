@@ -65,7 +65,7 @@ claude-cues
 
 That's it. Type any prompt, navigate words with **Ctrl+Alt+Left/Right**, cycle alternatives with **Ctrl+Alt+Up/Down**. Try `volume _` for a system-volume blank, `weather london _` for a lookup, or `agentically correct spelling _` to arm the inline agent.
 
-> **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.4.11 (sha `5e9d5c7`), cloned into `~/opencode-cues/`. Both pins live in `integrations/<host>/pin.json`. Your native `claude` and your existing OpenCode install stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
+> **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.4.14 (sha `c90281c`), cloned into `~/opencode-cues/`. Both pins live in `integrations/<host>/pin.json`. Your native `claude` and your existing OpenCode install stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
 
 ## Install
 

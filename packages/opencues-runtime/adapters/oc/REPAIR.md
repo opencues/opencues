@@ -1,6 +1,6 @@
 # OpenCode adapter — repair guide
 
-OpenCode integration band. Pin: **opencode v1.4.11 (`5e9d5c7`)**.
+OpenCode integration band. Pin: **opencode v1.4.14 (`c90281c`)**. Also tested: v1.4.11 (`5e9d5c7`).
 
 The runtime side is host-agnostic; the only band-specific code lives at:
 

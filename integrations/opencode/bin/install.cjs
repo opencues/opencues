@@ -45,6 +45,7 @@ function pathsForFork(fork) {
       path.join(tuiDir, 'app.tsx'),
       path.join(tuiDir, 'component', 'prompt', 'index.tsx'),
       path.join(tuiDir, 'feature-plugins', 'home', 'footer.tsx'),
+      path.join(tuiDir, 'feature-plugins', 'sidebar', 'footer.tsx'),
     ],
   };
 }
@@ -306,6 +307,7 @@ function printHelp() {
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/app.tsx');
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx');
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx');
+  console.log('    <fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx');
   console.log('  Repo state (no host pollution):');
   console.log('    packages/*/dist/, .turbo/  (build cache, gitignored)');
 }

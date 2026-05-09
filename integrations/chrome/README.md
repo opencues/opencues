@@ -72,9 +72,8 @@ Click **Save**. The extension reinitializes on the active page.
 |---|---|
 | Click into a `contenteditable` div, type a few words | Words with alternatives get a slightly darker mid-tone |
 | Ctrl+Alt+Right | Highlights the next navigable word in bright white |
-| Ctrl+Alt+Up on a numeric like `5f` | Cycles `5f → 5.5f → 6f` |
 | Type `weather _ paris` | `_` fills with current Paris weather |
-| Type `improve prompt write a poem _` | After ~2s, full text is replaced with an improved version; cycle for 3 alts + original |
+| Type `improve prompt write a poem _` | After ~2s, full text is replaced with an improved version; cycle Up/Down to toggle between the rewrite and the original |
 | `chrome://extensions` console shows `[opencues][info] OpenCues runtime starting (Chrome v1)` | Bootstrap booted |
 
 If you see legacy `[OpenCues] ...` logs but **no** `[opencues][info] OpenCues runtime starting` line, you loaded a stale bundle — re-run `dev-install` (and re-deploy via `--target` if applicable).

@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
-| Compatible with | OpenCode 1.4.x (pinned to v1.4.11 / SHA `5e9d5c7`) |
+| Compatible with | OpenCode 1.4.x (pinned to v1.4.14 / SHA `c90281c`; also tested on v1.4.11 / `5e9d5c7`) |
 | Source | `integrations/opencode/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed into the fork's `node_modules/`) |
 
@@ -29,7 +29,7 @@ That's the whole install — one command, end to end. The installer will:
 2. **Install fork dependencies** via `bun install` so the fork's own deps (e.g. `@opentui/solid/preload`) land
 3. **Build** `@opencues/core` + `@opencues/runtime` (turbo-cached)
 4. **Install** the built artefacts into the fork at `node_modules/@opencues/{core,runtime}/`
-5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`
+5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`, `feature-plugins/sidebar/footer.tsx`
 
 Re-runs are idempotent — unchanged patches skip, unchanged builds skip. First install is ~5 min (mostly `git clone` + `bun install`); re-runs are under 30s.
 
@@ -67,7 +67,7 @@ One command:
 opencues uninstall opencode
 ```
 
-This reverts the three patched TSX files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/opencode-cues/`) stays in place — it's your OpenCode checkout, not OpenCues's artefact. To remove it entirely:
+This reverts the four patched TSX files via `git checkout --`, deletes the `opencues.ts` bootstrap, and removes `node_modules/@opencues/{core,runtime}/`. The fork itself (`~/opencode-cues/`) stays in place — it's your OpenCode checkout, not OpenCues's artefact. To remove it entirely:
 
 ```bash
 rm -rf ~/opencode-cues
@@ -79,7 +79,7 @@ rm -rf ~/opencode-cues
 
 | Test | What it checks |
 |---|---|
-| Type `5f`, position cursor on it, Up/Down | Numeric cycling: `5f → 5.5f → 6f` |
+| Type `we should ultrathink this approach`, navigate to `ultrathink` (Ctrl+Alt+Right), cycle Up | Local-lookup tip cycle (no LLM round-trip) |
 | Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
 | Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
 | Status bar at bottom of TUI shows tip when a word is highlighted | `opencuesTip()` SolidJS signal wired into `home/footer.tsx` |
@@ -135,6 +135,7 @@ Idempotent — copies any file that doesn't already exist at the destination.
 | `~/opencode-cues/packages/opencode/src/cli/cmd/tui/app.tsx` | **Patched in place** — mounts the runtime + forwards keyboard events |
 | `~/opencode-cues/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` | **Patched in place** — publishes textarea ref + onContentChange handler |
 | `~/opencode-cues/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx` | **Patched in place** — renders OpenCues tip alongside MCP status |
+| `~/opencode-cues/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx` | **Patched in place** — renders OpenCues tip in the sidebar slot |
 | `~/.cues/` | User-level configs (see Configuration above) |
 | `/tmp/opencues.log` | Runtime debug log (created on first launch) |
 | `/tmp/opencues-install-oc.log` | Installer log from the most recent install |
