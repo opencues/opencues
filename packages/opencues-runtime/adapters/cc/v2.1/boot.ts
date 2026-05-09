@@ -30,7 +30,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
 import { buildAgentLLMResolver } from '../../../src/boot-common';
-import { startAgenticHarness } from '../../../src/agentic-mode';
+import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
   KeyEvent,
@@ -420,13 +420,13 @@ export function boot(host: HostInfo): BootResult {
     log('error', 'Runtime.create failed', err);
   });
 
-  // Internal event-bridge — opt-in via OPENCUES_AGENTIC=1. Polls a
+  // Internal event-bridge — opt-in via OPENCUES_BRIDGE=1. Polls a
   // synthetic-input file and forwards module events to a JSONL stream
   // for off-process tooling. CC v2.1's keyHandlers list is the same
   // one a real keystroke goes through, so synthetic dispatches are
   // semantically identical to user input.
-  if (process.env.OPENCUES_AGENTIC === '1') {
-    startAgenticHarness({
+  if (process.env.OPENCUES_BRIDGE === '1') {
+    startEventBridge({
       adapter,
       // Synthetic keys go through the same handler list real keystrokes
       // use, but sample text/cursor at dispatch time (the cli.js patch

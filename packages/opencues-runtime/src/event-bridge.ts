@@ -1,14 +1,14 @@
-// Agentic test harness — file-based IPC for driving the runtime without
-// a human at the keyboard. CORE module for agentic development of the
-// runtime: a test runner (or an LLM agent) writes a script, the
-// runtime executes it, the runner reads back the result.
+// Internal event bridge — file-based IPC channel for off-process
+// observation of the runtime. Off by default; armed at boot when
+// OPENCUES_BRIDGE=1. External tooling writes inject scripts and reads
+// JSONL event streams; nothing in the runtime depends on it.
 //
 // ─── How it works ──────────────────────────────────────────────────────
 //
-// Armed by setting `OPENCUES_AGENTIC=1` before launching any host. Each
-// host band (CC v2.1 / OC v1.4 / Gemini v0.41) calls `startAgenticHarness`
+// Armed by setting `OPENCUES_BRIDGE=1` before launching any host. Each
+// host band (CC v2.1 / OC v1.4 / Gemini v0.41) calls `startEventBridge`
 // at the end of its boot() sequence with bindings to the local adapter,
-// dispatchKey closure, and shared state classes. The harness then:
+// dispatchKey closure, and shared state classes. The bridge then:
 //
 //   1. Polls /tmp/opencues-inject-<pid>.txt every 100 ms. Each non-empty
 //      line is one command (see CommandRunner). Atomically consumed:
@@ -17,23 +17,23 @@
 //
 //   2. Subscribes to adapter.onTextChange / .onCursorChange / .onKey to
 //      observe what the runtime did in response (or what the user did,
-//      when the harness shares an instance with a live user).
+//      when the bridge shares an instance with a live user).
 //
 //   3. Probes state classes (HighlightState, DynDefs, AgentTaskState,
 //      SpanFillState, SelectorSatelliteState) on every tick. Transitions
 //      since the previous tick emit structured events.
 //
 //   4. Writes every observation to /tmp/opencues-events-<pid>.jsonl as
-//      append-only newline-delimited JSON. A test runner can stream-tail
+//      append-only newline-delimited JSON. Consumers can stream-tail
 //      this file or read it as a snapshot — same fields either way.
 //
 //   5. On the `dump` command, writes the full state snapshot to
-//      /tmp/opencues-agentic-dump-<pid>.json (richer than what fits in
+//      /tmp/opencues-bridge-dump-<pid>.json (richer than what fits in
 //      the event stream — the entire DynDefs Map, full SpanFill object,
 //      capabilities, host metadata).
 //
-//   6. On arm, writes its own pid to /tmp/opencues-agentic.pid (or the
-//      OPENCUES_AGENTIC_PID_FILE override) so callers can grab it
+//   6. On arm, writes its own pid to /tmp/opencues-bridge.pid (or the
+//      OPENCUES_BRIDGE_PID_FILE override) so callers can grab it
 //      without grepping. Removed on stop.
 //
 // ─── Inject command grammar ────────────────────────────────────────────
@@ -47,13 +47,13 @@
 //   dump               → write full state to dump file
 //   wait:<ms>          → no-op marker (the file is consumed in one cycle;
 //                        scripts split across multiple writes can sleep
-//                        in the harness driver between writes)
+//                        in the driver between writes)
 //
 // ─── Files written ─────────────────────────────────────────────────────
 //
-//   /tmp/opencues-agentic.pid             pidfile, OPENCUES_AGENTIC_PID_FILE override
-//   /tmp/opencues-events-<pid>.jsonl      event stream, OPENCUES_AGENTIC_EVENTS_FILE override
-//   /tmp/opencues-agentic-dump-<pid>.json full state snapshot, on `dump` command
+//   /tmp/opencues-bridge.pid              pidfile, OPENCUES_BRIDGE_PID_FILE override
+//   /tmp/opencues-events-<pid>.jsonl      event stream, OPENCUES_BRIDGE_EVENTS_FILE override
+//   /tmp/opencues-bridge-dump-<pid>.json  full state snapshot, on `dump` command
 //
 // ─── Files read ────────────────────────────────────────────────────────
 //
@@ -63,13 +63,13 @@
 //
 // inotify is OS-specific and adds a binding dependency. The poll
 // interval (100 ms) is well below the LLM round-trip (200-1500 ms), so
-// the test runner's effective response time is dominated by the host
-// processing, not the harness's poll latency. This module deliberately
-// has zero external dependencies — only node:fs.
+// any consumer's effective response time is dominated by host
+// processing, not poll latency. This module deliberately has zero
+// external dependencies — only node:fs.
 //
 // ─── Versioning ────────────────────────────────────────────────────────
 //
-// Every event carries v:1 (AGENTIC_EVENT_SCHEMA_VERSION). Future schema
+// Every event carries v:1 (EVENT_BRIDGE_SCHEMA_VERSION). Future schema
 // changes that aren't backwards-compatible bump the integer; consumers
 // gate on it. Add new event TYPES freely (consumers ignore unknown
 // types) — the version only changes when existing types' shape
@@ -80,15 +80,15 @@ import type { HostAdapter, KeyEvent } from './adapter';
 
 // ─── Public API types ────────────────────────────────────────────────────
 
-export const AGENTIC_EVENT_SCHEMA_VERSION = 1;
+export const EVENT_BRIDGE_SCHEMA_VERSION = 1;
 
 /**
  * Every event the harness emits to the JSONL stream. Tagged union for
  * exhaustive consumer matching. Add new types freely (consumers must
  * tolerate unknown types); only modify existing shapes when bumping
- * AGENTIC_EVENT_SCHEMA_VERSION.
+ * EVENT_BRIDGE_SCHEMA_VERSION.
  */
-export type AgenticEventBody =
+export type BridgeEventBody =
   // Lifecycle
   | { type: 'harness.armed'; host: string; hostVersion: string; capabilities: readonly string[] }
   | { type: 'harness.stopped' }
@@ -169,18 +169,18 @@ export type AgenticEventBody =
   | { type: string; [k: string]: unknown }
   ;
 
-export interface AgenticEvent {
+export interface BridgeEvent {
   /** ms since epoch (Date.now()). */
   readonly ts: number;
-  /** AGENTIC_EVENT_SCHEMA_VERSION at time of emit. */
+  /** EVENT_BRIDGE_SCHEMA_VERSION at time of emit. */
   readonly v: number;
   /** Host process pid. */
   readonly pid: number;
   /** Tagged-union body. */
-  readonly body: AgenticEventBody;
+  readonly body: BridgeEventBody;
 }
 
-export interface AgenticState {
+export interface BridgeState {
   readonly hlState?: unknown;
   readonly dynDefs?: unknown;
   readonly spanFillState?: unknown;
@@ -189,7 +189,7 @@ export interface AgenticState {
   readonly agentTaskState?: unknown;
 }
 
-export interface AgenticBindings {
+export interface BridgeBindings {
   readonly adapter: HostAdapter;
   /**
    * Synthetic-key dispatch. CC v2.1 wraps bootResult.dispatchKey to
@@ -210,10 +210,10 @@ export interface AgenticBindings {
   notifyCursorChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
   /** Runtime state classes — observed each tick for transition events,
    *  serialized into the dump on demand. */
-  readonly state: AgenticState;
+  readonly state: BridgeState;
 }
 
-export interface AgenticHarnessHandle {
+export interface EventBridgeHandle {
   /** Stop the polling timer + flush + close the events stream. Idempotent. */
   stop(): void;
   /** Manually run one poll cycle (consume inject file + probe state).
@@ -259,9 +259,9 @@ class EventStream {
    * dominate runtime latency. If event volume ever spikes (e.g. a
    * tight scripted loop), revisit by buffering + flushing on a timer.
    */
-  emit(body: AgenticEventBody): void {
+  emit(body: BridgeEventBody): void {
     if (!this.open) return;
-    const evt: AgenticEvent = { ts: Date.now(), v: AGENTIC_EVENT_SCHEMA_VERSION, pid: this.pid, body };
+    const evt: BridgeEvent = { ts: Date.now(), v: EVENT_BRIDGE_SCHEMA_VERSION, pid: this.pid, body };
     try { fs.appendFileSync(this.path, JSON.stringify(evt) + '\n'); } catch { /* swallow */ }
   }
 
@@ -295,7 +295,7 @@ class StateProbe {
   private sel: SelSnap | null = null;
   private defs: DefsSnap | null = null;
 
-  constructor(private readonly state: AgenticState, private readonly stream: EventStream) {}
+  constructor(private readonly state: BridgeState, private readonly stream: EventStream) {}
 
   /** Probe + emit transitions for everything we track. Called each
    *  poll tick after the inject file is consumed. */
@@ -412,7 +412,7 @@ function wordOfBuffer(text: string, wordIndex: number): string {
 
 class CommandRunner {
   constructor(
-    private readonly bindings: AgenticBindings,
+    private readonly bindings: BridgeBindings,
     private readonly stream: EventStream,
     private readonly writeDump: () => void,
   ) {}
@@ -626,22 +626,22 @@ function serializeDynDefs(dd: unknown): unknown {
 
 // ─── Public entry point ──────────────────────────────────────────────────
 //
-// Each host's boot.ts mounts the harness if OPENCUES_AGENTIC=1. The
+// Each host's boot.ts mounts the harness if OPENCUES_BRIDGE=1. The
 // harness owns its lifecycle from there: start polling, write events,
 // stop on shutdown. Returns a handle for tests to drive directly
 // (poll + stop) without depending on the timer.
 
-export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
+export function startEventBridge(b: BridgeBindings): EventBridgeHandle {
   const pid = process.pid;
   const injectFile = `/tmp/opencues-inject-${pid}.txt`;
-  const dumpFile = `/tmp/opencues-agentic-dump-${pid}.json`;
-  const pidFile = process.env.OPENCUES_AGENTIC_PID_FILE
-    ?? `/tmp/opencues-agentic.pid`;
-  const eventsFile = process.env.OPENCUES_AGENTIC_EVENTS_FILE
+  const dumpFile = `/tmp/opencues-bridge-dump-${pid}.json`;
+  const pidFile = process.env.OPENCUES_BRIDGE_PID_FILE
+    ?? `/tmp/opencues-bridge.pid`;
+  const eventsFile = process.env.OPENCUES_BRIDGE_EVENTS_FILE
     ?? `/tmp/opencues-events-${pid}.jsonl`;
 
   const log = (msg: string, data?: unknown): void => {
-    try { b.adapter.log('info', `[agentic] ${msg}`, data); } catch { /* swallow */ }
+    try { b.adapter.log('info', `[bridge] ${msg}`, data); } catch { /* swallow */ }
   };
 
   // Pidfile: written up front so callers don't race the first poll.
@@ -688,15 +688,15 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
   // band doesn't expose the event bus (older bands).
   const unsubModuleEvents = b.adapter.onEvent?.((type, body) => {
     // Pass through the type + body as a tagged-union body. The
-    // catch-all branch in AgenticEventBody covers types not yet in the
+    // catch-all branch in BridgeEventBody covers types not yet in the
     // canonical list.
-    stream.emit({ type, ...(body ?? {}) } as AgenticEventBody);
+    stream.emit({ type, ...(body ?? {}) } as BridgeEventBody);
   });
 
   function writeDump(): void {
     try {
       const dump = {
-        v: AGENTIC_EVENT_SCHEMA_VERSION,
+        v: EVENT_BRIDGE_SCHEMA_VERSION,
         text: safeCall(() => b.adapter.getText()),
         cursor: safeCall(() => b.adapter.getCursorOffset()),
         highlight: serializeHighlight(b.state.hlState),

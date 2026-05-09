@@ -11,7 +11,7 @@
 
 import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
-import { startAgenticHarness } from '../../../src/agentic-mode';
+import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
@@ -252,7 +252,7 @@ export function boot(host: HostInfo): BootResult {
     capabilities: adapter.capabilities,
   });
 
-  // Internal event-bridge — opt-in via OPENCUES_AGENTIC=1. Polls a
+  // Internal event-bridge — opt-in via OPENCUES_BRIDGE=1. Polls a
   // synthetic-input file and forwards module events to a JSONL stream
   // for off-process tooling.
   //
@@ -262,8 +262,8 @@ export function boot(host: HostInfo): BootResult {
   // pipeline directly. Without this, OpenTUI's `replaceText` (the
   // underlying setText sink) skips onContentChange and the resolver
   // never sees the buffer change.
-  if (process.env.OPENCUES_AGENTIC === '1') {
-    startAgenticHarness({
+  if (process.env.OPENCUES_BRIDGE === '1') {
+    startEventBridge({
       adapter,
       dispatchKey: (e) => keyEvents.emitUntilConsumed(e, err => log('error', 'key handler threw', err)),
       notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
