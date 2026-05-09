@@ -115,8 +115,18 @@ function runOC(passthrough, fullArgv) {
   // Drop --target if it was passed; it's ours, not bun's.
   const cleaned = passthrough.filter((a, i, arr) => a !== '--target' && arr[i - 1] !== '--target');
 
+  // Force the DB path to ~/.local/share/opencode/opencode.db. Without
+  // this, OpenCode's channel-aware path resolver writes to
+  // opencode-local.db (because Installation.isLocal() is true for our
+  // dev checkout), but its migration marker check in src/index.ts is
+  // hard-coded to opencode.db — they never match, so the "one time"
+  // migration runs on EVERY launch. Setting OPENCODE_DISABLE_CHANNEL_DB
+  // collapses both paths onto opencode.db and the marker check works.
+  // See packages/opencode/src/storage/db.ts:30 (getChannelPath).
+  const env = { ...process.env, OPENCODE_DISABLE_CHANNEL_DB: '1' };
+
   console.log(`Launching: bun run dev ${cleaned.join(' ')} (cwd: ${fork})`.trim());
-  const result = spawnSync('bun', ['run', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit' });
+  const result = spawnSync('bun', ['run', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit', env });
   exitFromSpawn(result, 'bun');
 }
 
