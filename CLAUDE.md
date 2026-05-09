@@ -556,4 +556,21 @@ Full spec: `docs/features/chrome-sync.md`.
 
 ---
 
+## Pre-launch — files to handle before going public
+
+These five top-level markdown files are launch-private and must be
+removed (or moved to a gitignored path) before the public repo flips
+visible:
+
+- `damon.md` — overview written for one specific person
+- `verify.md` — internal post-cleanup walkthrough; self-deleting once green
+- `todos.md` — internal TODO list
+- `pre-launch-readme.md` — the launch checklist itself ("Pre-Launch TODO")
+- `CONTINUE.md` — session-handoff snapshot
+
+Tracked here so the launch pass doesn't miss them. After they're gone,
+update this section.
+
+---
+
 *Last updated: May 2026*
