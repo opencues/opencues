@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# oc-launch-headless — start a host instance with the agentic harness
+# armed, in a detached pseudo-TTY, no visible UI. Returns the host's
+# PID on stdout for downstream scripting.
+#
+# Usage:
+#   oc-launch-headless <host> [--pid-file <path>] [--log <path>]
+#
+# Hosts: claude-code | opencode | gemini-cli   (whatever opencues run knows)
+#
+# Examples:
+#   PID=$(tests/agentic/oc-launch-headless opencode)
+#   tests/agentic/oc-inject $PID 'text:hello'
+#   ...
+#   kill $PID    # tear it down when done
+#
+# How it works: setsid (fresh session) + script -q (fake pty) +
+# OPENCUES_AGENTIC=1 + a per-launch override OPENCUES_AGENTIC_PID_FILE
+# so multiple instances can coexist (e.g. CC + OC running simultaneously
+# for cross-host parity tests).
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  cat >&2 <<EOF
+Usage: oc-launch-headless <host> [--pid-file <path>] [--log <path>]
+
+Starts the named host with the agentic harness armed, in a detached
+pty, no visible UI. Prints the host's PID to stdout once arming
+completes (waits up to 30s).
+
+Hosts: claude-code | opencode | gemini-cli
+EOF
+  exit 2
+fi
+
+HOST="$1"; shift
+PID_FILE="/tmp/opencues-agentic-${HOST}.pid"
+LAUNCH_LOG="/tmp/oc-launch-${HOST}.log"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --pid-file) PID_FILE="$2"; shift 2;;
+    --log)      LAUNCH_LOG="$2"; shift 2;;
+    *) echo "unknown flag: $1" >&2; exit 2;;
+  esac
+done
+
+# Pre-clear the pidfile so we know when the new instance has armed
+# (file appears + contains a valid pid).
+rm -f "$PID_FILE"
+
+# Detach into a fresh session with a fake pty. `script -q -c …
+# /dev/null` discards the host's TUI rendering. setsid + stdio
+# redirects make sure nothing leaks back into the calling shell.
+OPENCUES_AGENTIC=1 \
+  OPENCUES_AGENTIC_PID_FILE="$PID_FILE" \
+  setsid script -q -c "opencues run $HOST" /dev/null \
+    < /dev/null > "$LAUNCH_LOG" 2>&1 &
+
+# Wait for arm (up to 30s). The harness writes the pidfile on first
+# poll, so its appearance + a kill -0 confirm both armed AND alive.
+for _ in $(seq 1 60); do
+  if [[ -f "$PID_FILE" ]]; then
+    pid="$(cat "$PID_FILE" 2>/dev/null | tr -d '[:space:]')"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "$pid"
+      exit 0
+    fi
+  fi
+  sleep 0.5
+done
+
+echo "oc-launch-headless: $HOST didn't arm within 30s. Last 20 lines of $LAUNCH_LOG:" >&2
+tail -20 "$LAUNCH_LOG" >&2 2>/dev/null
+exit 1

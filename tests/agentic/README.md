@@ -32,6 +32,30 @@ for free when `OPENCUES_AGENTIC=1` is set at launch.
 
 ## Quick start
 
+### Option A — fully headless (no visible UI, no terminal needed)
+
+For agentic / CI / no-human-in-the-loop testing:
+
+```bash
+PID=$(tests/agentic/oc-launch-headless opencode)
+echo "host pid = $PID"
+```
+
+The host runs detached in a fake pty. The wrapper waits up to 30s for
+the harness to arm + writes the pid to stdout. Use the returned PID
+just like any interactive launch. Tear down with `kill $PID`.
+
+To run multiple hosts in parallel (e.g. CC + OC for parity tests):
+
+```bash
+CC_PID=$(tests/agentic/oc-launch-headless claude-code --pid-file /tmp/oc-cc.pid)
+OC_PID=$(tests/agentic/oc-launch-headless opencode    --pid-file /tmp/oc-oc.pid)
+```
+
+### Option B — interactive, harness armed
+
+Use this when you want to also see / type into the TUI yourself:
+
 ```bash
 # 1. Launch a host with the harness armed
 OPENCUES_AGENTIC=1 opencues run opencode &
