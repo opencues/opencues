@@ -1485,4 +1485,86 @@ blankAutoPopulate: false
     expect(bf.onUnderscoreKey(makeKeyEvent('noauto ', 7))).toBe(false);
     expect(adapter.setTextCalls).toHaveLength(0);
   });
+
+  // Keyword-blank clearOnEdit (non-selector/satellite path). Mirrors
+  // the four-case matrix selector/satellite already covers, but for a
+  // plain keyword blank with blankClearKeywords:false (so the keyword
+  // stays visible and is part of the protected pair).
+  describe('blankClearOnEdit on a plain keyword blank', () => {
+    const KW_BLANK = `---
+type: blank
+name: status
+blankKeywords: is x down
+blankProximity: 10
+blankScript: ./status.sh
+blankClearOnEdit: true
+blankClearKeywords: false
+---
+`;
+    const TIPS_MIN = `---
+ignore: []
+---
+
+## Tips
+`;
+    function setup() {
+      const adapter = new MockAdapter({
+        cwd: '/proj',
+        files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/status/BLANK.md': KW_BLANK },
+      });
+      adapter.stubBlankInvoke('status:get', 'No — operational');
+      const loader = new ConfigLoader(adapter);
+      const span = new SpanFillState();
+      const bf = new BlankFill(adapter, loader, span);
+      return { adapter, loader, span, bf };
+    }
+
+    it('mid-keyword edit splices the substituted region out', async () => {
+      const { adapter, loader, span, bf } = setup();
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('is x down _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('is x down No — operational');
+      expect(span.current).not.toBeNull();
+      // Delete a char from the middle of the keyword.
+      adapter.pushText('is  down No — operational');
+      expect(span.current).toBeNull();
+      expect(adapter.getText()).toBe('');
+    });
+
+    it('mid-answer edit splices the region out', async () => {
+      const { adapter, loader, bf } = setup();
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('is x down _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('is x down No — operational');
+      adapter.pushText('is x down No — perational');
+      expect(adapter.getText()).toBe('');
+    });
+
+    it('appending text AFTER the region preserves the fill', async () => {
+      const { adapter, loader, span, bf } = setup();
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('is x down _');
+      await new Promise(r => setTimeout(r, 0));
+      adapter.pushText('is x down No — operational and ready');
+      // Span survives — clearOnEdit didn't fire.
+      expect(span.current).not.toBeNull();
+      expect(adapter.getText()).toBe('is x down No — operational and ready');
+    });
+
+    it('prepending text BEFORE the region preserves the fill + re-anchors positions', async () => {
+      const { adapter, loader, span, bf } = setup();
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('is x down _');
+      await new Promise(r => setTimeout(r, 0));
+      adapter.pushText('hey is x down No — operational');
+      expect(span.current).not.toBeNull();
+      expect(adapter.getText()).toBe('hey is x down No — operational');
+    });
+  });
 });

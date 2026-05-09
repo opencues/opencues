@@ -7,6 +7,7 @@ blankFormat: string
 blankTip: Claude / Anthropic service status
 blankDismissible: true
 blankClearKeywords: false
+blankClearOnEdit: true
 ---
 
 Dispatched by the shared runtime `ClaudeStatusBlank`
