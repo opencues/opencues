@@ -187,6 +187,18 @@ to `/tmp/opencues-events-<pid>.jsonl`. One JSON object per line:
 | Span fill | `span-fill.started`, `span-fill.completed` |
 | Selector/satellite | `selector-satellite.started`, `selector-satellite.completed` |
 | DynDefs | `dyn-defs.size-changed` |
+| Resolver (LLM cues) | `resolver.started`, `resolver.completed` (with text, cleanWords, resultCount, latencyMs) |
+| BlankFill | `blank.invoked`, `blank.substituted` (with input/output/altCount/latencyMs) |
+| AgentRewrite | `agent-rewrite.round-started`, `agent-rewrite.round-completed` (with applied/dropped/latencyMs) |
+| TransformBlank pipeline | `transform-blank.started`, `transform-blank.pass-completed` (P1/P2/P3 with verdict + instruction + per-pass latency), `transform-blank.completed`, `transform-blank.bailed` |
+| Custom modules | Any string `<module>.<verb>` — modules call `adapter.emitEvent(type, body)` |
+
+The first three rows are **harness-emitted** (the agentic harness owns
+them). The Resolver / BlankFill / AgentRewrite / TransformBlank rows
+are **module-emitted** via `adapter.emitEvent` — modules call this at
+lifecycle boundaries so the harness sees what the runtime is doing
+without parsing log lines. New modules can emit any event type they
+like; the harness writes them through to the stream verbatim.
 
 Every event carries `v: 1` (`AGENTIC_EVENT_SCHEMA_VERSION`). Schema bumps on incompatible body-shape changes; new event types can be added freely (consumers tolerate unknown types).
 
@@ -266,19 +278,51 @@ Exit code 0 = all passed; 1 = some failed; 2 = bad usage.
 
 ## Reference scenarios
 
-Four scenarios in `tests/agentic/scenarios/` form the always-pass core
-suite (4/4 against a clean OC + fresh `~/.cues/` seeded from defaults):
+Five scenarios in `tests/agentic/scenarios/` form the always-pass core
+suite (5/5 against a clean OC + fresh `~/.cues/` seeded from defaults):
 
 | File | What it exercises |
 |---|---|
 | `01-basic-cycling.json` | inject → navigate → activate → cycle. Tips alts swap in buffer. |
 | `02-clear-on-new-text.json` | new buffer → highlight clears. Navigation owns deactivation on user-source text changes. |
 | `03-tip-from-tips-cue.json` | local-lookup tip (no LLM round-trip). `ultrathink` resolves under 1.5 s. |
-| `07-event-stream-cycling.json` | Same as 01 but uses `waitForEvent` / `expectEvent`. Demonstrates the event-stream API. |
+| `07-event-stream-cycling.json` | Same as 01 but uses `waitForEvent` / `expectEvent`. Demonstrates the event-stream API for state transitions. |
+| `08-transform-blank-pipeline.json` | `fix typos _ this is bad righting` → P1 EXTRACT (TRANSFORM verdict), P2 APPLY, P3 VERIFY (OK), final = "this is bad writing". Demonstrates how to assert on **module-emitted events** with verdict + per-pass timings — the canonical pattern for testing LLM-pipeline features. |
 
 Environment-dependent scenarios (network, user-config, runtime-version
 specific) live in `tests/agentic/scenarios/_flaky/` — see that folder's
 README for status. They aren't part of the green-checks baseline.
+
+## OpenCode as the reference platform
+
+The agentic harness lives in `@opencues/runtime`, so every host
+adapter band that calls `buildSharedRuntime` gets it for free. **OpenCode
+is the canonical reference implementation** for validating new runtime
+features:
+
+- TS + SolidJS + OpenTUI surface — least-friction redeploy via
+  `opencues install opencode`.
+- Full feature surface (every module, every blank, agent-rewrite, etc.).
+- Headless test loop in <5 s (`oc-launch-headless opencode` → drive →
+  assert → kill).
+
+When adding a new runtime feature:
+1. Add unit tests beside the module (`<module>.test.ts`).
+2. Have the module emit one or more structured events at lifecycle
+   boundaries via `this.adapter.emitEvent?.('<module>.<verb>', {...})`.
+3. Write a scenario in `tests/agentic/scenarios/` that asserts on
+   those events. Example:
+   ```json
+   {"action": "waitForEvent", "type": "your-feature.completed",
+    "path": "result", "matches": "expected", "timeoutMs": 5000}
+   ```
+4. Run `opencues install opencode` to redeploy.
+5. `oc-launch-headless opencode` + `scenario-runner --pid $PID
+   --scenario your-feature.json -v` — green check or fix.
+
+This is the no-human-in-the-loop development cycle. New features land
+with both unit tests AND end-to-end validation through OC; regressions
+in either layer block the merge.
 
 ## Porting guide — translating v1 tests to scenarios
 

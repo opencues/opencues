@@ -311,6 +311,10 @@ export class Resolver {
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
       // users get no log spam.
       log: (msg: string) => this.adapter.log('debug', msg),
+      // Structured event sink — feeds module events into the agentic
+      // harness's events stream. No-op when emitEvent is undefined
+      // (i.e. harness not armed).
+      emitEvent: (type: string, body?: Record<string, unknown>) => this.adapter.emitEvent?.(type, body),
     };
     let sources: unknown[];
     try {
@@ -404,7 +408,13 @@ export class Resolver {
   async resolveAndApply(text: string): Promise<void> {
     if (!this._resolver) return;
     const generation = ++this._generation;
+    const t0 = Date.now();
     this.adapter.log('debug', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
+    this.adapter.emitEvent?.('resolver.started', {
+      text: text.slice(0, 200),
+      textLen: text.length,
+      generation,
+    });
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out
@@ -467,6 +477,14 @@ export class Resolver {
     }
 
     this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
+    this.adapter.emitEvent?.('resolver.completed', {
+      text: text.slice(0, 200),
+      textLen: text.length,
+      cleanWords: cleanWords.length,
+      resultCount: result.results.length,
+      latencyMs: Date.now() - t0,
+      generation,
+    });
 
     // Stale check — a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;

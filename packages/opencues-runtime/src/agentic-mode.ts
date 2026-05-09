@@ -117,6 +117,23 @@ export type AgenticEventBody =
   | { type: 'span-fill.completed'; lastFilledText: string }
   | { type: 'selector-satellite.started'; entry: unknown }
   | { type: 'selector-satellite.completed' }
+  // Module-emitted events (via adapter.emitEvent) — these flow through
+  // unchanged from the modules, with whatever shape they emit. The
+  // tagged-union entries below document the canonical shapes the
+  // harness's reference modules produce; consumers should treat
+  // `body` for these events as best-effort and tolerate missing fields.
+  | { type: 'resolver.started'; text: string; textLen: number; generation: number }
+  | { type: 'resolver.completed'; text: string; textLen: number; cleanWords: number; resultCount: number; latencyMs: number; generation: number }
+  | { type: 'blank.invoked'; blankName: string; keyword: string; contextWords: readonly string[] }
+  | { type: 'blank.substituted'; blankName: string; keyword: string; input: string; output: string; altCount: number; dismissible: boolean }
+  | { type: 'agent-rewrite.round-started'; taskId: string | null; prompt: string; textLen: number; cursor: number }
+  | { type: 'agent-rewrite.round-completed'; taskId: string | null; applied: number; dropped: number; userHunks: number; latencyMs: number }
+  | { type: 'transform-blank.started'; textLen: number; blankIdx: number }
+  | { type: 'transform-blank.pass-completed'; pass: 'P1' | 'P2' | 'P3'; latencyMs: number; verdict?: string; instruction?: string; target?: string; step?: number; totalSteps?: number }
+  | { type: 'transform-blank.completed'; finalLen: number; finalPreview: string; latencyMs: number }
+  | { type: 'transform-blank.bailed'; reason: string; latencyMs: number }
+  // Catch-all for module-emitted types not yet promoted to the canonical list.
+  | { type: string; [k: string]: unknown }
   ;
 
 export interface AgenticEvent {
@@ -630,6 +647,18 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
       source: e.source,
     });
   });
+  // Subscribe to module-emitted events (resolver.completed,
+  // blank.substituted, transform-blank.pass-completed, etc.). Modules
+  // call adapter.emitEvent at lifecycle boundaries — see Resolver,
+  // BlankFill, AgentRewrite, TransformBlankSource. The harness's stream
+  // is the canonical sink. Optional onEvent — undefined when the host
+  // band doesn't expose the event bus (older bands).
+  const unsubModuleEvents = b.adapter.onEvent?.((type, body) => {
+    // Pass through the type + body as a tagged-union body. The
+    // catch-all branch in AgenticEventBody covers types not yet in the
+    // canonical list.
+    stream.emit({ type, ...(body ?? {}) } as AgenticEventBody);
+  });
 
   function writeDump(): void {
     try {
@@ -692,6 +721,7 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
       clearInterval(interval);
       try { unsubText(); } catch { /* swallow */ }
       try { unsubCursor?.(); } catch { /* swallow */ }
+      try { unsubModuleEvents?.(); } catch { /* swallow */ }
       stream.emit({ type: 'harness.stopped' });
       stream.close();
       // Owner-checked pidfile cleanup: only delete if it still names us.

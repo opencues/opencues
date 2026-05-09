@@ -207,6 +207,11 @@ export class BlankFill {
       }
 
       this.adapter.log('debug', `BlankFill: invoke ${slot.blankName} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(blank), scriptPath });
+      this.adapter.emitEvent?.('blank.invoked', {
+        blankName: slot.blankName,
+        keyword: slot.keyword,
+        contextWords: contextWords.slice(0, 8),
+      });
       // Try host-native blank invocation first (Chrome, Electron,
       // anything without shell access). Fall through to spawnProcess
       // when the host returns null or doesn't implement blankInvoke.
@@ -333,6 +338,14 @@ export class BlankFill {
 
     const { clearEnd, expansion } = computeFillRange(blank ?? {}, slot);
     this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
+    this.adapter.emitEvent?.('blank.substituted', {
+      blankName: slot.blankName,
+      keyword: slot.keyword,
+      input: `${slot.keyword} _`,
+      output: primaryFill.slice(0, 200),
+      altCount: lines.length,
+      dismissible: isDismissible,
+    });
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
       ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)

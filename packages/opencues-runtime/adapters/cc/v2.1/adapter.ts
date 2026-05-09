@@ -82,6 +82,12 @@ export interface HostBindings {
   pushText?(text: string, cursor?: number): void;
 
   log?(level: LogLevel, msg: string, data?: unknown): void;
+
+  /** Structured event sink. Optional — fans out to subscribers
+   *  registered via registerEventHandler. See HostAdapter.emitEvent. */
+  emitEvent?(type: string, body?: Record<string, unknown>): void;
+  /** Register an event subscriber. Returns unsub. Optional. */
+  registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
 }
 
 /**
@@ -242,6 +248,12 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
     if (this.bindings.log) {
       try { this.bindings.log(level, msg, data); } catch { /* swallow */ }
     }
+  }
+  emitEvent(type: string, body?: Record<string, unknown>): void {
+    try { this.bindings.emitEvent?.(type, body); } catch { /* swallow */ }
+  }
+  onEvent(handler: (type: string, body?: Record<string, unknown>) => void): Unsubscribe {
+    return this.bindings.registerEventHandler?.(handler) ?? (() => {});
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────

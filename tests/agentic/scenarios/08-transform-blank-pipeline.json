@@ -1,0 +1,16 @@
+{
+  "name": "transform-blank 3-pass pipeline — module events fire in order",
+  "host": "any",
+  "description": "Inject an imperative-blank prompt, assert each pipeline pass emits its event with the right verdict + non-zero latency. Demonstrates how to write feature tests that observe LLM internals.",
+  "steps": [
+    {"action": "clear"},
+    {"action": "inject", "text": "fix typos _ this is bad righting"},
+    {"action": "waitForEvent", "type": "transform-blank.started", "timeoutMs": 3000},
+    {"action": "waitForEvent", "type": "transform-blank.pass-completed", "path": "pass", "equals": "P1", "timeoutMs": 5000},
+    {"action": "waitForEvent", "type": "transform-blank.pass-completed", "path": "pass", "equals": "P2", "timeoutMs": 5000},
+    {"action": "waitForEvent", "type": "transform-blank.pass-completed", "path": "pass", "equals": "P3", "timeoutMs": 5000},
+    {"action": "waitForEvent", "type": "transform-blank.completed", "timeoutMs": 2000},
+    {"action": "expectEvent", "type": "transform-blank.pass-completed", "path": "verdict", "equals": "TRANSFORM"},
+    {"action": "expectEvent", "type": "transform-blank.completed", "path": "finalPreview", "matches": "writing"}
+  ]
+}

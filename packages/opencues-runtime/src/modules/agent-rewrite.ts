@@ -269,6 +269,13 @@ export class AgentRewrite {
       }
 
       this._logFn(`AgentRewrite: round start (textLen=${snapshot.length}, cursor=${cursorAtSnapshot}, taskId=${this.state.taskId?.slice(0, 8)}…)`);
+      const __roundT0 = Date.now();
+      this.adapter.emitEvent?.('agent-rewrite.round-started', {
+        taskId: this.state.taskId,
+        prompt: this.state.prompt,
+        textLen: snapshot.length,
+        cursor: cursorAtSnapshot,
+      });
 
       const windowWords = this.options.windowWords?.() ?? 0;
       const cacheKey = makeCacheKey(snapshot, taskAtSnapshot, cursorAtSnapshot, windowWords);
@@ -333,6 +340,13 @@ export class AgentRewrite {
         (merged.appliedLlmHunks.length > 0 ? ` applied=[${merged.appliedLlmHunks.map(h => hunkPreview(h, snapshot)).join(', ')}]` : '') +
         (merged.droppedLlmHunks.length > 0 ? ` dropped=[${merged.droppedLlmHunks.map(h => hunkPreview(h, snapshot)).join(', ')}]` : '')
       );
+      this.adapter.emitEvent?.('agent-rewrite.round-completed', {
+        taskId: this.state.taskId,
+        applied: merged.appliedLlmHunks.length,
+        dropped: merged.droppedLlmHunks.length,
+        userHunks: merged.userHunks.length,
+        latencyMs: Date.now() - __roundT0,
+      });
 
       if (merged.newText === live) {
         // Either no surviving LLM hunks, or all merged into a no-op.

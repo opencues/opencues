@@ -255,6 +255,33 @@ export interface HostAdapter {
 
   log(level: LogLevel, msg: string, data?: unknown): void;
 
+  /**
+   * Structured event sink — modules call this at lifecycle boundaries
+   * (resolver.completed, blank.substituted, transform-blank.pass, …) so
+   * subscribers can observe the runtime as a stream of point-in-time
+   * facts rather than parsing log lines.
+   *
+   * Optional + always called via `?.` so it's a true no-op when no one
+   * subscribes (i.e. normal user sessions). The agentic harness wires
+   * the corresponding sink when armed; published events flow into
+   * `/tmp/opencues-events-<pid>.jsonl`.
+   *
+   * `type` is dot-namespaced (`<module>.<verb>`). `body` is anything
+   * JSON-serialisable. See AgenticEventBody for the canonical taxonomy
+   * the harness recognises; modules may emit other types (consumers
+   * tolerate unknown).
+   */
+  emitEvent?(type: string, body?: Record<string, unknown>): void;
+
+  /**
+   * Subscribe to the structured event stream emitted via emitEvent.
+   * Optional in the same sense as emitEvent — hosts that can't fan
+   * out events (or the agentic harness is disarmed) leave it
+   * undefined; subscribers must handle the missing-method case
+   * gracefully.
+   */
+  onEvent?(handler: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
+
   dispose(): void;
 }
 

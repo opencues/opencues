@@ -69,6 +69,11 @@ export interface OpenCodeBindings {
   /** Optional async text push — for fills that happen outside a key dispatch. */
   pushText?(text: string, cursor?: number): void;
   log?(level: LogLevel, msg: string, data?: unknown): void;
+  /** Structured event emitter (modules → subscribers). Optional —
+   *  no-op when not wired by the host. See HostAdapter.emitEvent. */
+  emitEvent?(type: string, body?: Record<string, unknown>): void;
+  /** Register an event subscriber. Returns unsub. Optional. */
+  registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
 }
 
 /** Capabilities OpenCode advertises by default. spawn-process opt-in via host bindings. */
@@ -180,6 +185,12 @@ export class OpenCodeV14Adapter implements HostAdapter {
   // ─── Lifecycle ─────────────────────────────────────────────────────────
   log(level: LogLevel, msg: string, data?: unknown): void {
     this.bindings.log?.(level, msg, data);
+  }
+  emitEvent(type: string, body?: Record<string, unknown>): void {
+    this.bindings.emitEvent?.(type, body);
+  }
+  onEvent(handler: (type: string, body?: Record<string, unknown>) => void): import('../../../src/adapter').Unsubscribe {
+    return this.bindings.registerEventHandler?.(handler) ?? (() => {});
   }
   dispose(): void {
     this._disposed = true;

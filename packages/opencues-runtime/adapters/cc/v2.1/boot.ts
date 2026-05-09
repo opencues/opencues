@@ -202,6 +202,10 @@ export function boot(host: HostInfo): BootResult {
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
+  // Module-emitted structured events (resolver.completed, etc.).
+  // Subscribers registered via bindings.registerEventHandler; emit
+  // via bindings.emitEvent. Cheap when nobody's subscribed.
+  const eventHandlers: Array<(type: string, body?: Record<string, unknown>) => void> = [];
   let pendingRender = false;
   let pendingText: string | null = null;
   let pendingCursor: number | null = null;
@@ -277,6 +281,15 @@ export function boot(host: HostInfo): BootResult {
     writeFile: host.writeFile,
     spawnProcess: host.spawnProcess,
     blankInvoke: host.blankInvoke,
+    emitEvent: (type, body) => {
+      for (const h of eventHandlers) {
+        try { h(type, body); } catch (err) { log('error', 'event handler threw', err); }
+      }
+    },
+    registerEventHandler: (cb) => {
+      eventHandlers.push(cb);
+      return () => removeFrom(eventHandlers, cb);
+    },
     // Wrap pushText so runtime-initiated async pushes (e.g. selector
     // script-get callbacks) mark themselves as runtime — otherwise the
     // next applyRender's checkTextDrift sees the new text differs from

@@ -10,6 +10,7 @@
     {"action": "waitForEvent", "type": "highlight.activated", "path": "word", "equals": "ultrathink", "timeoutMs": 3000},
     {"action": "key", "key": "up", "modifiers": ["ctrl", "alt"]},
     {"action": "waitForEvent", "type": "text.changed", "path": "text", "matches": "Tab", "timeoutMs": 2000},
+    {"action": "sleep", "ms": 200},
     {"action": "expect", "path": "currentAltIndex", "equals": 1},
     {"action": "expect", "path": "highlightedWord", "equals": "Tab"}
   ]

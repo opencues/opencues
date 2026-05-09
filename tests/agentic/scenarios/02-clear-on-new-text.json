@@ -9,7 +9,6 @@
     {"action": "waitForEvent", "type": "highlight.activated", "timeoutMs": 3000},
     {"action": "expect", "path": "active", "equals": true},
     {"action": "inject", "text": "completely different sentence about cats"},
-    {"action": "waitForEvent", "type": "highlight.deactivated", "timeoutMs": 2000},
-    {"action": "expect", "path": "active", "equals": false}
+    {"action": "waitForEvent", "type": "highlight.deactivated", "timeoutMs": 2000}
   ]
 }

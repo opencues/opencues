@@ -91,6 +91,12 @@ export function boot(host: HostInfo): BootResult {
   const textEvents = new EventEmitter<TextChangeEvent>();
   const cursorEvents = new EventEmitter<import('../../../src/adapter').CursorChangeEvent>();
   const renderEvents = new EventEmitter<RenderContext, RenderDirectives | null>();
+  // Module-emitted structured events. Modules call adapter.emitEvent
+  // at lifecycle boundaries (resolver.completed, blank.substituted,
+  // transform-blank.pass, …); subscribers (the agentic harness)
+  // observe via adapter.onEvent. Cheap when not subscribed — emit
+  // is just textEvents.emit with no listeners.
+  const moduleEvents = new EventEmitter<{ type: string; body?: Record<string, unknown> }>();
 
   // Text observation tracking. Used to populate `previousText` on
   // notifyTextChange events. We do NOT synthesise text-change events
@@ -141,6 +147,11 @@ export function boot(host: HostInfo): BootResult {
     blankInvoke: host.blankInvoke,
     pushText: host.pushText,
     log,
+    emitEvent: (type, body) => moduleEvents.emit(
+      { type, body },
+      err => log('error', 'event handler threw', err),
+    ),
+    registerEventHandler: cb => moduleEvents.subscribe(({ type, body }) => cb(type, body)),
   };
 
   const adapter = new OpenCodeV14Adapter(bindings);
@@ -288,6 +299,7 @@ export function boot(host: HostInfo): BootResult {
       textEvents.clear();
       cursorEvents.clear();
       renderEvents.clear();
+      moduleEvents.clear();
     },
   };
 }

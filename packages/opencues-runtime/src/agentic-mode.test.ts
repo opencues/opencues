@@ -15,6 +15,8 @@ interface StubAdapterHandle {
   /** Emit a synthetic textChange event through onTextChange subscribers. */
   fireText: (e: TextChangeEvent) => void;
   fireCursor: (e: CursorChangeEvent) => void;
+  /** Simulate a module calling adapter.emitEvent. */
+  fireModuleEvent: (type: string, body?: Record<string, unknown>) => void;
 }
 
 function makeStubAdapter(initial = { text: '', cursor: 0 }): StubAdapterHandle {
@@ -25,6 +27,7 @@ function makeStubAdapter(initial = { text: '', cursor: 0 }): StubAdapterHandle {
   let forceRenderCalls = 0;
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
   const cursorHandlers: Array<(e: CursorChangeEvent) => void> = [];
+  const eventHandlers: Array<(type: string, body?: Record<string, unknown>) => void> = [];
 
   const adapter: HostAdapter = {
     interfaceVersion: HOST_ADAPTER_INTERFACE_VERSION,
@@ -49,6 +52,8 @@ function makeStubAdapter(initial = { text: '', cursor: 0 }): StubAdapterHandle {
     blankInvoke: () => null,
     pushText: () => {},
     log: () => {},
+    emitEvent: (type, body) => { for (const h of eventHandlers) h(type, body); },
+    onEvent: (h) => { eventHandlers.push(h); return () => { const i = eventHandlers.indexOf(h); if (i >= 0) eventHandlers.splice(i, 1); }; },
     dispose: () => {},
   };
 
@@ -59,6 +64,8 @@ function makeStubAdapter(initial = { text: '', cursor: 0 }): StubAdapterHandle {
     forceRenderCalls: () => forceRenderCalls,
     fireText: (e) => { for (const h of textHandlers) h(e); },
     fireCursor: (e) => { for (const h of cursorHandlers) h(e); },
+    /** Simulate a module emitting a structured event. */
+    fireModuleEvent: (type: string, body?: Record<string, unknown>) => adapter.emitEvent?.(type, body),
   };
 }
 
@@ -665,6 +672,49 @@ describe('agentic harness — startAgenticHarness', () => {
     await new Promise(resolve => setTimeout(resolve, 150));
     expect(setTextCalls).toEqual([]);
     expect(fs.existsSync(PID_INJECT)).toBe(true);
+  });
+
+  // ── Module event flow (adapter.emitEvent → harness stream) ──
+
+  it('subscribes to adapter.onEvent and forwards module events to the stream', () => {
+    const stub = makeStubAdapter();
+    const h = startAgenticHarness({ adapter: stub.adapter, dispatchKey: () => false, state: {} });
+    stub.fireModuleEvent('resolver.completed', {
+      text: 'the lawyer filed today',
+      textLen: 22,
+      resultCount: 1,
+      latencyMs: 450,
+      generation: 1,
+    });
+    const events = readEvents();
+    const resolved = events.filter(e => e.body.type === 'resolver.completed');
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].body).toMatchObject({
+      type: 'resolver.completed',
+      text: 'the lawyer filed today',
+      resultCount: 1,
+      latencyMs: 450,
+    });
+    h.stop();
+  });
+
+  it('passes through module events with arbitrary body shapes (catch-all)', () => {
+    const stub = makeStubAdapter();
+    const h = startAgenticHarness({ adapter: stub.adapter, dispatchKey: () => false, state: {} });
+    stub.fireModuleEvent('custom-feature.something-happened', { foo: 'bar', count: 42 });
+    const found = readEvents().find(e => e.body.type === 'custom-feature.something-happened');
+    expect(found).toBeDefined();
+    expect(found?.body).toMatchObject({ foo: 'bar', count: 42 });
+    h.stop();
+  });
+
+  it('after stop(), module events stop being recorded', () => {
+    const stub = makeStubAdapter();
+    const h = startAgenticHarness({ adapter: stub.adapter, dispatchKey: () => false, state: {} });
+    h.stop();
+    stub.fireModuleEvent('resolver.completed', { text: 'late', textLen: 4, resultCount: 0, latencyMs: 1, generation: 99 });
+    const events = readEvents();
+    expect(events.some(e => e.body.type === 'resolver.completed')).toBe(false);
   });
 
   // ── Schema version exposed ──

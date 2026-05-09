@@ -117,6 +117,15 @@ export interface BuildSourcesOptions {
    * opencues.md surfaces the trace. Silent when omitted.
    */
   log?: (msg: string) => void;
+  /**
+   * Optional structured-event sink. Threaded through to sources that
+   * publish lifecycle events (currently TransformBlankSource —
+   * transform-blank.started, .pass-completed, .completed, .bailed).
+   * Wire to the runtime's `adapter.emitEvent` so the agentic harness
+   * can observe the LLM pipeline as point-in-time facts. Silent when
+   * omitted.
+   */
+  emitEvent?: (type: string, body?: Record<string, unknown>) => void;
 }
 
 /**
@@ -321,6 +330,7 @@ export function buildSourcesFromConfig(
         model: resolved.model,
         blanks: options.blanks ?? {},
         log: options.log,
+        emitEvent: options.emitEvent,
       }));
     }
   }
