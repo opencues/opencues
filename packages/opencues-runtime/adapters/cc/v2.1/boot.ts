@@ -436,6 +436,29 @@ export function boot(host: HostInfo): BootResult {
         }
         return false;
       },
+      // notifyTextChange — CC normally drift-tracks textChanges through
+      // applyRender, but the harness writes happen outside any render
+      // cycle. Fire textHandlers directly so the Resolver / Statusline
+      // see the synthetic change. Mirrors checkTextDrift's emit logic
+      // minus the visible-diff guard (the caller already knows it changed).
+      notifyTextChange: (text, cursor, source) => {
+        const event = {
+          text,
+          cursorOffset: cursor,
+          previousText: lastSeenText ?? '',
+          source,
+        };
+        for (const handler of textHandlers) {
+          try { handler(event); }
+          catch (err) { log('error', 'agentic textChange handler error', err); }
+        }
+        lastSeenText = text;
+        lastSeenCursor = cursor;
+      },
+      // CC has no cursor-only event type — leave cursor change to the
+      // next applyRender's drift detection. Acceptable: agentic
+      // cursor-only injects on CC are rarely interesting (cycling +
+      // text drives all the realistic test paths).
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
     });
   }

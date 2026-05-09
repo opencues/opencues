@@ -292,10 +292,12 @@ export function startOpenCues(opts: {
     // scripts still run for OS-level blanks (volume, brightness) and any
     // blank that hasn't been hoisted to runtime yet.
     blankInvoke,
-    // Rename from claude-highlight-state-<pid>.json to opencode-<pid>.json
-    // so the path visually disambiguates from a claude-cues instance
-    // writing to the same /tmp (both processes can run concurrently).
-    statusFilePath: `/tmp/opencues-opencode-status-${process.pid}.json`,
+    // Canonical status path — same shape across all hosts (CC, OC, future
+    // Gemini). The pid suffix already disambiguates concurrent processes
+    // and the JSON's `host` field tells you which host wrote it. The
+    // earlier `opencues-opencode-status-` prefix was redundant + caused
+    // the agentic-mode helpers to look in the wrong place.
+    statusFilePath: `/tmp/opencues-status-${process.pid}.json`,
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // In-process statusline hook — feeds the active tip into the
     // SolidJS signal the patched home footer reads. Format matches

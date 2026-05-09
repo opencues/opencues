@@ -56,6 +56,25 @@ export interface AgenticBindings {
    * host wraps its own bootResult to match this single signature.
    */
   dispatchKey(event: KeyEvent): boolean;
+  /**
+   * Fire a synthetic textChange event after a setText, so the Resolver,
+   * Statusline, CursorStateExport — anything that subscribes to
+   * `adapter.onTextChange` — picks up the change.
+   *
+   * Why this is needed: the OC + Gemini hosts wire textChange via their
+   * input component's `onContentChange` callback, which only fires for
+   * real keystrokes (insertChar/deleteChar). OpenTUI's `replaceText` —
+   * which is what `adapter.setText` lands on — does NOT fire
+   * onContentChange. So programmatic writes from the harness silently
+   * skip the event chain unless we re-emit here.
+   *
+   * Optional — if the host doesn't supply it, the harness skips the
+   * notify (CC v2.1 in particular tracks drift through applyRender
+   * instead of textChange events; its harness wiring leaves this null).
+   */
+  notifyTextChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
+  /** Same shape, for cursor-only moves. Optional. */
+  notifyCursorChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
   readonly state: AgenticState;
 }
 
@@ -130,15 +149,18 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
     switch (cmd) {
       case 'text':
       case 'text-keep-hl': {
-        // Both invoke the same setText path — the runtime's own drift
-        // logic decides whether to clear highlight. `text-keep-hl` is a
-        // documentation-only alias for callers that want to make
-        // intent obvious; the setText pipeline can't tell them apart
-        // because it has no out-of-band channel for "this is a runtime
-        // write." If preserve-highlight semantics need to be enforced,
-        // a future enhancement can route through pushText (which marks
-        // source as 'runtime' in the OC/Gemini bands).
+        // Two-step write: (1) put the text in the buffer; (2) fire a
+        // synthetic textChange event so the Resolver / Statusline /
+        // CursorStateExport actually see it. Step 2 is needed because
+        // OpenTUI's `replaceText` (what setText lands on for OC/Gemini)
+        // doesn't fire onContentChange — only real keystrokes do.
+        // `text:` claims user-typing semantics (Navigation will clear
+        // any existing highlight); `text-keep-hl:` claims runtime-write
+        // semantics (highlight survives, mirrors the bootstrap's
+        // sourceReclassifier path).
         b.adapter.setText(arg);
+        const source: 'user' | 'runtime' = cmd === 'text-keep-hl' ? 'runtime' : 'user';
+        b.notifyTextChange?.(arg, b.adapter.getCursorOffset(), source);
         b.adapter.forceRender();
         break;
       }
@@ -146,6 +168,7 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
         const offset = parseInt(arg, 10);
         if (Number.isFinite(offset) && offset >= 0) {
           b.adapter.setCursorOffset(offset);
+          b.notifyCursorChange?.(b.adapter.getText(), offset, 'user');
           b.adapter.forceRender();
         } else {
           log('cursor: bad offset', { arg });
@@ -161,6 +184,7 @@ export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
       case 'clear': {
         b.adapter.setText('');
         b.adapter.setCursorOffset(0);
+        b.notifyTextChange?.('', 0, 'user');
         b.adapter.forceRender();
         break;
       }

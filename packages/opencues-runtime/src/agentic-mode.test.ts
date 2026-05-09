@@ -94,6 +94,76 @@ describe('agentic harness — startAgenticHarness', () => {
     h.stop();
   });
 
+  it('text:<s> fires notifyTextChange with source=user (so the resolver wakes up)', () => {
+    const adapter = makeStubAdapter();
+    const textChangeCalls: Array<[string, number, string]> = [];
+    const h = startAgenticHarness({
+      adapter,
+      dispatchKey: () => false,
+      notifyTextChange: (t, c, s) => textChangeCalls.push([t, c, s]),
+      state: {},
+    });
+    fs.writeFileSync(PID_INJECT, 'text:the lawyer filed today');
+    h.poll();
+    expect(textChangeCalls).toEqual([['the lawyer filed today', 0, 'user']]);
+    h.stop();
+  });
+
+  it('text-keep-hl:<s> fires notifyTextChange with source=runtime', () => {
+    const adapter = makeStubAdapter();
+    const textChangeCalls: Array<[string, number, string]> = [];
+    const h = startAgenticHarness({
+      adapter,
+      dispatchKey: () => false,
+      notifyTextChange: (t, c, s) => textChangeCalls.push([t, c, s]),
+      state: {},
+    });
+    fs.writeFileSync(PID_INJECT, 'text-keep-hl:agent rewrote this');
+    h.poll();
+    expect(textChangeCalls).toEqual([['agent rewrote this', 0, 'runtime']]);
+    h.stop();
+  });
+
+  it('cursor:<n> fires notifyCursorChange', () => {
+    const adapter = makeStubAdapter({ text: 'hello world', cursor: 0 });
+    const cursorChangeCalls: Array<[string, number, string]> = [];
+    const h = startAgenticHarness({
+      adapter,
+      dispatchKey: () => false,
+      notifyCursorChange: (t, c, s) => cursorChangeCalls.push([t, c, s]),
+      state: {},
+    });
+    fs.writeFileSync(PID_INJECT, 'cursor:5');
+    h.poll();
+    expect(cursorChangeCalls).toEqual([['hello world', 5, 'user']]);
+    h.stop();
+  });
+
+  it('clear fires notifyTextChange with empty string', () => {
+    const adapter = makeStubAdapter({ text: 'pre-existing', cursor: 12 });
+    const textChangeCalls: Array<[string, number, string]> = [];
+    const h = startAgenticHarness({
+      adapter,
+      dispatchKey: () => false,
+      notifyTextChange: (t, c, s) => textChangeCalls.push([t, c, s]),
+      state: {},
+    });
+    fs.writeFileSync(PID_INJECT, 'clear');
+    h.poll();
+    expect(textChangeCalls).toEqual([['', 0, 'user']]);
+    h.stop();
+  });
+
+  it('text without notifyTextChange wired silently no-ops the notify (no crash)', () => {
+    const adapter = makeStubAdapter();
+    // No notifyTextChange supplied (CC harness wiring without textHandlers).
+    const h = startAgenticHarness({ adapter, dispatchKey: () => false, state: {} });
+    fs.writeFileSync(PID_INJECT, 'text:hello');
+    expect(() => h.poll()).not.toThrow();
+    expect(adapter.setTextCalls).toEqual(['hello']);
+    h.stop();
+  });
+
   it('cursor:<n> calls adapter.setCursorOffset', () => {
     const adapter = makeStubAdapter({ text: 'hello', cursor: 0 });
     const h = startAgenticHarness({ adapter, dispatchKey: () => false, state: {} });

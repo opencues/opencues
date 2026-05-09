@@ -246,10 +246,19 @@ export function boot(host: HostInfo): BootResult {
   // state dumps to /tmp/opencues-agentic-dump-<pid>.json on demand.
   // Lets a test runner (or Claude) drive the runtime end-to-end without
   // a human at the keyboard.
+  //
+  // notifyTextChange + notifyCursorChange are wired through to the same
+  // emitters bootResult.notifyTextChange + .notifyCursorChange use, so
+  // the harness's synthetic injects reach the Resolver / Statusline /
+  // CursorStateExport pipeline directly. Without this, OpenTUI's
+  // `replaceText` (the underlying setText sink) skips onContentChange
+  // and the resolver never sees the buffer change.
   if (process.env.OPENCUES_AGENTIC === '1') {
     startAgenticHarness({
       adapter,
       dispatchKey: (e) => keyEvents.emitUntilConsumed(e, err => log('error', 'key handler threw', err)),
+      notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
+      notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
     });
   }

@@ -32,7 +32,12 @@ EOF
 fi
 
 PID="$1"; shift
+# Canonical path first; fall back to legacy opencode-prefixed path for
+# host installs that haven't been redeployed since the rename.
 STATUS_FILE="/tmp/opencues-status-${PID}.json"
+if [[ ! -f "$STATUS_FILE" && -f "/tmp/opencues-opencode-status-${PID}.json" ]]; then
+  STATUS_FILE="/tmp/opencues-opencode-status-${PID}.json"
+fi
 WATCH=0
 FIELD=""
 while [[ $# -gt 0 ]]; do
