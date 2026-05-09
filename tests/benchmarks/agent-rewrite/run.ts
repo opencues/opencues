@@ -18,7 +18,16 @@
  *   --verbose          Print the LLM's rewrite + merge result for each case.
  */
 
-import { chat, MODEL } from './groq';
+// Provider selection — defaults to Groq for the canonical benchmark
+// runs; set OPENCUES_BENCH_PROVIDER=gemini-flash-lite to route through
+// the sibling gemini.ts module (Gemini 3.1 Flash Lite). Same chat()
+// signature, same workload — apples-to-apples model comparison.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const _provider = process.env.OPENCUES_BENCH_PROVIDER === 'gemini-flash-lite'
+  ? require('./gemini')
+  : require('./groq');
+const chat: typeof import('./groq').chat = _provider.chat;
+const MODEL: string = _provider.MODEL;
 import { CASES, type BenchCase } from './cases';
 import { threeWayMerge } from '../../../packages/opencues-runtime/src/modules/word-diff';
 import { parseRewriteOutput } from '../../../packages/opencues-runtime/src/modules/agent-rewrite';
