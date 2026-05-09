@@ -1,0 +1,13 @@
+{
+  "name": "highlight clears when user types new text",
+  "host": "any",
+  "description": "After a cue is highlighted, replacing the whole buffer with new text must deactivate the previous highlight (matches 'user typing' semantics — runtime cannot tell a new inject apart from the user clearing + retyping).",
+  "steps": [
+    {"action": "clear"},
+    {"action": "inject", "text": "the lawyer filed today"},
+    {"action": "waitFor", "path": "active", "equals": true, "timeoutMs": 8000},
+    {"action": "inject", "text": "completely different sentence about cats"},
+    {"action": "waitFor", "path": "highlightedWord", "matches": "(cats|sentence|completely|different|about)", "timeoutMs": 8000},
+    {"action": "expect", "path": "active", "equals": true}
+  ]
+}

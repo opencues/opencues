@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# oc-pid — find the PID of a running agentic-armed host.
+#
+# Usage:
+#   oc-pid [<host>]
+#
+# Without an arg, prints all matching PIDs (one per line). With a host
+# name (claude-code | opencode | gemini-cli), filters to that host.
+#
+# How it works: the agentic harness writes /tmp/opencues-agentic-dump-<pid>.json
+# the first time `dump` is invoked, and Statusline writes
+# /tmp/opencues-status-<pid>.json continuously. We list those filenames,
+# extract the PID, and confirm the process still exists. If --host is
+# given, we also confirm the dump file's `host` field matches.
+#
+# Examples:
+#   oc-pid                  # all live opencues PIDs
+#   oc-pid claude-code      # just CC
+#   oc-pid opencode
+
+set -euo pipefail
+
+HOST_FILTER="${1:-}"
+
+# Status files are written more frequently than dumps, so prefer them
+# as the discovery surface (a host that hasn't been told to dump yet
+# still has a status file).
+shopt -s nullglob
+PIDS=()
+for f in /tmp/opencues-status-*.json; do
+  base="$(basename "$f")"
+  pid="${base#opencues-status-}"
+  pid="${pid%.json}"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+    if [[ -z "$HOST_FILTER" ]]; then
+      PIDS+=("$pid")
+    else
+      # Confirm the host matches via the dump file (if it exists).
+      DUMP="/tmp/opencues-agentic-dump-${pid}.json"
+      if [[ -f "$DUMP" ]] && command -v jq &>/dev/null; then
+        host="$(jq -r .host < "$DUMP" 2>/dev/null || true)"
+        if [[ "$host" == "$HOST_FILTER" ]]; then
+          PIDS+=("$pid")
+        fi
+      else
+        # No dump yet — fall back to "include and let caller verify."
+        # Better than missing a live host that hasn't been dumped.
+        PIDS+=("$pid")
+      fi
+    fi
+  fi
+done
+
+if [[ ${#PIDS[@]} -eq 0 ]]; then
+  echo "no agentic-armed host found${HOST_FILTER:+ for '$HOST_FILTER'}" >&2
+  echo "did you launch with OPENCUES_AGENTIC=1?" >&2
+  exit 1
+fi
+
+printf '%s\n' "${PIDS[@]}"

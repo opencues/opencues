@@ -30,6 +30,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
 import { buildAgentLLMResolver } from '../../../src/boot-common';
+import { startAgenticHarness } from '../../../src/agentic-mode';
 import type {
   BlankInvokeSpec,
   KeyEvent,
@@ -405,6 +406,39 @@ export function boot(host: HostInfo): BootResult {
   Runtime.create(adapter).catch(err => {
     log('error', 'Runtime.create failed', err);
   });
+
+  // Agentic test harness — opt-in via OPENCUES_AGENTIC=1. Polls
+  // /tmp/opencues-inject-<pid>.txt for synthetic input scripts; writes
+  // state dumps to /tmp/opencues-agentic-dump-<pid>.json on demand.
+  // Lets a test runner (or Claude) drive the runtime end-to-end without
+  // a human at the keyboard. CC v2.1's keyHandlers list is the same one
+  // a real keystroke goes through, so synthetic dispatches are
+  // semantically identical to user input.
+  if (process.env.OPENCUES_AGENTIC === '1') {
+    startAgenticHarness({
+      adapter,
+      // Synthetic keys go through the same handler list real keystrokes
+      // use, but sample text/cursor at dispatch time (the cli.js patch
+      // does the same — InputZone closures are stale across React
+      // re-renders, so the dispatch site is the only fresh source).
+      dispatchKey: (e) => {
+        const text = adapter.getText();
+        const cursor = adapter.getCursorOffset();
+        const ev: KeyEvent = {
+          key: e.key,
+          modifiers: { ...e.modifiers },
+          text,
+          cursorOffset: cursor,
+        };
+        for (const handler of keyHandlers) {
+          try { if (handler(ev)) return true; }
+          catch (err) { log('error', 'agentic key handler error', err); }
+        }
+        return false;
+      },
+      state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+    });
+  }
 
   let handlerErrLogged = false;
 

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# oc-dump — issue a `dump` command + read the full runtime state.
+#
+# Usage:
+#   oc-dump <pid> [--field <jq-path>] [--no-trigger]
+#
+# By default this writes "dump" to the inject file, waits ~200ms for
+# the harness to consume + write the dump JSON, then prints it. Use
+# --no-trigger to skip the inject (just read whatever's already there).
+#
+# The dump file is overwritten each time, so you always see the most
+# recent state.
+#
+# Examples:
+#   oc-dump 12345
+#   oc-dump 12345 --field .highlight
+#   oc-dump 12345 --field '.dynDefs.defs | length'
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  cat >&2 <<EOF
+Usage: oc-dump <pid> [--field <jq-path>] [--no-trigger]
+EOF
+  exit 2
+fi
+
+PID="$1"; shift
+DUMP_FILE="/tmp/opencues-agentic-dump-${PID}.json"
+INJECT_FILE="/tmp/opencues-inject-${PID}.txt"
+FIELD=""
+TRIGGER=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --field) FIELD="$2"; shift 2;;
+    --no-trigger) TRIGGER=0; shift;;
+    *) echo "unknown flag: $1" >&2; exit 2;;
+  esac
+done
+
+if [[ "$TRIGGER" = "1" ]]; then
+  # Issue the dump command.
+  echo dump > "$INJECT_FILE"
+  # Wait for the harness to consume + write. Polls every 50ms,
+  # gives up after 1s.
+  for _ in $(seq 1 20); do
+    [[ ! -f "$INJECT_FILE" ]] && break
+    sleep 0.05
+  done
+  # And give the dumper a beat to flush.
+  sleep 0.1
+fi
+
+if [[ ! -f "$DUMP_FILE" ]]; then
+  echo "no dump file at $DUMP_FILE — harness not armed (set OPENCUES_AGENTIC=1) or pid mismatch" >&2
+  exit 1
+fi
+
+if [[ -n "$FIELD" ]]; then
+  if ! command -v jq &>/dev/null; then
+    echo "jq required for --field" >&2
+    exit 1
+  fi
+  jq -r "$FIELD" < "$DUMP_FILE"
+else
+  if command -v jq &>/dev/null; then
+    jq . < "$DUMP_FILE"
+  else
+    cat "$DUMP_FILE"
+  fi
+fi

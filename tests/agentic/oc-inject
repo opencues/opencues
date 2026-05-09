@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# oc-inject — write commands into a running host's agentic-harness inject file.
+#
+# Usage:
+#   oc-inject <pid> <command>...
+#   oc-inject <pid> < script.txt    # multi-line script via stdin
+#
+# Examples:
+#   oc-inject 12345 'text:the lawyer filed today'
+#   oc-inject 12345 'key:up:ctrl+alt' 'dump'
+#   oc-inject 12345 < scenarios/cycle-lawyer.txt
+#
+# Each command is one line of the inject protocol — see
+# packages/opencues-runtime/src/agentic-mode.ts for the full grammar.
+#
+# The inject file is consumed atomically (deleted before commands run)
+# so it's safe to write a fresh script even while the previous one was
+# in flight.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  cat >&2 <<EOF
+Usage: oc-inject <pid> <command>...
+       oc-inject <pid> < script.txt
+
+Commands (one per line):
+  text:<s>           replace buffer text (clears highlight per usual semantics)
+  text-keep-hl:<s>   alias for text — preserve-highlight is documentation-only today
+  cursor:<n>         move cursor to byte offset n
+  key:<name>:<mods>  synthesise a key (mods are +-joined: ctrl+alt+shift+meta)
+  clear              empty buffer + cursor=0
+  dump               write full state to /tmp/opencues-agentic-dump-<pid>.json
+  wait:<ms>          marker — no effect (inject is consumed in one cycle)
+
+The host must have been launched with OPENCUES_AGENTIC=1 for the harness
+to be armed. Without that env var the inject file sits unread.
+EOF
+  exit 2
+fi
+
+PID="$1"; shift
+INJECT_FILE="/tmp/opencues-inject-${PID}.txt"
+
+if [[ $# -gt 0 ]]; then
+  # Each remaining arg is one command line.
+  printf '%s\n' "$@" > "$INJECT_FILE"
+else
+  # Stdin → file. Lets you pipe multi-line scripts in.
+  cat > "$INJECT_FILE"
+fi
+
+# Sanity: the harness polls every 100ms, so the file should disappear
+# within ~200ms. Don't block here — let the caller decide whether to wait.
+echo "wrote $(wc -l < "$INJECT_FILE") line(s) to $INJECT_FILE"

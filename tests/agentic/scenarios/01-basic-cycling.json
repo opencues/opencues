@@ -1,0 +1,15 @@
+{
+  "name": "basic cycling — alts cycle on Ctrl+Alt+Up",
+  "host": "any",
+  "description": "Inject a sentence, verify the LLM resolves alts for one of the words, cycle Up, verify the buffer text now contains the first alternative.",
+  "steps": [
+    {"action": "clear"},
+    {"action": "inject", "text": "the lawyer filed today"},
+    {"action": "waitFor", "path": "highlightedWord", "equals": "lawyer", "timeoutMs": 8000},
+    {"action": "expect", "path": "active", "equals": true},
+    {"action": "key", "key": "up", "modifiers": ["ctrl", "alt"]},
+    {"action": "waitFor", "path": "currentAltIndex", "equals": 1, "timeoutMs": 2000},
+    {"action": "dump"},
+    {"action": "expect", "path": "text", "matches": "(attorney|counsel|advocate)", "source": "dump"}
+  ]
+}

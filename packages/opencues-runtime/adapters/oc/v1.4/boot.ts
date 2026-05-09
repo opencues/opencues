@@ -11,6 +11,7 @@
 
 import { Runtime } from '../../../src/runtime';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
+import { startAgenticHarness } from '../../../src/agentic-mode';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
@@ -239,6 +240,19 @@ export function boot(host: HostInfo): BootResult {
     hostVersion: host.hostVersion,
     capabilities: adapter.capabilities,
   });
+
+  // Agentic test harness — opt-in via OPENCUES_AGENTIC=1. Polls
+  // /tmp/opencues-inject-<pid>.txt for synthetic input scripts; writes
+  // state dumps to /tmp/opencues-agentic-dump-<pid>.json on demand.
+  // Lets a test runner (or Claude) drive the runtime end-to-end without
+  // a human at the keyboard.
+  if (process.env.OPENCUES_AGENTIC === '1') {
+    startAgenticHarness({
+      adapter,
+      dispatchKey: (e) => keyEvents.emitUntilConsumed(e, err => log('error', 'key handler threw', err)),
+      state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+    });
+  }
 
   return {
     dispatchKey(event) {

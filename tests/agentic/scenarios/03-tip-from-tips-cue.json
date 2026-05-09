@@ -1,0 +1,12 @@
+{
+  "name": "tip-mode cue resolves locally — instant, no LLM call",
+  "host": "any",
+  "description": "Words present in a tips/CUE.md folder (e.g. 'ultrathink' from defaults/cues/extended-thinking/) get a tip + alts via local lookup. No LLM round-trip — should resolve well under 1s.",
+  "steps": [
+    {"action": "clear"},
+    {"action": "inject", "text": "we should ultrathink this approach"},
+    {"action": "waitFor", "path": "highlightedWord", "equals": "ultrathink", "timeoutMs": 1500},
+    {"action": "expect", "path": "active", "equals": true},
+    {"action": "expect", "path": "cueTip", "matches": ".+"}
+  ]
+}
