@@ -311,31 +311,21 @@ function safeCall<T>(fn: () => T): T | null {
 }
 
 /**
- * Best-effort serialization of an opaque state object: enumerate own
- * properties + simple getters, skip functions, replace anything that
- * fails JSON.stringify (circular refs, weak refs) with a sentinel.
+ * Best-effort serialization of an opaque state object: enumerate
+ * public getters on the prototype (skipping private `_`-prefixed
+ * fields). State classes like HighlightState / DynDefs expose their
+ * read-shape via getters; the underscored backing fields are
+ * implementation detail and would leak stale snapshots into the dump
+ * if included.
  */
 function serializeOpaque(obj: unknown): unknown {
   if (obj == null) return null;
   if (typeof obj !== 'object') return obj;
   const out: Record<string, unknown> = {};
-  // Own enumerable keys
-  for (const k of Object.keys(obj as object)) {
-    try {
-      const v = (obj as Record<string, unknown>)[k];
-      if (typeof v === 'function') continue;
-      JSON.stringify(v);
-      out[k] = v;
-    } catch {
-      out[k] = '<unserializable>';
-    }
-  }
-  // Simple getters on the prototype (HighlightState, DynDefs, etc. expose
-  // their state via getters, not direct fields).
   const proto = Object.getPrototypeOf(obj as object);
   if (proto) {
     for (const k of Object.getOwnPropertyNames(proto)) {
-      if (k === 'constructor' || k in out) continue;
+      if (k === 'constructor' || k.startsWith('_')) continue;
       const desc = Object.getOwnPropertyDescriptor(proto, k);
       if (!desc?.get) continue;
       try {
@@ -346,6 +336,19 @@ function serializeOpaque(obj: unknown): unknown {
       } catch {
         out[k] = '<unserializable>';
       }
+    }
+  }
+  // Own enumerable, non-private fields too — covers plain-object state
+  // (test stubs etc.) that doesn't use the getter pattern.
+  for (const k of Object.keys(obj as object)) {
+    if (k.startsWith('_') || k in out) continue;
+    try {
+      const v = (obj as Record<string, unknown>)[k];
+      if (typeof v === 'function') continue;
+      JSON.stringify(v);
+      out[k] = v;
+    } catch {
+      out[k] = '<unserializable>';
     }
   }
   return out;
@@ -369,18 +372,24 @@ function serializeHighlight(hl: unknown): unknown {
 }
 
 /**
- * DynDefs-aware view: dumps the defs array (each def serialized
- * opaquely) plus any other public getters.
+ * DynDefs-aware view: dumps the defs as an array of [wordIndex, def]
+ * pairs. DynDefs stores them as a private `_defs` Map; we read directly
+ * (intentionally bypassing the privacy boundary because the dump's
+ * point is to expose ALL state for testing, not to call the public
+ * read API). Each def is serialized via serializeOpaque so its
+ * internal shape (word, alts, tip, source, etc.) shows up.
  */
 function serializeDynDefs(dd: unknown): unknown {
   if (dd == null) return null;
   const view = serializeOpaque(dd) as Record<string, unknown>;
-  // DynDefs typically tracks defs as an internal Map — try common shapes.
-  const internal = dd as { defs?: unknown[]; size?: number; _defs?: unknown[] };
-  let defs: unknown[] | undefined;
-  if (Array.isArray(internal.defs)) defs = internal.defs;
-  else if (Array.isArray(internal._defs)) defs = internal._defs;
-  if (defs) view.defs = defs.map(d => serializeOpaque(d));
+  const internal = dd as { _defs?: Map<number, unknown>; size?: number };
+  if (internal._defs instanceof Map) {
+    view.defs = Array.from(internal._defs.entries()).map(([idx, def]) => ({
+      wordIndex: idx,
+      ...((def && typeof def === 'object') ? def as Record<string, unknown> : { value: def }),
+    }));
+    view.size = internal._defs.size;
+  }
   return view;
 }
 
