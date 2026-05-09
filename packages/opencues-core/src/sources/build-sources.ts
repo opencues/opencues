@@ -128,9 +128,9 @@ export interface BuildSourcesOptions {
   // (LocalCueSource, BlankSource) stay uninstrumented; add a
   // typed callback here when their lifecycle becomes worth observing.
   //
-  // Runtime consumers (the agentic harness) namespace these events
-  // when adapting to their own event-stream format — core owns the
-  // names + body shapes; consumers adapt.
+  // Runtime consumers namespace these events when adapting to their
+  // own event-stream format — core owns the names + body shapes;
+  // consumers adapt.
   /** Subscriber for `TransformBlankSource` (3-pass pipeline). */
   onTransformBlankEvent?: TransformBlankSourceConfig['onEvent'];
   /** Subscriber for `FluidBlankSource` (2-pass pipeline). */

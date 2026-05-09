@@ -270,12 +270,11 @@ export class Statusline {
           }
         }
         // Emit the structured event AFTER the disk write resolves so
-        // consumers (notably the agentic harness) treat it as a
-        // barrier — any subsequent read of `exportPath` sees fresh
-        // content. Without this, the harness's StateProbe could emit
-        // `highlight.activated` from its synchronous poll-tick BEFORE
-        // the async writeFile lands, racing test scenarios that read
-        // the status file right after the highlight event fires.
+        // any event-bridge consumer can treat it as a barrier — any
+        // subsequent read of `exportPath` sees fresh content. Without
+        // this, a synchronous state-probe could emit `highlight.activated`
+        // BEFORE the async writeFile lands, racing readers of the status
+        // file right after the highlight event fires.
         try {
           this.adapter.emitEvent?.('statusline.snapshot', { ...payload, exportPath });
         } catch (err) {

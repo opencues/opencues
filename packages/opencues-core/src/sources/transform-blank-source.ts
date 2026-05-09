@@ -621,10 +621,10 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
  * Lifecycle events emitted by `TransformBlankSource` during the 3-pass
  * pipeline. Wire `onEvent` in the source's config to observe them.
  *
- * This is the canonical taxonomy — runtime consumers (the agentic
- * harness) treat these as the source of truth and adapt them into
- * their own event stream. Core OWNS the names + body shapes; nothing
- * outside core gets to add to this union.
+ * This is the canonical taxonomy — runtime consumers treat these as
+ * the source of truth and adapt them into their own event stream.
+ * Core OWNS the names + body shapes; nothing outside core gets to
+ * add to this union.
  *
  * Adding a new phase: extend the union here, emit it from the
  * pipeline, document it. Renaming an existing phase is a
@@ -673,9 +673,8 @@ export interface TransformBlankSourceConfig {
    * what the pipeline is doing without parsing log lines.
    *
    * Runtime consumers map these into their own event-stream format
-   * (e.g. the agentic harness namespaces them as `transform-blank.<type>`
-   * before writing to its JSONL stream). Core owns the names + body
-   * shapes; consumers adapt.
+   * (typically prefixing the source id, e.g. `transform-blank.<type>`).
+   * Core owns the names + body shapes; consumers adapt.
    */
   onEvent?: (event: TransformBlankEvent) => void;
 }

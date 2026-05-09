@@ -93,9 +93,9 @@ export function boot(host: HostInfo): BootResult {
   const renderEvents = new EventEmitter<RenderContext, RenderDirectives | null>();
   // Module-emitted structured events. Modules call adapter.emitEvent
   // at lifecycle boundaries (resolver.completed, blank.substituted,
-  // transform-blank.pass, …); subscribers (the agentic harness)
-  // observe via adapter.onEvent. Cheap when not subscribed — emit
-  // is just textEvents.emit with no listeners.
+  // transform-blank.pass, …); subscribers observe via adapter.onEvent.
+  // Cheap when not subscribed — emit is just textEvents.emit with no
+  // listeners.
   const moduleEvents = new EventEmitter<{ type: string; body?: Record<string, unknown> }>();
 
   // Text observation tracking. Used to populate `previousText` on
@@ -191,8 +191,8 @@ export function boot(host: HostInfo): BootResult {
     statusline.subscribe();
   }
 
-  // CursorStateExport — opt-in. The agentic test harness (tests/agentic/) reads
-  // the export to drive automated runs; no in-tree consumer.
+  // CursorStateExport — opt-in. External tooling can read the export
+  // for buffer/cursor inspection; no in-tree consumer.
   if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
     const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });
     cse.subscribe();
@@ -252,18 +252,16 @@ export function boot(host: HostInfo): BootResult {
     capabilities: adapter.capabilities,
   });
 
-  // Agentic test harness — opt-in via OPENCUES_AGENTIC=1. Polls
-  // /tmp/opencues-inject-<pid>.txt for synthetic input scripts; writes
-  // state dumps to /tmp/opencues-agentic-dump-<pid>.json on demand.
-  // Lets a test runner (or Claude) drive the runtime end-to-end without
-  // a human at the keyboard.
+  // Internal event-bridge — opt-in via OPENCUES_AGENTIC=1. Polls a
+  // synthetic-input file and forwards module events to a JSONL stream
+  // for off-process tooling.
   //
   // notifyTextChange + notifyCursorChange are wired through to the same
   // emitters bootResult.notifyTextChange + .notifyCursorChange use, so
-  // the harness's synthetic injects reach the Resolver / Statusline /
-  // CursorStateExport pipeline directly. Without this, OpenTUI's
-  // `replaceText` (the underlying setText sink) skips onContentChange
-  // and the resolver never sees the buffer change.
+  // synthetic injects reach the Resolver / Statusline / CursorStateExport
+  // pipeline directly. Without this, OpenTUI's `replaceText` (the
+  // underlying setText sink) skips onContentChange and the resolver
+  // never sees the buffer change.
   if (process.env.OPENCUES_AGENTIC === '1') {
     startAgenticHarness({
       adapter,

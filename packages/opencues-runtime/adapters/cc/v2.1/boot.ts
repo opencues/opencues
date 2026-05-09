@@ -94,9 +94,9 @@ export interface HostInfo {
   statusFilePath?: string;
   /**
    * Optional: absolute path for the cursor-state-export JSON
-   * (e.g. /tmp/opencues-cursor-state.json). Consumed by the
-   * agentic test harness (tests/agentic/); no in-tree consumer. When unset, the
-   * runtime doesn't write anything.
+   * (e.g. /tmp/opencues-cursor-state.json). No in-tree consumer;
+   * external tooling can read it. When unset, the runtime doesn't
+   * write anything.
    */
   cursorStatePath?: string;
   /**
@@ -360,8 +360,8 @@ export function boot(host: HostInfo): BootResult {
     statusline.subscribe();
   }
 
-  // CursorStateExport — opt-in. The agentic test harness (tests/agentic/) reads
-  // the export to drive automated runs; no in-tree consumer.
+  // CursorStateExport — opt-in. External tooling can read the export
+  // for buffer/cursor inspection; no in-tree consumer.
   if (host.cursorStatePath && adapter.capabilities.includes('file-write')) {
     const cse = new CursorStateExport(adapter, { exportPath: host.cursorStatePath });
     cse.subscribe();
@@ -420,12 +420,10 @@ export function boot(host: HostInfo): BootResult {
     log('error', 'Runtime.create failed', err);
   });
 
-  // Agentic test harness — opt-in via OPENCUES_AGENTIC=1. Polls
-  // /tmp/opencues-inject-<pid>.txt for synthetic input scripts; writes
-  // state dumps to /tmp/opencues-agentic-dump-<pid>.json on demand.
-  // Lets a test runner (or Claude) drive the runtime end-to-end without
-  // a human at the keyboard. CC v2.1's keyHandlers list is the same one
-  // a real keystroke goes through, so synthetic dispatches are
+  // Internal event-bridge — opt-in via OPENCUES_AGENTIC=1. Polls a
+  // synthetic-input file and forwards module events to a JSONL stream
+  // for off-process tooling. CC v2.1's keyHandlers list is the same
+  // one a real keystroke goes through, so synthetic dispatches are
   // semantically identical to user input.
   if (process.env.OPENCUES_AGENTIC === '1') {
     startAgenticHarness({
@@ -445,12 +443,12 @@ export function boot(host: HostInfo): BootResult {
         };
         for (const handler of keyHandlers) {
           try { if (handler(ev)) return true; }
-          catch (err) { log('error', 'agentic key handler error', err); }
+          catch (err) { log('error', 'bridged key handler error', err); }
         }
         return false;
       },
       // notifyTextChange — CC normally drift-tracks textChanges through
-      // applyRender, but the harness writes happen outside any render
+      // applyRender, but synthetic writes happen outside any render
       // cycle. Fire textHandlers directly so the Resolver / Statusline
       // see the synthetic change. Mirrors checkTextDrift's emit logic
       // minus the visible-diff guard (the caller already knows it changed).
@@ -463,13 +461,13 @@ export function boot(host: HostInfo): BootResult {
         };
         for (const handler of textHandlers) {
           try { handler(event); }
-          catch (err) { log('error', 'agentic textChange handler error', err); }
+          catch (err) { log('error', 'bridged textChange handler error', err); }
         }
         lastSeenText = text;
         lastSeenCursor = cursor;
       },
       // CC has no cursor-only event type — leave cursor change to the
-      // next applyRender's drift detection. Acceptable: agentic
+      // next applyRender's drift detection. Acceptable: synthetic
       // cursor-only injects on CC are rarely interesting (cycling +
       // text drives all the realistic test paths).
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },

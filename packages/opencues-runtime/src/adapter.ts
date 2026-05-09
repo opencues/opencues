@@ -262,23 +262,21 @@ export interface HostAdapter {
    * facts rather than parsing log lines.
    *
    * Optional + always called via `?.` so it's a true no-op when no one
-   * subscribes (i.e. normal user sessions). The agentic harness wires
-   * the corresponding sink when armed; published events flow into
+   * subscribes (i.e. normal user sessions). The internal event-bridge
+   * wires the corresponding sink when armed; published events flow into
    * `/tmp/opencues-events-<pid>.jsonl`.
    *
    * `type` is dot-namespaced (`<module>.<verb>`). `body` is anything
-   * JSON-serialisable. See AgenticEventBody for the canonical taxonomy
-   * the harness recognises; modules may emit other types (consumers
-   * tolerate unknown).
+   * JSON-serialisable. Modules may emit any type; consumers tolerate
+   * unknowns.
    */
   emitEvent?(type: string, body?: Record<string, unknown>): void;
 
   /**
    * Subscribe to the structured event stream emitted via emitEvent.
    * Optional in the same sense as emitEvent — hosts that can't fan
-   * out events (or the agentic harness is disarmed) leave it
-   * undefined; subscribers must handle the missing-method case
-   * gracefully.
+   * out events (or no bridge is subscribed) leave it undefined;
+   * subscribers must handle the missing-method case gracefully.
    */
   onEvent?(handler: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
 

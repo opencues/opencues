@@ -87,10 +87,10 @@ export class CursorStateExport {
     try {
       const snap = this.buildSnapshot(text, cursor);
       await this.adapter.writeFile(this.options.exportPath, JSON.stringify(snap));
-      // Emit AFTER the writeFile resolves so consumers (notably the
-      // agentic harness) treat it as a barrier — any subsequent read
-      // of `exportPath` sees fresh content. Mirrors the statusline
-      // snapshot pattern; eliminates the same race for cursor-state.
+      // Emit AFTER the writeFile resolves so any event-bridge consumer
+      // can treat it as a barrier — subsequent reads of `exportPath`
+      // see fresh content. Mirrors the statusline snapshot pattern;
+      // eliminates the same race for cursor-state.
       try {
         this.adapter.emitEvent?.('cursor-state.snapshot', { ...snap, exportPath: this.options.exportPath });
       } catch (err) {

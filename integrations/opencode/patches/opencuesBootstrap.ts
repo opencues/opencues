@@ -296,7 +296,7 @@ export function startOpenCues(opts: {
     // Gemini). The pid suffix already disambiguates concurrent processes
     // and the JSON's `host` field tells you which host wrote it. The
     // earlier `opencues-opencode-status-` prefix was redundant + caused
-    // the agentic-mode helpers to look in the wrong place.
+    // the bridge helpers to look in the wrong place.
     statusFilePath: `/tmp/opencues-status-${process.pid}.json`,
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // In-process statusline hook — feeds the active tip into the

@@ -257,9 +257,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
     // Statusline export path. Per-PID so two CC instances don't collide.
     `statusFilePath:"/tmp/opencues-highlight-state-"+process.pid+".json",` +
-    // Cursor state export — single shared path. The agentic test
-    // harness (tests/agentic/) reads this. Last-writer-wins is fine
-    // because the harness only drives one CC at a time.
+    // Cursor state export — single shared path. Internal tooling
+    // reads this; last-writer-wins is fine because only one CC
+    // instance is driven at a time.
     `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
     // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.cues/scripts/),
     // shared with OpenCode. seed-configs ships them there + compiles

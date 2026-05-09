@@ -150,8 +150,6 @@ opencues/
 │
 └── tests/                         # End-to-end + benchmark scaffolding
     ├── user-test.md               # Manual sanity checklist (run after code changes)
-    ├── agentic/                   # Agentic test harness (`oc-launch-headless`,
-    │                              #   `oc-inject`, `oc-events`, scenario-runner.ts)
     ├── benchmarks/                # LLM accuracy benchmarks (TS runners per pipeline)
     │   ├── agent-rewrite/         # AgentRewrite cadence + merge
     │   ├── transform-blank/       # 3-pass imperative pipeline

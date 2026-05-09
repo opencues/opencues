@@ -253,8 +253,8 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
 /**
  * Lifecycle events emitted by `FluidBlankSource` during the 2-pass
  * pipeline. Same pattern as `TransformBlankEvent` — core owns the
- * domain types; runtime consumers (the agentic harness) namespace
- * them when adapting to their own event-stream format.
+ * domain types; runtime consumers namespace them when adapting to
+ * their own event-stream format.
  */
 export type FluidBlankEvent =
   /** Pipeline started. blankIdx = the `_` word index. */
