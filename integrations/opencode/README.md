@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
-| Compatible with | OpenCode 1.4.x (pinned to v1.4.14 / SHA `c90281c`; also tested on v1.4.11 / `5e9d5c7`) |
+| Compatible with | OpenCode 1.4.x and 1.14.x (pinned to v1.14.17 / SHA `40ba8f3`; also tested on v1.4.14 / `c90281c` and v1.4.11 / `5e9d5c7`) |
 | Source | `integrations/opencode/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed into the fork's `node_modules/`) |
 

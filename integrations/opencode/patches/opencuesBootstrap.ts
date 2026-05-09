@@ -1,8 +1,11 @@
-// OpenCues bootstrap for OpenCode v1.4.
+// OpenCues bootstrap for OpenCode (band substituted at install time).
 //
 // What gets injected into the fork:
 //
 //   • THIS FILE — copied to packages/opencode/src/cli/cmd/tui/opencues.ts
+//     with __OPENCUES_BAND__ replaced by the major.minor from pin.json
+//     (e.g. "v1.4" or "v1.14"). setup.sh's patch_fork_bootstrap step
+//     owns the substitution.
 //   • Two import + call additions in app.tsx (mount the bootstrap
 //     once on TUI start; forward useKeyboard events).
 //   • Two onInput hooks in component/prompt/index.tsx (forward text
@@ -13,7 +16,7 @@
 
 import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
-import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/v1.4/boot"
+import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/__OPENCUES_BAND__/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { createBlankInvoke, AnswerBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"

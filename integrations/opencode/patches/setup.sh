@@ -23,6 +23,12 @@ OPENCODE_DIR="${1:-$HOME/opencode-cues}"
 PIN_FILE="$OPENCUES_ROOT/integrations/opencode/pin.json"
 PINNED_VERSION=$(node -p "require('$PIN_FILE').version")
 PINNED_SHA=$(node -p "require('$PIN_FILE').sha")
+# Adapter band = "v<major>.<minor>", e.g. "v1.4", "v1.14". The bootstrap
+# import path templates this in so we can switch bands without touching
+# bootstrap source (cross-minor bumps land a new band; we just bump pin
+# and the install picks it up). Must match an existing directory under
+# packages/opencues-runtime/adapters/oc/.
+PINNED_BAND="v$(echo "$PINNED_VERSION" | awk -F. '{print $1 "." $2}')"
 
 LOG="${OPENCUES_INSTALL_LOG:-/tmp/opencues-install-oc.log}"
 VERBOSE="${OPENCUES_INSTALL_VERBOSE:-0}"
@@ -382,7 +388,17 @@ PY
 
 patch_fork() {
   local tui_dir="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui"
-  cp "$SCRIPT_DIR/opencuesBootstrap.ts" "$tui_dir/opencues.ts"
+  local band_dir="$OPENCUES_ROOT/packages/opencues-runtime/adapters/oc/$PINNED_BAND"
+  if [[ ! -d "$band_dir" ]]; then
+    echo "Adapter band '$PINNED_BAND' missing at $band_dir" >&2
+    echo "(derived from pin.json version $PINNED_VERSION)" >&2
+    echo "Either add a band directory or fix the pin." >&2
+    return 1
+  fi
+  # Templated copy: substitute __OPENCUES_BAND__ with the resolved band
+  # so the bootstrap imports from the right adapter directory.
+  sed "s|__OPENCUES_BAND__|$PINNED_BAND|g" \
+    "$SCRIPT_DIR/opencuesBootstrap.ts" > "$tui_dir/opencues.ts"
   patch_app_tsx
   patch_prompt_tsx
   patch_footer_tsx

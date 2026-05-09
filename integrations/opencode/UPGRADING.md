@@ -202,6 +202,48 @@ likely real patch porting in step 2. The current band is preserved
 side-by-side so users on the older minor aren't broken; install picks
 which band based on `pin.json`'s major.minor.
 
-(As of May 2026 we have not crossed a minor — the multi-band machinery
-is unexercised. The pin model and runbook above were designed to absorb
-it; the actual band-split happens lazily on first cross-minor bump.)
+As of May 2026 we have crossed a minor: the `oc/v1.14/` band ships
+alongside `oc/v1.4/`. Both are byte-identical sans documentation
+strings — the v1.14 band was created by copying v1.4 verbatim because
+upstream's 1.4.14 → 1.14.17 jump didn't actually change any of our
+patch anchors or runtime contracts at that specific SHA. The bands
+exist as side-by-side directories so they can diverge cleanly when
+a future 1.14.x SHA does change anchors. **Switching bands**: edit
+`pin.json`, run uninstall → fetch + checkout → install. `setup.sh`
+derives `PINNED_BAND` from `pin.json`'s major.minor and substitutes
+`__OPENCUES_BAND__` in the bootstrap source at copy time.
+
+## Upstream state — important context (May 2026)
+
+`sst/opencode` is **hostile to incremental same-minor follow-up bumps**.
+Findings from the May 2026 review against `master`:
+
+- The **1.4.x line is dead.** The very first commit past `v1.4.14`
+  (`40ba8f357`) is `sync release versions for v1.14.17` — upstream
+  jumped straight from 1.4.14 to 1.14.17 with no tagged stops.
+- **No 1.14.x tags exist** as of this writing. Upstream is shipping
+  patch versions (currently 1.14.44 at HEAD) without git tags. Every
+  bump past 1.4.14 is therefore SHA-pinned with no human-readable
+  release marker.
+- The 1.4 → 1.14 bump was **silent** — no announcement in the log
+  beyond the routine `sync release versions` chore commit. There is
+  no breaking-change list to consult.
+
+**Operational consequences:**
+
+1. The next OC bump is forced to be cross-minor. Plan accordingly:
+   real patch porting in step 2, a new `oc/v1.14/` adapter band, and
+   likely OpenTUI / SolidJS API drift on top of the anchor-string
+   changes. Budget hours, not minutes.
+2. Pinning by **tag** is no longer an option for anything past v1.4.14;
+   step 1 of the runbook ("Pick the target SHA") collapses to picking
+   a SHA from `git log` directly. Prefer commits whose message starts
+   with `sync release versions for v1.14.NN` — those are upstream's
+   internal release boundaries and are the closest thing to a stable
+   anchor in the 1.14.x line.
+3. Don't over-fit to upstream's release cadence. We pin what we
+   tested; if upstream ships 1.14.99 tomorrow, our pin doesn't have
+   to chase it. Run the harness suite against any candidate before
+   bumping.
+
+If upstream resumes tagging at any point, drop this section.
