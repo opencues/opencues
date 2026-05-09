@@ -11,12 +11,11 @@
 //               blank-fills on every native host).
 //   4. COMPILE — colocated .cs → .exe (WSL only — skipped here).
 //
-// Each phase has its own bug class. SEED's "skip if exists" was the
-// original logic; we extended it to "skip if exists with content" so
-// 0-byte files re-seed (HEAL phase). SYNC was added because library
-// files would otherwise drift when path-resolution logic changed
-// between repo versions, silently breaking shipped blanks. These
-// tests pin all three behaviors with a temp HOME so they're hermetic.
+// Each phase has its own invariant. SEED skips when the target exists
+// AND has content, so a 0-byte file re-seeds (HEAL phase). SYNC keeps
+// library scripts current as path-resolution logic evolves between
+// repo versions. These tests pin all three behaviours with a temp
+// HOME so they're hermetic.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';

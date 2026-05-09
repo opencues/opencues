@@ -44,16 +44,14 @@ export class TTS {
   // Speak-once-per-navigation dedup. We track the wordIndex we LAST
   // SAW (not last spoke) so any change to a different index counts as
   // a fresh navigation event — even if the intermediate word didn't
-  // produce speech (no tip / speak: false).
+  // produce speech (no tip / speak: false). Tracking "spoken" instead
+  // of "seen" would let a mid-traversal silent word pin the index, so
+  // returning to the original word would look like a duplicate.
   //
   //   highlight idx 0 (speak)  → _lastSeenIndex = 0, fires
   //   cycle (still idx 0)      → _lastSeenIndex unchanged, dedup blocks
   //   highlight idx 1 (no tip) → _lastSeenIndex = 1, no speak (no tip)
   //   highlight idx 0 (back)   → _lastSeenIndex was 1, now 0 → fires
-  //
-  // Tracking "spoken" instead of "seen" caused the regression where a
-  // mid-traversal word with no tip left the spoken-index pinned, so
-  // returning to the original word looked like a duplicate.
   private _lastSeenIndex: number | null = null;
 
   constructor(

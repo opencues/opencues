@@ -183,9 +183,8 @@ export class AgentRewrite {
   /**
    * Subscribe to text-change events so ticks fire only when the buffer
    * has actually moved. A debounce window (cadenceMs, default 1000) lets
-   * a burst of typing settle before the LLM call. Idle = no calls at
-   * all — the previous setInterval design burned an LLM call every
-   * 1.5 s even when the user wasn't typing.
+   * a burst of typing settle before the LLM call. An idle buffer issues
+   * no calls at all — typing-driven rather than timer-driven.
    *
    * The first tick still fires on start() so the agent reacts to ARM
    * even on a static buffer (the user typed before arming).

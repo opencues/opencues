@@ -45,7 +45,7 @@ describe('seed-configs: targetExistsWithContent', () => {
     expect(targetExistsWithContent(path.join(tmp, 'nope.md'))).toBe(false);
   });
 
-  it('returns false for a 0-byte file (must re-seed — the bug class this fixes)', () => {
+  it('returns false for a 0-byte file (must re-seed)', () => {
     const f = path.join(tmp, 'opencues.md');
     fs.writeFileSync(f, '');
     expect(fs.statSync(f).size).toBe(0); // sanity

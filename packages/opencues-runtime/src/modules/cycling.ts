@@ -516,15 +516,12 @@ export class Cycling {
     // Compute the char range to REPLACE from live word positions, not
     // from def.spanStart/spanEnd — those can drift across multi-word
     // cycles (applyAltCycle updates them, cycleSpanFill updates them,
-    // user edits don't update them). Trusting them was the root cause
-    // of "swapping multi-word alts repositions words incorrectly":
-    // after cycling legal eagle → defendant counsel through Path 0,
-    // def.spanEnd lagged, and the next cycle spliced at stale chars.
+    // user edits don't update them), so a stale span would splice at
+    // the wrong character offsets after a multi-word swap.
     //
-    // Blank-fills have always computed their range fresh each cycle
-    // (cycleSpanFill reads words[entry.index..entry.index+spanLen-1]
-    // on every call). Same pattern here — one source of truth is the
-    // live words array.
+    // Blank-fills compute their range fresh each cycle (cycleSpanFill
+    // reads words[entry.index..entry.index+spanLen-1] on every call).
+    // Same pattern here — one source of truth is the live words array.
     const words = splitWords(event.text);
     const startWord = words[wordIndex];
     if (!startWord) return false;

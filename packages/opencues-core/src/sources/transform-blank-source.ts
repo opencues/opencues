@@ -420,12 +420,11 @@ interface VerifyResult {
 }
 
 function parseExtract(raw: string): ExtractResult {
-  // Single-line fields use [ \t]* (NOT \s*) for trailing whitespace —
-  // \s* matches \n which makes the lazy .*? extend across line breaks
-  // and accidentally swallow the next field label. Real bug seen in
-  // production: model emitted "INSTRUCTION:\nTARGET:\n" (empty
-  // instruction, empty target) and the regex captured "TARGET:" as
-  // the instruction value.
+  // Single-line fields use [ \t]* (NOT \s*) for trailing whitespace.
+  // \s* matches \n, which makes the lazy .*? extend across line breaks
+  // and swallow the next field label. e.g. "INSTRUCTION:\nTARGET:\n"
+  // (empty instruction, empty target) would capture "TARGET:" as the
+  // instruction value.
   const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE|TASK_ARM|TASK_ADD|TASK_STOP|TASK_SHOW)[ \t]*$/im);
   const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
   // TARGET may span multiple lines; drop `m` so $ is end-of-string.

@@ -1,17 +1,15 @@
 // Pins the cross-host TTS path contract.
 //
-// Prior bug class: each host's bootstrap walked a candidate path list to
-// find speak.sh — which often piggybacked on CC's installed copy. Result:
-// uninstalling CC silently broke OC TTS. The fix moved speak.sh +
-// SpeakCtl.cs from CC's patches/actions/ into defaults/scripts/, and made
-// every host resolve TTS to the same user-level path:
+// Every host bootstrap MUST resolve TTS to the same user-level path:
 //
 //   ~/.cues/scripts/speak.sh   (or $OPENCUES_HOME/scripts/speak.sh)
 //
-// These tests verify each host's bootstrap source resolves to that one
-// path. Source-level checks instead of runtime invocation because the
-// bootstraps are TS modules that get patched into native hosts — they're
-// not directly importable from a vitest run.
+// speak.sh + SpeakCtl.cs ship from defaults/scripts/ — shared, not
+// piggybacked on any single host's install. These tests verify each
+// host's bootstrap source resolves to that one path. Source-level
+// checks instead of runtime invocation because the bootstraps are TS
+// modules patched into native hosts — they're not directly importable
+// from a vitest run.
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -59,7 +57,7 @@ describe('TTS shared-path contract', () => {
       path.join(REPO_ROOT, 'integrations/opencode/patches/opencuesBootstrap.ts'),
       'utf8',
     );
-    // Anti-regression guards for the bug class:
+    // Anti-regression guards:
     expect(src).not.toContain('candidates');                          // no path walker array
     expect(src).not.toContain('claude-code-cues');                    // no piggybacking on CC
     expect(src).not.toContain('.claude/opencues/');                   // no pre-compact-footprint paths

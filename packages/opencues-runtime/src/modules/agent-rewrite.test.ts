@@ -56,7 +56,7 @@ function setup(opts: SetupOpts) {
   return { adapter, state, dynDefs, rewrite, getCalls: () => calls };
 }
 
-describe('parseRewriteOutput — END marker handling (the "END flicker" bug class)', () => {
+describe('parseRewriteOutput — END marker handling', () => {
   it('strips END followed by trailing whitespace', () => {
     expect(parseRewriteOutput('REWRITTEN:\nHi there.\nEND\n\n')).toBe('Hi there.');
   });
