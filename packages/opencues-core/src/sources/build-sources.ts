@@ -23,7 +23,7 @@ import { CuesMdConfig, SourceConfig, BlankConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource } from './blank-source';
-import { FluidBlankSource } from './fluid-blank-source';
+import { FluidBlankSource, type FluidBlankSourceConfig } from './fluid-blank-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
 
@@ -117,16 +117,24 @@ export interface BuildSourcesOptions {
    * opencues.md surfaces the trace. Silent when omitted.
    */
   log?: (msg: string) => void;
-  /**
-   * Optional pipeline-event subscriber for `TransformBlankSource`.
-   * Threaded through into the source's config; called with a
-   * `TransformBlankEvent` (started / pass-completed / completed /
-   * bailed) at every lifecycle boundary. Silent when omitted.
-   *
-   * Other instrumented sources may add their own typed callbacks here
-   * in the future — each source owns its own event taxonomy.
-   */
+  // ─── Per-source event subscribers ─────────────────────────────────────
+  //
+  // Uniform pattern: each instrumented source defines its own
+  // `<Name>Event` typed tagged union (started / pass-completed /
+  // completed / bailed) and exposes a `config.onEvent` callback in
+  // its config interface. `BuildSourcesOptions` exposes one
+  // `on<Name>Event` per source — each typed against the source's
+  // own event union. Sources without meaningful pipeline phases
+  // (LocalCueSource, BlankSource) stay uninstrumented; add a
+  // typed callback here when their lifecycle becomes worth observing.
+  //
+  // Runtime consumers (the agentic harness) namespace these events
+  // when adapting to their own event-stream format — core owns the
+  // names + body shapes; consumers adapt.
+  /** Subscriber for `TransformBlankSource` (3-pass pipeline). */
   onTransformBlankEvent?: TransformBlankSourceConfig['onEvent'];
+  /** Subscriber for `FluidBlankSource` (2-pass pipeline). */
+  onFluidBlankEvent?: FluidBlankSourceConfig['onEvent'];
 }
 
 /**
@@ -308,6 +316,7 @@ export function buildSourcesFromConfig(
         apiKey: resolved.apiKey,
         model: resolved.model,
         blanks: options.blanks ?? {},
+        onEvent: options.onFluidBlankEvent,
       }));
     }
   }

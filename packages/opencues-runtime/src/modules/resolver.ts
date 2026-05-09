@@ -311,17 +311,21 @@ export class Resolver {
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
       // users get no log spam.
       log: (msg: string) => this.adapter.log('debug', msg),
-      // Adapt core's typed TransformBlankEvent into the runtime's
-      // namespaced event stream. Core owns the event names + body
-      // shapes; runtime adds the `transform-blank.` prefix when
-      // forwarding to adapter.emitEvent. Silent when adapter doesn't
-      // wire emitEvent (i.e. agentic harness not armed). Type-imported
-      // dynamically because cuesCore is type-erased at the seam (see
-      // CuesCoreLike) — the explicit parameter type keeps strict-mode
-      // happy without re-importing the whole core surface here.
+      // Adapt core's typed source events into the runtime's namespaced
+      // event stream. Core owns the event names + body shapes; runtime
+      // adds the `<source-id>.` prefix when forwarding to
+      // adapter.emitEvent. Silent when emitEvent is undefined (i.e.
+      // agentic harness not armed). Each source's event union is
+      // imported dynamically because cuesCore is type-erased at the
+      // seam (see CuesCoreLike) — the explicit parameter types keep
+      // strict-mode happy without re-importing the whole core surface.
       onTransformBlankEvent: (event: import('@opencues/core').TransformBlankEvent) => {
         const { type, ...body } = event;
         this.adapter.emitEvent?.(`transform-blank.${type}`, body);
+      },
+      onFluidBlankEvent: (event: import('@opencues/core').FluidBlankEvent) => {
+        const { type, ...body } = event;
+        this.adapter.emitEvent?.(`fluid-blank.${type}`, body);
       },
     };
     let sources: unknown[];

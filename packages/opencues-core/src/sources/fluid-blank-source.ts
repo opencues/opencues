@@ -250,6 +250,27 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
   return [idx, idx + trimmed.length];
 }
 
+/**
+ * Lifecycle events emitted by `FluidBlankSource` during the 2-pass
+ * pipeline. Same pattern as `TransformBlankEvent` — core owns the
+ * domain types; runtime consumers (the agentic harness) namespace
+ * them when adapting to their own event-stream format.
+ */
+export type FluidBlankEvent =
+  /** Pipeline started. blankIdx = the `_` word index. */
+  | { type: 'started'; textLen: number; blankIdx: number }
+  /** P1 SEGMENT completed. `span` is the extracted lookup phrase
+   *  (incl. `_`); empty string means SEGMENT returned NONE. */
+  | { type: 'pass-completed'; pass: 'P1'; latencyMs: number; span: string; context: string }
+  /** P3 ANSWER completed. `answer` is the canonical short answer
+   *  produced for the span. */
+  | { type: 'pass-completed'; pass: 'P3'; latencyMs: number; answer: string }
+  /** Pipeline finished and produced a substitution. */
+  | { type: 'completed'; span: string; answer: string; mode: string; latencyMs: number }
+  /** Pipeline bailed early. `reason` is a stable kebab-case identifier
+   *  (no-blank, P1-no-span, P3-no-answer, llm-error). */
+  | { type: 'bailed'; reason: string; latencyMs: number };
+
 export interface FluidBlankSourceConfig {
   httpAdapter: HttpAdapter;
   provider: ProviderAdapter;
@@ -268,6 +289,13 @@ export interface FluidBlankSourceConfig {
    * claim. Now fluid mirrors BlankSource's claim rules so the dead zone is
    * gone. */
   blanks?: Record<string, BlankConfig>;
+  /**
+   * Optional pipeline-event subscriber. Mirrors
+   * `TransformBlankSourceConfig.onEvent` — receives a typed
+   * `FluidBlankEvent` at every lifecycle boundary. Runtime consumers
+   * map these into their own event-stream format. Silent when omitted.
+   */
+  onEvent?: (event: FluidBlankEvent) => void;
 }
 
 export class FluidBlankSource implements CueSource {
@@ -280,6 +308,7 @@ export class FluidBlankSource implements CueSource {
   private apiKey: string;
   private model: string;
   private blanks: Record<string, BlankConfig>;
+  private emit: (event: FluidBlankEvent) => void;
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -289,6 +318,7 @@ export class FluidBlankSource implements CueSource {
     this.model = config.model;
     this.priority = config.priority ?? 92;
     this.blanks = config.blanks ?? {};
+    this.emit = config.onEvent ?? (() => { /* default: silent */ });
   }
 
   supports(context: CueContext): boolean {
@@ -333,18 +363,32 @@ export class FluidBlankSource implements CueSource {
     const startTime = Date.now();
     try {
       const blankIdx = context.words.indexOf('_');
-      if (blankIdx === -1) return { results: [] };
+      if (blankIdx === -1) {
+        this.emit({ type: 'bailed', reason: 'no-blank', latencyMs: 0 });
+        return { results: [] };
+      }
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx });
 
       // P1 SEGMENT
+      const p1Start = Date.now();
       const segOut = await this.callLLM(P1_SYSTEM_PROMPT, `INPUT: ${context.text}`, 256);
       const span = parseSpan(segOut);
       const ctx = parseContext(segOut);
-      if (!span) return { results: [], timing: Date.now() - startTime, model: this.model };
+      this.emit({ type: 'pass-completed', pass: 'P1', latencyMs: Date.now() - p1Start, span: span ?? '', context: ctx ?? '' });
+      if (!span) {
+        this.emit({ type: 'bailed', reason: 'P1-no-span', latencyMs: Date.now() - startTime });
+        return { results: [], timing: Date.now() - startTime, model: this.model };
+      }
 
       // P3 ANSWER
+      const p3Start = Date.now();
       const ansOut = await this.callLLM(P3_SYSTEM_PROMPT, `SPAN: ${span}\nCONTEXT: ${ctx || 'none'}`, 200);
       const answer = parseAnswer(ansOut);
-      if (!answer) return { results: [], timing: Date.now() - startTime, model: this.model };
+      this.emit({ type: 'pass-completed', pass: 'P3', latencyMs: Date.now() - p3Start, answer: answer ?? '' });
+      if (!answer) {
+        this.emit({ type: 'bailed', reason: 'P3-no-answer', latencyMs: Date.now() - startTime });
+        return { results: [], timing: Date.now() - startTime, model: this.model };
+      }
 
       // Replacement mode
       const mode = determineReplaceMode(context.text);
@@ -372,8 +416,16 @@ export class FluidBlankSource implements CueSource {
         }
       }
 
+      this.emit({
+        type: 'completed',
+        span,
+        answer,
+        mode,
+        latencyMs: Date.now() - startTime,
+      });
       return { results: [result], timing: Date.now() - startTime, model: this.model };
     } catch (error) {
+      this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - startTime });
       return {
         results: [],
         error: error instanceof Error ? error.message : String(error),

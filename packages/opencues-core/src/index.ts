@@ -26,6 +26,7 @@ export {
   FluidBlankSource,
   determineReplaceMode,
   type FluidBlankSourceConfig,
+  type FluidBlankEvent,
 } from './sources/fluid-blank-source';
 
 export {

@@ -132,6 +132,10 @@ export type AgenticEventBody =
   | { type: 'transform-blank.pass-completed'; pass: 'P1' | 'P2' | 'P3'; latencyMs: number; verdict?: string; instruction?: string; target?: string; step?: number; totalSteps?: number }
   | { type: 'transform-blank.completed'; finalLen: number; finalPreview: string; latencyMs: number }
   | { type: 'transform-blank.bailed'; reason: string; latencyMs: number }
+  | { type: 'fluid-blank.started'; textLen: number; blankIdx: number }
+  | { type: 'fluid-blank.pass-completed'; pass: 'P1' | 'P3'; latencyMs: number; span?: string; context?: string; answer?: string }
+  | { type: 'fluid-blank.completed'; span: string; answer: string; mode: string; latencyMs: number }
+  | { type: 'fluid-blank.bailed'; reason: string; latencyMs: number }
   // Statusline barrier — emitted AFTER the status file's writeFile
   // promise resolves, so consumers can treat it as "the file at
   // exportPath is now fresh." Eliminates races between the harness's
