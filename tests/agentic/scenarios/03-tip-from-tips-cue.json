@@ -7,7 +7,7 @@
     {"action": "inject", "text": "we should ultrathink this approach"},
     {"action": "key", "key": "right", "modifiers": ["ctrl", "alt"]},
     {"action": "waitForEvent", "type": "highlight.activated", "path": "word", "equals": "ultrathink", "timeoutMs": 1500},
-    {"action": "sleep", "ms": 200},
+    {"action": "waitForEvent", "type": "statusline.snapshot", "timeoutMs": 1000},
     {"action": "expect", "path": "cueTip", "matches": "ultrathink"}
   ]
 }

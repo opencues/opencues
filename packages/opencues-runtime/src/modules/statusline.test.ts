@@ -56,6 +56,45 @@ describe('Statusline.buildPayload', () => {
 
 });
 
+describe('Statusline event emission', () => {
+  it('emits statusline.snapshot AFTER writeFile resolves (file-fresh barrier)', async () => {
+    const { adapter, hlState, statusline } = setup('alpha beta');
+    hlState.activate(0, 'alpha beta');
+    statusline.maybeWrite({ text: 'alpha beta', cursor: 0, externalHighlights: [] });
+    // adapter.writeFile is async (returns Promise) — flush microtasks
+    await new Promise(r => setImmediate(r));
+    const snaps = adapter.events.filter(e => e.type === 'statusline.snapshot');
+    expect(snaps).toHaveLength(1);
+    expect(snaps[0].body).toMatchObject({
+      exportPath: '/tmp/test-statusline.json',
+      active: true,
+    });
+  });
+
+  it('does not emit statusline.snapshot when exportPath is empty (in-process only)', async () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('hello');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const statusline = new Statusline(adapter, hlState, dynDefs, { exportPath: '' });
+    statusline.subscribe();
+    hlState.activate(0, 'hello');
+    statusline.maybeWrite({ text: 'hello', cursor: 0, externalHighlights: [] });
+    await new Promise(r => setImmediate(r));
+    expect(adapter.events.filter(e => e.type === 'statusline.snapshot')).toHaveLength(0);
+  });
+
+  it('emits statusline.snapshot exactly once per state change (deduped by stable JSON)', async () => {
+    const { adapter, hlState, statusline } = setup('alpha beta');
+    hlState.activate(0, 'alpha beta');
+    statusline.maybeWrite({ text: 'alpha beta', cursor: 0, externalHighlights: [] });
+    statusline.maybeWrite({ text: 'alpha beta', cursor: 0, externalHighlights: [] });
+    statusline.maybeWrite({ text: 'alpha beta', cursor: 0, externalHighlights: [] });
+    await new Promise(r => setImmediate(r));
+    expect(adapter.events.filter(e => e.type === 'statusline.snapshot')).toHaveLength(1);
+  });
+});
+
 describe('Statusline cue-tip plumbing', () => {
   const TIPS = wrapTipsAsCuesMd({
     domain: 'test',

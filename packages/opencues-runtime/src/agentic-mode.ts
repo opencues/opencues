@@ -132,6 +132,13 @@ export type AgenticEventBody =
   | { type: 'transform-blank.pass-completed'; pass: 'P1' | 'P2' | 'P3'; latencyMs: number; verdict?: string; instruction?: string; target?: string; step?: number; totalSteps?: number }
   | { type: 'transform-blank.completed'; finalLen: number; finalPreview: string; latencyMs: number }
   | { type: 'transform-blank.bailed'; reason: string; latencyMs: number }
+  // Statusline barrier — emitted AFTER the status file's writeFile
+  // promise resolves, so consumers can treat it as "the file at
+  // exportPath is now fresh." Eliminates races between the harness's
+  // synchronous StateProbe events and Statusline's async file write.
+  // Body is the full StatuslinePayload + the exportPath that was
+  // written.
+  | { type: 'statusline.snapshot'; exportPath: string; [k: string]: unknown }
   // Catch-all for module-emitted types not yet promoted to the canonical list.
   | { type: string; [k: string]: unknown }
   ;

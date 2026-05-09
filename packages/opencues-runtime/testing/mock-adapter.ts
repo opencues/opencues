@@ -239,6 +239,13 @@ export class MockAdapter implements HostAdapter {
     this.logs.push({ level, msg, data });
   }
 
+  /** Records of emitted structured events. Tests assert on these to
+   *  verify modules publish lifecycle events at the right boundaries. */
+  readonly events: Array<{ type: string; body?: Record<string, unknown> }> = [];
+  emitEvent(type: string, body?: Record<string, unknown>): void {
+    this.events.push({ type, body });
+  }
+
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
