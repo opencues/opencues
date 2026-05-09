@@ -49,7 +49,7 @@ var _wdef = { index: _r.wordIndex, word: _r.word, alts: ..., linked: _r.linked |
 
 ## Cycling Behaviour
 
-The linked-word cycling logic lives in `_cycleAlt` inside `dynamicHighlight.ts`. After the primary word is cycled to `_nextAlt`:
+The linked-word cycling logic lives in `_cycleAlt` inside `@opencues/runtime`. After the primary word is cycled to `_nextAlt`:
 
 1. **Guard**: Check `_dWord.linked && _dWord.linked.length > 0`
 2. **Iterate**: For each linked index `_lIdx`:

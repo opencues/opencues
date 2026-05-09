@@ -176,104 +176,30 @@ else
 fi
 end_step
 
-# ─── 4. Copy patch source files into tweakcc ──────────────────────────
+# ─── 4. Copy patch source + wire orchestrator ────────────────────────
+# Single source file: opencuesRuntime.ts. Older versions of this script
+# also copied per-feature v1 patches (cursorStateExport / wordHighlight /
+# dynamicHighlight); v2 replaced them with the in-process @opencues/runtime,
+# and they were removed from the repo.
 begin_step "Patching tweakcc source"
-PATCH_FILES=(cursorStateExport.ts wordHighlight.ts dynamicHighlight.ts opencuesRuntime.ts)
-for f in "${PATCH_FILES[@]}"; do
-  cp "$SCRIPT_DIR/$f" "$TWEAKCC_DIR/src/patches/"
-done
-echo "Copied ${#PATCH_FILES[@]} patch files"
+cp "$SCRIPT_DIR/opencuesRuntime.ts" "$TWEAKCC_DIR/src/patches/"
 
-# 4a. Patch types.ts — add MiscConfig field declarations.
-TYPES_FILE="$TWEAKCC_DIR/src/types.ts"
-node -e "
-const fs = require('fs');
-let content = fs.readFileSync('$TYPES_FILE', 'utf8');
-const additions = \`
-  // --- Cues Patches ---
-  enableCursorStateExport?: boolean;
-  cursorStateExportPath?: string;
-  enableWordHighlight?: boolean;
-  highlightColor?: 'white' | 'cyan' | 'yellow' | 'inverse' | 'underline';
-  highlightIndexFromLeft?: boolean;
-  highlightWrap?: boolean;
-  highlightAutoScroll?: boolean;
-  highlightClearOnEscape?: boolean;
-  highlightClearOnNavigation?: boolean;
-  highlightWordPattern?: 'whitespace' | 'alphanum' | string;
-  highlightMode?: 'words' | 'numbers';
-  highlightExportEnabled?: boolean;
-  highlightExportPath?: string;
-  numberDimming?: boolean;
-  enableDynamicHighlight?: boolean;
-  dynamicHighlightScriptPath?: string;
-  dynamicHighlightAutoSubmit?: boolean;
-  dynamicHighlightDebounceMs?: number;
-  ttsSpeed?: number;
-  ttsScript?: string;
-  opencuesRuntime?: 'v1' | 'v2';
-  blankOverrides?: { [word: string]: { name: string; scriptPath?: string; }; };
-\`;
-const m = content.match(/export interface MiscConfig \\{[^}]+/);
-if (!m) { console.error('Error: MiscConfig interface not found in types.ts'); process.exit(1); }
-content = content.slice(0, m.index + m[0].length) + additions + content.slice(m.index + m[0].length);
-fs.writeFileSync('$TYPES_FILE', content);
-console.log('Patched types.ts');
-"
-
-# 4b. Patch defaultSettings.ts — add MiscConfig defaults.
-DEFAULTS_FILE="$TWEAKCC_DIR/src/defaultSettings.ts"
-node -e "
-const fs = require('fs');
-let content = fs.readFileSync('$DEFAULTS_FILE', 'utf8');
-const additions = \`
-    // --- Cues Patches ---
-    enableCursorStateExport: true,
-    cursorStateExportPath: '/tmp/opencues-cursor-state.json',
-    enableWordHighlight: true,
-    highlightColor: 'white',
-    highlightIndexFromLeft: false,
-    highlightWrap: false,
-    highlightAutoScroll: true,
-    highlightClearOnEscape: true,
-    highlightClearOnNavigation: false,
-    highlightWordPattern: 'whitespace',
-    highlightMode: 'words',
-    highlightExportEnabled: true,
-    highlightExportPath: '/tmp/opencues-highlight-state.json',
-    numberDimming: true,
-    enableDynamicHighlight: true,
-    dynamicHighlightScriptPath: '~/.claude/llm-analyze.sh',
-    dynamicHighlightAutoSubmit: true,
-    dynamicHighlightDebounceMs: 500,
-    opencuesRuntime: 'v2',
-    blankOverrides: { volume: { name: 'volume' } },
-\`;
-const m = content.match(/misc:\\s*\\{/);
-if (!m) { console.error('Error: misc object not found in defaultSettings.ts'); process.exit(1); }
-content = content.slice(0, m.index + m[0].length) + additions + content.slice(m.index + m[0].length);
-fs.writeFileSync('$DEFAULTS_FILE', content);
-console.log('Patched defaultSettings.ts');
-"
-
-# 4b-bis. Flip the EXISTING tweakcc misc defaults that hide its launch banner.
-# tweakcc ships these as `true` in its own defaultSettings.ts. We don't add
-# them to our additions block (would duplicate the keys), we just sed-flip
-# the existing values from `true` to `false` so claude-cues launches without
-# tweakcc's "✓ tweakcc patches are applied" indicator + version line.
-sed -i 's/showTweakccVersion: true/showTweakccVersion: false/g' "$DEFAULTS_FILE"
-sed -i 's/showPatchesApplied: true/showPatchesApplied: false/g' "$DEFAULTS_FILE"
+# 4a. Hide tweakcc's launch banner + patches-applied indicator. We
+# don't add new MiscConfig fields — the v2 patch is unconditional and
+# doesn't need its own settings.
+sed -i 's/showTweakccVersion: true/showTweakccVersion: false/g' "$TWEAKCC_DIR/src/defaultSettings.ts"
+sed -i 's/showPatchesApplied: true/showPatchesApplied: false/g' "$TWEAKCC_DIR/src/defaultSettings.ts"
 echo "Flipped showTweakccVersion + showPatchesApplied to false"
 
-# 4c. Patch patches/index.ts — wire imports + the v2 orchestrator block.
+# 4b. Patch patches/index.ts — import the v2 writer + wire it
+# unconditionally into the orchestrator. Section 4d below disables
+# every other tweakcc patch, so opencues v2 is the only thing that
+# touches cli.js.
 INDEX_FILE="$TWEAKCC_DIR/src/patches/index.ts"
 node -e "
 const fs = require('fs');
 let content = fs.readFileSync('$INDEX_FILE', 'utf8');
 const importAddition = \`
-import { writeCursorStateExport } from './cursorStateExport';
-import { writeWordHighlight } from './wordHighlight';
-import { writeDynamicHighlight } from './dynamicHighlight';
 import { writeOpenCuesRuntimeV2 } from './opencuesRuntime';
 \`;
 const lastImport = content.lastIndexOf('import ');
@@ -282,50 +208,14 @@ content = content.slice(0, lastImportEnd) + '\\n' + importAddition + content.sli
 
 const patchCode = \`
 
-  // --- Cues Patches ---
-  // v2 runtime (default + only supported): thin opencuesRuntime bootstrap
-  // injected at S1/S3/S6 seams. v1 sub-patches kept importable as fallback.
+  // --- Cues Patch (v2) ---
+  // Single bootstrap injected at S1/S3/S6 seams; full feature surface
+  // (navigation, cycling, blanks, agent rewrite, …) lives in
+  // \\\`@opencues/runtime\\\` which the boot loads at runtime.
   {
-    let result: string | null;
-    const runtimeVersion = config.settings.misc?.opencuesRuntime ?? 'v2';
-    if (runtimeVersion === 'v2') {
-      if ((result = writeOpenCuesRuntimeV2(content))) content = result;
-      else console.error('patch: opencues v2 bootstrap failed — see above. Falling through to unpatched cli.js.');
-    } else {
-      if (config.settings.misc?.enableCursorStateExport) {
-        const exportPath = config.settings.misc?.cursorStateExportPath || '/tmp/opencues-cursor-state.json';
-        if ((result = writeCursorStateExport(content, exportPath))) content = result;
-      }
-      if (config.settings.misc?.enableWordHighlight) {
-        const highlightConfig = {
-          enableWordHighlight: config.settings.misc.enableWordHighlight,
-          highlightColor: config.settings.misc.highlightColor,
-          highlightIndexFromLeft: config.settings.misc.highlightIndexFromLeft,
-          highlightWrap: config.settings.misc.highlightWrap,
-          highlightAutoScroll: config.settings.misc.highlightAutoScroll,
-          highlightClearOnEscape: config.settings.misc.highlightClearOnEscape,
-          highlightClearOnNavigation: config.settings.misc.highlightClearOnNavigation,
-          highlightWordPattern: config.settings.misc.highlightWordPattern,
-          highlightMode: config.settings.misc.highlightMode,
-          highlightExportEnabled: config.settings.misc.highlightExportEnabled,
-          highlightExportPath: config.settings.misc.highlightExportPath,
-          numberDimming: config.settings.misc.numberDimming,
-          blankOverrides: config.settings.misc.blankOverrides,
-        };
-        if ((result = writeWordHighlight(content, highlightConfig))) content = result;
-      }
-      if (config.settings.misc?.enableDynamicHighlight !== false && config.settings.misc?.enableWordHighlight) {
-        const dynamicConfig = {
-          enableDynamicHighlight: true,
-          dynamicHighlightScriptPath: config.settings.misc?.dynamicHighlightScriptPath || '~/.claude/llm-analyze.sh',
-          dynamicHighlightAutoSubmit: config.settings.misc?.dynamicHighlightAutoSubmit || false,
-          dynamicHighlightDebounceMs: config.settings.misc?.dynamicHighlightDebounceMs || 500,
-          ttsSpeed: config.settings.misc?.ttsSpeed || 2,
-          ttsScript: config.settings.misc?.ttsScript || '',
-        };
-        if ((result = writeDynamicHighlight(content, dynamicConfig))) content = result;
-      }
-    }
+    const result = writeOpenCuesRuntimeV2(content);
+    if (result) content = result;
+    else console.error('patch: opencues v2 bootstrap failed — see above. cli.js stays unpatched.');
   }
 
 \`;
@@ -436,7 +326,7 @@ if ! grep -lq "writeOpenCuesRuntimeV2\|@opencues/runtime" "$TWEAKCC_DIR/dist/"*.
   echo "FATAL: tweakcc dist contains no opencues v2 code." >&4
   echo "  Searched: $TWEAKCC_DIR/dist/*.mjs" >&4
   echo "  Expected: writeOpenCuesRuntimeV2, @opencues/runtime" >&4
-  echo "  Likely cause: section 4c (orchestrator wiring) didn't run cleanly." >&4
+  echo "  Likely cause: section 4b (orchestrator wiring) didn't run cleanly." >&4
   exit 1
 fi
 end_step

@@ -1,6 +1,6 @@
 // Navigation module — Phase 1.
 //
-// Ported from the v1 patch (wordHighlight.ts:461/475). Handles Ctrl+Alt+Left
+// Ported from the original CC patch. Handles Ctrl+Alt+Left
 // and Ctrl+Alt+Right by walking the whitespace-separated word list from the
 // right-hand side and updating HighlightState.
 //
@@ -35,7 +35,7 @@ export class Navigation {
     /**
      * Optional. When provided, navigation prefers cueMap-mapped words; falls
      * back to all-words when no matches. Mirrors v1's nav filter from
-     * wordHighlight.ts:461.
+     * the original CC patch.
      */
     private configLoader?: ConfigLoader,
     /**

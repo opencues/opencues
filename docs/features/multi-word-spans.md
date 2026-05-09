@@ -58,7 +58,7 @@ When the user cycles to a different multi-word alternative (e.g., "Jeff Bezos"),
 
 ## Navigation in Spans
 
-The navigation filter in `dynamicHighlight.ts` (the `writeDynamicNavigation` function) handles spans with three checks per word at index `i`:
+The navigation filter in `@opencues/runtime` (the `writeDynamicNavigation` function) handles spans with three checks per word at index `i`:
 
 | Check | Variable | Meaning | Effect |
 |-------|----------|---------|--------|

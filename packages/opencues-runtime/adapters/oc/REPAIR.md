@@ -9,12 +9,15 @@ The runtime side is host-agnostic; the only band-specific code lives at:
 - `integrations/opencode/patches/opencuesBootstrap.ts`
 - `integrations/opencode/patches/setup.sh`
 
-## Live-fixes discovered during testing (O.2 → O.8)
+## Host quirks (Opencode v1.4) — known fixes baked into the adapter
 
-Eight bugs surfaced once we ran the patched fork in a real terminal.
-All eight are folded into `integrations/opencode/patches/advance.sh`'s
-fix block so every advance applies + verifies them. If you see any of
-the **symptoms** below, check the corresponding fix is still in place.
+Eight bugs surfaced when the adapter first ran against a live fork.
+All eight are baked into the current adapter sources
+(`packages/opencues-runtime/adapters/oc/v1.4/{adapter,boot}.ts` +
+`integrations/opencode/patches/opencuesBootstrap.ts`). If you see any
+of the **symptoms** below after an OpenCode version bump, check the
+corresponding fix is still in place — they're the easiest things to
+lose during a forward port.
 
 ### LF-1. Adapter `onKey` ignored its `KeyFilter` (O.3)
 

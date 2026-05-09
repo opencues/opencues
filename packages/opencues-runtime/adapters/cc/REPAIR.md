@@ -238,7 +238,7 @@ problems: holding Up issues a key dispatch per repeat (each would
 spawn the script), and `script up` doesn't echo the new value — we
 have to call `script get` separately to refresh the statusline.
 
-Pattern (mirrors v1 wordHighlight.ts:1015):
+Pattern (mirrors v1 the original CC patch):
 
 1. 50ms debounce on the up/down spawn — coalesces a held key into one
    write.

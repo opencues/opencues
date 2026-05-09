@@ -4,7 +4,7 @@ last_updated: 2026-04-26
 
 # Claude Code Patches
 
-The patch sources that get compiled into [tweakcc](https://github.com/Piebald-AI/tweakcc) and applied to Claude Code's `cli.js`. tweakcc is just our patcher tool — every stock tweakcc patch is disabled, only the OpenCues v2 wiring lands.
+The patch sources that get compiled into [tweakcc](https://github.com/Piebald-AI/tweakcc) and applied to Claude Code's `cli.js`. tweakcc is just our patcher tool — every stock tweakcc patch is disabled, only the OpenCues wiring lands.
 
 ## Quick install (preferred)
 
@@ -35,7 +35,7 @@ pnpm exec opencues install claude-code --target /path/to/cli.js
    - Build `@opencues/{core,runtime}` and install into `<CC_FORK>/node_modules/@opencues/`.
    - Install statusline.sh into `<CC_FORK>/.opencues/statusline.sh`.
    - Auto-fix `~/.claude/settings.json`'s `statusLine.command` if it points at a stale path.
-   - Build tweakcc + **verify** dist contains the v2 wiring (fail loud if missing).
+   - Build tweakcc + **verify** dist contains the wiring (fail loud if missing).
    - Apply tweakcc to cli.js + **verify** cli.js contains `@opencues/runtime` (fail loud if seam-miss).
 
 The whole pipeline is rocksolid against drift because:
@@ -56,7 +56,7 @@ The whole pipeline is rocksolid against drift because:
 ## What gets shipped
 
 After a successful install, the patched cli.js contains exactly:
-- The OpenCues v2 boot injection (`@opencues/runtime` require + dispatchKey wiring at the S1/S3/S6 seams)
+- The OpenCues boot injection (`@opencues/runtime` require + dispatchKey wiring at the S1/S3/S6 seams)
 - Nothing else from tweakcc
 
 No `verbose-property` token-count modification, no `opusplan1m` model option, no `thinker-symbol-*` spinner customization, no `worktree-mode` commands, no banner. Users who want tweakcc's other features should run stock tweakcc separately against their cli.js.
@@ -66,13 +66,7 @@ No `verbose-property` token-count modification, no `opusplan1m` model option, no
 ```
 integrations/claude-code/patches/
 ├── setup.sh                  # CC-specific install pipeline (called by opencues install)
-├── opencuesRuntime.ts        # The v2 patch source — boot + blankInvoke wiring
-├── cursorStateExport.ts      # Legacy v1 patches (unused — opencuesRuntime: 'v1' fallback only)
-├── wordHighlight.ts          # ↑
-├── dynamicHighlight.ts       # ↑
-├── types-additions.ts        # Reference: types added to tweakcc's MiscConfig
-├── defaultSettings-additions.ts  # Reference: defaults added to tweakcc
-├── index-additions.ts        # Reference: orchestrator wiring added to tweakcc index.ts
+├── opencuesRuntime.ts        # The patch source — boot + blankInvoke wiring at S1/S3/S6
 └── highlight-statusline.sh   # CC's statusline command — copied to <CC_FORK>/.opencues/statusline.sh
 ```
 

@@ -401,23 +401,13 @@ if (result) {
 }
 ```
 
-## Integration with dynamicHighlight.ts
+## Integration with `@opencues/runtime`
 
-opencues-core is used directly from the injected cli.js code (no shell scripts). The `writeCuesCoreInit` patch loads `.md` config files and builds all sources via `buildSourcesFromConfig()`:
+`@opencues/core` is consumed by `@opencues/runtime`'s `Resolver` module. On host launch, the runtime's `ConfigLoader` parses `.md` configs and `Resolver.rebuildResolver` calls `buildSourcesFromConfig()` from core to construct sources:
 
-```typescript
-// In dynamicHighlight.ts writeCuesCoreInit:
-// 1. Aggregate folder-based local cue data into a LocalCueSource
-// 2. Parse cues.md frontmatter (settings + ignore) + discover cues/<name>/ + blanks/<name>/
-// 3. Create NodeHttpAdapter (keep-alive, Groq provider config)
-// 4. buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, options) → sources
-//    - Word sources: each cues/<name>/cue.md becomes its own ConfigSource;
-//      all wrapped in ONE RoutedWordSourceGroup that dispatches per-word
-//    - Blank sources: BlankSource (keyword-bound, 95) +
-//      TransformBlankSource (imperative + generative + agent-task, 93) +
-//      FluidBlankSource (free-form lookup, 92)
-// 5. createResolver([...sources]) → globalThis._cueResolver
-```
+- Word sources: each `cues/<name>/cue.md` becomes its own `ConfigSource`; all wrapped in one `RoutedWordSourceGroup` that dispatches per-word.
+- Blank sources: `BlankSource` (keyword-bound, 95) + `TransformBlankSource` (imperative pipeline, 93) + `FluidBlankSource` (free-form lookup, 92).
+- The constructed resolver is held by `Resolver` and called on every text-change event (debounced ~500ms).
 
 ## Testing
 

@@ -1,6 +1,6 @@
 // CursorStateExport — Step 1.
 //
-// Mirrors v1's wordHighlight cursor-state export (cursorStateExport.ts):
+// Mirrors the original CC patch:
 // writes a JSON snapshot to a host-supplied path on every text/cursor
 // change, debounced ~100ms so a key-mash doesn't hammer the disk.
 //

@@ -6,7 +6,7 @@ last_updated: 2026-04-29
 
 Implements feature [11](../../../docs/features/cue-blanks.md). See that doc for the concept.
 
-**Patch files:** `patches/wordHighlight.ts` (navigation + dimming), `patches/dynamicHighlight.ts` (cycling + `blankInvoke` dispatch), `patches/opencuesRuntime.ts` (registers TS-class blanks into the host's `blanksRegistry`).
+**Implementation:** Navigation + dimming + cycling + `blankInvoke` dispatch all live in `@opencues/runtime`. The CC bootstrap (`patches/opencuesRuntime.ts`) registers TS-class blanks into the host's `blanksRegistry`.
 
 A cue-blank is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to `_`, the runtime auto-populates with a current value via `blankInvoke`, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
@@ -49,7 +49,7 @@ Cue-blanks are checked **first** in `_cycleAlt()`:
 3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
 4. **Linked words** → co-dependent words cycle together
 
-All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_cycleAlt` in `dynamicHighlight.ts`.
+All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_cycleAlt` in `@opencues/runtime`.
 
 ## Configuration
 
@@ -157,7 +157,7 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 ## Implementation Notes (Claude Code Specific)
 
-**Auto-populate mechanism**: The resolver callback sets `globalThis._pendingAutoPopulate`. This is consumed in the render-cycle IIFE in `wordHighlight.ts` (not in the resolver callback) because `onChange` must be called from a fresh React render context — stale closure references from `setTimeout` or async callbacks don't update the input.
+**Auto-populate mechanism**: The resolver callback sets `globalThis._pendingAutoPopulate`. This is consumed in the render-cycle IIFE in `@opencues/runtime` (not in the resolver callback) because `onChange` must be called from a fresh React render context — stale closure references from `setTimeout` or async callbacks don't update the input.
 
 **Live state reads**: The runtime's `blankInvoke` dispatcher calls registered TS-class `get()` directly. For shell-script blanks, the spawn-fallback uses `execFileSync` via `${requireFuncName}("child_process")`, never bare `require()` — see `architecture.md` § Development Notes.
 

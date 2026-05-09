@@ -168,20 +168,15 @@ The test suite covers parsers, source building, per-word routing, blank dispatch
 
 ### Live benchmarks
 
-Live LLM benchmarks live under `tests/benchmarks/`:
+Live LLM benchmarks live under `tests/benchmarks/` (TypeScript runners, one per pipeline):
 
 ```bash
-GROQ_API_KEY=xxx tests/benchmarks/run-all.sh    # full sweep
-GROQ_API_KEY=xxx tests/benchmarks/word.sh       # word-cue accuracy
-GROQ_API_KEY=xxx tests/benchmarks/factual.sh    # factual blank accuracy
-GROQ_API_KEY=xxx tests/benchmarks/math.sh       # math blank accuracy
-GROQ_API_KEY=xxx tests/benchmarks/prompt-improve.sh   # prompt-improver blank
-GROQ_API_KEY=xxx tsx tests/benchmarks/cues-core-benchmark.ts   # full pipeline
+GROQ_API_KEY=xxx npx tsx tests/benchmarks/agent-rewrite/run.ts        # AgentRewrite cadence + merge
+GROQ_API_KEY=xxx npx tsx tests/benchmarks/transform-blank/run.ts      # 3-pass imperative pipeline
+GROQ_API_KEY=xxx npx tsx tests/benchmarks/fluid-blank/run.ts          # free-form `_` lookup
 ```
 
-The fluid-blank pipeline (`tests/benchmarks/fluid-blank/`) has its own harness — generator, P1 + P3 + judges, 9 specialised baselines, ~600 cases.
-
-Results land in `tests/results/`. Compare runs to detect regressions. Word alternatives are inherently non-deterministic across runs; treat the score as a trend signal, not a pass/fail gate.
+Each runner emits a deterministic provider-router (default Groq + `gpt-oss-120b`); set `OPENCUES_BENCH_PROVIDER=gemini-flash-lite` to compare against Gemini. Results land in `tests/results/`. Word alternatives are inherently non-deterministic across runs; treat the score as a trend signal, not a pass/fail gate.
 
 ### Key source files
 

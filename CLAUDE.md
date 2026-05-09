@@ -115,12 +115,8 @@ opencues/
 ├── integrations/claude-code/      # Claude Code integration (@opencues/claude-code)
 │   ├── patches/                   # tweakcc patches + installer
 │   │   ├── setup.sh               # ONE-COMMAND INSTALLER
-│   │   ├── cursorStateExport.ts   # Cursor position → JSON
-│   │   ├── wordHighlight.ts       # Navigation, numbers, rendering, TTS
-│   │   ├── dynamicHighlight.ts    # LLM integration, cycling, spans, TTS
-│   │   ├── highlight-statusline.sh # Status line script
-│   │   └── actions/               # OS-bound scripts (speak.sh, brightness.sh, *.cs);
-│   │                              # copied into <CC_FORK>/.opencues/scripts/ at install time
+│   │   ├── opencuesRuntime.ts     # The patch source — boots @opencues/runtime via S1/S3/S6 seams
+│   │   └── highlight-statusline.sh # Status line script
 │   ├── docs/                      # Claude Code implementation docs
 │   │   ├── navigation.md          # Keys, modes, visual states, cursor export
 │   │   ├── cursor-positioning.md  # Cursor offset adjustment during blank fill
@@ -208,9 +204,7 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
   - **`adding-an-auditor.md`** Reference for shipping a new inline-rewrite concern (grammar, clarity, tone, etc.). Explains the composition model (one LLM call per agent tick, all auditors concatenated by priority desc), what the frontmatter does, why per-auditor `provider:` / `match:` are inert, and `<project>/.cues/AUDITORS.md` `disable:` for project-level scoping.
   - **`creating-a-cue-type.md`** ⚠️ Must-read before implementing a new cue type — covers dedicated global vs `_dynDefs` decision, span cleanup (word-level invalidation pattern), `def.word` contract, and section E pitfalls. **Update section E** when new invalidation or cleanup patterns are discovered.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
-  - **`tweakcc-setup.md`** — One-time tweakcc setup steps (patches to remove, cues block to comment out)
 - **`<CC_FORK>/.opencues/tweakcc/`** — tweakcc install lives inside the CC fork (re-cloned every from-scratch install — no global `~/tweakcc/` dir to manage)
-- **integrations/claude-code/reintegration/steps.md** — Progressive re-integration log (step status + what changed)
 - **docs/features/** — 21+ feature concepts (one file each)
 - **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), the cycling priority order (selector/satellite → spanFill → list blank → blankStep DynDef → static alts), the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
 - **docs/architecture/transform-blank.md** ⚠️ Canonical reference for the imperative-blank pipeline (EXTRACT → APPLY → VERIFY). Covers the 3-pass design rationale, prompt design (why minimal-EXTRACT but verbose-APPLY), sequential composition for "X and Y", skip-VERIFY rules, parser quirks (`[ \t]*` not `\s*`), runtime substitution, debug logs, and 10 concrete lessons from the experiment log. Read this before touching `transform-blank-source.ts` or any of the prompts. Companion: `tests/benchmarks/transform-blank/EXPERIMENTS.md` for the empirical justification of every design decision.
@@ -228,7 +222,7 @@ integrations/claude-code/patches/setup.sh
 ```
 
 The script:
-1. Copies patch `.ts` files (`cursorStateExport.ts`, `wordHighlight.ts`, `dynamicHighlight.ts`, `opencuesRuntime.ts`) to tweakcc and rebuilds it (compiles patches into `dist/`)
+1. Copies `opencuesRuntime.ts` to tweakcc and rebuilds it (compiles the patch into `dist/`)
 2. Builds `@opencues/core` and copies to `<CC_FORK>/node_modules/@opencues/core/` (so cli.js's bare-specifier `require("@opencues/core")` resolves via Node's standard upward walk — no symlinks)
 3. Builds `@opencues/runtime` and rsyncs `dist/` to `<CC_FORK>/node_modules/@opencues/runtime/`. Statusline script + OS action scripts go under `<CC_FORK>/.opencues/{statusline.sh,scripts/}`. tweakcc's own config + `cli.js.backup` redirect to `<CC_FORK>/.opencues/patch-state/` via `TWEAKCC_CONFIG_DIR`. **Compact footprint**: everything (runtime, support files, patcher state, patched cli.js) lives inside `~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert (mirrors OpenCode).
 4. Applies compiled patches to `claude-cues` (`~/claude-code-cues`)
@@ -571,33 +565,40 @@ Full spec: `docs/features/chrome-sync.md`.
 
 ---
 
-## Testing Harness (private)
+## Agentic Test Harness
 
-<!-- PRE-LAUNCH: This entire section and all references to opencues-auto MUST be removed
-     from this file AND scrubbed from git history before the repo goes public.
-     Use: git filter-repo --path-glob '*/CLAUDE.md' --replace-text <(echo 'opencues-auto==>REDACTED') -->
+`tests/agentic/` is the canonical end-to-end test harness for the
+runtime. Mounted inside `@opencues/runtime` (via `OPENCUES_AGENTIC=1`
+at host launch) so every host that calls `buildSharedRuntime` gets
+it for free — CC v2.1, OC v1.4, future hosts.
 
-A separate private repo (`~/.claude/opencues-auto/`) provides automated integration testing for the Claude Code integration. It is **not** part of the public opencues repo.
+**OpenCode is the reference platform** — TS + SolidJS + OpenTUI, full
+feature surface, redeploys via `opencues install opencode` in ~30s,
+launches headless via `tests/agentic/oc-launch-headless opencode`.
 
-**What it does:**
-- Injects text into a running Claude Code instance via file-based IPC
-- Moves the cursor, cycles alternatives, and reads highlight state — all programmatically
-- Runs test suites that verify cues, blanks, cue-blanks, cycling, transitions, and cursor-navigate
+**What it observes:**
+- File-based IPC: `/tmp/opencues-inject-<pid>.txt` (commands in),
+  `/tmp/opencues-events-<pid>.jsonl` (structured events out),
+  `/tmp/opencues-agentic-dump-<pid>.json` (full state snapshot),
+  `/tmp/opencues-agentic.pid` (active host pid).
+- Module-emitted events at every lifecycle boundary: `resolver.started/completed`
+  (with latency), `blank.invoked/substituted`, `transform-blank.pass-completed`
+  (P1/P2/P3 with verdict), `agent-rewrite.round-started/completed`, plus
+  state-class transitions (`highlight.activated`, `dyn-defs.size-changed`,
+  etc.). See `packages/opencues-runtime/src/agentic-mode.ts`.
 
 **When to use it:**
-- After modifying `wordHighlight.ts` or `dynamicHighlight.ts` — run the test suites to catch regressions
-- After adding a new feature — write tests in opencues-auto to cover it
-- After `setup.sh` — re-run `install-harness.sh` then restart Claude Code before testing
+- After modifying any module — write a scenario in
+  `tests/agentic/scenarios/` that exercises the change end-to-end on
+  OC, alongside the runtime unit tests.
+- For new features — emit structured events from the module via
+  `this.adapter.emitEvent?.('<module>.<verb>', {...})`, write a
+  scenario that asserts on those events, run against headless OC.
+- For regression hunts — capture an event-stream from a real session,
+  compare to a known-good baseline.
 
-**Setup:** `~/.claude/opencues-auto/claude-code/testing/install-harness.sh` (after `setup.sh`)
-
-**Test suites:**
-- `test-cues.sh` — core: alts, tips, cue-blanks, blanks (14 tests)
-- `test-cues-transitions.sh` — state isolation between injects (7 tests)
-- `test-cues-cycling.sh` — Up/Down cycling (9 tests)
-- `test-cursor-navigate.sh` — cursor-navigate feature (15 tests)
-
-See `~/.claude/opencues-auto/CLAUDE.md` for full documentation.
+See `tests/agentic/README.md` for the full event taxonomy + scenario
+format + the no-human-in-the-loop development cycle.
 
 ---
 

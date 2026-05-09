@@ -164,7 +164,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   }
 
   // cli.js is ESM-converted; bare `require` isn't defined. Use the
-  // createRequire-derived var that v1 patches also rely on.
+  // createRequire-derived var.
   const requireFn = getRequireFuncName(oldFile);
   if (!requireFn) {
     console.error('OpenCues v2 installer: failed to find createRequire function in cli.js. Aborting v2 patch.');
@@ -256,10 +256,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `return __ocCtl.createBlankInvoke(__ocReg);` +
     `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
     // Statusline export path. Per-PID so two CC instances don't collide.
-    // Matches v1's path so the existing highlight-statusline.sh keeps working.
     `statusFilePath:"/tmp/opencues-highlight-state-"+process.pid+".json",` +
-    // Cursor state export — single shared path matches v1; the
-    // opencues-auto harness reads this. Last-writer-wins is fine
+    // Cursor state export — single shared path. The agentic test
+    // harness (tests/agentic/) reads this. Last-writer-wins is fine
     // because the harness only drives one CC at a time.
     `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
     // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.cues/scripts/),
@@ -268,9 +267,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `ttsScriptPath:(process.env.OPENCUES_HOME||((process.env.HOME||"~")+"/.cues"))+"/scripts/speak.sh",` +
     `ttsRate:2,` +
     // LLM resolver. Resolver only constructs if AT LEAST ONE provider
-    // key is available. Endpoint + model match v1's defaults (Groq);
-    // when a non-Groq provider is selected via cues.md `llm-provider:`,
-    // the runtime substitutes that provider's defaults.
+    // key is available. Default endpoint + model are Groq; when a
+    // non-Groq provider is selected via cues.md `llm-provider:`, the
+    // runtime substitutes that provider's defaults.
     `llmApiKey:process.env.GROQ_API_KEY||undefined,` +
     `llmEndpoint:process.env.OPENCUES_LLM_ENDPOINT||"https://api.groq.com/openai/v1/chat/completions",` +
     `llmDefaultModel:process.env.OPENCUES_LLM_MODEL||"openai/gpt-oss-120b",` +

@@ -310,7 +310,7 @@ export function matchesFilter(event: KeyEvent, filter: KeyFilter | null): boolea
 /**
  * Compute the zero-width-char-toggled text that forces React to re-render the
  * input component without visibly changing content. Matches v1's mechanism
- * (wordHighlight.ts ~line 495): strip any trailing ZWS/ZWNJ, then append the
+ * : strip any trailing ZWS/ZWNJ, then append the
  * opposite of whatever was previously there. Callers pass the result to
  * `InputZone.fromText(newText, columns, offset)` and return it from the
  * KeyDispatcher.

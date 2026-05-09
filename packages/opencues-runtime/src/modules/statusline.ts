@@ -1,7 +1,7 @@
 // Statusline — exports a JSON snapshot of the runtime state on every render
 // for an external consumer (e.g. integrations/claude-code/patches/highlight-statusline.sh).
 //
-// The shape mirrors what v1's wordHighlight.ts wrote to
+// The shape mirrors what the original CC patch wrote to
 // /tmp/opencues-highlight-state-<pid>.json so the existing shell consumer
 // keeps working unchanged. Phase 4 covers the navigation+cycling subset of
 // fields; LLM/blank fields land as their modules ship.

@@ -5,7 +5,7 @@
 // single nav-then-cycle sequence speaks at most once per (word, alt) pair.
 // Fire-and-forget via adapter.spawnProcess({detached: true}) — we don't wait.
 //
-// Mirrors v1's behaviour (dynamicHighlight.ts:643): TTS only fires when the
+// Mirrors the original CC patch: TTS only fires when the
 // cue lookup has speak:true, the word has a tip, and the spawn-process
 // capability is available. No-op otherwise.
 

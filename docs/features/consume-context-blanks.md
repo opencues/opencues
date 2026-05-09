@@ -119,4 +119,4 @@ if (matched.blankConsumeContext) {
 }
 ```
 
-This expands `blankKeywordIndices` to cover the range between keyword and blank. The existing `blankClearKeywords` logic in `wordHighlight.ts` then removes all words at those indices during auto-populate.
+This expands `blankKeywordIndices` to cover the range between keyword and blank. The existing `blankClearKeywords` logic in `@opencues/runtime` then removes all words at those indices during auto-populate.

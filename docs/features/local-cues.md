@@ -106,7 +106,7 @@ if (!existingDef.metadata && newDef.metadata) existingDef.metadata = newDef.meta
 
 Because local results run first and populate `alts`, `cueTip`, and `source`, LLM results arriving later cannot overwrite them. This means tips are curated -- the LLM never replaces a locally defined tip or alternative set.
 
-Additionally, the integration layer (`dynamicHighlight.ts`) enforces this at merge time: when processing LLM results, it checks `if (_oldW2 && _oldW2.source === "tips") continue;` to skip LLM results entirely for tip-sourced words.
+Additionally, the integration layer (`@opencues/runtime`) enforces this at merge time: when processing LLM results, it checks `if (_oldW2 && _oldW2.source === "tips") continue;` to skip LLM results entirely for tip-sourced words.
 
 ---
 

@@ -6,7 +6,7 @@ last_updated: 2026-04-07
 
 Implements feature [14](../../../docs/features/secondary-display.md). See that doc for the concept.
 
-**Patch files:** `patches/highlight-statusline.sh` (status line script), `patches/wordHighlight.ts` (export JSON)
+**Patch files:** `patches/highlight-statusline.sh` (status line script). Highlight state is exported by @opencues/runtime Statusline module.
 
 Shows the highlighted word, tip text, and alternative count in Claude Code's status bar. Cue-blanks show their tip text only. Alt-cycling words show word, position, and tip.
 
@@ -33,16 +33,15 @@ Words without alts or a cue-blank tip produce no status line output.
 ## Data Flow
 
 ```
-Ctrl+Alt+Arrow → wordHighlight.ts writes JSON → status line script reads it → display
+Ctrl+Alt+Arrow → @opencues/runtime Statusline module writes JSON → status line script reads it → display
 ```
 
 | Step | Component | Action |
 |------|-----------|--------|
-| 1 | wordHighlight.ts | Writes `/tmp/opencues-highlight-state-{PID}.json` |
-| 2 | dynamicHighlight.ts | Also writes on Up/Down cycling (fresh `currentAltIndex`) |
-| 3 | Both patches | Call `_triggerStatusLineRefresh()` (300ms debounce) |
-| 4 | Claude Code | Spawns `highlight-statusline.sh` |
-| 5 | Script | Reads JSON, formats display (see Display Format below) |
+| 1 | `@opencues/runtime` Statusline | Writes `/tmp/opencues-status-{PID}.json` on every highlight state change |
+| 2 | Same module | Calls `host.refreshStatusline()` (CC: triggers the captured useCallback at the S6 seam, 300ms debounce) |
+| 3 | Claude Code | Spawns `highlight-statusline.sh` |
+| 4 | Script | Reads JSON, formats display (see Display Format below) |
 
 ## JSON Export Format
 
