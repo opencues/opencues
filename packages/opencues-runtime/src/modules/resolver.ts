@@ -65,8 +65,26 @@ interface CueResultLike {
   metadata?: Record<string, unknown>;
 }
 
+/** Duck-typed view of RoutedWordSourceGroup. We don't import the
+ *  class — the runtime treats core sources as opaque — but we do
+ *  reach in for the public `classify(word)` helper to surface
+ *  per-word routing decisions on `resolver.completed`. The only
+ *  shape we care about: `id === 'word-cues'` + `classify(word)
+ *  → { id: string } | null`. */
+interface RoutedWordSourceGroupLike {
+  readonly id: string;
+  classify(word: string): { id?: string } | null;
+}
+function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
+  return !!s
+    && typeof s === 'object'
+    && (s as { id?: unknown }).id === 'word-cues'
+    && typeof (s as { classify?: unknown }).classify === 'function';
+}
+
 export class Resolver {
   private _resolver: { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
+  private _sources: unknown[] = [];
   private _httpAdapter: unknown = null;
   private _unsubText: Unsubscribe | null = null;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -338,6 +356,7 @@ export class Resolver {
       return;
     }
 
+    this._sources = sources;
     this._resolver = cuesCore.createResolver(sources, {
       // Parallel: all sources run concurrently. Total latency = max(source
       // times) instead of sum. The merge-by-priority happens after all
@@ -489,6 +508,26 @@ export class Resolver {
     }
 
     this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
+    // Per-word routing/skipped surfaces which ConfigSource claimed each
+    // word — the structural property RoutedWordSourceGroup enforces for
+    // prompt-injection isolation. Empty-string entries in cleanWords
+    // mean a span/dyndef already owns the position; they're not surfaced
+    // here (internal optimisation, not a routing decision). `_` tokens
+    // route through the blank handlers, also out of scope. Words with
+    // no claiming source land in `skipped` — useful for catching cue
+    // configurations with unintended coverage gaps.
+    const routing: Array<{ wordIndex: number; word: string; sourceId: string }> = [];
+    const skipped: Array<{ wordIndex: number; word: string }> = [];
+    const wordCueGroup = this._sources.find(isRoutedWordGroup);
+    if (wordCueGroup) {
+      for (let i = 0; i < cleanWords.length; i++) {
+        const w = cleanWords[i];
+        if (!w || w === '_') continue;
+        const dest = wordCueGroup.classify(w);
+        if (dest && dest.id) routing.push({ wordIndex: i, word: w, sourceId: dest.id });
+        else skipped.push({ wordIndex: i, word: w });
+      }
+    }
     this.adapter.emitEvent?.('resolver.completed', {
       text: text.slice(0, 200),
       textLen: text.length,
@@ -496,6 +535,8 @@ export class Resolver {
       resultCount: result.results.length,
       latencyMs: Date.now() - t0,
       generation,
+      routing,
+      skipped,
     });
 
     // Stale check — a newer scheduleResolve might have run in between.

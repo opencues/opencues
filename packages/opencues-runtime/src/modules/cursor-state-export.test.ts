@@ -66,4 +66,24 @@ describe('CursorStateExport write behaviour', () => {
     const written = await adapter.readFile('/tmp/cs.json');
     expect(written).toBeNull();
   });
+
+  it('emits cursor-state.snapshot AFTER writeFile resolves', async () => {
+    const adapter = new MockAdapter();
+    adapter.pushText('alpha beta');
+    const cse = new CursorStateExport(adapter, { exportPath: '/tmp/cs.json', debounceMs: 1 });
+    cse.subscribe();
+    await new Promise(r => setTimeout(r, 10));
+    const ev = adapter.events.filter(e => e.type === 'cursor-state.snapshot');
+    expect(ev).toHaveLength(1);
+    expect(ev[0].body).toMatchObject({
+      exportPath: '/tmp/cs.json',
+      text: 'alpha beta',
+      textLength: 10,
+    });
+    // File-fresh barrier contract — by the time the event fires the
+    // file at exportPath must reflect the snapshot in the event body.
+    const written = await adapter.readFile('/tmp/cs.json');
+    expect(written).not.toBeNull();
+    expect(JSON.parse(written!).text).toBe('alpha beta');
+  });
 });

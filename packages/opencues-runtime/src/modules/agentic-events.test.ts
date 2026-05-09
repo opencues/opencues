@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { Cycling } from './cycling';
 import { ConfigLoader } from './config-loader';
 import { TTS } from './tts';
+import { Resolver } from './resolver';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { MockAdapter } from '../../testing/mock-adapter';
@@ -67,6 +68,42 @@ describe('agentic events', () => {
     });
     expect(reloads[0].body).toHaveProperty('voiceMode');
     expect(reloads[0].body).toHaveProperty('tipsMode');
+  });
+
+  it('resolver.completed includes per-word routing + skipped arrays', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
+    adapter.pushText('lawyer cabbage');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    // Stub source list: one RoutedWordSourceGroup that claims 'lawyer'
+    // for source id 'legal' and rejects everything else. Mirrors the
+    // shape build-sources.ts produces.
+    const fakeRoutedGroup = {
+      id: 'word-cues',
+      classify(word: string) {
+        if (word.toLowerCase() === 'lawyer') return { id: 'legal' };
+        return null;
+      },
+    };
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+      httpAdapter: {},
+      resolverFactory: () => [fakeRoutedGroup],
+    });
+    resolver.subscribe();
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async () => ({ results: [] }),
+    };
+    adapter.events.length = 0;
+    await resolver.resolveAndApply('lawyer cabbage');
+    const ev = adapter.events.filter(e => e.type === 'resolver.completed');
+    expect(ev).toHaveLength(1);
+    expect(ev[0].body).toMatchObject({
+      routing: [{ wordIndex: 0, word: 'lawyer', sourceId: 'legal' }],
+      skipped: [{ wordIndex: 1, word: 'cabbage' }],
+    });
   });
 
   it('tts.spoken fires via speakFn with phrase + source: lookup', async () => {

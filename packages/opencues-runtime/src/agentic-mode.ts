@@ -123,7 +123,7 @@ export type AgenticEventBody =
   // harness's reference modules produce; consumers should treat
   // `body` for these events as best-effort and tolerate missing fields.
   | { type: 'resolver.started'; text: string; textLen: number; generation: number }
-  | { type: 'resolver.completed'; text: string; textLen: number; cleanWords: number; resultCount: number; latencyMs: number; generation: number }
+  | { type: 'resolver.completed'; text: string; textLen: number; cleanWords: number; resultCount: number; latencyMs: number; generation: number; routing: ReadonlyArray<{ wordIndex: number; word: string; sourceId: string }>; skipped: ReadonlyArray<{ wordIndex: number; word: string }> }
   | { type: 'blank.invoked'; blankName: string; keyword: string; contextWords: readonly string[] }
   | { type: 'blank.substituted'; blankName: string; keyword: string; input: string; output: string; altCount: number; dismissible: boolean }
   | { type: 'agent-rewrite.round-started'; taskId: string | null; prompt: string; textLen: number; cursor: number }
@@ -159,6 +159,12 @@ export type AgenticEventBody =
   // Body is the full StatuslinePayload + the exportPath that was
   // written.
   | { type: 'statusline.snapshot'; exportPath: string; [k: string]: unknown }
+  // Cursor-state barrier — emitted AFTER cursor-state-export's
+  // writeFile resolves. Body is the full CursorStateSnapshot + the
+  // exportPath that was written. Lets scenarios assert "the file at
+  // exportPath now reflects this text/cursor pair" without racing the
+  // 100ms write debounce.
+  | { type: 'cursor-state.snapshot'; exportPath: string; text: string; cursorPosition: number; currentWord: string; atEnd: boolean; textLength: number; timestamp: number }
   // Catch-all for module-emitted types not yet promoted to the canonical list.
   | { type: string; [k: string]: unknown }
   ;

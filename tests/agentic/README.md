@@ -186,11 +186,50 @@ to `/tmp/opencues-events-<pid>.jsonl`. One JSON object per line:
 | Span fill | `span-fill.started`, `span-fill.completed` |
 | Selector/satellite | `selector-satellite.started`, `selector-satellite.completed` |
 | DynDefs | `dyn-defs.size-changed` |
-| Resolver (LLM cues) | `resolver.started`, `resolver.completed` (with text, cleanWords, resultCount, latencyMs) |
+| Resolver (LLM cues) | `resolver.started`, `resolver.completed` (with `text`, `cleanWords`, `resultCount`, `latencyMs`, `routing[]`, `skipped[]` — see "Per-word source routing" below) |
+| Cycling | `cycling.cycled` (`path: static-alts \| list-blank \| span-fill \| blank-step \| selector \| satellite`, `fromAltIndex`/`toAltIndex` or `fromText`/`toText`) |
 | BlankFill | `blank.invoked`, `blank.substituted` (with input/output/altCount/latencyMs) |
 | AgentRewrite | `agent-rewrite.round-started`, `agent-rewrite.round-completed` (with applied/dropped/latencyMs) |
 | TransformBlank pipeline | `transform-blank.started`, `transform-blank.pass-completed` (P1/P2/P3 with verdict + instruction + per-pass latency), `transform-blank.completed`, `transform-blank.bailed` |
+| FluidBlank pipeline | `fluid-blank.started`, `fluid-blank.pass-completed` (P1/P3 with span/answer + per-pass latency), `fluid-blank.completed`, `fluid-blank.bailed` |
+| ConfigLoader | `config.reloaded` (cueEntries, blankCount, voiceMode, tipsMode, debugMode, cursorNavigate) |
+| TTS | `tts.spoken` (phrase, rate, wordIndex, displayed, original, source: `span \| selector \| satellite \| lookup`, via: `speakFn \| spawnProcess`) |
+| File-write barriers | `statusline.snapshot` (after `/tmp/opencues-status-<pid>.json` resolves), `cursor-state.snapshot` (after `/tmp/opencues-cursor-state-<pid>.json` resolves) — guarantees the file at `exportPath` is fresh |
 | Custom modules | Any string `<module>.<verb>` — modules call `adapter.emitEvent(type, body)` |
+
+### Per-word source routing (`resolver.completed.routing` / `.skipped`)
+
+Every `resolver.completed` event includes two arrays that surface how
+`RoutedWordSourceGroup` dispatched the highlighted words:
+
+```jsonc
+{
+  "type": "resolver.completed",
+  "routing": [
+    { "wordIndex": 1, "word": "lawyer", "sourceId": "legal" },
+    { "wordIndex": 3, "word": "filed",  "sourceId": "spelling" }
+  ],
+  "skipped": [
+    { "wordIndex": 0, "word": "the" }   // no word-cue source matched
+  ]
+}
+```
+
+This is the structural property the Routed group enforces: **each word
+goes to at most one source**, so a hijacking prompt in `legal` cannot
+poison alternatives for words routed to `spelling`. The arrays let
+scenarios assert isolation directly:
+
+```jsonc
+{"action": "expectEvent", "type": "resolver.completed",
+ "path": "routing.0.sourceId", "equals": "legal"}
+```
+
+`routing` lists words that hit a source; `skipped` lists real words
+(non-empty, non-`_`) that no source claimed. Empty cleanWords entries
+(span/cycle-owned positions) and `_` tokens are intentionally not
+surfaced — they're handled by separate paths (cycling owns the former,
+blank handlers own the latter).
 
 The first three rows are **harness-emitted** (the agentic harness owns
 them). The Resolver / BlankFill / AgentRewrite / TransformBlank rows
@@ -277,8 +316,8 @@ Exit code 0 = all passed; 1 = some failed; 2 = bad usage.
 
 ## Reference scenarios
 
-Five scenarios in `tests/agentic/scenarios/` form the always-pass core
-suite (5/5 against a clean OC + fresh `~/.cues/` seeded from defaults):
+Six scenarios in `tests/agentic/scenarios/` form the always-pass core
+suite against a clean OC + fresh `~/.cues/` seeded from defaults:
 
 | File | What it exercises |
 |---|---|
@@ -287,6 +326,7 @@ suite (5/5 against a clean OC + fresh `~/.cues/` seeded from defaults):
 | `03-tip-from-tips-cue.json` | local-lookup tip (no LLM round-trip). `ultrathink` resolves under 1.5 s. |
 | `07-event-stream-cycling.json` | Same as 01 but uses `waitForEvent` / `expectEvent`. Demonstrates the event-stream API for state transitions. |
 | `08-transform-blank-pipeline.json` | `fix typos _ this is bad righting` → P1 EXTRACT (TRANSFORM verdict), P2 APPLY, P3 VERIFY (OK), final = "this is bad writing". Demonstrates how to assert on **module-emitted events** with verdict + per-pass timings — the canonical pattern for testing LLM-pipeline features. |
+| `09-fluid-blank-pipeline.json` | `atomic number of oxygen _` → P1 SEGMENT extracts span, P3 ANSWER produces `8`, buffer ends substituted. Mirror of 08 for FluidBlankSource — same uniform per-source event pattern. |
 
 Environment-dependent scenarios (network, user-config, runtime-version
 specific) live in `tests/agentic/scenarios/_flaky/` — see that folder's
@@ -322,6 +362,94 @@ When adding a new runtime feature:
 This is the no-human-in-the-loop development cycle. New features land
 with both unit tests AND end-to-end validation through OC; regressions
 in either layer block the merge.
+
+## Feature coverage
+
+Every shipped feature has at least one observable event. Use this
+table to find the right event for the assertion you want to write:
+
+| Feature | Primary event(s) | Notes |
+|---|---|---|
+| Navigation | `highlight.activated`, `highlight.deactivated`, `highlight.word-changed` | StateProbe-derived (poll-tick) |
+| Cycling (all 5 paths) | `cycling.cycled` | `path` field distinguishes static-alts / list-blank / span-fill / blank-step / selector / satellite |
+| Multi-word spans | `cycling.cycled` (path: `span-fill`) + `span-fill.*` | |
+| Selector / satellite | `selector-satellite.*` + `cycling.cycled` (path: `selector` or `satellite`) | |
+| Auto-submit / Local cues / Remote cues / Tip priority / Linked words | `resolver.started`, `resolver.completed` | All flow through the resolver round-trip |
+| Word-cue routing (prompt-injection isolation) | `resolver.completed.routing` + `.skipped` | Per-word source assignment |
+| Fill-in-the-blank / Cue-blanks / Consume-all / Consume-context | `blank.invoked`, `blank.substituted`, `span-fill.*` | |
+| Transform-blank | `transform-blank.{started,pass-completed,completed,bailed}` | P1/P2/P3 with verdicts |
+| Fluid-blank | `fluid-blank.{started,pass-completed,completed,bailed}` | P1/P3 with span + answer |
+| Agent-rewrite / Deterministic-relocate | `agent-rewrite.round-{started,completed}`, `agent-task.*` | |
+| Hot-reload-config / Config-search-paths / Chrome-hot-reload | `config.reloaded` | Fires on initial load + every reload |
+| TTS / voice-mode | `tts.spoken` | Both `speakFn` and `spawnProcess` paths |
+| Secondary display (statusline) | `statusline.snapshot` | File-fresh barrier |
+| Cursor-export | `cursor-state.snapshot` | File-fresh barrier (mirrors statusline) |
+| Cursor-preservation / Cursor-navigate | `cursor.changed` | |
+| Per-word clearing | `dyn-defs.size-changed` | |
+
+Out of scope (not observable through events): DimRender ranges, raw
+ANSI rendering, build-time concerns (host-compat, shipped-defaults,
+chrome-sync).
+
+## What you can do without a terminal
+
+Everything below runs against a `oc-launch-headless` host. Nothing
+requires a real keyboard, screen, or human attention.
+
+### Verify a feature works
+1. Pick the event(s) from the coverage table above.
+2. Write a scenario that injects the trigger input and asserts on the
+   event body (use `08-transform-blank-pipeline.json` as a template).
+3. Run with `scenario-runner --pid $PID --scenario your.json -v`.
+
+### Iterate on configs
+Write a `cues.md` / `BLANK.md` / `OPENCUES.md` to disk, then assert
+the runtime hot-reloaded:
+```bash
+cp my-edit.md ~/.cues/cues/legal/CUE.md
+oc-events $PID --type config.reloaded --since now    # cueEntries should reflect the change
+```
+
+### Benchmark model × feature combinations
+The transform-blank, fluid-blank, and agent-rewrite benchmarks under
+`tests/benchmarks/` already drive the source classes directly (no
+host needed). For end-to-end timing the agentic harness gives you
+per-pass `latencyMs` on every pipeline event:
+
+```bash
+OPENCUES_BENCH_PROVIDER=gemini-flash-lite \
+  ts-node tests/benchmarks/transform-blank/run.ts
+```
+
+### Test prompt-injection isolation
+`resolver.completed.routing` exposes which `ConfigSource` claimed each
+word. Drop a hostile prompt in one cue, drive a buffer that mixes
+domains, assert routing for non-matching words went elsewhere:
+
+```jsonc
+{"action": "expectEvent", "type": "resolver.completed",
+ "path": "routing", "matches": "\"sourceId\":\"legal\".*\"word\":\"lawyer\""}
+```
+
+### Reproduce regressions
+Capture the event stream from a real session
+(`oc-events $PID > baseline.jsonl`), make the change, replay against
+the new build, diff the streams.
+
+### Cross-host parity
+The same scenario file runs against any host that mounts
+`@opencues/runtime` with `OPENCUES_AGENTIC=1`. CC and OC behaviour
+must match for every event the scenario asserts on.
+
+### Limits
+- **Visual fidelity** — ANSI escapes go to /dev/null; assertions on
+  rendering must use `dim-render.test.ts` directly, not a scenario.
+- **LLM output quality** — events expose `latencyMs`, `resultCount`,
+  `verdict`, `applied`/`dropped`, but not whether the alternative is
+  *good*. Quality benchmarks live in `tests/benchmarks/`.
+- **Browser host** — Chrome integration runs in an actual browser;
+  the agentic harness covers the runtime, not the CSS Custom Highlight
+  API or DOM-level behaviour.
 
 ## When to use this
 
