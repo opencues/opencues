@@ -260,8 +260,9 @@ export class DynDefs {
    *
    * Spans whose current alt no longer appears as a substring anywhere
    * are returned as edited — the runtime treats those as "delete the
-   * whole span" so user backspaces don't leave the buffer in a weird
-   * partial state. See navigation.onTextChange for the buffer mutation.
+   * whole span" so user backspaces don't leave the buffer in an
+   * inconsistent partial state. See navigation.onTextChange for the
+   * buffer mutation.
    *
    * Returns the FIRST edited span found, or null. One per text-change
    * event is enough; the next event re-scans.

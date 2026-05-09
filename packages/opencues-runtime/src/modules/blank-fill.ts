@@ -789,8 +789,9 @@ export function computeFillRange(
  *     are also dropped — that's blankConsumeContext.
  *   - If `expansion` is given, it's inserted at keywordStart (replacing
  *     the dropped keyword). Callers should suppress `expansion` when
- *     consume-context is widening clearEnd to the blank — dropping
- *     context with an expansion still floating reads weirdly.
+ *     consume-context is widening clearEnd to the blank — leaving an
+ *     expansion in place after dropping its surrounding context produces
+ *     incoherent output.
  *   - The slot.index entry (the `_` token) is replaced with `fillValue`.
  *
  * Whitespace handling:

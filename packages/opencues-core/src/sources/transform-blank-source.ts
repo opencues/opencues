@@ -730,13 +730,11 @@ export class TransformBlankSource implements CueSource {
 
     // Always claim. EXTRACT is the authoritative classifier — if the
     // input isn't actually a transform, EXTRACT returns VERDICT: NONE
-    // and getCues() bails with an empty result. The keyword heuristic
-    // we used to gate on was brittle (missed "full caps", "fullcaps",
-    // etc.) so we let the LLM decide. Cost: one extra ~400ms LLM call
-    // per non-transform `_` typed. We previously called this a
-    // heuristic via looksLikeImperative() — kept the helper for
-    // potential future fast-path uses. See git history for the prior
-    // verb/phrase list.
+    // and getCues() bails with an empty result. A pre-LLM keyword
+    // heuristic missed common phrasings (e.g. "full caps", "fullcaps")
+    // so the LLM owns the decision. Cost: one extra ~400ms LLM call
+    // per non-transform `_` typed. looksLikeImperative() is kept as a
+    // potential fast-path helper for future use.
     void looksLikeImperative;  // keep export reachable
     return true;
   }
