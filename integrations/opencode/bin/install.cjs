@@ -113,6 +113,20 @@ function doInstall() {
     return;
   }
 
+  // Run the umbrella seed-configs first so the user-level ~/.cues/
+  // tree is current before setup.sh patches the fork. Mirrors what
+  // `opencues install opencode` (the umbrella front door) does — without
+  // this call, `pnpm --filter @opencues/opencode dev-install` (the
+  // contributor path) skips it, and any newly-shipped configs in
+  // defaults/{cues,blanks,auditors}/ silently fail to land in
+  // ~/.cues/. seed-configs is idempotent and has its own --silent
+  // mode so success stays quiet on the standard happy path.
+  const seedConfigsPath = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands/seed-configs.cjs');
+  if (fs.existsSync(seedConfigsPath)) {
+    const seedConfigs = require(seedConfigsPath);
+    seedConfigs(['--silent'], { REPO_ROOT });
+  }
+
   // Delegate to setup.sh. It owns its own progress output (▸/✓ lines)
   // + the final "Done. Launch with…" message; we stay silent on success
   // so the user sees one coherent flow rather than three competing

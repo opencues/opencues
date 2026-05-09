@@ -141,16 +141,17 @@ module.exports = function seedConfigs(argv, ctx) {
   // overrides, not library/utility files which stay user-level).
   if (projectScope) return;
 
-  // ── 1.5 ADDITIVE SEED — copy in any NEW subdirs (blanks/<name>,
-  // words/<name>) that exist in defaults/ but not yet in ~/.cues/.
-  // The original SEED phase only copies the top-level `blanks/` dir
-  // once; new shipped blanks (or words) added in a later release would
-  // otherwise be silently missed. .md inside copied subdirs is user
-  // content from then on (SYNC won't touch it). ──────────────────────
+  // ── 1.5 ADDITIVE SEED — copy in any NEW subdirs that exist under
+  // defaults/{cues,blanks,auditors}/ but not yet in ~/.cues/. The
+  // original SEED phase only copies each top-level dir once on first
+  // install; new shipped tip groups, blanks, or auditors added in a
+  // later release would otherwise be silently missed. .md content
+  // inside copied subdirs is user content from then on (SYNC won't
+  // touch it). ─────────────────────────────────────────────────────
   log('');
-  log('Additive seed (new entries from defaults/{words,blanks}/):');
+  log('Additive seed (new entries from defaults/{cues,blanks,auditors}/):');
   let added = 0;
-  for (const parent of ['words', 'blanks']) {
+  for (const parent of ['cues', 'blanks', 'auditors']) {
     const srcParent = path.join(sourceDir, parent);
     const dstParent = path.join(targetDir, parent);
     if (!fs.existsSync(srcParent)) continue;
