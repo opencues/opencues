@@ -617,6 +617,34 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
 // Source class
 // ============================================================================
 
+/**
+ * Lifecycle events emitted by `TransformBlankSource` during the 3-pass
+ * pipeline. Wire `onEvent` in the source's config to observe them.
+ *
+ * This is the canonical taxonomy — runtime consumers (the agentic
+ * harness) treat these as the source of truth and adapt them into
+ * their own event stream. Core OWNS the names + body shapes; nothing
+ * outside core gets to add to this union.
+ *
+ * Adding a new phase: extend the union here, emit it from the
+ * pipeline, document it. Renaming an existing phase is a
+ * breaking-change to consumers — bump the package version.
+ */
+export type TransformBlankEvent =
+  /** Pipeline started. textLen = full buffer length, blankIdx = the `_` word index. */
+  | { type: 'started'; textLen: number; blankIdx: number }
+  /** One pipeline pass completed. P1 = EXTRACT, P2 = APPLY (one or more
+   *  steps), P3 = VERIFY. P1 carries the verdict + extracted instruction;
+   *  P2 carries step / totalSteps; P3 carries the verify verdict. */
+  | { type: 'pass-completed'; pass: 'P1' | 'P2' | 'P3'; latencyMs: number;
+      verdict?: string; instruction?: string; target?: string;
+      step?: number; totalSteps?: number }
+  /** Pipeline finished and produced a final rewrite. */
+  | { type: 'completed'; finalLen: number; finalPreview: string; latencyMs: number }
+  /** Pipeline bailed early. `reason` is a stable kebab-case identifier
+   *  (P1-verdict-none-or-empty, P2-empty-result, etc.). */
+  | { type: 'bailed'; reason: string; latencyMs: number };
+
 export interface TransformBlankSourceConfig {
   httpAdapter: HttpAdapter;
   provider: ProviderAdapter;
@@ -640,13 +668,16 @@ export interface TransformBlankSourceConfig {
    */
   log?: (msg: string) => void;
   /**
-   * Optional structured-event emitter — called at lifecycle boundaries
-   * with a tagged-union body. Wire to the runtime's
-   * `adapter.emitEvent` so the agentic harness can observe the
-   * pipeline as point-in-time facts (transform-blank.pass-completed,
-   * .completed, .bailed). No-op when undefined.
+   * Optional pipeline-event subscriber — called at every lifecycle
+   * boundary with a typed `TransformBlankEvent`. Use this to surface
+   * what the pipeline is doing without parsing log lines.
+   *
+   * Runtime consumers map these into their own event-stream format
+   * (e.g. the agentic harness namespaces them as `transform-blank.<type>`
+   * before writing to its JSONL stream). Core owns the names + body
+   * shapes; consumers adapt.
    */
-  emitEvent?: (type: string, body?: Record<string, unknown>) => void;
+  onEvent?: (event: TransformBlankEvent) => void;
 }
 
 export class TransformBlankSource implements CueSource {
@@ -660,7 +691,7 @@ export class TransformBlankSource implements CueSource {
   private model: string;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
-  private emit: (type: string, body?: Record<string, unknown>) => void;
+  private emit: (event: TransformBlankEvent) => void;
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -671,7 +702,7 @@ export class TransformBlankSource implements CueSource {
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
-    this.emit = config.emitEvent ?? (() => { /* default: silent */ });
+    this.emit = config.onEvent ?? (() => { /* default: silent */ });
   }
 
   supports(context: CueContext): boolean {
@@ -722,7 +753,7 @@ export class TransformBlankSource implements CueSource {
 
       this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx})`);
       const __pipelineT0 = Date.now();
-      this.emit('transform-blank.started', { textLen: context.text.length, blankIdx });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx });
 
       // P1 EXTRACT — split into instruction (pipe-joined for composed)
       // and target. Token budget: target text contributes ~chars/4
@@ -745,7 +776,8 @@ export class TransformBlankSource implements CueSource {
       const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${extractText}`, p1Tokens);
       const ext = parseExtract(extractRaw);
       this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${context.asTypedText ? 'as-typed' : 'visible'}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
-      this.emit('transform-blank.pass-completed', {
+      this.emit({
+        type: 'pass-completed',
         pass: 'P1',
         verdict: ext.verdict,
         instruction: ext.instruction,
@@ -781,7 +813,7 @@ export class TransformBlankSource implements CueSource {
 
       if (ext.verdict === 'NONE' || !ext.instruction) {
         this.log(`TransformBlank: bailing — P1 verdict=NONE or empty instruction`);
-        this.emit('transform-blank.bailed', { reason: 'P1-verdict-none-or-empty', latencyMs: Date.now() - __pipelineT0 });
+        this.emit({ type: 'bailed', reason: 'P1-verdict-none-or-empty', latencyMs: Date.now() - __pipelineT0 });
         return { results: [], timing: Date.now() - startTime, model: this.model };
       }
 
@@ -844,7 +876,8 @@ export class TransformBlankSource implements CueSource {
         );
         const draft = parseApply(applyRaw).rewrite;
         this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
-        this.emit('transform-blank.pass-completed', {
+        this.emit({
+          type: 'pass-completed',
           pass: 'P2',
           step: i + 1,
           totalSteps: parts.length,
@@ -885,7 +918,8 @@ export class TransformBlankSource implements CueSource {
         );
         ver = parseVerify(verifyRaw);
         this.log(`TransformBlank P3 VERIFY (${Date.now() - p3Start}ms, max_tokens=${p3Tokens}): verdict=${ver.verdict}, rewrite="${preview(ver.rewrite)}"`);
-        this.emit('transform-blank.pass-completed', {
+        this.emit({
+          type: 'pass-completed',
           pass: 'P3',
           verdict: ver.verdict,
           latencyMs: Date.now() - p3Start,
@@ -910,7 +944,8 @@ export class TransformBlankSource implements CueSource {
       }
 
       this.log(`TransformBlank: pipeline done (${Date.now() - startTime}ms total) — final="${preview(finalRewrite)}"`);
-      this.emit('transform-blank.completed', {
+      this.emit({
+        type: 'completed',
         finalLen: finalRewrite.length,
         finalPreview: preview(finalRewrite),
         latencyMs: Date.now() - startTime,

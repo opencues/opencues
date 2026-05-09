@@ -31,6 +31,7 @@ export {
 export {
   TransformBlankSource,
   type TransformBlankSourceConfig,
+  type TransformBlankEvent,
 } from './sources/transform-blank-source';
 
 export {

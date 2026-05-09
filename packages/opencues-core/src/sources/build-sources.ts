@@ -24,7 +24,7 @@ import { ConfigSource } from './config-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource } from './blank-source';
 import { FluidBlankSource } from './fluid-blank-source';
-import { TransformBlankSource } from './transform-blank-source';
+import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
 
 /**
@@ -118,14 +118,15 @@ export interface BuildSourcesOptions {
    */
   log?: (msg: string) => void;
   /**
-   * Optional structured-event sink. Threaded through to sources that
-   * publish lifecycle events (currently TransformBlankSource —
-   * transform-blank.started, .pass-completed, .completed, .bailed).
-   * Wire to the runtime's `adapter.emitEvent` so the agentic harness
-   * can observe the LLM pipeline as point-in-time facts. Silent when
-   * omitted.
+   * Optional pipeline-event subscriber for `TransformBlankSource`.
+   * Threaded through into the source's config; called with a
+   * `TransformBlankEvent` (started / pass-completed / completed /
+   * bailed) at every lifecycle boundary. Silent when omitted.
+   *
+   * Other instrumented sources may add their own typed callbacks here
+   * in the future — each source owns its own event taxonomy.
    */
-  emitEvent?: (type: string, body?: Record<string, unknown>) => void;
+  onTransformBlankEvent?: TransformBlankSourceConfig['onEvent'];
 }
 
 /**
@@ -330,7 +331,7 @@ export function buildSourcesFromConfig(
         model: resolved.model,
         blanks: options.blanks ?? {},
         log: options.log,
-        emitEvent: options.emitEvent,
+        onEvent: options.onTransformBlankEvent,
       }));
     }
   }
