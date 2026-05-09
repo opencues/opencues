@@ -1,44 +1,136 @@
-/**
- * Agentic test harness — file-based IPC for driving the runtime without a
- * human at the keyboard.
- *
- * Armed by setting `OPENCUES_AGENTIC=1` before launching any host. The
- * runtime then polls `/tmp/opencues-inject-<pid>.txt` every 100 ms; each
- * non-empty line is one command:
- *
- *     text:<s>           — adapter.setText(s) + forceRender (clears highlight)
- *     text-keep-hl:<s>   — same, but the highlight survives (programmatic-write semantics)
- *     cursor:<n>         — adapter.setCursorOffset(n) + forceRender
- *     key:<name>:<mods>  — synthesise a KeyEvent + dispatch through the host pipeline.
- *                          mods is a `+`-joined subset of {ctrl, alt, shift, meta}.
- *                          example:  key:up:ctrl+alt
- *     dump               — write full runtime state to /tmp/opencues-agentic-dump-<pid>.json
- *     clear              — empty the buffer + reset cursor
- *     wait:<ms>          — no-op marker (the file is consumed in one cycle; this exists
- *                          for self-documenting multi-line scripts)
- *
- * Reads (Claude / a test runner consumes these):
- *
- *     /tmp/opencues-status-<pid>.json          Statusline export (already wired)
- *     /tmp/opencues-cursor-state-<pid>.json    CursorStateExport (already wired)
- *     /tmp/opencues-agentic-dump-<pid>.json    Full state — written on demand by `dump`
- *     /tmp/opencues.log                        Runtime debug log (already wired)
- *
- * Mounted from each host's boot.ts at the very end:
- *
- *     if (process.env.OPENCUES_AGENTIC === '1') {
- *       startAgenticHarness({ adapter, dispatchKey, state: shared, hostName, hostVersion });
- *     }
- *
- * Returns a handle with `stop()` (clearInterval) and `poll()` (manual cycle —
- * lets unit tests drive the loop without timing dependence).
- */
+// Agentic test harness — file-based IPC for driving the runtime without
+// a human at the keyboard. CORE module for agentic development of the
+// runtime: a test runner (or an LLM agent) writes a script, the
+// runtime executes it, the runner reads back the result.
+//
+// ─── How it works ──────────────────────────────────────────────────────
+//
+// Armed by setting `OPENCUES_AGENTIC=1` before launching any host. Each
+// host band (CC v2.1 / OC v1.4 / Gemini v0.41) calls `startAgenticHarness`
+// at the end of its boot() sequence with bindings to the local adapter,
+// dispatchKey closure, and shared state classes. The harness then:
+//
+//   1. Polls /tmp/opencues-inject-<pid>.txt every 100 ms. Each non-empty
+//      line is one command (see CommandRunner). Atomically consumed:
+//      file deleted before commands run, so a crash mid-script can't
+//      replay it.
+//
+//   2. Subscribes to adapter.onTextChange / .onCursorChange / .onKey to
+//      observe what the runtime did in response (or what the user did,
+//      when the harness shares an instance with a live user).
+//
+//   3. Probes state classes (HighlightState, DynDefs, AgentTaskState,
+//      SpanFillState, SelectorSatelliteState) on every tick. Transitions
+//      since the previous tick emit structured events.
+//
+//   4. Writes every observation to /tmp/opencues-events-<pid>.jsonl as
+//      append-only newline-delimited JSON. A test runner can stream-tail
+//      this file or read it as a snapshot — same fields either way.
+//
+//   5. On the `dump` command, writes the full state snapshot to
+//      /tmp/opencues-agentic-dump-<pid>.json (richer than what fits in
+//      the event stream — the entire DynDefs Map, full SpanFill object,
+//      capabilities, host metadata).
+//
+//   6. On arm, writes its own pid to /tmp/opencues-agentic.pid (or the
+//      OPENCUES_AGENTIC_PID_FILE override) so callers can grab it
+//      without grepping. Removed on stop.
+//
+// ─── Inject command grammar ────────────────────────────────────────────
+//
+//   text:<s>           → adapter.setText(s) + notifyTextChange(source=user)
+//   text-keep-hl:<s>   → same, source=runtime (highlight survives)
+//   cursor:<n>         → adapter.setCursorOffset(n) + notifyCursorChange
+//   key:<name>:<mods>  → synthesise KeyEvent through dispatchKey.
+//                        mods is `+`-joined: ctrl+alt+shift+meta
+//   clear              → buffer:='', cursor:=0
+//   dump               → write full state to dump file
+//   wait:<ms>          → no-op marker (the file is consumed in one cycle;
+//                        scripts split across multiple writes can sleep
+//                        in the harness driver between writes)
+//
+// ─── Files written ─────────────────────────────────────────────────────
+//
+//   /tmp/opencues-agentic.pid             pidfile, OPENCUES_AGENTIC_PID_FILE override
+//   /tmp/opencues-events-<pid>.jsonl      event stream, OPENCUES_AGENTIC_EVENTS_FILE override
+//   /tmp/opencues-agentic-dump-<pid>.json full state snapshot, on `dump` command
+//
+// ─── Files read ────────────────────────────────────────────────────────
+//
+//   /tmp/opencues-inject-<pid>.txt        consumed atomically every 100 ms
+//
+// ─── Why polling instead of inotify ────────────────────────────────────
+//
+// inotify is OS-specific and adds a binding dependency. The poll
+// interval (100 ms) is well below the LLM round-trip (200-1500 ms), so
+// the test runner's effective response time is dominated by the host
+// processing, not the harness's poll latency. This module deliberately
+// has zero external dependencies — only node:fs.
+//
+// ─── Versioning ────────────────────────────────────────────────────────
+//
+// Every event carries v:1 (AGENTIC_EVENT_SCHEMA_VERSION). Future schema
+// changes that aren't backwards-compatible bump the integer; consumers
+// gate on it. Add new event TYPES freely (consumers ignore unknown
+// types) — the version only changes when existing types' shape
+// changes.
 
 import * as fs from 'node:fs';
 import type { HostAdapter, KeyEvent } from './adapter';
 
+// ─── Public API types ────────────────────────────────────────────────────
+
+export const AGENTIC_EVENT_SCHEMA_VERSION = 1;
+
+/**
+ * Every event the harness emits to the JSONL stream. Tagged union for
+ * exhaustive consumer matching. Add new types freely (consumers must
+ * tolerate unknown types); only modify existing shapes when bumping
+ * AGENTIC_EVENT_SCHEMA_VERSION.
+ */
+export type AgenticEventBody =
+  // Lifecycle
+  | { type: 'harness.armed'; host: string; hostVersion: string; capabilities: readonly string[] }
+  | { type: 'harness.stopped' }
+  // Inject command flow
+  | { type: 'command'; cmd: string; arg: string }
+  | { type: 'command.error'; cmd: string; arg: string; error: string }
+  | { type: 'command.unknown'; line: string }
+  | { type: 'text.injected'; text: string; source: 'user' | 'runtime'; cursor: number }
+  | { type: 'cursor.injected'; cursor: number }
+  | { type: 'cleared' }
+  | { type: 'key.dispatched'; key: string; modifiers: KeyEvent['modifiers']; consumed: boolean }
+  | { type: 'dump.written'; path: string }
+  // Adapter-observed text/cursor changes (synthetic AND real). Source
+  // mirrors TextChangeEvent.source — widened beyond user|runtime so
+  // future host-emitted or unknown-origin events flow through cleanly.
+  | { type: 'text.changed'; text: string; cursor: number; source: 'user' | 'runtime' | 'host' | 'unknown'; previousText: string }
+  | { type: 'cursor.changed'; text: string; cursor: number; source: 'user' | 'runtime' | 'host' | 'unknown' }
+  // State-class transitions (poll-diff)
+  | { type: 'highlight.activated'; wordIndex: number; word: string }
+  | { type: 'highlight.deactivated' }
+  | { type: 'highlight.word-changed'; wordIndex: number; word: string; previousWordIndex: number | null }
+  | { type: 'dyn-defs.size-changed'; size: number; previousSize: number }
+  | { type: 'agent-task.armed'; taskId: string; prompt: string }
+  | { type: 'agent-task.stopped' }
+  | { type: 'span-fill.started'; entry: unknown }
+  | { type: 'span-fill.completed'; lastFilledText: string }
+  | { type: 'selector-satellite.started'; entry: unknown }
+  | { type: 'selector-satellite.completed' }
+  ;
+
+export interface AgenticEvent {
+  /** ms since epoch (Date.now()). */
+  readonly ts: number;
+  /** AGENTIC_EVENT_SCHEMA_VERSION at time of emit. */
+  readonly v: number;
+  /** Host process pid. */
+  readonly pid: number;
+  /** Tagged-union body. */
+  readonly body: AgenticEventBody;
+}
+
 export interface AgenticState {
-  /** Runtime state classes — anything serializable goes into the dump. */
   readonly hlState?: unknown;
   readonly dynDefs?: unknown;
   readonly spanFillState?: unknown;
@@ -50,232 +142,323 @@ export interface AgenticState {
 export interface AgenticBindings {
   readonly adapter: HostAdapter;
   /**
-   * Host-specific callback that runs a synthetic KeyEvent through the
-   * same key pipeline real keystrokes use. CC v2.1's bootResult.dispatchKey
-   * takes (rawEvent, text, cursor); OC + Gemini take just (KeyEvent). Each
-   * host wraps its own bootResult to match this single signature.
+   * Synthetic-key dispatch. CC v2.1 wraps bootResult.dispatchKey to
+   * sample text/cursor at the dispatch site (its closures are stale
+   * across React re-renders); OC + Gemini bind directly. Each host
+   * normalises to this single signature.
    */
   dispatchKey(event: KeyEvent): boolean;
   /**
-   * Fire a synthetic textChange event after a setText, so the Resolver,
-   * Statusline, CursorStateExport — anything that subscribes to
-   * `adapter.onTextChange` — picks up the change.
-   *
-   * Why this is needed: the OC + Gemini hosts wire textChange via their
-   * input component's `onContentChange` callback, which only fires for
-   * real keystrokes (insertChar/deleteChar). OpenTUI's `replaceText` —
-   * which is what `adapter.setText` lands on — does NOT fire
-   * onContentChange. So programmatic writes from the harness silently
-   * skip the event chain unless we re-emit here.
-   *
-   * Optional — if the host doesn't supply it, the harness skips the
-   * notify (CC v2.1 in particular tracks drift through applyRender
-   * instead of textChange events; its harness wiring leaves this null).
+   * Fire a synthetic textChange after a setText. OpenTUI's `replaceText`
+   * doesn't fire onContentChange — only real keystrokes do — so the
+   * host's onTextChange chain skips programmatic writes unless we
+   * re-emit here. Optional: CC tracks drift through applyRender so it
+   * can leave this null.
    */
   notifyTextChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
-  /** Same shape, for cursor-only moves. Optional. */
+  /** Same shape, for cursor-only injects. Optional. */
   notifyCursorChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
+  /** Runtime state classes — observed each tick for transition events,
+   *  serialized into the dump on demand. */
   readonly state: AgenticState;
 }
 
 export interface AgenticHarnessHandle {
-  /** Stop the polling interval. Idempotent. */
+  /** Stop the polling timer + flush + close the events stream. Idempotent. */
   stop(): void;
-  /**
-   * Manually run one poll cycle (consume the inject file if present).
-   * For unit tests — bypasses the 100 ms timer.
-   */
+  /** Manually run one poll cycle (consume inject file + probe state).
+   *  For unit tests — bypasses the 100 ms timer. */
   poll(): void;
-  /** Paths of the IPC files this harness is reading/writing. */
+  /** Paths of every file this harness reads or writes. */
   readonly paths: {
     readonly inject: string;
     readonly dump: string;
-    /** Single canonical pidfile — `cat $pid` to learn the host's PID. */
     readonly pid: string;
+    readonly events: string;
   };
 }
+
+// ─── EventStream ─────────────────────────────────────────────────────────
+//
+// JSONL writer for /tmp/opencues-events-<pid>.jsonl. Append-only,
+// truncated on arm so a fresh launch starts with a clean file. Closes
+// cleanly on stop. Every emit is wrapped in try/catch — a flaky FS
+// can't crash the runtime.
 
 const POLL_INTERVAL_MS = 100;
 
-/**
- * Arm the agentic test harness. No-op + warning if OPENCUES_AGENTIC isn't '1'
- * — callers gate on the env var themselves so tests can mount it explicitly.
- */
-export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
-  const pid = process.pid;
-  const injectFile = `/tmp/opencues-inject-${pid}.txt`;
-  const dumpFile = `/tmp/opencues-agentic-dump-${pid}.json`;
-  // Single canonical pidfile so callers don't have to grep the log or
-  // glob /tmp/opencues-status-*.json. Last-writer-wins (one armed host
-  // per pidfile path); per-host scoping comes for free via the
-  // OPENCUES_AGENTIC_PID_FILE env override (e.g. set it to
-  // `/tmp/opencues-agentic-cc.pid` when running CC alongside OC).
-  const pidFile = process.env.OPENCUES_AGENTIC_PID_FILE
-    ?? `/tmp/opencues-agentic.pid`;
+class EventStream {
+  private open = false;
 
-  const log = (msg: string, data?: unknown): void => {
-    try { b.adapter.log('info', `[agentic] ${msg}`, data); } catch { /* swallow */ }
-  };
-
-  // Write the pidfile up front. The agentic harness lives inside the
-  // host process, so process.pid IS the pid that owns
-  // /tmp/opencues-inject-<pid>.txt + the dump file. A test runner can
-  // do `PID=$(cat /tmp/opencues-agentic.pid)` instead of discovery.
-  try {
-    fs.writeFileSync(pidFile, String(pid));
-  } catch (err) {
-    log('pidfile write failed', { pidFile, err: String(err) });
+  constructor(
+    readonly path: string,
+    private readonly pid: number,
+  ) {
+    // Truncate any previous run's events (so consumers don't have to
+    // skip past stale data on start). Idempotent: if the file doesn't
+    // exist, writeFileSync('') creates it.
+    try { fs.writeFileSync(path, ''); this.open = true; } catch { /* swallow */ }
   }
 
-  log('harness armed', { pid, injectFile, dumpFile, pidFile });
+  /**
+   * Synchronous append — chosen over createWriteStream so a test runner
+   * can read the events file synchronously right after issuing a
+   * command. Cost is one open()/write()/close() per event (~100 µs on
+   * Linux); event volume is at most ~10/s during interactive use, so
+   * the overhead is negligible compared to the LLM round-trips that
+   * dominate runtime latency. If event volume ever spikes (e.g. a
+   * tight scripted loop), revisit by buffering + flushing on a timer.
+   */
+  emit(body: AgenticEventBody): void {
+    if (!this.open) return;
+    const evt: AgenticEvent = { ts: Date.now(), v: AGENTIC_EVENT_SCHEMA_VERSION, pid: this.pid, body };
+    try { fs.appendFileSync(this.path, JSON.stringify(evt) + '\n'); } catch { /* swallow */ }
+  }
 
-  function runCommands(text: string): void {
+  close(): void {
+    this.open = false;
+  }
+}
+
+// ─── StateProbe ──────────────────────────────────────────────────────────
+//
+// Read state-class snapshots each tick + diff against the previous
+// snapshot. Emit a structured event for each transition. State classes
+// expose getters (no observer pattern), so polling is the natural fit
+// — and it costs O(state-class-count) per tick (~10 reads/100 ms).
+//
+// Why poll-diff vs subscribe-on-change: state classes are intentionally
+// passive in the runtime (they don't emit; modules read them on render).
+// Adding observers would mean wiring every mutation site in every state
+// class. Polling stays out of the way.
+
+interface HlSnap { active: boolean; wordIndex: number | null; word: string }
+interface AgentSnap { armed: boolean; taskId: string | null; prompt: string }
+interface SpanSnap { current: unknown; lastFilledText: string }
+interface SelSnap { current: unknown }
+interface DefsSnap { size: number }
+
+class StateProbe {
+  private hl: HlSnap | null = null;
+  private agent: AgentSnap | null = null;
+  private span: SpanSnap | null = null;
+  private sel: SelSnap | null = null;
+  private defs: DefsSnap | null = null;
+
+  constructor(private readonly state: AgenticState, private readonly stream: EventStream) {}
+
+  /** Probe + emit transitions for everything we track. Called each
+   *  poll tick after the inject file is consumed. */
+  tick(): void {
+    this.tickHighlight();
+    this.tickAgentTask();
+    this.tickSpanFill();
+    this.tickSelectorSatellite();
+    this.tickDynDefs();
+  }
+
+  private tickHighlight(): void {
+    const hl = this.state.hlState as
+      | { active: boolean; wordIndex: number | null; text: string } | undefined;
+    if (!hl) return;
+    const wordIndex = hl.wordIndex;
+    const word = wordIndex != null ? wordOfBuffer(hl.text, wordIndex) : '';
+    const cur: HlSnap = { active: !!hl.active, wordIndex, word };
+    const prev = this.hl;
+    if (!prev || prev.active !== cur.active || prev.wordIndex !== cur.wordIndex) {
+      if (cur.active && (!prev || !prev.active)) {
+        this.stream.emit({ type: 'highlight.activated', wordIndex: cur.wordIndex ?? -1, word: cur.word });
+      } else if (!cur.active && prev?.active) {
+        this.stream.emit({ type: 'highlight.deactivated' });
+      } else if (cur.active && prev?.active && prev.wordIndex !== cur.wordIndex) {
+        this.stream.emit({
+          type: 'highlight.word-changed',
+          wordIndex: cur.wordIndex ?? -1,
+          word: cur.word,
+          previousWordIndex: prev.wordIndex,
+        });
+      }
+    }
+    this.hl = cur;
+  }
+
+  private tickAgentTask(): void {
+    const at = this.state.agentTaskState as
+      | { armed: boolean; taskId: string | null; prompt: string } | undefined;
+    if (!at) return;
+    const cur: AgentSnap = { armed: !!at.armed, taskId: at.taskId, prompt: at.prompt };
+    const prev = this.agent;
+    if (!prev || prev.armed !== cur.armed || prev.taskId !== cur.taskId) {
+      if (cur.armed && (!prev || !prev.armed)) {
+        this.stream.emit({ type: 'agent-task.armed', taskId: cur.taskId ?? '', prompt: cur.prompt });
+      } else if (!cur.armed && prev?.armed) {
+        this.stream.emit({ type: 'agent-task.stopped' });
+      }
+    }
+    this.agent = cur;
+  }
+
+  private tickSpanFill(): void {
+    const sf = this.state.spanFillState as
+      | { current: unknown; lastFilledText: string } | undefined;
+    if (!sf) return;
+    const cur: SpanSnap = { current: sf.current ?? null, lastFilledText: sf.lastFilledText ?? '' };
+    const prev = this.span;
+    if (!prev || prev.current !== cur.current) {
+      if (cur.current && (!prev || !prev.current)) {
+        this.stream.emit({ type: 'span-fill.started', entry: cur.current });
+      } else if (!cur.current && prev?.current) {
+        this.stream.emit({ type: 'span-fill.completed', lastFilledText: cur.lastFilledText });
+      }
+    }
+    this.span = cur;
+  }
+
+  private tickSelectorSatellite(): void {
+    const ss = this.state.selectorSatelliteState as { current: unknown } | undefined;
+    if (!ss) return;
+    const cur: SelSnap = { current: ss.current ?? null };
+    const prev = this.sel;
+    if (!prev || prev.current !== cur.current) {
+      if (cur.current && (!prev || !prev.current)) {
+        this.stream.emit({ type: 'selector-satellite.started', entry: cur.current });
+      } else if (!cur.current && prev?.current) {
+        this.stream.emit({ type: 'selector-satellite.completed' });
+      }
+    }
+    this.sel = cur;
+  }
+
+  private tickDynDefs(): void {
+    const dd = this.state.dynDefs as { size?: number } | undefined;
+    if (!dd) return;
+    const size = typeof dd.size === 'number' ? dd.size : 0;
+    const cur: DefsSnap = { size };
+    const prev = this.defs;
+    if (prev && prev.size !== cur.size) {
+      this.stream.emit({ type: 'dyn-defs.size-changed', size: cur.size, previousSize: prev.size });
+    }
+    this.defs = cur;
+  }
+}
+
+/** Pull the Nth word from a buffer (whitespace split). Used to
+ *  enrich highlight events — knowing the wordIndex isn't useful
+ *  without the actual word. */
+function wordOfBuffer(text: string, wordIndex: number): string {
+  if (wordIndex < 0) return '';
+  // Match the splitWords contract used by Navigation: split on \s+,
+  // drop empty tokens.
+  const words = text.split(/\s+/).filter(Boolean);
+  return words[wordIndex] ?? '';
+}
+
+// ─── CommandRunner ───────────────────────────────────────────────────────
+//
+// Parses one command line + executes it. Each command's effect is
+// surfaced as one or more events. Errors per-line are caught and
+// emitted as command.error so a single bad line doesn't abort the
+// rest of a script.
+
+class CommandRunner {
+  constructor(
+    private readonly bindings: AgenticBindings,
+    private readonly stream: EventStream,
+    private readonly writeDump: () => void,
+  ) {}
+
+  /** Run a multi-line script. Lines processed sequentially; failures
+   *  per-line do not abort the script. */
+  runScript(text: string): void {
     for (const raw of text.split('\n')) {
       const line = raw.trim();
       if (!line) continue;
-      try { runOneCommand(line); } catch (err) {
-        log('command error', { line: line.slice(0, 100), err: String(err) });
+      const { cmd, arg } = parseLine(line);
+      this.stream.emit({ type: 'command', cmd, arg: arg.slice(0, 200) });
+      try { this.runOne(cmd, arg); }
+      catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        this.stream.emit({ type: 'command.error', cmd, arg: arg.slice(0, 200), error: msg });
       }
     }
   }
 
-  function runOneCommand(line: string): void {
-    const colonIdx = line.indexOf(':');
-    const cmd = colonIdx >= 0 ? line.slice(0, colonIdx) : line;
-    const arg = colonIdx >= 0 ? line.slice(colonIdx + 1) : '';
-
-    log('command', { cmd, arg: arg.slice(0, 120) });
-
+  private runOne(cmd: string, arg: string): void {
+    const { adapter } = this.bindings;
     switch (cmd) {
       case 'text':
       case 'text-keep-hl': {
-        // Two-step write: (1) put the text in the buffer; (2) fire a
-        // synthetic textChange event so the Resolver / Statusline /
-        // CursorStateExport actually see it. Step 2 is needed because
-        // OpenTUI's `replaceText` (what setText lands on for OC/Gemini)
-        // doesn't fire onContentChange — only real keystrokes do.
-        // `text:` claims user-typing semantics (Navigation will clear
-        // any existing highlight); `text-keep-hl:` claims runtime-write
-        // semantics (highlight survives, mirrors the bootstrap's
-        // sourceReclassifier path).
-        b.adapter.setText(arg);
+        // Two-step write: (1) buffer set; (2) synthetic textChange so
+        // the resolver / statusline see the change. OpenTUI's
+        // replaceText skips onContentChange for programmatic writes —
+        // see the file-header note + bootstrap source-reclassifier.
+        adapter.setText(arg);
         const source: 'user' | 'runtime' = cmd === 'text-keep-hl' ? 'runtime' : 'user';
-        const cursor = b.adapter.getCursorOffset();
-        log('notifyTextChange', {
-          source,
-          cursor,
-          hasCallback: typeof b.notifyTextChange === 'function',
-          textLen: arg.length,
-        });
-        b.notifyTextChange?.(arg, cursor, source);
-        b.adapter.forceRender();
-        break;
+        const cursor = adapter.getCursorOffset();
+        this.bindings.notifyTextChange?.(arg, cursor, source);
+        adapter.forceRender();
+        this.stream.emit({ type: 'text.injected', text: arg, source, cursor });
+        return;
       }
       case 'cursor': {
         const offset = parseInt(arg, 10);
-        if (Number.isFinite(offset) && offset >= 0) {
-          b.adapter.setCursorOffset(offset);
-          b.notifyCursorChange?.(b.adapter.getText(), offset, 'user');
-          b.adapter.forceRender();
-        } else {
-          log('cursor: bad offset', { arg });
+        if (!Number.isFinite(offset) || offset < 0) {
+          this.stream.emit({ type: 'command.error', cmd, arg, error: 'cursor: bad offset' });
+          return;
         }
-        break;
+        adapter.setCursorOffset(offset);
+        this.bindings.notifyCursorChange?.(adapter.getText(), offset, 'user');
+        adapter.forceRender();
+        this.stream.emit({ type: 'cursor.injected', cursor: offset });
+        return;
       }
       case 'key': {
-        const event = parseKeyArg(arg, b.adapter);
-        const consumed = b.dispatchKey(event);
-        log('key dispatched', { key: event.key, mods: event.modifiers, consumed });
-        break;
+        const event = parseKeyArg(arg, adapter);
+        const consumed = this.bindings.dispatchKey(event);
+        this.stream.emit({
+          type: 'key.dispatched',
+          key: event.key,
+          modifiers: event.modifiers,
+          consumed,
+        });
+        return;
       }
       case 'clear': {
-        b.adapter.setText('');
-        b.adapter.setCursorOffset(0);
-        b.notifyTextChange?.('', 0, 'user');
-        b.adapter.forceRender();
-        break;
+        adapter.setText('');
+        adapter.setCursorOffset(0);
+        this.bindings.notifyTextChange?.('', 0, 'user');
+        adapter.forceRender();
+        this.stream.emit({ type: 'cleared' });
+        return;
       }
       case 'dump': {
-        writeDump();
-        break;
+        this.writeDump();
+        return;
       }
       case 'wait': {
-        // Documentation-only — see the file-header note.
-        break;
+        // Documentation-only — the inject file is consumed in one
+        // poll cycle, so wait gives the loop nothing to do. Scripts
+        // split across multiple file writes can sleep in the driver.
+        return;
       }
-      default:
-        log('unknown command', { line: line.slice(0, 100) });
+      default: {
+        this.stream.emit({ type: 'command.unknown', line: `${cmd}:${arg.slice(0, 100)}` });
+        return;
+      }
     }
   }
-
-  function writeDump(): void {
-    try {
-      const dump = {
-        text: safeCall(() => b.adapter.getText()),
-        cursor: safeCall(() => b.adapter.getCursorOffset()),
-        highlight: serializeHighlight(b.state.hlState),
-        dynDefs: serializeDynDefs(b.state.dynDefs),
-        spanFill: serializeOpaque(b.state.spanFillState),
-        dismissedBlanks: serializeOpaque(b.state.dismissedBlanks),
-        selectorSatellite: serializeOpaque(b.state.selectorSatelliteState),
-        agentTask: serializeAgentTask(b.state.agentTaskState),
-        capabilities: b.adapter.capabilities,
-        pid,
-        host: b.adapter.hostName,
-        hostVersion: b.adapter.hostVersion,
-        timestamp: new Date().toISOString(),
-      };
-      fs.writeFileSync(dumpFile, JSON.stringify(dump, null, 2));
-      log('dump written', { dumpFile, bytes: 0 });
-    } catch (err) {
-      log('dump failed', { err: String(err) });
-    }
-  }
-
-  let active = true;
-
-  function poll(): void {
-    if (!active) return;
-    let raw: string | null = null;
-    try {
-      if (!fs.existsSync(injectFile)) return;
-      raw = fs.readFileSync(injectFile, 'utf8');
-      // Atomic consume: delete BEFORE running commands so a crash
-      // mid-execution doesn't replay the same script next tick.
-      fs.unlinkSync(injectFile);
-    } catch (err) {
-      log('poll read failed', { err: String(err) });
-      return;
-    }
-    if (raw == null || raw === '') return;
-    runCommands(raw);
-  }
-
-  const interval = setInterval(poll, POLL_INTERVAL_MS);
-
-  return {
-    stop() {
-      if (!active) return;
-      active = false;
-      clearInterval(interval);
-      // Best-effort pidfile cleanup. Only delete if the file's contents
-      // still match THIS process — avoids racing with a newer host
-      // instance that already overwrote the pidfile (we'd otherwise
-      // leave the new host with a missing pidfile).
-      try {
-        if (fs.existsSync(pidFile)) {
-          const owner = fs.readFileSync(pidFile, 'utf8').trim();
-          if (owner === String(pid)) fs.unlinkSync(pidFile);
-        }
-      } catch { /* swallow */ }
-      log('harness stopped', { pid });
-    },
-    poll,
-    paths: { inject: injectFile, dump: dumpFile, pid: pidFile },
-  };
 }
 
-// ─── Key parsing ────────────────────────────────────────────────────────
+/**
+ * Split a single line of the inject script into `cmd` + `arg`.
+ * Commands that take colon-bearing args (key:up:ctrl+alt) work
+ * because we only split on the FIRST colon.
+ */
+function parseLine(line: string): { cmd: string; arg: string } {
+  const idx = line.indexOf(':');
+  if (idx < 0) return { cmd: line, arg: '' };
+  return { cmd: line.slice(0, idx), arg: line.slice(idx + 1) };
+}
 
 /**
  * Parse a `key:` argument string into a KeyEvent.
@@ -311,24 +494,26 @@ function parseKeyArg(arg: string, adapter: HostAdapter): KeyEvent {
   };
 }
 
-// ─── Serialization helpers ──────────────────────────────────────────────
+// ─── SerializerKit ───────────────────────────────────────────────────────
+//
+// State classes expose their read shape via getters on the prototype
+// (e.g. HighlightState.active is `get active() { return this._active }`).
+// JSON.stringify ignores non-enumerable getters by default, so we walk
+// the prototype + invoke each getter explicitly. Underscore-prefixed
+// fields are private implementation detail and are always skipped —
+// including them caused stale snapshots to leak (the public getter
+// reads coherent state; the backing fields were captured at different
+// moments).
 
 function safeCall<T>(fn: () => T): T | null {
   try { return fn(); } catch { return null; }
 }
 
-/**
- * Best-effort serialization of an opaque state object: enumerate
- * public getters on the prototype (skipping private `_`-prefixed
- * fields). State classes like HighlightState / DynDefs expose their
- * read-shape via getters; the underscored backing fields are
- * implementation detail and would leak stale snapshots into the dump
- * if included.
- */
 function serializeOpaque(obj: unknown): unknown {
   if (obj == null) return null;
   if (typeof obj !== 'object') return obj;
   const out: Record<string, unknown> = {};
+  // Public getters on the prototype — the canonical read shape.
   const proto = Object.getPrototypeOf(obj as object);
   if (proto) {
     for (const k of Object.getOwnPropertyNames(proto)) {
@@ -345,8 +530,8 @@ function serializeOpaque(obj: unknown): unknown {
       }
     }
   }
-  // Own enumerable, non-private fields too — covers plain-object state
-  // (test stubs etc.) that doesn't use the getter pattern.
+  // Own enumerable, non-private fields — covers plain-object stubs
+  // (test fixtures) that don't use the getter pattern.
   for (const k of Object.keys(obj as object)) {
     if (k.startsWith('_') || k in out) continue;
     try {
@@ -361,15 +546,9 @@ function serializeOpaque(obj: unknown): unknown {
   return out;
 }
 
-/**
- * HighlightState-aware view: surfaces the public read shape the v1
- * harness assertions all relied on (active / wordIndex / text), plus
- * any other getter the class exposes.
- */
 function serializeHighlight(hl: unknown): unknown {
   if (hl == null) return { active: false };
   const opaque = serializeOpaque(hl) as Record<string, unknown>;
-  // Always normalise the canonical fields even if the class shape evolves.
   return {
     active: !!opaque.active,
     wordIndex: opaque.wordIndex ?? null,
@@ -378,18 +557,13 @@ function serializeHighlight(hl: unknown): unknown {
   };
 }
 
-/**
- * DynDefs-aware view: dumps the defs as an array of [wordIndex, def]
- * pairs. DynDefs stores them as a private `_defs` Map; we read directly
- * (intentionally bypassing the privacy boundary because the dump's
- * point is to expose ALL state for testing, not to call the public
- * read API). Each def is serialized via serializeOpaque so its
- * internal shape (word, alts, tip, source, etc.) shows up.
- */
 function serializeDynDefs(dd: unknown): unknown {
   if (dd == null) return null;
   const view = serializeOpaque(dd) as Record<string, unknown>;
-  const internal = dd as { _defs?: Map<number, unknown>; size?: number };
+  // DynDefs's defs are a private Map. We bypass the privacy boundary
+  // intentionally — the dump's purpose is exposing all state for tests,
+  // not respecting the public read API.
+  const internal = dd as { _defs?: Map<number, unknown> };
   if (internal._defs instanceof Map) {
     view.defs = Array.from(internal._defs.entries()).map(([idx, def]) => ({
       wordIndex: idx,
@@ -400,11 +574,137 @@ function serializeDynDefs(dd: unknown): unknown {
   return view;
 }
 
-/**
- * AgentTaskState-aware view: armed / taskId / prompt are the keys the
- * statusline + tests inspect.
- */
-function serializeAgentTask(ats: unknown): unknown {
-  if (ats == null) return null;
-  return serializeOpaque(ats);
+// ─── Public entry point ──────────────────────────────────────────────────
+//
+// Each host's boot.ts mounts the harness if OPENCUES_AGENTIC=1. The
+// harness owns its lifecycle from there: start polling, write events,
+// stop on shutdown. Returns a handle for tests to drive directly
+// (poll + stop) without depending on the timer.
+
+export function startAgenticHarness(b: AgenticBindings): AgenticHarnessHandle {
+  const pid = process.pid;
+  const injectFile = `/tmp/opencues-inject-${pid}.txt`;
+  const dumpFile = `/tmp/opencues-agentic-dump-${pid}.json`;
+  const pidFile = process.env.OPENCUES_AGENTIC_PID_FILE
+    ?? `/tmp/opencues-agentic.pid`;
+  const eventsFile = process.env.OPENCUES_AGENTIC_EVENTS_FILE
+    ?? `/tmp/opencues-events-${pid}.jsonl`;
+
+  const log = (msg: string, data?: unknown): void => {
+    try { b.adapter.log('info', `[agentic] ${msg}`, data); } catch { /* swallow */ }
+  };
+
+  // Pidfile: written up front so callers don't race the first poll.
+  try { fs.writeFileSync(pidFile, String(pid)); } catch (err) {
+    log('pidfile write failed', { pidFile, err: String(err) });
+  }
+
+  const stream = new EventStream(eventsFile, pid);
+  stream.emit({
+    type: 'harness.armed',
+    host: b.adapter.hostName,
+    hostVersion: b.adapter.hostVersion,
+    capabilities: b.adapter.capabilities,
+  });
+  log('harness armed', { pid, injectFile, dumpFile, pidFile, eventsFile });
+
+  // Subscribe to adapter-level events so synthetic AND real text/cursor
+  // changes flow into the events stream uniformly. onCursorChange is
+  // optional on HostAdapter (some hosts can't distinguish cursor-only
+  // moves from typing — see adapter.ts), so we degrade gracefully when
+  // it's not provided. Unsubscribed on stop.
+  const unsubText = b.adapter.onTextChange(e => {
+    stream.emit({
+      type: 'text.changed',
+      text: e.text,
+      cursor: e.cursorOffset,
+      source: e.source,
+      previousText: e.previousText,
+    });
+  });
+  const unsubCursor = b.adapter.onCursorChange?.(e => {
+    stream.emit({
+      type: 'cursor.changed',
+      text: e.text,
+      cursor: e.cursorOffset,
+      source: e.source,
+    });
+  });
+
+  function writeDump(): void {
+    try {
+      const dump = {
+        v: AGENTIC_EVENT_SCHEMA_VERSION,
+        text: safeCall(() => b.adapter.getText()),
+        cursor: safeCall(() => b.adapter.getCursorOffset()),
+        highlight: serializeHighlight(b.state.hlState),
+        dynDefs: serializeDynDefs(b.state.dynDefs),
+        spanFill: serializeOpaque(b.state.spanFillState),
+        dismissedBlanks: serializeOpaque(b.state.dismissedBlanks),
+        selectorSatellite: serializeOpaque(b.state.selectorSatelliteState),
+        agentTask: serializeOpaque(b.state.agentTaskState),
+        capabilities: b.adapter.capabilities,
+        pid,
+        host: b.adapter.hostName,
+        hostVersion: b.adapter.hostVersion,
+        timestamp: new Date().toISOString(),
+      };
+      fs.writeFileSync(dumpFile, JSON.stringify(dump, null, 2));
+      stream.emit({ type: 'dump.written', path: dumpFile });
+    } catch (err) {
+      log('dump failed', { err: String(err) });
+    }
+  }
+
+  const runner = new CommandRunner(b, stream, writeDump);
+  const probe = new StateProbe(b.state, stream);
+
+  let active = true;
+
+  function poll(): void {
+    if (!active) return;
+    let raw: string | null = null;
+    try {
+      if (fs.existsSync(injectFile)) {
+        raw = fs.readFileSync(injectFile, 'utf8');
+        // Atomic consume: delete BEFORE running so a crash mid-script
+        // doesn't replay it next tick.
+        fs.unlinkSync(injectFile);
+      }
+    } catch (err) {
+      log('poll read failed', { err: String(err) });
+    }
+    if (raw && raw.length > 0) {
+      runner.runScript(raw);
+    }
+    // Probe state every tick — even if no inject ran, the runtime
+    // could have transitioned (LLM resolver returning, agent rewrite
+    // applying, blank-fill substituting).
+    probe.tick();
+  }
+
+  const interval = setInterval(poll, POLL_INTERVAL_MS);
+
+  return {
+    stop() {
+      if (!active) return;
+      active = false;
+      clearInterval(interval);
+      try { unsubText(); } catch { /* swallow */ }
+      try { unsubCursor?.(); } catch { /* swallow */ }
+      stream.emit({ type: 'harness.stopped' });
+      stream.close();
+      // Owner-checked pidfile cleanup: only delete if it still names us.
+      // Avoids racing a newer host's arm.
+      try {
+        if (fs.existsSync(pidFile)) {
+          const owner = fs.readFileSync(pidFile, 'utf8').trim();
+          if (owner === String(pid)) fs.unlinkSync(pidFile);
+        }
+      } catch { /* swallow */ }
+      log('harness stopped', { pid });
+    },
+    poll,
+    paths: { inject: injectFile, dump: dumpFile, pid: pidFile, events: eventsFile },
+  };
 }

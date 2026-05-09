@@ -152,47 +152,101 @@ sleep 1
 ~/opencues/tests/agentic/oc-dump $PID --field '.text'          # buffer now reflects cycle
 ```
 
-## CLI tooling (Phase B)
+## CLI tooling
 
-Five small bash wrappers in `tests/agentic/`:
+Bash wrappers in `tests/agentic/`:
 
-- **`oc-inject`** — write a script to the inject file. Args become lines; or pipe stdin.
-- **`oc-state`** — read the status JSON. `--field <jq-path>` extracts one value. `--watch` polls.
-- **`oc-dump`** — issue `dump` + read the result. `--field` for jq extraction. `--no-trigger` skips the inject.
-- **`oc-tail`** — tail the log. `-n <lines>`, `--grep <re>`, `--follow`.
-- **`oc-pid`** — find the running host's PID (filters by host name optionally).
+- **`oc-launch-headless <host>`** — boot a host fully detached, no UI. Returns PID on stdout.
+- **`oc-inject <pid> <cmds…>`** — write commands to the inject file. Args become lines; or pipe stdin.
+- **`oc-state <pid>`** — read the status JSON. `--field <jq-path>`, `--watch`.
+- **`oc-dump <pid>`** — issue `dump` + read the result. `--field`, `--no-trigger`.
+- **`oc-events <pid>`** — read or tail the event stream. `--type <name>[,<name>]`, `--follow`, `--since <ts>`.
+- **`oc-tail`** — tail the runtime log. `-n <lines>`, `--grep <re>`, `--follow`.
+- **`oc-pid [host]`** — find the running host's PID (uses pidfile fast path).
 
-All accept `<pid>` as their first arg. Use `oc-pid` if you don't have it.
+All accept `<pid>` as their first arg. Use `oc-pid` or `cat /tmp/opencues-agentic.pid` if you don't have it.
 
-## Scenario runner (Phase D)
+## Event stream — first-class observability
+
+The harness emits a structured event for every observable transition
+to `/tmp/opencues-events-<pid>.jsonl`. One JSON object per line:
+
+```json
+{"ts": 1778341567049, "v": 1, "pid": 21748, "body": {"type": "text.changed", "text": "we should ultrathink", "cursor": 0, "source": "user", "previousText": ""}}
+```
+
+**Event types** (tagged-union — see `agentic-mode.ts` for the full type):
+
+| Category | Event types |
+|---|---|
+| Lifecycle | `harness.armed`, `harness.stopped` |
+| Inject command flow | `command`, `command.error`, `command.unknown`, `text.injected`, `cursor.injected`, `cleared`, `key.dispatched`, `dump.written` |
+| Adapter-observed | `text.changed`, `cursor.changed` |
+| Highlight transitions | `highlight.activated`, `highlight.deactivated`, `highlight.word-changed` |
+| Agent task | `agent-task.armed`, `agent-task.stopped` |
+| Span fill | `span-fill.started`, `span-fill.completed` |
+| Selector/satellite | `selector-satellite.started`, `selector-satellite.completed` |
+| DynDefs | `dyn-defs.size-changed` |
+
+Every event carries `v: 1` (`AGENTIC_EVENT_SCHEMA_VERSION`). Schema bumps on incompatible body-shape changes; new event types can be added freely (consumers tolerate unknown types).
+
+```bash
+oc-events $PID                              # full stream
+oc-events $PID --type highlight.activated   # filter
+oc-events $PID --follow --type text.changed,key.dispatched
+oc-events $PID --since $(date +%s%3N)       # only events from now on
+```
+
+## Scenario runner
 
 `tests/agentic/scenario-runner.ts` consumes JSON scenario files and
 executes their step sequences. Each step is one of:
 
 ```jsonc
+// Commands (drive the harness)
 {"action": "clear"}
 {"action": "inject", "text": "the lawyer filed today"}
-{"action": "inject", "text": "...", "keepHighlight": true}
+{"action": "inject", "text": "...", "keepHighlight": true}      // source: runtime
 {"action": "cursor", "offset": 14}
 {"action": "key", "key": "up", "modifiers": ["ctrl", "alt"]}
-{"action": "dump"}                            // force a dump (already done by waitFor + expect with source: dump)
+{"action": "dump"}                                                // force fresh dump file
 {"action": "sleep", "ms": 200}
-{"action": "waitFor",                         // poll until predicate passes or timeout
+
+// Assertions on derived STATE (from /tmp/opencues-status-<pid>.json or dump)
+{"action": "waitFor",
  "path": "highlightedWord",
  "equals": "lawyer",
  "timeoutMs": 5000,
- "source": "status"}                          // or "dump" for the richer file
-{"action": "expect",                          // assert state once, no polling
+ "source": "status"}                           // or "dump" for richer fields
+{"action": "expect",
  "path": "alts.1",
  "equals": "attorney"}
-{"action": "expect",
- "path": "tip",
- "matches": "synonym|alternative"}            // regex match
+
+// Assertions on EVENTS (from /tmp/opencues-events-<pid>.jsonl) —
+// more precise for timing-sensitive paths since events are point-in-time facts.
+{"action": "waitForEvent",
+ "type": "highlight.activated",
+ "path": "word",                              // optional dot-path inside body
+ "equals": "ultrathink",
+ "timeoutMs": 3000,
+ "since": "now"}                              // or "all" or a numeric ts
+{"action": "expectEvent",
+ "type": "text.changed",
+ "path": "text",
+ "matches": "Tab"}
 ```
 
 `path` is dot notation (`alts.1`, `dynDefs.defs.0.word`). Numeric segments
 index arrays. `equals` does deep equality; `matches` is a regex against
 the stringified value.
+
+**When to use `waitFor` vs `waitForEvent`:**
+- **`waitFor`** polls *derived state* (the curated status file or full
+  dump). Good for "the system has reached this state" assertions.
+- **`waitForEvent`** scans the event stream for *point-in-time facts*
+  (a transition fired). Better for "this transition happened" — you
+  can prove highlight.activated fired even if the system has since
+  moved on (e.g. user typed more text and the highlight cleared).
 
 Run:
 
@@ -210,20 +264,21 @@ npx tsx tests/agentic/scenario-runner.ts --pid $HOST_PID \
 
 Exit code 0 = all passed; 1 = some failed; 2 = bad usage.
 
-## Existing scenarios
+## Reference scenarios
 
-Six demo scenarios in `tests/agentic/scenarios/` covering:
+Four scenarios in `tests/agentic/scenarios/` form the always-pass core
+suite (4/4 against a clean OC + fresh `~/.cues/` seeded from defaults):
 
 | File | What it exercises |
 |---|---|
-| `01-basic-cycling.json` | LLM resolves alts → cycle Up replaces text |
-| `02-clear-on-new-text.json` | Highlight resets when buffer is replaced |
-| `03-tip-from-tips-cue.json` | Local-lookup cue (no LLM) — `ultrathink` |
-| `04-blank-fill-weather.json` | Network blank — `weather _ paris` |
-| `05-numeric-step.json` | Step cue — `5f` ± 0.5 with floor at 0f |
-| `06-escape-clears.json` | Escape deactivates highlight without text change |
+| `01-basic-cycling.json` | inject → navigate → activate → cycle. Tips alts swap in buffer. |
+| `02-clear-on-new-text.json` | new buffer → highlight clears. Navigation owns deactivation on user-source text changes. |
+| `03-tip-from-tips-cue.json` | local-lookup tip (no LLM round-trip). `ultrathink` resolves under 1.5 s. |
+| `07-event-stream-cycling.json` | Same as 01 but uses `waitForEvent` / `expectEvent`. Demonstrates the event-stream API. |
 
-These are templates — extend liberally. Each is ~10-20 lines of JSON.
+Environment-dependent scenarios (network, user-config, runtime-version
+specific) live in `tests/agentic/scenarios/_flaky/` — see that folder's
+README for status. They aren't part of the green-checks baseline.
 
 ## Porting guide — translating v1 tests to scenarios
 

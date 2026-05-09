@@ -1,13 +1,15 @@
 {
-  "name": "highlight clears when user types new text",
+  "name": "highlight deactivates when buffer is replaced",
   "host": "any",
-  "description": "After a cue is highlighted, replacing the whole buffer with new text must deactivate the previous highlight (matches 'user typing' semantics — runtime cannot tell a new inject apart from the user clearing + retyping).",
+  "description": "Activate a highlight, then inject new text — Navigation should deactivate the highlight when the buffer changes from a 'user' source.",
   "steps": [
     {"action": "clear"},
-    {"action": "inject", "text": "the lawyer filed today"},
-    {"action": "waitFor", "path": "active", "equals": true, "timeoutMs": 8000},
+    {"action": "inject", "text": "we should ultrathink this approach"},
+    {"action": "key", "key": "right", "modifiers": ["ctrl", "alt"]},
+    {"action": "waitForEvent", "type": "highlight.activated", "timeoutMs": 3000},
+    {"action": "expect", "path": "active", "equals": true},
     {"action": "inject", "text": "completely different sentence about cats"},
-    {"action": "waitFor", "path": "highlightedWord", "matches": "(cats|sentence|completely|different|about)", "timeoutMs": 8000},
-    {"action": "expect", "path": "active", "equals": true}
+    {"action": "waitForEvent", "type": "highlight.deactivated", "timeoutMs": 2000},
+    {"action": "expect", "path": "active", "equals": false}
   ]
 }

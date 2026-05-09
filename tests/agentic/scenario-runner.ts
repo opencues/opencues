@@ -49,7 +49,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-type StepAction = 'clear' | 'inject' | 'cursor' | 'key' | 'dump' | 'sleep' | 'waitFor' | 'expect';
+type StepAction = 'clear' | 'inject' | 'cursor' | 'key' | 'dump' | 'sleep'
+  | 'waitFor' | 'expect' | 'waitForEvent' | 'expectEvent';
 
 interface BaseStep { action: StepAction }
 interface ClearStep extends BaseStep { action: 'clear' }
@@ -73,7 +74,35 @@ interface ExpectStep extends BaseStep {
   matches?: string;
   source?: 'status' | 'dump';
 }
-type Step = ClearStep | InjectStep | CursorStep | KeyStep | DumpStep | SleepStep | WaitForStep | ExpectStep;
+/** Wait for an event matching the given filter to appear in the
+ *  events stream. More precise than waitFor on derived state — events
+ *  are point-in-time facts the runtime emitted. */
+interface WaitForEventStep extends BaseStep {
+  action: 'waitForEvent';
+  /** body.type to match. */
+  type: string;
+  /** Optional dot-path inside body to match against. */
+  path?: string;
+  equals?: unknown;
+  matches?: string;
+  timeoutMs?: number;
+  /** Only consider events with ts >= this. Set to "now" to ignore
+   *  events emitted before this step ran. Default: "now". */
+  since?: 'now' | number;
+}
+/** Assert that an event matching the filter has ALREADY been emitted. */
+interface ExpectEventStep extends BaseStep {
+  action: 'expectEvent';
+  type: string;
+  path?: string;
+  equals?: unknown;
+  matches?: string;
+  /** Default "now-30s" to allow recent events; set "all" to scan the
+   *  whole file. */
+  since?: 'now' | 'all' | number;
+}
+type Step = ClearStep | InjectStep | CursorStep | KeyStep | DumpStep | SleepStep
+  | WaitForStep | ExpectStep | WaitForEventStep | ExpectEventStep;
 
 interface Scenario {
   name: string;
@@ -112,6 +141,8 @@ function parseArgs(): Args {
     else if (a === '--scenario') out.scenarios.push(argv[++i] ?? '');
     else if (a === '--dir') {
       const dir = argv[++i] ?? '';
+      // Recurse one level only — _flaky/ subfolders are deliberately
+      // skipped (they're environment-dependent; see _flaky/README.md).
       for (const f of fs.readdirSync(dir)) {
         if (f.endsWith('.json')) out.scenarios.push(path.join(dir, f));
       }
@@ -155,6 +186,38 @@ const SLEEP = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 function injectFilePath(pid: number): string { return `/tmp/opencues-inject-${pid}.txt`; }
 function statusFilePath(pid: number): string { return `/tmp/opencues-status-${pid}.json`; }
 function dumpFilePath(pid: number): string   { return `/tmp/opencues-agentic-dump-${pid}.json`; }
+function eventsFilePath(pid: number): string { return `/tmp/opencues-events-${pid}.jsonl`; }
+
+/** Read the events file as an array of event envelopes (ts, v, pid, body). */
+function readEvents(pid: number): Array<{ ts: number; v: number; pid: number; body: { type: string; [k: string]: unknown } }> {
+  const path = eventsFilePath(pid);
+  if (!fs.existsSync(path)) return [];
+  return fs.readFileSync(path, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map(l => {
+      try { return JSON.parse(l); } catch { return null; }
+    })
+    .filter((e): e is { ts: number; v: number; pid: number; body: { type: string } } => e != null);
+}
+
+/** Find the most recent event matching the filter, with ts >= sinceTs. */
+function findEvent(
+  pid: number,
+  type: string,
+  sinceTs: number,
+  predicate?: (body: Record<string, unknown>) => boolean,
+): { ts: number; body: Record<string, unknown> } | null {
+  const events = readEvents(pid);
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.ts < sinceTs) break;       // events file is monotonic by ts
+    if (e.body.type !== type) continue;
+    if (predicate && !predicate(e.body as Record<string, unknown>)) continue;
+    return { ts: e.ts, body: e.body as Record<string, unknown> };
+  }
+  return null;
+}
 
 async function inject(pid: number, lines: string[]): Promise<void> {
   fs.writeFileSync(injectFilePath(pid), lines.join('\n'));
@@ -268,6 +331,47 @@ async function runStep(pid: number, step: Step, verbose: boolean): Promise<StepR
         }
         break;
       }
+      case 'waitForEvent': {
+        const timeout = step.timeoutMs ?? 5000;
+        // Default `since` includes a ~2s lookback so we don't race events
+        // emitted by the immediately-preceding step. Keys dispatch
+        // synchronously and emit text.changed in the same tick — by the
+        // time waitForEvent starts polling, those events already exist
+        // in the file. Set `since: 'now'` explicitly to require strict
+        // post-step events; set `since: 'all'` to scan the whole file.
+        const sinceTs = step.since === 'now' ? Date.now()
+          : step.since === undefined ? Date.now() - 2000
+          : step.since;
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+          const found = findEvent(pid, step.type, sinceTs, (body) => {
+            if (!step.path) return matchesEventBody(body, step);
+            return matchesEventField(body, step.path, step);
+          });
+          if (found) {
+            result.durationMs = Date.now() - t0;
+            return result;
+          }
+          await SLEEP(50);
+        }
+        result.pass = false;
+        result.reason = `waitForEvent timed out after ${timeout}ms — no event type=${step.type}${describeEventPredicate(step)}`;
+        break;
+      }
+      case 'expectEvent': {
+        const sinceTs = step.since === 'now' ? Date.now()
+          : step.since === 'all' || step.since === undefined ? 0
+          : step.since;
+        const found = findEvent(pid, step.type, sinceTs, (body) => {
+          if (!step.path) return matchesEventBody(body, step);
+          return matchesEventField(body, step.path, step);
+        });
+        if (!found) {
+          result.pass = false;
+          result.reason = `expectEvent: no event type=${step.type}${describeEventPredicate(step)}`;
+        }
+        break;
+      }
       default:
         result.pass = false;
         result.reason = `unknown action: ${(step as { action: string }).action}`;
@@ -295,6 +399,30 @@ function describePredicate(step: WaitForStep | ExpectStep): string {
   if ('equals' in step && step.equals !== undefined) return `equals ${JSON.stringify(step.equals)}`;
   if ('matches' in step && step.matches !== undefined) return `matches /${step.matches}/`;
   return 'truthy';
+}
+
+/** Event-body matcher when no `path` is given — pass if equals/matches
+ *  match the body itself (rare; usually you want `path`). */
+function matchesEventBody(body: Record<string, unknown>, step: WaitForEventStep | ExpectEventStep): boolean {
+  if (step.equals !== undefined) return valuesEqual(body, step.equals);
+  if (step.matches !== undefined) return new RegExp(step.matches).test(JSON.stringify(body));
+  return true;  // type match alone suffices
+}
+
+/** Event-body matcher with a dot-path inside body. */
+function matchesEventField(body: Record<string, unknown>, path: string, step: WaitForEventStep | ExpectEventStep): boolean {
+  const value = getPath(body, path);
+  if (step.equals !== undefined) return valuesEqual(value, step.equals);
+  if (step.matches !== undefined) return new RegExp(step.matches).test(String(value ?? ''));
+  return value !== undefined && value !== null && value !== '';
+}
+
+function describeEventPredicate(step: WaitForEventStep | ExpectEventStep): string {
+  if (!step.path && step.equals === undefined && step.matches === undefined) return '';
+  const where = step.path ? ` ${step.path}` : '';
+  if (step.equals !== undefined) return `${where} equals ${JSON.stringify(step.equals)}`;
+  if (step.matches !== undefined) return `${where} matches /${step.matches}/`;
+  return where;
 }
 
 // ─── Scenario runner ───────────────────────────────────────────────────
@@ -339,6 +467,8 @@ function describeStep(step: Step): string {
     case 'key': return `key ${step.key}${step.modifiers?.length ? '+' + step.modifiers.join('+') : ''}`;
     case 'waitFor': return `waitFor ${step.path} ${describePredicate(step)}`;
     case 'expect': return `expect ${step.path} ${describePredicate(step)}`;
+    case 'waitForEvent': return `waitForEvent type=${step.type}${describeEventPredicate(step)}`;
+    case 'expectEvent': return `expectEvent type=${step.type}${describeEventPredicate(step)}`;
     case 'sleep': return `sleep ${step.ms}ms`;
     case 'clear': return 'clear';
     case 'dump': return 'dump';

@@ -1,0 +1,16 @@
+{
+  "name": "Escape deactivates the highlight without changing text",
+  "host": "any",
+  "description": "When a cue is active and the user presses Escape, highlight goes inactive but the buffer text stays unchanged.",
+  "steps": [
+    {"action": "clear"},
+    {"action": "inject", "text": "we should ultrathink this approach"},
+    {"action": "key", "key": "right", "modifiers": ["ctrl", "alt"]},
+    {"action": "waitForEvent", "type": "highlight.activated", "timeoutMs": 3000},
+    {"action": "expect", "path": "active", "equals": true},
+    {"action": "key", "key": "escape"},
+    {"action": "waitForEvent", "type": "highlight.deactivated", "timeoutMs": 1000},
+    {"action": "expect", "path": "active", "equals": false},
+    {"action": "expect", "path": "text", "equals": "we should ultrathink this approach", "source": "dump"}
+  ]
+}

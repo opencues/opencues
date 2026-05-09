@@ -1,15 +1,15 @@
 {
   "name": "basic cycling — alts cycle on Ctrl+Alt+Up",
   "host": "any",
-  "description": "Inject a sentence, verify the LLM resolves alts for one of the words, cycle Up, verify the buffer text now contains the first alternative.",
+  "description": "Inject text, navigate to a cued word (Ctrl+Alt+Right), verify the highlight activates with alts populated, cycle Up, verify the buffer text now contains the next alternative.",
   "steps": [
     {"action": "clear"},
-    {"action": "inject", "text": "the lawyer filed today"},
-    {"action": "waitFor", "path": "highlightedWord", "equals": "lawyer", "timeoutMs": 8000},
+    {"action": "inject", "text": "we should ultrathink this approach"},
+    {"action": "key", "key": "right", "modifiers": ["ctrl", "alt"]},
+    {"action": "waitForEvent", "type": "highlight.activated", "path": "word", "equals": "ultrathink", "timeoutMs": 3000},
     {"action": "expect", "path": "active", "equals": true},
     {"action": "key", "key": "up", "modifiers": ["ctrl", "alt"]},
-    {"action": "waitFor", "path": "currentAltIndex", "equals": 1, "timeoutMs": 2000},
-    {"action": "dump"},
-    {"action": "expect", "path": "text", "matches": "(attorney|counsel|advocate)", "source": "dump"}
+    {"action": "waitForEvent", "type": "text.changed", "path": "text", "matches": "Tab", "timeoutMs": 2000},
+    {"action": "expect", "path": "currentAltIndex", "equals": 1}
   ]
 }
