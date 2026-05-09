@@ -14,8 +14,8 @@ scenario that matches your symptom.
 
 ## Host quirks (Claude Code v2.1) — read this before debugging anything
 
-Lessons learned the hard way during Phase 1–3 live testing. These shape
-several non-obvious decisions in `boot.ts` and the patch.
+Quirks surfaced during live testing. These shape several non-obvious
+decisions in `boot.ts` and the patch.
 
 ### 1. `bindings.getText` / `bindings.getCursorOffset` are stale closures
 
@@ -28,7 +28,7 @@ invocation — it forever points at that long-gone `m`.
 **Consequence:** `host.getText()` returns whatever was on screen at boot
 time — typically empty or one-character.
 
-**Mitigation in v2 boot.ts (commit `e5d26f3` — Phase E.3):** the boot
+**Mitigation in v2 boot.ts (commit `e5d26f3`):** the boot
 keeps a `lastSeenText` / `lastSeenCursor` pair that's updated on every
 dispatch + render via `checkTextDrift`. `bindings.getText` /
 `bindings.getCursorOffset` now route through these freshness-tracked
@@ -83,7 +83,7 @@ changes (typing, navigating, cycling) do NOT trigger a re-run** by default.
 So if a v2 module updates its export file but the user only typed/navigated,
 the status line would stay stale until the next tool call.
 
-**v2 fix (Phase 4.5, current):** S6 seam captures CC's debounced refresh
+**v2 fix (current):** S6 seam captures CC's debounced refresh
 callback (`k=F$.useCallback(()=>{...setTimeout(...,300,Z,V)...},[V])`) and
 exposes it as `globalThis.__oc_refreshHostStatusline`. The patch's host
 bindings include a `refreshStatusline` closure that calls it. `Statusline`
@@ -117,7 +117,7 @@ position order (S6 → S3 → S1 for v2.1.110) so each application leaves
 earlier indices valid. If you add S4 / S5 / S7 / S8, slot them into the
 same descending sort.
 
-### 5. Async modules need `pushText` (commit `e5d26f3` — Phase E.3)
+### 5. Async modules need `pushText` (commit `e5d26f3`)
 
 `adapter.setText` only stores `pendingText`; it surfaces on the next
 `consumePendingRender` (called from the dispatch path). For async
@@ -153,11 +153,11 @@ If TTS or any other detached caller starts mysteriously hanging,
 double-check that `spec.detached` is making it through — the stdio
 mode hinges on it.
 
-### 7. Overlapping dim ranges need coalescing in `applyDirectives` (commit pending — Phase E.10)
+### 7. Overlapping dim ranges need coalescing in `applyDirectives`
 
 Multiple sources can produce dim ranges for the same render: cue/control
-words get individual dims, and the consume-all span (Step 32) gets a
-single contiguous dim covering the whole prompt-improver fill. When the
+words get individual dims, and the consume-all span gets a single
+contiguous dim covering the whole prompt-improver fill. When the
 two overlap (a cue word inside a consume-all span), naive insertion of
 `DIM_ON`/`DIM_OFF` boundaries emits a premature `DIM_OFF` at the inner
 range's end, leaving the rest of the outer range visually undimmed.
@@ -174,7 +174,7 @@ appear inside the fill.
 
 ### 8. `pushText` callers need to update `lastSeenText` themselves
 
-Found during Phase G.b (Step 35). `bindings.setText` records its
+Surfaced while wiring selector/satellite cycling. `bindings.setText` records its
 argument in `pendingText`; `consumePendingRender` then drains it and
 sets `lastSeenText` so the next `applyRender → checkTextDrift` sees no
 diff and doesn't fire a 'user' textChange.
@@ -200,7 +200,7 @@ boot.ts, expect this regression. The wrap is small but load-bearing.
 
 ### 9. Don't stack `\x1b[7m` (inverse) with `\x1b[2m` (dim) on the same chars
 
-Found during Phase F.a (Step 33). When a multi-word span fill is active
+Surfaced while wiring multi-word span fills with dismissal. When a multi-word span fill is active
 and the highlight covers the whole span, the natural temptation is to
 ALSO emit a dim layer for the same range "for clarity." Some terminals
 render dim-on-inverse with reduced contrast (almost invisible), others
@@ -222,7 +222,7 @@ matching control wins, so cycling `50%` from `volume _` could end up
 calling `brightness-blank.sh set`.
 
 Fix: BlankFill registers a DynDef carrying `controlName` for any
-numeric+suffix fill (Phase I.8). Cycling checks the DynDef BEFORE
+numeric+suffix fill. Cycling checks the DynDef BEFORE
 matchStepPattern (path 3a) so the originating control is always
 preferred over the regex match. Without the DynDef path,
 volume/brightness will silently cross-fire as soon as both are filled

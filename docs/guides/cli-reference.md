@@ -225,8 +225,8 @@ opencues version
 
 Read-only health check across every install. Looks for common
 breakages (missing `.env`, stale tweakcc state, unbuilt artefacts,
-node version mismatches, etc.) and suggests fixes. Run after a
-weird issue or before reporting a bug.
+node version mismatches, etc.) and suggests fixes. Run when something
+behaves unexpectedly, or before reporting a bug.
 
 ### `list` — every defined cue / blank + source
 

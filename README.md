@@ -489,5 +489,4 @@ New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — c
 
 ## License
 
-<!-- TODO: Switch to open-source license before launch -->
 Proprietary. All rights reserved. See [LICENSE](LICENSE).

@@ -57,12 +57,12 @@ the wrong word.
 
 ---
 
-## The three-phase algorithm
+## The three-pass algorithm
 
 `DynDefs.pruneStale(words)` runs every text-change pulse. Three
-phases, no mutation until phase 3:
+passes, no mutation until pass 3:
 
-**Phase 1 — classify.** For each existing `DynDef[i]`, decide one of:
+**Pass 1 — classify.** For each existing `DynDef[i]`, decide one of:
 
 - `keep` — `_defMatchesAt(def, i, words)` returns true. The def's
   word(s) still live where they were.
@@ -73,7 +73,7 @@ phases, no mutation until phase 3:
 
 Decisions are recorded; nothing is mutated yet.
 
-**Phase 2 — resolve collisions.** Two collision rules downgrade
+**Pass 2 — resolve collisions.** Two collision rules downgrade
 `move` to `drop`:
 
 - **Two moves to same target.** If `defA` wants `→ 5` and `defB`
@@ -82,13 +82,13 @@ Decisions are recorded; nothing is mutated yet.
   `decisions[5]` is `keep`, `defA` drops. We don't overwrite a
   def that's already correctly anchored.
 
-**Phase 3 — apply.** Two passes:
+**Pass 3 — apply.** Two sub-steps:
 
 1. Delete every entry that isn't `keep` (clears slots so incoming
    moves can land).
 2. Re-insert every `move` at its target index.
 
-Why three phases instead of one: collision detection has to see
+Why three passes instead of one: collision detection has to see
 **all** decisions before any mutation. Single-pass mutation would
 also break iteration order — a def moved to a higher index could
 be re-evaluated under its new index and double-act.

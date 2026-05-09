@@ -106,10 +106,9 @@ If the LLM call takes longer than the next tick's debounce, the next
 tick sees `_running === true` and bails. Only one LLM call is in
 flight at a time.
 
-Earlier designs used `setInterval(..., 1500ms)` — pure cadence, no
-debounce. Replaced because idle ticks burned LLM calls when the user
-wasn't typing. The event-driven debounce + skip-on-stable + cache is
-strictly cheaper and not noticeably less responsive.
+A pure-cadence `setInterval` design would issue calls even on an idle
+buffer. The event-driven debounce + skip-on-stable + cache is strictly
+cheaper (zero calls when no typing) and not noticeably less responsive.
 
 ---
 

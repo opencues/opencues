@@ -378,7 +378,7 @@ When you're about to do something significant, consider these tips:
 
 ---
 
-**TODO: Concepts to Document Later**
+### Quick reference — concepts and synonyms
 
 *Synonym Groups (user says X, means Y)*
 - undo/revert/rollback/go back → `/rewind`
