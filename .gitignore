@@ -16,3 +16,6 @@ integrations/claude-code/tweakcc/
 # fluid-blank generator output (locally accumulated, not source)
 tests/benchmarks/fluid-blank/cases-generated.jsonl
 .claude/worktrees/
+
+# Internal harness — lives in its own private repo, cloned into this path.
+tests/agentic/
