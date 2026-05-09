@@ -114,6 +114,7 @@ export class TTS {
     // brightness" because cueMap has an entry for "display" that's
     // unrelated to the selector context.
     let tip: string | undefined;
+    let tipSource: 'span' | 'selector' | 'satellite' | 'lookup' = 'lookup';
     const span = this.spanFillState?.current ?? null;
     const ss = this.selectorSatelliteState?.current ?? null;
     const ssSelEnd = ss ? ss.selectorIndex + Math.max(1, ss.selectorLength) - 1 : 0;
@@ -128,6 +129,7 @@ export class TTS {
       if (!blk || !(blk as { speak?: boolean }).speak) return null;
       const sdef = this.configLoader.opencuesState.definitions.get(ss!.currentSetting);
       tip = onSelector ? sdef?.tip : sdef?.valueTips.get(ss!.currentValue);
+      tipSource = onSelector ? 'selector' : 'satellite';
     } else if (inSpan) {
       // Span TTS gated on the originating blank's `speak`. Without
       // that gate, every multi-word fill would announce its blankTip
@@ -154,6 +156,7 @@ export class TTS {
       }
       if (!speakOK) return null;
       tip = span!.blankTip;
+      tipSource = 'span';
     } else {
       const lookup = this.configLoader.lookup(original);
       if (!lookup || !lookup.speak) {
@@ -178,6 +181,9 @@ export class TTS {
       try { this.options.speakFn(tip, rate); } catch (err) {
         this.adapter.log('error', 'TTS speakFn threw', err);
       }
+      this.adapter.emitEvent?.('tts.spoken', {
+        phrase: tip, rate, wordIndex, displayed, original, source: tipSource, via: 'speakFn',
+      });
       return tip;
     }
 
@@ -194,6 +200,9 @@ export class TTS {
       this.adapter.log('error', 'TTS spawnProcess threw', err);
       return null;
     }
+    this.adapter.emitEvent?.('tts.spoken', {
+      phrase: tip, rate, wordIndex, displayed, original, source: tipSource, via: 'spawnProcess',
+    });
     return tip;
   }
 }

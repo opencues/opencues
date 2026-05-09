@@ -632,6 +632,14 @@ export class ConfigLoader {
       debugMode: opencuesState.debugMode,
       cursorNavigate: opencuesState.cursorNavigate,
     })}`);
+    this.adapter.emitEvent?.('config.reloaded', {
+      cueEntries: cueMap.size,
+      blankCount: blanksByWord.size,
+      voiceMode: opencuesState.voiceMode,
+      tipsMode: opencuesState.tipsMode,
+      debugMode: opencuesState.debugMode,
+      cursorNavigate: opencuesState.cursorNavigate,
+    });
   }
 
   /**

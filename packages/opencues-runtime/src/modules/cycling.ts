@@ -105,7 +105,7 @@ export class Cycling {
     // 1. List blank (stepValues) — rotate values in-place.
     const blank = this.configLoader.lookupBlank(target.word);
     if (blank && blank.blank.stepValues && blank.blank.stepValues.length > 0) {
-      return this.cycleListBlank(event, target, blank, direction);
+      return this.cycleListBlank(event, target, blank, direction, 'list-blank');
     }
 
     // 2. Blank-fill DynDef with blankName attribution (Phase I.8) —
@@ -181,6 +181,15 @@ export class Cycling {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
 
+      this.adapter.emitEvent?.('cycling.cycled', {
+        wordIndex,
+        direction,
+        path: 'selector',
+        fromAltIndex: curIdx,
+        toAltIndex: nextIdx,
+        fromText: names[curIdx],
+        toText: nextSetting,
+      });
       const handle = this.invokeOrSpawn(entry.blankName, 'get', [nextSetting], entry.scriptPath, { timeoutMs: 4000 });
       if (handle) {
         handle.result.then(res => {
@@ -258,6 +267,15 @@ export class Cycling {
     } catch (err) {
       this.adapter.log('error', `Cycling: satellite set failed for ${entry.blankName}`, err);
     }
+    this.adapter.emitEvent?.('cycling.cycled', {
+      wordIndex,
+      direction,
+      path: 'satellite',
+      fromAltIndex: valIdx,
+      toAltIndex: nextValIdx,
+      fromText: def.valueOrder[valIdx],
+      toText: nextValue,
+    });
     return true;
   }
 
@@ -275,8 +293,10 @@ export class Cycling {
 
     const len = entry.alternatives.length;
     if (len <= 1) return false;
+    const fromAltIndex = entry.currentAltIndex;
     const nextIdx = ((entry.currentAltIndex + direction) % len + len) % len;
     const nextAlt = entry.alternatives[nextIdx];
+    const fromAlt = entry.alternatives[fromAltIndex];
 
     // Span char positions: from start of the first span word to end of the
     // last span word in the *current* text. If the user edited and the
@@ -320,6 +340,15 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    this.adapter.emitEvent?.('cycling.cycled', {
+      wordIndex,
+      direction,
+      path: 'span-fill',
+      fromAltIndex,
+      toAltIndex: nextIdx,
+      fromText: fromAlt,
+      toText: nextAlt,
+    });
     return true;
   }
 
@@ -330,6 +359,7 @@ export class Cycling {
     target: { word: string; start: number; end: number; index: number },
     entry: BlankEntry,
     direction: 1 | -1,
+    path: 'list-blank',
   ): boolean {
     const values = entry.blank.stepValues!;
     let def = this.dynDefs.get(target.index);
@@ -349,7 +379,7 @@ export class Cycling {
       void startIndex;
       this.dynDefs.set(target.index, def);
     }
-    return this.applyAltCycle(event, def, direction, target.index);
+    return this.applyAltCycle(event, def, direction, target.index, path);
   }
 
   // ─── Path 2: blank-fill DynDef route (volume / brightness) ───────────
@@ -415,6 +445,13 @@ export class Cycling {
     } catch (err) {
       this.adapter.log('error', `Cycling: blankScript set failed for ${blankName}`, err);
     }
+    this.adapter.emitEvent?.('cycling.cycled', {
+      wordIndex: target.index,
+      direction,
+      path: 'blank-step',
+      fromText: target.word,
+      toText: nextWord,
+    });
     return true;
   }
 
@@ -449,7 +486,7 @@ export class Cycling {
       def = built;
     }
     if (def.alternatives.length <= 1) return false;
-    return this.applyAltCycle(event, def, direction, wordIndex);
+    return this.applyAltCycle(event, def, direction, wordIndex, 'static-alts');
   }
 
   private buildDefFrom(target: { word: string; start: number; end: number; index: number }): WordDef | null {
@@ -471,7 +508,7 @@ export class Cycling {
 
   // ─── Shared alt-cycling loop ───────────────────────────────────────────
 
-  private applyAltCycle(event: KeyEvent, def: WordDef, direction: 1 | -1, wordIndex: number): boolean {
+  private applyAltCycle(event: KeyEvent, def: WordDef, direction: 1 | -1, wordIndex: number, path: 'static-alts' | 'list-blank'): boolean {
     const len = def.alternatives.length;
     if (len <= 1) return false;
 
@@ -497,6 +534,7 @@ export class Cycling {
     const rangeEnd = endWord.end;
 
     // Advance the cycle AFTER we've captured the current range.
+    const fromAltIndex = def.currentIndex;
     def.currentIndex = ((def.currentIndex + direction) % len + len) % len;
     const nextWord = def.alternatives[def.currentIndex];
 
@@ -545,6 +583,15 @@ export class Cycling {
     }
 
     this.adapter.forceRender();
+    this.adapter.emitEvent?.('cycling.cycled', {
+      wordIndex,
+      direction,
+      path,
+      fromAltIndex,
+      toAltIndex: def.currentIndex,
+      fromText: prevAlt,
+      toText: nextWord,
+    });
     return true;
   }
 }

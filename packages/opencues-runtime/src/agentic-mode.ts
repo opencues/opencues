@@ -136,6 +136,22 @@ export type AgenticEventBody =
   | { type: 'fluid-blank.pass-completed'; pass: 'P1' | 'P3'; latencyMs: number; span?: string; context?: string; answer?: string }
   | { type: 'fluid-blank.completed'; span: string; answer: string; mode: string; latencyMs: number }
   | { type: 'fluid-blank.bailed'; reason: string; latencyMs: number }
+  // Cycling — Ctrl+Alt+Up/Down landed on a successful cycle. `path`
+  // names the dispatch branch in Cycling.step (static-alts, list-blank,
+  // span-fill, blank-step, selector, satellite). Field set varies by
+  // path: alt-index paths populate from/toAltIndex; numeric/selector
+  // paths populate from/toText.
+  | { type: 'cycling.cycled'; wordIndex: number; direction: 1 | -1; path: 'static-alts' | 'list-blank' | 'span-fill' | 'blank-step' | 'selector' | 'satellite'; fromAltIndex?: number; toAltIndex?: number; fromText?: string; toText?: string }
+  // ConfigLoader finished a (re)load. Fires from both the initial
+  // `load()` and every hot-reload `maybeReload()` round. `cueEntries`
+  // is the size of the merged cueMap; `blankCount` is the configured
+  // blank count.
+  | { type: 'config.reloaded'; cueEntries: number; blankCount: number; voiceMode: string; tipsMode: string; debugMode: string; cursorNavigate: string }
+  // TTS spoke a phrase. Fires once per (wordIndex, displayed) tuple,
+  // after the spawnProcess / speakFn call has been initiated. `via`
+  // distinguishes the dispatch path: spawnProcess (CC, OC) vs speakFn
+  // (Chrome / Web Speech). `source` names which lookup produced the tip.
+  | { type: 'tts.spoken'; phrase: string; rate: string; wordIndex: number; displayed: string; original: string; source: 'span' | 'selector' | 'satellite' | 'lookup'; via: 'speakFn' | 'spawnProcess' }
   // Statusline barrier — emitted AFTER the status file's writeFile
   // promise resolves, so consumers can treat it as "the file at
   // exportPath is now fresh." Eliminates races between the harness's
