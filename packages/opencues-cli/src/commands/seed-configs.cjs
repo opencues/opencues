@@ -1,21 +1,21 @@
 // `opencues seed-configs` — host-agnostic. Manages the user-level
-// ~/.opencues/ tree.
+// ~/.cues/ tree.
 //
 // Four responsibilities, all idempotent + safe to re-run:
 //
-//   1. SEED   first-time copy of repo defaults → ~/.opencues/
-//             (cues.md, blanks.md, opencues.md, cues/, blanks/, scripts/)
+//   1. SEED   first-time copy of repo defaults → ~/.cues/
+//             (CUES.md, BLANKS.md, OPENCUES.md, cues/, blanks/, auditors/, scripts/)
 //             Skips files that already exist with content (preserves user edits).
 //
 //   2. SYNC   library-script refresh on every run.
-//             ~/.opencues/{blanks/<name>,scripts}/{*.sh,*.cs,*.ps1} ← repo defaults
+//             ~/.cues/{blanks/<name>,scripts}/{*.sh,*.cs,*.ps1} ← repo defaults
 //             These are LIBRARY code (not user content). They ship with the
 //             repo, the user normally doesn't edit them, and stale copies
 //             silently break things when paths change. Sync overwrites if
 //             content differs from the repo source. .md files (user content)
 //             are NEVER touched here.
 //
-//   3. HEAL   self-heal a 0-byte ~/.opencues/opencues.md.
+//   3. HEAL   self-heal a 0-byte ~/.cues/OPENCUES.md.
 //             OpenCuesSettingsBlank silently no-ops on empty content, so
 //             an interrupted-write or pre-content seed would silently break
 //             "opencues ___" / "config ___" blank-fills. Re-seed from defaults
@@ -26,7 +26,7 @@
 //               to the script that uses them via "${SCRIPT_DIR}/<helper>".
 //
 // Why this command (not the per-host installer) owns these:
-//   ~/.opencues/ is shared across CC + OC. Putting these writes
+//   ~/.cues/ is shared across CC + OC. Putting these writes
 //   inside CC's setup.sh meant OC users only got refreshes if
 //   they happened to also install CC. That coupling is gone — every host
 //   installer invokes seed-configs first, and standalone `opencues
@@ -348,17 +348,17 @@ function compileExe(csc, csFile, outDir, log) {
 function printHelp() {
   console.log('opencues seed-configs [--project] [--dry-run] [--silent]');
   console.log('');
-  console.log('Manage the user-level ~/.opencues/ tree. Idempotent + safe to re-run.');
+  console.log('Manage the user-level ~/.cues/ tree. Idempotent + safe to re-run.');
   console.log('');
   console.log('On every invocation:');
-  console.log('  1. Seed first-time copies (cues.md, blanks.md, etc.) — never overwrites');
+  console.log('  1. Seed first-time copies (CUES.md, BLANKS.md, OPENCUES.md, etc.) — never overwrites');
   console.log('  2. Sync library files (.sh/.cs/.ps1) from defaults/{blanks,scripts}/');
   console.log('     — overwrites stale copies but never .md (user content)');
-  console.log('  3. Self-heal a 0-byte opencues.md (would otherwise silently break');
+  console.log('  3. Self-heal a 0-byte OPENCUES.md (would otherwise silently break');
   console.log('     "opencues ___" / "config ___" blank-fills on native hosts)');
   console.log('  4. Compile colocated .cs → .exe (WSL only — needs csc.exe)');
   console.log('');
-  console.log('  --project    Seed <cwd>/.opencues/ instead of ~/.opencues/');
+  console.log('  --project    Seed <cwd>/.cues/ instead of ~/.cues/');
   console.log('               (sync/self-heal/compile only run for user scope)');
   console.log('  --dry-run    Print the plan; do not copy or compile anything');
   console.log('  --silent     Suppress non-error output (used when chained from install)');

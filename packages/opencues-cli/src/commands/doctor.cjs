@@ -35,8 +35,8 @@ module.exports = function doctor(argv, ctx) {
 
   // ── Configs ───────────────────────────────────────────────────────────
   console.log('## Configs');
-  const userConfigDir = path.join(HOME, '.opencues');
-  const projectConfigDir = path.join(process.cwd(), '.opencues');
+  const userConfigDir = path.join(HOME, '.cues');
+  const projectConfigDir = path.join(process.cwd(), '.cues');
   ok(`user-level    ${userConfigDir}/`, fs.existsSync(userConfigDir));
   ok(`project-level ${projectConfigDir}/`, fs.existsSync(projectConfigDir));
   if (process.env.OPENCUES_HOME) {
