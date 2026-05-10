@@ -1,27 +1,34 @@
-/* OpenCues — CSS Custom Highlight API styles */
+/* OpenCues — CSS Custom Highlight API styles
+ *
+ * No element-wide colour override. The host page's text colour, link
+ * colour, list-marker colour, syntax highlighting, etc. all pass
+ * through untouched. Only words the runtime hands us as `oc-dim` /
+ * `oc-active` ranges get repainted.
+ *
+ * The two highlight colours are NOT hardcoded — they're read from
+ * CSS custom properties (`--oc-active`, `--oc-dim`) that content.ts
+ * sets on each attached contenteditable, derived from the host's own
+ * computed `color` and nearest opaque background. See derive-colours.ts.
+ *
+ * Why this avoids the "all-white flash" the old `.oc-attached` rule
+ * fixed: `--oc-active` is the contenteditable's own text colour, so
+ * when the editor's MutationObserver invalidates an active Range for
+ * one frame mid-cycle, the underlying text shows the same colour we
+ * were painting — the flash has nothing to flash to.
+ */
 
-/* Default mid-tone colour applied to the WHOLE attached contenteditable
-   via plain CSS — not through the Highlight API. Reason: during text
-   mutation (cycling, blank-fill, paste) the editor's reconciliation
-   can momentarily replace text nodes that an oc-base Highlight Range
-   pointed at. While that Range is dead, the page's raw text colour
-   bleeds through (visible as "all white" / "lost colour" flash on
-   every cycle). Anchoring the default colour to the contenteditable
-   element itself paints it the instant new text appears, before any
-   JS runs — no gap. oc-dim and oc-active then OVERLAY specific words. */
-.oc-attached {
-  color: #999 !important;
-}
-
-/* Selectable words (has alts) — darkest */
-::highlight(oc-dim) {
-  color: #555 !important;
-}
-
-/* Active word — brightest */
-::highlight(oc-active) {
-  color: #fff !important;
-}
+/* The actual ::highlight(oc-dim) / ::highlight(oc-active) colour rules
+ * are injected dynamically by content.ts into a runtime <style> tag.
+ *
+ * Reason: CSS Custom Highlight pseudo-elements in current Chrome don't
+ * reliably inherit CSS custom properties from their originating
+ * element, so a `color: var(--oc-dim)` rule here would resolve to
+ * nothing. Instead, content.ts derives the colours per attachment and
+ * writes literal values into the injected stylesheet.
+ *
+ * font-style is NOT in the Highlight API's supported-properties list
+ * on Chrome today; the italic rule is included as a forward-compat
+ * hint and silently ignored when not supported. */
 
 /* Status bar — fixed bottom-right corner */
 .oc-status-bar {

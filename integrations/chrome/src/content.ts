@@ -16,9 +16,51 @@ import {
   clearRuntimeHighlights,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
+import { deriveOpenCuesColours } from './derive-colours';
+import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
 
 function isTextInput(el: HTMLElement): boolean {
   return el.isContentEditable;
+}
+
+// CSS Custom Highlight pseudo-elements don't reliably inherit CSS
+// custom properties from their originating element in current Chrome,
+// so we can't drive ::highlight() colours via var(--oc-dim). Instead
+// we write literal values into a runtime <style> tag that we
+// overwrite on every attach / config change. ID is stable so updates
+// replace, not duplicate.
+const HIGHLIGHT_STYLE_ID = 'oc-highlight-styles';
+
+function ensureHighlightStyle(): HTMLStyleElement {
+  let el = document.getElementById(HIGHLIGHT_STYLE_ID) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement('style');
+    el.id = HIGHLIGHT_STYLE_ID;
+    document.head.appendChild(el);
+  }
+  return el;
+}
+
+function applyDerivedColours(el: HTMLElement, dimMix: number): void {
+  const { active, dim } = deriveOpenCuesColours(el, dimMix);
+
+  // Active = host text colour on a dim-coloured background pill. The
+  // pill paints behind the glyphs (a property the Highlight API
+  // actually honours, unlike font-weight or text-stroke-width on
+  // older Chromes), and the brighter fill makes the word read as
+  // "selected" against everything else dimmed.
+  ensureHighlightStyle().textContent = `
+    ::highlight(oc-dim) { color: ${dim} !important; }
+    ::highlight(oc-active) {
+      color: ${active} !important;
+      background-color: ${dim} !important;
+    }
+  `;
+}
+
+function clearDerivedColours(_el: HTMLElement): void {
+  const sheet = document.getElementById(HIGHLIGHT_STYLE_ID);
+  if (sheet) sheet.textContent = '';
 }
 
 async function init(): Promise<void> {
@@ -44,16 +86,16 @@ async function init(): Promise<void> {
     }
     if (!isTextInput(el)) return;
     console.log('[OpenCues] Attaching to', el.tagName, el.id || el.className || '');
-    // Drop the class from any previous target before tagging the new one
-    // so the page is free of stale .oc-attached styling if focus moved
-    // between contenteditables without going through focusout.
-    if (currentTarget) currentTarget.classList.remove('oc-attached');
+    // Strip derived colour vars from any previous target before tagging
+    // the new one, so the page is free of stale OpenCues styling if
+    // focus moved between contenteditables without going through focusout.
+    if (currentTarget) clearDerivedColours(currentTarget);
     currentTarget = el;
-    // Default mid-tone colour (see content.css). Anchored to the element
-    // so the browser paints it the instant text appears — eliminates the
-    // Highlight-API gap that previously caused "all white" flashes during
-    // cycling / reconciliation.
-    el.classList.add('oc-attached');
+    // Derive --oc-active / --oc-dim from the host's own computed text +
+    // background colour. The active highlight ends up matching the
+    // contenteditable's own text colour, so reconciliation gaps don't
+    // flash. See derive-colours.ts and content.css.
+    applyDerivedColours(el, config.dimMix);
     publishTarget(el);
   };
 
@@ -72,7 +114,7 @@ async function init(): Promise<void> {
     const next = evt.relatedTarget as HTMLElement | null;
     if (!next || !isTextInput(next)) {
       if (currentTarget) {
-        currentTarget.classList.remove('oc-attached');
+        clearDerivedColours(currentTarget);
         currentTarget = null;
         publishTarget(null);
         clearRuntimeHighlights();
@@ -84,6 +126,15 @@ async function init(): Promise<void> {
   if (document.activeElement && document.activeElement instanceof HTMLElement) {
     attachToFocused(document.activeElement);
   }
+
+  // Re-derive colours when the user toggles OS dark/light mode — host
+  // pages that respect prefers-color-scheme will have flipped their
+  // computed text + background colours, and our highlights need to
+  // follow or they'll be inverted.
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  mq.addEventListener('change', () => {
+    if (currentTarget) applyDerivedColours(currentTarget, config.dimMix);
+  });
 
   // Forward 'input' events from the focused target to the runtime.
   // Runtime modules (DimRender, BlankFill, Resolver) subscribe to
@@ -98,7 +149,7 @@ async function init(): Promise<void> {
     queueMicrotask(() => {
       const target = currentTarget;
       if (!target) return;
-      const text = target.textContent ?? '';
+      const text = walkPlainText(target).text;
       runtimeNotify(text);
     });
   });
@@ -112,18 +163,15 @@ async function init(): Promise<void> {
     if (!sel || sel.rangeCount === 0) return;
     const range = sel.getRangeAt(0);
     if (!target.contains(range.startContainer)) return;
-    // Compute cursor as plain-text offset from start of target.
-    const pre = range.cloneRange();
-    pre.selectNodeContents(target);
-    pre.setEnd(range.startContainer, range.startOffset);
-    const cursor = pre.toString().length;
-    const text = target.textContent ?? '';
+    const cursor = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
+    const text = walkPlainText(target).text;
     runtimeNotifyCursor(text, cursor);
   });
 
   // React to popup saves. The runtime's ConfigLoader hot-reloads from
   // chrome.storage on its own; we just need to re-publish the target
-  // in case the targetSelector changed.
+  // in case the targetSelector changed, and re-apply the dim/italic
+  // CSS vars so colour-tuning tweaks land without needing a refocus.
   onConfigChange((newConfig) => {
     if (newConfig.targetSelector !== config.targetSelector) {
       currentTarget = null;
@@ -132,6 +180,8 @@ async function init(): Promise<void> {
       clearStatusbar();
       // attachToFocused will fire again on next focusin.
     }
+    config.dimMix = newConfig.dimMix;
+    if (currentTarget) applyDerivedColours(currentTarget, config.dimMix);
   });
 }
 

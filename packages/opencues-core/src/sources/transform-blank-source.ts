@@ -52,7 +52,7 @@ import type { ProviderAdapter } from '../llm-provider';
 // question + 4 layout-spanning examples; benchmark improves +5-7pp
 // (88.9-90.1% vs 83.3% baseline) at zero latency cost. See
 // tests/benchmarks/transform-blank/EXPERIMENTS.md, "Experiment 2".
-const P1_EXTRACT_SYSTEM = `Read the input and identify whether it carries an IMPERATIVE INSTRUCTION the user wants applied to the surrounding text — OR a command to manage a continuously-running agent task.
+export const P1_EXTRACT_SYSTEM = `Read the input and identify whether it carries an IMPERATIVE INSTRUCTION the user wants applied to the surrounding text — OR a command to manage a continuously-running agent task.
 
 Output exactly three lines:
 VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
@@ -940,6 +940,29 @@ export class TransformBlankSource implements CueSource {
       }
 
       this.log(`TransformBlank: pipeline done (${Date.now() - startTime}ms total) — final="${preview(finalRewrite)}"`);
+
+      // Substitute-side guard against pipeline collapse. APPLY or
+      // VERIFY occasionally hallucinate a tiny rewrite (e.g.
+      // "Tom 😊") for a long body — VERIFY rubber-stamps it as OK
+      // and the substitute path then destroys 99% of the content.
+      // Refuse the result when the rewrite is dramatically shorter
+      // than the target AND the original has substantial content.
+      // The 10% threshold + 100-char floor lets legitimate
+      // "summarise this in one sentence"-style transforms through
+      // (rare; user can retry with more specific instruction).
+      if (
+        ext.target.length > 100 &&
+        finalRewrite.length < ext.target.length * 0.1
+      ) {
+        this.log(`TransformBlank: BAILING — rewrite collapse (origLen=${ext.target.length}, rewriteLen=${finalRewrite.length}). Likely APPLY/VERIFY hallucination; refusing to substitute.`);
+        this.emit({
+          type: 'bailed',
+          reason: 'rewrite-collapse',
+          latencyMs: Date.now() - startTime,
+        });
+        return { results: [], timing: Date.now() - startTime, model: this.model };
+      }
+
       this.emit({
         type: 'completed',
         finalLen: finalRewrite.length,

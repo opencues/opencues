@@ -21,6 +21,18 @@ async function init(): Promise<void> {
   ttsEnabled.checked = config.ttsEnabled;
   ttsRate.value = String(config.ttsRate);
 
+  const dimMix = document.getElementById('dimMix') as HTMLInputElement;
+  const dimMixValue = document.getElementById('dimMixValue') as HTMLSpanElement;
+  dimMix.value = String(Math.round(config.dimMix * 100));
+  dimMixValue.textContent = `${dimMix.value}%`;
+
+  // Live-save on change — fires chrome.storage.onChanged, which
+  // content.ts listens for and re-derives from immediately.
+  dimMix.addEventListener('input', () => {
+    dimMixValue.textContent = `${dimMix.value}%`;
+    saveConfig({ dimMix: parseInt(dimMix.value, 10) / 100 });
+  });
+
   document.getElementById('save')!.addEventListener('click', async () => {
     const update: Record<string, unknown> = {};
     for (const id of [...fields, ...advancedFields]) {
@@ -46,6 +58,8 @@ async function init(): Promise<void> {
     }
     ttsEnabled.checked = freshConfig.ttsEnabled;
     ttsRate.value = String(freshConfig.ttsRate);
+    dimMix.value = String(Math.round(freshConfig.dimMix * 100));
+    dimMixValue.textContent = `${dimMix.value}%`;
 
     const status = document.getElementById('status')!;
     status.textContent = 'Reset to defaults';

@@ -76,6 +76,35 @@ describe('reconstructAsTyped', () => {
       .toBe('agentically\n\ntranslate\tto german _');
   });
 
+  it('skips transform-blank defs — prevents EXTRACT input contamination', () => {
+    // Scenario: a TransformBlank def's `originalWord` is the ENTIRE
+    // prior visible body (body + the prior trigger phrase). If asTyped
+    // reverted that, the prior instruction would re-appear in the
+    // EXTRACT input on the NEXT transform — EXTRACT then sees two
+    // instruction phrases and two `_`s, dropping the body or
+    // composing both instructions into one pipe-instruction.
+    //
+    // Fix: skip defs with blankName === 'transform-blank' so their
+    // multi-paragraph originalWord stays out of the asTyped view.
+    // The cycle-Down revert path doesn't go through asTyped, so this
+    // is safe.
+    const dynDefs = new DynDefs();
+    const original = 'Hello world. add emojis _';
+    const rewritten = 'Hello world! ✨';
+    dynDefs.set(0, {
+      originalWord: original,
+      alternatives: [original, rewritten],
+      currentIndex: 1,
+      spanStart: 0,
+      spanEnd: rewritten.length,
+      blankName: 'transform-blank',
+    });
+    const visible = `${rewritten} remove emojis _`;
+    // Without the skip, asTyped would carry the prior "add emojis _"
+    // back in. With the skip, asTyped passes the visible through verbatim.
+    expect(reconstructAsTyped(visible, dynDefs, splitWords)).toBe(visible);
+  });
+
   it('handles multiple agent edits in one buffer', () => {
     const dynDefs = new DynDefs();
     dynDefs.set(0, {

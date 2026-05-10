@@ -20,6 +20,9 @@ export interface StoredConfig {
   ttsRate: number;
   /** Finnhub API key for stock prices */
   finnhubApiKey: string;
+  /** How far the dim colour is mixed toward the page background (0-1).
+   *  0 = identical to host text colour; 1 = invisible. Default 0.45. */
+  dimMix: number;
 }
 
 // Build-time injection — esbuild replaces these with literals from .env.
@@ -34,4 +37,5 @@ export const DEFAULT_CONFIG: StoredConfig = {
   ttsEnabled: false,
   ttsRate: 2,
   finnhubApiKey: __FINNHUB_API_KEY__,
+  dimMix: 0.45,
 };

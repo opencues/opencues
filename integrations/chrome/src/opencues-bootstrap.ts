@@ -30,6 +30,7 @@ import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
 import { createBlanks, type BrowserBlank } from './blanks';
+import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -88,6 +89,26 @@ export function publishTarget(el: HTMLElement | null): void {
   currentTarget = el;
 }
 
+/** Editors that own their contenteditable as a fully-managed surface
+ *  (their model is the source of truth, DOM is rendered output, and
+ *  their MutationObserver REVERTS direct text-node mutations that
+ *  span multiple blocks or don't match expected shape). Detected on
+ *  the target's ancestry so per-call routing can choose the
+ *  editor-API path instead of the generic in-place splice. */
+function isManagedEditor(el: HTMLElement): boolean {
+  return !!el.closest(
+    '[data-lexical-editor="true"], .ProseMirror, [data-slate-editor="true"], .public-DraftEditor-content'
+  );
+}
+
+function isLexicalEditor(el: HTMLElement): boolean {
+  return !!el.closest('[data-lexical-editor="true"]');
+}
+
+function isDraftJsEditor(el: HTMLElement): boolean {
+  return !!el.closest('.public-DraftEditor-content');
+}
+
 /**
  * Read the caret offset (in plain-text characters) from the current
  * contenteditable. Returns 0 when no target or no selection.
@@ -99,70 +120,420 @@ function readCursorOffset(): number {
   if (!sel || sel.rangeCount === 0) return 0;
   const range = sel.getRangeAt(0);
   if (!target.contains(range.startContainer)) return 0;
-  // Count text length up to the caret using a TreeWalker.
-  const pre = range.cloneRange();
-  pre.selectNodeContents(target);
-  pre.setEnd(range.startContainer, range.startOffset);
-  return pre.toString().length;
+  return plainOffsetOfPosition(target, range.startContainer, range.startOffset);
 }
 
-/** Move the caret to the given plain-text offset within the current target. */
+/** Move the caret to the given plain-text offset within the current target.
+ *  Offsets agree with walkPlainText's coordinates: each BR / block-boundary
+ *  \n consumes one offset character even though no Text node holds it. */
 function writeCursorOffset(offset: number): void {
   const target = currentTarget;
   if (!target) return;
+  // Managed editors (Lexical, ProseMirror/TipTap) own their cursor
+  // via internal selection models that sync model→DOM, never the
+  // other way. Setting the browser Selection externally fights with
+  // their next render, and the model wins (often snapping to
+  // end-of-buffer). For single-text-node splices the editor
+  // naturally keeps the caret at its prior character offset within
+  // the mutated node, which is what we want anyway. So no-op here.
+  if (isManagedEditor(target)) return;
   const sel = window.getSelection();
   if (!sel) return;
-  let remaining = Math.max(0, offset);
-  const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
-  let node: Node | null = walker.nextNode();
-  while (node) {
-    const len = (node.textContent ?? '').length;
-    if (remaining <= len) {
+  const { segments, text } = walkPlainText(target);
+  const clamped = Math.max(0, Math.min(offset, text.length));
+  for (const seg of segments) {
+    if (clamped <= seg.plainEnd) {
+      const within = Math.max(0, clamped - seg.plainStart);
       const range = document.createRange();
-      range.setStart(node, remaining);
+      range.setStart(seg.node, Math.min(within, seg.node.data.length));
       range.collapse(true);
       sel.removeAllRanges();
       sel.addRange(range);
       return;
     }
-    remaining -= len;
-    node = walker.nextNode();
+  }
+  // Past the last segment — anchor at end of the last text node, if any.
+  const last = segments[segments.length - 1];
+  if (last) {
+    const range = document.createRange();
+    range.setStart(last.node, last.node.data.length);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 }
 
-/** Replace the current target's text via direct textContent assignment.
+/** Apply newText to the target by mutating existing text nodes in
+ *  place — common-prefix/common-suffix diff, splice the difference
+ *  into whichever node(s) the change falls in.
  *
- *  Previous attempt: execCommand('insertText'). That fires a synthetic
- *  input event that tiptap/PM editors handle by reconciling the DOM —
- *  replacing the Text nodes execCommand just inserted with their own.
- *  Direct textContent skips the input-event path, but tiptap's
- *  MutationObserver still reconciles on the next microtask.
+ *  Why not `target.textContent = newText` (the previous approach):
+ *  textContent assignment destroys the entire child-node tree and
+ *  replaces it with a single flat Text node. Multi-paragraph
+ *  contenteditables (Luma, Notion, gmail compose, …) collapse into
+ *  one line on the first cycle / blank-fill. Diff-and-splice keeps
+ *  every <p>, <div>, <br> intact.
  *
- *  Either way, the editor's reconciliation runs AFTER our synchronous
- *  forceRender in the same task. So we schedule a follow-up render on
- *  the next animation frame: by then the microtask drain has run,
- *  tiptap has reconciled, and the re-walk lands on tiptap's Text
- *  nodes — Ranges valid, no flash. See `runtimeRender` for the
- *  rAF-paired follow-up. */
-function writeText(text: string): void {
+ *  Falls back to textContent when the change can't be expressed as
+ *  in-place text-node mutation (no existing text nodes, or a span
+ *  that crosses non-text content like images or widgets). */
+/** Returns true when the diff routed to replaceAllText (full-body
+ *  fallback path) — caller should skip its own markRuntimeWrite /
+ *  schedule calls because replaceAllText already issued them. */
+function applyTextDiff(target: HTMLElement, newText: string): boolean {
+  // Use walkPlainText so the "current" snapshot agrees with what the
+  // runtime sees (BR + block boundaries as \n). Otherwise the diff
+  // would compute an offset against textContent and splice the wrong
+  // characters in.
+  const { text: current, segments } = walkPlainText(target);
+
+  if (segments.length === 0) {
+    target.textContent = newText;
+    return false;
+  }
+  if (current === newText) return false;
+
+  // Longest common prefix/suffix.
+  const minLen = Math.min(current.length, newText.length);
+  let prefix = 0;
+  while (prefix < minLen && current.charCodeAt(prefix) === newText.charCodeAt(prefix)) prefix++;
+  let suffix = 0;
+  while (
+    suffix < minLen - prefix &&
+    current.charCodeAt(current.length - 1 - suffix) === newText.charCodeAt(newText.length - 1 - suffix)
+  ) suffix++;
+
+  const removeStart = prefix;
+  const removeEnd = current.length - suffix;
+  const insert = newText.slice(prefix, newText.length - suffix);
+
+  // If the change includes \n chars, the runtime is asking for new
+  // block structure that can't be expressed by splicing a literal \n
+  // into a single text node (contenteditables don't render it as a
+  // line break). Route to the paragraph-aware whole-body replace path
+  // instead — Gmail / Lexical / ProseMirror will rebuild the right
+  // <br> / <div> / <p> structure via their own input pipeline.
+  // (TransformBlank in particular uses pushText for whole-body
+  // rewrites that include paragraph breaks — see resolver.ts.)
+  if (insert.includes('\n')) {
+    replaceAllText(newText);
+    return true;
+  }
+
+  // Locate which segment(s) hold [removeStart, removeEnd]. Segments
+  // only cover Text nodes; a removeStart/End landing in a virtual \n
+  // slot maps to "between segments". Snap onto the nearest segment.
+  let startSegIdx = -1, endSegIdx = -1, startOff = 0, endOff = 0;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (startSegIdx === -1 && removeStart <= seg.plainEnd) {
+      startSegIdx = i;
+      startOff = Math.max(0, removeStart - seg.plainStart);
+    }
+    if (removeEnd <= seg.plainEnd) {
+      endSegIdx = i;
+      endOff = Math.max(0, removeEnd - seg.plainStart);
+      break;
+    }
+  }
+  if (startSegIdx === -1 || endSegIdx === -1) {
+    target.textContent = newText;
+    return false;
+  }
+
+  if (startSegIdx === endSegIdx) {
+    // Single-segment change — splice in place. Lexical's
+    // MutationObserver accepts single text-node .data mutations
+    // (looks like normal user typing) and updates its model.
+    const t = segments[startSegIdx].node;
+    t.data = t.data.slice(0, startOff) + insert + t.data.slice(endOff);
+  } else {
+    // Multi-segment change — would touch multiple text nodes.
+    // Lexical's MutationObserver REVERTS this kind of multi-block
+    // mutation (it doesn't match its model's expected shape and
+    // gets reconciled away, often leaving only one span changed
+    // and the rest restored). Route to replaceAllText for Lexical
+    // so the write goes through the editor API instead. Generic
+    // contenteditables tolerate the multi-node splice fine.
+    if (isManagedEditor(target)) {
+      replaceAllText(newText);
+      return true;
+    }
+    const startNode = segments[startSegIdx].node;
+    const endNode = segments[endSegIdx].node;
+    startNode.data = startNode.data.slice(0, startOff) + insert;
+    for (let i = startSegIdx + 1; i < endSegIdx; i++) segments[i].node.data = '';
+    endNode.data = endNode.data.slice(endOff);
+  }
+  return false;
+}
+
+/** Incremental write — used by pushText (cycling, span replacement,
+ *  blank-fill at cursor). Mutates existing text nodes in place via
+ *  applyTextDiff; preserves DOM structure and cursor.
+ *
+ *  This is the "I changed a word" path. Use replaceAllText for
+ *  whole-body rewrites (transform-blank, generate-draft). */
+function diffWriteText(text: string): void {
   const target = currentTarget;
   if (!target) return;
   target.focus();
-  // Capture caret BEFORE textContent assignment (which wipes it) and
-  // restore it AFTER, clamped to new length. The sync cycling/BlankFill
-  // path follows with an explicit setCursorOffset that will override;
-  // async pushText (cycling's script-result update) passes no cursor and
-  // relies on this preservation to keep cursor on the cycled word.
-  // Mirrors the OC fix: the textContent reset has the same shape as
-  // opentui's replaceText reset there.
+  console.log('[opencues] diffWriteText: newLen=' + text.length + ', hasNewline=' + text.includes('\n'));
   const cBefore = readCursorOffset();
-  target.textContent = text;
+  const routedToReplaceAll = applyTextDiff(target, text);
+  if (routedToReplaceAll) {
+    console.log('[opencues] diffWriteText → routed to replaceAllText');
+    return;
+  }
+  console.log('[opencues] diffWriteText: in-place splice complete, post-DOM textLen=' + (target.textContent?.length ?? 0));
   writeCursorOffset(Math.min(cBefore, text.length));
   sourceReclassifier.markRuntimeWrite(text);
   // Schedule a post-reconciliation re-render. The current synchronous
   // task continues to the runtime's forceRender (sync, walks DOM as
   // it stands now); on the next frame, after tiptap's MO microtask
   // has reconciled, we re-walk and Ranges land on the new nodes.
+  schedulePostReconcileRender();
+}
+
+/** Whole-body rewrite — used by setText (transform-blank, generate-
+ *  draft, fluid-blank). Selects the entire contenteditable contents
+ *  and routes the replacement through `execCommand('insertHTML')` so
+ *  the editor's own beforeinput / input pipeline picks it up. This is
+ *  the path Gmail / Lexical / ProseMirror / Slate accept as
+ *  legitimate user-like input — direct DOM mutation gets reconciled
+ *  away by these editors when the change is body-scale.
+ *
+ *  Multi-paragraph text comes in as plain `\n`-separated runtime view;
+ *  we convert each `\n` to `<br>` so the editor builds the right
+ *  block structure. The editor decides whether to wrap the result in
+ *  `<div>` / `<p>` per its own conventions.
+ *
+ *  Falls back to direct textContent assignment when execCommand is
+ *  blocked (rare on contenteditables, but defensive). */
+function replaceAllText(text: string): void {
+  const target = currentTarget;
+  if (!target) return;
+  target.focus();
+  console.log('[opencues] replaceAllText: newLen=' + text.length + ', preDomLen=' + (target.textContent?.length ?? 0));
+  const sel = window.getSelection();
+  if (!sel) {
+    target.textContent = text;
+    sourceReclassifier.markRuntimeWrite(text);
+    schedulePostReconcileRender();
+    return;
+  }
+
+  // Select everything so the write replaces the whole body.
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  if (text === '') {
+    document.execCommand('delete');
+  } else {
+    // Pick the per-editor paragraph form. Block-paragraph editors
+    // (Lexical/Reddit, ProseMirror/TipTap/Luma) wrap each paragraph
+    // in its own block element and strictly expect <p> blocks on
+    // paste — <br>-only collapses into one paragraph. Gmail and
+    // generic contenteditables prefer <br> (matches Enter-key
+    // emission and avoids extra paragraph-margin spacing).
+    const isManaged = isManagedEditor(target);
+    const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const html = isManaged
+      // Adjacent <p> blocks; collapse runs of newlines into one
+      // paragraph boundary so we don't emit empty <p><br></p>
+      // between paragraphs (which would render as double spacing).
+      ? text.split(/\n+/).filter(line => line.length > 0).map(line => `<p>${escape(line)}</p>`).join('')
+      : text.split('\n').map(escape).join('<br>');
+
+    // Wipe the existing content first.
+    //
+    // Managed editors own the contenteditable: their model is the
+    // source of truth and their MutationObserver REVERTS direct DOM
+    // mutations (removeChild, innerHTML='', textContent=''). Their
+    // `beforeinput { inputType: "deleteContent" }` handler reads
+    // their INTERNAL selection model — which doesn't sync from a
+    // manually-set browser Selection — so `execCommand('delete')`
+    // is a no-op too.
+    //
+    // Strategy:
+    //   - Lexical: try its private `__lexicalEditor` instance to call
+    //     editor.update() + $getRoot().clear() through the model.
+    //   - Lexical fallback / ProseMirror / Slate: synthesize Ctrl+A +
+    //     Backspace keyboard events. The editor's keydown handler
+    //     may honour these even with isTrusted=false because it
+    //     reads key/modifier fields, not the trust flag. ProseMirror
+    //     particularly handles synthetic Ctrl+A → selectAll command
+    //     and Backspace → deleteSelection through its own pipeline.
+    //   - Generic contenteditable: execCommand('delete') with the
+    //     browser select-all range.
+    // Wipe the existing content. Strategy depends on editor:
+    //   - Lexical: editor.update($getRoot().clear()) via private
+    //     `__lexicalEditor` instance. Falls back to Ctrl+A +
+    //     Backspace keyboard sim if the instance isn't accessible.
+    //   - Other managed (ProseMirror/TipTap, Slate): Ctrl+A +
+    //     Backspace keyboard sim. ProseMirror's keymap honours these
+    //     synthetic events (its handler reads key/modifiers, not
+    //     isTrusted) and routes through its own selectAll +
+    //     deleteSelection commands. Works for Luma; LinkedIn's
+    //     TipTap appears to reject the resulting paste — likely a
+    //     custom paste extension specific to that integration.
+    //   - Generic contenteditable: execCommand('delete') with the
+    //     browser select-all range works normally.
+    if (isLexicalEditor(target)) {
+      const lex = (target as unknown as { __lexicalEditor?: {
+        update: (fn: () => void, opts?: { discrete?: boolean }) => void;
+      } }).__lexicalEditor;
+      type LexicalGlobals = {
+        $getRoot?: () => { clear: () => void };
+      };
+      const lexGlobals = window as unknown as LexicalGlobals;
+      if (lex && typeof lex.update === 'function' && typeof lexGlobals.$getRoot === 'function') {
+        try {
+          lex.update(() => { lexGlobals.$getRoot!().clear(); }, { discrete: true });
+        } catch (err) {
+          console.warn('[opencues] Lexical editor.update clear failed:', err);
+        }
+      } else {
+        target.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
+          bubbles: true, cancelable: true,
+        }));
+        target.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Backspace', code: 'Backspace', keyCode: 8,
+          bubbles: true, cancelable: true,
+        }));
+      }
+    } else if (isDraftJsEditor(target)) {
+      // Draft.js (Twitter/X). Same managed-editor pattern as
+      // Lexical: its internal selection model doesn't sync from
+      // browser-side selectNodeContents, so paste lands at the
+      // editor's internal cursor (end of buffer) and APPENDS
+      // rather than REPLACING. Synthetic Ctrl+A + Backspace
+      // keydown events route through Draft.js's keydown pipeline
+      // (which sets internal selection to all then deletes),
+      // clearing the buffer before paste lands.
+      target.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
+        bubbles: true, cancelable: true,
+      }));
+      target.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Backspace', code: 'Backspace', keyCode: 8,
+        bubbles: true, cancelable: true,
+      }));
+
+      // Plain-text paste — Draft.js's React-level onPaste handler
+      // reads e.clipboardData.getData('text') and runs its own
+      // block-splitting paste pipeline.
+      const pre = target.textContent?.length ?? 0;
+      try {
+        const dt = new DataTransfer();
+        dt.setData('text/plain', text);
+        target.dispatchEvent(new ClipboardEvent('paste', {
+          clipboardData: dt,
+          bubbles: true,
+          cancelable: true,
+        }));
+      } catch { /* ClipboardEvent unavailable */ }
+
+      const postPaste = target.textContent?.length ?? 0;
+      if (postPaste === pre) {
+        // Fallback: beforeinput insertFromPaste.
+        try {
+          const dt = new DataTransfer();
+          dt.setData('text/plain', text);
+          target.dispatchEvent(new InputEvent('beforeinput', {
+            inputType: 'insertFromPaste',
+            dataTransfer: dt,
+            bubbles: true,
+            cancelable: true,
+          }));
+        } catch { /* InputEvent constructor unavailable */ }
+      }
+
+      const postFinal = target.textContent?.length ?? 0;
+      console.log('[opencues] replaceAllText: draftjs path, preLen=' + pre + ', postLen=' + postFinal);
+      sourceReclassifier.markRuntimeWrite(text);
+      schedulePostReconcileRender();
+      return;
+    } else if (isManaged) {
+      // ProseMirror/TipTap, Slate.
+      //
+      // DEFAULT: execCommand('insertText'). Routes through the
+      // editor's plain-text-insertion command (the same pipeline
+      // user keystrokes flow through). With selection set to all
+      // via selectNodeContents above, insertText replaces. The
+      // browser dispatches inputType: insertParagraph for each \n;
+      // \n\n in LLM output produces one paragraph break (standard
+      // web convention). Verified on LinkedIn, ChatGPT, claude.ai
+      // — these all reject programmatic paste events outright but
+      // accept insertText cleanly.
+      //
+      // EXCEPTION — Luma's TipTap: insertText paragraph handling
+      // creates double-spacing on every \n\n. Luma's standard
+      // paste handler accepts <p>-per-paragraph HTML cleanly with
+      // correct single-paragraph spacing, so route Luma through
+      // the keyboard-sim + paste path instead.
+      const host = location.hostname;
+      const isLuma = host === 'lu.ma' || host.endsWith('.lu.ma');
+      if (!isLuma) {
+        document.execCommand('insertText', false, text);
+        sourceReclassifier.markRuntimeWrite(text);
+        schedulePostReconcileRender();
+        return;
+      }
+      // Luma: keyboard sim clear + paste below.
+      target.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
+        bubbles: true, cancelable: true,
+      }));
+      target.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Backspace', code: 'Backspace', keyCode: 8,
+        bubbles: true, cancelable: true,
+      }));
+    } else {
+      document.execCommand('delete');
+    }
+
+    // Synthetic paste event with DataTransfer is the universally
+    // honoured programmatic write into modern contenteditables —
+    // Lexical, ProseMirror, Slate all have first-class paste handlers,
+    // and Gmail accepts it too. We don't have a synchronous "did it
+    // work" signal: Lexical's handler is async (queues a React state
+    // update), so a post-dispatch DOM-length check would fire while
+    // the paste is still in-flight and trigger spurious fallbacks
+    // that double-render. Trust the paste; only fall back if
+    // ClipboardEvent itself isn't constructible (very rare).
+    //
+    // NOTE: do NOT also dispatch an InputEvent('input', {
+    // inputType: 'insertFromPaste', data: text }) afterwards —
+    // Lexical's input handler reads the `data` field and inserts
+    // it AS PLAIN TEXT on top of whatever the paste handler did,
+    // duplicating the entire body inside the last paragraph.
+    let pasted = false;
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      dt.setData('text/html', html);
+      const pasteEvent = new ClipboardEvent('paste', {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true,
+      });
+      target.dispatchEvent(pasteEvent);
+      pasted = true;
+    } catch { /* ClipboardEvent constructor unsupported — fall through */ }
+
+    if (!pasted) {
+      // No ClipboardEvent support. Last-resort: textContent.
+      // Destroys structure but at least the text appears.
+      target.textContent = text;
+    }
+    console.log('[opencues] replaceAllText: ' + (isManaged ? 'managed' : 'generic') + ' paste dispatched');
+  }
+
+  sourceReclassifier.markRuntimeWrite(text);
   schedulePostReconcileRender();
 }
 
@@ -237,18 +608,18 @@ function isReadOnlyPath(path: string): boolean {
 }
 
 // Resolve a runtime-path to its bake-time constant value.
+//
+// Folder-based shape, matching discover.ts on the native hosts:
+//   .cues/cues/<name>/CUE.md      → __DEFAULT_CUE_FOLDERS__[name]
+//   .cues/blanks/<name>/BLANK.md  → __DEFAULT_BLANK_FOLDERS__[name]
 function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
   if (rel === '.cues/OPENCUES.md') return __DEFAULT_OPENCUES_MD__ || null;
-  // .cues/cues/<name>.md (flat) and .cues/blanks/<name>/cue.md
-  // (folder, when scripts colocated) or .cues/blanks/<name>.md (flat).
-  const cuesFlat = rel.match(/^\.cues\/cues\/([^/]+)\.md$/);
-  if (cuesFlat) return __DEFAULT_CUE_FOLDERS__[cuesFlat[1]] ?? null;
-  const blanksFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/cue\.md$/);
-  if (blanksFolder) return __DEFAULT_BLANK_FOLDERS__[blanksFolder[1]] ?? null;
-  const blanksFlat = rel.match(/^\.cues\/blanks\/([^/]+)\.md$/);
-  if (blanksFlat) return __DEFAULT_BLANK_FOLDERS__[blanksFlat[1]] ?? null;
+  const cueFolder = rel.match(/^\.cues\/cues\/([^/]+)\/CUE\.md$/);
+  if (cueFolder) return __DEFAULT_CUE_FOLDERS__[cueFolder[1]] ?? null;
+  const blankFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/BLANK\.md$/);
+  if (blankFolder) return __DEFAULT_BLANK_FOLDERS__[blankFolder[1]] ?? null;
   return null;
 }
 
@@ -286,11 +657,19 @@ function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
   return _bundleIndexPromise;
 }
 
+// Strip a leading `.cues/` segment from a path relative to ROOT.
+// The runtime's configSearchPaths point at `${ROOT}/.cues`, but the
+// bundle layout (dist/configs/) is "what's INSIDE .cues/" — no
+// repeated segment. This collapses the two views.
+function bundleRelative(rel: string): string {
+  return rel.startsWith('.cues/') ? rel.slice('.cues/'.length) : rel;
+}
+
 // Read a synced file out of dist/configs/. Path is the runtime's
 // canonical form (starts with ROOT). Returns null if not in the bundle.
 async function readBundledConfig(runtimePath: string): Promise<string | null> {
   if (!runtimePath.startsWith(ROOT + '/')) return null;
-  const rel = runtimePath.slice(ROOT.length + 1); // e.g. "cues/grammar/cue.md"
+  const rel = bundleRelative(runtimePath.slice(ROOT.length + 1));
   const idx = await getBundleIndex();
   if (!idx.loaded || !idx.files.has(rel)) return null;
   try {
@@ -324,19 +703,36 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   const bundled = await readBundledDir(path);
   if (bundled) return bundled;
 
-  // `.cues/cues/<name>.md` (flat) + `.cues/blanks/<name>/`
-  // or `.cues/blanks/<name>.md`.
+  // Folder-based shape: discover.ts walks `.cues/cues` + `.cues/blanks`
+  // and only descends into entries reported as directories. Each name
+  // is the folder name (no `.md` suffix) — the inner CUE.md / BLANK.md
+  // is fetched separately via readFile, served by readBakeTimeDefault.
   if (path === `${ROOT}/.cues/cues`) {
     return Object.keys(__DEFAULT_CUE_FOLDERS__).map(name => ({
-      name: `${name}.md`,
-      isDirectory: false,
+      name,
+      isDirectory: true,
     }));
   }
   if (path === `${ROOT}/.cues/blanks`) {
     return Object.keys(__DEFAULT_BLANK_FOLDERS__).map(name => ({
-      name: `${name}.md`,
-      isDirectory: false,
+      name,
+      isDirectory: true,
     }));
+  }
+
+  // Inner folder readDir — ConfigLoader's prewalk recurses into each
+  // bake-time entry above, then asks for that folder's contents to
+  // discover the CUE.md / BLANK.md inside. Without these branches the
+  // inner files never enter the prewalk file cache and discoverFolder-
+  // Configs sees no content (sync-bundle path is unaffected, since it
+  // routes via readBundledDir's index lookup).
+  const cueInner = path.match(new RegExp(`^${ROOT}/\\.cues/cues/([^/]+)$`));
+  if (cueInner && __DEFAULT_CUE_FOLDERS__[cueInner[1]]) {
+    return [{ name: 'CUE.md', isDirectory: false }];
+  }
+  const blankInner = path.match(new RegExp(`^${ROOT}/\\.cues/blanks/([^/]+)$`));
+  if (blankInner && __DEFAULT_BLANK_FOLDERS__[blankInner[1]]) {
+    return [{ name: 'BLANK.md', isDirectory: false }];
   }
   return null;
 }
@@ -345,7 +741,8 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
 // Returns null if no bundle is present or the path has no matches.
 async function readBundledDir(runtimePath: string): Promise<readonly { name: string; isDirectory: boolean }[] | null> {
   if (!runtimePath.startsWith(ROOT + '/') && runtimePath !== ROOT) return null;
-  const prefix = runtimePath === ROOT ? '' : runtimePath.slice(ROOT.length + 1);
+  const rawPrefix = runtimePath === ROOT ? '' : runtimePath.slice(ROOT.length + 1);
+  const prefix = bundleRelative(rawPrefix);
   const idx = await getBundleIndex();
   if (!idx.loaded) return null;
 
@@ -449,15 +846,25 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   bootResult = boot({
     hostVersion: '0.1.0',
     cwd: ROOT,
-    getText: () => currentTarget?.textContent ?? '',
+    getText: () => currentTarget ? walkPlainText(currentTarget).text : '',
     getCursorOffset: readCursorOffset,
-    setText: writeText,
+    // Both setText and pushText route through diffWriteText so the
+    // diff itself decides per-call whether the change is small
+    // enough for an in-place text-node splice (cycling, single-word
+    // edits) or large enough to need replaceAllText's editor-API
+    // path (transform-blank, generate-draft). Originally we routed
+    // setText straight to replaceAllText on the assumption it always
+    // meant "whole body replace", but cycling.ts uses setText for
+    // every cycle — that put the cursor at end-of-buffer in Lexical
+    // editors on every word cycle. The diff's single-segment vs
+    // multi-segment check is the right discriminator.
+    setText: diffWriteText,
     setCursorOffset: writeCursorOffset,
     pushText: (text, cursor) => {
-      // writeText already calls sourceReclassifier.markRuntimeWrite.
+      // diffWriteText already calls sourceReclassifier.markRuntimeWrite.
       // Cursor is set synchronously after so the input-event handler
       // reads the post-fill caret position (matters for multi-word fills).
-      writeText(text);
+      diffWriteText(text);
       if (cursor !== undefined) writeCursorOffset(cursor);
     },
     forceRender: () => {
@@ -586,7 +993,7 @@ export function notifyOpenCuesCursorChange(
 function runtimeRender(): void {
   const target = currentTarget;
   if (!target || !bootResult) return;
-  const text = target.textContent ?? '';
+  const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
   applyDirectives(target, directives);
@@ -652,7 +1059,7 @@ function installKeyListener(): void {
     if (!target) return;
     const active = document.activeElement;
     if (active !== target && !target.contains(active)) return;
-    const text = target.textContent ?? '';
+    const text = walkPlainText(target).text;
     const cursor = readCursorOffset();
     const ev: KeyEvent = {
       key: normaliseKey(e.key),

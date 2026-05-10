@@ -13,33 +13,33 @@
 // back to DOM Range objects via a TreeWalker.
 
 import type { RenderDirectives } from '@opencues/runtime/dist/src/adapter';
+import { walkPlainText } from './dom-walk';
 
 const hasHighlightAPI = typeof CSS !== 'undefined' && 'highlights' in CSS;
 
 interface PlainRange { start: number; end: number; }
 
-/** Build [start,end) DOM Ranges from plain-text [start,end) offsets. */
+/** Build [start,end) DOM Ranges from plain-text [start,end) offsets.
+ *  Uses walkPlainText so the offsets agree with the runtime's view of
+ *  text — including \n at BR / block boundaries that have no Text
+ *  node behind them. Highlights for a range that lands on a virtual
+ *  \n are silently skipped (no Text node to anchor onto). */
 function plainOffsetsToDomRanges(target: HTMLElement, offsets: PlainRange[]): Range[] {
   if (offsets.length === 0) return [];
+  const { segments } = walkPlainText(target);
   const out: Range[] = [];
-  const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
-  let charPos = 0;
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text;
-    const nodeStart = charPos;
-    const nodeEnd = charPos + node.length;
+  for (const seg of segments) {
     for (const o of offsets) {
-      if (o.end <= nodeStart || o.start >= nodeEnd) continue;
-      const rangeStart = Math.max(o.start - nodeStart, 0);
-      const rangeEnd = Math.min(o.end - nodeStart, node.length);
+      if (o.end <= seg.plainStart || o.start >= seg.plainEnd) continue;
+      const rangeStart = Math.max(o.start - seg.plainStart, 0);
+      const rangeEnd = Math.min(o.end - seg.plainStart, seg.node.data.length);
       try {
         const range = new Range();
-        range.setStart(node, rangeStart);
-        range.setEnd(node, rangeEnd);
+        range.setStart(seg.node, rangeStart);
+        range.setEnd(seg.node, rangeEnd);
         out.push(range);
       } catch { /* skip — DOM mutated mid-walk */ }
     }
-    charPos = nodeEnd;
   }
   return out;
 }

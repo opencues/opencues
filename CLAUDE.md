@@ -503,14 +503,15 @@ Chrome runs on Windows; this repo lives in WSL2. The unpacked extension Chrome
 loads from is on the Windows desktop, **not** the WSL build dir:
 
 - **Build (WSL)**: `/home/wilfred/opencues/integrations/chrome/`
-- **Loaded by Chrome (Windows)**: `/mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/`
+- **Loaded by Chrome (Windows)**: `/mnt/c/Users/wilfred/AppData/Local/opencues-chrome/`
+  (i.e. `C:\Users\wilfred\AppData\Local\opencues-chrome\`)
 
 After every `npm run build`, sync the fresh artefacts to the Windows path or
 Chrome will keep running the stale bundle (no errors, just no new behaviour):
 
 ```bash
-cp -r integrations/chrome/dist/* /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/dist/
-cp integrations/chrome/manifest.json /mnt/c/Users/wilfred/Desktop/opencues-chrome-extension/manifest.json
+cp -r integrations/chrome/dist/* /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/dist/
+cp integrations/chrome/manifest.json /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/manifest.json
 ```
 
 Then reload the extension at `chrome://extensions` and hard-refresh the page.

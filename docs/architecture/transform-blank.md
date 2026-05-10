@@ -556,6 +556,39 @@ substitute branch (mirrored from FluidBlank):
 5. Log: `TransformBlank: substituting "originalText…" → "rewrittenText…"
    (origLen=…, rewriteLen=…, defAt=…)`.
 
+### asTypedText reconstruction — TransformBlank defs are SKIPPED
+
+`reconstructAsTyped` (in `state/dyn-defs.ts`) walks the visible buffer
+and substitutes each agent-edited word with its `originalWord` to
+produce the "as the user typed it" view. TransformBlank-typed defs
+**must be skipped** in this reconstruction.
+
+Why: TransformBlank's `originalWord` is the FULL prior visible body
+(body + the prior trigger phrase), not a single agent-edited word.
+Re-injecting it bleeds the prior instruction phrase into the EXTRACT
+input on the NEXT transform — EXTRACT then sees two instructions and
+two `_`s, dropping the body or composing both into one
+pipe-instruction.
+
+Bug shape (live-reproduced May 2026): user does "add emojis where
+appropriate _" → success. Then types "remove emojis _" → second
+EXTRACT sees `<no-emoji body> add emojis where appropriate _ remove
+emojis _` as INPUT, returns `INSTRUCTION: Add emojis where
+appropriate / TARGET: remove emojis`, body collapses to a 17-char
+rewrite. Repro lives at
+`tests/benchmarks/transform-blank/repro-astyped-contamination.ts`.
+
+The skip lives at `dyn-defs.ts` in `reconstructAsTypedWithMap`,
+gated on `def.blankName === 'transform-blank'`. The cycle-Down
+revert path doesn't go through asTyped, so this skip is safe.
+
+**Rule for new blank types:** if a new blank's `originalWord` can be
+multi-word or contain a trigger phrase, add it to the skip list (or
+extend the predicate). Single-token / `_`-only originalWords (fluid-
+blank, task-show, agent-task, user blanks) are safe to revert and
+need no skip — they have to remain reverted so trigger detection
+on agent-edited text still works.
+
 ### Cycling
 
 Cycling is delegated to the runtime's existing `WordDef`/`DynDefs`

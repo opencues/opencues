@@ -357,7 +357,15 @@ export function reconstructAsTypedWithMap(
     let visibleStart = w.start;
     let visibleEnd = w.end;
     const def = dynDefs.get(i);
-    if (def && def.currentIndex > 0 && def.originalWord) {
+    // Skip transform-blank defs: their `originalWord` is the FULL prior
+    // visible body (body + the prior trigger phrase), not a single
+    // agent-edited word. Re-injecting it into the asTyped view bleeds
+    // the prior instruction phrase into the EXTRACT input on the NEXT
+    // transform — EXTRACT then sees two instructions and two `_`s,
+    // dropping the body or composing both instructions. The cycle-Down
+    // revert path doesn't go through asTyped, so this skip is safe.
+    const isTransformBlank = def?.blankName === 'transform-blank';
+    if (def && def.currentIndex > 0 && def.originalWord && !isTransformBlank) {
       writeWord = def.originalWord;
       const span = dynDefs.findSpanContaining(i);
       if (span && span.originIdx === i && span.spanLength > 1) {
