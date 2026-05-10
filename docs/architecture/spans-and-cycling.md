@@ -15,7 +15,7 @@ something that looks the same — start here.
 ## Where the code lives
 
 **Everything is in `@opencues/runtime`.** Adapters (chrome, claude-code,
-opencode) wire it up via `buildSharedRuntime()` and never
+opencode, gemini-cli) wire it up via `buildSharedRuntime()` and never
 re-implement the cycling/span/dim/nav logic. `@opencues/core` is a
 separate concern: it does LLM resolution and produces alternatives.
 
@@ -437,7 +437,9 @@ Adapters do TWO things related to cycling/spans:
 1. **Provide the `HostAdapter`** — `setText`, `setCursorOffset`,
    `forceRender`, `onKey`, `onTextChange`, `readFile`, `readDir`, etc.
 2. **Render the directives** — chrome paints CSS Custom Highlight API
-   ranges, claude-code emits ANSI sequences, opencode draws via its TUI.
+   ranges, claude-code emits ANSI sequences, opencode draws via its TUI,
+   gemini-cli wraps each visual line through `decorateLine` (CC-style
+   string-wrap inside Ink's `<Text>` children).
 
 Adapters do NOT:
 - Track spans

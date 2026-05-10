@@ -46,7 +46,8 @@ opencues/
 │   └── opencues-runtime/        # publishes as @opencues/runtime
 │       └── adapters/
 │           ├── cc/v2.1/         # was: claude-code/v2.1/
-│           └── oc/v1.4/         # was: opencode/v1.4/
+│           ├── oc/v1.4/         # was: opencode/v1.4/
+│           └── gemini/v0.41/    # gemini-cli adapter band
 │
 ├── integrations/                # Host glue — each is its own release unit
 │   ├── cc/                      # was: claude-code/
@@ -58,7 +59,9 @@ opencues/
 │   │   └── CHANGELOG.md
 │   ├── oc/                      # was: opencode/
 │   │   └── ...
-│   └── chrome/                  # was: chrome-extension/
+│   ├── chrome/                  # was: chrome-extension/
+│   │   └── ...
+│   └── gemini-cli/              # gemini-cli integration
 │       └── ...
 │
 ├── configs/                     # Shipped default configs (was: at repo root)
@@ -127,6 +130,7 @@ The shape we're building toward, ordered by user expectation:
 | **CC** | `npx @opencues/claude-code` | `curl -fsSL opencues.dev/install/cc \| sh` | `pnpm --filter @opencues/claude-code dev-install` |
 | **OC** | `npx @opencues/opencode` | tarball from GitHub Release | `pnpm --filter @opencues/opencode dev-install` |
 | **Chrome** | Chrome Web Store | unpacked-extension `.zip` from GitHub Release | `pnpm --filter @opencues/chrome dev` |
+| **Gemini CLI** | `npx @opencues/gemini-cli` | tarball from GitHub Release | `pnpm --filter @opencues/gemini-cli dev-install` |
 
 `npx` is the primary install front-door because it works on every OS,
 needs no global state, and matches the pattern users already know from

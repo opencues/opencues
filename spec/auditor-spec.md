@@ -91,7 +91,7 @@ The reason: cd-ing into a project should *extend* what the user has, never silen
 |---|---|---|---|
 | `priority` | number | `50` | Higher number → appears earlier in the concatenated prompt. Ties broken by alphabetical folder name. |
 | `enabled` | boolean | `true` | Set `false` to keep the file but skip composition. |
-| `on-host` | array of strings | (auto-detected) | Host-compat allow-list (`chrome`, `claude-code`, `opencode`). See [`core.md` § Host compatibility](./core.md#host-compatibility). |
+| `on-host` | array of strings | (auto-detected) | Host-compat allow-list (`chrome`, `claude-code`, `gemini-cli`, `opencode`). See [`core.md` § Host compatibility](./core.md#host-compatibility). |
 | `not-on-host` | array of strings | `[]` | Host-compat deny-list. |
 
 ### Body

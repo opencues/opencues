@@ -174,7 +174,7 @@ A source's allowed hosts are auto-detected from its binding profile and script e
 Authors may override auto-detection:
 
 ```yaml
-on-host: [chrome, claude-code, opencode]   # allow-list — only these may load
+on-host: [chrome, claude-code, gemini-cli, opencode]   # allow-list — only these may load
 not-on-host: [chrome]                      # deny-list — everyone except these
 ```
 
@@ -189,6 +189,7 @@ The standard reserves these host identifiers:
 - `claude-code`
 - `opencode`
 - `chrome`
+- `gemini-cli`
 
 Runtimes MAY define additional host names. Other implementations SHOULD ignore unknown host names rather than failing.
 

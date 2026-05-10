@@ -188,6 +188,10 @@ providers — just edit `~/.cues/CUES.md`.
 Same — `opencuesBootstrap.ts` reads all keys from `process.env` and
 forwards.
 
+### Gemini CLI (`integrations/gemini-cli/`)
+Same — `opencuesBootstrap.ts` reads all keys from `process.env` and
+forwards via `host.llmApiKeys`.
+
 ### Chrome extension (`integrations/chrome/`)
 Browser-side fetches require **host_permissions** in
 `manifest.json`. The current manifest permits all six provider

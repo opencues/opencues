@@ -141,10 +141,10 @@ type: blank
 # routes through chrome.storage instead of the .sh fallback). The
 # opencues blank does this — `blankScript: ./opencues-blank.sh` for
 # native hosts, OpenCuesSettingsBlank in TS for chrome, and
-# `on-host: chrome, claude-code, opencode` to override the
+# `on-host: chrome, claude-code, gemini-cli, opencode` to override the
 # auto-detect that would otherwise exclude chrome.
 # See docs/features/host-compat.md.
 
-# on-host: chrome, claude-code, opencode
+# on-host: chrome, claude-code, gemini-cli, opencode
 # not-on-host: chrome
 ---

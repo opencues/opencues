@@ -45,7 +45,7 @@ module.exports = function setKey(argv) {
 
   console.log(`Stored ${envName} in ${envFile}`);
   console.log('');
-  console.log('Note: integrations (CC, OC, chrome) currently read API keys from process env vars,');
+  console.log('Note: integrations (CC, OC, chrome, gemini-cli) currently read API keys from process env vars,');
   console.log(`not from ~/.cues/.env directly. Until they're updated to load this file, you'll`);
   console.log('still need to export the key in your shell:');
   console.log(`  export ${envName}=...`);

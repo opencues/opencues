@@ -26,7 +26,7 @@ module.exports = function help(argv, ctx) {
   console.log('Usage: opencues <command> [options]');
   console.log('');
   console.log('Setup:');
-  console.log('  install <host>          Install a host integration (claude-code|opencode|chrome|--all)');
+  console.log('  install <host>          Install a host integration (claude-code|opencode|chrome|gemini-cli|--all)');
   console.log('  uninstall <host>        Roll back an installation');
   console.log('  seed-configs            Copy repo defaults into ~/.cues/ (first-time + sync)');
   console.log('  update-configs          Pull new shipped cues/blanks into ~/.cues/ (after a `git pull`)');
@@ -41,7 +41,7 @@ module.exports = function help(argv, ctx) {
   console.log('  import <source>         Download a community config pack (gist/github/url/local)');
   console.log('');
   console.log('Run / inspect:');
-  console.log('  run <host>              Launch the patched host (claude-code | opencode | chrome)');
+  console.log('  run <host>              Launch the patched host (claude-code | opencode | chrome | gemini-cli)');
   console.log('  sync <host>             Bundle .cues/ into a host that doesn\'t auto-discover (chrome)');
   console.log('  which                   Print every relevant path (installs, configs, logs)');
   console.log('  version                 Print CLI version + per-integration versions/compat');
@@ -58,6 +58,7 @@ module.exports = function help(argv, ctx) {
   console.log('  claude-code  OpenCues for Claude Code (patches cli.js via tweakcc)');
   console.log('  opencode     OpenCues for OpenCode (patches a TS fork)');
   console.log('  chrome       OpenCues Chrome MV3 extension');
+  console.log('  gemini-cli   OpenCues for Gemini CLI 0.41.x (patches the fork\'s React/Ink TSX)');
   console.log('');
   console.log('Configs:');
   console.log('  Project-level: <cwd>/.cues/');

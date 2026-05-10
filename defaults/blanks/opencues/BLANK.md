@@ -14,5 +14,5 @@ blankClearOnEdit: true
 # by native hosts as a standalone fallback. Override host-compat
 # auto-detection (which would flag this as "not chrome" because of
 # the blankScript: extension).
-on-host: chrome, claude-code, opencode
+on-host: chrome, claude-code, gemini-cli, opencode
 ---

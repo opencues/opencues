@@ -36,6 +36,7 @@ opencues install claude-code         # patch the local Claude Code install
 opencues install opencode            # patch the OpenCode fork at ~/opencode-cues
 opencues install chrome              # build the MV3 extension into integrations/chrome/dist/
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
+opencues install gemini-cli          # patch the Gemini CLI 0.41.x fork at ~/gemini-cli-cues
 opencues install --all               # install every detected host
 ```
 
@@ -174,6 +175,7 @@ Convenience wrapper that just `exec`s the right binary:
 ```bash
 opencues run claude-code     # runs ~/claude-code-cues/.../claude-code
 opencues run opencode        # runs ~/opencode-cues/...
+opencues run gemini-cli      # runs node packages/cli/dist/index.js inside ~/gemini-cli-cues
 ```
 
 You can also invoke the patched binaries directly; `opencues run`
@@ -320,6 +322,7 @@ opencues list --blanks | grep -c domain  # how many domain blanks exist
 | `claude-code` | Builds `@opencues/core` + `@opencues/runtime`, copies them into `~/claude-code-cues/.opencues/`, builds tweakcc with the patches, applies to `cli.js` | Targets `~/claude-code-cues` (NOT the native `claude` install) |
 | `opencode` | Patches the fork at `~/opencode-cues` | Quiet by default; `--verbose` for full output |
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
+| `gemini-cli` | Clones the fork at `~/gemini-cli-cues`, installs deps, builds + installs `@opencues/{core,runtime}`, drops `opencuesBootstrap.ts` in, patches 4 source files, runs `npm run build` | Pinned to Gemini CLI 0.41.x via `integrations/gemini-cli/pin.json` |
 
 ---
 

@@ -1,0 +1,204 @@
+// Gemini CLI v0.41 HostAdapter — minimum viable scaffold (Phase G.1).
+//
+// Gemini CLI is built on Node + React + Ink (forked @jrichman/ink).
+// The InputPrompt component (packages/cli/src/ui/components/InputPrompt.tsx)
+// owns a TextBuffer (from useInputState) that drives the input field;
+// keyboard events come through a centralised KeypressContext priority bus.
+// We bridge HostAdapter through these.
+//
+// At G.1 only the methods used by the bootstrap path + Phase 1
+// Navigation are implemented for real. The rest stub out so the
+// runtime starts cleanly even on a partially-wired host.
+
+import type {
+  HostAdapter,
+  KeyEvent,
+  KeyFilter,
+  Range,
+  RenderContext,
+  RenderDirectives,
+  TextChangeEvent,
+  CursorChangeEvent,
+  Unsubscribe,
+  ProcessSpec,
+  ProcessHandle,
+  BlankInvokeSpec,
+  DirEntry,
+  LogLevel,
+  Capability,
+} from '../../../src/adapter';
+import { HOST_ADAPTER_INTERFACE_VERSION } from '../../../src/adapter';
+
+/**
+ * Live bindings the Gemini-side patch supplies. React state + the
+ * TextBuffer ref make most of these direct closures over the buffer.
+ */
+export interface GeminiBindings {
+  hostVersion: string;
+  cwd: string;
+  /** Reads the current input text from the TextBuffer (lines joined by \n). */
+  getText(): string;
+  /** Reads the current cursor offset (logical position → absolute offset). */
+  getCursorOffset(): number;
+  /** Writes new text into the TextBuffer (buffer.setText). */
+  setText(text: string): void;
+  /** Sets the cursor position (buffer.setText preserving content + offset). */
+  setCursorOffset(offset: number): void;
+  /** Forces a re-render. Ink is reactive — usually a no-op or a small state bump. */
+  forceRender(): void;
+  /** Registers a key handler to fire from the KeypressContext priority bus. */
+  registerKeyHandler(cb: (e: KeyEvent) => boolean): Unsubscribe;
+  /** Registers a text-change handler — fires when the TextBuffer's content changes. */
+  registerTextChangeHandler(cb: (e: TextChangeEvent) => void): Unsubscribe;
+  registerCursorChangeHandler(cb: (e: CursorChangeEvent) => void): Unsubscribe;
+  /** Registers a render handler — fires per-render with directives target. */
+  registerRenderHandler(cb: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
+  /** Optional file I/O. */
+  readFile?(path: string): Promise<string | null>;
+  readDir?(path: string): Promise<readonly DirEntry[] | null>;
+  writeFile?(path: string, content: string): Promise<void>;
+  /** Optional spawn (node:child_process). */
+  spawnProcess?(spec: ProcessSpec): ProcessHandle;
+  /**
+   * Optional host-native blank dispatch. Same shape as chrome's
+   * blankInvoke — BlankFill + Cycling try this BEFORE spawnProcess so
+   * shared TS blanks (HackerNewsBlank, etc.) win over the legacy
+   * shell scripts in blanks/. Returns null when the blankName
+   * isn't in the host's registry.
+   */
+  blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
+  /** Optional async text push — for fills that happen outside a key dispatch. */
+  pushText?(text: string, cursor?: number): void;
+  log?(level: LogLevel, msg: string, data?: unknown): void;
+  /** Structured event emitter (modules → subscribers). Optional —
+   *  no-op when not wired by the host. See HostAdapter.emitEvent.
+   *  ConfigLoader / Resolver / Cycling / etc. emit lifecycle events
+   *  through this; the agentic harness's event bridge subscribes to
+   *  them via registerEventHandler. Without it the harness can't
+   *  observe runtime activity (config.reloaded / highlight.activated /
+   *  …) and scenario assertions time out. */
+  emitEvent?(type: string, body?: Record<string, unknown>): void;
+  /** Register an event subscriber. Returns unsub. Optional. */
+  registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
+}
+
+/** Capabilities Gemini CLI advertises by default. spawn-process opt-in via host bindings. */
+export const GEMINI_V041_CAPABILITIES: readonly Capability[] = [
+  'file-read',
+  'file-write',
+  'force-render',
+  'render-override',
+  'dim-ranges',
+  'highlight-range',
+];
+
+export class GeminiV041Adapter implements HostAdapter {
+  readonly interfaceVersion = HOST_ADAPTER_INTERFACE_VERSION;
+  readonly hostName = 'gemini-cli';
+  readonly hostVersion: string;
+  readonly cwd: string;
+  readonly capabilities: readonly Capability[];
+
+  private _disposed = false;
+
+  constructor(private bindings: GeminiBindings) {
+    this.hostVersion = bindings.hostVersion;
+    this.cwd = bindings.cwd;
+    const caps: Capability[] = [...GEMINI_V041_CAPABILITIES];
+    if (bindings.spawnProcess) caps.push('spawn-process');
+    if (bindings.blankInvoke) caps.push('blank-invoke');
+    this.capabilities = caps;
+  }
+
+  // ─── State reads ───────────────────────────────────────────────────────
+  getText(): string {
+    try { return this.bindings.getText(); } catch { return ''; }
+  }
+  getCursorOffset(): number {
+    try { return this.bindings.getCursorOffset(); } catch { return 0; }
+  }
+  getSelection(): Range | null { return null; }
+
+  // ─── State writes ──────────────────────────────────────────────────────
+  setText(text: string): void {
+    if (this._disposed) return;
+    try { this.bindings.setText(text); } catch (err) {
+      this.log('error', 'setText failed', err);
+    }
+  }
+  setCursorOffset(offset: number): void {
+    if (this._disposed) return;
+    try { this.bindings.setCursorOffset(Math.max(0, offset)); } catch (err) {
+      this.log('error', 'setCursorOffset failed', err);
+    }
+  }
+  forceRender(): void {
+    if (this._disposed) return;
+    try { this.bindings.forceRender(); } catch (err) {
+      this.log('error', 'forceRender failed', err);
+    }
+  }
+
+  // ─── Events ────────────────────────────────────────────────────────────
+  onKey(filter: KeyFilter | null, handler: (e: KeyEvent) => boolean): Unsubscribe {
+    if (!filter) return this.bindings.registerKeyHandler(handler);
+    const wrapped = (e: KeyEvent): boolean => {
+      if (filter.keys && filter.keys.length > 0 && !filter.keys.includes(e.key)) return false;
+      if (filter.requireModifiers) for (const m of filter.requireModifiers) if (!e.modifiers[m]) return false;
+      if (filter.forbidModifiers) for (const m of filter.forbidModifiers) if (e.modifiers[m]) return false;
+      return handler(e);
+    };
+    return this.bindings.registerKeyHandler(wrapped);
+  }
+  onTextChange(handler: (e: TextChangeEvent) => void): Unsubscribe {
+    return this.bindings.registerTextChangeHandler(handler);
+  }
+  onCursorChange(handler: (e: CursorChangeEvent) => void): Unsubscribe {
+    return this.bindings.registerCursorChangeHandler(handler);
+  }
+  onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {
+    return this.bindings.registerRenderHandler(handler);
+  }
+
+  // ─── I/O ───────────────────────────────────────────────────────────────
+  readFile(path: string): Promise<string | null> {
+    return this.bindings.readFile?.(path) ?? Promise.resolve(null);
+  }
+  readDir(path: string): Promise<readonly DirEntry[] | null> {
+    return this.bindings.readDir?.(path) ?? Promise.resolve(null);
+  }
+  writeFile(path: string, content: string): Promise<void> {
+    return this.bindings.writeFile?.(path, content) ?? Promise.resolve();
+  }
+  spawnProcess(spec: ProcessSpec): ProcessHandle {
+    if (!this.bindings.spawnProcess) throw new Error('spawnProcess not supported');
+    return this.bindings.spawnProcess(spec);
+  }
+  /**
+   * Forward to the host's blankInvoke binding when one is supplied
+   * (Gemini ships shared TS blanks — HackerNewsBlank etc. — via
+   * this path so they don't need a shell). Returns null when the
+   * binding isn't wired or the blankName isn't registered; runtime
+   * then falls through to spawnProcess for the legacy shell scripts.
+   */
+  blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
+    return this.bindings.blankInvoke?.(spec) ?? null;
+  }
+  pushText(text: string, cursor?: number): void {
+    this.bindings.pushText?.(text, cursor);
+  }
+
+  // ─── Lifecycle ─────────────────────────────────────────────────────────
+  log(level: LogLevel, msg: string, data?: unknown): void {
+    this.bindings.log?.(level, msg, data);
+  }
+  emitEvent(type: string, body?: Record<string, unknown>): void {
+    try { this.bindings.emitEvent?.(type, body); } catch { /* swallow */ }
+  }
+  onEvent(handler: (type: string, body?: Record<string, unknown>) => void): Unsubscribe {
+    return this.bindings.registerEventHandler?.(handler) ?? (() => {});
+  }
+  dispose(): void {
+    this._disposed = true;
+  }
+}

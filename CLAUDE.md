@@ -31,6 +31,7 @@ host and the runtime.
 - **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.110+ via tweakcc
 - **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.4.x; runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
+- **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
 
 > Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of
 > the repo restructure. See `docs/architecture/repo-structure.md` for the
@@ -328,6 +329,7 @@ two paths behave differently:
 |---|---|---|
 | **claude-code** | `$OPENCUES_HOME` → `<cwd>/.cues/` → `~/.cues/` | Automatic (cwd-based merge) |
 | **opencode** | same | same |
+| **gemini-cli** | same | same |
 | **chrome** | `<extension>/dist/configs/` (sync'd) + bake-time defaults from `<repo>/defaults/` | Explicit — `opencues sync chrome [--include <path>]` |
 
 For the native hosts, project wins on name conflicts. Missing dirs are
@@ -385,8 +387,8 @@ integration, so projects cannot override it. The file lives at
 ## Host compatibility — which integrations a cue/blank runs on
 
 Every cue / blank has an implicit (or explicit) host-compat
-list: which of `{chrome, claude-code, opencode}` it works on.
-Native hosts (CC, OC) can spawn subprocesses + read the
+list: which of `{chrome, claude-code, gemini-cli, opencode}` it works on.
+Native hosts (CC, OC, gemini-cli) can spawn subprocesses + read the
 filesystem; chrome can't.
 
 Default: auto-detected from `script:` / `blankScript:` extension.
@@ -396,7 +398,7 @@ else → all hosts.
 Override via frontmatter:
 
 ```yaml
-on-host: [chrome, claude-code, opencode]   # allow-list
+on-host: [chrome, claude-code, gemini-cli, opencode]   # allow-list
 not-on-host: [chrome]                              # deny-list
 ```
 
@@ -414,7 +416,7 @@ Real-world example: `.cues/blanks/opencues/BLANK.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a
 runtime-class implementation in `@opencues/runtime`. Auto-detect
 would exclude chrome because of the `.sh`; the file adds
-`on-host: chrome, claude-code, opencode` to override. The
+`on-host: chrome, claude-code, gemini-cli, opencode` to override. The
 validator warns about the contradiction (on-host + .sh), which is
 the expected nudge for readers to check.
 

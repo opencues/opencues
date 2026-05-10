@@ -6,7 +6,7 @@
 //
 // Hosts construct their registry with the blanks they support (chrome:
 // the runtime classes + chrome-only OS blanks; opencode: same TS
-// classes; CC: same), then pass `createBlankInvoke(registry)` as their
+// classes; CC: same; gemini-cli: same), then pass `createBlankInvoke(registry)` as their
 // adapter binding's blankInvoke.
 
 import type { BlankInvokeSpec, ProcessHandle, ProcessResult } from '../adapter';

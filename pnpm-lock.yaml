@@ -48,6 +48,8 @@ importers:
 
   integrations/claude-code: {}
 
+  integrations/gemini-cli: {}
+
   integrations/opencode: {}
 
   packages/opencues-cli: {}

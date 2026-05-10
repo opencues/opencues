@@ -26,8 +26,9 @@ const HOST_ALIASES = {
   'claude-code': 'claude-code', claudecode: 'claude-code', claude: 'claude-code', cc: 'claude-code',
   opencode: 'opencode', oc: 'opencode',
   chrome: 'chrome',
+  'gemini-cli': 'gemini-cli', geminicli: 'gemini-cli', gemini: 'gemini-cli',
 };
-const ALL_HOSTS = ['claude-code', 'opencode', 'chrome'];
+const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
 
 module.exports = async function update(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -378,6 +379,10 @@ function detectInstalled(HOME, REPO_ROOT) {
   }
   if (fs.existsSync(path.join(REPO_ROOT, 'integrations/chrome/dist/content.js'))) {
     out.push({ host: 'chrome', folder: 'chrome', evidence: 'integrations/chrome/dist/content.js exists' });
+  }
+  const geminiFork = path.join(HOME, 'gemini-cli-cues');
+  if (fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime'))) {
+    out.push({ host: 'gemini-cli', folder: 'gemini-cli', evidence: `${geminiFork}/node_modules/@opencues/runtime exists` });
   }
   return out;
 }

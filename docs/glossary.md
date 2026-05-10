@@ -80,7 +80,7 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **Folder-based config** — Each cue / blank is a self-contained folder: cues use `CUE.md`, blanks use `BLANK.md` (YAML frontmatter for config, body for prompt or words JSON), with optional colocated scripts. Folders in `cues/` and `blanks/` are auto-discovered.
 
-**Host** — One of the three OpenCues integrations: `claude-code`, `opencode`, `chrome`. They share the same `.md` config format but differ in runtime capabilities. Native hosts (CC, OC) can spawn subprocesses + read the filesystem; chrome can't.
+**Host** — One of the OpenCues integrations: `claude-code`, `opencode`, `chrome`, `gemini-cli`. They share the same `.md` config format but differ in runtime capabilities. Native hosts (CC, OC, gemini-cli) can spawn subprocesses + read the filesystem; chrome can't.
 
 **Host Compat** — Per-entry declaration of which hosts a cue / blank runs on. Auto-detected from `script:` / `blankScript:` extension (`.sh` etc. → not chrome) and overridable via `on-host:` (allow-list) and `not-on-host:` (deny-list) frontmatter fields. Surfaced in `opencues list`, validated by `opencues validate`, used by `opencues sync chrome` to filter the bundle. See `docs/features/host-compat.md` for the full spec.
 

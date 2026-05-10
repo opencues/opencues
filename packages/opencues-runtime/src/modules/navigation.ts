@@ -22,6 +22,7 @@ export interface WordSpan {
 export class Navigation {
   private _unsubLeft: Unsubscribe | null = null;
   private _unsubRight: Unsubscribe | null = null;
+  private _unsubEscape: Unsubscribe | null = null;
   private _unsubText: Unsubscribe | null = null;
   private _unsubCursor: Unsubscribe | null = null;
 
@@ -58,6 +59,18 @@ export class Navigation {
       { requireModifiers: ['ctrl', 'alt'], keys: ['right'] },
       e => this.onArrowRight(e),
     );
+    // Escape deactivates the highlight without changing text.
+    // No required modifier — bare Escape; forbidModifiers prevents
+    // accidental capture during a Ctrl+Esc / Alt+Esc shortcut chord.
+    this._unsubEscape = this.adapter.onKey(
+      { keys: ['escape'], forbidModifiers: ['ctrl', 'alt', 'shift', 'meta'] },
+      () => {
+        if (!this.hlState.active) return false;
+        this.hlState.deactivate();
+        this.adapter.forceRender();
+        return true;
+      },
+    );
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
     // Cursor-only events (mouse click, arrow keys) are optional — hosts
     // that can't distinguish them omit the method, in which case
@@ -70,6 +83,7 @@ export class Navigation {
   unsubscribe(): void {
     if (this._unsubLeft) { this._unsubLeft(); this._unsubLeft = null; }
     if (this._unsubRight) { this._unsubRight(); this._unsubRight = null; }
+    if (this._unsubEscape) { this._unsubEscape(); this._unsubEscape = null; }
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
     if (this._unsubCursor) { this._unsubCursor(); this._unsubCursor = null; }
   }
@@ -220,7 +234,9 @@ export class Navigation {
       const nextPosFromRight = Math.min(posFromRight + 1, targets.length - 1);
       this.hlState.setWordIndex(targets[targets.length - 1 - nextPosFromRight]);
     } else {
-      // Ctrl+Alt+Right: step right. If at rightmost (posFromRight === 0), deactivate.
+      // Ctrl+Alt+Right: step right. At rightmost (posFromRight === 0)
+      // deactivate — matches CC/OC where right-past-end always
+      // unselects, including the single-target case.
       if (posFromRight === 0) {
         this.hlState.deactivate();
       } else {

@@ -10,7 +10,7 @@ version: 1
 # and LLM-backed cue sources (for dynamic alternatives).
 #
 # Files in .cues/ are hot-reloaded — edit any of this and the next
-# keystroke in claude-code / opencode picks up the change
+# keystroke in claude-code / opencode / gemini-cli picks up the change
 # within ~2s. No restart needed.
 #
 # ─────────────────────────────────────────────────────────────────────

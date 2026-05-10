@@ -311,7 +311,7 @@ priority: 75
 parser: alternatives
 model: claude-haiku-4-5
 enabled: true
-on-host: [chrome, claude-code, opencode]
+on-host: [chrome, claude-code, gemini-cli, opencode]
 spec: opencues/0.1-alpha
 ---
 

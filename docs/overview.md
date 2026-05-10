@@ -58,7 +58,7 @@ pnpm build
 For end-user installation (host integrations):
 
 ```bash
-pnpm exec opencues install claude-code     # or: opencode | chrome | --all
+pnpm exec opencues install claude-code     # or: opencode | chrome | gemini-cli | --all
 ```
 
 See the top-level [README.md](../README.md) for the full quickstart.

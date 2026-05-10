@@ -3,6 +3,7 @@
 // claude-code: exec the patched binary (claude-cues if present, else claude)
 // opencode:    cd into fork dir + bun run dev
 // chrome:      no-op + remind the user to load unpacked at chrome://extensions
+// gemini-cli:  node packages/cli/dist/index.js inside ~/gemini-cli-cues fork
 
 'use strict';
 
@@ -15,8 +16,9 @@ const HOST_ALIASES = {
   'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
   'opencode':    'opencode',    'oc':         'opencode',
   'chrome':      'chrome',
+  'gemini-cli':  'gemini-cli',  'geminicli':  'gemini-cli',  'gemini': 'gemini-cli',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
 
 module.exports = function run(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -43,6 +45,7 @@ module.exports = function run(argv, ctx) {
   if (folder === 'claude-code') return runCC(passthrough);
   if (folder === 'opencode')    return runOC(passthrough, argv);
   if (folder === 'chrome') return runChrome();
+  if (folder === 'gemini-cli') return runGemini(passthrough, argv);
 };
 
 function runCC(passthrough) {
@@ -143,6 +146,39 @@ function exitFromSpawn(result, what) {
   process.exit(result.status ?? 0);
 }
 
+function runGemini(passthrough, fullArgv) {
+  const targetIdx = fullArgv.indexOf('--target');
+  const fork = (targetIdx >= 0 && fullArgv[targetIdx + 1])
+    || process.env.GEMINI_CLI_CUES_DIR
+    || path.join(os.homedir(), 'gemini-cli-cues');
+
+  if (!fs.existsSync(path.join(fork, 'packages', 'cli'))) {
+    console.error(`opencues run gemini-cli: ${fork} doesn't look like a gemini-cli checkout.`);
+    console.error('Install first: opencues install gemini-cli');
+    console.error('Or pass --target /path/to/your/gemini-cli-fork');
+    process.exit(1);
+  }
+
+  const builtCli = path.join(fork, 'packages', 'cli', 'dist', 'index.js');
+  if (!fs.existsSync(builtCli)) {
+    console.error(`opencues run gemini-cli: built CLI not found at ${builtCli}.`);
+    console.error('Run setup again: opencues install gemini-cli');
+    process.exit(1);
+  }
+
+  // Drop --target if it was passed; it's ours, not gemini's.
+  const cleaned = passthrough.filter((a, i, arr) => a !== '--target' && arr[i - 1] !== '--target');
+
+  // Launch from the user's cwd, not the fork dir. The fork ships its
+  // own .gemini/settings.json (devtools + experimental flags) which
+  // Gemini picks up cwd-locally and renders the input box with a
+  // blue background. Running from the user's cwd uses their own
+  // settings.json (or none).
+  console.log(`Launching: node ${builtCli} ${cleaned.join(' ')}`.trim());
+  const result = spawnSync('node', [builtCli, ...cleaned], { stdio: 'inherit' });
+  exitFromSpawn(result, 'node');
+}
+
 function runChrome() {
   console.log('Chrome extensions are loaded by Chrome itself, not by opencues.');
   console.log('');
@@ -163,10 +199,11 @@ function printHelp() {
   console.log('  claude-code   exec the patched CC binary (claude-cues or claude)');
   console.log('  opencode      cd into the fork dir + bun run dev');
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
+  console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
   console.log('');
   console.log('Flags:');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');
-  console.log('  --target <path>   (opencode only) fork dir (default: $HOME/opencode-cues)');
+  console.log('  --target <path>   (opencode/gemini-cli) fork dir (defaults: $HOME/opencode-cues, $HOME/gemini-cli-cues)');
   console.log('');
   console.log('Examples:');
   console.log('  opencues run claude-code');

@@ -1,9 +1,9 @@
 # Host Compatibility
 
-The OpenStandard runs on three integration hosts — `claude-code`, `opencode`,
-`chrome` — that share the same `.md` config format but differ in
-runtime capabilities. Native hosts (CC, OC) can spawn subprocesses
-and read arbitrary filesystem paths; chrome can't.
+The OpenStandard runs on four integration hosts — `claude-code`, `opencode`,
+`chrome`, `gemini-cli` — that share the same `.md` config format but
+differ in runtime capabilities. Native hosts (CC, OC, gemini-cli) can
+spawn subprocesses and read arbitrary filesystem paths; chrome can't.
 
 A cue or blank can declare which hosts it works on. Most entries
 don't need to: OpenCues **infers** compatibility from what the entry
@@ -28,8 +28,8 @@ That covers every cue + blank we ship today without a single annotation:
 | `blanks/math/BLANK.md` (compute parser) | all | no script |
 | `blanks/affirmations/BLANK.md` (list) | all | no script |
 | `blanks/stocks/BLANK.md` (runtime class) | all | no script |
-| `blanks/volume/BLANK.md` (`blankScript: ./volume-blank.sh`) | claude-code, opencode | `.sh` |
-| `blanks/brightness/BLANK.md` (`blankScript: ./brightness-blank.sh`) | claude-code, opencode | `.sh` |
+| `blanks/volume/BLANK.md` (`blankScript: ./volume-blank.sh`) | claude-code, opencode, gemini-cli | `.sh` |
+| `blanks/brightness/BLANK.md` (`blankScript: ./brightness-blank.sh`) | claude-code, opencode, gemini-cli | `.sh` |
 
 ---
 
@@ -88,7 +88,7 @@ Both accept:
 ---
 # Optional. Overrides auto-detect. When set, the listed hosts are the
 # only ones this entry runs on. Omit if you want the auto-detect default.
-on-host: [chrome, claude-code, opencode]   # array
+on-host: [chrome, claude-code, gemini-cli, opencode]   # array
 on-host: chrome, claude-code                       # comma-separated
 on-host: chrome                                    # single value
 
@@ -98,7 +98,7 @@ not-on-host: chrome, opencode
 ---
 ```
 
-Valid host names: **`chrome`**, **`claude-code`**, **`opencode`**.
+Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**.
 
 Unknown names are silently dropped at runtime; `opencues validate` prints
 warnings about them so typos are caught.
@@ -118,25 +118,25 @@ const result = inferHostCompat({
   // optional: 'not-on-host': ['opencode'],
 });
 // → {
-//     hosts: ['claude-code', 'opencode'],
+//     hosts: ['claude-code', 'gemini-cli', 'opencode'],
 //     all: false,
 //     source: 'auto'   // or 'on-host' / 'auto+not-on-host'
 //   }
 
 formatHostList(result.hosts);
-// → 'claude-code, opencode'   (or 'all' if every host)
+// → 'claude-code, gemini-cli, opencode'   (or 'all' if every host)
 ```
 
 | Constant | Value |
 |---|---|
-| `HOSTS` | `['chrome', 'claude-code', 'opencode']` |
-| `NATIVE_HOSTS` | `['claude-code', 'opencode']` (subprocess + filesystem capable) |
+| `HOSTS` | `['chrome', 'claude-code', 'gemini-cli', 'opencode']` |
+| `NATIVE_HOSTS` | `['claude-code', 'gemini-cli', 'opencode']` (subprocess + filesystem capable) |
 
 | Function | Returns |
 |---|---|
 | `inferHostCompat(input)` | `{ hosts, all, source }` |
 | `unknownHostNames(value)` | `string[]` of host names that aren't in `HOSTS` (validator helper) |
-| `formatHostList(hosts)` | Human display: `"all"` or `"claude-code, opencode"` |
+| `formatHostList(hosts)` | Human display: `"all"` or `"claude-code, gemini-cli, opencode"` |
 
 ---
 

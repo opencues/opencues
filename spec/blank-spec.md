@@ -303,7 +303,7 @@ blankReadOnly: true
 blankProximity: 2
 blankFormat: string
 blankTip: "Open-Meteo (cached 5min)"
-on-host: [chrome, claude-code, opencode]
+on-host: [chrome, claude-code, gemini-cli, opencode]
 spec: opencues/0.1-alpha
 ---
 

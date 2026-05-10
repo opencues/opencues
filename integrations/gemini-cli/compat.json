@@ -1,0 +1,14 @@
+{
+  "//": "OpenCues compatibility manifest for Gemini CLI. The fork is git-SHA pinned (not npm). Pin lives in integrations/gemini-cli/pin.json (structured JSON, sourced by setup.sh + rewritten by `opencues update gemini-cli --to <version>`). Patches target specific files in the fork (AppContainer.tsx, components/InputPrompt.tsx, components/Footer.tsx) — anything that touches those files in upstream needs a re-test before adding here.",
+  "host-kind": "git",
+  "host-repo": "google-gemini/gemini-cli",
+  "current-pin-source": {
+    "kind": "json-file",
+    "path-from-repo": "integrations/gemini-cli/pin.json"
+  },
+  "tested": [
+    { "version": "0.41.2", "sha": "b0c7a1722afe458135a1770eee1f6c856d7ed59a" }
+  ],
+  "compat-range": "0.41.x",
+  "known-incompatible": []
+}

@@ -117,6 +117,24 @@ module.exports = function doctor(argv, ctx) {
   }
   console.log('');
 
+  // ── Gemini CLI install ────────────────────────────────────────────────
+  console.log('## Gemini CLI');
+  reportPinStatus('gemini-cli', ctx, HOME, findings);
+  const geminiFork = path.join(HOME, 'gemini-cli-cues');
+  if (fs.existsSync(geminiFork)) {
+    ok(`fork at ${geminiFork}`, true);
+    ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime')));
+    ok(`fork/node_modules/@opencues/core`,    fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/core')));
+    const geminiBootstrap = path.join(geminiFork, 'packages/cli/src/ui/opencues.ts');
+    ok(`bootstrap copy in fork`, fs.existsSync(geminiBootstrap));
+    const geminiBuilt = path.join(geminiFork, 'packages/cli/dist/index.js');
+    ok(`built CLI`, fs.existsSync(geminiBuilt));
+  } else {
+    bad(`fork at ${geminiFork}`, false);
+    findings.push({ sev: 'info', msg: 'Gemini CLI fork not present', fix: 'opencues install gemini-cli' });
+  }
+  console.log('');
+
   // ── Env / API keys ────────────────────────────────────────────────────
   console.log('## Environment');
   ok('GROQ_API_KEY (LLM)',         !!process.env.GROQ_API_KEY);
@@ -127,7 +145,7 @@ module.exports = function doctor(argv, ctx) {
   console.log('');
 
   // ── Runtime IPC files ─────────────────────────────────────────────────
-  console.log('## Runtime IPC (created when CC/OC actually runs)');
+  console.log('## Runtime IPC (created when CC/OC/Gemini actually runs)');
   ok('/tmp/opencues.log',                       fs.existsSync('/tmp/opencues.log'));
   const cursorState = '/tmp/opencues-cursor-state.json';
   ok(cursorState,                                fs.existsSync(cursorState));

@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const HOSTS = ['claude-code', 'opencode', 'chrome'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
 
 module.exports = function version(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

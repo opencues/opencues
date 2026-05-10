@@ -1,0 +1,5 @@
+{
+  "//": "Gemini CLI fork pin. Read by integrations/gemini-cli/patches/setup.sh + rewritten by `opencues update gemini-cli --to <version>`. Both fields must move together — version is for human display, sha is what git checkout actually uses.",
+  "version": "0.41.2",
+  "sha": "b0c7a1722afe458135a1770eee1f6c856d7ed59a"
+}

@@ -29,7 +29,7 @@ module.exports = function which(argv, ctx) {
       ['tweakcc clone',              path.join(HOME, 'claude-code-cues', '.opencues', 'tweakcc')],
       ['tweakcc state + cli backup', path.join(HOME, 'claude-code-cues', '.opencues', 'patch-state')],
     ]],
-    ['Shared user-level (used by CC + OC)', [
+    ['Shared user-level (used by CC + OC + Gemini CLI)', [
       ['TTS script',                 path.join(HOME, '.cues', 'scripts', 'speak.sh')],
       ['TTS helper (compiled)',      path.join(HOME, '.cues', 'scripts', 'SpeakCtl.exe')],
       ['Brightness blank dir',       path.join(HOME, '.cues', 'blanks', 'brightness')],
@@ -47,7 +47,14 @@ module.exports = function which(argv, ctx) {
       ...wslChromeDeployRows(),
       ['(other deploy targets are wherever you passed --target; chrome reload state lives in Chrome itself)', ''],
     ]],
-    ['Runtime IPC files (created when CC/OC actually runs)', [
+    ['Gemini CLI install state (per fork)', [
+      ['Default fork dir',           path.join(HOME, 'gemini-cli-cues')],
+      ['Built core',                 path.join(HOME, 'gemini-cli-cues', 'node_modules', '@opencues', 'core')],
+      ['Built runtime',              path.join(HOME, 'gemini-cli-cues', 'node_modules', '@opencues', 'runtime')],
+      ['Bootstrap (copied)',         path.join(HOME, 'gemini-cli-cues', 'packages', 'cli', 'src', 'ui', 'opencues.ts')],
+      ['(also: 4 patched source files in packages/cli/src/ui/ — AppContainer.tsx, components/InputPrompt.tsx, components/Footer.tsx, esbuild.config.js)', ''],
+    ]],
+    ['Runtime IPC files (created when CC/OC/Gemini actually runs)', [
       ['Debug log',                  '/tmp/opencues.log'],
       ['Statusline IPC',             '/tmp/opencues-highlight-state-<pid>.json'],
       ['Cursor state IPC',           '/tmp/opencues-cursor-state.json'],

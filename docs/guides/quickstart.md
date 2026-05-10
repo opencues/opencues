@@ -23,7 +23,7 @@ pnpm build
 
 # Install the Claude Code integration
 pnpm exec opencues install claude-code
-# (alternatives: install opencode, install chrome, install --all)
+# (alternatives: install opencode, install chrome, install gemini-cli, install --all)
 ```
 
 Restart Claude Code.

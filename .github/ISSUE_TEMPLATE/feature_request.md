@@ -16,6 +16,9 @@ How you'd like it to work.
 - [ ] The standard (config files — CUES.md, BLANKS.md, controls)
 - [ ] opencues-core (TypeScript library)
 - [ ] Claude Code integration (patches)
+- [ ] OpenCode integration (patches)
+- [ ] Chrome extension
+- [ ] Gemini CLI integration (patches)
 - [ ] New integration (specify editor)
 - [ ] Documentation
 

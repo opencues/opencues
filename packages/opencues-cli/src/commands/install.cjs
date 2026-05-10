@@ -22,9 +22,12 @@ const HOST_ALIASES = {
   'opencode':    'opencode',
   'oc':          'opencode',
   'chrome':      'chrome',
+  'gemini-cli':  'gemini-cli',
+  'geminicli':   'gemini-cli',
+  'gemini':      'gemini-cli',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome'];     // canonical names
-const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome']; // resolved folders for --all
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];     // canonical names
+const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli']; // resolved folders for --all
 
 module.exports = function install(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
@@ -94,12 +97,13 @@ function printHelp(ctx) {
   console.log('  claude-code   Patches Claude Code\'s cli.js via tweakcc       (aliases: claudecode, claude, cc)');
   console.log('  opencode      Patches an OpenCode 1.4.x fork                 (alias: oc)');
   console.log('  chrome        Chrome MV3 extension');
-  console.log('  --all         Install all three');
+  console.log('  gemini-cli    Patches a Gemini CLI 0.41.x fork               (aliases: geminicli, gemini)');
+  console.log('  --all         Install all four');
   console.log('');
   console.log('Common flags (passed through to the per-host installer):');
-  console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode)');
+  console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode/gemini-cli)');
   console.log('  --dry-run         Print plan, do not execute');
-  console.log('  --clean           (claude-code only) wipe install dir before reinstalling');
+  console.log('  --clean           (claude-code) wipe install dir before reinstalling; (gemini-cli) accepted as no-op alias');
   console.log('  --no-build        (chrome only) skip build, use existing dist/');
   console.log('');
   console.log('Examples:');

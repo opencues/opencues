@@ -140,6 +140,7 @@ This applies to both read-only API blanks (e.g. stocks, weather) and dynamic lis
 3. **Register it** in each host's `blanksRegistry`:
    - CC: `integrations/claude-code/patches/opencuesRuntime.ts`
    - OC: `integrations/opencode/patches/opencuesBootstrap.ts`
+   - Gemini: `integrations/gemini-cli/patches/opencuesBootstrap.ts`
    - Chrome: `integrations/chrome/src/blanks/index.ts`
 4. **Add the blank's `BLANK.md`** under `defaults/blanks/<name>/BLANK.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by blank name.
 

@@ -1,0 +1,32 @@
+{
+  "name": "@opencues/gemini-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues for Gemini CLI \u2014 patches a Gemini CLI fork to add real-time word alternatives, blanks, and cue-controls.",
+  "compatibility": {
+    "gemini-cli": "0.41.x"
+  },
+  "bin": {
+    "opencues-gemini-cli": "./bin/install.cjs"
+  },
+  "scripts": {
+    "dev-install": "node bin/install.cjs install",
+    "dev-uninstall": "node bin/install.cjs uninstall",
+    "seed-configs": "node bin/install.cjs seed-configs",
+    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
+  },
+  "files": [
+    "bin/",
+    "patches/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "integrations/gemini-cli"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

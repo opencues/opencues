@@ -104,7 +104,26 @@ export class Statusline {
   /** Exposed for testing — build the payload from current state + render ctx. */
   buildPayload(ctx: RenderContext): StatuslinePayload {
     const agentTask = this.formatAgentTask();
+    // `active` means "OpenCues has an interactive region the user can
+    // act on". Highlight active is the obvious case. Span fill (e.g.
+    // a weather/stocks blank that just substituted) is also active —
+    // the user can cycle Up/Down through alternatives. Without
+    // including spanFill here, BlankFill scenarios that wait for
+    // active=true after a substitution time out even though the
+    // substituted span is fully cyclable.
+    const spanActive = this.spanFillState?.current ?? null;
     if (!this.hlState.active || this.hlState.wordIndex === null) {
+      if (spanActive) {
+        return {
+          active: true, timestamp: Date.now(), agentTask,
+          highlightedWordIndex: spanActive.index,
+          highlightedWord: spanActive.alternatives[spanActive.currentAltIndex] ?? '',
+          cueTip: spanActive.blankTip ?? null,
+          alts: spanActive.alternatives,
+          currentAltIndex: spanActive.currentAltIndex,
+          cueBlank: true,
+        };
+      }
       return { active: false, timestamp: Date.now(), agentTask };
     }
     // tips-mode: off → still expose word + alts but suppress tip text.
