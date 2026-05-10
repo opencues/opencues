@@ -42,18 +42,22 @@ function ensureHighlightStyle(): HTMLStyleElement {
 }
 
 function applyDerivedColours(el: HTMLElement, dimMix: number): void {
-  const { active, dim } = deriveOpenCuesColours(el, dimMix);
+  const { active, dim, activeBg } = deriveOpenCuesColours(el, dimMix);
 
-  // Active = host text colour on a dim-coloured background pill. The
-  // pill paints behind the glyphs (a property the Highlight API
-  // actually honours, unlike font-weight or text-stroke-width on
-  // older Chromes), and the brighter fill makes the word read as
-  // "selected" against everything else dimmed.
+  // Active = host text colour on a low-opacity tint of the host text
+  // colour as the pill background. Painting at low opacity (rgba)
+  // rather than mixing into a flat colour means the visible tint
+  // adapts to whatever's actually behind it — works on solid white,
+  // dark mode, gradients, and even the rare animated background. On
+  // light pages the pill reads as a soft highlighter mark; on dark
+  // pages as a brighter selection swatch. Far more visible than the
+  // previous flat-mix dim colour, which on light pages collapsed to
+  // a low-contrast light gray that didn't look "selected" at all.
   ensureHighlightStyle().textContent = `
     ::highlight(oc-dim) { color: ${dim} !important; }
     ::highlight(oc-active) {
       color: ${active} !important;
-      background-color: ${dim} !important;
+      background-color: ${activeBg} !important;
     }
   `;
 }

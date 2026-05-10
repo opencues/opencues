@@ -16,6 +16,12 @@
 export interface DerivedColours {
   active: string;
   dim: string;
+  /** Active-pill background — host text colour at low opacity so it
+   *  reads as a soft highlighter mark on both dark and light pages.
+   *  Painted ON TOP of the page background, not mixed into a flat
+   *  colour, so the visible tint adapts naturally to whatever's
+   *  behind it. */
+  activeBg: string;
 }
 
 interface RGBA { r: number; g: number; b: number; a: number; }
@@ -51,6 +57,10 @@ export function rgbToCss(c: RGBA): string {
   return `rgb(${c.r}, ${c.g}, ${c.b})`;
 }
 
+export function rgbaToCss(c: RGBA, alpha: number): string {
+  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+}
+
 /**
  * Walk up the DOM looking for the first ancestor (including el) whose
  * computed background-color is non-transparent. Falls back to white
@@ -67,16 +77,34 @@ export function firstOpaqueBackground(el: Element): RGBA {
   return { r: 255, g: 255, b: 255, a: 1 };
 }
 
+/** Active-pill background opacity. Tuned so the tint reads as
+ *  "highlighted" without overpowering the text colour:
+ *  - 0.20-0.25 looks like a soft highlighter mark on light pages.
+ *  - The same alpha on dark pages produces a softer brighter tint
+ *    that still reads as selected. Adjust via popup if you want a
+ *    more / less prominent pill.
+ *  Higher alpha → more saturated pill (stronger "selected" feel).
+ *  Lower alpha → subtler. */
+const DEFAULT_ACTIVE_BG_ALPHA = 0.22;
+
 /**
  * Derive OpenCues colours for a given target. `dimMix` controls how
  * far dim is pulled toward the background (0 = no fade, 1 = invisible).
  * 0.45 is the default — visibly faded but still legible on every
  * theme we've tested.
  */
-export function deriveOpenCuesColours(target: Element, dimMix = 0.45): DerivedColours {
+export function deriveOpenCuesColours(
+  target: Element,
+  dimMix = 0.45,
+  activeBgAlpha = DEFAULT_ACTIVE_BG_ALPHA,
+): DerivedColours {
   const computed = getComputedStyle(target);
   const text = parseRgb(computed.color) ?? { r: 0, g: 0, b: 0, a: 1 };
   const bg = firstOpaqueBackground(target);
   const dim = mix({ ...text, a: 1 }, bg, dimMix);
-  return { active: rgbToCss({ ...text, a: 1 }), dim: rgbToCss(dim) };
+  return {
+    active: rgbToCss({ ...text, a: 1 }),
+    dim: rgbToCss(dim),
+    activeBg: rgbaToCss({ ...text, a: 1 }, activeBgAlpha),
+  };
 }
