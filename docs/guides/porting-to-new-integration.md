@@ -195,7 +195,7 @@ See `docs/features/cue-blanks.md` for the full spec. Key integration points:
 
 1. **`blankInvoke` capability** — the host adapter implements a registry-then-spawn dispatcher. `blankInvoke({ blankName, action: 'get'|'set'|'up'|'down', args })` returns the result. Registered TS-class blanks handle it directly; unregistered ones fall through to `spawnProcess` of `blankScript`. Validation is config-driven by `blankFormat`.
 2. **Result filter exception** — blank results have only 1 alternative but must pass through (normal filter requires >1).
-3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular cue-blank values. Selector/satellite blanks use the `settings:` block from `cues.md` frontmatter instead. Grammar/LLM tips cannot override any position with `metadata.blankName`. See `docs/features/tip-priority.md` for the full resolution order.
+3. **Tip isolation** — `blankTip` (if set) is the ONLY tip shown for regular cue-blank values. Selector/satellite blanks use the `settings:` block from `CUES.md` frontmatter instead. Grammar/LLM tips cannot override any position with `metadata.blankName`. See `docs/features/tip-priority.md` for the full resolution order.
 4. **Cycling runs synchronously** — `blankInvoke({ action: 'up' })` runs synchronously, then `blankInvoke({ action: 'get' })` is called for the new value before updating the display.
 5. **Ownership model (critical)** — `metadata.blankName` must only be cleared by user edits, never by LLM results. Two separate code paths:
    - **User edit** (text-change detection in render cycle): if the word at a blank position changed, clear `metadata` — the user "unlocked" it. Also clear metadata for positions beyond the new text length (word removal).

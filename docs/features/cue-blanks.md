@@ -59,7 +59,7 @@ TypeScript classes living in
 | `weather` | `WeatherBlank` | Forecast via Open-Meteo |
 | `answer` | `AnswerBlank` | LLM-formatted answer in place |
 | `prompt` | `PromptImproverBlank` | LLM-rewritten prompt in place |
-| `opencues` | `OpenCuesSettingsBlank` | Read/write `cues.md` frontmatter scalars |
+| `opencues` | `OpenCuesSettingsBlank` | Read/write `CUES.md` frontmatter scalars |
 | `countries` | `CountriesBlank` | Country lookup |
 | `crypto` | `CryptoBlank` | Live crypto prices |
 | `dictionary` | `DictionaryBlank` | Word definitions |

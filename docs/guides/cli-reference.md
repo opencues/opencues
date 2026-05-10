@@ -66,15 +66,15 @@ and runnable standalone whenever you suspect drift.
 
 Four phases on every invocation:
 
-1. **SEED** — first-time copy of `defaults/cues.md + cues/ + blanks/ + scripts/` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
+1. **SEED** — first-time copy of `defaults/CUES.md + cues/ + blanks/ + scripts/` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.cues/cues.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.cues/CUES.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
 |---|---|
 | (none) | User-level. Runs all four phases. |
-| `--project` | Writes into `<cwd>/.cues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `cues.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
+| `--project` | Writes into `<cwd>/.cues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `CUES.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
 | `--silent` | Suppress non-error output (used when chained from `opencues install`). |
 | `--dry-run` | Print the plan; do not copy / compile anything. |
 
@@ -143,7 +143,7 @@ Walks every search-path layer (env / project / user), parses every
 - Host-compat contradictions (`on-host:` lists chrome but the
   blank has `blankScript: ./*.sh`)
 - Multiple defaults without a priority discriminator
-- Tip JSON parse failures inside folder-based `cues/<name>/cue.md` body blocks
+- Tip JSON parse failures inside folder-based `cues/<name>/CUE.md` body blocks
 
 Exit 0 on success, 1 on errors. Suitable for CI.
 
@@ -159,7 +159,7 @@ opencues import https://example.com/pack.tar.gz
 opencues import ./my-local-pack/             # for testing
 ```
 
-Pack layout matches `defaults/`: top-level `cues.md` + folders for
+Pack layout matches `defaults/`: top-level `CUES.md` + folders for
 `cues/` and `blanks/`. Imports are additive; existing
 files are preserved unless `--force`.
 
@@ -256,7 +256,7 @@ opencues show math
 ### `edit <file>` — open `~/.cues/<file>.md` in `$EDITOR`
 
 ```bash
-opencues edit cues               # opens ~/.cues/cues.md (top-level settings)
+opencues edit cues               # opens ~/.cues/CUES.md (top-level settings)
 opencues edit cues/legal         # opens ~/.cues/cues/legal/CUE.md
 opencues edit blanks/volume      # opens ~/.cues/blanks/volume/BLANK.md
 ```
@@ -269,7 +269,7 @@ opencues logs --tail         # follow live (Ctrl+C to exit)
 ```
 
 Logging goes through the runtime regardless of host; gating is by
-`debug-mode` in `cues.md` frontmatter.
+`debug-mode` in `CUES.md` frontmatter.
 
 ### `debug [on|off]` — toggle runtime `debug-mode`
 
@@ -279,7 +279,7 @@ opencues debug on           # enable verbose logging
 opencues debug off          # disable
 ```
 
-Updates `~/.cues/cues.md`; hot-reload picks it up on the
+Updates `~/.cues/CUES.md`; hot-reload picks it up on the
 next keystroke. Same effect as cycling `debug-mode` in-text via
 the OpenCues Settings blank.
 

@@ -14,7 +14,7 @@ OpenCues has two directions of intent: **Cues** (LLM → user — alternatives o
 
 The architecture has two layers:
 
-1. **Config Standard** (`cues.md` + `cues/<name>/cue.md` + `blanks/<name>/cue.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
+1. **Config Standard** (`CUES.md` + `cues/<name>/CUE.md` + `blanks/<name>/BLANK.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
 2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
 
 Integrations (Claude Code, future editors) use opencues-core to load the config standard and provide the UI layer.
@@ -138,7 +138,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Load tips from folder-based cues/<name>/cue.md (body JSON)
+// Load tips from folder-based cues/<name>/CUE.md (body JSON)
 const cuesDir = path.join(os.homedir(), '.cues', 'cues');
 const folderConfigs = await discoverFolderConfigs(cuesDir, fsAdapter);
 const localCueData = aggregateLocalCueData(folderConfigs);
@@ -176,7 +176,7 @@ import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } f
 const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
 
 // Config-driven sources from .md files (folder-based)
-const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
+const cuesCfg = parseCuesMd(fs.readFileSync('CUES.md', 'utf8'));
 const cuesFolders = await discoverFolderConfigs('.cues/cues', fsAdapter);
 const blanksFolders = await discoverFolderConfigs('.cues/blanks', fsAdapter);
 const configSources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, {
@@ -405,7 +405,7 @@ if (result) {
 
 `@opencues/core` is consumed by `@opencues/runtime`'s `Resolver` module. On host launch, the runtime's `ConfigLoader` parses `.md` configs and `Resolver.rebuildResolver` calls `buildSourcesFromConfig()` from core to construct sources:
 
-- Word sources: each `cues/<name>/cue.md` becomes its own `ConfigSource`; all wrapped in one `RoutedWordSourceGroup` that dispatches per-word.
+- Word sources: each `cues/<name>/CUE.md` becomes its own `ConfigSource`; all wrapped in one `RoutedWordSourceGroup` that dispatches per-word.
 - Blank sources: `BlankSource` (keyword-bound, 95) + `TransformBlankSource` (imperative pipeline, 93) + `FluidBlankSource` (free-form lookup, 92).
 - The constructed resolver is held by `Resolver` and called on every text-change event (debounced ~500ms).
 

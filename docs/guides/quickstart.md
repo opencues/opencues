@@ -60,9 +60,9 @@ All behaviour is defined in `.md` config files that hot-reload (~2s, no restart)
 
 | Path | Purpose |
 |------|---------|
-| `~/.cues/cues.md` | Word tips and LLM prompts for alternatives (user-level) |
-| `~/.cues/blanks.md` | Fill-in-the-blank modes (math, factual, etc.) |
-| `~/.cues/blanks/<name>/cue.md` | Hardware/API cue-blanks |
+| `~/.cues/CUES.md` | Word tips and LLM prompts for alternatives (user-level) |
+| `~/.cues/BLANKS.md` | Fill-in-the-blank modes (math, factual, etc.) |
+| `~/.cues/blanks/<name>/BLANK.md` | Hardware/API cue-blanks |
 | `<project>/.cues/...` | Project-level overrides — wins over user-level on name conflicts |
 
 To populate `~/.cues/` with the repo's defaults: `pnpm exec opencues seed-configs`.

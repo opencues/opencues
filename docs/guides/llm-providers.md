@@ -67,7 +67,7 @@ Each per-feature key falls back to the global setting when unset.
 
 ### Per-cue / per-blank override — finest granularity
 
-In any individual `cue.md` / `BLANK.md` / `defaults/cues/<cue>.md` frontmatter:
+In any individual `CUE.md` / `BLANK.md` / `defaults/cues/<cue>.md` frontmatter:
 
 ```yaml
 ---
@@ -92,7 +92,7 @@ without affecting the rest of `word-cues-*`.
 
 | Tier | Where | Keys |
 |---|---|---|
-| **Per-cue / per-blank** | `cue.md` / `BLANK.md` frontmatter | `provider:`, `model:`, `endpoint:` |
+| **Per-cue / per-blank** | `CUE.md` / `BLANK.md` frontmatter | `provider:`, `model:`, `endpoint:` |
 | **Per-feature** | `~/.cues/OPENCUES.md` frontmatter | `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` |
 | **Global** | `~/.cues/OPENCUES.md` frontmatter | `llm-provider:`, `llm-model:`, `llm-endpoint:` |
 | **Built-in default** | n/a | groq + `openai/gpt-oss-120b` |
@@ -158,7 +158,7 @@ for providers/models that don't accept it.
   composed instructions).
 - Quality saturates at `low` for every OpenCues task surface.
 
-The reasoning_effort field isn't user-exposed in cues.md right now —
+The reasoning_effort field isn't user-exposed in CUES.md right now —
 it's hardcoded to `'low'` by each source. Adding per-feature override
 is a small change if a future surface needs it.
 
@@ -182,7 +182,7 @@ fluid-blank quality (per the bench); Groq wins on short-prompt TTFT.
 ### Claude Code (`integrations/claude-code/`)
 The patch (`opencuesRuntime.ts`) reads all five env keys at startup
 and forwards them as `host.llmApiKeys`. No code change to switch
-providers — just edit `~/.cues/cues.md`.
+providers — just edit `~/.cues/CUES.md`.
 
 ### OpenCode (`integrations/opencode/`)
 Same — `opencuesBootstrap.ts` reads all keys from `process.env` and

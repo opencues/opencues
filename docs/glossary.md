@@ -12,9 +12,9 @@ OpenCues has three types of interaction:
 
 | Type | Direction | What it does | Config file |
 |------|-----------|-------------|-------------|
-| **Cues** | System → User | Indicates alternatives, tips, and context for words | `cues.md` + `cues/<name>/cue.md` |
-| **Blanks** | User → System | User places `_` to tell the system "fill this in" | `blanks/<name>/cue.md` |
-| **Cue-Blanks** | User → External | Blanks bound to a keyword that pull external state (volume, stocks) | `blanks/<name>/cue.md` |
+| **Cues** | System → User | Indicates alternatives, tips, and context for words | `CUES.md` + `cues/<name>/CUE.md` |
+| **Blanks** | User → System | User places `_` to tell the system "fill this in" | `blanks/<name>/BLANK.md` |
+| **Cue-Blanks** | User → External | Blanks bound to a keyword that pull external state (volume, stocks) | `blanks/<name>/BLANK.md` |
 
 All three share the same navigable system — you move between words and interact with them in the text input.
 
@@ -48,7 +48,7 @@ Blanks come in two flavours: **keyword-bound** (a registered keyword next to `_`
 
 **Think of blanks as user-placed autocomplete.** Unlike traditional autocomplete that guesses what comes next, blanks let you decide *where* the completion appears. This works anywhere — LLM prompts, documents, mobile text fields — and enables new interaction paradigms where the user and system collaborate fluidly before submission.
 
-Defined in `blanks/<name>/cue.md` (one folder per blank).
+Defined in `blanks/<name>/BLANK.md` (one folder per blank).
 
 ---
 
@@ -56,7 +56,7 @@ Defined in `blanks/<name>/cue.md` (one folder per blank).
 
 **Cue-Blank** — A blank (`_`) that has been bound to a keyword via `blankKeywords`. When the user types a keyword adjacent to an underscore (e.g., `volume _`), the blank auto-populates with the blank's current value and Up/Down cycling changes the actual system state (calls a runtime `Blank` class or a `blankScript`). The keyword must be within `blankProximity` words of the `_` (default 0 = adjacent). All external-state interactions are `_`-gated — there is no word-cycling on plain text without `_`.
 
-Configured in `blanks/{name}/cue.md` with `blankKeywords`, `blankStep`, `blankAutoPopulate`, `blankProximity`, `blankFormat`, `blankScript`, `blankTip`, `blankReadOnly`, `blankDismissible`, `blankSuffix`, `blankClearKeywords`, `blankClearOnEdit`, `blankConsumeAll`, and `blankConsumeContext`. Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword). See `docs/features/cue-blanks.md` and `docs/guides/adding-a-cue-blank.md`.
+Configured in `blanks/{name}/BLANK.md` with `blankKeywords`, `blankStep`, `blankAutoPopulate`, `blankProximity`, `blankFormat`, `blankScript`, `blankTip`, `blankReadOnly`, `blankDismissible`, `blankSuffix`, `blankClearKeywords`, `blankClearOnEdit`, `blankConsumeAll`, and `blankConsumeContext`. Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword). See `docs/features/cue-blanks.md` and `docs/guides/adding-a-cue-blank.md`.
 
 **Blank-Bound Word** — Internal: a WordDef with `metadata.blankName` set. Indicates the position is owned by a cue-blank's auto-populated value and must not be overwritten by LLM/grammar merges. Only the user can clear it (by editing the word).
 
@@ -72,7 +72,7 @@ Configured in `blanks/{name}/cue.md` with `blankKeywords`, `blankStep`, `blankAu
 
 OpenCues is configured via `.md` files in the project root. These files are the standard — all prompts, modes, and behaviour are defined here, not in code.
 
-**cues.md** — The single top-level config file. Holds **system settings** (voice-mode, fluid-blank-mode, word-cues-mode, tips-mode, debug-mode, cursor-navigate), the nested `settings:` block (declarations for selector/satellite cycling: each setting's `tip:`, `values:`, and per-value tips), and the `ignore:` array — all in YAML frontmatter. Body is human-readable description, not parsed for cue data. Lives at user-level ONLY for the system-settings half (`~/.cues/cues.md`; overridable with `$OPENCUES_HOME`). Seeded from `defaults/cues.md` by `opencues seed-configs` and re-seeded if 0 bytes (`OpenCuesSettingsBlank` silently no-ops on empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on native hosts). Cycled live by `OpenCuesSettingsBlank`. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
+**CUES.md** — The single top-level config file. Holds **system settings** (voice-mode, fluid-blank-mode, word-cues-mode, tips-mode, debug-mode, cursor-navigate), the nested `settings:` block (declarations for selector/satellite cycling: each setting's `tip:`, `values:`, and per-value tips), and the `ignore:` array — all in YAML frontmatter. Body is human-readable description, not parsed for cue data. Lives at user-level ONLY for the system-settings half (`~/.cues/CUES.md`; overridable with `$OPENCUES_HOME`). Seeded from `defaults/CUES.md` by `opencues seed-configs` and re-seeded if 0 bytes (`OpenCuesSettingsBlank` silently no-ops on empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on native hosts). Cycled live by `OpenCuesSettingsBlank`. See `docs/features/selector-satellite.md` and `docs/features/tip-priority.md`.
 
 **cues/{name}/CUE.md** — One folder per cue source. Folder name = source id. Static cues have a body JSON code block (the words map: `{"ultrathink": {"tip": "...", "alts": [...], "speak": true}}`). LLM cues declare `match:` or `keywords:` in frontmatter and put prompt text in the body. The runtime infers static-vs-LLM from data shape (no `type:` discriminator).
 
@@ -94,7 +94,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **Local Cues** — Alternatives computed locally on your machine, returning near-instantly (~0ms). The tips file is a local cue source — it provides both alternatives and cue-tips. In code: `LocalCueSource`.
 
-**Remote Cues** — Alternatives computed externally using an LLM (~200-500ms). Each `cues/<name>/cue.md` (or `blanks/<name>/cue.md`) becomes a config-driven source that sends a prompt to the LLM and parses the response. In code: `ConfigSource`.
+**Remote Cues** — Alternatives computed externally using an LLM (~200-500ms). Each `cues/<name>/CUE.md` (or `blanks/<name>/BLANK.md`) becomes a config-driven source that sends a prompt to the LLM and parses the response. In code: `ConfigSource`.
 
 **BlankSource** — Keyword-bound blank dispatcher. Watches every `_` and claims the slot when any registered blank's `blankKeywords` matches a phrase within `blankProximity` words of the `_`. Auto-populates with the blank's current value via `blankScript get` or runtime-class `blankInvoke`. Up/Down cycling writes back. Priority 95 (above fluid-blank).
 
@@ -102,13 +102,13 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **FluidBlankSource** — Free-form `_` lookup. Two-pass pipeline: P1 SEGMENT identifies the lookup span, P3 ANSWER produces the canonical short answer. Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots that no `BlankSource` or `TransformBlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
 
-**RoutedWordSourceGroup** — Wraps multiple folder-based word-cue sources (each `cues/<name>/cue.md`) and dispatches each highlighted word to ONE child source via per-word routing. Uses fast-path rules only — no LLM classifier. Every source MUST declare `match:` (regex) or `keywords:` (list); sources without either are dropped. Words that no source claims produce no cue (not navigable). Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-cue-routing.md`.
+**RoutedWordSourceGroup** — Wraps multiple folder-based word-cue sources (each `cues/<name>/CUE.md`) and dispatches each highlighted word to ONE child source via per-word routing. Uses fast-path rules only — no LLM classifier. Every source MUST declare `match:` (regex) or `keywords:` (list); sources without either are dropped. Words that no source claims produce no cue (not navigable). Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-cue-routing.md`.
 
 **Word-Cue Source** — A `parser: alternatives` source with `match:` (regex) and/or `keywords:` (comma-separated list). Only fires for words that hit the regex or appear in the keyword list. Use for narrow vocabularies (legal, medical, formal connectors). Higher priority wins ties. Catch-all sources (no match, no keywords) are not supported — declare an explicit `match: .*` if you really want one.
 
-**buildSourcesFromConfig** — Factory function that takes parsed `cues.md` plus discovered `cues/<name>/cue.md` and `blanks/<name>/cue.md` folders and returns `CueSource[]`. Wires:
-- **Word cues**: Each `cues/<name>/cue.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
-- **Blanks**: Keyword-bound entries from `blanks/<name>/cue.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling.md` cue (priority 80) flags misspelled words on plain text — same `ConfigSource` path as legal/medical/etc.
+**buildSourcesFromConfig** — Factory function that takes parsed `CUES.md` plus discovered `cues/<name>/CUE.md` and `blanks/<name>/BLANK.md` folders and returns `CueSource[]`. Wires:
+- **Word cues**: Each `cues/<name>/CUE.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
+- **Blanks**: Keyword-bound entries from `blanks/<name>/BLANK.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling.md` cue (priority 80) flags misspelled words on plain text — same `ConfigSource` path as legal/medical/etc.
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 

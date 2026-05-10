@@ -54,8 +54,8 @@ const httpAdapter = new NodeHttpAdapter({
 });
 
 // 2. Build sources from .md config files
-const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
-const blanksCfg = fs.existsSync('blanks.md') ? parseCuesMd(fs.readFileSync('blanks.md', 'utf8')) : undefined;
+const cuesCfg = parseCuesMd(fs.readFileSync('CUES.md', 'utf8'));
+const blanksCfg = fs.existsSync('BLANKS.md') ? parseCuesMd(fs.readFileSync('BLANKS.md', 'utf8')) : undefined;
 const sources = buildSourcesFromConfig(cuesCfg, blanksCfg, {
   httpAdapter, endpoint: 'https://api.groq.com/openai/v1/chat/completions',
   apiKey: process.env.GROQ_API_KEY, defaultModel: 'openai/gpt-oss-120b',

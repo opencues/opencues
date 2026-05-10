@@ -16,7 +16,7 @@ Create a self-contained folder with the config and script together:
 
 ```
 blanks/volume/
-├── cue.md             # Blank config in YAML frontmatter
+├── BLANK.md             # Blank config in YAML frontmatter
 └── volume-blank.sh    # Script colocated (blankScript: ./volume-blank.sh)
 ```
 
@@ -44,7 +44,7 @@ Relative `blankScript` paths (starting with `./`) are resolved against the folde
 | `name` | Yes | string | Identifier (e.g. `volume`). Also inferred from folder name. |
 | `type` | Yes | string | Always `blank`. |
 | `tip` | No | string | Label shown in the status line when the keyword is highlighted (live `get` output overrides). |
-| `blankScript` | Yes (for OS-bound blanks) | string | Path to the script for `get` / `set` / `up` / `down`. Use `./<name>-blank.sh` (relative to the cue.md). |
+| `blankScript` | Yes (for OS-bound blanks) | string | Path to the script for `get` / `set` / `up` / `down`. Use `./<name>-blank.sh` (relative to the BLANK.md). |
 | `blankKeywords` | Yes | string\|string[] | Context words that bind a `_` to this blank. Multi-word phrases allowed. |
 | `blankStep` | No | number | Increment/decrement amount for numeric blanks. |
 | `blankAutoPopulate` | No | boolean | Auto-fill `_` with current value on analysis. |
@@ -141,9 +141,9 @@ This applies to both read-only API blanks (e.g. stocks, weather) and dynamic lis
    - CC: `integrations/claude-code/patches/opencuesRuntime.ts`
    - OC: `integrations/opencode/patches/opencuesBootstrap.ts`
    - Chrome: `integrations/chrome/src/blanks/index.ts`
-4. **Add the blank's `cue.md`** under `defaults/blanks/<name>/cue.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by blank name.
+4. **Add the blank's `BLANK.md`** under `defaults/blanks/<name>/BLANK.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by blank name.
 
-**Example `cue.md` (no blankScript field):**
+**Example `BLANK.md` (no blankScript field):**
 ```yaml
 ---
 name: stocks
@@ -157,11 +157,11 @@ blankProximity: 2
 ---
 ```
 
-`@opencues/runtime`'s `BlankFill` module sees the cue.md, looks up `blankInvoke('stocks', { action: 'get', args: [keyword, ...contextWords] })`, the host's registry resolves `'stocks'` to the `StocksBlank` instance, and the class's `get()` returns the price.
+`@opencues/runtime`'s `BlankFill` module sees the BLANK.md, looks up `blankInvoke('stocks', { action: 'get', args: [keyword, ...contextWords] })`, the host's registry resolves `'stocks'` to the `StocksBlank` instance, and the class's `get()` returns the price.
 
-For dynamic list blanks (Hacker News pattern): the class returns multiple newline-separated lines; the runtime treats each as a cycling alternative. Add `blankDismissible: true` to the cue.md to append `_` as the last option.
+For dynamic list blanks (Hacker News pattern): the class returns multiple newline-separated lines; the runtime treats each as a cycling alternative. Add `blankDismissible: true` to the BLANK.md to append `_` as the last option.
 
-For OS-level blanks (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the cue.md (`blanks/volume/volume-blank.sh`) and `cue.md` declares `blankScript: ./volume-blank.sh`.
+For OS-level blanks (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the BLANK.md (`blanks/volume/volume-blank.sh`) and `BLANK.md` declares `blankScript: ./volume-blank.sh`.
 
 ## Cycling pitfalls: numeric stepping vs list cycling
 
@@ -201,7 +201,7 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 
 ## Checklist
 
-- [ ] Blank folder created: `defaults/blanks/<name>/cue.md` (+ `<name>-blank.sh` for OS-level)
+- [ ] Blank folder created: `defaults/blanks/<name>/BLANK.md` (+ `<name>-blank.sh` for OS-level)
 - [ ] `type: blank` in frontmatter
 - [ ] Script (if any) is executable (`chmod +x`)
 - [ ] Script handles `get`, `set <value>`, `up`, `down` as needed
@@ -214,4 +214,4 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 - [ ] For TS-class blanks: `setup.sh` re-run so the runtime build includes the new class
 - [ ] Restart the host (config hot-reloads in ~2s; class registration requires restart)
 
-> **No need to run `setup.sh`** for cue.md / script edits — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patches/runtime sources.
+> **No need to run `setup.sh`** for BLANK.md / script edits — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patches/runtime sources.

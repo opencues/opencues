@@ -462,14 +462,14 @@ output.
 
 ### `wrapTipsAsCuesMd(data)` (in mock-adapter.ts)
 
-Wraps a tips JSON object as a minimal folder-based `cues/<name>/cue.md`
+Wraps a tips JSON object as a minimal folder-based `cues/<name>/CUE.md`
 so ConfigLoader's existing parser flow picks it up. Use for any test
 that needs cued words.
 
 ### Static-alt span fixture (`spantest`)
 
-Live in `defaults/cues/span-test/cue.md` (and copied to
-`~/.cues/cues/span-test/cue.md` after seeding) for manual testing
+Live in `defaults/cues/span-test/CUE.md` (and copied to
+`~/.cues/cues/span-test/CUE.md` after seeding) for manual testing
 in chrome / opencode:
 
 ```json

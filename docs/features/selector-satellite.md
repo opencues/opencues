@@ -40,7 +40,7 @@ The parent↔child link lives entirely in metadata. Selector and satellite are *
 Either side of the pair — selector or satellite — may be a multi-word value. When multi-word, it is rendered as a **span**: multiple whitespace-delimited tokens that navigate, dim, and cycle as a single unit. This reuses the same span infrastructure as multi-word LLM alternatives (e.g. `"Jeff Bezos"` as one cycling option).
 
 ```yaml
-# In cues.md frontmatter:
+# In CUES.md frontmatter:
 output-format: rich markdown
 settings:
   output-format:
@@ -112,9 +112,9 @@ The in-memory mirror update (step 4) is what makes cycling feel live — without
 
 ---
 
-## The Backing Config File (`cues.md` frontmatter)
+## The Backing Config File (`CUES.md` frontmatter)
 
-Selector+satellite stores its state in `cues.md`'s frontmatter — the OpenCues system state half (top-level scalars + `settings:` block). The body of `cues.md` is human-readable description and is not touched by satellite cycles; only the YAML frontmatter is rewritten.
+Selector+satellite stores its state in `CUES.md`'s frontmatter — the OpenCues system state half (top-level scalars + `settings:` block). The body of `CUES.md` is human-readable description and is not touched by satellite cycles; only the YAML frontmatter is rewritten.
 
 The frontmatter has **two sections**:
 
@@ -173,7 +173,7 @@ Because the generic cue-blank pipeline passes the matched keyword as the first a
 
 ### Separator Configuration
 
-The separator between selector and satellite in the script's `get` output defaults to **tab** (`\t`). This can be overridden per blank via `blankSatelliteSeparator` in `cue.md`:
+The separator between selector and satellite in the script's `get` output defaults to **tab** (`\t`). This can be overridden per blank via `blankSatelliteSeparator` in `BLANK.md`:
 
 ```yaml
 blankSatelliteSeparator: ' | '
@@ -265,7 +265,7 @@ Because satellite cycling updates the in-memory current-values mirror immediatel
 
 ### Example: `debug-mode` (unwired — ready to wire)
 
-`debug-mode` exists in `cues.md` frontmatter with valid values `[on, off]`. It cycles, it persists, it shows in the selector+satellite UI. But nothing reads `current["debug-mode"]` yet. It's a stub.
+`debug-mode` exists in `CUES.md` frontmatter with valid values `[on, off]`. It cycles, it persists, it shows in the selector+satellite UI. But nothing reads `current["debug-mode"]` yet. It's a stub.
 
 To wire it, you'd pick the runtime point where debug logging is toggled and add:
 
@@ -300,4 +300,4 @@ If you're reaching for selector+satellite, the telltale signs are: the set of op
 
 ## Integration Notes
 
-The reference implementation is the Claude Code integration — see [`integrations/claude-code/docs/selector-satellite.md`](../../integrations/claude-code/docs/selector-satellite.md) for the patch-level implementation details (where in the `_cycleAlt` chain the selector and satellite paths live, how index shifting works during insertion, the two render passes that enforce keyword suppression, the TTS gate points, the hand-rolled `cues.md` frontmatter parser, and the globals it hydrates).
+The reference implementation is the Claude Code integration — see [`integrations/claude-code/docs/selector-satellite.md`](../../integrations/claude-code/docs/selector-satellite.md) for the patch-level implementation details (where in the `_cycleAlt` chain the selector and satellite paths live, how index shifting works during insertion, the two render passes that enforce keyword suppression, the TTS gate points, the hand-rolled `CUES.md` frontmatter parser, and the globals it hydrates).

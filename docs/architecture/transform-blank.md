@@ -503,7 +503,7 @@ packages/opencues-core/src/sources/build-sources.ts
   ↳ Constructs TransformBlankSource at priority 93
 
 packages/opencues-runtime/src/modules/resolver.ts
-  ↳ Reads opencues.md `transform-blank-mode` setting
+  ↳ Reads OPENCUES.md `transform-blank-mode` setting
   ↳ Passes adapter.log → source's `log` callback (debug-mode trace)
   ↳ Inline-substitute branch on `r.source === 'transform-blank'`
   ↳ Builds WordDef with alternatives = [originalText, rewrittenText]
@@ -572,7 +572,7 @@ answer from being clobbered by RoutedWordSourceGroup synonyms.
 
 ## Configuration
 
-### opencues.md settings
+### OPENCUES.md settings
 
 ```yaml
 transform-blank-mode: on    # required to enable TransformBlankSource
@@ -580,7 +580,7 @@ debug-mode: on              # surfaces per-pipeline-stage logs (recommended)
 ```
 
 Hot-reload picks up changes — no restart needed. Both settings are
-declared in `packages/opencues-cli/src/templates/opencues.md` so
+declared in `packages/opencues-cli/src/templates/OPENCUES.md` so
 `opencues seed-configs` lays them out for new users with
 `transform-blank-mode: off` as the default (opt-in).
 
@@ -603,7 +603,7 @@ shouldSkipVerify(instruction, target, draft)
   Filtered patterns = literal swap, BrE↔AmE only
 ```
 
-Don't ship tunables to users via opencues.md — they're fragile and
+Don't ship tunables to users via OPENCUES.md — they're fragile and
 the right values are determined by benchmarks, not preference.
 
 ---
