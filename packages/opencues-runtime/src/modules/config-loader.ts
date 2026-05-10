@@ -1,8 +1,8 @@
-// ConfigLoader — reads cues.md/blanks.md + folder-based cue/blank dirs.
+// ConfigLoader — reads CUES.md/BLANKS.md + folder-based cue/blank dirs.
 //
 // Loads (across $OPENCUES_HOME → <cwd>/.cues → ~/.cues):
-//   - cues.md / blanks.md  (frontmatter parsed by @opencues/core).
-//     Tips live inside cues.md's `## Tips` JSON block — there is no
+//   - CUES.md / BLANKS.md  (frontmatter parsed by @opencues/core).
+//     Tips live inside CUES.md's `## Tips` JSON block — there is no
 //     separate tips.json file any more.
 //   - ~/.cues/OPENCUES.md (user-level only — system settings owned
 //     by the runtime; project-level overrides are intentionally not
@@ -11,7 +11,7 @@
 //     @opencues/core's discoverFolderConfigs)
 //
 // Exposes:
-//   - cueMap     — primary lookup, built from cues.md ## Tips (project
+//   - cueMap     — primary lookup, built from CUES.md ## Tips (project
 //                  wins on word conflicts via mergeConfigs)
 //   - cuesConfig / blanksConfig — frontmatter parses
 //   - opencuesState — voiceMode, tipsMode, debugMode, cursorNavigate, raw settings
@@ -65,7 +65,7 @@ export interface ConfigLoaderOptions {
 }
 
 /**
- * Parsed top-level state from opencues.md frontmatter.
+ * Parsed top-level state from OPENCUES.md frontmatter.
  *
  * v1 used these as global gates:
  *   - voiceMode='inactive'  → silence TTS
@@ -73,7 +73,7 @@ export interface ConfigLoaderOptions {
  *   - debugMode='on'        → enable extra logging
  *   - cursorNavigate='active' → auto-highlight word under cursor
  */
-/** A single named setting in the nested `settings:` block of opencues.md. */
+/** A single named setting in the nested `settings:` block of OPENCUES.md. */
 export interface OpenCuesSettingDef {
   /** Setting-level tip (selector tip in the statusline). */
   readonly tip?: string;
@@ -92,7 +92,7 @@ export interface OpenCuesState {
   readonly settings: ReadonlyMap<string, string>;
   /**
    * Parsed nested `settings:` block — the source of truth for selector/
-   * satellite cycling. Empty when opencues.md has no settings
+   * satellite cycling. Empty when OPENCUES.md has no settings
    * block. Setting names appear in declaration order so cycling matches
    * the document.
    */
@@ -214,9 +214,9 @@ export interface LoadedConfig {
   readonly cuesConfig: CuesMdConfig | null;
   readonly blanksConfig: CuesMdConfig | null;
   readonly folderConfigs: DiscoveredConfigs | null;
-  /** cwd cues.md + folder cues/* merged. The resolver consumes this. */
+  /** cwd CUES.md + folder cues/* merged. The resolver consumes this. */
   readonly mergedCuesConfig: CuesMdConfig | null;
-  /** cwd blanks.md + folder blanks/* merged. The resolver consumes this. */
+  /** cwd BLANKS.md + folder blanks/* merged. The resolver consumes this. */
   readonly mergedBlanksConfig: CuesMdConfig | null;
   /**
    * All words known to be navigable, lowercased. Union of:
@@ -258,7 +258,7 @@ export class ConfigLoader {
   private _loadInFlight: Promise<void> | null = null;
   private _unsubText: Unsubscribe | null = null;
   // Race guard: when applyOpenCuesScalar fires (cycling a satellite
-  // updates an opencues.md scalar in-memory), the host's blankInvoke
+  // updates an OPENCUES.md scalar in-memory), the host's blankInvoke
   // also kicks off an ASYNC file write. Cycling.ts then calls setText
   // which fires onTextChange → maybeReload, and if maybeReload reads
   // the file BEFORE the async write lands, the in-memory update is
@@ -337,7 +337,7 @@ export class ConfigLoader {
   get config(): LoadedConfig { return this._config; }
 
   /**
-   * Apply an opencues.md scalar change in-memory before
+   * Apply an OPENCUES.md scalar change in-memory before
    * the next file-based hot-reload runs. The selector/satellite cycle
    * spawns `script set <key> <value>` async (writes to disk), but TTS
    * and Statusline read opencuesState immediately on the next render.
@@ -372,7 +372,7 @@ export class ConfigLoader {
    * isn't a tip-having entry but IS a blank or blankKeyword — synthesises
    * a LocalCueLookupResult from the blank's `tip` / `blankTip` so the
    * statusline shows e.g. "system volume" when the user highlights
-   * `volume`. The blank side wasn't in cueMap because blanks.md and
+   * `volume`. The blank side wasn't in cueMap because BLANKS.md and
    * folder cue.md don't go through the tips JSON path.
    */
   lookup(word: string): LocalCueLookupResult | null {
@@ -484,7 +484,7 @@ export class ConfigLoader {
     );
 
     // System settings — parsed from `OPENCUES.md` (or legacy
-    // `.opencuesrc` / cues.md frontmatter during a migration window).
+    // `.opencuesrc` / CUES.md frontmatter during a migration window).
     const opencuesState = settingsContent !== null
       ? parseOpenCuesMd(settingsContent)
       : DEFAULT_OPENCUES_STATE;
@@ -570,7 +570,7 @@ export class ConfigLoader {
 
     // Build cueMap from the merged config's tips. Folder-based tips
     // (cues/<id>/cue.md with type:tips) flow through here. The legacy
-    // `## Tips` JSON in master cues.md still works during migration.
+    // `## Tips` JSON in master CUES.md still works during migration.
     if (mergedCuesConfig?.tips && mergedCuesConfig.tips.length > 0) {
       try {
         for (const [k, v] of buildLookupMap(mergedCuesConfig.tips)) cueMap.set(k, v);
@@ -580,7 +580,7 @@ export class ConfigLoader {
     }
 
     // Build the navigable-words set + blanksByWord map from cueMap
-    // keys, folder blanks, and blanks.md frontmatter.
+    // keys, folder blanks, and BLANKS.md frontmatter.
     const navigableWords = new Set<string>();
     const blanksByWord = new Map<string, BlankEntry>();
     for (const k of cueMap.keys()) navigableWords.add(k);

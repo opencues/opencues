@@ -1,7 +1,7 @@
 /**
  * opencues-core/cues-md.ts
  *
- * Parser for cues.md config files.
+ * Parser for CUES.md config files.
  * Pure TypeScript — no I/O dependencies.
  */
 
@@ -86,7 +86,7 @@ export interface SourceConfig {
    * words  — only when no blanks present (word alternatives)
    * blanks — only when blanks (_) present (fill-in)
    * all    — always
-   * (default: inferred from context — 'words' for cues.md, 'blanks' for blanks.md)
+   * (default: inferred from context — 'words' for CUES.md, 'blanks' for BLANKS.md)
    */
   scope?: 'words' | 'blanks' | 'all';
 }
@@ -540,7 +540,7 @@ function parseIgnoreSection(content: string): string[] {
 // ============================================================================
 
 /**
- * Parse a cues.md file content string.
+ * Parse a CUES.md file content string.
  * Pure function — no I/O.
  */
 export function parseCuesMd(content: string): CuesMdConfig {

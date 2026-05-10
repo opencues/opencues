@@ -169,7 +169,7 @@ export class TTS {
     /* index already tracked by _lastSeenIndex above */
     if (!tip) return null;
 
-    // Rate precedence: opencues.md `tts-rate:` > host-supplied default
+    // Rate precedence: OPENCUES.md `tts-rate:` > host-supplied default
     // > built-in fallback. Same precedence applies to script path
     // (when going via spawnProcess).
     const rate = this.configLoader.opencuesState.settings.get('tts-rate') ?? this.options.rate ?? '2';

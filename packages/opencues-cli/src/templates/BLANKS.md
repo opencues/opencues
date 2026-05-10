@@ -4,7 +4,7 @@ domain: project
 version: 1
 ---
 
-# blanks.md
+# BLANKS.md
 #
 # Blanks: words that trigger external actions instead of cycling
 # text alternatives. "volume" runs a volume script. "weather _" auto-
@@ -89,5 +89,5 @@ version: 1
 # Scaffold this layout with:
 #   opencues new blank volume --project
 
-# For complete field reference see docs/features/cue-blanks.md and
+# For complete field reference see docs/features/cue-BLANKS.md and
 # docs/guides/adding-a-cue-blank.md.

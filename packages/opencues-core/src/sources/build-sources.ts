@@ -7,7 +7,7 @@
  * ## How sources are assembled
  *
  * **Word cues (per-word routing)**: Domain prompts (legal, medical, …) live
- * as `### alternatives` sections in `cues.md` (or folder-based
+ * as `### alternatives` sections in `CUES.md` (or folder-based
  * `cues/<name>/cue.md`). They get wrapped in ONE RoutedWordSourceGroup that
  * dispatches each highlighted word to one source via match/keywords.
  *
@@ -30,10 +30,10 @@ import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-
 /**
  * Per-feature provider/model/endpoint trio. Each LLM-driven source
  * (word cues, fluid blank, transform blank, agent) reads its own
- * settings from cues.md root frontmatter; the caller flattens those
+ * settings from CUES.md root frontmatter; the caller flattens those
  * into this struct before calling buildSourcesFromConfig.
  *
- * Example mapping in the boot layer (cues.md frontmatter → here):
+ * Example mapping in the boot layer (CUES.md frontmatter → here):
  *   word-cues-provider:    → wordCues.provider
  *   word-cues-model:       → wordCues.model
  *   word-cues-endpoint:    → wordCues.endpoint
@@ -60,14 +60,14 @@ export interface BuildSourcesOptions {
    */
   apiKeys?: Readonly<Record<string, string | undefined>>;
   /**
-   * Global llm-provider/model/endpoint defaults from cues.md root
+   * Global llm-provider/model/endpoint defaults from CUES.md root
    * frontmatter. The least-specific tier — overridden by per-feature
    * and per-cue settings.
    */
   globalProvider?: string;
   globalModel?: string;
   globalEndpoint?: string;
-  /** Per-feature defaults read from cues.md root frontmatter. */
+  /** Per-feature defaults read from CUES.md root frontmatter. */
   wordCues?: FeatureLLMSetting;
   fluidBlank?: FeatureLLMSetting;
   transformBlank?: FeatureLLMSetting;
@@ -97,7 +97,7 @@ export interface BuildSourcesOptions {
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
-   * flip on via opencues.md `word-cues-mode: on`. */
+   * flip on via OPENCUES.md `word-cues-mode: on`. */
   enableWordCues?: boolean;
   /**
    * Source ids subtracted from this layer's composition. Mirrors
@@ -114,7 +114,7 @@ export interface BuildSourcesOptions {
    * to emit per-pipeline-stage traces (P1 EXTRACT verdict, P2 APPLY
    * step results, P3 VERIFY decision). Wire to the host's debug log
    * (e.g. `(msg) => adapter.log('debug', msg)`) so `debug-mode: on` in
-   * opencues.md surfaces the trace. Silent when omitted.
+   * OPENCUES.md surfaces the trace. Silent when omitted.
    */
   log?: (msg: string) => void;
   // ─── Per-source event subscribers ─────────────────────────────────────
@@ -163,14 +163,14 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
 }
 
 /**
- * Build CueSource[] from parsed cues.md and blanks.md configs.
+ * Build CueSource[] from parsed CUES.md and BLANKS.md configs.
  *
- * - cues.md word-scoped alternatives ### sections → one ConfigSource
+ * - CUES.md word-scoped alternatives ### sections → one ConfigSource
  *   each, all wrapped in ONE RoutedWordSourceGroup. The group routes
  *   each highlighted word to one child source via match/keywords/
  *   priority and dispatches one LLM call per source group (parallel).
  *   See routed-word-source-group.ts for the full rules.
- * - cues.md other ### sections (non-default scope/parser) → individual
+ * - CUES.md other ### sections (non-default scope/parser) → individual
  *   ConfigSource instances (not routed; called directly by the resolver).
  * - blanks: keyword-bound entries → BlankSource. Free-form `_` →
  *   FluidBlankSource (opt-in via `fluid-blank-mode: on`).
@@ -212,7 +212,7 @@ export function buildSourcesFromConfig(
   }
 
 
-  // From cues.md: collect all word-scope alternatives sources into one
+  // From CUES.md: collect all word-scope alternatives sources into one
   // RoutedWordSourceGroup. Other sources (different scope/parser) stay
   // individual ConfigSource instances.
   // Gate the entire word-cue block on enableWordCues. Non-word-cue

@@ -59,7 +59,7 @@ module.exports = function seedConfigs(argv, ctx) {
     : path.join(HOME, '.cues');
   const sourceDir = path.join(ctx.REPO_ROOT, 'defaults');
   // The runtime config (OPENCUES.md) lives at the top of the cues
-  // library directory, alongside cues.md / blanks.md / auditors.md.
+  // library directory, alongside CUES.md / BLANKS.md / AUDITORS.md.
   const settingsTarget = projectScope
     ? null
     : (process.env.OPENCUES_HOME
@@ -111,7 +111,7 @@ module.exports = function seedConfigs(argv, ctx) {
   log(`Seeded ${copied}, skipped ${skipped}.`);
 
   // Seed `OPENCUES.md` separately — it's the system-settings file;
-  // sits at the top of `~/.cues/` next to cues.md / blanks.md.
+  // sits at the top of `~/.cues/` next to CUES.md / BLANKS.md.
   if (settingsTarget && fs.existsSync(settingsSource)) {
     if (hasContent(settingsTarget)) {
       log(`  SKIP (exists) ${settingsTarget}`);
@@ -125,8 +125,8 @@ module.exports = function seedConfigs(argv, ctx) {
   // If we skipped anything, surface the gotcha. SEED is first-time-only by
   // design (preserves user customisations), but that means new fields added
   // to shipped defaults DON'T flow into existing user files. Common bite:
-  // opencues.md gets new opt-in flags (fluid-blank-mode, etc.)
-  // and the user's existing opencues.md silently lacks them →
+  // OPENCUES.md gets new opt-in flags (fluid-blank-mode, etc.)
+  // and the user's existing OPENCUES.md silently lacks them →
   // surfaces as "feature off" with no error.
   if (skipped > 0 && !silent) {
     log('');
@@ -262,7 +262,7 @@ module.exports = function seedConfigs(argv, ctx) {
 
 /** A path is "present with content" if it's a non-empty file or any directory.
  *  0-byte files count as missing — the runtime parses them as "no config" and
- *  silently no-ops, e.g. an empty opencues.md hides "opencues ___" blank-fills. */
+ *  silently no-ops, e.g. an empty OPENCUES.md hides "opencues ___" blank-fills. */
 function hasContent(p) {
   if (!fs.existsSync(p)) return false;
   const st = fs.statSync(p);

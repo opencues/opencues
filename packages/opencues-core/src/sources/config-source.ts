@@ -2,7 +2,7 @@
  * opencues-core/sources/config-source.ts
  *
  * Generic config-driven CueSource. Each ### section in a .md file
- * (cues.md, blanks.md) becomes one ConfigSource instance.
+ * (CUES.md, BLANKS.md) becomes one ConfigSource instance.
  * All behavior is driven by SourceConfig — no hardcoded prompts or logic.
  */
 

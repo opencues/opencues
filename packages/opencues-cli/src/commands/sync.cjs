@@ -356,7 +356,7 @@ function resolveSources({ flags, includes, pack, source }) {
 function walkSource(dir, core, cb) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
 
-  // Top-level files: cues.md / blanks.md. These are monolithic —
+  // Top-level files: CUES.md / BLANKS.md. These are monolithic —
   // host-compat applies per-section, so we either include the whole
   // file or rebuild it from the chrome-compatible subset.
   // Today: include whole file if ANY section is chrome-compatible.
@@ -416,7 +416,7 @@ function walkSource(dir, core, cb) {
     }
   }
 
-  // opencues.md is system-wide, runtime-owned — skip from sync entirely.
+  // OPENCUES.md is system-wide, runtime-owned — skip from sync entirely.
 }
 
 function walkFolder(dir, cb) {

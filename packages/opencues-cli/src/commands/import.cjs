@@ -241,7 +241,7 @@ function validatePack(dir, opts) {
     // a `---` fence is present but nothing could be extracted).
     //
     // File shapes differ:
-    //   - top-level cues.md/blanks.md                   → parseCuesMd
+    //   - top-level CUES.md/BLANKS.md                   → parseCuesMd
     //   - folder-based <kind>/<name>/cue.md             → parseSingleCueMd
     //   - README.md or anything under docs/             → skip (prose)
     const relParts = rel.split(path.sep);

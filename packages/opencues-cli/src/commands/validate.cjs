@@ -15,9 +15,9 @@ module.exports = function validate(argv, ctx) {
   const userOnly = argv.includes('--user');
   const strict = argv.includes('--strict');
 
-  // Load core's parser + host-compat helpers. opencues.md uses a
+  // Load core's parser + host-compat helpers. OPENCUES.md uses a
   // runtime-side parser (different shape — top-level YAML state, not
-  // section-based); for now we just verify opencues.md is readable text.
+  // section-based); for now we just verify OPENCUES.md is readable text.
   let core;
   try {
     core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
@@ -35,8 +35,8 @@ module.exports = function validate(argv, ctx) {
 
   const errors = [];
   const warnings = [];
-  // Per-kind name → source-file map. Within ONE source (one cues.md OR
-  // one folder cue.md), duplicates are errors. Across sources (cues.md
+  // Per-kind name → source-file map. Within ONE source (one CUES.md OR
+  // one folder cue.md), duplicates are errors. Across sources (CUES.md
   // + cues/<name>/cue.md), folder takes precedence — that's the merge
   // contract, not a conflict. So we track names per source file.
   const seen = { cue: new Map(), blank: new Map() };
@@ -87,8 +87,8 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
       priority: src?.priority ?? 50,
     });
   };
-  // Top-level .md files (cues.md, blanks.md). Duplicates WITHIN one
-  // file = error. opencues.md uses a different schema; we just check
+  // Top-level .md files (CUES.md, BLANKS.md). Duplicates WITHIN one
+  // file = error. OPENCUES.md uses a different schema; we just check
   // it's readable.
   for (const [filename, kind] of [
     ['CUES.md',   'cue'],

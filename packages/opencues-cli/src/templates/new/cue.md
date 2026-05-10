@@ -5,7 +5,7 @@
 # ─────────────────────────────────────────────────────────────────────
 #
 # A folder-based cue source. The runtime merges this with the monolithic
-# cues.md; folder wins on name conflicts. For a real reference, cat any
+# CUES.md; folder wins on name conflicts. For a real reference, cat any
 # of the shipped sources in ~/.cues/cues/{legal,medical,financial}.md.
 
 # ─────────────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ scope: words
 # PRIORITY
 # ─────────────────────────────────────────────────────────────────────
 # priority: number (default 50)
-#   Higher priority wins on merge conflicts (e.g. monolithic cues.md
+#   Higher priority wins on merge conflicts (e.g. monolithic CUES.md
 #   with same name vs this folder source). Narrow domain sources usually
 #   use 70-80, broad catch-alls 50, classifier 100.
 

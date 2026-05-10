@@ -7,10 +7,10 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
-// `cues` covers everything that used to be split across cues.md /
-// opencues.md / blanks.md: settings frontmatter, ignore list, project
+// `cues` covers everything that used to be split across CUES.md /
+// OPENCUES.md / BLANKS.md: settings frontmatter, ignore list, project
 // metadata. Legacy `opencues` and `blanks` aliases are gone post-
-// migration — every user file ends up at ~/.cues/cues.md.
+// migration — every user file ends up at ~/.cues/CUES.md.
 const VALID = new Set(['cues']);
 
 module.exports = function edit(argv) {

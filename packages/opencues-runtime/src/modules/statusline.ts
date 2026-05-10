@@ -79,7 +79,7 @@ export class Statusline {
     /**
      * Optional. Selector/satellite tip routing:
      * selector word shows the setting's `tip`; satellite shows the
-     * per-value tip from opencues.md `settings:` block.
+     * per-value tip from OPENCUES.md `settings:` block.
      */
     private selectorSatelliteState?: SelectorSatelliteState,
     /**

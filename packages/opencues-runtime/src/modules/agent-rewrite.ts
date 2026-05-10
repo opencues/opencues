@@ -38,7 +38,7 @@ import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-di
  *
  * For real boots, the host loads @opencues/core and passes one of its
  * built-in adapters (groq / openrouter / gemini / openai). Boot also
- * has the option of selecting a per-feature override via cues.md
+ * has the option of selecting a per-feature override via CUES.md
  * frontmatter (`agent-provider:` / `agent-model:`).
  */
 export interface AgentRewriteProviderAdapter {
@@ -81,7 +81,7 @@ export interface AgentRewriteOptions {
   /**
    * Lazy resolver for the active provider/model/endpoint/key. Called
    * before each LLM tick so the user can flip `agent-provider:` /
-   * `agent-model:` at runtime via cues.md without a restart. When
+   * `agent-model:` at runtime via CUES.md without a restart. When
    * unset (or returns null), AgentRewrite falls back to the static
    * endpoint/apiKey/defaultModel above and the legacy Groq-shaped wire
    * format — preserves back-compat for boot files that haven't
@@ -106,7 +106,7 @@ export interface AgentRewriteOptions {
    * docs at the price of losing global cross-paragraph context.
    * Default 0 (full-buffer mode).
    *
-   * Lazy thunk so users can flip the setting at runtime via cues.md.
+   * Lazy thunk so users can flip the setting at runtime via CUES.md.
    */
   readonly windowWords?: () => number;
   /**

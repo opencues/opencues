@@ -8,7 +8,7 @@
  *     the corresponding satellite value.
  *   - satellite (e.g. "active")      — cycles through the configured
  *     values for the current setting; each cycle calls `script set
- *     <setting> <newValue>` to write back to opencues.md.
+ *     <setting> <newValue>` to write back to OPENCUES.md.
  *
  * Cycling is span-fill-flavoured but two-headed, so a dedicated state
  * class makes the contract explicit. `lastFilledText` follows the same

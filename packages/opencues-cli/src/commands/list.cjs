@@ -70,7 +70,7 @@ function collect(dir, tools, results) {
         }
       }
       if (parsed && parsed.blanks) {
-        // Inline `## Blanks` block in cues.md / blanks.md.
+        // Inline `## Blanks` block in CUES.md / BLANKS.md.
         for (const [name, blk] of Object.entries(parsed.blanks)) {
           results.blank.push({ name, source: p, hosts: hostsLabel(blk, inferHostCompat, formatHostList) });
         }

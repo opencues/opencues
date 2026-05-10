@@ -6,8 +6,8 @@ project (`cd <project> && claude-cues` or equivalent).
 
 | File | Purpose |
 |---|---|
-| `cues.md` | LLM cue sources (word alternatives) |
-| `blanks.md` | Blank declarations (typed `_` triggers a fill, scripted blanks, etc.) |
+| `CUES.md` | LLM cue sources (word alternatives) |
+| `BLANKS.md` | Blank declarations (typed `_` triggers a fill, scripted blanks, etc.) |
 | `cues/<name>/cue.md` | Folder-based cue sources |
 | `blanks/<name>/cue.md` + `<name>.sh` | Folder-based blanks (with optional colocated script) |
 

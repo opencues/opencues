@@ -62,7 +62,7 @@ export function createSourceReclassifier(): SourceReclassifier {
 /* ─── Log factory ────────────────────────────────────────────────────────
  *
  * Both bootstraps build a log function that:
- *  - gates 'debug' through `isDebugEnabled` (reads opencues.md
+ *  - gates 'debug' through `isDebugEnabled` (reads OPENCUES.md
  *    debug-mode lazily so a popup/file edit can toggle it without
  *    restart),
  *  - delegates everything else to a host-supplied sink (console on
@@ -74,7 +74,7 @@ export interface LogFactoryOptions {
   /** Host-supplied sink. Errors thrown by the sink are swallowed so
    *  flaky logging can't crash the runtime. */
   readonly sink: (level: LogLevel, msg: string, data?: unknown) => void;
-  /** Lazy debug gate. Re-evaluated on every log call so opencues.md
+  /** Lazy debug gate. Re-evaluated on every log call so OPENCUES.md
    *  hot-reloads pick up new debug-mode without restart. */
   readonly isDebugEnabled?: () => boolean;
 }
@@ -86,7 +86,7 @@ export function createLogFunction(
   return (level, msg, data) => {
     // No gate supplied = all levels pass through (caller opted out of
     // gating). When supplied, debug is dropped unless the gate returns
-    // true. Re-evaluated per call so opencues.md hot-reloads pick up
+    // true. Re-evaluated per call so OPENCUES.md hot-reloads pick up
     // a flipped debug-mode without restart.
     if (level === 'debug' && isDebugEnabled !== undefined && !isDebugEnabled()) return;
     try { sink(level, msg, data); } catch { /* swallow */ }
@@ -96,7 +96,7 @@ import { ConfigLoader } from './modules/config-loader';
 
 /**
  * Build the AgentRewrite `resolveLLM` thunk for boot files. Reads the
- * current `agent-provider:` / `agent-model:` / `agent-endpoint:` cues.md
+ * current `agent-provider:` / `agent-model:` / `agent-endpoint:` CUES.md
  * frontmatter (with falls-through to global `llm-provider:` /
  * `llm-model:` / `llm-endpoint:`), looks up the right ProviderAdapter
  * from @opencues/core, and returns the resolved tuple. Returns null
@@ -106,7 +106,7 @@ import { ConfigLoader } from './modules/config-loader';
  * in that case.
  *
  * Re-resolves on every tick (callers wrap this in an arrow), so
- * cues.md hot-reload propagates without an integration restart.
+ * CUES.md hot-reload propagates without an integration restart.
  */
 export function buildAgentLLMResolver(
   configLoader: ConfigLoader,
