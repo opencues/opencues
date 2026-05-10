@@ -4,7 +4,7 @@
 # Commands:
 #   get                        → "<firstSettingName>\t<currentValue>"  (tab-delimited)
 #   get <settingName>          → "<currentValue>"
-#   set <settingName> <value>  → (writes to cues.md frontmatter, no output)
+#   set <settingName> <value>  → (writes to OPENCUES.md frontmatter, no output)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Settings live in the user-level OPENCUES.md (markdown with frontmatter,
