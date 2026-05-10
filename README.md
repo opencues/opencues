@@ -65,7 +65,7 @@ claude-cues
 
 That's it. Type any prompt, navigate words with **Ctrl+Alt+Left/Right**, cycle alternatives with **Ctrl+Alt+Up/Down**. Try `volume _` for a system-volume blank, `weather london _` for a lookup, or `agentically correct spelling _` to arm the inline agent.
 
-> **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.4.11 (sha `5e9d5c7`), cloned into `~/opencode-cues/`. Both pins live in `integrations/<host>/pin.json`. Your native `claude` and your existing OpenCode install stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
+> **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.14.17 (sha `40ba8f3`), cloned into `~/opencode-cues/`. Both pins live in `integrations/<host>/pin.json`. Your native `claude` and your existing OpenCode install stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
 
 ## Install
 
@@ -334,6 +334,49 @@ System settings (in `~/.cues/OPENCUES.md`) — the same scalars are cyclable ins
 Run `pnpm exec opencues seed-configs` to populate `~/.cues/` from the shipped defaults the first time. Hot-reloads on every edit (~2.5s for native hosts; chrome polls a `.version` hash — see `docs/features/chrome-hot-reload.md`).
 
 CC-specific patch toggles (e.g. `enableWordHighlight`, `numberDimming`) live in tweakcc's config under `~/claude-code-cues/.opencues/patch-state/config.json`. They're rarely changed; defaults work for everyone.
+
+## LLM providers
+
+Every cue surface (word-cues, fluid-blank, transform-blank, agent-rewrite, prompt-improver, answer) makes an OpenAI-shaped chat-completions call. Set `llm-provider` and `llm-model` in `~/.cues/OPENCUES.md` frontmatter, plus the corresponding API-key env var.
+
+### Recommended (any one is enough)
+
+| Provider | Model | Why |
+|---|---|---|
+| **Groq** | `openai/gpt-oss-120b` | Fastest end-to-end. LPU inference puts inline word-cues comfortably inside the sub-second budget. Free tier covers every OpenCues feature. `GROQ_API_KEY` from [console.groq.com/keys](https://console.groq.com/keys). |
+| **Cerebras** | `gpt-oss-120b` | Same model weights as Groq, hosted on wafer-scale silicon. Slightly higher TTFT, marginally better quality on long-prompt surfaces (FluidBlank P1 SEGMENT, AgentRewrite). Pairs with Groq as automatic failover via `withFallback()`. `CEREBRAS_API_KEY`. |
+| **Gemini** | `gemini-3.1-flash-lite` | Google's latency-tuned variant. Different request shape (`contents` instead of `messages`); the runtime translates automatically. `GEMINI_API_KEY`. Useful when you already have a Google Cloud account and don't want to add another provider. |
+
+Set both Groq and Cerebras keys to get automatic 429/5xx failover between them — same model weights mean the user sees no quality shift when one provider rate-limits.
+
+### Free fallback — no API budget at all
+
+[OpenRouter](https://openrouter.ai)'s `:free` tier hosts the same `gpt-oss-120b` weights Groq and Cerebras use. Useful for hobbyist setups, dev sanity checks, or as a fallback-of-fallback when both Groq and Cerebras are unavailable.
+
+```yaml
+# ~/.cues/OPENCUES.md frontmatter
+llm-provider: openrouter
+llm-model: openai/gpt-oss-120b:free
+```
+
+Plus `OPENROUTER_API_KEY` in env. Tradeoffs vs. the recommended providers:
+
+- **3-5× slower than Groq** for the same model. The model is the same; the routing hardware (commodity GPU clusters underwriting `:free`) is the difference.
+- **Reasoning floor of ~1s** — `gpt-oss` is a reasoning-by-design model. You can scale `reasoning_effort` down to `low` (the default) but not off. Inline word-cues will feel laggy.
+- **Daily request ceiling** tied to your OpenRouter account's lifetime credit balance. $0 → low ceiling (~50/day historically); past top-up of $10+ → higher ceiling (~1000/day). Numbers change quarterly — check [openrouter.ai/docs](https://openrouter.ai/docs) before designing around them.
+- **No SLA on `:free`.** The provider underwriting free routing can pause / reprice / withdraw at any time.
+
+What works on the free tier (measured 2026-05-10, exact production parameters):
+
+| Surface | Mean latency | Verdict |
+|---|---|---|
+| FluidBlank P3 (terse answer) | 1.7s | ✓ Comfortably fits the 2s budget |
+| AnswerBlank | 3.1s | ✓ Fits consume-all flows |
+| TransformBlank P1 | 4.9s | ⚠ Over the inline pipeline budget but functional |
+| PromptImprover | 5.4s | ⚠ Borderline; user perceives a pause |
+| Inline word-cues | 3-5s | ✗ Unusable (budget is sub-500ms) |
+
+For full per-surface bench data and the routing recommendation that informs all of the above, see `docs/benchmarks/2026-05-08-provider-bench.md` and `docs/guides/llm-providers.md`.
 
 ## Updating
 

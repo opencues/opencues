@@ -66,7 +66,7 @@ export {
 // Re-export WordDef types for consumers
 export type { WordDef, LookupMultipleResult } from './types';
 
-// cues.md parser
+// CUES.md parser
 export {
   parseCuesMd,
   parseSingleCueMd,

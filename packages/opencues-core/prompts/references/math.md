@@ -10,7 +10,7 @@ The MATH prompt instructs the LLM to return a computable expression rather than 
 
 ## Prompt Location
 
-Defined in `blanks.md` → `## Prompt` → `### math`
+Defined in `BLANKS.md` → `## Prompt` → `### math`
 
 ## Key Design Principles
 

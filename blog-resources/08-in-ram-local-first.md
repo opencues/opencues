@@ -69,7 +69,7 @@ synonyms.
 ## Hot-reload — files as the API
 
 From `CLAUDE.md`:
-> `.md` config files (`cues.md`, `blanks.md`, `cues/`, `blanks/`) hot-reload
+> `.md` config files (`CUES.md`, `BLANKS.md`, `cues/`, `blanks/`) hot-reload
 > within ~2 seconds on the next keystroke — no restart needed.
 
 Implementation: `ConfigLoader` polls file mtimes on every text-change event
@@ -134,7 +134,7 @@ only the fallback path spawns subprocesses.
    keystroke → indication loop is microseconds, not milliseconds. That
    matters.
 
-2. **Files as the API is a UX choice.** Editing `cues.md` directly is the
+2. **Files as the API is a UX choice.** Editing `CUES.md` directly is the
    "API" — hot-reloaded into the running runtime. Compare to apps where
    "settings" require a GUI dialog.
 

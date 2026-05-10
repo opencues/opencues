@@ -151,7 +151,7 @@ describe('AgentRewrite — with a Gemini-shaped provider thunk', () => {
     await r.tick();
     expect(lastUrl).toBe('https://groq.example');
     // Switch the active provider between ticks (the runtime equivalent
-    // of editing cues.md `agent-provider:`). Bust the stable marker
+    // of editing CUES.md `agent-provider:`). Bust the stable marker
     // by re-arming so the next tick actually fires the LLM.
     active = openrouterMock;
     state.arm('test-2');

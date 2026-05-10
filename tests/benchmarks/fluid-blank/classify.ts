@@ -5,7 +5,7 @@
  * which domain handler should answer it: MATH, FACTUAL, TRANSLATION,
  * UNIT, SPELLING, COLOR, HTTP, TIMEZONE, ROMAN, or GRAMMAR.
  *
- * Same prompt as the production classifier in defaults/blanks.md, but
+ * Same prompt as the production classifier in defaults/BLANKS.md, but
  * receives the cleaned-up SPAN instead of the full noisy input. Should
  * route more accurately since preamble noise is gone.
  */

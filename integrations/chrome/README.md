@@ -58,7 +58,7 @@ Click the extension icon to open the popup:
 | **API URL** | No | Default: `https://api.groq.com/openai/v1/chat/completions` |
 | **Finnhub API Key** | No | For stock price lookups. Free at [finnhub.io](https://finnhub.io) |
 | **Target Selector** | Yes | CSS selector for the input element. Default: `[contenteditable="true"]` |
-| **cues.md / blanks.md / opencues.md** | No | Paste config content; otherwise the bake-time defaults are used |
+| **CUES.md / BLANKS.md / OPENCUES.md** | No | Paste config content; otherwise the bake-time defaults are used |
 | **Tips JSON** | No | Pre-computed word alternatives |
 | **TTS** | No | Enable text-to-speech (Web Speech API); `Rate` 1–5, default 2 |
 
@@ -72,9 +72,8 @@ Click **Save**. The extension reinitializes on the active page.
 |---|---|
 | Click into a `contenteditable` div, type a few words | Words with alternatives get a slightly darker mid-tone |
 | Ctrl+Alt+Right | Highlights the next navigable word in bright white |
-| Ctrl+Alt+Up on a numeric like `5f` | Cycles `5f → 5.5f → 6f` |
 | Type `weather _ paris` | `_` fills with current Paris weather |
-| Type `improve prompt write a poem _` | After ~2s, full text is replaced with an improved version; cycle for 3 alts + original |
+| Type `improve prompt write a poem _` | After ~2s, full text is replaced with an improved version; cycle Up/Down to toggle between the rewrite and the original |
 | `chrome://extensions` console shows `[opencues][info] OpenCues runtime starting (Chrome v1)` | Bootstrap booted |
 
 If you see legacy `[OpenCues] ...` logs but **no** `[opencues][info] OpenCues runtime starting` line, you loaded a stale bundle — re-run `dev-install` (and re-deploy via `--target` if applicable).
@@ -97,7 +96,7 @@ For continuous development, `pnpm --filter @opencues/chrome watch` runs esbuild 
 
 ## Updating configs without rebuilding
 
-Editing `~/.cues/cues.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
+Editing `~/.cues/CUES.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
 
 ```bash
 pnpm exec opencues sync chrome --wsl                    # user-level only (default)

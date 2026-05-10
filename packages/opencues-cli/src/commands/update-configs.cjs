@@ -5,7 +5,7 @@
 //
 // Implementation is a thin wrapper around `seed-configs` (which has all
 // four phases: SEED, ADDITIVE SEED, SYNC library files, HEAL empty
-// opencues.md, COMPILE colocated .cs → .exe). seed-configs is always
+// OPENCUES.md, COMPILE colocated .cs → .exe). seed-configs is always
 // safe to re-run; this command exists so users don't have to know that
 // keyword.
 //
@@ -35,10 +35,10 @@ function printHelp() {
   console.log('that landed in defaults/ since your last seed.');
   console.log('');
   console.log('Four phases (all idempotent + safe to re-run):');
-  console.log('  1. SEED      first-time copy of cues.md / blanks.md / etc.');
+  console.log('  1. SEED      first-time copy of CUES.md / BLANKS.md / etc.');
   console.log('  2. ADDITIVE  copy any NEW subdirs from defaults/{cues,blanks}/');
   console.log('  3. SYNC      refresh library files (.sh / .cs / .ps1) — never .md');
-  console.log('  4. HEAL      re-seed a 0-byte opencues.md from defaults');
+  console.log('  4. HEAL      re-seed a 0-byte OPENCUES.md from defaults');
   console.log('  5. COMPILE   colocated .cs → .exe (WSL only)');
   console.log('');
   console.log('  --project   Run against <cwd>/.cues/ instead of ~/.cues/');

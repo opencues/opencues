@@ -10,8 +10,8 @@ import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
 import { MockAdapter } from '../../testing/mock-adapter';
 
-// Tips live inside cues.md's `## Tips` JSON block — no separate file.
-// Wrap a tips-data object as a minimal cues.md so ConfigLoader's
+// Tips live inside CUES.md's `## Tips` JSON block — no separate file.
+// Wrap a tips-data object as a minimal CUES.md so ConfigLoader's
 // existing parser flow (parseCuesMd → cuesConfig.tips → cueMap) loads
 // it just like a real config.
 function wrapTipsAsCuesMd(tipsData: unknown): string {

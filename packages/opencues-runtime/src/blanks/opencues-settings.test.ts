@@ -52,7 +52,7 @@ describe('OpenCuesSettingsBlank', () => {
     expect(await ctl.get('not-a-setting')).toBe('voice-mode\tinactive');
   });
 
-  it('set(setting, value) rewrites the matching line in cues.md', async () => {
+  it('set(setting, value) rewrites the matching line in CUES.md', async () => {
     // NB: arg order is (settingName, value) per the selector/satellite
     // cycling convention — see opencues-settings.ts comment.
     const { ctl, storage } = makeBlank(SAMPLE_MD);
@@ -88,7 +88,7 @@ describe('OpenCuesSettingsBlank', () => {
   });
 
   // Regression contract: an empty-string read result (e.g. a 0-byte
-  // ~/.cues/cues.md left by an interrupted seed) is functionally
+  // ~/.cues/CUES.md left by an interrupted seed) is functionally
   // equivalent to "no file" — the blank silently no-ops on both `get`
   // and `set`. This is intentional (it avoids fabricating a settings
   // schema that the host doesn't know about), but it means the host MUST
@@ -96,7 +96,7 @@ describe('OpenCuesSettingsBlank', () => {
   // seed-configs treats 0-byte files as missing + setup.sh's section
   // 7a-bis re-seeds them; without those, `opencues ___` / `config ___`
   // blank-fills look broken on every native host. See FAQ.md "Does init
-  // scaffold cues.md?" + docs/features/config-search-paths.md.
+  // scaffold CUES.md?" + docs/features/config-search-paths.md.
   it('returns "" when readFile yields empty string (0-byte file)', async () => {
     const ctl = new OpenCuesSettingsBlank({
       readFile: async () => '',

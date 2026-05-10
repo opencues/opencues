@@ -109,7 +109,7 @@ Three layers, each text-shaped, each portable for the same reason:
 ```
    Data   ─── alternatives, tips, blank values ──── all strings
    Input  ─── keystrokes, _ character, words ──── all keystrokes
-   Config ─── cues.md, .opencuesrc, .cues/ ─── all files
+   Config ─── CUES.md, .opencuesrc, .cues/ ─── all files
 ```
 
 Every layer is text. Strings travel between hosts via the renderer; keystrokes travel via the host's input system; files travel via the filesystem (or, for Chrome, a synced bundle that imitates one). No layer has a dependency on a primitive that does not exist in every host.

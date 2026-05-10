@@ -46,14 +46,14 @@ describe('seed-configs: targetExistsWithContent', () => {
   });
 
   it('returns false for a 0-byte file (must re-seed)', () => {
-    const f = path.join(tmp, 'opencues.md');
+    const f = path.join(tmp, 'OPENCUES.md');
     fs.writeFileSync(f, '');
     expect(fs.statSync(f).size).toBe(0); // sanity
     expect(targetExistsWithContent(f)).toBe(false);
   });
 
   it('returns true for a file with any non-empty content (skip — preserves user edits)', () => {
-    const f = path.join(tmp, 'cues.md');
+    const f = path.join(tmp, 'CUES.md');
     fs.writeFileSync(f, 'x'); // single byte is enough
     expect(targetExistsWithContent(f)).toBe(true);
   });

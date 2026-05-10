@@ -187,7 +187,7 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
     if (combined.ignore) allIgnore.push(...combined.ignore);
   }
 
-  // Scan blanks/ directory. Folder shape uses `blank.md` (not `cue.md`).
+  // Scan blanks/ directory. Folder shape uses `BLANK.md` (uppercase per the open standard).
   const blankConfigs = scanDir(opts.basePath + '/blanks', opts, BLANK_FILENAME);
   if (blankConfigs.length > 0) {
     const combined = combineCueConfigs(blankConfigs);
@@ -196,7 +196,7 @@ export function discoverFolderConfigs(opts: DiscoverOptions): DiscoveredConfigs 
   }
 
   // Scan blanks/ directory for blank overrides (post-rename, the same
-  // path scanned above for blanksConfig — folder blank.md files with
+  // path scanned above for blanksConfig — folder BLANK.md files with
   // `type: blank` are funnelled into result.blankOverrides here).
   const blankFolderConfigs = scanDir(opts.basePath + '/blanks', opts, BLANK_FILENAME);
   if (blankFolderConfigs.length > 0) {

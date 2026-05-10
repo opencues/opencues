@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-cues-examples.sh — verifies the uncommentable examples in the
-# cues.md template produce a valid config + have match patterns that
+# CUES.md template produce a valid config + have match patterns that
 # actually hit the example words documented alongside them.
 #
 # No LLM calls; purely structural (match regex + tips lookup).
@@ -22,13 +22,13 @@ fail() { printf "  FAIL %s\n" "$1" >&2; exit 1; }
 # Leaves bare `#` lines and live markdown headers (`## Prompt`,
 # `## Tips`) untouched, since those start with `##` not `# `.
 python3 - <<'PY'
-path = 'cues.md'
+path = 'CUES.md'
 with open(path) as f:
     lines = f.readlines()
 out = []
 for L in lines:
     # Preserve banner decorations and pure-text doc paragraphs.
-    if L.startswith('# ─') or L.lstrip('# ').startswith('cues.md'):
+    if L.startswith('# ─') or L.lstrip('# ').startswith('CUES.md'):
         out.append(L); continue
     if L.startswith('# '):
         out.append(L[2:])
@@ -38,9 +38,9 @@ with open(path, 'w') as f:
     f.writelines(out)
 PY
 
-echo "=== validate cues.md with examples enabled ==="
+echo "=== validate CUES.md with examples enabled ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || { "$OPENCUES" validate --project; fail "validate failed with examples uncommented"; }
-pass "cues.md with all examples uncommented validates"
+pass "CUES.md with all examples uncommented validates"
 
 echo "=== list shows the uncommented sources ==="
 LIST_OUT="$("$OPENCUES" list --project 2>&1)"
@@ -64,14 +64,14 @@ sys.exit(1 if re.search(r'\b[a-z]{4,}\b', 'cat') else 0)
 pass "synonym match regex filters words < 4 chars"
 
 echo "=== keywords from ### formal contain 'however' ==="
-grep -qE "^keywords:.*however" cues.md \
+grep -qE "^keywords:.*however" CUES.md \
   || fail "formal keywords missing 'however' in scaffolded template"
 pass "formal keywords contain 'however' as documented"
 
 echo "=== tips JSON declares example words + alternatives ==="
 python3 - <<'PY'
 import re, json, sys
-text = open('cues.md').read()
+text = open('CUES.md').read()
 # Find the JSON array between ## Tips and the next ```
 m = re.search(r'## Tips.*?```json\s*\n(.*?)\n```', text, re.DOTALL)
 assert m, f"Tips JSON block not found. First 500 chars after '## Tips':\n{text[text.find('## Tips'):text.find('## Tips')+500] if '## Tips' in text else 'NO ## Tips'}"

@@ -45,6 +45,7 @@ function pathsForFork(fork) {
       path.join(tuiDir, 'app.tsx'),
       path.join(tuiDir, 'component', 'prompt', 'index.tsx'),
       path.join(tuiDir, 'feature-plugins', 'home', 'footer.tsx'),
+      path.join(tuiDir, 'feature-plugins', 'sidebar', 'footer.tsx'),
     ],
   };
 }
@@ -110,6 +111,20 @@ function doInstall() {
     console.log('[dry-run] Would patch in place:');
     for (const p of paths.patched) console.log(`  ${p}`);
     return;
+  }
+
+  // Run the umbrella seed-configs first so the user-level ~/.cues/
+  // tree is current before setup.sh patches the fork. Mirrors what
+  // `opencues install opencode` (the umbrella front door) does — without
+  // this call, `pnpm --filter @opencues/opencode dev-install` (the
+  // contributor path) skips it, and any newly-shipped configs in
+  // defaults/{cues,blanks,auditors}/ silently fail to land in
+  // ~/.cues/. seed-configs is idempotent and has its own --silent
+  // mode so success stays quiet on the standard happy path.
+  const seedConfigsPath = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands/seed-configs.cjs');
+  if (fs.existsSync(seedConfigsPath)) {
+    const seedConfigs = require(seedConfigsPath);
+    seedConfigs(['--silent'], { REPO_ROOT });
   }
 
   // Delegate to setup.sh. It owns its own progress output (▸/✓ lines)
@@ -306,6 +321,7 @@ function printHelp() {
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/app.tsx');
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx');
   console.log('    <fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx');
+  console.log('    <fork>/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx');
   console.log('  Repo state (no host pollution):');
   console.log('    packages/*/dist/, .turbo/  (build cache, gitignored)');
 }

@@ -2,8 +2,8 @@ import { loadConfig, saveConfig, resetConfig } from '../adapters/chrome-storage-
 
 // Popup = SETTINGS only. Cue / blank content lives in
 // ~/.cues/ on the host side and flows into the extension via
-// `opencues sync chrome`. The popup used to have a `cues.md` /
-// `blanks.md` / `opencues.md` textarea but it was a confusing second
+// `opencues sync chrome`. The popup used to have a `CUES.md` /
+// `BLANKS.md` / `OPENCUES.md` textarea but it was a confusing second
 // config path — killed Apr 2026. See docs/features/chrome-sync.md.
 const fields = ['apiKey', 'model', 'apiUrl', 'targetSelector'] as const;
 const advancedFields = ['finnhubApiKey'] as const;

@@ -268,7 +268,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `ttsRate:2,` +
     // LLM resolver. Resolver only constructs if AT LEAST ONE provider
     // key is available. Default endpoint + model are Groq; when a
-    // non-Groq provider is selected via cues.md `llm-provider:`, the
+    // non-Groq provider is selected via CUES.md `llm-provider:`, the
     // runtime substitutes that provider's defaults.
     `llmApiKey:process.env.GROQ_API_KEY||undefined,` +
     `llmEndpoint:process.env.OPENCUES_LLM_ENDPOINT||"https://api.groq.com/openai/v1/chat/completions",` +
@@ -291,7 +291,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // TUI swallows stderr — write to a file so debug output is recoverable.
     // tail -f /tmp/opencues.log in a separate shell while reproducing.
     // Always-on log fn — runtime decides whether to emit (gated on env
-    // OR opencues.md `debug-mode: on`).
+    // OR OPENCUES.md `debug-mode: on`).
     `log:function(l,m,d){try{${requireFn}("fs").appendFile("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n",function(){});}catch(__ocLe){}}` +
     `});}` +
     `catch(__ocBe){console.error("[opencues] boot failed:",__ocBe&&__ocBe.stack||__ocBe);globalThis.__oc={failed:true};}` +

@@ -33,7 +33,7 @@ So the hot-reload story for chrome is two cooperating loops:
 ```
 WSL/macOS side                      Chrome content script side
 ───────────────                      ───────────────────────────
-~/.cues/cues.md edited           tick every 2.5s:
+~/.cues/CUES.md edited           tick every 2.5s:
         ↓                                fetch dist/configs/.version
 fs.watch fires (250ms debounce)          if hash changed:
         ↓                                    invalidate bundle index
@@ -179,7 +179,7 @@ tab per minute, all served locally so cheap).
 
 - Editing any file inside a source dir (`~/.cues/`, an
   `--include`'d path, or `<cwd>/.cues/` under `--project`)
-- Adding or removing a folder cue (`cues/<name>/cue.md`) or blank (`blanks/<name>/cue.md`)
+- Adding or removing a folder cue (`cues/<name>/CUE.md`) or blank (`blanks/<name>/BLANK.md`)
 - Running `opencues sync chrome` manually (the `.version` flips even
   outside `--watch`)
 - Calling `opencues sync chrome --pack` or `--source` to swap source
@@ -192,7 +192,7 @@ tab per minute, all served locally so cheap).
 - Editing `dist/configs/*` directly — `sync` overwrites these on next
   run, and `.version` won't update without a sync
 - Re-running `sync chrome` with identical inputs — hash is stable
-- Editing `cues.md` frontmatter user-level scalars (voice-mode,
+- Editing `CUES.md` frontmatter user-level scalars (voice-mode,
   debug-mode, etc.) — those round-trip through `chrome.storage.local`,
   NOT the bundle. The bootstrap's storage-change listener picks them
   up separately. See `OpenCuesSettingsBlank` for the storage path.
@@ -302,6 +302,6 @@ the constant if you find yourself wishing edits propagated faster.
 
 ## Verification
 
-End-to-end: edit `~/.cues/cues.md`, observe `.version` flip, observe
+End-to-end: edit `~/.cues/CUES.md`, observe `.version` flip, observe
 Chrome pick up the change without page refresh, revert the edit,
 observe `.version` round-trip back to its original hash.

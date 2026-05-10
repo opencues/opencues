@@ -23,6 +23,12 @@ OPENCODE_DIR="${1:-$HOME/opencode-cues}"
 PIN_FILE="$OPENCUES_ROOT/integrations/opencode/pin.json"
 PINNED_VERSION=$(node -p "require('$PIN_FILE').version")
 PINNED_SHA=$(node -p "require('$PIN_FILE').sha")
+# Adapter band = "v<major>.<minor>", e.g. "v1.4", "v1.14". The bootstrap
+# import path templates this in so we can switch bands without touching
+# bootstrap source (cross-minor bumps land a new band; we just bump pin
+# and the install picks it up). Must match an existing directory under
+# packages/opencues-runtime/adapters/oc/.
+PINNED_BAND="v$(echo "$PINNED_VERSION" | awk -F. '{print $1 "." $2}')"
 
 LOG="${OPENCUES_INSTALL_LOG:-/tmp/opencues-install-oc.log}"
 VERBOSE="${OPENCUES_INSTALL_VERBOSE:-0}"
@@ -69,6 +75,30 @@ clone_fork() {
       return 1
     fi
     cd "$OPENCODE_DIR"
+    # SHA-mismatch guard. The fork's HEAD must match pin.json. If it
+    # doesn't, this is a version bump and the patched files + bootstrap
+    # copy + node_modules entries from the previous version need to be
+    # cleared out before `git checkout <new-sha>` will succeed cleanly.
+    # That's `opencues uninstall opencode`'s job, not ours — failing loud
+    # here keeps install.sh's blast radius tight (apply patches; never
+    # touch the fork's git state).
+    local current
+    current=$(git rev-parse HEAD)
+    if [[ "${current#$PINNED_SHA}" = "$current" ]]; then
+      echo "" >&2
+      echo "Fork SHA mismatch:" >&2
+      echo "  $OPENCODE_DIR is at ${current:0:7}" >&2
+      echo "  pin.json wants $PINNED_SHA" >&2
+      echo "" >&2
+      echo "This looks like a version bump. The pinned SHA changed but the" >&2
+      echo "fork wasn't reset. Uninstall first, then re-run install:" >&2
+      echo "  opencues uninstall opencode" >&2
+      echo "  cd $OPENCODE_DIR && git fetch origin $PINNED_SHA && git checkout $PINNED_SHA && bun install" >&2
+      echo "  opencues install opencode" >&2
+      echo "" >&2
+      echo "(See integrations/opencode/UPGRADING.md for the full workflow.)" >&2
+      return 1
+    fi
     return 0
   fi
   # advice.detachedHead=false suppresses the 16-line lecture git emits
@@ -116,8 +146,8 @@ install_into_fork() {
 patch_app_tsx() {
   local app="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/app.tsx"
   if grep -q "startOpenCues" "$app"; then return 0; fi
-  python3 - "$app" <<'PY'
-import sys
+  OPENCUES_PINNED_VERSION="$PINNED_VERSION" python3 - "$app" <<'PY'
+import os, sys
 p = sys.argv[1]
 src = open(p).read()
 if 'startOpenCues' in src: sys.exit(0)
@@ -133,7 +163,7 @@ hook = '''
       renderer: __ocRenderer,
       promptAccess: holderBackedPromptAccess(),
       cwd: process.env.OPENCUES_HOME || "/home/wilfred/opencues",
-      hostVersion: "1.4.11",
+      hostVersion: "__OPENCUES_PINNED_VERSION__",
     })
   })
   useKeyboard((evt) => {
@@ -142,7 +172,7 @@ hook = '''
       evt.stopPropagation?.()
     }
   })
-'''
+'''.replace('__OPENCUES_PINNED_VERSION__', os.environ['OPENCUES_PINNED_VERSION'])
 src = src.replace('useKeyboard((evt) => {', hook + '\n  useKeyboard((evt) => {', 1)
 open(p, 'w').write(src)
 PY
@@ -358,7 +388,17 @@ PY
 
 patch_fork() {
   local tui_dir="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui"
-  cp "$SCRIPT_DIR/opencuesBootstrap.ts" "$tui_dir/opencues.ts"
+  local band_dir="$OPENCUES_ROOT/packages/opencues-runtime/adapters/oc/$PINNED_BAND"
+  if [[ ! -d "$band_dir" ]]; then
+    echo "Adapter band '$PINNED_BAND' missing at $band_dir" >&2
+    echo "(derived from pin.json version $PINNED_VERSION)" >&2
+    echo "Either add a band directory or fix the pin." >&2
+    return 1
+  fi
+  # Templated copy: substitute __OPENCUES_BAND__ with the resolved band
+  # so the bootstrap imports from the right adapter directory.
+  sed "s|__OPENCUES_BAND__|$PINNED_BAND|g" \
+    "$SCRIPT_DIR/opencuesBootstrap.ts" > "$tui_dir/opencues.ts"
   patch_app_tsx
   patch_prompt_tsx
   patch_footer_tsx
@@ -368,7 +408,7 @@ patch_fork() {
 # ─── go ──────────────────────────────────────────────────────────────
 echo "Target: $OPENCODE_DIR (opencode v$PINNED_VERSION)"
 
-build_both() { build_runtime && build_core; }
+build_both() { build_core && build_runtime; }
 
 # Install the fork's own dependencies via bun. Required so `bun run dev`
 # can resolve @opentui/solid/preload etc. — without this step the first
@@ -386,7 +426,7 @@ fi
 run_step "Installing fork dependencies (bun install)" bun_install_fork
 run_step "Building @opencues/{runtime,core}" build_both
 run_step "Installing runtime + core into fork" install_into_fork
-run_step "Patching fork (3 files + bootstrap)" patch_fork
+run_step "Patching fork (4 files + bootstrap)" patch_fork
 
 echo ""
 # Prefer the short form if `opencues` is on PATH; otherwise fall back

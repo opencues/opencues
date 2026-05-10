@@ -51,7 +51,7 @@ The two surfaces have fundamentally different contracts — see `concept.md` at 
 ┌──────────────────────────────────────────────────────────────────┐
 │  @opencues/core  (pure TypeScript — the brain)                   │
 │  CueResolver · RoutedWordSourceGroup · BlankSource · FluidBlankSource     │
-│  ConfigSource · SpellingSource · parsers (cues.md, …)        │
+│  ConfigSource · SpellingSource · parsers (CUES.md, …)        │
 └──────────────────────────────────┬───────────────────────────────┘
                                    │ HTTPS keep-alive
                                    ▼
@@ -76,7 +76,7 @@ The two surfaces have fundamentally different contracts — see `concept.md` at 
 
 The core feature. After a short pause in typing, the system sends words to the LLM and gets back alternatives (synonyms, opposites, related words). Words with alternatives are dimmed. You navigate to one and cycle through its options with Up/Down.
 
-- Configured in `cues/` folders or `cues.md`
+- Configured in `cues/` folders or `CUES.md`
 - LLM prompt determines what kind of alternatives are returned (synonyms, antonyms, style variants)
 - **Per-word routing.** Each `### alternatives` source is wrapped in a `RoutedWordSourceGroup` that dispatches each word to exactly ONE source — `liability` goes to the `legal` cue, `diagnosis` goes to `medical`, etc. Domain sources isolate from each other (a hijacking prompt in one source can no longer poison every word). A "default" source catches everything else (grammar). One LLM call per source group, in parallel.
 - Results are cached per word — re-analysis only sends words that don't have alts yet (see "Resolver Skip Filter" under Other Features)
@@ -153,7 +153,7 @@ Examples:
 - `unicode for em dash _` → `U+2014`
 - `100 celsius in fahrenheit _` → `212`
 
-Opt-in via `fluid-blank-mode: on` in `opencues.md`. Slots already claimed by a keyword-bound blank (next section) win first — fluid only fires on unbound `_`.
+Opt-in via `fluid-blank-mode: on` in `OPENCUES.md`. Slots already claimed by a keyword-bound blank (next section) win first — fluid only fires on unbound `_`.
 
 ```
 USER TYPES
@@ -354,11 +354,11 @@ Lives at `~/.cues/` (user-level) and optionally `<cwd>/.cues/` (project-level �
 
 ```
 ~/.cues/
-├── opencues.md     — System settings (voice-mode, tips-mode, debug-mode, cursor-navigate, opt-in flags)
-├── cues.md         — Tips (## Tips JSON block) + inline `### alternatives` sources + ignore list
+├── OPENCUES.md     — System settings (voice-mode, tips-mode, debug-mode, cursor-navigate, opt-in flags)
+├── CUES.md         — Tips (## Tips JSON block) + inline `### alternatives` sources + ignore list
 ├── cues/           — Folder-based word cue configs (grammar, legal, medical, financial)
 │   └── grammar/cue.md
-├── blanks.md       — Inline `## Blanks` JSON for keyword-bound blanks with no script (rare)
+├── BLANKS.md       — Inline `## Blanks` JSON for keyword-bound blanks with no script (rare)
 └── blanks/         — Folder-based blanks (one folder per blank)
     └── volume/
         ├── cue.md            — Config (type: blank, blankKeywords, blankStep, blankSuffix, etc.)
@@ -385,7 +385,7 @@ Each cue / blank / cue or blank declares which hosts it works on (`on-host: [chr
 | Crypto | Read-only (live) | `btc _`, `eth _` → live price (CoinGecko) |
 | Countries | Read-only (live) | `population of france _` → fact (REST Countries API) |
 | Dictionary | Read-only (live) | `define ephemeral _` → definition |
-| OpenCues Settings | Selector + Satellite | `opencues settings _` → `<setting> <value>`; cycling writes to `opencues.md` |
+| OpenCues Settings | Selector + Satellite | `opencues settings _` → `<setting> <value>`; cycling writes to `OPENCUES.md` |
 | Answer | Consume-all blank | Free-form Q&A (LLM round-trip) |
 | Prompt Improver | Consume-all blank | Rewrites the surrounding prompt text in place |
 | Fluid Blank | Free-form lookup | Any unbound `_` (e.g. `capital of france _`, `unicode for em dash _`) — handled by `FluidBlankSource`, no per-blank config required |
@@ -429,7 +429,7 @@ Run / inspect:
 
 Three high-level surfaces:
 
-**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.cues/` from the shipped `defaults/` so you start with the same `cues.md` / `blanks.md` / `blanks.md` that ship with the project.
+**Setup** — manages installations across hosts. `install --all` sets up every detected integration in one shot; `update` pulls the repo and re-deploys to each existing install. `seed-configs` populates `~/.cues/` from the shipped `defaults/` so you start with the same `CUES.md` / `BLANKS.md` / `BLANKS.md` that ship with the project.
 
 **Authoring** — for users *building* their own cues. `init` scaffolds a `.cues/` directory in any project. `new blank hackernews-rss` (or `new cue legal`) writes a starter file with comments. `validate` lints the configs across every search path before you start the host. `import gh:someone/cool-cues` pulls a community pack.
 
@@ -454,7 +454,7 @@ Per-host integrations (under `integrations/`):
 
 Other:
 
-- **Groq** — Default LLM provider (fast, free tier). Swap via `GROQ_API_KEY`. Other providers configurable via `cues.md` frontmatter.
+- **Groq** — Default LLM provider (fast, free tier). Swap via `GROQ_API_KEY`. Other providers configurable via `CUES.md` frontmatter.
 - **Open-Meteo / Finnhub / HN RSS** — Free APIs used by the weather, stocks, and news blanks.
 
 The CLI (`opencues …`) wraps install / sync / validate / list / seed-configs / which / update / uninstall across every host. `pnpm exec opencues install <host>` is the one-command setup.

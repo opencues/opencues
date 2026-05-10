@@ -356,7 +356,7 @@ function resolveSources({ flags, includes, pack, source }) {
 function walkSource(dir, core, cb) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
 
-  // Top-level files: cues.md / blanks.md. These are monolithic —
+  // Top-level files: CUES.md / BLANKS.md. These are monolithic —
   // host-compat applies per-section, so we either include the whole
   // file or rebuild it from the chrome-compatible subset.
   // Today: include whole file if ANY section is chrome-compatible.
@@ -380,24 +380,29 @@ function walkSource(dir, core, cb) {
   // Folder-based: cues/<name>/CUE.md, blanks/<name>/BLANK.md
   // (uppercase, per discover.ts CUE_FILENAME / BLANK_FILENAME — required
   // on case-sensitive filesystems). Per-entry compat filter; copy the
-  // WHOLE folder when included.
+  // WHOLE folder when included. Tolerate lowercase + legacy cue.md so
+  // half-migrated user dirs still bundle rather than being silently
+  // dropped.
   const FOLDER_FILENAME = { cues: 'CUE.md', blanks: 'BLANK.md' };
   for (const subdir of ['cues', 'blanks']) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
-    const filename = FOLDER_FILENAME[subdir];
+    const primary = FOLDER_FILENAME[subdir];
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const folderPath = path.join(sub, entry.name);
-      const cueMd = path.join(folderPath, filename);
-      if (!fs.existsSync(cueMd)) continue;
+      const cueMd = [primary, primary.toLowerCase(), 'cue.md']
+        .map(f => path.join(folderPath, f))
+        .find(p => fs.existsSync(p));
+      if (!cueMd) continue;
+      const folderFile = path.basename(cueMd);
       try {
         const parsed = parseSingleCueMd(fs.readFileSync(cueMd, 'utf8'), folderPath);
         const compat = inferHostCompat(parsed.frontmatter || {});
         if (!compat.hosts.includes('chrome')) {
           // Still emit ONE entry so the caller can count it as dropped.
           // Don't walk the folder — those files would also be dropped.
-          cb({ absPath: cueMd, relPath: path.join(subdir, entry.name, filename), compat });
+          cb({ absPath: cueMd, relPath: path.join(subdir, entry.name, folderFile), compat });
         } else {
           // Walk every file in the folder so colocated assets (README.md,
           // sub-prompts, JSON manifests) come along. Skip script files
@@ -413,7 +418,7 @@ function walkSource(dir, core, cb) {
     }
   }
 
-  // opencues.md is system-wide, runtime-owned — skip from sync entirely.
+  // OPENCUES.md is system-wide, runtime-owned — skip from sync entirely.
 }
 
 function walkFolder(dir, cb) {

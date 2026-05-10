@@ -6,10 +6,10 @@ project (`cd <project> && claude-cues` or equivalent).
 
 | File | Purpose |
 |---|---|
-| `cues.md` | LLM cue sources (word alternatives) |
-| `blanks.md` | Blank declarations (typed `_` triggers a fill, scripted blanks, etc.) |
-| `cues/<name>/cue.md` | Folder-based cue sources |
-| `blanks/<name>/cue.md` + `<name>.sh` | Folder-based blanks (with optional colocated script) |
+| `CUES.md` | LLM cue sources (word alternatives) |
+| `BLANKS.md` | Blank declarations (typed `_` triggers a fill, scripted blanks, etc.) |
+| `cues/<name>/CUE.md` | Folder-based cue sources |
+| `blanks/<name>/BLANK.md` + `<name>.sh` | Folder-based blanks (with optional colocated script) |
 
 Note: `OPENCUES.md` is NOT a project file. Settings (voice-mode,
 tips-mode, debug-mode, cursor-navigate) are system-wide and live only
@@ -20,8 +20,8 @@ Hot-reload picks up changes within ~2s of the next keystroke.
 ## Adding things
 
 ```bash
-opencues new cue <name>             # ~/.cues/cues/<name>/cue.md
-opencues new cue <name> --project   # .cues/cues/<name>/cue.md (here)
+opencues new cue <name>             # ~/.cues/cues/<name>/CUE.md
+opencues new cue <name> --project   # .cues/cues/<name>/CUE.md (here)
 opencues new blank <name> --project
 ```
 

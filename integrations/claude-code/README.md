@@ -86,13 +86,13 @@ Project-level wins on name conflicts (cue source name, blank mode name, blank na
 **Each directory has the same shape:**
 ```
 .cues/
-├── cues.md          word sources + LLM prompts
-├── blanks.md        cue-blank declarations
-├── opencues.md      settings / state (voice-mode, tips-mode, etc.)
+├── CUES.md          word sources + LLM prompts
+├── BLANKS.md        cue-blank declarations
+├── OPENCUES.md      settings / state (voice-mode, tips-mode, etc.)
 ├── cues/            folder-based cue sources (one folder per source)
-│   └── <name>/cue.md
+│   └── <name>/CUE.md
 └── blanks/          folder-based cue-blank configs
-    └── <name>/cue.md
+    └── <name>/BLANK.md
 ```
 
 **Seed `~/.cues/` from the repo's defaults:**
@@ -107,7 +107,7 @@ Idempotent — copies any file that doesn't already exist at the destination, sk
 
 ```bash
 mkdir -p ~/projects/legal-review/.cues/cues/legal-doc
-cat > ~/projects/legal-review/.cues/cues/legal-doc/cue.md <<'EOF'
+cat > ~/projects/legal-review/.cues/cues/legal-doc/CUE.md <<'EOF'
 ---
 match: \b(plaintiff|defendant|tort|estoppel)\b
 ---
@@ -116,7 +116,7 @@ EOF
 
 cd ~/projects/legal-review
 claude-cues
-# .cues/cues/legal-doc/cue.md is now active alongside ~/.cues defaults
+# .cues/cues/legal-doc/CUE.md is now active alongside ~/.cues defaults
 ```
 
 The OpenCues Settings blank (`OPENCUES.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md` when set), seeded from `defaults/OPENCUES.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.
@@ -133,7 +133,7 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 # Restart claude-cues
 ```
 
-`.md` config files (`cues.md`, `blanks.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke — no install needed for config edits.
+`.md` config files (`CUES.md`, `BLANKS.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke — no install needed for config edits.
 
 ---
 
@@ -156,12 +156,12 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
     └── patch-state/               tweakcc's config + cli.js.backup
 
 ~/.cues/                        (USER-LEVEL — shared by CC + OpenCode)
-├── cues.md, blanks.md, opencues.md   user-editable config (never overwritten)
-├── cues/<name>/cue.md             folder-based cue configs
+├── CUES.md, BLANKS.md, OPENCUES.md   user-editable config (never overwritten)
+├── cues/<name>/CUE.md             folder-based cue configs
 ├── blanks/<name>/               folder-based cue-blanks — colocated with their helpers:
-│   ├── brightness/                  cue.md + brightness.sh + BrightCtl.exe + brightness-set.ps1
-│   ├── volume/                      cue.md + volume.sh + VolCtl.exe
-│   └── opencues/                    cue.md + opencues-blank.sh
+│   ├── brightness/                  BLANK.md + brightness.sh + BrightCtl.exe + brightness-set.ps1
+│   ├── volume/                      BLANK.md + volume.sh + VolCtl.exe
+│   └── opencues/                    CUE.md + opencues-blank.sh
 └── scripts/                       shared utilities (speak.sh + SpeakCtl.exe — TTS for all hosts)
 ```
 

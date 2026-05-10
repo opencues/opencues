@@ -30,8 +30,8 @@ module.exports = function list(argv, ctx) {
   // Same precedence as ConfigLoader; show source path for every entry.
   const paths = [
     process.env.OPENCUES_HOME,
-    path.join(process.cwd(), '.opencues'),
-    path.join(HOME, '.opencues'),
+    path.join(process.cwd(), '.cues'),
+    path.join(HOME, '.cues'),
   ].filter(Boolean).filter(p => fs.existsSync(p));
 
   const tools = { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList };
@@ -70,20 +70,31 @@ function collect(dir, tools, results) {
         }
       }
       if (parsed && parsed.blanks) {
-        // Inline `## Blanks` block in cues.md / blanks.md.
+        // Inline `## Blanks` block in CUES.md / BLANKS.md.
         for (const [name, blk] of Object.entries(parsed.blanks)) {
           results.blank.push({ name, source: p, hosts: hostsLabel(blk, inferHostCompat, formatHostList) });
         }
       }
     } catch { /* validate command surfaces parse errors */ }
   }
-  for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank']]) {
+  // Folder discoveries: per the open-standard, files are uppercase
+  // (CUE.md inside cues/<name>/, BLANK.md inside blanks/<name>/).
+  // Lowercase legacy names are migrated by seed-configs's HEAL pass —
+  // we still tolerate them here so a half-migrated user-level dir
+  // shows up in `list` rather than vanishing silently.
+  for (const [subdir, kind, primaryFile] of [
+    ['cues', 'cue', 'CUE.md'],
+    ['blanks', 'blank', 'BLANK.md'],
+  ]) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub)) continue;
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const cueMd = path.join(sub, entry.name, 'cue.md');
-      if (!fs.existsSync(cueMd)) continue;
+      const candidates = [primaryFile, primaryFile.toLowerCase(), 'cue.md'];
+      const cueMd = candidates
+        .map(f => path.join(sub, entry.name, f))
+        .find(p => fs.existsSync(p));
+      if (!cueMd) continue;
       let hosts = '';
       try {
         const parsed = parseSingleCueMd(fs.readFileSync(cueMd, 'utf8'), path.dirname(cueMd));

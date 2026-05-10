@@ -20,17 +20,24 @@ module.exports = function show(argv, ctx) {
   const HOME = os.homedir();
   const paths = [
     process.env.OPENCUES_HOME,
-    path.join(process.cwd(), '.opencues'),
-    path.join(HOME, '.opencues'),
+    path.join(process.cwd(), '.cues'),
+    path.join(HOME, '.cues'),
   ].filter(Boolean).filter(p => fs.existsSync(p));
 
   // Search every kind across every path. Print all matches in priority
-  // order so the user sees the override chain.
+  // order so the user sees the override chain. Per the standard the
+  // per-folder file is uppercase (CUE.md / BLANK.md); tolerate the
+  // lowercase legacy + the cross-type cue.md fallback so a half-
+  // migrated user-level dir still resolves rather than 404s.
+  const FILE_BY_SUB = { cues: 'CUE.md', blanks: 'BLANK.md' };
   const matches = [];
   for (const dir of paths) {
     for (const sub of ['cues', 'blanks']) {
-      const candidate = path.join(dir, sub, name, 'cue.md');
-      if (fs.existsSync(candidate)) {
+      const primary = FILE_BY_SUB[sub];
+      const candidate = [primary, primary.toLowerCase(), 'cue.md']
+        .map(f => path.join(dir, sub, name, f))
+        .find(p => fs.existsSync(p));
+      if (candidate) {
         matches.push({ kind: sub.replace(/s$/, ''), source: candidate, scope: dir });
       }
     }

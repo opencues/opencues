@@ -212,7 +212,7 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       httpAdapter,
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
-      // Sliding-window mode (lazy thunk so cues.md edits take effect
+      // Sliding-window mode (lazy thunk so CUES.md edits take effect
       // without a restart). 0 = full-buffer; useful for long docs in
       // textareas where token cost dominates.
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,

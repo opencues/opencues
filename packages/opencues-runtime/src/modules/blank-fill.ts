@@ -86,7 +86,24 @@ export class BlankFill {
     // dismissed-blank flags tied to the old span.
     const cleaned = e.text.replace(/[\u200B\u200C]/g, '');
     if (this.spanFillState && this.spanFillState.current && cleaned !== this.spanFillState.lastFilledText) {
-      if (!this.maybePreserveSpanFill(cleaned)) {
+      const entry = this.spanFillState.current;
+      const oldText = this.spanFillState.lastFilledText;
+      // blankClearOnEdit-flagged entries get tolerant preservation
+      // first: edits BEFORE / AFTER the pair leave it intact (just
+      // re-anchor positions). Edits INSIDE the pair invalidate AND
+      // splice the substituted region out — so a mid-keyword typo
+      // doesn't leave a stale answer next to a broken question.
+      // Mirrors maybePreserveSatellitePair / applyClearOnEdit which
+      // already implement this for the selector/satellite path.
+      if (entry.clearOnEdit
+          && entry.pairCharStart !== undefined
+          && entry.pairCharEnd !== undefined) {
+        if (!this.maybePreserveBlankFillPair(oldText, cleaned, entry)) {
+          this.spanFillState.clear();
+          this.dismissedBlanks?.clear();
+          this.applyClearOnEdit(oldText, cleaned, entry.pairCharStart, entry.pairCharEnd);
+        }
+      } else if (!this.maybePreserveSpanFill(cleaned)) {
         this.spanFillState.clear();
         this.dismissedBlanks?.clear();
       }
@@ -359,10 +376,21 @@ export class BlankFill {
     const fillStart = newCursor - primaryFill.length;
     const newWords = splitWords(newText);
     const startWord = newWords.find(w => w.start === fillStart);
+    // Char range of the substituted region in newText. Anchored at the
+    // keyword's first char (so deleting any character of the keyword
+    // counts as a touch, even though the answer text starts at fillStart).
+    // For blankClearKeywords:true the keyword is gone in newText, so
+    // both kwStartChar and the answer collapse to fillStart.
+    const kwStartChar = newWords[slot.keywordStart]?.start ?? fillStart;
+    const wantsClearOnEdit = blank?.blankClearOnEdit === true;
     if (this.spanFillState) {
       const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
       const altsForSpan = isDismissible ? [...lines, '_'] : lines;
-      const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1;
+      // wantsSpan widens to ALSO track single-alt fills when
+      // blankClearOnEdit is set — otherwise the clearOnEdit machinery
+      // has nothing in spanFillState to react to on the next text
+      // change.
+      const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1 || wantsClearOnEdit;
       if (startWord && wantsSpan) {
         this.spanFillState.set({
           index: startWord.index,
@@ -370,6 +398,9 @@ export class BlankFill {
           currentAltIndex: 0,
           spanLength: Math.max(1, fillWordCount),
           blankTip: blank?.blankTip ?? blank?.tip,
+          clearOnEdit: wantsClearOnEdit,
+          pairCharStart: wantsClearOnEdit ? kwStartChar : undefined,
+          pairCharEnd: wantsClearOnEdit ? newCursor : undefined,
         }, newText);
       } else {
         this.spanFillState.clear();
@@ -492,6 +523,64 @@ export class BlankFill {
     // newText (text added/removed only after the pair). No mutation
     // needed beyond updating lastFilledText.
     this.selectorSatelliteState!.set(entry as any, newText);
+    return true;
+  }
+
+  /**
+   * Tolerant-preserve a blank-fill clearOnEdit pair on outside edits
+   * (text added/removed entirely BEFORE or entirely AFTER the
+   * substituted region). Returns true when preservation succeeded
+   * and the SpanFillState was re-anchored; false when the edit
+   * touched the pair (caller invalidates + splices).
+   *
+   * Logic mirrors maybePreserveSatellitePair: common-prefix /
+   * common-suffix matching against the old text identifies which
+   * side the edit landed on. The pair char range is the source of
+   * truth — word indices are derived from it because edits before
+   * the pair shift everything by lenDiff.
+   */
+  private maybePreserveBlankFillPair(
+    oldText: string,
+    newText: string,
+    entry: { pairCharStart?: number; pairCharEnd?: number; index: number; spanLength: number },
+  ): boolean {
+    if (!this.spanFillState) return false;
+    if (entry.pairCharStart === undefined || entry.pairCharEnd === undefined) return false;
+    let prefix = 0;
+    while (prefix < oldText.length && prefix < newText.length && oldText[prefix] === newText[prefix]) prefix += 1;
+    let suffix = 0;
+    while (
+      suffix < oldText.length - prefix &&
+      suffix < newText.length - prefix &&
+      oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+    ) suffix += 1;
+
+    const intactAfter = prefix >= entry.pairCharEnd;
+    const intactBefore = suffix >= oldText.length - entry.pairCharStart;
+    if (!intactAfter && !intactBefore) return false;
+
+    let newPairStart = entry.pairCharStart;
+    let newPairEnd = entry.pairCharEnd;
+    let newIndex = entry.index;
+    if (!intactAfter && intactBefore) {
+      // Edit landed before the pair — shift positions by the length
+      // diff and re-derive the word index from the shifted char start.
+      const lenDiff = newText.length - oldText.length;
+      newPairStart += lenDiff;
+      newPairEnd += lenDiff;
+      const newWords = splitWords(newText);
+      const newStartWord = newWords.find(w => w.start === newPairStart);
+      if (!newStartWord) return false;
+      newIndex = newStartWord.index;
+    }
+    // intactAfter case: pair sits at the same chars + word indices in
+    // newText. Just update lastFilledText below.
+    this.spanFillState.set({
+      ...(entry as any),
+      index: newIndex,
+      pairCharStart: newPairStart,
+      pairCharEnd: newPairEnd,
+    }, newText);
     return true;
   }
 

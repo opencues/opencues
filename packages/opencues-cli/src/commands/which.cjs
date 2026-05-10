@@ -15,8 +15,8 @@ module.exports = function which(argv, ctx) {
   const sections = [
     ['Configuration search paths (in priority order)', [
       ['$OPENCUES_HOME (env)',      process.env.OPENCUES_HOME || '(unset)'],
-      ['Project-level',              path.join(process.cwd(), '.opencues')],
-      ['User-level',                 path.join(HOME, '.opencues')],
+      ['Project-level',              path.join(process.cwd(), '.cues')],
+      ['User-level',                 path.join(HOME, '.cues')],
       ['Shipped defaults (seed source, NOT a runtime search path)',
                                      path.join(ctx.REPO_ROOT, 'defaults')],
     ]],
@@ -30,11 +30,12 @@ module.exports = function which(argv, ctx) {
       ['tweakcc state + cli backup', path.join(HOME, 'claude-code-cues', '.opencues', 'patch-state')],
     ]],
     ['Shared user-level (used by CC + OC)', [
-      ['TTS script',                 path.join(HOME, '.opencues', 'scripts', 'speak.sh')],
-      ['TTS helper (compiled)',      path.join(HOME, '.opencues', 'scripts', 'SpeakCtl.exe')],
-      ['Brightness blank dir',       path.join(HOME, '.opencues', 'blanks', 'brightness')],
-      ['Volume blank dir',           path.join(HOME, '.opencues', 'blanks', 'volume')],
-      ['Master config (settings + ignore + project metadata)', path.join(HOME, '.opencues', 'CUES.md')],
+      ['TTS script',                 path.join(HOME, '.cues', 'scripts', 'speak.sh')],
+      ['TTS helper (compiled)',      path.join(HOME, '.cues', 'scripts', 'SpeakCtl.exe')],
+      ['Brightness blank dir',       path.join(HOME, '.cues', 'blanks', 'brightness')],
+      ['Volume blank dir',           path.join(HOME, '.cues', 'blanks', 'volume')],
+      ['Runtime settings (voice-mode, llm-provider, ...)', path.join(HOME, '.cues', 'OPENCUES.md')],
+      ['Cue master (frontmatter only — ignore list, project meta)',  path.join(HOME, '.cues', 'CUES.md')],
     ]],
     ['OC install state (per fork)', [
       ['Default fork dir',           path.join(HOME, 'opencode-cues')],

@@ -59,11 +59,11 @@ shipped `defaults/` into `~/.cues/`).
 Where two layers define the same file or folder, they're **merged**,
 not replaced. The merge rule is:
 
-- `cues.md` frontmatter (project-level): the `ignore:` array is
+- `CUES.md` frontmatter (project-level): the `ignore:` array is
   union-merged; system-settings keys are user-level only
-- `cues/<name>/cue.md` folder cues → project layer's `<name>` wins on
+- `cues/<name>/CUE.md` folder cues → project layer's `<name>` wins on
   conflict; uniquely-named cues from each layer all load
-- `blanks/<name>/cue.md` cue-blanks → same as folder cues
+- `blanks/<name>/BLANK.md` cue-blanks → same as folder cues
 
 Missing layers are silently skipped — there's never a "config
 missing" error from the layering itself. A user with no `.cues/`
@@ -76,20 +76,20 @@ The merge is implemented in `discoverFolderConfigs` and
 
 ---
 
-## Special case: `cues.md` system settings
+## Special case: `CUES.md` system settings
 
-The frontmatter of `cues.md` holds **system-wide settings** owned by
+The frontmatter of `CUES.md` holds **system-wide settings** owned by
 the runtime — voice-mode, fluid-blank-mode, word-cues-mode,
 tips-mode, debug-mode, cursor-navigate, and any
 host-supplied scalars (plus the nested `settings:` declarations and
 the `ignore:` array). Because these settings apply across every
 integration, projects can't override them. The runtime reads the
-system-settings half of `cues.md` only from the **last search path**
+system-settings half of `CUES.md` only from the **last search path**
 (the user-level entry, or `$OPENCUES_HOME` when set).
 
-- `opencues seed-configs` (no flag) copies `defaults/cues.md` to
+- `opencues seed-configs` (no flag) copies `defaults/CUES.md` to
   `~/.cues/`; `seed-configs --project` skips it
-- A 0-byte `cues.md` is treated as missing — `seed-configs` re-seeds
+- A 0-byte `CUES.md` is treated as missing — `seed-configs` re-seeds
   it, and `setup.sh` self-heals on every install. The
   `OpenCuesSettingsBlank` silently no-ops on null/empty content
   (correct behavior for "no file"), so an empty file would otherwise
@@ -137,7 +137,7 @@ that doesn't already exist at the destination. Flags:
 | Flag | Effect |
 |---|---|
 | (no flag) | Copies into `~/.cues/` (user-level). Skips files that already exist. |
-| `--project` | Copies into `<cwd>/.cues/` instead. Skips `cues.md` (its frontmatter holds system-wide settings, which don't belong at project level). |
+| `--project` | Copies into `<cwd>/.cues/` instead. Skips `CUES.md` (its frontmatter holds system-wide settings, which don't belong at project level). |
 | `--force` | Overwrite existing files. Use with care. |
 
 Run `seed-configs` once after a fresh install; the host integrations

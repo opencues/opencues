@@ -1,5 +1,5 @@
 /**
- * Specialized MATH handler — extracted verbatim from defaults/blanks.md.
+ * Specialized MATH handler — extracted verbatim from defaults/BLANKS.md.
  *
  * Production parser is 'math': output is "COMPUTE=expression" which then
  * gets evaluated. We replicate that here so the benchmark mirrors prod.

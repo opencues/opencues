@@ -136,7 +136,6 @@ order. First one to return `true` wins.
 | 1  | Word maps to a blank with `script:` | Spawn the script (no text change, side-effect only) |
 | 2  | Word maps to a blank with `stepValues:` | Rotate values in-place (`cycleListBlank`) |
 | 3a | DynDef at this index has `blankName` | Cycle via that blank's blankStep/Suffix/Script |
-| 3  | Word matches a `step:` pattern (`5f`, `50%`) | Numeric arithmetic (`cycleStepPattern`) |
 | 4  | Default | Static-alt cycling (`cycleStaticAlts`) |
 
 Path 4 is where multi-word static-alt spans are created and rotated.
@@ -463,14 +462,14 @@ output.
 
 ### `wrapTipsAsCuesMd(data)` (in mock-adapter.ts)
 
-Wraps a tips JSON object as a minimal folder-based `cues/<name>/cue.md`
+Wraps a tips JSON object as a minimal folder-based `cues/<name>/CUE.md`
 so ConfigLoader's existing parser flow picks it up. Use for any test
 that needs cued words.
 
 ### Static-alt span fixture (`spantest`)
 
-Live in `defaults/cues/span-test/cue.md` (and copied to
-`~/.cues/cues/span-test/cue.md` after seeding) for manual testing
+Live in `defaults/cues/span-test/CUE.md` (and copied to
+`~/.cues/cues/span-test/CUE.md` after seeding) for manual testing
 in chrome / opencode:
 
 ```json

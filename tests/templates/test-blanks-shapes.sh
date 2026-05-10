@@ -4,7 +4,7 @@
 # list-blank) can be scaffolded, uncommented, and validated end-to-end.
 #
 # SHAPEs 3 (selector + satellite) and 4 (runtime-class) aren't tested
-# here — selector/satellite needs runtime + opencues.md state,
+# here — selector/satellite needs runtime + OPENCUES.md state,
 # runtime-class is TS code outside the scaffold flow.
 
 set -euo pipefail

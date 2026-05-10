@@ -36,7 +36,7 @@ export function createBlanks(options?: {
   customTickers?: Record<string, string>;
   llmConfig?: PromptImproverConfig;
   /**
-   * Optional opencues.md file accessors. When supplied, the
+   * Optional OPENCUES.md file accessors. When supplied, the
    * `opencues settings _` selector/satellite blank is registered.
    * Chrome wires these to chrome.storage; without them the blank
    * stays unregistered and the keyword falls through to spawnProcess

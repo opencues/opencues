@@ -15,7 +15,7 @@
 #   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pinned 2.1.110)
 #
 # State that survives every install:
-#   ~/.cues/  (incl. OPENCUES.md)                        user content (your cue.md edits etc.)
+#   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)
 #   ~/claude-code-cues/package.json                      version pin
 #   <repo>/integrations/claude-code/patches/             repo source (not touched)
 #
@@ -290,7 +290,7 @@ cp "$OC_RUNTIME/package.json" "$OC_NM_DIR/runtime/package.json"
 end_step
 
 # ─── 6. Install CC-specific support files (statusline + settings.json) ─
-# All shared/cross-host concerns (blank library scripts, opencues.md
+# All shared/cross-host concerns (blank library scripts, OPENCUES.md
 # self-heal, .cs compile, TTS speak.sh) live in `opencues seed-configs`
 # now — install.cjs invokes that BEFORE this script runs. setup.sh is
 # strictly CC-specific.

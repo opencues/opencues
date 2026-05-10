@@ -73,7 +73,7 @@ An integration implementing consume-all blanks must:
 
 ```
 blanks/prompt/
-  cue.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
+  BLANK.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
                       # Implementation: @opencues/runtime PromptImproverBlank
                       # (packages/opencues-runtime/src/blanks/prompt-improver.ts)
 ```

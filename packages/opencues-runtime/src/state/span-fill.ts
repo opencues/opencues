@@ -46,6 +46,26 @@ export interface SpanFillEntry {
    * would miss filled words like "13.9°C" or "Reddit".
    */
   readonly blankTip?: string;
+  /**
+   * From `blankClearOnEdit` frontmatter. When true, an edit that
+   * touches the substituted region (keyword + answer) splices the
+   * whole region out instead of just invalidating the cycle stash.
+   * The selector/satellite state has the same option for the same
+   * reason: questions like "is claude down _" → fill, then a typo
+   * mid-keyword should clear the answer rather than leave a stale
+   * substitution next to a broken question.
+   */
+  readonly clearOnEdit?: boolean;
+  /**
+   * Char range of the substituted region in `lastFilledText`. Spans
+   * from the keyword's first char (or the answer's first char when
+   * `blankClearKeywords: true` consumed the keyword) through the end
+   * of the answer. Only meaningful when `clearOnEdit === true`;
+   * BlankFill uses these to splice the region out via the shared
+   * `computeCleanupRange` helper.
+   */
+  readonly pairCharStart?: number;
+  readonly pairCharEnd?: number;
 }
 
 export class SpanFillState {

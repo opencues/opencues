@@ -1,5 +1,5 @@
 /**
- * Specialized FACTUAL handler — extracted from defaults/blanks.md.
+ * Specialized FACTUAL handler — extracted from defaults/BLANKS.md.
  *
  * Single-call factual lookup using the existing production prompt.
  * Used to head-to-head against fluid-blank's P1+P3 pipeline on the
@@ -66,7 +66,7 @@ export interface SpecializedAnswerResult {
 
 /**
  * Run the specialized FACTUAL prompt as a single LLM call.
- * Mirrors what production blanks.md → ConfigSource does today.
+ * Mirrors what production BLANKS.md → ConfigSource does today.
  */
 export async function runSpecializedFactual(input: string): Promise<SpecializedAnswerResult> {
   // Production substitutes BLANK for the literal _

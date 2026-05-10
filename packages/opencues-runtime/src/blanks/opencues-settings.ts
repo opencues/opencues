@@ -1,16 +1,16 @@
 // OpenCuesSettingsBlank — selector + satellite blank that reads/
-// writes opencues.md. Triggered by `opencues settings _` / `config _`;
+// writes OPENCUES.md. Triggered by `opencues settings _` / `config _`;
 // spawns a "<setting> <value>" pair the user can cycle through.
 //
 //   get()                 → "<firstSettingName>\t<currentValue>"
 //   get(name)             → "<currentValue>"   (name's current value, or "" if unknown)
-//   set(name, value)      → rewrites the matching `name: value` line in opencues.md
+//   set(name, value)      → rewrites the matching `name: value` line in OPENCUES.md
 //
 // The blank receives async readFile + writeFile functions instead of a
 // hard-wired path so each host can route through its own filesystem (Node
 // fs on opencode, chrome.storage on chrome).
 //
-// Setting names + current values are parsed from opencues.md's top-level
+// Setting names + current values are parsed from OPENCUES.md's top-level
 // frontmatter. The first setting is whichever appears first under the
 // `settings:` block (alphabetical isn't guaranteed — the file's order
 // wins so users can pin their preferred default first setting).
@@ -18,9 +18,9 @@
 import type { Blank } from './types';
 
 export interface OpenCuesSettingsBlankOptions {
-  /** Read the full opencues.md content. Returns null when missing. */
+  /** Read the full OPENCUES.md content. Returns null when missing. */
   readonly readFile: () => Promise<string | null>;
-  /** Write the full opencues.md content (atomic replace). */
+  /** Write the full OPENCUES.md content (atomic replace). */
   readonly writeFile: (content: string) => Promise<void>;
 }
 

@@ -13,7 +13,7 @@
 //
 // The prompts here mirror what blanks/prompt/BLANK.md
 // declares in its `## Extract` and `## Transform` sections. A future
-// improvement is to read those from the cue.md frontmatter so this
+// improvement is to read those from the BLANK.md frontmatter so this
 // class doesn't drift; for now they're inlined to match the chrome
 // implementation that this hoist replaces.
 

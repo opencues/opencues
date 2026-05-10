@@ -10,11 +10,11 @@ Tips come from several sources depending on the word type:
 
 | Word type | Tip source | Example |
 |---|---|---|
-| **Selector word** | `cues.md` `settings:` block (setting-level line) | `voice-mode` → "Gates TTS globally" |
-| **Satellite word** | `cues.md` `settings:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
-| **Cue-blank value** | `blankTip` in the blank's `cue.md` | `72` → "System volume" |
-| **Cue-blank keyword** | Live `blankInvoke get` output, falls back to `tip` in `cue.md` | `volume` → "85" |
-| **Local cue (folder-based)** | `cues/<name>/cue.md` body JSON via instant `cueMap` lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
+| **Selector word** | `CUES.md` `settings:` block (setting-level line) | `voice-mode` → "Gates TTS globally" |
+| **Satellite word** | `CUES.md` `settings:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
+| **Cue-blank value** | `blankTip` in the blank's `BLANK.md` | `72` → "System volume" |
+| **Cue-blank keyword** | Live `blankInvoke get` output, falls back to `tip` in `BLANK.md` | `volume` → "85" |
+| **Local cue (folder-based)** | `cues/<name>/CUE.md` body JSON via instant `cueMap` lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
 | **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
 
 See [Tip Priority](tip-priority.md) for the full resolution order and how the branches interact.
@@ -69,8 +69,8 @@ The `highlight-statusline.sh` script is a self-contained bash script that reads 
 **Display format:**
 - **Inactive:** `user@host:dir` (PS1-style prefix, colored with tput — always shown)
 - **Regular word:** `word (pos/total) - tip` where pos is `currentAltIndex + 1` and total is the alts array length
-- **Selector word:** `tip` only — shows the setting-level tip from `cues.md` `settings:` block (displayed as cue-blank)
-- **Satellite word:** `tip` only — shows the per-value tip from `cues.md` `settings:` block, falls back to setting-level (displayed as cue-blank)
+- **Selector word:** `tip` only — shows the setting-level tip from `CUES.md` `settings:` block (displayed as cue-blank)
+- **Satellite word:** `tip` only — shows the per-value tip from `CUES.md` `settings:` block, falls back to setting-level (displayed as cue-blank)
 - **Cue-blank keyword:** `tip` only — the word is already highlighted in the input, so repeating it is redundant
 - **Cue-blank value:** `tip` only — only shown if `blankTip` is set in the blank's config
 - **No tip:** Output suppressed entirely
@@ -88,7 +88,7 @@ The script suppresses output entirely for words that have neither alts nor a tip
 - `WordDef.speak` flag indicates whether the tip should be read aloud via TTS
 - Cue-blank values use `blankTip` from the blank's config; suppressed if unset
 - Cue-blank keywords use live `blankInvoke get` output with fallback to `tip` from config
-- Selector/satellite tips are read from the backing config file (`cues.md` `settings:` block), not from static metadata
+- Selector/satellite tips are read from the backing config file (`CUES.md` `settings:` block), not from static metadata
 
 ### Integration responsibilities
 

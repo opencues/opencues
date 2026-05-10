@@ -23,6 +23,7 @@ export { OpenCuesSettingsBlank, type OpenCuesSettingsBlankOptions } from './open
 export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
 export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
+export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
 
 /**
  * Build a blankInvoke handler that dispatches into the given registry.

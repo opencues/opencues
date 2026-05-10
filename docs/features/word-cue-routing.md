@@ -1,6 +1,6 @@
 # Word-Cue Routing
 
-Every `### alternatives` section in `cues.md` (or folder-based `cues/<name>/cue.md`) becomes one cue source. OpenCues routes **each highlighted word** to exactly ONE of those sources at resolve time. A project's source set is a small routing table, not one giant merged prompt.
+Every `### alternatives` section in `CUES.md` (or folder-based `cues/<name>/CUE.md`) becomes one cue source. OpenCues routes **each highlighted word** to exactly ONE of those sources at resolve time. A project's source set is a small routing table, not one giant merged prompt.
 
 Routing is purely fast-path: each word is matched against per-source `match:` regex / `keywords:` list, and the highest-priority match wins. No LLM classifier — the dispatch decision is made deterministically before any prompt is sent.
 
@@ -89,7 +89,7 @@ Isolation is the structural property that matters.
 | `@opencues/core` `RoutedWordSourceGroup` | The runtime class. Classifies words, groups by source, dispatches calls. Drops sources with neither match nor keywords. |
 | `buildSourcesFromConfig` | Takes every `### alternatives` section, drops un-routable ones, wraps the rest in ONE `RoutedWordSourceGroup`. |
 | `opencues validate` | Warns on word-cue sources that declare neither `match:` nor `keywords:` (would silently drop). |
-| `cues.md` / `new/cue.md` templates | Teach the requirement at scaffold time. |
+| `CUES.md` / `new/cue.md` templates | Teach the requirement at scaffold time. |
 
 ---
 

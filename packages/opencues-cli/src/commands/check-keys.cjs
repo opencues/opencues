@@ -31,12 +31,19 @@ module.exports = async function checkKeys(argv) {
   for (const c of checks) {
     const key = get(c.env);
     if (!key) { console.log(`  -  ${c.provider} (${c.env} unset)`); continue; }
-    process.stdout.write(`  ?  ${c.provider} ... `);
+    // In a TTY: print a "checking…" line, then \r-overwrite with the
+    // final ✓/✗. In a pipe (CI / capture): just print the verdict
+    // once when it's known, since \r doesn't physically erase in a
+    // non-TTY output stream and the user would see both halves.
+    const isTty = process.stdout.isTTY;
+    if (isTty) process.stdout.write(`  …  ${c.provider} ...`);
     try {
       const res = await c.fn(key);
-      console.log(`✓ ${res || 'ok'}`);
+      const line = `  ✓  ${c.provider} ... ${res || 'ok'}\n`;
+      process.stdout.write(isTty ? `\r${line}` : line);
     } catch (err) {
-      console.log(`✗ ${err.message}`);
+      const line = `  ✗  ${c.provider} ... ${err.message}\n`;
+      process.stdout.write(isTty ? `\r${line}` : line);
       bad++;
     }
   }

@@ -15,9 +15,9 @@ module.exports = function validate(argv, ctx) {
   const userOnly = argv.includes('--user');
   const strict = argv.includes('--strict');
 
-  // Load core's parser + host-compat helpers. opencues.md uses a
+  // Load core's parser + host-compat helpers. OPENCUES.md uses a
   // runtime-side parser (different shape — top-level YAML state, not
-  // section-based); for now we just verify opencues.md is readable text.
+  // section-based); for now we just verify OPENCUES.md is readable text.
   let core;
   try {
     core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
@@ -35,9 +35,9 @@ module.exports = function validate(argv, ctx) {
 
   const errors = [];
   const warnings = [];
-  // Per-kind name → source-file map. Within ONE source (one cues.md OR
-  // one folder cue.md), duplicates are errors. Across sources (cues.md
-  // + cues/<name>/cue.md), folder takes precedence — that's the merge
+  // Per-kind name → source-file map. Within ONE source (one CUES.md OR
+  // one per-folder CUE.md / BLANK.md), duplicates are errors. Across sources (CUES.md
+  // + cues/<name>/CUE.md), folder takes precedence — that's the merge
   // contract, not a conflict. So we track names per source file.
   const seen = { cue: new Map(), blank: new Map() };
 
@@ -87,8 +87,8 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
       priority: src?.priority ?? 50,
     });
   };
-  // Top-level .md files (cues.md, blanks.md). Duplicates WITHIN one
-  // file = error. opencues.md uses a different schema; we just check
+  // Top-level .md files (CUES.md, BLANKS.md). Duplicates WITHIN one
+  // file = error. OPENCUES.md uses a different schema; we just check
   // it's readable.
   for (const [filename, kind] of [
     ['CUES.md',   'cue'],
@@ -132,25 +132,38 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
     }
   }
 
-  // opencues.md — readable check only.
-  const opencuesMdPath = path.join(dir, 'opencues.md');
-  if (fs.existsSync(opencuesMdPath)) {
-    try { fs.readFileSync(opencuesMdPath, 'utf8'); }
-    catch (err) { errors.push(`${opencuesMdPath}: read failed — ${err.message}`); }
+  // OPENCUES.md — readable check only. Tolerate the lowercase legacy
+  // name (seed-configs migrates these eventually) so half-migrated
+  // dirs don't generate spurious errors.
+  for (const settingsName of ['OPENCUES.md', 'opencues.md']) {
+    const settingsPath = path.join(dir, settingsName);
+    if (!fs.existsSync(settingsPath)) continue;
+    try { fs.readFileSync(settingsPath, 'utf8'); }
+    catch (err) { errors.push(`${settingsPath}: read failed — ${err.message}`); }
+    break;
   }
 
-  // Folder discoveries: .cues/{cues,blanks}/<name>/cue.md
-  // Folder name IS the cue/blank name. Within the same dir,
-  // can't have two folders with the same name (filesystem prevents it).
-  // Folder + monolithic same name is FINE — folder overrides.
-  for (const [subdir, kind] of [['cues', 'cue'], ['blanks', 'blank']]) {
+  // Folder discoveries: .cues/{cues,blanks}/<name>/{CUE.md|BLANK.md}.
+  // Folder name IS the cue/blank name. Per the open standard the
+  // per-folder file is uppercase + type-specific (CUE.md inside cues/,
+  // BLANK.md inside blanks/). Tolerate lowercase + legacy cue.md so
+  // half-migrated user dirs don't get drowned in spurious warnings.
+  // Within the same dir filesystems prevent duplicate folder names;
+  // folder + monolithic of the same name is fine — folder overrides.
+  for (const [subdir, kind, primaryFile] of [
+    ['cues',   'cue',   'CUE.md'],
+    ['blanks', 'blank', 'BLANK.md'],
+  ]) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const cueMd = path.join(sub, entry.name, 'cue.md');
-      if (!fs.existsSync(cueMd)) {
-        warnings.push(`${sub}/${entry.name}/ has no cue.md`);
+      const candidates = [primaryFile, primaryFile.toLowerCase(), 'cue.md'];
+      const cueMd = candidates
+        .map(f => path.join(sub, entry.name, f))
+        .find(p => fs.existsSync(p));
+      if (!cueMd) {
+        warnings.push(`${sub}/${entry.name}/ has no ${primaryFile}`);
         continue;
       }
       try {
@@ -159,7 +172,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
         seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
         checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings);
         if (kind === 'cue') noteWordCue(entry.name, folderParsed.frontmatter, cueMd);
-        // Sanity: if cue.md declares a script, check it exists + executable.
+        // Sanity: if the per-folder file declares a script, check it exists + executable.
         const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
         if (scriptMatch) {
           let scriptPath = scriptMatch[1].trim().replace(/^["']|["']$/g, '');
@@ -251,6 +264,6 @@ function printHelp() {
   console.log('  * Frontmatter parse errors (with file path)');
   console.log('  * Duplicate cue/blank names within a path');
   console.log('  * script: / blankScript: paths that don\'t exist or aren\'t executable');
-  console.log('  * Empty cue folders (no cue.md inside)');
+  console.log('  * Empty cue folders (no CUE.md / BLANK.md inside)');
   console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');
 }

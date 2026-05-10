@@ -4,7 +4,7 @@ domain: project
 version: 1
 ---
 
-# cues.md
+# CUES.md
 #
 # Project cue sources. Defines static word tips (for instant lookup)
 # and LLM-backed cue sources (for dynamic alternatives).

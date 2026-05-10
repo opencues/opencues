@@ -54,7 +54,7 @@ describe('boot()', () => {
   it('consumePendingRender returns Cycling text replacement when setText was called', async () => {
     const host = fakeHost('fast slow', {
       // cwd is '/test' (fakeHost default), cc boot adds `.cues`
-      // to every search path — serve TIPS from /test/.cues/cues.md
+      // to every search path — serve TIPS from /test/.cues/CUES.md
       // (mirrors what the adapter looks for in production).
       readFile: async (p: string) => p === '/test/.cues/CUES.md' ? TIPS : null,
     });

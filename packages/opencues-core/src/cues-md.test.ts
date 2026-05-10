@@ -322,10 +322,10 @@ describe('parseCuesMd: ## Tips', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Real file parsing (blanks.md structure)
+// Real file parsing (BLANKS.md structure)
 // ---------------------------------------------------------------------------
 
-describe('parseCuesMd: blanks.md structure', () => {
+describe('parseCuesMd: BLANKS.md structure', () => {
   it('should parse classifier + multiple blank modes', () => {
     const cfg = parseCuesMd([
       '---',
@@ -383,10 +383,10 @@ describe('parseCuesMd: blanks.md structure', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Real file parsing (cues.md structure)
+// Real file parsing (CUES.md structure)
 // ---------------------------------------------------------------------------
 
-describe('parseCuesMd: cues.md structure', () => {
+describe('parseCuesMd: CUES.md structure', () => {
   it('should parse tips + prompt + ignore together', () => {
     const cfg = parseCuesMd([
       '---',
@@ -514,17 +514,17 @@ describe('parseCuesMd: edge cases', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Real file validation — parse the actual blanks.md and cues.md
+// Real file validation — parse the actual BLANKS.md and CUES.md
 // ---------------------------------------------------------------------------
 
-describe('parseCuesMd: real blanks.md', () => {
+describe('parseCuesMd: real BLANKS.md', () => {
   const fs = require('fs');
   const path = require('path');
-  const blanksPath = path.resolve(__dirname, '../../../defaults/blanks.md');
+  const blanksPath = path.resolve(__dirname, '../../../defaults/BLANKS.md');
 
-  // Skip if blanks.md doesn't exist (CI without repo root) OR if it
+  // Skip if BLANKS.md doesn't exist (CI without repo root) OR if it
   // doesn't contain classifier-sources content (these tests pin
-  // behaviour that no longer ships in defaults/blanks.md).
+  // behaviour that no longer ships in defaults/BLANKS.md).
   const fileContent = fs.existsSync(blanksPath) ? fs.readFileSync(blanksPath, 'utf8') : '';
   const blanksExists = fileContent.includes('classifier') && fileContent.includes('### math');
 
@@ -583,17 +583,17 @@ describe('parseCuesMd: real blanks.md', () => {
 
   (blanksExists ? it : it.skip)('should have ignore words', () => {
     const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    assert.ok(cfg.ignore && cfg.ignore.length > 0, 'blanks.md should have ignore words');
+    assert.ok(cfg.ignore && cfg.ignore.length > 0, 'BLANKS.md should have ignore words');
   });
 });
 
-describe('parseCuesMd: real cues.md', () => {
+describe('parseCuesMd: real CUES.md', () => {
   const fs = require('fs');
   const path = require('path');
-  const cuesPath = path.resolve(__dirname, '../../../defaults/cues.md');
+  const cuesPath = path.resolve(__dirname, '../../../defaults/CUES.md');
   const cuesExists = fs.existsSync(cuesPath);
 
-  (cuesExists ? it : it.skip)('parses cleanly (sources live in words/<name>.md or cues/<name>/cue.md, not inline)', () => {
+  (cuesExists ? it : it.skip)('parses cleanly (sources live in words/<name>.md or cues/<name>/CUE.md, not inline)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
     assert.ok(cfg);
     // No inline word sources expected — everything is folder-based now.
@@ -602,7 +602,7 @@ describe('parseCuesMd: real cues.md', () => {
 
   (cuesExists ? it : it.skip)('does not store inline tips (tips are folder-based)', () => {
     const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    assert.ok(!cfg.tips || cfg.tips.length === 0, 'tips moved to words/<id>.md or cues/<id>/cue.md');
+    assert.ok(!cfg.tips || cfg.tips.length === 0, 'tips moved to words/<id>.md or cues/<id>/CUE.md');
   });
 
   (cuesExists ? it : it.skip)('should pass validation', () => {

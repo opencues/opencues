@@ -10,8 +10,8 @@ The GRAMMAR prompt instructs the LLM to generate word alternatives (synonyms, op
 
 ## Prompt Location
 
-Word alternatives prompt: defined in `cues.md` → `## Prompt` → `### grammar`
-Blank fill-in prompt: defined in `blanks.md` → `## Prompt` → `### grammar`
+Word alternatives prompt: defined in `CUES.md` → `## Prompt` → `### grammar`
+Blank fill-in prompt: defined in `BLANKS.md` → `## Prompt` → `### grammar`
 
 ## Key Design Principles
 

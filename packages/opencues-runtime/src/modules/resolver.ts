@@ -31,7 +31,7 @@ export interface ResolverOptions {
   readonly defaultModel: string;
   /**
    * API keys keyed by provider env-var name. Populated by boot from
-   * process.env (or settings UI). Lets cues.md frontmatter pick a
+   * process.env (or settings UI). Lets CUES.md frontmatter pick a
    * non-Groq provider without rebuilding the patch.
    */
   readonly apiKeys?: Readonly<Record<string, string | undefined>>;
@@ -95,7 +95,7 @@ export class Resolver {
 
   /** Snapshot of the opt-in settings the resolver was last built with.
    *  Re-computed on every resolve; mismatch → rebuildResolver before
-   *  running so `opencues.md` flag flips take effect on the next
+   *  running so `OPENCUES.md` flag flips take effect on the next
    *  keystroke (no host restart required). */
   private _lastBuildKey: string | null = null;
 
@@ -267,7 +267,7 @@ export class Resolver {
       return;
     }
 
-    // Endpoint + model precedence: opencues.md `llm-endpoint:` /
+    // Endpoint + model precedence: OPENCUES.md `llm-endpoint:` /
     // `llm-model:` > host-supplied default. Lets users switch providers
     // without re-applying the patch.
     //
@@ -318,14 +318,14 @@ export class Resolver {
       disableCues: this.configLoader.folderConfigs?.cuesConfig?.disableCues ?? [],
       disableBlanks: this.configLoader.folderConfigs?.blanksConfig?.disableBlanks ?? [],
       // ALL opt-in: every cue surface defaults to OFF. User flips on via
-      // opencues.md. Missing settings → off. Explicit "on" → on.
+      // OPENCUES.md. Missing settings → off. Explicit "on" → on.
       // See packages/opencues-core/src/sources/build-sources.ts for what
       // each flag gates.
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // Debug log sink — surfaces TransformBlankSource pipeline traces
-      // when opencues.md `debug-mode: on`. The adapter.log gates 'debug'
+      // when OPENCUES.md `debug-mode: on`. The adapter.log gates 'debug'
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
       // users get no log spam.
       log: (msg: string) => this.adapter.log('debug', msg),
@@ -373,7 +373,7 @@ export class Resolver {
   }
 
   /** Stable string fingerprint of the source-affecting settings. When this
-   *  changes between resolves (user flipped a flag in `opencues.md` and
+   *  changes between resolves (user flipped a flag in `OPENCUES.md` and
    *  ConfigLoader hot-reloaded), rebuild the resolver so the new flag
    *  state takes effect without a host restart. */
   private computeBuildKey(): string {
@@ -397,14 +397,14 @@ export class Resolver {
     if (e.source !== 'user') return; // ignore our own setText echoes
     if (!this._resolver) return;
 
-    // If opencues.md flags changed since last build, rebuild before
+    // If OPENCUES.md flags changed since last build, rebuild before
     // dispatching. ConfigLoader hot-reloads opencuesState on text-change
     // but doesn't notify Resolver, so without this check a flag flip
     // (`fluid-blank-mode: off → on`, `word-cues-mode: off → on`, …)
     // would only take effect on next host restart.
     const currentKey = this.computeBuildKey();
     if (currentKey !== this._lastBuildKey) {
-      this.adapter.log('info', `Resolver: opencues.md flags changed — rebuilding sources`);
+      this.adapter.log('info', `Resolver: OPENCUES.md flags changed — rebuilding sources`);
       this.rebuildResolver();
     }
 
@@ -563,7 +563,7 @@ export class Resolver {
       // (user deleted/replaced the word).
       if (existing && existing.originalWord === target.word) continue;
       // Tip-having words own their own alternatives via the cueMap
-      // (the hand-curated `alts` array under cues.md's `## Tips` JSON
+      // (the hand-curated `alts` array under CUES.md's `## Tips` JSON
       // block). The LLM returning grammar synonyms for `ultrathink`
       // etc. would silently override the curated list. Mirrors the
       // legacy CC cue-engine's `skipFn: word => tipsMap.has(word)`

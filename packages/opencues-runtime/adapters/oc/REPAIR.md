@@ -1,6 +1,6 @@
 # OpenCode adapter — repair guide
 
-OpenCode integration band. Pin: **opencode v1.4.11 (`5e9d5c7`)**.
+OpenCode integration. Pin: **opencode v1.14.17 (`40ba8f3`)**, served by the `oc/v1.14/` adapter band. Also tested: v1.4.14 (`c90281c`) and v1.4.11 (`5e9d5c7`) via the `oc/v1.4/` band.
 
 The runtime side is host-agnostic; the only band-specific code lives at:
 
@@ -70,7 +70,7 @@ returns `consumed=false`. cueMap appears empty even though
 
 **Why:** the bootstrap passed `process.cwd()`, which is the OpenCode
 fork directory (`~/opencode-cues`). That's not where the user keeps
-their `cues.md`, `controls/`, `cues/` folders. ConfigLoader loaded
+their `CUES.md`, `controls/`, `cues/` folders. ConfigLoader loaded
 the tips JSON but missed all folder configs.
 
 **Fix:** `cwd: process.env.OPENCUES_HOME || "/home/wilfred/opencues"`.
@@ -102,7 +102,7 @@ the `if (host.llmApiKey)` Resolver block.
 
 **Symptom:** `/tmp/opencues.log` shows `Resolver: no cuesConfig/blanksConfig,
 skipping build` repeatedly. LLM never fires even when `GROQ_API_KEY` set
-and `cues.md` / `blanks.md` parse fine.
+and `CUES.md` / `BLANKS.md` parse fine.
 
 **Why:** the original block called `resolver.subscribe()` synchronously
 right after construction. ConfigLoader.load() is async — when Resolver's

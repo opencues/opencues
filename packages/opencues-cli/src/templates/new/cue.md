@@ -5,7 +5,7 @@
 # ─────────────────────────────────────────────────────────────────────
 #
 # A folder-based cue source. The runtime merges this with the monolithic
-# cues.md; folder wins on name conflicts. For a real reference, cat any
+# CUES.md; folder wins on name conflicts. For a real reference, cat any
 # of the shipped sources in ~/.cues/cues/{legal,medical,financial}.md.
 
 # ─────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ scope: words
 # keywords: (list). Sources without either are dropped at runtime.
 #
 #   match: regex             — only fires for words matching the regex.
-#                              See defaults/cues/legal/cue.md for an
+#                              See defaults/cues/legal/CUE.md for an
 #                              example.
 #   keywords: a, b, c        — case-insensitive word list.
 #   match: .*                — explicit catch-all. If you really want a
@@ -64,7 +64,7 @@ scope: words
 # into the LLM prompt to keep responses tonally appropriate. Especially
 # helpful for narrow domains where generic synonyms would be wrong.
 #
-# Defaults/cues/legal/cue.md:
+# Defaults/cues/legal/CUE.md:
 #   classify: Legal terminology, contract drafting, statutory definitions
 #
 # Skip for broad catch-all sources (`match: .*`) — the LLM doesn't need extra framing.
@@ -75,7 +75,7 @@ scope: words
 # PRIORITY
 # ─────────────────────────────────────────────────────────────────────
 # priority: number (default 50)
-#   Higher priority wins on merge conflicts (e.g. monolithic cues.md
+#   Higher priority wins on merge conflicts (e.g. monolithic CUES.md
 #   with same name vs this folder source). Narrow domain sources usually
 #   use 70-80, broad catch-alls 50, classifier 100.
 

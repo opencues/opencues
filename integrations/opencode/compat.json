@@ -7,8 +7,11 @@
     "path-from-repo": "integrations/opencode/pin.json"
   },
   "tested": [
-    { "version": "1.4.11", "sha": "5e9d5c7" }
+    { "version": "1.4.11", "sha": "5e9d5c7" },
+    { "version": "1.4.14", "sha": "c90281c" },
+    { "version": "1.14.17", "sha": "40ba8f3" }
   ],
-  "compat-range": "1.4.x",
+  "compat-range": ["1.4.x", "1.14.x"],
+  "//compat-range-note": "Array of independently-supported ranges, one per adapter band. Upstream skipped 1.5.x..1.13.x — those minors don't exist in sst/opencode and are intentionally absent from this list. The active install always corresponds to one entry: pin.json's version determines which band+range applies.",
   "known-incompatible": []
 }

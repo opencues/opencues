@@ -93,10 +93,10 @@ export interface ProcessSpec {
  * stdout (same exitCode/timedOut semantics).
  *
  * The `blankName` field identifies which blank to invoke (declared in
- * blanks/<name>/cue.md, e.g. "volume").
+ * blanks/<name>/BLANK.md, e.g. "volume").
  */
 export interface BlankInvokeSpec {
-  /** Blank name as declared in blanks/<name>/cue.md (e.g. "volume"). */
+  /** Blank name as declared in blanks/<name>/BLANK.md (e.g. "volume"). */
   readonly blankName: string;
   /** Action verb — typically "get" / "set" / "up" / "down" but arbitrary. */
   readonly action: string;
@@ -192,7 +192,7 @@ export interface CommonHostInfo {
    * OPENROUTER_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, …). Boot reads
    * `process.env` and forwards whichever keys are set. The runtime's
    * provider resolver picks the right one based on `llm-provider:` /
-   * `<feature>-provider:` cues.md settings.
+   * `<feature>-provider:` CUES.md settings.
    *
    * Hosts that can't read process.env (Chrome) populate this from a
    * settings UI / chrome.storage. Legacy `llmApiKey` is still honoured

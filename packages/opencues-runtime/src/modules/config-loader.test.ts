@@ -17,7 +17,7 @@ const SAMPLE_TIPS = wrapTipsAsCuesMd({
 });
 
 describe('ConfigLoader', () => {
-  it('loads tips from cues.md ## Tips and builds a case-insensitive lookup', async () => {
+  it('loads tips from CUES.md ## Tips and builds a case-insensitive lookup', async () => {
     const adapter = new MockAdapter({ files: { '/mock/CUES.md': SAMPLE_TIPS } });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -34,7 +34,7 @@ describe('ConfigLoader', () => {
     expect(loader.lookup('Fast')?.alternatives).toContain('quick');
   });
 
-  it('resolves gracefully when cues.md is missing', async () => {
+  it('resolves gracefully when CUES.md is missing', async () => {
     const adapter = new MockAdapter({ files: {} });
     const loader = new ConfigLoader(adapter);
     await loader.load();
@@ -78,7 +78,7 @@ settings:
       active: x
 ---
 
-# cues.md
+# CUES.md
 some prose
 `;
     const state = parseOpenCuesMd(md);
@@ -152,7 +152,7 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     concepts: [{ id: 'a', words: { hello: { tip: 'hi', alts: ['hi'] } } }],
   });
 
-  it('parses cues.md / blanks.md frontmatter from cwd', async () => {
+  it('parses CUES.md / BLANKS.md frontmatter from cwd', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
@@ -223,8 +223,8 @@ describe('ConfigLoader expanded — cwd .md files', () => {
     });
     const loader = new ConfigLoader(adapter);
     await loader.load();
-    // blanks.md still parses fine even though cues.md was odd.
-    // cueMap is empty because cues.md (the sole tips source post-refactor)
+    // BLANKS.md still parses fine even though CUES.md was odd.
+    // cueMap is empty because CUES.md (the sole tips source post-refactor)
     // didn't yield a valid ## Tips block.
     expect(loader.blanksConfig?.frontmatter.name).toBe('ok');
     expect(loader.cueMap.size).toBe(0);

@@ -49,7 +49,7 @@ export interface ChromeBindings {
   /**
    * Symbolic root for config paths. The Chrome extension has no real
    * filesystem, so this is typically a sentinel like "/chrome-storage"
-   * or the extension's id. ConfigLoader uses it to build `${cwd}/cues.md`
+   * or the extension's id. ConfigLoader uses it to build `${cwd}/CUES.md`
    * style keys that readFile/writeFile resolve against chrome.storage.
    */
   cwd: string;

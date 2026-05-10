@@ -1,4 +1,4 @@
-// `opencues debug on|off` — toggle `debug-mode` in opencues.md.
+// `opencues debug on|off` — toggle `debug-mode` in OPENCUES.md.
 //
 // Hot-reload picks this up; the runtime starts/stops emitting verbose
 // logs to /tmp/opencues.log on the next keystroke.
@@ -27,7 +27,7 @@ module.exports = function debug(argv) {
   const baseDir = projectScope
     ? path.join(process.cwd(), '.cues')
     : path.join(os.homedir(), '.cues');
-  const file = path.join(baseDir, 'opencues.md');
+  const file = path.join(baseDir, 'OPENCUES.md');
 
   fs.mkdirSync(baseDir, { recursive: true });
 
@@ -45,7 +45,7 @@ function printCurrent(projectScope) {
   const baseDir = projectScope
     ? path.join(process.cwd(), '.cues')
     : path.join(os.homedir(), '.cues');
-  const file = path.join(baseDir, 'opencues.md');
+  const file = path.join(baseDir, 'OPENCUES.md');
   if (!fs.existsSync(file)) {
     console.log(`${file}: not present (debug-mode would default to 'off')`);
     return;
@@ -75,12 +75,12 @@ function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function printHelp() {
   console.log('opencues debug [on|off] [--project]');
   console.log('');
-  console.log('Toggle the runtime\'s debug-mode setting (lives in opencues.md frontmatter).');
+  console.log('Toggle the runtime\'s debug-mode setting (lives in OPENCUES.md frontmatter).');
   console.log('Hot-reload picks it up on the next keystroke. With no value: print the');
   console.log('current setting.');
   console.log('');
   console.log('  on / off     New value');
-  console.log('  --project    Edit <cwd>/.cues/opencues.md instead of ~/.cues/');
+  console.log('  --project    Edit <cwd>/.cues/OPENCUES.md instead of ~/.cues/');
   console.log('');
   console.log('Examples:');
   console.log('  opencues debug              # print current');

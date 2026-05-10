@@ -117,11 +117,11 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
     });
 
     // Documents the behavior the host needs to seed against. The script
-    // exits 1 + outputs nothing when opencues.md is empty — same silent-
+    // exits 1 + outputs nothing when OPENCUES.md is empty — same silent-
     // failure mode that hits OpenCuesSettingsBlank.set(). install.cjs
     // seed-configs + setup.sh section 7a-bis ensure this state never
     // happens on a real install.
-    it.skipIf(skip)('opencues-blank.sh get: silently exits 1 when cues.md is 0 bytes', () => {
+    it.skipIf(skip)('opencues-blank.sh get: silently exits 1 when CUES.md is 0 bytes', () => {
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
       const ctlDir = path.join(tmpHome, '.cues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
@@ -130,7 +130,7 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
         path.join(ctlDir, 'opencues-blank.sh'),
       );
       fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
-      fs.writeFileSync(path.join(tmpHome, 'cues.md'), '');
+      fs.writeFileSync(path.join(tmpHome, 'CUES.md'), '');
 
       const result = spawnSync('bash', [path.join(ctlDir, 'opencues-blank.sh'), 'get'], {
         encoding: 'utf8',

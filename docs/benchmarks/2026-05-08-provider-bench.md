@@ -142,6 +142,89 @@ module wraps the HTTP adapter, detects 429 / 5xx / network errors in
 the response body, and re-issues against the alternate provider
 (swapping URL, auth header, and model name).
 
+### Zero-cost option — OpenRouter free tier (the "free man's setup")
+
+For users who want to run OpenCues without committing to a paid
+provider account, OpenRouter ships `openai/gpt-oss-120b:free` — the
+same weights Groq and Cerebras host, behind their `:free` routing.
+Re-bench on 2026-05-10 (3 calls per bit, exact production parameters):
+
+| Bit | temp | max_tokens | reasoning_effort | Min (ms) | Mean (ms) | Max (ms) |
+|---|---:|---:|---|---:|---:|---:|
+| AnswerBlank (consume-list, 3 alts) | 0.3 | 512 | (omitted) | 2180 | 3143 | 4966 |
+| TransformBlank P1 (verdict extract) | 0 | 256 | low | 4355 | 4916 | 5266 |
+| FluidBlank P3 (terse answer) | 0 | 200 | low | 1509 | 1675 | 1767 |
+| PromptImprover Transform (3-line rewrite) | 0.7 | 1024 | (omitted) | 5377 | 5448 | 5536 |
+
+These match the per-call-site parameters in
+`packages/opencues-core/src/sources/{config,fluid-blank,transform-blank}-source.ts`
+and `packages/opencues-runtime/src/blanks/{answer,prompt-improver}.ts`
+respectively. Driving with default settings (temperature 0.7, no
+max_tokens cap, no `reasoning_effort`) regressed every bit by 9-56%
+and made FluidBlank P3 high-variance — **the production parameters
+matter**, even on `:free`. The biggest single saver is the tight
+per-bit `max_tokens` cap; lowering temperature collapses variance
+without changing means much.
+
+**Configuration:**
+
+```yaml
+llm-provider: openrouter
+llm-model: openai/gpt-oss-120b:free
+```
+
+Set `OPENROUTER_API_KEY` in env. The OpenAI-compatible request body
+already produced by `@opencues/core`'s `OPENROUTER` adapter is
+correct as-is — no parameter overrides needed beyond what the
+per-source call sites already emit.
+
+**Where it fits OpenCues' latency budgets:**
+
+| Budget | Bit on free 120b | Verdict |
+|---|---|---|
+| <500ms — Resolver word-cues (inline) | mean 3-5s | ✗ Unusable. Reasoning floor (~80 tokens) alone exceeds this. |
+| ~2s — TransformBlank P1/P2/P3 | mean 4.9s | ⚠ Over budget; pipelines feel laggy but functional. |
+| ~2s — FluidBlank P1/P3 | P3: mean 1.7s | ✓ **Comfortably fits.** P3 is the workhorse; P1 (segment) wasn't measured but should track P3 within ~1s. |
+| 3-5s — PromptImprover consume-all | mean 5.4s | ⚠ At the edge; user perceives a noticeable pause. |
+| 3-5s — AnswerBlank | mean 3.1s | ✓ Fits. |
+
+So `:free` 120b is **viable for post-`_` blank pipelines** and
+**unviable for inline word-cues**. Pair with a non-reasoning fallback
+model (e.g. `meta-llama/llama-3.3-70b-instruct:free`) for word-cues
+if you want everything on OpenRouter.
+
+**Caveats specific to the free tier:**
+
+- **Latency floor is the model's reasoning, not the wire.** `gpt-oss`
+  is a reasoning-by-design model (same family as o-series). You can
+  scale `reasoning_effort` down to `low` but not off — the architecture
+  bakes in hidden chain-of-thought. Even at `low`, expect ~1s minimum
+  for any call.
+- **Daily request ceilings depend on credit balance.** $0 lifetime
+  credits → low daily ceiling (~50/day historically); any past top-up
+  of $10+ → higher ceiling (~1000/day historically). The numbers
+  change quarterly; check `openrouter.ai/docs` before designing
+  around them.
+- **No SLA.** The provider underwriting `:free` routing (today
+  "OpenInference") can pause / reprice / withdraw at any time. Don't
+  point production traffic at it.
+- **Latency varies 3-5× vs Groq for the same model weights.** Groq's
+  LPU hardware is the equaliser; routing to commodity GPU clusters
+  on `:free` doesn't compete on speed.
+
+**When to pick this:**
+
+- Hobbyist setup, no API budget at all.
+- Outage fallback when both Groq and Cerebras are 429/5xx
+  (`withFallback()` already handles this).
+- Sanity-checking a prompt change in dev without burning paid credits.
+
+**When not to pick this:**
+
+- Anything user-facing where word-cues need to feel real-time.
+- Production deployments — the lack of SLA is the issue, not the
+  model quality.
+
 ---
 
 ## 5. Methodology + caveats

@@ -1,7 +1,7 @@
 /**
  * Multi-provider routing tests for buildSourcesFromConfig.
  *
- * Pin: when the user picks different providers per feature in cues.md,
+ * Pin: when the user picks different providers per feature in CUES.md,
  * each LLM call site sends the wire format of its OWN provider.
  *   - word-cues  → openrouter (OpenAI-shape, openrouter URL)
  *   - fluid-blank → gemini    (gemini URL, contents/parts body)

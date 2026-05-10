@@ -54,18 +54,18 @@ Yes, once the binary is on PATH. Options:
 
 Installer hints automatically print whichever form works in your shell.
 
-### Does `opencues init` scaffold `opencues.md`?
+### Does `opencues init` scaffold `OPENCUES.md`?
 
 **No.** `OPENCUES.md` holds system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate) whose schema is defined by the OpenCues runtime — not by users or projects. One value applies across every integration. It's runtime-owned:
 
 - Lives at user-level only: `~/.cues/OPENCUES.md`
 - Seeded from `defaults/OPENCUES.md` by `opencues seed-configs` (and re-seeded automatically if the file is 0-bytes — the `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills)
 - `setup.sh` self-heals an empty `OPENCUES.md` on every install (section 7a-bis)
-- `opencues init` scaffolds only `cues.md`, `blanks.md`, `README.md` in a project
+- `opencues init` scaffolds only `CUES.md`, `BLANKS.md`, `README.md` in a project
 
-### Can I have project-level `opencues.md`?
+### Can I have project-level `OPENCUES.md`?
 
-No — it's intentionally user-level only. A project-level override would violate the "one value across every integration" invariant. `cues.md`, `blanks.md` can all be project-level overrides; `opencues.md` cannot.
+No — it's intentionally user-level only. A project-level override would violate the "one value across every integration" invariant. `CUES.md`, `BLANKS.md` can all be project-level overrides; `OPENCUES.md` cannot.
 
 ### The install output is too verbose / too quiet — can I change it?
 
@@ -128,7 +128,7 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 | `~/claude-code-cues/.opencues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
 | `~/claude-code-cues/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
 | `~/opencode-cues/` | OpenCode fork (cloned on install) | Patched fork; `~/opencode-cues/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
-| `~/.cues/` | You (user configs) | Your cues/blanks + user-level `opencues.md`. Shared by every host. |
+| `~/.cues/` | You (user configs) | Your cues/blanks + user-level `OPENCUES.md`. Shared by every host. |
 | `<cwd>/.cues/` | Your project | Project-level overrides for cues/blanks. |
 | `/tmp/opencues.log` | Runtime | Debug log from whichever host is actively running. |
 | `/tmp/opencues-install-<host>.log` | Installer | Most recent install output (kept on success too for re-inspection). |
@@ -188,13 +188,13 @@ Cross-host diagnostics with suggested fixes. Then `opencues which` for the live 
 
 ## Configuration
 
-### What's the difference between `~/.cues/cues.md` and `<cwd>/.cues/cues.md`?
+### What's the difference between `~/.cues/CUES.md` and `<cwd>/.cues/CUES.md`?
 
 User-level (`~/.cues/`) is your global default — applies everywhere. Project-level (`<cwd>/.cues/`) applies only when you run a host from inside that project. Project wins on name conflicts (cue source name, blank mode name, blank name).
 
 The load precedence is `$OPENCUES_HOME` → project → user, in that order.
 
-### Can I edit `opencues.md` by hand?
+### Can I edit `OPENCUES.md` by hand?
 
 You can edit the *scalar values* (`voice-mode: active ↔ inactive`, etc.) if you prefer — they hot-reload. The *settings block* shape (the nested `settings:` with `tip:` and `values:` entries) is runtime-defined; the runtime will overwrite additions during settings writes.
 

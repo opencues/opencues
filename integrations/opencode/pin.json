@@ -1,5 +1,5 @@
 {
   "//": "OpenCode fork pin. Read by integrations/opencode/patches/setup.sh + rewritten by `opencues update opencode --to <version>`. Both fields must move together — version is for human display, sha is what git checkout actually uses.",
-  "version": "1.4.11",
-  "sha": "5e9d5c7"
+  "version": "1.14.17",
+  "sha": "40ba8f3"
 }

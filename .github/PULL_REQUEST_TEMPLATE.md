@@ -4,7 +4,7 @@
 
 ## Type of change
 
-- [ ] Config change (cues.md, blanks.md, controls)
+- [ ] Config change (CUES.md, BLANKS.md, controls)
 - [ ] opencues-core change (TypeScript library)
 - [ ] Integration change (patches, editor-specific code)
 - [ ] Documentation

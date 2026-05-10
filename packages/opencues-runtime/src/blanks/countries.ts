@@ -7,7 +7,7 @@
 // country, return the requested field.
 //
 // Design note: REST Countries returns a rich object per country,
-// so a single blank can surface multiple facts. The cue.md exposes
+// so a single blank can surface multiple facts. The BLANK.md exposes
 // it via several keywords (population of, capital of, currency of, ...)
 // and the keyword tells us which field to extract.
 

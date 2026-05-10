@@ -1,7 +1,7 @@
 // `opencues new <kind> <name>` — scaffold a single cue / blank.
 //
-// Default destination: ~/.cues/<kind>s/<name>/cue.md.
-// `--project` writes to <cwd>/.cues/<kind>s/<name>/cue.md instead.
+// Default destination: ~/.cues/<kind>s/<name>/{CUE,BLANK}.md.
+// `--project` writes to <cwd>/.cues/<kind>s/<name>/{CUE,BLANK}.md instead.
 
 'use strict';
 
@@ -11,6 +11,10 @@ const os = require('node:os');
 
 const KINDS = new Set(['cue', 'blank']);
 const KIND_TO_DIR = { cue: 'cues', blank: 'blanks' };
+// Per the open standard, the per-folder file is uppercase + type-specific:
+// cues/<name>/CUE.md, blanks/<name>/BLANK.md. New scaffolds use the
+// canonical name; older lowercase forms are tolerated by readers.
+const KIND_TO_FILENAME = { cue: 'CUE.md', blank: 'BLANK.md' };
 const KIND_TEMPLATE = { cue: 'cue', blank: 'blank' };
 
 module.exports = function newCmd(argv, ctx) {
@@ -43,7 +47,7 @@ module.exports = function newCmd(argv, ctx) {
     ? path.join(process.cwd(), '.cues')
     : path.join(os.homedir(), '.cues');
   const targetDir = path.join(baseDir, KIND_TO_DIR[kind], name);
-  const targetFile = path.join(targetDir, 'cue.md');
+  const targetFile = path.join(targetDir, KIND_TO_FILENAME[kind]);
 
   if (fs.existsSync(targetFile)) {
     console.error(`opencues new: refusing to overwrite existing ${targetFile}`);

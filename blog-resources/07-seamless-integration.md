@@ -77,7 +77,7 @@ Every cue / blank is defined in a `.md` file. The same file works in any host
 (modulo `host-compat` filtering — see below).
 
 ```yaml
-# defaults/cues/legal/cue.md
+# defaults/cues/legal/CUE.md
 ---
 name: legal
 match: \b(liability|tort|defendant|plaintiff)\b

@@ -24,7 +24,7 @@ From the glossary:
 This is the angle for the "continuous onboarding" framing. A **cue-tip**
 appears in the secondary display (status line, tooltip, hover panel —
 host-dependent) when a word is highlighted. Concrete example from
-`defaults/cues/extended-thinking/cue.md`:
+`defaults/cues/extended-thinking/CUE.md`:
 
 ```yaml
 words:
@@ -65,7 +65,7 @@ Latency: under 1ms. The user sees them immediately as they type.
 
 ### 2. Remote cues (LLM, ~200-500ms)
 
-Each `cues/<name>/cue.md` with a `match:` regex or `keywords:` list becomes a
+Each `cues/<name>/CUE.md` with a `match:` regex or `keywords:` list becomes a
 `ConfigSource`. After a debounced pause in typing, eligible words batch into
 a parallel LLM call.
 
@@ -78,7 +78,7 @@ Used for:
 
 This is critical to understand. From `CLAUDE.md`:
 
-> Every `### alternatives` section in `cues.md` (or `cues/<name>/cue.md`)
+> Every `### alternatives` section in `CUES.md` (or `cues/<name>/CUE.md`)
 > becomes one `ConfigSource`. `buildSourcesFromConfig` wraps the whole set
 > in ONE `RoutedWordSourceGroup` that dispatches each highlighted word to
 > exactly one child source — never combines them into a giant prompt.

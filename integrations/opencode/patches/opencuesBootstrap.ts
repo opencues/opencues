@@ -1,8 +1,11 @@
-// OpenCues bootstrap for OpenCode v1.4.
+// OpenCues bootstrap for OpenCode (band substituted at install time).
 //
 // What gets injected into the fork:
 //
 //   • THIS FILE — copied to packages/opencode/src/cli/cmd/tui/opencues.ts
+//     with __OPENCUES_BAND__ replaced by the major.minor from pin.json
+//     (e.g. "v1.4" or "v1.14"). setup.sh's patch_fork_bootstrap step
+//     owns the substitution.
 //   • Two import + call additions in app.tsx (mount the bootstrap
 //     once on TUI start; forward useKeyboard events).
 //   • Two onInput hooks in component/prompt/index.tsx (forward text
@@ -13,10 +16,10 @@
 
 import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
-import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/v1.4/boot"
+import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/__OPENCUES_BAND__/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
-import { createBlankInvoke, AnswerBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
+import { createBlankInvoke, AnswerBlank, ClaudeStatusBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -104,6 +107,7 @@ const blanksRegistry = new Map<string, Blank>([
   ['hackernews', new HackerNewsBlank()],
   ['stocks', new StocksBlank({ apiKey: process.env.FINNHUB_API_KEY })],
   ['weather', new WeatherBlank()],
+  ['claude-status', new ClaudeStatusBlank()],
   ['dictionary', new DictionaryBlank()],
   ['crypto', new CryptoBlank()],
   ['countries', new CountriesBlank()],
@@ -344,7 +348,7 @@ export function startOpenCues(opts: {
     llmApiKey: process.env.GROQ_API_KEY,
     llmEndpoint: process.env.OPENCUES_LLM_ENDPOINT,
     llmDefaultModel: process.env.OPENCUES_LLM_MODEL,
-    // Multi-provider key bag — runtime picks per cues.md `llm-provider:`.
+    // Multi-provider key bag — runtime picks per CUES.md `llm-provider:`.
     llmApiKeys: {
       GROQ_API_KEY: process.env.GROQ_API_KEY,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,

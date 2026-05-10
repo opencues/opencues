@@ -59,11 +59,11 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Chrome Extension:** `document.execCommand('insertText')` preserves undo history.
 
 ### Selector/Satellite Script Calls
-**Claude Code:** `execFileSync("bash", [script, "set", setting, value])` writes back to opencues.md synchronously.
-**Chrome Extension:** In-memory only — `openCues.current[setting] = newValue`. No file writeback. **Divergence:** changes don't persist across page reloads. User must update opencues.md in popup manually.
+**Claude Code:** `execFileSync("bash", [script, "set", setting, value])` writes back to OPENCUES.md synchronously.
+**Chrome Extension:** In-memory only — `openCues.current[setting] = newValue`. No file writeback. **Divergence:** changes don't persist across page reloads. User must update OPENCUES.md in popup manually.
 
 ### Keyword Expansion
-**Claude Code:** Replaces typed shorthand (`aapl` → `AAPL`) using `blankKeywordExpansions` from the cue.md frontmatter.
+**Claude Code:** Replaces typed shorthand (`aapl` → `AAPL`) using `blankKeywordExpansions` from the BLANK.md frontmatter.
 **Chrome Extension:** Same `blankKeywordExpansions` map. Expansion happens in the auto-populate flow before blank fill. **Full parity** for built-in blanks (stocks). Custom expansions require adding entries to the config.
 
 ### Keyword Clearing (blankClearKeywords)
@@ -77,8 +77,8 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 ## Known Divergence
 
 ### Selector/Satellite Persistence
-**Claude Code:** Satellite cycling writes back to opencues.md via script, persisting across sessions.
-**Chrome Extension:** In-memory only. Setting changes are lost on page reload. To persist, the user must update opencues.md content in the popup.
+**Claude Code:** Satellite cycling writes back to OPENCUES.md via script, persisting across sessions.
+**Chrome Extension:** In-memory only. Setting changes are lost on page reload. To persist, the user must update OPENCUES.md content in the popup.
 
 ### Keyword Expansion/Clearing
 **Claude Code:** Auto-populate expands shorthand keywords and clears context words before filling.
@@ -92,7 +92,7 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Claude Code:** The `blankConsumeAll` flow has a two-step LLM pipeline (extract → transform) via the `PromptImproverBlank` runtime class. Cycling state in dedicated `_consumeAllAlts`.
 **Chrome Extension:** Fully implemented. `PromptImproverBlank` (`@opencues/runtime/src/blanks/prompt-improver.ts`) runs the same two-step pipeline (Extract → Transform) using `fetch()` to the LLM API. Returns newline-separated alternatives. Auto-populate detects "improve prompt" keywords, calls the blank, populates `_consumeAllAlts`, and replaces the full text with the first alternative. Cycling and unconditional cleanup are handled by the runtime. **Full parity** (same prompts, same parsing, same fallbacks).
 
-### opencues.md Parser — Regex Avoidance
+### OPENCUES.md Parser — Regex Avoidance
 **Claude Code:** Learned the hard way that regex for frontmatter parsing fails silently due to escape-sequence interactions across TypeScript template → patched string → runtime regex.
 **Chrome Extension:** Uses the same line-by-line walker approach (no regex for frontmatter). **Full parity.**
 
