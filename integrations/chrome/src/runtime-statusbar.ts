@@ -10,6 +10,7 @@ interface StatuslinePayload {
   alts?: readonly string[];
   cueTip?: string | null;
   cueBlank?: boolean;
+  agentTask?: string | null;
 }
 
 let el: HTMLDivElement | null = null;
@@ -45,27 +46,27 @@ function show(text: string): void {
  *   - otherwise (no alts)    → tip alone, or hide
  */
 export function applyStatuslinePayload(payload: StatuslinePayload): void {
-  if (!payload.active) {
-    hide();
-    return;
+  const agentBadge = payload.agentTask ? `[task: ${payload.agentTask}]` : null;
+
+  let wordPart: string | null = null;
+  if (payload.active) {
+    const tip = payload.cueTip ?? null;
+    if (payload.cueBlank) {
+      wordPart = tip;
+    } else if (payload.alts && payload.alts.length > 1 && payload.highlightedWord) {
+      const idx = (payload.currentAltIndex ?? 0) + 1;
+      const head = `${payload.highlightedWord} (${idx}/${payload.alts.length})`;
+      wordPart = tip ? `${head} - ${tip}` : head;
+    } else {
+      wordPart = tip;
+    }
   }
 
-  const tip = payload.cueTip ?? null;
+  const combined = wordPart && agentBadge
+    ? `${wordPart} | ${agentBadge}`
+    : (agentBadge ?? wordPart ?? null);
 
-  if (payload.cueBlank) {
-    if (tip) { show(tip); } else { hide(); }
-    return;
-  }
-
-  if (payload.alts && payload.alts.length > 1 && payload.highlightedWord) {
-    const idx = (payload.currentAltIndex ?? 0) + 1;
-    const head = `${payload.highlightedWord} (${idx}/${payload.alts.length})`;
-    show(tip ? `${head} - ${tip}` : head);
-    return;
-  }
-
-  if (!tip) { hide(); return; }
-  show(tip);
+  if (combined) { show(combined); } else { hide(); }
 }
 
 /** Tear down the floating div — called when extension detaches. */
