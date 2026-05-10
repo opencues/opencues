@@ -41,7 +41,7 @@ scope: words
 # keywords: (list). Sources without either are dropped at runtime.
 #
 #   match: regex             — only fires for words matching the regex.
-#                              See defaults/cues/legal/cue.md for an
+#                              See defaults/cues/legal/CUE.md for an
 #                              example.
 #   keywords: a, b, c        — case-insensitive word list.
 #   match: .*                — explicit catch-all. If you really want a
@@ -64,7 +64,7 @@ scope: words
 # into the LLM prompt to keep responses tonally appropriate. Especially
 # helpful for narrow domains where generic synonyms would be wrong.
 #
-# Defaults/cues/legal/cue.md:
+# Defaults/cues/legal/CUE.md:
 #   classify: Legal terminology, contract drafting, statutory definitions
 #
 # Skip for broad catch-all sources (`match: .*`) — the LLM doesn't need extra framing.

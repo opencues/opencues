@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test-blanks-cascade.sh — verifies the three-stage classifier cascade
-# (match → keywords → LLM) documented in blanks.md template routes the
+# (match → keywords → LLM) documented in BLANKS.md template routes the
 # example inputs to the correct mode without requiring an LLM call.
 #
-# blanks.md template ships these example modes:
+# BLANKS.md template ships these example modes:
 #   ### math      — match: \d+\s*[+\-*/]\s*\d+|\d+\s*%|...
 #                   keywords: math, calc, compute, result of
 #                   parser: compute
@@ -35,7 +35,7 @@ with open(path) as f:
     lines = f.readlines()
 out = []
 for L in lines:
-    if L.startswith('# ─') or L.lstrip('# ').startswith('blanks.md'):
+    if L.startswith('# ─') or L.lstrip('# ').startswith('BLANKS.md'):
         out.append(L); continue
     if L.startswith('# '):
         out.append(L[2:])
@@ -45,9 +45,9 @@ with open(path, 'w') as f:
     f.writelines(out)
 PY
 
-echo "=== validate after uncommenting all blanks.md examples ==="
+echo "=== validate after uncommenting all BLANKS.md examples ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || { "$OPENCUES" validate --project; fail "validate failed"; }
-pass "blanks.md with all examples uncommented validates 0 errors"
+pass "BLANKS.md with all examples uncommented validates 0 errors"
 
 echo "=== list shows math + factual + grammar modes ==="
 LIST="$("$OPENCUES" list --project 2>&1)"

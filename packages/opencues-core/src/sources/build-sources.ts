@@ -8,11 +8,11 @@
  *
  * **Word cues (per-word routing)**: Domain prompts (legal, medical, …) live
  * as `### alternatives` sections in `CUES.md` (or folder-based
- * `cues/<name>/cue.md`). They get wrapped in ONE RoutedWordSourceGroup that
+ * `cues/<name>/CUE.md`). They get wrapped in ONE RoutedWordSourceGroup that
  * dispatches each highlighted word to one source via match/keywords.
  *
  * **Blanks (`_`-gated)**: Two paths:
- *   - Keyword-bound blanks (`blankKeywords:` in a folder cue.md) flow through
+ *   - Keyword-bound blanks (`blankKeywords:` in a folder CUE.md / BLANK.md) flow through
  *     BlankSource — fast, deterministic, no LLM needed.
  *   - Free-form lookups go through FluidBlankSource (P1 SEGMENT + P3 ANSWER
  *     LLM pipeline). It cedes when a keyword-bound blank would claim the slot.
@@ -217,7 +217,7 @@ export function buildSourcesFromConfig(
   // individual ConfigSource instances.
   // Gate the entire word-cue block on enableWordCues. Non-word-cue
   // sources (different scope/parser) still pass through — they're not
-  // the per-word surface, so they obey their own enable flag in cue.md
+  // the per-word surface, so they obey their own enable flag in CUE.md / BLANK.md
   // frontmatter as before.
   const cueDisableSet = new Set(options.disableCues ?? []);
   const blankDisableSet = new Set(options.disableBlanks ?? []);

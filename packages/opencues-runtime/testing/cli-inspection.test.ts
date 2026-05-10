@@ -1,7 +1,7 @@
 // Pins the rename-rot bug class that surfaced in the May 2026 CLI
 // review: inspection commands silently looking at `~/.opencues/`
 // (legacy stub) instead of `~/.cues/`, and at lowercase filenames
-// (`cue.md`, `opencues.md`) instead of the canonical uppercase
+// (`cue.md`, `OPENCUES.md`) instead of the canonical uppercase
 // (`CUE.md`, `BLANK.md`, `OPENCUES.md`). Six commands all silently
 // reported empty / wrong state on a healthy install.
 //
@@ -123,7 +123,7 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
     expect(out).toMatch(/empty-blank.*has no BLANK\.md/);
   });
 
-  // ── debug: must read OPENCUES.md (uppercase), not opencues.md ───────
+  // ── debug: must read OPENCUES.md (uppercase), not OPENCUES.md ───────
 
   it('debug (no arg): reads OPENCUES.md when canonical name is in place', () => {
     debug([], ctx);

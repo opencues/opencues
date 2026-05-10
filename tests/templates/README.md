@@ -1,7 +1,7 @@
 # Template instruction tests
 
 These scripts verify that the instructions in the scaffolded `.cues/`
-templates (`cues.md`, `blanks.md`, `opencues.md`, plus the
+templates (`CUES.md`, `BLANKS.md`, `OPENCUES.md`, plus the
 per-kind `new/*.md` files) actually work when followed. Each test walks
 through the user journey documented in the template comments and asserts
 the behaviour matches.
@@ -11,8 +11,8 @@ the behaviour matches.
 | Script | Scope |
 |---|---|
 | `test-init-flow.sh` | `opencues init` → `opencues new cue/blank` → `opencues validate` → 0 errors |
-| `test-cues-examples.sh` | Uncomments the `### synonym` + `### formal` examples in cues.md; verifies match regex hits the documented example words and the `## Tips` JSON keys look up to their declared alternatives |
-| `test-blanks-cascade.sh` | For each blanks.md example (MATH / FACTUAL / GRAMMAR), verifies the match/keywords fast-path routes the documented example inputs to the correct mode — deterministic, no LLM |
+| `test-cues-examples.sh` | Uncomments the `### synonym` + `### formal` examples in CUES.md; verifies match regex hits the documented example words and the `## Tips` JSON keys look up to their declared alternatives |
+| `test-blanks-cascade.sh` | For each BLANKS.md example (MATH / FACTUAL / GRAMMAR), verifies the match/keywords fast-path routes the documented example inputs to the correct mode — deterministic, no LLM |
 | `test-blanks-shapes.sh` | Scaffolds each of the four `new blank` shapes in turn, uncomments the relevant shape, validates, and checks the declared fields parse |
 | `llm-smoke.sh` | **Optional** (requires `GROQ_API_KEY`). Runs a handful of end-to-end LLM queries: synonym of "happy", compute of "4 * 12", factual "capital of France". Asserts shape of response, not exact words. |
 
@@ -34,7 +34,7 @@ stdout. Non-zero exit on any failure.
 
 ## Shipping a new cue — what to run before merging
 
-When you add or substantially rewrite a `defaults/cues/<name>/cue.md` (or
+When you add or substantially rewrite a `defaults/cues/<name>/CUE.md` (or
 change a prompt body in any `### alternatives` section), you MUST run
 the LLM smoke before shipping. Domain cues have two classes of bug that
 pre-LLM tests cannot catch:
@@ -47,7 +47,7 @@ pre-LLM tests cannot catch:
 2. **Indexing drift.** Examples in the prompt use 1-based indices but
    the runtime sends 0-based inputs. The LLM copies the 1-based pattern;
    parser rejects. Fix: write prompt examples as `0=word → 0:a,b,c`
-   (see `defaults/cues/grammar/cue.md`).
+   (see `defaults/cues/grammar/CUE.md`).
 
 ### Checklist before merging a new domain cue
 

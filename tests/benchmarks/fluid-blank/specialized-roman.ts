@@ -1,5 +1,5 @@
 /**
- * Specialized ROMAN handler — extracted verbatim from defaults/blanks.md.
+ * Specialized ROMAN handler — extracted verbatim from defaults/BLANKS.md.
  */
 
 import { chat, sysUser } from './groq';

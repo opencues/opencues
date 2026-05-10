@@ -36,8 +36,8 @@ module.exports = function validate(argv, ctx) {
   const errors = [];
   const warnings = [];
   // Per-kind name → source-file map. Within ONE source (one CUES.md OR
-  // one folder cue.md), duplicates are errors. Across sources (CUES.md
-  // + cues/<name>/cue.md), folder takes precedence — that's the merge
+  // one per-folder CUE.md / BLANK.md), duplicates are errors. Across sources (CUES.md
+  // + cues/<name>/CUE.md), folder takes precedence — that's the merge
   // contract, not a conflict. So we track names per source file.
   const seen = { cue: new Map(), blank: new Map() };
 
@@ -172,7 +172,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
         seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
         checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings);
         if (kind === 'cue') noteWordCue(entry.name, folderParsed.frontmatter, cueMd);
-        // Sanity: if cue.md declares a script, check it exists + executable.
+        // Sanity: if the per-folder file declares a script, check it exists + executable.
         const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
         if (scriptMatch) {
           let scriptPath = scriptMatch[1].trim().replace(/^["']|["']$/g, '');
@@ -264,6 +264,6 @@ function printHelp() {
   console.log('  * Frontmatter parse errors (with file path)');
   console.log('  * Duplicate cue/blank names within a path');
   console.log('  * script: / blankScript: paths that don\'t exist or aren\'t executable');
-  console.log('  * Empty cue folders (no cue.md inside)');
+  console.log('  * Empty cue folders (no CUE.md / BLANK.md inside)');
   console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');
 }

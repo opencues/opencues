@@ -1,5 +1,5 @@
 /**
- * Specialized UNIT handler — extracted verbatim from defaults/blanks.md.
+ * Specialized UNIT handler — extracted verbatim from defaults/BLANKS.md.
  *
  * Production parser is 'math': output is "COMPUTE=expression" → evaluated.
  */

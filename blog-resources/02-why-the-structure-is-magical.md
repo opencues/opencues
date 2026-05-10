@@ -101,22 +101,22 @@ radius is bounded by the source's match/keyword scope.
 
 The brand-vs-standard split (see [`03-open-standard.md`](03-open-standard.md))
 means a second implementation (FastCues, AnotherCues) could read the same
-`~/.cues/` library and `cues.md` manifests and run an entirely different
+`~/.cues/` library and `CUES.md` manifests and run an entirely different
 runtime. Users' cue libraries *port* between implementations.
 
 From `openstandard-notes.md`:
 > A second OpenStandard implementation (FastCues, AnotherCues, …) would ship
 > its own `~/.fastcuesrc` etc., but read the same `~/.cues/` library and the
-> same `<project>/cues.md` manifests. The brand is replaceable; the standard
+> same `<project>/CUES.md` manifests. The brand is replaceable; the standard
 > isn't.
 
 ## 6. Folder-based discovery means zero-registration extensibility
 
-Drop a `cues/<name>/cue.md` (or `blanks/<name>/cue.md`) into the right
+Drop a `cues/<name>/CUE.md` (or `blanks/<name>/BLANK.md`) into the right
 directory and the runtime picks it up on next hot-reload. No registration,
 no code changes, no rebuild. From `CONTRIBUTING.md`:
 
-> **Good first contribution:** add a word source under `cues/{name}/cue.md`
+> **Good first contribution:** add a word source under `cues/{name}/CUE.md`
 > (folder-based, auto-discovered, no code changes).
 
 This works for static cues, LLM cues, scripted blanks, runtime-class blanks

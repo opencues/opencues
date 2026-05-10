@@ -3,7 +3,7 @@
 // Read-only. 24h cache per word (definitions don't change often).
 //
 // Trigger: keyword "define" or "definition" or just the word in
-// context — the cue.md decides which keywords route here. The
+// context — the BLANK.md decides which keywords route here. The
 // keyword itself is the lookup target after stripping the trigger
 // word ("define ephemeral" → look up "ephemeral").
 

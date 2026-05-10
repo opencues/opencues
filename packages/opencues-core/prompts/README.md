@@ -10,8 +10,8 @@ This folder contains design notes for the prompts shipped in `defaults/`. **All 
 
 | Prompt | File | Section |
 |---|---|---|
-| Word alternatives (per-domain synonyms) | `cues/<name>/cue.md` (folder-based) or inline `cues.md ## Prompt ### <name>` | one source per file/section, dispatched per-word by `RoutedWordSourceGroup` |
-| Keyword-bound blanks (volume, stocks, hn, …) | `blanks/<name>/cue.md` | one folder per blank; matched by `BlankSource` via `blankKeywords` |
+| Word alternatives (per-domain synonyms) | `cues/<name>/CUE.md` (folder-based) or inline `CUES.md ## Prompt ### <name>` | one source per file/section, dispatched per-word by `RoutedWordSourceGroup` |
+| Keyword-bound blanks (volume, stocks, hn, …) | `blanks/<name>/BLANK.md` | one folder per blank; matched by `BlankSource` via `blankKeywords` |
 | Free-form `_` lookup | `packages/opencues-core/src/sources/fluid-blank-source.ts` | `FluidBlankSource` two-pass (P1 SEGMENT + P3 ANSWER), prompts in TS |
 | Spell-check on plain text | `defaults/cues/spelling.md` | regular `ConfigSource` cue (priority 80, `match: .*`) — user-editable like any other word cue |
 
@@ -31,11 +31,11 @@ prompts/
 
 ## About `references/`
 
-The files in `references/` document the prompts that shipped with the now-removed classifier-routed blank pipeline. They're kept for prompt-design history. Active blank handling lives in `FluidBlankSource` (free-form `_`) and per-blank `cue.md` files (keyword-bound).
+The files in `references/` document the prompts that shipped with the now-removed classifier-routed blank pipeline. They're kept for prompt-design history. Active blank handling lives in `FluidBlankSource` (free-form `_`) and per-blank `BLANK.md` files (keyword-bound).
 
 ## Adding a new domain word source
 
-Create `cues/<name>/cue.md`:
+Create `cues/<name>/CUE.md`:
 
 ```markdown
 ---
@@ -53,4 +53,4 @@ Your prompt instructions here...
 
 ## Adding a new keyword-bound blank
 
-Create `blanks/<name>/cue.md` and either a script or a runtime class. See [docs/guides/adding-a-cue-blank.md](../../../docs/guides/adding-a-cue-blank.md) for the four shapes and step-by-step.
+Create `blanks/<name>/BLANK.md` and either a script or a runtime class. See [docs/guides/adding-a-cue-blank.md](../../../docs/guides/adding-a-cue-blank.md) for the four shapes and step-by-step.

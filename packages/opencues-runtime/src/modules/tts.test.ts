@@ -180,7 +180,7 @@ describe('TTS', () => {
     expect(spawnSpy.mock.calls[0][0].args[0]).toBe('/custom/say.sh');
   });
 
-  it('falls back to options.rate when cues.md has no `tts-rate:`', async () => {
+  it('falls back to options.rate when CUES.md has no `tts-rate:`', async () => {
     const { hlState, tts, spawnSpy } = await setup('ultrathink');
     hlState.activate(0, 'ultrathink');
     tts.maybeSpeak({ text: 'ultrathink', cursor: 0, externalHighlights: [] });

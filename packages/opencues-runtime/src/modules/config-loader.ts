@@ -7,7 +7,7 @@
 //   - ~/.cues/OPENCUES.md (user-level only — system settings owned
 //     by the runtime; project-level overrides are intentionally not
 //     read because settings apply across every integration)
-//   - cues/<name>/ and blanks/<name>/ folders (per-folder cue.md via
+//   - cues/<name>/ and blanks/<name>/ folders (per-folder CUE.md / BLANK.md via
 //     @opencues/core's discoverFolderConfigs)
 //
 // Exposes:
@@ -221,7 +221,7 @@ export interface LoadedConfig {
   /**
    * All words known to be navigable, lowercased. Union of:
    *   - cueMap keys (tip-having words)
-   *   - blank names from folder discovery (`blanks/X/cue.md` → "X")
+   *   - blank names from folder discovery (`blanks/X/BLANK.md` → "X")
    *   - blankKeywords from each blank (synonyms that trigger the same blank)
    *
    * Navigation's filter uses this. Bigger than cueMap because blanks
@@ -373,7 +373,7 @@ export class ConfigLoader {
    * a LocalCueLookupResult from the blank's `tip` / `blankTip` so the
    * statusline shows e.g. "system volume" when the user highlights
    * `volume`. The blank side wasn't in cueMap because BLANKS.md and
-   * folder cue.md don't go through the tips JSON path.
+   * folder CUE.md / BLANK.md don't go through the tips JSON path.
    */
   lookup(word: string): LocalCueLookupResult | null {
     const lc = word.toLowerCase();
@@ -569,7 +569,7 @@ export class ConfigLoader {
     const mergedBlanksConfig = mergedDiscovered.blanksConfig ?? null;
 
     // Build cueMap from the merged config's tips. Folder-based tips
-    // (cues/<id>/cue.md with type:tips) flow through here. The legacy
+    // (cues/<id>/CUE.md with type:tips) flow through here. The legacy
     // `## Tips` JSON in master CUES.md still works during migration.
     if (mergedCuesConfig?.tips && mergedCuesConfig.tips.length > 0) {
       try {
@@ -700,7 +700,7 @@ export class ConfigLoader {
         } else if (e.name.endsWith('.md')) {
           // Cache any .md file: the new flat layout has <name>.md at
           // <base>/{words,blanks}/, while the legacy folder layout had
-          // <base>/{cues,blanks}/<name>/cue.md. Both shapes flow
+          // <base>/cues/<name>/CUE.md or <base>/blanks/<name>/BLANK.md. Both shapes flow
           // through discoverFolderConfigs's scanDir.
           const content = await this._safeReadFile(full);
           fileCache.set(full, content);

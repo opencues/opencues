@@ -19,7 +19,7 @@ fail() { printf "  FAIL %s\n" "$1" >&2; exit 1; }
 
 echo "=== init ==="
 "$OPENCUES" init >/dev/null 2>&1 || fail "opencues init failed"
-[[ -f cues.md ]]     || fail "cues.md missing"
+[[ -f CUES.md ]]     || fail "CUES.md missing"
 [[ -f  ]]   || fail " missing"
 [[ -f .cues/README.md ]]   || fail ".cues/README.md missing"
 [[ ! -f OPENCUES.md ]] || fail "OPENCUES.md should NOT be scaffolded at project level (user-level only)"
@@ -31,13 +31,13 @@ pass "fresh init validates 0 errors"
 
 echo "=== opencues new cue ==="
 "$OPENCUES" new cue my-synonyms --project >/dev/null 2>&1 || fail "new cue failed"
-[[ -f .cues/cues/my-synonyms/CUE.md ]] || fail "new cue did not create cue.md"
-pass "new cue scaffolds cue.md"
+[[ -f .cues/cues/my-synonyms/CUE.md ]] || fail "new cue did not create CUE.md"
+pass "new cue scaffolds CUE.md"
 
 echo "=== opencues new blank ==="
 "$OPENCUES" new blank my-answer --project >/dev/null 2>&1 || fail "new blank failed"
-[[ -f .cues/blanks/my-answer/BLANK.md ]] || fail "new blank did not create cue.md"
-pass "new blank scaffolds cue.md"
+[[ -f .cues/blanks/my-answer/BLANK.md ]] || fail "new blank did not create BLANK.md"
+pass "new blank scaffolds BLANK.md"
 
 echo "=== validate after new ==="
 "$OPENCUES" validate --project >/dev/null 2>&1 || fail "validate failed after new <kind>"
@@ -45,7 +45,7 @@ pass "all new <kind> commands validate 0 errors"
 
 echo "=== refuse to overwrite ==="
 if "$OPENCUES" new cue my-synonyms --project >/dev/null 2>&1; then
-  fail "new cue should have refused to overwrite existing cue.md"
+  fail "new cue should have refused to overwrite existing CUE.md"
 fi
 pass "new cue refuses to overwrite existing target"
 

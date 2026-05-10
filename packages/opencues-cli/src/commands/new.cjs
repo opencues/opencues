@@ -1,7 +1,7 @@
 // `opencues new <kind> <name>` — scaffold a single cue / blank.
 //
-// Default destination: ~/.cues/<kind>s/<name>/cue.md.
-// `--project` writes to <cwd>/.cues/<kind>s/<name>/cue.md instead.
+// Default destination: ~/.cues/<kind>s/<name>/{CUE,BLANK}.md.
+// `--project` writes to <cwd>/.cues/<kind>s/<name>/{CUE,BLANK}.md instead.
 
 'use strict';
 

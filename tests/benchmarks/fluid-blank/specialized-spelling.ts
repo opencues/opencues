@@ -1,5 +1,5 @@
 /**
- * Specialized SPELLING handler — extracted verbatim from defaults/blanks.md.
+ * Specialized SPELLING handler — extracted verbatim from defaults/BLANKS.md.
  */
 
 import { chat, sysUser } from './groq';

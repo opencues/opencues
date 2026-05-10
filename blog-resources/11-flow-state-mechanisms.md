@@ -96,11 +96,11 @@ flow choice — don't impose a pattern.
 ## Mechanism 7: Hot-reload — edit configs while using them
 
 From `CLAUDE.md`:
-> `.md` config files (`cues.md`, `blanks.md`, `cues/`, `blanks/`) hot-
+> `.md` config files (`CUES.md`, `BLANKS.md`, `cues/`, `blanks/`) hot-
 > reload within ~2 seconds on the next keystroke — no restart needed.
 
 You can be inside Claude Code, realize a cue is wrong, edit
-`~/.cues/cues/legal/cue.md` in another window, save, and the next
+`~/.cues/cues/legal/CUE.md` in another window, save, and the next
 keystroke in your prompt picks up the change. No restart of CC. No
 re-install. No build.
 

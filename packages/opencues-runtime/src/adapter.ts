@@ -93,10 +93,10 @@ export interface ProcessSpec {
  * stdout (same exitCode/timedOut semantics).
  *
  * The `blankName` field identifies which blank to invoke (declared in
- * blanks/<name>/cue.md, e.g. "volume").
+ * blanks/<name>/BLANK.md, e.g. "volume").
  */
 export interface BlankInvokeSpec {
-  /** Blank name as declared in blanks/<name>/cue.md (e.g. "volume"). */
+  /** Blank name as declared in blanks/<name>/BLANK.md (e.g. "volume"). */
   readonly blankName: string;
   /** Action verb — typically "get" / "set" / "up" / "down" but arbitrary. */
   readonly action: string;

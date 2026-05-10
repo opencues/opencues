@@ -13,7 +13,7 @@ A clear description of the problem or need.
 How you'd like it to work.
 
 **Which layer does this affect?**
-- [ ] The standard (config files — cues.md, blanks.md, controls)
+- [ ] The standard (config files — CUES.md, BLANKS.md, controls)
 - [ ] opencues-core (TypeScript library)
 - [ ] Claude Code integration (patches)
 - [ ] New integration (specify editor)

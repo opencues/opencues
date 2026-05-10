@@ -158,7 +158,7 @@ export interface BlankConfig {
   altCount?: number;
   /** If true, include the original input as the last cycling alternative (default: true) */
   includeOriginal?: boolean;
-  /** Named prompts parsed from ## sections in the cue.md body (e.g. { Extract: "...", Transform: "..." }) */
+  /** Named prompts parsed from ## sections in the CUE.md / BLANK.md body (e.g. { Extract: "...", Transform: "..." }) */
   prompts?: Record<string, string>;
   /**
    * Explicit host allow-list. When set, takes precedence over auto-detection.
@@ -564,7 +564,7 @@ export function parseCuesMd(content: string): CuesMdConfig {
     switch (heading) {
       case 'tips': {
         // Legacy `## Tips` JSON section. New format is folder-based —
-        // each tip group lives in `cues/<id>/cue.md` with type:tips.
+        // each tip group lives in `cues/<id>/CUE.md` with type:tips.
         // Kept here only so old user installs parse cleanly until
         // seed-configs migration runs.
         result.tips = parseTipsSection(section.content);
@@ -600,11 +600,11 @@ export function parseCuesMd(content: string): CuesMdConfig {
 }
 
 // ============================================================================
-// Single cue.md parser (folder-based config)
+// Single CUE.md / BLANK.md parser (folder-based config)
 // ============================================================================
 
 /**
- * Extended frontmatter for individual cue.md files in folder layout.
+ * Extended frontmatter for individual CUE.md / BLANK.md files in folder layout.
  * Config lives in frontmatter instead of YAML code blocks.
  */
 export interface SingleCueFrontmatter extends CuesMdFrontmatter {
@@ -657,7 +657,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
 }
 
 /**
- * Parse extended frontmatter from a single cue.md file.
+ * Parse extended frontmatter from a single CUE.md / BLANK.md file.
  * Handles arrays (JSON bracket syntax) for stepValues.
  */
 function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFrontmatter; body: string } {

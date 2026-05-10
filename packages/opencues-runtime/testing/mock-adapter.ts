@@ -354,10 +354,10 @@ function keyMatchesFilter(event: KeyEvent, filter: KeyFilter | null): boolean {
 }
 
 /**
- * Wrap a tips-data JSON object as a minimal cues.md so ConfigLoader's
+ * Wrap a tips-data JSON object as a minimal CUES.md so ConfigLoader's
  * existing parser flow loads it via its `## Tips` block — no separate
  * `/tips.json` file needed. Test fixture for the post-refactor world
- * where tips come exclusively from cues.md.
+ * where tips come exclusively from CUES.md.
  */
 export function wrapTipsAsCuesMd(
   tipsData: unknown,

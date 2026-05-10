@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 # llm-smoke.sh — end-to-end LLM smoke for the documented template examples.
-# Runs the prompts shipped in cues.md / blanks.md verbatim against the live
+# Runs the prompts shipped in CUES.md / BLANKS.md verbatim against the live
 # LLM and asserts the SHAPE of each response matches what the templates
 # tell users to expect.
 #
 # Coverage (one Groq call per check):
-#   1. cues.md ### synonym       — "happy" → ≥3 alts, none equal to "happy"
-#   2. cues.md ### formal        — "however" → ≥3 alts, none equal to "however"
-#   3. blanks.md ### math        — "4 * 12" → COMPUTE=… eval to 48
-#   4. blanks.md ### math        — "50 plus 20% tax" → COMPUTE=… eval to 60
-#   5. blanks.md ### math        — "celsius 100C to fahrenheit" → COMPUTE=… eval to 212
-#   6. blanks.md ### factual     — "capital of France" → ANSWER=…Paris…
-#   7. blanks.md ### factual     — "founder of Microsoft" → ANSWER=…Gates…
-#   8. blanks.md ### factual     — "CEO of Apple" → ANSWER=…Cook…
-#   9. blanks.md ### classifier  — math input → MODE=MATH
-#  10. blanks.md ### classifier  — factual input → MODE=FACTUAL
-#  11. blanks.md ### classifier  — ambiguous input → MODE=GRAMMAR
-#  12. cues.md ### synonym       — alternatives count discipline (== 3 items)
+#   1. CUES.md ### synonym       — "happy" → ≥3 alts, none equal to "happy"
+#   2. CUES.md ### formal        — "however" → ≥3 alts, none equal to "however"
+#   3. BLANKS.md ### math        — "4 * 12" → COMPUTE=… eval to 48
+#   4. BLANKS.md ### math        — "50 plus 20% tax" → COMPUTE=… eval to 60
+#   5. BLANKS.md ### math        — "celsius 100C to fahrenheit" → COMPUTE=… eval to 212
+#   6. BLANKS.md ### factual     — "capital of France" → ANSWER=…Paris…
+#   7. BLANKS.md ### factual     — "founder of Microsoft" → ANSWER=…Gates…
+#   8. BLANKS.md ### factual     — "CEO of Apple" → ANSWER=…Cook…
+#   9. BLANKS.md ### classifier  — math input → MODE=MATH
+#  10. BLANKS.md ### classifier  — factual input → MODE=FACTUAL
+#  11. BLANKS.md ### classifier  — ambiguous input → MODE=GRAMMAR
+#  12. CUES.md ### synonym       — alternatives count discipline (== 3 items)
 #  13-14. defaults/cues/legal     — single-word + multi-word indices covered
 #  15-16. defaults/cues/medical   — single-word + multi-word indices covered
 #  17-18. defaults/cues/financial — single-word + multi-word indices covered
 #
 # ── Adding a new cue? ────────────────────────────────────────────────
-# Before shipping a new defaults/cues/<name>/cue.md, add a loop entry
+# Before shipping a new defaults/cues/<name>/CUE.md, add a loop entry
 # in the "Shipped domain cues" block below with one known keyword (for
 # single-word) + three keywords (for multi-word). Domain cues MUST pass
 # this smoke to avoid the class of bug where:
@@ -34,7 +34,7 @@
 #   - Indexing drift (prompt examples use 1-based, runtime sends
 #     0-based, parser rejects out-of-range indices).
 # See docs/features/word-cue-routing.md for the routing model, and
-# defaults/cues/grammar/cue.md for the canonical example-heavy prompt
+# defaults/cues/grammar/CUE.md for the canonical example-heavy prompt
 # style.
 #
 # Skipped silently if GROQ_API_KEY is missing.
@@ -82,7 +82,7 @@ except Exception as e:
 }
 
 # ─────────────────────────────────────────────────────────────────
-# Cue source: synonym (cues.md ### synonym)
+# Cue source: synonym (CUES.md ### synonym)
 # ─────────────────────────────────────────────────────────────────
 echo "=== synonym source: 'happy' returns ≥3 alternatives, not 'happy' ==="
 PROMPT='Suggest 3 alternative words for the highlighted word that fit the surrounding sentence context. Output as a comma-separated list. Example: "happy" → "joyful, pleased, content". Word: happy'
@@ -94,7 +94,7 @@ if echo "$ALTS" | grep -qix happy; then fail "synonym returned the input word 'h
 pass "got $COUNT alternatives (none == 'happy'): $(echo "$ALTS" | tr '\n' ',' | head -c 80)"
 
 # ─────────────────────────────────────────────────────────────────
-# Cue source: formal (cues.md ### formal — register-shifting)
+# Cue source: formal (CUES.md ### formal — register-shifting)
 # ─────────────────────────────────────────────────────────────────
 echo "=== formal source: 'however' returns ≥3 formal alternatives ==="
 PROMPT='Suggest 3 alternatives in a more formal register that preserve the meaning and fit the surrounding sentence. Output comma-separated. Example: "however" → "nevertheless, conversely, that said". Word: however'
@@ -211,7 +211,7 @@ fi
 # ─────────────────────────────────────────────────────────────────
 # Shipped domain cues — legal, medical, financial
 # ─────────────────────────────────────────────────────────────────
-# Each domain cue ships in defaults/cues/<name>/cue.md. Under the
+# Each domain cue ships in defaults/cues/<name>/CUE.md. Under the
 # RoutedWordSourceGroup model each one is dispatched standalone with
 # a sub-context containing ONLY its matched words, 0-indexed. The
 # ConfigSource auto-appends the INDEX:alt format spec.
@@ -267,7 +267,7 @@ $line"
 }
 
 for cue in legal medical financial; do
-  cue_file="$(dirname "$0")/../../defaults/cues/$cue/cue.md"
+  cue_file="$(dirname "$0")/../../defaults/cues/$cue/CUE.md"
   [[ -f "$cue_file" ]] || { echo "SKIP: $cue_file missing"; continue; }
 
   # Pick one known keyword from the cue's match regex for single-word test,

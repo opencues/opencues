@@ -10,7 +10,7 @@ The FACTUAL prompt instructs the LLM to answer knowledge-based questions directl
 
 ## Prompt Location
 
-Defined in `blanks.md` → `## Prompt` → `### factual`
+Defined in `BLANKS.md` → `## Prompt` → `### factual`
 
 ## Key Design Principles
 
@@ -62,7 +62,7 @@ Each category covers the specific phrasing patterns we detect:
 
 ## Detection Triggers
 
-These patterns are checked via the `match` and `keywords` fields in blanks.md `### factual`:
+These patterns are checked via the `match` and `keywords` fields in BLANKS.md `### factual`:
 
 ```bash
 # Title patterns
@@ -129,9 +129,9 @@ Returns the actual factual answer.
 
 To add support for new question types:
 
-1. Add detection keywords/match patterns to the `### factual` yaml block in `blanks.md`
+1. Add detection keywords/match patterns to the `### factual` yaml block in `BLANKS.md`
 
-2. Add examples to the `### factual` prompt text in `blanks.md`:
+2. Add examples to the `### factual` prompt text in `BLANKS.md`:
    ```
    New Category:
    - Example question BLANK → ANSWER=example answer

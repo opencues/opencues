@@ -296,7 +296,7 @@ describe('Resolver.resolveAndApply', () => {
     void dynDefs;
   });
 
-  it('cues.md frontmatter `llm-endpoint:` and `llm-model:` override options', async () => {
+  it('CUES.md frontmatter `llm-endpoint:` and `llm-model:` override options', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
@@ -326,7 +326,7 @@ describe('Resolver.resolveAndApply', () => {
     expect(capturedOpts?.defaultModel).toBe('openai/custom-model');
   });
 
-  it('falls back to options.endpoint/defaultModel when opencues.md has no overrides', async () => {
+  it('falls back to options.endpoint/defaultModel when OPENCUES.md has no overrides', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },

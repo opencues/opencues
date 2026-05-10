@@ -17,7 +17,7 @@ version: 1
 # 1. Folder-based (PREFERRED for anything with a script or multi-field config):
 #
 #    .cues/blanks/<name>/
-#      cue.md        — blank config in YAML frontmatter
+#      BLANK.md        — blank config in YAML frontmatter
 #      <name>.sh     — optional colocated script (OS-bound blanks only)
 #
 #    Scaffold one with: `opencues new blank <name> --project`
@@ -56,22 +56,22 @@ version: 1
 #
 # 4. Runtime-class blank (LLM/HTTP-backed — TS class, no script)
 #    Implementation: packages/opencues-runtime/src/blanks/<name>.ts
-#    cue.md just declares blankKeywords + blankReadOnly + blankFormat
-#    Examples: defaults/blanks/{stocks,weather,hackernews,prompt}/cue.md
+#    BLANK.md just declares blankKeywords + blankReadOnly + blankFormat
+#    Examples: defaults/blanks/{stocks,weather,hackernews,prompt}/BLANK.md
 #
 # ─────────────────────────────────────────────────────────────────────
 # EXAMPLE: folder-based blank with a colocated script
 # ─────────────────────────────────────────────────────────────────────
 #
 # Anything that runs a script MUST live in its own folder so the script
-# can sit next to the cue.md and be referenced with a relative path.
+# can sit next to the BLANK.md and be referenced with a relative path.
 # Layout for a "volume" blank:
 #
 #   .cues/blanks/volume/
-#     cue.md              ← frontmatter below
+#     BLANK.md              ← frontmatter below
 #     volume-blank.sh     ← responds to `get` and `set <value>`
 #
-# cue.md frontmatter:
+# BLANK.md frontmatter:
 #
 #   ---
 #   name: volume
@@ -89,5 +89,5 @@ version: 1
 # Scaffold this layout with:
 #   opencues new blank volume --project
 
-# For complete field reference see docs/features/cue-BLANKS.md and
+# For complete field reference see docs/features/cue-blanks.md and
 # docs/guides/adding-a-cue-blank.md.

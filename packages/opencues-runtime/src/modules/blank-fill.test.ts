@@ -788,7 +788,7 @@ blankClearKeywords: true
 
   it('async path: dispatches via blankInvoke when blank has no blankScript (runtime-hoisted blank)', async () => {
     // Hoisted runtime blanks (HackerNewsBlank, OpenCuesSettingsBlank
-    // etc.) live without blankScript in their cue.md — the host's
+    // etc.) live without blankScript in their BLANK.md — the host's
     // blankInvoke registry IS the implementation. Regression guard
     // for "blanks with no blankScript get silently skipped" — fires
     // when something accidentally re-adds the early `if (!script)

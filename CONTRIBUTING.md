@@ -8,8 +8,8 @@ OpenCues has three areas of contribution, each with different expectations. Pick
 
 If you're new, look for issues labelled **`good first issue`** on GitHub. These are typically:
 
-- Adding a new domain word source under `cues/{name}/cue.md` (no code changes)
-- Adding a new keyword-bound blank under `blanks/{name}/cue.md` (config + script or runtime class)
+- Adding a new domain word source under `cues/{name}/CUE.md` (no code changes)
+- Adding a new keyword-bound blank under `blanks/{name}/BLANK.md` (config + script or runtime class)
 - Fixing typos or improving docs
 - Adding test cases to `tests/user-test.md`
 
@@ -19,7 +19,7 @@ The easiest way to contribute is adding a new domain word source. This requires 
 
 **Example: adding a "formal" source that claims informal words and suggests formal alternatives**
 
-Create `cues/formal/cue.md`:
+Create `cues/formal/CUE.md`:
 
 ````markdown
 ---
@@ -50,13 +50,13 @@ The `.md` config files are the heart of OpenCues. They define what cues are, how
 
 | File/Folder | What it defines |
 |------|-----------------|
-| `cues.md` | Top-level system settings (frontmatter only): `voice-mode`, `tips-mode`, `debug-mode`, etc., the nested `settings:` block, and the `ignore:` array. No cue/blank data. |
-| `cues/{name}/cue.md` | Folder-based cue source — config in YAML frontmatter. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. |
-| `blanks/{name}/cue.md` | Folder-based blank with colocated script (e.g., `blankScript: ./volume-blank.sh`) or pointing at a runtime class. |
+| `CUES.md` | Top-level system settings (frontmatter only): `voice-mode`, `tips-mode`, `debug-mode`, etc., the nested `settings:` block, and the `ignore:` array. No cue/blank data. |
+| `cues/{name}/CUE.md` | Folder-based cue source — config in YAML frontmatter. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. |
+| `blanks/{name}/BLANK.md` | Folder-based blank with colocated script (e.g., `blankScript: ./volume-blank.sh`) or pointing at a runtime class. |
 
 ### Adding a new word source
 
-Create `cues/{name}/cue.md`:
+Create `cues/{name}/CUE.md`:
 
 ```markdown
 ---
@@ -82,10 +82,10 @@ Pick a shape:
 
 | Shape | Trigger | Implementation |
 |---|---|---|
-| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/cue.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
-| **List blank** (no script) | `affirmation _` | `blanks/<name>/cue.md` with `stepValues: [...]` |
-| **Selector + Satellite** | `opencues settings _` | `blanks/<name>/cue.md` with `blankSatellite: true` |
-| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/cue.md` declaring `blankKeywords` (no `blankScript:`) |
+| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/BLANK.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
+| **List blank** (no script) | `affirmation _` | `blanks/<name>/BLANK.md` with `stepValues: [...]` |
+| **Selector + Satellite** | `opencues settings _` | `blanks/<name>/BLANK.md` with `blankSatellite: true` |
+| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/BLANK.md` declaring `blankKeywords` (no `blankScript:`) |
 
 The cue.md frontmatter:
 
@@ -106,7 +106,7 @@ See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) for t
 
 ### SourceConfig fields
 
-Each `cues/<name>/cue.md` supports these YAML frontmatter fields:
+Each `cues/<name>/CUE.md` supports these YAML frontmatter fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -127,7 +127,7 @@ The minimal integration:
 ```typescript
 import { createResolver, buildSourcesFromConfig, parseCuesMd, discoverFolderConfigs } from 'opencues-core';
 
-const cuesCfg = parseCuesMd(fs.readFileSync('cues.md', 'utf8'));
+const cuesCfg = parseCuesMd(fs.readFileSync('CUES.md', 'utf8'));
 const cuesFolders = await discoverFolderConfigs('.cues/cues', fsAdapter);
 const blanksFolders = await discoverFolderConfigs('.cues/blanks', fsAdapter);
 
@@ -205,7 +205,7 @@ opencues-core has two dispatch strategies aligned with the dual-direction concep
 
 **Why no classifier for blanks.** Earlier OpenCues classified blanks into modes (math / factual / translation / etc.) via an LLM. After the fluid-blank pipeline shipped, fluid-blank's general P1+P3 prompts beat the classifier on benchmarks while saving the routing LLM call. The classifier pipeline (`ClassifiedSourceGroup`) was removed entirely.
 
-If you add a new `cues/<name>/cue.md`, `RoutedWordSourceGroup` picks it up at next config load. If you add `blanks/<name>/cue.md` with `blankKeywords:`, `BlankSource` registers it. See `build-sources.ts` for the wiring.
+If you add a new `cues/<name>/CUE.md`, `RoutedWordSourceGroup` picks it up at next config load. If you add `blanks/<name>/BLANK.md` with `blankKeywords:`, `BlankSource` registers it. See `build-sources.ts` for the wiring.
 
 ### Pitfalls
 
@@ -213,7 +213,7 @@ If you add a new `cues/<name>/cue.md`, `RoutedWordSourceGroup` picks it up at ne
 
 **Keyword matching needs word boundaries.** `"in french"` as a keyword would match inside `"frozen in french toast"`. `BlankSource.blankKeywords` matches whole words/phrases (split on whitespace, consecutive match). When adding keywords, test for false positives with embedded matches.
 
-**Priority breaks ties between domain sources.** When multiple `cues/<name>/cue.md` domains could match the same word, the highest-priority `priority:` wins. Default sources (no `match:`/`keywords:`) only fire on words no domain claimed.
+**Priority breaks ties between domain sources.** When multiple `cues/<name>/CUE.md` domains could match the same word, the highest-priority `priority:` wins. Default sources (no `match:`/`keywords:`) only fire on words no domain claimed.
 
 **`blankProximity` defines how far the keyword can sit from `_`.** Default 0 (adjacent). For phrases that need looser matching ("dictionary _" elsewhere in a sentence), bump it: `blankProximity: 5`.
 

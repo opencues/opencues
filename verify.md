@@ -23,7 +23,7 @@ If you don't have a working install, see the very-bottom "Reset" recipe.
 
 ## B. Cue surfaces — each opt-in flag
 
-Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers hot-reload), verify behaviour.
+Flip each flag in `~/.cues/CUES.md`, save, type a space in the host (triggers hot-reload), verify behaviour.
 
 ### B.1 — `word-cues-mode`
 - [x] ON (post-refactor `word-cues-mode`): `the contract shall indemnify the diagnosis` → `contract`/`shall`/`indemnify` (legal) + `diagnosis` (medical) colour via per-source match/keywords. Plain words stay uncoloured (no catch-all default). ✓
@@ -86,7 +86,7 @@ Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers ho
 ## E. Selector + Satellite (`opencues settings _`)
 
 - [x] `opencues settings _` → expands to `voice-mode active`. ✓
-- [x] **Satellite cycling:** Up on `active` → `inactive`. Disk-write to `~/.cues/cues.md` confirmed by user. ✓
+- [x] **Satellite cycling:** Up on `active` → `inactive`. Disk-write to `~/.cues/CUES.md` confirmed by user. ✓
 - [x] **Hot-reload race guard:** post-cycle hot-reload didn't clobber the new value (no flicker reported). ✓
 - [ ] **Selector cycling:** Up on `voice-mode` → cycles through other settings (debug-mode, tips-mode, etc.). (Implicit if cycling worked at all.)
 - [ ] **Pair cleanup:** delete `active` → both `voice-mode` and `active` removed (`blankClearOnEdit`).
@@ -95,9 +95,9 @@ Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers ho
 
 ## F. Hot-reload
 
-- [x] Edit `~/.cues/cues.md` (added `foobar` tip with alts) — typed `please foobar this`, dimmed + cycleable within ~2.5s. ✓
+- [x] Edit `~/.cues/CUES.md` (added `foobar` tip with alts) — typed `please foobar this`, dimmed + cycleable within ~2.5s. ✓
 - [x] Edit `~/.cues/blanks/volume/BLANK.md` — change `blankSuffix: %` to `blankSuffix: pct`. Re-trigger `volume _`. New suffix shows. ✓
-- [x] Edit `~/.cues/cues.md` — flip `fluid-blank-mode: off`. `etymology of paradigm _` stays as `_` (countries doesn't claim it). Flip back on, fills. ✓
+- [x] Edit `~/.cues/CUES.md` — flip `fluid-blank-mode: off`. `etymology of paradigm _` stays as `_` (countries doesn't claim it). Flip back on, fills. ✓
 
 ---
 
@@ -107,11 +107,11 @@ Flip each flag in `~/.cues/cues.md`, save, type a space in the host (triggers ho
 opencues list                      # cues + blanks listed; no "controls" section
 opencues list --blanks             # only blanks
 opencues new blank foo --project   # scaffolds .cues/blanks/foo/BLANK.md
-opencues edit blanks               # opens ~/.cues/blanks.md in $EDITOR
+opencues edit blanks               # opens ~/.cues/BLANKS.md in $EDITOR
 opencues validate                  # 0 errors on a fresh install
 opencues which                     # all paths exist with ✓
 opencues doctor                    # passes
-opencues debug on                  # toggles debug-mode in ~/.cues/cues.md
+opencues debug on                  # toggles debug-mode in ~/.cues/CUES.md
 opencues logs --tail               # follows /tmp/opencues.log
 ```
 
@@ -120,13 +120,13 @@ opencues logs --tail               # follows /tmp/opencues.log
 - [x] `opencues edit controls` → `unknown <file> "controls". One of: cues, blanks, opencues`. ✓
 - [x] `opencues validate` → 0 errors (2 expected warnings). ✓
 
-Curiosity surfaced: `opencues list` shows `grammar` twice (inline cues.md + cues/grammar/CUE.md). Folder wins on merge, but the listing is noisy. Future polish: `validate` could call out `duplicate-name` warnings.
+Curiosity surfaced: `opencues list` shows `grammar` twice (inline CUES.md + cues/grammar/CUE.md). Folder wins on merge, but the listing is noisy. Future polish: `validate` could call out `duplicate-name` warnings.
 
 ---
 
 ## H. Migration boundary (no back-compat)
 
-- [x] Moved `~/.cues/blanks.md` + `~/.cues/blanks/` out (no rename to legacy paths needed — purge is total). Typed `volume _ brightness _ nvda _` → all three stayed as `_`, zero `BlankFill: substituting` lines. Resolver alive, just no blanks loaded. Restored, hot-reload picked up. ✓ (commit 7190a15 / preceding back-compat drop verified live.)
+- [x] Moved `~/.cues/BLANKS.md` + `~/.cues/blanks/` out (no rename to legacy paths needed — purge is total). Typed `volume _ brightness _ nvda _` → all three stayed as `_`, zero `BlankFill: substituting` lines. Resolver alive, just no blanks loaded. Restored, hot-reload picked up. ✓ (commit 7190a15 / preceding back-compat drop verified live.)
 
 ---
 
@@ -167,7 +167,7 @@ The CLI now warns about this on every `seed-configs` run when any file is skippe
 - `rm -rf ~/.cues && opencues seed-configs` (full reset)
 - merge by hand from `<repo>/defaults/<file>`
 
-Followup item I want eventually: an UPDATE phase in seed-configs that injects missing keys into existing opencues.md without touching customisations.
+Followup item I want eventually: an UPDATE phase in seed-configs that injects missing keys into existing OPENCUES.md without touching customisations.
 
 ---
 

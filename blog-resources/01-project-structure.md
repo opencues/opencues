@@ -86,7 +86,7 @@ opencues/
 ├── README.md                 # Public pitch
 ├── CLAUDE.md                 # Repo overview for Claude sessions
 ├── CONTRIBUTING.md           # Three contribution tiers
-├── defaults/                 # Shipped seed configs (cues.md + cues/ + blanks/)
+├── defaults/                 # Shipped seed configs (CUES.md + cues/ + blanks/)
 ├── packages/
 │   ├── opencues-core/        # @opencues/core — brain
 │   └── opencues-runtime/     # @opencues/runtime — nervous system
@@ -111,7 +111,7 @@ also baked into the Chrome extension at build time.
 
 ```
 defaults/
-├── cues.md                # Master config: settings frontmatter + ignore list
+├── CUES.md                # Master config: settings frontmatter + ignore list
 ├── cues/                  # 38+ shipped tip-group folders
 │   ├── extended-thinking/cue.md
 │   ├── legal/cue.md       # Legal terminology word-cues (LLM)

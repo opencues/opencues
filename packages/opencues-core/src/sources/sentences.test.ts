@@ -21,7 +21,7 @@ function mkConfig(promptConfig: PromptConfig): CuesMdConfig {
   return { frontmatter: {}, sections: {}, promptConfig };
 }
 
-/** Build word sources matching the real cues.md layout */
+/** Build word sources matching the real CUES.md layout */
 function buildWordSources(response: string) {
   return buildSourcesFromConfig(
     mkConfig({

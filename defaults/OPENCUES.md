@@ -153,7 +153,7 @@ overrides plus the `word-cues-*` and global tiers. To use a
 different provider just for spelling, edit the cue file's
 frontmatter.
 
-**Per-cue / per-blank** overrides live in the individual cue.md /
+**Per-cue / per-blank** overrides live in the individual CUE.md / BLANK.md
 BLANK.md frontmatter as `provider:` / `model:` fields.
 
 ---

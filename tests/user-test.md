@@ -83,12 +83,12 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Up again — `tips-mode` + `on`
 - [ ] Up again — wraps back to `voice-mode` + `active`
 - [ ] Down cycles in reverse
-- [ ] Cycling the selector does NOT write to `opencues.md` (read-only navigation)
+- [ ] Cycling the selector does NOT write to `OPENCUES.md` (read-only navigation)
 
 ### Satellite cycling (word N+1)
 - [ ] Navigate to the value word (`active`), Up — becomes `inactive`
-- [ ] Check `opencues.md` — the `voice-mode:` line is now `inactive` on disk
-- [ ] Down — back to `active`, `opencues.md` updates
+- [ ] Check `OPENCUES.md` — the `voice-mode:` line is now `inactive` on disk
+- [ ] Down — back to `active`, `OPENCUES.md` updates
 
 ### Voice-mode wired to TTS
 - [ ] Flip satellite to `inactive` for `voice-mode`
@@ -107,8 +107,8 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Type over `voice-mode` with `xyz` (something not in the selector alts)
 - [ ] Both `xyz` and `active` are removed from text (`blankClearOnEdit`)
 
-### Hot-reload of opencues.md
-- [ ] Edit `opencues.md`, change `voice-mode: active` to `voice-mode: inactive`, save
+### Hot-reload of OPENCUES.md
+- [ ] Edit `OPENCUES.md`, change `voice-mode: active` to `voice-mode: inactive`, save
 - [ ] Wait ~2s and type a space in Claude Code
 - [ ] `opencues settings _` now auto-populates with `voice-mode inactive`
 - [ ] Add a new valid value under `settings: voice-mode: values:` — add `muted: TTS muted`
@@ -140,7 +140,7 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Hot-reload
 
-- [ ] Edit `cues.md` — changes take effect in ~2s without restart
+- [ ] Edit `CUES.md` — changes take effect in ~2s without restart
 - [ ] Edit `blanks/volume/BLANK.md` — changes take effect in ~2s without restart
 
 ## Prompt improver (consume-all blank)

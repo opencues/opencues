@@ -5,7 +5,7 @@
 //   2. SYNC   — overwrites stale library files (.sh / .cs / .ps1)
 //               from defaults/{blanks,scripts}/ every run. Never
 //               touches .md (user content).
-//   3. HEAL   — re-seeds 0-byte opencues.md (the runtime's
+//   3. HEAL   — re-seeds 0-byte OPENCUES.md (the runtime's
 //               OpenCuesSettingsBlank silently no-ops on empty
 //               content; an empty file would break "opencues ___"
 //               blank-fills on every native host).
@@ -50,7 +50,7 @@ describe('opencues seed-configs', () => {
     seedConfigs(['--silent'], { REPO_ROOT });
 
     const userDir = path.join(tmpHome, '.cues');
-    // OPENCUES.md lives at the top of .cues/ alongside cues.md / blanks.md.
+    // OPENCUES.md lives at the top of .cues/ alongside CUES.md / BLANKS.md.
     expect(fs.existsSync(path.join(userDir, 'OPENCUES.md'))).toBe(true);
     // Old layout files are gone.
     expect(fs.existsSync(path.join(tmpHome, '.opencues'))).toBe(false);
@@ -91,7 +91,7 @@ describe('opencues seed-configs', () => {
     expect(after).toContain('voice-mode');
   });
 
-it('HEAL phase: renames legacy blanks/<name>/cue.md to BLANK.md', () => {
+it('HEAL phase: renames legacy blanks/<name>/BLANK.md to BLANK.md', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');

@@ -28,7 +28,7 @@ Two namespaces. Keeping them separate makes implementations interchangeable.
 
 | Term | What it is | Where it appears |
 |---|---|---|
-| **Cues** (the standard) | The OpenStandard for cueing text. Defines data shapes, file layout, scopes, parsers. | `.cues/`, `cues.md`, scope names (`words`, `blanks`), data shapes |
+| **Cues** (the standard) | The OpenStandard for cueing text. Defines data shapes, file layout, scopes, parsers. | `.cues/`, `CUES.md`, scope names (`words`, `blanks`), data shapes |
 | **OpenCues** (the brand) | Anthropic's reference implementation: the runtime, the CLI, the integrations. | `opencues` CLI, `@opencues/*` packages, `OPENCUES.md`, repo name |
 
 **Rule of thumb:** anything universal across implementations uses the standard's vocabulary. Anything that's runtime-specific or tool-specific uses the brand's vocabulary.
@@ -200,7 +200,7 @@ There's no `type:` discriminator in frontmatter. The parser infers source kind f
 ## 7. What's gone (deliberately removed)
 
 - ❌ Flat `<name>.md` source files. Every source is `<name>/<UPPERCASE>.md`.
-- ❌ Lowercase master files (`cues.md`, `blanks.md`, `auditors.md`). Masters are uppercase plurals.
+- ❌ Lowercase master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`). Masters are uppercase plurals.
 - ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in master files. Frontmatter + folders only.
 - ❌ `type: tips` / `type: prompt` discriminators. Parser infers from path + data shape.
 - ❌ Catch-all "default" word-cue sources. Every cue source must declare `match:` or `keywords:`.

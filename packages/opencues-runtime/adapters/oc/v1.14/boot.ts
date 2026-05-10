@@ -73,11 +73,11 @@ export interface BootResult {
 
 export function boot(host: HostInfo): BootResult {
   // configLoader is constructed below; isDebugEnabled reads it lazily
-  // so opencues.md `debug-mode: on/off` hot-reloads without restart.
+  // so OPENCUES.md `debug-mode: on/off` hot-reloads without restart.
   // DEBUG_OPENCUES env is a bootstrap fallback for logs fired before
   // ConfigLoader.load resolves.
   let configLoaderRef: ConfigLoader | null = null;
-  // Debug gating reads opencuesState.debugMode lazily so opencues.md
+  // Debug gating reads opencuesState.debugMode lazily so OPENCUES.md
   // `debug-mode: on/off` hot-reloads without restart. DEBUG_OPENCUES env
   // is a bootstrap fallback for logs fired before ConfigLoader.load resolves.
   const log = createLogFunction({
@@ -160,7 +160,7 @@ export function boot(host: HostInfo): BootResult {
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args. Tips come from
-  // cues.md's `## Tips` block — no separate JSON file.
+  // CUES.md's `## Tips` block — no separate JSON file.
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
     ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
@@ -171,7 +171,7 @@ export function boot(host: HostInfo): BootResult {
     ? `${process.env.OPENCUES_HOME}/OPENCUES.md`
     : `${HOME}/.cues/OPENCUES.md`;
   const shared = buildSharedRuntime(adapter, { log, configSearchPaths, settingsFile });
-  configLoaderRef = shared.configLoader; // wires isDebugEnabled to opencues.md
+  configLoaderRef = shared.configLoader; // wires isDebugEnabled to OPENCUES.md
 
   const {
     configLoader, hlState, dynDefs,
@@ -210,7 +210,7 @@ export function boot(host: HostInfo): BootResult {
   // LLM Resolver. Opt-in via any LLM key being available
   // (legacy `llmApiKey` OR any entry in the multi-provider `llmApiKeys`
   // map). The resolver routes per-cue / per-blank / per-feature requests
-  // to whichever provider the user has configured in cues.md.
+  // to whichever provider the user has configured in CUES.md.
   const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
@@ -234,10 +234,10 @@ export function boot(host: HostInfo): BootResult {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // Re-resolves per tick so cues.md edits to `agent-provider:` /
+      // Re-resolves per tick so CUES.md edits to `agent-provider:` /
       // `agent-model:` / `llm-provider:` take effect without a restart.
       // null means "use the static fallback" — usually transient until
-      // cues.md is fully loaded.
+      // CUES.md is fully loaded.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
       cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),

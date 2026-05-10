@@ -10,7 +10,7 @@ Two namespaces. Keeping them separate makes implementations interchangeable.
 
 | Term | What it is | Where it appears |
 |---|---|---|
-| **Cues** (the standard) | The OpenStandard for cueing text. Defines data shapes, file layout, scopes, parsers. | `.cues/`, `cues.md`, scope names (`words`, `blanks`), data shapes |
+| **Cues** (the standard) | The OpenStandard for cueing text. Defines data shapes, file layout, scopes, parsers. | `.cues/`, `CUES.md`, scope names (`words`, `blanks`), data shapes |
 | **OpenCues** (the brand) | Anthropic's reference implementation: the runtime, the CLI, the integrations. | `opencues` CLI, `@opencues/*` packages, `.opencuesrc`, repo name |
 
 **Rule of thumb (worth quoting):**
@@ -22,13 +22,13 @@ Two namespaces. Keeping them separate makes implementations interchangeable.
 | Brand-owned | Standard-owned |
 |---|---|
 | `~/.opencuesrc` (user runtime config) | `~/.cues/` (user cue library) |
-| `opencues install <host>` | `cues.md` (project manifest) |
-| `@opencues/core`, `@opencues/runtime` (npm packages) | The data format inside cue.md / cues.md / source files |
+| `opencues install <host>` | `CUES.md` (project manifest) |
+| `@opencues/core`, `@opencues/runtime` (npm packages) | The data format inside cue.md / CUES.md / source files |
 | Settings schema (voice-mode, debug-mode, etc. — runtime-defined) | Source schema (match, keywords, scope, parser — standard-defined) |
 
 A second OpenStandard implementation (FastCues, AnotherCues, …) would ship its
 own `~/.fastcuesrc` etc., but read the same `~/.cues/` library and the same
-`<project>/cues.md` manifests. **The brand is replaceable; the standard isn't.**
+`<project>/CUES.md` manifests. **The brand is replaceable; the standard isn't.**
 
 ## File layout (the spec)
 
@@ -55,7 +55,7 @@ own `~/.fastcuesrc` etc., but read the same `~/.cues/` library and the same
 
 ```
 <project>/
-├── cues.md              # project manifest — visible, marketing surface
+├── CUES.md              # project manifest — visible, marketing surface
 └── .cues/               # project-specific cues (optional)
     ├── words/
     │   └── project-jargon.md
@@ -65,7 +65,7 @@ own `~/.fastcuesrc` etc., but read the same `~/.cues/` library and the same
             └── project-blank.sh
 ```
 
-Project layout mirrors user layout under `.cues/`. The visible `cues.md` at
+Project layout mirrors user layout under `.cues/`. The visible `CUES.md` at
 project root is the manifest.
 
 ## Why the names are what they are
@@ -76,7 +76,7 @@ project root is the manifest.
   `.gitconfig`).
 - Brand-name prefix says "this is OpenCues' rc file." Honest naming.
 
-### `cues.md` — project manifest
+### `CUES.md` — project manifest
 - Markdown with YAML frontmatter. Body is human-readable description.
 - **Matches** `package.json`, `Cargo.toml`, `.editorconfig` — visible, generic,
   brand-neutral.
@@ -87,7 +87,7 @@ project root is the manifest.
 - Standard-named (`cues`), no brand. Both implementations and projects use this
   layout.
 - Both **dotted** (`.cues/`) — user-level per Unix convention; project-level so
-  it doesn't clutter `ls` at a project root. Visibility comes from `cues.md` at
+  it doesn't clutter `ls` at a project root. Visibility comes from `CUES.md` at
   the project root, not the cues directory.
 
 ### `words/` and `blanks/` — scope subdirs
@@ -105,7 +105,7 @@ Who is allowed to write each piece, and at what scope.
 | `~/.opencuesrc` | runtime (OpenCues) | user-level only | yes (next keystroke) |
 | `~/.cues/words/<name>.md` | standard | user (own library) | yes |
 | `~/.cues/blanks/<name>/...` | standard | user (own library) | yes |
-| `<project>/cues.md` | standard | project author | yes |
+| `<project>/CUES.md` | standard | project author | yes |
 | `<project>/.cues/words/<name>.md` | standard | project author | yes |
 | `<project>/.cues/blanks/<name>/...` | standard | project author | yes |
 
@@ -124,16 +124,16 @@ but never the runtime's behavior toggles.
 > Reasoning: cd'ing into a project should not silently change whether TTS
 > speaks, whether the spell-checker fires, etc. Those are user prefs.
 
-A project's `cues.md` ignore list **adds to** the user's ignore list. A
+A project's `CUES.md` ignore list **adds to** the user's ignore list. A
 project's `disable: [<source>]` removes specific cue sources from this
 project's resolution path without touching the user-level config.
 
 ## What's gone (deliberately removed from earlier designs)
 
-- ❌ `opencues.md` as a separate file at user level. Settings consolidated into
+- ❌ `OPENCUES.md` as a separate file at user level. Settings consolidated into
   `.opencuesrc`.
-- ❌ `blanks.md` as a separate file. Folder-based blanks under `blanks/<name>/`.
-- ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in cues.md. Frontmatter
+- ❌ `BLANKS.md` as a separate file. Folder-based blanks under `blanks/<name>/`.
+- ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in CUES.md. Frontmatter
   + folders only.
 - ❌ `type: tips` / `type: prompt` discriminators. Parser infers from data
   shape.
@@ -147,7 +147,7 @@ project's resolution path without touching the user-level config.
 | Format | Used for | Rationale |
 |---|---|---|
 | **YAML (no fences)** | `~/.opencuesrc` | Pure config. No prose body. Pure rc convention. |
-| **Markdown frontmatter + body** | `cues.md`, all source files | Frontmatter for structured config; body for prose (descriptions, prompts) or JSON code blocks (static data). One parser, used everywhere data has both metadata and content. |
+| **Markdown frontmatter + body** | `CUES.md`, all source files | Frontmatter for structured config; body for prose (descriptions, prompts) or JSON code blocks (static data). One parser, used everywhere data has both metadata and content. |
 
 The `parseSingleCueMd` parser:
 - Reads YAML frontmatter between `---` fences.
@@ -170,7 +170,7 @@ The naming discipline here is unusually careful:
   settings (voice-mode, debug-mode, …) is the runtime's choice; a different
   implementation would have a different settings schema and a different
   `.{brand}rc`.
-- The project manifest is `cues.md` (un-prefixed) because the schema there is
+- The project manifest is `CUES.md` (un-prefixed) because the schema there is
   the standard — every implementation reads the same fields.
 
 The general principle: **brand the things you control; leave generic the things

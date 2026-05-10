@@ -21,11 +21,11 @@ This is the most concentrated source. From `concept.md`:
 
 From `openstandard-notes.md`:
 
-- ❌ `opencues.md` as a separate file at user level. Settings consolidated
+- ❌ `OPENCUES.md` as a separate file at user level. Settings consolidated
   into `.opencuesrc`.
-- ❌ `blanks.md` as a separate file. Folder-based blanks under
+- ❌ `BLANKS.md` as a separate file. Folder-based blanks under
   `blanks/<name>/`.
-- ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in cues.md. Frontmatter
+- ❌ `## Tips`, `## Blanks`, `## Ignore` body sections in CUES.md. Frontmatter
   + folders only.
 - ❌ `type: tips` / `type: prompt` discriminators. Parser infers from data
   shape.
@@ -186,10 +186,10 @@ From `cue-blanks.md`:
 The naive implementation would match the *first* "weather" and miss
 the user's intent. The keyword nearest the `_` wins.
 
-### 0-byte cues.md self-heal
+### 0-byte CUES.md self-heal
 
 From `CLAUDE.md`:
-> A 0-byte `cues.md` is treated as missing — `OpenCuesSettingsBlank`
+> A 0-byte `CUES.md` is treated as missing — `OpenCuesSettingsBlank`
 > silently no-ops on null/empty content, which would otherwise break
 > `opencues ___` / `config ___` blank-fills on every native host.
 

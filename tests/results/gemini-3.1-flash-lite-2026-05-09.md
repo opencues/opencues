@@ -143,11 +143,11 @@ Output captures from this run:
 
 ## Recommendations
 
-For **transform-blank specifically**, Gemini 3.1 Flash Lite is a strong drop-in upgrade — 38pp accuracy gain at 1.5-2× the latency and ~tied per-correct-answer cost. The runtime supports per-feature provider selection via cues.md `transform-blank-provider:`, so this can be a targeted swap without touching agent-rewrite or fluid-blank.
+For **transform-blank specifically**, Gemini 3.1 Flash Lite is a strong drop-in upgrade — 38pp accuracy gain at 1.5-2× the latency and ~tied per-correct-answer cost. The runtime supports per-feature provider selection via CUES.md `transform-blank-provider:`, so this can be a targeted swap without touching agent-rewrite or fluid-blank.
 
 For **agent-rewrite + fluid-blank**, accuracy is already at ceiling on Groq (83% / 100%) with sub-second latency. Switching to Gemini gains nothing.
 
-If snappiness matters across the board, **Groq stays default**; cues.md routes the harder transform-blank prompts to Gemini Flash Lite. That's the production-shaped recommendation from this data.
+If snappiness matters across the board, **Groq stays default**; CUES.md routes the harder transform-blank prompts to Gemini Flash Lite. That's the production-shaped recommendation from this data.
 
 ## Caveats
 

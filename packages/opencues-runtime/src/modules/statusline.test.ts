@@ -162,7 +162,7 @@ describe('Statusline cue-tip plumbing', () => {
     expect(p.cueTip).toBeNull();
   });
 
-  it('cueTip is null when cues.md sets tips-mode: off', async () => {
+  it('cueTip is null when CUES.md sets tips-mode: off', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
