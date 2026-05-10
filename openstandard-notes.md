@@ -10,9 +10,9 @@ The standard covers **three directions of intent** on text:
 
 | Direction | Surface | Operates on | Trigger | What it is |
 |---|---|---|---|---|
-| **System → User** | **Cues** | one word | plain text | The system offers alternatives the user didn't ask for. The user cycles through them. |
-| **User → System** | **Blanks** | one `_` slot | text containing `_` | The user explicitly summons a value into a slot. |
-| **System → Buffer** | **Auditors** | the whole buffer | every rewrite cycle | Composed inline-rewrite concerns (grammar, clarity, tone). Multiple auditors concatenate into one LLM call. |
+| **System → User** | **Cues** | one word | plain text | The system offers alternatives the user didn't ask for. The user cycles through them. Per-word dispatch — one source per word. |
+| **User → System** | **Blanks** | one `_` slot | text containing `_` | The user explicitly summons a value into a slot. Per-`_` dispatch — one source per slot. |
+| **System → Buffer** | **Auditors** | the whole buffer | every rewrite cycle | Inline-rewrite concerns (grammar, clarity, tone). Two valid composition modes: **isolated** (per-auditor LLM call, RECOMMENDED) and **composed** (one shared call, PERMITTED only when all auditors are first-party-trusted). User-trusted only — no registry distribution in v1.0. See [`spec/auditor-spec.md`](./spec/auditor-spec.md). |
 
 The two scopes for cues mirror the first two directions:
 - `words` scope: cues fire on plain text (no `_` in input)
@@ -179,6 +179,42 @@ Resolution order at runtime (highest priority first):
 Settings are user-level only — projects do **not** override `~/.cues/OPENCUES.md`. Projects override **content** (cue sources, blank registrations, ignore list) but never the runtime's behavior toggles. Reasoning: cd'ing into a project should not silently change whether TTS speaks, which LLM provider is used, etc. Those are user prefs.
 
 A project's `CUES.md` / `BLANKS.md` `ignore:` list **adds to** the user's ignore list (UNION across layers). A master's `disable: [<source>]` SUBTRACTs specific source ids from the resolution path at that layer, without touching other layers — same semantics across cues, blanks, and auditors.
+
+### Distribution asymmetry — auditors and script-bearing blanks
+
+Most surfaces in v1.0 reserve the design space for registry / marketplace / `add <pack>` distribution as the standard evolves. **Two carve-outs**: auditors (whole surface) and `blankScript:` blanks (subset of one surface). Both are **user-trusted only** in v1.0.
+
+| Surface / profile | Registry-safe? | Reason |
+|---|---|---|
+| Cues (per-word dispatch) | yes | A malicious source can only influence words it claims via `match:` / `keywords:`. Structural isolation. |
+| Blanks — `stepValues` profile | yes | Static lists. No code execution, no LLM call to poison. |
+| Blanks — `impl` profile | yes | Runtime-resident class names. A `BLANK.md` cannot ship a new class; a foreign `impl:` is just an unrecognised string. |
+| Blanks — `blankScript` profile | **NO** | Sibling shell/binary that runs with user privileges when the blank fires. Arbitrary code execution if registry-distributed. |
+| Auditors (whole surface) | **NO** | Even with isolated composition, a single auditor has full control over its own LLM call's output (exfil, downstream injection, semantic tamper). Per-item dispatch closes cross-auditor injection but not single-auditor abuse. |
+
+#### Why auditors get the broadest restriction
+
+Cues and `stepValues` / `impl` blanks have per-item dispatch (`RoutedWordSourceGroup`, `BlankSource`) — a malicious source can only influence what it claims. Auditors operate on the whole buffer, so per-item dispatch in the cue/blank sense doesn't apply. The standard's two valid auditor composition modes (isolated, composed — see [`spec/auditor-spec.md` § Composition](./spec/auditor-spec.md)) close cross-auditor injection but a single auditor still has full control over its own LLM call's output. A registry would mean any user could install a pack from anyone, and the failure mode would be one bad pack away.
+
+#### Why script-bearing blanks get the same restriction
+
+`blankScript:` invokes a sibling executable with the user's privileges. A registry-distributed `blankScript:` is `npm install <malicious-package>` shaped — same threat, no harder to exploit. The other two binding profiles don't carry this risk: `stepValues` is a static list (no execution), `impl` references a runtime-resident class (a third-party `BLANK.md` cannot ship a new class — the name must already exist in the runtime).
+
+#### What "user-trusted only" requires
+
+For both carve-outs, v1.0 requires:
+
+- Source the file only from `defaults/<surface>/` (shipped with the runtime, reviewed by the runtime maintainers) or from local `<root>/<surface>/<name>/` directories the user populated themselves.
+- Sharing happens out-of-band: publish the `AUDITOR.md` / `BLANK.md` (+ script) as documentation; users copy manually after reading the prompt body or script.
+- No frontmatter trust attestation (`trusted: true`, `signed: ...`) substitutes for user inspection. Trust derives from file *provenance*, not file content.
+
+A future revision MAY introduce a registry mechanism with cryptographic provenance, structural output validation (for auditors), and sandboxed execution (for blank scripts). v1.0 deliberately omits all of those.
+
+#### What the carve-outs deliberately do not cover
+
+This is the launch-safe position. It buys a clean v1.0 spec without locking in the future. As the trust infrastructure matures (signed packs, sandboxed execution, output-validation libraries), the carve-outs can shrink — script-bearing blanks first (the better-understood threat model, mirrors npm/cargo's existing supply-chain practice), auditors later. Until then, both surfaces ship "safe" by being narrow.
+
+Runtime contracts for the asymmetry live in [`spec/auditor-spec.md` § Trust model](./spec/auditor-spec.md) and [`spec/blank-spec.md` § Trust model](./spec/blank-spec.md). Cue specs and the `stepValues` / `impl` blank profiles do not have analogous restrictions — they are registry-safe by virtue of structural isolation.
 
 ---
 

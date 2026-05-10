@@ -200,6 +200,24 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 
 **Implication for custom blanks:** if you manually construct a WordDef outside of `BlankSource` → auto-populate (e.g., in a custom integration), ensure `def.word` reflects the currently displayed value, not the keyword that triggered it. Otherwise the def will be silently discarded on the next keystroke.
 
+## Trust model — script-bearing blanks are user-trusted only
+
+The standard treats `blankScript:` blanks differently from the other two binding profiles. v1.0 carves them out of any future registry / `opencues add <pack>` distribution path. See [`spec/blank-spec.md` § Trust model](../../spec/blank-spec.md) for the full runtime contract; in short:
+
+- **`stepValues:` blanks** (static lists) are registry-safe. No code execution.
+- **`impl:` blanks** (in-process classes) are registry-safe. The class must already exist in the runtime; a `BLANK.md` cannot ship a new class.
+- **`blankScript:` blanks** invoke a sibling executable with the user's privileges when the blank fires. v1.0 requires they come only from `defaults/blanks/<name>/` (shipped) or `~/.cues/blanks/<name>/` / `<project>/.cues/blanks/<name>/` (user-authored).
+
+The reason is the same as `npm install`'s install-script reputation: a malicious `blankScript:` is arbitrary code execution with no easy mitigation at the runtime layer. Sandboxing shell scripts is genuinely hard; v1.0 punts on it by making script-bearing blanks user-trusted only.
+
+**Sharing your script-bearing blank**: publish the `BLANK.md` and the `<name>-blank.sh` (or `.ps1`, `.exe`, etc.) as documentation — gist, repo with a README that includes the script verbatim, blog post. Users who want to install it copy the files manually after reading the script. There is no shortcut around user inspection in v1.0.
+
+If you don't need shell access, prefer `impl:` (TypeScript class) or `stepValues:` (static list) — both are registry-safe, both ship with no inspection burden.
+
+A future revision MAY introduce a registry mechanism with cryptographic provenance and sandboxed execution. v1.0 doesn't.
+
+The same logic applies more strictly to auditors, where the entire surface is user-trusted only in v1.0 (no registry distribution at all). See [`docs/guides/adding-an-auditor.md` § 5 Trust model](./adding-an-auditor.md) and [`openstandard-notes.md` § Distribution asymmetry](../../openstandard-notes.md).
+
 ## Checklist
 
 - [ ] Blank folder created: `defaults/blanks/<name>/BLANK.md` (+ `<name>-blank.sh` for OS-level)

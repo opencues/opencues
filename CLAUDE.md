@@ -568,6 +568,7 @@ Full spec: `docs/features/chrome-sync.md`.
 - `todos.md` — internal TODO list
 - `pre-launch-readme.md` — the launch checklist itself ("Pre-Launch TODO")
 - `CONTINUE.md` — session-handoff snapshot
+- `opencues-strategy.md` — internal strategy doc (OpenClaw-model framing, latent-moat self-assessment); public version of the framing lives in `blog-resources/` / future `GOVERNANCE.md`
 
 **Other**:
 

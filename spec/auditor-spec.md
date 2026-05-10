@@ -4,7 +4,9 @@
 
 An **auditor** is the third surface of the standard. Where a cue operates on one word and a blank operates on one `_` slot, an auditor operates on the **whole buffer**: it declares one concern (grammar, clarity, jargon flagging, PII redaction, tone) that an inline rewrite agent should attend to as the user types.
 
-A runtime concatenates the active auditor prompts into a single LLM call that rewrites the buffer in place. Auditors compose — three auditors don't mean three LLM calls, they mean one prompt with three concern-specific sections. This document specifies the `AUDITOR.md` file format and what a conformant runtime MUST do with one.
+A runtime applies enabled auditors to the buffer and merges their rewrites back into the user's text. Per § Composition below, runtimes SHOULD apply auditors in **isolation** (one LLM call per auditor, results merged by `priority:` order) to preserve the per-item dispatch property cues and blanks already enjoy. A runtime MAY use a single composed prompt instead, but only when every auditor in scope is first-party-trusted — see § Trust model.
+
+This document specifies the `AUDITOR.md` file format, the trust model, and what a conformant runtime MUST do with one.
 
 ---
 
@@ -31,7 +33,7 @@ Every auditor is folder-shaped — there is no flat-file alternative. The folder
 └── scripts/, references/, assets/   (optional bundled resources — see core.md)
 ```
 
-The body is the **prompt fragment** that gets concatenated into the runtime's rewrite prompt. It declares one concern. The body should NOT include preamble ("you are an editor", "rewrite the buffer") or output-format instructions ("return the corrected text") — those are runtime-owned and apply to the composed prompt as a whole. Each auditor only contributes its concern-specific slice.
+The body is the **prompt fragment** that gets dispatched to the LLM by the runtime — either as its own prompt (isolated mode) or concatenated into a shared prompt (composed mode). It declares one concern. The body should NOT include preamble ("you are an editor", "rewrite the buffer") or output-format instructions ("return the corrected text") — those are runtime-owned and apply to whatever prompt the runtime constructs. Each auditor only contributes its concern-specific slice.
 
 ---
 
@@ -47,16 +49,39 @@ Runtimes MUST NOT add an automatic `match:` or `keywords:` filter to auditors. A
 
 ## Composition
 
-Multiple auditors compose into one rewrite prompt. The runtime:
+The standard defines two valid composition models. A conformant runtime MUST implement at least one and MAY implement both.
+
+### Isolated mode (RECOMMENDED)
+
+One LLM call per auditor. Per-item dispatch — same isolation property cues and blanks have via `RoutedWordSourceGroup` / `BlankSource`. The runtime:
 
 1. Collects all enabled auditors (across user-level and project-level libraries — see § Composition rules below).
+2. For each auditor, fires one LLM call with the auditor's body as the prompt fragment + the buffer + runtime-owned wrapping (role description, output-format spec). Calls SHOULD run in parallel; total latency is `max(N)`, not `sum(N)`.
+3. Collects the N candidate rewrites.
+4. Computes a diff per auditor: `(input buffer → its rewrite)`.
+5. Merges diffs in `priority:` ascending order (lowest priority applied first; highest priority resolves overlapping spans last). Alphabetical-by-folder-name for ties. Non-overlapping diffs from all auditors apply together; overlapping spans defer to the higher-priority auditor.
+6. Three-way merges the merged rewrite back against the user's typed buffer (preserving in-flight edits).
+
+Why this model is RECOMMENDED: a malicious or buggy auditor's prompt body cannot steer the LLM during *another* auditor's call — they're separate calls with separate prompts. The injection surface that exists in composed mode (one auditor's body overriding instructions for sibling auditors in the same call) is structurally absent here. This matches the per-word dispatch property already proven for cues.
+
+Cost: N× the LLM calls of composed mode. Runtimes MAY enforce a `max-concurrent-auditors:` limit (configured outside the standard).
+
+### Composed mode (PERMITTED, NOT RECOMMENDED)
+
+One LLM call total, all auditor bodies concatenated into the system prompt. The runtime:
+
+1. Collects all enabled auditors.
 2. Sorts them by `priority:` descending; alphabetical-by-folder-name for ties.
 3. Concatenates each auditor's body into one prompt, separated by a runtime-defined delimiter (typically a heading like `## <auditor name>`).
-4. Wraps the concatenated body with a runtime-owned preamble (role description, buffer placeholder, output-format spec).
+4. Wraps the concatenated body with a runtime-owned preamble.
 5. Sends one LLM call.
-6. Three-way merges the rewritten buffer back against the user's typed buffer (preserving in-flight edits).
+6. Three-way merges the rewritten buffer back.
 
-The merge mechanism is a runtime concern (the OpenCues runtime uses `AgentRewrite` — see [`opencues-runtime.md`](./opencues-runtime.md)). The standard only specifies the auditor file format and the composition rules; it does NOT specify the merge algorithm.
+Trade-off: cheaper (one call instead of N), but loses the structural injection isolation between auditors. A conformant runtime SHOULD only use composed mode when every auditor in scope is first-party-trusted (shipped in `defaults/` or authored by the user themselves). See § Trust model.
+
+### Standard's coverage
+
+The merge mechanism is a runtime concern (the OpenCues runtime uses `AgentRewrite` — see [`opencues-runtime.md`](./opencues-runtime.md)). The standard specifies the auditor file format, the composition rules, and the requirement that *some* mode preserves user in-flight edits via three-way merge. The standard does NOT specify the diff/merge algorithm under isolated mode, nor the exact text wrapping under either mode.
 
 ### Composition rules
 
@@ -68,6 +93,43 @@ User-level (`~/.cues/auditors/`) and project-level (`<cwd>/.cues/auditors/`) lib
 4. **Hot-reload polls every layer.** Edits to either master file or any per-auditor file are picked up on the next text-change event, same as cues and blanks.
 
 The reason: cd-ing into a project should *extend* what the user has, never silently *remove* anything they didn't ask to remove. `disable:` is opt-in subtraction, never silent.
+
+---
+
+## Trust model
+
+Auditors are **user-trusted only**. The standard does NOT define a registry, marketplace, or `add <pack>` mechanism for auditors. Cues and blanks may grow such mechanisms as the standard evolves; auditors deliberately do not.
+
+### Why the asymmetry
+
+Cues use per-word dispatch (`RoutedWordSourceGroup`): one word goes to one source, with no cross-source prompt influence. Blanks use per-`_` dispatch (`BlankSource`): one slot goes to one blank, same isolation. Auditors, when applied in composed mode (§ Composition), do NOT have this property — bodies share a single LLM call and can influence each other through the prompt.
+
+Even in isolated mode, the auditor's *own* call still trusts whatever the LLM returns (a malicious body can make the LLM exfiltrate the buffer, inject downstream-targeting payloads, or semantically tamper with the user's text within its own concern's slice). Per-item dispatch closes the cross-auditor injection vector but not the single-auditor output vector. A registry would amplify both.
+
+### What the standard requires
+
+A conformant runtime:
+
+1. MUST source auditors only from `<root>/auditors/` directories (user-level `~/.cues/auditors/` and project-level `<cwd>/.cues/auditors/`) or shipped defaults (`defaults/auditors/` in the runtime's distribution).
+2. MUST NOT auto-install auditors from a network source without explicit user confirmation per-pack, including a display of the auditor's body (the prompt fragment) for inspection.
+3. MUST NOT treat any frontmatter field (`trusted:`, `signed:`, `verified:`, etc.) as a substitute for user inspection. Trust attestations in the file itself are not authoritative — the *provenance* of the file is.
+4. SHOULD log auditor activations in a way that makes the source path visible (which directory the file came from), so users can audit what's running.
+
+### Sharing auditors
+
+Authors who want to share an auditor SHOULD publish the `AUDITOR.md` file as documentation (a gist, a blog post, a repository README). Users who want to install it copy the file manually after reading the prompt body. This is by design: there is no shortcut around user inspection in v1.0 of the standard.
+
+A future revision MAY introduce a registry mechanism with cryptographic provenance and structural output validation. v1.0 deliberately doesn't.
+
+### Output validation
+
+Independent of trust, runtimes SHOULD apply lightweight output validation to every auditor's rewrite (regardless of provenance):
+
+- Length-delta cap: reject rewrites where `|output| / |input|` exceeds a runtime-configured threshold (the OpenCues runtime uses `1.5` by default).
+- Character-class drift: flag rewrites that introduce zero-width Unicode, control characters, or unexpected character classes not present in the input.
+- Unexpected-content emergence: flag rewrites that introduce URLs, markdown images, or code fences when the input contained none, unless the auditor's `expected-changes:` declares them.
+
+These checks catch the "single bad auditor" failure mode that isolation alone doesn't. The runtime MAY surface flagged rewrites for user review or silently drop them; the standard does not specify the user-facing behaviour.
 
 ---
 
@@ -89,10 +151,11 @@ The reason: cd-ing into a project should *extend* what the user has, never silen
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `priority` | number | `50` | Higher number → appears earlier in the concatenated prompt. Ties broken by alphabetical folder name. |
+| `priority` | number | `50` | Merge precedence. In isolated mode, higher priority resolves overlapping spans last (its rewrite wins on conflicts). In composed mode, higher priority appears earlier in the concatenated prompt. Ties broken by alphabetical folder name. |
 | `enabled` | boolean | `true` | Set `false` to keep the file but skip composition. |
 | `on-host` | array of strings | (auto-detected) | Host-compat allow-list (`chrome`, `claude-code`, `gemini-cli`, `opencode`). See [`core.md` § Host compatibility](./core.md#host-compatibility). |
 | `not-on-host` | array of strings | `[]` | Host-compat deny-list. |
+| `expected-changes` | array of strings | `[]` | Optional declaration of content classes this auditor expects to introduce (`url`, `markdown-image`, `redaction-marker`, `code-fence`). Used by output-validation to suppress false positives — e.g. a `pii-redact` auditor declares `[redaction-marker]` so its `[REDACTED]` insertions don't trip the unexpected-content-emergence check. See § Trust model. |
 
 ### Body
 
@@ -139,19 +202,27 @@ A conformant runtime MUST:
 1. Discover auditors by walking `<root>/auditors/` for subdirectories containing `AUDITOR.md`.
 2. Parse each `AUDITOR.md` as YAML frontmatter + Markdown body.
 3. Skip files where `enabled: false` or where `on-host` / `not-on-host` excludes the current host.
-4. Compose enabled auditors into one prompt: sort by `priority:` desc, alphabetical-by-folder ties; concatenate bodies with a runtime-defined delimiter; wrap with runtime preamble + buffer + output-format spec.
-5. Send one LLM call per rewrite cycle — never one call per auditor.
-6. Merge the rewritten output back into the user's buffer using a three-way merge (user's typed text vs LLM rewrite vs the buffer-at-prompt-time baseline).
-7. Honour `AUDITORS.md` `disable:` at the layer the master file appears.
-8. Honour user→project composition rules (§ Composition rules).
-9. Hot-reload on file changes — next rewrite picks up edits without restart.
+4. Implement at least one of the two composition modes (§ Composition): isolated (RECOMMENDED) or composed (PERMITTED only when all auditors in scope are first-party-trusted).
+5. Apply `priority:` ordering to the merge: isolated mode merges diffs in priority ascending order (highest priority resolves overlapping spans last); composed mode concatenates bodies in priority descending order in the prompt. Alphabetical-by-folder-name for ties in both modes.
+6. Three-way merge the rewritten output back into the user's buffer (user's typed text vs LLM rewrite vs the buffer-at-prompt-time baseline) so in-flight edits are preserved.
+7. Honour the trust model (§ Trust model): source auditors only from local directories or shipped defaults; never auto-install from a network source.
+8. Honour `AUDITORS.md` `disable:` at the layer the master file appears.
+9. Honour user→project composition rules (§ Composition rules).
+10. Hot-reload on file changes — next rewrite picks up edits without restart.
+
+A conformant runtime SHOULD:
+
+- Use isolated mode by default. Reserve composed mode for environments where every auditor is provably first-party (e.g. a single-tenant deployment with auditor authoring locked to the operator).
+- Apply lightweight output validation per § Trust model (length-delta cap, character-class drift, unexpected-content emergence) regardless of composition mode.
+- Run isolated-mode calls in parallel — total latency = `max(N)`, not `sum(N)`.
 
 A conformant runtime MUST NOT:
 
-- Run one LLM call per auditor (defeats the composition model).
 - Add automatic `match:` or `keywords:` gating (auditors are not per-word).
 - Replace the user library when a project library is present (composition is ADD, not REPLACE).
 - Apply `disable:` from one layer to another layer.
+- Auto-install auditors from a network source without explicit per-pack user confirmation including display of the prompt body.
+- Treat in-file trust attestations (`trusted: true`, `signed: ...`) as authoritative; trust derives from file *provenance*, not file content.
 
 ---
 
@@ -165,7 +236,7 @@ A runtime MAY support per-feature LLM routing for auditors. The OpenCues runtime
 
 These mirror `word-cues-provider`, `fluid-blank-provider`, `transform-blank-provider` — the same per-feature LLM routing pattern used by every other surface. See [`opencues-runtime.md`](./opencues-runtime.md) § Multi-provider routing.
 
-Per-auditor `provider:` / `model:` is NOT supported, because auditors compose into one LLM call. A single rewrite cannot use three different providers. Choose one per layer.
+Per-auditor `provider:` / `model:` is currently NOT specified. Under composed mode it is structurally impossible (one prompt → one provider). Under isolated mode it is structurally possible (each auditor is its own call), but the standard does not yet require runtimes to support it. Future revisions MAY add per-auditor LLM choice as an optional capability.
 
 ---
 
@@ -279,13 +350,17 @@ For the consolidated linting matrix, see [`core.md` § Linting rules](./core.md#
 ## What this spec covers
 
 - The `AUDITOR.md` file format and frontmatter schema.
-- Composition rules: priority ordering, user→project ADD-by-default, name-collision rules, `disable:` SUBTRACT.
-- The runtime contract: discovery, composition into one LLM call, three-way merge requirement.
+- The two composition modes (isolated, composed), priority semantics, and which is RECOMMENDED.
+- The trust model: user-trusted only, no registry distribution in v1.0.
+- Composition rules: user→project ADD-by-default, name-collision rules, `disable:` SUBTRACT.
+- The runtime contract: discovery, mode requirements, three-way merge, output validation.
 - The master `AUDITORS.md` file's `disable:` list semantics.
 
 ## What this spec does NOT cover
 
-- The merge algorithm. Three-way merging is a runtime concern; the standard only requires that the user's in-flight edits are preserved against an LLM rewrite.
-- The wrapping prompt the runtime adds (preamble + output-format spec). Each runtime owns its own wrapping; the standard only specifies that auditor bodies do NOT include such wrapping.
-- Per-auditor LLM choice. Composition into one call is load-bearing; per-auditor providers would defeat it.
+- The exact diff/merge algorithm under isolated mode. Runtimes own this; the standard only requires that priority resolves overlapping spans and that user in-flight edits are preserved.
+- The exact wrapping prompt the runtime adds (preamble + output-format spec). Each runtime owns its own wrapping; the standard only specifies that auditor bodies do NOT include such wrapping.
+- Per-auditor LLM choice as a capability. Currently unspecified; future revisions MAY add it under isolated mode.
+- The output-validation thresholds (length-delta cap, character-class drift sensitivity). Runtimes set their own; the standard only requires that *some* validation is applied.
 - Trigger gating on the buffer level. Express gating in prose inside the body.
+- A registry / marketplace / `add <pack>` mechanism for auditors. v1.0 deliberately omits this.

@@ -174,6 +174,37 @@ A foreign runtime that doesn't recognise the class name MAY treat the blank as "
 
 ---
 
+## Trust model
+
+Most blanks are registry-safe. The `stepValues` and `impl` profiles ship no executable code in the `BLANK.md` itself: `stepValues` is a static list, and `impl:` names a class that must already exist in the runtime — a third-party `BLANK.md` cannot ship a new class. Both are safe to distribute via a future registry / `add <pack>` mechanism.
+
+The `blankScript` profile is different. It points at a sibling executable (`<name>-blank.sh` and friends) that the runtime invokes with the user's privileges when the blank fires. A malicious `blankScript` is arbitrary code execution, full stop — same threat shape as `npm install <malicious-package>` or `curl | sh`.
+
+### v1.0 carve-out — script-bearing blanks are user-trusted only
+
+For v1.0, the standard carves `blankScript:` blanks out of any future registry distribution. A conformant runtime:
+
+1. MUST source `blankScript:` blanks only from local directories (`<root>/blanks/<name>/`) or shipped defaults (`defaults/blanks/<name>/`).
+2. MUST NOT auto-install a `blankScript:` blank from a network source without explicit per-pack user confirmation, including a display of the script's contents for inspection.
+3. MUST NOT treat any frontmatter field (`trusted: true`, `signed: ...`) as a substitute for user inspection. Trust derives from the file's *provenance*, not its content.
+4. SHOULD log `blankScript:` invocations in a way that makes the source path and exit code visible.
+
+`stepValues` and `impl` blanks are not subject to this restriction — both profiles are safe to grow registry distribution as the standard evolves.
+
+### Sharing script-bearing blanks
+
+Authors who want to share a `blankScript:` blank SHOULD publish the `BLANK.md` + script as documentation (a gist, a blog post, a repo with a README). Users who want to install it copy the files manually after reading the script. This is by design: there is no shortcut around user inspection in v1.0.
+
+A future revision MAY introduce a registry mechanism with cryptographic provenance, sandboxed execution, or signed publisher manifests — all of which are needed before script distribution is safe. v1.0 deliberately omits them.
+
+### Why the carve-out and not a blanket ban
+
+`blankScript:` is genuinely useful. Hardware control (volume, brightness), OS state (clipboard, notifications), filesystem operations — these need a shell. Forbidding scripts altogether would push them out into ad-hoc user runtime classes (`impl:`) that compile into the runtime binary, which is a worse failure mode (now you need to fork the runtime to add a script). The carve-out keeps scripts available for user-authored use and shipped defaults; it just doesn't open the registry door for them.
+
+The same trust-model logic applies to auditors, where the standard takes a stronger position (no registry distribution at all in v1.0). See [`spec/auditor-spec.md` § Trust model](./auditor-spec.md) and [`openstandard-notes.md` § Distribution asymmetry](../openstandard-notes.md).
+
+---
+
 ## Runtime contract
 
 ### The Blank interface
