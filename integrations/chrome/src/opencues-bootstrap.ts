@@ -245,8 +245,67 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
     // Single-segment change — splice in place. Lexical's
     // MutationObserver accepts single text-node .data mutations
     // (looks like normal user typing) and updates its model.
-    const t = segments[startSegIdx].node;
-    t.data = t.data.slice(0, startOff) + insert + t.data.slice(endOff);
+    const seg = segments[startSegIdx];
+    const textNode = seg.node;
+
+    // Managed editors (Lexical, ProseMirror/TipTap, Slate): explicitly
+    // restore the cursor synchronously after the splice. Their MOs
+    // reconcile in a microtask, so a selection set in the same
+    // synchronous turn lands first and the editor normally honors it
+    // during reconcile. Without this, cycles where the cursor is past
+    // the splice region (mid-buffer cycle) leave the caret wherever
+    // the reconciler picks — sometimes correct, sometimes snapped to
+    // end-of-block, which is the "periodic cursor jump" bug.
+    //
+    // Cursor adjustment depends on where the cursor sat relative to
+    // the splice region:
+    //   before splice  → unchanged
+    //   inside splice  → land at end of inserted text (matches typing
+    //                    a replacement over a selection)
+    //   after  splice  → shift by (insertLen - removedLen)
+    const managed = isManagedEditor(target);
+    const cursorBefore = managed ? readCursorOffset() : 0;
+
+    textNode.data = textNode.data.slice(0, startOff) + insert + textNode.data.slice(endOff);
+
+    if (managed) {
+      // Find the segment that originally contained the cursor. The
+      // segments array is in OLD (pre-splice) plain-text coords, which
+      // matches cursorBefore. Text nodes outside the spliced one are
+      // unchanged; only the spliced node's content shifted.
+      let cursorSeg = segments[segments.length - 1];
+      let cursorWithin = cursorSeg.node.data.length;
+      for (const s of segments) {
+        if (cursorBefore <= s.plainEnd) {
+          cursorSeg = s;
+          cursorWithin = cursorBefore - s.plainStart;
+          break;
+        }
+      }
+
+      // If the cursor lived in the spliced segment, adjust within for
+      // the splice: before-splice unchanged, inside lands at end of
+      // insert (like typing over a selection), after shifts by delta.
+      if (cursorSeg === seg) {
+        if (cursorWithin <= startOff) {
+          // unchanged
+        } else if (cursorWithin >= endOff) {
+          cursorWithin += insert.length - (endOff - startOff);
+        } else {
+          cursorWithin = startOff + insert.length;
+        }
+      }
+
+      cursorWithin = Math.max(0, Math.min(cursorWithin, cursorSeg.node.data.length));
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.setStart(cursorSeg.node, cursorWithin);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
   } else {
     // Multi-segment change — would touch multiple text nodes.
     // Lexical's MutationObserver REVERTS this kind of multi-block
