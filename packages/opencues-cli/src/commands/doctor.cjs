@@ -154,7 +154,7 @@ module.exports = function doctor(argv, ctx) {
   // ── Summary ───────────────────────────────────────────────────────────
   if (findings.length === 0) {
     console.log('OK — no issues found.');
-    return;
+    return 0;
   }
   console.log('## Suggested fixes');
   for (const f of findings) {
@@ -163,7 +163,11 @@ module.exports = function doctor(argv, ctx) {
     console.log(`    → ${f.fix}`);
   }
   const errors = findings.filter(f => f.sev === 'warn').length;
-  if (errors > 0) process.exit(1);
+  // Return the exit code instead of calling process.exit from a library
+  // function. The CLI entry point (bin/cli.cjs) honours numeric return
+  // values; tests can inspect the return value without process.exit
+  // killing the runtime mid-assertion.
+  return errors > 0 ? 1 : 0;
 };
 
 function ok(label, present)  { console.log(`  ${present ? '✓' : '✗'}  ${label}`); }

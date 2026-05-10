@@ -56,12 +56,20 @@ const ctx = { pkg, PKG_DIR, REPO_ROOT };
 try {
   // Commands may be sync OR async (return a Promise — e.g. `update --check`
   // queries upstream registries). Handle both shapes uniformly.
+  // Commands MAY return a numeric exit code; we honour it. Commands that
+  // return undefined (the long-standing default) keep their exit-0
+  // behaviour. Letting commands return a code instead of calling
+  // process.exit from deep in their body keeps them testable.
   const result = COMMANDS[command]()(rest, ctx);
   if (result && typeof result.then === 'function') {
-    result.catch(err => {
+    result.then(code => {
+      if (typeof code === 'number' && code !== 0) process.exit(code);
+    }).catch(err => {
       console.error(`opencues ${command}: ${err && err.stack || err}`);
       process.exit(1);
     });
+  } else if (typeof result === 'number' && result !== 0) {
+    process.exit(result);
   }
 } catch (err) {
   console.error(`opencues ${command}: ${err && err.stack || err}`);
