@@ -115,6 +115,35 @@ trial and error. Don't unify it without testing every entry below.
    `replaceAllText`, a detector to the helpers near the top of
    `opencues-bootstrap.ts`, and extend `isManagedEditor`.
 
+### Adding a new blank — register it in TWO places
+
+Every runtime blank (anything in `packages/opencues-runtime/src/blanks/`)
+needs to be **explicitly registered in chrome's blanks registry** at
+`integrations/chrome/src/blanks/index.ts`. Implementing the class in
+the runtime is necessary but NOT sufficient for chrome.
+
+Failure mode: when missing the chrome registration, the blank's keyword
+dispatches but finds no handler. The runtime falls through to
+spawnProcess, which the chrome adapter resolves with exitCode 127.
+The user sees nothing — the trigger silently does nothing.
+
+The two edits in `integrations/chrome/src/blanks/index.ts`:
+
+1. Add to the import list at the top:
+   ```ts
+   import { ..., YourBlank, ... } from '@opencues/runtime/dist/src/blanks';
+   ```
+2. Add to the registry inside `createBlanks`:
+   ```ts
+   blanks.set('your-blank', new YourBlank(...));
+   ```
+
+Real-world example: `claude-status` (May 2026) had the runtime impl,
+tests, and a dist build, AND its `BLANK.md` was being synced into
+`dist/configs/blanks/claude-status/`. But chrome's registry didn't
+import it, so the keyword "is claude down" looked broken until the
+two-line fix landed.
+
 ### Reddit/Lexical content-loss prevention (related)
 
 Two protections live in the runtime/core (NOT chrome-only) that prevent

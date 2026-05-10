@@ -5,11 +5,22 @@
 // are instantiated here. Volume stays per-host because it talks to the
 // browser tab's audio (Web Audio API) — no portable TS impl makes
 // sense across Node + browser.
+//
+// ⚠️ ADDING A NEW BLANK: implementing the class in the runtime is NOT
+// enough on its own. You also need to (a) IMPORT it from
+// `@opencues/runtime/dist/src/blanks` at the top of this file, and
+// (b) `blanks.set('<name>', new YourBlank(...))` inside createBlanks
+// below. Without both, `<name>` will dispatch but find no handler in
+// chrome — the keyword silently falls through to spawnProcess, which
+// chrome resolves with exitCode 127. (See claude-status May 2026 — the
+// runtime had the impl + tests + dist build, but chrome's registry
+// never imported it.)
 
 import type { BrowserBlank } from './types';
 import { VolumeBlank } from './volume';
 import {
   AnswerBlank,
+  ClaudeStatusBlank,
   CountriesBlank,
   CryptoBlank,
   DictionaryBlank,
@@ -57,6 +68,7 @@ export function createBlanks(options?: {
   blanks.set('dictionary', new DictionaryBlank());
   blanks.set('crypto', new CryptoBlank());
   blanks.set('countries', new CountriesBlank());
+  blanks.set('claude-status', new ClaudeStatusBlank());
 
   if (options?.llmConfig) {
     blanks.set('prompt', new PromptImproverBlank(options.llmConfig));
