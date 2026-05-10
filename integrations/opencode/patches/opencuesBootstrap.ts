@@ -348,7 +348,7 @@ export function startOpenCues(opts: {
     llmApiKey: process.env.GROQ_API_KEY,
     llmEndpoint: process.env.OPENCUES_LLM_ENDPOINT,
     llmDefaultModel: process.env.OPENCUES_LLM_MODEL,
-    // Multi-provider key bag — runtime picks per cues.md `llm-provider:`.
+    // Multi-provider key bag — runtime picks per CUES.md `llm-provider:`.
     llmApiKeys: {
       GROQ_API_KEY: process.env.GROQ_API_KEY,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,

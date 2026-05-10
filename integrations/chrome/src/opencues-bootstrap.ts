@@ -172,8 +172,8 @@ function writeText(text: string): void {
  *   2. chrome.storage.local — writable state (e.g. popup edits)
  *   3. null — caller falls back to bake-time defaults
  *
- * Runtime paths look like `/chrome-storage/cues.md` or
- * `/chrome-storage/cues/grammar/cue.md`; we strip the ROOT prefix and
+ * Runtime paths look like `/chrome-storage/CUES.md` or
+ * `/chrome-storage/cues/grammar/CUE.md`; we strip the ROOT prefix and
  * try it as a bundle asset first.
  */
 async function readFile(path: string): Promise<string | null> {
@@ -184,7 +184,7 @@ async function readFile(path: string): Promise<string | null> {
     return bundled;
   }
 
-  // 2. Read-only files (cues.md, blanks.md, folder cues, folder
+  // 2. Read-only files (CUES.md, BLANKS.md, folder cues, folder
   //    blanks, tips.json): read the bake-time constant direct.
   //    No storage cache — that's what used to go stale when the repo's
   //    prompt changed but chrome.storage still held the old seeded
@@ -199,7 +199,7 @@ async function readFile(path: string): Promise<string | null> {
     return null;
   }
 
-  // 3. Writable files (cues.md — OpenCuesSettingsBlank cycles
+  // 3. Writable files (CUES.md — OpenCuesSettingsBlank cycles
   //    voice-mode / tips-mode / debug-mode via writeFile). Storage
   //    wins so the user's saved setting persists across reloads,
   //    falling back to bake-time before the first write.
@@ -241,7 +241,7 @@ function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
   if (rel === '.cues/OPENCUES.md') return __DEFAULT_OPENCUES_MD__ || null;
-  // .cues/cues/<name>.md (flat) and .cues/blanks/<name>/cue.md
+  // .cues/cues/<name>.md (flat) and .cues/blanks/<name>/BLANK.md
   // (folder, when scripts colocated) or .cues/blanks/<name>.md (flat).
   const cuesFlat = rel.match(/^\.cues\/cues\/([^/]+)\.md$/);
   if (cuesFlat) return __DEFAULT_CUE_FOLDERS__[cuesFlat[1]] ?? null;
@@ -290,7 +290,7 @@ function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
 // canonical form (starts with ROOT). Returns null if not in the bundle.
 async function readBundledConfig(runtimePath: string): Promise<string | null> {
   if (!runtimePath.startsWith(ROOT + '/')) return null;
-  const rel = runtimePath.slice(ROOT.length + 1); // e.g. "cues/grammar/cue.md"
+  const rel = runtimePath.slice(ROOT.length + 1); // e.g. "cues/grammar/CUE.md"
   const idx = await getBundleIndex();
   if (!idx.loaded || !idx.files.has(rel)) return null;
   try {
@@ -370,7 +370,7 @@ async function readBundledDir(runtimePath: string): Promise<readonly { name: str
 
 /**
  * No storage seeding. readFile() resolves bake-time constants directly
- * for every read-only config path, and writable files (opencues.md)
+ * for every read-only config path, and writable files (OPENCUES.md)
  * flow through chrome.storage only when the runtime actually writes
  * them. The previous seedDefaults() call was deleted in Apr 2026 — it
  * cached bake-time values into storage where they went stale on the
@@ -391,7 +391,7 @@ export interface RuntimeStartOptions {
   /**
    * Multi-provider key bag. The popup writes these to chrome.storage
    * and the content-script forwards them through. Runtime picks the
-   * right one based on cues.md `llm-provider:` / `<feature>-provider:`.
+   * right one based on CUES.md `llm-provider:` / `<feature>-provider:`.
    */
   llmApiKeys?: Readonly<Record<string, string | undefined>>;
   /** Finnhub API key for the stocks blank. */
@@ -444,7 +444,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   };
 
   // No seed step — readFile() resolves bake-time constants directly
-  // for read-only paths, and writable paths (opencues.md) persist
+  // for read-only paths, and writable paths (OPENCUES.md) persist
   // through chrome.storage only when they're actually written.
   bootResult = boot({
     hostVersion: '0.1.0',

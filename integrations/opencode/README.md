@@ -103,15 +103,15 @@ Project-level wins on name conflicts (cue source name, blank mode name, blank na
 Each directory has the same shape:
 ```
 .cues/
-├── cues.md          word sources + LLM prompts
-├── blanks.md        cue-blank declarations
+├── CUES.md          word sources + LLM prompts
+├── BLANKS.md        cue-blank declarations
 ├── cues/            folder-based cue sources (one folder per source)
-│   └── <name>/cue.md
+│   └── <name>/CUE.md
 └── blanks/          folder-based cue-blank configs
-    └── <name>/cue.md
+    └── <name>/BLANK.md
 ```
 
-`opencues.md` (voice-mode, tips-mode, debug-mode, cursor-navigate) is **system-wide**, runtime-owned, and lives only at user-level — the runtime auto-manages it.
+`OPENCUES.md` (voice-mode, tips-mode, debug-mode, cursor-navigate) is **system-wide**, runtime-owned, and lives only at user-level — the runtime auto-manages it.
 
 **Seed `~/.cues/` from the repo's defaults:**
 
@@ -153,7 +153,7 @@ opencues install opencode     # rebuilds + redeploys into fork
 opencues run opencode         # restart
 ```
 
-`.md` config files (`cues.md`, `blanks.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke. Set `OPENCUES_HOME` to point at a non-default config root if you keep your configs separately from the repo.
+`.md` config files (`CUES.md`, `BLANKS.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke. Set `OPENCUES_HOME` to point at a non-default config root if you keep your configs separately from the repo.
 
 ---
 

@@ -8,7 +8,7 @@ This document provides context for Claude sessions working on this project.
 
 **Architecture** (two libraries + integrations):
 - **`@opencues/core`** — *what alternatives exist*. Pure TypeScript: parsers
-  (cues.md frontmatter + folder cue.md / blank.md), the LLM `Resolver`,
+  (CUES.md frontmatter + folder CUE.md / BLANK.md), the LLM `Resolver`,
   prompt templates, sources (ConfigSource, BlankSource, etc.),
   HTTP adapter. Given text + config, answers "what should we suggest for
   this word?" Knows nothing about editors, key events, or rendering.
@@ -96,7 +96,7 @@ opencues/
 │   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core
 │   │   ├── src/
 │   │   │   ├── resolver.ts        # CueResolver orchestration
-│   │   │   ├── cues-md.ts         # cues.md parser (parseCuesMd, parseSingleCueMd)
+│   │   │   ├── cues-md.ts         # CUES.md parser (parseCuesMd, parseSingleCueMd)
 │   │   │   ├── discover.ts        # Folder-based config discovery
 │   │   │   ├── node-http-adapter.ts  # HTTPS with keep-alive
 │   │   │   └── sources/           # ConfigSource, RoutedWordSourceGroup, BlankSource, FluidBlankSource, SpellingSource, parsers
@@ -172,7 +172,7 @@ export GROQ_API_KEY="your-key"
 
 1. **`opencues seed-configs --silent`** — owns all writes to `~/.cues/`
    (shared by every native host: CC, OC). First-time copy +
-   library-script sync + 0-byte cues.md self-heal + colocated `.cs`
+   library-script sync + 0-byte CUES.md self-heal + colocated `.cs`
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
    Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code@2.1.110`
@@ -235,7 +235,7 @@ CLI_JS=$(find ~/claude-code-cues -name "cli.js" | head -1)
 TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 ```
 
-> **Note:** `.md` config files (`cues.md`, `blanks.md`, `cues/`, `blanks/`) hot-reload within ~2 seconds on the next keystroke — no restart needed.
+> **Note:** `.md` config files (`CUES.md`, `BLANKS.md`, `cues/`, `blanks/`) hot-reload within ~2 seconds on the next keystroke — no restart needed.
 
 ---
 
@@ -364,21 +364,21 @@ system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate,
 fluid-blank-mode, word-cues-mode) whose schema is
 owned by the OpenCues runtime. A single value applies across every
 integration, so projects cannot override it. The file lives at
-`~/.cues/cues.md` (or `$OPENCUES_HOME/cues.md` when set).
+`~/.cues/CUES.md` (or `$OPENCUES_HOME/CUES.md` when set).
 
-- `opencues seed-configs` copies `defaults/cues.md` to `~/.cues/`
+- `opencues seed-configs` copies `defaults/CUES.md` to `~/.cues/`
   and runs an idempotent migration that splits any legacy
-  `opencues.md` + `## Tips` / `## Ignore` / `## Blanks` sections into
-  the new layout (tip groups become folders under `cues/<id>/cue.md`,
-  ignore moves to a frontmatter array, opencues.md and blanks.md are
+  `OPENCUES.md` + `## Tips` / `## Ignore` / `## Blanks` sections into
+  the new layout (tip groups become folders under `cues/<id>/CUE.md`,
+  ignore moves to a frontmatter array, OPENCUES.md and BLANKS.md are
   deleted).
-- **A 0-byte `cues.md` is treated as missing** — `OpenCuesSettingsBlank`
+- **A 0-byte `CUES.md` is treated as missing** — `OpenCuesSettingsBlank`
   silently no-ops on null/empty content, which would otherwise break
   `opencues ___` / `config ___` blank-fills on every native host.
   Chrome falls back to the bake-time `__DEFAULT_CUES_MD__` constant.
-  The seed-configs HEAL phase ensures `cues.md` is always non-empty.
+  The seed-configs HEAL phase ensures `CUES.md` is always non-empty.
 - `ConfigLoader._loadOnce` reads settings from the last search path's
-  cues.md frontmatter (the user-level entry).
+  CUES.md frontmatter (the user-level entry).
 
 ---
 
@@ -422,7 +422,7 @@ the expected nudge for readers to check.
 
 ## Word-alt routing — DEFAULT vs DOMAIN sources
 
-Every `### alternatives` section in `cues.md` (or `cues/<name>/cue.md`)
+Every `### alternatives` section in `CUES.md` (or `cues/<name>/CUE.md`)
 becomes one `ConfigSource`. `buildSourcesFromConfig` wraps the whole
 set in ONE `RoutedWordSourceGroup` that dispatches each highlighted
 word to exactly one child source — never combines them into a giant
@@ -452,7 +452,7 @@ Why per-word dispatch:
 
 Surfaces that enforce + surface this:
 - `@opencues/core` `RoutedWordSourceGroup` — runtime routing class
-- `cues.md` / `new/CUE.md` templates — teach the distinction at scaffold time
+- `CUES.md` / `new/CUE.md` templates — teach the distinction at scaffold time
 - `opencues list` — marks each source `domain` / `default`
 - `opencues validate` — warns on zero defaults + multi-default priority ties
 

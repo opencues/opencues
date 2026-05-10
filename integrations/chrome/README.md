@@ -58,7 +58,7 @@ Click the extension icon to open the popup:
 | **API URL** | No | Default: `https://api.groq.com/openai/v1/chat/completions` |
 | **Finnhub API Key** | No | For stock price lookups. Free at [finnhub.io](https://finnhub.io) |
 | **Target Selector** | Yes | CSS selector for the input element. Default: `[contenteditable="true"]` |
-| **cues.md / blanks.md / opencues.md** | No | Paste config content; otherwise the bake-time defaults are used |
+| **CUES.md / BLANKS.md / OPENCUES.md** | No | Paste config content; otherwise the bake-time defaults are used |
 | **Tips JSON** | No | Pre-computed word alternatives |
 | **TTS** | No | Enable text-to-speech (Web Speech API); `Rate` 1–5, default 2 |
 
@@ -96,7 +96,7 @@ For continuous development, `pnpm --filter @opencues/chrome watch` runs esbuild 
 
 ## Updating configs without rebuilding
 
-Editing `~/.cues/cues.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
+Editing `~/.cues/CUES.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
 
 ```bash
 pnpm exec opencues sync chrome --wsl                    # user-level only (default)
