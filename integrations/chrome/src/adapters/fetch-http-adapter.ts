@@ -1,8 +1,31 @@
 import type { HttpAdapter } from '@opencues/core';
 
+interface ProxiedFetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text: string;
+}
+
 /**
  * Browser fetch()-based HTTP adapter for opencues-core.
  * Replaces NodeHttpAdapter for Chrome extension use.
+ *
+ * POST routes through the background service worker via
+ * `chrome.runtime.sendMessage`. Reason: cross-origin POSTs from a
+ * content script with `Authorization: Bearer ...` headers trigger a
+ * CORS preflight (`OPTIONS` round-trip, ~100-300ms RTT per call).
+ * Service worker fetches don't need preflight when the host is
+ * declared in `host_permissions`. One IPC hop (~5ms) replaces one
+ * preflight round-trip; cumulative win across the 3-pass
+ * transform-blank pipeline is ~300-900ms. The service worker also
+ * reuses TCP+TLS connections across consecutive calls (Chrome's
+ * built-in connection pool), saving per-call TLS-handshake cost on
+ * calls 2+ in the same pipeline. See `background.ts`.
+ *
+ * GET stays on direct fetch — it's used by simple-request blanks
+ * (HN/Finnhub/Open-Meteo) that allow CORS without preflight (no
+ * Authorization header, simple request mode).
  */
 export class FetchHttpAdapter implements HttpAdapter {
   async post(url: string, body: string, headers: Record<string, string>): Promise<string> {
@@ -14,15 +37,19 @@ export class FetchHttpAdapter implements HttpAdapter {
       console.log('[OpenCues] LLM prompt tail:', lastLine.slice(0, 200));
     } catch { /* ignore */ }
 
-    const response = await fetch(url, {
+    const response = await chrome.runtime.sendMessage<unknown, ProxiedFetchResponse>({
+      type: 'opencues:fetch',
       method: 'POST',
+      url,
       headers: { 'Content-Type': 'application/json', ...headers },
       body,
     });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (!response || !response.ok) {
+      const status = response?.status ?? 0;
+      const statusText = response?.statusText ?? 'sendMessage failed';
+      throw new Error(`HTTP ${status}: ${statusText}`);
     }
-    const text = await response.text();
+    const text = response.text;
 
     // Debug: log the raw LLM response
     try {
