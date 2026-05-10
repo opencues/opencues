@@ -3,7 +3,7 @@
  *
  * Pins the provider-thunk integration:
  *   - Without a provider thunk: legacy OpenAI-shaped wire format.
- *   - With a provider thunk: callLLM goes through provider.buildRequest /
+ *   - With a provider thunk: callLLMOnce goes through provider.buildRequest /
  *     parseResponse, so a Gemini-style provider can drive AgentRewrite
  *     end-to-end without touching the merge layer.
  *

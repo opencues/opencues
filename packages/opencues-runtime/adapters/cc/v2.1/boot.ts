@@ -406,10 +406,15 @@ export function boot(host: HostInfo): BootResult {
       // tweak agent-debounce-ms in OPENCUES.md without restart. NaN /
       // non-positive falls back to 1000 inside AgentRewrite.getCadenceMs.
       cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
-      // Auditor composition — concatenated into the rewrite system
-      // prompt. Lazy thunk so AUDITOR.md edits + AUDITORS.md disable[]
-      // edits propagate without restart. See spec/auditor-spec.md.
+      // Auditor composition — isolated mode (one parallel LLM call per
+      // auditor; results diff-merged by priority). Lazy thunk so
+      // AUDITOR.md edits + AUDITORS.md disable[] edits propagate without
+      // restart. See spec/auditor-spec.md § Composition.
       auditorPrompts: () => configLoader.composeAuditorPrompts(),
+      // Optional cap on concurrent auditor calls. Default 0 (uncapped).
+      // Lazy thunk so users can flip max-concurrent-auditors in OPENCUES.md
+      // without restart.
+      maxConcurrentAuditors: () => parseInt(configLoader.opencuesState.settings.get('max-concurrent-auditors') ?? '', 10) || 0,
     });
     agentRewrite.start();
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });

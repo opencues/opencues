@@ -289,7 +289,7 @@ describe('AgentRewrite — sliding-window mode', () => {
     expect(text.slice(w.start, w.end)).toBe('second para extends here.');
   });
 
-  it('windowed callLLM splices rewrite back into surrounding text', async () => {
+  it('windowed callLLMOnce splices rewrite back into surrounding text', async () => {
     // Three paragraphs. Cursor in middle. windowWords pulls the middle
     // one only. LLM rewrites it; outer paragraphs survive untouched.
     const text = 'first para untouched.\n\nthe middle para has typoo.\n\nthird para untouched.';

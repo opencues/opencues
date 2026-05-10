@@ -242,6 +242,7 @@ export function boot(host: HostInfo): BootResult {
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
       cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
       auditorPrompts: () => configLoader.composeAuditorPrompts(),
+      maxConcurrentAuditors: () => parseInt(configLoader.opencuesState.settings.get('max-concurrent-auditors') ?? '', 10) || 0,
     });
     agentRewrite.start();
   }

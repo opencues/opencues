@@ -110,20 +110,38 @@ export interface AgentRewriteOptions {
    */
   readonly windowWords?: () => number;
   /**
-   * Optional auditor-prompt thunk. Returns the ordered list of auditor
-   * prompt fragments to compose into the rewrite system prompt. Each
-   * fragment is one concern — grammar, clarity, jargon, etc. — and they
-   * concatenate into ONE LLM call (never one call per auditor).
+   * Optional auditor-prompt thunk. Returns the priority-ordered list of
+   * auditors to apply this round. Each entry carries one concern — grammar,
+   * clarity, jargon, etc. — plus its `priority:` (used by the isolated-mode
+   * merge to resolve overlapping diffs).
+   *
+   * AgentRewrite runs auditors in **isolated mode** (spec/auditor-spec.md
+   * § Composition): one parallel LLM call per auditor, results diff-merged
+   * by priority. Lower priority is applied first; higher priority resolves
+   * overlapping spans last (its diff wins). Alphabetical-by-name on ties.
+   *
+   * Cost: N× LLM calls per round vs. composed mode's 1×. Bounded by the
+   * `maxConcurrentAuditors` thunk below; the spec recommends a per-runtime
+   * cap so users with many auditors don't surprise themselves with bills.
    *
    * Lazy thunk so the runtime re-reads on every tick: enabling/disabling
    * an auditor or editing AUDITORS.md propagates without restart. The
    * runtime's ConfigLoader exposes `composeAuditorPrompts()` which does
    * the priority sort + disable filter; boots wire it as the thunk.
    *
-   * Empty / absent → no auditor section is appended; the rewrite runs
-   * with only the baseline editor preamble. See spec/auditor-spec.md.
+   * Empty / absent → no auditor calls fire; the rewrite is one baseline
+   * call (the no-auditor path is unchanged from the pre-isolated era).
    */
-  readonly auditorPrompts?: () => Array<{ name: string; promptText: string }>;
+  readonly auditorPrompts?: () => Array<{ name: string; promptText: string; priority: number }>;
+  /**
+   * Optional cap on concurrent auditor calls per round. When the active
+   * auditor list exceeds this, the runtime applies only the top-N
+   * (priority-desc) and logs a warning. Default 0 (uncapped).
+   *
+   * Lazy thunk so users can flip the setting at runtime via
+   * `max-concurrent-auditors:` in OPENCUES.md.
+   */
+  readonly maxConcurrentAuditors?: () => number;
 }
 
 /**
@@ -277,7 +295,8 @@ export class AgentRewrite {
       });
 
       const windowWords = this.options.windowWords?.() ?? 0;
-      const cacheKey = makeCacheKey(snapshot, taskAtSnapshot, cursorAtSnapshot, windowWords);
+      const auditorSignature = computeAuditorSignature(this.options.auditorPrompts?.() ?? []);
+      const cacheKey = makeCacheKey(snapshot, taskAtSnapshot, cursorAtSnapshot, windowWords, auditorSignature);
       let rewrite: string | null;
       const cached = this._rewriteCache.get(cacheKey);
       if (cached !== undefined) {
@@ -288,7 +307,7 @@ export class AgentRewrite {
         rewrite = cached;
       } else {
         try {
-          rewrite = await this.callLLM(snapshot, taskAtSnapshot);
+          rewrite = await this.callLLMWithAuditors(snapshot, taskAtSnapshot);
         } catch (err) {
           this._logFn(`AgentRewrite: LLM call failed — ${err instanceof Error ? err.message : String(err)}`);
           return;
@@ -483,13 +502,27 @@ export class AgentRewrite {
   }
 
   /**
-   * Call the LLM with the rewrite prompt. Returns the rewritten buffer
-   * text (always FULL-buffer-shaped — windowed mode splices the window
-   * rewrite back into the unchanged surrounding text before returning),
-   * or null on parse / API failure (caller swallows null and waits for
-   * the next tick).
+   * Call the LLM ONCE with the baseline rewrite prompt plus an optional
+   * single auditor's concern. Returns the rewritten buffer text (always
+   * FULL-buffer-shaped — windowed mode splices the window rewrite back
+   * into the unchanged surrounding text before returning), or null on
+   * parse / API failure (caller swallows null and waits for the next
+   * tick or merges around the failure).
+   *
+   * `auditor === null` ⇒ baseline rewrite (no concern appended). Used for
+   * the no-auditors path and for the "always-on" baseline call.
+   *
+   * Under isolated mode (spec/auditor-spec.md § Composition), the
+   * orchestrator (`callLLMWithAuditors`) fires this method N times in
+   * parallel — once per auditor — and diff-merges the results by
+   * priority. Each call sees only its own auditor's body, so a hostile
+   * auditor cannot steer the model during a sibling auditor's call.
    */
-  private async callLLM(text: string, task: string): Promise<string | null> {
+  private async callLLMOnce(
+    text: string,
+    task: string,
+    auditor: { name: string; promptText: string } | null,
+  ): Promise<string | null> {
     // Insert a [CURSOR] sentinel so the LLM knows where the user is
     // typing. Used by the prompt's "do not auto-terminate the in-flight
     // sentence" rule. The sentinel is stripped before the merge — see
@@ -509,14 +542,13 @@ export class AgentRewrite {
     const model = resolved?.model ?? this.options.defaultModel;
     const endpoint = resolved?.endpoint ?? this.options.endpoint;
     const apiKey = resolved?.apiKey ?? this.options.apiKey;
-    // Compose auditor prompts into the system message. Each auditor
-    // contributes one concern; they concatenate into ONE LLM call. The
-    // runtime owns the wrapping (heading delimiter); each AUDITOR.md
-    // body declares only its concern. See spec/auditor-spec.md.
-    const auditors = this.options.auditorPrompts?.() ?? [];
-    const systemContent = auditors.length === 0
+    // Append the auditor's concern (if any) as an isolated section. The
+    // body is just this one auditor's prompt — siblings live in their own
+    // separate calls. The runtime owns the wrapping; each AUDITOR.md body
+    // declares only its concern.
+    const systemContent = auditor === null
       ? REWRITE_SYSTEM_PROMPT
-      : `${REWRITE_SYSTEM_PROMPT}\n\nApply the following auditors in order. Each declares one concern; act on all of them in a single rewrite.\n\n${auditors.map(a => `## ${a.name}\n${a.promptText}`).join('\n\n')}`;
+      : `${REWRITE_SYSTEM_PROMPT}\n\nAdditionally, apply this concern (${auditor.name}):\n\n${auditor.promptText}`;
     const chatRequest = {
       model,
       messages: [
@@ -595,6 +627,58 @@ export class AgentRewrite {
       return text.slice(0, window.start) + windowedRewrite + text.slice(window.end);
     }
     return windowedRewrite;
+  }
+
+  /**
+   * Orchestrate one round in isolated mode (spec/auditor-spec.md
+   * § Composition).
+   *
+   * No auditors → one baseline LLM call, pass through.
+   * One auditor → one LLM call with that auditor's body, pass through.
+   * N auditors (N ≥ 2) → N parallel LLM calls (one per auditor), each with
+   * the same buffer + that auditor's body. Failed calls are skipped; the
+   * survivors are diff-merged against the input snapshot by priority
+   * (lower priority applied first; higher priority resolves overlapping
+   * spans last). All-failed → null (caller waits for next tick).
+   *
+   * The cap from `maxConcurrentAuditors` (if set) trims the auditor list
+   * to the top-N (priority-desc) before dispatch — anything beyond the
+   * cap is silently dropped this round and logged.
+   */
+  private async callLLMWithAuditors(text: string, task: string): Promise<string | null> {
+    const auditors = this.options.auditorPrompts?.() ?? [];
+    if (auditors.length === 0) {
+      return this.callLLMOnce(text, task, null);
+    }
+    const cap = this.options.maxConcurrentAuditors?.() ?? 0;
+    const active = cap > 0 && auditors.length > cap ? auditors.slice(0, cap) : auditors;
+    if (active.length < auditors.length) {
+      this._logFn(`AgentRewrite: capping auditors at ${cap} (${auditors.length - cap} dropped this round)`);
+    }
+    if (active.length === 1) {
+      const only = active[0];
+      return this.callLLMOnce(text, task, { name: only.name, promptText: only.promptText });
+    }
+    // N ≥ 2: parallel dispatch + diff-merge by priority.
+    this._logFn(`AgentRewrite: isolated dispatch (${active.length} auditors in parallel)`);
+    const results = await Promise.all(active.map(async (a) => {
+      try {
+        const rewrite = await this.callLLMOnce(text, task, { name: a.name, promptText: a.promptText });
+        return rewrite === null ? null : { name: a.name, priority: a.priority, rewrite };
+      } catch (err) {
+        this._logFn(`AgentRewrite: auditor "${a.name}" failed — ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    }));
+    const successful = results.filter((r): r is { name: string; priority: number; rewrite: string } => r !== null);
+    if (successful.length === 0) {
+      this._logFn(`AgentRewrite: all ${active.length} auditor calls failed — discarding round`);
+      return null;
+    }
+    if (successful.length < active.length) {
+      this._logFn(`AgentRewrite: ${active.length - successful.length}/${active.length} auditor calls failed — merging the rest`);
+    }
+    return mergeAuditorRewrites(text, successful, this._logFn);
   }
 
   private getHttpAgent(): { post(url: string, body: string, headers: Record<string, string>): Promise<string> } {
@@ -679,17 +763,96 @@ async function postWithFallback(
 }
 
 /**
- * Build a stable cache key for `(snapshot, task, cursor, window)`. The
- * cursor is part of the key because the cursor sentinel changes the
+ * Build a stable cache key for `(snapshot, task, cursor, window, auditors)`.
+ *
+ * The cursor is part of the key because the cursor sentinel changes the
  * LLM's input — same buffer with cursor in a different sentence gets a
  * different terminal-punctuation decision. Window size is keyed too so
- * flipping the setting at runtime invalidates entries naturally.
+ * flipping the setting at runtime invalidates entries naturally. Auditor
+ * signature is part of the key so toggling/editing an auditor (which
+ * changes which calls fire and what each sees under isolated mode)
+ * invalidates the merged rewrite.
  *
  * `\u0000`-separated to keep the components disambiguated without an
  * expensive escape pass.
  */
-function makeCacheKey(snapshot: string, task: string, cursor: number, windowWords: number): string {
-  return `${windowWords}\u0000${cursor}\u0000${task}\u0000${snapshot}`;
+function makeCacheKey(snapshot: string, task: string, cursor: number, windowWords: number, auditorSignature: string): string {
+  return `${windowWords}\u0000${auditorSignature}\u0000${cursor}\u0000${task}\u0000${snapshot}`;
+}
+
+/**
+ * Build a stable signature over the active auditor list. Changes to any
+ * auditor's name, priority, or body invalidate the cache. Empty list →
+ * empty string (zero overhead for the no-auditors path).
+ */
+function computeAuditorSignature(auditors: ReadonlyArray<{ name: string; promptText: string; priority: number }>): string {
+  if (auditors.length === 0) return '';
+  return auditors.map(a => `${a.name}\u0001${a.priority}\u0001${a.promptText}`).join('\u0002');
+}
+
+/**
+ * Diff-merge N auditor rewrites against a single input snapshot, resolving
+ * overlapping spans by priority. See spec/auditor-spec.md § Composition
+ * (isolated mode).
+ *
+ * Algorithm:
+ *   1. Compute `wordDiff(snapshot → rewrite_i)` for each successful
+ *      auditor rewrite.
+ *   2. Tag every hunk with its auditor's `(priority, name)`.
+ *   3. Sort all hunks: lower priority first; among ties, alphabetically
+ *      LATER name first. The tail of the sort wins overlap resolution
+ *      (highest priority + alphabetically earlier).
+ *   4. Walk hunks in sort order, accepting non-overlapping; on overlap
+ *      with an already-accepted hunk, replace the lower-priority hunk
+ *      with the higher-priority one.
+ *   5. Apply accepted hunks right-to-left (so earlier indices don't shift
+ *      while we splice later ones).
+ *
+ * Returns the merged buffer text, or the input snapshot when all auditors
+ * proposed only a no-op rewrite (the validator upstream catches the
+ * "all-no-op" case as a stable-round signal).
+ */
+export function mergeAuditorRewrites(
+  snapshot: string,
+  rewrites: ReadonlyArray<{ name: string; priority: number; rewrite: string }>,
+  log?: (msg: string) => void,
+): string {
+  type PrioHunk = { hunk: DiffHunk; priority: number; name: string };
+  const allHunks: PrioHunk[] = [];
+  for (const r of rewrites) {
+    if (r.rewrite === snapshot) continue; // no-op; nothing to merge
+    const hunks = wordDiff(snapshot, r.rewrite);
+    for (const h of hunks) allHunks.push({ hunk: h, priority: r.priority, name: r.name });
+  }
+  if (allHunks.length === 0) return snapshot;
+  // Sort by (priority asc, name desc) so the LAST element in iteration order
+  // is the highest-priority + alphabetically-earliest auditor. Hunks
+  // applied later "win" on overlap resolution.
+  allHunks.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return b.name.localeCompare(a.name);
+  });
+  const accepted: PrioHunk[] = [];
+  for (const ph of allHunks) {
+    const overlapIdx = accepted.findIndex((acc) =>
+      ph.hunk.aStart < acc.hunk.aEnd && acc.hunk.aStart < ph.hunk.aEnd
+    );
+    if (overlapIdx === -1) {
+      accepted.push(ph);
+      continue;
+    }
+    // Overlap: by sort order, ph has equal-or-higher precedence than the
+    // overlapping accepted hunk. Replace.
+    accepted.splice(overlapIdx, 1, ph);
+    log?.(`AgentRewrite: merge overlap — "${ph.name}" (priority ${ph.priority}) wins over earlier hunk`);
+  }
+  // Apply right-to-left so earlier indices stay valid.
+  accepted.sort((a, b) => b.hunk.aStart - a.hunk.aStart);
+  let result = snapshot;
+  for (const ph of accepted) {
+    result = result.slice(0, ph.hunk.aStart) + ph.hunk.replacement + result.slice(ph.hunk.aEnd);
+  }
+  return result;
 }
 
 /**

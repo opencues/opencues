@@ -297,17 +297,18 @@ export class ConfigLoader {
   }
 
   /**
-   * Compose enabled auditor prompts in concatenation order.
+   * Compose enabled auditor prompts in priority-descending order.
    *
    * Sorts by `priority:` descending, alphabetical-by-name for ties.
    * Skips `enabled: false` and any name in the merged disableAuditors
    * list (the union of every layer's `AUDITORS.md` `disable: [...]`).
    *
-   * Returned strings are the raw prompt bodies from each AUDITOR.md.
-   * The caller (AgentRewrite) wraps them with a delimiter like
-   * `## <name>\n<body>` before sending to the LLM. See spec/auditor-spec.md.
+   * Returned entries carry their `priority:` so the caller (AgentRewrite)
+   * can run isolated mode — one LLM call per auditor, results diff-merged
+   * by priority. See spec/auditor-spec.md § Composition. Priority defaults
+   * to 50 when the AUDITOR.md frontmatter omits the field.
    */
-  composeAuditorPrompts(): Array<{ name: string; promptText: string }> {
+  composeAuditorPrompts(): Array<{ name: string; promptText: string; priority: number }> {
     const folder = this._config.folderConfigs;
     const auditors = folder?.auditorOverrides ?? {};
     const disableSet = new Set(folder?.auditorsConfig?.disableAuditors ?? []);
@@ -322,7 +323,11 @@ export class ConfigLoader {
       if (pa !== pb) return pb - pa; // desc
       return nameA.localeCompare(nameB);
     });
-    return entries.map(([name, a]) => ({ name, promptText: a.promptText }));
+    return entries.map(([name, a]) => ({
+      name,
+      promptText: a.promptText,
+      priority: a.priority ?? 50,
+    }));
   }
 
   /**

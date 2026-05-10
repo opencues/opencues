@@ -1,7 +1,9 @@
 /**
  * Tests for auditor composition: ConfigLoader.composeAuditorPrompts()
  * runs the priority sort + disable filter, and AgentRewrite hands the
- * composed list to the LLM as one concatenated system prompt.
+ * composed list to its isolated-mode dispatcher (one LLM call per
+ * auditor, results diff-merged by priority). See spec/auditor-spec.md
+ * § Composition.
  */
 import { describe, it, expect } from 'vitest';
 import { ConfigLoader } from './config-loader';
@@ -81,5 +83,24 @@ describe('ConfigLoader.composeAuditorPrompts', () => {
     await loader.load();
     const composed = loader.composeAuditorPrompts();
     expect(composed[0].promptText.trim()).toBe(body);
+  });
+
+  it('exposes priority on each composed entry (default 50)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/proj/.cues/auditors/explicit/AUDITOR.md':
+          `---\nname: explicit\npriority: 70\n---\n\nExplicit-priority body.`,
+        '/proj/.cues/auditors/defaulted/AUDITOR.md':
+          `---\nname: defaulted\n---\n\nDefault-priority body.`,
+      },
+    });
+    const loader = new ConfigLoader(adapter, { configSearchPaths: ['/proj/.cues'] });
+    await loader.load();
+    const composed = loader.composeAuditorPrompts();
+    // Both fields exposed; priorities used by the isolated-mode merge.
+    const byName = Object.fromEntries(composed.map(a => [a.name, a.priority]));
+    expect(byName.explicit).toBe(70);
+    expect(byName.defaulted).toBe(50);
   });
 });

@@ -21,6 +21,12 @@ transform-blank-mode: on
 # fires (ms). Misparses or non-positive values fall back to 1000.
 agent-debounce-ms: 1000
 
+# Cap on parallel auditor calls per agent tick. Auditors run in
+# isolated mode (one LLM call per auditor; results diff-merged by
+# priority). 0 = uncapped. Set a positive number to bound LLM cost
+# when many auditors are active. See spec/auditor-spec.md § Composition.
+max-concurrent-auditors: 0
+
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
 # means + the tip shown for each value. Schema is owned by the runtime;
@@ -67,6 +73,12 @@ settings:
       "500": Aggressive — fires shortly after each pause
       "1000": Default — balanced
       "2000": Relaxed — only fires after a clear stop
+  max-concurrent-auditors:
+    tip: Cap on parallel auditor calls per tick. 0 = uncapped. Bound LLM cost when many auditors are active.
+    values:
+      "0": Uncapped — all enabled auditors fire each tick
+      "3": Bounded — top-3 priority-desc only
+      "5": Bounded — top-5 priority-desc only
 ---
 
 # OPENCUES.md — Runtime Configuration
