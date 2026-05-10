@@ -252,8 +252,11 @@ function validatePack(dir, opts) {
     if (!isDocOrReadme) {
       const hasFence = /^---\s*$/m.test(content);
       if (hasFence) {
+        // Per-folder entry: <kind>/<name>/{CUE.md|BLANK.md|cue.md}.
+        // Accept the canonical uppercase + lowercase legacy. Comparison
+        // is case-insensitive (basename was already lowercased).
         const isFolderBased =
-          basename === 'cue.md' &&
+          (basename === 'cue.md' || basename === 'blank.md') &&
           relParts.length >= 3 &&
           ['cues', 'blanks'].includes(relParts[relParts.length - 3]);
         try {
