@@ -191,6 +191,30 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
             } catch { /* ignore */ }
           }
         }
+        // User-shipped JS blank sanity: if impl: is a relative path,
+        // check that the JS file exists and that the blank declared
+        // at least one capability (zero capabilities is allowed but
+        // usually a sign the author forgot to enable network/etc.).
+        const implMatch = content.match(/^\s*impl:\s*(.+)$/m);
+        if (implMatch) {
+          const implRaw = implMatch[1].trim().replace(/^["']|["']$/g, '');
+          if (implRaw.startsWith('./') || implRaw.startsWith('../')) {
+            const jsPath = path.join(path.dirname(cueMd), implRaw);
+            if (!fs.existsSync(jsPath)) {
+              errors.push(`${cueMd}: impl: points to ${jsPath} which does not exist`);
+            }
+            const fm = folderParsed.frontmatter || {};
+            const hasCap = (fm.userBlankNetwork && fm.userBlankNetwork.length)
+              || fm.userBlankLlm || fm.userBlankStorage;
+            if (!hasCap) {
+              warnings.push(
+                `${cueMd}: user-shipped JS blank with no capabilities declared — ` +
+                `the blank can compute and log but can't fetch / call LLM / persist state. ` +
+                `Add \`network: [host1, host2]\`, \`llm: <provider>\`, or \`storage: <namespace>\` to enable.`,
+              );
+            }
+          }
+        }
       } catch (err) {
         errors.push(`${cueMd}: parse failed — ${err.message}`);
       }

@@ -160,6 +160,50 @@ Stderr SHOULD be ignored unless exit code is non-zero. The runtime MAY treat non
 
 **Native hosts only.** The runtime's auto-detected host-compat MUST exclude shell-script blanks from browser hosts (see `core.md` § Host compatibility). Browser runtimes SHOULD skip these blanks silently.
 
+### Profile 3a — `impl: ./blank.js` (user-shipped JS module)
+
+```yaml
+impl: ./blank.js
+network: [api.github.com]      # capability: hostnames the blank may fetch
+llm: groq                       # capability: LLM provider name (optional)
+storage: gh-issues              # capability: storage namespace (optional)
+```
+
+When `impl:` is a RELATIVE path (starts with `./` or `../`), the
+runtime loads the named JS module in a capability-constrained
+context (vm.runInContext on Node, Web Worker in chrome). The
+module's exported `get` / `set` / `up` / `down` functions receive a
+`BlankContext` object that contains ONLY the capabilities the
+frontmatter declared. Anything not declared is `undefined`.
+
+Conformant runtimes MUST:
+
+1. Load the JS file relative to the BLANK.md's folder. Refuse
+   absolute paths or `../` escapes outside the user's `.cues/`
+   roots.
+2. Strip `import` statements before evaluation (no module loading).
+3. Strip ESM `export default` syntax to a CommonJS-style module
+   export so the JS evaluates as a classic script.
+4. NOT expose `fs`, `path`, `os`, `process`, `Buffer`, `require`,
+   `__dirname`, `__filename`, or any runtime internals to the
+   user's module.
+5. Enforce the declared `network:` allow-list as hostname-exact
+   (no wildcards in v1.0).
+6. Bind storage to the declared namespace; blank A MUST NOT be
+   able to read blank B's namespace.
+
+Authoring contract (full TypeScript shape in
+`packages/opencues-runtime/src/user-blanks/types.ts`):
+
+```ts
+export default {
+  get(ctx, args) { /* ... */ return value; },
+  set?(ctx, value, args) { /* optional, for cycling */ },
+};
+```
+
+Full design + threat model: `docs/architecture/user-blanks.md`.
+
 ### Profile 3 — `impl` (in-process class)
 
 ```yaml

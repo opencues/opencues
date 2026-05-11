@@ -54,6 +54,7 @@ safe. v1.0 deliberately omits them.
 | **`blankScript:` carve-out** (scripts can't ship via registry) | ✓ | ✓ | ✓ | ✓ | `spec/blank-spec.md` |
 | **Path sandbox** — refuse `blankScript:` resolving outside CUES roots, realpath-based to defeat symlinks | ✓ | ✓ | ✓ | ✓ | `packages/opencues-runtime/src/security/spawn-sandbox.ts` |
 | **OS-level sandbox** (opt-in via `sandbox: strict`) — read-only FS outside `/tmp`, no network by default, isolated PID/IPC namespaces. bwrap-based on Linux/WSL. | ✓ | ✓ | ✓ | ✓ | `packages/opencues-runtime/src/security/sandbox-runner.ts` + `docs/architecture/sandbox.md` |
+| **User-shipped JS blanks** — `impl: ./blank.js` runs in a capability-constrained context (vm.Context on Node, Web Worker in chrome). Only declared `network:`/`llm:`/`storage:` capabilities are available; no fs/process/runtime-internals access. | ✓ | ✓ | ✓ | ✓ | `packages/opencues-runtime/src/user-blanks/` + `docs/architecture/user-blanks.md` |
 | **Audit log** — append every script invocation to `<root>/.opencues-log` (timestamp, host, command, args, exit, ms) | ✓ | ✓ | ✓ | ✓ | `spawn-sandbox.ts` |
 | **Env-key whitelist** — only `CUES_*` env vars from a script spec reach the spawned process | — | — | — | ✓ | `integrations/chrome/host/host.cjs` |
 | **Endpoint validation** — flag custom LLM endpoints at `opencues validate` (error on unknown provider / invalid URL; warn on stock-override) | ✓ | ✓ | ✓ | ✓ | `packages/opencues-core/src/llm-provider.ts:validateEndpoint` |
