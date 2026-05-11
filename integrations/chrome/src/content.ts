@@ -14,6 +14,7 @@ import {
   startOpenCues,
   publishTarget,
   clearRuntimeHighlights,
+  log,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
@@ -89,7 +90,7 @@ async function init(): Promise<void> {
       if (!el.matches(config.targetSelector)) return;
     }
     if (!isTextInput(el)) return;
-    console.log('[OpenCues] Attaching to', el.tagName, el.id || el.className || '');
+    log.info('[OpenCues] Attaching to', el.tagName, el.id || el.className || '');
     // Strip derived colour vars from any previous target before tagging
     // the new one, so the page is free of stale OpenCues styling if
     // focus moved between contenteditables without going through focusout.

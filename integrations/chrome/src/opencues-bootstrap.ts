@@ -52,8 +52,23 @@ const ROOT = '/chrome-storage';
 // or the CLI (`opencues debug on`). Reflects both initial boot state
 // and live cycling — chrome.storage.onChanged subscription updates
 // the flag without an extension reload.
+// Logging gate — toggled by `debug-mode: on/off` in ~/.cues/OPENCUES.md
+// (settable from any host via `opencues settings _`). When off (the
+// default), the page console stays clean: only warnings and errors
+// surface. When on, per-keystroke trace logs (diffWriteText,
+// replaceAllText paths, readFile resolution) fire — useful when
+// debugging an editor that's misbehaving but noisy otherwise.
+//
+// Warnings and errors always go through, regardless of the flag —
+// they signal real failures (broken paste, host disconnect, etc.).
 let _readTrace = false;
 function tlog(msg: string): void { if (_readTrace) console.log(msg); }
+export const log = {
+  info(...args: unknown[]): void { if (_readTrace) console.log(...args); },
+  debug(...args: unknown[]): void { if (_readTrace) console.debug(...args); },
+  warn(...args: unknown[]): void { console.warn(...args); },
+  error(...args: unknown[]): void { console.error(...args); },
+};
 function parseDebugMode(content: string | null | undefined): boolean {
   return /debug-mode:\s*on\b/i.test(content ?? '');
 }
@@ -350,14 +365,14 @@ function diffWriteText(text: string): void {
   const target = currentTarget;
   if (!target) return;
   target.focus();
-  console.log('[opencues] diffWriteText: newLen=' + text.length + ', hasNewline=' + text.includes('\n'));
+  log.info('[opencues] diffWriteText: newLen=' + text.length + ', hasNewline=' + text.includes('\n'));
   const cBefore = readCursorOffset();
   const routedToReplaceAll = applyTextDiff(target, text);
   if (routedToReplaceAll) {
-    console.log('[opencues] diffWriteText → routed to replaceAllText');
+    log.info('[opencues] diffWriteText → routed to replaceAllText');
     return;
   }
-  console.log('[opencues] diffWriteText: in-place splice complete, post-DOM textLen=' + (target.textContent?.length ?? 0));
+  log.info('[opencues] diffWriteText: in-place splice complete, post-DOM textLen=' + (target.textContent?.length ?? 0));
   writeCursorOffset(Math.min(cBefore, text.length));
   sourceReclassifier.markRuntimeWrite(text);
   // Schedule a post-reconciliation re-render. The current synchronous
@@ -386,7 +401,7 @@ function replaceAllText(text: string): void {
   const target = currentTarget;
   if (!target) return;
   target.focus();
-  console.log('[opencues] replaceAllText: newLen=' + text.length + ', preDomLen=' + (target.textContent?.length ?? 0));
+  log.info('[opencues] replaceAllText: newLen=' + text.length + ', preDomLen=' + (target.textContent?.length ?? 0));
   const sel = window.getSelection();
   if (!sel) {
     target.textContent = text;
@@ -525,7 +540,7 @@ function replaceAllText(text: string): void {
       }
 
       const postFinal = target.textContent?.length ?? 0;
-      console.log('[opencues] replaceAllText: draftjs path, preLen=' + pre + ', postLen=' + postFinal);
+      log.info('[opencues] replaceAllText: draftjs path, preLen=' + pre + ', postLen=' + postFinal);
       sourceReclassifier.markRuntimeWrite(text);
       schedulePostReconcileRender();
       return;
@@ -602,7 +617,7 @@ function replaceAllText(text: string): void {
       // Destroys structure but at least the text appears.
       target.textContent = text;
     }
-    console.log('[opencues] replaceAllText: ' + (isManaged ? 'managed' : 'generic') + ' paste dispatched');
+    log.info('[opencues] replaceAllText: ' + (isManaged ? 'managed' : 'generic') + ' paste dispatched');
   }
 
   sourceReclassifier.markRuntimeWrite(text);

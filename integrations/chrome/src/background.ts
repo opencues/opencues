@@ -105,6 +105,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 const NATIVE_HOST = 'com.opencues.sync';
 const BUNDLE_KEY = 'opencues_bundle';
+const HOST_KEYS_STORAGE = 'opencues_host_keys';
 const RECONNECT_MS = 30_000;
 const EXEC_TIMEOUT_FALLBACK_MS = 15_000;
 
@@ -113,6 +114,10 @@ interface BundleMessage {
   root: string;
   files: Record<string, string>;
   reason?: string;
+}
+interface HostConfigMessage {
+  type: 'config';
+  apiKeys: Record<string, string>;
 }
 interface ExecResultMessage {
   type: 'exec-result';
@@ -153,13 +158,24 @@ function connectNativeHost(): void {
   console.log('[opencues] native host port opened');
 
   nativePort.onMessage.addListener((raw: unknown) => {
-    const msg = raw as BundleMessage | ExecResultMessage;
+    const msg = raw as BundleMessage | ExecResultMessage | HostConfigMessage;
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'bundle' && typeof msg.files === 'object') {
       const fileCount = Object.keys(msg.files).length;
       chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
         .then(() => console.log(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
         .catch((err) => console.warn('[opencues] bundle storage write failed', err));
+      return;
+    }
+    if (msg.type === 'config' && msg.apiKeys && typeof msg.apiKeys === 'object') {
+      // API keys from the host's process.env. Replaces the old
+      // bake-time inlining of GROQ_API_KEY / FINNHUB_API_KEY. The
+      // chrome-storage-adapter layers these between the empty
+      // bake-time defaults and any popup-set user overrides.
+      const keyNames = Object.keys(msg.apiKeys);
+      chrome.storage.local.set({ [HOST_KEYS_STORAGE]: msg.apiKeys })
+        .then(() => console.log(`[opencues] host API keys received (${keyNames.length} keys: ${keyNames.join(', ')})`))
+        .catch((err) => console.warn('[opencues] host-keys storage write failed', err));
       return;
     }
     if (msg.type === 'exec-result' && typeof msg.requestId === 'string') {

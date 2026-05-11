@@ -50,8 +50,14 @@ try {
 } catch { /* no blanks/ dir */ }
 
 const envDefines = {
-  '__GROQ_API_KEY__': JSON.stringify(envVars['GROQ_API_KEY'] || ''),
-  '__FINNHUB_API_KEY__': JSON.stringify(envVars['FINNHUB_API_KEY'] || ''),
+  // API keys are NOT baked in. The native-messaging host
+  // (`opencues install chrome-host`) pushes them on connect from its
+  // own process.env so the published JS bundle stays grep-free of
+  // secrets. The popup is the secondary source for users who don't
+  // install the host. These defines keep the TS declarations valid
+  // but always resolve to '' at runtime.
+  '__GROQ_API_KEY__': JSON.stringify(''),
+  '__FINNHUB_API_KEY__': JSON.stringify(''),
   '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/OPENCUES.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_BLANK_FOLDERS__': JSON.stringify(blankFolders),

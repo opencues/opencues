@@ -78,6 +78,35 @@ Click **Save**. The extension reinitializes on the active page.
 
 If you see legacy `[OpenCues] ...` logs but **no** `[opencues][info] OpenCues runtime starting` line, you loaded a stale bundle — re-run `dev-install` (and re-deploy via `--target` if applicable).
 
+### Debug logging
+
+The page console is quiet by default — only `Content script loaded`,
+`OpenCues runtime starting`, `storage bundle loaded`, plus any
+warnings / errors. Per-keystroke trace logs (`diffWriteText`,
+`replaceAllText`, `readFile` resolution, `Attaching to`) are gated
+behind `debug-mode: on` in `~/.cues/OPENCUES.md`. Three ways to
+toggle:
+
+1. **In-page selector blank** (works on any contenteditable, any tab):
+   ```
+   opencues settings _
+   ```
+   Cycle Ctrl+Alt+Up/Down to `debug-mode`, cycle again to flip
+   `on`/`off`, navigate away to save. Live across all open tabs in
+   ~300ms.
+
+2. **Edit the file directly**:
+   ```bash
+   sed -i 's/debug-mode: off/debug-mode: on/' ~/.cues/OPENCUES.md
+   ```
+   The chrome-host's `fs.watch` picks it up; no page refresh needed.
+
+3. **From any other host** (Claude Code / OpenCode / Gemini CLI):
+   same `opencues settings _` invocation — the setting is global
+   across hosts.
+
+Warnings and errors always surface regardless of the flag.
+
 ---
 
 ## Update workflow

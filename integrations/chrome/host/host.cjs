@@ -317,6 +317,37 @@ function buildAndPush(reason) {
   sendMessage({ ...payload, reason });
 }
 
+// Push the host's known API keys (read from its own env) once at
+// startup. Replaces the bake-time inlining of GROQ_API_KEY /
+// FINNHUB_API_KEY into the extension bundle — the published JS no
+// longer ships secrets.
+//
+// Keys NOT set in env aren't sent (the field is omitted). The
+// extension layers these between the bake-time defaults (now empty)
+// and the popup-set values (which still win as user-overrides).
+//
+// Cycle: user updates ~/.bashrc → restarts WSL → next host spawn
+// reads the new value → sends → SW writes to chrome.storage →
+// content-script onChanged listener picks it up live.
+const API_KEY_VARS = [
+  'GROQ_API_KEY',
+  'CEREBRAS_API_KEY',
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENROUTER_API_KEY',
+  'GEMINI_API_KEY',
+  'FINNHUB_API_KEY',
+];
+function sendHostConfig() {
+  const apiKeys = {};
+  for (const v of API_KEY_VARS) {
+    const value = process.env[v];
+    if (typeof value === 'string' && value.length > 0) apiKeys[v] = value;
+  }
+  sendMessage({ type: 'config', apiKeys });
+}
+sendHostConfig();
+
 // Initial push.
 buildAndPush('initial');
 

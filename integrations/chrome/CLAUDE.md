@@ -159,6 +159,26 @@ filtered out.
 exec, plus a 5s safety net in the SW. No script can hang the
 extension indefinitely.
 
+## Debug logging
+
+Per-keystroke trace logs (diffWriteText, replaceAllText, readFile
+resolution, Attaching to) are gated behind `debug-mode: on` in
+`~/.cues/OPENCUES.md`. The flag drives the `_readTrace` boolean +
+the `log` object (info/debug gated, warn/error always shown) in
+`src/opencues-bootstrap.ts`. content.ts re-exports `log` so it can
+gate its own attach log without duplicating state.
+
+Toggle paths (in order of convenience):
+1. In-page: `opencues settings _` selector blank → cycle to
+   `debug-mode` → flip on/off.
+2. Direct file edit: `~/.cues/OPENCUES.md` line near top has
+   `debug-mode: off`. Host fs.watch picks it up within ~300ms.
+3. Any host's settings blank — global across CC, OC, gemini, chrome.
+
+Don't add per-keystroke `console.log` calls. Use `log.info(...)` so
+they default to quiet. Reserve `console.warn`/`console.error` for
+real failures the user should see immediately.
+
 ## Verified working sites (May 2026)
 
 | Site | Engine | Path used |
