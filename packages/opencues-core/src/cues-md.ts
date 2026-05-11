@@ -125,6 +125,37 @@ export interface BlankConfig {
   /** Script for blank get/set. */
   blankScript?: string;
   /**
+   * In-process binding profile.
+   *
+   * - When OMITTED: the runtime tries `<PascalCase(name)>Blank` as
+   *   the class name in its built-in blanks registry.
+   * - When a NAME (no `./` or `/`): same — look up that class in the
+   *   registry. E.g. `impl: WeatherBlank` finds the WeatherBlank class.
+   * - When a relative PATH starting with `./` or `../`: load as a
+   *   user-shipped JS module. The runtime runs the JS in a
+   *   capability-constrained context (vm.runInContext on Node, Web
+   *   Worker in Chrome). The script receives ONLY the capabilities
+   *   declared in `userBlankNetwork` / `userBlankLlm` /
+   *   `userBlankStorage` frontmatter — anything else is undefined.
+   *   See `packages/opencues-runtime/src/user-blanks/` for the loader.
+   *
+   * Authoring contract for user-shipped JS:
+   *   export default {
+   *     async get(ctx, args) { return value; },
+   *     async set(ctx, value, args) {},     // optional, for cycling
+   *   };
+   */
+  impl?: string;
+  /** When `impl: ./xxx`, the hostnames the blank may fetch from.
+   *  Hostnames only (no paths, no wildcards in v1). */
+  userBlankNetwork?: string[];
+  /** When `impl: ./xxx`, provider name for `ctx.llm()` access. The
+   *  user can't pick endpoints — only providers (groq, openai, etc.). */
+  userBlankLlm?: string;
+  /** When `impl: ./xxx`, the storage namespace. `ctx.storage.{get,set}`
+   *  reads/writes under this namespace; cannot access other namespaces. */
+  userBlankStorage?: string;
+  /**
    * Opt-in OS-level sandbox for this blank's script. When 'strict',
    * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
    * filesystem, no network, isolated PID/IPC namespaces. The script
@@ -689,6 +720,12 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   sandbox?: 'strict' | 'off';
   sandboxNet?: 'allow' | 'deny';
   sandboxFs?: 'ro' | 'rw';
+  /** User-shipped JS impl (relative path) or registry name. See BlankConfig.impl. */
+  impl?: string;
+  /** Capability declarations for user-shipped JS blanks (impl: ./xxx). */
+  userBlankNetwork?: string[];
+  userBlankLlm?: string;
+  userBlankStorage?: string;
   /** Explicit host allow-list (takes precedence over auto-detection from script: extension). */
   onHost?: string[];
   /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
@@ -783,6 +820,16 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'sandbox': fm.sandbox = value === 'strict' ? 'strict' : 'off'; break;
       case 'sandbox-net': case 'sandboxNet': fm.sandboxNet = value === 'allow' ? 'allow' : 'deny'; break;
       case 'sandbox-fs': case 'sandboxFs': fm.sandboxFs = value === 'rw' ? 'rw' : 'ro'; break;
+      // impl: defaults to undefined → runtime falls back to <name>Blank
+      // class lookup. Relative path → user-shipped JS module (loaded
+      // through the capability-constrained user-blank loader).
+      case 'impl': fm.impl = value; break;
+      // Capability declarations for user-shipped JS blanks. Network
+      // is a list of hostnames (no wildcards); llm is a provider id;
+      // storage is a namespace string.
+      case 'network': fm.userBlankNetwork = parseHostList(value); break;
+      case 'llm': fm.userBlankLlm = value; break;
+      case 'storage': fm.userBlankStorage = value; break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -868,6 +915,16 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.sandbox !== undefined) blank.sandbox = frontmatter.sandbox;
       if (frontmatter.sandboxNet !== undefined) blank.sandboxNet = frontmatter.sandboxNet;
       if (frontmatter.sandboxFs !== undefined) blank.sandboxFs = frontmatter.sandboxFs;
+      if (frontmatter.impl !== undefined) {
+        // Relative path → resolve to absolute against the BLANK.md's
+        // folder. Bare name → stays as-is for runtime registry lookup.
+        blank.impl = frontmatter.impl.startsWith('./') || frontmatter.impl.startsWith('../')
+          ? folderPath + '/' + frontmatter.impl
+          : frontmatter.impl;
+      }
+      if (frontmatter.userBlankNetwork !== undefined) blank.userBlankNetwork = frontmatter.userBlankNetwork;
+      if (frontmatter.userBlankLlm !== undefined) blank.userBlankLlm = frontmatter.userBlankLlm;
+      if (frontmatter.userBlankStorage !== undefined) blank.userBlankStorage = frontmatter.userBlankStorage;
       // Parse ## sections from body as named prompts
       const promptSections: Record<string, string> = {};
       const sectionPattern = /^## (.+)$/gm;
