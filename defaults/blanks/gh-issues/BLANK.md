@@ -3,6 +3,9 @@ name: gh-issues
 type: blank
 tip: open issue count for a github repo
 blankKeywords: gh-issues
+# Allow `owner/repo` between the keyword and `_`. Without this,
+# `blankKeywords` must be immediately adjacent to `_` (proximity 0).
+blankProximity: 2
 blankAutoPopulate: true
 blankReadOnly: true
 impl: ./blank.js

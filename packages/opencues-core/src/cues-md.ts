@@ -918,9 +918,21 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.impl !== undefined) {
         // Relative path → resolve to absolute against the BLANK.md's
         // folder. Bare name → stays as-is for runtime registry lookup.
-        blank.impl = frontmatter.impl.startsWith('./') || frontmatter.impl.startsWith('../')
-          ? folderPath + '/' + frontmatter.impl
-          : frontmatter.impl;
+        // `./xxx` → strip the './' before joining (otherwise the
+        // resolved path keeps an embedded `./` and string-based
+        // lookups in chrome's bundle key map miss).
+        if (frontmatter.impl.startsWith('./')) {
+          blank.impl = folderPath + '/' + frontmatter.impl.slice(2);
+        } else if (frontmatter.impl.startsWith('../')) {
+          // Walk up; preserve the .. for callers that resolve via
+          // path.resolve (Node loaders). Chrome's string-based
+          // lookup currently refuses ../ — that's fine, we're
+          // intentionally not letting blanks reach outside their
+          // own folder.
+          blank.impl = folderPath + '/' + frontmatter.impl;
+        } else {
+          blank.impl = frontmatter.impl;
+        }
       }
       if (frontmatter.userBlankNetwork !== undefined) blank.userBlankNetwork = frontmatter.userBlankNetwork;
       if (frontmatter.userBlankLlm !== undefined) blank.userBlankLlm = frontmatter.userBlankLlm;

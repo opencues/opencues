@@ -16,12 +16,20 @@ import { resolveLLM, buildProviderRequest, parseProviderResponse, type ProviderI
 
 // ─── Worker harness source ──────────────────────────────────────────────
 //
-// This string is injected into the Worker. It runs the user's blank.js
-// via the `Function` constructor (a single classic-script eval),
-// captures `module.exports.default`, and exposes invoke + capability
-// message handlers.
+// We CANNOT use `new Function` or `eval` inside the Worker because
+// strict-CSP pages (claude.ai's `strict-dynamic` etc.) block runtime
+// JS evaluation even in Workers. Instead, we EMBED the user's
+// blank.js source directly into the Worker's startup script — at
+// registration time we concatenate harness-prefix + rewritten user
+// source + harness-suffix into one blob URL. The user's code runs
+// as part of Worker startup (a normal script load), not via eval.
+//
+// The user's `export default { ... }` is regex-rewritten to
+// `module.exports.default = { ... }` before embedding, same pattern
+// as the Node loader. Then a harness-suffix captures the result
+// into a Worker global the message handlers read.
 
-const WORKER_HARNESS = String.raw`
+const WORKER_HARNESS_PREFIX = String.raw`
   let userMod = null;
   const pending = new Map();
   let nextCallId = 0;
@@ -42,8 +50,6 @@ const WORKER_HARNESS = String.raw`
     if (caps.network) {
       ctx.fetch = async (url, init) => {
         const r = await callMain('fetch', [url, init]);
-        // Reconstruct a Response-like object from the structured-cloneable
-        // payload the main thread sent back.
         return {
           ok: r.ok, status: r.status, statusText: r.statusText,
           async text() { return r.text; },
@@ -66,23 +72,12 @@ const WORKER_HARNESS = String.raw`
   self.addEventListener('message', async (e) => {
     const msg = e.data;
     if (msg.type === 'init') {
-      try {
-        // Strip 'export default' / 'import' as in the Node loader.
-        let src = msg.source;
-        src = src.replace(/^(\s*)import\s.*$/gm, '$1// import stripped');
-        src = src.replace(/^(\s*)export\s+default\s+/m, '$1module.exports.default = ');
-        src = src.replace(/^(\s*)export\s+(?=(const|let|var|function|async\s+function))/gm, '$1');
-
-        const moduleObj = { exports: {} };
-        const factory = new Function('module', 'exports', src);
-        factory(moduleObj, moduleObj.exports);
-        userMod = moduleObj.exports.default || moduleObj.exports;
-        if (!userMod || typeof userMod.get !== 'function') {
-          throw new Error('user blank must export default { get(ctx, args) }');
-        }
+      // User code already ran at Worker startup. If userMod wasn't
+      // populated, the embedded source was malformed.
+      if (!userMod || typeof userMod.get !== 'function') {
+        self.postMessage({ type: 'init-error', error: 'user blank must export default { get(ctx, args) }' });
+      } else {
         self.postMessage({ type: 'init-ok' });
-      } catch (err) {
-        self.postMessage({ type: 'init-error', error: String(err && err.message || err) });
       }
       return;
     }
@@ -111,7 +106,36 @@ const WORKER_HARNESS = String.raw`
       return;
     }
   });
+
+  // User module wrapper — IIFE that runs at Worker startup. The
+  // rewritten user source (in WORKER_USER_WRAPPER) sets
+  // module.exports.default; we promote that to the userMod global
+  // the message handler reads above.
+  (function() {
+    var module = { exports: {} };
+    var exports = module.exports;
+    try {
 `;
+
+const WORKER_HARNESS_SUFFIX = String.raw`
+      userMod = module.exports.default || module.exports;
+    } catch (e) {
+      // Syntax / runtime error in user code → leave userMod null;
+      // the init message handler reports it back to main thread.
+      self.__ocLoadErr = String(e && e.message || e);
+    }
+  })();
+`;
+
+function rewriteUserSource(source: string): string {
+  // Strip ESM `import` (no module loading in Workers anyway).
+  let out = source.replace(/^(\s*)import\s.*$/gm, (_m, ws) => `${ws}// import stripped`);
+  // `export default X` → `module.exports.default = X`
+  out = out.replace(/^(\s*)export\s+default\s+/m, '$1module.exports.default = ');
+  // `export const/let/var/function/async function` → drop `export `
+  out = out.replace(/^(\s*)export\s+(?=(const|let|var|function|async\s+function))/gm, '$1');
+  return out;
+}
 
 // ─── Main-thread loader ─────────────────────────────────────────────────
 
@@ -157,13 +181,20 @@ export class ChromeUserBlank implements Blank {
     private opts: ChromeUserBlankOptions,
   ) {
     this.name = name;
-    const blob = new Blob([WORKER_HARNESS], { type: 'application/javascript' });
+    // Concatenate harness + rewritten user source + suffix into ONE
+    // worker script. No `new Function` at runtime → no CSP eval
+    // violation on strict-CSP pages (claude.ai, etc.).
+    const fullSource =
+      WORKER_HARNESS_PREFIX +
+      rewriteUserSource(source) +
+      WORKER_HARNESS_SUFFIX;
+    const blob = new Blob([fullSource], { type: 'application/javascript' });
     this.worker = new Worker(URL.createObjectURL(blob));
     this.worker.addEventListener('message', (e) => this.onMessage(e));
-    this.ready = this.init(source);
+    this.ready = this.handshake();
   }
 
-  private init(source: string): Promise<void> {
+  private handshake(): Promise<void> {
     return new Promise((resolve, reject) => {
       const handler = (e: MessageEvent) => {
         if (e.data.type === 'init-ok') {
@@ -175,7 +206,10 @@ export class ChromeUserBlank implements Blank {
         }
       };
       this.worker.addEventListener('message', handler);
-      this.worker.postMessage({ type: 'init', source });
+      // Trigger the init-status reply. The Worker has already
+      // executed the user code at startup; this just asks "did it
+      // populate userMod?" via the message handler.
+      this.worker.postMessage({ type: 'init' });
     });
   }
 
