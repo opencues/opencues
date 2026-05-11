@@ -24,7 +24,8 @@ import type {
   ProcessResult,
 } from '@opencues/runtime/dist/src/adapter';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
-import { inferSiteCompat } from '@opencues/core';
+import { createTrustGate } from './trust-gate';
+import { applySiteCompatFilter as siteFilter } from './site-filter';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
@@ -722,55 +723,15 @@ function readBakeTimeDefault(path: string): string | null {
 const BUNDLE_STORAGE_KEY = 'opencues_bundle';
 type StoredBundle = { files: Record<string, string>; root?: string };
 
-/**
- * Drop bundle files whose frontmatter scopes them off the current site.
- * Empty / missing on-site/not-on-site means "fire everywhere" — those
- * files pass through unchanged. Files without YAML frontmatter (e.g.
- * tip-group .md bodies without leading `---`) also pass through.
- *
- * Pure regex-based frontmatter extraction; we don't want to drag the
- * full YAML parser in just for two fields, and the runtime's
- * ConfigLoader will reparse anyway when it loads the file's content.
- */
+/** Apply the site-compat filter against the current location.
+ *  Pure function lives in site-filter.ts; this is the chrome-specific
+ *  thin wrapper that supplies the SiteCompatContext. */
 function applySiteCompatFilter(files: Record<string, string>): Record<string, string> {
-  const ctx = {
-    hostName: 'chrome' as const,
+  return siteFilter(files, {
+    hostName: 'chrome',
     hostname: location.hostname || null,
     path: location.pathname || null,
-  };
-  const out: Record<string, string> = {};
-  for (const [rel, content] of Object.entries(files)) {
-    const fm = extractSiteFrontmatter(content);
-    if (inferSiteCompat(fm, ctx)) out[rel] = content;
-  }
-  return out;
-}
-
-/** Pull on-site / not-on-site (and camelCase aliases) from MD frontmatter. */
-function extractSiteFrontmatter(content: string): { onSite?: string[]; notOnSite?: string[] } {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) return {};
-  const fm = m[1];
-  const parseList = (raw: string): string[] => {
-    const v = raw.trim();
-    if (!v) return [];
-    if (v.startsWith('[') && v.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(v.replace(/'/g, '"'));
-        if (Array.isArray(parsed)) return parsed.map(String);
-      } catch { /* fall through */ }
-    }
-    return v.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-  };
-  const grab = (key: string): string[] | undefined => {
-    const re = new RegExp(`^${key}:\\s*(.+)$`, 'm');
-    const match = fm.match(re);
-    return match ? parseList(match[1]) : undefined;
-  };
-  return {
-    onSite: grab('on-site') ?? grab('onSite'),
-    notOnSite: grab('not-on-site') ?? grab('notOnSite'),
-  };
+  });
 }
 
 // Within a tab, SPAs change location.pathname without a page reload.
@@ -1171,20 +1132,13 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
 // wrote so the next user-typed `_` is still detected as a fresh
 // addition.
 
-let _underscoreCredits = 0;
-let _lastAcceptedUnderscoreCount = 0;
+const trustGate = createTrustGate();
 
 /** Called from content.ts on every trusted `_` introduction. `count`
  *  is the number of `_` characters introduced (1 for keydown of '_',
  *  N for paste/drop with N underscores). */
 export function noteUserUnderscoreInsertion(count = 1): void {
-  if (count > 0) _underscoreCredits += count;
-}
-
-function countOccurrences(s: string, ch: string): number {
-  let n = 0;
-  for (let i = 0; i < s.length; i++) if (s[i] === ch) n++;
-  return n;
+  trustGate.noteUnderscoreInsertion(count);
 }
 
 /** Call from content.ts's input handler to forward text changes.
@@ -1208,21 +1162,9 @@ export function notifyOpenCuesTextChange(
 ): void {
   const actualSource = sourceReclassifier.reclassify(text, source);
 
-  // Trust gate. Only applies to user-classified changes (runtime
-  // writes bypass — they have no user-input origin to gate against).
-  if (actualSource === 'user') {
-    const newCount = countOccurrences(text, '_');
-    const delta = newCount - _lastAcceptedUnderscoreCount;
-    if (delta > 0) {
-      if (_underscoreCredits < delta) return;  // not enough credit → drop
-      _underscoreCredits -= delta;
-    }
-    _lastAcceptedUnderscoreCount = newCount;
-  } else {
-    // Runtime write — set baseline so future user-typed `_` deltas are
-    // measured against the runtime's current view. Credits unchanged.
-    _lastAcceptedUnderscoreCount = countOccurrences(text, '_');
-  }
+  // Trust gate. Only applies to user-classified changes; runtime
+  // writes bypass + reset the baseline. See trust-gate.ts.
+  if (!trustGate.checkAndConsume(text, actualSource === 'runtime')) return;
 
   const actualCursor = readCursorOffset() || cursorOffset;
   bootResult?.notifyTextChange(text, actualCursor, actualSource);
