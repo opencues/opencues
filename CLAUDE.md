@@ -309,15 +309,6 @@ the table of regressions and which scenario test now pins each one.
 
 > **PRE-LAUNCH:** Rotate `GROQ_API_KEY` and `FINNHUB_API_KEY` before making the repo public. Keys are hardcoded in `integrations/chrome/.env` (gitignored) for dev convenience.
 
-> **PRE-LAUNCH (security):** the Chrome extension currently inlines
-> `__GROQ_API_KEY__` from `.env` at esbuild time into `dist/content.js`
-> (see `integrations/chrome/src/types.ts:42` and the esbuild config).
-> That means anyone who installs the unpacked extension can grep the
-> API key out of the JS bundle. **Fix before publishing**: drop the
-> build-time inline; load the key from `chrome.storage.local`, set via
-> a popup field. Removes the need for `.env` entirely. Tracked here
-> because `opencues doctor` doesn't surface this.
-
 ---
 
 ## Config search paths — who reads what
@@ -605,10 +596,8 @@ Full spec: `docs/features/chrome-sync.md`.
 **Markdown files to remove or move to a gitignored path:**
 
 - `damon.md` — overview written for one specific person
-- `verify.md` — internal post-cleanup walkthrough; self-deleting once green
 - `todos.md` — internal TODO list
 - `pre-launch-readme.md` — the launch checklist itself ("Pre-Launch TODO")
-- `CONTINUE.md` — session-handoff snapshot
 - `opencues-strategy.md` — internal strategy doc (OpenClaw-model framing, latent-moat self-assessment); public version of the framing lives in `blog-resources/` / future `GOVERNANCE.md`
 
 **Other**:

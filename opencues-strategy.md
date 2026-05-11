@@ -398,7 +398,7 @@ Even unofficial. Even partial. A 500-line Rust port that handles cues only
 ## Pre-launch checklist alignment
 
 This document is listed for deletion in `CLAUDE.md` "Pre-launch" alongside:
-- `damon.md`, `verify.md`, `todos.md`, `pre-launch-readme.md`, `CONTINUE.md`.
+- `damon.md`, `todos.md`, `pre-launch-readme.md`.
 
 After launch, the **public** version of this strategy goes into one of:
 - A blog post (the "Cues vs OpenCues" post in the existing `blog-resources/`
