@@ -89,3 +89,62 @@ chrome.runtime.onMessage.addListener((message: FetchRequest, _sender, sendRespon
 chrome.runtime.onInstalled.addListener(() => {
   console.log('OpenCues extension installed');
 });
+
+// ─── Native-messaging bridge ────────────────────────────────────────────
+//
+// Connect to the local host process (installed via `opencues install
+// chrome-host`). The host watches ~/.cues/ and pushes a fresh bundle on
+// every filesystem change. We persist the bundle to chrome.storage.local
+// under a single key — content scripts read it via the resolution chain
+// in opencues-bootstrap.ts.
+//
+// If the host isn't installed, connectNative will fail synchronously or
+// the port will disconnect immediately. We log + retry on a slow timer
+// so users who install the host later get picked up without restarting
+// the browser. Bake-time defaults cover the no-host case.
+
+const NATIVE_HOST = 'com.opencues.sync';
+const BUNDLE_KEY = 'opencues_bundle';
+const RECONNECT_MS = 30_000;
+
+interface BundleMessage {
+  type: 'bundle';
+  root: string;
+  files: Record<string, string>;
+  reason?: string;
+}
+
+let nativePort: chrome.runtime.Port | null = null;
+
+function connectNativeHost(): void {
+  try {
+    nativePort = chrome.runtime.connectNative(NATIVE_HOST);
+  } catch (err) {
+    console.warn('[opencues] native host connect threw — host not installed?', err);
+    scheduleReconnect();
+    return;
+  }
+  console.log('[opencues] native host port opened');
+
+  nativePort.onMessage.addListener((raw: unknown) => {
+    const msg = raw as BundleMessage;
+    if (!msg || msg.type !== 'bundle' || typeof msg.files !== 'object') return;
+    const fileCount = Object.keys(msg.files).length;
+    chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
+      .then(() => console.log(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
+      .catch((err) => console.warn('[opencues] bundle storage write failed', err));
+  });
+
+  nativePort.onDisconnect.addListener(() => {
+    const err = chrome.runtime.lastError;
+    console.warn('[opencues] native host disconnected', err?.message);
+    nativePort = null;
+    scheduleReconnect();
+  });
+}
+
+function scheduleReconnect(): void {
+  setTimeout(() => { if (!nativePort) connectNativeHost(); }, RECONNECT_MS);
+}
+
+connectNativeHost();

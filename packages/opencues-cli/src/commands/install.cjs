@@ -22,6 +22,7 @@ const HOST_ALIASES = {
   'opencode':    'opencode',
   'oc':          'opencode',
   'chrome':      'chrome',
+  'chrome-host': 'chrome',          // native-messaging host (separate sub-action)
   'gemini-cli':  'gemini-cli',
   'geminicli':   'gemini-cli',
   'gemini':      'gemini-cli',
@@ -58,12 +59,19 @@ module.exports = function install(argv, ctx) {
     process.exit(2);
   }
 
+  // The chrome-host installer is a separate sub-action — it installs
+  // the local native-messaging host that pushes ~/.cues/ into the
+  // running extension. It does NOT need seed-configs (no writes to
+  // ~/.cues/) and shares no install steps with the extension itself.
+  const isChromeHost = target === 'chrome-host';
+  const action = isChromeHost ? 'install-host' : 'install';
+
   // Run seed-configs FIRST so the user-level ~/.cues/ tree is current
   // before any host installer runs. seed-configs handles all shared writes:
   // first-time copy, library-script sync, OPENCUES.md self-heal, .cs compile.
   // Per-host installers then do strictly host-specific work (patches, etc.).
   // --dry-run flows through; --silent keeps the output focused on host steps.
-  if (!passthrough.includes('--dry-run')) {
+  if (!isChromeHost && !passthrough.includes('--dry-run')) {
     const seedConfigs = require('./seed-configs.cjs');
     seedConfigs(['--silent'], ctx);
   }
@@ -71,7 +79,7 @@ module.exports = function install(argv, ctx) {
   let exitCode = 0;
   for (const folder of folders) {
     if (folders.length > 1) console.log(`\n=== installing @opencues/${folder} ===\n`);
-    const code = runHostInstaller(folder, 'install', passthrough, ctx);
+    const code = runHostInstaller(folder, action, passthrough, ctx);
     if (code !== 0) exitCode = code;
   }
   process.exit(exitCode);

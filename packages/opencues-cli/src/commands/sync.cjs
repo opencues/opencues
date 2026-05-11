@@ -228,8 +228,11 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
   // the bundle (chrome.runtime.getURL doesn't support directory listing).
   writeIndexJson(distConfigs);
 
-  // Bump .version so the extension can detect changes via polling.
-  // Use content hash to avoid re-triggering on no-op syncs.
+  // Bump .version — used by `sync chrome --watch` to print "no
+  // changes" vs the new hash on each tick. The chrome extension no
+  // longer reads this file (live config sync runs through the
+  // native-messaging host instead); it's purely a sync-watcher
+  // status marker now. Content-hashed so no-op syncs don't churn it.
   const versionPath = path.join(distConfigs, '.version');
   fs.writeFileSync(versionPath, computeVersion(distConfigs));
 

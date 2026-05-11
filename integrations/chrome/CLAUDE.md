@@ -4,6 +4,38 @@ This document captures hard-won knowledge for the chrome extension that
 isn't obvious from the code alone. Read this before changing anything in
 `opencues-bootstrap.ts`'s write paths.
 
+## Live config sync — native-messaging host (May 2026)
+
+Live `~/.cues/` sync replaced the 2.5s version-poll. The mechanism:
+
+- A Node host at `integrations/chrome/host/host.cjs` runs locally,
+  watches `~/.cues/` via `fs.watch`, and pushes bundles to the
+  extension over Chrome's native-messaging API.
+- The extension's service worker (`src/background.ts`) opens the port
+  with `chrome.runtime.connectNative('com.opencues.sync')`, receives
+  framed-JSON `{ type: 'bundle', files: {...} }` messages, writes them
+  to `chrome.storage.local.opencues_bundle`.
+- The content script's bootstrap resolves configs in this order:
+  storage bundle → bake-time `dist/configs/` → esbuild
+  `__DEFAULT_*__` constants. Storage `onChanged` invalidates the
+  in-memory bundle-index cache and calls `reloadConfig()`.
+
+Install via `opencues install chrome-host --extension-id <id>`. On
+WSL it drops a `.bat` shim on the Windows side that invokes
+`wsl.exe -d <distro> --shell-type login -- node <host path>`. The
+`--shell-type login` flag is **load-bearing** — without it, wsl
+spawns a non-login shell whose PATH only contains system Node (often
+ancient), and the host crashes on modern syntax. Login shells source
+nvm/volta init from the user's profile.
+
+Don't reintroduce the version-poll. If a bug looks like "config edit
+not reaching tab", check the service worker logs for `native host
+port opened` + `bundle stored` — the bridge is up if both appear.
+
+Full spec: `docs/features/chrome-sync.md`. Per-platform manifest paths
+(macOS / Linux / Windows registry / WSL→Win) live in
+`integrations/chrome/bin/install.cjs`.
+
 ## Verified working sites (May 2026)
 
 | Site | Engine | Path used |

@@ -71,6 +71,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (key in changes && typeof changes[key].newValue === 'string') {
     _readTrace = parseDebugMode(changes[key].newValue);
   }
+  // Native-messaging host pushed a new bundle. Invalidate the cached
+  // index promise + ask the runtime to re-walk every source so the
+  // new alts/tips/blanks take effect on the next keystroke.
+  if ('opencues_bundle' in changes) {
+    _bundleIndexPromise = null;
+    if (bootResult) {
+      void bootResult.reloadConfig().catch(err => {
+        console.warn('[opencues] reloadConfig after bundle push failed', err);
+      });
+    }
+  }
 });
 
 let bootResult: BootResult | undefined;
@@ -597,14 +608,26 @@ function replaceAllText(text: string): void {
 }
 
 /**
- * Read a config file. Resolution order:
- *   1. Bundled dist/configs/<path> — what `opencues sync chrome` wrote
- *   2. chrome.storage.local — writable state (e.g. popup edits)
- *   3. null — caller falls back to bake-time defaults
+ * Read a config file. Two paths depending on whether the file is
+ * mutable from the runtime:
+ *
+ * Read-only files (CUES.md, BLANKS.md, folder cues / folder blanks):
+ *   1. Bundle (via readBundledConfig):
+ *      a. chrome.storage.local['opencues_bundle']  ← native-messaging host
+ *      b. chrome.runtime.getURL('dist/configs/<rel>')  ← bake-time bundle
+ *   2. Bake-time __DEFAULT_*__ esbuild constants
+ *   3. null
+ *
+ * Writable files (OPENCUES.md — runtime cycles voice-mode etc. via
+ * writeFile):
+ *   1. Bundle (same a/b as above)
+ *   2. chrome.storage.local[STORAGE_PREFIX + path]  ← user saved state
+ *   3. Bake-time __DEFAULT_OPENCUES_MD__
+ *   4. null
  *
  * Runtime paths look like `/chrome-storage/CUES.md` or
  * `/chrome-storage/cues/grammar/CUE.md`; we strip the ROOT prefix and
- * try it as a bundle asset first.
+ * try the bundle first.
  */
 async function readFile(path: string): Promise<string | null> {
   // 1. Synced bundle (opencues sync chrome --wsl) wins if present.
@@ -682,16 +705,47 @@ function readBakeTimeDefault(path: string): string | null {
   return null;
 }
 
-// Cache the bundle index. Crucially we cache the PROMISE, not the
-// resolved value: ConfigLoader fires every readFile() in parallel via
-// Promise.all on boot, so multiple concurrent callers must await the
-// same in-flight fetch (otherwise the second+ callers would see an
-// empty-cache snapshot before the first call's await resolves).
-let _bundleIndexPromise: Promise<{ files: Set<string>; loaded: boolean }> | null = null;
-function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
+// Cache the bundle index + native-messaging bundle. Crucially we cache
+// the PROMISE, not the resolved value: ConfigLoader fires every
+// readFile() in parallel via Promise.all on boot, so multiple concurrent
+// callers must await the same in-flight fetch (otherwise the second+
+// callers would see an empty-cache snapshot before the first call's
+// await resolves).
+//
+// Resolution order, highest priority first:
+//   1. chrome.storage.local['opencues_bundle']  ← pushed by native host
+//      (`opencues install chrome-host`). Contains files: { [rel]: content }.
+//   2. chrome.runtime.getURL('dist/configs/...')  ← bake-time bundle
+//      written by `opencues sync chrome` at extension-build time.
+//   3. bake-time __DEFAULT_*__ constants (handled by readBakeTimeDefault).
+const BUNDLE_STORAGE_KEY = 'opencues_bundle';
+type StoredBundle = { files: Record<string, string>; root?: string };
+
+let _bundleIndexPromise: Promise<{ files: Set<string>; storage: StoredBundle | null; loaded: boolean }> | null = null;
+function getBundleIndex(): Promise<{ files: Set<string>; storage: StoredBundle | null; loaded: boolean }> {
   if (_bundleIndexPromise) return _bundleIndexPromise;
   _bundleIndexPromise = (async () => {
-    const result = { files: new Set<string>(), loaded: false };
+    const result: { files: Set<string>; storage: StoredBundle | null; loaded: boolean } =
+      { files: new Set<string>(), storage: null, loaded: false };
+
+    // 1. Native-messaging push lives in chrome.storage.local. If
+    //    present, it wholly replaces the bake-time bundle — the host
+    //    knows the user's current ~/.cues/ state.
+    try {
+      const stored = await chrome.storage.local.get(BUNDLE_STORAGE_KEY);
+      const bundle = stored[BUNDLE_STORAGE_KEY] as StoredBundle | undefined;
+      if (bundle && bundle.files && typeof bundle.files === 'object') {
+        result.storage = bundle;
+        result.files = new Set(Object.keys(bundle.files));
+        result.loaded = true;
+        console.log(`[opencues] storage bundle loaded: ${result.files.size} files (root=${bundle.root ?? 'unknown'})`);
+        return result;
+      }
+    } catch (err) {
+      console.warn(`[opencues] storage bundle read failed: ${(err as Error).message}`);
+    }
+
+    // 2. Bake-time bundle from dist/configs/.
     try {
       const url = chrome.runtime.getURL('dist/configs/index.json');
       const res = await fetch(url);
@@ -708,7 +762,6 @@ function getBundleIndex(): Promise<{ files: Set<string>; loaded: boolean }> {
         console.warn(`[opencues] dist/configs/index.json fetch returned ${res.status}`);
       }
     } catch (err) {
-      // Bundle not present — fall back to bake-time. Log so we know.
       console.warn(`[opencues] dist/configs/index.json fetch failed: ${(err as Error).message}`);
     }
     return result;
@@ -724,13 +777,22 @@ function bundleRelative(rel: string): string {
   return rel.startsWith('.cues/') ? rel.slice('.cues/'.length) : rel;
 }
 
-// Read a synced file out of dist/configs/. Path is the runtime's
-// canonical form (starts with ROOT). Returns null if not in the bundle.
+// Read a synced file out of the bundle. Path is the runtime's canonical
+// form (starts with ROOT). When the native-messaging host has pushed a
+// bundle into chrome.storage, that wins; otherwise we fetch from the
+// bake-time dist/configs/. Returns null if not in either.
 async function readBundledConfig(runtimePath: string): Promise<string | null> {
   if (!runtimePath.startsWith(ROOT + '/')) return null;
   const rel = bundleRelative(runtimePath.slice(ROOT.length + 1));
   const idx = await getBundleIndex();
   if (!idx.loaded || !idx.files.has(rel)) return null;
+
+  if (idx.storage) {
+    const content = idx.storage.files[rel];
+    if (typeof content === 'string') return content;
+    return null;
+  }
+
   try {
     const url = chrome.runtime.getURL(`dist/configs/${rel}`);
     const res = await fetch(url);
@@ -959,44 +1021,18 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // sink (no onSnapshot), so it sits dormant.
   });
 
-  startVersionPoll(bootResult);
-
   // One-shot read of debug-mode from storage — subsequent flips are
   // picked up by the chrome.storage.onChanged listener registered
   // near the top of this file.
+  //
+  // Live config sync from ~/.cues/ is delivered by the native-messaging
+  // host: background.ts opens the port, writes pushed bundles to
+  // chrome.storage.local['opencues_bundle'], and the storage-onChanged
+  // listener above invalidates _bundleIndexPromise + calls
+  // bootResult.reloadConfig().
   void refreshReadTraceFromStorage();
 
   return bootResult;
-}
-
-// Poll configs/.version every few seconds. When the hash changes,
-// invalidate the bundle index cache + call reloadConfig() so the
-// runtime re-reads everything. Lets `opencues sync chrome --watch`
-// drive live config changes into already-open tabs without a page
-// refresh.
-const VERSION_POLL_MS = 2500;
-let _lastKnownVersion: string | null = null;
-function startVersionPoll(bootResult: BootResult): void {
-  const tick = async () => {
-    try {
-      const url = chrome.runtime.getURL('dist/configs/.version');
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) return;
-      const version = (await res.text()).trim();
-      if (_lastKnownVersion === null) {
-        _lastKnownVersion = version;
-        return;
-      }
-      if (version !== _lastKnownVersion) {
-        _lastKnownVersion = version;
-        _bundleIndexPromise = null;        // force index.json re-fetch
-        await bootResult.reloadConfig();   // re-read every source
-      }
-    } catch { /* bundle absent / offline — next tick tries again */ }
-  };
-  // Kick once after boot to seed _lastKnownVersion, then poll.
-  void tick();
-  setInterval(tick, VERSION_POLL_MS);
 }
 
 /** Call from content.ts's input handler to forward text changes.

@@ -109,16 +109,13 @@ copyFileSync('src/popup/popup.html', 'dist/popup/popup.html');
 copyFileSync('src/popup/popup.css', 'dist/popup/popup.css');
 copyFileSync('src/content.css', 'dist/content.css');
 
-// Ship sentinel configs/.version + configs/index.json so the version
-// poller and index fetcher always get a 200 on a fresh install (no
-// sync run yet). Without these, every 2.5s poll fires a
-// net::ERR_FILE_NOT_FOUND that Chrome logs to devtools — noisy and
-// scary even though the runtime falls back cleanly. `opencues sync
-// chrome` overwrites both files with real content when it runs.
+// Ship a sentinel configs/index.json so the bake-time bundle fetch
+// in `getBundleIndex()` always gets a 200 on a fresh install (no
+// `opencues sync chrome` has run yet). Without it the bootstrap logs
+// a 404 — harmless (it falls back to bake-time __DEFAULT_*__
+// constants) but noisy in devtools. `opencues sync chrome`
+// overwrites this with the real bundle index when invoked.
 mkdirSync('dist/configs', { recursive: true });
-if (!existsSync('dist/configs/.version')) {
-  writeFileSync('dist/configs/.version', 'unsynced\n');
-}
 if (!existsSync('dist/configs/index.json')) {
   writeFileSync('dist/configs/index.json', JSON.stringify({ schema: 1, files: [] }, null, 2));
 }

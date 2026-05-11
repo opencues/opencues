@@ -21,12 +21,19 @@
 
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
+
+// Native-messaging constants (used by install-host / uninstall-host).
+// Declared up here so they're initialised before the command dispatcher
+// below runs (TDZ would bite otherwise).
+const HOST_NAME = 'com.opencues.sync';
+const HOST_SCRIPT = path.join(PKG_DIR, 'host', 'host.cjs');
 
 // Quiet/verbose progress wrapper. Defined up here so the doInstall()
 // call below resolves through the const initializers (TDZ).
@@ -99,6 +106,10 @@ if (command === 'install') {
   doInstall();
 } else if (command === 'uninstall') {
   doUninstall();
+} else if (command === 'install-host') {
+  doInstallHost();
+} else if (command === 'uninstall-host') {
+  doUninstallHost();
 } else {
   console.error(`Unknown command: ${command}\n`);
   printHelp();
@@ -275,6 +286,247 @@ function doUninstall() {
   console.log(`\n${pkg.name} uninstall complete.`);
 }
 
+// --- INSTALL-HOST (native-messaging) -------------------------------------
+//
+// Drop the local host process + manifest that Chrome reads to spawn it.
+//
+// Platforms:
+//   - WSL → Chrome-on-Windows: write the manifest to %LOCALAPPDATA%\opencues\,
+//     drop a .bat shim that re-enters WSL via wsl.exe, register the host
+//     name in HKCU registry.
+//   - macOS:   ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/
+//   - Linux:   ~/.config/google-chrome/NativeMessagingHosts/
+//
+// The user supplies --extension-id <id> (visible at chrome://extensions
+// in Developer mode). The manifest's allowed_origins gates which
+// extensions Chrome will let connect to this host.
+
+function doInstallHost() {
+  const extensionId = args.extensionId;
+  if (!extensionId) {
+    console.error('install-host requires --extension-id <id>.');
+    console.error('Find the ID at chrome://extensions (Developer mode → on the OpenCues card).');
+    process.exit(2);
+  }
+  if (!/^[a-p]{32}$/.test(extensionId)) {
+    console.error(`--extension-id "${extensionId}" does not look like a Chrome extension ID`);
+    console.error('(should be 32 lowercase letters a-p). Continuing anyway.');
+  }
+  if (!fs.existsSync(HOST_SCRIPT)) {
+    console.error(`host script missing: ${HOST_SCRIPT}`);
+    console.error('Reinstall the extension package or check your clone is intact.');
+    process.exit(1);
+  }
+
+  if (isWsl()) return installHostWsl(extensionId);
+  if (process.platform === 'darwin') return installHostUnix(extensionId, 'macos');
+  if (process.platform === 'linux') return installHostUnix(extensionId, 'linux');
+  if (process.platform === 'win32') return installHostWindows(extensionId);
+
+  console.error(`Unsupported platform: ${process.platform}`);
+  process.exit(1);
+}
+
+function installHostUnix(extensionId, kind) {
+  // Chrome (+ Chromium, Brave) read from per-browser dirs under HOME.
+  // Write the manifest into every dir we know about; Chrome ignores
+  // entries for browsers the user doesn't have.
+  const home = os.homedir();
+  const browserDirs = kind === 'macos'
+    ? [
+      path.join(home, 'Library/Application Support/Google/Chrome/NativeMessagingHosts'),
+      path.join(home, 'Library/Application Support/Chromium/NativeMessagingHosts'),
+      path.join(home, 'Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
+    ]
+    : [
+      path.join(home, '.config/google-chrome/NativeMessagingHosts'),
+      path.join(home, '.config/chromium/NativeMessagingHosts'),
+      path.join(home, '.config/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
+    ];
+
+  const manifest = {
+    name: HOST_NAME,
+    description: 'OpenCues config sync — pushes ~/.cues/ changes into the extension',
+    path: HOST_SCRIPT,
+    type: 'stdio',
+    allowed_origins: [`chrome-extension://${extensionId}/`],
+  };
+
+  if (args.dryRun) {
+    console.log('\n[dry-run] Would:');
+    for (const d of browserDirs) console.log(`  write ${path.join(d, HOST_NAME + '.json')}`);
+    console.log(`  set executable bit on ${HOST_SCRIPT}`);
+    return;
+  }
+
+  fs.chmodSync(HOST_SCRIPT, 0o755);
+  let wrote = 0;
+  for (const d of browserDirs) {
+    try {
+      fs.mkdirSync(d, { recursive: true });
+      const dst = path.join(d, HOST_NAME + '.json');
+      fs.writeFileSync(dst, JSON.stringify(manifest, null, 2) + '\n');
+      console.log(`  wrote ${dst}`);
+      wrote++;
+    } catch (err) {
+      console.warn(`  skipped ${d}: ${err.message}`);
+    }
+  }
+  if (wrote === 0) {
+    console.error('No manifests written. Is Chrome installed?');
+    process.exit(1);
+  }
+  console.log(`\nDone. Native-messaging host registered for extension ${extensionId}.`);
+  console.log('Reload the extension at chrome://extensions to pick up the new port.');
+}
+
+function installHostWsl(extensionId) {
+  // Chrome runs on the Windows side. It needs:
+  //   1. A manifest file at a Windows-accessible path
+  //   2. A registry entry pointing at that manifest
+  //   3. The manifest's `path` field pointing at a Windows-executable
+  //      (.bat shim) that re-enters WSL to launch the Node host.
+  const winUserProbe = spawnSync('cmd.exe', ['/c', 'echo %USERPROFILE%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (winUserProbe.status !== 0) {
+    console.error('Could not resolve Windows USERPROFILE via cmd.exe. Is /mnt/c accessible?');
+    process.exit(1);
+  }
+  const winUserProfileWin = String(winUserProbe.stdout).trim().replace(/\r$/, '');
+  // C:\Users\<x>  →  /mnt/c/Users/<x>
+  const m = winUserProfileWin.match(/^([A-Za-z]):\\(.*)$/);
+  if (!m) {
+    console.error(`Unexpected USERPROFILE form: ${winUserProfileWin}`);
+    process.exit(1);
+  }
+  const wslUserProfile = `/mnt/${m[1].toLowerCase()}/${m[2].replace(/\\/g, '/')}`;
+
+  const wslHostDir = `${wslUserProfile}/AppData/Local/opencues`;
+  const winHostDir = `${winUserProfileWin}\\AppData\\Local\\opencues`;
+  const manifestPathWsl = `${wslHostDir}/${HOST_NAME}.json`;
+  const manifestPathWin = `${winHostDir}\\${HOST_NAME}.json`;
+  const batPathWsl = `${wslHostDir}/sync-host.bat`;
+  const batPathWin = `${winHostDir}\\sync-host.bat`;
+
+  // The .bat shim re-enters WSL. wsl.exe routes stdio through the
+  // Windows process Chrome spawned, so framed JSON flows through
+  // unchanged. We pass HOST_SCRIPT as an absolute WSL path.
+  //
+  // `--shell-type login` so nvm / volta / asdf in the user's profile
+  // is sourced — without it, wsl.exe spawns a non-interactive shell
+  // that gets the system PATH only (often a stale system Node that
+  // chokes on modern syntax like optional chaining).
+  const distro = process.env.WSL_DISTRO_NAME || 'Ubuntu';
+  const bat =
+    '@echo off\r\n' +
+    `wsl.exe -d ${distro} --shell-type login -- node ${HOST_SCRIPT}\r\n`;
+
+  const manifest = {
+    name: HOST_NAME,
+    description: 'OpenCues config sync — pushes ~/.cues/ changes into the extension',
+    path: batPathWin,
+    type: 'stdio',
+    allowed_origins: [`chrome-extension://${extensionId}/`],
+  };
+
+  if (args.dryRun) {
+    console.log('\n[dry-run] Would:');
+    console.log(`  mkdir -p ${wslHostDir}`);
+    console.log(`  write ${batPathWsl}`);
+    console.log(`  write ${manifestPathWsl}`);
+    console.log(`  reg.exe add HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME} /ve /d "${manifestPathWin}" /f`);
+    return;
+  }
+
+  fs.mkdirSync(wslHostDir, { recursive: true });
+  fs.writeFileSync(batPathWsl, bat);
+  fs.writeFileSync(manifestPathWsl, JSON.stringify(manifest, null, 2) + '\r\n');
+  console.log(`  wrote ${batPathWin}`);
+  console.log(`  wrote ${manifestPathWin}`);
+
+  // Register the host name in HKCU. Chrome reads this registry key
+  // first; if absent it falls back to file-based manifests in known
+  // dirs, but on Windows the registry path is canonical.
+  const regResult = spawnSync('reg.exe', [
+    'add',
+    `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`,
+    '/ve', '/t', 'REG_SZ', '/d', manifestPathWin, '/f',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  if (regResult.status !== 0) {
+    console.error('reg.exe failed:');
+    console.error(String(regResult.stderr || regResult.stdout));
+    process.exit(1);
+  }
+  console.log(`  registered HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`);
+
+  console.log(`\nDone. Native-messaging host registered for extension ${extensionId}.`);
+  console.log('Reload the extension at chrome://extensions to pick up the new port.');
+  console.log('Check the service worker logs (chrome://extensions → inspect views: service worker)');
+  console.log('for "native host port opened" — and the host should push an initial bundle within 1s.');
+}
+
+function installHostWindows(_extensionId) {
+  console.error('Native Windows install not wired yet. If you reach this branch from Powershell/cmd,');
+  console.error('run inside WSL instead — that path is exercised and supported.');
+  process.exit(1);
+}
+
+function doUninstallHost() {
+  if (isWsl()) return uninstallHostWsl();
+  if (process.platform === 'darwin') return uninstallHostUnix('macos');
+  if (process.platform === 'linux') return uninstallHostUnix('linux');
+  console.error(`Unsupported platform: ${process.platform}`);
+  process.exit(1);
+}
+
+function uninstallHostUnix(kind) {
+  const home = os.homedir();
+  const dirs = kind === 'macos'
+    ? [
+      path.join(home, 'Library/Application Support/Google/Chrome/NativeMessagingHosts'),
+      path.join(home, 'Library/Application Support/Chromium/NativeMessagingHosts'),
+      path.join(home, 'Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
+    ]
+    : [
+      path.join(home, '.config/google-chrome/NativeMessagingHosts'),
+      path.join(home, '.config/chromium/NativeMessagingHosts'),
+      path.join(home, '.config/BraveSoftware/Brave-Browser/NativeMessagingHosts'),
+    ];
+  for (const d of dirs) {
+    const f = path.join(d, HOST_NAME + '.json');
+    if (fs.existsSync(f)) {
+      if (args.dryRun) { console.log(`[dry-run] rm ${f}`); continue; }
+      fs.rmSync(f);
+      console.log(`  removed ${f}`);
+    }
+  }
+  console.log('\nDone.');
+}
+
+function uninstallHostWsl() {
+  const winUserProbe = spawnSync('cmd.exe', ['/c', 'echo %USERPROFILE%'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (winUserProbe.status !== 0) { console.error('Could not resolve USERPROFILE via cmd.exe.'); process.exit(1); }
+  const winUserProfileWin = String(winUserProbe.stdout).trim().replace(/\r$/, '');
+  const m = winUserProfileWin.match(/^([A-Za-z]):\\(.*)$/);
+  if (!m) { console.error(`Unexpected USERPROFILE form: ${winUserProfileWin}`); process.exit(1); }
+  const wslUserProfile = `/mnt/${m[1].toLowerCase()}/${m[2].replace(/\\/g, '/')}`;
+  const wslHostDir = `${wslUserProfile}/AppData/Local/opencues`;
+
+  if (args.dryRun) {
+    console.log(`[dry-run] rm -rf ${wslHostDir}`);
+    console.log(`[dry-run] reg.exe delete HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME} /f`);
+    return;
+  }
+  if (fs.existsSync(wslHostDir)) {
+    fs.rmSync(wslHostDir, { recursive: true, force: true });
+    console.log(`  removed ${wslHostDir}`);
+  }
+  spawnSync('reg.exe', [
+    'delete', `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`, '/f',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  console.log(`  unregistered HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`);
+  console.log('\nDone.');
+}
+
 // --- helpers --------------------------------------------------------------
 
 function copyDirContents(src, dst) {
@@ -291,7 +543,7 @@ function copyDirContents(src, dst) {
 }
 
 function parseArgv(argv) {
-  const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'help']);
+  const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'install-host', 'uninstall-host', 'help']);
   const out = { command: 'install', args: { help: false, dryRun: false, noBuild: false, wsl: false }, unknown: [] };
   let i = 0;
   if (argv[i] && !argv[i].startsWith('-')) {
@@ -306,6 +558,7 @@ function parseArgv(argv) {
     else if (a === '--no-build') out.args.noBuild = true;
     else if (a === '--wsl') out.args.wsl = true;
     else if (a === '--target') out.args.target = argv[++i];
+    else if (a === '--extension-id') out.args.extensionId = argv[++i];
     else out.unknown.push(a);
   }
   return out;

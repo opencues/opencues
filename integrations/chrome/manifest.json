@@ -3,7 +3,7 @@
   "name": "OpenCues",
   "version": "0.1.0",
   "description": "LLM-powered word alternatives for text editors",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "nativeMessaging"],
   "host_permissions": [
     "https://api.groq.com/*",
     "https://api.cerebras.ai/*",

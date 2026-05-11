@@ -330,19 +330,22 @@ two paths behave differently:
 | **claude-code** | `$OPENCUES_HOME` → `<cwd>/.cues/` → `~/.cues/` | Automatic (cwd-based merge) |
 | **opencode** | same | same |
 | **gemini-cli** | same | same |
-| **chrome** | `<extension>/dist/configs/` (sync'd) + bake-time defaults from `<repo>/defaults/` | Explicit — `opencues sync chrome [--include <path>]` |
+| **chrome** | `chrome.storage.local['opencues_bundle']` (pushed live by the native-messaging host) → `<extension>/dist/configs/` (bake-time) → esbuild `__DEFAULT_*__` constants | Live — `opencues install chrome-host` watches `~/.cues/` and pushes; bake-time fallback via `opencues sync chrome` |
 
 For the native hosts, project wins on name conflicts. Missing dirs are
 silently skipped; the runtime degrades gracefully. Hot-reload polls
 every search path on every keystroke.
 
-Chrome has NO runtime filesystem access, so its "search path" is
-whatever `sync chrome` wrote last. By default that's `~/.cues/`
-only — project dirs are opted in explicitly (see
-`docs/features/chrome-sync.md`). The extension also carries bake-time
-defaults inlined from `<repo>/defaults/` at esbuild time, so a user
-who installs but never syncs still gets grammar/legal/medical etc.
-(see `docs/features/shipped-defaults.md`).
+Chrome has no runtime filesystem access, so it relies on a local
+native-messaging host process (installed via `opencues install
+chrome-host`) that watches `~/.cues/` and pushes bundles into
+`chrome.storage.local` over Chrome's native-messaging API. The
+extension reads storage first, falling back to the bake-time bundle
+in `dist/configs/` and finally to esbuild-inlined `__DEFAULT_*__`
+constants from `<repo>/defaults/` (see
+`docs/features/shipped-defaults.md`). A user who installs but never
+runs the host still gets grammar/legal/medical etc. via the bake-time
+path. Full spec: `docs/features/chrome-sync.md`.
 
 ### ConfigLoader search-path detail (native hosts)
 

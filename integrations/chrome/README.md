@@ -2,7 +2,7 @@
 
 `@opencues/chrome` — an MV3 extension that adds real-time word alternatives, blanks, and cue-blanks to any `contenteditable` on the web. Renders via the CSS Custom Highlight API; no DOM mutation, no caret disruption.
 
-> **What works in Chrome vs native hosts**: cycling, blanks, opencues-settings (`opencues settings _`), prompt-improver, stocks/weather/HackerNews — all work. **What doesn't**: brightness / volume cue-blanks (no subprocess access in browsers — these spawn shell scripts on native hosts). TTS uses the Web Speech API (not `speak.sh`). Configs come from chrome.storage with bake-time fallback — no filesystem reads.
+> **What works in Chrome vs native hosts**: cycling, blanks, opencues-settings (`opencues settings _`), prompt-improver, stocks/weather/HackerNews — all work. **What doesn't**: brightness / volume cue-blanks (no subprocess access in browsers — these spawn shell scripts on native hosts). TTS uses the Web Speech API (not `speak.sh`). Live `~/.cues/` sync works via a local native-messaging host (`opencues install chrome-host`) — see `docs/features/chrome-sync.md`. Without the host, the extension uses whatever defaults were baked in at build time.
 
 | Field | Value |
 |---|---|
@@ -96,24 +96,49 @@ For continuous development, `pnpm --filter @opencues/chrome watch` runs esbuild 
 
 ## Updating configs without rebuilding
 
-Editing `~/.cues/CUES.md` (or any folder under it) doesn't automatically reach the Chrome extension — content scripts can't read your home directory. Use `opencues sync chrome` to bundle configs into `dist/configs/`:
+**Recommended: install the native-messaging host.** A small Node
+process watches `~/.cues/` and pushes changes into the extension over
+Chrome's native-messaging API. Edits land in every open tab in ~300ms;
+no rebuild, no page refresh, no long-running daemon. Works under WSL
+(via a `.bat` shim + `wsl.exe`), native Linux, and macOS.
 
 ```bash
-pnpm exec opencues sync chrome --wsl                    # user-level only (default)
-pnpm exec opencues sync chrome --wsl --watch            # auto re-sync on file changes
+# 1. Copy the extension ID from chrome://extensions (Developer mode)
+# 2. Install the host:
+pnpm exec opencues install chrome-host --extension-id <id>
+# 3. Reload the extension once at chrome://extensions
 ```
 
-The extension polls `dist/configs/.version` every ~2.5s and hot-reloads on change — no Chrome reload, no page refresh.
+Verify by opening the service worker DevTools (chrome://extensions →
+inspect views: service worker) — you should see:
 
-By default, **only `~/.cues/` is bundled.** Chrome is a global browser extension with no cwd, so the project-level (`<cwd>/.cues/`) discovery the native hosts use is deliberately OFF. To opt projects in:
+```
+[opencues] native host port opened
+[opencues] bundle stored (N files, reason=initial)
+```
+
+And on every subsequent edit to `~/.cues/`:
+
+```
+[opencues] bundle stored (N files, reason=change)
+```
+
+Uninstall: `pnpm exec opencues uninstall chrome-host`.
+
+### Bake-time bundle (fallback)
+
+`opencues sync chrome` still exists. It populates `dist/configs/` from
+your local `.cues/` so the extension build ships with current
+defaults. Useful for offline / no-host installs and for Chrome Web
+Store builds. Not needed if the host is installed.
 
 ```bash
-pnpm exec opencues sync chrome --include ~/work/proj/.cues --wsl   # explicit path
-pnpm exec opencues sync chrome --project --wsl                         # <cwd>/.cues
-pnpm exec opencues sync chrome --pack demo-pack --wsl                  # one pack only
+pnpm exec opencues sync chrome --wsl                    # user-level only
+pnpm exec opencues sync chrome --include ~/proj/.cues --wsl
 ```
 
-For `--watch`, always prefer explicit `--include <path>` over `--project` — the watched path list is frozen at watcher startup, so "wherever my shell happens to be" is fragile. Full spec: [`docs/features/chrome-sync.md`](../../docs/features/chrome-sync.md).
+Full spec (resolution order, per-platform manifest paths, WSL bridge
+detail): [`docs/features/chrome-sync.md`](../../docs/features/chrome-sync.md).
 
 ---
 

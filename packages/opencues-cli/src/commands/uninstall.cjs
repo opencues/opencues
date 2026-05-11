@@ -15,6 +15,7 @@ const HOST_ALIASES = {
   'opencode':    'opencode',
   'oc':          'opencode',
   'chrome':      'chrome',
+  'chrome-host': 'chrome',          // native-messaging host (separate sub-action)
   'gemini-cli':  'gemini-cli',
   'geminicli':   'gemini-cli',
   'gemini':      'gemini-cli',
@@ -48,6 +49,10 @@ module.exports = function uninstall(argv, ctx) {
     process.exit(2);
   }
 
+  // chrome-host uninstalls a separate sub-action (the native-messaging
+  // host), not the extension itself. Dispatch the matching action.
+  const action = target === 'chrome-host' ? 'uninstall-host' : 'uninstall';
+
   let exitCode = 0;
   for (const folder of folders) {
     if (folders.length > 1) console.log(`\n=== uninstalling @opencues/${folder} ===\n`);
@@ -57,7 +62,7 @@ module.exports = function uninstall(argv, ctx) {
       exitCode = 1;
       continue;
     }
-    const result = spawnSync('node', [installer, 'uninstall', ...passthrough], { stdio: 'inherit' });
+    const result = spawnSync('node', [installer, action, ...passthrough], { stdio: 'inherit' });
     if (result.status !== 0) exitCode = result.status ?? 1;
   }
   process.exit(exitCode);

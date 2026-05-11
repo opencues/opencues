@@ -88,8 +88,10 @@ pnpm build
 pnpm exec opencues install claude-code     # patches Claude Code (or: claude, cc)
 pnpm exec opencues install opencode        # patches an OpenCode 1.4.x fork
 pnpm exec opencues install chrome          # builds the MV3 extension
+pnpm exec opencues install chrome-host \
+  --extension-id <id-from-chrome-extensions>  # optional — live ~/.cues/ sync
 pnpm exec opencues install gemini-cli      # patches a Gemini CLI 0.41.x fork
-pnpm exec opencues install --all           # all four
+pnpm exec opencues install --all           # all four (chrome-host is separate)
 
 # Launch (claude-code, opencode, gemini-cli — chrome auto-loads in browser)
 pnpm exec opencues run claude-code
@@ -101,7 +103,7 @@ pnpm exec opencues run gemini-cli
 |---|---|---|---|
 | **Claude Code** | `opencues install claude-code` | Claude Code 2.1.110+ | `opencues run claude-code` (or just `claude-cues` once on PATH) |
 | **OpenCode** | `opencues install opencode` | OpenCode 1.4.x | `opencues run opencode` |
-| **Chrome** | `opencues install chrome` | Chrome 121+ | Load unpacked at `chrome://extensions` (path printed by installer) |
+| **Chrome** | `opencues install chrome` (+ `opencues install chrome-host` for live `~/.cues/` sync) | Chrome 121+ | Load unpacked at `chrome://extensions` (path printed by installer) |
 | **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.x | `opencues run gemini-cli` |
 
 For per-host details (paths it touches, uninstall, troubleshooting): see each integration's README under `integrations/<host>/README.md`.
@@ -115,6 +117,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `claude-code` | seed-configs (shared `~/.cues/`) + nuke-and-rebuild from scratch inside `~/claude-code-cues/` (clone tweakcc, build runtime + core, patch cli.js, verify). ~1m warm install. tweakcc is just our patcher — every stock tweakcc patch is disabled, only OpenCues v2 wiring lands. | ✓ (runs `claude-cues` / `claude`) |
 | `opencode` | Clone the fork + `bun install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 3 TSX files | ✓ (runs `bun run dev` in the fork) |
 | `chrome` | Build MV3 extension + copy dist/ to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
+| `chrome-host` | Drop a local native-messaging host + register it with Chrome (manifest + WSL `.bat` shim + HKCU registry on Windows). Requires `--extension-id <id>` from `chrome://extensions`. After install, edits to `~/.cues/` push into every open tab in ~300ms — no rebuild, no refresh, no `sync chrome --watch` daemon. | ✗ — Chrome spawns the host on demand |
 | `gemini-cli` | Clone the fork + `npm install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 4 source files (3 TSX + esbuild config) + `npm run build` the fork | ✓ (runs `node packages/cli/dist/index.js` from the fork) |
 
 ### Where things land
@@ -125,7 +128,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/gemini-cli-cues/` | Gemini CLI fork the integration clones + patches. `node_modules/@opencues/{core,runtime}/` (runtime) + `packages/cli/src/ui/opencues.ts` (bootstrap) + 4 patched source files. |
 | `~/.cues/` | User-level configs — `OPENCUES.md` (runtime settings) plus the three master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) and their per-source folders (`cues/`, `blanks/`, `auditors/`). Read by every host. |
-| `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, gemini-cli) automatically via cwd. **Not by chrome** — opt in with `opencues sync chrome --include <path>`. |
+| `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, gemini-cli) automatically via cwd. Chrome with the `chrome-host` installed reads `~/.cues/` live (or `$OPENCUES_HOME` if set); without the host, only the extension's bake-time defaults apply. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; it's part of the code pipeline, not user configuration. |
 | `/tmp/opencues.log` | Runtime debug log when a patched host runs |
 
