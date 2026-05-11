@@ -14,7 +14,13 @@
     "https://finnhub.io/*",
     "https://hnrss.org/*",
     "https://geocoding-api.open-meteo.com/*",
-    "https://api.open-meteo.com/*"
+    "https://api.open-meteo.com/*",
+    "https://hacker-news.firebaseio.com/*",
+    "https://api.coingecko.com/*",
+    "https://restcountries.com/*",
+    "https://api.dictionaryapi.dev/*",
+    "https://status.claude.com/*",
+    "https://api.github.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js",

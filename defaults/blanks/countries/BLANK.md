@@ -7,13 +7,18 @@ blankFormat: string
 blankTip: Country fact
 blankReadOnly: true
 blankProximity: 3
+impl: ./blank.js
+network: [restcountries.com]
+storage: countries
 ---
 
-Dispatched by the shared runtime `CountriesBlank`
-(`packages/opencues-runtime/src/blanks/countries.ts`). One blank,
-many facts: the keyword phrase tells the runtime which field to extract
-from REST Countries (https://restcountries.com — no auth, no signup).
-24h cache per country.
+Dispatched by the user-shipped JS module in `blank.js` alongside.
+One blank, many facts: the keyword phrase tells the runtime which
+field to extract from REST Countries (https://restcountries.com —
+no auth, no signup). 24h cache per country in `ctx.storage`.
+
+Migrated from a TS class to a user blank in May 2026 — same
+behaviour, now editable + auditable as plain JS.
 
 Examples:
 - `population of France _` → `67.7M`

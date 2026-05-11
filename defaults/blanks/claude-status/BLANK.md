@@ -8,6 +8,9 @@ blankTip: Claude / Anthropic service status
 blankDismissible: true
 blankClearKeywords: false
 blankClearOnEdit: true
+impl: ./blank.js
+network: [status.claude.com]
+storage: claude-status
 ---
 
 Dispatched by the shared runtime `ClaudeStatusBlank`

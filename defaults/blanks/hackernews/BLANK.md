@@ -9,6 +9,9 @@ blankTip: Hacker News
 blankReadOnly: true
 blankDismissible: true
 blankProximity: 3
+impl: ./blank.js
+network: [hacker-news.firebaseio.com]
+storage: hackernews
 ---
 
 Dispatched by the shared runtime `HackerNewsBlank`

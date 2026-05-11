@@ -7,6 +7,9 @@ blankFormat: string
 blankTip: Dictionary definition
 blankReadOnly: true
 blankProximity: 3
+impl: ./blank.js
+network: [api.dictionaryapi.dev]
+storage: dictionary
 ---
 
 Dispatched by the shared runtime `DictionaryBlank`

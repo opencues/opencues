@@ -22,6 +22,9 @@ blankKeywordExpansions.ltc: Litecoin
 blankKeywordExpansions.bnb: Binance Coin
 blankKeywordExpansions.trx: TRON
 blankKeywordExpansions.shib: Shiba Inu
+impl: ./blank.js
+network: [api.coingecko.com]
+storage: crypto
 ---
 
 Dispatched by the shared runtime `CryptoBlank`
