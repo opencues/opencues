@@ -226,6 +226,19 @@ which editor you're patching.
 | Node.js 18+ | `node --version` |
 | Groq API key (or any OpenAI-compatible provider) | set `GROQ_API_KEY` or use `opencues set-key groq` |
 
+**Recommended for full security on scripted blanks**: install
+[bubblewrap](https://github.com/containers/bubblewrap) so blanks
+that declare `sandbox: strict` (volume, brightness, anything that
+spawns a script) run with OS-level confinement.
+
+| Platform | Install | Status if missing |
+|---|---|---|
+| Linux / WSL2 | `apt install bubblewrap` (Debian/Ubuntu) / `dnf install bubblewrap` (Fedora) / `pacman -S bubblewrap` (Arch) | Scripted blanks still run but without OS-level confinement. `opencues doctor` flags it. |
+| macOS | Already installed (`/usr/bin/sandbox-exec` ships with macOS) | — |
+| Windows native | Not yet supported | Strict-sandbox blanks fall back unwrapped |
+
+Run `opencues doctor` after install to confirm everything's wired.
+
 Per integration — these are the HOST's requirements, which you would
 need whether or not you used OpenCues:
 

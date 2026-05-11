@@ -227,6 +227,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
                 `Add \`network: [host1, host2]\`, \`llm: <provider>\`, or \`storage: <namespace>\` to enable.`,
               );
             }
+            checkUserBlankCapabilities(cueMd, fm, jsPath, errors, warnings);
           }
         }
       } catch (err) {
@@ -253,6 +254,73 @@ function checkUnroutableWordCues(wordCueSources, warnings) {
         `${s.file}: word-cue source "${s.name}" has neither match: nor keywords: — ` +
         `it would be dropped at runtime. Add an explicit match/keywords (or use \`match: .*\`).`
       );
+    }
+  }
+}
+
+// User-blank capability hygiene. Three classes of mistake we catch
+// at validate time so the author doesn't discover them at load time:
+//
+//   1. Orphan binding: secret-hosts.<NAME> entry for a NAME not in
+//      secrets: [...] — the binding has no value to enforce and is
+//      almost always a typo.
+//   2. Binding outside network allow-list: secret-hosts.<NAME>
+//      lists a host that isn't in network: [...]. ctx.fetch would
+//      refuse the request anyway (hostname not allowed); the binding
+//      is unreachable.
+//   3. Unused secret: secrets: declares <NAME> but the JS source
+//      never references ctx.secrets.<NAME> / ctx.secrets[<NAME>] /
+//      destructures it. Best-effort substring scan; false positives
+//      possible (dynamic key names) so this is a warning, not error.
+function checkUserBlankCapabilities(cueMd, fm, jsPath, errors, warnings) {
+  const secrets = fm.userBlankSecrets || [];
+  const bindings = fm.userBlankSecretBindings || {};
+  const network = fm.userBlankNetwork || [];
+  const netLower = new Set(network.map(h => h.toLowerCase()));
+  const declaredNames = new Set(secrets);
+
+  // 1. Orphan bindings — secret-hosts.X without secrets: [..., X, ...].
+  for (const name of Object.keys(bindings)) {
+    if (!declaredNames.has(name)) {
+      warnings.push(
+        `${cueMd}: secret-hosts.${name} declared but "${name}" is not in secrets: [...]. ` +
+        `Add to secrets: or remove the binding.`,
+      );
+    }
+  }
+
+  // 2. Binding hosts not in network: allow-list.
+  for (const [name, hosts] of Object.entries(bindings)) {
+    if (!Array.isArray(hosts)) continue;
+    for (const h of hosts) {
+      if (!netLower.has(String(h).toLowerCase())) {
+        warnings.push(
+          `${cueMd}: secret-hosts.${name} lists "${h}" which is not in network: [...]. ` +
+          `ctx.fetch refuses unlisted hosts anyway — add "${h}" to network: or drop the binding.`,
+        );
+      }
+    }
+  }
+
+  // 3. Unused secret declarations — secrets: [X] but no ctx.secrets.X
+  //    anywhere in the JS source. Substring scan is good enough; the
+  //    failure mode of a false positive is "warn about a real use" not
+  //    "miss an unsafe one".
+  if (secrets.length > 0 && fs.existsSync(jsPath)) {
+    let src = '';
+    try { src = fs.readFileSync(jsPath, 'utf8'); } catch { /* */ }
+    for (const name of secrets) {
+      // Match ctx.secrets.NAME, ctx.secrets["NAME"], ctx.secrets['NAME'],
+      // and destructured `const { NAME } = ctx.secrets`.
+      const dot = new RegExp(`\\bctx\\.secrets\\.${name}\\b`).test(src);
+      const bracket = new RegExp(`\\bctx\\.secrets\\[\\s*['"]${name}['"]\\s*\\]`).test(src);
+      const destruct = new RegExp(`\\b${name}\\b`).test(src) && /ctx\.secrets/.test(src);
+      if (!dot && !bracket && !destruct) {
+        warnings.push(
+          `${cueMd}: secrets: [${name}] declared but ctx.secrets.${name} doesn't appear in ${path.basename(jsPath)}. ` +
+          `Remove the declaration or use the secret.`,
+        );
+      }
     }
   }
 }
@@ -330,4 +398,6 @@ function printHelp() {
   console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');
   console.log('  * Endpoint security: unknown provider:, invalid URL, custom endpoint that');
   console.log('    overrides the stock provider endpoint (warned, not errored)');
+  console.log('  * User-blank capability hygiene: orphan secret-hosts bindings,');
+  console.log('    bindings pointing outside network: allow-list, unused secrets:');
 }

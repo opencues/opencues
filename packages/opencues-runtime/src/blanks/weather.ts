@@ -25,6 +25,17 @@ const SKIP_WORDS: ReadonlySet<string> = new Set([
   'weather', 'forecast', 'temp', 'temperature',
   'current', 'today', 'tonight', 'tomorrow', 'weekend',
   'weekly', '7day', '7days', 'week', 'day', 'days', 'next', 'now', '_',
+  // Common filler near the trigger that isn't a location.
+  'the', 'a', 'an', 'is', 'what', "what's", 'how',
+]);
+
+// Prepositions that anchor a location phrase. `weather in New York`,
+// `forecast for cape town`, `temp at heathrow`, `weather around tokyo`.
+// Detecting one of these gives us the most reliable signal for where
+// the location starts AND lets us pick up multi-word names without
+// stopping at the first non-skip token.
+const LOCATION_PREPOSITIONS: ReadonlySet<string> = new Set([
+  'in', 'for', 'at', 'around', 'near', 'of',
 ]);
 
 const CACHE_TTL_MS = 300_000;
@@ -82,12 +93,54 @@ export class WeatherBlank implements Blank {
     }
   }
 
-  /** Walk the context list from the end picking the first non-skip word. */
+  /**
+   * Best-effort location extraction from surrounding context words.
+   *
+   * Two strategies, tried in order:
+   *
+   *   1. **Preposition-anchored.** If a token in
+   *      LOCATION_PREPOSITIONS appears, everything after it (minus
+   *      skip-words and minus the trigger token if it survives the
+   *      window) is the location. Catches `weather in New York`,
+   *      `forecast for cape town`, `what's the temp in San Francisco`.
+   *
+   *   2. **Trailing run.** Walk from the end collecting consecutive
+   *      non-skip tokens. Stop at the first skip-word that interrupts
+   *      a started collection. Catches `London weather`, `weather
+   *      Paris`, `Paris weather today`.
+   *
+   * Multi-word names ("New York", "Cape Town", "San Francisco") are
+   * preserved as space-joined strings — Open-Meteo's geocoder handles
+   * them better than a single-word slice.
+   */
   private extractLocation(context?: string[]): string | null {
-    if (!context?.length) return null;
-    for (let i = context.length - 1; i >= 0; i -= 1) {
-      if (!SKIP_WORDS.has(context[i].toLowerCase())) return context[i];
-    }
-    return null;
+    return extractLocationFromContext(context);
   }
+}
+
+// Exported for direct testing — kept outside the class so the test file
+// can exercise the heuristic without instantiating WeatherBlank.
+export function extractLocationFromContext(context?: string[]): string | null {
+  if (!context?.length) return null;
+  const lower = context.map(w => w.toLowerCase());
+
+  // Strategy 1 — preposition-anchored.
+  for (let i = 0; i < context.length; i++) {
+    if (!LOCATION_PREPOSITIONS.has(lower[i])) continue;
+    if (i === context.length - 1) continue; // preposition with nothing after
+    const tail = context.slice(i + 1).filter(w => !SKIP_WORDS.has(w.toLowerCase()));
+    if (tail.length) return tail.join(' ');
+  }
+
+  // Strategy 2 — trailing run of non-skip tokens.
+  const trail: string[] = [];
+  for (let i = context.length - 1; i >= 0; i -= 1) {
+    const isSkip = SKIP_WORDS.has(lower[i]);
+    if (isSkip) {
+      if (trail.length > 0) break; // skip-word interrupting a started run → stop
+      continue; // skip-words BEFORE the trail starts → ignore
+    }
+    trail.unshift(context[i]);
+  }
+  return trail.length ? trail.join(' ') : null;
 }

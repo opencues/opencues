@@ -27,14 +27,37 @@ const SKIP_WORDS = new Set([
   'weather', 'forecast', 'temp', 'temperature',
   'current', 'today', 'tonight', 'tomorrow', 'weekend',
   'weekly', '7day', '7days', 'week', 'day', 'days', 'next', 'now', '_',
+  'the', 'a', 'an', 'is', 'what', "what's", 'how',
 ]);
 
+const LOCATION_PREPOSITIONS = new Set(['in', 'for', 'at', 'around', 'near', 'of']);
+
+// See packages/opencues-runtime/src/blanks/weather.ts:extractLocationFromContext
+// for the design rationale + pinned tests. Mirrored here so the
+// user-blank build stays self-contained.
 function extractLocation(context) {
   if (!context || !context.length) return null;
-  for (let i = context.length - 1; i >= 0; i--) {
-    if (!SKIP_WORDS.has(context[i].toLowerCase())) return context[i];
+  const lower = context.map(w => w.toLowerCase());
+
+  // Strategy 1 — preposition-anchored ("weather in New York").
+  for (let i = 0; i < context.length; i++) {
+    if (!LOCATION_PREPOSITIONS.has(lower[i])) continue;
+    if (i === context.length - 1) continue;
+    const tail = context.slice(i + 1).filter(w => !SKIP_WORDS.has(w.toLowerCase()));
+    if (tail.length) return tail.join(' ');
   }
-  return null;
+
+  // Strategy 2 — trailing run of non-skip tokens ("Cape Town", "Paris").
+  const trail = [];
+  for (let i = context.length - 1; i >= 0; i--) {
+    const isSkip = SKIP_WORDS.has(lower[i]);
+    if (isSkip) {
+      if (trail.length > 0) break;
+      continue;
+    }
+    trail.unshift(context[i]);
+  }
+  return trail.length ? trail.join(' ') : null;
 }
 
 export default {

@@ -302,10 +302,36 @@ export function wrapForPlatform(
 ): WrappedSpec | null {
   if (!cfg || cfg.mode !== 'strict') return null;
   if (process.platform === 'linux') {
-    return wrapWithBwrap(command, args, cfg, cuesRoots);
+    const wrapped = wrapWithBwrap(command, args, cfg, cuesRoots);
+    if (!wrapped) warnLinuxBwrapMissingOnce();
+    return wrapped;
   }
   if (process.platform === 'darwin') {
     return wrapWithSandboxExec(command, args, cfg, cuesRoots);
   }
   return null;
+}
+
+// On Linux, the most common reason wrapWithBwrap returns null is that
+// bubblewrap isn't installed. Mac + Windows hosts get a non-linux warn
+// from BlankFill; Linux hosts had no signal at all, leaving authors
+// with the false belief that their script is sandboxed. Emit a
+// process-lifetime one-time warning.
+let _bwrapMissingWarned = false;
+function warnLinuxBwrapMissingOnce(): void {
+  if (_bwrapMissingWarned) return;
+  _bwrapMissingWarned = true;
+  // Use console.warn directly — sandbox-runner.ts is host-agnostic so
+  // it doesn't carry a logger. Terminal hosts surface stderr to the
+  // user; chrome host inherits this through its parent process logs.
+  console.warn(
+    '[opencues] sandbox: strict requested but bubblewrap (bwrap) is not on PATH. ' +
+    'Install it (`apt install bubblewrap` / `dnf install bubblewrap`) for OS-level ' +
+    'confinement on Linux. Running unwrapped (path sandbox + audit log still apply).',
+  );
+}
+
+/** Reset the bwrap-missing warn cache. Test-only. */
+export function _resetBwrapMissingWarnForTests(): void {
+  _bwrapMissingWarned = false;
 }

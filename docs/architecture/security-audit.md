@@ -36,7 +36,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | 4 | Malicious blank — dynamic import escape | Blank uses `import('./other.js')` to load unsandboxed code | acorn-walk catches `ImportExpression` at load time → throws "dynamic import not supported". | None. | 🟢 |
 | 5 | Network exfil via allow-list smuggle | Pack declares `network: [api.legit.com, evil.com]` and POSTs secrets to evil.com | Per-secret host binding (`secret-hosts.NAME: [host]`). `ctx.fetch` scans URL/headers/body for bound secret values; refuses unbound hosts. **Required** — a blank that declares `secrets:` without matching `secret-hosts.<NAME>` is refused at load time. | None. | 🟢 |
 | 6 | LLM body exfil | Pack embeds `Bearer ${ctx.secrets.X}` in the prompt to leak via the LLM endpoint | `ctx.llm` resolves provider endpoint up-front, applies same `secret-hosts` enforcement on prompt+system body. | LLM endpoint can still log prompts — secret values flowing to bound LLM host land in provider logs. Out of scope (user trust in provider). | 🟢 |
-| 7 | Secret exposure to unrelated blanks | Blank A reads `FINNHUB_API_KEY` that's only meant for Blank B | Per-blank `secrets: [NAME]` allow-list; loader populates `ctx.secrets` only with declared names. Required `secret-hosts.<NAME>` per name forces authors to think about each one. | A pack declaring `secrets: [GROQ_API_KEY]` it doesn't need still gets the value. `opencues validate` should warn on unused secrets. | 🟡 |
+| 7 | Secret exposure to unrelated blanks | Blank A reads `FINNHUB_API_KEY` that's only meant for Blank B | Per-blank `secrets: [NAME]` allow-list; loader populates `ctx.secrets` only with declared names. Required `secret-hosts.<NAME>` per name forces authors to think about each one. `opencues validate` flags unused secrets + orphan/unreachable bindings. | None. | 🟢 |
 | 8 | Resource exhaustion — fetch hammering | Blank polls `api.x.com` 100/s to DoS or run up an API bill | Sliding-60s window: 120 fetches/min default, hard ceiling 600/min. | None. | 🟢 |
 | 9 | Resource exhaustion — LLM burn | Blank fires LLM call per keystroke | 30 LLM/min default, 120/min hard ceiling. | None. | 🟢 |
 | 10 | Resource exhaustion — storage flood | Blank writes 100MB into `chrome.storage.local` / on-disk | True namespace-wide cap (1MB default, 10MB ceiling) on both Node + Chrome. | None. | 🟢 |
@@ -46,7 +46,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | 14 | Cross-site cue/blank firing | reddit.com-scoped legal blank fires on attacker.com | `on-site` / `not-on-site` filter applied at bundle-read time + SPA pushState hook. | If a pack lists no `on-site`, it fires everywhere — same trust model as before. | 🟢 |
 | 15 | Shell-script escape (path traversal) | Native host script reads `../../etc/passwd` via crafted path arg | `realpathSync` boundary check in `host/host.cjs:sandboxArg` — refuses anything resolving outside CUE_ROOT after symlink follow. | None for the host-mediated path. Direct `~/.cues/` access on CC/OC is user-trusted. | 🟢 |
 | 16 | Shell-script escape (env smuggle) | Pack frontmatter ships `env: { LD_PRELOAD: /tmp/evil.so }` to host | `/^CUES_[A-Z0-9_]+$/` whitelist in `filterMessageEnv`. PATH/LD_PRELOAD/etc. dropped. | None. | 🟢 |
-| 17 | OS-level confinement | Strict-sandbox script escapes /tmp tmpfs / reaches `/etc` writable | bwrap on Linux + sandbox-exec on macOS. Both deny-by-default, re-allow process-exec/file-read; net-deny by default. | macOS lacks PID/IPC namespacing equivalent. Windows native is unsupported — emits a one-time warn per blank. | 🟡 |
+| 17 | OS-level confinement | Strict-sandbox script escapes /tmp tmpfs / reaches `/etc` writable | bwrap on Linux + sandbox-exec on macOS. Both deny-by-default, re-allow process-exec/file-read; net-deny by default. `opencues doctor` flags missing bwrap on Linux with the install command. | macOS lacks PID/IPC namespacing equivalent. Windows native is unsupported — emits a one-time warn per blank. | 🟡 |
 | 18 | API key in published bundle | `__GROQ_API_KEY__` baked into `dist/content.js` via esbuild | Build defines now resolve to `''`; keys come from popup or native-messaging host at runtime. `.env` is dev-only. | None on the build path. | 🟢 |
 | 19 | Content-loss via undersized rewrite | LLM hallucinates a 10-char rewrite for a 500-char body, deleting user content | TransformBlank refuses substitutions where new < 10% of target AND target > 100 chars. asTypedText skips transform-blank defs. | Edge cases under 100 chars can still produce a small rewrite. Acceptable for short bodies. | 🟢 |
 | 20 | Supply chain — registry compromise | Future blank-registry serves a backdoored pack | No registry exists yet. Today: users `git clone` packs they pick manually. | Will need signing + author pinning at registry launch. Tracked as pre-launch. | ⚪ |
@@ -55,15 +55,22 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 
 The amber items each have a known next step:
 
-- **#7** — `opencues validate` should warn when a blank declares
-  `secrets:` it doesn't reference in its JS, and when a `secret-hosts`
-  binding points at a host not in the `network:` allow-list (orphan
-  binding).
 - **#13** — same-origin iframe trust is a chrome-extension-wide
   problem, not OpenCues-specific. Track in `docs/architecture/chrome-security.md`.
-- **#17** — Linux-without-bwrap currently falls through silently; mirror
-  the macOS/Windows warn path. Investigate Windows AppContainer for a
-  v2 sandbox.
+- **#17** — Windows native still has no OS-sandbox wrapper.
+  Investigate AppContainer / Job Objects when there's concrete demand.
+
+## Recently resolved
+
+- **#7 (unused/orphan secrets)** — `opencues validate` now flags:
+  orphan `secret-hosts.<NAME>` entries (no matching `secrets:` declaration),
+  bindings pointing at hosts outside `network:` (unreachable), and
+  `secrets:` declared without being referenced in the JS source.
+- **#17 (Linux-without-bwrap silent fall-through)** — `wrapForPlatform`
+  now emits a one-time `console.warn` when strict sandbox is requested
+  on Linux but bwrap is missing. `opencues doctor` flags it under
+  "OS-level sandbox" with the install command. README documents the
+  recommendation.
 
 ## Lessons from prior open-standard rollouts (MCP / OpenClaw)
 

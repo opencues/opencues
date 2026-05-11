@@ -135,6 +135,39 @@ module.exports = function doctor(argv, ctx) {
   }
   console.log('');
 
+  // ── OS-level sandbox ──────────────────────────────────────────────────
+  // Scripted blanks (`blankScript:` with `sandbox: strict`) need an OS
+  // sandbox mechanism. Linux uses bubblewrap; macOS uses sandbox-exec
+  // (always present); Windows native has no support yet. Surface the
+  // status so authors who ship strict-sandbox blanks know whether
+  // they'll actually be confined on this machine.
+  console.log('## OS-level sandbox (for blankScript: sandbox: strict)');
+  if (process.platform === 'linux') {
+    const bwrap = findOnPath('bwrap');
+    ok(`bwrap (bubblewrap) on PATH`, !!bwrap);
+    if (!bwrap) {
+      findings.push({
+        sev: 'warn',
+        msg: 'bubblewrap (bwrap) not installed — scripted blanks with `sandbox: strict` will run unwrapped',
+        fix: 'apt install bubblewrap   (Debian/Ubuntu)\n         dnf install bubblewrap   (Fedora/RHEL)\n         pacman -S bubblewrap     (Arch)',
+      });
+    }
+  } else if (process.platform === 'darwin') {
+    const sbx = fs.existsSync('/usr/bin/sandbox-exec');
+    ok(`sandbox-exec at /usr/bin/sandbox-exec`, sbx);
+    if (!sbx) {
+      findings.push({
+        sev: 'warn',
+        msg: 'sandbox-exec missing — strict-sandbox blanks will run unwrapped on this Mac',
+        fix: 'unusual — sandbox-exec ships with macOS. Check /usr/bin/.',
+      });
+    }
+  } else {
+    console.log(`  ℹ  platform ${process.platform}: no OS sandbox mechanism wired yet`);
+    console.log(`     Strict-sandbox blanks will fall through unwrapped (path sandbox still applies).`);
+  }
+  console.log('');
+
   // ── Env / API keys ────────────────────────────────────────────────────
   console.log('## Environment');
   ok('GROQ_API_KEY (LLM)',         !!process.env.GROQ_API_KEY);
@@ -172,6 +205,20 @@ module.exports = function doctor(argv, ctx) {
 
 function ok(label, present)  { console.log(`  ${present ? '✓' : '✗'}  ${label}`); }
 function bad(label, present) { ok(label, present); }
+
+// Resolve a binary on $PATH. Returns the absolute path or null.
+function findOnPath(bin) {
+  const PATH = process.env.PATH || '';
+  for (const dir of PATH.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, bin);
+    try {
+      const st = fs.statSync(candidate);
+      if (st.isFile() && (st.mode & 0o111)) return candidate;
+    } catch { /* try next */ }
+  }
+  return null;
+}
 
 /**
  * Print a one-line pin-status check for the given integration.

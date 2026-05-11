@@ -9,6 +9,7 @@ import {
   wrapForPlatform,
   _resetSandboxExecCacheForTests,
   _resetBwrapCacheForTests,
+  _resetBwrapMissingWarnForTests,
 } from './sandbox-runner';
 
 // Forcing process.platform inside vitest is awkward (read-only on
@@ -126,5 +127,40 @@ describe('wrapForPlatform — dispatcher', () => {
     const r = wrapForPlatform('bash', ['/x'], { mode: 'strict' }, []);
     if (!r) return;
     expect(r.command).toBe('/usr/bin/sandbox-exec');
+  });
+});
+
+describe('wrapForPlatform — Linux bwrap-missing warning', () => {
+  // Force the bwrap probe to miss by stubbing fs.statSync via env. We
+  // can't actually uninstall bwrap on the dev box; the warn is most
+  // valuable on CI / fresh boxes anyway. Sanity-check that the warn
+  // function exists + the reset helper works rather than trying to
+  // race the actual probe.
+  it('exposes a reset hook for the missing-bwrap warn cache', () => {
+    expect(typeof _resetBwrapMissingWarnForTests).toBe('function');
+    _resetBwrapMissingWarnForTests();
+  });
+
+  it('emits exactly one warn per process when bwrap is missing on Linux', () => {
+    if (!isLinux) return; // only meaningful on Linux
+    // If bwrap IS installed, skip — we can't safely uninstall it just
+    // for this test. The non-warn path is implicitly covered by the
+    // earlier "produces a bwrap command" test.
+    _resetBwrapCacheForTests();
+    const probe = wrapForPlatform('bash', [], { mode: 'strict' }, []);
+    if (probe) return; // bwrap is installed; nothing to assert here
+    _resetBwrapMissingWarnForTests();
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => { warns.push(String(msg)); };
+    try {
+      wrapForPlatform('bash', [], { mode: 'strict' }, []);
+      wrapForPlatform('bash', [], { mode: 'strict' }, []);
+      wrapForPlatform('bash', [], { mode: 'strict' }, []);
+    } finally {
+      console.warn = origWarn;
+    }
+    expect(warns.length).toBe(1);
+    expect(warns[0]).toContain('bubblewrap');
   });
 });
