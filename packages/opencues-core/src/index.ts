@@ -116,6 +116,7 @@ export {
 // Host-compat: which integrations a cue or blank runs on
 export {
   inferHostCompat,
+  inferSiteCompat,
   unknownHostNames,
   formatHostList,
   HOSTS,
@@ -123,5 +124,6 @@ export {
   type Host,
   type HostCompatInput,
   type HostCompatResult,
+  type SiteCompatContext,
 } from './host-compat';
 

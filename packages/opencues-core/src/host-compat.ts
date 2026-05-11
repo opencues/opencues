@@ -160,3 +160,97 @@ export function formatHostList(hosts: readonly Host[]): string {
   if (hosts.length === HOSTS.length) return 'all';
   return [...hosts].sort().join(', ');
 }
+
+// ─── Site-compat ─────────────────────────────────────────────────────────
+//
+// `on-site` / `not-on-site` is the strictly-broader version of on-host.
+// An entry can be a platform name, a hostname, a wildcard hostname, or
+// a hostname with a path prefix. Lets a cue/blank/auditor scope itself
+// to "only on reddit.com" or "only the /r/claudeai subreddit", while
+// still allowing platform-only scopes (just like on-host).
+
+/** Common aliases accepted alongside canonical host names. */
+const HOST_ALIASES: Record<string, Host> = {
+  'cc': 'claude-code',
+  'claudecode': 'claude-code',
+  'claude': 'claude-code',
+  'oc': 'opencode',
+  'gemini': 'gemini-cli',
+  'geminicli': 'gemini-cli',
+};
+
+/** Site-compat evaluation context. */
+export interface SiteCompatContext {
+  /** Canonical host name: 'chrome' | 'claude-code' | 'opencode' | 'gemini-cli'. */
+  readonly hostName: Host | null;
+  /** Current hostname (browser only — `location.hostname`). Null on native hosts. */
+  readonly hostname: string | null;
+  /** Current path (browser only — `location.pathname`). Null on native hosts. */
+  readonly path: string | null;
+}
+
+/**
+ * True when the entry's on-site/not-on-site frontmatter passes the
+ * current scope. Pure function.
+ *
+ *   No on-site, no not-on-site             → always true.
+ *   on-site present                        → at least one entry must match.
+ *   not-on-site present                    → no entry may match.
+ *   both present                           → on-site allow AND not-on-site deny.
+ *
+ * Matching rules per entry:
+ *   - 'chrome' / 'claude-code' / 'cc' / 'opencode' / 'oc' / 'gemini-cli' / 'gemini'
+ *     → matches ctx.hostName (with HOST_ALIASES).
+ *   - 'reddit.com'                  → matches when ctx.hostname === 'reddit.com'.
+ *   - '*.reddit.com'                → matches subdomains AND the bare domain.
+ *   - 'reddit.com/r/claudeai'       → matches hostname + path.startsWith('/r/claudeai').
+ *
+ * Native hosts (hostname/path null): hostname-based entries don't
+ * match. Only platform-name entries do.
+ */
+export function inferSiteCompat(
+  input: { onSite?: readonly string[]; notOnSite?: readonly string[] },
+  ctx: SiteCompatContext,
+): boolean {
+  const allow = (input.onSite ?? []).map(s => String(s).trim()).filter(Boolean);
+  const deny = (input.notOnSite ?? []).map(s => String(s).trim()).filter(Boolean);
+
+  if (deny.some(e => matchSiteEntry(e, ctx))) return false;
+  if (allow.length === 0) return true;
+  return allow.some(e => matchSiteEntry(e, ctx));
+}
+
+/** Test one entry against the current scope. */
+function matchSiteEntry(entry: string, ctx: SiteCompatContext): boolean {
+  const e = entry.toLowerCase();
+
+  // Hostname + path-prefix form.
+  if (e.includes('/')) {
+    const slashIdx = e.indexOf('/');
+    const hostPart = e.slice(0, slashIdx);
+    const pathPrefix = e.slice(slashIdx); // includes leading slash
+    if (!ctx.hostname || !ctx.path) return false;
+    if (!matchHostname(hostPart, ctx.hostname)) return false;
+    return ctx.path.toLowerCase().startsWith(pathPrefix);
+  }
+
+  // Platform name (with alias resolution).
+  const aliased = HOST_ALIASES[e];
+  if (aliased) return ctx.hostName === aliased;
+  if ((HOSTS as readonly string[]).includes(e)) return ctx.hostName === (e as Host);
+
+  // Treat as hostname pattern.
+  if (!ctx.hostname) return false;
+  return matchHostname(e, ctx.hostname);
+}
+
+/** Hostname match: exact or `*.suffix` (matches suffix + subdomains). */
+function matchHostname(pattern: string, hostname: string): boolean {
+  const p = pattern.toLowerCase();
+  const h = hostname.toLowerCase();
+  if (p.startsWith('*.')) {
+    const suffix = p.slice(2);
+    return h === suffix || h.endsWith('.' + suffix);
+  }
+  return p === h;
+}

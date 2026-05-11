@@ -408,19 +408,49 @@ flips the policy for the live-sync path. Everything else → all hosts.
 Override via frontmatter:
 
 ```yaml
-on-host: [chrome, claude-code, gemini-cli, opencode]   # allow-list
-not-on-host: [chrome]                              # deny-list
+on-host: [chrome, claude-code, gemini-cli, opencode]   # allow-list (platforms)
+not-on-host: [chrome]                                  # deny-list (platforms)
 ```
 
 Resolution: `on-host` (if set) wins over auto-detect, then `not-on-host`
 filters. Surfaced by `opencues list` (per-entry marker), validated by
-`opencues validate` (typos + contradictions), used by the upcoming
-`opencues sync chrome`.
+`opencues validate` (typos + contradictions).
 
 Full spec: `docs/features/host-compat.md`. Glossary entry:
 `docs/glossary.md § Host Compat`. API: `@opencues/core`'s
 `inferHostCompat()`, `formatHostList()`, `unknownHostNames()`,
 `HOSTS`, `NATIVE_HOSTS`.
+
+### Site scoping (chrome) — `on-site` / `not-on-site`
+
+`on-site` is the strictly-broader sibling of `on-host`. Each entry can be:
+
+- A **platform name**: `claude-code`, `cc`, `opencode`, `oc`, `chrome`, `gemini-cli`, `gemini` — matches the running host.
+- A **hostname**: `reddit.com`, `www.reddit.com` — exact match against `location.hostname`.
+- A **wildcard hostname**: `*.reddit.com` — matches subdomains and the bare domain.
+- A **hostname with path prefix**: `reddit.com/r/claudeai` — hostname AND `location.pathname.startsWith(...)`.
+
+```yaml
+on-site: [chrome, reddit.com/r/claudeai]               # allow-list
+not-on-site: [twitter.com, *.evil.example]             # deny-list
+```
+
+Evaluation:
+- `not-on-site` is checked first; any match → entry filtered out.
+- `on-site` empty → passes everywhere; non-empty → at least one entry must match.
+
+Native hosts (CC/OC/gemini-cli) have null hostname/path. Platform-
+name entries still match; hostname entries don't. So
+`on-site: [reddit.com]` produces an entry that fires on chrome at
+reddit.com but is invisible on CC/OC/gemini.
+
+Chrome applies the filter at bundle-read time (in
+`integrations/chrome/src/opencues-bootstrap.ts:applySiteCompatFilter`).
+SPAs that change `pathname` without a page reload re-trigger the
+filter via `popstate` + monkey-patched `pushState` / `replaceState`.
+
+API: `@opencues/core`'s `inferSiteCompat(input, ctx)`,
+`SiteCompatContext` type.
 
 Real-world example: `.cues/blanks/opencues/BLANK.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a

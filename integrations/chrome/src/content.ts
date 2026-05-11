@@ -140,11 +140,43 @@ async function init(): Promise<void> {
     if (currentTarget) applyDerivedColours(currentTarget, config.dimMix);
   });
 
+  // SECURITY GATE — two layers to prevent hostile-page-triggered blanks.
+  //
+  // Layer 1 (here): drop isTrusted=false input events. Blocks the
+  // cheapest attack — a page dispatching a synthetic InputEvent on a
+  // hidden contenteditable.
+  //
+  // Layer 2 (opencues-bootstrap.ts): blanks are triggered by `_`. A
+  // hostile page can still call `execCommand('insertText', false, '_')`
+  // (after a user gesture) and the input event will be isTrusted=true.
+  // So we track trusted `_` introductions (keydown, paste, drop) and
+  // notifyOpenCuesTextChange ignores changes whose `_` count went up
+  // without a recent trusted introduction. Runtime writes bypass
+  // because sourceReclassifier reclassifies them as 'runtime'.
+  document.addEventListener('keydown', (e) => {
+    if (!e.isTrusted) return;
+    if (e.key !== '_') return;
+    noteUserUnderscoreInsertion(1);
+  }, true);
+  document.addEventListener('paste', (e) => {
+    if (!e.isTrusted) return;
+    const text = e.clipboardData?.getData('text') ?? '';
+    const n = (text.match(/_/g) || []).length;
+    if (n > 0) noteUserUnderscoreInsertion(n);
+  }, true);
+  document.addEventListener('drop', (e) => {
+    if (!e.isTrusted) return;
+    const text = e.dataTransfer?.getData('text') ?? '';
+    const n = (text.match(/_/g) || []).length;
+    if (n > 0) noteUserUnderscoreInsertion(n);
+  }, true);
+
   // Forward 'input' events from the focused target to the runtime.
   // Runtime modules (DimRender, BlankFill, Resolver) subscribe to
   // onTextChange. Use a single document listener to avoid per-attach
   // wiring.
-  document.addEventListener('input', () => {
+  document.addEventListener('input', (e) => {
+    if (e.isTrusted === false) return;
     // execCommand fires the input event synchronously inside writeText,
     // before writeText finishes stashing lastRuntimeSetText with the
     // actual DOM textContent. Defer to a microtask so the stash lands
@@ -192,7 +224,7 @@ async function init(): Promise<void> {
 // Forward declared — defined as the bootstrap re-export to avoid
 // circular import at module load. The runtime owns text-change
 // dispatch but we only need to call it once per actual change.
-import { notifyOpenCuesTextChange, notifyOpenCuesCursorChange } from './opencues-bootstrap';
+import { notifyOpenCuesTextChange, notifyOpenCuesCursorChange, noteUserUnderscoreInsertion } from './opencues-bootstrap';
 function runtimeNotify(text: string): void {
   notifyOpenCuesTextChange(text, 0, 'user');
 }

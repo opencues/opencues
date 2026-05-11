@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import {
   inferHostCompat,
+  inferSiteCompat,
   unknownHostNames,
   formatHostList,
   HOSTS,
@@ -108,7 +109,7 @@ describe('inferHostCompat: explicit not-on-host (deny)', () => {
 
   it('not-on-host stacks with auto-detected subprocess restriction', () => {
     const r = inferHostCompat({ script: './volume.sh', 'not-on-host': ['opencode'] });
-    assert.deepStrictEqual(r.hosts, ['claude-code']);
+    assert.deepStrictEqual(r.hosts, ['claude-code', 'gemini-cli']);
     assert.strictEqual(r.source, 'auto+not-on-host');
   });
 
@@ -160,7 +161,7 @@ describe('formatHostList', () => {
   });
 
   it('native hosts → comma-separated alphabetical', () => {
-    assert.strictEqual(formatHostList(SORTED_NATIVE), 'claude-code, opencode');
+    assert.strictEqual(formatHostList(SORTED_NATIVE), 'claude-code, gemini-cli, opencode');
   });
 
   it('single host → just the name', () => {
@@ -169,5 +170,66 @@ describe('formatHostList', () => {
 
   it('empty list → empty string', () => {
     assert.strictEqual(formatHostList([]), '');
+  });
+});
+
+describe('inferSiteCompat', () => {
+  const chromeOnReddit = { hostName: 'chrome' as const, hostname: 'reddit.com', path: '/r/foo' };
+  const chromeOnWwwReddit = { hostName: 'chrome' as const, hostname: 'www.reddit.com', path: '/r/foo' };
+  const chromeOnClaudeAi = { hostName: 'chrome' as const, hostname: 'claude.ai', path: '/chat/x' };
+  const onClaudeCode = { hostName: 'claude-code' as const, hostname: null, path: null };
+
+  it('no constraints → always true', () => {
+    assert.strictEqual(inferSiteCompat({}, chromeOnReddit), true);
+    assert.strictEqual(inferSiteCompat({}, onClaudeCode), true);
+  });
+
+  it('platform name on-site matches running host', () => {
+    assert.strictEqual(inferSiteCompat({ onSite: ['chrome'] }, chromeOnReddit), true);
+    assert.strictEqual(inferSiteCompat({ onSite: ['chrome'] }, onClaudeCode), false);
+  });
+
+  it('platform aliases resolve (cc → claude-code, oc → opencode, gemini → gemini-cli)', () => {
+    assert.strictEqual(inferSiteCompat({ onSite: ['cc'] }, onClaudeCode), true);
+    assert.strictEqual(inferSiteCompat({ onSite: ['claude'] }, onClaudeCode), true);
+  });
+
+  it('hostname is exact match (no implicit wildcard)', () => {
+    assert.strictEqual(inferSiteCompat({ onSite: ['reddit.com'] }, chromeOnReddit), true);
+    assert.strictEqual(inferSiteCompat({ onSite: ['reddit.com'] }, chromeOnWwwReddit), false);
+  });
+
+  it('wildcard *.host matches subdomains AND the bare domain', () => {
+    assert.strictEqual(inferSiteCompat({ onSite: ['*.reddit.com'] }, chromeOnReddit), true);
+    assert.strictEqual(inferSiteCompat({ onSite: ['*.reddit.com'] }, chromeOnWwwReddit), true);
+    assert.strictEqual(inferSiteCompat({ onSite: ['*.reddit.com'] },
+      { hostName: 'chrome', hostname: 'evil-reddit.com', path: '/' }), false);
+  });
+
+  it('hostname/path-prefix entries scope to a path', () => {
+    assert.strictEqual(inferSiteCompat({ onSite: ['reddit.com/r/foo'] }, chromeOnReddit), true);
+    assert.strictEqual(inferSiteCompat({ onSite: ['reddit.com/r/other'] }, chromeOnReddit), false);
+  });
+
+  it('not-on-site denies overriding any matching allow', () => {
+    assert.strictEqual(
+      inferSiteCompat({ onSite: ['chrome'], notOnSite: ['claude.ai'] }, chromeOnClaudeAi),
+      false,
+    );
+  });
+
+  it('hostname-based entries do not match on native hosts', () => {
+    assert.strictEqual(inferSiteCompat({ onSite: ['reddit.com'] }, onClaudeCode), false);
+  });
+
+  it('mixed lists: platform OR hostname both accepted', () => {
+    assert.strictEqual(
+      inferSiteCompat({ onSite: ['chrome', 'claude-code'] }, onClaudeCode),
+      true,
+    );
+    assert.strictEqual(
+      inferSiteCompat({ onSite: ['reddit.com', 'claude-code'] }, chromeOnClaudeAi),
+      false,
+    );
   });
 });

@@ -172,6 +172,15 @@ export interface BlankConfig {
    * auto-detection (script: extension) didn't catch it.
    */
   notOnHost?: string[];
+  /**
+   * Scope allow-list — entries can be platform names, hostnames,
+   * wildcard hostnames, or hostname-with-path-prefix patterns. When
+   * non-empty, the section only fires for matching scopes. See
+   * `inferSiteCompat()` for the resolution rules.
+   */
+  onSite?: string[];
+  /** Scope deny-list. Same matching as on-site; entries that match are filtered out. */
+  notOnSite?: string[];
 }
 
 export interface CuesMdConfig {
@@ -235,6 +244,10 @@ export interface AuditorConfig {
   readonly onHost?: string[];
   /** Host-compat deny-list. */
   readonly notOnHost?: string[];
+  /** Site-compat allow-list — platforms / hostnames / hostname+path. */
+  readonly onSite?: string[];
+  /** Site-compat deny-list. */
+  readonly notOnSite?: string[];
 }
 
 // ============================================================================
@@ -654,6 +667,20 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   onHost?: string[];
   /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
   notOnHost?: string[];
+  /**
+   * Scope allow-list. Each entry can be a platform name (claude-code,
+   * cc, opencode, oc, chrome, gemini-cli, gemini), a hostname
+   * (reddit.com, www.reddit.com), a wildcard hostname (*.reddit.com),
+   * or a hostname-with-path-prefix (reddit.com/r/claudeai). When
+   * non-empty, the entry only fires for matching scopes.
+   *
+   * Strictly broader than on-host: anything you can put in on-host
+   * can also go in on-site. on-host stays as a platform-only alias
+   * for compatibility with existing configs.
+   */
+  onSite?: string[];
+  /** Scope deny-list. Same matching as on-site; entries that match are filtered out. */
+  notOnSite?: string[];
 }
 
 /**
@@ -725,6 +752,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       // camelCase forms. Try JSON-array first; fall back to comma-separated.
       case 'on-host': case 'onHost': fm.onHost = parseHostList(value); break;
       case 'not-on-host': case 'notOnHost': fm.notOnHost = parseHostList(value); break;
+      case 'on-site': case 'onSite': fm.onSite = parseHostList(value); break;
+      case 'not-on-site': case 'notOnSite': fm.notOnSite = parseHostList(value); break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -912,6 +941,8 @@ export function parseSingleAuditorMd(content: string, folderPath: string, nameOv
     enabled: frontmatter.enabled !== false,
     onHost: frontmatter.onHost as string[] | undefined,
     notOnHost: frontmatter.notOnHost as string[] | undefined,
+    onSite: frontmatter.onSite as string[] | undefined,
+    notOnSite: frontmatter.notOnSite as string[] | undefined,
   };
   if (frontmatter.priority !== undefined) {
     (auditor as { priority?: number }).priority = frontmatter.priority;

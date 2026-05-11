@@ -24,6 +24,7 @@ import type {
   ProcessResult,
 } from '@opencues/runtime/dist/src/adapter';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
+import { inferSiteCompat } from '@opencues/core';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
@@ -721,6 +722,88 @@ function readBakeTimeDefault(path: string): string | null {
 const BUNDLE_STORAGE_KEY = 'opencues_bundle';
 type StoredBundle = { files: Record<string, string>; root?: string };
 
+/**
+ * Drop bundle files whose frontmatter scopes them off the current site.
+ * Empty / missing on-site/not-on-site means "fire everywhere" — those
+ * files pass through unchanged. Files without YAML frontmatter (e.g.
+ * tip-group .md bodies without leading `---`) also pass through.
+ *
+ * Pure regex-based frontmatter extraction; we don't want to drag the
+ * full YAML parser in just for two fields, and the runtime's
+ * ConfigLoader will reparse anyway when it loads the file's content.
+ */
+function applySiteCompatFilter(files: Record<string, string>): Record<string, string> {
+  const ctx = {
+    hostName: 'chrome' as const,
+    hostname: location.hostname || null,
+    path: location.pathname || null,
+  };
+  const out: Record<string, string> = {};
+  for (const [rel, content] of Object.entries(files)) {
+    const fm = extractSiteFrontmatter(content);
+    if (inferSiteCompat(fm, ctx)) out[rel] = content;
+  }
+  return out;
+}
+
+/** Pull on-site / not-on-site (and camelCase aliases) from MD frontmatter. */
+function extractSiteFrontmatter(content: string): { onSite?: string[]; notOnSite?: string[] } {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) return {};
+  const fm = m[1];
+  const parseList = (raw: string): string[] => {
+    const v = raw.trim();
+    if (!v) return [];
+    if (v.startsWith('[') && v.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(v.replace(/'/g, '"'));
+        if (Array.isArray(parsed)) return parsed.map(String);
+      } catch { /* fall through */ }
+    }
+    return v.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  };
+  const grab = (key: string): string[] | undefined => {
+    const re = new RegExp(`^${key}:\\s*(.+)$`, 'm');
+    const match = fm.match(re);
+    return match ? parseList(match[1]) : undefined;
+  };
+  return {
+    onSite: grab('on-site') ?? grab('onSite'),
+    notOnSite: grab('not-on-site') ?? grab('notOnSite'),
+  };
+}
+
+// Within a tab, SPAs change location.pathname without a page reload.
+// Re-filter the bundle when that happens so path-scoped entries
+// activate / deactivate as the user navigates. popstate covers back /
+// forward; we wrap pushState / replaceState because they fire no
+// event natively.
+let _lastFilterScope = '';
+function maybeReloadOnUrlChange(): void {
+  const scope = (location.hostname || '') + (location.pathname || '');
+  if (scope === _lastFilterScope) return;
+  _lastFilterScope = scope;
+  _bundleIndexPromise = null;
+  if (bootResult) {
+    void bootResult.reloadConfig().catch(err => console.warn('[opencues] reloadConfig on URL change failed', err));
+  }
+}
+(() => {
+  _lastFilterScope = (location.hostname || '') + (location.pathname || '');
+  window.addEventListener('popstate', maybeReloadOnUrlChange);
+  window.addEventListener('hashchange', maybeReloadOnUrlChange);
+  const wrap = (name: 'pushState' | 'replaceState') => {
+    const orig = history[name];
+    history[name] = function patched(this: History, ...args: Parameters<typeof orig>) {
+      const r = orig.apply(this, args);
+      queueMicrotask(maybeReloadOnUrlChange);
+      return r;
+    } as typeof orig;
+  };
+  wrap('pushState');
+  wrap('replaceState');
+})();
+
 let _bundleIndexPromise: Promise<{ files: Set<string>; storage: StoredBundle | null; loaded: boolean }> | null = null;
 function getBundleIndex(): Promise<{ files: Set<string>; storage: StoredBundle | null; loaded: boolean }> {
   if (_bundleIndexPromise) return _bundleIndexPromise;
@@ -730,15 +813,19 @@ function getBundleIndex(): Promise<{ files: Set<string>; storage: StoredBundle |
 
     // 1. Native-messaging push lives in chrome.storage.local. If
     //    present, it wholly replaces the bake-time bundle — the host
-    //    knows the user's current ~/.cues/ state.
+    //    knows the user's current ~/.cues/ state. Per-file site-compat
+    //    filtering happens here so the runtime never sees entries that
+    //    aren't scoped to the current location.
     try {
       const stored = await chrome.storage.local.get(BUNDLE_STORAGE_KEY);
       const bundle = stored[BUNDLE_STORAGE_KEY] as StoredBundle | undefined;
       if (bundle && bundle.files && typeof bundle.files === 'object') {
-        result.storage = bundle;
-        result.files = new Set(Object.keys(bundle.files));
+        const filtered = applySiteCompatFilter(bundle.files);
+        result.storage = { ...bundle, files: filtered };
+        result.files = new Set(Object.keys(filtered));
         result.loaded = true;
-        console.log(`[opencues] storage bundle loaded: ${result.files.size} files (root=${bundle.root ?? 'unknown'})`);
+        const dropped = Object.keys(bundle.files).length - Object.keys(filtered).length;
+        console.log(`[opencues] storage bundle loaded: ${result.files.size} files (root=${bundle.root ?? 'unknown'}, scope=${location.hostname}${location.pathname}, dropped=${dropped})`);
         return result;
       }
     } catch (err) {
@@ -1058,6 +1145,48 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   return bootResult;
 }
 
+// ─── Trust gate: underscore credit ──────────────────────────────────────
+//
+// Blank fires are triggered by `_` in the text. A hostile page can
+// call `execCommand('insertText', false, '_')` (after a user gesture)
+// and the resulting input event is isTrusted=true with no preceding
+// `_` keystroke, defeating a naive timestamp-based gate. Worse, after
+// any legitimate `_` keystroke the page would have a "blessed window"
+// it could exploit.
+//
+// Solution: credit-based. Each trusted `_` introduction adds N credits
+// (count of `_` characters introduced):
+//
+//   - trusted keydown of '_'                    → +1
+//   - trusted paste whose data contains '_'     → +<count in data>
+//   - trusted drop  whose data contains '_'     → +<count in data>
+//
+// Every accepted text-change consumes credits equal to (new underscore
+// count − last accepted count) when that delta is positive. If the
+// delta exceeds available credits, the change is silently dropped.
+//
+// Runtime writes are reclassified to source='runtime' by
+// sourceReclassifier; they don't consume credits and don't change the
+// baseline gate — the count tracker resets to whatever the runtime
+// wrote so the next user-typed `_` is still detected as a fresh
+// addition.
+
+let _underscoreCredits = 0;
+let _lastAcceptedUnderscoreCount = 0;
+
+/** Called from content.ts on every trusted `_` introduction. `count`
+ *  is the number of `_` characters introduced (1 for keydown of '_',
+ *  N for paste/drop with N underscores). */
+export function noteUserUnderscoreInsertion(count = 1): void {
+  if (count > 0) _underscoreCredits += count;
+}
+
+function countOccurrences(s: string, ch: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s[i] === ch) n++;
+  return n;
+}
+
 /** Call from content.ts's input handler to forward text changes.
  *
  * Two corrections applied vs the naive "always source='user', cursor=0"
@@ -1078,6 +1207,23 @@ export function notifyOpenCuesTextChange(
   source: 'user' | 'runtime' = 'user',
 ): void {
   const actualSource = sourceReclassifier.reclassify(text, source);
+
+  // Trust gate. Only applies to user-classified changes (runtime
+  // writes bypass — they have no user-input origin to gate against).
+  if (actualSource === 'user') {
+    const newCount = countOccurrences(text, '_');
+    const delta = newCount - _lastAcceptedUnderscoreCount;
+    if (delta > 0) {
+      if (_underscoreCredits < delta) return;  // not enough credit → drop
+      _underscoreCredits -= delta;
+    }
+    _lastAcceptedUnderscoreCount = newCount;
+  } else {
+    // Runtime write — set baseline so future user-typed `_` deltas are
+    // measured against the runtime's current view. Credits unchanged.
+    _lastAcceptedUnderscoreCount = countOccurrences(text, '_');
+  }
+
   const actualCursor = readCursorOffset() || cursorOffset;
   bootResult?.notifyTextChange(text, actualCursor, actualSource);
   // Repaint after every text change. OpenCode skips this because its

@@ -93,6 +93,37 @@ Don't ship long-running / streaming scripts through this protocol —
 it's request/response, no `stdout` stream until close. Future
 streaming variant would add an `exec-chunk` message.
 
+## Trust gate + site scoping (May 2026)
+
+Two security boundaries closed in the May 2026 native-messaging push:
+
+**1. `isTrusted` gate** (`src/content.ts`). The `input` event handler
+drops events where `event.isTrusted === false`. Browser-issued events
+from real user keystrokes always have `isTrusted: true`; programmatic
+`dispatchEvent(new InputEvent(...))` from a hostile page is false and
+gets ignored. This blocks the "attacker page injects `volume 100 _`
+into a hidden contenteditable and fires synthetic input" vector.
+
+Our own runtime writes go through `execCommand` / direct `.data`
+mutation; the resulting input events are either trusted (execCommand)
+or not fired at all (.data) — neither path triggers a spurious blank
+fire because we mark runtime writes via `sourceReclassifier` before
+the next event lands. No regression for legit writes.
+
+**2. Site-scoped allow/deny lists** (`on-site` / `not-on-site` in
+frontmatter). Cues / blanks / auditors can scope themselves to specific
+sites: `on-site: [reddit.com]`, `on-site: [reddit.com/r/claudeai]`,
+`on-site: [*.reddit.com]`, etc. Filter applies at bundle-read time in
+`applySiteCompatFilter` (opencues-bootstrap.ts) — entries that don't
+match the current `location.hostname`+`pathname` never reach the
+runtime. SPA navigation re-triggers the filter via `popstate` +
+monkey-patched `pushState`/`replaceState`. Spec:
+`docs/features/host-compat.md`-adjacent section in top-level CLAUDE.md.
+
+For destructive blanks (anything taking free-form args that acts on
+the system), recommend pairing `on-site` with a known-good origin
+list rather than firing globally.
+
 ## Verified working sites (May 2026)
 
 | Site | Engine | Path used |
