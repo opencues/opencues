@@ -26,7 +26,7 @@ module.exports = function validate(argv, ctx) {
     console.error(`  ${err.message}`);
     process.exit(1);
   }
-  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames } = core;
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint } = core;
 
   const HOME = os.homedir();
   const searchPaths = [];
@@ -51,7 +51,7 @@ module.exports = function validate(argv, ctx) {
       continue;
     }
     console.log(`Checking ${label}-level: ${dir}`);
-    walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames }, seen, errors, warnings, wordCueSources);
+    walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint }, seen, errors, warnings, wordCueSources);
   }
 
   // Sources without match: AND keywords: would be dropped silently by
@@ -71,7 +71,7 @@ module.exports = function validate(argv, ctx) {
 };
 
 function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources) {
-  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames } = tools;
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint } = tools;
   // Helper: record a word-cue source so we can later check that every
   // entry has match:/keywords: (else it gets dropped at runtime).
   const noteWordCue = (name, src, file) => {
@@ -118,6 +118,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
           namesInThisFile.add(name);
           seen[kind].set(name, p);
           checkHostCompat(p, name, src, inferHostCompat, unknownHostNames, errors, warnings);
+          checkEndpoint(p, name, src, validateEndpoint, errors, warnings);
           if (kind === 'cue') noteWordCue(name, src, p);
         }
       }
@@ -125,6 +126,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
         for (const [name, blk] of Object.entries(parsed.blanks)) {
           seen.blank.set(name, p);
           checkHostCompat(p, name, blk, inferHostCompat, unknownHostNames, errors, warnings);
+          checkEndpoint(p, name, blk, validateEndpoint, errors, warnings);
         }
       }
     } catch (err) {
@@ -171,6 +173,7 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
         const folderParsed = parseSingleCueMd(content, path.dirname(cueMd));
         seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
         checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings);
+        checkEndpoint(cueMd, entry.name, folderParsed.frontmatter, validateEndpoint, errors, warnings);
         if (kind === 'cue') noteWordCue(entry.name, folderParsed.frontmatter, cueMd);
         // Sanity: if the per-folder file declares a script, check it exists + executable.
         const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
@@ -213,6 +216,27 @@ function checkUnroutableWordCues(wordCueSources, warnings) {
         `it would be dropped at runtime. Add an explicit match/keywords (or use \`match: .*\`).`
       );
     }
+  }
+}
+
+// Endpoint allow-list sanity. A cue/blank/auditor's frontmatter can
+// specify provider: + endpoint:; a malicious / typo'd endpoint would
+// route the user's draft (used as prompt context) to an attacker
+// server. validateEndpoint() classifies the URL as default / stock /
+// custom / invalid; we surface anything that isn't "default" or
+// "stock" as a warning so authors verify the URL before installing.
+function checkEndpoint(file, name, src, validateEndpoint, errors, warnings) {
+  if (!src || !validateEndpoint) return;
+  const provider = src.provider;
+  const endpoint = src.endpoint;
+  if (!provider && !endpoint) return;
+  const r = validateEndpoint(provider, endpoint);
+  if (!r.ok) {
+    errors.push(`${file}: ${name}: ${r.warning}`);
+    return;
+  }
+  if (r.kind === 'custom') {
+    warnings.push(`${file}: ${name}: ${r.warning}`);
   }
 }
 
@@ -266,4 +290,6 @@ function printHelp() {
   console.log('  * script: / blankScript: paths that don\'t exist or aren\'t executable');
   console.log('  * Empty cue folders (no CUE.md / BLANK.md inside)');
   console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');
+  console.log('  * Endpoint security: unknown provider:, invalid URL, custom endpoint that');
+  console.log('    overrides the stock provider endpoint (warned, not errored)');
 }

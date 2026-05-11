@@ -201,6 +201,21 @@ function sandboxArg(a) {
   return withinCueRoot(real) ? real : null;
 }
 
+// Append one line to ${CUE_ROOT}/.opencues-log for each script
+// invocation. Mirrors the SHOULD-4 audit-log behaviour the native
+// hosts implement via packages/opencues-runtime/src/security/
+// spawn-sandbox.ts. Best-effort: write failures are swallowed.
+function appendAuditLine(hostName, spec, result, durationMs) {
+  try {
+    const ts = new Date().toISOString();
+    const argsStr = (spec.args || []).join(',');
+    const dur = durationMs !== undefined ? `  ms=${durationMs}` : '';
+    const flag = result.timedOut ? '  timedOut=true' : '';
+    const line = `${ts}\t${hostName}\t${spec.command}\t${argsStr}\texit=${result.exitCode}${dur}${flag}\n`;
+    fs.appendFileSync(path.join(CUE_ROOT_RESOLVED, '.opencues-log'), line);
+  } catch { /* */ }
+}
+
 // Whitelist env keys we accept from the wire. The runtime sends
 // CUES_MODEL / CUES_API_URL / CUES_API_KEY_ENV / CUES_ALT_COUNT etc.
 // Anything outside this prefix is rejected so a malicious cue pack
@@ -251,6 +266,7 @@ function handleExec(msg) {
     args.push(safe);
   }
 
+  const startedAt = Date.now();
   let child;
   try {
     child = spawn(safeCommand, args, {
@@ -259,6 +275,7 @@ function handleExec(msg) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (e) {
+    appendAuditLine('chrome', { command, args: rawArgs }, { exitCode: 127 });
     sendMessage({
       type: 'exec-result', requestId,
       exitCode: 127, stdout: '', stderr: 'spawn failed: ' + (e && e.message || e), timedOut: false,
@@ -277,10 +294,12 @@ function handleExec(msg) {
 
   child.on('close', (code) => {
     clearTimeout(timer);
+    const exit = typeof code === 'number' ? code : (timedOut ? 124 : 1);
+    appendAuditLine('chrome', { command, args: rawArgs }, { exitCode: exit, timedOut }, Date.now() - startedAt);
     sendMessage({
       type: 'exec-result',
       requestId,
-      exitCode: typeof code === 'number' ? code : (timedOut ? 124 : 1),
+      exitCode: exit,
       stdout, stderr, timedOut,
     });
   });

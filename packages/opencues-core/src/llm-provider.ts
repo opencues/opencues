@@ -405,6 +405,75 @@ export function listProviders(): ReadonlyArray<ProviderAdapter> {
   return PROVIDER_IDS.map((id) => PROVIDERS[id]);
 }
 
+// ─── Endpoint validation ───────────────────────────────────────────────
+//
+// A cue / blank / auditor's frontmatter can include `provider:` and
+// `endpoint:`. The endpoint is whatever URL the request gets POSTed
+// to — meaning a malicious config could route the user's draft to an
+// attacker-controlled server. The threat model is the same as cue-
+// pack trust: anything the user puts in `~/.cues/` is trusted, but
+// users routinely install packs without auditing every URL.
+//
+// validateEndpoint returns one of three results:
+//   - { ok: true, kind: 'default' }       — endpoint omitted; provider default applies
+//   - { ok: true, kind: 'stock' }         — endpoint matches the provider's default
+//   - { ok: true, kind: 'custom', warning } — custom URL, flagged for the user
+//
+// The runtime uses the `warning` to log a one-time message per
+// (provider, endpoint) pair when a custom endpoint first fires.
+// `opencues validate` surfaces it at config-load time too.
+
+export interface EndpointValidation {
+  readonly ok: boolean;
+  readonly kind: 'default' | 'stock' | 'custom' | 'unknown-provider' | 'invalid-url';
+  readonly warning?: string;
+}
+
+export function validateEndpoint(
+  providerId: string | undefined | null,
+  endpoint: string | undefined | null,
+): EndpointValidation {
+  if (!providerId) return { ok: true, kind: 'default' };
+  const provider = PROVIDERS[providerId as ProviderId];
+  if (!provider) {
+    return {
+      ok: false,
+      kind: 'unknown-provider',
+      warning: `unknown provider "${providerId}" — known: ${PROVIDER_IDS.join(', ')}`,
+    };
+  }
+  if (!endpoint || endpoint.length === 0) return { ok: true, kind: 'default' };
+
+  // Quick URL sanity check — the network adapter will throw on malformed
+  // input anyway, but flagging it early lets `opencues validate` surface
+  // typos before the first request.
+  try { new URL(endpoint); }
+  catch {
+    return {
+      ok: false,
+      kind: 'invalid-url',
+      warning: `endpoint "${endpoint}" is not a valid URL`,
+    };
+  }
+
+  if (endpoint === provider.defaultEndpoint) return { ok: true, kind: 'stock' };
+
+  // Custom URL: technically allowed (self-hosted proxies, on-prem
+  // gateways, alternate regions), but worth flagging. The runtime is
+  // responsible for surfacing the warning to the user before the
+  // first request — they implicitly trust the host they're sending
+  // their draft to.
+  return {
+    ok: true,
+    kind: 'custom',
+    warning:
+      `endpoint "${endpoint}" overrides the stock ${providerId} endpoint ` +
+      `(${provider.defaultEndpoint}). All LLM requests for this entry — ` +
+      `including the user's draft as prompt context — will go to the custom URL. ` +
+      `Verify this is a server you trust.`,
+  };
+}
+
 /**
  * Convenience: build the wire request for `req` using `providerId`.
  * Wraps `getProvider` + `buildRequest` so callers don't have to care
@@ -523,6 +592,22 @@ function translateModelToFallback(fromProvider: ProviderId, toProvider: Provider
   return FALLBACK_MODEL_MAP[fromProvider]?.[model] ?? model;
 }
 
+// Dedup set for the one-time runtime warning. Keyed by `${id}|${url}`.
+const _warnedEndpoints = new Set<string>();
+function warnCustomEndpointOnce(providerId: string, endpoint: string): void {
+  const key = `${providerId}|${endpoint}`;
+  if (_warnedEndpoints.has(key)) return;
+  _warnedEndpoints.add(key);
+  try {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[opencues] custom LLM endpoint in use: provider=${providerId} ` +
+      `endpoint=${endpoint} — draft is sent as prompt context. ` +
+      `Run "opencues validate" or check the source cue/blank to confirm trust.`,
+    );
+  } catch { /* host may have no console */ }
+}
+
 export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   // Three tiers, most → least specific. The Map index doubles as a
   // specificity score (lower = more specific). Provider and model are
@@ -561,6 +646,15 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   const endpoint = opts.endpointOverride ?? provider.defaultEndpoint;
   const apiKey = opts.apiKeys[provider.envKeyName];
   if (!apiKey) return null;
+
+  // One-time security warning when a non-stock endpoint is resolved.
+  // The user's draft is sent as prompt context, so a custom URL is
+  // worth flagging at runtime in case the user installed a cue pack
+  // without running `opencues validate`. Once per (provider, endpoint)
+  // pair, dedup'd in-process.
+  if (endpoint !== provider.defaultEndpoint) {
+    warnCustomEndpointOnce(providerId, endpoint);
+  }
 
   // Auto-attach a fallback target when:
   //   1. The resolved provider has a wire-compatible peer in FALLBACK_PAIRS.

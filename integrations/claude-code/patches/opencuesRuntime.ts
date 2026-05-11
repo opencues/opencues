@@ -201,12 +201,23 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // (without blanks/) still load — blankInvoke just stays null in
   // that case and BlankFill falls back to spawnProcess.
   const blanksPath = `"@opencues/runtime/dist/src/blanks/index.js"`;
+  // Path-sandbox + audit-log helpers for spawnProcess. Same module is
+  // imported directly by the other native hosts (OC/gemini); CC requires
+  // it at runtime since this file is stringified into cli.js.
+  const securityPath = `"@opencues/runtime/dist/src/security/spawn-sandbox.js"`;
   // OPENCUES.md is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
   const opencuesMdPathExpr =
     `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/OPENCUES.md"):` +
     `((process.env.HOME||"~")+"/.cues/OPENCUES.md"))`;
+  // CUES roots for the sandbox + audit log. First entry is where the
+  // log lands. Mirrors OC/gemini.
+  const cuesRootsExpr =
+    `(function(){var __ocPth=${requireFn}("path");var __ocOs=${requireFn}("os");` +
+    `var __ocR=[];if(process.env.OPENCUES_HOME)__ocR.push(process.env.OPENCUES_HOME);` +
+    `__ocR.push(__ocPth.join(process.cwd(),".cues"));` +
+    `__ocR.push(__ocPth.join(__ocOs.homedir(),".cues"));return __ocR;})()`;
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
@@ -223,17 +234,30 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
     // a ProcessHandle whose .result resolves on exit (or never, if detached).
     `pushText:function(t,c){try{if(globalThis.__oc_pushHostText)globalThis.__oc_pushHostText(t,c);}catch(__ocXe){}},` +
-    `spawnProcess:function(spec){var __ocCp=${requireFn}("child_process");var __ocOpts={detached:!!spec.detached,stdio:spec.detached?"ignore":["ignore","pipe","pipe"],env:spec.env,cwd:spec.cwd};` +
+    // Sandbox + audit log via the shared @opencues/runtime helpers.
+    // Path-validate every arg against the CUES roots, refuse on
+    // escape, append to <root>/.opencues-log on every exit.
+    `spawnProcess:function(spec){` +
+    `var __ocSec=${requireFn}(${securityPath});var __ocRoots=${cuesRootsExpr};` +
+    `var __ocRaw=Array.from(spec.args||[]);var __ocSafeArgs=[];` +
+    `for(var __ocI=0;__ocI<__ocRaw.length;__ocI++){var __ocV=__ocSec.validateScriptPath(String(__ocRaw[__ocI]),__ocRoots);` +
+    `if(!__ocV.ok){__ocSec.appendAuditLog("claude-code",spec,{exitCode:126},__ocRoots);` +
+    `return{result:Promise.resolve({exitCode:126,stdout:"",stderr:__ocV.reason||"path outside CUES roots",timedOut:false}),kill:function(){}};}` +
+    `__ocSafeArgs.push(__ocV.resolved!=null?__ocV.resolved:__ocRaw[__ocI]);}` +
+    `var __ocStartedAt=Date.now();` +
+    `var __ocCp=${requireFn}("child_process");var __ocOpts={detached:!!spec.detached,stdio:spec.detached?"ignore":["ignore","pipe","pipe"],env:spec.env,cwd:spec.cwd};` +
     `var __ocResolve;var __ocReject;var __ocP=new Promise(function(r,rj){__ocResolve=r;__ocReject=rj;});` +
-    `try{var __ocCh=__ocCp.spawn(spec.command,Array.from(spec.args||[]),__ocOpts);if(spec.detached)__ocCh.unref();` +
+    `try{var __ocCh=__ocCp.spawn(spec.command,__ocSafeArgs,__ocOpts);if(spec.detached)__ocCh.unref();` +
     `if(!spec.detached){var __ocStdout="";var __ocStderr="";var __ocTimedOut=false;var __ocTimeoutId=null;` +
     `if(spec.timeoutMs){__ocTimeoutId=setTimeout(function(){__ocTimedOut=true;try{__ocCh.kill("SIGTERM");}catch(_e){}},spec.timeoutMs);}` +
     `if(__ocCh.stdout)__ocCh.stdout.on("data",function(d){__ocStdout+=d.toString();});` +
     `if(__ocCh.stderr)__ocCh.stderr.on("data",function(d){__ocStderr+=d.toString();});` +
-    `__ocCh.on("exit",function(code){if(__ocTimeoutId)clearTimeout(__ocTimeoutId);__ocResolve({stdout:__ocStdout,stderr:__ocStderr,exitCode:code||0,timedOut:__ocTimedOut});});` +
+    `__ocCh.on("exit",function(code){if(__ocTimeoutId)clearTimeout(__ocTimeoutId);var __ocExit=code||0;` +
+    `__ocSec.appendAuditLog("claude-code",spec,{exitCode:__ocExit,timedOut:__ocTimedOut},__ocRoots,Date.now()-__ocStartedAt);` +
+    `__ocResolve({stdout:__ocStdout,stderr:__ocStderr,exitCode:__ocExit,timedOut:__ocTimedOut});});` +
     `__ocCh.on("error",__ocReject);}` +
     `return{result:__ocP,kill:function(sig){try{__ocCh.kill(sig||"SIGTERM");}catch(_e){}}};}` +
-    `catch(__ocSpawnErr){return{result:Promise.reject(__ocSpawnErr),kill:function(){}};}},` +
+    `catch(__ocSpawnErr){__ocSec.appendAuditLog("claude-code",spec,{exitCode:127},__ocRoots);return{result:Promise.reject(__ocSpawnErr),kill:function(){}};}},` +
     // blankInvoke routes BlankFill / Cycling blank dispatches to the
     // hoisted runtime classes. Wrapped in try/catch so a missing blanks
     // module on legacy installs degrades gracefully (BlankFill falls back

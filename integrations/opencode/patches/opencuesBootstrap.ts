@@ -20,10 +20,23 @@ import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/__OPEN
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { createBlankInvoke, AnswerBlank, ClaudeStatusBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
+import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
+import * as os from "node:os"
 import { spawn as nodeSpawn } from "node:child_process"
+
+// CUES roots for the spawn-process path sandbox + audit log. Order:
+// $OPENCUES_HOME (if set), <cwd>/.cues (project), ~/.cues (user). First
+// existing root in the list is where the audit log lands.
+function getCuesRoots(): string[] {
+  const roots: string[] = []
+  if (process.env.OPENCUES_HOME) roots.push(process.env.OPENCUES_HOME)
+  roots.push(path.join(process.cwd(), ".cues"))
+  roots.push(path.join(os.homedir(), ".cues"))
+  return roots
+}
 
 // SolidJS signal carrying the active highlight's tip text. The patched
 // home footer subscribes via opencuesTip() — set on every Statusline
@@ -237,19 +250,47 @@ export function startOpenCues(opts: {
       // resolve the result Promise so callers (TTS, BlankFill scripts)
       // don't hang. Same for spec.input piped to stdin (was silently
       // dropped). Timeout uses SIGTERM then SIGKILL after 1s.
+      //
+      // Path sandbox: validate that any absolute path in args (the
+      // script the runtime asked us to bash) stays inside one of the
+      // CUES roots. realpath-based so a symlink can't escape. Cue
+      // packs trying to `blankScript: /etc/passwd` get refused here
+      // before spawn fires. See packages/opencues-runtime/src/security
+      // /spawn-sandbox.ts.
+      const cuesRoots = getCuesRoots()
+      const rawArgs: string[] = Array.isArray(spec.args) ? spec.args.map(String) : []
+      const safeArgs: string[] = []
+      for (const a of rawArgs) {
+        const r = validateScriptPath(a, cuesRoots)
+        if (!r.ok) {
+          appendAuditLog("opencode", spec, { exitCode: 126 }, cuesRoots)
+          return {
+            result: Promise.resolve({
+              exitCode: 126,
+              stdout: "",
+              stderr: r.reason ?? "path outside CUES roots",
+              timedOut: false,
+            }),
+            kill: () => {},
+          }
+        }
+        safeArgs.push(r.resolved ?? a)
+      }
+      const startedAt = Date.now()
       const wantStdin = typeof spec.input === "string" && spec.input.length > 0
       const stdio: any = spec.detached
         ? "ignore"
         : [wantStdin ? "pipe" : "ignore", "pipe", "pipe"]
       let child: any
       try {
-        child = nodeSpawn(spec.command, spec.args, {
+        child = nodeSpawn(spec.command, safeArgs, {
           env: spec.env,
           cwd: spec.cwd,
           detached: !!spec.detached,
           stdio,
         })
       } catch (err: any) {
+        appendAuditLog("opencode", spec, { exitCode: 127 }, cuesRoots)
         return {
           result: Promise.resolve({
             exitCode: 127,
@@ -279,7 +320,9 @@ export function startOpenCues(opts: {
         const finish = (code: number | null): void => {
           if (timer) clearTimeout(timer)
           if (killer) clearTimeout(killer)
-          resolve({ exitCode: code ?? 0, stdout, stderr, timedOut })
+          const exit = code ?? 0
+          appendAuditLog("opencode", spec, { exitCode: exit, timedOut }, cuesRoots, Date.now() - startedAt)
+          resolve({ exitCode: exit, stdout, stderr, timedOut })
         }
         child.on("exit", finish)
         child.on("error", (err: any) => {
