@@ -153,20 +153,39 @@ function handleMessage(msg) {
   if (msg.type === 'exec') return handleExec(msg);
 }
 
-// Translate a path that the chrome runtime constructed against its
-// virtual /chrome-storage/.cues/ root to a real filesystem path under
-// CUE_ROOT (~/.cues/ or $OPENCUES_HOME). Returns null if the
-// translation would escape CUE_ROOT (defence against malicious specs).
+// Sandbox: every script path the host runs must live under CUE_ROOT
+// (~/.cues/ or $OPENCUES_HOME). A malicious cue pack writing
+// `blankScript: /etc/passwd` (or any absolute path outside CUE_ROOT)
+// must NOT be honoured.
+//
+// Three input shapes:
+//   1. Chrome-runtime-built virtual paths (/chrome-storage/.cues/...) →
+//      translate to ${CUE_ROOT}/..., then verify resolved path stays
+//      under CUE_ROOT.
+//   2. Absolute filesystem paths (/home/.../foo.sh) → verify directly.
+//   3. Non-path args (plain words, flags like '-c', strings without a
+//      leading slash) → pass through unchanged.
 const CHROME_STORAGE_PREFIX = '/chrome-storage/.cues/';
-function resolveChromeStoragePath(p) {
-  if (typeof p !== 'string') return null;
-  if (!p.startsWith(CHROME_STORAGE_PREFIX)) return null;
-  const rel = p.slice(CHROME_STORAGE_PREFIX.length);
-  const abs = path.resolve(CUE_ROOT, rel);
-  // Ensure the resolved path stays inside CUE_ROOT.
-  const rootResolved = path.resolve(CUE_ROOT);
-  if (abs !== rootResolved && !abs.startsWith(rootResolved + path.sep)) return null;
-  return abs;
+const CUE_ROOT_RESOLVED = path.resolve(CUE_ROOT);
+
+function withinCueRoot(absPath) {
+  return absPath === CUE_ROOT_RESOLVED || absPath.startsWith(CUE_ROOT_RESOLVED + path.sep);
+}
+
+// Returns the safe path to pass through, or null if it would escape.
+// Non-absolute args are returned unchanged.
+function sandboxArg(a) {
+  if (typeof a !== 'string') return a;
+  if (a.startsWith(CHROME_STORAGE_PREFIX)) {
+    const rel = a.slice(CHROME_STORAGE_PREFIX.length);
+    const abs = path.resolve(CUE_ROOT, rel);
+    return withinCueRoot(abs) ? abs : null;
+  }
+  if (a.startsWith('/')) {
+    const abs = path.resolve(a);
+    return withinCueRoot(abs) ? abs : null;
+  }
+  return a;
 }
 
 const { spawn } = require('node:child_process');
@@ -179,29 +198,33 @@ function handleExec(msg) {
   const rawArgs = Array.isArray(msg.args) ? msg.args.map(String) : [];
   const timeoutMs = typeof msg.timeoutMs === 'number' ? msg.timeoutMs : 10_000;
 
-  // Rewrite chrome-storage paths in args; reject if any escape sandbox.
-  // Args that aren't chrome-storage paths pass through unchanged (the
-  // runtime mixes paths + plain string args).
+  // Sandbox: absolute paths must stay under CUE_ROOT. The command
+  // itself is also checked when it's an absolute path (relative
+  // commands like 'bash' or 'node' resolve via PATH and are fine).
+  const safeCommand = command.startsWith('/') ? sandboxArg(command) : command;
+  if (safeCommand === null) {
+    sendMessage({
+      type: 'exec-result', requestId,
+      exitCode: 126, stdout: '', stderr: `command outside CUE_ROOT: ${command}`, timedOut: false,
+    });
+    return;
+  }
   const args = [];
   for (const a of rawArgs) {
-    if (a.startsWith(CHROME_STORAGE_PREFIX)) {
-      const resolved = resolveChromeStoragePath(a);
-      if (!resolved) {
-        sendMessage({
-          type: 'exec-result', requestId,
-          exitCode: 126, stdout: '', stderr: `path outside CUE_ROOT: ${a}`, timedOut: false,
-        });
-        return;
-      }
-      args.push(resolved);
-    } else {
-      args.push(a);
+    const safe = sandboxArg(a);
+    if (safe === null) {
+      sendMessage({
+        type: 'exec-result', requestId,
+        exitCode: 126, stdout: '', stderr: `arg outside CUE_ROOT: ${a}`, timedOut: false,
+      });
+      return;
     }
+    args.push(safe);
   }
 
   let child;
   try {
-    child = spawn(command, args, {
+    child = spawn(safeCommand, args, {
       env: { ...process.env, ...(msg.env && typeof msg.env === 'object' ? msg.env : {}) },
       cwd: CUE_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
