@@ -69,6 +69,31 @@ export interface HighlightRange extends Range {
   readonly color?: string;
 }
 
+/**
+ * OS-level sandbox config for a single spawnProcess invocation.
+ * Populated by blank-fill from the blank's frontmatter; honored by
+ * each host's spawn wrapper (via `wrapWithBwrap` from
+ * `security/sandbox-runner.ts`). Hosts on platforms without a
+ * sandbox implementation (or with the sandbox tool missing — e.g.
+ * `bwrap` not installed on Linux) MUST fall back to running the
+ * spec unwrapped: the path sandbox + audit log still apply, just
+ * not OS-level confinement.
+ */
+export interface SandboxConfig {
+  /** 'strict' = wrap with bwrap (read-only fs, no net, isolated PID/IPC).
+   *  'off' (or undefined) = run unwrapped. */
+  readonly mode?: 'strict' | 'off';
+  /** Network policy inside the sandbox. Defaults to 'deny'. */
+  readonly net?: 'allow' | 'deny';
+  /** Filesystem-write policy for the blank's own folder. Defaults to 'ro'.
+   *  /tmp is always rw inside a fresh tmpfs that dies with the process. */
+  readonly fs?: 'ro' | 'rw';
+  /** Folder bind-mounted into the sandbox at the same path it has on
+   *  the host. Typically the blank's own folder so the script can
+   *  load colocated assets. */
+  readonly workdir?: string;
+}
+
 export interface ProcessSpec {
   readonly command: string;
   readonly args: readonly string[];
@@ -77,6 +102,7 @@ export interface ProcessSpec {
   readonly timeoutMs?: number;
   readonly detached?: boolean;
   readonly input?: string;
+  readonly sandbox?: SandboxConfig;
 }
 
 /**

@@ -1093,6 +1093,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
               args: Array.from(spec.args ?? []),
               env: spec.env,
               timeoutMs: spec.timeoutMs,
+              sandbox: spec.sandbox,
             });
           return reply;
         } catch (err) {

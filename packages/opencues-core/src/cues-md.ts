@@ -124,6 +124,28 @@ export interface BlankConfig {
   blankTip?: string;
   /** Script for blank get/set. */
   blankScript?: string;
+  /**
+   * Opt-in OS-level sandbox for this blank's script. When 'strict',
+   * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
+   * filesystem, no network, isolated PID/IPC namespaces. The script
+   * sees: read-only `/usr` / `/etc` / `/bin` / `/lib*`, a fresh tmpfs
+   * `/tmp`, and read-only access to its own blank folder. Volume /
+   * brightness scripts that need to reach `/mnt/c/` (WSL) or call
+   * system binaries should LEAVE this off until they declare the
+   * permissions they need.
+   *
+   * Defaults to 'off' so existing blanks aren't broken.
+   */
+  sandbox?: 'strict' | 'off';
+  /** When `sandbox: strict`, allow network from inside the sandbox.
+   *  Default 'deny'. Set to 'allow' for blanks that legitimately need
+   *  HTTP access (rare for scripts — most LLM/HTTP blanks live in the
+   *  in-process `impl:` path, not in subprocess scripts). */
+  sandboxNet?: 'allow' | 'deny';
+  /** When `sandbox: strict`, the blank's folder is bound read-only by
+   *  default. Set to 'rw' if the script needs to write state files
+   *  alongside itself. /tmp is always rw (fresh tmpfs). */
+  sandboxFs?: 'ro' | 'rw';
   /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
   blankProximity?: number;
   /** If true, cycling (Up/Down) is disabled — display-only blank */
@@ -663,6 +685,10 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   apiKeyEnv?: string;
   altCount?: number;
   includeOriginal?: boolean;
+  /** OS-level sandbox opt-in for scripted blanks. See BlankConfig.sandbox. */
+  sandbox?: 'strict' | 'off';
+  sandboxNet?: 'allow' | 'deny';
+  sandboxFs?: 'ro' | 'rw';
   /** Explicit host allow-list (takes precedence over auto-detection from script: extension). */
   onHost?: string[];
   /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
@@ -754,6 +780,9 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'not-on-host': case 'notOnHost': fm.notOnHost = parseHostList(value); break;
       case 'on-site': case 'onSite': fm.onSite = parseHostList(value); break;
       case 'not-on-site': case 'notOnSite': fm.notOnSite = parseHostList(value); break;
+      case 'sandbox': fm.sandbox = value === 'strict' ? 'strict' : 'off'; break;
+      case 'sandbox-net': case 'sandboxNet': fm.sandboxNet = value === 'allow' ? 'allow' : 'deny'; break;
+      case 'sandbox-fs': case 'sandboxFs': fm.sandboxFs = value === 'rw' ? 'rw' : 'ro'; break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -836,6 +865,9 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.apiKeyEnv !== undefined) blank.apiKeyEnv = frontmatter.apiKeyEnv;
       if (frontmatter.altCount !== undefined) blank.altCount = frontmatter.altCount;
       if (frontmatter.includeOriginal !== undefined) blank.includeOriginal = frontmatter.includeOriginal;
+      if (frontmatter.sandbox !== undefined) blank.sandbox = frontmatter.sandbox;
+      if (frontmatter.sandboxNet !== undefined) blank.sandboxNet = frontmatter.sandboxNet;
+      if (frontmatter.sandboxFs !== undefined) blank.sandboxFs = frontmatter.sandboxFs;
       // Parse ## sections from body as named prompts
       const promptSections: Record<string, string> = {};
       const sectionPattern = /^## (.+)$/gm;

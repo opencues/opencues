@@ -35,6 +35,7 @@ import {
   type Blank,
 } from '@opencues/runtime/dist/src/blanks/index.js';
 import { validateScriptPath, appendAuditLog } from '@opencues/runtime/dist/src/security/spawn-sandbox.js';
+import { wrapWithBwrap } from '@opencues/runtime/dist/src/security/sandbox-runner.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -250,6 +251,12 @@ export function startOpenCues(opts: {
         }
         safeArgs.push(r.resolved ?? a);
       }
+      // OS-level sandbox: wrap with bwrap when blank declared
+      // `sandbox: strict` AND bwrap is available. See OC equivalent.
+      const wrapped = wrapWithBwrap(spec.command, safeArgs, spec.sandbox, cuesRoots);
+      const finalCommand = wrapped?.command ?? spec.command;
+      const finalArgs = wrapped?.args ?? safeArgs;
+
       const startedAt = Date.now();
       const wantStdin = typeof spec.input === 'string' && spec.input.length > 0;
       const stdio: any = spec.detached
@@ -257,7 +264,7 @@ export function startOpenCues(opts: {
         : [wantStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'];
       let child: any;
       try {
-        child = nodeSpawn(spec.command, safeArgs, {
+        child = nodeSpawn(finalCommand, finalArgs, {
           env: spec.env,
           cwd: spec.cwd,
           detached: !!spec.detached,

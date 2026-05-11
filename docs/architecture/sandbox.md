@@ -1,0 +1,199 @@
+# Scripted-blank Sandbox
+
+OS-level isolation for the scripts that fire when a blank's `_`
+auto-populates. Wraps `bash <script>` with `bubblewrap (bwrap)` so a
+malicious `~/.cues/blanks/foo/script.sh` can't reach beyond the
+blank's own folder, can't open network sockets, and can't see other
+processes on the system.
+
+**Status**: shipped May 2026, **opt-in** per blank via frontmatter.
+Existing blanks (volume, brightness, etc.) keep running unsandboxed
+because they have legitimate filesystem / system-call needs (volume
+talks to `VolCtl.exe` under `/mnt/c/`, brightness similar). New
+blanks or anything authored without those requirements should
+declare `sandbox: strict`.
+
+## Frontmatter
+
+```yaml
+---
+name: clipboard
+type: blank
+blankKeywords: clipboard
+blankScript: ./clip.sh
+sandbox: strict          # opt-in. Default is 'off' (unsandboxed).
+sandbox-net: deny        # 'allow' | 'deny'. Default: 'deny'.
+sandbox-fs: ro           # 'ro' | 'rw'. Default: 'ro'.
+---
+```
+
+When `sandbox: strict`, the runtime sets a `sandbox: SandboxConfig`
+field on the `ProcessSpec` it hands to the host's `spawnProcess`.
+Each host's spawn wrapper imports `wrapWithBwrap` from
+`@opencues/runtime/dist/src/security/sandbox-runner.js` and wraps the
+spec before calling `child_process.spawn`. On platforms where bwrap
+isn't available (macOS, native Windows, Linux without bubblewrap
+installed), the wrapper returns null and the spec runs unwrapped —
+the **path sandbox + audit log still apply**, just not OS-level
+confinement.
+
+## What the sandbox does
+
+When `sandbox: strict` resolves through bwrap, the script sees:
+
+| Aspect | Default | Override |
+|---|---|---|
+| **System dirs** (`/usr`, `/bin`, `/lib`, `/etc`, `/sbin`) | Read-only bind | — |
+| **The blank's own folder** | Read-only bind | `sandbox-fs: rw` |
+| **All CUES roots** (`$OPENCUES_HOME`, `<cwd>/.cues`, `~/.cues`) | Read-only bind | — |
+| **`/tmp`** | Fresh tmpfs (dies with script) | — |
+| **`/dev`** | Minimal (`/dev/null`, `/dev/zero`, `/dev/random`, `/dev/tty`) | — |
+| **`/proc`** | New procfs inside the sandbox | — |
+| **HOME, `/mnt/*`, anything else** | Not mounted (invisible) | — |
+| **Network** | `--unshare-net` (no sockets, no DNS) | `sandbox-net: allow` |
+| **PID namespace** | `--unshare-pid` (script sees ~5 processes) | — |
+| **IPC namespace** | `--unshare-ipc` | — |
+| **UTS namespace** | `--unshare-uts` (own hostname) | — |
+| **User namespace** | `--unshare-user-try` (best-effort) | — |
+| **Parent-die** | `--die-with-parent` (no orphans) | — |
+
+The sandbox is **shape-shaped, not behaviour-shaped**: a script
+running inside it has the user's permissions over the mounted
+filesystem. It just can't see / modify anything that wasn't
+explicitly bound.
+
+## What it does NOT do
+
+- **Block syscalls.** No seccomp filter. A script can call any
+  syscall available to the user — it just operates on a confined
+  filesystem view. If you need syscall-level confinement (e.g. block
+  `ptrace`, `chroot`, `mount`), add a seccomp profile via
+  `--seccomp <fd>` in a future revision.
+- **Sandbox cycling (`set` calls).** Today only the blank-fill
+  `get` path applies the sandbox. Cycling Up/Down on a sandboxed
+  blank fires `set <value>` UNSANDBOXED. Closing this gap requires
+  plumbing the blank config through cycling.ts's `invokeOrSpawn`
+  helper — tracked as follow-up.
+- **Hide /etc/passwd or similar world-readable files.** They're
+  inside `/etc`, which is mounted read-only. The script can read
+  them. The kernel's standard file permissions still apply (so
+  `/etc/shadow` remains unreadable to the non-root user).
+- **Constrain memory or CPU.** Use `ulimit` / cgroups separately if
+  you need that.
+
+## Wire-up
+
+```
+BLANK.md frontmatter
+   ↓ parsed by @opencues/core/src/cues-md.ts
+BlankConfig { sandbox, sandboxNet, sandboxFs, ... }
+   ↓ consumed by @opencues/runtime/src/modules/blank-fill.ts
+ProcessSpec { command: 'bash', args: [scriptPath, 'get', ...],
+              sandbox: { mode: 'strict', net, fs, workdir } }
+   ↓ spawnProcess (host-specific)
+each host's spawn wrapper:
+   ↓ calls wrapWithBwrap(command, args, spec.sandbox, cuesRoots)
+   ↓ if returned: child_process.spawn(bwrap, [...flags..., '--', bash, scriptPath, ...])
+   ↓ if null (sandbox off OR bwrap unavailable): child_process.spawn(bash, [scriptPath, ...])
+appendAuditLog after exit
+```
+
+The runtime is host-agnostic — it never imports `node:fs` or detects
+bwrap. Each host's spawn implementation does the wrap. This keeps
+the chrome runtime (no Node primitives) clean while still letting
+the chrome host (native-messaging process) apply the same sandbox.
+
+## Cross-host status
+
+| Host | Sandbox wired | Notes |
+|---|---|---|
+| **claude-code** | ✓ | CC patch (string-template) `require()`s `sandbox-runner.js` at spawn time |
+| **opencode** | ✓ | TS patch imports `wrapWithBwrap` directly |
+| **gemini-cli** | ✓ | Same shape as OC |
+| **chrome** | ✓ | Chrome host (host.cjs) requires `sandbox-runner.js` from the bundled runtime under `node_modules/@opencues/runtime/` |
+| **macOS / native Windows** | falls back to unwrapped | Future: `sandbox-exec` profile on macOS; AppContainer on Windows |
+
+## Verified behaviour
+
+Manually proven via a `sandbox-test` blank that ran `touch
+$CUE_ROOT/leak.txt`, `curl http://example.com`, and `ls /proc | wc
+-l` from inside the sandbox:
+
+| Test | Unsandboxed | Sandboxed |
+|---|---|---|
+| `touch` outside `/tmp` | LEAKED | blocked (read-only FS) |
+| `touch /tmp/foo` | ok | ok (tmpfs) |
+| `curl example.com` | (depends on network) | blocked (`--unshare-net`) |
+| `ls /proc \| wc -l` (other processes visible?) | ~60 | 5 (just the sandbox) |
+
+End-to-end smoke-tested through the chrome native-messaging host as
+well: same results.
+
+Unit tests pin the bwrap-args construction:
+`packages/opencues-runtime/src/security/sandbox-runner.test.ts` (12
+tests).
+
+## Authoring a sandboxed blank
+
+For new blanks that DON'T need filesystem writes or network:
+
+```yaml
+---
+name: prime-factors
+type: blank
+blankKeywords: factors
+blankScript: ./factor.sh
+sandbox: strict
+---
+```
+
+Script can `echo`, `bc`, `awk`, etc. — anything that doesn't write
+to disk or open sockets. The user's draft is passed as args, the
+result comes back via stdout.
+
+For blanks that need to read/write their own state:
+
+```yaml
+sandbox: strict
+sandbox-fs: rw   # the blank's folder is writable; CUES_ROOT stays ro
+```
+
+For blanks that need network access (HTTP API calls):
+
+```yaml
+sandbox: strict
+sandbox-net: allow
+```
+
+(Most HTTP-backed blanks are better implemented as `impl:` classes
+that use the runtime's HTTP adapter — no spawn at all, host-portable
+to Chrome.)
+
+For blanks that need full system access (volume, brightness, system
+commands): **don't** declare `sandbox`. Leave the default `off`. The
+path sandbox + audit log still apply.
+
+## Migration plan (future)
+
+1. Audit existing `defaults/blanks/*` for sandbox-compatibility.
+2. Add `sandbox: strict` (or `sandbox: off` with rationale) to each.
+3. Flip the default once every shipped blank has an explicit value.
+4. Add `opencues validate` warning for `sandbox: off` blanks that
+   only do trivial things (a heuristic — could miss complex cases).
+
+## Why bwrap, not Docker / Podman / firejail / nsjail
+
+- **No daemon, no root, no installation prerequisite beyond the
+  bwrap binary itself.** WSL2 ships a kernel that supports
+  unprivileged user namespaces; bwrap leverages that. Docker would
+  require docker-engine running.
+- **Per-script invocation overhead is ~5ms.** Negligible alongside
+  the 80ms a typical blank script takes.
+- **Composable.** Each invocation is a fresh sandbox; no shared
+  state between blanks. Reset on each spawn.
+- **Used in production by Flatpak.** Battle-tested for exactly this
+  use case (untrusted code, minimal capability).
+
+firejail is a heavier wrapper with policy files; we want
+minimal-config inline flags. nsjail is similar to bwrap but less
+widely packaged. Docker/Podman are overkill for per-script execution.

@@ -195,7 +195,32 @@ For v1.0, the standard carves `blankScript:` blanks out of any future registry d
 
 Authors who want to share a `blankScript:` blank SHOULD publish the `BLANK.md` + script as documentation (a gist, a blog post, a repo with a README). Users who want to install it copy the files manually after reading the script. This is by design: there is no shortcut around user inspection in v1.0.
 
-A future revision MAY introduce a registry mechanism with cryptographic provenance, sandboxed execution, or signed publisher manifests — all of which are needed before script distribution is safe. v1.0 deliberately omits them.
+A future revision MAY introduce a registry mechanism with cryptographic provenance, sandboxed execution, or signed publisher manifests — all of which are needed before script distribution is safe. v1.0 deliberately omits the registry; sandboxed execution shipped as opt-in (see below) but doesn't yet replace the carve-out for distribution.
+
+### Opt-in OS-level sandbox (v1.0+)
+
+Independent of the registry question, a conformant runtime SHOULD
+honour an opt-in OS-level sandbox declared in frontmatter. The
+sandbox confines `blankScript:` invocations to a read-only
+filesystem view, denies network access by default, and isolates
+PID/IPC namespaces. The exact mechanism is platform-dependent
+(`bwrap` on Linux/WSL, `sandbox-exec` on macOS, AppContainer on
+Windows); the frontmatter is the same:
+
+```yaml
+sandbox: strict          # opt-in. omitted / 'off' = unsandboxed (default).
+sandbox-net: deny        # 'allow' | 'deny' (default).
+sandbox-fs: ro           # 'ro' (default) | 'rw' for the blank's own folder.
+```
+
+Hosts MAY fall back to unsandboxed execution when no sandbox tool is
+available — the path sandbox and audit log still apply. Authors who
+need their blank to work everywhere should design for the strictest
+case (no FS writes outside `/tmp`, no network) or document the
+permissions they require.
+
+`stepValues` and `impl` blanks are not affected — no script ever
+runs for those profiles.
 
 ### Why the carve-out and not a blanket ban
 

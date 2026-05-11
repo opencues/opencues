@@ -266,10 +266,31 @@ function handleExec(msg) {
     args.push(safe);
   }
 
+  // OS-level sandbox: when the runtime sets spec.sandbox.mode==='strict'
+  // AND bwrap is available, wrap the spawn. The sandbox-runner module
+  // is host-agnostic; we require it from the built @opencues/runtime
+  // copy that lives inside our extension bundle. Fall through to
+  // unwrapped spawn when sandbox is off or bwrap unavailable.
+  let finalCommand = safeCommand;
+  let finalArgs = args;
+  if (msg.sandbox && msg.sandbox.mode === 'strict') {
+    try {
+      const { wrapWithBwrap } = require(path.join(
+        __dirname, '..', 'node_modules', '@opencues', 'runtime',
+        'dist', 'src', 'security', 'sandbox-runner.js',
+      ));
+      const wrapped = wrapWithBwrap(safeCommand, args, msg.sandbox, [CUE_ROOT_RESOLVED]);
+      if (wrapped) {
+        finalCommand = wrapped.command;
+        finalArgs = wrapped.args;
+      }
+    } catch { /* sandbox-runner not bundled — fall through unwrapped */ }
+  }
+
   const startedAt = Date.now();
   let child;
   try {
-    child = spawn(safeCommand, args, {
+    child = spawn(finalCommand, finalArgs, {
       env: { ...process.env, ...filterMessageEnv(msg.env) },
       cwd: CUE_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],

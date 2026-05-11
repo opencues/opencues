@@ -246,11 +246,25 @@ export class BlankFill {
           this._pendingScripts.delete(dedupKey);
           continue;
         }
+        // OS-level sandbox config — populated when the blank's
+        // frontmatter declares `sandbox: strict`. The host's spawn
+        // wrapper picks this up and applies bwrap (Linux/WSL) or
+        // falls back to unwrapped where no sandbox is available.
+        // blank-fill stays host-agnostic — no fs.statSync or shell
+        // detection here. See packages/opencues-runtime/src/security/
+        // sandbox-runner.ts.
+        const sandbox = blank.sandbox === 'strict' ? {
+          mode: 'strict' as const,
+          net: blank.sandboxNet === 'allow' ? 'allow' as const : 'deny' as const,
+          fs: blank.sandboxFs === 'rw' ? 'rw' as const : 'ro' as const,
+          workdir: scriptPath ? scriptPath.replace(/\/[^/]+$/, '') : undefined,
+        } : undefined;
         handle = this.adapter.spawnProcess({
           command: 'bash',
           args: [scriptPath, 'get', slot.keyword, ...contextWords],
           env,
           timeoutMs: 8000,
+          sandbox,
         });
       }
       handle.result.then(res => {

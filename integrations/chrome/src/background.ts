@@ -133,6 +133,15 @@ interface ExecRequestFromContent {
   args: string[];
   env?: Record<string, string>;
   timeoutMs?: number;
+  /** OS-level sandbox config from the runtime (when the blank's
+   *  frontmatter declared `sandbox: strict`). The host applies bwrap
+   *  if available; otherwise runs unwrapped. */
+  sandbox?: {
+    mode?: 'strict' | 'off';
+    net?: 'allow' | 'deny';
+    fs?: 'ro' | 'rw';
+    workdir?: string;
+  };
 }
 
 let nativePort: chrome.runtime.Port | null = null;
@@ -236,6 +245,7 @@ chrome.runtime.onMessage.addListener((message: ExecRequestFromContent, _sender, 
       args: message.args,
       env: message.env,
       timeoutMs,
+      sandbox: message.sandbox,
     });
   } catch (err) {
     pending.delete(requestId);

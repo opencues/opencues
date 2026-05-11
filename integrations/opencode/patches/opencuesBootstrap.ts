@@ -21,6 +21,7 @@ import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dis
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { createBlankInvoke, AnswerBlank, ClaudeStatusBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
+import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -276,6 +277,15 @@ export function startOpenCues(opts: {
         }
         safeArgs.push(r.resolved ?? a)
       }
+      // OS-level sandbox: wrap the spec with bwrap when the blank
+      // declared `sandbox: strict` AND bwrap is available. Returns
+      // null when sandbox is off or unavailable — we then fall back
+      // to running unwrapped (the path sandbox + audit log still
+      // apply).
+      const wrapped = wrapWithBwrap(spec.command, safeArgs, spec.sandbox, cuesRoots)
+      const finalCommand = wrapped?.command ?? spec.command
+      const finalArgs = wrapped?.args ?? safeArgs
+
       const startedAt = Date.now()
       const wantStdin = typeof spec.input === "string" && spec.input.length > 0
       const stdio: any = spec.detached
@@ -283,7 +293,7 @@ export function startOpenCues(opts: {
         : [wantStdin ? "pipe" : "ignore", "pipe", "pipe"]
       let child: any
       try {
-        child = nodeSpawn(spec.command, safeArgs, {
+        child = nodeSpawn(finalCommand, finalArgs, {
           env: spec.env,
           cwd: spec.cwd,
           detached: !!spec.detached,
