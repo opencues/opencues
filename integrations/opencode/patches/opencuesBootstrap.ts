@@ -22,6 +22,12 @@ import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common
 import { createBlankInvoke, AnswerBlank, ClaudeStatusBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
+import { buildUserBlankRegistry, type BlankConfigLike } from "@opencues/runtime/dist/src/user-blanks/registry"
+// We use the synchronous parseSingleCueMd at boot to discover user-
+// shipped JS blanks. Loaded eagerly (not on first-invocation) so the
+// blank-invoke registry is complete by the time the runtime boots.
+import { parseSingleCueMd } from "@opencues/core"
+import { existsSync as fsExistsSync, readdirSync as fsReaddirSync, readFileSync as fsReadFileSync } from "node:fs"
 import { createSignal } from "solid-js"
 import * as path from "node:path"
 import * as fs from "node:fs/promises"
@@ -132,6 +138,38 @@ const blanksRegistry = new Map<string, Blank>([
     writeFile: async (content) => { await fs.writeFile(findOpenCuesMdPath(), content, "utf8") },
   })],
 ])
+// User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md
+// the runtime would see, parse it, and register the impl-pointed
+// blank if it declares `impl: ./<file>.js`. Each runs in a fresh
+// vm.Context with only the capabilities its frontmatter declared.
+function _discoverUserBlankConfigs(): BlankConfigLike[] {
+  const roots: string[] = []
+  if (process.env.OPENCUES_HOME) roots.push(process.env.OPENCUES_HOME)
+  roots.push(path.join(process.cwd(), ".cues"))
+  roots.push(path.join(process.env.HOME ?? os.homedir(), ".cues"))
+  const out: BlankConfigLike[] = []
+  for (const root of roots) {
+    const blanksDir = path.join(root, "blanks")
+    if (!fsExistsSync(blanksDir)) continue
+    for (const entry of fsReaddirSync(blanksDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const blankMdPath = path.join(blanksDir, entry.name, "BLANK.md")
+      if (!fsExistsSync(blankMdPath)) continue
+      try {
+        const content = fsReadFileSync(blankMdPath, "utf8")
+        const parsed = parseSingleCueMd(content, path.dirname(blankMdPath))
+        const blk = parsed.blanks?.[entry.name]
+        if (blk?.impl) out.push(blk as BlankConfigLike)
+      } catch { /* skip on parse error */ }
+    }
+  }
+  return out
+}
+const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
+  storageRoot: process.env.OPENCUES_HOME ?? path.join(process.env.HOME ?? os.homedir(), ".cues"),
+  log: (lvl, msg) => console.log(`[opencues] user-blank ${lvl}: ${msg}`),
+})
+for (const [n, b] of _userBlanks) blanksRegistry.set(n, b)
 const blankInvoke = createBlankInvoke(blanksRegistry)
 
 export function startOpenCues(opts: {

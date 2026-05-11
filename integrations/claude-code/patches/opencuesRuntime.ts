@@ -209,6 +209,11 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // OC / gemini-cli; CC requires at runtime since this is a string-
   // template injected into cli.js.
   const sandboxPath = `"@opencues/runtime/dist/src/security/sandbox-runner.js"`;
+  // User-blank registry builder + parser. Discovers `impl: ./blank.js`
+  // BLANK.md files at boot and registers them alongside the built-in
+  // runtime classes.
+  const userBlanksPath = `"@opencues/runtime/dist/src/user-blanks/registry.js"`;
+  const corePath = `"@opencues/core"`;
   // OPENCUES.md is system-wide, user-level only. Schema is runtime-owned;
   // no project override. Resolved at call time so an OPENCUES_HOME flip
   // after boot is still honoured.
@@ -289,6 +294,39 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
     `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
     `}));` +
+    // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md,
+    // parse, register each impl: ./xxx.js entry. Wrapped in try/catch
+    // so older runtime installs (without user-blanks support) degrade
+    // silently — built-in blanks keep working.
+    `try{` +
+    `var __ocUbReg=${requireFn}(${userBlanksPath});` +
+    `var __ocCore=${requireFn}(${corePath});` +
+    `var __ocPath=${requireFn}("path");var __ocOs=${requireFn}("os");` +
+    `var __ocRoots2=[];if(process.env.OPENCUES_HOME)__ocRoots2.push(process.env.OPENCUES_HOME);` +
+    `__ocRoots2.push(__ocPath.join(process.cwd(),".cues"));` +
+    `__ocRoots2.push(__ocPath.join(__ocOs.homedir(),".cues"));` +
+    `var __ocUserCfgs=[];` +
+    `for(var __ocRi=0;__ocRi<__ocRoots2.length;__ocRi++){` +
+    `var __ocBd=__ocPath.join(__ocRoots2[__ocRi],"blanks");` +
+    `if(!__ocFs.existsSync(__ocBd))continue;` +
+    `var __ocEs=__ocFs.readdirSync(__ocBd,{withFileTypes:true});` +
+    `for(var __ocEi=0;__ocEi<__ocEs.length;__ocEi++){` +
+    `if(!__ocEs[__ocEi].isDirectory())continue;` +
+    `var __ocBM=__ocPath.join(__ocBd,__ocEs[__ocEi].name,"BLANK.md");` +
+    `if(!__ocFs.existsSync(__ocBM))continue;` +
+    `try{` +
+    `var __ocC=__ocFs.readFileSync(__ocBM,"utf8");` +
+    `var __ocPr=__ocCore.parseSingleCueMd(__ocC,__ocPath.dirname(__ocBM));` +
+    `var __ocBlk=__ocPr.blanks&&__ocPr.blanks[__ocEs[__ocEi].name];` +
+    `if(__ocBlk&&__ocBlk.impl&&__ocBlk.impl.indexOf("/")>=0)__ocUserCfgs.push(__ocBlk);` +
+    `}catch(__ocBe){}` +
+    `}` +
+    `}` +
+    `var __ocUm=__ocUbReg.buildUserBlankRegistry(__ocUserCfgs,{storageRoot:__ocRoots2[__ocRoots2.length-1],log:function(){}});` +
+    `__ocUm.forEach(function(b,n){__ocReg.set(n,b);});` +
+    `}catch(__ocUbE){` +
+    `if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","user-blank discovery failed",{err:String(__ocUbE)});` +
+    `}` +
     `return __ocCtl.createBlankInvoke(__ocReg);` +
     `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
     // Statusline export path. Per-PID so two CC instances don't collide.

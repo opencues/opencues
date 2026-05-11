@@ -26,6 +26,8 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
+import { parseSingleCueMd } from '@opencues/core';
+import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
@@ -749,6 +751,68 @@ function applySiteCompatFilter(files: Record<string, string>): Record<string, st
   });
 }
 
+/**
+ * Walk the storage bundle for `~/.cues/blanks/<name>/BLANK.md` entries
+ * that declare `impl: ./<file>.js` and register each as a
+ * ChromeUserBlank. The .js source is also bundled (the chrome host
+ * doesn't filter .js out the way it filters .sh) so the content
+ * script has everything it needs to spawn the Worker.
+ *
+ * The runtime's blankInvoke map is shared by reference — entries we
+ * `.set()` here become visible to BlankFill on the next invocation.
+ */
+async function registerUserBlanksFromBundle(
+  blanksRegistry: Map<string, BrowserBlank>,
+): Promise<void> {
+  const stored = await chrome.storage.local.get('opencues_bundle');
+  const bundle = stored.opencues_bundle as { files?: Record<string, string> } | undefined;
+  if (!bundle || !bundle.files) return;
+
+  let registered = 0;
+  for (const [rel, content] of Object.entries(bundle.files)) {
+    // Match blanks/<name>/BLANK.md (case-insensitive primary,
+    // tolerant of legacy lowercase per discover.ts).
+    const m = rel.match(/^blanks\/([^/]+)\/BLANK\.md$/i);
+    if (!m) continue;
+    const blankName = m[1];
+
+    let parsed;
+    try { parsed = parseSingleCueMd(content, `/chrome-storage/.cues/blanks/${blankName}`); }
+    catch { continue; }
+    const cfg = parsed.blanks?.[blankName];
+    if (!cfg?.impl) continue;
+
+    // Only treat relative paths as user-shipped JS. Bare names fall
+    // through to the built-in registry (same as the native hosts).
+    const isRelative = cfg.impl.includes('/');
+    if (!isRelative) continue;
+
+    // Locate the JS source in the bundle. cfg.impl was resolved to
+    // an abs-ish path against /chrome-storage/.cues/blanks/<name>/;
+    // strip that prefix to find the bundle-relative key.
+    const jsRel = cfg.impl.replace(/^\/chrome-storage\/\.cues\//, '').replace(/^\.\//, '');
+    const jsSource = bundle.files[jsRel];
+    if (!jsSource) {
+      log.warn(`[opencues] user blank "${blankName}" declared impl: ${cfg.impl} but JS not in bundle (expected key: ${jsRel})`);
+      continue;
+    }
+
+    try {
+      const userBlank = new ChromeUserBlank(blankName, jsSource, {
+        network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
+        llm: cfg.userBlankLlm,
+        storage: cfg.userBlankStorage,
+      });
+      blanksRegistry.set(blankName, userBlank as unknown as BrowserBlank);
+      registered++;
+      log.info(`[opencues] user blank "${blankName}" registered (chrome Worker)`);
+    } catch (err) {
+      log.warn(`[opencues] failed to instantiate user blank "${blankName}"`, err);
+    }
+  }
+  if (registered > 0) log.info(`[opencues] ${registered} user blank(s) live in chrome`);
+}
+
 // Within a tab, SPAs change location.pathname without a page reload.
 // Re-filter the bundle when that happens so path-scoped entries
 // activate / deactivate as the user navigates. popstate covers back /
@@ -1015,6 +1079,20 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     opencuesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/OPENCUES.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
+
+  // Register user-shipped JS blanks discovered in the storage bundle.
+  // Same architecture as native hosts (CC/OC/Gemini) — walks every
+  // BLANK.md, finds entries with `impl: ./xxx.js`, instantiates a
+  // ChromeUserBlank for each (Web Worker + capability bridge). The
+  // map is shared by reference with createBlankInvoke so dynamic
+  // additions are visible to the runtime without re-wiring.
+  void (async () => {
+    try {
+      await registerUserBlanksFromBundle(blanks);
+    } catch (err) {
+      console.warn('[opencues] user-blank registration failed', err);
+    }
+  })();
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     const tag = `[opencues][${level}]`;

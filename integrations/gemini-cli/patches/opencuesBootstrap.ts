@@ -36,6 +36,9 @@ import {
 } from '@opencues/runtime/dist/src/blanks/index.js';
 import { validateScriptPath, appendAuditLog } from '@opencues/runtime/dist/src/security/spawn-sandbox.js';
 import { wrapWithBwrap } from '@opencues/runtime/dist/src/security/sandbox-runner.js';
+import { buildUserBlankRegistry, type BlankConfigLike } from '@opencues/runtime/dist/src/user-blanks/registry.js';
+import { parseSingleCueMd } from '@opencues/core';
+import { existsSync as fsExistsSync, readdirSync as fsReaddirSync, readFileSync as fsReadFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -157,6 +160,38 @@ const blanksRegistry = new Map<string, Blank>([
     writeFile: async (content: string) => { await fs.writeFile(findOpenCuesMdPath(), content, 'utf8'); },
   })],
 ]);
+// Discover user-shipped JS blanks (`impl: ./blank.js` in BLANK.md)
+// and register them alongside the built-in TS classes. Each runs in
+// a fresh vm.Context with only the capabilities declared in
+// frontmatter — see packages/opencues-runtime/src/user-blanks/.
+function _discoverUserBlankConfigs(): BlankConfigLike[] {
+  const roots: string[] = [];
+  if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME']);
+  roots.push(path.join(process.cwd(), '.cues'));
+  roots.push(path.join(process.env['HOME'] ?? require('node:os').homedir(), '.cues'));
+  const out: BlankConfigLike[] = [];
+  for (const root of roots) {
+    const blanksDir = path.join(root, 'blanks');
+    if (!fsExistsSync(blanksDir)) continue;
+    for (const entry of fsReaddirSync(blanksDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const blankMdPath = path.join(blanksDir, entry.name, 'BLANK.md');
+      if (!fsExistsSync(blankMdPath)) continue;
+      try {
+        const content = fsReadFileSync(blankMdPath, 'utf8');
+        const parsed = parseSingleCueMd(content, path.dirname(blankMdPath));
+        const blk = parsed.blanks?.[entry.name];
+        if (blk?.impl) out.push(blk as BlankConfigLike);
+      } catch { /* skip on parse error */ }
+    }
+  }
+  return out;
+}
+const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
+  storageRoot: process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? require('node:os').homedir(), '.cues'),
+  log: (lvl, msg) => console.log(`[opencues] user-blank ${lvl}: ${msg}`),
+});
+for (const [n, b] of _userBlanks) blanksRegistry.set(n, b);
 const blankInvoke = createBlankInvoke(blanksRegistry);
 
 // ─── Bootstrap entry — called once from AppContainer on mount ────────────
