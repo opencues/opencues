@@ -1012,9 +1012,32 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // CE.8 — blankInvoke routes blank-fill + cycle script calls to
     // the chrome blanks registry above (volume / stocks / weather /
     // hackernews / prompt-improver). Returns null for unknown
-    // blanks so spawnProcess fallback (which the chrome adapter
-    // resolves with exitCode 127) takes over visibly.
+    // blanks so the spawnProcess fallback takes over.
     blankInvoke: (spec) => blankInvoke?.(spec) ?? null,
+    // CE.9 — spawnProcess routes through the native-messaging host
+    // when installed (`opencues install chrome-host`). Without it,
+    // the adapter returns exitCode 127. Content scripts can't talk
+    // to chrome.runtime.connectNative directly (SW-only API), so we
+    // proxy via chrome.runtime.sendMessage → SW forwards over the
+    // native port → SW relays the matching exec-result back here.
+    spawnProcess: (spec) => {
+      const result = (async () => {
+        try {
+          const reply: { exitCode: number; stdout: string; stderr: string; timedOut: boolean } =
+            await chrome.runtime.sendMessage({
+              type: 'opencues:exec',
+              command: spec.command,
+              args: Array.from(spec.args ?? []),
+              env: spec.env,
+              timeoutMs: spec.timeoutMs,
+            });
+          return reply;
+        } catch (err) {
+          return { exitCode: 127, stdout: '', stderr: 'sendMessage failed: ' + String(err), timedOut: false };
+        }
+      })();
+      return { result, kill: () => { /* native host owns the lifecycle */ } };
+    },
     // statusSnapshotHook intentionally omitted — CE.6 will route to
     // the StatusBar div. Without the hook, the Statusline module
     // skips both the file write (no exportPath) and the in-process

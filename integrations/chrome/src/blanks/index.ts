@@ -17,7 +17,13 @@
 // never imported it.)
 
 import type { BrowserBlank } from './types';
-import { VolumeBlank } from './volume';
+// VolumeBlank (tab-scoped Web Audio gain) is intentionally NOT
+// registered as the 'volume' keyword. With `opencues install
+// chrome-host`, `volume _` falls through to spawnProcess and runs the
+// same system-volume script CC/OC use — keeping behaviour consistent
+// across hosts. The class is kept around for a future re-binding
+// under a different keyword (e.g. `tab-volume`) if needed.
+// import { VolumeBlank } from './volume';
 import {
   AnswerBlank,
   ClaudeStatusBlank,
@@ -58,7 +64,7 @@ export function createBlanks(options?: {
 }): Map<string, BrowserBlank> {
   const blanks = new Map<string, BrowserBlank>();
 
-  blanks.set('volume', new VolumeBlank());
+  // 'volume' deliberately unregistered here — see import-block note.
   blanks.set('stocks', new StocksBlank({
     apiKey: options?.finnhubApiKey,
     customTickers: options?.customTickers,

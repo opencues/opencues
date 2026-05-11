@@ -392,11 +392,18 @@ integration, so projects cannot override it. The file lives at
 Every cue / blank has an implicit (or explicit) host-compat
 list: which of `{chrome, claude-code, gemini-cli, opencode}` it works on.
 Native hosts (CC, OC, gemini-cli) can spawn subprocesses + read the
-filesystem; chrome can't.
+filesystem natively. Chrome can do both — config sync via the
+chrome-host's filesystem watch, subprocess via the chrome-host's
+`exec` protocol — but only when `opencues install chrome-host` has
+been run. Without the host, chrome is sandboxed and scripted blanks
+fail with exit 127.
 
 Default: auto-detected from `script:` / `blankScript:` extension.
-`.sh .bash .ps1 .bat .cmd .exe .py .rb .pl` → not chrome. Everything
-else → all hosts.
+`.sh .bash .ps1 .bat .cmd .exe .py .rb .pl` → not chrome (auto).
+With chrome-host installed, the host's bundler permissively includes
+these for chrome anyway (the host runs them on chrome's behalf). The
+core `inferHostCompat` stays conservative; the host's bundler is what
+flips the policy for the live-sync path. Everything else → all hosts.
 
 Override via frontmatter:
 

@@ -2,7 +2,7 @@
 
 `@opencues/chrome` — an MV3 extension that adds real-time word alternatives, blanks, and cue-blanks to any `contenteditable` on the web. Renders via the CSS Custom Highlight API; no DOM mutation, no caret disruption.
 
-> **What works in Chrome vs native hosts**: cycling, blanks, opencues-settings (`opencues settings _`), prompt-improver, stocks/weather/HackerNews — all work. **What doesn't**: brightness / volume cue-blanks (no subprocess access in browsers — these spawn shell scripts on native hosts). TTS uses the Web Speech API (not `speak.sh`). Live `~/.cues/` sync works via a local native-messaging host (`opencues install chrome-host`) — see `docs/features/chrome-sync.md`. Without the host, the extension uses whatever defaults were baked in at build time.
+> **What works in Chrome vs native hosts**: with `opencues install chrome-host` installed, parity is essentially complete — cycling, blanks (including `volume _` / `brightness _` / any user `.sh`-backed blank), opencues-settings, prompt-improver, stocks/weather/HackerNews. TTS uses the Web Speech API (not `speak.sh`). Live `~/.cues/` sync and subprocess execution both ride the same native-messaging pipe — see `docs/features/chrome-sync.md`. Without the host, the extension still works using the bake-time defaults; scripted blanks return exit 127 (the keyword is recognised but the script can't run from a content script).
 
 | Field | Value |
 |---|---|
@@ -125,6 +125,41 @@ And on every subsequent edit to `~/.cues/`:
 
 Uninstall: `pnpm exec opencues uninstall chrome-host`.
 
+### Subprocess blanks (volume, brightness, custom scripts)
+
+With the host installed, any blank that ships a `.sh` / `.bash` / `.py`
+script — including the stock `volume`, `brightness`, and anything you
+author yourself — runs in Chrome the same way it runs in Claude Code
+and OpenCode.
+
+Example: type `volume _` in any contenteditable (Gmail, ChatGPT,
+Reddit, etc.). The blank fills with your current OS volume. Cycle
+with Ctrl+Alt+Up / Down — each press steps by 6% and the runtime
+calls the script with `set <newvalue>`, so your *system* volume
+actually changes as you cycle.
+
+Same pattern for `brightness _`, and for any blank you add to
+`~/.cues/blanks/<name>/<name>-blank.sh`. The host walks the request:
+
+```
+content script  ──┐
+   chrome.runtime ▼
+   sendMessage   →  service worker  ──┐
+                                 port ▼
+                                       native-messaging host (WSL/Linux/macOS)
+                                       │
+                                       ▼ child_process.spawn
+                                       script under ~/.cues/blanks/<name>/
+                                       │
+                                       ▼ stdout/stderr/exitCode
+                                       framed JSON back through the port
+```
+
+Host translates the chrome-internal path `/chrome-storage/.cues/...`
+to the real `~/.cues/...` and refuses any path that would escape the
+sandbox. Default per-call timeout is 15s. Without the host, scripted
+blanks return exit 127.
+
 ### Bake-time bundle (fallback)
 
 `opencues sync chrome` still exists. It populates `dist/configs/` from
@@ -145,8 +180,8 @@ detail): [`docs/features/chrome-sync.md`](../../docs/features/chrome-sync.md).
 ## What this extension cannot do
 
 - **Native `<input>` / `<textarea>`** — the CSS Custom Highlight API can't reach into form-control internals (Chromium UA shadow DOM doesn't expose Text nodes to scripts). The extension only attaches to `contenteditable` elements. A "mirror div" workaround is possible but not currently implemented.
-- **Lexical-managed editors (e.g., Reddit's comment composer)** — Lexical's controlled-DOM model rejects external mutations. Highlights will appear, but cycling won't change the underlying text. A page-world Lexical bridge is possible but adds significant complexity; not currently implemented.
-- **tiptap / ProseMirror editors** work fully; the runtime renders highlights through the Highlight API and uses a post-reconcile `requestAnimationFrame` to keep Range objects pointed at the editor's reconciled Text nodes.
+- **Subprocess blanks without the host** — `volume _`, `brightness _`, and any other `.sh`-backed blank need `opencues install chrome-host` to actually run their scripts. Without the host they return exit 127. (Most other blanks — stocks, weather, prompt-improver, etc. — run pure in-browser via `fetch` and work with or without the host.)
+- **Editor coverage** — Lexical (Reddit), ProseMirror (LinkedIn / ChatGPT / claude.ai / Luma), Draft.js (Twitter/X), Slate, and generic contenteditables (Gmail / YouTube) all work for cycling and blanks. Caret-restore after splices is handled per-engine — see `CLAUDE.md` for the engine matrix.
 
 ---
 

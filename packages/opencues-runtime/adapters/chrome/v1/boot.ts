@@ -47,10 +47,17 @@ export interface HostInfo extends CommonHostInfo {
    * spawnProcess. Chrome implementations typically dispatch to
    * Web Audio (volume) / fetch() (stocks/weather/HN) / two-step LLM
    * (prompt-improver). Returns ProcessHandle or null when the
-   * blankName isn't recognised (runtime falls through to spawnProcess,
-   * which the chrome adapter resolves with exitCode 127).
+   * blankName isn't recognised (runtime falls through to spawnProcess).
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
+  /**
+   * Subprocess execution. Passed by integrations that route through
+   * the native-messaging host (`opencues install chrome-host`); they
+   * forward the spec to the host via chrome.runtime.sendMessage →
+   * service worker → native port. Without this, scripted blanks fail
+   * with exitCode 127.
+   */
+  spawnProcess?(spec: import('../../../src/adapter').ProcessSpec): ProcessHandle;
   /**
    * Speak callback for the TTS module. Chrome extensions pass a Web
    * Speech-backed function here; falling back to the spawn path is
@@ -138,6 +145,7 @@ export function boot(host: HostInfo): BootResult {
     writeFile: host.writeFile,
     pushText: host.pushText,
     blankInvoke: host.blankInvoke,
+    spawnProcess: host.spawnProcess,
     log,
   };
 

@@ -1,16 +1,22 @@
-# Chrome Config Sync
+# Chrome — Native-Messaging Host
 
-Two mechanisms keep the Chrome extension in step with your `~/.cues/`:
+The chrome integration uses a local Node host (`opencues install
+chrome-host`) for two distinct jobs that share one bidirectional pipe:
 
-1. **Native-messaging host** (`opencues install chrome-host`) — a tiny
-   local process that watches `~/.cues/` and pushes bundles into
-   `chrome.storage.local` over Chrome's native-messaging pipe. **Live.
-   Push-based. The primary mechanism.** Edits land in every open tab in
-   ~300ms with no page refresh.
-2. **Bake-time bundle** (`opencues sync chrome` + esbuild constants) —
-   what ships inside the extension build, used when no host is
-   installed. Static. Refreshed whenever you rebuild + redeploy the
-   extension.
+1. **Live `~/.cues/` sync** — host watches the filesystem and pushes
+   bundles into `chrome.storage.local`. Edits land in every open tab
+   in ~300ms with no page refresh.
+2. **Subprocess execution** — host runs `.sh` / `.py` / etc. scripts
+   for blanks like `volume _` and `brightness _`. Same protocol, same
+   port, request/response shape.
+
+Both ride the same `chrome.runtime.connectNative('com.opencues.sync')`
+port. Below covers the protocol, install, and per-platform wiring.
+
+There's also a **bake-time bundle** (`opencues sync chrome` + esbuild
+constants) — what ships inside the extension build, used when no host
+is installed. Static. Refreshed by rebuilding + redeploying the
+extension.
 
 The native hosts (claude-code, opencode, gemini-cli) read `~/.cues/`
 from the filesystem directly. Chrome can't (no FS access from a
@@ -116,6 +122,94 @@ manifests, the WSL `.bat` shim, and the registry key.
    binary-safe.
 4. `fs.watch` runs natively on the WSL filesystem (not via UNC mounts
    from Windows), so events are fast and reliable.
+
+---
+
+## Subprocess execution (`volume _`, `brightness _`, custom scripts)
+
+The same port carries `exec` requests for blanks that invoke a local
+script. Without the host, Chrome's `spawnProcess` returns exitCode
+127 (it can't escape the content-script sandbox). With the host, the
+runtime invokes the same shell scripts CC/OC do.
+
+### Protocol
+
+Bidirectional, framed JSON, layered on the existing port. The host
+handles incoming `exec` messages alongside its outgoing bundle pushes.
+
+| Direction | Message | Notes |
+|---|---|---|
+| extension → host | `{type:'exec', requestId, command, args, env, timeoutMs}` | requestId correlates the response; concurrent execs allowed |
+| host → extension | `{type:'exec-result', requestId, exitCode, stdout, stderr, timedOut}` | matched against the SW's pending map |
+
+### Path sandboxing
+
+The runtime constructs script paths against its virtual
+`/chrome-storage/.cues/...` root (no real filesystem from a content
+script). On `exec`, the host rewrites any argument starting with that
+prefix to `${CUE_ROOT}/...` (real `~/.cues/` or `$OPENCUES_HOME`) and
+**refuses anything that would resolve outside CUE_ROOT**. The
+sandbox prevents a malicious bundle from asking the host to run
+`/etc/passwd`-style paths.
+
+Arguments that don't start with the chrome-storage prefix pass
+through unchanged — the runtime mixes paths and plain string args.
+
+### Wire-up
+
+```
+runtime.spawnProcess(spec)
+  ↓
+ChromeV1Adapter.spawnProcess(spec)
+  ↓  (uses bindings.spawnProcess when present, else returns 127)
+opencues-bootstrap.ts spawnProcess binding
+  ↓  chrome.runtime.sendMessage({type:'opencues:exec', ...})
+background.ts (service worker)
+  ↓  port.postMessage({type:'exec', requestId, ...})
+host.cjs handleExec()
+  ↓  child_process.spawn(command, args, {env, cwd: CUE_ROOT})
+  ↑  on close → port.postMessage({type:'exec-result', requestId, ...})
+SW's pending Map dispatches the matching response back through
+sendResponse → the content script's ProcessHandle.result resolves.
+```
+
+### Capability advertisement
+
+`ChromeV1Adapter` adds `'spawn-process'` to its capabilities list
+only when the bootstrap supplied a `spawnProcess` binding — i.e.
+only when the install layer wires it in. Capability-aware blanks can
+inspect this if they need to gate on availability, though most just
+let the 127 surface naturally.
+
+### What the bundle ships vs runs from disk
+
+| Source | Bundles | Runs |
+|---|---|---|
+| **chrome-host** (live) | BLANK.md + non-script colocated files (README, prompts) | The script runs from `~/.cues/blanks/<name>/` on disk |
+| **bake-time** (`sync chrome`) | Same — scripts excluded by host-compat | n/a — no spawn path available |
+
+Bundling script bytes would be wasteful: the extension can't execute
+them anyway, the host has them on disk. Excluding them keeps the
+bundle small (matters for very large `.cues/` trees).
+
+### Adding a new subprocess blank
+
+The blank shape is identical to CC/OC. Drop a folder under
+`~/.cues/blanks/<name>/`:
+
+```
+~/.cues/blanks/clipboard/
+  BLANK.md            ← blankKeywords: clipboard, blankScript: ./clip.sh
+  clip.sh             ← responds to `get` / `set <value>`
+```
+
+Within ~300ms the host re-bundles + pushes; the blank is live in
+every Chrome tab. No extension reload.
+
+The script's CWD when the host invokes it is `${CUE_ROOT}` (i.e.
+`~/.cues/`), not the blank's folder. Scripts that need their own
+location can do `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`
+— the path passed in args[0] is the resolved absolute path.
 
 ---
 

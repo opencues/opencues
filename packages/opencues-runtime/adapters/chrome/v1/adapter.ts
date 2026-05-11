@@ -13,9 +13,13 @@
 //                          the storage key).
 //   - readDir → returns a baked manifest (cues/, blanks/) the
 //               extension's esbuild config populates at build time.
-//   - spawnProcess → not supported (extension is sandboxed). Blanks
-//                    that need external state use fetch() from the
-//                    content script or background worker instead.
+//   - spawnProcess → routed through the native-messaging host when
+//                    installed (`opencues install chrome-host`).
+//                    The host runs scripts under ~/.cues/ and pipes
+//                    stdout/stderr back. Without the host, returns
+//                    exitCode 127. Blanks that don't need a shell
+//                    (stocks, weather, etc.) use fetch() via the
+//                    background worker instead.
 //
 // Mirrors the OpenCode v1.4 adapter shape deliberately — keeps both
 // bands drifting in lockstep when the HostAdapter contract evolves.
@@ -85,10 +89,17 @@ export interface ChromeBindings {
   /**
    * Optional blank dispatch for sandboxed hosts. BlankFill +
    * Cycling try this BEFORE spawnProcess. Returns ProcessHandle for
-   * blanks the host knows; null falls through to spawnProcess
-   * (which the chrome adapter resolves with exitCode 127).
+   * blanks the host knows; null falls through to spawnProcess.
    */
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
+  /**
+   * Optional subprocess execution. When the user has installed the
+   * native-messaging host (`opencues install chrome-host`), the
+   * extension routes script-based blanks (volume, brightness, custom
+   * `.sh` blanks) through it. Without this binding, scripted blanks
+   * fail with exit 127 — chrome alone can't spawn.
+   */
+  spawnProcess?(spec: ProcessSpec): ProcessHandle;
   log?(level: LogLevel, msg: string, data?: unknown): void;
 }
 
@@ -117,9 +128,13 @@ export class ChromeV1Adapter implements HostAdapter {
   constructor(private bindings: ChromeBindings) {
     this.hostVersion = bindings.hostVersion;
     this.cwd = bindings.cwd;
-    // spawn-process is NEVER advertised — Chrome extensions can't spawn.
+    // spawn-process is advertised only when the bootstrap supplies a
+    // spawnProcess binding — i.e. when the user has installed the
+    // native-messaging host. Without it, scripted blanks fail with
+    // exitCode 127 as before.
     const caps: Capability[] = [...CHROME_V1_CAPABILITIES];
     if (bindings.blankInvoke) caps.push('blank-invoke');
+    if (bindings.spawnProcess) caps.push('spawn-process');
     this.capabilities = caps;
   }
 
@@ -186,15 +201,18 @@ export class ChromeV1Adapter implements HostAdapter {
   blankInvoke(spec: BlankInvokeSpec): ProcessHandle | null {
     return this.bindings.blankInvoke?.(spec) ?? null;
   }
-  spawnProcess(_spec: ProcessSpec): ProcessHandle {
-    // Chrome extensions cannot spawn. Return a rejected handle so
-    // callers that ignore capabilities surface the error instead of
-    // hanging on a never-resolving Promise.
+  spawnProcess(spec: ProcessSpec): ProcessHandle {
+    // Native-messaging host (when installed via `opencues install
+    // chrome-host`) takes the spec, runs the script outside the
+    // sandbox, and returns the result. Without it, Chrome extensions
+    // can't spawn — return exitCode 127 so callers don't hang on a
+    // never-resolving promise.
+    if (this.bindings.spawnProcess) return this.bindings.spawnProcess(spec);
     return {
       result: Promise.resolve({
         exitCode: 127,
         stdout: '',
-        stderr: 'spawnProcess not supported in chrome adapter',
+        stderr: 'spawnProcess not supported in chrome adapter (install chrome-host for live subprocess)',
         timedOut: false,
       }),
       kill: () => {},

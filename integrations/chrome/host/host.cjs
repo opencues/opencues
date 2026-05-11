@@ -89,9 +89,18 @@ function buildBundle(dir, core) {
       if (!cueMd) continue;
       try {
         const parsed = parseSingleCueMd(fs.readFileSync(cueMd, 'utf8'), folderPath);
-        const compat = inferHostCompat(parsed.frontmatter || {});
+        const fm = parsed.frontmatter || {};
+        // Mask script: / blankScript: when inferring compat. The host
+        // runs subprocess scripts on chrome's behalf via the exec
+        // protocol, so the auto-detected "not chrome" exclusion for
+        // .sh-bearing blanks doesn't apply here. Explicit
+        // not-on-host: [chrome] is still honoured by inferHostCompat.
+        const compat = inferHostCompat({ ...fm, script: undefined, blankScript: undefined });
         if (!compat.hosts.includes('chrome')) continue;
         walkFolder(folderPath, (file) => {
+          // Scripts are NOT bundled; the host runs them directly from
+          // disk on exec requests. Shipping them as bundle bytes would
+          // be wasteful + the extension can't execute them anyway.
           if (/\.(sh|bash|ps1|bat|cmd|exe|py|rb|pl|cs)$/i.test(file)) return;
           const rel = path.posix.join(subdir, entry.name, path.relative(folderPath, file).split(path.sep).join('/'));
           files[rel] = fs.readFileSync(file, 'utf8');
@@ -120,11 +129,118 @@ function sendMessage(obj) {
   process.stdout.write(Buffer.concat([header, json]));
 }
 
-// We don't expect inbound messages in v1 but the protocol requires us to
-// keep stdin open. When Chrome disconnects, stdin closes and we exit.
+// stdin reader. Native messaging frames each message as 4-byte LE length
+// prefix + UTF-8 JSON payload. Chunks can split or coalesce messages;
+// buffer until we have a full message before dispatching.
+let stdinBuf = Buffer.alloc(0);
+process.stdin.on('data', (chunk) => {
+  stdinBuf = Buffer.concat([stdinBuf, chunk]);
+  while (stdinBuf.length >= 4) {
+    const len = stdinBuf.readUInt32LE(0);
+    if (stdinBuf.length < 4 + len) break;
+    const payload = stdinBuf.slice(4, 4 + len);
+    stdinBuf = stdinBuf.slice(4 + len);
+    try { handleMessage(JSON.parse(payload.toString('utf8'))); }
+    catch (e) { sendMessage({ type: 'error', message: 'bad frame: ' + (e && e.message || e) }); }
+  }
+});
 process.stdin.on('end', () => process.exit(0));
 process.stdin.on('error', () => process.exit(0));
 process.stdin.resume();
+
+function handleMessage(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'exec') return handleExec(msg);
+}
+
+// Translate a path that the chrome runtime constructed against its
+// virtual /chrome-storage/.cues/ root to a real filesystem path under
+// CUE_ROOT (~/.cues/ or $OPENCUES_HOME). Returns null if the
+// translation would escape CUE_ROOT (defence against malicious specs).
+const CHROME_STORAGE_PREFIX = '/chrome-storage/.cues/';
+function resolveChromeStoragePath(p) {
+  if (typeof p !== 'string') return null;
+  if (!p.startsWith(CHROME_STORAGE_PREFIX)) return null;
+  const rel = p.slice(CHROME_STORAGE_PREFIX.length);
+  const abs = path.resolve(CUE_ROOT, rel);
+  // Ensure the resolved path stays inside CUE_ROOT.
+  const rootResolved = path.resolve(CUE_ROOT);
+  if (abs !== rootResolved && !abs.startsWith(rootResolved + path.sep)) return null;
+  return abs;
+}
+
+const { spawn } = require('node:child_process');
+
+function handleExec(msg) {
+  const requestId = msg.requestId;
+  if (typeof requestId !== 'string') return;
+
+  const command = typeof msg.command === 'string' ? msg.command : '';
+  const rawArgs = Array.isArray(msg.args) ? msg.args.map(String) : [];
+  const timeoutMs = typeof msg.timeoutMs === 'number' ? msg.timeoutMs : 10_000;
+
+  // Rewrite chrome-storage paths in args; reject if any escape sandbox.
+  // Args that aren't chrome-storage paths pass through unchanged (the
+  // runtime mixes paths + plain string args).
+  const args = [];
+  for (const a of rawArgs) {
+    if (a.startsWith(CHROME_STORAGE_PREFIX)) {
+      const resolved = resolveChromeStoragePath(a);
+      if (!resolved) {
+        sendMessage({
+          type: 'exec-result', requestId,
+          exitCode: 126, stdout: '', stderr: `path outside CUE_ROOT: ${a}`, timedOut: false,
+        });
+        return;
+      }
+      args.push(resolved);
+    } else {
+      args.push(a);
+    }
+  }
+
+  let child;
+  try {
+    child = spawn(command, args, {
+      env: { ...process.env, ...(msg.env && typeof msg.env === 'object' ? msg.env : {}) },
+      cwd: CUE_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    sendMessage({
+      type: 'exec-result', requestId,
+      exitCode: 127, stdout: '', stderr: 'spawn failed: ' + (e && e.message || e), timedOut: false,
+    });
+    return;
+  }
+
+  let stdout = '', stderr = '', timedOut = false;
+  child.stdout.on('data', (d) => { stdout += d.toString('utf8'); });
+  child.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try { child.kill('SIGTERM'); } catch { /* */ }
+  }, timeoutMs);
+
+  child.on('close', (code) => {
+    clearTimeout(timer);
+    sendMessage({
+      type: 'exec-result',
+      requestId,
+      exitCode: typeof code === 'number' ? code : (timedOut ? 124 : 1),
+      stdout, stderr, timedOut,
+    });
+  });
+  child.on('error', (err) => {
+    clearTimeout(timer);
+    sendMessage({
+      type: 'exec-result', requestId,
+      exitCode: 127, stdout, stderr: stderr + (err && err.message ? err.message : String(err)),
+      timedOut,
+    });
+  });
+}
 
 // ─── Push pipeline ───────────────────────────────────────────────────────
 let core;

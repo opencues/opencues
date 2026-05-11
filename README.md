@@ -540,6 +540,46 @@ New to OpenCues? The [glossary](docs/glossary.md) explains all terminology — c
 - [Twitter/X](https://x.com/openCues_) — announcements
 <!-- - [Reddit](https://www.reddit.com/r/OpenCues/) — community (private until launch) -->
 
+## Future possibilities
+
+The Chrome native-messaging architecture (`opencues install chrome-host`) opens
+up workflows the bundled-config Chrome extension couldn't reach. Some are
+shipped; others are tracked here as the natural next steps.
+
+**Already shipped:**
+
+- **Live `~/.cues/` sync into Chrome.** Edits to cues/blanks/auditors reach
+  every open tab in ~300ms with no rebuild and no page refresh. LLM-authored
+  cues from a Claude Code session show up live in browser tabs the moment
+  the LLM saves the file.
+- **System-level blanks in Chrome.** `volume _`, `brightness _`, and any
+  user-authored `.sh`/`.py`-backed blank now run via the host — same shell
+  scripts that already work in Claude Code / OpenCode. Type `volume 50 _`
+  in Gmail, your OS volume changes.
+
+**Natural next steps (not built yet):**
+
+- **Streaming exec.** The request/response protocol is fine for short
+  scripts; long-running ones (`git log --watch`, `tail -f`) want stdout
+  streamed back as it produces. One more message type (`exec-chunk`) gets
+  there.
+- **Interactive scripts.** Scripts that expect stdin (`gh auth login`,
+  `claude /login`) can't currently be invoked from Chrome. A `stdin`
+  message in the protocol unlocks them.
+- **Subprocess from auditors.** Auditors today run via the LLM only. With
+  exec available, an auditor could shell out to `vale`, `proselint`, or any
+  external linter and feed its output back into the rewrite stream.
+- **Cue-pack registry.** `opencues add pack <name>` becomes
+  `curl | tar -xC ~/.cues/`. Host detects the new files, pushes to every
+  open tab, no extension reload. Pairs naturally with LLMs that compose +
+  publish their own packs.
+- **Cross-host orchestration.** The host could expose more than `~/.cues/`
+  — calendar lookup, system stats, current git branch, screen-grab. Each
+  becomes a blank usable from any text input on the web.
+- **Web Store release.** Native-messaging is permission-clean for CWS review.
+  Pre-launch task is rotating the inlined `GROQ_API_KEY` build constant
+  in favour of a popup-set storage value (already tracked in CLAUDE.md).
+
 ## License
 
 Proprietary. All rights reserved. See [LICENSE](LICENSE).

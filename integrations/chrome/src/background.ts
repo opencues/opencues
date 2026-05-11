@@ -106,6 +106,7 @@ chrome.runtime.onInstalled.addListener(() => {
 const NATIVE_HOST = 'com.opencues.sync';
 const BUNDLE_KEY = 'opencues_bundle';
 const RECONNECT_MS = 30_000;
+const EXEC_TIMEOUT_FALLBACK_MS = 15_000;
 
 interface BundleMessage {
   type: 'bundle';
@@ -113,8 +114,33 @@ interface BundleMessage {
   files: Record<string, string>;
   reason?: string;
 }
+interface ExecResultMessage {
+  type: 'exec-result';
+  requestId: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+interface ExecRequestFromContent {
+  type: 'opencues:exec';
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  timeoutMs?: number;
+}
 
 let nativePort: chrome.runtime.Port | null = null;
+let nextRequestId = 1;
+type Pending = (msg: ExecResultMessage) => void;
+const pending: Map<string, Pending> = new Map();
+
+function failPending(reason: string): void {
+  for (const [id, resolve] of pending) {
+    resolve({ type: 'exec-result', requestId: id, exitCode: 127, stdout: '', stderr: reason, timedOut: false });
+  }
+  pending.clear();
+}
 
 function connectNativeHost(): void {
   try {
@@ -127,18 +153,30 @@ function connectNativeHost(): void {
   console.log('[opencues] native host port opened');
 
   nativePort.onMessage.addListener((raw: unknown) => {
-    const msg = raw as BundleMessage;
-    if (!msg || msg.type !== 'bundle' || typeof msg.files !== 'object') return;
-    const fileCount = Object.keys(msg.files).length;
-    chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
-      .then(() => console.log(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
-      .catch((err) => console.warn('[opencues] bundle storage write failed', err));
+    const msg = raw as BundleMessage | ExecResultMessage;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'bundle' && typeof msg.files === 'object') {
+      const fileCount = Object.keys(msg.files).length;
+      chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
+        .then(() => console.log(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
+        .catch((err) => console.warn('[opencues] bundle storage write failed', err));
+      return;
+    }
+    if (msg.type === 'exec-result' && typeof msg.requestId === 'string') {
+      const resolve = pending.get(msg.requestId);
+      if (resolve) {
+        pending.delete(msg.requestId);
+        resolve(msg);
+      }
+      return;
+    }
   });
 
   nativePort.onDisconnect.addListener(() => {
     const err = chrome.runtime.lastError;
     console.warn('[opencues] native host disconnected', err?.message);
     nativePort = null;
+    failPending('native host disconnected');
     scheduleReconnect();
   });
 }
@@ -146,5 +184,48 @@ function connectNativeHost(): void {
 function scheduleReconnect(): void {
   setTimeout(() => { if (!nativePort) connectNativeHost(); }, RECONNECT_MS);
 }
+
+// Content scripts ask the SW to run a subprocess via the native host.
+// We assign a requestId, forward the spec, await the matching
+// exec-result. Returns ProcessResult-shape JSON via sendResponse.
+chrome.runtime.onMessage.addListener((message: ExecRequestFromContent, _sender, sendResponse) => {
+  if (message?.type !== 'opencues:exec') return false;
+  if (!nativePort) {
+    sendResponse({ exitCode: 127, stdout: '', stderr: 'native host not connected', timedOut: false });
+    return true;
+  }
+  const requestId = String(nextRequestId++);
+  const timeoutMs = typeof message.timeoutMs === 'number' ? message.timeoutMs : EXEC_TIMEOUT_FALLBACK_MS;
+  pending.set(requestId, (result) => {
+    sendResponse({
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      timedOut: result.timedOut,
+    });
+  });
+  // Per-request safety net — if the host never replies, free the slot.
+  // The host enforces its own timeout too; this is one tier above that.
+  setTimeout(() => {
+    const resolve = pending.get(requestId);
+    if (!resolve) return;
+    pending.delete(requestId);
+    resolve({ type: 'exec-result', requestId, exitCode: 124, stdout: '', stderr: 'SW-side timeout', timedOut: true });
+  }, timeoutMs + 5_000);
+  try {
+    nativePort.postMessage({
+      type: 'exec',
+      requestId,
+      command: message.command,
+      args: message.args,
+      env: message.env,
+      timeoutMs,
+    });
+  } catch (err) {
+    pending.delete(requestId);
+    sendResponse({ exitCode: 127, stdout: '', stderr: 'postMessage failed: ' + String(err), timedOut: false });
+  }
+  return true;
+});
 
 connectNativeHost();

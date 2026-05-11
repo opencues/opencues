@@ -36,6 +36,63 @@ Full spec: `docs/features/chrome-sync.md`. Per-platform manifest paths
 (macOS / Linux / Windows registry / WSL→Win) live in
 `integrations/chrome/bin/install.cjs`.
 
+## Subprocess execution — exec protocol (May 2026)
+
+Same native-messaging port carries `spawnProcess` requests for
+scripted blanks (volume, brightness, any user `.sh`/`.py`-backed
+blank). Without the host, these return exitCode 127. With the host,
+they run the same script CC/OC would run, on the host filesystem.
+
+Protocol (bidirectional, framed JSON over the existing port):
+
+| Direction | Message | Notes |
+|---|---|---|
+| extension → host | `{type:'exec', requestId, command, args, env, timeoutMs}` | requestId is a per-port-session string; concurrent execs allowed |
+| host → extension | `{type:'exec-result', requestId, exitCode, stdout, stderr, timedOut}` | matched against pending Map in background.ts |
+
+Path translation: the runtime constructs script paths relative to its
+virtual `/chrome-storage/.cues/...` root. The host rewrites any
+argument starting with that prefix to `${CUE_ROOT}/...` (the real
+filesystem path) and **refuses anything that would resolve outside
+CUE_ROOT** — basic sandbox.
+
+Wiring (forward path):
+
+```
+runtime.spawnProcess(spec)
+  → adapter.bindings.spawnProcess(spec)               (chrome v1)
+  → chrome.runtime.sendMessage({type:'opencues:exec', ...spec})   (content script → SW)
+  → port.postMessage({type:'exec', requestId, ...})    (SW → native host)
+  → child_process.spawn(...)                            (host)
+  → port.postMessage({type:'exec-result', requestId, ...})
+  → pending.get(requestId)(result)                      (SW dispatches reply)
+  → sendResponse(...)                                   (back to content script)
+  → ProcessHandle.result resolves
+```
+
+Why volume isn't a chrome-native blank anymore: the local `VolumeBlank`
+class (`src/blanks/volume.ts`) used the Web Audio API to control TAB
+audio. It's still in the source for future re-use under a different
+keyword (`tab-volume`?), but unregistered from `createBlanks` so the
+`volume _` keyword falls through to the host's system-volume script —
+keeping behaviour consistent with CC/OC.
+
+Capability advertised conditionally: `'spawn-process'` is in
+`ChromeV1Adapter.capabilities` only when the bootstrap supplied a
+`spawnProcess` binding. Code paths that check capabilities (rare in
+the chrome path) won't try to spawn when the host isn't installed.
+
+Where the bake-time bundle differs: the chrome-host bundle **includes**
+script-bearing blank folders (host can run them), but **excludes** the
+script bytes themselves (host runs from disk; bytes would just bloat
+the payload). `opencues sync chrome` (bake-time) excludes both — no
+host means no spawn, and the auto-detected host-compat filter
+correctly drops the folder.
+
+Don't ship long-running / streaming scripts through this protocol —
+it's request/response, no `stdout` stream until close. Future
+streaming variant would add an `exec-chunk` message.
+
 ## Verified working sites (May 2026)
 
 | Site | Engine | Path used |
