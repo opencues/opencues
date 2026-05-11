@@ -66,6 +66,11 @@ const WORKER_HARNESS_PREFIX = String.raw`
         set: (k, v) => callMain('storage.set', [k, v]),
       };
     }
+    if (caps.secrets) {
+      // Secrets pre-resolved by the main thread; the worker just
+      // exposes them as a frozen object on ctx.
+      ctx.secrets = Object.freeze(caps.secrets);
+    }
     return ctx;
   }
 
@@ -157,6 +162,15 @@ export interface ChromeUserBlankOptions {
    *  + popup overrides). The LLM bridge picks the right key for
    *  the declared `llm:` provider. */
   readonly llmApiKeys?: Readonly<Record<string, string>>;
+  /** Secret env-var names the blank may read via `ctx.secrets[<NAME>]`.
+   *  Declared in BLANK.md frontmatter via `secrets: [NAME1, NAME2]`.
+   *  Same trust model as llmApiKeys — host injects, the worker
+   *  receives only the keys it asked for. */
+  readonly secrets?: readonly string[];
+  /** Secret VALUES map. Sourced from chrome.storage's host-pushed
+   *  opencues_host_keys (same source that feeds llmApiKeys). Only
+   *  the keys listed in `secrets` are sent to the worker. */
+  readonly secretValues?: Readonly<Record<string, string>>;
   /** Hard cap on a single invoke. Default 10s. */
   readonly timeoutMs?: number;
 }
@@ -231,6 +245,19 @@ export class ChromeUserBlank implements Blank {
         reject(new Error(`user-blank invoke timeout (${this.opts.timeoutMs ?? 10_000}ms)`));
       }, this.opts.timeoutMs ?? 10_000);
       this.pending.set(invokeId, { resolve, reject, timer });
+
+      // Resolve declared secrets to their values RIGHT BEFORE
+      // sending. Filters the host-pushed map down to only the
+      // names the blank's frontmatter asked for.
+      let resolvedSecrets: Record<string, string> | undefined;
+      if (this.opts.secrets && this.opts.secrets.length > 0 && this.opts.secretValues) {
+        resolvedSecrets = {};
+        for (const name of this.opts.secrets) {
+          const v = this.opts.secretValues[name];
+          if (typeof v === 'string' && v.length > 0) resolvedSecrets[name] = v;
+        }
+      }
+
       this.worker.postMessage({
         type: 'invoke',
         invokeId,
@@ -240,6 +267,7 @@ export class ChromeUserBlank implements Blank {
           network: this.opts.network,
           llm: this.opts.llm,
           storage: this.opts.storage,
+          secrets: resolvedSecrets,
         },
       });
     });
@@ -346,7 +374,13 @@ export class ChromeUserBlank implements Blank {
     await chrome.storage.local.set({ [storageKey]: String(value) });
   }
 
-  private async handleLlm(req: { prompt: string; model?: string; maxTokens?: number }): Promise<string> {
+  private async handleLlm(req: {
+    prompt: string;
+    system?: string;
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<string> {
     if (!this.opts.llm) throw new Error('ctx.llm: llm capability not declared');
     if (!this.opts.llmApiKeys || Object.keys(this.opts.llmApiKeys).length === 0) {
       throw new Error('ctx.llm: no LLM credentials available — install chrome-host or set keys in popup');
@@ -370,12 +404,16 @@ export class ChromeUserBlank implements Blank {
 
     // Build the wire request. Each provider has its own body shape;
     // buildProviderRequest dispatches per provider.
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+    if (req.system) messages.push({ role: 'system', content: req.system });
+    messages.push({ role: 'user', content: req.prompt });
+
     const wire = buildProviderRequest(
       resolved.provider.id as ProviderId,
       {
-        messages: [{ role: 'user', content: req.prompt }],
+        messages,
         model: resolved.model,
-        temperature: 0,
+        temperature: req.temperature ?? 0,
         maxTokens: req.maxTokens ?? 1024,
       },
       { apiKey: resolved.apiKey, endpoint: resolved.endpoint },
@@ -390,7 +428,10 @@ export class ChromeUserBlank implements Blank {
       method: 'POST',
       url: wire.url,
       headers: wire.headers,
-      body: JSON.stringify(wire.body),
+      // buildProviderRequest returns wire.body pre-stringified.
+      // Double-stringify yields a quoted JSON string the LLM
+      // rejects with HTTP 400 ("cannot unmarshal").
+      body: typeof wire.body === 'string' ? wire.body : JSON.stringify(wire.body),
     });
     if (!resp || !resp.ok) {
       throw new Error(

@@ -12,6 +12,8 @@ blankTip: Prompt improver
 model: openai/gpt-oss-120b
 altCount: 3
 includeOriginal: true
+impl: ./blank.js
+llm: groq
 ---
 
 > Dispatched by the shared runtime `PromptImproverBlank`

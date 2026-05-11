@@ -35,6 +35,7 @@ export interface BlankConfigLike {
   readonly userBlankNetwork?: readonly string[];
   readonly userBlankLlm?: string;
   readonly userBlankStorage?: string;
+  readonly userBlankSecrets?: readonly string[];
 }
 
 // ─── Per-blank Blank instance ───────────────────────────────────────────
@@ -79,6 +80,11 @@ export interface UserBlankRegistryOptions {
   /** LLM adapter for `ctx.llm()`. Optional — blanks that declare
    *  `llm:` without an adapter get a stub that throws. */
   readonly llm?: LlmAdapter;
+  /** Source for ctx.secrets values, keyed by env-var name. Native
+   *  hosts default this to process.env; chrome bootstrap builds it
+   *  from chrome.storage's opencues_host_keys map. Only declared
+   *  secrets reach the blank. */
+  readonly secrets?: Readonly<Record<string, string>>;
   /** Per-blank timeout for `get()` / `set()` etc. Defaults to 8s. */
   readonly timeoutMs?: number;
   /** Logger — falls back to console. */
@@ -118,6 +124,7 @@ export function buildUserBlankRegistry(
       network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
       llm: cfg.userBlankLlm,
       storage: cfg.userBlankStorage,
+      secrets: cfg.userBlankSecrets ? [...cfg.userBlankSecrets] : undefined,
     };
 
     let loaded: LoadedUserBlank;
@@ -126,6 +133,7 @@ export function buildUserBlankRegistry(
         capabilities: caps,
         storage,
         llm: opts.llm,
+        secrets: opts.secrets,
         log,
         timeoutMs: opts.timeoutMs,
       });
@@ -189,7 +197,74 @@ function buildContextFromCaps(
     };
   }
 
+  if (caps.secrets && caps.secrets.length > 0 && opts.secrets) {
+    const out: Record<string, string> = {};
+    for (const name of caps.secrets) {
+      const v = opts.secrets[name];
+      if (typeof v === 'string' && v.length > 0) out[name] = v;
+    }
+    ctx.secrets = Object.freeze(out);
+  }
+
   return ctx;
+}
+
+/**
+ * Default LLM adapter for native hosts. Uses @opencues/core's
+ * resolveLLM + buildProviderRequest + parseProviderResponse to route
+ * a (prompt, system?) request through whichever provider the blank
+ * declared. apiKeys is the host's process.env (or a filtered subset);
+ * the resolver picks the right key by env-var name.
+ *
+ * Throws when no API key is configured for the declared provider.
+ */
+export function createNativeLlmAdapter(
+  apiKeys: Readonly<Record<string, string>>,
+): LlmAdapter {
+  // Lazy-load core to avoid a hard dependency cycle at module load.
+  // @opencues/core ships its built dist alongside @opencues/runtime;
+  // this require resolves the same way the user code did at install
+  // time.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const core = require('@opencues/core') as typeof import('@opencues/core');
+  return async (provider, opts) => {
+    const resolved = core.resolveLLM({
+      apiKeys: apiKeys as Record<string, string>,
+      globalProvider: provider,
+      modelOverride: opts.model,
+    });
+    if (!resolved) {
+      throw new Error(`ctx.llm: provider "${provider}" not configured (missing API key?)`);
+    }
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+    if (opts.system) messages.push({ role: 'system', content: opts.system });
+    messages.push({ role: 'user', content: opts.prompt });
+
+    const wire = core.buildProviderRequest(
+      resolved.provider.id,
+      {
+        messages,
+        model: resolved.model,
+        temperature: opts.temperature ?? 0,
+        maxTokens: opts.maxTokens ?? 1024,
+      },
+      { apiKey: resolved.apiKey, endpoint: resolved.endpoint },
+    );
+    // buildProviderRequest returns wire.body already pre-stringified.
+    // Don't JSON.stringify again — double-stringify yields "{...}" as
+    // a quoted string which the LLM rejects with HTTP 400.
+    const r = await fetch(wire.url, {
+      method: 'POST',
+      headers: wire.headers,
+      body: typeof wire.body === 'string' ? wire.body : JSON.stringify(wire.body),
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      throw new Error(`ctx.llm http ${r.status}: ${text.slice(0, 200)}`);
+    }
+    const text = await r.text();
+    return core.parseProviderResponse(resolved.provider.id, text);
+  };
 }
 
 // Re-exports for convenience.

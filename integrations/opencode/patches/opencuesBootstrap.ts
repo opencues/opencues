@@ -22,7 +22,7 @@ import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common
 import { createBlankInvoke, AnswerBlank, ClaudeStatusBlank, CountriesBlank, CryptoBlank, DictionaryBlank, HackerNewsBlank, OpenCuesSettingsBlank, PromptImproverBlank, StocksBlank, WeatherBlank, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
-import { buildUserBlankRegistry, type BlankConfigLike } from "@opencues/runtime/dist/src/user-blanks/registry"
+import { buildUserBlankRegistry, createNativeLlmAdapter, type BlankConfigLike } from "@opencues/runtime/dist/src/user-blanks/registry"
 // We use the synchronous parseSingleCueMd at boot to discover user-
 // shipped JS blanks. Loaded eagerly (not on first-invocation) so the
 // blank-invoke registry is complete by the time the runtime boots.
@@ -167,6 +167,12 @@ function _discoverUserBlankConfigs(): BlankConfigLike[] {
 }
 const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
   storageRoot: process.env.OPENCUES_HOME ?? path.join(process.env.HOME ?? os.homedir(), ".cues"),
+  // Native host: any env var the blank declares in its `secrets:`
+  // frontmatter is read from process.env at registration time.
+  // The loader filters to ONLY declared keys before they reach the
+  // BlankContext.
+  secrets: process.env as Readonly<Record<string, string>>,
+  llm: createNativeLlmAdapter(process.env as Record<string, string>),
   log: (lvl, msg) => console.log(`[opencues] user-blank ${lvl}: ${msg}`),
 })
 for (const [n, b] of _userBlanks) blanksRegistry.set(n, b)

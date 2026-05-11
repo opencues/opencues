@@ -803,7 +803,14 @@ async function registerUserBlanksFromBundle(
         network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
         llm: cfg.userBlankLlm,
         storage: cfg.userBlankStorage,
+        secrets: cfg.userBlankSecrets ? [...cfg.userBlankSecrets] : undefined,
         llmApiKeys,
+        // Same map drives both: chrome.storage's opencues_host_keys
+        // (pushed by the native-messaging host from process.env)
+        // serves as the source for both LLM keys AND user-blank
+        // `secrets:` declarations. The worker only sees keys it
+        // declared.
+        secretValues: llmApiKeys,
       });
       blanksRegistry.set(blankName, userBlank as unknown as BrowserBlank);
       registered++;

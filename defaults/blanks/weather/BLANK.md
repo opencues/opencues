@@ -8,6 +8,9 @@ blankTip: Weather
 blankDismissible: true
 blankProximity: 3
 blankClearKeywords: true
+impl: ./blank.js
+network: [geocoding-api.open-meteo.com, api.open-meteo.com]
+storage: weather
 ---
 
 Dispatched by the shared runtime `WeatherBlank`

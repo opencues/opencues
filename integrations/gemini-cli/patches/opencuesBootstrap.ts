@@ -36,7 +36,7 @@ import {
 } from '@opencues/runtime/dist/src/blanks/index.js';
 import { validateScriptPath, appendAuditLog } from '@opencues/runtime/dist/src/security/spawn-sandbox.js';
 import { wrapWithBwrap } from '@opencues/runtime/dist/src/security/sandbox-runner.js';
-import { buildUserBlankRegistry, type BlankConfigLike } from '@opencues/runtime/dist/src/user-blanks/registry.js';
+import { buildUserBlankRegistry, createNativeLlmAdapter, type BlankConfigLike } from '@opencues/runtime/dist/src/user-blanks/registry.js';
 import { parseSingleCueMd } from '@opencues/core';
 import { existsSync as fsExistsSync, readdirSync as fsReaddirSync, readFileSync as fsReadFileSync } from 'node:fs';
 import * as path from 'node:path';
@@ -189,6 +189,8 @@ function _discoverUserBlankConfigs(): BlankConfigLike[] {
 }
 const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
   storageRoot: process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? require('node:os').homedir(), '.cues'),
+  secrets: process.env as Readonly<Record<string, string>>,
+  llm: createNativeLlmAdapter(process.env as Record<string, string>),
   log: (lvl, msg) => console.log(`[opencues] user-blank ${lvl}: ${msg}`),
 });
 for (const [n, b] of _userBlanks) blanksRegistry.set(n, b);

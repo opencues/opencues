@@ -14,6 +14,10 @@ blankKeywordExpansions.googl: Alphabet
 blankKeywordExpansions.msft: Microsoft
 blankKeywordExpansions.amzn: Amazon
 blankKeywordExpansions.tsla: Tesla
+impl: ./blank.js
+network: [finnhub.io]
+storage: stocks
+secrets: [FINNHUB_API_KEY]
 ---
 
 Dispatched by the shared runtime `StocksBlank`

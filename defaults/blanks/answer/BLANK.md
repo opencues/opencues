@@ -8,6 +8,8 @@ blankAutoPopulate: true
 blankFormat: string
 blankTip: Answer
 blankProximity: 20
+impl: ./blank.js
+llm: groq
 ---
 
 Dispatched by the shared runtime `AnswerBlank`

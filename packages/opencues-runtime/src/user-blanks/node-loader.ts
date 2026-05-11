@@ -87,7 +87,13 @@ export function createFileStorageAdapter(rootDir: string): StorageAdapter {
 export interface LlmAdapter {
   (
     provider: string,
-    opts: { prompt: string; model?: string; maxTokens?: number },
+    opts: {
+      prompt: string;
+      system?: string;
+      model?: string;
+      maxTokens?: number;
+      temperature?: number;
+    },
   ): Promise<string>;
 }
 
@@ -105,6 +111,11 @@ export interface LoaderOptions {
   readonly capabilities: BlankCapabilities;
   readonly storage?: StorageAdapter;
   readonly llm?: LlmAdapter;
+  /** Secrets map keyed by env-var name. Caller is responsible for
+   *  populating from process.env (native hosts) or chrome.storage
+   *  (chrome). Only the keys declared in `capabilities.secrets`
+   *  reach the BlankContext. */
+  readonly secrets?: Readonly<Record<string, string>>;
   /** Logger — falls back to console.log if omitted. */
   readonly log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
   /** Hard timeout for the entire `default.get()` call. Defaults to 8s. */
@@ -246,6 +257,16 @@ function buildBlankContext(
       get: (k) => storage.get(ns, k),
       set: (k, v) => storage.set(ns, k, v),
     };
+  }
+
+  // secrets — filtered to declared keys only
+  if (caps.secrets && caps.secrets.length > 0 && opts.secrets) {
+    const out: Record<string, string> = {};
+    for (const name of caps.secrets) {
+      const v = opts.secrets[name];
+      if (typeof v === 'string' && v.length > 0) out[name] = v;
+    }
+    ctx.secrets = Object.freeze(out);
   }
 
   return ctx;

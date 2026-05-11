@@ -155,6 +155,11 @@ export interface BlankConfig {
   /** When `impl: ./xxx`, the storage namespace. `ctx.storage.{get,set}`
    *  reads/writes under this namespace; cannot access other namespaces. */
   userBlankStorage?: string;
+  /** When `impl: ./xxx`, env-var names the blank may read via
+   *  `ctx.secrets[<NAME>]`. The host injects values; anything not
+   *  declared is absent. Used for third-party API keys (FINNHUB_API_KEY)
+   *  that aren't routed through the LLM stack. */
+  userBlankSecrets?: string[];
   /**
    * Opt-in OS-level sandbox for this blank's script. When 'strict',
    * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
@@ -726,6 +731,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   userBlankNetwork?: string[];
   userBlankLlm?: string;
   userBlankStorage?: string;
+  userBlankSecrets?: string[];
   /** Explicit host allow-list (takes precedence over auto-detection from script: extension). */
   onHost?: string[];
   /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
@@ -830,6 +836,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'network': fm.userBlankNetwork = parseHostList(value); break;
       case 'llm': fm.userBlankLlm = value; break;
       case 'storage': fm.userBlankStorage = value; break;
+      case 'secrets': fm.userBlankSecrets = parseHostList(value); break;
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
@@ -937,6 +944,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.userBlankNetwork !== undefined) blank.userBlankNetwork = frontmatter.userBlankNetwork;
       if (frontmatter.userBlankLlm !== undefined) blank.userBlankLlm = frontmatter.userBlankLlm;
       if (frontmatter.userBlankStorage !== undefined) blank.userBlankStorage = frontmatter.userBlankStorage;
+      if (frontmatter.userBlankSecrets !== undefined) blank.userBlankSecrets = frontmatter.userBlankSecrets;
       // Parse ## sections from body as named prompts
       const promptSections: Record<string, string> = {};
       const sectionPattern = /^## (.+)$/gm;

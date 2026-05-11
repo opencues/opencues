@@ -322,7 +322,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}catch(__ocBe){}` +
     `}` +
     `}` +
-    `var __ocUm=__ocUbReg.buildUserBlankRegistry(__ocUserCfgs,{storageRoot:__ocRoots2[__ocRoots2.length-1],log:function(){}});` +
+    `var __ocUm=__ocUbReg.buildUserBlankRegistry(__ocUserCfgs,{storageRoot:__ocRoots2[__ocRoots2.length-1],secrets:process.env,llm:__ocUbReg.createNativeLlmAdapter(process.env),log:function(){}});` +
     `__ocUm.forEach(function(b,n){__ocReg.set(n,b);});` +
     `}catch(__ocUbE){` +
     `if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","user-blank discovery failed",{err:String(__ocUbE)});` +

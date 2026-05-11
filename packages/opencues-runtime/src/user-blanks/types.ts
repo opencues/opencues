@@ -44,6 +44,12 @@ export interface BlankCapabilities {
   /** When set, ctx.storage.{get,set} are available. The value is the
    *  storage namespace; the blank can't read other namespaces. */
   readonly storage?: string;
+  /** Environment-variable names the blank may read. The host populates
+   *  `ctx.secrets[<NAME>]` with the resolved values; anything not
+   *  listed is absent from the object. Used for blanks that need
+   *  third-party API keys (FINNHUB_API_KEY, etc.) that aren't routed
+   *  through the LLM stack. */
+  readonly secrets?: readonly string[];
 }
 
 // ─── BlankContext — the API the user's code sees ────────────────────────
@@ -57,7 +63,22 @@ export interface BlankContext {
 
   /** Send a prompt to the runtime's configured LLM. The provider was
    *  fixed at frontmatter time; the pack can't override it. */
-  llm?: (opts: { prompt: string; model?: string; maxTokens?: number }) => Promise<string>;
+  llm?: (opts: {
+    prompt: string;
+    /** Optional system-role message. Used for blanks with a
+     *  domain-specific instruction set (answer / prompt-improver). */
+    system?: string;
+    model?: string;
+    maxTokens?: number;
+    /** Sampling temperature. Defaults to 0 (deterministic). */
+    temperature?: number;
+  }) => Promise<string>;
+  /** Resolved secret values, keyed by env-var name. Only present
+   *  when BLANK.md declared `secrets: [NAME1, NAME2]`. The host
+   *  injects the values; blanks read `ctx.secrets.FINNHUB_API_KEY`
+   *  etc. Unset secrets are absent from the object (not the empty
+   *  string) so authors must guard with `?.` or undefined-checks. */
+  secrets?: Readonly<Record<string, string>>;
 
   /** Read/write namespaced storage (`<namespace>:<key>`). Persistence
    *  is host-dependent (chrome.storage.local on chrome,
