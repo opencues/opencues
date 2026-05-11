@@ -763,6 +763,7 @@ function applySiteCompatFilter(files: Record<string, string>): Record<string, st
  */
 async function registerUserBlanksFromBundle(
   blanksRegistry: Map<string, BrowserBlank>,
+  llmApiKeys: Readonly<Record<string, string>>,
 ): Promise<void> {
   const stored = await chrome.storage.local.get('opencues_bundle');
   const bundle = stored.opencues_bundle as { files?: Record<string, string> } | undefined;
@@ -802,6 +803,7 @@ async function registerUserBlanksFromBundle(
         network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
         llm: cfg.userBlankLlm,
         storage: cfg.userBlankStorage,
+        llmApiKeys,
       });
       blanksRegistry.set(blankName, userBlank as unknown as BrowserBlank);
       registered++;
@@ -1088,7 +1090,18 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // additions are visible to the runtime without re-wiring.
   void (async () => {
     try {
-      await registerUserBlanksFromBundle(blanks);
+      // Assemble the LLM credential map the user-blank LLM bridge
+      // uses. Combines primary (opts.llmApiKey → GROQ default) with
+      // any per-provider overrides (opts.llmApiKeys). Mirrors the
+      // shape resolveLLM expects.
+      const llmApiKeys: Record<string, string> = {};
+      if (opts.llmApiKey) llmApiKeys.GROQ_API_KEY = opts.llmApiKey;
+      if (opts.llmApiKeys) {
+        for (const [k, v] of Object.entries(opts.llmApiKeys)) {
+          if (typeof v === 'string' && v.length > 0) llmApiKeys[k] = v;
+        }
+      }
+      await registerUserBlanksFromBundle(blanks, llmApiKeys);
     } catch (err) {
       console.warn('[opencues] user-blank registration failed', err);
     }

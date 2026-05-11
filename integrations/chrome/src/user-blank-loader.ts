@@ -12,6 +12,7 @@
 
 import type { Blank } from '@opencues/runtime/dist/src/blanks';
 import { log as runtimeLog } from './opencues-bootstrap';
+import { resolveLLM, buildProviderRequest, parseProviderResponse, type ProviderId } from '@opencues/core';
 
 // ─── Worker harness source ──────────────────────────────────────────────
 //
@@ -126,6 +127,12 @@ export interface ChromeUserBlankOptions {
   /** Storage namespace. Reads/writes go to chrome.storage.local under
    *  `opencues_user_blank:<namespace>:<key>`. */
   readonly storage?: string;
+  /** API keys keyed by env-var name (GROQ_API_KEY, OPENAI_API_KEY,
+   *  ANTHROPIC_API_KEY, etc.). Sourced from the chrome runtime's
+   *  llmApiKey + llmApiKeys options (host-pushed via native messaging
+   *  + popup overrides). The LLM bridge picks the right key for
+   *  the declared `llm:` provider. */
+  readonly llmApiKeys?: Readonly<Record<string, string>>;
   /** Hard cap on a single invoke. Default 10s. */
   readonly timeoutMs?: number;
 }
@@ -305,12 +312,59 @@ export class ChromeUserBlank implements Blank {
     await chrome.storage.local.set({ [storageKey]: String(value) });
   }
 
-  private async handleLlm(_req: { prompt: string; model?: string }): Promise<string> {
+  private async handleLlm(req: { prompt: string; model?: string; maxTokens?: number }): Promise<string> {
     if (!this.opts.llm) throw new Error('ctx.llm: llm capability not declared');
-    // Chrome routes LLM calls through the runtime's existing
-    // Resolver via the SW. For v1 we stub this; production wiring
-    // hooks into the same FetchHttpAdapter used by Resolver elsewhere.
-    throw new Error('ctx.llm not yet wired in chrome — track follow-up');
+    if (!this.opts.llmApiKeys || Object.keys(this.opts.llmApiKeys).length === 0) {
+      throw new Error('ctx.llm: no LLM credentials available — install chrome-host or set keys in popup');
+    }
+
+    // Resolve the LLM client for the declared provider. resolveLLM
+    // handles the credential lookup (it knows GROQ_API_KEY etc.) and
+    // returns the wire endpoint + default model. The user's `model`
+    // override (if any) wins over the provider default.
+    const resolved = resolveLLM({
+      apiKeys: this.opts.llmApiKeys,
+      globalProvider: this.opts.llm,
+      modelOverride: req.model,
+    });
+    if (!resolved) {
+      throw new Error(
+        `ctx.llm: provider "${this.opts.llm}" not available — ` +
+        `check the API key is set (popup) or pushed by chrome-host`,
+      );
+    }
+
+    // Build the wire request. Each provider has its own body shape;
+    // buildProviderRequest dispatches per provider.
+    const wire = buildProviderRequest(
+      resolved.provider.id as ProviderId,
+      {
+        messages: [{ role: 'user', content: req.prompt }],
+        model: resolved.model,
+        temperature: 0,
+        maxTokens: req.maxTokens ?? 1024,
+      },
+      { apiKey: resolved.apiKey, endpoint: resolved.endpoint },
+    );
+
+    // POST via the SW's fetch proxy (avoids CORS, reuses
+    // host_permissions). Response body comes back as text; pass to
+    // the provider's parser for the .choices[0].message.content
+    // extraction.
+    const resp = await chrome.runtime.sendMessage({
+      type: 'opencues:fetch',
+      method: 'POST',
+      url: wire.url,
+      headers: wire.headers,
+      body: JSON.stringify(wire.body),
+    });
+    if (!resp || !resp.ok) {
+      throw new Error(
+        `ctx.llm http ${resp?.status ?? '???'}: ` +
+        `${(resp?.text ?? '').slice(0, 200)}`,
+      );
+    }
+    return parseProviderResponse(resolved.provider.id as ProviderId, resp.text);
   }
 
   dispose(): void {

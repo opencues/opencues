@@ -191,6 +191,20 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
             } catch { /* ignore */ }
           }
         }
+        // Sandbox declaration hygiene: a blankScript: blank with no
+        // explicit `sandbox:` declaration is ambiguous — author may
+        // have intended strict isolation but forgot to opt in, OR
+        // may need filesystem access (volume / brightness) and just
+        // forgot to declare 'off'. Encourage explicit.
+        const fm = folderParsed.frontmatter || {};
+        if (fm.blankScript && fm.sandbox === undefined) {
+          warnings.push(
+            `${cueMd}: blankScript declared without sandbox: setting. ` +
+            `Add \`sandbox: strict\` (recommended — see docs/architecture/sandbox.md) ` +
+            `OR \`sandbox: off\` with a rationale comment for blanks that need ` +
+            `filesystem / network access outside the runtime sandbox.`,
+          );
+        }
         // User-shipped JS blank sanity: if impl: is a relative path,
         // check that the JS file exists and that the blank declared
         // at least one capability (zero capabilities is allowed but

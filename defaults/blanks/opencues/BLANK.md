@@ -5,6 +5,12 @@ blankKeywords: opencues settings, config
 blankAutoPopulate: true
 blankFormat: string
 blankScript: ./opencues-blank.sh
+# Sandbox: off because opencues-blank.sh writes to ~/.cues/OPENCUES.md
+# (settings persistence) which is outside the sandbox's tmpfs and
+# would be refused by the read-only CUES root bind. Chrome routes
+# this through OpenCuesSettingsBlank (impl: class, no spawn) so the
+# sandbox declaration only affects native hosts.
+sandbox: off
 blankSatellite: true
 blankSatelliteSeparator: ' '
 blankClearKeywords: true
