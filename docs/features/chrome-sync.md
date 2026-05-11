@@ -245,6 +245,32 @@ flags and `--watch` mode behave exactly as before; see history.
 
 ---
 
+## Security
+
+Live config sync + subprocess execution share one bidirectional pipe.
+Both directions are defended against hostile-page abuse:
+
+- **Trust gate** — credit-based `_` accounting. Each genuine `_`
+  keystroke / paste / drop buys exactly one underscore insertion in
+  the runtime. Defeats the "user typed `_` once, page-injected `_`
+  triggers a blank within 1s" replay attack.
+- **Site scoping** — `on-site` / `not-on-site` frontmatter lets each
+  entry scope to specific platforms / hostnames / paths. Filtered
+  entries never reach the runtime.
+- **Path sandbox** — host refuses any script path that resolves
+  outside CUE_ROOT (including via symlinks; uses `realpath`).
+- **Env-key whitelist** — only `CUES_*` env vars from the wire reach
+  the spawned process.
+- **Per-call timeout** — 10s default, configurable.
+
+Trust model: scripts in `~/.cues/blanks/` run with the user's
+permissions. Treat third-party cue packs like `.bashrc` additions —
+the sandbox is path-shaped, not content-shaped.
+
+Full spec: [`docs/architecture/chrome-security.md`](../architecture/chrome-security.md).
+
+---
+
 ## Resolution order at runtime
 
 The bootstrap walks this chain on every `readFile()`:

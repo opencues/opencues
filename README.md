@@ -556,6 +556,15 @@ shipped; others are tracked here as the natural next steps.
   user-authored `.sh`/`.py`-backed blank now run via the host — same shell
   scripts that already work in Claude Code / OpenCode. Type `volume 50 _`
   in Gmail, your OS volume changes.
+- **Security boundaries for hostile-page protection.** Native-messaging
+  in a content-script context is a real attack surface. Six defences
+  in depth: `isTrusted` gate on input events, credit-based `_`
+  accounting (each user keystroke buys one underscore insertion — no
+  replay window for hostile pages), `on-site`/`not-on-site`
+  frontmatter for per-entry scoping, host-side path sandbox with
+  symlink resolution, env-key whitelist, per-call timeout. Full spec:
+  [`docs/architecture/chrome-security.md`](docs/architecture/chrome-security.md).
+  47 tests pin the security-relevant code paths.
 
 **Natural next steps (not built yet):**
 

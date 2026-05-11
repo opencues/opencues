@@ -174,18 +174,47 @@ function withinCueRoot(absPath) {
 
 // Returns the safe path to pass through, or null if it would escape.
 // Non-absolute args are returned unchanged.
+//
+// Uses realpath to resolve every symlink along the path. A cue pack
+// that places `blanks/foo/script.sh -> /etc/passwd` inside CUE_ROOT
+// passes path.resolve (the symlink itself is under CUE_ROOT) but
+// realpath returns /etc/passwd, which fails withinCueRoot. The
+// realpath check is the difference between path-shaped enforcement
+// and actual-file-shaped enforcement.
+//
+// If the path doesn't exist yet (ENOENT), there's no symlink to
+// follow and no security risk — spawn will fail naturally. Fall back
+// to the lexical path check.
 function sandboxArg(a) {
   if (typeof a !== 'string') return a;
+  let abs;
   if (a.startsWith(CHROME_STORAGE_PREFIX)) {
-    const rel = a.slice(CHROME_STORAGE_PREFIX.length);
-    const abs = path.resolve(CUE_ROOT, rel);
-    return withinCueRoot(abs) ? abs : null;
+    abs = path.resolve(CUE_ROOT, a.slice(CHROME_STORAGE_PREFIX.length));
+  } else if (a.startsWith('/')) {
+    abs = path.resolve(a);
+  } else {
+    return a;  // non-absolute → not a path we need to sandbox
   }
-  if (a.startsWith('/')) {
-    const abs = path.resolve(a);
-    return withinCueRoot(abs) ? abs : null;
+  let real;
+  try { real = fs.realpathSync(abs); }
+  catch { real = abs; }  // ENOENT — no symlink to follow
+  return withinCueRoot(real) ? real : null;
+}
+
+// Whitelist env keys we accept from the wire. The runtime sends
+// CUES_MODEL / CUES_API_URL / CUES_API_KEY_ENV / CUES_ALT_COUNT etc.
+// Anything outside this prefix is rejected so a malicious cue pack
+// can't smuggle PATH / LD_PRELOAD / DYLD_* through the message and
+// influence the spawned process's environment.
+function filterMessageEnv(msgEnv) {
+  if (!msgEnv || typeof msgEnv !== 'object') return {};
+  const out = {};
+  for (const [k, v] of Object.entries(msgEnv)) {
+    if (typeof k === 'string' && /^CUES_[A-Z0-9_]+$/.test(k)) {
+      out[k] = String(v);
+    }
   }
-  return a;
+  return out;
 }
 
 const { spawn } = require('node:child_process');
@@ -225,7 +254,7 @@ function handleExec(msg) {
   let child;
   try {
     child = spawn(safeCommand, args, {
-      env: { ...process.env, ...(msg.env && typeof msg.env === 'object' ? msg.env : {}) },
+      env: { ...process.env, ...filterMessageEnv(msg.env) },
       cwd: CUE_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

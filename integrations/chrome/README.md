@@ -196,8 +196,46 @@ rm -rf /mnt/c/Users/USERNAME/Desktop/opencues-chrome   # if you used --target
 
 ---
 
+## Security model
+
+Six boundaries defend against hostile pages triggering OpenCues
+capabilities (subprocess blanks, system-volume changes, etc.) without
+user intent:
+
+1. **`isTrusted` gate** on input events — drops events from
+   `dispatchEvent` outright.
+2. **Credit-based underscore gate** — each trusted `_` keystroke /
+   paste / drop buys exactly one underscore insertion. Defeats the
+   "blessed window" replay attack.
+3. **`on-site` / `not-on-site` frontmatter** — scope cues / blanks /
+   auditors to specific sites (`reddit.com`, `*.reddit.com`,
+   `reddit.com/r/claudeai`, etc.). Bundle filtered at read time.
+4. **Path sandbox** — host refuses any script path that resolves
+   outside `~/.cues/`, including via symlink (uses `realpath`).
+5. **Env-key whitelist** — only `CUES_*` keys from the wire reach
+   the spawned process. `PATH` / `LD_PRELOAD` etc. are filtered.
+6. **Per-call timeout** — 10s default in host, 5s safety net in SW.
+
+What's **not** defended against (user responsibility):
+
+- Scripts you place in `~/.cues/blanks/` run with your user
+  permissions. Treat third-party cue packs like `.bashrc` additions.
+- DevTools self-pwn (you can write a malicious bundle to your own
+  `chrome.storage.local`; the path sandbox still applies, so the
+  worst case is "runtime tries a script that doesn't exist").
+
+Full spec: [`docs/architecture/chrome-security.md`](../../docs/architecture/chrome-security.md).
+
+Test coverage: `src/trust-gate.test.ts` (15 tests),
+`src/site-filter.test.ts` (23 tests),
+`packages/opencues-core/src/host-compat.test.ts` (9 new tests for
+`inferSiteCompat`).
+
+---
+
 ## See also
 
+- [`docs/architecture/chrome-security.md`](../../docs/architecture/chrome-security.md) — full security model
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — repo layout + stage tracker
 - [`integrations/chrome/docs/rendering.md`](docs/rendering.md) — CSS Custom Highlight API + reconciliation strategy
 - [`integrations/chrome/src/runtime-renderer.ts`](src/runtime-renderer.ts) — the actual paint logic (~120 lines, well-commented)

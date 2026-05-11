@@ -93,9 +93,13 @@ Don't ship long-running / streaming scripts through this protocol —
 it's request/response, no `stdout` stream until close. Future
 streaming variant would add an `exec-chunk` message.
 
-## Trust gate + site scoping (May 2026)
+## Security model
 
-Two security boundaries closed in the May 2026 native-messaging push:
+Full spec: `docs/architecture/chrome-security.md`. Quick reference below.
+
+### Trust gate + site scoping (May 2026)
+
+Six security boundaries closed in the May 2026 native-messaging push:
 
 **1. `isTrusted` gate** (`src/content.ts`). The `input` event handler
 drops events where `event.isTrusted === false`. Browser-issued events
@@ -110,19 +114,50 @@ or not fired at all (.data) — neither path triggers a spurious blank
 fire because we mark runtime writes via `sourceReclassifier` before
 the next event lands. No regression for legit writes.
 
-**2. Site-scoped allow/deny lists** (`on-site` / `not-on-site` in
-frontmatter). Cues / blanks / auditors can scope themselves to specific
+**2. Credit-based underscore gate** (`src/trust-gate.ts`). The naive
+"recent trusted `_` keydown" check is defeated by any prior legitimate
+`_` keystroke — `execCommand('insertText', false, '_')` from a hostile
+page within 1s of the user's last `_` would pass a timestamp gate.
+Credit accounting fixes this: each trusted `_` introduction adds N
+credits; each accepted user-classified text-change consumes (new − last
+accepted) credits worth of new `_`s. Changes whose delta exceeds
+available credits are dropped. Runtime writes (source='runtime')
+bypass + reset the baseline.
+
+Pinned by `src/trust-gate.test.ts` (15 tests covering the blessed-
+window attack, paste credits, runtime bypass, adversarial-repeat).
+
+**3. Site-scoped allow/deny lists** (`on-site` / `not-on-site` in
+frontmatter). Cues / blanks / auditors scope themselves to specific
 sites: `on-site: [reddit.com]`, `on-site: [reddit.com/r/claudeai]`,
 `on-site: [*.reddit.com]`, etc. Filter applies at bundle-read time in
-`applySiteCompatFilter` (opencues-bootstrap.ts) — entries that don't
+`applySiteCompatFilter` (`src/site-filter.ts`) — entries that don't
 match the current `location.hostname`+`pathname` never reach the
 runtime. SPA navigation re-triggers the filter via `popstate` +
-monkey-patched `pushState`/`replaceState`. Spec:
-`docs/features/host-compat.md`-adjacent section in top-level CLAUDE.md.
+monkey-patched `pushState`/`replaceState`. Pinned by
+`src/site-filter.test.ts` (23 tests).
 
 For destructive blanks (anything taking free-form args that acts on
-the system), recommend pairing `on-site` with a known-good origin
-list rather than firing globally.
+the system), pair `on-site` with a known-good origin list rather
+than firing globally.
+
+**4. Host path sandbox + realpath** (`host/host.cjs:sandboxArg`).
+Every script the host runs must resolve to a path under CUE_ROOT
+(`~/.cues/` or `$OPENCUES_HOME`). Uses `fs.realpathSync` to follow
+symlinks before the boundary check — a symlink at
+`~/.cues/blanks/foo/script.sh -> /etc/passwd` is refused (exit 126)
+even though the link itself is inside CUE_ROOT, because realpath
+returns the underlying target.
+
+**5. Env-key whitelist** (`host/host.cjs:filterMessageEnv`). Only
+keys matching `/^CUES_[A-Z0-9_]+$/` from `msg.env` survive into the
+spawned process. A malicious cue pack frontmatter that tried to
+smuggle `PATH=/tmp/evil` or `LD_PRELOAD` through the message is
+filtered out.
+
+**6. Per-call timeout**. Default 10s in the host, configurable per
+exec, plus a 5s safety net in the SW. No script can hang the
+extension indefinitely.
 
 ## Verified working sites (May 2026)
 
