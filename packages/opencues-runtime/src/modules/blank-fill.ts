@@ -35,6 +35,7 @@ export class BlankFill {
   private _unsubKey: Unsubscribe | null = null;
   /** Dedup key (text + slot index) → in-flight script promise. */
   private _pendingScripts = new Set<string>();
+  private _warnedSandboxBlanks = new Set<string>();
 
   constructor(
     private adapter: HostAdapter,
@@ -259,6 +260,22 @@ export class BlankFill {
           fs: blank.sandboxFs === 'rw' ? 'rw' as const : 'ro' as const,
           workdir: scriptPath ? scriptPath.replace(/\/[^/]+$/, '') : undefined,
         } : undefined;
+        // sandbox: strict is honoured on linux (bwrap) and darwin
+        // (sandbox-exec). On other platforms — Windows native, etc. —
+        // the spawn falls through unwrapped. Emit a one-time warn
+        // per blank so authors don't think their script is sandboxed
+        // when it isn't.
+        if (sandbox && typeof process !== 'undefined' && process.platform
+            && process.platform !== 'linux' && process.platform !== 'darwin') {
+          if (!this._warnedSandboxBlanks.has(slot.blankName)) {
+            this._warnedSandboxBlanks.add(slot.blankName);
+            this.adapter.log('warn',
+              `sandbox: strict requested for "${slot.blankName}" but platform is ${process.platform} ` +
+              `— OS-level confinement only on linux (bwrap) + darwin (sandbox-exec). ` +
+              `Running unwrapped (path sandbox + audit log still apply).`,
+            );
+          }
+        }
         handle = this.adapter.spawnProcess({
           command: 'bash',
           args: [scriptPath, 'get', slot.keyword, ...contextWords],

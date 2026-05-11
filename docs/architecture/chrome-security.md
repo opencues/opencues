@@ -117,6 +117,55 @@ Every exec has a default 10s timeout in the host (configurable per
 call). The SW adds a 5s safety net above that. No script can hang
 the host or the extension indefinitely.
 
+### Boundary 7 — User-blank capability gate
+
+`impl: ./blank.js` blanks run inside a Web Worker built from a blob
+URL whose source is the AST-rewritten user JS concatenated with a
+harness prefix/suffix. The Worker has no DOM, no `chrome.*`, no
+access to the content script's globals. Capability proxies
+postMessage to the main thread, which re-validates and routes
+through the SW fetch proxy.
+
+What the Worker sees:
+- `ctx.fetch` / `ctx.llm` / `ctx.storage` / `ctx.secrets` only when
+  declared in BLANK.md frontmatter (`network:`, `llm:`, `storage:`,
+  `secrets:`); everything else is `undefined`.
+- Per-blank quotas (120 fetches/min, 30 LLM/min, 1MB storage) with
+  hard ceilings (600/120/10MB) — the runtime refuses larger
+  declared caps.
+- Output passes through `sanitizeBlankOutput` before reaching the
+  page DOM: HTML tags stripped, zero-width + bidi overrides removed,
+  NFKC-normalized, 8KB cap. Bypass with explicit `output: rich`.
+
+Defence in depth — the Worker's capability proxies don't *enforce*
+the policy alone; the main thread re-checks the allow-list, quota,
+and secret binding before forwarding to the SW. A compromised
+Worker can't escape because it's the main thread that holds the
+trust.
+
+See `docs/architecture/user-blanks.md` for the full capability
+surface and the author's view.
+
+### Boundary 8 — Per-secret host binding
+
+A blank that declares `secrets: [GROQ_API_KEY]` MUST also declare
+`secret-hosts.GROQ_API_KEY: [api.groq.com]`. Unbound secrets are
+refused at load time. When `ctx.fetch` (or `ctx.llm`) is about to
+send a request, the runtime scans the URL, headers, and body for
+the bound secret value; if found, the target hostname must be in
+the secret's allow-list, else the request is refused.
+
+This closes the "declare benign-looking network capability, smuggle
+secret out" exfiltration path. Example refused request:
+
+```
+ctx.fetch: secret "GROQ_API_KEY" is bound to [api.groq.com],
+cannot be sent to "evil.com"
+```
+
+Pinned by `packages/opencues-runtime/src/user-blanks/secret-leak-guard.test.ts`
+(11 tests).
+
 ## Trust assumptions (NOT boundaries — user responsibility)
 
 ### Cue-pack trust
@@ -148,19 +197,6 @@ turns out not to exist." Not a meaningful escalation path.
 
 ## Known gaps / future work
 
-### Audit log
-
-The host doesn't log exec invocations. If something goes wrong (or
-the user wants visibility), there's no record. Worth adding:
-`~/.cues/.host-log` with timestamped invocation entries (command,
-args, exit code, duration). Useful for debugging too.
-
-### Rate limiting
-
-A pathological cue pack could call a script in a tight loop. The
-per-call timeout caps each invocation but not the rate. A
-per-element / per-second cap would be cheap insurance.
-
 ### Auditor inputs
 
 Auditors take the user's draft as LLM input. An auditor written by
@@ -177,12 +213,27 @@ the script closes. Long-running scripts buffer everything in
 memory. A streaming variant (`exec-chunk` message) would unlock
 log-tail and watch-style blanks; defer until there's a concrete use.
 
-### CWS publishing
+### Same-origin iframe trust
 
-Inlined `GROQ_API_KEY` at esbuild time is a pre-launch issue
-(grep-able from the public bundle). Native-messaging unblocks the
-fix: popup-set key → `chrome.storage.local` → SW reads → no key in
-bundle. Tracked in CLAUDE.md pre-launch list.
+The trust gate state is shared across same-origin iframes within a
+tab. If a host page (e.g. `mail.google.com`) embeds an attacker-
+controlled iframe at the same origin (which shouldn't happen but
+sometimes does via misconfigured proxies), the iframe's `_`
+credits accumulate alongside the host's. Mitigations: per-frame
+gate state, or refusing to bind in iframes whose `window.top !==
+window`. Tracked here as a residual; see audit doc row #13.
+
+## Resolved gaps (historical)
+
+- **Audit log** — host now writes to `~/.cues/.host-log`
+  (timestamped command/args/exit/duration).
+- **Rate limiting** — user-blank quota tracker caps fetch + LLM
+  rates per blank; `blankScript:` invocations still rely on the
+  per-call timeout but pathological loops would need a multi-blank
+  attack to scale.
+- **API key in bundle** — esbuild defines resolve to `''`; keys
+  come from popup or the native-messaging host's `config` message
+  at connect time. The published bundle is grep-free of secrets.
 
 ## What's pinned by tests
 
@@ -190,7 +241,13 @@ bundle. Tracked in CLAUDE.md pre-launch list.
 |---|---|---|
 | Trust gate | `integrations/chrome/src/trust-gate.test.ts` | 15 |
 | Site filter | `integrations/chrome/src/site-filter.test.ts` | 23 |
-| `inferSiteCompat` core | `packages/opencues-core/src/host-compat.test.ts` | 9 (added) |
+| `inferSiteCompat` core | `packages/opencues-core/src/host-compat.test.ts` | 9 |
 | Path sandbox | manual smoke (`/etc/passwd`, symlink, traversal) | 3 |
+| ESM AST rewriter | `packages/opencues-runtime/src/user-blanks/esm-rewrite.test.ts` | 13 |
+| Secret-binding leak guard | `packages/opencues-runtime/src/user-blanks/secret-leak-guard.test.ts` | 11 |
+| User-blank loader (Node) | `packages/opencues-runtime/src/user-blanks/node-loader.test.ts` | 19 |
+| Sandbox-runner (bwrap) | `packages/opencues-runtime/src/security/sandbox-runner.test.ts` | 21 |
+| Sandbox-runner (bwrap, real exec) | `packages/opencues-runtime/src/security/sandbox-runner.integration.test.ts` | 9 |
+| Sandbox-exec (macOS) + dispatcher | `packages/opencues-runtime/src/security/sandbox-exec.test.ts` | 14 |
 
 Anything new touching these surfaces needs its assertion added.

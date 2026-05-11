@@ -50,6 +50,12 @@ export interface BlankCapabilities {
    *  third-party API keys (FINNHUB_API_KEY, etc.) that aren't routed
    *  through the LLM stack. */
   readonly secrets?: readonly string[];
+  /** Per-secret hostname allow-list. Maps env-var name → hostnames
+   *  where that secret value may legitimately appear in an outbound
+   *  request. Secrets without an entry here are unrestricted. Used
+   *  by ctx.fetch to block exfiltration to attacker-controlled hosts
+   *  even when the hostname is otherwise in the network allow-list. */
+  readonly secretBindings?: Readonly<Record<string, readonly string[]>>;
 }
 
 // ─── BlankContext — the API the user's code sees ────────────────────────

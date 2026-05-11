@@ -13,6 +13,10 @@
 import type { Blank } from '@opencues/runtime/dist/src/blanks';
 import { log as runtimeLog } from './opencues-bootstrap';
 import { resolveLLM, buildProviderRequest, parseProviderResponse, type ProviderId } from '@opencues/core';
+import { sanitizeBlankOutput } from '@opencues/runtime/dist/src/user-blanks/sanitize';
+import { createQuotaTracker, type QuotaTracker } from '@opencues/runtime/dist/src/user-blanks/quota';
+import { rewriteEsmToCjsShim } from '@opencues/runtime/dist/src/user-blanks/esm-rewrite';
+import { buildRequestParts, enforceSecretBindings, type BoundSecret } from '@opencues/runtime/dist/src/user-blanks/secret-leak-guard';
 
 // ─── Worker harness source ──────────────────────────────────────────────
 //
@@ -133,13 +137,11 @@ const WORKER_HARNESS_SUFFIX = String.raw`
 `;
 
 function rewriteUserSource(source: string): string {
-  // Strip ESM `import` (no module loading in Workers anyway).
-  let out = source.replace(/^(\s*)import\s.*$/gm, (_m, ws) => `${ws}// import stripped`);
-  // `export default X` → `module.exports.default = X`
-  out = out.replace(/^(\s*)export\s+default\s+/m, '$1module.exports.default = ');
-  // `export const/let/var/function/async function` → drop `export `
-  out = out.replace(/^(\s*)export\s+(?=(const|let|var|function|async\s+function))/gm, '$1');
-  return out;
+  const { code, warnings } = rewriteEsmToCjsShim(source);
+  if (warnings.length > 0) {
+    throw new Error(`user-blank rewrite: ${warnings.join('; ')}`);
+  }
+  return code;
 }
 
 // ─── Main-thread loader ─────────────────────────────────────────────────
@@ -171,8 +173,20 @@ export interface ChromeUserBlankOptions {
    *  opencues_host_keys (same source that feeds llmApiKeys). Only
    *  the keys listed in `secrets` are sent to the worker. */
   readonly secretValues?: Readonly<Record<string, string>>;
+  /** Per-secret hostname allow-list. Same shape as the runtime's
+   *  BlankCapabilities.secretBindings — maps secret name to the
+   *  hostnames where it may legitimately appear in a request. */
+  readonly secretBindings?: Readonly<Record<string, readonly string[]>>;
   /** Hard cap on a single invoke. Default 10s. */
   readonly timeoutMs?: number;
+  /** Output mode for sanitization. 'safe' (default) strips
+   *  HTML / zero-width / bidi overrides; 'rich' bypasses. */
+  readonly output?: 'safe' | 'rich';
+  /** Quota caps. Defaults: 120 fetches/min, 30 LLM/min, 1MB storage.
+   *  See packages/opencues-runtime/src/user-blanks/quota.ts. */
+  readonly maxFetchesPerMinute?: number;
+  readonly maxLlmPerMinute?: number;
+  readonly maxStorageBytes?: number;
 }
 
 interface PendingInvoke {
@@ -188,6 +202,7 @@ export class ChromeUserBlank implements Blank {
   private ready: Promise<void>;
   private pending = new Map<string, PendingInvoke>();
   private nextInvokeId = 0;
+  private quota: QuotaTracker;
 
   constructor(
     name: string,
@@ -195,6 +210,11 @@ export class ChromeUserBlank implements Blank {
     private opts: ChromeUserBlankOptions,
   ) {
     this.name = name;
+    this.quota = createQuotaTracker({
+      maxFetchesPerMinute: opts.maxFetchesPerMinute,
+      maxLlmPerMinute: opts.maxLlmPerMinute,
+      maxStorageBytes: opts.maxStorageBytes,
+    });
     // Concatenate harness + rewritten user source + suffix into ONE
     // worker script. No `new Function` at runtime → no CSP eval
     // violation on strict-CSP pages (claude.ai, etc.).
@@ -280,8 +300,14 @@ export class ChromeUserBlank implements Blank {
       if (!p) return;
       this.pending.delete(msg.invokeId);
       clearTimeout(p.timer);
-      if (msg.type === 'invoke-result') p.resolve(String(msg.result ?? ''));
-      else p.reject(new Error(msg.error));
+      if (msg.type === 'invoke-result') {
+        // Sanitize at the Worker→main trust boundary, NOT inside the
+        // worker (the worker is the user's code; the main thread is
+        // where the trust boundary sits).
+        p.resolve(sanitizeBlankOutput(msg.result, { allowRich: this.opts.output === 'rich' }));
+      } else {
+        p.reject(new Error(msg.error));
+      }
       return;
     }
     if (msg.type === 'ctx-call') {
@@ -329,6 +355,7 @@ export class ChromeUserBlank implements Blank {
     if (!this.opts.network || this.opts.network.length === 0) {
       throw new Error('ctx.fetch: network capability not declared');
     }
+    this.quota.recordFetch();
     let parsed: URL;
     try { parsed = new URL(url); }
     catch { throw new Error(`ctx.fetch: invalid URL: ${url}`); }
@@ -341,6 +368,20 @@ export class ChromeUserBlank implements Blank {
         `ctx.fetch: hostname "${parsed.hostname}" not in declared allow-list ` +
         `[${[...allowed].join(', ')}]`,
       );
+    }
+    // Per-secret host binding: refuse the request if a bound secret
+    // value would leak to a host outside its declared allow-list.
+    const boundSecrets: BoundSecret[] = [];
+    if (this.opts.secrets && this.opts.secretValues) {
+      for (const name of this.opts.secrets) {
+        const value = this.opts.secretValues[name];
+        if (typeof value !== 'string' || value.length === 0) continue;
+        const allowedHosts = this.opts.secretBindings?.[name] ?? [];
+        boundSecrets.push({ name, value, allowedHosts });
+      }
+    }
+    if (boundSecrets.length > 0) {
+      enforceSecretBindings(buildRequestParts(url, init), boundSecrets);
     }
     // Route through the SW's fetch proxy (avoids CORS, reuses
     // host_permissions). The response body comes back as text; the
@@ -371,7 +412,18 @@ export class ChromeUserBlank implements Blank {
   private async handleStorageSet(key: string, value: string): Promise<void> {
     if (!this.opts.storage) throw new Error('ctx.storage: storage capability not declared');
     const storageKey = `opencues_user_blank:${this.opts.storage}:${key}`;
-    await chrome.storage.local.set({ [storageKey]: String(value) });
+    const strValue = String(value);
+    const newBytes = key.length + strValue.length;
+    const all = await chrome.storage.local.get(null);
+    const prefix = `opencues_user_blank:${this.opts.storage}:`;
+    let total = 0;
+    for (const [k, v] of Object.entries(all)) {
+      if (!k.startsWith(prefix)) continue;
+      if (k === storageKey) continue;
+      total += (k.length - prefix.length) + (typeof v === 'string' ? v.length : 0);
+    }
+    this.quota.checkStorageBytes(total + newBytes);
+    await chrome.storage.local.set({ [storageKey]: strValue });
   }
 
   private async handleLlm(req: {
@@ -385,6 +437,8 @@ export class ChromeUserBlank implements Blank {
     if (!this.opts.llmApiKeys || Object.keys(this.opts.llmApiKeys).length === 0) {
       throw new Error('ctx.llm: no LLM credentials available — install chrome-host or set keys in popup');
     }
+
+    this.quota.recordLlm();
 
     // Resolve the LLM client for the declared provider. resolveLLM
     // handles the credential lookup (it knows GROQ_API_KEY etc.) and
@@ -400,6 +454,31 @@ export class ChromeUserBlank implements Blank {
         `ctx.llm: provider "${this.opts.llm}" not available — ` +
         `check the API key is set (popup) or pushed by chrome-host`,
       );
+    }
+
+    // Secret-binding enforcement on the LLM path: refuse to send the
+    // prompt to the LLM endpoint when it would carry a secret bound
+    // to a different host. Same rationale as ctx.fetch — a malicious
+    // blank could embed `Bearer ${ctx.secrets.GROQ_API_KEY}` in the
+    // prompt body to exfil via the LLM endpoint.
+    const boundSecrets: BoundSecret[] = [];
+    if (this.opts.secrets && this.opts.secretValues) {
+      for (const name of this.opts.secrets) {
+        const value = this.opts.secretValues[name];
+        if (typeof value !== 'string' || value.length === 0) continue;
+        const allowedHosts = this.opts.secretBindings?.[name] ?? [];
+        boundSecrets.push({ name, value, allowedHosts });
+      }
+    }
+    if (boundSecrets.length > 0) {
+      let llmHost = '';
+      try { llmHost = new URL(resolved.endpoint).hostname.toLowerCase(); } catch { /* */ }
+      enforceSecretBindings({
+        hostname: llmHost,
+        url: '',
+        headers: '',
+        body: `${req.system ?? ''}\n${req.prompt}`,
+      }, boundSecrets);
     }
 
     // Build the wire request. Each provider has its own body shape;

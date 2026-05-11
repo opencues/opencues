@@ -34,6 +34,8 @@
 import * as vm from 'node:vm';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { rewriteEsmToCjsShim } from './esm-rewrite';
+import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
 import type {
   BlankCapabilities,
   BlankContext,
@@ -49,6 +51,11 @@ import type {
 export interface StorageAdapter {
   get(namespace: string, key: string): Promise<string | null>;
   set(namespace: string, key: string, value: string): Promise<void>;
+  /** Total bytes currently stored in the namespace (sum of key + value
+   *  lengths over every entry, excluding `excludeKey` if provided —
+   *  used by the quota check to compute the size delta of an
+   *  in-flight `set`). Returns 0 for a missing/empty namespace. */
+  size(namespace: string, excludeKey?: string): Promise<number>;
 }
 
 export function createFileStorageAdapter(rootDir: string): StorageAdapter {
@@ -71,6 +78,15 @@ export function createFileStorageAdapter(rootDir: string): StorageAdapter {
   return {
     async get(ns, k) { return readNs(ns)[k] ?? null; },
     async set(ns, k, v) { const data = readNs(ns); data[k] = v; writeNs(ns, data); },
+    async size(ns, excludeKey) {
+      const data = readNs(ns);
+      let total = 0;
+      for (const [k, v] of Object.entries(data)) {
+        if (k === excludeKey) continue;
+        total += k.length + (typeof v === 'string' ? v.length : 0);
+      }
+      return total;
+    },
   };
 }
 
@@ -197,16 +213,11 @@ export function loadUserBlank(absJsPath: string, opts: LoaderOptions): LoadedUse
 // rejected. We also strip bare-`import` statements at the top of the
 // file — user code can't import other modules anyway.
 function rewriteEsmExportDefault(source: string): string {
-  let out = source;
-  // Drop import statements (they'd be a SyntaxError in a CJS-style
-  // wrapper). Replace with a same-length comment line so line
-  // numbers stay stable for error messages.
-  out = out.replace(/^(\s*)import\s.*$/gm, (m, ws) => `${ws}// import stripped — user blanks can't load modules`);
-  // `export default { ... }` or `export default function/async function ...`
-  out = out.replace(/^(\s*)export\s+default\s+/m, '$1module.exports.default = ');
-  // `export const xxx = ...` → drop the `export` (becomes a top-level binding)
-  out = out.replace(/^(\s*)export\s+(?=(const|let|var|function|async\s+function))/gm, '$1');
-  return out;
+  const { code, warnings } = rewriteEsmToCjsShim(source);
+  if (warnings.length > 0) {
+    throw new Error(`user-blank rewrite: ${warnings.join('; ')}`);
+  }
+  return code;
 }
 
 // ─── Build the BlankContext ──────────────────────────────────────────────
@@ -220,6 +231,20 @@ function buildBlankContext(
     now: () => Date.now(),
     log,
   };
+
+  // Pre-resolve secret host bindings: pair declared secret names with
+  // their injected values + per-secret host allow-lists. ctx.fetch
+  // refuses requests where a bound secret value would leak to a
+  // non-allowed host (see secret-leak-guard.ts).
+  const boundSecrets: BoundSecret[] = [];
+  if (caps.secrets && opts.secrets) {
+    for (const name of caps.secrets) {
+      const value = opts.secrets[name];
+      if (typeof value !== 'string' || value.length === 0) continue;
+      const allowedHosts = caps.secretBindings?.[name] ?? [];
+      boundSecrets.push({ name, value, allowedHosts });
+    }
+  }
 
   // network — fetch with hostname allow-list
   if (caps.network && caps.network.length > 0) {
@@ -236,6 +261,9 @@ function buildBlankContext(
           `ctx.fetch: hostname "${parsed.hostname}" not in declared allow-list ` +
           `[${[...allowed].join(', ')}]`,
         );
+      }
+      if (boundSecrets.length > 0) {
+        enforceSecretBindings(buildRequestParts(url, init), boundSecrets);
       }
       // Use the global fetch (Node 18+).
       return (globalThis as { fetch: typeof fetch }).fetch(url, init);

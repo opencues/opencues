@@ -11,11 +11,21 @@
 // blanks that don't declare sandboxing run unwrapped, same as today —
 // this is additive, not a forced upgrade.
 //
-// bwrap is Linux-only (covers WSL2). macOS would use `sandbox-exec`;
-// Windows native would need AppContainer/Job Objects. For now, on
-// platforms without bwrap, the wrapper returns null and the host
-// runs the spec unmodified — the path sandbox + audit log still
-// apply, just not OS-level confinement.
+// Platform support:
+//   * Linux/WSL2 — bwrap (bubblewrap), see `wrapWithBwrap`.
+//   * macOS     — `sandbox-exec` (Apple's seatbelt sandbox), see
+//                 `wrapWithSandboxExec`. Ships in the base OS — no
+//                 install needed. The mechanism is deprecated by
+//                 Apple ("System Integrity Protection will eventually
+//                 replace it") but is still present on macOS 14/15
+//                 and still works for our use case.
+//   * Windows native — AppContainer / Job Objects — not yet
+//                 implemented. Falls through unwrapped.
+//
+// Use `wrapForPlatform()` instead of the per-platform wrappers when
+// you don't care which mechanism applies — it dispatches by
+// `process.platform`. Returns null when no sandbox is available for
+// the current platform; caller must fall through unwrapped.
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -153,4 +163,149 @@ function findBwrap(): string | null {
 /** Reset the bwrap-path cache. Test-only. */
 export function _resetBwrapCacheForTests(): void {
   _bwrapPath = undefined;
+}
+
+// ─── macOS: sandbox-exec ────────────────────────────────────────────────
+//
+// sandbox-exec consumes a TinyScheme-style policy passed via `-p`.
+// We deny everything by default, then re-allow:
+//   * process-fork / process-exec (the script itself needs to run)
+//   * file-read* (system libs, /usr, /etc, the blank's folder)
+//   * file-write* only inside the workdir if `fs: 'rw'`
+//   * network* only if `net: 'allow'`
+//   * mach-lookup for the dynamic linker and locale services
+//
+// macOS-specific quirks:
+//   * No PID/IPC namespacing equivalent. The script CAN see other
+//     processes via `ps`, but can't signal them without matching
+//     uid (already enforced by kernel).
+//   * No tmpfs equivalent for /tmp. The script can write to /tmp if
+//     `fs: 'rw'`; we don't otherwise restrict it. Lower-priority gap
+//     than the Linux story for now.
+//   * The seatbelt policy language is sparsely documented; the rules
+//     below mirror the public examples in /System/Library/Sandbox/
+//     Profiles/. Don't add (deny default) without process-exec
+//     allow — sandbox-exec refuses to load the policy.
+
+/**
+ * Wrap a command with `sandbox-exec` per the SandboxConfig.
+ *
+ * Returns the new ProcessSpec-shape if sandboxing was applied, or
+ * null when:
+ *   * sandbox config is missing or mode !== 'strict'
+ *   * sandbox-exec is not available (non-macOS; or stripped-down
+ *     macOS where /usr/bin/sandbox-exec is missing)
+ */
+export function wrapWithSandboxExec(
+  command: string,
+  args: readonly string[],
+  cfg: SandboxConfig | undefined,
+  cuesRoots: readonly string[],
+): WrappedSpec | null {
+  if (!cfg || cfg.mode !== 'strict') return null;
+  const sbx = findSandboxExec();
+  if (!sbx) return null;
+
+  // Build the TinyScheme policy. Re-allow only what the script needs.
+  const lines: string[] = [
+    '(version 1)',
+    '(deny default)',
+    // The script (bash, the user's interpreter) must be able to fork
+    // and exec. Without this, sandbox-exec refuses to launch.
+    '(allow process-fork)',
+    '(allow process-exec)',
+    // Default-allow file-read (system libs, /usr, /etc, the blank's
+    // own folder). The path sandbox already enforced realpath against
+    // CUE_ROOT before reaching this layer.
+    '(allow file-read*)',
+    // sysctl-read is needed by many tools that probe system config
+    // (curl, openssl, etc.). Allow read but not write.
+    '(allow sysctl-read)',
+    // mach-lookup is needed for the dynamic linker + locale; without
+    // it, even `echo` fails to start.
+    '(allow mach-lookup)',
+    // Signals the script sends to ITSELF + child processes.
+    '(allow signal (target self))',
+    // The script's own process metadata.
+    '(allow process-info* (target self))',
+  ];
+
+  // Network policy — allow vs deny.
+  if (cfg.net === 'allow') {
+    lines.push('(allow network*)');
+  } else {
+    // Implicitly denied by (deny default), but be explicit.
+    lines.push('(deny network*)');
+  }
+
+  // File-write policy — only inside the workdir (if rw) + always
+  // allow /tmp + /private/tmp (Mac's real tmp path).
+  if (cfg.fs === 'rw' && cfg.workdir) {
+    lines.push(`(allow file-write* (subpath "${escapeScheme(cfg.workdir)}"))`);
+  }
+  // Always allow /tmp writes — same as Linux's tmpfs(/tmp), though
+  // without the per-sandbox isolation. The script can leave files
+  // behind in /tmp; the path sandbox + audit log catch any escape
+  // attempt that tries to use those files.
+  lines.push('(allow file-write* (subpath "/tmp"))');
+  lines.push('(allow file-write* (subpath "/private/tmp"))');
+  lines.push('(allow file-write* (subpath "/private/var/folders"))');
+
+  // Read access to every CUES root — sibling pack scripts, shared
+  // assets, etc. (Linux's wrapper does the same.)
+  for (const root of cuesRoots) {
+    if (root && fs.existsSync(root)) {
+      lines.push(`(allow file-read* (subpath "${escapeScheme(root)}"))`);
+    }
+  }
+
+  const policy = lines.join('\n');
+  return { command: sbx, args: ['-p', policy, command, ...args] };
+}
+
+function escapeScheme(s: string): string {
+  // Backslashes + double-quotes need TinyScheme-style escaping.
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+let _sandboxExecPath: string | null | undefined;
+function findSandboxExec(): string | null {
+  if (_sandboxExecPath !== undefined) return _sandboxExecPath;
+  if (process.platform !== 'darwin') { _sandboxExecPath = null; return null; }
+  for (const p of ['/usr/bin/sandbox-exec']) {
+    try { if (fs.statSync(p).isFile()) { _sandboxExecPath = p; return p; } }
+    catch { /* try next */ }
+  }
+  _sandboxExecPath = null;
+  return null;
+}
+
+/** Reset the sandbox-exec path cache. Test-only. */
+export function _resetSandboxExecCacheForTests(): void {
+  _sandboxExecPath = undefined;
+}
+
+// ─── Platform dispatcher ───────────────────────────────────────────────
+
+/**
+ * Wrap a command with whichever OS sandbox is available for the
+ * current platform. Linux → bwrap, macOS → sandbox-exec, else null.
+ *
+ * Call sites that don't care which mechanism applies should use this
+ * — it keeps the per-platform branching in one place.
+ */
+export function wrapForPlatform(
+  command: string,
+  args: readonly string[],
+  cfg: SandboxConfig | undefined,
+  cuesRoots: readonly string[],
+): WrappedSpec | null {
+  if (!cfg || cfg.mode !== 'strict') return null;
+  if (process.platform === 'linux') {
+    return wrapWithBwrap(command, args, cfg, cuesRoots);
+  }
+  if (process.platform === 'darwin') {
+    return wrapWithSandboxExec(command, args, cfg, cuesRoots);
+  }
+  return null;
 }

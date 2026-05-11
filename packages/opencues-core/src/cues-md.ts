@@ -160,6 +160,22 @@ export interface BlankConfig {
    *  declared is absent. Used for third-party API keys (FINNHUB_API_KEY)
    *  that aren't routed through the LLM stack. */
   userBlankSecrets?: string[];
+  /** Per-secret hostname allow-list, parsed from dot-notation
+   *  frontmatter (`secret-hosts.GROQ_API_KEY: [api.groq.com]`).
+   *  ctx.fetch refuses to send a request whose URL/headers/body
+   *  contain a bound secret value to a host outside its allow-list. */
+  userBlankSecretBindings?: Record<string, string[]>;
+  /** Output sanitization mode for the blank's return values.
+   *  'safe' (default): strip HTML tags / zero-width / bidi overrides,
+   *  NFKC-normalize, cap at 8KB. 'rich': bypass — for blanks that
+   *  legitimately need HTML or control chars (emoji ZWJ sequences). */
+  userBlankOutput?: 'safe' | 'rich';
+  /** Per-blank quota caps. Defaults: 120 fetches/min, 30 LLM/min,
+   *  1MB storage. Hard ceilings clamp larger values; validate warns.
+   *  See packages/opencues-runtime/src/user-blanks/quota.ts. */
+  maxFetchesPerMinute?: number;
+  maxLlmPerMinute?: number;
+  maxStorageBytes?: number;
   /**
    * Opt-in OS-level sandbox for this blank's script. When 'strict',
    * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
@@ -732,6 +748,11 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   userBlankLlm?: string;
   userBlankStorage?: string;
   userBlankSecrets?: string[];
+  userBlankSecretBindings?: Record<string, string[]>;
+  userBlankOutput?: 'safe' | 'rich';
+  maxFetchesPerMinute?: number;
+  maxLlmPerMinute?: number;
+  maxStorageBytes?: number;
   /** Explicit host allow-list (takes precedence over auto-detection from script: extension). */
   onHost?: string[];
   /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
@@ -837,12 +858,35 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'llm': fm.userBlankLlm = value; break;
       case 'storage': fm.userBlankStorage = value; break;
       case 'secrets': fm.userBlankSecrets = parseHostList(value); break;
+      case 'output': fm.userBlankOutput = value === 'rich' ? 'rich' : 'safe'; break;
+      case 'max-fetches-per-minute': case 'maxFetchesPerMinute': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n > 0) fm.maxFetchesPerMinute = n;
+        break;
+      }
+      case 'max-llm-per-minute': case 'maxLlmPerMinute': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n > 0) fm.maxLlmPerMinute = n;
+        break;
+      }
+      case 'max-storage-bytes': case 'maxStorageBytes': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n > 0) fm.maxStorageBytes = n;
+        break;
+      }
       default:
         // Dot-notation: blankKeywordExpansions.rddt: Reddit
         if (key.startsWith('blankKeywordExpansions.')) {
           const subkey = key.slice('blankKeywordExpansions.'.length).toLowerCase();
           if (!fm.blankKeywordExpansions) fm.blankKeywordExpansions = {};
           fm.blankKeywordExpansions[subkey] = value;
+        }
+        // Dot-notation: secret-hosts.GROQ_API_KEY: [api.groq.com]
+        else if (key.startsWith('secret-hosts.') || key.startsWith('secretHosts.')) {
+          const prefix = key.startsWith('secret-hosts.') ? 'secret-hosts.' : 'secretHosts.';
+          const secretName = key.slice(prefix.length);
+          if (!fm.userBlankSecretBindings) fm.userBlankSecretBindings = {};
+          fm.userBlankSecretBindings[secretName] = parseHostList(value);
         }
         break;
     }
@@ -945,6 +989,11 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.userBlankLlm !== undefined) blank.userBlankLlm = frontmatter.userBlankLlm;
       if (frontmatter.userBlankStorage !== undefined) blank.userBlankStorage = frontmatter.userBlankStorage;
       if (frontmatter.userBlankSecrets !== undefined) blank.userBlankSecrets = frontmatter.userBlankSecrets;
+      if (frontmatter.userBlankSecretBindings !== undefined) blank.userBlankSecretBindings = frontmatter.userBlankSecretBindings;
+      if (frontmatter.userBlankOutput !== undefined) blank.userBlankOutput = frontmatter.userBlankOutput;
+      if (frontmatter.maxFetchesPerMinute !== undefined) blank.maxFetchesPerMinute = frontmatter.maxFetchesPerMinute;
+      if (frontmatter.maxLlmPerMinute !== undefined) blank.maxLlmPerMinute = frontmatter.maxLlmPerMinute;
+      if (frontmatter.maxStorageBytes !== undefined) blank.maxStorageBytes = frontmatter.maxStorageBytes;
       // Parse ## sections from body as named prompts
       const promptSections: Record<string, string> = {};
       const sectionPattern = /^## (.+)$/gm;

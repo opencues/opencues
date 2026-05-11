@@ -765,10 +765,25 @@ async function registerUserBlanksFromBundle(
   blanksRegistry: Map<string, BrowserBlank>,
   llmApiKeys: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const stored = await chrome.storage.local.get('opencues_bundle');
+  // Read bundle + host-pushed credential map together. The
+  // opencues_host_keys map (populated by the chrome-host's `config`
+  // message at connect) is the canonical source for secret values:
+  // it carries all env-var-shaped keys the host knows about (GROQ,
+  // FINNHUB, OPENAI, ANTHROPIC, etc.) — strictly broader than the
+  // popup-derived StoredConfig (apiKey + finnhubApiKey). Merge so
+  // popup overrides win on conflict.
+  const stored = await chrome.storage.local.get(['opencues_bundle', 'opencues_host_keys']);
   const bundle = stored.opencues_bundle as { files?: Record<string, string> } | undefined;
+  const hostKeys = (stored.opencues_host_keys ?? {}) as Record<string, string>;
+  const secretValues: Record<string, string> = { ...hostKeys, ...llmApiKeys };
   if (!bundle || !bundle.files) return;
 
+  // Track user-blanks registered in THIS pass so we can warn on
+  // name collisions among them. Existing entries in blanksRegistry
+  // from createBlanks() are built-in TS classes — overwriting those
+  // IS the migration path (intentional). Collisions between two
+  // user-blanks are not.
+  const registeredUserNames = new Set<string>();
   let registered = 0;
   for (const [rel, content] of Object.entries(bundle.files)) {
     // Match blanks/<name>/BLANK.md (case-insensitive primary,
@@ -788,6 +803,16 @@ async function registerUserBlanksFromBundle(
     const isRelative = cfg.impl.includes('/');
     if (!isRelative) continue;
 
+    // First-wins on duplicate user-blank names. Two packs shipping
+    // "weather" must not silently overwrite each other.
+    if (registeredUserNames.has(blankName)) {
+      console.warn(
+        `[opencues] user blank name collision: "${blankName}" already registered ` +
+        `from an earlier bundle entry; ignoring ${cfg.impl}. Rename one of the duplicates.`,
+      );
+      continue;
+    }
+
     // Locate the JS source in the bundle. cfg.impl was resolved to
     // an abs-ish path against /chrome-storage/.cues/blanks/<name>/;
     // strip that prefix to find the bundle-relative key.
@@ -798,21 +823,39 @@ async function registerUserBlanksFromBundle(
       continue;
     }
 
+    // Required secret bindings — see registry.ts for the rationale.
+    // Unbound secrets are refused at load time on every host.
+    if (cfg.userBlankSecrets && cfg.userBlankSecrets.length > 0) {
+      const unbound = cfg.userBlankSecrets.filter(name =>
+        !cfg.userBlankSecretBindings?.[name] || cfg.userBlankSecretBindings[name].length === 0,
+      );
+      if (unbound.length > 0) {
+        log.warn(
+          `[opencues] user blank "${blankName}": secrets [${unbound.join(', ')}] declared without ` +
+          `secret-hosts.<NAME> bindings — refusing to load. Add e.g. ` +
+          `secret-hosts.${unbound[0]}: [api.example.com] to BLANK.md.`,
+        );
+        continue;
+      }
+    }
+
     try {
       const userBlank = new ChromeUserBlank(blankName, jsSource, {
         network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
         llm: cfg.userBlankLlm,
         storage: cfg.userBlankStorage,
         secrets: cfg.userBlankSecrets ? [...cfg.userBlankSecrets] : undefined,
-        llmApiKeys,
-        // Same map drives both: chrome.storage's opencues_host_keys
-        // (pushed by the native-messaging host from process.env)
-        // serves as the source for both LLM keys AND user-blank
-        // `secrets:` declarations. The worker only sees keys it
-        // declared.
-        secretValues: llmApiKeys,
+        secretBindings: cfg.userBlankSecretBindings,
+        output: cfg.userBlankOutput ?? 'safe',
+        llmApiKeys: secretValues,
+        // Same map drives both: opencues_host_keys (pushed by the
+        // native-messaging host from process.env) carries every
+        // env-var-shaped key. The worker only receives the names
+        // it declared via secrets: [...].
+        secretValues,
       });
       blanksRegistry.set(blankName, userBlank as unknown as BrowserBlank);
+      registeredUserNames.add(blankName);
       registered++;
       log.info(`[opencues] user blank "${blankName}" registered (chrome Worker)`);
     } catch (err) {

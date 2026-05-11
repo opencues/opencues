@@ -22,6 +22,9 @@ import {
   type StorageAdapter,
   createFileStorageAdapter,
 } from './node-loader';
+import { sanitizeBlankOutput } from './sanitize';
+import { createQuotaTracker, type QuotaConfig, type QuotaTracker } from './quota';
+import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
 
 // ─── BlankConfig shape we need ──────────────────────────────────────────
 //
@@ -36,6 +39,17 @@ export interface BlankConfigLike {
   readonly userBlankLlm?: string;
   readonly userBlankStorage?: string;
   readonly userBlankSecrets?: readonly string[];
+  /** Per-secret allow-list of hostnames. Maps secret env-var name to
+   *  the hostnames where that secret may appear in a request URL/
+   *  headers/body. Secrets without a binding here are unrestricted. */
+  readonly userBlankSecretBindings?: Readonly<Record<string, readonly string[]>>;
+  /** When 'rich', the blank's return values bypass HTML/Unicode
+   *  sanitization. Default 'safe' strips tags + ZWS + bidi overrides
+   *  + NFKC normalizes + caps length at 8KB. */
+  readonly userBlankOutput?: 'safe' | 'rich';
+  readonly maxFetchesPerMinute?: number;
+  readonly maxLlmPerMinute?: number;
+  readonly maxStorageBytes?: number;
 }
 
 // ─── Per-blank Blank instance ───────────────────────────────────────────
@@ -50,9 +64,12 @@ export function wrapUserBlankAsBlank(
   loaded: LoadedUserBlank,
   name: string,
   ctx: BlankContext,
+  outputMode: 'safe' | 'rich' = 'safe',
 ): Blank {
   const mod = loaded.module;
   const readOnly = !!mod.readOnly || (typeof mod.set !== 'function' && typeof mod.up !== 'function' && typeof mod.down !== 'function');
+  const allowRich = outputMode === 'rich';
+  const clean = (v: unknown): string => sanitizeBlankOutput(v, { allowRich });
 
   return {
     name,
@@ -60,13 +77,13 @@ export function wrapUserBlankAsBlank(
     get: async (keyword?: string, context?: string[]) => {
       const args = [keyword ?? '', ...(context ?? [])];
       const result = await mod.get(ctx, args);
-      return String(result ?? '');
+      return clean(result);
     },
     set: mod.set ? async (value: string, keyword?: string) => {
       await mod.set!(ctx, value, [keyword ?? '']);
     } : undefined,
-    up: mod.up ? async () => String((await mod.up!(ctx)) ?? '') : undefined,
-    down: mod.down ? async () => String((await mod.down!(ctx)) ?? '') : undefined,
+    up: mod.up ? async () => clean(await mod.up!(ctx)) : undefined,
+    down: mod.down ? async () => clean(await mod.down!(ctx)) : undefined,
   };
 }
 
@@ -120,12 +137,52 @@ export function buildUserBlankRegistry(
     // Bare name (no slash) → built-in registry lookup; skip here.
     if (!cfg.impl.includes('/')) continue;
 
+    // First-wins on duplicate names. Two packs both declaring a
+    // blank named e.g. "weather" must not silently overwrite — the
+    // earlier registration keeps its slot and the conflict is
+    // logged loudly. Without this, a later-loaded pack could shadow
+    // a built-in (typosquat-style attack post-registry).
+    if (out.has(cfg.name)) {
+      log('warn',
+        `user blank name collision: "${cfg.name}" already registered from an earlier source; ` +
+        `ignoring impl: ${cfg.impl}. Rename one of the duplicates.`,
+      );
+      continue;
+    }
+
+    // Required secret bindings: every declared secret MUST have a
+    // matching `secret-hosts.<NAME>: [host, ...]` entry. Unbound
+    // secrets were back-compat behaviour during the migration; now
+    // that the per-secret leak guard is the load-bearing defence
+    // against exfil, an unbound secret is an explicit author
+    // mistake — refuse to register rather than silently accept.
+    if (cfg.userBlankSecrets && cfg.userBlankSecrets.length > 0) {
+      const unbound = cfg.userBlankSecrets.filter(name =>
+        !cfg.userBlankSecretBindings?.[name] || cfg.userBlankSecretBindings[name].length === 0,
+      );
+      if (unbound.length > 0) {
+        log('warn',
+          `user blank "${cfg.name}": secrets [${unbound.join(', ')}] declared without ` +
+          `secret-hosts.<NAME> bindings — refusing to load. Add e.g. ` +
+          `\`secret-hosts.${unbound[0]}: [api.example.com]\` to BLANK.md frontmatter.`,
+        );
+        continue;
+      }
+    }
+
     const caps: BlankCapabilities = {
       network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
       llm: cfg.userBlankLlm,
       storage: cfg.userBlankStorage,
       secrets: cfg.userBlankSecrets ? [...cfg.userBlankSecrets] : undefined,
+      secretBindings: cfg.userBlankSecretBindings,
     };
+    const quotaCfg: QuotaConfig = {
+      maxFetchesPerMinute: cfg.maxFetchesPerMinute,
+      maxLlmPerMinute: cfg.maxLlmPerMinute,
+      maxStorageBytes: cfg.maxStorageBytes,
+    };
+    const quota = createQuotaTracker(quotaCfg);
 
     let loaded: LoadedUserBlank;
     try {
@@ -143,9 +200,10 @@ export function buildUserBlankRegistry(
     }
 
     // Build the ctx ONCE here so the wrapped Blank reuses it across
-    // calls (consistent capability state, especially for storage).
-    const ctx = buildContextFromCaps(caps, opts, storage);
-    out.set(cfg.name, wrapUserBlankAsBlank(loaded, cfg.name, ctx));
+    // calls (consistent capability state, especially for storage +
+    // rate-limit counters).
+    const ctx = buildContextFromCaps(caps, opts, storage, quota);
+    out.set(cfg.name, wrapUserBlankAsBlank(loaded, cfg.name, ctx, cfg.userBlankOutput ?? 'safe'));
     log('info', `registered user blank "${cfg.name}" from ${cfg.impl}`);
   }
 
@@ -158,6 +216,7 @@ function buildContextFromCaps(
   caps: BlankCapabilities,
   opts: UserBlankRegistryOptions,
   storage: StorageAdapter | undefined,
+  quota: QuotaTracker,
 ): BlankContext {
   const log = opts.log ?? ((lvl, msg) => console.log(`[user-blank] [${lvl}] ${msg}`));
   const ctx: BlankContext = {
@@ -165,9 +224,24 @@ function buildContextFromCaps(
     log,
   };
 
+  // Pre-resolve bound secrets: pair each declared secret with its
+  // value (if injected) and its host-binding list. Used by the fetch
+  // wrapper to refuse outbound requests that would leak a secret to
+  // an unbound host.
+  const boundSecrets: BoundSecret[] = [];
+  if (caps.secrets && opts.secrets) {
+    for (const name of caps.secrets) {
+      const value = opts.secrets[name];
+      if (typeof value !== 'string' || value.length === 0) continue;
+      const allowedHosts = caps.secretBindings?.[name] ?? [];
+      boundSecrets.push({ name, value, allowedHosts });
+    }
+  }
+
   if (caps.network && caps.network.length > 0) {
     const allowed = new Set(caps.network.map(s => s.toLowerCase()));
     ctx.fetch = async (url, init) => {
+      quota.recordFetch();
       let parsed: URL;
       try { parsed = new URL(url); }
       catch { throw new Error(`ctx.fetch: invalid URL: ${url}`); }
@@ -179,6 +253,9 @@ function buildContextFromCaps(
           `ctx.fetch: hostname "${parsed.hostname}" not in declared allow-list [${[...allowed].join(', ')}]`,
         );
       }
+      if (boundSecrets.length > 0) {
+        enforceSecretBindings(buildRequestParts(url, init), boundSecrets);
+      }
       return (globalThis as { fetch: typeof fetch }).fetch(url, init);
     };
   }
@@ -186,14 +263,54 @@ function buildContextFromCaps(
   if (caps.llm && opts.llm) {
     const provider = caps.llm;
     const llmFn = opts.llm;
-    ctx.llm = async (req) => llmFn(provider, req);
+
+    // Resolve the LLM endpoint up front so we know which host the
+    // prompt+system body will be sent to. Used to enforce secret
+    // host bindings on the LLM path (a malicious blank could try to
+    // exfil a bound secret through the prompt body).
+    let llmHostname = '';
+    if (opts.secrets && boundSecrets.length > 0) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        const core = require('@opencues/core') as typeof import('@opencues/core');
+        const resolved = core.resolveLLM({
+          apiKeys: opts.secrets as Record<string, string>,
+          globalProvider: provider,
+        });
+        if (resolved) {
+          try { llmHostname = new URL(resolved.endpoint).hostname.toLowerCase(); } catch { /* leave empty → all bound secrets refused on llm path */ }
+        }
+      } catch { /* core not available — skip scan */ }
+    }
+
+    ctx.llm = async (req) => {
+      quota.recordLlm();
+      if (boundSecrets.length > 0) {
+        enforceSecretBindings({
+          hostname: llmHostname,
+          url: '',
+          headers: '',
+          body: `${req.system ?? ''}\n${req.prompt}`,
+        }, boundSecrets);
+      }
+      return llmFn(provider, req);
+    };
   }
 
   if (caps.storage && storage) {
     const ns = caps.storage;
     ctx.storage = {
       get: (k) => storage.get(ns, k),
-      set: (k, v) => storage.set(ns, k, v),
+      set: async (k, v) => {
+        // True namespace-wide cap: read existing total (excluding the
+        // key we're about to overwrite) and add the new entry size.
+        // Refuses a write that pushes the namespace over budget rather
+        // than only catching single oversized values.
+        const existing = await storage.size(ns, k);
+        const newTotal = existing + k.length + v.length;
+        quota.checkStorageBytes(newTotal);
+        return storage.set(ns, k, v);
+      },
     };
   }
 

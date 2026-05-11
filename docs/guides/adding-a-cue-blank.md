@@ -200,21 +200,49 @@ When a blank auto-populates, the WordDef was created at `_` time, so `def.word =
 
 **Implication for custom blanks:** if you manually construct a WordDef outside of `BlankSource` → auto-populate (e.g., in a custom integration), ensure `def.word` reflects the currently displayed value, not the keyword that triggered it. Otherwise the def will be silently discarded on the next keystroke.
 
-## Trust model — script-bearing blanks are user-trusted only
+## Trust model — by binding profile
 
-The standard treats `blankScript:` blanks differently from the other two binding profiles. v1.0 carves them out of any future registry / `opencues add <pack>` distribution path. See [`spec/blank-spec.md` § Trust model](../../spec/blank-spec.md) for the full runtime contract; in short:
+The standard treats each binding profile differently. From least- to
+most-privileged at install time:
 
-- **`stepValues:` blanks** (static lists) are registry-safe. No code execution.
-- **`impl:` blanks** (in-process classes) are registry-safe. The class must already exist in the runtime; a `BLANK.md` cannot ship a new class.
-- **`blankScript:` blanks** invoke a sibling executable with the user's privileges when the blank fires. v1.0 requires they come only from `defaults/blanks/<name>/` (shipped) or `~/.cues/blanks/<name>/` / `<project>/.cues/blanks/<name>/` (user-authored).
+- **`stepValues:` blanks** (static lists) are registry-safe. No code
+  execution.
+- **`impl: <BuiltinName>` blanks** (in-process TS classes) are
+  registry-safe. The class must already exist in the runtime; a
+  `BLANK.md` cannot ship a new class.
+- **`impl: ./blank.js` blanks** (user-shipped JS) are registry-safe
+  **subject to declared capabilities**. The runtime sandboxes the
+  JS in a vm.Context (Node) or Web Worker (chrome); the blank only
+  gets the capabilities it declared (`network:`, `llm:`, `storage:`,
+  `secrets:` paired with `secret-hosts.<NAME>`). Per-blank rate +
+  storage quotas + output sanitization apply automatically. See
+  [`docs/architecture/user-blanks.md`](../architecture/user-blanks.md)
+  for the full author contract.
+- **`blankScript:` blanks** invoke a sibling executable with the
+  user's privileges when the blank fires. OS-level confinement is
+  opt-in via `sandbox: strict` (bwrap on Linux, sandbox-exec on
+  macOS). Without it, a malicious script has full user filesystem +
+  network access — same as any shell command the user could run.
+  v1.0 requires script-bearing blanks come only from
+  `defaults/blanks/<name>/` or `~/.cues/blanks/<name>/`.
 
-The reason is the same as `npm install`'s install-script reputation: a malicious `blankScript:` is arbitrary code execution with no easy mitigation at the runtime layer. Sandboxing shell scripts is genuinely hard; v1.0 punts on it by making script-bearing blanks user-trusted only.
+For distributable functionality, **user-JS (`impl: ./blank.js`) is
+the recommended path**: it has a real capability contract you can
+audit at install time, and the sandbox bounds the blast radius even
+if the JS is hostile. `blankScript:` remains for system control
+(volume, brightness) where shell access is unavoidable.
 
-**Sharing your script-bearing blank**: publish the `BLANK.md` and the `<name>-blank.sh` (or `.ps1`, `.exe`, etc.) as documentation — gist, repo with a README that includes the script verbatim, blog post. Users who want to install it copy the files manually after reading the script. There is no shortcut around user inspection in v1.0.
+**Sharing your script-bearing blank**: publish the `BLANK.md` and
+the `<name>-blank.sh` (or `.ps1`, `.exe`, etc.) as documentation —
+gist, repo with a README that includes the script verbatim, blog
+post. Users who want to install it copy the files manually after
+reading the script. There is no shortcut around user inspection in
+v1.0.
 
-If you don't need shell access, prefer `impl:` (TypeScript class) or `stepValues:` (static list) — both are registry-safe, both ship with no inspection burden.
-
-A future revision MAY introduce a registry mechanism with cryptographic provenance and sandboxed execution. v1.0 doesn't.
+A future revision MAY introduce a registry mechanism with
+cryptographic provenance and (for `impl: ./blank.js`) automatic
+capability-diff review on update. See
+[`docs/architecture/security-audit.md` § Pre-registry follow-ups](../architecture/security-audit.md).
 
 The same logic applies more strictly to auditors, where the entire surface is user-trusted only in v1.0 (no registry distribution at all). See [`docs/guides/adding-an-auditor.md` § 5 Trust model](./adding-an-auditor.md) and [`openstandard-notes.md` § Distribution asymmetry](../../openstandard-notes.md).
 
@@ -231,6 +259,9 @@ The same logic applies more strictly to auditors, where the entire surface is us
 - [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true`.
 - [ ] For TS-class blanks: registered in each host's `blanksRegistry`
 - [ ] For TS-class blanks: `setup.sh` re-run so the runtime build includes the new class
+- [ ] For `impl: ./blank.js`: declared `network:` allow-list lists every hostname the JS fetches
+- [ ] For `impl: ./blank.js`: every `secrets:` entry has a matching `secret-hosts.<NAME>: [host, ...]` (unbound secrets are refused at load)
+- [ ] For `impl: ./blank.js`: `output: rich` is set ONLY if the blank legitimately needs HTML / control chars (otherwise default `safe` strips them)
 - [ ] Restart the host (config hot-reloads in ~2s; class registration requires restart)
 
 > **No need to run `setup.sh`** for BLANK.md / script edits — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patches/runtime sources.

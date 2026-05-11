@@ -18,6 +18,7 @@ impl: ./blank.js
 network: [finnhub.io]
 storage: stocks
 secrets: [FINNHUB_API_KEY]
+secret-hosts.FINNHUB_API_KEY: [finnhub.io]
 ---
 
 Dispatched by the shared runtime `StocksBlank`

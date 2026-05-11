@@ -58,7 +58,7 @@ describe('loadUserBlank — module shape', () => {
 
   it('rejects unparseable JS with a clear message', () => {
     const p = writeBlank(`this is not valid JS )))`);
-    expect(() => loadUserBlank(p, { capabilities: {} })).toThrow(/user-blank load failed/);
+    expect(() => loadUserBlank(p, { capabilities: {} })).toThrow(/(user-blank load failed|parse error)/);
   });
 
   it('strips import statements (no module loading)', () => {

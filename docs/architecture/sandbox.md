@@ -1,10 +1,23 @@
 # Scripted-blank Sandbox
 
 OS-level isolation for the scripts that fire when a blank's `_`
-auto-populates. Wraps `bash <script>` with `bubblewrap (bwrap)` so a
-malicious `~/.cues/blanks/foo/script.sh` can't reach beyond the
-blank's own folder, can't open network sockets, and can't see other
-processes on the system.
+auto-populates. Wraps `bash <script>` with the platform-appropriate
+sandbox mechanism so a malicious `~/.cues/blanks/foo/script.sh` can't
+reach beyond the blank's own folder, can't open network sockets, and
+can't see other processes on the system.
+
+Per-platform mechanism:
+
+| Platform | Mechanism | Notes |
+|---|---|---|
+| Linux / WSL2 | **bubblewrap (bwrap)** | unprivileged user namespaces; needs `apt install bubblewrap` (or distro equivalent) |
+| macOS | **sandbox-exec** (Apple seatbelt) | ships in the base OS; no install required |
+| Windows native | (none yet) | falls through unwrapped; emits one-time warn per blank |
+
+The runtime picks the right mechanism via `wrapForPlatform()` in
+`packages/opencues-runtime/src/security/sandbox-runner.ts`. Hosts
+that spawn subprocesses call that dispatcher, never the per-platform
+wrappers directly.
 
 ## Scope — what the sandbox DOES and DOESN'T affect
 
@@ -53,15 +66,17 @@ sandbox-fs: ro           # 'ro' | 'rw'. Default: 'ro'.
 
 When `sandbox: strict`, the runtime sets a `sandbox: SandboxConfig`
 field on the `ProcessSpec` it hands to the host's `spawnProcess`.
-Each host's spawn wrapper imports `wrapWithBwrap` from
+Each host's spawn wrapper imports `wrapForPlatform` from
 `@opencues/runtime/dist/src/security/sandbox-runner.js` and wraps the
-spec before calling `child_process.spawn`. On platforms where bwrap
-isn't available (macOS, native Windows, Linux without bubblewrap
-installed), the wrapper returns null and the spec runs unwrapped —
-the **path sandbox + audit log still apply**, just not OS-level
-confinement.
+spec before calling `child_process.spawn`. The dispatcher picks
+bwrap on Linux, sandbox-exec on macOS, or returns `null` on any
+other platform. When the wrapper returns null the spec runs
+unwrapped — the **path sandbox + audit log still apply**, just not
+OS-level confinement. `BlankFill` emits a one-time-per-blank warn
+when strict is requested on a platform without a wrapper (currently
+Windows native + Linux without bwrap installed).
 
-## What the sandbox does
+## What the sandbox does — Linux (bwrap)
 
 When `sandbox: strict` resolves through bwrap, the script sees:
 
@@ -85,6 +100,36 @@ The sandbox is **shape-shaped, not behaviour-shaped**: a script
 running inside it has the user's permissions over the mounted
 filesystem. It just can't see / modify anything that wasn't
 explicitly bound.
+
+## What the sandbox does — macOS (sandbox-exec)
+
+When `sandbox: strict` resolves through `sandbox-exec`, the script
+runs under a deny-by-default TinyScheme policy. Re-allowed:
+
+| Aspect | Policy | Override |
+|---|---|---|
+| Process exec | `(allow process-fork) (allow process-exec)` | always-on (script itself needs it) |
+| File reads | `(allow file-read*)` over the whole FS | always-on (path sandbox already gated before this layer) |
+| File writes to workdir | `(allow file-write* (subpath "<workdir>"))` | `sandbox-fs: rw` |
+| File writes to `/tmp`, `/private/tmp`, `/private/var/folders` | always allowed | — |
+| Network | `(deny network*)` by default | `sandbox-net: allow` |
+| sysctl / mach-lookup / signals to self | allowed (linker + locale need these) | — |
+
+macOS-specific gaps (vs Linux):
+
+- **No PID/IPC namespacing.** The script can `ps` and see other
+  processes on the host; it can't signal them across uid boundaries
+  (kernel-enforced) but the visibility is wider than the Linux
+  story.
+- **No tmpfs equivalent for `/tmp`.** Files the script writes to
+  `/tmp` persist across the sandbox boundary (just like on the
+  host). The path sandbox + audit log catch escape attempts that
+  re-use those files, but don't prevent the write itself.
+- **Mechanism deprecated by Apple.** `sandbox-exec` still ships and
+  works on macOS 14/15 but Apple's man page warns it'll be replaced
+  by System Integrity Protection eventually. If/when it disappears
+  we'll need a replacement (likely the App Sandbox API via a
+  signed helper binary).
 
 ## What it does NOT do
 
@@ -135,7 +180,8 @@ the chrome host (native-messaging process) apply the same sandbox.
 | **opencode** | ✓ | TS patch imports `wrapWithBwrap` directly |
 | **gemini-cli** | ✓ | Same shape as OC |
 | **chrome** | ✓ | Chrome host (host.cjs) requires `sandbox-runner.js` from the bundled runtime under `node_modules/@opencues/runtime/` |
-| **macOS / native Windows** | falls back to unwrapped | Future: `sandbox-exec` profile on macOS; AppContainer on Windows |
+| **macOS** | ✓ (sandbox-exec) | `wrapForPlatform` dispatches to `wrapWithSandboxExec`; built into base OS |
+| **Windows native** | falls back to unwrapped | Future: AppContainer / Job Objects |
 
 ## Verified behaviour
 
@@ -153,9 +199,12 @@ $CUE_ROOT/leak.txt`, `curl http://example.com`, and `ls /proc | wc
 End-to-end smoke-tested through the chrome native-messaging host as
 well: same results.
 
-Unit tests pin the bwrap-args construction:
-`packages/opencues-runtime/src/security/sandbox-runner.test.ts` (12
-tests).
+Unit tests pin both wrappers' arg/policy construction:
+`packages/opencues-runtime/src/security/sandbox-runner.test.ts` (21
+tests for bwrap) + `sandbox-exec.test.ts` (14 tests for
+sandbox-exec + dispatcher). Linux integration tests at
+`sandbox-runner.integration.test.ts` actually exec bwrap with real
+scripts (9 tests).
 
 ## Authoring a sandboxed blank
 

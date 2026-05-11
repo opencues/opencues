@@ -266,20 +266,20 @@ function handleExec(msg) {
     args.push(safe);
   }
 
-  // OS-level sandbox: when the runtime sets spec.sandbox.mode==='strict'
-  // AND bwrap is available, wrap the spawn. The sandbox-runner module
-  // is host-agnostic; we require it from the built @opencues/runtime
-  // copy that lives inside our extension bundle. Fall through to
-  // unwrapped spawn when sandbox is off or bwrap unavailable.
+  // OS-level sandbox: when the runtime sets spec.sandbox.mode==='strict',
+  // wrap the spawn with whichever mechanism the current platform
+  // supports — bwrap on Linux/WSL, sandbox-exec on macOS. Falls
+  // through unwrapped when sandbox is off, the mechanism is missing,
+  // or we're on an unsupported platform (Windows native).
   let finalCommand = safeCommand;
   let finalArgs = args;
   if (msg.sandbox && msg.sandbox.mode === 'strict') {
     try {
-      const { wrapWithBwrap } = require(path.join(
+      const { wrapForPlatform } = require(path.join(
         __dirname, '..', 'node_modules', '@opencues', 'runtime',
         'dist', 'src', 'security', 'sandbox-runner.js',
       ));
-      const wrapped = wrapWithBwrap(safeCommand, args, msg.sandbox, [CUE_ROOT_RESOLVED]);
+      const wrapped = wrapForPlatform(safeCommand, args, msg.sandbox, [CUE_ROOT_RESOLVED]);
       if (wrapped) {
         finalCommand = wrapped.command;
         finalArgs = wrapped.args;
