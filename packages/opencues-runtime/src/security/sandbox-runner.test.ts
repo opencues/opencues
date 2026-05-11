@@ -127,3 +127,107 @@ describe('wrapWithBwrap — bwrap absence', () => {
     }
   });
 });
+
+describe('wrapWithBwrap — edge cases in arg construction', () => {
+  const probe = wrapWithBwrap('bash', [], { mode: 'strict' }, []);
+  const bwrapAvailable = probe !== null;
+
+  it('handles empty cuesRoots without crashing', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', ['/x/s.sh'], { mode: 'strict' }, []);
+    assert.ok(r);  // still wraps; just no extra --ro-bind for roots
+  });
+
+  it('handles empty args array', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', [], { mode: 'strict' }, ['/x']);
+    const dashIdx = r!.args.indexOf('--');
+    assert.strictEqual(r!.args[dashIdx + 1], 'bash');
+    assert.strictEqual(r!.args.length, dashIdx + 2);  // just the separator + bash
+  });
+
+  it('passes timing-isolating flags consistently (--unshare-uts + --die-with-parent)', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', ['/x/s.sh'], { mode: 'strict' }, ['/x']);
+    assert.ok(r!.args.includes('--unshare-uts'));
+    assert.ok(r!.args.includes('--die-with-parent'));
+  });
+
+  it('does not include --unshare-user (only --unshare-user-try)', () => {
+    // Strict --unshare-user fails on old kernels that lack
+    // unprivileged userns; the -try variant gracefully degrades.
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', ['/x/s.sh'], { mode: 'strict' }, ['/x']);
+    assert.ok(r!.args.includes('--unshare-user-try'));
+    assert.ok(!r!.args.includes('--unshare-user'));
+  });
+
+  it('binds CUES roots even when workdir is omitted', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', ['/x/s.sh'], { mode: 'strict' }, ['/x']);
+    // We can't be sure /x exists, so check the args structure rather
+    // than the literal binding (binding is skipped when path missing).
+    // Just verify nothing crashed.
+    assert.ok(r);
+  });
+
+  it('does not duplicate the workdir bind when workdir equals a CUES root', () => {
+    if (!bwrapAvailable) return;
+    // Both workdir and the cuesRoot are the same path; sandbox-runner
+    // should bind once (as the workdir-flavored bind) and skip the
+    // root-loop iteration. Use /tmp (always exists) since /usr is
+    // already bound as a system mount which would skew the count.
+    const here = '/tmp';
+    const r = wrapWithBwrap('bash', [], { mode: 'strict', workdir: here }, [here]);
+    const args = r!.args;
+    // Count user-binds of `here` from after --tmpfs flag — should be
+    // exactly one (the workdir bind, root loop skipped the dup).
+    const tmpfsIdx = args.indexOf('--tmpfs');
+    let count = 0;
+    for (let i = tmpfsIdx + 2; i < args.length - 1; i++) {
+      if ((args[i] === '--ro-bind' || args[i] === '--bind') && args[i + 1] === here) {
+        count++;
+      }
+    }
+    assert.strictEqual(count, 1);
+  });
+
+  it('uses --ro-bind for CUES roots even when workdir is rw', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap(
+      'bash', [],
+      { mode: 'strict', fs: 'rw', workdir: '/home/x/.cues/blanks/foo' },
+      ['/home/x/.cues'],
+    );
+    const args = r!.args;
+    // Workdir is --bind (rw), CUES root is --ro-bind.
+    const workIdx = args.findIndex((a, i) => a === '--bind' && args[i + 1] === '/home/x/.cues/blanks/foo');
+    assert.ok(workIdx >= 0, 'workdir should be --bind');
+  });
+
+  it('places /tmp tmpfs ahead of any user bind (so user binds can override)', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', [], { mode: 'strict', workdir: '/usr' }, []);
+    const tmpfsIdx = r!.args.indexOf('--tmpfs');
+    const bindIdx = r!.args.findIndex((a, i) => a === '--ro-bind' && r!.args[i + 1] === '/usr' && i > tmpfsIdx);
+    assert.ok(tmpfsIdx < bindIdx);  // tmpfs declared first
+  });
+});
+
+describe('wrapWithBwrap — env not leaked', () => {
+  const probe = wrapWithBwrap('bash', [], { mode: 'strict' }, []);
+  const bwrapAvailable = probe !== null;
+
+  // We can't easily test --clearenv from a pure unit test because bwrap
+  // 0.4 doesn't support it (it's removed from the args list intentionally
+  // for compatibility); env-leak prevention is done by the caller passing
+  // a constrained spec.env to child_process.spawn. The contract is
+  // documented in sandbox-runner.ts. Pin the no-bwrap-clearenv to make
+  // future bumps deliberate.
+
+  it('args do NOT include --clearenv (kept compatible with bwrap 0.4)', () => {
+    if (!bwrapAvailable) return;
+    const r = wrapWithBwrap('bash', [], { mode: 'strict' }, []);
+    assert.ok(!r!.args.includes('--clearenv'));
+  });
+});

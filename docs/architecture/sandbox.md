@@ -6,6 +6,30 @@ malicious `~/.cues/blanks/foo/script.sh` can't reach beyond the
 blank's own folder, can't open network sockets, and can't see other
 processes on the system.
 
+## Scope — what the sandbox DOES and DOESN'T affect
+
+The sandbox wraps **`blankScript:` invocations only** — shell scripts
+the runtime spawns via `child_process.spawn`. Other blank profiles
+are untouched:
+
+| Blank profile | Sandboxed? | Why |
+|---|---|---|
+| **`blankScript:`** (volume, brightness, custom .sh) | ✓ Yes | Spawns a subprocess; that's what the sandbox wraps |
+| **`impl:`** (HackerNews, Stocks, Weather, Crypto, Dictionary, Countries, Answer, PromptImprover) | ✗ No | Runs as a TS class in the runtime process; no subprocess to wrap |
+| **`stepValues:`** (affirmations, static lists) | ✗ No | No code execution at all |
+
+**This is why network-default-deny doesn't break HackerNews.** HN is
+an `impl:` class that calls `fetch('https://hnrss.org/...')` directly
+from the runtime, which has network access independent of any
+sandbox. Same for Stocks (finnhub.io), Weather (open-meteo.com),
+Dictionary, etc. — they all live in `packages/opencues-runtime/src/
+blanks/` as TS classes and use the runtime's HTTP adapter.
+
+The sandbox config (`sandbox: strict`, `sandbox-net: ...`) lives on
+the BLANK.md frontmatter, so the runtime only ever interprets it for
+spawn-based blanks. If you add it to an `impl:`-only blank it's a
+no-op (no warning today; could be flagged by `opencues validate`).
+
 **Status**: shipped May 2026, **opt-in** per blank via frontmatter.
 Existing blanks (volume, brightness, etc.) keep running unsandboxed
 because they have legitimate filesystem / system-call needs (volume
