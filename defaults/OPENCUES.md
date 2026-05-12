@@ -70,6 +70,8 @@ settings:
   agent-debounce-ms:
     tip: Pause after last keystroke before AgentRewrite fires (ms). Misparse → 1000.
     values:
+      "150": Twitchy — fires almost immediately; great with cached rewrites, costly on cache misses
+      "250": Snappy — fires before most users finish a word; noticeably more responsive than the default
       "500": Aggressive — fires shortly after each pause
       "1000": Default — balanced
       "2000": Relaxed — only fires after a clear stop
