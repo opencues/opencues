@@ -26,8 +26,13 @@ module.exports = async function checkKeys(argv, ctx) {
   const get = (k) => process.env[k] || fileEnv[k];
 
   const checks = [
-    { provider: 'groq',    env: 'GROQ_API_KEY',    fn: checkGroq },
-    { provider: 'finnhub', env: 'FINNHUB_API_KEY', fn: checkFinnhub },
+    { provider: 'groq',       env: 'GROQ_API_KEY',       fn: checkGroq },
+    { provider: 'cerebras',   env: 'CEREBRAS_API_KEY',   fn: checkCerebras },
+    { provider: 'openai',     env: 'OPENAI_API_KEY',     fn: checkOpenAI },
+    { provider: 'anthropic',  env: 'ANTHROPIC_API_KEY',  fn: checkAnthropic },
+    { provider: 'openrouter', env: 'OPENROUTER_API_KEY', fn: checkOpenRouter },
+    { provider: 'gemini',     env: 'GEMINI_API_KEY',     fn: checkGemini },
+    { provider: 'finnhub',    env: 'FINNHUB_API_KEY',    fn: checkFinnhub },
   ];
   let bad = 0;
   for (const c of checks) {
@@ -52,10 +57,35 @@ module.exports = async function checkKeys(argv, ctx) {
   if (bad > 0) process.exit(1);
 };
 
+// Each provider's lightest read-only endpoint (model list, free).
+// 401 / 403 surface as descriptive errors via the HTTP wrapper.
 function checkGroq(key) {
-  // Models endpoint is read-only + free.
   return httpJson('https://api.groq.com/openai/v1/models', { Authorization: `Bearer ${key}` })
     .then(j => `${(j.data || []).length} models available`);
+}
+function checkCerebras(key) {
+  return httpJson('https://api.cerebras.ai/v1/models', { Authorization: `Bearer ${key}` })
+    .then(j => `${(j.data || []).length} models available`);
+}
+function checkOpenAI(key) {
+  return httpJson('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` })
+    .then(j => `${(j.data || []).length} models available`);
+}
+function checkAnthropic(key) {
+  // Anthropic uses x-api-key + a versioned header (per Messages API docs).
+  return httpJson('https://api.anthropic.com/v1/models', {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+  }).then(j => `${(j.data || []).length} models available`);
+}
+function checkOpenRouter(key) {
+  return httpJson('https://openrouter.ai/api/v1/models', { Authorization: `Bearer ${key}` })
+    .then(j => `${(j.data || []).length} models available`);
+}
+function checkGemini(key) {
+  // Gemini takes the key in the query string, not a header.
+  return httpJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`)
+    .then(j => `${(j.models || []).length} models available`);
 }
 function checkFinnhub(key) {
   return httpJson(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`)
@@ -79,9 +109,15 @@ function printHelp() {
   console.log('opencues check-keys');
   console.log('');
   console.log('Verify each configured API key by hitting the provider\'s cheapest endpoint:');
-  console.log('  - groq:    GET /openai/v1/models  (free, read-only)');
-  console.log('  - finnhub: GET /quote?symbol=AAPL (free tier, 1 req)');
+  console.log('  - groq:       GET /openai/v1/models  (free, read-only)');
+  console.log('  - cerebras:   GET /v1/models');
+  console.log('  - openai:     GET /v1/models');
+  console.log('  - anthropic:  GET /v1/models  (x-api-key + anthropic-version header)');
+  console.log('  - openrouter: GET /api/v1/models');
+  console.log('  - gemini:     GET /v1beta/models?key=… (key in query)');
+  console.log('  - finnhub:    GET /quote?symbol=AAPL  (free tier, 1 req)');
   console.log('');
   console.log('Reads keys from process.env first, then ~/.cues/.env. Exits 1 if any');
-  console.log('configured key fails (unset keys are fine — they print "-").');
+  console.log('configured key fails. Unset keys print a "ENV unset" info line and');
+  console.log('do not count as failures.');
 }
