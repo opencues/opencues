@@ -180,6 +180,29 @@ it('HEAL phase: renames legacy blanks/<name>/BLANK.md to BLANK.md', () => {
     expect(fs.existsSync(path.join(ctlDir, 'brightness-blank.sh'))).toBe(true);
   });
 
+  it('CLEANUP: drops legacy flat-file <name>.md when the folder form (<name>/BLANK.md) exists', () => {
+    // The user-blank migration left flat-file blanks (e.g. `blanks/stocks.md`)
+    // orphaned next to the new folder form (`blanks/stocks/BLANK.md`).
+    // discover.ts skips them so they're functionally dead, but they were
+    // visibly cluttering ~/.cues/blanks/ and looked like active config.
+    // seed-configs should cull these whenever both forms coexist.
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.cues');
+    const blanksDir = path.join(userDir, 'blanks');
+    fs.mkdirSync(path.join(blanksDir, 'stocks'), { recursive: true });
+    fs.writeFileSync(path.join(blanksDir, 'stocks/BLANK.md'), '---\nname: stocks\ntype: blank\n---\n');
+    fs.writeFileSync(path.join(blanksDir, 'stocks.md'), '---\nname: stocks\ntype: blank\n# legacy flat file\n---\n');
+    // Orphan with NO folder form — must NOT be deleted (might be user content).
+    fs.writeFileSync(path.join(blanksDir, 'orphan.md'), '---\nname: orphan\n---\n');
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    expect(fs.existsSync(path.join(blanksDir, 'stocks.md'))).toBe(false);
+    expect(fs.existsSync(path.join(blanksDir, 'stocks/BLANK.md'))).toBe(true);
+    // Orphan with no folder form survives.
+    expect(fs.existsSync(path.join(blanksDir, 'orphan.md'))).toBe(true);
+  });
+
   it('--project flag scopes to <cwd>/.cues (settings stay user-level)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const projectDir = path.join(tmpHome, 'my-project');

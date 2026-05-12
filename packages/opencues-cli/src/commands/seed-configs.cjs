@@ -634,3 +634,8 @@ function printHelp() {
   console.log('  --silent     Suppress non-error output (used when chained from install)');
   console.log('  --help       Show this message');
 }
+
+// Test surface — internals exposed for unit testing without re-exporting
+// the bare functions at the top level. Keep stable: the tests in
+// packages/opencues-runtime/testing/ import via `seedConfigs._test`.
+module.exports._test = { mergeOpencuesMd, mergeShippedMd };
