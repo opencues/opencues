@@ -32,7 +32,19 @@ module.exports = async function review(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   const useLlm = argv.includes('--llm');
-  const positional = argv.filter(a => !a.startsWith('--'));
+  // --model <name> override for the LLM review. Bare positional args
+  // are pack paths; --model takes the next arg as its value.
+  let modelOverride;
+  const cleanedArgv = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--model' && i + 1 < argv.length) {
+      modelOverride = argv[i + 1];
+      i++;
+      continue;
+    }
+    cleanedArgv.push(argv[i]);
+  }
+  const positional = cleanedArgv.filter(a => !a.startsWith('--'));
   const target = positional[0];
   if (!target) {
     console.error('opencues review: missing pack path. Try `opencues review --help`.');
@@ -128,6 +140,7 @@ module.exports = async function review(argv, ctx) {
         jsSource,
         jsTruncated,
         blankName,
+        modelOverride,
       });
       printLlmReview(llmResult, declared);
     } catch (err) {
@@ -359,6 +372,7 @@ function printManifest(declared, findings) {
 function printLlmReview(r, declared) {
   console.log('');
   console.log('## LLM second opinion');
+  if (r.providerLabel) console.log(`  model:   ${r.providerLabel}`);
   console.log(`  verdict: ${r.verdict}`);
   if (r.summary) console.log(`  summary: ${r.summary}`);
   if (r.red_flags && r.red_flags.length > 0) {
@@ -419,8 +433,33 @@ Use:
 
 Cross-reference declared capabilities (in <manifest>) with what the code actually uses. Flag mismatches.`;
 
+// Per-provider model defaults for the review command. The runtime's
+// general-purpose defaults are tuned for low-latency per-keystroke
+// calls; for a one-shot security review of untrusted code we want
+// the strongest reasoning available. Prompt-injection robustness +
+// subtle-pattern recognition both scale with model capability.
+//
+// Override priority (highest first):
+//   1. --model <name> on the CLI
+//   2. OPENCUES_REVIEW_MODEL env var
+//   3. Hardcoded smart-default per provider (this table)
+//
+// Keep in sync with packages/opencues-core/src/llm-provider.ts — the
+// model names must be ones the provider adapter will accept.
+const REVIEW_MODEL_DEFAULTS = {
+  anthropic: 'claude-opus-4-7',
+  openai: 'gpt-5.4',
+  // Groq stays on gpt-oss-120b — open-source, strong, what the runtime
+  // already routes general-purpose calls to. Override with --model
+  // if you want a deeper-reasoning Groq model.
+  groq: 'openai/gpt-oss-120b',
+  gemini: 'gemini-2.5-pro',
+  openrouter: 'anthropic/claude-opus-4-7',
+  cerebras: 'gpt-oss-120b',
+};
+
 async function runLlmReview(opts) {
-  const { core, fm, declared, jsSource, jsTruncated, blankName } = opts;
+  const { core, fm, declared, jsSource, jsTruncated, blankName, modelOverride } = opts;
 
   // Pick a provider. Honour the user's environment but never let the
   // pack's own llm: declaration override (we don't trust the pack here).
@@ -428,13 +467,33 @@ async function runLlmReview(opts) {
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   };
+
+  // Prefer Anthropic for review — claude-opus-4-7 is the most
+  // capable model we route to. Fall back through the others.
+  const providerOrder = [
+    process.env.ANTHROPIC_API_KEY && 'anthropic',
+    process.env.OPENAI_API_KEY && 'openai',
+    process.env.GROQ_API_KEY && 'groq',
+    process.env.GEMINI_API_KEY && 'gemini',
+  ].filter(Boolean);
+  if (providerOrder.length === 0) {
+    throw new Error('no LLM API key found — set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY');
+  }
+  const provider = providerOrder[0];
+  const model = modelOverride
+    || process.env.OPENCUES_REVIEW_MODEL
+    || REVIEW_MODEL_DEFAULTS[provider]
+    || undefined;
+
   const resolved = core.resolveLLM({
     apiKeys,
-    globalProvider: process.env.GROQ_API_KEY ? 'groq' : (process.env.OPENAI_API_KEY ? 'openai' : 'anthropic'),
+    globalProvider: provider,
+    modelOverride: model,
   });
   if (!resolved) {
-    throw new Error('no LLM API key found — set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY');
+    throw new Error(`failed to resolve ${provider} provider with model "${model}"`);
   }
 
   const manifest = JSON.stringify({
@@ -459,6 +518,9 @@ async function runLlmReview(opts) {
     jsTruncated ? '\n[source truncated to first 8KB]' : '',
   ].join('\n');
 
+  // Don't pass temperature — claude-opus-4-x and gpt-5 reasoning
+  // models reject any explicit value. JSON-schema output gives us the
+  // structure we need without temperature pinning.
   const wire = core.buildProviderRequest(
     resolved.provider.id,
     {
@@ -467,7 +529,6 @@ async function runLlmReview(opts) {
         { role: 'user', content: userPrompt },
       ],
       model: resolved.model,
-      temperature: 0,
       maxTokens: 1024,
     },
     { apiKey: resolved.apiKey, endpoint: resolved.endpoint },
@@ -516,22 +577,29 @@ async function runLlmReview(opts) {
     red_flags: Array.isArray(parsed.red_flags) ? parsed.red_flags.slice(0, 20).map(s => String(s).slice(0, 200)) : [],
     reported_hosts: Array.isArray(parsed.reported_hosts) ? parsed.reported_hosts.map(s => String(s)) : [],
     reported_secrets: Array.isArray(parsed.reported_secrets) ? parsed.reported_secrets.map(s => String(s)) : [],
+    providerLabel: `${resolved.provider.id} / ${resolved.model}`,
   };
 }
 
 function printHelp() {
-  console.log('opencues review <pack-path> [--llm]');
+  console.log('opencues review <pack-path> [--llm] [--model <name>]');
   console.log('');
   console.log('Security review of a cue pack BEFORE installing it.');
   console.log('Static parse + optional LLM second opinion.');
   console.log('');
-  console.log('  <pack-path>   Path to a pack folder (containing BLANK.md)');
-  console.log('                or directly to a BLANK.md file.');
-  console.log('  --llm         Also run an LLM second-opinion review.');
-  console.log('                Requires GROQ_API_KEY / OPENAI_API_KEY /');
-  console.log('                ANTHROPIC_API_KEY. The LLM has NO tool');
-  console.log('                access — pure text-in / text-out.');
-  console.log('  --help        Show this message.');
+  console.log('  <pack-path>      Path to a pack folder (containing BLANK.md)');
+  console.log('                   or directly to a BLANK.md file.');
+  console.log('  --llm            Also run an LLM second-opinion review.');
+  console.log('                   Requires one of: GROQ_API_KEY, OPENAI_API_KEY,');
+  console.log('                   ANTHROPIC_API_KEY, GEMINI_API_KEY. The LLM has');
+  console.log('                   NO tool access — pure text-in / text-out.');
+  console.log('  --model <name>   Override the review model. Default per provider:');
+  console.log('                     anthropic → claude-opus-4-7');
+  console.log('                     openai    → gpt-5.4');
+  console.log('                     groq      → openai/gpt-oss-120b');
+  console.log('                     gemini    → gemini-2.5-pro');
+  console.log('                   Env override: OPENCUES_REVIEW_MODEL.');
+  console.log('  --help           Show this message.');
   console.log('');
   console.log('Reports:');
   console.log('  * Declared capabilities (network, secrets, storage, …)');

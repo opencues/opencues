@@ -83,6 +83,15 @@ reaches `~/.cues/`. Two passes:
    reports as used but isn't declared in `network:` triggers a
    warning.
 
+   **Model selection** is deliberately different from the runtime's
+   per-keystroke calls: the review uses the strongest reasoning
+   model available per provider because prompt-injection robustness
+   + subtle-pattern recognition scale with model capability, and
+   review is a one-shot operation where latency doesn't matter.
+   Defaults: Anthropic → `claude-opus-4-7`, OpenAI → `gpt-5.4`,
+   Groq → `openai/gpt-oss-120b`, Gemini → `gemini-2.5-pro`.
+   Override via `--model <name>` or `OPENCUES_REVIEW_MODEL` env.
+
 Trust hierarchy: **static parse is the authority, LLM is a second
 opinion**. The LLM can downgrade ("safe" → "caution") but cannot
 upgrade past static findings. A pack with hard-blocked static
