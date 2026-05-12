@@ -49,7 +49,10 @@ import { spawn as nodeSpawn } from 'node:child_process';
 // entry is where the audit log lands.
 function getCuesRoots(): string[] {
   const roots: string[] = [];
-  if (process.env.OPENCUES_HOME) roots.push(process.env.OPENCUES_HOME);
+  // Bracket access for process.env — gemini-cli's tsconfig enables
+  // noPropertyAccessFromIndexSignature (TS4111) which rejects dot
+  // notation on the env's index-signature type.
+  if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME']);
   roots.push(path.join(process.cwd(), '.cues'));
   roots.push(path.join(os.homedir(), '.cues'));
   return roots;
