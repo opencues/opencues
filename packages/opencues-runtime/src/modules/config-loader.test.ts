@@ -144,6 +144,37 @@ voice-mode: active
     const state = parseOpenCuesMd(md);
     expect(state.definitions.size).toBe(0);
   });
+
+  it('parses quoted numeric value keys (agent-debounce-ms / max-concurrent-auditors)', () => {
+    // YAML quotes numeric keys to keep them string-typed. The parser must
+    // strip surrounding quotes; otherwise selector+satellite cycling lands
+    // on the setting with an empty valueOrder, and the satellite
+    // populates as empty.
+    const md = `---
+agent-debounce-ms: 1000
+max-concurrent-auditors: 0
+settings:
+  agent-debounce-ms:
+    tip: Debounce ms
+    values:
+      "500": Aggressive
+      "1000": Default
+      "2000": Relaxed
+  max-concurrent-auditors:
+    tip: Cap on parallel auditor calls
+    values:
+      "0": Uncapped
+      "3": Top-3
+      "5": Top-5
+---`;
+    const state = parseOpenCuesMd(md);
+    const ad = state.definitions.get('agent-debounce-ms');
+    expect(ad?.valueOrder).toEqual(['500', '1000', '2000']);
+    expect(ad?.valueTips.get('1000')).toBe('Default');
+    const mca = state.definitions.get('max-concurrent-auditors');
+    expect(mca?.valueOrder).toEqual(['0', '3', '5']);
+    expect(mca?.valueTips.get('3')).toBe('Top-3');
+  });
 });
 
 describe('ConfigLoader expanded — cwd .md files', () => {

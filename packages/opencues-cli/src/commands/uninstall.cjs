@@ -6,6 +6,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
+const { tag, step, bold, dim, banner } = require('../lib/style.cjs');
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code',
@@ -53,17 +54,33 @@ module.exports = function uninstall(argv, ctx) {
   // host), not the extension itself. Dispatch the matching action.
   const action = target === 'chrome-host' ? 'uninstall-host' : 'uninstall';
 
+  console.log(banner({ version: ctx.pkg.version }));
+  console.log('');
+
   let exitCode = 0;
-  for (const folder of folders) {
-    if (folders.length > 1) console.log(`\n=== uninstalling @opencues/${folder} ===\n`);
+  for (let i = 0; i < folders.length; i++) {
+    const folder = folders[i];
+    if (folders.length > 1) {
+      console.log('');
+      console.log(step(i + 1, folders.length, `uninstalling ${bold('@opencues/' + folder)}`));
+      console.log('');
+    } else {
+      console.log(`${tag('info')} uninstalling ${bold('@opencues/' + folder)}`);
+    }
     const installer = path.join(ctx.REPO_ROOT, 'integrations', folder, 'bin', 'install.cjs');
     if (!fs.existsSync(installer)) {
-      console.error(`opencues uninstall: installer not found for "${folder}" (expected ${installer})`);
+      console.error(`${tag('err')} installer not found for "${folder}" (expected ${installer})`);
       exitCode = 1;
       continue;
     }
     const result = spawnSync('node', [installer, action, ...passthrough], { stdio: 'inherit' });
-    if (result.status !== 0) exitCode = result.status ?? 1;
+    const code = result.status ?? 1;
+    if (code !== 0) {
+      exitCode = code;
+      console.log(`${tag('err')} ${folder} ${dim(`(exit ${code})`)}`);
+    } else {
+      console.log(`${tag('ok')} ${folder}`);
+    }
   }
   process.exit(exitCode);
 };

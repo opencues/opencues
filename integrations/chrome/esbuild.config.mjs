@@ -59,6 +59,7 @@ const envDefines = {
   '__GROQ_API_KEY__': JSON.stringify(''),
   '__FINNHUB_API_KEY__': JSON.stringify(''),
   '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/OPENCUES.md', '')),
+  '__DEFAULT_AUDITORS_MD__': JSON.stringify(readOr(projectRoot + 'defaults/AUDITORS.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_BLANK_FOLDERS__': JSON.stringify(blankFolders),
   // Stub Node globals the runtime modules reference. Content scripts

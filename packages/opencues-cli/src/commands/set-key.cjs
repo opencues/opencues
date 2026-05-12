@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
 
 const PROVIDERS = {
   groq:    'GROQ_API_KEY',
@@ -13,8 +14,10 @@ const PROVIDERS = {
   openai:  'OPENAI_API_KEY',
 };
 
-module.exports = function setKey(argv) {
+module.exports = function setKey(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  console.log(banner({ version: ctx.pkg.version, tagline: 'store an API key' }));
+  console.log('');
 
   const positional = argv.filter(a => !a.startsWith('-'));
   const [provider, key] = positional;
@@ -43,15 +46,14 @@ module.exports = function setKey(argv) {
   else lines.push(newLine);
   fs.writeFileSync(envFile, lines.filter(Boolean).join('\n') + '\n', { mode: 0o600 });
 
-  console.log(`Stored ${envName} in ${envFile}`);
+  console.log(`${tag('ok')} stored ${bold(envName)} in ${fileLink(envFile, envFile)}`);
   console.log('');
-  console.log('Note: integrations (CC, OC, chrome, gemini-cli) currently read API keys from process env vars,');
-  console.log(`not from ~/.cues/.env directly. Until they're updated to load this file, you'll`);
-  console.log('still need to export the key in your shell:');
-  console.log(`  export ${envName}=...`);
+  console.log(dim('Note: integrations currently read API keys from process env vars, not from'));
+  console.log(dim('      ~/.cues/.env directly. Export in your shell to make it visible:'));
+  console.log(`        ${bold(`export ${envName}=...`)}`);
   console.log('');
-  console.log('Or source the env file in your shell rc:');
-  console.log(`  set -a && source ${envFile} && set +a`);
+  console.log(dim('      Or source the env file in your shell rc:'));
+  console.log(`        ${bold(`set -a && source ${envFile} && set +a`)}`);
 };
 
 function printHelp() {

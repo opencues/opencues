@@ -73,6 +73,18 @@ function buildBundle(dir, core) {
     } catch { /* skip on parse error */ }
   }
 
+  // OPENCUES.md (runtime settings) + AUDITORS.md (auditor `disable:` list)
+  // — pass through verbatim. No host-compat gating: both files are
+  // host-neutral schema, and the chrome runtime applies its own merge with
+  // chrome.storage when reading OPENCUES.md (cycled scalars live there).
+  // Without including them here, edits made on CC/OC never reach chrome
+  // and the selector blank only sees chrome's stale storage copy.
+  for (const filename of ['OPENCUES.md', 'AUDITORS.md']) {
+    const p = path.join(dir, filename);
+    if (!fs.existsSync(p)) continue;
+    try { files[filename] = fs.readFileSync(p, 'utf8'); } catch { /* skip */ }
+  }
+
   // Folder-based: cues/<name>/CUE.md, blanks/<name>/BLANK.md
   const FOLDER_FILENAME = { cues: 'CUE.md', blanks: 'BLANK.md' };
   for (const subdir of ['cues', 'blanks']) {

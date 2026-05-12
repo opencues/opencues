@@ -38,6 +38,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const { tag, bold, dim, fileLink, tree, banner } = require('../lib/style.cjs');
 
 // User-level seed targets. `.opencuesrc` lives at $HOME (outside the
 // `.cues/` library). Library contents: words/ + blanks/ + scripts/.
@@ -73,9 +74,11 @@ module.exports = function seedConfigs(argv, ctx) {
     process.exit(1);
   }
 
-  log(`Seeding ${projectScope ? 'project' : 'user'}-level configs:`);
-  log(`  source: ${sourceDir}`);
-  log(`  target: ${targetDir}`);
+  const version = (ctx && ctx.pkg && ctx.pkg.version) || readOwnPkgVersion();
+  log(banner({ version, tagline: `seeding ${projectScope ? 'project' : 'user'}-level configs` }));
+  log('');
+  log(`  ${dim('source:')} ${fileLink(sourceDir, sourceDir)}`);
+  log(`  ${dim('target:')} ${fileLink(targetDir, targetDir)}`);
   log('');
 
   // ── 1. SEED — first-time copy ──────────────────────────────────────
@@ -88,13 +91,13 @@ module.exports = function seedConfigs(argv, ctx) {
     dstExists: hasContent(path.join(targetDir, name)),
   }));
 
-  log('Seed plan (first-time copies):');
-  for (const p of plan) {
-    if (!p.srcExists) log(`  (no source) ${p.name}`);
-    else if (p.dstExists) log(`  SKIP (exists) ${p.dst}`);
-    else if (fs.existsSync(p.dst)) log(`  RESEED (empty) ${p.dst}`);
-    else log(`  COPY ${p.src} → ${p.dst}`);
-  }
+  const planRows = plan.map(p => {
+    if (!p.srcExists) return [p.name, dim('(no source)')];
+    if (p.dstExists)  return [p.name, dim('SKIP (exists)') + ' ' + fileLink(p.dst, p.dst)];
+    if (fs.existsSync(p.dst)) return [p.name, dim('RESEED (empty)') + ' ' + fileLink(p.dst, p.dst), tag('warn')];
+    return [p.name, dim('COPY') + ' ' + fileLink(p.src, p.src) + ' ' + dim('→') + ' ' + fileLink(p.dst, p.dst), tag('ok')];
+  });
+  log(tree({ title: 'Seed plan', description: 'first-time copies — never overwrites existing files', rows: planRows }));
 
   if (dryRun) { log('\n[dry-run] Nothing executed.'); return; }
 
@@ -108,17 +111,48 @@ module.exports = function seedConfigs(argv, ctx) {
     copied++;
     log(`  copied ${p.name}`);
   }
-  log(`Seeded ${copied}, skipped ${skipped}.`);
+  log(`${tag('ok')} seeded ${bold(copied)}, skipped ${bold(skipped)}`);
 
-  // Seed `OPENCUES.md` separately — it's the system-settings file;
-  // sits at the top of `~/.cues/` next to CUES.md / BLANKS.md.
+  // Seed `OPENCUES.md` — the system-settings file. When it already exists
+  // with content, MERGE: preserve user's top-level scalar VALUES + any
+  // user-only scalars; replace the `settings:` block from defaults (the
+  // block is runtime-owned schema, not user content); preserve user's
+  // body. Without this, new scalars/settings entries shipped in defaults
+  // silently strand on existing installs and the selector blank can't
+  // see them. The `settings:` block already documents itself as schema:
+  // "additions get overwritten on state writes".
   if (settingsTarget && fs.existsSync(settingsSource)) {
     if (hasContent(settingsTarget)) {
-      log(`  SKIP (exists) ${settingsTarget}`);
+      const defaultsContent = fs.readFileSync(settingsSource, 'utf8');
+      const userContent = fs.readFileSync(settingsTarget, 'utf8');
+      const merged = mergeOpencuesMd(defaultsContent, userContent);
+      if (merged !== userContent) {
+        fs.writeFileSync(settingsTarget, merged);
+        log(`  ${tag('ok')} merged ${path.basename(settingsTarget)} (kept your scalar values; refreshed settings: schema)`);
+      } else {
+        log(`  ${dim('SKIP (current)')} ${settingsTarget}`);
+      }
     } else {
       fs.mkdirSync(path.dirname(settingsTarget), { recursive: true });
       fs.copyFileSync(settingsSource, settingsTarget);
       log(`  copied ${path.basename(settingsTarget)}`);
+    }
+  }
+
+  // Seed AUDITORS.md — project-level auditor `disable:` list. SKIP-if-exists
+  // since the file is purely user content. Without seeding it at all, the
+  // runtime treats user-level as "no disable list" — fine, but means users
+  // can't disable an auditor at user scope without manually creating the
+  // file. Adding to the seed flow gives them the template.
+  const auditorsTarget = projectScope ? null : path.join(targetDir, 'AUDITORS.md');
+  const auditorsSource = path.join(sourceDir, 'AUDITORS.md');
+  if (auditorsTarget && fs.existsSync(auditorsSource)) {
+    if (hasContent(auditorsTarget)) {
+      log(`  ${dim('SKIP (exists)')} ${auditorsTarget}`);
+    } else {
+      fs.mkdirSync(path.dirname(auditorsTarget), { recursive: true });
+      fs.copyFileSync(auditorsSource, auditorsTarget);
+      log(`  ${tag('ok')} copied ${path.basename(auditorsTarget)}`);
     }
   }
 
@@ -149,8 +183,7 @@ module.exports = function seedConfigs(argv, ctx) {
   // inside copied subdirs is user content from then on (SYNC won't
   // touch it). ─────────────────────────────────────────────────────
   log('');
-  log('Additive seed (new entries from defaults/{cues,blanks,auditors}/):');
-  let added = 0;
+  const addedEntries = [];
   for (const parent of ['cues', 'blanks', 'auditors']) {
     const srcParent = path.join(sourceDir, parent);
     const dstParent = path.join(targetDir, parent);
@@ -159,28 +192,29 @@ module.exports = function seedConfigs(argv, ctx) {
     for (const entry of fs.readdirSync(srcParent, { withFileTypes: true })) {
       const subSrc = path.join(srcParent, entry.name);
       const subDst = path.join(dstParent, entry.name);
-      if (fs.existsSync(subDst)) continue; // user already has it (or opted out)
+      if (fs.existsSync(subDst)) continue;
       if (!entry.isDirectory()) continue;
       copyDir(subSrc, subDst);
-      added++;
-      log(`  added ${parent}/${entry.name}/`);
+      addedEntries.push(`${parent}/${entry.name}/`);
     }
   }
-  if (added === 0) log('  (no new entries)');
+  const additiveRows = addedEntries.length
+    ? addedEntries.map(e => [e, '', tag('ok')])
+    : [[dim('(no new entries)'), '']];
+  log(tree({ title: 'Additive seed', description: 'new entries shipped in defaults/{cues,blanks,auditors}/ since last run', rows: additiveRows }));
 
   // ── 2. SYNC — library files (always overwrite if differs) ──────────
   log('');
-  log('Library sync (.sh/.cs/.ps1 from defaults — never overwrites .md):');
-  let synced = 0;
+  const syncedFiles = [];
 
   // 2a. defaults/blanks/<name>/ → ~/.cues/blanks/<name>/
   for (const ctlDir of listChildDirs(path.join(sourceDir, 'blanks'))) {
     const ctl = path.basename(ctlDir);
     const userDir = path.join(targetDir, 'blanks', ctl);
-    if (!fs.existsSync(userDir)) continue; // not seeded → user opted out
+    if (!fs.existsSync(userDir)) continue;
     for (const src of listFilesByExt(ctlDir, ['.sh', '.cs', '.ps1'])) {
       const dst = path.join(userDir, path.basename(src));
-      if (syncIfDiffers(src, dst)) { synced++; log(`  synced ${dst}`); }
+      if (syncIfDiffers(src, dst)) syncedFiles.push(dst);
     }
   }
 
@@ -191,11 +225,14 @@ module.exports = function seedConfigs(argv, ctx) {
     fs.mkdirSync(scriptsDst, { recursive: true });
     for (const src of listFilesByExt(scriptsSrc, ['.sh', '.cs', '.ps1'])) {
       const dst = path.join(scriptsDst, path.basename(src));
-      if (syncIfDiffers(src, dst)) { synced++; log(`  synced ${dst}`); }
+      if (syncIfDiffers(src, dst)) syncedFiles.push(dst);
     }
   }
 
-  if (synced === 0) log('  (no changes — library files current)');
+  const syncRows = syncedFiles.length
+    ? syncedFiles.map(f => [fileLink(f, f), '', tag('ok')])
+    : [[dim('(no changes — library files current)'), '']];
+  log(tree({ title: 'Library sync', description: '.sh / .cs / .ps1 helpers refreshed from defaults — never touches .md', rows: syncRows }));
 
   // ── 3. HEAL — self-heal empty OPENCUES.md + rename legacy cue.md → blank.md ──
   log('');
@@ -345,6 +382,99 @@ function compileExe(csc, csFile, outDir, log) {
   }
   return false;
 }
+// Safe merge for OPENCUES.md. Defaults is the skeleton (comments + structure
+// + the runtime-owned settings: block); user file contributes scalar values.
+//
+// Algorithm:
+//   1. Split each file into frontmatter + body at the YAML `---` fences.
+//   2. From user's frontmatter, extract top-level `key: value` scalars
+//      (no leading whitespace; stops at the `settings:` line so indented
+//      keys inside the settings block don't bleed in).
+//   3. Walk defaults' frontmatter line-by-line: where a default scalar has
+//      a matching user key, substitute the user's value. Once we hit
+//      `settings:`, the rest of defaults' frontmatter copies through
+//      verbatim (schema refresh).
+//   4. Append any user-only scalars (keys present in user but not in
+//      defaults) just above the `settings:` line so they survive.
+//   5. Reassemble: defaults' merged frontmatter + user's body (or defaults'
+//      body when user had none).
+//
+// Idempotent: a second run produces the same output. Returns the merged
+// string; caller decides whether to write it.
+function mergeOpencuesMd(defaultsContent, userContent) {
+  const split = (text) => {
+    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+    if (!m) return { fm: '', body: text };
+    return { fm: m[1], body: m[2] };
+  };
+  const d = split(defaultsContent);
+  const u = split(userContent);
+
+  const SCALAR_RE = /^([a-z][a-z0-9_-]*):\s*(.*)$/;
+
+  // Pull user's top-level scalars (ignore everything from the settings: line
+  // onward — those are indented schema keys, not user-customisable scalars).
+  const userScalars = new Map();
+  {
+    let inSettings = false;
+    for (const line of u.fm.split('\n')) {
+      if (/^settings\s*:/.test(line)) { inSettings = true; continue; }
+      if (inSettings) continue;
+      const m = line.match(SCALAR_RE);
+      if (m) userScalars.set(m[1], m[2]);
+    }
+  }
+
+  // Walk defaults' frontmatter, substituting user values for keys above the
+  // settings: block. Track which user scalars matched a default key so we
+  // know which are user-only (to preserve below).
+  const matchedKeys = new Set();
+  const mergedLines = [];
+  let inSettingsBlock = false;
+  for (const line of d.fm.split('\n')) {
+    if (!inSettingsBlock && /^settings\s*:/.test(line)) {
+      // Insert user-only scalars just above the settings: line so they
+      // survive future merges (they'll match again on the next pass).
+      const extras = [];
+      for (const [k, v] of userScalars) {
+        if (!matchedKeys.has(k)) extras.push(`${k}: ${v}`);
+      }
+      if (extras.length > 0) {
+        mergedLines.push('# ── User-only scalars (preserved by seed-configs merge) ──');
+        mergedLines.push(...extras);
+        mergedLines.push('');
+      }
+      inSettingsBlock = true;
+      mergedLines.push(line);
+      continue;
+    }
+    if (inSettingsBlock) { mergedLines.push(line); continue; }
+    const m = line.match(SCALAR_RE);
+    if (m && userScalars.has(m[1])) {
+      matchedKeys.add(m[1]);
+      mergedLines.push(`${m[1]}: ${userScalars.get(m[1])}`);
+    } else {
+      mergedLines.push(line);
+    }
+  }
+  // No settings: line found — append user-only scalars at the end.
+  if (!inSettingsBlock) {
+    for (const [k, v] of userScalars) {
+      if (!matchedKeys.has(k)) mergedLines.push(`${k}: ${v}`);
+    }
+  }
+
+  const body = u.body !== '' ? u.body : d.body;
+  return `---\n${mergedLines.join('\n')}\n---\n${body}`;
+}
+
+function readOwnPkgVersion() {
+  try {
+    const p = path.resolve(__dirname, '..', '..', 'package.json');
+    return JSON.parse(fs.readFileSync(p, 'utf8')).version;
+  } catch { return undefined; }
+}
+
 function printHelp() {
   console.log('opencues seed-configs [--project] [--dry-run] [--silent]');
   console.log('');

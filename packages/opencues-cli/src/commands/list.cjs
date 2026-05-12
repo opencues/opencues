@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { tree, fileLink, bold, dim } = require('../lib/style.cjs');
 
 module.exports = function list(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -40,18 +41,40 @@ module.exports = function list(argv, ctx) {
     collect(dir, tools, results);
   }
 
-  // Compute host-compat column width so the right column aligns.
+  // Width of the host-compat marker (consistent across kinds).
   const allItems = [].concat(results.cue, results.blank);
   const maxHostLen = allItems.reduce((m, it) => Math.max(m, (it.hosts || '').length), 0);
 
   for (const kind of ['cue', 'blank']) {
     if (onlyKind && onlyKind !== kind) continue;
     const items = results[kind];
-    console.log(`\n${kind.toUpperCase()}S (${items.length}):`);
-    if (items.length === 0) { console.log('  (none)'); continue; }
+    console.log('');
+    console.log(`${bold(kind.toUpperCase() + 'S')} ${dim('(' + items.length + ')')}`);
+    if (items.length === 0) { console.log(dim('  (none)')); continue; }
+
+    // Group items by source file, preserving discovery order. Each file
+    // becomes a tree title; its entries are leaves under it.
+    const bySource = new Map();
     for (const it of items) {
-      const hostMarker = it.hosts ? `[${it.hosts.padEnd(maxHostLen)}]  ` : '';
-      console.log(`  ${it.name.padEnd(20)} ${hostMarker}← ${it.source}`);
+      if (!bySource.has(it.source)) bySource.set(it.source, []);
+      bySource.get(it.source).push(it);
+    }
+    for (const [source, group] of bySource) {
+      const linkedSource = fileLink(source, source);
+      if (group.length === 1) {
+        // Single-entry source — render inline so the visual weight matches
+        // the data (a one-leaf tree is just noise).
+        const it = group[0];
+        const hostMarker = it.hosts ? '  ' + dim('[') + it.hosts.padEnd(maxHostLen) + dim(']') : '';
+        console.log(`  ${it.name.padEnd(22)}${hostMarker}  ${dim(linkedSource)}`);
+      } else {
+        console.log('');
+        const rows = group.map(it => {
+          const hostMarker = it.hosts ? dim('[') + it.hosts.padEnd(maxHostLen) + dim(']') : '';
+          return [it.name, '', hostMarker];
+        });
+        console.log(tree({ title: linkedSource, rows, labelWidth: 22 }));
+      }
     }
   }
 };

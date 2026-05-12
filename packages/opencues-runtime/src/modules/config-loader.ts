@@ -197,7 +197,11 @@ function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSetti
       continue;
     }
     if (indent === 6 && inValues) {
-      const m = trimmed.match(/^([A-Za-z0-9][A-Za-z0-9_\- ]*?):\s*(.*)$/);
+      // Value keys may be quoted in the source (`"500":`, `"0":`) when YAML
+      // would otherwise interpret them as integers. Strip surrounding
+      // quotes so numeric-keyed settings (agent-debounce-ms,
+      // max-concurrent-auditors) parse correctly.
+      const m = trimmed.match(/^"?([A-Za-z0-9][A-Za-z0-9_\- ]*?)"?:\s*(.*)$/);
       if (!m) continue;
       const valueName = m[1].trim();
       currentValueOrder.push(valueName);

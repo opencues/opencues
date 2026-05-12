@@ -10,6 +10,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
+const { tag, step, bold, dim, banner } = require('../lib/style.cjs');
 
 // Map every recognised host name to its folder under integrations/.
 // Descriptive forms are the canonical folder names now; short codes
@@ -76,11 +77,26 @@ module.exports = function install(argv, ctx) {
     seedConfigs(['--silent'], ctx);
   }
 
+  console.log(banner({ version: ctx.pkg.version }));
+  console.log('');
+
   let exitCode = 0;
-  for (const folder of folders) {
-    if (folders.length > 1) console.log(`\n=== installing @opencues/${folder} ===\n`);
+  for (let i = 0; i < folders.length; i++) {
+    const folder = folders[i];
+    if (folders.length > 1) {
+      console.log('');
+      console.log(step(i + 1, folders.length, `installing ${bold('@opencues/' + folder)}`));
+      console.log('');
+    } else {
+      console.log(`${tag('info')} installing ${bold('@opencues/' + folder)}`);
+    }
     const code = runHostInstaller(folder, action, passthrough, ctx);
-    if (code !== 0) exitCode = code;
+    if (code !== 0) {
+      exitCode = code;
+      console.log(`${tag('err')} ${folder} ${dim(`(exit ${code})`)}`);
+    } else {
+      console.log(`${tag('ok')} ${folder}`);
+    }
   }
   process.exit(exitCode);
 };

@@ -5,6 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
 
 module.exports = function init(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -25,8 +26,11 @@ module.exports = function init(argv, ctx) {
   // first settings write.
   const files = ['CUES.md', 'BLANKS.md', 'AUDITORS.md', 'README.md'];
 
-  console.log(`Initialising .cues/ in ${cwd}\n`);
-  console.log('Plan:');
+  console.log(banner({ version: ctx.pkg.version, tagline: 'scaffold a project .cues/' }));
+  console.log('');
+  console.log(`${bold('Initialising .cues/')} in ${fileLink(cwd, cwd)}`);
+  console.log('');
+  console.log(bold('Plan:'));
   const plan = files.map(name => ({
     name,
     src: path.join(templateDir, name),
@@ -34,11 +38,11 @@ module.exports = function init(argv, ctx) {
     exists: fs.existsSync(path.join(targetDir, name)),
   }));
   for (const p of plan) {
-    if (p.exists) console.log(`  SKIP (exists) ${p.dst}`);
-    else console.log(`  CREATE ${p.dst}`);
+    if (p.exists) console.log(`  ${tag('info')} ${dim('SKIP (exists)')} ${fileLink(p.dst, p.dst)}`);
+    else console.log(`  ${tag('ok')} ${dim('CREATE')} ${fileLink(p.dst, p.dst)}`);
   }
 
-  if (dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
+  if (dryRun) { console.log(`\n${tag('info')} ${dim('[dry-run] Nothing executed.')}`); return; }
 
   console.log('');
   fs.mkdirSync(targetDir, { recursive: true });
@@ -48,10 +52,11 @@ module.exports = function init(argv, ctx) {
     const content = minimal && p.name !== 'README.md' ? '' : fs.readFileSync(p.src, 'utf8');
     fs.writeFileSync(p.dst, content);
     created++;
-    console.log(`  created ${p.name}`);
+    console.log(`  ${tag('ok')} created ${bold(p.name)}`);
   }
 
-  console.log(`\nCreated ${created} files, skipped ${skipped} (already present).`);
+  console.log('');
+  console.log(`${tag('ok')} created ${bold(created)} files, skipped ${bold(skipped)} ${dim('(already present)')}`);
   console.log('');
   console.log('Next:');
   console.log('  Edit CUES.md (or use `opencues new cue <name> --project`)');

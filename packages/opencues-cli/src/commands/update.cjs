@@ -21,6 +21,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
+const { tag, step, bold, dim, banner, tree, G } = require('../lib/style.cjs');
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code', claudecode: 'claude-code', claude: 'claude-code', cc: 'claude-code',
@@ -69,19 +70,22 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
     ? installed.filter(i => i.host === host)
     : installed;
 
-  console.log(host
-    ? `opencues update ${host} — rebuild + redeploy\n`
-    : 'opencues update — pull, build, redeploy\n');
+  console.log(banner({
+    version: ctx.pkg.version,
+    tagline: host ? `update ${host} — rebuild + redeploy` : 'pull, build, redeploy',
+  }));
+  console.log('');
 
   if (host && targets.length === 0) {
-    console.error(`opencues update: ${host} is not installed (no install artefacts on disk).`);
-    console.error(`Run \`opencues install ${host}\` first, or run without a host to scan all.`);
+    console.error(`${tag('err')} ${host} is not installed ${dim('(no install artefacts on disk)')}`);
+    console.error(`     ${dim(`Run \`opencues install ${host}\` first, or run without a host to scan all.`)}`);
     process.exit(1);
   }
 
-  console.log('Targets:');
-  for (const i of targets) console.log(`  ${i.host}  (${i.evidence})`);
-  if (targets.length === 0) console.log('  (none — nothing to redeploy)');
+  const targetRows = targets.length
+    ? targets.map(i => [bold(i.host), dim(`(${i.evidence})`)])
+    : [[dim('(none — nothing to redeploy)'), '']];
+  console.log(tree({ title: 'Targets', description: 'installed integrations to redeploy', rows: targetRows }));
   console.log('');
 
   const steps = [];
@@ -98,21 +102,25 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
     });
   }
 
-  console.log('Plan:');
-  for (const s of steps) console.log(`  ${s.argv.join(' ')}  (cwd ${s.cwd})`);
-  if (dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
+  console.log(tree({
+    title: 'Plan',
+    description: 'commands that will run in order; stops at the first failure',
+    rows: steps.map(s => [dim(s.argv.join(' ')), dim(`(cwd ${s.cwd})`)]),
+  }));
+  if (dryRun) { console.log(`\n${tag('info')} ${dim('[dry-run] Nothing executed.')}`); return; }
   console.log('');
 
-  for (const s of steps) {
-    console.log(`▶ ${s.desc}`);
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    console.log(step(i + 1, steps.length, bold(s.desc)));
     const r = spawnSync(s.argv[0], s.argv.slice(1), { cwd: s.cwd, stdio: 'inherit' });
     if (r.status !== 0) {
-      console.error(`\nSTOPPED: "${s.desc}" exited ${r.status}.`);
+      console.error(`\n${tag('err')} stopped: ${bold(s.desc)} exited ${r.status}`);
       process.exit(r.status ?? 1);
     }
     console.log('');
   }
-  console.log('Update complete.');
+  console.log(`${tag('ok')} update complete`);
 }
 
 // ─── MODE 2: CHECK ──────────────────────────────────────────────────────
@@ -120,16 +128,17 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
 async function doCheck(host, ctx) {
   const HOME = os.homedir();
   const targetHosts = host ? [host] : ALL_HOSTS;
-  console.log('opencues update --check — host version compatibility report\n');
+  console.log(banner({ version: ctx.pkg.version, tagline: 'host version compatibility report' }));
+  console.log('');
 
   for (const h of targetHosts) {
     const compat = compatLib.loadCompat(ctx.REPO_ROOT, h);
     if (!compat) {
-      console.log(`## ${h}`);
-      console.log('  (no compat.json — host upgrade-checking not configured)\n');
+      console.log(bold(`## ${h}`));
+      console.log(`  ${tag('info')} ${dim('(no compat.json — host upgrade-checking not configured)')}\n`);
       continue;
     }
-    console.log(`## ${h}  (host: ${compat['host-package'] || compat['host-repo'] || compat['host-runtime']})`);
+    console.log(bold(`## ${h}`) + dim(`  (host: ${compat['host-package'] || compat['host-repo'] || compat['host-runtime']})`));
     console.log(`  compat-range:    ${compat['compat-range']}`);
     console.log(`  tested:          ${formatTested(compat.tested)}`);
     if (compat['known-incompatible'] && compat['known-incompatible'].length) {
@@ -170,7 +179,7 @@ function printNpmRecommendation(installedPin, latest, latestInRange, compat) {
     console.log(`  latest in range: ${latestInRange}`);
   }
   if (installedPin === latest) {
-    console.log(`  → ✓ on latest`);
+    console.log(`  ${tag('ok')} on latest`);
     return;
   }
   // The "latest in range" version may STILL be in known-incompatible
@@ -179,22 +188,22 @@ function printNpmRecommendation(installedPin, latest, latestInRange, compat) {
   if (latestInRange && installedPin !== latestInRange) {
     const cls = compatLib.classifyVersion(latestInRange, compat);
     if (cls.status === 'tested') {
-      console.log(`  → ✓ upgrade available: ${installedPin} → ${latestInRange} (tested)`);
+      console.log(`  ${tag('ok')} upgrade available: ${installedPin} ${dim(G.arrow)} ${bold(latestInRange)} ${dim('(tested)')}`);
       console.log(`     Run: opencues update claude-code --to ${latestInRange}`);
     } else if (cls.status === 'compat-untested') {
-      console.log(`  → ? upgrade candidate: ${installedPin} → ${latestInRange} (in compat-range, NOT tested by maintainer)`);
+      console.log(`  ${tag('warn')} upgrade candidate: ${installedPin} ${dim(G.arrow)} ${bold(latestInRange)} ${dim('(in compat-range, NOT tested by maintainer)')}`);
       console.log(`     Run: opencues update claude-code --to ${latestInRange}`);
     } else if (cls.status === 'incompatible') {
-      console.log(`  → ✗ latest in range (${latestInRange}) is INCOMPATIBLE: ${cls.reason}`);
+      console.log(`  ${tag('err')} latest in range (${latestInRange}) is INCOMPATIBLE: ${cls.reason}`);
       console.log(`     Stay on current pin until compat-range is narrowed or known-incompatible is updated.`);
     }
   }
   if (latest !== latestInRange) {
     const cls = compatLib.classifyVersion(latest, compat);
     if (cls.status === 'incompatible') {
-      console.log(`  → ✗ ${latest} is INCOMPATIBLE: ${cls.reason}`);
+      console.log(`  ${tag('err')} ${latest} is INCOMPATIBLE: ${cls.reason}`);
     } else if (cls.status === 'out-of-range') {
-      console.log(`  → ✗ ${latest} is OUTSIDE compat-range (${compat['compat-range']}) — needs OpenCues patch updates`);
+      console.log(`  ${tag('err')} ${latest} is OUTSIDE compat-range (${compat['compat-range']}) — needs OpenCues patch updates`);
     }
   }
 }
@@ -208,24 +217,24 @@ function printGitRecommendation(currentPin, latestTag, latestInRangeTag, compat)
   const installedNorm = stripV(installedVer);
   const latestNorm = stripV(latestTag.name);
   if (installedNorm === latestNorm) {
-    console.log(`  → ✓ on latest`);
+    console.log(`  ${tag('ok')} on latest`);
     return;
   }
   if (latestInRangeTag && stripV(latestInRangeTag.name) !== installedNorm) {
     const cls = compatLib.classifyVersion(stripV(latestInRangeTag.name), compat);
     if (cls.status === 'tested') {
-      console.log(`  → ✓ upgrade available: ${currentPin.version} → ${stripV(latestInRangeTag.name)} (tested)`);
+      console.log(`  ${tag('ok')} upgrade available: ${currentPin.version} ${dim(G.arrow)} ${bold(stripV(latestInRangeTag.name))} ${dim('(tested)')}`);
     } else if (cls.status === 'compat-untested') {
-      console.log(`  → ? upgrade candidate: ${currentPin.version} → ${stripV(latestInRangeTag.name)} (in compat-range, NOT tested by maintainer)`);
+      console.log(`  ${tag('warn')} upgrade candidate: ${currentPin.version} ${dim(G.arrow)} ${bold(stripV(latestInRangeTag.name))} ${dim('(in compat-range, NOT tested by maintainer)')}`);
     }
     console.log(`     Run: opencues update opencode --to ${stripV(latestInRangeTag.name)}`);
   }
   if (latestNorm !== (latestInRangeTag && stripV(latestInRangeTag.name))) {
     const cls = compatLib.classifyVersion(latestNorm, compat);
     if (cls.status === 'out-of-range') {
-      console.log(`  → ✗ ${latestTag.name} is OUTSIDE compat-range — needs OpenCues patch updates`);
+      console.log(`  ${tag('err')} ${latestTag.name} is OUTSIDE compat-range — needs OpenCues patch updates`);
     } else if (cls.status === 'incompatible') {
-      console.log(`  → ✗ ${latestTag.name} is INCOMPATIBLE: ${cls.reason}`);
+      console.log(`  ${tag('err')} ${latestTag.name} is INCOMPATIBLE: ${cls.reason}`);
     }
   }
 }
@@ -306,8 +315,8 @@ function doUpgradeNpm(host, toVersion, compat, { dryRun }, ctx) {
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log(`\nPin updated. Re-installing ${host} at ${toVersion}...\n`);
   runHostInstaller(host, ctx, { rollback: () => fixupRollbackHint(pkgPath, loc.field, oldValue, host) });
-  console.log(`\n✓ ${host} now pinned at ${toVersion} and installed.`);
-  console.log(`Consider adding ${toVersion} to integrations/${host}/compat.json's "tested" list once you've verified.`);
+  console.log(`\n${tag('ok')} ${host} now pinned at ${bold(toVersion)} and installed.`);
+  console.log(dim(`Consider adding ${toVersion} to integrations/${host}/compat.json's "tested" list once you've verified.`));
 }
 
 async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
@@ -321,8 +330,8 @@ async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
     process.exit(1);
   }
   const wantNorm = stripV(toVersion);
-  const tag = tags.find(t => stripV(t.name) === wantNorm);
-  if (!tag) {
+  const wantedTag = tags.find(t => stripV(t.name) === wantNorm);
+  if (!wantedTag) {
     console.error(`opencues update: ${toVersion} not found in ${compat['host-repo']}'s recent tags.`);
     console.error(`Available recent tags: ${tags.slice(0, 8).map(t => t.name).join(', ')}...`);
     process.exit(1);
@@ -333,20 +342,20 @@ async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
   const pinPath = path.join(ctx.REPO_ROOT, compat['current-pin-source']['path-from-repo']);
 
   console.log(`Plan:`);
-  console.log(`  rewrite ${pinPath}: { version: "${wantNorm}", sha: "${tag.sha}" }  (was ${oldDisplay})`);
+  console.log(`  rewrite ${pinPath}: { version: "${wantNorm}", sha: "${wantedTag.sha}" }  (was ${oldDisplay})`);
   console.log(`  re-run: opencues install ${host}  (will git-checkout the new SHA in <fork>)`);
-  if (dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
+  if (dryRun) { console.log(`\n${tag('info')} ${dim('[dry-run] Nothing executed.')}`); return; }
 
-  compatLib.writeGitPin(ctx.REPO_ROOT, compat, { version: wantNorm, sha: tag.sha });
-  console.log(`\nPin updated. Re-installing ${host} at ${wantNorm}@${tag.sha}...\n`);
+  compatLib.writeGitPin(ctx.REPO_ROOT, compat, { version: wantNorm, sha: wantedTag.sha });
+  console.log(`\nPin updated. Re-installing ${host} at ${wantNorm}@${wantedTag.sha}...\n`);
   runHostInstaller(host, ctx, {
     rollback: () => {
       console.error(`To roll back: edit ${pinPath} and re-run \`opencues install ${host}\``);
       if (oldPin) console.error(`  Previous pin: { version: "${oldPin.version}", sha: "${oldPin.sha}" }`);
     },
   });
-  console.log(`\n✓ ${host} now pinned at ${wantNorm}@${tag.sha} and installed.`);
-  console.log(`Consider adding {version:"${wantNorm}",sha:"${tag.sha}"} to integrations/${host}/compat.json's "tested" list once you've verified.`);
+  console.log(`\n${tag('ok')} ${host} now pinned at ${bold(`${wantNorm}@${wantedTag.sha}`)} and installed.`);
+  console.log(dim(`Consider adding {version:"${wantNorm}",sha:"${wantedTag.sha}"} to integrations/${host}/compat.json's "tested" list once you've verified.`));
 }
 
 function runHostInstaller(host, ctx, { rollback }) {

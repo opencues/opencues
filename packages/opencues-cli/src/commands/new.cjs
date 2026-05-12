@@ -8,6 +8,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
 
 const KINDS = new Set(['cue', 'blank']);
 const KIND_TO_DIR = { cue: 'cues', blank: 'blanks' };
@@ -61,15 +62,18 @@ module.exports = function newCmd(argv, ctx) {
   const template = fs.readFileSync(templatePath, 'utf8');
   const content = template.replace(/\{\{NAME\}\}/g, name);
 
-  console.log(`Scaffold plan:`);
-  console.log(`  CREATE ${targetFile}`);
-  if (dryRun) { console.log('\n[dry-run] Nothing executed.'); return; }
+  console.log(banner({ version: ctx.pkg.version, tagline: `scaffold a ${kind}` }));
+  console.log('');
+  console.log(bold('Scaffold plan:'));
+  console.log(`  ${tag('ok')} ${dim('CREATE')} ${fileLink(targetFile, targetFile)}`);
+  if (dryRun) { console.log(`\n${tag('info')} ${dim('[dry-run] Nothing executed.')}`); return; }
 
   fs.mkdirSync(targetDir, { recursive: true });
   fs.writeFileSync(targetFile, content);
-  console.log(`\nCreated ${targetFile}`);
-  console.log('Edit the frontmatter + prompt body, then hot-reload picks it up on the next keystroke.');
-  console.log(`To validate: opencues validate ${projectScope ? '--project' : ''}`);
+  console.log('');
+  console.log(`${tag('ok')} created ${fileLink(targetFile, targetFile)}`);
+  console.log(dim('  Edit the frontmatter + prompt body. Hot-reload picks it up on the next keystroke.'));
+  console.log(dim(`  To validate: opencues validate ${projectScope ? '--project' : ''}`));
 };
 
 function printHelp() {

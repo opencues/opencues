@@ -42,6 +42,7 @@ const STORAGE_PREFIX = 'opencues_runtime:';
 // (system-wide YAML); per-cue and per-blank source files live in
 // __DEFAULT_WORD_CUES__ and __DEFAULT_BLANKS__ (post-layout-migration).
 declare const __DEFAULT_OPENCUES_MD__: string;
+declare const __DEFAULT_AUDITORS_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
 
@@ -649,6 +650,45 @@ function replaceAllText(text: string): void {
  * try the bundle first.
  */
 async function readFile(path: string): Promise<string | null> {
+  // OPENCUES.md is the cross-host writable schema file. Three sources:
+  //   - bundle  ← latest schema from ~/.cues/ (pushed by chrome-host)
+  //   - storage ← user's chrome-side cycled scalar values
+  //   - bake    ← compiled-in fallback
+  // When bundle exists AND storage exists, MERGE: bundle's settings:
+  // block + bake's structure win for schema, storage's scalar values
+  // win for cycled state. Without the merge, bundle would mask chrome
+  // cycling (bug class "storage starvation"); storage alone would mask
+  // disk edits made from CC/OC.
+  if (path === ROOT + '/.cues/OPENCUES.md') {
+    const bundled = await readBundledConfig(path);
+    const storageKey = STORAGE_PREFIX + path;
+    let stored: string | null = null;
+    try {
+      const result = await chrome.storage.local.get(storageKey);
+      const v = result[storageKey];
+      if (typeof v === 'string' && v.length > 0) stored = v as string;
+    } catch (err) { console.warn(`[opencues] readFile(${path}) threw:`, err); }
+    if (bundled !== null && stored !== null) {
+      const merged = mergeOpencuesMd(bundled, stored);
+      tlog(`[opencues] readFile(${path}) ← merge(bundle+storage) (${merged.length} chars)`);
+      return merged;
+    }
+    if (bundled !== null) {
+      tlog(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
+      return bundled;
+    }
+    if (stored !== null) {
+      tlog(`[opencues] readFile(${path}) ← storage (${stored.length} chars)`);
+      return stored;
+    }
+    const bake = readBakeTimeDefault(path);
+    if (bake !== null) {
+      tlog(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars)`);
+      return bake;
+    }
+    return null;
+  }
+
   // 1. Synced bundle (opencues sync chrome --wsl) wins if present.
   const bundled = await readBundledConfig(path);
   if (bundled !== null) {
@@ -671,10 +711,8 @@ async function readFile(path: string): Promise<string | null> {
     return null;
   }
 
-  // 3. Writable files (CUES.md — OpenCuesSettingsBlank cycles
-  //    voice-mode / tips-mode / debug-mode via writeFile). Storage
-  //    wins so the user's saved setting persists across reloads,
-  //    falling back to bake-time before the first write.
+  // 3. Writable files. Storage wins so the user's saved setting persists
+  //    across reloads, falling back to bake-time before the first write.
   const key = STORAGE_PREFIX + path;
   try {
     const result = await chrome.storage.local.get(key);
@@ -693,6 +731,74 @@ async function readFile(path: string): Promise<string | null> {
   }
   tlog(`[opencues] readFile(${path}) ← null (no bundle, no storage, no bake-time)`);
   return null;
+}
+
+// Merge OPENCUES.md content from `defaults` (schema source — e.g. the
+// chrome-host bundle pushed from disk) with `user` (storage — e.g.
+// chrome-side cycled scalar values). Algorithm mirrors the cjs version
+// in packages/opencues-cli/src/commands/seed-configs.cjs:
+//   - Preserve scalar values from `user` for any key both files have.
+//   - Replace the `settings:` block wholesale from `defaults` (it's
+//     runtime-owned schema).
+//   - Append user-only scalars just above the settings: line so they
+//     survive future merges.
+//   - Use `user`'s body if present, else `defaults`'s.
+function mergeOpencuesMd(defaultsContent: string, userContent: string): string {
+  const split = (text: string): { fm: string; body: string } => {
+    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+    if (!m) return { fm: '', body: text };
+    return { fm: m[1], body: m[2] };
+  };
+  const d = split(defaultsContent);
+  const u = split(userContent);
+  const SCALAR_RE = /^([a-z][a-z0-9_-]*):\s*(.*)$/;
+
+  const userScalars = new Map<string, string>();
+  {
+    let inSettings = false;
+    for (const line of u.fm.split('\n')) {
+      if (/^settings\s*:/.test(line)) { inSettings = true; continue; }
+      if (inSettings) continue;
+      const m = line.match(SCALAR_RE);
+      if (m) userScalars.set(m[1], m[2]);
+    }
+  }
+
+  const matchedKeys = new Set<string>();
+  const mergedLines: string[] = [];
+  let inSettingsBlock = false;
+  for (const line of d.fm.split('\n')) {
+    if (!inSettingsBlock && /^settings\s*:/.test(line)) {
+      const extras: string[] = [];
+      for (const [k, v] of userScalars) {
+        if (!matchedKeys.has(k)) extras.push(`${k}: ${v}`);
+      }
+      if (extras.length > 0) {
+        mergedLines.push('# ── User-only scalars (preserved by chrome bundle/storage merge) ──');
+        mergedLines.push(...extras);
+        mergedLines.push('');
+      }
+      inSettingsBlock = true;
+      mergedLines.push(line);
+      continue;
+    }
+    if (inSettingsBlock) { mergedLines.push(line); continue; }
+    const m = line.match(SCALAR_RE);
+    if (m && userScalars.has(m[1])) {
+      matchedKeys.add(m[1]);
+      mergedLines.push(`${m[1]}: ${userScalars.get(m[1])}`);
+    } else {
+      mergedLines.push(line);
+    }
+  }
+  if (!inSettingsBlock) {
+    for (const [k, v] of userScalars) {
+      if (!matchedKeys.has(k)) mergedLines.push(`${k}: ${v}`);
+    }
+  }
+
+  const body = u.body !== '' ? u.body : d.body;
+  return `---\n${mergedLines.join('\n')}\n---\n${body}`;
 }
 
 // Is this path a READ-ONLY config? Read-only paths bypass storage
@@ -717,6 +823,7 @@ function readBakeTimeDefault(path: string): string | null {
   if (!path.startsWith(ROOT + '/')) return null;
   const rel = path.slice(ROOT.length + 1);
   if (rel === '.cues/OPENCUES.md') return __DEFAULT_OPENCUES_MD__ || null;
+  if (rel === '.cues/AUDITORS.md') return __DEFAULT_AUDITORS_MD__ || null;
   const cueFolder = rel.match(/^\.cues\/cues\/([^/]+)\/CUE\.md$/);
   if (cueFolder) return __DEFAULT_CUE_FOLDERS__[cueFolder[1]] ?? null;
   const blankFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/BLANK\.md$/);

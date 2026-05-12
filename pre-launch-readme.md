@@ -28,6 +28,20 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [ ] Enable GitHub Discussions — for Q&A, ideas
 - [x] Add `SECURITY.md` — responsible disclosure policy
 
+## Marketing / Brand Communication
+
+- [ ] **Finalise OpenCues messaging across CLI + README + docs** — tagline, one-liner, "what is OpenCues" pitch are still placeholder/scratch. Audit every user-facing surface for consistent voice:
+  - CLI `help` banner tagline (currently: "LLM cues and `_`-gated blanks for any editor.")
+  - CLI `version` / `install` banners
+  - README hero + "Why OpenCues?" + "Supported Editors" sections
+  - Per-integration READMEs (`integrations/*/README.md`)
+  - `package.json` `description` fields (drives `npm` listings + `opencues help` first line until banner replaced it)
+  - Per-host installer help text
+  - Glossary one-liners (`docs/glossary.md`)
+  - GitHub repo description + topics
+  - Discord/Twitter/Reddit bios once finalised
+  Treat as one pass after the messaging is locked, not piecemeal.
+
 ## README Improvements
 
 - [x] Add badge area at top (license, build, Discord) — placeholders added, commented out

@@ -64,7 +64,7 @@ describe('opencues seed-configs', () => {
     expect(fs.existsSync(path.join(userDir, 'cues/tips/CUE.md'))).toBe(true);
   });
 
-  it('SEED phase: preserves a user-edited OPENCUES.md (does NOT overwrite content)', () => {
+  it('SEED phase: merges user OPENCUES.md with defaults (preserves user scalar VALUES + body; refreshes settings: schema)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userRc = '---\nvoice-mode: inactive\n---\n\n# my own custom config\n';
     const userDir = path.join(tmpHome, '.cues');
@@ -73,7 +73,16 @@ describe('opencues seed-configs', () => {
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    expect(fs.readFileSync(path.join(userDir, 'OPENCUES.md'), 'utf8')).toBe(userRc);
+    const after = fs.readFileSync(path.join(userDir, 'OPENCUES.md'), 'utf8');
+    // User's cycled scalar VALUE wins over default.
+    expect(after).toMatch(/^voice-mode:\s*inactive\b/m);
+    // User's body is preserved verbatim.
+    expect(after).toContain('# my own custom config');
+    // Defaults' settings: schema block lands so the selector blank can
+    // navigate every shipped setting (was the gap that stranded new
+    // entries like `max-concurrent-auditors` on existing installs).
+    expect(after).toMatch(/^settings:\s*$/m);
+    expect(after).toMatch(/^\s+voice-mode:\s*$/m);
   });
 
   it('HEAL phase: re-seeds a 0-byte OPENCUES.md from defaults', () => {

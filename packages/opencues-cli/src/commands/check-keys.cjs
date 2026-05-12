@@ -7,9 +7,12 @@ const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { tag, bold, dim, banner } = require('../lib/style.cjs');
 
-module.exports = async function checkKeys(argv) {
+module.exports = async function checkKeys(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  console.log(banner({ version: ctx.pkg.version, tagline: 'verify configured API keys' }));
+  console.log('');
 
   // Load ~/.cues/.env into a local map (process.env wins if both set).
   const envFile = path.join(os.homedir(), '.cues', '.env');
@@ -22,7 +25,6 @@ module.exports = async function checkKeys(argv) {
   }
   const get = (k) => process.env[k] || fileEnv[k];
 
-  console.log('Checking configured API keys...\n');
   const checks = [
     { provider: 'groq',    env: 'GROQ_API_KEY',    fn: checkGroq },
     { provider: 'finnhub', env: 'FINNHUB_API_KEY', fn: checkFinnhub },
@@ -30,20 +32,19 @@ module.exports = async function checkKeys(argv) {
   let bad = 0;
   for (const c of checks) {
     const key = get(c.env);
-    if (!key) { console.log(`  -  ${c.provider} (${c.env} unset)`); continue; }
-    // In a TTY: print a "checking…" line, then \r-overwrite with the
-    // final ✓/✗. In a pipe (CI / capture): just print the verdict
-    // once when it's known, since \r doesn't physically erase in a
-    // non-TTY output stream and the user would see both halves.
+    if (!key) {
+      console.log(`  ${tag('info')} ${bold(c.provider.padEnd(8))} ${dim(`${c.env} unset`)}`);
+      continue;
+    }
     const isTty = process.stdout.isTTY;
-    if (isTty) process.stdout.write(`  …  ${c.provider} ...`);
+    if (isTty) process.stdout.write(`  ${tag('info')} ${bold(c.provider.padEnd(8))} ${dim('checking…')}`);
     try {
       const res = await c.fn(key);
-      const line = `  ✓  ${c.provider} ... ${res || 'ok'}\n`;
-      process.stdout.write(isTty ? `\r${line}` : line);
+      const line = `  ${tag('ok')} ${bold(c.provider.padEnd(8))} ${dim(res || 'ok')}\n`;
+      process.stdout.write(isTty ? `\r\x1b[K${line}` : line);
     } catch (err) {
-      const line = `  ✗  ${c.provider} ... ${err.message}\n`;
-      process.stdout.write(isTty ? `\r${line}` : line);
+      const line = `  ${tag('err')} ${bold(c.provider.padEnd(8))} ${dim(err.message)}\n`;
+      process.stdout.write(isTty ? `\r\x1b[K${line}` : line);
       bad++;
     }
   }

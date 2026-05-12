@@ -21,6 +21,7 @@ const path = require('node:path');
 const os = require('node:os');
 const https = require('node:https');
 const { spawnSync } = require('node:child_process');
+const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
 
 module.exports = function importCmd(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -62,9 +63,11 @@ module.exports = function importCmd(argv, ctx) {
   const packName = nameOverride || resolved.defaultName;
   const target = path.join(installRoot, packName);
 
-  console.log(`Source:  ${source}`);
-  console.log(`         → ${resolved.url || resolved.localPath}`);
-  console.log(`Target:  ${target}`);
+  console.log(banner({ version: ctx.pkg.version, tagline: 'install a config pack' }));
+  console.log('');
+  console.log(`${bold('Source:')}  ${source}`);
+  console.log(`         ${dim('→')} ${dim(resolved.url || resolved.localPath)}`);
+  console.log(`${bold('Target:')}  ${fileLink(target, target)}`);
   console.log('');
 
   if (fs.existsSync(target) && !force) {
@@ -83,23 +86,23 @@ module.exports = function importCmd(argv, ctx) {
   const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencues-import-'));
   try {
     if (resolved.localPath) {
-      console.log(`Copying from ${resolved.localPath}...`);
+      console.log(`${tag('info')} copying from ${fileLink(resolved.localPath, resolved.localPath)}`);
       copyDir(resolved.localPath, stageDir);
     } else {
-      console.log(`Downloading ${resolved.url}...`);
+      console.log(`${tag('info')} downloading ${dim(resolved.url)}`);
       const tarballPath = path.join(stageDir, 'pack.tar.gz');
       downloadToFile(resolved.url, tarballPath);
-      console.log('Extracting...');
+      console.log(`${tag('info')} extracting`);
       extractTarGz(tarballPath, stageDir);
       fs.rmSync(tarballPath, { force: true });
       flattenSingleRootDir(stageDir);
     }
 
-    console.log('Validating...');
+    console.log(`${tag('info')} validating`);
     const issues = validatePack(stageDir, { allowScripts });
     if (issues.length > 0) {
       console.log('');
-      for (const i of issues) console.log(`  ${i.severity.toUpperCase()} ${i.message}`);
+      for (const i of issues) console.log(`  ${tag(i.severity === 'error' ? 'err' : 'warn')} ${i.message}`);
       const errors = issues.filter(i => i.severity === 'error');
       if (errors.length > 0) {
         console.error(`\nimport refused: ${errors.length} validation error(s).`);
@@ -122,12 +125,13 @@ module.exports = function importCmd(argv, ctx) {
     fs.writeFileSync(path.join(target, '.cues-pack.json'), JSON.stringify(meta, null, 2));
 
     const summary = summariseContents(target);
-    console.log(`\nInstalled pack "${packName}" at ${target}`);
-    console.log(`  ${summary.cues} cue(s), ${summary.blanks} blank(s)`);
     console.log('');
-    console.log('Note: ConfigLoader does not yet walk packs/<name>/ subfolders automatically');
-    console.log('— it will after the next ConfigLoader update. Symlink contents into the');
-    console.log('parent .cues/ dir for now if you want them active immediately.');
+    console.log(`${tag('ok')} installed pack ${bold(packName)} at ${fileLink(target, target)}`);
+    console.log(`     ${dim(`${summary.cues} cue(s), ${summary.blanks} blank(s)`)}`);
+    console.log('');
+    console.log(dim('Note: ConfigLoader does not yet walk packs/<name>/ subfolders automatically'));
+    console.log(dim('      — it will after the next ConfigLoader update. Symlink contents into the'));
+    console.log(dim('      parent .cues/ dir for now if you want them active immediately.'));
   } catch (err) {
     fs.rmSync(stageDir, { recursive: true, force: true });
     console.error(`opencues import: ${err.message}`);

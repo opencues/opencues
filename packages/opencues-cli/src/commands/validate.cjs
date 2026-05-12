@@ -8,9 +8,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
 
 module.exports = function validate(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  console.log(banner({ version: ctx.pkg.version, tagline: 'lint .cues/ configs' }));
+  console.log('');
   const projectOnly = argv.includes('--project');
   const userOnly = argv.includes('--user');
   const strict = argv.includes('--strict');
@@ -50,7 +53,7 @@ module.exports = function validate(argv, ctx) {
       warnings.push(`${label} dir does not exist: ${dir}`);
       continue;
     }
-    console.log(`Checking ${label}-level: ${dir}`);
+    console.log(`${bold('Checking')} ${bold(label + '-level')} ${dim(fileLink(dir, dir))}`);
     walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint }, seen, errors, warnings, wordCueSources);
   }
 
@@ -61,11 +64,14 @@ module.exports = function validate(argv, ctx) {
 
   // Report.
   console.log('');
-  for (const w of warnings) console.log(`  WARN  ${w}`);
-  for (const e of errors)   console.log(`  ERROR ${e}`);
+  for (const w of warnings) console.log(`  ${tag('warn')} ${w}`);
+  for (const e of errors)   console.log(`  ${tag('err')} ${e}`);
 
   console.log('');
-  console.log(`${errors.length} error(s), ${warnings.length} warning(s).`);
+  const summary = `${bold(errors.length)} error(s), ${bold(warnings.length)} warning(s)`;
+  if (errors.length === 0 && warnings.length === 0) console.log(`${tag('ok')} ${summary}`);
+  else if (errors.length === 0)                     console.log(`${tag('warn')} ${summary}`);
+  else                                              console.log(`${tag('err')} ${summary}`);
   if (errors.length > 0) process.exit(1);
   if (strict && warnings.length > 0) process.exit(1);
 };

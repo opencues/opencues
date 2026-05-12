@@ -29,6 +29,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { tag, bold, dim, fileLink, tree, banner } = require('../lib/style.cjs');
 
 const HOSTS = ['chrome'];   // sync is chrome-only today
 
@@ -178,8 +179,14 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
   }
   const distConfigs = repoConfigs;
 
-  console.log(`Syncing to ${distConfigs}/`);
-  for (const s of sources) console.log(`  source: ${s.label.padEnd(8)} ${s.dir}`);
+  console.log(banner({ version: ctx.pkg.version, tagline: 'push configs to chrome' }));
+  console.log('');
+  console.log(`${bold('Syncing to')} ${fileLink(distConfigs, distConfigs)}/`);
+  console.log(tree({
+    title: 'Sources',
+    description: '.cues/ dirs being bundled; later sources overlay earlier ones',
+    rows: sources.map(s => [dim(s.label), fileLink(s.dir, s.dir)]),
+  }));
   console.log('');
 
   // Collect every relevant file across sources, lower-priority first.
@@ -236,13 +243,13 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
   const versionPath = path.join(distConfigs, '.version');
   fs.writeFileSync(versionPath, computeVersion(distConfigs));
 
-  console.log(`Synced ${copied} file(s):`);
-  console.log(`  ${summary.cue} cue dir(s)/file(s)`);
-  console.log(`  ${summary.blank} blank dir(s)/file(s)`);
+  console.log(`${tag('ok')} synced ${bold(copied)} file(s)`);
+  console.log(`     ${dim(`${summary.cue} cue dir(s)/file(s)`)}`);
+  console.log(`     ${dim(`${summary.blank} blank dir(s)/file(s)`)}`);
   if (dropped > 0) {
-    console.log(`Skipped ${dropped} entry(ies) flagged as non-chrome (see opencues list for hosts).`);
+    console.log(`${tag('info')} skipped ${bold(dropped)} entry(ies) flagged as non-chrome ${dim('(see opencues list for hosts)')}`);
   }
-  console.log(`Version: ${fs.readFileSync(versionPath, 'utf8').trim()}`);
+  console.log(`     ${dim(`version: ${fs.readFileSync(versionPath, 'utf8').trim()}`)}`);
 
   // Mirror to the deploy target if --wsl / --target was passed. The
   // chrome extension running from <target>/dist/ reads dist/configs/
@@ -251,7 +258,7 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
     if (fs.existsSync(extraTarget)) fs.rmSync(extraTarget, { recursive: true, force: true });
     fs.mkdirSync(extraTarget, { recursive: true });
     copyDirSync(distConfigs, extraTarget);
-    console.log(`Mirrored to ${toWindowsPathIfPossible(extraTarget)}`);
+    console.log(`${tag('ok')} mirrored to ${fileLink(toWindowsPathIfPossible(extraTarget), extraTarget)}`);
   }
 }
 

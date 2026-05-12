@@ -9,6 +9,19 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
+const { tag, bold, dim, banner, fileLink, tree, existsMark, G } = require('../lib/style.cjs');
+
+// Build a section accumulator: ok/bad push rows; render emits as a tree.
+function section(title, description) {
+  const rows = [];
+  return {
+    ok:   (label, present) => rows.push([label, '', existsMark(present)]),
+    bad:  (label, present) => rows.push([label, '', existsMark(present)]),
+    info: (label, value)   => rows.push([label, value || '']),
+    raw:  (label, value, marker) => rows.push([label, value || '', marker || '']),
+    render: () => { console.log(tree({ title, description, rows })); console.log(''); },
+  };
+}
 
 module.exports = function doctor(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -16,53 +29,72 @@ module.exports = function doctor(argv, ctx) {
   const HOME = os.homedir();
   const findings = [];
 
-  console.log('opencues doctor — cross-host install diagnostics\n');
-
-  // ── Workspace ─────────────────────────────────────────────────────────
-  console.log('## Workspace');
-  const wsDir = ctx.REPO_ROOT;
-  const wsLockfile = path.join(wsDir, 'pnpm-lock.yaml');
-  const wsBuilt = path.join(wsDir, 'packages/opencues-runtime/dist/src/index.js');
-  ok(`opencues clone at ${wsDir}`, fs.existsSync(wsDir));
-  ok(`pnpm-lock.yaml present`, fs.existsSync(wsLockfile));
-  if (!fs.existsSync(wsBuilt)) {
-    findings.push({ sev: 'warn', msg: '@opencues/runtime not built', fix: 'pnpm build' });
-    bad(`@opencues/runtime built (${wsBuilt})`, false);
-  } else {
-    ok(`@opencues/runtime built`, true);
-  }
+  console.log(banner({ version: ctx.pkg.version, tagline: 'cross-host install diagnostics' }));
   console.log('');
 
+  // ── Workspace ─────────────────────────────────────────────────────────
+  {
+    const s = section('Workspace', 'the opencues clone you are running from');
+    const wsDir = ctx.REPO_ROOT;
+    const wsLockfile = path.join(wsDir, 'pnpm-lock.yaml');
+    const wsBuilt = path.join(wsDir, 'packages/opencues-runtime/dist/src/index.js');
+    s.ok(`opencues clone at ${wsDir}`, fs.existsSync(wsDir));
+    s.ok(`pnpm-lock.yaml present`, fs.existsSync(wsLockfile));
+    if (!fs.existsSync(wsBuilt)) {
+      findings.push({ sev: 'warn', msg: '@opencues/runtime not built', fix: 'pnpm build' });
+      s.bad(`@opencues/runtime built (${wsBuilt})`, false);
+    } else {
+      s.ok(`@opencues/runtime built`, true);
+    }
+    s.render();
+  }
+
   // ── Configs ───────────────────────────────────────────────────────────
-  console.log('## Configs');
   const userConfigDir = path.join(HOME, '.cues');
   const projectConfigDir = path.join(process.cwd(), '.cues');
-  ok(`user-level    ${userConfigDir}/`, fs.existsSync(userConfigDir));
-  ok(`project-level ${projectConfigDir}/`, fs.existsSync(projectConfigDir));
-  if (process.env.OPENCUES_HOME) {
-    ok(`$OPENCUES_HOME → ${process.env.OPENCUES_HOME}/`, fs.existsSync(process.env.OPENCUES_HOME));
+  {
+    const s = section('Configs', 'user-level + project-level cue/blank search paths');
+    s.ok(`user-level    ${userConfigDir}/`, fs.existsSync(userConfigDir));
+    s.ok(`project-level ${projectConfigDir}/`, fs.existsSync(projectConfigDir));
+    if (process.env.OPENCUES_HOME) {
+      s.ok(`$OPENCUES_HOME → ${process.env.OPENCUES_HOME}/`, fs.existsSync(process.env.OPENCUES_HOME));
+    }
+    s.render();
   }
   if (!fs.existsSync(userConfigDir)) {
     findings.push({ sev: 'info', msg: 'no user-level configs', fix: 'opencues seed-configs' });
   }
-  console.log('');
 
   // ── CC install ────────────────────────────────────────────────────────
-  console.log('## Claude Code (cc)');
-  reportPinStatus('claude-code', ctx, HOME, findings);
-  // Compact-footprint layout: everything inside <CC_FORK>/{node_modules/@opencues, .opencues}.
-  // Auto-detect the fork dir; ~/claude-code-cues is the default install location.
   const ccFork = path.join(HOME, 'claude-code-cues');
   const ccSupport = path.join(ccFork, '.opencues');
   const ccCore = path.join(ccFork, 'node_modules/@opencues/core');
   const ccRuntime = path.join(ccFork, 'node_modules/@opencues/runtime');
   const ccBackup = path.join(ccSupport, 'patch-state/cli.js.backup');
-  ok(`fork dir     ${ccFork}/`, fs.existsSync(ccFork));
-  ok(`support dir  ${ccSupport}/`, fs.existsSync(ccSupport));
-  ok(`runtime`,    fs.existsSync(ccRuntime));
-  ok(`core`,       fs.existsSync(ccCore));
-  ok(`tweakcc backup`, fs.existsSync(ccBackup));
-  // Warn if a stale pre-compact-footprint install is still on disk.
+  {
+    const s = section('Claude Code (cc)', 'patched cli.js fork + installed runtime');
+    reportPinStatus(s, 'claude-code', ctx, HOME, findings);
+    s.ok(`fork dir     ${ccFork}/`, fs.existsSync(ccFork));
+    s.ok(`support dir  ${ccSupport}/`, fs.existsSync(ccSupport));
+    s.ok(`runtime`,    fs.existsSync(ccRuntime));
+    s.ok(`core`,       fs.existsSync(ccCore));
+    s.ok(`tweakcc backup`, fs.existsSync(ccBackup));
+    const cliCandidates = [
+      path.join(HOME, '.claude/node_modules/@anthropic-ai/claude-code/cli.js'),
+      path.join(ccFork, 'node_modules/@anthropic-ai/claude-code/cli.js'),
+    ];
+    for (const cli of cliCandidates) {
+      if (!fs.existsSync(cli)) continue;
+      const content = fs.readFileSync(cli, 'utf8');
+      const patched = content.includes('@opencues/runtime');
+      s.ok(`${cli} → patched`, patched);
+      if (!patched) {
+        findings.push({ sev: 'warn', msg: `cli.js at ${cli} is not patched`, fix: `opencues install claude-code --target ${cli}` });
+      }
+    }
+    s.render();
+  }
+  // Stale pre-compact-footprint install still on disk?
   const legacyCcRoot = path.join(HOME, '.claude/opencues');
   if (fs.existsSync(legacyCcRoot)) {
     findings.push({
@@ -71,129 +103,119 @@ module.exports = function doctor(argv, ctx) {
       fix: 'opencues install claude-code',
     });
   }
-  // Detect cli.js patches.
-  const cliCandidates = [
-    path.join(HOME, '.claude/node_modules/@anthropic-ai/claude-code/cli.js'),
-    path.join(ccFork, 'node_modules/@anthropic-ai/claude-code/cli.js'),
-  ];
-  for (const cli of cliCandidates) {
-    if (!fs.existsSync(cli)) continue;
-    const content = fs.readFileSync(cli, 'utf8');
-    const patched = content.includes('@opencues/runtime');
-    ok(`${cli} → patched`, patched);
-    if (!patched) {
-      findings.push({ sev: 'warn', msg: `cli.js at ${cli} is not patched`, fix: `opencues install claude-code --target ${cli}` });
-    }
-  }
   if (!fs.existsSync(ccSupport)) {
     findings.push({ sev: 'info', msg: 'CC not installed (compact footprint)', fix: 'opencues install claude-code' });
   }
-  console.log('');
 
   // ── OC install ────────────────────────────────────────────────────────
-  console.log('## OpenCode (oc)');
-  reportPinStatus('opencode', ctx, HOME, findings);
-  const ocFork = path.join(HOME, 'opencode-cues');
-  if (fs.existsSync(ocFork)) {
-    ok(`fork at ${ocFork}`, true);
-    ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime')));
-    ok(`fork/node_modules/@opencues/core`,    fs.existsSync(path.join(ocFork, 'node_modules/@opencues/core')));
-    const opencuesTs = path.join(ocFork, 'packages/opencode/src/cli/cmd/tui/opencues.ts');
-    ok(`bootstrap copy in fork`, fs.existsSync(opencuesTs));
-  } else {
-    bad(`fork at ${ocFork}`, false);
-    findings.push({ sev: 'info', msg: 'OC fork not present', fix: 'opencues install opencode' });
+  {
+    const s = section('OpenCode (oc)', 'patched OpenCode fork + installed runtime');
+    reportPinStatus(s, 'opencode', ctx, HOME, findings);
+    const ocFork = path.join(HOME, 'opencode-cues');
+    if (fs.existsSync(ocFork)) {
+      s.ok(`fork at ${ocFork}`, true);
+      s.ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(ocFork, 'node_modules/@opencues/runtime')));
+      s.ok(`fork/node_modules/@opencues/core`,    fs.existsSync(path.join(ocFork, 'node_modules/@opencues/core')));
+      const opencuesTs = path.join(ocFork, 'packages/opencode/src/cli/cmd/tui/opencues.ts');
+      s.ok(`bootstrap copy in fork`, fs.existsSync(opencuesTs));
+    } else {
+      s.bad(`fork at ${ocFork}`, false);
+      findings.push({ sev: 'info', msg: 'OC fork not present', fix: 'opencues install opencode' });
+    }
+    s.render();
   }
-  console.log('');
 
   // ── Chrome ────────────────────────────────────────────────────────────
-  console.log('## Chrome');
   const chromeDist = path.join(ctx.REPO_ROOT, 'integrations/chrome/dist');
   const chromeContentJs = path.join(chromeDist, 'content.js');
-  ok(`build output ${chromeDist}/`, fs.existsSync(chromeDist));
-  ok(`content.js`, fs.existsSync(chromeContentJs));
+  {
+    const s = section('Chrome', 'MV3 extension build output');
+    s.ok(`build output ${chromeDist}/`, fs.existsSync(chromeDist));
+    s.ok(`content.js`, fs.existsSync(chromeContentJs));
+    s.render();
+  }
   if (!fs.existsSync(chromeContentJs)) {
     findings.push({ sev: 'info', msg: 'Chrome extension not built', fix: 'opencues install chrome' });
   }
-  console.log('');
 
   // ── Gemini CLI install ────────────────────────────────────────────────
-  console.log('## Gemini CLI');
-  reportPinStatus('gemini-cli', ctx, HOME, findings);
-  const geminiFork = path.join(HOME, 'gemini-cli-cues');
-  if (fs.existsSync(geminiFork)) {
-    ok(`fork at ${geminiFork}`, true);
-    ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime')));
-    ok(`fork/node_modules/@opencues/core`,    fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/core')));
-    const geminiBootstrap = path.join(geminiFork, 'packages/cli/src/ui/opencues.ts');
-    ok(`bootstrap copy in fork`, fs.existsSync(geminiBootstrap));
-    const geminiBuilt = path.join(geminiFork, 'packages/cli/dist/index.js');
-    ok(`built CLI`, fs.existsSync(geminiBuilt));
-  } else {
-    bad(`fork at ${geminiFork}`, false);
-    findings.push({ sev: 'info', msg: 'Gemini CLI fork not present', fix: 'opencues install gemini-cli' });
+  {
+    const s = section('Gemini CLI', 'patched Gemini CLI fork + installed runtime');
+    reportPinStatus(s, 'gemini-cli', ctx, HOME, findings);
+    const geminiFork = path.join(HOME, 'gemini-cli-cues');
+    if (fs.existsSync(geminiFork)) {
+      s.ok(`fork at ${geminiFork}`, true);
+      s.ok(`fork/node_modules/@opencues/runtime`, fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime')));
+      s.ok(`fork/node_modules/@opencues/core`,    fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/core')));
+      const geminiBootstrap = path.join(geminiFork, 'packages/cli/src/ui/opencues.ts');
+      s.ok(`bootstrap copy in fork`, fs.existsSync(geminiBootstrap));
+      const geminiBuilt = path.join(geminiFork, 'packages/cli/dist/index.js');
+      s.ok(`built CLI`, fs.existsSync(geminiBuilt));
+    } else {
+      s.bad(`fork at ${geminiFork}`, false);
+      findings.push({ sev: 'info', msg: 'Gemini CLI fork not present', fix: 'opencues install gemini-cli' });
+    }
+    s.render();
   }
-  console.log('');
 
   // ── OS-level sandbox ──────────────────────────────────────────────────
-  // Scripted blanks (`blankScript:` with `sandbox: strict`) need an OS
-  // sandbox mechanism. Linux uses bubblewrap; macOS uses sandbox-exec
-  // (always present); Windows native has no support yet. Surface the
-  // status so authors who ship strict-sandbox blanks know whether
-  // they'll actually be confined on this machine.
-  console.log('## OS-level sandbox (for blankScript: sandbox: strict)');
-  if (process.platform === 'linux') {
-    const bwrap = findOnPath('bwrap');
-    ok(`bwrap (bubblewrap) on PATH`, !!bwrap);
-    if (!bwrap) {
-      findings.push({
-        sev: 'warn',
-        msg: 'bubblewrap (bwrap) not installed — scripted blanks with `sandbox: strict` will run unwrapped',
-        fix: 'apt install bubblewrap   (Debian/Ubuntu)\n         dnf install bubblewrap   (Fedora/RHEL)\n         pacman -S bubblewrap     (Arch)',
-      });
+  {
+    const s = section('OS-level sandbox', 'wraps `blankScript: sandbox: strict` runs in an OS confinement layer');
+    if (process.platform === 'linux') {
+      const bwrap = findOnPath('bwrap');
+      s.ok(`bwrap (bubblewrap) on PATH`, !!bwrap);
+      if (!bwrap) {
+        findings.push({
+          sev: 'warn',
+          msg: 'bubblewrap (bwrap) not installed — scripted blanks with `sandbox: strict` will run unwrapped',
+          fix: 'apt install bubblewrap   (Debian/Ubuntu)\n         dnf install bubblewrap   (Fedora/RHEL)\n         pacman -S bubblewrap     (Arch)',
+        });
+      }
+    } else if (process.platform === 'darwin') {
+      const sbx = fs.existsSync('/usr/bin/sandbox-exec');
+      s.ok(`sandbox-exec at /usr/bin/sandbox-exec`, sbx);
+      if (!sbx) {
+        findings.push({
+          sev: 'warn',
+          msg: 'sandbox-exec missing — strict-sandbox blanks will run unwrapped on this Mac',
+          fix: 'unusual — sandbox-exec ships with macOS. Check /usr/bin/.',
+        });
+      }
+    } else {
+      s.info(`platform ${process.platform}`, dim('no OS sandbox mechanism wired yet'));
     }
-  } else if (process.platform === 'darwin') {
-    const sbx = fs.existsSync('/usr/bin/sandbox-exec');
-    ok(`sandbox-exec at /usr/bin/sandbox-exec`, sbx);
-    if (!sbx) {
-      findings.push({
-        sev: 'warn',
-        msg: 'sandbox-exec missing — strict-sandbox blanks will run unwrapped on this Mac',
-        fix: 'unusual — sandbox-exec ships with macOS. Check /usr/bin/.',
-      });
-    }
-  } else {
-    console.log(`  ℹ  platform ${process.platform}: no OS sandbox mechanism wired yet`);
-    console.log(`     Strict-sandbox blanks will fall through unwrapped (path sandbox still applies).`);
+    s.render();
   }
-  console.log('');
 
   // ── Env / API keys ────────────────────────────────────────────────────
-  console.log('## Environment');
-  ok('GROQ_API_KEY (LLM)',         !!process.env.GROQ_API_KEY);
-  ok('FINNHUB_API_KEY (stocks)',   !!process.env.FINNHUB_API_KEY);
+  {
+    const s = section('Environment', 'API keys exported in this shell session');
+    s.ok('GROQ_API_KEY (LLM)',       !!process.env.GROQ_API_KEY);
+    s.ok('FINNHUB_API_KEY (stocks)', !!process.env.FINNHUB_API_KEY);
+    s.render();
+  }
   if (!process.env.GROQ_API_KEY) {
     findings.push({ sev: 'warn', msg: 'GROQ_API_KEY unset — LLM cues + blanks will be inert', fix: 'export GROQ_API_KEY=...' });
   }
-  console.log('');
 
   // ── Runtime IPC files ─────────────────────────────────────────────────
-  console.log('## Runtime IPC (created when CC/OC/Gemini actually runs)');
-  ok('/tmp/opencues.log',                       fs.existsSync('/tmp/opencues.log'));
-  const cursorState = '/tmp/opencues-cursor-state.json';
-  ok(cursorState,                                fs.existsSync(cursorState));
-  console.log('');
+  {
+    const s = section('Runtime IPC', 'files created on disk when a host actually runs');
+    s.ok('/tmp/opencues.log', fs.existsSync('/tmp/opencues.log'));
+    const cursorState = '/tmp/opencues-cursor-state.json';
+    s.ok(cursorState, fs.existsSync(cursorState));
+    s.render();
+  }
 
   // ── Summary ───────────────────────────────────────────────────────────
   if (findings.length === 0) {
-    console.log('OK — no issues found.');
+    console.log(`${tag('ok')} no issues found.`);
     return 0;
   }
-  console.log('## Suggested fixes');
+  console.log(bold('## Suggested fixes'));
   for (const f of findings) {
-    const icon = f.sev === 'warn' ? '⚠' : 'ℹ';
-    console.log(`  ${icon} ${f.msg}`);
-    console.log(`    → ${f.fix}`);
+    console.log(`  ${tag(f.sev === 'warn' ? 'warn' : 'info')} ${f.msg}`);
+    console.log(`     ${dim(G.arrow)} ${f.fix}`);
   }
   const errors = findings.filter(f => f.sev === 'warn').length;
   // Return the exit code instead of calling process.exit from a library
@@ -202,9 +224,6 @@ module.exports = function doctor(argv, ctx) {
   // killing the runtime mid-assertion.
   return errors > 0 ? 1 : 0;
 };
-
-function ok(label, present)  { console.log(`  ${present ? '✓' : '✗'}  ${label}`); }
-function bad(label, present) { ok(label, present); }
 
 // Resolve a binary on $PATH. Returns the absolute path or null.
 function findOnPath(bin) {
@@ -227,7 +246,7 @@ function findOnPath(bin) {
  * pin is incompatible (shouldn't happen because installer should refuse,
  * but check anyway).
  */
-function reportPinStatus(host, ctx, HOME, findings) {
+function reportPinStatus(s, host, ctx, HOME, findings) {
   const compat = compatLib.loadCompat(ctx.REPO_ROOT, host);
   if (!compat) return;
   let pin = null;
@@ -244,26 +263,26 @@ function reportPinStatus(host, ctx, HOME, findings) {
   const latestTested = tested.length ? tested[tested.length - 1] : null;
   if (cls.status === 'tested') {
     if (latestTested && pin !== latestTested) {
-      ok(`pin status   ${pin} (tested, but ${latestTested} is newer-tested)`, true);
+      s.ok(`pin status   ${pin} (tested, but ${latestTested} is newer-tested)`, true);
     } else {
-      ok(`pin status   ${pin} (tested ✓)`, true);
+      s.ok(`pin status   ${pin} (tested ✓)`, true);
     }
   } else if (cls.status === 'compat-untested') {
-    bad(`pin status   ${pin} (in compat-range ${compat['compat-range']}, NOT tested)`, false);
+    s.bad(`pin status   ${pin} (in compat-range ${compat['compat-range']}, NOT tested)`, false);
     findings.push({
       sev: 'info',
       msg: `${host}: pin ${pin} is in compat-range but not in maintainer's tested list`,
       fix: latestTested ? `opencues update ${host} --to ${latestTested}  (or test + add to compat.json)` : `add ${pin} to integrations/${host}/compat.json's "tested" list once verified`,
     });
   } else if (cls.status === 'incompatible') {
-    bad(`pin status   ${pin} (KNOWN INCOMPATIBLE: ${cls.reason})`, false);
+    s.bad(`pin status   ${pin} (KNOWN INCOMPATIBLE: ${cls.reason})`, false);
     findings.push({
       sev: 'warn',
       msg: `${host}: pin ${pin} is known-incompatible (${cls.reason})`,
       fix: latestTested ? `opencues update ${host} --to ${latestTested}` : `pick a tested version + opencues update ${host} --to <v>`,
     });
   } else if (cls.status === 'out-of-range') {
-    bad(`pin status   ${pin} (OUT OF compat-range ${compat['compat-range']})`, false);
+    s.bad(`pin status   ${pin} (OUT OF compat-range ${compat['compat-range']})`, false);
     findings.push({
       sev: 'warn',
       msg: `${host}: pin ${pin} is outside compat-range ${compat['compat-range']}`,
