@@ -302,6 +302,33 @@ module.exports = function seedConfigs(argv, ctx) {
     if (renamed > 0) log(`Self-heal: renamed ${renamed} legacy blank file → BLANK.md`);
   }
 
+  // Cleanup: drop legacy `<targetDir>/{cues,blanks,auditors}/<name>.md`
+  // files when the folder form (`<name>/{CUE,BLANK,AUDITOR}.md`) is
+  // also present. The user-blank migration (May 2026) moved every
+  // built-in blank from the flat-file shape to folder shape; additive
+  // seed copied the new folders in, but the old top-level .md files
+  // strand. The runtime ignores them (discover.ts skips non-directory
+  // entries) but they're dead weight, confuse readers, and look like
+  // active config.
+  for (const subdir of ['cues', 'blanks', 'auditors']) {
+    const parent = path.join(targetDir, subdir);
+    if (!fs.existsSync(parent)) continue;
+    const mdName = subdir === 'cues' ? 'CUE.md' : (subdir === 'blanks' ? 'BLANK.md' : 'AUDITOR.md');
+    const culled = [];
+    for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      const baseName = entry.name.slice(0, -3);  // drop ".md"
+      const folderForm = path.join(parent, baseName, mdName);
+      if (fs.existsSync(folderForm)) {
+        fs.unlinkSync(path.join(parent, entry.name));
+        culled.push(`${subdir}/${entry.name}`);
+      }
+    }
+    if (culled.length > 0) {
+      log(`Self-heal: removed ${culled.length} legacy flat-file ${subdir} entries (superseded by folder form): ${culled.join(', ')}`);
+    }
+  }
+
   // ── 4. COMPILE — colocated .cs → .exe (WSL only) ───────────────────
   const csc = '/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
   if (fs.existsSync(csc)) {
