@@ -2,8 +2,9 @@
 name: answer
 type: blank
 blankKeywords: what is the word for, how to say
-blankConsumeContext: true
-blankClearKeywords: true
+# wipe: replaces the full query phrase with the answer word.
+# "what is the word for surprise _" → "astonishment"
+blankReplace: wipe
 blankAutoPopulate: true
 blankFormat: string
 blankTip: Answer

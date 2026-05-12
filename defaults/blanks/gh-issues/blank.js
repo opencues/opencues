@@ -27,7 +27,7 @@ export default {
     const fiveMinutes = 5 * 60 * 1000;
 
     if (cached && ctx.now() - cacheTs < fiveMinutes) {
-      return cached + ' open (cached)';
+      return repo + ': ' + cached + ' open (cached)';
     }
 
     let json;
@@ -45,6 +45,9 @@ export default {
     const count = String(json.open_issues_count);
     await ctx.storage.set(cacheKey, count);
     await ctx.storage.set(tsKey, String(ctx.now()));
-    return count + ' open';
+    // Embed repo so `blankReplace: auto` produces self-contained output
+    // when the trigger phrase is wiped ("gh opencues/opencues _" →
+    // "opencues/opencues: 42 open").
+    return repo + ': ' + count + ' open';
   },
 };

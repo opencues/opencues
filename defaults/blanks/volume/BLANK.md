@@ -7,6 +7,9 @@ blankKeywords: volume
 blankStep: 6
 blankAutoPopulate: true
 blankSuffix: %
+# Raw numeric answer ("70%") is context-free; keep the "volume" prefix
+# in the buffer so readers know what 70% is measuring.
+blankReplace: keep
 blankScript: ./volume-blank.sh
 # Sandbox: declared OFF because volume-blank.sh needs:
 #   - /mnt/c/ access (WSL) to reach VolCtl.exe (Windows Core Audio)

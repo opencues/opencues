@@ -25,6 +25,9 @@ blankKeywordExpansions.shib: Shiba Inu
 impl: ./blank.js
 network: [api.coingecko.com]
 storage: crypto
+# Auto: bare "btc _" → wipe → "BTC: $78,542.00" (ticker embedded).
+# Copula phrasing → keep.
+blankReplace: auto
 ---
 
 Dispatched by the shared runtime `CryptoBlank`

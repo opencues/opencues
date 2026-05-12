@@ -49,12 +49,16 @@ export default {
       const data = await resp.json();
       const usd = data[id] && data[id].usd;
       if (usd == null) return id + ': no price';
-      const price = usd < 1
+      const priceStr = usd < 1
         ? '$' + usd.toFixed(4)
         : '$' + usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      await ctx.storage.set(cacheKey, price);
+      // Embed coin name so `blankReplace: auto` produces self-contained
+      // output when the trigger is wiped ("btc _" → "BTC: $78,542.00").
+      const ticker = keyword.toUpperCase();
+      const out = `${ticker}: ${priceStr}`;
+      await ctx.storage.set(cacheKey, out);
       await ctx.storage.set(tsKey, String(ctx.now()));
-      return price;
+      return out;
     } catch (e) {
       return id + ': error';
     }

@@ -62,8 +62,11 @@ export class DictionaryBlank implements Blank {
       const def = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition || '';
       // Truncate hard for status-line use (one line, no ellipsis sprawl).
       const value = def.length > 100 ? `${def.slice(0, 97).trim()}...` : def;
-      this._cache.set(word, { value, ts: Date.now() });
-      return value || `${word}: no definition`;
+      // Embed word so `blankReplace: auto` produces self-contained
+      // output when the trigger is wiped.
+      const out = value ? `${word}: ${value}` : `${word}: no definition`;
+      this._cache.set(word, { value: out, ts: Date.now() });
+      return out;
     } catch {
       return `${word}: error`;
     }

@@ -32,7 +32,7 @@ function makeFetch(plan: FetchPlan): typeof fetch {
 describe('WeatherBlank', () => {
   it('returns "<temp>°C <desc>" for the resolved location', async () => {
     const ctl = new WeatherBlank({ fetchFn: makeFetch({}) });
-    expect(await ctl.get('weather', ['weather', 'london'])).toBe('14°C Partly cloudy');
+    expect(await ctl.get('weather', ['weather', 'london'])).toBe('London: 14°C Partly cloudy');
   });
 
   it("strips trigger/time words and uses the last meaningful token as location", async () => {

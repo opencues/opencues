@@ -4,8 +4,11 @@ type: blank
 blankKeywords: improve prompt, enhance prompt, refine prompt
 blankAutoPopulate: true
 blankFormat: string
-blankClearKeywords: true
-blankConsumeAll: true
+# wipe-all: the user's prompt-with-trigger phrase is replaced entirely
+# by the improved prompt — there's nothing they want kept around the
+# trigger ("improve prompt"). Legacy `blankConsumeAll: true` had the
+# same effect.
+blankReplace: wipe-all
 blankTip: Prompt improver
 # model: openai/gpt-oss-120b   (Groq — fast, requires GROQ_API_KEY)
 # model: claude-sonnet-4-6     (Claude CLI — smarter, uses existing Claude Code auth)

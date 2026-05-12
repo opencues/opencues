@@ -226,6 +226,50 @@ export function determineReplaceMode(input: string): 'FILL' | 'WIPE' {
 }
 
 /**
+ * Resolve a keyword-bound blank's effective replacement mode from
+ * its frontmatter flags + the current buffer text.
+ *
+ * Precedence (highest first):
+ *   1. Explicit `blankReplace` field (`keep` | `wipe` | `wipe-all` | `auto`).
+ *   2. Legacy `blankConsumeAll: true` → `wipe-all`.
+ *   3. Legacy `blankConsumeContext: true` OR `blankClearKeywords: true` → `wipe`.
+ *   4. Default → `auto`.
+ *
+ * `auto` resolves via `determineReplaceMode(input)`:
+ *   - FILL → `keep` (preserve surrounding text, fill just `_`).
+ *   - WIPE → `wipe` (drop keyword + context + `_`, drop in answer).
+ *
+ * `input` is the buffer text leading up to (and including) the `_`
+ * being filled. For typical typing flow this is the whole buffer.
+ */
+export type EffectiveReplaceMode = 'keep' | 'wipe' | 'wipe-all';
+
+export interface BlankReplaceFlags {
+  readonly blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
+  readonly blankConsumeAll?: boolean;
+  readonly blankConsumeContext?: boolean;
+  readonly blankClearKeywords?: boolean;
+}
+
+export function resolveReplaceMode(
+  blank: BlankReplaceFlags,
+  input: string,
+): EffectiveReplaceMode {
+  // Explicit new-field wins outright.
+  if (blank.blankReplace === 'keep') return 'keep';
+  if (blank.blankReplace === 'wipe') return 'wipe';
+  if (blank.blankReplace === 'wipe-all') return 'wipe-all';
+  // Explicit 'auto' falls through to the heuristic.
+  // Legacy flags (when blankReplace is absent or 'auto') still map.
+  if (blank.blankReplace === undefined) {
+    if (blank.blankConsumeAll === true) return 'wipe-all';
+    if (blank.blankConsumeContext === true || blank.blankClearKeywords === true) return 'wipe';
+  }
+  // No explicit signal → fluid heuristic.
+  return determineReplaceMode(input) === 'WIPE' ? 'wipe' : 'keep';
+}
+
+/**
  * Pattern matching transform-blank task-trigger keywords (ARM / ADD /
  * STOP / SHOW) and their reversed-order typos (e.g. `task stop` instead
  * of `stop task`). Fluid-blank refuses any input matching this so a

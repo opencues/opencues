@@ -12,6 +12,9 @@ blankProximity: 3
 impl: ./blank.js
 network: [hacker-news.firebaseio.com]
 storage: hackernews
+# Auto: bare "hn _" → wipe → "<top story title>" (self-contained).
+# Copula phrasing → keep.
+blankReplace: auto
 ---
 
 Dispatched by the shared runtime `HackerNewsBlank`

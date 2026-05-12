@@ -91,7 +91,16 @@ export default {
 
       const temp = Math.round(current.temperature_2m) + '°C';
       const desc = WMO_CODES[current.weather_code] || '';
-      const display = (temp + ' ' + desc).trim();
+      // Embed location in the answer so `blankReplace: auto` produces
+      // self-contained output when the trigger phrase is wiped
+      // ("weather london _" → "London: 13°C Overcast"). Capitalise the
+      // first letter of each space-separated word so "new york" reads
+      // "New York" in the output.
+      const prettyLocation = location
+        .split(/\s+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+      const display = `${prettyLocation}: ${temp} ${desc}`.trim();
 
       await ctx.storage.set(cacheKey, display);
       await ctx.storage.set(tsKey, String(ctx.now()));

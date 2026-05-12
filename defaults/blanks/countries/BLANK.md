@@ -10,6 +10,9 @@ blankProximity: 3
 impl: ./blank.js
 network: [restcountries.com]
 storage: countries
+# Auto: bare "population of france _" → wipe → "France population: 66.4M"
+# (country + fact embedded). Copula phrasing → keep.
+blankReplace: auto
 ---
 
 Dispatched by the user-shipped JS module in `blank.js` alongside.

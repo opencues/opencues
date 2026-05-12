@@ -43,7 +43,10 @@ export default {
         && data[0].meanings[0].definitions && data[0].meanings[0].definitions[0]
         && data[0].meanings[0].definitions[0].definition) || '';
       const value = def.length > 100 ? def.slice(0, 97).trim() + '...' : def;
-      const out = value || `${word}: no definition`;
+      // Embed word in the answer so `blankReplace: auto` produces
+      // self-contained output when the trigger is wiped
+      // ("define ephemeral _" → "ephemeral: Something which...").
+      const out = value ? `${word}: ${value}` : `${word}: no definition`;
       await ctx.storage.set(cacheKey, out);
       await ctx.storage.set(tsKey, String(ctx.now()));
       return out;

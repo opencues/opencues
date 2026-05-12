@@ -11,6 +11,9 @@ blankReadOnly: true
 impl: ./blank.js
 network: [api.github.com]
 storage: gh-issues
+# Auto: bare "gh-issues opencues/opencues _" → wipe → "opencues/opencues: 42 open"
+# (repo embedded). Copula phrasing → keep.
+blankReplace: auto
 ---
 
 User-shipped JS blank demo. Type `gh-issues owner/repo _` and the

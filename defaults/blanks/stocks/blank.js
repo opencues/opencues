@@ -46,7 +46,10 @@ export default {
       const resp = await ctx.fetch(url);
       if (!resp.ok) return ticker + ': HTTP ' + resp.status;
       const data = await resp.json();
-      const price = '$' + (data.c != null ? data.c.toFixed(2) : '?');
+      // Embed ticker in the answer so `blankReplace: auto` produces
+      // self-contained output when the trigger is wiped
+      // ("nvda _" → "NVDA: $198.47").
+      const price = ticker + ': $' + (data.c != null ? data.c.toFixed(2) : '?');
       await ctx.storage.set(cacheKey, price);
       await ctx.storage.set(tsKey, String(ctx.now()));
       return price;

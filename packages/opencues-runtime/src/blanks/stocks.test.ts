@@ -27,7 +27,7 @@ describe('StocksBlank', () => {
 
   it('formats Finnhub current-price response as "$X.XX"', async () => {
     const ctl = new StocksBlank({ apiKey: 'k', fetchFn: fetchOk({ c: 201.66 }) });
-    expect(await ctl.get('aapl')).toBe('$201.66');
+    expect(await ctl.get('aapl')).toBe('AAPL: $201.66');
   });
 
   it('caches subsequent lookups for the same ticker within TTL', async () => {
@@ -56,8 +56,8 @@ describe('StocksBlank', () => {
       customTickers: { spy: 'SPY' },
       fetchFn: fetchOk({ c: 500.5 }),
     });
-    expect(await ctl.get('spy')).toBe('$500.50');
+    expect(await ctl.get('spy')).toBe('SPY: $500.50');
     // Defaults still present.
-    expect(await ctl.get('aapl')).toBe('$500.50');
+    expect(await ctl.get('aapl')).toBe('AAPL: $500.50');
   });
 });

@@ -1567,4 +1567,196 @@ ignore: []
       expect(adapter.getText()).toBe('hey is x down No — operational');
     });
   });
+
+  // ─── blankReplace: keep | wipe | wipe-all | auto ─────────────────────
+  //
+  // The unified replacement-mode field. When set, overrides the legacy
+  // flag path (blankConsumeAll / blankConsumeContext / blankClearKeywords).
+  // `auto` applies the fluid heuristic: copula/equation/question
+  // marker before `_` → keep, else → wipe.
+  describe('blankReplace mode (unified replacement field)', () => {
+    // Use a synthetic `demo` keyword so the test fixture doesn't
+    // collide conceptually with the real claude-status blank (whose
+    // keywords are "is claude down", "claude status", etc.).
+    function makeBlank(replaceMode: 'keep' | 'wipe' | 'wipe-all' | 'auto'): string {
+      return `---
+type: blank
+name: demo
+blankKeywords: demo
+blankProximity: 10
+blankScript: ./demo.sh
+blankReplace: ${replaceMode}
+---
+`;
+    }
+    const TIPS_MIN = `---
+ignore: []
+---
+
+## Tips
+`;
+    function setup(replaceMode: 'keep' | 'wipe' | 'wipe-all' | 'auto') {
+      const adapter = new MockAdapter({
+        cwd: '/proj',
+        files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': makeBlank(replaceMode) },
+      });
+      const loader = new ConfigLoader(adapter);
+      const bf = new BlankFill(adapter, loader);
+      const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+        result: Promise.resolve({ exitCode: 0, stdout: 'OK', stderr: '', timedOut: false }),
+        kill: () => {},
+      }));
+      return { adapter, loader, bf, spawnSpy };
+    }
+
+    it('keep: only `_` is replaced; keyword + context stays', async () => {
+      const { adapter, loader, bf } = setup('keep');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo of x _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('demo of x OK');
+    });
+
+    it('wipe: keyword + context + `_` all become the answer', async () => {
+      const { adapter, loader, bf } = setup('wipe');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo of x _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('OK');
+    });
+
+    it('wipe-all: entire buffer becomes the answer', async () => {
+      const { adapter, loader, bf } = setup('wipe-all');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('hello world demo _ more text after');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('OK');
+    });
+
+    it('auto: bare keyword phrase ("demo _") → wipe', async () => {
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('OK');
+    });
+
+    it('auto: copula before `_` ("demo is _") → keep', async () => {
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo is _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('demo is OK');
+    });
+
+    it('auto: every copula variant immediately before `_` → keep', async () => {
+      // Exercise all copulas the heuristic recognises (is/are/was/were/
+      // am/be/equals). One blank per case for isolation.
+      for (const cop of ['are', 'was', 'were', 'am', 'be', 'equals']) {
+        const { adapter, loader, bf } = setup('auto');
+        await loader.load();
+        bf.subscribe();
+        adapter.pushText(`demo ${cop} _`);
+        await new Promise(r => setTimeout(r, 0));
+        expect(adapter.getText()).toBe(`demo ${cop} OK`);
+      }
+    });
+
+    it('auto: text BEFORE the keyword stays put when bare → wipe drops keyword + context only', async () => {
+      // "hello world demo _" — preceding "hello world" is NOT part
+      // of the keyword/context window; only "demo _" is wiped.
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('hello world demo _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('hello world OK');
+    });
+
+    it('auto: text BEFORE the keyword stays put when copula → keep', async () => {
+      // "hello world demo is _" — heuristic detects "is _", FILL
+      // mode, only `_` is replaced.
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('hello world demo is _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('hello world demo is OK');
+    });
+
+    it('auto: mid-phrase "are" (not adjacent to `_`) → wipe', async () => {
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      // "are" appears but not adjacent to `_` → heuristic returns WIPE.
+      adapter.pushText('demo reports are urgent _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('OK');
+    });
+
+    it('auto: equation marker before `_` ("demo = _") → keep', async () => {
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo = _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('demo = OK');
+    });
+
+    it('auto: question marker before `_` ("demo was what ? _") → keep', async () => {
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      // Use a whitespace-separated `?` so splitWords keeps the keyword
+      // intact (a glued "demo?" wouldn't match the blank's keyword).
+      adapter.pushText('demo was what ? _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('demo was what ? OK');
+    });
+
+    it('auto: multi-word context ("demo of x _") → wipe', async () => {
+      const { adapter, loader, bf } = setup('auto');
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo of x _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('OK');
+    });
+
+    it('explicit `blankReplace` overrides legacy `blankClearKeywords`', async () => {
+      // Set both — blankReplace: keep should win even though
+      // legacy clearKeywords:true would normally drop the keyword.
+      const blankMd = `---
+type: blank
+name: demo
+blankKeywords: demo
+blankProximity: 10
+blankScript: ./demo.sh
+blankReplace: keep
+blankClearKeywords: true
+---
+`;
+      const adapter = new MockAdapter({
+        cwd: '/proj',
+        files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': blankMd },
+      });
+      const loader = new ConfigLoader(adapter);
+      const bf = new BlankFill(adapter, loader);
+      vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+        result: Promise.resolve({ exitCode: 0, stdout: 'OK', stderr: '', timedOut: false }),
+        kill: () => {},
+      }));
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo _');
+      await new Promise(r => setTimeout(r, 0));
+      // keep wins → keyword stays.
+      expect(adapter.getText()).toBe('demo OK');
+    });
+  });
 });

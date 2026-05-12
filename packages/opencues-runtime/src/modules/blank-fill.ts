@@ -9,6 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
+import { resolveReplaceMode, type EffectiveReplaceMode } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -356,8 +357,25 @@ export class BlankFill {
       primaryFill = primaryFill + blank.blankSuffix;
     }
 
+    // New unified `blankReplace` field, when set explicitly, supersedes
+    // the legacy flag path (consumeAll/consumeContext/clearKeywords).
+    // Resolves via the fluid heuristic when set to 'auto'. Existing
+    // blanks with no `blankReplace` continue to use the legacy flags
+    // unchanged — this is purely additive.
+    const blankFlags = blank as
+      | (Record<string, unknown> & {
+          blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
+          blankConsumeAll?: boolean;
+          blankConsumeContext?: boolean;
+          blankClearKeywords?: boolean;
+        })
+      | undefined;
+    const explicitMode: EffectiveReplaceMode | null = blankFlags?.blankReplace !== undefined
+      ? resolveReplaceMode(blankFlags, cleaned)
+      : null;
+
     // Consume-all short-circuits the splice/expand/clear pipeline.
-    if (blank?.blankConsumeAll === true) {
+    if (explicitMode === 'wipe-all' || (explicitMode === null && blank?.blankConsumeAll === true)) {
       this.adapter.log('info', `BlankFill: consume-all ${slot.blankName} → "${preview(primaryFill, 60)}" (${lines.length} alt(s))`);
       const newText = primaryFill;
       const newCursor = newText.length;
@@ -383,7 +401,9 @@ export class BlankFill {
       return;
     }
 
-    const { clearEnd, expansion } = computeFillRange(blank ?? {}, slot);
+    const { clearEnd, expansion } = explicitMode !== null
+      ? computeFillRangeForMode(blank ?? {}, slot, explicitMode)
+      : computeFillRange(blank ?? {}, slot);
     this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
     this.adapter.emitEvent?.('blank.substituted', {
       blankName: slot.blankName,
@@ -891,6 +911,37 @@ export function computeFillRange(
     ? undefined
     : blank.blankKeywordExpansions?.[slot.keyword];
   return { clearEnd, expansion };
+}
+
+/**
+ * Derive `(clearEnd, expansion)` from the resolved `EffectiveReplaceMode`:
+ *
+ *   - 'keep'     — no clearing. Expansion applies (display-name override).
+ *   - 'wipe'     — drop the full keyword + context range (= legacy
+ *                  blankConsumeContext). Expansion suppressed.
+ *   - 'wipe-all' — handled upstream as a short-circuit; not expected here.
+ *
+ * This is the new dispatcher built on top of `resolveReplaceMode`. The
+ * older `computeFillRange` stays for tests + any caller that wants the
+ * raw legacy-flag behaviour, but applyAsyncFill routes through this
+ * function so explicit `blankReplace:` + the fluid heuristic win.
+ */
+export function computeFillRangeForMode(
+  blank: {
+    blankKeywordExpansions?: Record<string, string>;
+  },
+  slot: { index: number; keyword: string; keywordEnd: number },
+  mode: EffectiveReplaceMode,
+): { clearEnd: number | undefined; expansion: string | undefined } {
+  if (mode === 'wipe') {
+    return { clearEnd: slot.index - 1, expansion: undefined };
+  }
+  // 'keep' (or 'wipe-all' which the caller should have short-circuited).
+  // Expansion (rddt → Reddit etc.) applies only in keep mode.
+  return {
+    clearEnd: undefined,
+    expansion: blank.blankKeywordExpansions?.[slot.keyword],
+  };
 }
 
 /**

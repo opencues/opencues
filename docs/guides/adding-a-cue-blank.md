@@ -262,6 +262,7 @@ The same logic applies more strictly to auditors, where the entire surface is us
 - [ ] For `impl: ./blank.js`: declared `network:` allow-list lists every hostname the JS fetches
 - [ ] For `impl: ./blank.js`: every `secrets:` entry has a matching `secret-hosts.<NAME>: [host, ...]` (unbound secrets are refused at load)
 - [ ] For `impl: ./blank.js`: `output: rich` is set ONLY if the blank legitimately needs HTML / control chars (otherwise default `safe` strips them)
+- [ ] `blankReplace:` set to `keep` / `wipe` / `wipe-all` / `auto` (see `docs/architecture/blank-replace-modes.md`). For `wipe` and `auto`, the blank's `get()` embeds identifying context in the answer (`"NVDA: $198.47"`, not bare `"$198.47"`)
 - [ ] Restart the host (config hot-reloads in ~2s; class registration requires restart)
 
 > **No need to run `setup.sh`** for BLANK.md / script edits — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patches/runtime sources.

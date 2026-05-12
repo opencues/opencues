@@ -65,7 +65,9 @@ export class StocksBlank implements Blank {
       const resp = await this._fetch(url);
       if (!resp.ok) return `${ticker}: HTTP ${resp.status}`;
       const data = (await resp.json()) as { c?: number };
-      const price = `$${data.c?.toFixed(2) ?? '?'}`;
+      // Embed ticker so `blankReplace: auto` produces self-contained
+      // output when the trigger is wiped ("nvda _" → "NVDA: $198.47").
+      const price = `${ticker}: $${data.c?.toFixed(2) ?? '?'}`;
       this._cache.set(ticker, { price, ts: Date.now() });
       return price;
     } catch {

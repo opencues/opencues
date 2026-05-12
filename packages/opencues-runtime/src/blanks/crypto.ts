@@ -69,11 +69,15 @@ export class CryptoBlank implements Blank {
       const usd = data[id]?.usd;
       if (usd == null) return `${id}: no price`;
       // Format: $68,432.50 (commas + 2 decimals when < $1, else integers)
-      const price = usd < 1
+      const priceStr = usd < 1
         ? `$${usd.toFixed(4)}`
         : `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      this._cache.set(id, { price, ts: Date.now() });
-      return price;
+      // Embed ticker so `blankReplace: auto` produces self-contained
+      // output ("btc _" → "BTC: $78,542.00").
+      const ticker = keyword.toUpperCase();
+      const out = `${ticker}: ${priceStr}`;
+      this._cache.set(id, { price: out, ts: Date.now() });
+      return out;
     } catch {
       return `${id}: error`;
     }

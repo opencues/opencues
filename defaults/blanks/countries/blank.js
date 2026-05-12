@@ -121,6 +121,13 @@ export default {
       await ctx.storage.set(tsKey, String(ctx.now()));
     }
 
-    return formatFact(fact, entry);
+    // Embed (country, fact) in the answer so `blankReplace: auto`
+    // produces self-contained output when the trigger is wiped
+    // ("population of france _" → "France population: 66.4M").
+    const prettyCountry = country
+      .split(/\s+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return `${prettyCountry} ${fact}: ${formatFact(fact, entry)}`;
   },
 };

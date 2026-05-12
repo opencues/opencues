@@ -28,28 +28,28 @@ describe('CountriesBlank', () => {
 
   it('extracts country from context + formats population in M', async () => {
     const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('population of', ['france'])).toBe('67.8M');
+    expect(await ctl.get('population of', ['france'])).toBe('France population: 67.8M');
   });
 
   it('extracts capital correctly', async () => {
     const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('capital of', ['france'])).toBe('Paris');
+    expect(await ctl.get('capital of', ['france'])).toBe('France capital: Paris');
   });
 
   it('formats currency as "<name> (<code>)"', async () => {
     const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('currency of', ['france'])).toBe('Euro (EUR)');
+    expect(await ctl.get('currency of', ['france'])).toBe('France currency: Euro (EUR)');
   });
 
   it('formats area with km² suffix', async () => {
     const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('area of', ['france'])).toBe('551,695 km²');
+    expect(await ctl.get('area of', ['france'])).toBe('France area: 551,695 km²');
   });
 
   it('returns first 3 languages joined', async () => {
     const india = [{ ...FRANCE[0], languages: { hin: 'Hindi', eng: 'English', tam: 'Tamil', tel: 'Telugu' } }];
     const ctl = new CountriesBlank({ fetchFn: fetchOk(india) });
-    expect(await ctl.get('languages of', ['india'])).toBe('Hindi, English, Tamil');
+    expect(await ctl.get('languages of', ['india'])).toBe('India languages: Hindi, English, Tamil');
   });
 
   it('caches on country (multiple facts → single fetch)', async () => {
@@ -83,6 +83,6 @@ describe('CountriesBlank', () => {
   it('formats population >= 1B as "X.YB"', async () => {
     const india = [{ ...FRANCE[0], population: 1428000000 }];
     const ctl = new CountriesBlank({ fetchFn: fetchOk(india) });
-    expect(await ctl.get('population of', ['india'])).toBe('1.4B');
+    expect(await ctl.get('population of', ['india'])).toBe('India population: 1.4B');
   });
 });

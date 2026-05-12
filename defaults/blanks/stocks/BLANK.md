@@ -19,6 +19,9 @@ network: [finnhub.io]
 storage: stocks
 secrets: [FINNHUB_API_KEY]
 secret-hosts.FINNHUB_API_KEY: [finnhub.io]
+# Auto: bare "nvda _" → wipe → "NVDA: $198.47" (ticker embedded).
+# "nvda is _" or copula phrasings → keep → "nvda is NVDA: $198.47".
+blankReplace: auto
 ---
 
 Dispatched by the shared runtime `StocksBlank`

@@ -7,7 +7,9 @@ blankFormat: string
 blankTip: Weather
 blankDismissible: true
 blankProximity: 3
-blankClearKeywords: true
+# Auto: bare "weather london _" → wipe → "London: 13°C Overcast"
+# (location embedded). Copula phrasings ("weather is _") → keep.
+blankReplace: auto
 impl: ./blank.js
 network: [geocoding-api.open-meteo.com, api.open-meteo.com]
 storage: weather

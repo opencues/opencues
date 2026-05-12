@@ -10,6 +10,9 @@ blankProximity: 3
 impl: ./blank.js
 network: [api.dictionaryapi.dev]
 storage: dictionary
+# Auto: bare "define ephemeral _" → wipe → "ephemeral: lasting for a very short time"
+# (word embedded). Copula phrasing → keep.
+blankReplace: auto
 ---
 
 Dispatched by the shared runtime `DictionaryBlank`

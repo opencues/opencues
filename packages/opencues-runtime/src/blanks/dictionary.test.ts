@@ -32,12 +32,16 @@ describe('DictionaryBlank', () => {
     expect(url).toContain('/ephemeral');
   });
 
-  it('returns the first definition truncated to 100 chars', async () => {
+  it('truncates the definition body to ~100 chars (word prefix excluded)', async () => {
     const long = 'a'.repeat(200);
     const ctl = new DictionaryBlank({ fetchFn: fetchOk(STUB_DEF(long)) });
     const result = await ctl.get('foo');
-    expect(result.length).toBeLessThanOrEqual(100);
-    expect(result.endsWith('...')).toBe(true);
+    // Output is "foo: <definition...>" — strip the "foo: " prefix
+    // before checking the truncation cap.
+    expect(result.startsWith('foo: ')).toBe(true);
+    const body = result.slice('foo: '.length);
+    expect(body.length).toBeLessThanOrEqual(100);
+    expect(body.endsWith('...')).toBe(true);
   });
 
   it('returns "<word>: not found" for HTTP 404', async () => {

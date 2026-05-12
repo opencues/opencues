@@ -90,7 +90,11 @@ export class CountriesBlank implements Blank {
       }
     }
 
-    return formatFact(fact, entry);
+    const prettyCountry = country
+      .split(/\s+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return `${prettyCountry} ${fact}: ${formatFact(fact, entry)}`;
   }
 
   private _cached(country: string): CountryApiEntry | undefined {

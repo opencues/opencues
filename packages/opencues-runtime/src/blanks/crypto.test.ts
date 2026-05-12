@@ -23,12 +23,12 @@ describe('CryptoBlank', () => {
 
   it('formats price >= $1 with commas + 2 decimals', async () => {
     const ctl = new CryptoBlank({ fetchFn: fetchOk({ bitcoin: { usd: 68432.5 } }) });
-    expect(await ctl.get('btc')).toBe('$68,432.50');
+    expect(await ctl.get('btc')).toBe('BTC: $68,432.50');
   });
 
   it('formats price < $1 with 4 decimals (no commas)', async () => {
     const ctl = new CryptoBlank({ fetchFn: fetchOk({ dogecoin: { usd: 0.1245 } }) });
-    expect(await ctl.get('doge')).toBe('$0.1245');
+    expect(await ctl.get('doge')).toBe('DOGE: $0.1245');
   });
 
   it('maps multiple keywords to the same coin id (btc/bitcoin → bitcoin)', async () => {
@@ -67,8 +67,8 @@ describe('CryptoBlank', () => {
       customCoins: { pepe: 'pepe' },
       fetchFn,
     });
-    expect(await ctl.get('pepe')).toBe('$0.0000');
-    expect(await ctl.get('btc')).toBe('$100.00');
+    expect(await ctl.get('pepe')).toBe('PEPE: $0.0000');
+    expect(await ctl.get('btc')).toBe('BTC: $100.00');
   });
 
   it('returns "<id>: no price" when API returns no price field', async () => {

@@ -221,6 +221,23 @@ and `ctx.log(...)`, but `ctx.fetch`, `ctx.llm`, `ctx.storage`,
 method is a synchronous TypeError inside the user's code — the
 blank fails visibly.
 
+## How the answer lands in the buffer
+
+The blank returns a string from `get()`. Where that string ends up
+depends on the **`blankReplace`** field:
+
+- `keep` — only `_` becomes the answer; keyword + surrounding text stays.
+- `wipe` — `keyword + context + _` all become the answer.
+- `wipe-all` — the entire buffer becomes the answer.
+- `auto` — a deterministic heuristic decides `keep` vs `wipe` from
+  the buffer's last token (copula → `keep`, bare phrase → `wipe`).
+
+Most new blanks should default to `auto`. When using `wipe` / `auto`,
+embed identifying context in the answer (e.g. `"London: 14°C Overcast"`,
+not just `"14°C Overcast"`) so the output is self-contained.
+
+Full reference: `docs/architecture/blank-replace-modes.md`.
+
 ## Output sanitization
 
 Every value a blank returns from `get`/`up`/`down` is sanitized at

@@ -84,7 +84,13 @@ export class WeatherBlank implements Blank {
 
       const temp = `${Math.round(current.temperature_2m)}°C`;
       const desc = WMO_CODES[current.weather_code] ?? '';
-      const display = `${temp} ${desc}`.trim();
+      // Embed the location so `blankReplace: auto` callers produce
+      // self-contained output when the trigger phrase is wiped.
+      const prettyLocation = location
+        .split(/\s+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+      const display = `${prettyLocation}: ${temp} ${desc}`.trim();
 
       this._cache.set(cacheKey, { result: display, ts: Date.now() });
       return display;

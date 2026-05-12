@@ -6,7 +6,7 @@ blankAutoPopulate: true
 blankFormat: string
 blankTip: Claude / Anthropic service status
 blankDismissible: true
-blankClearKeywords: false
+blankReplace: keep
 blankClearOnEdit: true
 impl: ./blank.js
 network: [status.claude.com]

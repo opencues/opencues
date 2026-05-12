@@ -7,6 +7,9 @@ blankKeywords: brightness
 blankStep: 10
 blankAutoPopulate: true
 blankSuffix: %
+# Raw "70%" is context-free; keep the "brightness" prefix so readers
+# can tell volume / battery / brightness apart.
+blankReplace: keep
 blankScript: ./brightness-blank.sh
 # Sandbox: declared OFF — script calls system brightness controls
 # (xrandr / Win32 / macOS via /mnt/c on WSL) that need filesystem

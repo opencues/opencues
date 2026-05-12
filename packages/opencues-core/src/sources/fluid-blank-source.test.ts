@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { FluidBlankSource, determineReplaceMode } from './fluid-blank-source';
+import { FluidBlankSource, determineReplaceMode, resolveReplaceMode } from './fluid-blank-source';
 import { HttpAdapter, CueContext } from '../types';
 import { getProvider } from '../llm-provider';
 
@@ -60,6 +60,88 @@ describe('determineReplaceMode', () => {
     assert.strictEqual(determineReplaceMode('unicode for em dash _'), 'WIPE');
     assert.strictEqual(determineReplaceMode('writing my paper capital of france _'), 'WIPE');
     assert.strictEqual(determineReplaceMode('founder of microsoft _'), 'WIPE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveReplaceMode — unified `blankReplace` resolver
+// ---------------------------------------------------------------------------
+
+describe('resolveReplaceMode', () => {
+  it('explicit keep wins regardless of input', () => {
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'keep' }, 'foo _'), 'keep');
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'keep' }, 'foo is _'), 'keep');
+  });
+
+  it('explicit wipe wins regardless of input', () => {
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'wipe' }, 'foo _'), 'wipe');
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'wipe' }, 'foo is _'), 'wipe');
+  });
+
+  it('explicit wipe-all wins regardless of input', () => {
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'wipe-all' }, 'foo _'), 'wipe-all');
+  });
+
+  it('auto: bare keyword phrase → wipe', () => {
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'foo _'), 'wipe');
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'capital of france _'), 'wipe');
+  });
+
+  it('auto: copula before _ → keep', () => {
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'capital of france is _'), 'keep');
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, '4 + 4 = _'), 'keep');
+  });
+
+  it('auto: every copula variant before _ → keep (is/are/was/were/am/be/equals)', () => {
+    for (const cop of ['is', 'are', 'was', 'were', 'am', 'be', 'equals']) {
+      assert.strictEqual(
+        resolveReplaceMode({ blankReplace: 'auto' }, `the answer ${cop} _`),
+        'keep',
+        `expected keep for "the answer ${cop} _"`,
+      );
+    }
+  });
+
+  it('auto: copula NOT immediately before _ → wipe', () => {
+    // "is" appears in the middle but not adjacent to `_`.
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'this is the answer _'), 'wipe');
+    // "are" appears mid-phrase only.
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'today the affirmations are top _'), 'wipe');
+  });
+
+  it('auto: question / colon markers → keep', () => {
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'what is x? _'), 'keep');
+    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'today: _'), 'keep');
+  });
+
+  it('legacy consumeAll true → wipe-all (when blankReplace unset)', () => {
+    assert.strictEqual(resolveReplaceMode({ blankConsumeAll: true }, 'anything _'), 'wipe-all');
+  });
+
+  it('legacy consumeContext true → wipe (when blankReplace unset)', () => {
+    assert.strictEqual(resolveReplaceMode({ blankConsumeContext: true }, 'anything _'), 'wipe');
+  });
+
+  it('legacy clearKeywords true → wipe (when blankReplace unset)', () => {
+    assert.strictEqual(resolveReplaceMode({ blankClearKeywords: true }, 'anything _'), 'wipe');
+  });
+
+  it('no flags + no blankReplace → falls through to heuristic', () => {
+    // The caller chooses whether to call resolveReplaceMode in the
+    // first place. When called here, returns the auto-resolved value.
+    assert.strictEqual(resolveReplaceMode({}, 'foo _'), 'wipe');
+    assert.strictEqual(resolveReplaceMode({}, 'foo is _'), 'keep');
+  });
+
+  it('explicit blankReplace overrides legacy flags', () => {
+    assert.strictEqual(
+      resolveReplaceMode({ blankReplace: 'keep', blankConsumeAll: true }, 'foo _'),
+      'keep',
+    );
+    assert.strictEqual(
+      resolveReplaceMode({ blankReplace: 'wipe-all', blankClearKeywords: true }, 'foo _'),
+      'wipe-all',
+    );
   });
 });
 

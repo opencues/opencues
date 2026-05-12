@@ -222,6 +222,23 @@ export interface BlankConfig {
   blankConsumeContext?: boolean;
   /** If true, ALL non-blank word indices are added to blankKeywordIndices (clears entire input on auto-populate) */
   blankConsumeAll?: boolean;
+  /**
+   * Unified replacement mode — when the blank fires, where does the
+   * answer text land?
+   *
+   *   'keep'     — only `_` becomes the answer. Keyword + context stays.
+   *   'wipe'     — keyword + context + `_` becomes the answer.
+   *   'wipe-all' — the entire input becomes the answer (consume-all).
+   *   'auto'     — apply the fluid heuristic: copula/equation/question
+   *                marker before `_` → keep ("X is _"); else → wipe.
+   *
+   * Default is 'auto'. Legacy fields (blankClearKeywords,
+   * blankConsumeContext, blankConsumeAll) still parse and map onto
+   * this field: clearKeywords|consumeContext → 'wipe', consumeAll →
+   * 'wipe-all'. If both new and legacy fields are set, the new field
+   * wins. See docs/architecture/blank-replace-modes.md.
+   */
+  blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
   /** LLM model identifier for script-based LLM calls (e.g. 'openai/gpt-oss-120b') */
   model?: string;
   /** API endpoint URL for script-based LLM calls (default: Groq) */
@@ -733,6 +750,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankClearOnEdit?: boolean;
   blankConsumeContext?: boolean;
   blankConsumeAll?: boolean;
+  blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
   apiUrl?: string;
   apiKeyEnv?: string;
   altCount?: number;
@@ -834,6 +852,16 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankClearOnEdit': fm.blankClearOnEdit = value === 'true'; break;
       case 'blankConsumeContext': fm.blankConsumeContext = value === 'true'; break;
       case 'blankConsumeAll': fm.blankConsumeAll = value === 'true'; break;
+      case 'blankReplace': case 'blank-replace': {
+        // Accept only the four canonical modes. Anything else falls
+        // through to undefined → resolveReplaceMode picks the legacy
+        // alias OR 'auto' default.
+        const v = value.toLowerCase().trim();
+        if (v === 'keep' || v === 'wipe' || v === 'wipe-all' || v === 'auto') {
+          fm.blankReplace = v;
+        }
+        break;
+      }
       case 'apiUrl': case 'apiurl': fm.apiUrl = value; break;
       case 'apiKeyEnv': case 'apikeyenv': fm.apiKeyEnv = value; break;
       case 'altCount': case 'altcount': fm.altCount = parseInt(value, 10) || 3; break;
@@ -958,6 +986,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.blankClearOnEdit !== undefined) blank.blankClearOnEdit = frontmatter.blankClearOnEdit;
       if (frontmatter.blankConsumeContext !== undefined) blank.blankConsumeContext = frontmatter.blankConsumeContext;
       if (frontmatter.blankConsumeAll !== undefined) blank.blankConsumeAll = frontmatter.blankConsumeAll;
+      if (frontmatter.blankReplace !== undefined) blank.blankReplace = frontmatter.blankReplace;
       if (frontmatter.model !== undefined) blank.model = frontmatter.model;
       if (frontmatter.apiUrl !== undefined) blank.apiUrl = frontmatter.apiUrl;
       if (frontmatter.apiKeyEnv !== undefined) blank.apiKeyEnv = frontmatter.apiKeyEnv;
