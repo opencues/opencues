@@ -21,7 +21,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
-const { tag, step, bold, dim, banner, tree, G } = require('../lib/style.cjs');
+const { tag, step, bold, dim, banner, tree, G, cliVersion } = require('../lib/style.cjs');
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code', claudecode: 'claude-code', claude: 'claude-code', cc: 'claude-code',
@@ -71,7 +71,7 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
     : installed;
 
   console.log(banner({
-    version: ctx.pkg.version,
+    version: cliVersion(ctx),
     tagline: host ? `update ${host} — rebuild + redeploy` : 'pull, build, redeploy',
   }));
   console.log('');
@@ -128,7 +128,7 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
 async function doCheck(host, ctx) {
   const HOME = os.homedir();
   const targetHosts = host ? [host] : ALL_HOSTS;
-  console.log(banner({ version: ctx.pkg.version, tagline: 'host version compatibility report' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'host version compatibility report' }));
   console.log('');
 
   for (const h of targetHosts) {

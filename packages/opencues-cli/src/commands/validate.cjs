@@ -8,11 +8,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
 module.exports = function validate(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
-  console.log(banner({ version: ctx.pkg.version, tagline: 'lint .cues/ configs' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'lint .cues/ configs' }));
   console.log('');
   const projectOnly = argv.includes('--project');
   const userOnly = argv.includes('--user');

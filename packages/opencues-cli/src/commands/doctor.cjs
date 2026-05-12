@@ -9,7 +9,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
-const { tag, bold, dim, banner, fileLink, tree, existsMark, G } = require('../lib/style.cjs');
+const { tag, bold, dim, banner, fileLink, tree, existsMark, G, cliVersion } = require('../lib/style.cjs');
 
 // Build a section accumulator: ok/bad push rows; render emits as a tree.
 function section(title, description) {
@@ -29,7 +29,7 @@ module.exports = function doctor(argv, ctx) {
   const HOME = os.homedir();
   const findings = [];
 
-  console.log(banner({ version: ctx.pkg.version, tagline: 'cross-host install diagnostics' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'cross-host install diagnostics' }));
   console.log('');
 
   // ── Workspace ─────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
 const PROVIDERS = {
   groq:    'GROQ_API_KEY',
@@ -16,7 +16,7 @@ const PROVIDERS = {
 
 module.exports = function setKey(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
-  console.log(banner({ version: ctx.pkg.version, tagline: 'store an API key' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'store an API key' }));
   console.log('');
 
   const positional = argv.filter(a => !a.startsWith('-'));

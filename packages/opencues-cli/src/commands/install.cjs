@@ -10,7 +10,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const { tag, step, bold, dim, banner } = require('../lib/style.cjs');
+const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
 
 // Map every recognised host name to its folder under integrations/.
 // Descriptive forms are the canonical folder names now; short codes
@@ -77,7 +77,7 @@ module.exports = function install(argv, ctx) {
     seedConfigs(['--silent'], ctx);
   }
 
-  console.log(banner({ version: ctx.pkg.version }));
+  console.log(banner({ version: cliVersion(ctx) }));
   console.log('');
 
   let exitCode = 0;

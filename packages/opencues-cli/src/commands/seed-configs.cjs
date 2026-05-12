@@ -38,7 +38,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { tag, bold, dim, fileLink, tree, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, fileLink, tree, banner, cliVersion } = require('../lib/style.cjs');
 
 // User-level seed targets. `.opencuesrc` lives at $HOME (outside the
 // `.cues/` library). Library contents: words/ + blanks/ + scripts/.
@@ -74,8 +74,7 @@ module.exports = function seedConfigs(argv, ctx) {
     process.exit(1);
   }
 
-  const version = (ctx && ctx.pkg && ctx.pkg.version) || readOwnPkgVersion();
-  log(banner({ version, tagline: `seeding ${projectScope ? 'project' : 'user'}-level configs` }));
+  log(banner({ version: cliVersion(ctx), tagline: `seeding ${projectScope ? 'project' : 'user'}-level configs` }));
   log('');
   log(`  ${dim('source:')} ${fileLink(sourceDir, sourceDir)}`);
   log(`  ${dim('target:')} ${fileLink(targetDir, targetDir)}`);
@@ -466,13 +465,6 @@ function mergeOpencuesMd(defaultsContent, userContent) {
 
   const body = u.body !== '' ? u.body : d.body;
   return `---\n${mergedLines.join('\n')}\n---\n${body}`;
-}
-
-function readOwnPkgVersion() {
-  try {
-    const p = path.resolve(__dirname, '..', '..', 'package.json');
-    return JSON.parse(fs.readFileSync(p, 'utf8')).version;
-  } catch { return undefined; }
 }
 
 function printHelp() {

@@ -6,7 +6,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const { tag, step, bold, dim, banner } = require('../lib/style.cjs');
+const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code',
@@ -54,7 +54,7 @@ module.exports = function uninstall(argv, ctx) {
   // host), not the extension itself. Dispatch the matching action.
   const action = target === 'chrome-host' ? 'uninstall-host' : 'uninstall';
 
-  console.log(banner({ version: ctx.pkg.version }));
+  console.log(banner({ version: cliVersion(ctx) }));
   console.log('');
 
   let exitCode = 0;

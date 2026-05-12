@@ -5,14 +5,14 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { banner, tree, dim } = require('../lib/style.cjs');
+const { banner, tree, dim, cliVersion } = require('../lib/style.cjs');
 
 const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
 
 module.exports = function version(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
-  console.log(banner({ version: ctx.pkg.version }));
+  console.log(banner({ version: cliVersion(ctx) }));
   console.log('');
 
   const integRows = [];

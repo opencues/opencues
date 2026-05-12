@@ -21,7 +21,7 @@ const path = require('node:path');
 const os = require('node:os');
 const https = require('node:https');
 const { spawnSync } = require('node:child_process');
-const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
 module.exports = function importCmd(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -63,7 +63,7 @@ module.exports = function importCmd(argv, ctx) {
   const packName = nameOverride || resolved.defaultName;
   const target = path.join(installRoot, packName);
 
-  console.log(banner({ version: ctx.pkg.version, tagline: 'install a config pack' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'install a config pack' }));
   console.log('');
   console.log(`${bold('Source:')}  ${source}`);
   console.log(`         ${dim('→')} ${dim(resolved.url || resolved.localPath)}`);

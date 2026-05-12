@@ -7,11 +7,11 @@ const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { tag, bold, dim, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
 
 module.exports = async function checkKeys(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
-  console.log(banner({ version: ctx.pkg.version, tagline: 'verify configured API keys' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'verify configured API keys' }));
   console.log('');
 
   // Load ~/.cues/.env into a local map (process.env wins if both set).

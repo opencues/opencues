@@ -29,7 +29,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { tag, bold, dim, fileLink, tree, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, fileLink, tree, banner, cliVersion } = require('../lib/style.cjs');
 
 const HOSTS = ['chrome'];   // sync is chrome-only today
 
@@ -179,7 +179,7 @@ function syncChrome({ flags, includes, pack, source, target }, ctx) {
   }
   const distConfigs = repoConfigs;
 
-  console.log(banner({ version: ctx.pkg.version, tagline: 'push configs to chrome' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'push configs to chrome' }));
   console.log('');
   console.log(`${bold('Syncing to')} ${fileLink(distConfigs, distConfigs)}/`);
   console.log(tree({

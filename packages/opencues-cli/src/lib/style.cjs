@@ -147,8 +147,24 @@ function existsMark(exists) {
   return '';
 }
 
+// Resolve the CLI package version from a ctx object, falling back to the
+// opencues-cli/package.json file when ctx.pkg is absent. Commands invoked
+// via the top-level cli.cjs always receive `ctx.pkg`, but integration
+// installers and tests sometimes pass `{ REPO_ROOT }` only — without this
+// fallback those callers crash on `banner({ version: ctx.pkg.version })`.
+function cliVersion(ctx) {
+  if (ctx && ctx.pkg && ctx.pkg.version) return ctx.pkg.version;
+  try {
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const p = path.resolve(__dirname, '..', '..', 'package.json');
+    return JSON.parse(fs.readFileSync(p, 'utf8')).version;
+  } catch { return undefined; }
+}
+
 module.exports = {
   enabled, utf8, bold, dim, cyan, green, yellow, red, brightWhite, accent,
   wordmark, tag, step, rule, gutter, link, fileLink, tree, banner, existsMark,
+  cliVersion,
   G,
 };

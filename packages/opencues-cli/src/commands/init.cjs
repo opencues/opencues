@@ -5,7 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { tag, bold, dim, fileLink, banner } = require('../lib/style.cjs');
+const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
 module.exports = function init(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -26,7 +26,7 @@ module.exports = function init(argv, ctx) {
   // first settings write.
   const files = ['CUES.md', 'BLANKS.md', 'AUDITORS.md', 'README.md'];
 
-  console.log(banner({ version: ctx.pkg.version, tagline: 'scaffold a project .cues/' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'scaffold a project .cues/' }));
   console.log('');
   console.log(`${bold('Initialising .cues/')} in ${fileLink(cwd, cwd)}`);
   console.log('');
