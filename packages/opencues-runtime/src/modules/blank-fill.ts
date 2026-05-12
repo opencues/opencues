@@ -780,7 +780,35 @@ export class BlankFill {
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
 
-    const { clearEnd, expansion } = computeFillRange(blank, slot);
+    // Mirror applyAsyncFill: when `blankReplace` is set explicitly,
+    // route through the new mode dispatcher. Otherwise fall back to
+    // the legacy flag-driven computeFillRange so unmigrated blanks
+    // (stepValues + no flags) keep their current behaviour.
+    const blankFlags = blank as {
+      blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
+      blankConsumeAll?: boolean;
+      blankConsumeContext?: boolean;
+      blankClearKeywords?: boolean;
+    };
+    const explicitMode: EffectiveReplaceMode | null = blankFlags.blankReplace !== undefined
+      ? resolveReplaceMode(blankFlags, insertedText)
+      : null;
+
+    // wipe-all on a stepValues blank is unusual but coherent — entire
+    // buffer becomes the fill. Short-circuit before the splice logic.
+    if (explicitMode === 'wipe-all' || (explicitMode === null && blank.blankConsumeAll === true)) {
+      const newText = fillValue;
+      const newCursor = newText.length;
+      this.adapter.log('info', `BlankFill: wipe-all (sync stepValues) ${slot.blankName} → "${preview(fillValue, 60)}"`);
+      this.adapter.setText(newText);
+      this.adapter.setCursorOffset(newCursor);
+      this.adapter.forceRender();
+      return true;
+    }
+
+    const { clearEnd, expansion } = explicitMode !== null
+      ? computeFillRangeForMode(blank, slot, explicitMode)
+      : computeFillRange(blank, slot);
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
       ? buildClearKeywordText(insertedText, slot, fillValue, expansion, clearEnd)
