@@ -146,6 +146,60 @@ module.exports = function doctor(argv, ctx) {
     findings.push({ sev: 'info', msg: 'Chrome extension not built', fix: 'opencues install chrome' });
   }
 
+  // ── Chrome native-messaging host ──────────────────────────────────────
+  // The host enables (a) live ~/.cues/ sync to chrome.storage and
+  // (b) subprocess execution for scripted blanks like `volume _`. Without
+  // it the extension still works from bake-time bundles, but any edit to
+  // ~/.cues/ won't reach open tabs and scripted blanks exit 127.
+  {
+    const s = section('Chrome native-messaging host', 'live ~/.cues/ sync + scripted-blank execution');
+    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
+      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
+      catch { return false; }
+    })();
+    let manifestPaths = [];
+    let shimPath = null;
+    if (wslEnv) {
+      // WSL → Chrome-on-Windows. Manifest + .bat shim land under
+      // %LOCALAPPDATA%\opencues\. Walk /mnt/c/Users/*/ since the
+      // Windows username may differ from $USER.
+      try {
+        const winUsers = fs.readdirSync('/mnt/c/Users', { withFileTypes: true })
+          .filter(e => e.isDirectory() && !e.name.startsWith('.') && !['Public', 'Default', 'Default User', 'All Users'].includes(e.name));
+        for (const u of winUsers) {
+          const dir = `/mnt/c/Users/${u.name}/AppData/Local/opencues`;
+          const m = `${dir}/com.opencues.sync.json`;
+          const b = `${dir}/sync-host.bat`;
+          if (fs.existsSync(m)) { manifestPaths.push(m); if (fs.existsSync(b) && !shimPath) shimPath = b; }
+        }
+      } catch { /* /mnt/c not accessible — host can't be installed here anyway */ }
+    } else if (process.platform === 'darwin') {
+      const home = HOME;
+      manifestPaths = [
+        `${home}/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.opencues.sync.json`,
+        `${home}/Library/Application Support/Chromium/NativeMessagingHosts/com.opencues.sync.json`,
+      ].filter(p => fs.existsSync(p));
+    } else if (process.platform === 'linux') {
+      const home = HOME;
+      manifestPaths = [
+        `${home}/.config/google-chrome/NativeMessagingHosts/com.opencues.sync.json`,
+        `${home}/.config/chromium/NativeMessagingHosts/com.opencues.sync.json`,
+      ].filter(p => fs.existsSync(p));
+    }
+    if (manifestPaths.length === 0) {
+      s.info('native-messaging manifest', dim('(not installed)'));
+      findings.push({
+        sev: 'info',
+        msg: 'Chrome native-messaging host not installed — live ~/.cues/ sync + scripted blanks (volume/brightness) won\'t work in chrome tabs',
+        fix: 'opencues install chrome-host --extension-id <id>  (id from chrome://extensions, Developer mode)',
+      });
+    } else {
+      for (const p of manifestPaths) s.ok(p, true);
+      if (wslEnv) s.ok('sync-host.bat shim', !!shimPath);
+    }
+    s.render();
+  }
+
   // ── Gemini CLI install ────────────────────────────────────────────────
   {
     const s = section('Gemini CLI', 'patched Gemini CLI fork + installed runtime');
