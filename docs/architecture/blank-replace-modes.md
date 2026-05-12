@@ -52,8 +52,6 @@ Example resolutions:
 | `what is the weather in london _` | bare phrase (`london _`) | `wipe` |
 | `the weather is _` | copula `is _` | `keep` |
 | `nvda _` | bare phrase | `wipe` |
-| `nvda price _` | bare phrase | `wipe` |
-| `nvda price was _` | copula `was _` | `keep` |
 | `today's affirmation is _` | copula `is _` | `keep` |
 | `my affirmations are _` | copula `are _` | `keep` |
 | `4 + 4 = _` | equation `= _` | `keep` |
