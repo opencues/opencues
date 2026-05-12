@@ -168,10 +168,23 @@ const blanksRegistry = new Map<string, Blank>([
 // a fresh vm.Context with only the capabilities declared in
 // frontmatter — see packages/opencues-runtime/src/user-blanks/.
 function _discoverUserBlankConfigs(): BlankConfigLike[] {
+  // Dedupe by resolved absolute path — when cwd equals $HOME (a
+  // common launch case for non-fork-cwd hosts like gemini-cli),
+  // `<cwd>/.cues` and `~/.cues` resolve to the same directory.
+  // Without dedup, the loader walks the dir twice and every
+  // user-blank registration fires a "name collision" warning.
+  const rawRoots: string[] = [];
+  if (process.env['OPENCUES_HOME']) rawRoots.push(process.env['OPENCUES_HOME']);
+  rawRoots.push(path.join(process.cwd(), '.cues'));
+  rawRoots.push(path.join(process.env['HOME'] ?? require('node:os').homedir(), '.cues'));
+  const seen = new Set<string>();
   const roots: string[] = [];
-  if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME']);
-  roots.push(path.join(process.cwd(), '.cues'));
-  roots.push(path.join(process.env['HOME'] ?? require('node:os').homedir(), '.cues'));
+  for (const r of rawRoots) {
+    const abs = path.resolve(r);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    roots.push(abs);
+  }
   const out: BlankConfigLike[] = [];
   for (const root of roots) {
     const blanksDir = path.join(root, 'blanks');
@@ -194,7 +207,15 @@ const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
   storageRoot: process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? require('node:os').homedir(), '.cues'),
   secrets: process.env as Readonly<Record<string, string>>,
   llm: createNativeLlmAdapter(process.env as Record<string, string>),
-  log: (lvl, msg) => console.log(`[opencues] user-blank ${lvl}: ${msg}`),
+  // Silence 'info' (one line per registered blank — 10+ on a typical
+  // install, clutters the launch screen). Surface 'warn' / 'error'
+  // loudly because those signal load failures the user should see.
+  // Debug-level chatter is gated behind DEBUG_OPENCUES=1 to match the
+  // adapter's own debug flag.
+  log: (lvl, msg) => {
+    if (lvl === 'warn' || lvl === 'error') console.warn(`[opencues] user-blank ${lvl}: ${msg}`);
+    else if (process.env['DEBUG_OPENCUES']) console.log(`[opencues] user-blank ${lvl}: ${msg}`);
+  },
 });
 for (const [n, b] of _userBlanks) blanksRegistry.set(n, b);
 const blankInvoke = createBlankInvoke(blanksRegistry);

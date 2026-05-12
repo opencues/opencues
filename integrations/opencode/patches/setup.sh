@@ -127,19 +127,22 @@ install_into_fork() {
   cp "$OPENCUES_ROOT/packages/opencues-runtime/package.json" "$rt_dest/"
 
   # @opencues/core
-  # Clean any prior install — without this, a stale dist/ subfolder from
-  # an earlier setup.sh layout silently shadows the new top-level files
-  # via package.json main: "dist/index.js". Symptom: code edits don't
-  # take effect even though the redeploy "succeeded".
+  # Clean any prior install — without this, a stale layout from an
+  # earlier setup.sh run can silently shadow the new install. We
+  # preserve the `dist/` subdirectory shape so that `package.json
+  # main: "dist/index.js"` resolves cleanly. The old setup.sh
+  # flattened `dist/*` into the package root which left main
+  # pointing at a non-existent path — Node fell back to index.js at
+  # root with a noisy DEP0128 deprecation warning on every launch.
   local core_dest="$OPENCODE_DIR/node_modules/@opencues/core"
   rm -rf "$core_dest"
   mkdir -p "$core_dest"
-  cp -r "$OPENCUES_ROOT/packages/opencues-core/dist/"* "$core_dest/"
+  cp -r "$OPENCUES_ROOT/packages/opencues-core/dist" "$core_dest/"
   cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$core_dest/"
   # node-http-adapter.js isn't compiled by tsc but Resolver requires it
   # at runtime; copy explicitly so LLM resolution doesn't silently die.
   if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
-    cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/"
+    cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/dist/"
   fi
 }
 

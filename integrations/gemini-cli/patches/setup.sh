@@ -96,25 +96,47 @@ build_core() {
 }
 
 install_into_fork() {
+  # Runtime deps that npm install in the fork won't transitively
+  # resolve (gemini doesn't list @opencues/runtime in its
+  # package.json — we hot-copy the dist instead). Without these, the
+  # user-blank loader's esm-rewrite.js (top-level `require('acorn-walk')`)
+  # throws at module-load time and the host fails to boot whenever
+  # any user-blank is registered. acorn alone is already a transitive
+  # gemini dep, but acorn-walk isn't — install both to be safe across
+  # version drift. `--no-save` keeps the fork's package.json untouched.
+  #
+  # Runs FIRST because npm install can prune "extraneous" packages
+  # not in package.json — that includes our hot-copied
+  # node_modules/@opencues/{core,runtime} from a prior run. By
+  # ordering this BEFORE the cp steps below, the runtime/core copies
+  # are guaranteed to survive.
+  ( cd "$GEMINI_DIR" && npm install --no-save acorn acorn-walk >/dev/null 2>&1 )
+
   # @opencues/runtime
   local rt_dest="$GEMINI_DIR/node_modules/@opencues/runtime"
+  rm -rf "$rt_dest"
   mkdir -p "$rt_dest"
   cp -r "$OPENCUES_ROOT/packages/opencues-runtime/dist" "$rt_dest/"
   cp "$OPENCUES_ROOT/packages/opencues-runtime/package.json" "$rt_dest/"
 
   # @opencues/core
-  # Clean any prior install — without this, a stale dist/ subfolder from
-  # an earlier setup.sh layout silently shadows the new top-level files
-  # via package.json main: "dist/index.js".
+  # Clean any prior install — without this, a stale layout from an
+  # earlier setup.sh run can silently shadow the new install. We
+  # preserve the `dist/` subdirectory shape (symmetric with runtime
+  # above) so that `package.json main: "dist/index.js"` resolves
+  # cleanly. The old setup.sh flattened `dist/*` into the package
+  # root which left main pointing at a non-existent path — Node fell
+  # back to index.js at root with a noisy DEP0128 deprecation warning
+  # on every host launch.
   local core_dest="$GEMINI_DIR/node_modules/@opencues/core"
   rm -rf "$core_dest"
   mkdir -p "$core_dest"
-  cp -r "$OPENCUES_ROOT/packages/opencues-core/dist/"* "$core_dest/"
+  cp -r "$OPENCUES_ROOT/packages/opencues-core/dist" "$core_dest/"
   cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$core_dest/"
   # node-http-adapter.js isn't compiled by tsc but Resolver requires it
   # at runtime; copy explicitly so LLM resolution doesn't silently die.
   if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
-    cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/"
+    cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/dist/"
   fi
 }
 
