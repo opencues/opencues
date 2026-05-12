@@ -80,12 +80,21 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
   const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint } = tools;
   // Helper: record a word-cue source so we can later check that every
   // entry has match:/keywords: (else it gets dropped at runtime).
-  const noteWordCue = (name, src, file) => {
+  //
+  // Static-alts cues (LocalCueSource) classify per-word against their
+  // JSON `words:` map and don't need match/keywords — they're inert
+  // for words not in the map. Detect them by the JSON code-block body
+  // and skip the routing check entirely. Without this, the shipped
+  // `tips` cue gets a false-positive "would be dropped at runtime"
+  // warning.
+  const STATIC_ALTS_BODY_RE = /```json\b/;
+  const noteWordCue = (name, src, file, content) => {
     if (!wordCueSources) return;
     const parser = src?.parser ?? 'alternatives';
     const scope = src?.scope ?? 'words';
     if (parser !== 'alternatives' || scope !== 'words') return;
     if (src?.enabled === false) return;
+    if (content && STATIC_ALTS_BODY_RE.test(content)) return;
     wordCueSources.push({
       file, name,
       hasMatch: !!src?.match,
@@ -178,9 +187,9 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
         const content = fs.readFileSync(cueMd, 'utf8');
         const folderParsed = parseSingleCueMd(content, path.dirname(cueMd));
         seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
-        checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings);
+        checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings, content);
         checkEndpoint(cueMd, entry.name, folderParsed.frontmatter, validateEndpoint, errors, warnings);
-        if (kind === 'cue') noteWordCue(entry.name, folderParsed.frontmatter, cueMd);
+        if (kind === 'cue') noteWordCue(entry.name, folderParsed.frontmatter, cueMd, content);
         // Sanity: if the per-folder file declares a script, check it exists + executable.
         const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
         if (scriptMatch) {
@@ -357,7 +366,7 @@ function checkEndpoint(file, name, src, validateEndpoint, errors, warnings) {
 //   2. on-host: [chrome] but the script: extension implies subprocess
 //      (auto-detect would say "not chrome" — author probably didn't realise)
 //   3. inferHostCompat() resolves to ZERO hosts (effectively disabled)
-function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, errors, warnings) {
+function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, errors, warnings, fileContent) {
   if (!src) return;
   // 1. Typos in explicit lists.
   const onHost = src.onHost ?? src['on-host'];
@@ -369,14 +378,25 @@ function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, err
     warnings.push(`${file}: ${name}: unknown host in not-on-host: "${bad}"`);
   }
   // 2. Author override likely wrong (script: ./X.sh but on-host: [chrome]).
+  // Suppressed when the blank declares `impl:` (the user-blank JS loader
+  // path — chrome runs it via the Worker loader) OR when the file body
+  // / frontmatter comments explain the override (mentions "chrome routes"
+  // / "@opencues/runtime" / "runtime class"). Both signal a deliberate
+  // override; the warning was meant to catch accidental on-host: chrome
+  // additions, not informed ones.
   const compat = inferHostCompat(src);
   const explicitChrome = compat.source === 'on-host' && compat.hosts.includes('chrome');
   const sub = ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', '.rb', '.pl'];
   const hasSubprocess = (s) => s && sub.some(e => s.toLowerCase().endsWith(e));
-  if (explicitChrome && (hasSubprocess(src.script) || hasSubprocess(src.blankScript))) {
+  const hasImpl = !!src.impl;
+  const hasOverrideExplanation = fileContent && /(chrome\s+routes|@opencues\/runtime|runtime\s+class|OpenCuesSettingsBlank|impl:\s)/i.test(fileContent);
+  if (explicitChrome && !hasImpl && !hasOverrideExplanation
+      && (hasSubprocess(src.script) || hasSubprocess(src.blankScript))) {
     warnings.push(
       `${file}: ${name}: on-host includes "chrome" but script extension implies a subprocess ` +
-      `(${src.script || src.blankScript}). Chrome can't spawn processes — was this intended?`
+      `(${src.script || src.blankScript}). Chrome can't spawn processes — was this intended? ` +
+      `(if chrome routes through a runtime class or impl:, add a frontmatter comment ` +
+      `saying so to silence this warning)`
     );
   }
   // 3. Empty allow-list = entry never runs anywhere.

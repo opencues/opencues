@@ -103,8 +103,16 @@ module.exports = function doctor(argv, ctx) {
       fix: 'opencues install claude-code',
     });
   }
-  if (!fs.existsSync(ccSupport)) {
-    findings.push({ sev: 'info', msg: 'CC not installed (compact footprint)', fix: 'opencues install claude-code' });
+  // Only surface "CC not installed" when the fork is actually absent.
+  // If the fork is present (cli.js patched + runtime/core installed) but
+  // .opencues/ support dir is missing, it usually means the patch was
+  // applied without the latest compact-footprint setup.sh — runtime
+  // works fine, but tweakcc state + statusline + scripts live in the
+  // wrong place. Surface that distinctly, not as "not installed".
+  if (!fs.existsSync(ccFork)) {
+    findings.push({ sev: 'info', msg: 'CC not installed', fix: 'opencues install claude-code' });
+  } else if (!fs.existsSync(ccSupport)) {
+    findings.push({ sev: 'info', msg: 'CC fork present but missing the .opencues/ support dir (statusline script, tweakcc state). Runtime works; re-install to land the support files.', fix: 'opencues install claude-code' });
   }
 
   // ── OC install ────────────────────────────────────────────────────────
@@ -190,12 +198,28 @@ module.exports = function doctor(argv, ctx) {
   // ── Env / API keys ────────────────────────────────────────────────────
   {
     const s = section('Environment', 'API keys exported in this shell session');
-    s.ok('GROQ_API_KEY (LLM)',       !!process.env.GROQ_API_KEY);
-    s.ok('FINNHUB_API_KEY (stocks)', !!process.env.FINNHUB_API_KEY);
+    // Every supported provider — matches the set check-keys probes + the
+    // chrome host's host-pushed API key list. Each is independent:
+    // unsetting one disables only that provider, not the runtime overall.
+    s.ok('GROQ_API_KEY (LLM — default)',     !!process.env.GROQ_API_KEY);
+    s.ok('CEREBRAS_API_KEY (LLM)',           !!process.env.CEREBRAS_API_KEY);
+    s.ok('OPENAI_API_KEY (LLM)',             !!process.env.OPENAI_API_KEY);
+    s.ok('ANTHROPIC_API_KEY (LLM)',          !!process.env.ANTHROPIC_API_KEY);
+    s.ok('OPENROUTER_API_KEY (LLM)',         !!process.env.OPENROUTER_API_KEY);
+    s.ok('GEMINI_API_KEY (LLM)',             !!process.env.GEMINI_API_KEY);
+    s.ok('FINNHUB_API_KEY (stocks blank)',   !!process.env.FINNHUB_API_KEY);
     s.render();
   }
-  if (!process.env.GROQ_API_KEY) {
-    findings.push({ sev: 'warn', msg: 'GROQ_API_KEY unset — LLM cues + blanks will be inert', fix: 'export GROQ_API_KEY=...' });
+  // GROQ is the shipped default — flag if it's missing AND no other LLM
+  // provider key is set (any one of them lets the runtime cover LLM-driven
+  // surfaces via per-cue / global tier overrides).
+  const hasAnyLlmKey = !!(process.env.GROQ_API_KEY || process.env.CEREBRAS_API_KEY
+    || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY
+    || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+  if (!hasAnyLlmKey) {
+    findings.push({ sev: 'warn', msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert', fix: 'export GROQ_API_KEY=... (or another supported provider)' });
+  } else if (!process.env.GROQ_API_KEY) {
+    findings.push({ sev: 'info', msg: 'GROQ_API_KEY unset — non-default provider configured; ensure your CUES.md / OPENCUES.md sets `llm-provider:` to a host you have a key for', fix: 'opencues check-keys' });
   }
 
   // ── Runtime IPC files ─────────────────────────────────────────────────
