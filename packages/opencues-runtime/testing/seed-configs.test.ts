@@ -115,19 +115,20 @@ it('HEAL phase: renames legacy blanks/<name>/BLANK.md to BLANK.md', () => {
     expect(fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8')).toBe(userBlankMd);
   });
 
-  it('HEAL phase: rename is idempotent — BLANK.md already present, cue.md absent', () => {
+  it('HEAL phase: rename is idempotent — second run produces the same merged BLANK.md', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
-    const userBlankMd = '---\nname: brightness\ntype: blank\n---\n';
-    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), userBlankMd);
+    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), '---\nname: brightness\ntype: blank\n---\n');
 
     seedConfigs(['--silent'], { REPO_ROOT });
+    const afterFirst = fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8');
     seedConfigs(['--silent'], { REPO_ROOT });
+    const afterSecond = fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8');
 
     expect(fs.existsSync(path.join(ctlDir, 'cue.md'))).toBe(false);
-    expect(fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8')).toBe(userBlankMd);
+    expect(afterSecond).toBe(afterFirst);
   });
 
   it('SYNC phase: refreshes a stale library script with repo content', () => {
@@ -148,17 +149,34 @@ it('HEAL phase: renames legacy blanks/<name>/BLANK.md to BLANK.md', () => {
     expect(after).not.toContain('# stale');
   });
 
-  it('SYNC phase: never overwrites a .md file (user content boundary)', () => {
+  it('SHIPPED-MD REFRESH: refreshes contract fields (on-host, sandbox) but preserves user fields (tip, custom keys)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userDir = path.join(tmpHome, '.cues');
     const ctlDir = path.join(userDir, 'blanks/brightness');
     fs.mkdirSync(ctlDir, { recursive: true });
-    const customBLANKMd = '---\nname: brightness\ntype: blank\ntip: my custom tip\n---\n';
-    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), customBLANKMd);
+    // Simulate a user with stale shipped BLANK.md — the on-host list has
+    // a retired host (`codex`) and no sandbox declaration, plus a custom
+    // tip the user actually wants to keep. This is the exact drift class
+    // that hit `opencues/BLANK.md` after the May 2026 security push.
+    const staleBLANKMd = '---\nname: brightness\ntype: blank\ntip: my custom tip\non-host: codex, claude-code\n---\n\n# my body\n';
+    fs.writeFileSync(path.join(ctlDir, 'BLANK.md'), staleBLANKMd);
 
     seedConfigs(['--silent'], { REPO_ROOT });
 
-    expect(fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8')).toBe(customBLANKMd);
+    const after = fs.readFileSync(path.join(ctlDir, 'BLANK.md'), 'utf8');
+    // Contract drift dropped: stale `on-host: codex, claude-code` is
+    // gone because defaults' brightness/BLANK.md omits `on-host:`
+    // entirely (auto-detected). User's stale value would otherwise
+    // strand forever.
+    expect(after).not.toContain('codex');
+    // Contract field added: defaults shipped `sandbox: off` in the
+    // security push; user file lacked it. Refresh lands it.
+    expect(after).toMatch(/^sandbox: off$/m);
+    // User-customised non-contract field preserved.
+    expect(after).toContain('tip: my custom tip');
+    // User body preserved.
+    expect(after).toContain('# my body');
+    // Library script still synced as before.
     expect(fs.existsSync(path.join(ctlDir, 'brightness-blank.sh'))).toBe(true);
   });
 

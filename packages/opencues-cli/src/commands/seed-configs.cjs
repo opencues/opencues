@@ -231,7 +231,43 @@ module.exports = function seedConfigs(argv, ctx) {
   const syncRows = syncedFiles.length
     ? syncedFiles.map(f => [fileLink(f, f), '', tag('ok')])
     : [[dim('(no changes — library files current)'), '']];
-  log(tree({ title: 'Library sync', description: '.sh / .cs / .ps1 helpers refreshed from defaults — never touches .md', rows: syncRows }));
+  log(tree({ title: 'Library sync', description: '.sh / .cs / .ps1 helpers refreshed from defaults', rows: syncRows }));
+
+  // ── 2.5 SHIPPED-MD REFRESH — pull latest frontmatter for shipped
+  //       cues/blanks/auditors, layer user values on top. Without this,
+  //       changes to defaults' contract fields (on-host, sandbox,
+  //       blankReplace) silently strand on existing installs — exactly
+  //       what bit users when the security push retired `codex` and
+  //       added `gemini-cli` to on-host: lists across shipped blanks.
+  //       User-customisable fields (priority, keywords, blankStep,
+  //       prompt body) are preserved; contract fields refresh from
+  //       defaults. Mirrors mergeOpencuesMd but for the shipped
+  //       library files. ─────────────────────────────────────────────
+  log('');
+  const mdRefreshed = [];
+  for (const subdir of ['cues', 'blanks', 'auditors']) {
+    const srcParent = path.join(sourceDir, subdir);
+    const dstParent = path.join(targetDir, subdir);
+    if (!fs.existsSync(srcParent) || !fs.existsSync(dstParent)) continue;
+    const mdName = subdir === 'cues' ? 'CUE.md' : (subdir === 'blanks' ? 'BLANK.md' : 'AUDITOR.md');
+    for (const ctlDir of listChildDirs(srcParent)) {
+      const name = path.basename(ctlDir);
+      const srcMd = path.join(ctlDir, mdName);
+      const dstMd = path.join(dstParent, name, mdName);
+      if (!fs.existsSync(srcMd) || !fs.existsSync(dstMd)) continue;
+      const srcContent = fs.readFileSync(srcMd, 'utf8');
+      const dstContent = fs.readFileSync(dstMd, 'utf8');
+      const merged = mergeShippedMd(srcContent, dstContent);
+      if (merged !== dstContent) {
+        fs.writeFileSync(dstMd, merged);
+        mdRefreshed.push(`${subdir}/${name}/${mdName}`);
+      }
+    }
+  }
+  const refreshRows = mdRefreshed.length
+    ? mdRefreshed.map(f => [f, dim('contract fields refreshed; user fields preserved'), tag('ok')])
+    : [[dim('(no changes — shipped frontmatter current)'), '']];
+  log(tree({ title: 'Shipped .md refresh', description: 'pull latest contract fields from defaults; preserve user customisations', rows: refreshRows }));
 
   // ── 3. HEAL — self-heal empty OPENCUES.md + rename legacy cue.md → blank.md ──
   log('');
@@ -465,6 +501,91 @@ function mergeOpencuesMd(defaultsContent, userContent) {
 
   const body = u.body !== '' ? u.body : d.body;
   return `---\n${mergedLines.join('\n')}\n---\n${body}`;
+}
+
+// Merge a shipped BLANK.md / CUE.md / AUDITOR.md. Defaults supplies the
+// skeleton (comments + field order + contract-field values); user file
+// supplies values for non-contract fields and the body.
+//
+// Contract fields ALWAYS refresh from defaults — these encode runtime/
+// security policy (on-host, sandbox, blankReplace, site scoping) and
+// must stay in sync as the shipping schema evolves. Everything else
+// (priority, keywords, match, blankStep, blankSuffix, blankFormat,
+// classify, description, etc.) is treated as user-customisable.
+//
+// Body handling: keep user's body if non-empty AND differs from
+// defaults — that's where prompt customisations live for word-cue
+// CUE.md files. Empty/missing user body → use defaults'.
+const SHIPPED_MD_CONTRACT_FIELDS = new Set([
+  'on-host', 'not-on-host', 'on-site', 'not-on-site',
+  'sandbox', 'blankReplace', 'type', 'name', 'spec',
+]);
+function mergeShippedMd(defaultsContent, userContent) {
+  const split = (text) => {
+    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+    if (!m) return { fm: '', body: text };
+    return { fm: m[1], body: m[2] };
+  };
+  const d = split(defaultsContent);
+  const u = split(userContent);
+  const KEY_RE = /^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.*)$/;
+
+  // Pull user's frontmatter keys (top-level only, skip comments/blanks).
+  const userValues = new Map();
+  for (const line of u.fm.split('\n')) {
+    if (!line || line.startsWith('#') || line.startsWith(' ') || line.startsWith('\t')) continue;
+    const m = line.match(KEY_RE);
+    if (m) userValues.set(m[1], m[2]);
+  }
+
+  // Walk defaults frontmatter, substituting user values for non-contract keys.
+  const matched = new Set();
+  const out = [];
+  for (const line of d.fm.split('\n')) {
+    const m = !line.startsWith(' ') && !line.startsWith('\t') ? line.match(KEY_RE) : null;
+    if (!m) { out.push(line); continue; }
+    const key = m[1];
+    if (SHIPPED_MD_CONTRACT_FIELDS.has(key)) {
+      out.push(line);  // contract field — always from defaults
+    } else if (userValues.has(key)) {
+      out.push(`${key}: ${userValues.get(key)}`);
+      matched.add(key);
+    } else {
+      out.push(line);
+    }
+  }
+  // Append user-only keys (present in user, not in defaults). Contract
+  // fields are EXCLUDED: when defaults omits a contract field (e.g.
+  // `on-host` for an auto-detected non-chrome blank), the runtime's
+  // auto-detection is the source of truth. A user file carrying a stale
+  // contract value (typical drift: `on-host: codex` after codex was
+  // retired) gets dropped here, restoring defaults' policy.
+  const extras = [];
+  for (const [k, v] of userValues) {
+    if (matched.has(k) || defaultsHasTopLevelKey(d.fm, k)) continue;
+    if (SHIPPED_MD_CONTRACT_FIELDS.has(k)) continue;
+    extras.push(`${k}: ${v}`);
+  }
+  if (extras.length > 0) {
+    out.push('# ── User-only fields (preserved by shipped-md refresh) ──');
+    out.push(...extras);
+  }
+
+  const mergedFm = out.join('\n');
+  // Body: prefer user's when it carries content (LLM prompt for CUE.md, etc.).
+  const userBodyTrim = u.body.trim();
+  const defaultsBodyTrim = d.body.trim();
+  const body = userBodyTrim !== '' ? u.body : d.body;
+  // Idempotency: if user already had every default key + same contract values
+  // + same body shape, we want to return the user file verbatim. Hard to do
+  // perfectly without re-parsing, but the line-walk above is deterministic so
+  // subsequent runs produce stable output.
+  return `---\n${mergedFm}\n---\n${body}`;
+}
+function defaultsHasTopLevelKey(fm, key) {
+  // Keys are [a-zA-Z][a-zA-Z0-9_-]* — no regex metachars need escaping.
+  const re = new RegExp(`^${key}:`, 'm');
+  return re.test(fm);
 }
 
 function printHelp() {
