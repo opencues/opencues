@@ -100,7 +100,8 @@ Misparses or non-positive values fall back to 1000ms via
 A skip-on-stable guard short-circuits when `(snapshot, task, cursor)`
 matches the last applied state — no LLM call when there's nothing to
 do. A 64-entry LRU cache covers backspace+retype as well: identical
-input returns cached output, no network round-trip.
+input returns cached output, no network round-trip. Full mechanism +
+extension points: [`docs/architecture/agent-rewrite-cache.md`](./agent-rewrite-cache.md).
 
 If the LLM call takes longer than the next tick's debounce, the next
 tick sees `_running === true` and bails. Only one LLM call is in

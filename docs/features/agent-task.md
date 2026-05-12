@@ -278,6 +278,7 @@ Quick locator:
   - `robustness.ts` — 16 stubbed-transport scenarios for failure-mode
     coverage (empty body, malformed JSON, rate limits, throws, etc.)
 - **Implementation reference**: `docs/architecture/agent-task.md` — pipeline shape, prompt design rationale, response format choice, and the empirical lessons that justify each.
+- **Cache reference**: `docs/architecture/agent-rewrite-cache.md` — two-tier skip-on-stable + LRU cache, key composition, determinism assumption, and extension points (size, persistence, approximate keys, negative caching, telemetry).
 
 ---
 
