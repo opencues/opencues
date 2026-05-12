@@ -38,6 +38,7 @@ module.exports = function help(argv, ctx) {
   console.log('  init                    Scaffold <cwd>/.cues/ with templates');
   console.log('  new <kind> <name>       Scaffold a single cue / blank');
   console.log('  validate                Lint configs across search paths');
+  console.log('  review <pack> [--llm]   Security review a third-party pack before installing');
   console.log('  import <source>         Download a community config pack (gist/github/url/local)');
   console.log('');
   console.log('Run / inspect:');

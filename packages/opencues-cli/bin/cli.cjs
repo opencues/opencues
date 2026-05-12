@@ -26,6 +26,7 @@ const COMMANDS = {
   run:            () => require('../src/commands/run.cjs'),
   sync:           () => require('../src/commands/sync.cjs'),
   validate:       () => require('../src/commands/validate.cjs'),
+  review:         () => require('../src/commands/review.cjs'),
   import:         () => require('../src/commands/import.cjs'),
   doctor:         () => require('../src/commands/doctor.cjs'),
   edit:           () => require('../src/commands/edit.cjs'),
