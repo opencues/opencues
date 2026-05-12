@@ -6,7 +6,11 @@ blankAutoPopulate: true
 blankFormat: string
 blankTip: Claude / Anthropic service status
 blankDismissible: true
-blankReplace: keep
+# Auto: bare "is claude down _" / "claude status _" → wipe → just the
+# Yes/No + reason ("No — all systems operational"). Copula phrasings
+# ("the claude api is _") → keep → preserves the lead-in.
+# The Yes/No answer reads naturally on its own — no get() reformat needed.
+blankReplace: auto
 blankClearOnEdit: true
 impl: ./blank.js
 network: [status.claude.com]
