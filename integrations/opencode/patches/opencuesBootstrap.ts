@@ -39,7 +39,7 @@ import { spawn as nodeSpawn } from "node:child_process"
 // existing root in the list is where the audit log lands.
 function getCuesRoots(): string[] {
   const roots: string[] = []
-  if (process.env.OPENCUES_HOME) roots.push(process.env.OPENCUES_HOME)
+  if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME'])
   roots.push(path.join(process.cwd(), ".cues"))
   roots.push(path.join(os.homedir(), ".cues"))
   return roots
@@ -108,10 +108,10 @@ const sourceReclassifier = createSourceReclassifier()
 // projects cannot override.
 function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
-  if (process.env.OPENCUES_HOME) {
-    return path.join(process.env.OPENCUES_HOME, "OPENCUES.md")
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], "OPENCUES.md")
   }
-  return path.join(process.env.HOME ?? "~", ".cues", "OPENCUES.md")
+  return path.join(process.env['HOME'] ?? "~", ".cues", "OPENCUES.md")
 }
 
 // TTS script lives at user-level (~/.cues/scripts/speak.sh), seeded
@@ -119,20 +119,20 @@ function findOpenCuesMdPath(): string {
 // invoke). One canonical path, no walking, no integration coupling —
 // works whether CC is installed or not.
 function resolveTtsScript(): string {
-  const root = process.env.OPENCUES_HOME ?? path.join(process.env.HOME ?? "~", ".cues")
+  const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? "~", ".cues")
   return path.join(root, "scripts/speak.sh")
 }
 
 const blanksRegistry = new Map<string, Blank>([
   ['hackernews', new HackerNewsBlank()],
-  ['stocks', new StocksBlank({ apiKey: process.env.FINNHUB_API_KEY })],
+  ['stocks', new StocksBlank({ apiKey: process.env['FINNHUB_API_KEY'] })],
   ['weather', new WeatherBlank()],
   ['claude-status', new ClaudeStatusBlank()],
   ['dictionary', new DictionaryBlank()],
   ['crypto', new CryptoBlank()],
   ['countries', new CountriesBlank()],
-  ['answer', new AnswerBlank({ apiKey: process.env.GROQ_API_KEY })],
-  ['prompt', new PromptImproverBlank({ apiKey: process.env.GROQ_API_KEY })],
+  ['answer', new AnswerBlank({ apiKey: process.env['GROQ_API_KEY'] })],
+  ['prompt', new PromptImproverBlank({ apiKey: process.env['GROQ_API_KEY'] })],
   ['opencues', new OpenCuesSettingsBlank({
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), "utf8") } catch { return null } },
     writeFile: async (content) => { await fs.writeFile(findOpenCuesMdPath(), content, "utf8") },
@@ -144,9 +144,9 @@ const blanksRegistry = new Map<string, Blank>([
 // vm.Context with only the capabilities its frontmatter declared.
 function _discoverUserBlankConfigs(): BlankConfigLike[] {
   const roots: string[] = []
-  if (process.env.OPENCUES_HOME) roots.push(process.env.OPENCUES_HOME)
+  if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME'])
   roots.push(path.join(process.cwd(), ".cues"))
-  roots.push(path.join(process.env.HOME ?? os.homedir(), ".cues"))
+  roots.push(path.join(process.env['HOME'] ?? os.homedir(), ".cues"))
   const out: BlankConfigLike[] = []
   for (const root of roots) {
     const blanksDir = path.join(root, "blanks")
@@ -166,7 +166,7 @@ function _discoverUserBlankConfigs(): BlankConfigLike[] {
   return out
 }
 const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
-  storageRoot: process.env.OPENCUES_HOME ?? path.join(process.env.HOME ?? os.homedir(), ".cues"),
+  storageRoot: process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? os.homedir(), ".cues"),
   // Native host: any env var the blank declares in its `secrets:`
   // frontmatter is read from process.env at registration time.
   // The loader filters to ONLY declared keys before they reach the
@@ -205,7 +205,7 @@ export function startOpenCues(opts: {
   // can reconstruct the full sequence when something goes wrong.
   // Disable by setting OPENCUES_TRACE_CURSOR=0; default on for now.
   const TRACE_FILE = "/tmp/opencues-cursor-trace.log"
-  const traceEnabled = process.env.OPENCUES_TRACE_CURSOR !== "0"
+  const traceEnabled = process.env['OPENCUES_TRACE_CURSOR'] !== "0"
   const trace = (event: string, info: Record<string, unknown> = {}): void => {
     if (!traceEnabled) return
     try {
@@ -442,17 +442,17 @@ export function startOpenCues(opts: {
     // location the CC integration (or a past install of it) deployed.
     ttsScriptPath: resolveTtsScript(),
     ttsRate: 2,
-    llmApiKey: process.env.GROQ_API_KEY,
-    llmEndpoint: process.env.OPENCUES_LLM_ENDPOINT,
-    llmDefaultModel: process.env.OPENCUES_LLM_MODEL,
+    llmApiKey: process.env['GROQ_API_KEY'],
+    llmEndpoint: process.env['OPENCUES_LLM_ENDPOINT'],
+    llmDefaultModel: process.env['OPENCUES_LLM_MODEL'],
     // Multi-provider key bag — runtime picks per CUES.md `llm-provider:`.
     llmApiKeys: {
-      GROQ_API_KEY: process.env.GROQ_API_KEY,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-      CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
+      GROQ_API_KEY: process.env['GROQ_API_KEY'],
+      OPENROUTER_API_KEY: process.env['OPENROUTER_API_KEY'],
+      GEMINI_API_KEY: process.env['GEMINI_API_KEY'],
+      OPENAI_API_KEY: process.env['OPENAI_API_KEY'],
+      ANTHROPIC_API_KEY: process.env['ANTHROPIC_API_KEY'],
+      CEREBRAS_API_KEY: process.env['CEREBRAS_API_KEY'],
     },
   })
 
@@ -486,7 +486,7 @@ export function dispatchOpenCuesKey(evt: any): boolean {
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
   const actualSource = sourceReclassifier.reclassify(text, source)
   try {
-    if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
+    if (process.env['OPENCUES_TRACE_CURSOR'] !== "0") {
       const ts = new Date().toISOString().slice(11, 23)
       require("fs").appendFile(
         "/tmp/opencues-cursor-trace.log",
@@ -503,7 +503,7 @@ export function notifyOpenCuesTextChange(text: string, cursor: number, source: "
  *  fires these. Drives cursor-navigate auto-highlight. */
 export function notifyOpenCuesCursorChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
   try {
-    if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
+    if (process.env['OPENCUES_TRACE_CURSOR'] !== "0") {
       const ts = new Date().toISOString().slice(11, 23)
       require("fs").appendFile(
         "/tmp/opencues-cursor-trace.log",
