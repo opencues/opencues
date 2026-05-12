@@ -106,7 +106,18 @@ export function appendAuditLog(
   durationMs?: number,
 ): void {
   if (roots.length === 0) return;
-  const root = roots[0];
+  // Pick the FIRST EXISTING root. Opencode + gemini-cli's getCuesRoots()
+  // pushes `<cwd>/.cues` ahead of `~/.cues/`, but their cwd is the fork
+  // directory (e.g. /home/wilfred/opencode-cues/) which has no `.cues/`.
+  // Naively writing to `roots[0]/.opencues-log` then ENOENTs silently
+  // (try/catch on appendFileSync swallows), so the audit log never lands
+  // — leaving security-push SHOULD 4 unmet on those hosts. Walking until
+  // an existing root keeps the spec's "lands in <first-root>" semantics
+  // while skipping placeholder roots that don't exist on disk.
+  let root: string | undefined;
+  for (const r of roots) {
+    try { if (fs.statSync(r).isDirectory()) { root = r; break; } } catch { /* skip */ }
+  }
   if (!root) return;
   const ts = new Date().toISOString();
   const argsStr = (spec.args ?? []).join(',');
