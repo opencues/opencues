@@ -294,6 +294,42 @@ direct (e.g. `editorView.dispatch(state.tr.addMark(...))`) per-site.
 Out of scope for the generic chrome adapter; add a site-specific
 carve-out in `applyMarkdownStyling` if/when needed.
 
+## Emoji-as-img handling (May 2026)
+
+Many sites — **Gmail**, Slack, Twitter/X, Reddit, most chat apps —
+convert pasted unicode emojis into inline `<img>` elements during
+paste handling. Gmail's shape:
+
+```html
+Tu <img class="an1" data-emoji="😊" alt="😊" src="...notoemoji..."> es
+```
+
+`walkPlainText` (`src/dom-walk.ts`) used to only visit `TEXT_NODE`
+and `BR` — every `<img>` got dropped silently, so the runtime read
+`"Tu  es"` (with the surrounding spaces, no emoji). Subsequent
+transforms operated on emoji-free text, then wrote it back, wiping
+the user's emojis.
+
+**The fix:** `walkPlainText` now emits each `<img>`'s `alt` attribute
+as a synthetic text segment (the segment's `node` field points at the
+IMG element, not a real Text). `plainOffsetOfPosition` and
+`domPositionOfPlainOffset` mirror the rule so plain↔DOM math agrees.
+
+**Write-path consequence:** `applyTextDiff` can't mutate `.data` on
+an IMG. When a splice's `startSegIdx === endSegIdx` (or any of a
+multi-segment range) points at an IMG-segment, route to
+`replaceAllText`. The paste pipeline writes the new plain-unicode
+HTML body; the receiving editor re-renders emojis from the new text
+(possibly as `<img>` again, possibly inline — either is correct).
+
+**Heuristic:** we read alt indiscriminately. If a site has `<img
+alt="Company Logo">` in a compose area (rare), the alt text leaks
+into the buffer. Acceptable trade — the alternative is missing
+emojis on every emoji-img site, which is the much more common case.
+
+Pinned by `dom-walk.test.ts` — 5 tests covering single img, multiple
+imgs, plain-offset accounting, no-alt skip, empty-alt skip.
+
 ## The biggest issue: writing into managed contenteditables
 
 Most modern web apps use a managed-editor framework (Lexical, ProseMirror/

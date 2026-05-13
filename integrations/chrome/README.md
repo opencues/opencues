@@ -282,6 +282,25 @@ overwrite.
 - **Subprocess blanks without the host** — `volume _`, `brightness _`, and any other `.sh`-backed blank need `opencues install chrome-host` to actually run their scripts. Without the host they return exit 127. (Most other blanks — stocks, weather, prompt-improver, etc. — run pure in-browser via `fetch` and work with or without the host.)
 - **Editor coverage** — Lexical (Reddit), ProseMirror (LinkedIn / ChatGPT / claude.ai / Luma), Draft.js (Twitter/X), Slate, and generic contenteditables (Gmail / YouTube) all work for cycling and blanks. Caret-restore after splices is handled per-engine — see `CLAUDE.md` for the engine matrix.
 
+## Emoji preservation across transforms
+
+Gmail (and Slack, Twitter/X, Reddit, most chat apps) convert pasted
+emojis into inline `<img alt="😊">` elements behind the scenes. The
+extension reads the `alt` content so emojis in your buffer survive
+any transform you apply afterwards.
+
+Example — type `Tu 😊 es 😊 le _ make bluh bold _` and the bold
+transform now preserves all four emojis:
+
+```
+Before:  Tu 😊 es 😊 le  (with the bold instruction)
+After:   Tu 😊 es 😊 **le**  (emojis kept, "le" bolded)
+```
+
+Before this was handled, the emojis got dropped from the buffer
+during the first read after paste — every subsequent rewrite operated
+on emoji-free text and wrote it back without them.
+
 ---
 
 ## Removing

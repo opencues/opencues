@@ -264,6 +264,67 @@ via higher TTFT and longer planning overhead.
 
 ---
 
+## P1.5 — DEICTIC RESOLVER (conditional sub-step)
+
+**Job:** rewrite the instruction with deictic references (`this line`,
+`this word`, `it`, `those`, etc.) resolved into explicit quoted spans
+before APPLY sees them. Only fires when the instruction contains a
+deictic — the regex `needsDeicticResolution()` is the gate.
+
+**Why it exists:** APPLY has to do two jobs when the instruction is
+deictic — figure out which span the deictic refers to (using
+`[CURSOR]` position) AND apply the edit. Splitting the referent
+resolution into its own pass reduces APPLY's job to "apply an
+unambiguous edit to a known span."
+
+**Conditional gate** (`needsDeicticResolution(instruction)` in
+`transform-blank-source.ts`): permissive regex matching
+`\b(this|that|these|those|it|them|there)\b`. False positives only
+cost one extra LLM call (P1.5 passes the instruction through
+unchanged); false negatives bypass P1.5 entirely.
+
+**Examples:**
+
+```
+INSTRUCTION: bold this word
+TARGET:      hello wil[CURSOR]fred today
+RESOLVED:    bold the word "wilfred"
+
+INSTRUCTION: rephrase this sentence
+TARGET:      I went to the store yesterday. I bought[CURSOR] some apples. They were red.
+RESOLVED:    rephrase the sentence "I bought some apples."
+```
+
+**Idiomatic-"it" carve-out:** `make it british english` /
+`make it past tense` / `make it shorter` are FIXED English
+constructions; "it" doesn't refer to a specific span. P1.5 leaves
+these unchanged. The prompt has an explicit rule + 4 examples for
+this case.
+
+**Positional cues stay positional:** `here`, `at this point`, `right
+here` are NOT resolved. APPLY handles those via the `[CURSOR]` marker
+itself. The resolver passes the instruction through.
+
+**Empirical gain** (benchmark
+`tests/benchmarks/transform-blank/deictic-resolve.ts`, 75 cases):
+
+| Category | Raw APPLY | P1.5 + APPLY |
+|---|---|---|
+| this-line | 88% | **93%** |
+| this-word | 91% | **100%** |
+| this-standalone | 69% | **85%** |
+| Other categories | unchanged | unchanged |
+| **Overall** | **87.1%** | **92.0% (+4.9pp)** |
+
+Conditional-trigger correctness: 75/75 — regex never wrongly fires
+on idiomatic-"it" and never misses a real deictic.
+
+**Latency cost:** ~300-500ms extra LLM call ONLY when the trigger
+fires (roughly half of TransformBlank dispatches in production
+logs). Non-deictic instructions skip P1.5 entirely.
+
+---
+
 ## P2 — APPLY
 
 **Job:** execute the instruction on the target. Pure rewrite — no
@@ -300,9 +361,47 @@ The current ruleset (in `P2_APPLY_SYSTEM`):
    verbatim. Multi-paragraph in → multi-paragraph out.
 9. **CONDITIONAL INSTRUCTIONS** — "X but not Y", "X except Y",
    "X only when Z" — apply only where the condition holds.
+10. **CURSOR ANCHOR** — `TARGET` may contain a `[CURSOR]` marker.
+    For POSITIONAL instructions (`here`, `this line`, `this word`,
+    `add X`, `split here`, `before/after this`, `new line/paragraph here`),
+    apply the edit AT the cursor. For non-positional instructions
+    (translate, capitalise, fix typos, etc.), IGNORE the cursor.
+    `line break here` → insert `\n`; `paragraph break here` → `\n\n`.
+11. **MARKDOWN FORMATTING** — `make X bold` / `italicize Y` / etc.
+    decorate the span IN PLACE with `**`/`*`/`~~`/`` ` ``/`# `/`- `
+    markers. The rewrite must contain the ENTIRE TARGET verbatim
+    except for the added markers. Markers are stripped before the
+    buffer is written; visual style is rendered via the host's
+    `markdown.styled` event.
+12. **ADDITION / INSERTION** — when the instruction uses verbs like
+    `add`, `insert`, `append`, `prepend`, `include`, `fill`, `set`,
+    `put`, `write`, `stick X in`, `throw in`, `chuck in`, `pop in`,
+    `slip in`, `drop X in/before/after`, the action is to ADD content,
+    not transform. Five sub-patterns:
+    - **FILL PLACEHOLDER**: target has `[Your Name]` / `[Date]` /
+      etc.; match by keyword overlap and replace with the supplied
+      value.
+    - **ANCHORED INSERT**: `add X after Y` / `add X before Y` — locate
+      Y, insert X relative to it.
+    - **CURSOR INSERT**: `add X` with `[CURSOR]` and no clear
+      placeholder — insert at cursor.
+    - **APPEND**: no anchor, no placeholder, no useful cursor —
+      append to end on a new line.
+    - **AUTO STYLING**: `add bolding where appropriate` — wrap
+      proper nouns / dates / key terms in `**`. Pick reasonable
+      spans, don't refuse on subjectivity.
+    Verb-disambiguation: `drop X` alone = DELETE; `drop X in/before/
+    after` = INSERT (the preposition decides).
 
-Plus ~25 worked examples covering each rule. Examples are the
+Plus ~50 worked examples covering each rule. Examples are the
 load-bearing part for APPLY (unlike EXTRACT, where they hurt).
+Pinned by `tests/benchmarks/transform-blank/apply-tune.ts` —
+95 cases × 3 fanout = 285 attempts; current pass rate **279/279
+(100%)** with zero regressions across literal/concept/tense/case/
+pluralise/composed/conditional/role-preserve/markdown/positional/
+multiline-preserve/add-fill/add-anchored/add-auto-style/add-cursor/
+add-synonym/add-colloquial/add-indirect/polite-wrapper/remove/
+polish/replace-synonym categories.
 
 ### Sequential composition for "X and Y" instructions
 
@@ -482,6 +581,70 @@ need a **semantic gate** ("is the instruction MECHANICALLY
 unambiguous"), not just structural ones (length ratio, paragraph
 count). Even short single-line outputs can have agreement bugs that
 VERIFY catches.
+
+---
+
+## Structured outputs — strict JSON on groq gpt-oss
+
+When the resolved provider is `groq` AND the model is one of
+`openai/gpt-oss-{20b,120b}`, **every pass in the pipeline uses
+Groq's strict JSON-schema mode** (constrained decoding). The model
+is forced at the token level to emit a JSON document matching the
+per-pass schema:
+
+| Pass | Schema |
+|---|---|
+| P1 EXTRACT | `{ verdict, instruction, target }` |
+| P1.5 RESOLVE | `{ resolved }` |
+| P2 APPLY | `{ rewrite }` |
+| P2 GENERATIVE | `{ rewrite }` |
+| P3 VERIFY | `{ verdict, rewrite }` |
+
+The same gate (`useStrictJson(providerId, model)`, exported from
+`@opencues/core`) is used by every other LLM-calling surface in the
+runtime: FluidBlank's SEGMENT + ANSWER, WordCues' alternatives/raw
+parsers, and AgentRewrite. All 10 schemas pinned by
+`tests/benchmarks/transform-blank/json-consistency.ts` — empirically
+100/100 parseable, 100/100 schema-conformant on gpt-oss-120b.
+
+**Failure classes eliminated:**
+
+- **Missing `REWRITE:` prefix** — the model used to occasionally
+  drop the format prefix on long outputs (multi-paragraph add-X,
+  joke insertions), causing the parser to return empty. In strict
+  mode the response IS the JSON document; no prefix to drop.
+- **Preamble leakage** — `"Sure, here's the rewrite:"` or
+  `"Here is your answer:"` could leak into the buffer when the
+  parser failed open. Strict mode can't emit such tokens — the
+  very first emitted token must be `{`.
+- **Refusal smuggled as content** — `"Sorry, I can't do that"`
+  used to land in the buffer when models hedged. Now it'd have to
+  fit into `{ "rewrite": "" }` shape; we catch empty rewrites
+  before substitution.
+
+**What strict mode does NOT solve:**
+
+- Wrong content (model misinterprets the instruction) — strict
+  mode constrains FORMAT, not SEMANTICS.
+- Token-budget truncation in long string values — still cuts off
+  mid-sentence if `max_tokens` is too low. Mitigated by raising
+  `REASONING_HEADROOM` to 700 (`budgetForOutput`).
+- Non-gpt-oss models (Llama, Gemini, Claude, OpenRouter) — those
+  keep the legacy label-based path (`REWRITE: …`) with a
+  fallback parser that tolerates a missing prefix.
+
+**Architectural notes:**
+
+- `ChatRequest.responseFormat` is the wire field (added to
+  `@opencues/core/llm-provider.ts`).
+- `buildJsonResponseFormat(name, schema)` constructs the field —
+  one helper, used by every call site to avoid object-literal
+  drift.
+- Per-pass schemas live as module-scope constants in each source
+  file (e.g. `EXTRACT_SCHEMA`, `APPLY_SCHEMA` in
+  `transform-blank-source.ts`).
+- Adding a new supported (provider, model) is one line in
+  `useStrictJson` — every surface picks it up automatically.
 
 ---
 
