@@ -122,17 +122,47 @@ export class ConfigSource implements CueSource {
     try {
       const input = this.formatInput(context);
       const separator = this.parser === 'alternatives' ? '\n' : ' ';
+      // Strict JSON mode on groq gpt-oss skips the INDEX:alt1,alt2,alt3
+      // format-spec append; the schema enforces shape instead.
+      const useJson = this.provider.id === 'groq' && /^openai\/gpt-oss-(20b|120b)/i.test(this.model);
+
       // Defensive: for parser: alternatives, ensure the prompt ends with
       // the INDEX:alt1,alt2,alt3 format spec. Without this, a prompt that
       // instructs the LLM on content but forgets to constrain the output
       // shape gets interpreted as "write a reference essay" — classic
       // failure mode for domain cues authored naively. See
       // docs/features/word-cue-routing.md § OUTPUT FORMAT.
-      const ensuredPrompt = this.parser === 'alternatives' && !hasFormatSpec(promptText)
+      const ensuredPrompt = !useJson && this.parser === 'alternatives' && !hasFormatSpec(promptText)
         ? `${promptText.trimEnd()}\n\n${ALT_FORMAT_SPEC}`
         : promptText.trimEnd();
       const fullPrompt = ensuredPrompt + separator + input;
 
+      // JSON schemas per parser.
+      const altsSchema = {
+        type: 'object',
+        properties: {
+          alternatives: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                index: { type: 'integer' },
+                alts: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['index', 'alts'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['alternatives'],
+        additionalProperties: false,
+      };
+      const rawSchema = {
+        type: 'object',
+        properties: { alternatives: { type: 'array', items: { type: 'string' } } },
+        required: ['alternatives'],
+        additionalProperties: false,
+      };
       const built = this.provider.buildRequest(
         {
           model: this.model,
@@ -142,13 +172,20 @@ export class ConfigSource implements CueSource {
           // Provider adapter passes this through only to providers that
           // honor it (Groq); ignored by Gemini/OpenRouter/OpenAI.
           reasoningEffort: 'low',
+          responseFormat: useJson ? {
+            name: this.parser === 'alternatives' ? 'word_cues_alts' : 'word_cues_raw',
+            strict: true,
+            schema: this.parser === 'alternatives' ? altsSchema : rawSchema,
+          } : undefined,
         },
         { apiKey: this.apiKey, endpoint: this.endpoint },
       );
       const response = await this.httpAdapter.post(built.url, built.body, built.headers);
       const raw = this.provider.parseResponse(response);
 
-      const results = this.parseResponse(raw, context.words);
+      const results = useJson
+        ? this.parseJsonResponse(raw, context.words)
+        : this.parseResponse(raw, context.words);
       return { results, timing: Date.now() - startTime, model: this.model };
     } catch (error) {
       return {
@@ -191,5 +228,51 @@ export class ConfigSource implements CueSource {
       default:
         return [];
     }
+  }
+
+  /** JSON parser — strict mode on groq gpt-oss. Mirrors parseResponse
+   *  but consumes the structured `{ alternatives: ... }` shape instead
+   *  of the legacy INDEX:alts text format. */
+  private parseJsonResponse(response: string, words: string[]): CueResult[] {
+    let obj: { alternatives?: unknown };
+    try {
+      obj = JSON.parse(response.trim()) as { alternatives?: unknown };
+    } catch {
+      return [];
+    }
+    if (this.parser === 'alternatives') {
+      if (!Array.isArray(obj.alternatives)) return [];
+      const results: CueResult[] = [];
+      for (const item of obj.alternatives as Array<{ index?: unknown; alts?: unknown }>) {
+        if (typeof item?.index !== 'number') continue;
+        if (!Array.isArray(item.alts)) continue;
+        const idx = item.index;
+        if (idx < 0 || idx >= words.length) continue;
+        const word = words[idx];
+        if (!word || word === '_') continue;
+        const cleanAlts = (item.alts as unknown[])
+          .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+          .map(a => a.trim())
+          .filter(a => a !== word);
+        if (cleanAlts.length === 0) continue;
+        results.push({
+          wordIndex: idx,
+          word,
+          alternatives: [word, ...cleanAlts],
+          source: this.id,
+          priority: this.priority,
+        });
+      }
+      return results;
+    }
+    // raw parser
+    if (!Array.isArray(obj.alternatives)) return [];
+    const alts = (obj.alternatives as unknown[])
+      .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+      .map(a => a.trim());
+    if (!alts.length) return [];
+    const blankIdx = words.indexOf('_');
+    if (blankIdx < 0) return [];
+    return [{ wordIndex: blankIdx, word: '_', alternatives: ['_', ...alts], source: this.id, priority: this.priority }];
   }
 }

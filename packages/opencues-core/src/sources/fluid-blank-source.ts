@@ -413,11 +413,27 @@ export class FluidBlankSource implements CueSource {
       }
       this.emit({ type: 'started', textLen: context.text.length, blankIdx });
 
+      // Strict JSON on groq gpt-oss — same gate as transform-blank.
+      const useJson = this.provider.id === 'groq' && /^openai\/gpt-oss-(20b|120b)/i.test(this.model);
+      const SEGMENT_SCHEMA = {
+        type: 'object',
+        properties: { span: { type: 'string' }, context: { type: 'string' } },
+        required: ['span', 'context'],
+        additionalProperties: false,
+      };
+      const ANSWER_SCHEMA = {
+        type: 'object',
+        properties: { answer: { type: 'string' } },
+        required: ['answer'],
+        additionalProperties: false,
+      };
+
       // P1 SEGMENT
       const p1Start = Date.now();
-      const segOut = await this.callLLM(P1_SYSTEM_PROMPT, `INPUT: ${context.text}`, 256);
-      const span = parseSpan(segOut);
-      const ctx = parseContext(segOut);
+      const segOut = await this.callLLM(P1_SYSTEM_PROMPT, `INPUT: ${context.text}`, 256,
+        useJson ? { name: 'fluid_segment', strict: true, schema: SEGMENT_SCHEMA } : undefined);
+      const span = useJson ? parseSpanJson(segOut) : parseSpan(segOut);
+      const ctx = useJson ? parseContextJson(segOut) : parseContext(segOut);
       this.emit({ type: 'pass-completed', pass: 'P1', latencyMs: Date.now() - p1Start, span: span ?? '', context: ctx ?? '' });
       if (!span) {
         this.emit({ type: 'bailed', reason: 'P1-no-span', latencyMs: Date.now() - startTime });
@@ -426,8 +442,9 @@ export class FluidBlankSource implements CueSource {
 
       // P3 ANSWER
       const p3Start = Date.now();
-      const ansOut = await this.callLLM(P3_SYSTEM_PROMPT, `SPAN: ${span}\nCONTEXT: ${ctx || 'none'}`, 200);
-      const answer = parseAnswer(ansOut);
+      const ansOut = await this.callLLM(P3_SYSTEM_PROMPT, `SPAN: ${span}\nCONTEXT: ${ctx || 'none'}`, 200,
+        useJson ? { name: 'fluid_answer', strict: true, schema: ANSWER_SCHEMA } : undefined);
+      const answer = useJson ? parseAnswerJson(ansOut) : parseAnswer(ansOut);
       this.emit({ type: 'pass-completed', pass: 'P3', latencyMs: Date.now() - p3Start, answer: answer ?? '' });
       if (!answer) {
         this.emit({ type: 'bailed', reason: 'P3-no-answer', latencyMs: Date.now() - startTime });
@@ -478,7 +495,12 @@ export class FluidBlankSource implements CueSource {
     }
   }
 
-  private async callLLM(system: string, user: string, maxTokens: number): Promise<string> {
+  private async callLLM(
+    system: string,
+    user: string,
+    maxTokens: number,
+    responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
+  ): Promise<string> {
     const built = this.provider.buildRequest(
       {
         model: this.model,
@@ -490,6 +512,7 @@ export class FluidBlankSource implements CueSource {
         temperature: 0,
         reasoningEffort: 'low',
         seed: 42,
+        responseFormat,
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },
     );
@@ -516,4 +539,31 @@ function parseAnswer(raw: string): string | null {
   if (!m) return null;
   const v = m[1].trim();
   return v.length > 0 ? v : null;
+}
+
+// JSON-mode parsers (strict mode on groq gpt-oss).
+function parseSpanJson(raw: string): string | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as { span?: unknown };
+    if (typeof obj.span !== 'string') return null;
+    const v = obj.span.trim();
+    if (!v || v.toUpperCase() === 'NONE') return null;
+    return v;
+  } catch { return null; }
+}
+
+function parseContextJson(raw: string): string {
+  try {
+    const obj = JSON.parse(raw.trim()) as { context?: unknown };
+    return typeof obj.context === 'string' ? obj.context.trim() : '';
+  } catch { return ''; }
+}
+
+function parseAnswerJson(raw: string): string | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as { answer?: unknown };
+    if (typeof obj.answer !== 'string') return null;
+    const v = obj.answer.trim();
+    return v.length > 0 ? v : null;
+  } catch { return null; }
 }

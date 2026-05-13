@@ -550,6 +550,12 @@ export class AgentRewrite {
     const systemContent = auditor === null
       ? REWRITE_SYSTEM_PROMPT
       : `${REWRITE_SYSTEM_PROMPT}\n\nAdditionally, apply this concern (${auditor.name}):\n\n${auditor.promptText}`;
+    // Strict structured outputs on groq gpt-oss-{20b,120b}. Eliminates
+     // the REWRITTEN:/END marker-parsing failure class — the model is
+     // constrained at the token level to emit JSON conforming to the
+     // schema. Other providers / models keep the legacy marker path
+     // unchanged. Mirrors the same gate used in transform-blank-source.
+    const useJson = (provider?.id === 'groq') && /^openai\/gpt-oss-(20b|120b)/i.test(model);
     const chatRequest = {
       model,
       messages: [
@@ -560,6 +566,16 @@ export class AgentRewrite {
       temperature: 0,
       reasoningEffort: 'low' as const,
       seed: 42,
+      responseFormat: useJson ? {
+        name: 'agent_rewrite',
+        strict: true,
+        schema: {
+          type: 'object' as const,
+          properties: { rewrite: { type: 'string' as const } },
+          required: ['rewrite'],
+          additionalProperties: false,
+        },
+      } : undefined,
     };
     let url: string;
     let body: string;
@@ -575,14 +591,25 @@ export class AgentRewrite {
       // dependency on @opencues/core for boot files that haven't
       // migrated to passing a provider thunk.
       url = endpoint;
-      body = JSON.stringify({
+      const legacyBody: Record<string, unknown> = {
         model: chatRequest.model,
         messages: chatRequest.messages,
         max_tokens: chatRequest.maxTokens,
         temperature: chatRequest.temperature,
         reasoning_effort: chatRequest.reasoningEffort,
         seed: chatRequest.seed,
-      });
+      };
+      if (chatRequest.responseFormat) {
+        legacyBody.response_format = {
+          type: 'json_schema',
+          json_schema: {
+            name: chatRequest.responseFormat.name,
+            strict: chatRequest.responseFormat.strict ?? false,
+            schema: chatRequest.responseFormat.schema,
+          },
+        };
+      }
+      body = JSON.stringify(legacyBody);
       headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
     }
     const agent = this.options.httpAdapter ?? this.getHttpAgent();
@@ -617,7 +644,24 @@ export class AgentRewrite {
       this._logFn(`AgentRewrite: response had no content`);
       return null;
     }
-    const windowedRewrite = parseRewriteOutput(out);
+    let windowedRewrite: string | null;
+    if (useJson) {
+      // Strict JSON path — parse object, extract rewrite, strip
+      // [CURSOR] sentinel (model occasionally leaks it).
+      try {
+        const obj = JSON.parse(out.trim()) as { rewrite?: unknown };
+        if (typeof obj.rewrite !== 'string') {
+          this._logFn(`AgentRewrite: JSON missing 'rewrite' field`);
+          return null;
+        }
+        windowedRewrite = stripCursorSentinel(obj.rewrite.trim());
+      } catch (err) {
+        this._logFn(`AgentRewrite: JSON parse failed despite strict mode — ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    } else {
+      windowedRewrite = parseRewriteOutput(out);
+    }
     if (windowedRewrite === null) return null;
     // Splice the window rewrite back into the surrounding (unchanged)
     // text so the merge layer sees a full-buffer rewrite. The merge's
