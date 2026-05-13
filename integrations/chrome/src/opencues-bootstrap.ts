@@ -124,8 +124,22 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // Native-messaging host pushed a new bundle. Invalidate the cached
   // index promise + ask the runtime to re-walk every source so the
   // new alts/tips/blanks take effect on the next keystroke.
+  //
+  // ALSO converge chrome.storage's OPENCUES.md per-key entry to the
+  // bundle's value. Without this sync, in-page scalar values written
+  // before host install (or written by past versions of the extension
+  // that only knew about chrome.storage) would mask the bundle's
+  // scalars via mergeOpencuesMd, surfacing as "I edited the file but
+  // chrome shows the old value". With host present, the file is the
+  // source of truth — storage just caches it.
   if ('opencues_bundle' in changes) {
     _bundleIndexPromise = null;
+    const newBundle = changes['opencues_bundle'].newValue as { files?: Record<string, string> } | undefined;
+    const bundledOpencuesMd = newBundle?.files?.['OPENCUES.md'];
+    if (typeof bundledOpencuesMd === 'string') {
+      const key = `${STORAGE_PREFIX}${ROOT}/.cues/OPENCUES.md`;
+      void chrome.storage.local.set({ [key]: bundledOpencuesMd }).catch(() => { /* swallow */ });
+    }
     if (bootResult) {
       void bootResult.reloadConfig().catch(err => {
         console.warn('[opencues] reloadConfig after bundle push failed', err);
@@ -1128,8 +1142,48 @@ async function readBundledConfig(runtimePath: string): Promise<string | null> {
   return null;
 }
 
-/** chrome.storage.local-backed writeFile. */
+/** writeFile — host-first, storage-fallback.
+ *
+ *  For OPENCUES.md (the only writable schema file shared with the
+ *  native hosts), we try the chrome-host's `write-file` protocol
+ *  first. The host writes to ~/.cues/OPENCUES.md on disk; its own
+ *  fs.watch fires, a fresh bundle gets pushed back, and the
+ *  content-script ConfigLoader hot-reloads with the new value. Single
+ *  source of truth = the file.
+ *
+ *  When the host isn't connected (user hasn't run `opencues install
+ *  chrome-host`), we fall back to writing chrome.storage — the legacy
+ *  cycling-persists-locally behavior. When the user later installs
+ *  the host, its first bundle push converges the two: the host reads
+ *  the on-disk file, pushes it, content script reloads from the
+ *  bundle, storage's stale overlay is overwritten on the next write.
+ *
+ *  For non-OPENCUES paths (rare — debug-mode flag, etc.) we keep the
+ *  storage-only path for now. None of the cross-host-shared scalars
+ *  use them.
+ */
 async function writeFile(path: string, content: string): Promise<void> {
+  if (path === ROOT + '/.cues/OPENCUES.md') {
+    try {
+      const reply = await chrome.runtime.sendMessage({
+        type: 'opencues:write-file',
+        path, content,
+      }) as { ok?: boolean; error?: string } | undefined;
+      if (reply?.ok) {
+        // Host wrote to disk. Storage gets refreshed when the
+        // host's next bundle push arrives — keep storage in
+        // sync immediately too so the in-page UI doesn't read a
+        // stale value before the round-trip completes.
+        const key = STORAGE_PREFIX + path;
+        try { await chrome.storage.local.set({ [key]: content }); } catch { /* */ }
+        return;
+      }
+      // Host disconnected → fall through to storage-only.
+      log.info(`[opencues] writeFile(${path}): host unavailable (${reply?.error ?? 'no reply'}), falling back to chrome.storage`);
+    } catch (err) {
+      log.info(`[opencues] writeFile(${path}): sendMessage threw, falling back to chrome.storage: ${String(err)}`);
+    }
+  }
   const key = STORAGE_PREFIX + path;
   try {
     await chrome.storage.local.set({ [key]: content });
@@ -1438,6 +1492,21 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // listener above invalidates _bundleIndexPromise + calls
   // bootResult.reloadConfig().
   void refreshReadTraceFromStorage();
+
+  // Eager bundle-to-storage sync at boot. chrome.storage.onChanged
+  // only fires for CHANGES from this point forward — if the bundle
+  // was pushed by the SW before the content script loaded, we'd never
+  // see it via onChanged and the stale per-key OPENCUES.md storage
+  // overlay would mask the bundle's value. Read once on boot and
+  // overwrite the per-key entry so storage and bundle agree.
+  void chrome.storage.local.get('opencues_bundle').then(stored => {
+    const b = stored['opencues_bundle'] as { files?: Record<string, string> } | undefined;
+    const bundledOpencuesMd = b?.files?.['OPENCUES.md'];
+    if (typeof bundledOpencuesMd === 'string') {
+      const key = `${STORAGE_PREFIX}${ROOT}/.cues/OPENCUES.md`;
+      return chrome.storage.local.set({ [key]: bundledOpencuesMd });
+    }
+  }).catch(() => { /* swallow — best-effort */ });
 
   // Markdown styling — substituting modules (TransformBlank / FluidBlank
   // via @opencues/runtime applyMarkdownAwareSubstitution) emit

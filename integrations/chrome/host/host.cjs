@@ -183,6 +183,45 @@ function handleMessage(msg) {
   if (msg.type === 'exec') return handleExec(msg);
   if (msg.type === 'user-blank-invoke') return handleUserBlankInvoke(msg);
   if (msg.type === 'log') return handleLog(msg);
+  if (msg.type === 'write-file') return handleWriteFile(msg);
+}
+
+// Write a file under CUE_ROOT on chrome's behalf. Used by the in-page
+// settings blank — when the user cycles `opencues settings _` and
+// flips a scalar, the content-script settings blank routes the new
+// OPENCUES.md content here. The host sandbox-checks the path
+// (must resolve under CUE_ROOT after realpath) and writes via
+// `fs.writeFile`. fs.watch picks up the change → bundle pushed back
+// to chrome.storage → content-script ConfigLoader reloads. Storage
+// is just a cache of the file; the file is the single source of truth.
+//
+// Without this handler, chrome's in-page cycling would only write to
+// chrome.storage and would silently diverge from the file (the bug
+// that chrome.storage's stale overlay used to mask). With the handler,
+// chrome writes to the FILE first, falling back to chrome.storage
+// only when the host is disconnected.
+function handleWriteFile(msg) {
+  const requestId = msg.requestId;
+  if (typeof requestId !== 'string') return;
+  const reply = (body) => sendMessage({ type: 'write-file-result', requestId, ...body });
+  const path = typeof msg.path === 'string' ? msg.path : '';
+  const content = typeof msg.content === 'string' ? msg.content : '';
+  if (!path) { reply({ ok: false, error: 'missing path' }); return; }
+  // Path-form translation + sandbox: same rules as handleExec's
+  // sandboxArg. Chrome-runtime virtual paths (`/chrome-storage/.cues/...`)
+  // translate to `${CUE_ROOT}/...`; absolute paths are honored only when
+  // they resolve (via realpath) under CUE_ROOT.
+  const safe = sandboxArg(path);
+  if (safe === null) {
+    reply({ ok: false, error: `path outside CUE_ROOT: ${path}` });
+    return;
+  }
+  try {
+    fs.writeFileSync(safe, content, 'utf8');
+    reply({ ok: true });
+  } catch (e) {
+    reply({ ok: false, error: 'write failed: ' + (e && e.message || e) });
+  }
 }
 
 // Mirror the OC/CC/gemini log-line shape so chrome's runtime events

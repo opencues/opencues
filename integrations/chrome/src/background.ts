@@ -157,13 +157,26 @@ interface UserBlankResultMessage {
   output?: string;
   error?: string;
 }
+interface WriteFileRequestFromContent {
+  type: 'opencues:write-file';
+  path: string;
+  content: string;
+}
+interface WriteFileResultMessage {
+  type: 'write-file-result';
+  requestId: string;
+  ok: boolean;
+  error?: string;
+}
 
 let nativePort: chrome.runtime.Port | null = null;
 let nextRequestId = 1;
 type ExecPending = (msg: ExecResultMessage) => void;
 type UserBlankPending = (msg: UserBlankResultMessage) => void;
+type WriteFilePending = (msg: WriteFileResultMessage) => void;
 const pending: Map<string, ExecPending> = new Map();
 const pendingUserBlank: Map<string, UserBlankPending> = new Map();
+const pendingWriteFile: Map<string, WriteFilePending> = new Map();
 
 function failPending(reason: string): void {
   for (const [id, resolve] of pending) {
@@ -174,6 +187,10 @@ function failPending(reason: string): void {
     resolve({ type: 'user-blank-result', requestId: id, ok: false, error: reason });
   }
   pendingUserBlank.clear();
+  for (const [id, resolve] of pendingWriteFile) {
+    resolve({ type: 'write-file-result', requestId: id, ok: false, error: reason });
+  }
+  pendingWriteFile.clear();
 }
 
 function connectNativeHost(): void {
@@ -221,6 +238,15 @@ function connectNativeHost(): void {
       if (resolve) {
         pendingUserBlank.delete(ubr.requestId);
         resolve(ubr);
+      }
+      return;
+    }
+    const wfr = raw as WriteFileResultMessage;
+    if (wfr.type === 'write-file-result' && typeof wfr.requestId === 'string') {
+      const resolve = pendingWriteFile.get(wfr.requestId);
+      if (resolve) {
+        pendingWriteFile.delete(wfr.requestId);
+        resolve(wfr);
       }
       return;
     }
@@ -342,6 +368,42 @@ chrome.runtime.onMessage.addListener((message: { type?: string; level?: string; 
     } catch { /* port disconnected mid-write; drop */ }
   }
   sendResponse({ ok: true });
+  return true;
+});
+
+// Content scripts ask the SW to write a file (currently only OPENCUES.md)
+// via the native host. When the host isn't connected, the response
+// shape signals that so the caller can fall back to chrome.storage —
+// the bundle isn't the source of truth when there's no host pushing.
+// Storage stays a valid fallback for cycling that happens before host
+// install; the first bundle push after host install converges the two.
+chrome.runtime.onMessage.addListener((message: WriteFileRequestFromContent, _sender, sendResponse) => {
+  if (message?.type !== 'opencues:write-file') return false;
+  if (!nativePort) {
+    sendResponse({ ok: false, error: 'native host not connected' });
+    return true;
+  }
+  const requestId = String(nextRequestId++);
+  pendingWriteFile.set(requestId, (result) => {
+    sendResponse({ ok: result.ok, error: result.error });
+  });
+  setTimeout(() => {
+    const resolve = pendingWriteFile.get(requestId);
+    if (!resolve) return;
+    pendingWriteFile.delete(requestId);
+    resolve({ type: 'write-file-result', requestId, ok: false, error: 'SW-side timeout' });
+  }, 10_000);
+  try {
+    nativePort.postMessage({
+      type: 'write-file',
+      requestId,
+      path: message.path,
+      content: message.content,
+    });
+  } catch (err) {
+    pendingWriteFile.delete(requestId);
+    sendResponse({ ok: false, error: 'postMessage failed: ' + String(err) });
+  }
   return true;
 });
 
