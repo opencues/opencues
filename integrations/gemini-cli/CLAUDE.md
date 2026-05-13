@@ -166,6 +166,34 @@ Don't switch to per-segment Ink-prop application (`dimColor`/`inverse`
 on each `<Text>`). The CC-style string-wrap approach is intentional
 and consistent across host bands.
 
+#### Colour scope: word-level only — DO NOT line-wrap
+
+`decorateOpenCuesLine` returns the runtime's `applyDirectives` output
+**as-is** (after the code-point conversion). The runtime emits ANSI
+only around the specific ranges that have directives:
+
+- dim → `\x1b[2m…\x1b[22m`
+- active selection → `\x1b[7m…\x1b[27m`
+- markdown bold/italic/strike/heading/list → their respective ANSI
+
+Plain words OUTSIDE any directive get **zero ANSI** from us. The
+terminal renders them with whatever colour Gemini's per-segment
+`<Text>` would have used, or the user's terminal default.
+
+We tried wrapping the whole decorated line in OpenCues' brand
+foreground (`\x1b[97m…\x1b[39m`, see `da0c393` revert). **Don't.**
+The brand tint affected every char on the line — including untouched
+words — making it look like OpenCues "owned" the whole line. The
+explicit ask was: only OUR ranges (dim + selection) should be
+visibly OpenCues; everything else stays terminal-default.
+
+If you ever want to change the colour of dim or selection ranges
+themselves (the user mentioned "background box like chrome" for
+selection eventually), do it via post-processing the ANSI codes
+in `decorateOpenCuesLine` — `.replace(/\x1b\[7m/g, …)` /
+`.replace(/\x1b\[2m/g, …)`. Keep the swap scoped to the directive
+escapes; don't add a line-wide wrap.
+
 ### 4. wrappedGetText must prefer pendingText
 
 `wrappedGetText` / `wrappedGetCursor` in `boot.ts` read `pendingText`
