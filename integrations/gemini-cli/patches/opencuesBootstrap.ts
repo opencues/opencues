@@ -618,23 +618,20 @@ export function decorateOpenCuesLine(
   const cuLineEnd   = codePointsToCodeUnits(fullText, lineEnd);
   const decorated = bootResult.decorateLine(lineText, fullText, cuCursor, cuLineStart, cuLineEnd);
 
-  // Host-theme highlight skin: the runtime emits ANSI inverse
-  // (\x1b[7m...\x1b[27m) for highlights. Inverse on Gemini's compose
-  // box collides with the cursor (which also uses inverse) AND
-  // doesn't read as a "selection" the way chrome's blue background
-  // box does. Re-skin to blue background + bright white foreground,
-  // matching Gemini's AccentBlue theme accent (#005FAF light /
-  // #87AFFF dark, ANSI fallback `blue`). Reads as a selection on
-  // both dark and light terminals; visually distinct from the
-  // inverse cursor.
-  //
-  // ANSI: 44 = blue bg, 97 = bright white fg, 49 = default bg, 39 =
-  // default fg. Combined open `\x1b[44;97m` / close `\x1b[39;49m`
-  // resets BOTH attributes cleanly so the surrounding line styling
-  // (dim, bold, etc.) keeps working past the highlight boundary.
-  return decorated
-    .replace(/\x1b\[7m/g, '\x1b[44;97m')
-    .replace(/\x1b\[27m/g, '\x1b[39;49m');
+  // No directives applied → bootResult returned lineText unchanged.
+  // Skip the brand-color wrap so Gemini's per-segment <Text> colors
+  // (syntax highlighting, @path tints, etc.) are preserved on plain
+  // lines.
+  if (decorated === lineText) return lineText;
+
+  // Wrap the decorated line in OpenCues' brand foreground (bright
+  // white — see packages/opencues-cli/src/lib/style.cjs `accent`).
+  // Dim (\x1b[2m...\x1b[22m) and inverse (\x1b[7m...\x1b[27m) layer
+  // on top: \x1b[22m and \x1b[27m only reset their own attribute, not
+  // the foreground, so the brand color persists through the inner
+  // styling. \x1b[39m at the line end returns to terminal default
+  // so downstream segments (footer, status line) aren't affected.
+  return `\x1b[97m${decorated}\x1b[39m`;
 }
 
 /**
