@@ -527,6 +527,12 @@ export class Resolver {
         words: cleanWords,
         domain: 'claude-code',
         asTypedText,
+        // User's caret position. TransformBlank's APPLY pass injects
+        // a [CURSOR] sentinel here so the LLM can anchor positional
+        // instructions ("insert X here _") at the user's actual
+        // position. Sources that don't care about cursor (FluidBlank,
+        // RoutedWordSourceGroup) ignore it. -1 means "no info".
+        cursor: this.adapter.getCursorOffset?.() ?? -1,
       });
     } catch (err) {
       stopAllAnimations();

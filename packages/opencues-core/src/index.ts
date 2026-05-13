@@ -132,3 +132,12 @@ export {
   type SiteCompatContext,
 } from './host-compat';
 
+// Cursor sentinel: shared between TransformBlankSource (core) and
+// AgentRewrite (runtime). Single source of truth for the [CURSOR]
+// marker injected into LLM prompts at the user's caret position.
+export {
+  CURSOR_SENTINEL,
+  stripCursorSentinel,
+  injectCursorSentinel,
+} from './cursor-sentinel';
+

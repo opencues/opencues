@@ -29,6 +29,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
 import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-diff';
+import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel } from '@opencues/core';
 
 /**
  * Subset of the @opencues/core `ProviderAdapter` shape that
@@ -700,7 +701,11 @@ export class AgentRewrite {
  *                                    response is the rewrite, after
  *                                    stripping any leading code fence)
  */
-export const CURSOR_SENTINEL = '[CURSOR]';
+// Re-exported from @opencues/core (single source of truth — also
+// consumed by TransformBlankSource for positional instructions like
+// "insert X here _"). The local alias keeps backward compat for
+// anyone importing `CURSOR_SENTINEL` from this module.
+export const CURSOR_SENTINEL = CORE_CURSOR_SENTINEL;
 
 /**
  * Heuristic — does `raw` look like a transient failure (rate-limit,
@@ -942,7 +947,8 @@ export function parseRewriteOutput(raw: string): string | null {
   // (e.g. model emitted no REWRITTEN: marker but still appended END).
   s = s.replace(/\n\s*END\s*$/i, '').trim();
   // Strip the cursor sentinel — input-only, never part of the rewrite.
-  s = s.replace(/\[CURSOR\]/g, '').replace(/\[cursor\]/g, '');
+  // Delegates to @opencues/core for the single source of truth.
+  s = stripCursorSentinel(s);
   return s;
 }
 

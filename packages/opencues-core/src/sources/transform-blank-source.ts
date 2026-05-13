@@ -41,6 +41,8 @@ import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '
 import { BlankConfig } from '../cues-md';
 import type { ProviderAdapter } from '../llm-provider';
 import { detectPartialTransform } from './transform-partial-detector';
+import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
+import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -188,6 +190,8 @@ RULES:
 8. PRESERVE STRUCTURE (paragraphs/line breaks) — preserve \\n\\n verbatim. Multi-paragraph in → multi-paragraph out, same boundaries.
 
 9. CONDITIONAL INSTRUCTIONS ("X but not Y", "X except Y", "X only when Z") — apply ONLY where the condition holds.
+
+10. CURSOR ANCHOR — the TARGET may contain a [CURSOR] marker showing where the user's caret was when they triggered the transform. If the INSTRUCTION is POSITIONAL (it says "here", "at this point", "add X", "insert X", "split here", "move here", "before this", "after this", or implies anchoring to a specific spot), apply the edit at the [CURSOR] location. For non-positional INSTRUCTIONs (translate, capitalise, fix typos, make shorter, etc.), IGNORE the [CURSOR] marker — treat the target as if it weren't there. ALWAYS strip the [CURSOR] marker from your output regardless. Never emit the literal string [CURSOR] in the REWRITE.
 
 EXAMPLES:
 
@@ -861,17 +865,36 @@ export class TransformBlankSource implements CueSource {
       const parts = ext.instruction.split('|').map(s => s.trim()).filter(Boolean);
       this.log(`TransformBlank P2 APPLY: ${parts.length} step(s) — [${parts.map(p => `"${p}"`).join(', ')}]`);
       let currentTarget = ext.target;
+      // Cursor injection is FIRST-STEP-ONLY. Subsequent pipe-composed
+      // steps operate on the previous step's rewrite, where the cursor
+      // concept doesn't carry meaning (the LLM has reshaped the text;
+      // we don't try to track the cursor through the reshape).
+      const initialCursor = translateBufferCursorToTargetCursor(
+        context.text,
+        context.cursor ?? -1,
+        ext.target,
+      );
+      if (initialCursor >= 0) {
+        this.log(`TransformBlank P2 APPLY: cursor injected at target-offset ${initialCursor}/${ext.target.length}`);
+      }
       let lastRewrite = '';
       for (let i = 0; i < parts.length; i++) {
         const inst = parts[i];
         const stepStart = Date.now();
         const p2Tokens = budgetForOutput(currentTarget.length, 1.5);
+        // First step: inject [CURSOR] at the user's caret position.
+        // Subsequent steps run cursor-blind (the marker would dangle in
+        // text the LLM has already reshaped).
+        const targetForPrompt = i === 0
+          ? injectCursorSentinel(currentTarget, initialCursor)
+          : currentTarget;
         const applyRaw = await this.callLLM(
           P2_APPLY_SYSTEM,
-          `INSTRUCTION: ${inst}\nTARGET: ${currentTarget}`,
+          `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}`,
           p2Tokens,
         );
-        const draft = parseApply(applyRaw).rewrite;
+        // Strip any sentinel the model leaked into its output — input-only.
+        const draft = stripCursorSentinel(parseApply(applyRaw).rewrite);
         this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
         this.emit({
           type: 'pass-completed',

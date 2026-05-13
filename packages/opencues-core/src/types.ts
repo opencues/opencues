@@ -67,6 +67,20 @@ export interface CueContext {
   /** Domain hint (e.g., 'claude-code', 'medical', 'legal') */
   domain?: string;
 
+  /**
+   * Character offset into `text` where the user's caret currently
+   * sits. Sources can inject a `[CURSOR]` sentinel here so the LLM
+   * can anchor positional instructions ("insert X here _", "add a
+   * comma _") at the user's actual position rather than guessing.
+   *
+   * Omitted / negative when the host doesn't know the cursor
+   * (rare — agentic harness's bare-injection mode, headless tests).
+   * Sources MUST treat undefined / -1 as "no cursor info" and fall
+   * back to cursor-blind behaviour (the prompt has no sentinel,
+   * the strip pass is a no-op).
+   */
+  cursor?: number;
+
   /** Previous results for incremental updates */
   previousResults?: CueResult[];
 
