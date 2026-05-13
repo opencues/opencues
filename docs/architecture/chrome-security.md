@@ -117,31 +117,43 @@ Every exec has a default 10s timeout in the host (configurable per
 call). The SW adds a 5s safety net above that. No script can hang
 the host or the extension indefinitely.
 
-### Boundary 7 — User-blank capability gate
+### Boundary 7 — User-blank capability gate (host-side execution)
 
-`impl: ./blank.js` blanks run inside a Web Worker built from a blob
-URL whose source is the AST-rewritten user JS concatenated with a
-harness prefix/suffix. The Worker has no DOM, no `chrome.*`, no
-access to the content script's globals. Capability proxies
-postMessage to the main thread, which re-validates and routes
-through the SW fetch proxy.
+`impl: ./blank.js` blanks run on the **chrome-host** (Node process
+connected via native messaging), NOT in a content-script Worker. The
+host imports `@opencues/runtime`'s `buildUserBlankRegistry` — the
+same loader CC/OC/gemini use — which runs the blank's JS inside Node's
+`vm` with a permission proxy. The content script holds only a thin
+proxy (`ChromeUserBlank` in `integrations/chrome/src/user-blank-loader.ts`)
+that round-trips invokes over the native port.
 
-What the Worker sees:
+Why host-side, not Worker:
+1. **No page-CSP coupling** — strict pages (Gmail, banks) refuse
+   `new Worker(blob:...)` from content scripts. Host-side bypasses
+   page CSP entirely.
+2. **Stronger sandbox** — Node `vm` + permission proxy is the same
+   isolation the CLI hosts use. The browser Worker model was weaker
+   (no DOM, but full network).
+3. **One loader, four hosts** — chrome aligns with CC/OC/gemini
+   instead of carrying its own AST rewriter + Worker harness.
+
+What the host-side blank sees:
 - `ctx.fetch` / `ctx.llm` / `ctx.storage` / `ctx.secrets` only when
-  declared in BLANK.md frontmatter (`network:`, `llm:`, `storage:`,
-  `secrets:`); everything else is `undefined`.
+  declared in BLANK.md frontmatter; everything else is `undefined`.
 - Per-blank quotas (120 fetches/min, 30 LLM/min, 1MB storage) with
-  hard ceilings (600/120/10MB) — the runtime refuses larger
-  declared caps.
-- Output passes through `sanitizeBlankOutput` before reaching the
-  page DOM: HTML tags stripped, zero-width + bidi overrides removed,
-  NFKC-normalized, 8KB cap. Bypass with explicit `output: rich`.
+  hard ceilings (600/120/10MB).
+- `ctx.storage` lives at `CUE_ROOT/.user-blank-storage/<namespace>/`
+  (disk, host-side). No round-trip to chrome.storage.
+- Output passes through `sanitizeBlankOutput` at the host before it
+  reaches the wire, AND again on the content-script side before
+  reaching the DOM. Defence in depth.
 
-Defence in depth — the Worker's capability proxies don't *enforce*
-the policy alone; the main thread re-checks the allow-list, quota,
-and secret binding before forwarding to the SW. A compromised
-Worker can't escape because it's the main thread that holds the
-trust.
+**Hard dependency**: custom user-blanks (`impl: ./blank.js`)
+require `opencues install chrome-host`. Without the host, the
+proxy's invoke fails with "native host not connected" — same fail
+shape as scripted blanks without the host. Shipped TS-class blanks
+(weather, stocks, answer, prompt, …) register upstream in
+`createBlanks()` and don't need the host.
 
 See `docs/architecture/user-blanks.md` for the full capability
 surface and the author's view.

@@ -34,7 +34,7 @@ import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
 import { createBlanks, type BrowserBlank } from './blanks';
-import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
+import { walkPlainText, plainOffsetOfPosition, domPositionOfPlainOffset } from './dom-walk';
 
 const STORAGE_PREFIX = 'opencues_runtime:';
 
@@ -66,11 +66,41 @@ const ROOT = '/chrome-storage';
 // they signal real failures (broken paste, host disconnect, etc.).
 let _readTrace = false;
 function tlog(msg: string): void { if (_readTrace) console.log(msg); }
+// Forward a log line to the SW → native host → /tmp/opencues.log.
+// Fire-and-forget; silently drops when no host listener. We need this
+// at module scope so the exported `log` object below can use it from
+// outside startOpenCues (e.g. applyMarkdownStyling). Same shape as the
+// host-adapter log callback inside startOpenCues.
+function mirrorToHostLog(level: 'info' | 'debug' | 'warn' | 'error', args: unknown[]): void {
+  const msg = args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ');
+  const data = args.find(a => typeof a !== 'string');
+  let safeData: unknown;
+  if (data !== undefined) {
+    try { safeData = JSON.parse(JSON.stringify(data)); }
+    catch { safeData = String(data); }
+  }
+  try {
+    chrome.runtime.sendMessage({ type: 'opencues:log', level, msg, data: safeData })
+      .catch(() => { /* no listener */ });
+  } catch { /* sendMessage threw */ }
+}
 export const log = {
-  info(...args: unknown[]): void { if (_readTrace) console.log(...args); },
-  debug(...args: unknown[]): void { if (_readTrace) console.debug(...args); },
-  warn(...args: unknown[]): void { console.warn(...args); },
-  error(...args: unknown[]): void { console.error(...args); },
+  info(...args: unknown[]): void {
+    if (_readTrace) console.log(...args);
+    mirrorToHostLog('info', args);
+  },
+  debug(...args: unknown[]): void {
+    if (_readTrace) console.debug(...args);
+    mirrorToHostLog('debug', args);
+  },
+  warn(...args: unknown[]): void {
+    console.warn(...args);
+    mirrorToHostLog('warn', args);
+  },
+  error(...args: unknown[]): void {
+    console.error(...args);
+    mirrorToHostLog('error', args);
+  },
 };
 function parseDebugMode(content: string | null | undefined): boolean {
   return /debug-mode:\s*on\b/i.test(content ?? '');
@@ -156,42 +186,46 @@ function readCursorOffset(): number {
 
 /** Move the caret to the given plain-text offset within the current target.
  *  Offsets agree with walkPlainText's coordinates: each BR / block-boundary
- *  \n consumes one offset character even though no Text node holds it. */
-function writeCursorOffset(offset: number): void {
+ *  \n consumes one offset character even though no Text node holds it.
+ *
+ *  Managed editors (Lexical, ProseMirror/TipTap, Slate) own their cursor
+ *  via internal selection models that sync model→DOM, never the other
+ *  way. For SINGLE-segment in-place splices the editor naturally keeps
+ *  the caret at its prior character offset within the mutated node —
+ *  so on those splices we no-op here. Internal callers (diffWriteText
+ *  after a single-segment splice) leave `force=false` so the editor's
+ *  natural behavior wins.
+ *
+ *  Runtime-driven cursor jumps (transform-blank substitution → set
+ *  cursor at end of new buffer past preserved separators) MUST be
+ *  honored even on managed editors. Those callers pass `force=true` to
+ *  bypass the early bail. Managed editors usually accept browser
+ *  Selection on end-of-content positions during reconcile. */
+function writeCursorOffset(offset: number, force: boolean = false): void {
   const target = currentTarget;
   if (!target) return;
-  // Managed editors (Lexical, ProseMirror/TipTap) own their cursor
-  // via internal selection models that sync model→DOM, never the
-  // other way. Setting the browser Selection externally fights with
-  // their next render, and the model wins (often snapping to
-  // end-of-buffer). For single-text-node splices the editor
-  // naturally keeps the caret at its prior character offset within
-  // the mutated node, which is what we want anyway. So no-op here.
-  if (isManagedEditor(target)) return;
+  if (isManagedEditor(target) && !force) return;
   const sel = window.getSelection();
   if (!sel) return;
-  const { segments, text } = walkPlainText(target);
-  const clamped = Math.max(0, Math.min(offset, text.length));
-  for (const seg of segments) {
-    if (clamped <= seg.plainEnd) {
-      const within = Math.max(0, clamped - seg.plainStart);
-      const range = document.createRange();
-      range.setStart(seg.node, Math.min(within, seg.node.data.length));
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
-      return;
-    }
+  // Use the proper plain-offset-to-DOM-position resolver. Handles all
+  // three cases that used to be broken: inside text nodes, at virtual
+  // \n boundaries (BR / block edges), and past the entire plain-text
+  // length (trailing empty <div><br></div> blocks that have no text
+  // nodes). Before this we'd fall through to "end of last text node"
+  // which left the caret BEFORE the trailing structure — perceived as
+  // a backward cursor jump.
+  const pos = domPositionOfPlainOffset(target, Math.max(0, offset));
+  const range = document.createRange();
+  try { range.setStart(pos.node, pos.offset); }
+  catch {
+    // Defensive: if the offset is out of range for the chosen
+    // container (browser-quirk edge case), anchor at end of target.
+    range.selectNodeContents(target);
+    range.collapse(false);
   }
-  // Past the last segment — anchor at end of the last text node, if any.
-  const last = segments[segments.length - 1];
-  if (last) {
-    const range = document.createRange();
-    range.setStart(last.node, last.node.data.length);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 /** Apply newText to the target by mutating existing text nodes in
@@ -238,15 +272,23 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
   const removeEnd = current.length - suffix;
   const insert = newText.slice(prefix, newText.length - suffix);
 
-  // If the change includes \n chars, the runtime is asking for new
-  // block structure that can't be expressed by splicing a literal \n
-  // into a single text node (contenteditables don't render it as a
-  // line break). Route to the paragraph-aware whole-body replace path
-  // instead — Gmail / Lexical / ProseMirror will rebuild the right
-  // <br> / <div> / <p> structure via their own input pipeline.
-  // (TransformBlank in particular uses pushText for whole-body
-  // rewrites that include paragraph breaks — see resolver.ts.)
-  if (insert.includes('\n')) {
+  // Route to replaceAllText whenever the change touches \n boundaries
+  // (either insert OR removed region). Contenteditables don't render
+  // a literal \n as a line break, and an in-place splice that only
+  // mutates text nodes leaves the SURROUNDING block structure
+  // (empty <div><br></div> blocks) intact in the DOM tree — BUT
+  // Gmail's reconciler (and similar generic-contenteditable engines)
+  // GC empty paragraph blocks shortly after the splice, eating the
+  // structural \n's the runtime carefully preserved. Symptom: "the
+  // line I was on disappeared" after a transform-blank substitution
+  // that consumed a trigger line.
+  //
+  // replaceAllText emits explicit `<div><br></div>` / `<p><br></p>`
+  // blocks per empty line and pastes the whole HTML. The reconciler
+  // accepts the explicit block markup and the trailing empty paragraphs
+  // survive.
+  const removedRegion = current.slice(removeStart, removeEnd);
+  if (insert.includes('\n') || removedRegion.includes('\n')) {
     replaceAllText(newText);
     return true;
   }
@@ -278,6 +320,18 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
     // (looks like normal user typing) and updates its model.
     const seg = segments[startSegIdx];
     const textNode = seg.node;
+
+    // Empty-segment guard: if the splice would WIPE the entire text
+    // node (startOff=0, endOff=textNode.data.length, insert=""), the
+    // containing block ends up as `<div></div>` — no BR, no text —
+    // which contenteditables (Gmail) render as a ZERO-HEIGHT block
+    // (the line "vanishes"). Route to replaceAllText so the new HTML
+    // emits an explicit `<div><br></div>` for that line, which
+    // renders as a visible empty paragraph.
+    if (insert.length === 0 && startOff === 0 && endOff === textNode.data.length) {
+      replaceAllText(newText);
+      return true;
+    }
 
     // Managed editors (Lexical, ProseMirror/TipTap, Slate): explicitly
     // restore the cursor synchronously after the splice. Their MOs
@@ -430,12 +484,26 @@ function replaceAllText(text: string): void {
     // emission and avoids extra paragraph-margin spacing).
     const isManaged = isManagedEditor(target);
     const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = isManaged
-      // Adjacent <p> blocks; collapse runs of newlines into one
-      // paragraph boundary so we don't emit empty <p><br></p>
-      // between paragraphs (which would render as double spacing).
-      ? text.split(/\n+/).filter(line => line.length > 0).map(line => `<p>${escape(line)}</p>`).join('')
-      : text.split('\n').map(escape).join('<br>');
+    // One BLOCK per line, including empty lines. Empty lines need
+    // explicit `<div><br></div>` / `<p><br></p>` blocks — a bare
+    // `<br>`-chain like "X<br><br>" gets compacted by Gmail's
+    // contenteditable into just "X" (trailing structure collapsed),
+    // and a bare `<div></div>` (no BR) renders as zero-height.
+    //
+    // We emit the EXACT structure the runtime asked for. Various
+    // contenteditables may add their own trailing placeholder
+    // paragraph after paste (Gmail does sometimes, others don't);
+    // we don't try to predict that. Net layout closely tracks the
+    // runtime intent; the occasional +1 trailing placeholder is
+    // less disruptive than the alternative (losing user-intended
+    // empty lines).
+    const blockOpen = isManaged ? '<p>' : '<div>';
+    const blockClose = isManaged ? '</p>' : '</div>';
+    const html = text.split('\n').map(line =>
+      line.length === 0
+        ? `${blockOpen}<br>${blockClose}`
+        : `${blockOpen}${escape(line)}${blockClose}`,
+    ).join('');
 
     // Wipe the existing content first.
     //
@@ -860,41 +928,32 @@ function applySiteCompatFilter(files: Record<string, string>): Record<string, st
 
 /**
  * Walk the storage bundle for `~/.cues/blanks/<name>/BLANK.md` entries
- * that declare `impl: ./<file>.js` and register each as a
- * ChromeUserBlank. The .js source is also bundled (the chrome host
- * doesn't filter .js out the way it filters .sh) so the content
- * script has everything it needs to spawn the Worker.
+ * that declare `impl: ./<file>.js` and register each as a host-side
+ * user-blank PROXY. The blank's code lives on the chrome-host
+ * (Node process via native messaging) — no Worker, no blob URL, no
+ * page-CSP issue. Built-in TS-class blanks (registered upstream by
+ * createBlanks) take precedence; only blanks WITHOUT a TS class get
+ * a proxy here.
  *
  * The runtime's blankInvoke map is shared by reference — entries we
  * `.set()` here become visible to BlankFill on the next invocation.
+ *
+ * Hard dependency on chrome-host: without it, the proxy's invoke
+ * relay fails with "native host not connected" (similar shape to a
+ * scripted blank failing without the host). User-visible behaviour:
+ * the keyword doesn't fire; built-in blanks still work.
  */
 async function registerUserBlanksFromBundle(
   blanksRegistry: Map<string, BrowserBlank>,
-  llmApiKeys: Readonly<Record<string, string>>,
+  _llmApiKeys: Readonly<Record<string, string>>,
 ): Promise<void> {
-  // Read bundle + host-pushed credential map together. The
-  // opencues_host_keys map (populated by the chrome-host's `config`
-  // message at connect) is the canonical source for secret values:
-  // it carries all env-var-shaped keys the host knows about (GROQ,
-  // FINNHUB, OPENAI, ANTHROPIC, etc.) — strictly broader than the
-  // popup-derived StoredConfig (apiKey + finnhubApiKey). Merge so
-  // popup overrides win on conflict.
-  const stored = await chrome.storage.local.get(['opencues_bundle', 'opencues_host_keys']);
+  const stored = await chrome.storage.local.get(['opencues_bundle']);
   const bundle = stored.opencues_bundle as { files?: Record<string, string> } | undefined;
-  const hostKeys = (stored.opencues_host_keys ?? {}) as Record<string, string>;
-  const secretValues: Record<string, string> = { ...hostKeys, ...llmApiKeys };
   if (!bundle || !bundle.files) return;
 
-  // Track user-blanks registered in THIS pass so we can warn on
-  // name collisions among them. Existing entries in blanksRegistry
-  // from createBlanks() are built-in TS classes — overwriting those
-  // IS the migration path (intentional). Collisions between two
-  // user-blanks are not.
   const registeredUserNames = new Set<string>();
   let registered = 0;
   for (const [rel, content] of Object.entries(bundle.files)) {
-    // Match blanks/<name>/BLANK.md (case-insensitive primary,
-    // tolerant of legacy lowercase per discover.ts).
     const m = rel.match(/^blanks\/([^/]+)\/BLANK\.md$/i);
     if (!m) continue;
     const blankName = m[1];
@@ -906,12 +965,10 @@ async function registerUserBlanksFromBundle(
     if (!cfg?.impl) continue;
 
     // Only treat relative paths as user-shipped JS. Bare names fall
-    // through to the built-in registry (same as the native hosts).
+    // through to the built-in registry.
     const isRelative = cfg.impl.includes('/');
     if (!isRelative) continue;
 
-    // First-wins on duplicate user-blank names. Two packs shipping
-    // "weather" must not silently overwrite each other.
     if (registeredUserNames.has(blankName)) {
       console.warn(
         `[opencues] user blank name collision: "${blankName}" already registered ` +
@@ -920,18 +977,17 @@ async function registerUserBlanksFromBundle(
       continue;
     }
 
-    // Locate the JS source in the bundle. cfg.impl was resolved to
-    // an abs-ish path against /chrome-storage/.cues/blanks/<name>/;
-    // strip that prefix to find the bundle-relative key.
-    const jsRel = cfg.impl.replace(/^\/chrome-storage\/\.cues\//, '').replace(/^\.\//, '');
-    const jsSource = bundle.files[jsRel];
-    if (!jsSource) {
-      log.warn(`[opencues] user blank "${blankName}" declared impl: ${cfg.impl} but JS not in bundle (expected key: ${jsRel})`);
+    // Built-in TS class already registered upstream — prefer it. The
+    // host-side path is for custom user JS that has no TS equivalent.
+    if (blanksRegistry.has(blankName)) {
+      log.info(`[opencues] user blank "${blankName}" has a built-in TS class — using that`);
+      registeredUserNames.add(blankName);
       continue;
     }
 
-    // Required secret bindings — see registry.ts for the rationale.
-    // Unbound secrets are refused at load time on every host.
+    // Required secret bindings still validated here (defence in depth
+    // — the host validates too). Same rationale as registry.ts: unbound
+    // secrets are author error and refused at load time.
     if (cfg.userBlankSecrets && cfg.userBlankSecrets.length > 0) {
       const unbound = cfg.userBlankSecrets.filter(name =>
         !cfg.userBlankSecretBindings?.[name] || cfg.userBlankSecretBindings[name].length === 0,
@@ -939,37 +995,22 @@ async function registerUserBlanksFromBundle(
       if (unbound.length > 0) {
         log.warn(
           `[opencues] user blank "${blankName}": secrets [${unbound.join(', ')}] declared without ` +
-          `secret-hosts.<NAME> bindings — refusing to load. Add e.g. ` +
+          `secret-hosts.<NAME> bindings — refusing to register. Add e.g. ` +
           `secret-hosts.${unbound[0]}: [api.example.com] to BLANK.md.`,
         );
         continue;
       }
     }
 
-    try {
-      const userBlank = new ChromeUserBlank(blankName, jsSource, {
-        network: cfg.userBlankNetwork ? [...cfg.userBlankNetwork] : undefined,
-        llm: cfg.userBlankLlm,
-        storage: cfg.userBlankStorage,
-        secrets: cfg.userBlankSecrets ? [...cfg.userBlankSecrets] : undefined,
-        secretBindings: cfg.userBlankSecretBindings,
-        output: cfg.userBlankOutput ?? 'safe',
-        llmApiKeys: secretValues,
-        // Same map drives both: opencues_host_keys (pushed by the
-        // native-messaging host from process.env) carries every
-        // env-var-shaped key. The worker only receives the names
-        // it declared via secrets: [...].
-        secretValues,
-      });
-      blanksRegistry.set(blankName, userBlank as unknown as BrowserBlank);
-      registeredUserNames.add(blankName);
-      registered++;
-      log.info(`[opencues] user blank "${blankName}" registered (chrome Worker)`);
-    } catch (err) {
-      log.warn(`[opencues] failed to instantiate user blank "${blankName}"`, err);
-    }
+    const userBlank = new ChromeUserBlank(blankName, {
+      output: cfg.userBlankOutput ?? 'safe',
+    });
+    blanksRegistry.set(blankName, userBlank as unknown as BrowserBlank);
+    registeredUserNames.add(blankName);
+    registered++;
+    log.info(`[opencues] user blank "${blankName}" registered (host-side proxy)`);
   }
-  if (registered > 0) log.info(`[opencues] ${registered} user blank(s) live in chrome`);
+  if (registered > 0) log.info(`[opencues] ${registered} host-side user blank(s) wired`);
 }
 
 // Within a tab, SPAs change location.pathname without a page reload.
@@ -1270,6 +1311,22 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     else if (level === 'warn') console.warn(tag, msg, data ?? '');
     else if (level === 'debug') console.debug(tag, msg, data ?? '');
     else console.log(tag, msg, data ?? '');
+    // Mirror to the SW → native host → /tmp/opencues.log so chrome's
+    // runtime events land alongside CC/OC/gemini. Fire-and-forget;
+    // when the host isn't connected the SW drops silently. The
+    // page-console output above is the always-on local surface.
+    // Strip non-serialisable `data` (DOM nodes, circular refs) so the
+    // sendMessage's structured-clone doesn't throw; we only need a
+    // readable scalar for the log line.
+    try {
+      let safeData: unknown;
+      if (data !== undefined) {
+        try { safeData = JSON.parse(JSON.stringify(data)); }
+        catch { safeData = String(data); }
+      }
+      chrome.runtime.sendMessage({ type: 'opencues:log', level, msg, data: safeData })
+        .catch(() => { /* port closed or no listener — local console still has it */ });
+    } catch { /* ditto */ }
   };
 
   // No seed step — readFile() resolves bake-time constants directly
@@ -1291,13 +1348,28 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // editors on every word cycle. The diff's single-segment vs
     // multi-segment check is the right discriminator.
     setText: diffWriteText,
-    setCursorOffset: writeCursorOffset,
+    // Runtime-requested cursor jumps (transform/fluid substitution
+    // landing-position) must be honored even on managed editors —
+    // pass force=true to bypass the natural in-segment-stay behavior.
+    // We also re-apply after a frame so the managed editor's
+    // post-reconcile cursor snap doesn't override us.
+    setCursorOffset: (offset) => {
+      writeCursorOffset(offset, true);
+      requestAnimationFrame(() => writeCursorOffset(offset, true));
+    },
     pushText: (text, cursor) => {
       // diffWriteText already calls sourceReclassifier.markRuntimeWrite.
       // Cursor is set synchronously after so the input-event handler
       // reads the post-fill caret position (matters for multi-word fills).
       diffWriteText(text);
-      if (cursor !== undefined) writeCursorOffset(cursor);
+      // pushText cursor came from the runtime (substitution landing
+      // position) — force the move even on managed editors, and
+      // re-apply after a frame so the editor's reconcile doesn't
+      // snap the caret back to its model's idea of "natural" position.
+      if (cursor !== undefined) {
+        writeCursorOffset(cursor, true);
+        requestAnimationFrame(() => writeCursorOffset(cursor, true));
+      }
     },
     forceRender: () => {
       runtimeRender();
@@ -1367,7 +1439,141 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // bootResult.reloadConfig().
   void refreshReadTraceFromStorage();
 
+  // Markdown styling — substituting modules (TransformBlank / FluidBlank
+  // via @opencues/runtime applyMarkdownAwareSubstitution) emit
+  // `markdown.styled` with the stripped text + per-style ranges in
+  // stripped-text coords. The runtime has already written the stripped
+  // buffer; chrome's job is to apply native bold/italic/strike markup
+  // to the live DOM so the page renders the styles the LLM intended.
+  bootResult.onModuleEvent((type, body) => {
+    if (type !== 'markdown.styled' || !body) return;
+    try { applyMarkdownStyling(body as unknown as MarkdownStyledPayload); }
+    catch (err) { console.warn('[opencues] applyMarkdownStyling failed', err); }
+  });
+
   return bootResult;
+}
+
+// ─── Markdown styling on the live DOM ───────────────────────────────────
+//
+// Payload shape (mirrors markdown-substitute's `markdown.styled` event):
+//   { text, bold[], italic[], code[], strike[], heading[], list[] }
+// Ranges are in stripped-text coords — they index into the buffer the
+// runtime just wrote (which is `payload.text`). We translate those
+// coords into the live target's plain-text offsets via the same
+// walkPlainText pass diffWriteText uses, then drive execCommand on the
+// browser Selection for each style range.
+
+type MdRange = { start: number; end: number };
+interface MarkdownStyledPayload {
+  text: string;
+  bold?: readonly MdRange[];
+  italic?: readonly MdRange[];
+  code?: readonly MdRange[];
+  strike?: readonly MdRange[];
+  heading?: readonly MdRange[];
+  list?: readonly MdRange[];
+}
+
+function applyMarkdownStyling(payload: MarkdownStyledPayload): void {
+  const target = currentTarget;
+  if (!target) { log.info('[opencues] markdown.styled: no currentTarget — drop'); return; }
+  if (typeof payload.text !== 'string') { log.info('[opencues] markdown.styled: no payload.text — drop'); return; }
+
+  // Verify the live buffer still matches the stripped text. Tolerant
+  // prefix match: when the contenteditable preserves trailing empty
+  // paragraph blocks from before the substitution (Gmail / Lexical /
+  // ProseMirror commonly do), walkPlainText reports the trailing \n
+  // characters but the styled ranges all sit within the matching
+  // prefix, so the apply is still correct. We refuse only when the
+  // prefix itself diverges (user typed mid-substitution, replaceAll
+  // hasn't finished, etc).
+  const { text: live } = walkPlainText(target);
+  if (!live.startsWith(payload.text)) {
+    log.info(`[opencues] markdown.styled: live drift — live="${live.slice(0,60)}" payload="${payload.text.slice(0,60)}"`);
+    return;
+  }
+  log.info(`[opencues] markdown.styled: applying bold=${(payload.bold ?? []).length} italic=${(payload.italic ?? []).length} strike=${(payload.strike ?? []).length}`);
+
+  // Snapshot the user's selection so we can restore it after styling.
+  const sel = window.getSelection();
+  const saved = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+
+  // Always use the contentEditable native capability — execCommand on
+  // a browser Selection. On generic contenteditables (Gmail, plain
+  // <div contenteditable>) it directly wraps the selection in a
+  // <b> / <i> / <strike> tag. On managed editors that intercept
+  // beforeinput (PM/Lexical/Slate), it silently no-ops — accepted
+  // when those editors are configured plain-text-only with no
+  // formatting capability. The styling intent is communicated;
+  // editors that can render it do, editors that can't ignore it.
+  const apply = (ranges: readonly MdRange[] | undefined, command: 'bold' | 'italic' | 'strikethrough'): void => {
+    if (!ranges || ranges.length === 0) return;
+    for (const r of ranges) {
+      if (!selectPlainRange(target, r.start, r.end)) continue;
+      try { document.execCommand(command); } catch { /* fails silently */ }
+    }
+  };
+
+  apply(payload.bold, 'bold');
+  apply(payload.italic, 'italic');
+  apply(payload.strike, 'strikethrough');
+  // code / heading / list are skipped on chrome for now — execCommand has
+  // no equivalents and per-engine wrapping (<code>, <h1>, <li>) is too
+  // editor-specific for a generic implementation. Native-host adapters
+  // render these via ANSI; chrome can pick them up site-by-site later.
+
+  if (saved && sel) {
+    try { sel.removeAllRanges(); sel.addRange(saved); }
+    catch { /* selection restore can fail if DOM shifted */ }
+  }
+
+  // Format-state reset. `execCommand('bold')` over a range toggles the
+  // browser's GLOBAL typing-mode for bold — after the selection is
+  // restored to the cursor's pre-styling position, the next character
+  // the user types would inherit that mode (becomes bold). Same for
+  // italic / strikethrough. Query each format's current state and
+  // toggle it off when set. Collapsed-selection execCommand calls
+  // only flip the typing flag; they don't touch the rendered DOM.
+  const resetIfActive = (cmd: 'bold' | 'italic' | 'strikethrough'): void => {
+    try {
+      if (document.queryCommandState(cmd)) document.execCommand(cmd);
+    } catch { /* both APIs can throw on detached docs / sandboxes */ }
+  };
+  resetIfActive('bold');
+  resetIfActive('italic');
+  resetIfActive('strikethrough');
+
+  sourceReclassifier.markRuntimeWrite(walkPlainText(target).text);
+}
+
+/** Position the browser Selection over [start, end) plain-text offsets
+ *  inside target. Returns true on success. */
+function selectPlainRange(target: HTMLElement, start: number, end: number): boolean {
+  if (start >= end) return false;
+  const sel = window.getSelection();
+  if (!sel) return false;
+  const { segments } = walkPlainText(target);
+  let startNode: Text | null = null, startOff = 0;
+  let endNode: Text | null = null, endOff = 0;
+  for (const seg of segments) {
+    if (startNode === null && start >= seg.plainStart && start <= seg.plainEnd) {
+      startNode = seg.node;
+      startOff = Math.min(start - seg.plainStart, seg.node.data.length);
+    }
+    if (end >= seg.plainStart && end <= seg.plainEnd) {
+      endNode = seg.node;
+      endOff = Math.min(end - seg.plainStart, seg.node.data.length);
+      break;
+    }
+  }
+  if (!startNode || !endNode) return false;
+  const range = document.createRange();
+  range.setStart(startNode, startOff);
+  range.setEnd(endNode, endOff);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  return true;
 }
 
 // ─── Trust gate: underscore credit ──────────────────────────────────────

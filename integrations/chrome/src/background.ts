@@ -144,16 +144,36 @@ interface ExecRequestFromContent {
   };
 }
 
+interface UserBlankInvokeRequestFromContent {
+  type: 'opencues:user-blank-invoke';
+  name: string;
+  method: 'get' | 'set';
+  args: string[];
+}
+interface UserBlankResultMessage {
+  type: 'user-blank-result';
+  requestId: string;
+  ok: boolean;
+  output?: string;
+  error?: string;
+}
+
 let nativePort: chrome.runtime.Port | null = null;
 let nextRequestId = 1;
-type Pending = (msg: ExecResultMessage) => void;
-const pending: Map<string, Pending> = new Map();
+type ExecPending = (msg: ExecResultMessage) => void;
+type UserBlankPending = (msg: UserBlankResultMessage) => void;
+const pending: Map<string, ExecPending> = new Map();
+const pendingUserBlank: Map<string, UserBlankPending> = new Map();
 
 function failPending(reason: string): void {
   for (const [id, resolve] of pending) {
     resolve({ type: 'exec-result', requestId: id, exitCode: 127, stdout: '', stderr: reason, timedOut: false });
   }
   pending.clear();
+  for (const [id, resolve] of pendingUserBlank) {
+    resolve({ type: 'user-blank-result', requestId: id, ok: false, error: reason });
+  }
+  pendingUserBlank.clear();
 }
 
 function connectNativeHost(): void {
@@ -192,6 +212,15 @@ function connectNativeHost(): void {
       if (resolve) {
         pending.delete(msg.requestId);
         resolve(msg);
+      }
+      return;
+    }
+    const ubr = raw as UserBlankResultMessage;
+    if (ubr.type === 'user-blank-result' && typeof ubr.requestId === 'string') {
+      const resolve = pendingUserBlank.get(ubr.requestId);
+      if (resolve) {
+        pendingUserBlank.delete(ubr.requestId);
+        resolve(ubr);
       }
       return;
     }
@@ -251,6 +280,68 @@ chrome.runtime.onMessage.addListener((message: ExecRequestFromContent, _sender, 
     pending.delete(requestId);
     sendResponse({ exitCode: 127, stdout: '', stderr: 'postMessage failed: ' + String(err), timedOut: false });
   }
+  return true;
+});
+
+// Content scripts ask the SW to invoke a user-blank via the native host.
+// Same shape as the exec relay: assign requestId, forward to host,
+// match the user-blank-result reply, return { ok, output, error }.
+// Replaces the in-page Web Worker — see user-blank-loader.ts.
+chrome.runtime.onMessage.addListener((message: UserBlankInvokeRequestFromContent, _sender, sendResponse) => {
+  if (message?.type !== 'opencues:user-blank-invoke') return false;
+  if (!nativePort) {
+    sendResponse({ ok: false, error: 'native host not connected — install via `opencues install chrome-host`' });
+    return true;
+  }
+  const requestId = String(nextRequestId++);
+  pendingUserBlank.set(requestId, (result) => {
+    sendResponse({
+      ok: result.ok,
+      output: result.output ?? '',
+      error: result.error,
+    });
+  });
+  // 15s safety net — the host's per-blank timeout defaults to 8s in
+  // the runtime loader. One tier above; the host's own timer should
+  // always fire first under normal conditions.
+  setTimeout(() => {
+    const resolve = pendingUserBlank.get(requestId);
+    if (!resolve) return;
+    pendingUserBlank.delete(requestId);
+    resolve({ type: 'user-blank-result', requestId, ok: false, error: 'SW-side timeout' });
+  }, 15_000);
+  try {
+    nativePort.postMessage({
+      type: 'user-blank-invoke',
+      requestId,
+      name: message.name,
+      method: message.method,
+      args: message.args,
+    });
+  } catch (err) {
+    pendingUserBlank.delete(requestId);
+    sendResponse({ ok: false, error: 'postMessage failed: ' + String(err) });
+  }
+  return true;
+});
+
+// Forward content-script log lines to the native host so they land
+// in /tmp/opencues.log alongside CC/OC/gemini. Fire-and-forget — log
+// must never block the runtime keystroke path. Silently drops when
+// the host isn't connected.
+chrome.runtime.onMessage.addListener((message: { type?: string; level?: string; msg?: string; data?: unknown }, _sender, sendResponse) => {
+  if (message?.type !== 'opencues:log') return false;
+  if (nativePort) {
+    try {
+      nativePort.postMessage({
+        type: 'log',
+        level: message.level ?? 'info',
+        msg: message.msg ?? '',
+        data: message.data,
+      });
+    } catch { /* port disconnected mid-write; drop */ }
+  }
+  sendResponse({ ok: true });
   return true;
 });
 

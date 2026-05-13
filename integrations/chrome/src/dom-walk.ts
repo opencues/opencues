@@ -102,6 +102,91 @@ export function walkPlainText(root: HTMLElement): WalkResult {
   return { text, segments };
 }
 
+/** Inverse of plainOffsetOfPosition. Given a plain-text offset (in the
+ *  coordinate system walkPlainText produces), return the DOM position
+ *  (container + offset) that maps to it. Handles all three cases:
+ *
+ *   1. Offset INSIDE a text node → returns {node: textNode, offset: relativeIdx}
+ *   2. Offset at a virtual `\n` boundary (BR or block boundary) →
+ *      returns {node: parentElement, offset: indexJustAfterTheBoundary}
+ *   3. Offset PAST the entire plain-text length → returns end of root
+ *
+ *  The third case is the load-bearing one for trailing empty block
+ *  elements (e.g. <div><br></div><div><br></div> tail of a Gmail
+ *  contenteditable). walkPlainText counts each as a `\n` but they
+ *  have no text node — Range.setStart(textNode, offset) can't reach
+ *  them. We anchor the selection at the end of the root element
+ *  instead, which the browser collapses to the last visible position.
+ */
+export function domPositionOfPlainOffset(
+  root: HTMLElement,
+  targetOffset: number,
+): { node: Node; offset: number } {
+  let plain = 0;
+  let depth = 0;
+  let result: { node: Node; offset: number } | null = null;
+  // Mirror walkPlainText: BR emits `\n` unconditionally; block
+  // boundaries emit only when last wasn't a newline.
+  let lastWasNewline = false;
+
+  const visit = (node: Node): void => {
+    if (result) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = node as Text;
+      const len = t.data.length;
+      if (len === 0) return;
+      if (targetOffset >= plain && targetOffset <= plain + len) {
+        result = { node: t, offset: targetOffset - plain };
+        return;
+      }
+      plain += len;
+      lastWasNewline = false;
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as Element;
+    if (el.tagName === 'BR') {
+      if (!result && targetOffset === plain && el.parentNode) {
+        const siblings = Array.from(el.parentNode.childNodes);
+        result = { node: el.parentNode, offset: siblings.indexOf(el) + 1 };
+      }
+      plain += 1;
+      lastWasNewline = true;
+      return;
+    }
+    const isBlock = depth > 0 && isBlockElement(el);
+    if (isBlock && plain > 0 && !lastWasNewline && el.parentNode) {
+      if (!result && targetOffset === plain) {
+        const parent = el.parentNode as Element;
+        const siblings = Array.from(parent.childNodes);
+        result = { node: parent, offset: siblings.indexOf(el) };
+      }
+      plain += 1;
+      lastWasNewline = true;
+    }
+    depth++;
+    for (const child of Array.from(node.childNodes)) {
+      if (result) break;
+      visit(child);
+    }
+    depth--;
+  };
+
+  depth++;
+  for (const child of Array.from(root.childNodes)) {
+    if (result) break;
+    visit(child);
+  }
+  depth--;
+
+  if (result) return result;
+  // Past the entire plain-text length — anchor at end of root. Range.
+  // selectNodeContents + collapse(false) is the canonical "place caret
+  // at very end of contenteditable" pattern; works for trailing empty
+  // <div><br></div>, <p><br></p>, plain text, etc.
+  return { node: root, offset: root.childNodes.length };
+}
+
 /** Compute the plain-text offset of a DOM position (container + offset),
  *  matching the coordinate system that walkPlainText produces. */
 export function plainOffsetOfPosition(
@@ -112,10 +197,13 @@ export function plainOffsetOfPosition(
   let plain = 0;
   let reached = false;
   let depth = 0;
-
-  const maybeAddBoundary = (): void => {
-    if (plain > 0) plain += 1;
-  };
+  // Mirror walkPlainText's rules exactly: BR emits `\n` UNCONDITIONALLY;
+  // block boundaries emit `\n` only when plain text doesn't already
+  // end with `\n` (collapses consecutive boundaries to one `\n`). Both
+  // halves of plainOffsetOfPosition + walkPlainText must agree so
+  // `plainOffsetOfPosition(root, root, root.childNodes.length)` returns
+  // the same value as `walkPlainText(root).text.length`.
+  let lastWasNewline = false;
 
   const visit = (node: Node): void => {
     if (reached) return;
@@ -137,17 +225,24 @@ export function plainOffsetOfPosition(
     }
 
     if (node.nodeType === Node.TEXT_NODE) {
-      plain += (node as Text).data.length;
+      const len = (node as Text).data.length;
+      plain += len;
+      if (len > 0) lastWasNewline = false;
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as Element;
     if (el.tagName === 'BR') {
+      // BR always emits — matches walkPlainText.
       plain += 1;
+      lastWasNewline = true;
       return;
     }
     const isBlock = depth > 0 && isBlockElement(el);
-    if (isBlock) maybeAddBoundary();
+    if (isBlock && plain > 0 && !lastWasNewline) {
+      plain += 1;
+      lastWasNewline = true;
+    }
     depth++;
     for (const child of Array.from(node.childNodes)) {
       if (reached) break;

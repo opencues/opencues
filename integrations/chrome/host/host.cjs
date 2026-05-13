@@ -50,6 +50,24 @@ function loadCore() {
   throw new Error('opencues-host: cannot locate @opencues/core; tried: ' + candidates.join(', '));
 }
 
+// ─── @opencues/runtime loader (for user-blank registry) ─────────────────
+function loadRuntime() {
+  const candidates = [
+    path.resolve(__dirname, 'vendor/runtime'),
+    path.resolve(__dirname, '../node_modules/@opencues/runtime'),
+    path.resolve(__dirname, '../../../node_modules/@opencues/runtime'),
+    path.resolve(__dirname, '../../../packages/opencues-runtime'),
+  ];
+  for (const c of candidates) {
+    try {
+      // Direct submodule require — we only need buildUserBlankRegistry +
+      // loadUserBlank from the user-blanks dir, not the whole runtime.
+      return require(path.join(c, 'dist/src/user-blanks/registry'));
+    } catch { /* try next */ }
+  }
+  return null;  // runtime unavailable → user-blank invokes fail with 'no-loader'
+}
+
 // ─── Bundle builder (mirrors sync.cjs walkSource) ────────────────────────
 function buildBundle(dir, core) {
   const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
@@ -163,6 +181,122 @@ process.stdin.resume();
 function handleMessage(msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'exec') return handleExec(msg);
+  if (msg.type === 'user-blank-invoke') return handleUserBlankInvoke(msg);
+  if (msg.type === 'log') return handleLog(msg);
+}
+
+// Mirror the OC/CC/gemini log-line shape so chrome's runtime events
+// (Resolver build, BlankFill substitutions, transform-blank passes,
+// markdown.styled apply trace, etc.) land in /tmp/opencues.log
+// alongside every other host. Unifies the debug surface — one
+// `tail -f /tmp/opencues.log` works across all four integrations.
+function handleLog(msg) {
+  const level = typeof msg.level === 'string' ? msg.level : 'info';
+  const text = typeof msg.msg === 'string' ? msg.msg : '';
+  const data = msg.data;
+  try {
+    const ts = new Date().toISOString().slice(11, 23);
+    const line = `[${ts}][${level}] ${text} ${data ? JSON.stringify(data).slice(0, 400) : ''}\n`;
+    fs.appendFile('/tmp/opencues.log', line, () => {});
+  } catch { /* swallow — log writes must not block runtime path */ }
+}
+
+// ─── User-blank registry (host-side execution) ──────────────────────────
+//
+// Custom user-blanks (JS files at CUE_ROOT/blanks/<name>/blank.js
+// with `impl: ./blank.js` in BLANK.md) run HERE rather than in a
+// content-script Worker. Two reasons:
+//
+//   1. CSP — strict pages (Gmail, banks) refuse blob: Workers from
+//      content scripts; running here bypasses page CSP entirely.
+//   2. Sandbox — Node's `vm` with permission proxy is the same
+//      isolation CC/OC/gemini use. The browser Worker was weaker.
+//
+// The chrome-host becomes a HARD dependency for custom user-blanks.
+// Shipped TS-class blanks (weather, stocks, …) still register
+// upstream in createBlanks() and don't need this path.
+let userBlankRegistry = new Map();
+const runtime = loadRuntime();   // null when runtime submodule not available
+
+function rebuildUserBlankRegistry() {
+  if (!runtime) return;
+  const { parseSingleCueMd } = core;
+  const blanksDir = path.join(CUE_ROOT, 'blanks');
+  if (!fs.existsSync(blanksDir)) {
+    userBlankRegistry = new Map();
+    return;
+  }
+  // Walk CUE_ROOT/blanks/<name>/BLANK.md and collect configs whose
+  // `impl:` is a relative path (the user-blank shape — bare names
+  // fall through to the built-in registry, scripts go through exec).
+  const configs = [];
+  for (const entry of fs.readdirSync(blanksDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const folder = path.join(blanksDir, entry.name);
+    const blankMd = ['BLANK.md', 'blank.md'].map(n => path.join(folder, n)).find(p => fs.existsSync(p));
+    if (!blankMd) continue;
+    try {
+      const parsed = parseSingleCueMd(fs.readFileSync(blankMd, 'utf8'), folder);
+      const cfg = parsed.blanks && parsed.blanks[entry.name];
+      if (!cfg || !cfg.impl) continue;
+      // parseSingleCueMd resolves `impl: ./blank.js` to an absolute
+      // path under `folder`. A path-shaped impl is the discriminator
+      // for "this is a JS user-blank". Bare names indicate built-in
+      // registry lookup which doesn't apply on the host.
+      if (!cfg.impl.includes('/')) continue;
+      configs.push(cfg);
+    } catch { /* parse error → skip this blank */ }
+  }
+  try {
+    userBlankRegistry = runtime.buildUserBlankRegistry(configs, {
+      storageRoot: path.join(CUE_ROOT, '.user-blank-storage'),
+      // Host's process.env IS the secret source. The runtime loader
+      // filters per-blank to only the names declared in `secrets:`.
+      secrets: process.env,
+      log: (level, msg) => sendMessage({ type: 'log', level, msg: '[user-blank] ' + msg }),
+    });
+  } catch (e) {
+    userBlankRegistry = new Map();
+    sendMessage({ type: 'error', message: 'user-blank rebuild failed: ' + (e && e.message || e) });
+  }
+}
+
+async function handleUserBlankInvoke(msg) {
+  const requestId = msg.requestId;
+  if (typeof requestId !== 'string') return;
+  const reply = (body) => sendMessage({ type: 'user-blank-result', requestId, ...body });
+
+  if (!runtime) {
+    reply({ ok: false, error: 'host has no runtime loader — reinstall chrome-host' });
+    return;
+  }
+  const blank = userBlankRegistry.get(msg.name);
+  if (!blank) {
+    reply({ ok: false, error: `user blank "${msg.name}" not registered on host` });
+    return;
+  }
+  const method = msg.method === 'set' ? 'set' : 'get';
+  const args = Array.isArray(msg.args) ? msg.args.map(String) : [];
+  try {
+    let output;
+    if (method === 'get') {
+      output = await blank.get(args[0] || '', args.slice(1));
+    } else {
+      // The runtime wraps user blanks that don't export `set` with
+      // `set: undefined`. Cycling Down on a readOnly blank lands here
+      // — treat it as a no-op so the proxy doesn't surface a confusing
+      // "method not callable" stack to BlankFill.
+      if (typeof blank.set !== 'function') {
+        reply({ ok: true, output: '' });
+        return;
+      }
+      await blank.set(args[0] || '', args[1] || '');
+      output = '';
+    }
+    reply({ ok: true, output: String(output ?? '') });
+  } catch (e) {
+    reply({ ok: false, error: String(e && e.message || e) });
+  }
 }
 
 // Sandbox: every script path the host runs must live under CUE_ROOT
@@ -402,12 +536,17 @@ sendHostConfig();
 
 // Initial push.
 buildAndPush('initial');
+rebuildUserBlankRegistry();
 
 // Watch with debounce.
 let timer = null;
 function schedule() {
   if (timer) clearTimeout(timer);
-  timer = setTimeout(() => { timer = null; buildAndPush('change'); }, 250);
+  timer = setTimeout(() => {
+    timer = null;
+    buildAndPush('change');
+    rebuildUserBlankRegistry();   // re-register user-blanks on disk change
+  }, 250);
 }
 try {
   if (fs.existsSync(CUE_ROOT)) {

@@ -93,6 +93,70 @@ Don't ship long-running / streaming scripts through this protocol —
 it's request/response, no `stdout` stream until close. Future
 streaming variant would add an `exec-chunk` message.
 
+## User-blank execution — host-side (May 2026)
+
+Custom JS user-blanks (`impl: ./blank.js` in BLANK.md) run on the
+chrome-host, NOT in a content-script Worker. The earlier blob-Worker
+design tripped strict-page CSPs (Gmail, banks) and was strictly
+weaker than the Node `vm` sandbox the CLI hosts use. The host now
+imports `@opencues/runtime`'s `buildUserBlankRegistry` directly:
+
+```
+content script blankInvoke(name, method, args)
+  → ChromeUserBlank proxy
+  → chrome.runtime.sendMessage({type:'opencues:user-blank-invoke', ...})
+  → SW pendingUserBlank map
+  → port.postMessage({type:'user-blank-invoke', requestId, name, method, args})
+  → host invokes registry.get(name).get|set(...)
+  → port.postMessage({type:'user-blank-result', requestId, ok, output, error})
+  → SW dispatches to pending Map → sendResponse
+  → proxy resolves → BlankFill substitutes
+```
+
+Host-side registry is rebuilt every time `fs.watch(CUE_ROOT)` fires
+(same debounce as the bundle push), so editing a blank's JS picks up
+without restart.
+
+**Hard dependency on chrome-host**: without it, the proxy's invoke
+fails with "native host not connected". Shipped TS-class blanks
+(weather/stocks/answer/prompt/hackernews/dictionary/crypto/countries/
+claude-status) still register upstream in `createBlanks()` and don't
+need the host. The migration's intent was to unify the source of
+truth across hosts; on chrome the TS class still wins when both
+exist (see `registerUserBlanksFromBundle` in `opencues-bootstrap.ts`).
+
+Source of truth for capability enforcement: the HOST. Sanitization
+runs both at the host (output filter) and content-script (final
+defence in depth at the DOM trust boundary).
+
+### ⚠ Pre-launch decision — TS-class fallback duplication
+
+Today (May 2026) chrome ships a TS-class version of every migrated
+blank (weather / stocks / answer / prompt / hackernews / dictionary /
+crypto / countries / claude-status) in `createBlanks()`. These take
+precedence over the user-blank versions on chrome so the extension
+works **without** the chrome-host installed. Native hosts (CC / OC /
+gemini) deleted their TS classes during the May 11 migration — they
+rely on user-blanks exclusively.
+
+This is drift. Two implementations of the same blank → two places to
+keep in sync, two test surfaces, two places a bug could land. The
+TS classes are functionally a subset of the user-blank versions
+(no capability declarations, no quota tracking, no per-secret
+host binding).
+
+Decision needed before launch:
+- **Option A** — keep the TS-class fallback. Pro: extension works
+  standalone, lower install friction. Con: ongoing duplication.
+- **Option B** — drop the TS-class fallback. Chrome matches CC / OC /
+  gemini, ONE source of truth. Custom + shipped blanks both need
+  the host. Con: install requires two steps (extension + host).
+
+If B: delete the runtime-class registrations in `createBlanks()`
+for the migrated names; the user-blank proxy will be the only
+path. Keep `OpenCuesSettings` and `volume` (volume has no
+user-blank version, it's pure-host).
+
 ## Security model
 
 Full spec: `docs/architecture/chrome-security.md`. Quick reference below.
@@ -195,6 +259,40 @@ real failures the user should see immediately.
 If you regress one of these while fixing another, that's a structural
 problem with the change. Re-verify the full matrix after every write-path
 edit, not just the site you're targeting.
+
+## Markdown styling — chrome support is hit-and-miss outside Gmail
+
+The `markdown.styled` event fires reliably on every substitution that
+involves inline styling (`**bold**`, `*italic*`, `~~strike~~`). The
+runtime always strips the markers and emits the per-style ranges in
+final-buffer coords. **Whether the styling actually RENDERS in the
+page is up to the host editor**, and editors differ wildly:
+
+| Engine / Site | Bold / Italic / Strike | Why |
+|---|---|---|
+| **Generic contenteditable** (Gmail, plain `<div contenteditable>`) | ✅ works | `execCommand('bold')` wraps the browser-Selection range in `<b>` / `<i>` / `<strike>` natively — no editor framework intercepting |
+| **Lexical** (Reddit) | ⚠ depends on schema | Lexical has its own selection model. Sites that disable rich-text formatting in their schema reject the mark; sites with formatting enabled accept |
+| **ProseMirror** (LinkedIn / ChatGPT / claude.ai / Luma) | ❌ usually no-ops | PM intercepts `beforeinput` against its INTERNAL selection model. When the site's PM config is plain-text-only (no `bold` / `em` marks in schema), the `formatBold` input gets dropped. claude.ai / ChatGPT compose boxes are typically configured this way |
+| **Draft.js** (Twitter/X) | ❌ no | Draft.js compose is plain-text-only |
+| **Slate** (untested) | ⚠ unknown | Likely similar to PM — depends on the schema |
+
+**Why we can't do better:** managed editors own their schema. If the
+schema doesn't have a `bold` mark, there's no way to "force" bold —
+we'd have to do direct DOM mutation (wrap in `<b>`), which the
+editor's MutationObserver reverts within a microtask. Synthetic
+keyboard shortcuts (Ctrl+B) don't help either; the editor's keymap
+only fires the formatting command if it's bound — sites without rich
+text don't bind it.
+
+**The strip is still load-bearing** even when the styling doesn't
+render: without it the user would see literal `**wilfred**` in their
+buffer. With it they see `wilfred` plain, just without the visual
+emphasis the LLM intended. Acceptable degradation.
+
+**If you need styling on a specific PM site**, the path is editor-API
+direct (e.g. `editorView.dispatch(state.tr.addMark(...))`) per-site.
+Out of scope for the generic chrome adapter; add a site-specific
+carve-out in `applyMarkdownStyling` if/when needed.
 
 ## The biggest issue: writing into managed contenteditables
 
