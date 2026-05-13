@@ -159,7 +159,9 @@ function runOC(passthrough, fullArgv, ctx) {
     ['command', `bun run dev ${cleaned.join(' ')}`.trim()],
     ['cwd',     style.fileLink(fork, fork)],
   ]);
-  const result = spawnSync('bun', ['run', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit', env });
+  // --silent suppresses bun's `$ bun run --cwd ... src/index.ts` echo
+  // — we already printed the command above; the echo is just noise.
+  const result = spawnSync('bun', ['run', '--silent', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit', env });
   exitFromSpawn(result, 'bun');
 }
 
