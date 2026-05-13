@@ -51,6 +51,27 @@ blank-loading-animation: bounce
 #   blank-loading-frames: .,..,...,....,..... # dot-walk
 blank-loading-frames: ·,•,●,•,·
 
+# Per-frame colour overrides. Two parallel lists — the host picks the
+# one its terminal/UI can render:
+#   blank-loading-colors-rgb   for hosts that render full colour
+#                              (chrome). Accepts `#rrggbb`, `#rgb`, or
+#                              `rgb(r,g,b)`. Up to 5 colours.
+#   blank-loading-colors-ansi  for terminal hosts (CC / OC / gemini).
+#                              Accepts named colours (`red`,
+#                              `bright_cyan`, …) or 256-colour indices
+#                              (`0`-`255`). Up to 5 colours.
+# colour[i] is applied to frame[i]; frames past the colours-array length
+# render with the host default (no colour override). Empty / invalid
+# lists fall back to default rendering. Both lists can be set
+# simultaneously — each host picks the relevant one.
+#
+# Example pairs:
+#   blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
+#   blank-loading-colors-ansi: red,yellow,green,cyan,blue
+#
+# blank-loading-colors-rgb:
+# blank-loading-colors-ansi:
+
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
 # means + the tip shown for each value. Schema is owned by the runtime;
@@ -113,6 +134,10 @@ settings:
       flipper: `_` `\` `|` `/` — a mark flipping through orientations
       custom: Use the user-defined frames from `blank-loading-frames`
       off: No animation — `_` stays static until substitution
+  blank-loading-colors-rgb:
+    tip: Per-frame RGB/HEX colours (chrome). Up to 5. Empty → host default.
+  blank-loading-colors-ansi:
+    tip: Per-frame ANSI colours (terminal hosts). Named or 256-index. Up to 5.
 ---
 
 # OPENCUES.md — Runtime Configuration

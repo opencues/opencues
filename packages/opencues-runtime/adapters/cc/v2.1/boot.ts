@@ -21,7 +21,7 @@ import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { BlankFill } from '../../../src/modules/blank-fill';
-import { BlankLoadingAnimator, parseCustomFrames } from '../../../src/modules/blank-loading';
+import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors } from '../../../src/modules/blank-loading';
 import { MarkdownRender } from '../../../src/modules/markdown-render';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
@@ -361,6 +361,12 @@ export function boot(host: HostInfo): BootResult {
     },
     customFrames: () => parseCustomFrames(
       configLoader.opencuesState.settings.get('blank-loading-frames'),
+    ),
+    rgbColors: () => parseRgbColors(
+      configLoader.opencuesState.settings.get('blank-loading-colors-rgb'),
+    ),
+    ansiColors: () => parseAnsiColors(
+      configLoader.opencuesState.settings.get('blank-loading-colors-ansi'),
     ),
     log: msg => log('debug', msg),
   });

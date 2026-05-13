@@ -4,6 +4,8 @@ import {
   framesFor,
   loopStartIdxFor,
   parseCustomFrames,
+  parseRgbColors,
+  parseAnsiColors,
   BOUNCE_FRAMES,
   BRAILLE_ROTATE_FRAMES,
   FLIPPER_FRAMES,
@@ -432,5 +434,147 @@ describe('custom mode', () => {
     a.start(1);
     vi.advanceTimersByTime(100);
     expect(setTextCalls.at(-1)).toBe('volume D');
+  });
+});
+
+describe('parseRgbColors', () => {
+  it('returns null for empty input', () => {
+    expect(parseRgbColors(undefined)).toBeNull();
+    expect(parseRgbColors('')).toBeNull();
+    expect(parseRgbColors('   ')).toBeNull();
+  });
+
+  it('parses 6-digit hex', () => {
+    expect(parseRgbColors('#ff5500,#00aaff'))
+      .toEqual(['#ff5500', '#00aaff']);
+  });
+
+  it('parses 3-digit hex and expands to 6', () => {
+    expect(parseRgbColors('#abc,#f00')).toEqual(['#aabbcc', '#ff0000']);
+  });
+
+  it('drops invalid tokens, keeps valid ones', () => {
+    expect(parseRgbColors('#ff5500,not-a-colour,#00aaff'))
+      .toEqual(['#ff5500', '#00aaff']);
+  });
+
+  it('returns null when no entries are valid', () => {
+    expect(parseRgbColors('foo, bar, baz')).toBeNull();
+  });
+
+  it('rejects rgb() function syntax (use hex)', () => {
+    // rgb()'s internal commas collide with the list-separator comma.
+    expect(parseRgbColors('rgb(255,85,0)')).toBeNull();
+  });
+
+  it('caps at 5 colours', () => {
+    expect(parseRgbColors('#000000,#111111,#222222,#333333,#444444,#555555'))
+      .toEqual(['#000000', '#111111', '#222222', '#333333', '#444444']);
+  });
+});
+
+describe('parseAnsiColors', () => {
+  it('returns null for empty input', () => {
+    expect(parseAnsiColors(undefined)).toBeNull();
+    expect(parseAnsiColors('')).toBeNull();
+  });
+
+  it('parses named 8-colour set', () => {
+    expect(parseAnsiColors('red,yellow,green,cyan,blue'))
+      .toEqual(['red', 'yellow', 'green', 'cyan', 'blue']);
+  });
+
+  it('parses bright_ variants', () => {
+    expect(parseAnsiColors('bright_red,bright_cyan'))
+      .toEqual(['bright_red', 'bright_cyan']);
+  });
+
+  it('normalises gray/grey to bright_black', () => {
+    expect(parseAnsiColors('gray,grey')).toEqual(['bright_black', 'bright_black']);
+  });
+
+  it('accepts 256-colour indices', () => {
+    expect(parseAnsiColors('0,128,255,100')).toEqual(['0', '128', '255', '100']);
+  });
+
+  it('rejects indices > 255', () => {
+    expect(parseAnsiColors('256,300')).toBeNull();
+  });
+
+  it('rejects unknown tokens, keeps valid ones', () => {
+    expect(parseAnsiColors('red,puce,42,not-a-real-color'))
+      .toEqual(['red', '42']);
+  });
+
+  it('caps at 5 colours', () => {
+    expect(parseAnsiColors('red,green,blue,cyan,magenta,yellow,white'))
+      .toEqual(['red', 'green', 'blue', 'cyan', 'magenta']);
+  });
+});
+
+describe('getActiveColor', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('returns null when slot is not animating', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter, mode: () => 'bounce',
+      rgbColors: () => ['#ff0000'],
+      ansiColors: () => ['red'],
+    });
+    expect(a.getActiveColor(1, 'rgb')).toBeNull();
+    expect(a.getActiveColor(1, 'ansi')).toBeNull();
+  });
+
+  it('returns null when colour list is empty/unset', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce' });
+    a.start(1);
+    expect(a.getActiveColor(1, 'rgb')).toBeNull();
+    expect(a.getActiveColor(1, 'ansi')).toBeNull();
+  });
+
+  it('walks the colour list parallel to frames', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter, mode: () => 'flipper', frameIntervalMs: 100,
+      ansiColors: () => ['red', 'yellow', 'green', 'cyan'],
+    });
+    a.start(1);
+    // Slot starts at frameIdx 0.
+    expect(a.getActiveColor(1, 'ansi')).toBe('red');
+    vi.advanceTimersByTime(100); // frameIdx → 1
+    expect(a.getActiveColor(1, 'ansi')).toBe('yellow');
+    vi.advanceTimersByTime(100); // frameIdx → 2
+    expect(a.getActiveColor(1, 'ansi')).toBe('green');
+    vi.advanceTimersByTime(100); // frameIdx → 3
+    expect(a.getActiveColor(1, 'ansi')).toBe('cyan');
+  });
+
+  it('wraps around when fewer colours than frames', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter, mode: () => 'flipper', frameIntervalMs: 100,
+      ansiColors: () => ['red', 'green'],   // only 2 colours for 4 frames
+    });
+    a.start(1);
+    expect(a.getActiveColor(1, 'ansi')).toBe('red');     // frame 0 % 2 = 0 → red
+    vi.advanceTimersByTime(100);
+    expect(a.getActiveColor(1, 'ansi')).toBe('green');   // frame 1 % 2 = 1 → green
+    vi.advanceTimersByTime(100);
+    expect(a.getActiveColor(1, 'ansi')).toBe('red');     // frame 2 % 2 = 0 → red
+  });
+
+  it('rgb and ansi paths are independent', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter, mode: () => 'flipper',
+      rgbColors: () => ['#ff0000', '#00ff00'],
+      ansiColors: () => ['red', 'green'],
+    });
+    a.start(1);
+    expect(a.getActiveColor(1, 'rgb')).toBe('#ff0000');
+    expect(a.getActiveColor(1, 'ansi')).toBe('red');
   });
 });

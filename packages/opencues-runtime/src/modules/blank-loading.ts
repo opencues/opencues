@@ -52,6 +52,76 @@ export function parseCustomFrames(raw: string | undefined): readonly string[] | 
   return items.slice(0, CUSTOM_FRAMES_MAX);
 }
 
+// ─── Colour overrides ────────────────────────────────────────────────────
+//
+// Two parallel lists: RGB/HEX (for hosts that render full colour, e.g.
+// chrome) and ANSI (for hosts limited to terminal colour escapes).
+// Each color[i] is the colour applied to frame[i]; if there are fewer
+// colours than frames, frames past the end fall back to no colour.
+//
+// Platform picks: chrome adapter consumes `rgbColors`; terminal
+// adapters (CC / OC / gemini) consume `ansiColors`. If the chosen
+// list is empty / invalid, the host renders the loading char in its
+// default foreground (current behaviour).
+
+/** Hex `#rrggbb` / `#rgb`. Whitespace tolerated. */
+const HEX_LONG  = /^#[0-9a-fA-F]{6}$/;
+const HEX_SHORT = /^#[0-9a-fA-F]{3}$/;
+
+/** Parse the `blank-loading-colors-rgb` scalar. Each token must be a
+ *  6-digit hex (`#1a2b3c`) or 3-digit hex (`#abc`). `rgb(r,g,b)`
+ *  intentionally not supported — its commas collide with the
+ *  comma-separated list shape; users can convert to hex (every
+ *  picker exports it). Returns null when no valid entries — caller
+ *  falls back to no-colour rendering. Caps at `CUSTOM_FRAMES_MAX`. */
+export function parseRgbColors(raw: string | undefined): readonly string[] | null {
+  if (!raw) return null;
+  const items = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  const valid: string[] = [];
+  for (const it of items) {
+    if (HEX_LONG.test(it)) valid.push(it.toLowerCase());
+    else if (HEX_SHORT.test(it)) {
+      // Expand #abc → #aabbcc so the host doesn't have to.
+      const [, r, g, b] = it.match(/^#(.)(.)(.)$/) ?? [];
+      valid.push(`#${r}${r}${g}${g}${b}${b}`.toLowerCase());
+    }
+    if (valid.length >= CUSTOM_FRAMES_MAX) break;
+  }
+  return valid.length > 0 ? valid : null;
+}
+
+/** Accepted ANSI tokens — named 8-colour set, 256-colour index, or
+ *  `bright_*` for the high-intensity range. Validation is permissive —
+ *  the renderer decides how to translate each token to an escape; this
+ *  parser just normalises the spelling. */
+const ANSI_NAMES = new Set([
+  'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+  'bright_black', 'bright_red', 'bright_green', 'bright_yellow',
+  'bright_blue', 'bright_magenta', 'bright_cyan', 'bright_white',
+  // Common aliases.
+  'gray', 'grey',
+]);
+
+/** Parse the `blank-loading-colors-ansi` scalar. Accepts named colours
+ *  (`red`, `bright_cyan`, etc.) or 256-colour indices (`0`-`255`).
+ *  Returns null when no valid entries. Caps at `CUSTOM_FRAMES_MAX`. */
+export function parseAnsiColors(raw: string | undefined): readonly string[] | null {
+  if (!raw) return null;
+  const items = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  const valid: string[] = [];
+  for (const it of items) {
+    const lower = it.toLowerCase();
+    if (ANSI_NAMES.has(lower)) {
+      valid.push(lower === 'gray' || lower === 'grey' ? 'bright_black' : lower);
+    } else if (/^\d{1,3}$/.test(it)) {
+      const n = Number(it);
+      if (n >= 0 && n <= 255) valid.push(String(n));
+    }
+    if (valid.length >= CUSTOM_FRAMES_MAX) break;
+  }
+  return valid.length > 0 ? valid : null;
+}
+
 /** A single braille dot circles clockwise through the 6 cell positions,
  *  returning to `_` between cycles. The visual is a 6-frame rotation
  *  preceded by the rest frame `_` — 7 frames total, then loops.
@@ -138,6 +208,16 @@ export interface BlankLoadingOptions {
    *  is the expected shape (validated, capped at CUSTOM_FRAMES_MAX).
    *  Optional — when omitted, `custom` falls back to braille-rotate. */
   readonly customFrames?: () => readonly string[] | null;
+  /** Per-frame RGB/HEX colours (`#1a2b3c`), lazily read; parallel to
+   *  the active frames array. color[i] is applied to frame[i]; frames
+   *  past the colours-array length render with no colour override.
+   *  Consumed by hosts that render true colour (chrome). Return shape
+   *  is `parseRgbColors`'s output. */
+  readonly rgbColors?: () => readonly string[] | null;
+  /** Per-frame ANSI colours (`red`, `bright_cyan`, `196`, …). Consumed
+   *  by terminal-based hosts (CC / OC / gemini). Same parallel-to-frames
+   *  semantics as `rgbColors`. Return shape is `parseAnsiColors`'s. */
+  readonly ansiColors?: () => readonly string[] | null;
   /** Host adapter for getText / setText. */
   readonly adapter: HostAdapter;
   /** Optional debug log. */
@@ -174,6 +254,8 @@ export class BlankLoadingAnimator {
   private readonly _frameIntervalMs: number;
   private readonly _modeFn: () => BlankLoadingMode;
   private readonly _customFramesFn: () => readonly string[] | null;
+  private readonly _rgbColorsFn: () => readonly string[] | null;
+  private readonly _ansiColorsFn: () => readonly string[] | null;
   private readonly _adapter: HostAdapter;
   private readonly _log: (msg: string) => void;
 
@@ -181,8 +263,25 @@ export class BlankLoadingAnimator {
     this._frameIntervalMs = opts.frameIntervalMs ?? 150;
     this._modeFn = opts.mode;
     this._customFramesFn = opts.customFrames ?? (() => null);
+    this._rgbColorsFn = opts.rgbColors ?? (() => null);
+    this._ansiColorsFn = opts.ansiColors ?? (() => null);
     this._adapter = opts.adapter;
     this._log = opts.log ?? (() => { /* noop */ });
+  }
+
+  /** Colour for the active slot's CURRENT frame in the requested
+   *  representation. Returns null when the slot isn't animating, or when
+   *  the configured colour list is empty/invalid (caller should render
+   *  with no colour override — the existing default). Per-frame: looks
+   *  up colour[frameIdx] modulo loopStartIdx mapping; falls back to null
+   *  for frames past the array end. */
+  getActiveColor(wordIndex: number, prefer: 'rgb' | 'ansi'): string | null {
+    const slot = this._active.get(wordIndex);
+    if (!slot) return null;
+    const list = prefer === 'rgb' ? this._rgbColorsFn() : this._ansiColorsFn();
+    if (!list || list.length === 0) return null;
+    // frameIdx walks 0..frames.length-1. Map to colours[frameIdx % colours.length].
+    return list[slot.frameIdx % list.length] ?? null;
   }
 
   /** True when at least one slot is animating. Exposed for tests + diagnostics. */

@@ -135,7 +135,7 @@ import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
-import { BlankLoadingAnimator, parseCustomFrames } from './modules/blank-loading';
+import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors } from './modules/blank-loading';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
@@ -239,6 +239,12 @@ export function buildSharedRuntime(
     },
     customFrames: () => parseCustomFrames(
       configLoader.opencuesState.settings.get('blank-loading-frames'),
+    ),
+    rgbColors: () => parseRgbColors(
+      configLoader.opencuesState.settings.get('blank-loading-colors-rgb'),
+    ),
+    ansiColors: () => parseAnsiColors(
+      configLoader.opencuesState.settings.get('blank-loading-colors-ansi'),
     ),
     log: msg => log('debug', msg),
   });
