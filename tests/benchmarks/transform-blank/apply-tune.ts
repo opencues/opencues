@@ -20,7 +20,9 @@ type Category =
   | 'literal-swap' | 'concept-swap' | 'tense' | 'case' | 'pluralise'
   | 'composed' | 'conditional' | 'role-preserve' | 'markdown'
   | 'positional' | 'multiline-preserve'
-  | 'add-fill' | 'add-anchored' | 'add-cursor' | 'add-auto-style';
+  | 'add-fill' | 'add-anchored' | 'add-cursor' | 'add-auto-style'
+  | 'add-synonym' | 'add-colloquial' | 'add-indirect'
+  | 'polite-wrapper' | 'remove' | 'polish' | 'replace-synonym' | 'meta';
 
 interface CaseSpec {
   name: string;
@@ -28,7 +30,8 @@ interface CaseSpec {
   instruction: string;
   target: string;
   cursorOffset?: number;
-  expectInOutput: string;
+  /** Substring (or array — passes if ANY one is present) the output must contain. */
+  expectInOutput: string | readonly string[];
   /** Optional: enforce exact newline count in output. */
   requireOriginalNewlines?: number;
 }
@@ -219,6 +222,176 @@ const CASES: CaseSpec[] = [
     target: 'Dear Karen,\n\nMy resignation is effective 1st July.\n\nBest,\nWilfred',
     expectInOutput: '**',
     requireOriginalNewlines: 4 },
+
+  // ─────────── ADD synonyms (NOT yet in prompt) ───────────
+  { name: 'S1: include my name X', category: 'add-synonym',
+    instruction: 'include my name Wilfred',
+    target: 'Dear Karen,\n\nSincerely,\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+  { name: 'S2: write Karen for the manager', category: 'add-synonym',
+    instruction: 'write Karen for the manager',
+    target: "Dear [Manager's Name],\n\nbody.",
+    expectInOutput: 'Karen' },
+  { name: 'S3: type the date 2026', category: 'add-synonym',
+    instruction: 'type the date 2026-06-30',
+    target: 'The deadline is [Date].',
+    expectInOutput: '2026-06-30' },
+  { name: 'S4: enter company name CS Ltd', category: 'add-synonym',
+    instruction: 'enter company name CS Ltd',
+    target: 'I work for [Company].',
+    expectInOutput: 'CS Ltd' },
+  { name: 'S5: prepend "Subject: Resignation"', category: 'add-synonym',
+    instruction: 'prepend "Subject: Resignation"',
+    target: 'Dear Karen,\n\nbody.',
+    expectInOutput: 'Subject: Resignation' },
+
+  // ─────────── ADD colloquial ───────────
+  { name: 'COL1: stick my name in', category: 'add-colloquial',
+    instruction: 'stick my name Wilfred in',
+    target: 'Dear Karen,\n\nSincerely,\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+  { name: 'COL2: throw in a closing line', category: 'add-colloquial',
+    instruction: 'throw in "Looking forward to discussing" at the end',
+    target: 'Dear Karen,\n\nThis is the body.',
+    expectInOutput: 'Looking forward' },
+  { name: 'COL3: chuck in the date', category: 'add-colloquial',
+    instruction: 'chuck in the date 2026-06-30',
+    target: 'The deadline is [Date].',
+    expectInOutput: '2026-06-30' },
+  { name: 'COL4: pop in my position', category: 'add-colloquial',
+    instruction: 'pop in my position Engineer',
+    target: 'I work as [Your Position].',
+    expectInOutput: 'Engineer' },
+  { name: 'COL5: drop "Best" in before signature', category: 'add-colloquial',
+    instruction: 'drop "Best regards" before the name',
+    target: 'Body text.\n\nWilfred',
+    expectInOutput: 'Best regards' },
+  { name: 'COL6: slip in a thank you', category: 'add-colloquial',
+    instruction: 'slip in "Thank you for everything" at the end',
+    target: 'Body text.\n\nWilfred',
+    expectInOutput: 'Thank you' },
+
+  // ─────────── ADD indirect / wordy ───────────
+  { name: 'IND1: make it say Wilfred', category: 'add-indirect',
+    instruction: 'make it say Wilfred for the name',
+    target: 'Dear Karen,\n\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+  { name: 'IND2: I want X for the manager', category: 'add-indirect',
+    instruction: 'I want Karen for the manager',
+    target: "Dear [Manager's Name],\n\nbody.",
+    expectInOutput: 'Karen' },
+  { name: 'IND3: give it a date of 2026', category: 'add-indirect',
+    instruction: 'give it a date of 2026-06-30',
+    target: 'The deadline is [Date].',
+    expectInOutput: '2026-06-30' },
+  { name: 'IND4: needs a name here', category: 'add-indirect',
+    instruction: 'needs the name Wilfred',
+    target: 'Sincerely,\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+  { name: 'IND5: let\'s put my position', category: 'add-indirect',
+    instruction: "let's put Engineer for the position",
+    target: 'I work as [Your Position].',
+    expectInOutput: 'Engineer' },
+  { name: 'IND6: have a date here', category: 'add-indirect',
+    instruction: 'have 2026-06-30 for the deadline',
+    target: 'The deadline is [Date].',
+    expectInOutput: '2026-06-30' },
+
+  // ─────────── Polite wrappers (current prompt has no rule for these) ───────────
+  { name: 'POL1: please add my name X', category: 'polite-wrapper',
+    instruction: 'please add my name Wilfred',
+    target: 'Sincerely,\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+  { name: 'POL2: can you add X?', category: 'polite-wrapper',
+    instruction: 'can you add my name Wilfred?',
+    target: 'Sincerely,\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+  { name: 'POL3: could you add X', category: 'polite-wrapper',
+    instruction: 'could you add manager Karen',
+    target: "Dear [Manager's Name],\n\nbody.",
+    expectInOutput: 'Karen' },
+  { name: 'POL4: pls add X (short)', category: 'polite-wrapper',
+    instruction: 'pls add my position Engineer',
+    target: 'I work as [Your Position].',
+    expectInOutput: 'Engineer' },
+  { name: "POL5: I'd like you to add X", category: 'polite-wrapper',
+    instruction: "I'd like you to add the date 2026-06-30",
+    target: 'The deadline is [Date].',
+    expectInOutput: '2026-06-30' },
+  { name: 'POL6: do me a favour and add X', category: 'polite-wrapper',
+    instruction: "do me a favour and add my name Wilfred",
+    target: 'Sincerely,\n[Your Name]',
+    expectInOutput: 'Wilfred' },
+
+  // ─────────── REMOVE / DELETE (NO RULE TODAY — likely to fail) ───────────
+  { name: 'REM1: remove italics', category: 'remove',
+    instruction: 'remove italics',
+    target: 'hi *my* name *is* wilfred',
+    expectInOutput: 'my name is wilfred' },                  // no italic markers remain
+  { name: 'REM2: remove the bolding', category: 'remove',
+    instruction: 'remove the bolding',
+    target: 'Hi **wilfred** how are **you**?',
+    expectInOutput: 'wilfred' },                              // bare word, no **
+  { name: 'REM3: delete the second sentence', category: 'remove',
+    instruction: 'delete the second sentence',
+    target: 'First. Drop me. Third.',
+    expectInOutput: 'First. Third.' },
+  { name: 'REM4: drop the date', category: 'remove',
+    instruction: 'drop the date',
+    target: 'Meeting on 2026-06-30 at 3pm.',
+    expectInOutput: 'Meeting' },                              // date gone
+  { name: 'REM5: kill the third line', category: 'remove',
+    instruction: 'kill the third line',
+    target: 'line one\nline two\ndelete me\nline four',
+    expectInOutput: 'line one\nline two\nline four' },
+  { name: 'REM6: get rid of the postscript', category: 'remove',
+    instruction: 'get rid of the postscript',
+    target: 'Main body.\n\nP.S. remove this',
+    expectInOutput: 'Main body.' },
+  { name: 'REM7: unbold wilfred', category: 'remove',
+    instruction: 'unbold wilfred',
+    target: 'hi my name is **wilfred** today',
+    expectInOutput: 'hi my name is wilfred today' },         // no markers
+  { name: 'REM8: take out the joke', category: 'remove',
+    instruction: 'take out the joke',
+    target: 'Dear Karen, (here is a joke) regards.',
+    expectInOutput: 'Dear Karen,' },
+
+  // ─────────── POLISH / TIDY (casual verbs) ───────────
+  { name: 'POLISH1: tidy this up', category: 'polish',
+    instruction: 'tidy this up',
+    target: 'hello   world  yeah    so',
+    expectInOutput: 'hello world' },
+  { name: 'POLISH2: clean up the wording', category: 'polish',
+    instruction: 'clean up the wording',
+    target: 'um well I think uh that we should maybe go',
+    expectInOutput: 'we should' },
+  { name: 'POLISH3: make it more formal', category: 'polish',
+    instruction: 'make it more formal',
+    target: 'hey wassup just wanted to say bye',
+    expectInOutput: 'goodbye' },                              // formal "bye" → "goodbye"
+  { name: 'POLISH4: tone down the language', category: 'polish',
+    instruction: 'tone down the language',
+    target: 'This is absolutely the WORST possible thing ever!!!',
+    expectInOutput: ['worst', 'bad', 'unfortunate', 'less than ideal', 'not great'] },
+
+  // ─────────── REPLACE synonyms ───────────
+  { name: 'REP1: swap X for Y', category: 'replace-synonym',
+    instruction: 'swap will for Wilfred',
+    target: 'hi my name is will today',
+    expectInOutput: 'Wilfred' },
+  { name: 'REP2: substitute X with Y', category: 'replace-synonym',
+    instruction: 'substitute will with Wilfred',
+    target: 'hi my name is will today',
+    expectInOutput: 'Wilfred' },
+  { name: 'REP3: update X to Y', category: 'replace-synonym',
+    instruction: 'update will to Wilfred',
+    target: 'hi my name is will today',
+    expectInOutput: 'Wilfred' },
+  { name: 'REP4: make X say Y', category: 'replace-synonym',
+    instruction: 'make the name say Wilfred',
+    target: 'hi my name is will today',
+    expectInOutput: 'Wilfred' },
 ];
 
 // ─────────── Prompt variants to test ───────────
@@ -353,7 +526,8 @@ async function applyOnce(prompt: string, c: CaseSpec): Promise<Attempt> {
   ], { temperature: 0, maxTokens: 1024 });
   const m = r.text.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const stripped = stripCursorSentinel(m ? m[1].trim() : r.text.trim());
-  let pass = stripped.includes(c.expectInOutput);
+  const exps = Array.isArray(c.expectInOutput) ? c.expectInOutput : [c.expectInOutput];
+  let pass = exps.some(e => stripped.includes(e));
   if (pass && typeof c.requireOriginalNewlines === 'number') {
     const actual = (stripped.match(/\n/g) ?? []).length;
     if (actual < c.requireOriginalNewlines - 1) pass = false;

@@ -377,7 +377,11 @@ RULES:
       WRONG REWRITE: **wilfred**                          ← collapsed body, lost context
       RIGHT REWRITE: hi my name is **wilfred**            ← target preserved, marker added
 
-12. ADDITION / INSERTION instructions — when the INSTRUCTION uses verbs like "add", "insert", "append", "fill", "fill in", "set", "put", the action is to ADD content to the TARGET, not transform it. Emit the rewritten target containing the new content. Handle these patterns:
+12. ADDITION / INSERTION instructions — when the INSTRUCTION uses verbs like "add", "insert", "append", "prepend", "include", "fill", "fill in", "set", "put", "write" (as in "write X for the Y"), "type", "enter", or colloquial variants ("stick X in", "throw X in", "chuck in X", "pop in X", "slip in X", "drop X in" / "drop X before Y" / "drop X after Y"), the action is to ADD content to the TARGET, not transform it. Emit the rewritten target containing the new content.
+
+    Verb-disambiguation note — "drop" is ambiguous: "drop X" alone means DELETE X (rule applies elsewhere); but "drop X in", "drop X into", "drop X before/after Y", or "drop X here" means INSERT X. The preposition decides.
+
+    Handle these patterns:
 
     (a) FILL PLACEHOLDER — when the TARGET contains bracketed/templated placeholders (e.g. \`[Your Name]\`, \`[Manager's Name]\`, \`[Manager's Name]\`, \`[Company]\`, \`[Date]\`, \`[Position]\`, \`[Your Position]\`, \`[Last Day]\`, \`[Your Address]\`, \`[xxx]\`, \`xxx\`, etc.) AND the INSTRUCTION supplies a value that semantically matches one of them (e.g. "add my name Wilfred", "add company CS Limited", "add last day 31st June 2026", "add position Engineer", "set manager Karen"), FIND the matching placeholder and REPLACE it with the value. Keep every OTHER placeholder and the surrounding text VERBATIM. Match by keyword overlap: "name" → \`[Your Name]\`, "manager" / "manager's name" / "boss" → \`[Manager's Name]\`, "position" / "role" / "title" → \`[Your Position]\` / \`[Your Role]\`, "company" / "employer" → \`[Company]\`, "last day" / "end date" / "leaving date" → \`[Last Working Day]\` / \`[Date]\`, "address" → \`[Your Address]\`. If the instruction itself names the field unambiguously (e.g. "add my name Wilfred"), the value to insert is the trailing tokens (everything after the field-name).
 
@@ -419,6 +423,18 @@ RULES:
       INSTRUCTION: make bold the bits necessary
       TARGET: This document contains private information about Acme Corp and is confidential.
       REWRITE: This document contains **private information** about **Acme Corp** and is **confidential**.
+
+      INSTRUCTION: drop "Best regards" before the name
+      TARGET: Body text.\\n\\nWilfred
+      REWRITE: Body text.\\n\\nBest regards\\nWilfred
+
+      INSTRUCTION: chuck in the date 2026-06-30
+      TARGET: The deadline is [Date].
+      REWRITE: The deadline is 2026-06-30.
+
+      INSTRUCTION: stick my name Wilfred in
+      TARGET: Sincerely,\\n[Your Name]
+      REWRITE: Sincerely,\\nWilfred
 
 EXAMPLES:
 
@@ -1169,11 +1185,43 @@ export class TransformBlankSource implements CueSource {
         return { results: [result], timing: Date.now() - startTime, model: this.model };
       }
 
+      // P1.5 — DEICTIC RESOLVER (conditional sub-step).
+      // Only fires when the instruction contains a deictic reference
+      // ("this line", "this word", "it", "those", etc.). Rewrites the
+      // instruction with deictics resolved into explicit quoted spans
+      // so APPLY gets an unambiguous edit command. See P1_5_RESOLVE_DEICTICS_SYSTEM.
+      let resolvedInstruction = ext.instruction;
+      if (needsDeicticResolution(ext.instruction)) {
+        const p1_5Start = Date.now();
+        const p1_5Tokens = 512;
+        try {
+          const targetWithCursor = injectCursorSentinel(
+            ext.target,
+            translateBufferCursorToTargetCursor(context.text, context.cursor ?? -1, ext.target),
+          );
+          const p1_5Raw = await this.callLLM(
+            P1_5_RESOLVE_DEICTICS_SYSTEM,
+            `INSTRUCTION: ${ext.instruction}\nTARGET: ${targetWithCursor}`,
+            p1_5Tokens,
+          );
+          const m = p1_5Raw.match(/RESOLVED:[ \t]*([\s\S]*?)\s*$/i);
+          const resolved = (m ? m[1].trim() : '').trim();
+          if (resolved) {
+            resolvedInstruction = resolved;
+            this.log(`TransformBlank P1.5 RESOLVE (${Date.now() - p1_5Start}ms): "${ext.instruction}" → "${preview(resolved)}"`);
+          } else {
+            this.log(`TransformBlank P1.5 RESOLVE (${Date.now() - p1_5Start}ms): empty output — keeping original instruction`);
+          }
+        } catch (err) {
+          this.log(`TransformBlank P1.5 RESOLVE failed (${Date.now() - p1_5Start}ms) — keeping original: ${(err as Error).message ?? err}`);
+        }
+      }
+
       // P2 APPLY — sequential composition for "X | Y" instructions.
       // Output of step N feeds target of step N+1. Token budget: rewrite
       // is usually same length as target, but transforms can stretch it
       // (e.g. "expand contractions" adds chars). Use 1.5× headroom.
-      const parts = ext.instruction.split('|').map(s => s.trim()).filter(Boolean);
+      const parts = resolvedInstruction.split('|').map(s => s.trim()).filter(Boolean);
       this.log(`TransformBlank P2 APPLY: ${parts.length} step(s) — [${parts.map(p => `"${p}"`).join(', ')}]`);
       let currentTarget = ext.target;
       // Cursor injection is FIRST-STEP-ONLY. Subsequent pipe-composed
