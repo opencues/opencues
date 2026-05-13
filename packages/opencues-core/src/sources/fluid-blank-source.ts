@@ -25,7 +25,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import type { ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, type ProviderAdapter } from '../llm-provider';
 
 export const P1_SYSTEM_PROMPT = `You identify a SPAN of text that will be wiped and replaced with an answer.
 
@@ -414,24 +414,12 @@ export class FluidBlankSource implements CueSource {
       this.emit({ type: 'started', textLen: context.text.length, blankIdx });
 
       // Strict JSON on groq gpt-oss — same gate as transform-blank.
-      const useJson = this.provider.id === 'groq' && /^openai\/gpt-oss-(20b|120b)/i.test(this.model);
-      const SEGMENT_SCHEMA = {
-        type: 'object',
-        properties: { span: { type: 'string' }, context: { type: 'string' } },
-        required: ['span', 'context'],
-        additionalProperties: false,
-      };
-      const ANSWER_SCHEMA = {
-        type: 'object',
-        properties: { answer: { type: 'string' } },
-        required: ['answer'],
-        additionalProperties: false,
-      };
+      const useJson = useStrictJson(this.provider.id, this.model);
 
       // P1 SEGMENT
       const p1Start = Date.now();
       const segOut = await this.callLLM(P1_SYSTEM_PROMPT, `INPUT: ${context.text}`, 256,
-        useJson ? { name: 'fluid_segment', strict: true, schema: SEGMENT_SCHEMA } : undefined);
+        useJson ? buildJsonResponseFormat('fluid_segment', FLUID_SEGMENT_SCHEMA) : undefined);
       const span = useJson ? parseSpanJson(segOut) : parseSpan(segOut);
       const ctx = useJson ? parseContextJson(segOut) : parseContext(segOut);
       this.emit({ type: 'pass-completed', pass: 'P1', latencyMs: Date.now() - p1Start, span: span ?? '', context: ctx ?? '' });
@@ -443,7 +431,7 @@ export class FluidBlankSource implements CueSource {
       // P3 ANSWER
       const p3Start = Date.now();
       const ansOut = await this.callLLM(P3_SYSTEM_PROMPT, `SPAN: ${span}\nCONTEXT: ${ctx || 'none'}`, 200,
-        useJson ? { name: 'fluid_answer', strict: true, schema: ANSWER_SCHEMA } : undefined);
+        useJson ? buildJsonResponseFormat('fluid_answer', FLUID_ANSWER_SCHEMA) : undefined);
       const answer = useJson ? parseAnswerJson(ansOut) : parseAnswer(ansOut);
       this.emit({ type: 'pass-completed', pass: 'P3', latencyMs: Date.now() - p3Start, answer: answer ?? '' });
       if (!answer) {
@@ -540,6 +528,24 @@ function parseAnswer(raw: string): string | null {
   const v = m[1].trim();
   return v.length > 0 ? v : null;
 }
+
+// Schemas for strict JSON mode (groq gpt-oss). Defined at module scope
+// to mirror the shape of transform-blank-source — easier to grep and
+// keep in sync with the prompt rules.
+
+const FLUID_SEGMENT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { span: { type: 'string' }, context: { type: 'string' } },
+  required: ['span', 'context'],
+  additionalProperties: false,
+};
+
+const FLUID_ANSWER_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { answer: { type: 'string' } },
+  required: ['answer'],
+  additionalProperties: false,
+};
 
 // JSON-mode parsers (strict mode on groq gpt-oss).
 function parseSpanJson(raw: string): string | null {

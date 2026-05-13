@@ -56,11 +56,42 @@ export interface ChatRequest {
    * Callers must JSON.parse the response themselves; the provider's
    * `parseResponse` still returns the raw `message.content` string.
    */
-  readonly responseFormat?: {
-    readonly name: string;
-    readonly strict?: boolean;
-    readonly schema: Record<string, unknown>;
-  };
+  readonly responseFormat?: ResponseFormat;
+}
+
+/** Structured-outputs spec for a single ChatRequest. */
+export interface ResponseFormat {
+  readonly name: string;
+  readonly strict?: boolean;
+  readonly schema: Record<string, unknown>;
+}
+
+/**
+ * True when the (provider, model) pair supports strict structured
+ * outputs (constrained decoding). Today: groq + openai/gpt-oss-{20b,120b}.
+ *
+ * Single source of truth — every LLM-calling surface in the runtime
+ * (TransformBlank, FluidBlank, WordCues, AgentRewrite) checks against
+ * this helper so the support matrix is one place to update.
+ */
+export function useStrictJson(providerId: string | undefined, model: string): boolean {
+  if (providerId !== 'groq') return false;
+  return /^openai\/gpt-oss-(20b|120b)/i.test(model);
+}
+
+/**
+ * Build a `responseFormat` object for a ChatRequest. Pure constructor —
+ * trims the per-call-site noise of writing `{ name, strict: true, schema }`
+ * inline. Always sets `strict: true` because that's the only mode worth
+ * using on the supported models; pass `{ strict: false }` via the
+ * second arg if best-effort is desired.
+ */
+export function buildJsonResponseFormat(
+  name: string,
+  schema: Record<string, unknown>,
+  opts: { strict?: boolean } = {},
+): ResponseFormat {
+  return { name, strict: opts.strict ?? true, schema };
 }
 
 export interface BuiltRequest {

@@ -108,6 +108,8 @@ export {
   resolveLLM,
   validateEndpoint,
   withFallback,
+  useStrictJson,
+  buildJsonResponseFormat,
   type EndpointValidation,
   type ProviderId,
   type ProviderAdapter,
@@ -116,6 +118,7 @@ export {
   type ResolveLLMOptions,
   type ResolvedLLM,
   type HttpAdapterShape,
+  type ResponseFormat,
 } from './llm-provider';
 
 // Host-compat: which integrations a cue or blank runs on

@@ -29,7 +29,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
 import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-diff';
-import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel } from '@opencues/core';
+import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrictJson, buildJsonResponseFormat } from '@opencues/core';
 
 /**
  * Subset of the @opencues/core `ProviderAdapter` shape that
@@ -152,6 +152,15 @@ export interface AgentRewriteOptions {
  * during a long writing session.
  */
 const REWRITE_CACHE_MAX = 64;
+
+/** Strict-JSON schema for the AgentRewrite call (groq gpt-oss only).
+ *  Single field — the rewritten document body. */
+const AGENT_REWRITE_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { rewrite: { type: 'string' } },
+  required: ['rewrite'],
+  additionalProperties: false,
+};
 
 export class AgentRewrite {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -551,11 +560,12 @@ export class AgentRewrite {
       ? REWRITE_SYSTEM_PROMPT
       : `${REWRITE_SYSTEM_PROMPT}\n\nAdditionally, apply this concern (${auditor.name}):\n\n${auditor.promptText}`;
     // Strict structured outputs on groq gpt-oss-{20b,120b}. Eliminates
-     // the REWRITTEN:/END marker-parsing failure class — the model is
-     // constrained at the token level to emit JSON conforming to the
-     // schema. Other providers / models keep the legacy marker path
-     // unchanged. Mirrors the same gate used in transform-blank-source.
-    const useJson = (provider?.id === 'groq') && /^openai\/gpt-oss-(20b|120b)/i.test(model);
+    // the REWRITTEN:/END marker-parsing failure class — the model is
+    // constrained at the token level to emit JSON conforming to the
+    // schema. Other providers / models keep the legacy marker path
+    // unchanged. Gate + schema-builder come from @opencues/core so
+    // the support matrix lives in exactly one place.
+    const useJson = useStrictJson(provider?.id, model);
     const chatRequest = {
       model,
       messages: [
@@ -566,16 +576,7 @@ export class AgentRewrite {
       temperature: 0,
       reasoningEffort: 'low' as const,
       seed: 42,
-      responseFormat: useJson ? {
-        name: 'agent_rewrite',
-        strict: true,
-        schema: {
-          type: 'object' as const,
-          properties: { rewrite: { type: 'string' as const } },
-          required: ['rewrite'],
-          additionalProperties: false,
-        },
-      } : undefined,
+      responseFormat: useJson ? buildJsonResponseFormat('agent_rewrite', AGENT_REWRITE_SCHEMA) : undefined,
     };
     let url: string;
     let body: string;

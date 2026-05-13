@@ -39,7 +39,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import type { ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, type ProviderAdapter } from '../llm-provider';
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
@@ -793,13 +793,6 @@ const VERIFY_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** True when the resolved (provider, model) supports strict structured
- *  outputs — currently Groq's gpt-oss-{20b,120b}. */
-function useStrictJson(provider: string | undefined, model: string): boolean {
-  if (provider !== 'groq') return false;
-  return /^openai\/gpt-oss-(20b|120b)/i.test(model);
-}
-
 function parseExtract(raw: string): ExtractResult {
   // Single-line fields use [ \t]* (NOT \s*) for trailing whitespace.
   // \s* matches \n, which makes the lazy .*? extend across line breaks
@@ -1234,7 +1227,7 @@ export class TransformBlankSource implements CueSource {
         P1_EXTRACT_SYSTEM,
         `INPUT: ${extractText}`,
         p1Tokens,
-        useJson ? { name: 'transform_extract', strict: true, schema: EXTRACT_SCHEMA as unknown as Record<string, unknown> } : undefined,
+        useJson ? buildJsonResponseFormat('transform_extract', EXTRACT_SCHEMA as unknown as Record<string, unknown>) : undefined,
       );
       const ext = useJson ? parseExtractJson(extractRaw) : parseExtract(extractRaw);
       this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${sourceTag}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
@@ -1292,7 +1285,7 @@ export class TransformBlankSource implements CueSource {
           P2_GENERATIVE_APPLY_SYSTEM,
           `INSTRUCTION: ${ext.instruction}`,
           genTokens,
-          useJson ? { name: 'transform_generative', strict: true, schema: APPLY_SCHEMA as unknown as Record<string, unknown> } : undefined,
+          useJson ? buildJsonResponseFormat('transform_generative', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
         const generated = (useJson ? parseApplyJson(genRaw) : parseApply(genRaw)).rewrite;
         this.log(`TransformBlank P2 GENERATIVE (${Date.now() - genStart}ms, max_tokens=${genTokens}): "${preview(generated)}"`);
@@ -1338,7 +1331,7 @@ export class TransformBlankSource implements CueSource {
             P1_5_RESOLVE_DEICTICS_SYSTEM,
             `INSTRUCTION: ${ext.instruction}\nTARGET: ${targetWithCursor}`,
             p1_5Tokens,
-            useJson ? { name: 'transform_resolve', strict: true, schema: RESOLVE_SCHEMA as unknown as Record<string, unknown> } : undefined,
+            useJson ? buildJsonResponseFormat('transform_resolve', RESOLVE_SCHEMA as unknown as Record<string, unknown>) : undefined,
           );
           const resolved = useJson
             ? parseResolveJson(p1_5Raw)
@@ -1391,7 +1384,7 @@ export class TransformBlankSource implements CueSource {
           P2_APPLY_SYSTEM,
           `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}`,
           p2Tokens,
-          useJson ? { name: 'transform_apply', strict: true, schema: APPLY_SCHEMA as unknown as Record<string, unknown> } : undefined,
+          useJson ? buildJsonResponseFormat('transform_apply', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
         // Strip any sentinel the model leaked into its output — input-only.
         const draft = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
@@ -1435,7 +1428,7 @@ export class TransformBlankSource implements CueSource {
           P3_VERIFY_SYSTEM,
           `INSTRUCTION: ${verifyInstruction}\nTARGET: ${ext.target}\nDRAFT: ${lastRewrite}`,
           p3Tokens,
-          useJson ? { name: 'transform_verify', strict: true, schema: VERIFY_SCHEMA as unknown as Record<string, unknown> } : undefined,
+          useJson ? buildJsonResponseFormat('transform_verify', VERIFY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
         ver = useJson ? parseVerifyJson(verifyRaw) : parseVerify(verifyRaw);
         this.log(`TransformBlank P3 VERIFY (${Date.now() - p3Start}ms, max_tokens=${p3Tokens}): verdict=${ver.verdict}, rewrite="${preview(ver.rewrite)}"`);

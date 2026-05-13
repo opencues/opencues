@@ -15,7 +15,7 @@ import {
 } from '../types';
 import { SourceConfig, BlankParser } from '../cues-md';
 import { parseAlternatives, parseRaw } from './parsers';
-import type { ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, type ProviderAdapter } from '../llm-provider';
 
 /**
  * The canonical output-format reminder for `parser: alternatives`
@@ -124,7 +124,7 @@ export class ConfigSource implements CueSource {
       const separator = this.parser === 'alternatives' ? '\n' : ' ';
       // Strict JSON mode on groq gpt-oss skips the INDEX:alt1,alt2,alt3
       // format-spec append; the schema enforces shape instead.
-      const useJson = this.provider.id === 'groq' && /^openai\/gpt-oss-(20b|120b)/i.test(this.model);
+      const useJson = useStrictJson(this.provider.id, this.model);
 
       // Defensive: for parser: alternatives, ensure the prompt ends with
       // the INDEX:alt1,alt2,alt3 format spec. Without this, a prompt that
@@ -137,32 +137,6 @@ export class ConfigSource implements CueSource {
         : promptText.trimEnd();
       const fullPrompt = ensuredPrompt + separator + input;
 
-      // JSON schemas per parser.
-      const altsSchema = {
-        type: 'object',
-        properties: {
-          alternatives: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                index: { type: 'integer' },
-                alts: { type: 'array', items: { type: 'string' } },
-              },
-              required: ['index', 'alts'],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ['alternatives'],
-        additionalProperties: false,
-      };
-      const rawSchema = {
-        type: 'object',
-        properties: { alternatives: { type: 'array', items: { type: 'string' } } },
-        required: ['alternatives'],
-        additionalProperties: false,
-      };
       const built = this.provider.buildRequest(
         {
           model: this.model,
@@ -172,11 +146,12 @@ export class ConfigSource implements CueSource {
           // Provider adapter passes this through only to providers that
           // honor it (Groq); ignored by Gemini/OpenRouter/OpenAI.
           reasoningEffort: 'low',
-          responseFormat: useJson ? {
-            name: this.parser === 'alternatives' ? 'word_cues_alts' : 'word_cues_raw',
-            strict: true,
-            schema: this.parser === 'alternatives' ? altsSchema : rawSchema,
-          } : undefined,
+          responseFormat: useJson
+            ? buildJsonResponseFormat(
+                this.parser === 'alternatives' ? 'word_cues_alts' : 'word_cues_raw',
+                this.parser === 'alternatives' ? WORD_CUES_ALTS_SCHEMA : WORD_CUES_RAW_SCHEMA,
+              )
+            : undefined,
         },
         { apiKey: this.apiKey, endpoint: this.endpoint },
       );
@@ -276,3 +251,32 @@ export class ConfigSource implements CueSource {
     return [{ wordIndex: blankIdx, word: '_', alternatives: ['_', ...alts], source: this.id, priority: this.priority }];
   }
 }
+
+// Schemas for strict JSON mode (groq gpt-oss).
+
+const WORD_CUES_ALTS_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    alternatives: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          alts: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['index', 'alts'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['alternatives'],
+  additionalProperties: false,
+};
+
+const WORD_CUES_RAW_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { alternatives: { type: 'array', items: { type: 'string' } } },
+  required: ['alternatives'],
+  additionalProperties: false,
+};
