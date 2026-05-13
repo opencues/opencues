@@ -25,9 +25,32 @@
 
 import type { HostAdapter } from '../adapter';
 
-export type BlankLoadingMode = 'bounce' | 'braille-rotate' | 'off';
+export type BlankLoadingMode = 'bounce' | 'braille-rotate' | 'flipper' | 'off' | 'custom';
 
 export const BOUNCE_FRAMES: readonly string[] = ['_', '-', '‾', '-'];
+
+/** A line that flips through orientations — underscore, backslash, pipe,
+ *  forward-slash — then wraps back to `_`. Reads as a single mark
+ *  rotating in place. 4 frames, full-loop (returns to `_` like bounce). */
+export const FLIPPER_FRAMES: readonly string[] = ['_', '\\', '|', '/'];
+
+/** Max frames allowed in a user-supplied custom animation. Larger
+ *  values get silently truncated. Five is enough for any reasonable
+ *  loading-glyph progression at 150ms/frame (750ms full cycle). */
+export const CUSTOM_FRAMES_MAX = 5;
+
+/** Normalize a raw `blank-loading-frames` setting (comma-separated
+ *  string from OPENCUES.md) into a usable frame list. Trims whitespace
+ *  from each item, drops empties, caps at `CUSTOM_FRAMES_MAX`. Returns
+ *  null when the result is empty/unusable — callers fall back to
+ *  `braille-rotate` in that case so a misconfigured setting never
+ *  produces a dead loading slot. */
+export function parseCustomFrames(raw: string | undefined): readonly string[] | null {
+  if (!raw) return null;
+  const items = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  if (items.length === 0) return null;
+  return items.slice(0, CUSTOM_FRAMES_MAX);
+}
 
 /** A single braille dot circles clockwise through the 6 cell positions,
  *  returning to `_` between cycles. The visual is a 6-frame rotation
@@ -52,9 +75,22 @@ export const BRAILLE_ROTATE_FRAMES: readonly string[] = [
   '⠂',  // mid-left
 ];
 
-export function framesFor(mode: BlankLoadingMode): readonly string[] {
+export function framesFor(
+  mode: BlankLoadingMode,
+  customFrames?: readonly string[] | null,
+): readonly string[] {
   if (mode === 'bounce') return BOUNCE_FRAMES;
   if (mode === 'braille-rotate') return BRAILLE_ROTATE_FRAMES;
+  if (mode === 'flipper') return FLIPPER_FRAMES;
+  if (mode === 'custom') {
+    // Empty / invalid custom config → fall back to braille-rotate.
+    // The validation rules are in parseCustomFrames; callers pass its
+    // output here. Internal fallback keeps misconfigured users in a
+    // working state rather than producing dead slots.
+    return customFrames && customFrames.length > 0
+      ? customFrames
+      : BRAILLE_ROTATE_FRAMES;
+  }
   return [];
 }
 
@@ -68,8 +104,15 @@ export function framesFor(mode: BlankLoadingMode): readonly string[] {
  *   braille-rotate → 1  (leading '_' is intro; loop spins only the 6
  *                       dot positions, never returning to '_')
  */
-export function loopStartIdxFor(mode: BlankLoadingMode): number {
+export function loopStartIdxFor(
+  mode: BlankLoadingMode,
+  customFramesPresent?: boolean,
+): number {
   if (mode === 'braille-rotate') return 1;
+  // `custom` with a valid list loops the entire user-supplied
+  // sequence (no intro skip); when it falls back to braille-rotate
+  // (no valid list), inherit braille-rotate's loop semantics.
+  if (mode === 'custom' && !customFramesPresent) return 1;
   return 0;
 }
 
@@ -79,7 +122,7 @@ export function loopStartIdxFor(mode: BlankLoadingMode): number {
  *  means the user typed over it OR the substitution path already
  *  replaced it. In either case the animator drops the slot. */
 export const ALL_FRAME_CHARS: ReadonlySet<string> = new Set([
-  ...BOUNCE_FRAMES, ...BRAILLE_ROTATE_FRAMES,
+  ...BOUNCE_FRAMES, ...BRAILLE_ROTATE_FRAMES, ...FLIPPER_FRAMES,
 ]);
 
 export interface BlankLoadingOptions {
@@ -90,6 +133,11 @@ export interface BlankLoadingOptions {
    *  start() so callers can hot-flip via OPENCUES.md without recreating
    *  the instance. */
   readonly mode: () => BlankLoadingMode;
+  /** Frames for the `custom` mode, lazily read so OPENCUES.md edits
+   *  flow through without a restart. Return value of `parseCustomFrames`
+   *  is the expected shape (validated, capped at CUSTOM_FRAMES_MAX).
+   *  Optional — when omitted, `custom` falls back to braille-rotate. */
+  readonly customFrames?: () => readonly string[] | null;
   /** Host adapter for getText / setText. */
   readonly adapter: HostAdapter;
   /** Optional debug log. */
@@ -125,12 +173,14 @@ export class BlankLoadingAnimator {
   private _timer: ReturnType<typeof setInterval> | null = null;
   private readonly _frameIntervalMs: number;
   private readonly _modeFn: () => BlankLoadingMode;
+  private readonly _customFramesFn: () => readonly string[] | null;
   private readonly _adapter: HostAdapter;
   private readonly _log: (msg: string) => void;
 
   constructor(opts: BlankLoadingOptions) {
     this._frameIntervalMs = opts.frameIntervalMs ?? 150;
     this._modeFn = opts.mode;
+    this._customFramesFn = opts.customFrames ?? (() => null);
     this._adapter = opts.adapter;
     this._log = opts.log ?? (() => { /* noop */ });
   }
@@ -151,16 +201,22 @@ export class BlankLoadingAnimator {
    */
   start(wordIndex: number): void {
     const mode = this._modeFn();
-    const frames = framesFor(mode);
+    const customFrames = mode === 'custom' ? this._customFramesFn() : null;
+    const frames = framesFor(mode, customFrames);
     if (frames.length === 0) return;          // mode === 'off'
     if (this._active.has(wordIndex)) return;
+    const customFramesPresent = mode === 'custom' && customFrames !== null && customFrames.length > 0;
     this._active.set(wordIndex, {
       wordIndex,
       frames,
-      loopStartIdx: loopStartIdxFor(mode),
+      loopStartIdx: loopStartIdxFor(mode, customFramesPresent),
       frameIdx: 0,
     });
-    this._log(`BlankLoading: start wordIndex=${wordIndex} mode=${mode}`);
+    const modeTag = mode === 'custom'
+      ? (customFramesPresent ? 'custom' : 'custom→braille-rotate (fallback)')
+      : mode;
+    const framesPreview = frames.map(f => JSON.stringify(f)).join(',');
+    this._log(`BlankLoading: start wordIndex=${wordIndex} mode=${modeTag} frames=[${framesPreview}]`);
     if (this._timer === null) {
       this._timer = setInterval(() => this._tick(), this._frameIntervalMs);
     }
@@ -173,9 +229,10 @@ export class BlankLoadingAnimator {
    * the restore is skipped — we don't want to overwrite real content.
    */
   stop(wordIndex: number): void {
-    if (!this._active.has(wordIndex)) return;
+    const slot = this._active.get(wordIndex);
+    if (!slot) return;
     this._active.delete(wordIndex);
-    this._restoreUnderscore(wordIndex);
+    this._restoreUnderscore(wordIndex, slot.frames);
     this._log(`BlankLoading: stop wordIndex=${wordIndex}`);
     if (this._active.size === 0 && this._timer !== null) {
       clearInterval(this._timer);
@@ -196,10 +253,15 @@ export class BlankLoadingAnimator {
     for (const slot of [...this._active.values()]) {
       const word = this._wordAt(slot.wordIndex);
       if (word === null) { this._dropQuiet(slot.wordIndex); continue; }
-      // If the slot's char isn't one of our frame chars, somebody
-      // wrote over it (user typing, substitution path). Drop silently
-      // — substitution will splice the answer when ready.
-      if (!ALL_FRAME_CHARS.has(word)) { this._dropQuiet(slot.wordIndex); continue; }
+      // If the slot's char isn't one of THIS slot's frames or `_`,
+      // somebody wrote over it (user typing, substitution path).
+      // Drop silently — substitution will splice the answer when
+      // ready. Per-slot frames so user-supplied custom characters
+      // are also recognised (not just the built-in BOUNCE/BRAILLE
+      // sets covered by ALL_FRAME_CHARS).
+      if (!slot.frames.includes(word) && word !== '_') {
+        this._dropQuiet(slot.wordIndex); continue;
+      }
       // Advance frame and write. Wrap to loopStartIdx (not 0) so the
       // intro prefix plays only once. For modes without an intro
       // (loopStartIdx === 0) this behaves identically to the simple
@@ -212,11 +274,14 @@ export class BlankLoadingAnimator {
     }
   }
 
-  /** Replace the word at wordIndex with `_`. Used on stop(). */
-  private _restoreUnderscore(wordIndex: number): void {
+  /** Replace the word at wordIndex with `_`. Used on stop().
+   *  Takes the slot's frames so custom-character animations restore
+   *  correctly — without the per-slot set we'd refuse to restore any
+   *  custom char and the loading glyph would stick. */
+  private _restoreUnderscore(wordIndex: number, slotFrames: readonly string[]): void {
     const word = this._wordAt(wordIndex);
     if (word === null) return;
-    if (!ALL_FRAME_CHARS.has(word)) return;   // user / substitution took over
+    if (!slotFrames.includes(word) && word !== '_') return;   // user / substitution took over
     if (word === '_') return;                 // already `_`
     this._writeChar(wordIndex, '_');
   }

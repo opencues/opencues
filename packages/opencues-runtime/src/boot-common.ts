@@ -135,7 +135,7 @@ import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
-import { BlankLoadingAnimator } from './modules/blank-loading';
+import { BlankLoadingAnimator, parseCustomFrames } from './modules/blank-loading';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
@@ -234,9 +234,12 @@ export function buildSharedRuntime(
     adapter,
     mode: () => {
       const raw = configLoader.opencuesState.settings.get('blank-loading-animation');
-      if (raw === 'off' || raw === 'braille-rotate') return raw;
+      if (raw === 'off' || raw === 'braille-rotate' || raw === 'flipper' || raw === 'custom') return raw;
       return 'bounce';
     },
+    customFrames: () => parseCustomFrames(
+      configLoader.opencuesState.settings.get('blank-loading-frames'),
+    ),
     log: msg => log('debug', msg),
   });
 

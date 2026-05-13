@@ -3,8 +3,10 @@ import {
   BlankLoadingAnimator,
   framesFor,
   loopStartIdxFor,
+  parseCustomFrames,
   BOUNCE_FRAMES,
   BRAILLE_ROTATE_FRAMES,
+  FLIPPER_FRAMES,
   ALL_FRAME_CHARS,
 } from './blank-loading';
 import type { HostAdapter } from '../adapter';
@@ -36,6 +38,10 @@ describe('framesFor', () => {
   it('returns BRAILLE_ROTATE_FRAMES for "braille-rotate"', () => {
     expect(framesFor('braille-rotate')).toEqual(['_', '⠁', '⠈', '⠐', '⠠', '⠄', '⠂']);
     expect(framesFor('braille-rotate')).toBe(BRAILLE_ROTATE_FRAMES);
+  });
+  it('returns FLIPPER_FRAMES for "flipper"', () => {
+    expect(framesFor('flipper')).toEqual(['_', '\\', '|', '/']);
+    expect(framesFor('flipper')).toBe(FLIPPER_FRAMES);
   });
   it('returns empty for "off" (disabled)', () => {
     expect(framesFor('off')).toEqual([]);
@@ -165,9 +171,24 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
     ]);
   });
 
-  it('loopStartIdxFor: bounce=0, braille-rotate=1, off=0', () => {
+  it('flipper: full loop returns to `_` every 4 frames (loopStartIdx === 0)', () => {
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'flipper', frameIntervalMs: 100 });
+    a.start(1);
+    for (let i = 0; i < 5; i++) vi.advanceTimersByTime(100);
+    expect(setTextCalls).toEqual([
+      'volume \\',  // tick 1
+      'volume |',   // tick 2
+      'volume /',   // tick 3
+      'volume _',   // tick 4: full-loop wraps to 0
+      'volume \\',  // tick 5
+    ]);
+  });
+
+  it('loopStartIdxFor: bounce=0, braille-rotate=1, flipper=0, off=0', () => {
     expect(loopStartIdxFor('bounce')).toBe(0);
     expect(loopStartIdxFor('braille-rotate')).toBe(1);
+    expect(loopStartIdxFor('flipper')).toBe(0);
     expect(loopStartIdxFor('off')).toBe(0);
   });
 
@@ -277,5 +298,139 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
     vi.advanceTimersByTime(100);   // tick → can't find wordIndex 1 → drop quietly
     expect(setTextCalls).toEqual([]);
     expect(a.active).toBe(false);
+  });
+});
+
+describe('parseCustomFrames', () => {
+  it('returns null for empty input', () => {
+    expect(parseCustomFrames(undefined)).toBeNull();
+    expect(parseCustomFrames('')).toBeNull();
+    expect(parseCustomFrames('   ')).toBeNull();
+  });
+
+  it('parses comma-separated frames, trims whitespace', () => {
+    expect(parseCustomFrames('a,b,c')).toEqual(['a', 'b', 'c']);
+    expect(parseCustomFrames(' a , b , c ')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drops empty entries in the middle', () => {
+    // "a,,b" — user wrote three commas thinking they had three frames;
+    // the empty middle item gets dropped, two frames survive.
+    expect(parseCustomFrames('a,,b')).toEqual(['a', 'b']);
+  });
+
+  it('caps at CUSTOM_FRAMES_MAX (5)', () => {
+    expect(parseCustomFrames('1,2,3,4,5,6,7')).toEqual(['1', '2', '3', '4', '5']);
+  });
+
+  it('returns null when every item is empty after trim', () => {
+    expect(parseCustomFrames(',,,,')).toBeNull();
+    expect(parseCustomFrames(' , , ')).toBeNull();
+  });
+
+  it('allows multi-character frames (dot-walk style)', () => {
+    expect(parseCustomFrames('.,..,...,....,.....')).toEqual(['.', '..', '...', '....', '.....']);
+  });
+});
+
+describe('custom mode', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('uses the supplied frames when valid', () => {
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      customFrames: () => ['◐', '◓', '◑', '◒'],
+      frameIntervalMs: 100,
+    });
+    a.start(1);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume ◓');
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume ◑');
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume ◒');
+    vi.advanceTimersByTime(100);
+    // Wraps to frame 0 (no intro for custom).
+    expect(setTextCalls.at(-1)).toBe('volume ◐');
+  });
+
+  it('falls back to braille-rotate when customFrames returns null', () => {
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      customFrames: () => null,
+      frameIntervalMs: 100,
+    });
+    a.start(1);
+    vi.advanceTimersByTime(100);
+    // braille-rotate's first dot frame (intro `_` was the START frame).
+    expect(setTextCalls.at(-1)).toBe('volume ⠁');
+  });
+
+  it('falls back to braille-rotate when customFrames returns empty array', () => {
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      customFrames: () => [],
+      frameIntervalMs: 100,
+    });
+    a.start(1);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume ⠁');
+  });
+
+  it('falls back to braille-rotate when customFrames option is omitted entirely', () => {
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      frameIntervalMs: 100,
+    });
+    a.start(1);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume ⠁');
+  });
+
+  it('stop() restores `_` even for custom characters', () => {
+    // The pre-fix ALL_FRAME_CHARS check refused to restore custom
+    // chars because they weren't in the static set. Pin that
+    // custom-char slots now restore correctly via per-slot frames.
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      customFrames: () => ['X', 'Y'],
+      frameIntervalMs: 100,
+    });
+    a.start(1);
+    vi.advanceTimersByTime(100);   // → 'X' or 'Y'
+    expect(setTextCalls.at(-1)).toMatch(/volume [XY]/);
+    a.stop(1);
+    expect(setTextCalls.at(-1)).toBe('volume _');
+  });
+
+  it('hot-flips when customFrames thunk return changes', () => {
+    let frames: readonly string[] = ['A', 'B'];
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      customFrames: () => frames,
+      frameIntervalMs: 100,
+    });
+    a.start(1);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume B');
+    a.stop(1);
+    // OPENCUES.md edited → new frames take effect on the NEXT start().
+    frames = ['C', 'D', 'E'];
+    a.start(1);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls.at(-1)).toBe('volume D');
   });
 });

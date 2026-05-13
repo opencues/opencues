@@ -14,7 +14,7 @@ import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
-import { BlankLoadingAnimator, type BlankLoadingMode } from './blank-loading';
+import { BlankLoadingAnimator, parseCustomFrames, type BlankLoadingMode } from './blank-loading';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -69,9 +69,12 @@ export class BlankFill {
       adapter: this.adapter,
       mode: () => {
         const raw = this.configLoader.opencuesState.settings.get('blank-loading-animation');
-        if (raw === 'off' || raw === 'braille-rotate') return raw;
+        if (raw === 'off' || raw === 'braille-rotate' || raw === 'flipper' || raw === 'custom') return raw;
         return 'bounce';
       },
+      customFrames: () => parseCustomFrames(
+        this.configLoader.opencuesState.settings.get('blank-loading-frames'),
+      ),
       log: msg => this.adapter.log('debug', msg),
     });
     return this._loading;

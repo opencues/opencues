@@ -34,7 +34,22 @@ max-concurrent-auditors: 0
 # blanks. Set to `off` to disable.
 #   bounce          →  `_` `-` `‾` `-` `_` …            vertical pulse, returns to `_`
 #   braille-rotate  →  `_` once, then `⠁` `⠈` `⠐` `⠠` `⠄` `⠂` looping  (single dot clockwise)
+#   flipper         →  `_` `\` `|` `/` `_` …             a mark flipping through orientations
+#   custom          →  user-defined frames, see `blank-loading-frames` below
 blank-loading-animation: bounce
+
+# Custom animation frames. Comma-separated, up to 5 items. Only used
+# when `blank-loading-animation: custom`. Each item is one frame —
+# typically a single character but multi-char frames are allowed
+# (e.g. for dot-walk style: `., .., ..., ...., .....`). Empty / invalid
+# config silently falls back to `braille-rotate` so a misconfiguration
+# can never produce a dead loading slot.
+#
+# Examples:
+#   blank-loading-frames: ·,•,●,•,·          # pulse
+#   blank-loading-frames: ◐,◓,◑,◒            # spinner
+#   blank-loading-frames: .,..,...,....,..... # dot-walk
+blank-loading-frames: ·,•,●,•,·
 
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
@@ -95,6 +110,8 @@ settings:
     values:
       bounce: `_` `-` `‾` `-` — vertical pulse, returns to `_` (default)
       braille-rotate: `_` once, then loops `⠁ ⠈ ⠐ ⠠ ⠄ ⠂` clockwise
+      flipper: `_` `\` `|` `/` — a mark flipping through orientations
+      custom: Use the user-defined frames from `blank-loading-frames`
       off: No animation — `_` stays static until substitution
 ---
 

@@ -21,7 +21,7 @@ import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { BlankFill } from '../../../src/modules/blank-fill';
-import { BlankLoadingAnimator } from '../../../src/modules/blank-loading';
+import { BlankLoadingAnimator, parseCustomFrames } from '../../../src/modules/blank-loading';
 import { MarkdownRender } from '../../../src/modules/markdown-render';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
@@ -356,9 +356,12 @@ export function boot(host: HostInfo): BootResult {
     adapter,
     mode: () => {
       const raw = configLoader.opencuesState.settings.get('blank-loading-animation');
-      if (raw === 'off' || raw === 'braille-rotate') return raw;
+      if (raw === 'off' || raw === 'braille-rotate' || raw === 'flipper' || raw === 'custom') return raw;
       return 'bounce';
     },
+    customFrames: () => parseCustomFrames(
+      configLoader.opencuesState.settings.get('blank-loading-frames'),
+    ),
     log: msg => log('debug', msg),
   });
 
