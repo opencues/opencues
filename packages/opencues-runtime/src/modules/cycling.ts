@@ -151,7 +151,18 @@ export class Cycling {
     if (!selStartWord || !selEndWord || !satStartWord || !satEndWord) return false;
 
     if (isSelector) {
-      const names = Array.from(definitions.keys());
+      // Only cycle through settings with at least one declared `values:`.
+      // Free-text settings (e.g. blank-loading-colors-rgb / -ansi —
+      // a comma-separated hex/ANSI list, no enumerable options) have a
+      // `tip:` but no `values:` block, so they parse as definitions with
+      // an empty `valueOrder`. Including them in the selector cycle
+      // breaks the satellite splice (provisionalValue = '' wipes the
+      // satellite word and leaves the pair shape invalid). Skip them
+      // entirely — they're edited by hand in OPENCUES.md.
+      const names = Array.from(definitions.entries())
+        .filter(([, def]) => def.valueOrder.length > 0)
+        .map(([name]) => name);
+      if (names.length === 0) return false;
       const curIdx = names.indexOf(entry.currentSetting);
       const nextIdx = ((curIdx + direction) % names.length + names.length) % names.length;
       const nextSetting = names[nextIdx];

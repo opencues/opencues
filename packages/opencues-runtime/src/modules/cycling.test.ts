@@ -530,6 +530,88 @@ settings:
     expect(adapter.setCursorCalls.at(-1)).toBe('debug-mode'.length);
   });
 
+  it('selector cycle SKIPS settings without values (free-text scalars like color lists)', async () => {
+    // User-reported bug: `opencues settings _` cycling broke after
+    // we added blank-loading-colors-rgb / -ansi to the settings:
+    // schema. Those scalars have a `tip:` but no `values:` block
+    // (the value is a free-text comma list, not enumerable). The old
+    // cycler iterated ALL keys → hit a no-values setting → emitted
+    // an empty satellite → pair shape collapsed. Filter to settings
+    // with `valueOrder.length > 0` only.
+    const OPENCUES_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: a
+      inactive: i
+  blank-loading-colors-rgb:
+    tip: Per-frame RGB. Free text — no values: block.
+  debug-mode:
+    tip: Debug
+    values:
+      on: emit
+      off: silent
+  blank-loading-colors-ansi:
+    tip: Per-frame ANSI. Free text.
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD },
+    });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'active',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'off\n', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    hlState.activate(0, 'voice-mode active');
+    adapter.setCursorOffset('voice-mode'.length);
+
+    // Cycle forward. blank-loading-colors-rgb sits between voice-mode
+    // and debug-mode in declaration order. The fix MUST skip it and
+    // land us on debug-mode directly. No setText should contain a
+    // trailing space (empty satellite) or 'blank-loading-colors-rgb'
+    // as a selector.
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('debug-mode on');
+    expect(ss.current?.currentSetting).toBe('debug-mode');
+
+    // Continue cycling forward; blank-loading-colors-ansi follows
+    // debug-mode in declaration order — also a free-text setting,
+    // also must be skipped. So next-after-debug-mode wraps to
+    // voice-mode (the only other cyclable setting).
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('voice-mode active');
+    expect(ss.current?.currentSetting).toBe('voice-mode');
+
+    // No setText emitted along the way contains a free-text setting
+    // name as the selector — the regression fence.
+    for (const call of adapter.setTextCalls) {
+      expect(call).not.toMatch(/blank-loading-colors-/);
+    }
+  });
+
   it('selector cycle ALWAYS lands cursor on selector (cursor-was-at-0 / cursor-was-past-region)', async () => {
     // User-reported bug: cursor at 0 → selector cycle "throws cursor
     // to start of text" (= cursor stays at 0). And cursor past the
