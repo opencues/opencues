@@ -634,13 +634,21 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     ocStyleIdsCache.dim = syntax.getStyleId("opencues-dim") ?? syntax.registerStyle("opencues-dim", { dim: true })
   }
   if (ocStyleIdsCache.highlight === undefined) {
+    // Selection look: white text on a black background — "chrome-style
+    // selection box" the user asked for. StyleDefinition supports `bg`
+    // (RGBA) natively; the earlier note about "full bg paint isn't part
+    // of the syntax style API" was outdated. Bold preserved so the
+    // selected word still pops over surrounding text.
     ocStyleIdsCache.highlight =
       syntax.getStyleId("opencues-highlight")
-      ?? syntax.registerStyle("opencues-highlight", { fg: RGBA.fromValues(1, 1, 1, 1), bold: true })
+      ?? syntax.registerStyle("opencues-highlight", {
+        fg: RGBA.fromValues(1, 1, 1, 1),    // white
+        bg: RGBA.fromValues(0, 0, 0, 1),    // black
+        bold: true,
+      })
   }
-  // Markdown styles — registered lazily on first use. Mirrors the dim /
-  // highlight pattern. code uses a faint background-like inverse via fg
-  // adjustment (full bg paint isn't part of the syntax style API).
+  // Markdown styles — registered lazily on first use. Mirrors the
+  // dim / highlight pattern.
   if (ocStyleIdsCache.bold === undefined) {
     ocStyleIdsCache.bold = syntax.getStyleId("opencues-bold") ?? syntax.registerStyle("opencues-bold", { bold: true })
   }
