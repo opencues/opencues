@@ -768,7 +768,21 @@ function parseApply(raw: string): ApplyResult {
   // nothing after it. Use `[ \t]*` for the leading whitespace to avoid
   // accidentally consuming the newline before content.
   const m = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
-  return { rewrite: m ? m[1].trim() : '' };
+  if (m) return { rewrite: m[1].trim() };
+
+  // Tolerance: some long-output cases (multi-paragraph add-X, joke
+  // insertions, etc.) come back WITHOUT the REWRITE: prefix — the model
+  // emits the full rewrite directly. Treat the whole output as the
+  // rewrite, but only if it doesn't look like a refusal or commentary.
+  const trimmed = raw.trim();
+  if (!trimmed) return { rewrite: '' };
+  // Heuristic: refusals / commentary tend to start with "I can't",
+  // "Sorry", "As an AI", "Here is", "Output:", or have markdown
+  // headers. Real rewrites typically start with target content.
+  if (/^(i (can\u2019t|cannot|can't)|sorry|as an ai|here is|here'?s|note:|output:)/i.test(trimmed)) {
+    return { rewrite: '' };
+  }
+  return { rewrite: trimmed };
 }
 
 function parseVerify(raw: string): VerifyResult {
