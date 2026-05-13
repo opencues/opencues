@@ -65,12 +65,12 @@ blank-loading-frames: ·,•,●,•,·
 # lists fall back to default rendering. Both lists can be set
 # simultaneously — each host picks the relevant one.
 #
-# Example pairs:
-#   blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
-#   blank-loading-colors-ansi: red,yellow,green,cyan,blue
-#
-# blank-loading-colors-rgb:
-# blank-loading-colors-ansi:
+# Defaults below cycle red → amber → green → cyan → blue (parallel to
+# the 5-frame `blank-loading-frames` default). Comment out (prefix
+# with `#`) or set to empty (`blank-loading-colors-rgb:`) to disable
+# colour overrides and fall back to the host's default foreground.
+blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
+blank-loading-colors-ansi: red,yellow,green,cyan,blue
 
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
