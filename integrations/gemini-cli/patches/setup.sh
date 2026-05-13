@@ -328,8 +328,21 @@ new_seg_push = """        __ocAnsiLine += display;
           __ocLineEnd,
         );
         if (__ocDecorated !== __ocAnsiLine) {
+          // Preserve Gemini's per-line base colour (theme.text.accent
+          // on the cursor line, theme.text.primary elsewhere) on the
+          // replacement <Text>. Without this, replacing the colored
+          // per-segment array with a single uncolored <Text> drops
+          // the line to terminal-default fg — symptom: "the line is
+          // our alt word colour and the cue itself is dimmed".
+          // The directive ANSI (\\x1b[2m dim, \\x1b[7m inverse) layers
+          // on top of Ink's color attribute correctly because the
+          // close codes (\\x1b[22m, \\x1b[27m) reset their own
+          // attribute only, leaving Ink's wrapping fg intact.
+          const __ocBaseColor = isOnCursorLine ? theme.text.accent : theme.text.primary;
           renderedLine.length = 0;
-          renderedLine.push(<Text key="oc-decorated">{__ocDecorated}</Text>);
+          renderedLine.push(
+            <Text key="oc-decorated" color={__ocBaseColor}>{__ocDecorated}</Text>,
+          );
         }
       } catch { /* swallow — leave per-segment rendering unchanged */ }"""
 if old_seg_push in src:
