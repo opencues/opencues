@@ -284,6 +284,30 @@ export class BlankLoadingAnimator {
     return list[slot.frameIdx % list.length] ?? null;
   }
 
+  /** All currently-animating slots with their CHAR ranges in `text` +
+   *  the active colour. Hosts call this from their render path to wrap
+   *  the loading char in colour (ANSI for terminals, CSS for chrome).
+   *  Returns [] when nothing is animating or no colour is configured. */
+  getActiveColoredRanges(text: string, prefer: 'rgb' | 'ansi'): Array<{ start: number; end: number; color: string; wordIndex: number }> {
+    if (this._active.size === 0) return [];
+    const list = prefer === 'rgb' ? this._rgbColorsFn() : this._ansiColorsFn();
+    if (!list || list.length === 0) return [];
+    const cleaned = text.replace(/[\u200B\u200C]/g, '');
+    const out: Array<{ start: number; end: number; color: string; wordIndex: number }> = [];
+    const re = /\S+/g;
+    let m: RegExpExecArray | null;
+    let idx = 0;
+    while ((m = re.exec(cleaned)) !== null) {
+      const slot = this._active.get(idx);
+      if (slot) {
+        const color = list[slot.frameIdx % list.length];
+        if (color) out.push({ start: m.index, end: m.index + m[0].length, color, wordIndex: idx });
+      }
+      idx++;
+    }
+    return out;
+  }
+
   /** True when at least one slot is animating. Exposed for tests + diagnostics. */
   get active(): boolean { return this._active.size > 0; }
 
@@ -422,3 +446,27 @@ export class BlankLoadingAnimator {
     }
   }
 }
+
+/** Map an ANSI colour token (named, bright_*, or 0-255 index) to an
+ *  open foreground escape. Returns null for unknown tokens — callers
+ *  fall back to no-colour rendering. Close code is always `\x1b[39m`
+ *  (default fg). */
+export function ansiColorToOpenEscape(token: string): string | null {
+  const named: Record<string, string> = {
+    black: '\x1b[30m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
+    blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', white: '\x1b[37m',
+    bright_black: '\x1b[90m', bright_red: '\x1b[91m', bright_green: '\x1b[92m',
+    bright_yellow: '\x1b[93m', bright_blue: '\x1b[94m', bright_magenta: '\x1b[95m',
+    bright_cyan: '\x1b[96m', bright_white: '\x1b[97m',
+  };
+  if (named[token]) return named[token];
+  // 256-colour index
+  if (/^\d{1,3}$/.test(token)) {
+    const n = Number(token);
+    if (n >= 0 && n <= 255) return `\x1b[38;5;${n}m`;
+  }
+  return null;
+}
+
+/** Close-foreground escape — companion to `ansiColorToOpenEscape`. */
+export const ANSI_FG_RESET = '\x1b[39m';

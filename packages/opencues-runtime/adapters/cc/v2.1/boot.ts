@@ -378,6 +378,19 @@ export function boot(host: HostInfo): BootResult {
   const markdownRender = new MarkdownRender(adapter);
   markdownRender.subscribe();
 
+  // Register the loading animator as a render handler so per-frame
+  // colours from blank-loading-colors-ansi flow through the directive
+  // pipeline. CC is terminal-only — always picks the ANSI list (not
+  // RGB). Mirrors the equivalent registration in boot-common.ts which
+  // covers gemini / OC / chrome.
+  adapter.onRender((ctx) => {
+    const ranges = blankLoading.getActiveColoredRanges(ctx.text, 'ansi');
+    if (ranges.length === 0) return null;
+    return {
+      coloredRanges: ranges.map(r => ({ start: r.start, end: r.end, ansi: r.color })),
+    };
+  });
+
   const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases

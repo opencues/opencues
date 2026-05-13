@@ -129,6 +129,10 @@ export const CHROME_V1_CAPABILITIES: readonly Capability[] = [
   'render-override',
   'dim-ranges',
   'highlight-range',
+  // chrome paints true colour via Custom Highlight CSS — opts into the
+  // RGB path of BlankLoadingAnimator.getActiveColoredRanges so the
+  // loading frame colour comes from `blank-loading-colors-rgb`.
+  'render-rgb-color',
 ];
 
 export class ChromeV1Adapter implements HostAdapter {

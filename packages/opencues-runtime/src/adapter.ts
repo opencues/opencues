@@ -72,6 +72,18 @@ export interface RenderDirectives {
   strikeRanges?: readonly Range[];
   headingRanges?: readonly Range[];
   listRanges?: readonly Range[];
+  // ─── Per-range colour overrides ────────────────────────────────────
+  // Currently emitted only by BlankLoadingAnimator (per-frame loading
+  // colours from `blank-loading-colors-ansi` / `blank-loading-colors-rgb`).
+  // Terminal hosts consume `ansi` (an ANSI fg token: named colour, 256
+  // index, or `bright_*`); chrome consumes `rgb` (a #rrggbb string).
+  // Both can be set; the host picks the one it can render.
+  coloredRanges?: readonly ColoredRange[];
+}
+
+export interface ColoredRange extends Range {
+  readonly ansi?: string;
+  readonly rgb?: string;
 }
 
 export interface Range {
@@ -170,7 +182,11 @@ export type Capability =
   | 'file-read'
   | 'file-write'
   | 'force-render'
-  | 'change-source';
+  | 'change-source'
+  // Host can render true-colour (RGB/HEX) on directive ranges — chrome
+  // sets this. Terminal hosts (CC / OC / gemini) leave it unset, which
+  // routes through ANSI escapes instead.
+  | 'render-rgb-color';
 
 export type Unsubscribe = () => void;
 

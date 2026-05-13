@@ -249,6 +249,24 @@ export function buildSharedRuntime(
     log: msg => log('debug', msg),
   });
 
+  // Register the animator as a render handler so its per-frame colours
+  // flow through the existing RenderDirectives pipeline. The host picks
+  // ansi vs rgb by capability (`render-rgb-color` advertises full
+  // colour support — chrome only at the moment). Without that
+  // capability, default to ANSI which works for every terminal host.
+  const wantsRgb = adapter.capabilities.includes('render-rgb-color');
+  adapter.onRender((ctx) => {
+    const ranges = blankLoading.getActiveColoredRanges(ctx.text, wantsRgb ? 'rgb' : 'ansi');
+    if (ranges.length === 0) return null;
+    return {
+      coloredRanges: ranges.map(r => ({
+        start: r.start,
+        end: r.end,
+        ...(wantsRgb ? { rgb: r.color } : { ansi: r.color }),
+      })),
+    };
+  });
+
   // BlankFill subscribes only after ConfigLoader.load resolves so its
   // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline.

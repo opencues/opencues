@@ -7,7 +7,8 @@
 //
 // `textOverride` short-circuits — if present, it replaces the entire string.
 
-import type { Range, RenderDirectives } from './adapter';
+import type { ColoredRange, Range, RenderDirectives } from './adapter';
+import { ansiColorToOpenEscape, ANSI_FG_RESET } from './modules/blank-loading';
 
 /**
  * Sort + merge overlapping or touching ranges. Empty ranges (start >= end)
@@ -114,6 +115,22 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     // as normal text. Marker is the first non-whitespace run.
     insertions.push({ visibleAt: r.start, ansi: ANSI_DIM_ON, order: 0 });
     insertions.push({ visibleAt: r.end, ansi: ANSI_DIM_OFF, order: 1 });
+  }
+  // Per-range foreground colours (BlankLoadingAnimator emits these for
+  // the current loading frame, keyed by colour list in OPENCUES.md).
+  // Terminal hosts consume the `ansi` field; chrome consumes `rgb` via
+  // its own pipeline (handled in the chrome adapter, not here).
+  // Coloured ranges are NOT coalesced — each entry may have its own
+  // colour, so merging would lose information. Overlap is the caller's
+  // responsibility; in practice the animator emits one range per active
+  // slot so overlap is impossible.
+  for (const cr of (directives.coloredRanges ?? []) as readonly ColoredRange[]) {
+    if (cr.start >= cr.end) continue;
+    if (!cr.ansi) continue;
+    const open = ansiColorToOpenEscape(cr.ansi);
+    if (!open) continue;
+    insertions.push({ visibleAt: cr.start, ansi: open, order: 0 });
+    insertions.push({ visibleAt: cr.end, ansi: ANSI_FG_RESET, order: 1 });
   }
   if (insertions.length === 0) return rendered;
 

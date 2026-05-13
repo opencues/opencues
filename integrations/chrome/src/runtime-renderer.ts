@@ -61,9 +61,23 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
 
   const dimOffsets: PlainRange[] = [];
   const highlightOffsets: PlainRange[] = [];
+  // Per-colour buckets — coloredRanges from BlankLoadingAnimator carry
+  // an `rgb` field (chrome opts into 'render-rgb-color' capability so
+  // boot-common picks the rgb path). Group by colour so we register one
+  // Highlight per unique colour with all matching ranges.
+  const coloredByHex = new Map<string, PlainRange[]>();
   for (const d of directives) {
     if (d.dimRanges) for (const r of d.dimRanges) dimOffsets.push({ start: r.start, end: r.end });
     if (d.highlight) highlightOffsets.push({ start: d.highlight.start, end: d.highlight.end });
+    if (d.coloredRanges) {
+      for (const cr of d.coloredRanges) {
+        if (!cr.rgb) continue;
+        const hex = cr.rgb.toLowerCase();
+        let bucket = coloredByHex.get(hex);
+        if (!bucket) { bucket = []; coloredByHex.set(hex, bucket); }
+        bucket.push({ start: cr.start, end: cr.end });
+      }
+    }
   }
 
   // Walk DOM once, distributing matches into the right buckets.
@@ -79,6 +93,50 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   if (!Highlight) return;
   highlights.set('oc-dim', new Highlight(...dimRanges));
   highlights.set('oc-active', new Highlight(...activeRanges));
+
+  // Per-colour loading highlights. Each unique colour gets a Highlight
+  // named `oc-load-RRGGBB` (the hex without `#`). The CSS rule for
+  // that name is injected on demand via ensureLoadingColorStyle so the
+  // CSS Custom Highlight engine has a `color:` to paint with.
+  // Cache the set of colours we've seen so we can DROP stale ones when
+  // an animator stops — otherwise old colours linger in the highlights
+  // map and the stylesheet grows monotonically.
+  for (const seen of _knownLoadingHexes) {
+    if (!coloredByHex.has(seen)) {
+      highlights.delete(`oc-load-${seen.slice(1)}`);
+    }
+  }
+  _knownLoadingHexes.clear();
+  for (const [hex, ranges] of coloredByHex) {
+    _knownLoadingHexes.add(hex);
+    ensureLoadingColorStyle(hex);
+    const domRanges = plainOffsetsToDomRanges(target, ranges);
+    highlights.set(`oc-load-${hex.slice(1)}`, new Highlight(...domRanges));
+  }
+}
+
+// Tracks every `#hex` we've registered a Highlight for in the current
+// render cycle. The applyDirectives next-cycle path uses it to GC any
+// colours that fell out of the active set (animator stopped) so the
+// CSS Custom Highlight map stays small.
+const _knownLoadingHexes = new Set<string>();
+
+const LOADING_STYLE_ID = 'oc-loading-color-styles';
+
+/** Inject (idempotently) a `::highlight(oc-load-RRGGBB)` rule for the
+ *  given hex so the CSS engine has a colour to paint matching ranges. */
+function ensureLoadingColorStyle(hex: string): void {
+  const name = `oc-load-${hex.slice(1)}`;
+  let sheet = document.getElementById(LOADING_STYLE_ID) as HTMLStyleElement | null;
+  if (!sheet) {
+    sheet = document.createElement('style');
+    sheet.id = LOADING_STYLE_ID;
+    document.head.appendChild(sheet);
+  }
+  const rule = `::highlight(${name}) { color: ${hex} !important; }`;
+  // Cheap dedup — search the existing text for the rule.
+  if ((sheet.textContent ?? '').includes(rule)) return;
+  sheet.appendChild(document.createTextNode(rule + '\n'));
 }
 
 /** Tear down the runtime's highlights — called on detach/dispose. */
