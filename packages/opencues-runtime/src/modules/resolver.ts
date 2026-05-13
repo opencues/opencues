@@ -22,6 +22,22 @@ import type { SpanFillState } from '../state/span-fill';
 import type { AgentTaskState } from '../state/agent-task';
 import { splitWords } from './navigation';
 import type { BlankLoadingAnimator } from './blank-loading';
+import { applyMarkdownAwareSplice } from './markdown-substitute';
+
+/** Minimal interface MarkdownRender exposes for rich-text injection.
+ *  Keeps Resolver from importing MarkdownRender directly (would create
+ *  a layering cycle through boot-common). */
+export interface MarkdownStylesProvider {
+  getCachedPayload(): {
+    readonly text: string;
+    readonly bold: ReadonlyArray<{ start: number; end: number }>;
+    readonly italic: ReadonlyArray<{ start: number; end: number }>;
+    readonly code: ReadonlyArray<{ start: number; end: number }>;
+    readonly strike: ReadonlyArray<{ start: number; end: number }>;
+    readonly heading: ReadonlyArray<{ start: number; end: number }>;
+    readonly list: ReadonlyArray<{ start: number; end: number }>;
+  } | null;
+}
 
 export interface ResolverOptions {
   /** Legacy single-key endpoint. Prefer `apiKeys` for multi-provider. */
@@ -113,6 +129,14 @@ export class Resolver {
      *  Optional — when omitted, slots stay static during resolution
      *  (legacy behaviour pre-2026-05-13). */
     private blankLoading?: BlankLoadingAnimator,
+    /** Shared MarkdownRender — exposes the last styled-text payload so
+     *  the resolver can re-inject markdown markers (`**bold**`,
+     *  `*italic*`, etc.) into EXTRACT/APPLY input. Without this, an
+     *  LLM rewrite asked to "make it caps" loses any prior bold the
+     *  user had on a word — markers were stripped from the buffer at
+     *  write time and the LLM never sees them on the next pass.
+     *  Optional — when omitted, no rich-text view is built. */
+    private markdownRender?: MarkdownStylesProvider,
   ) {}
 
   subscribe(): void {
@@ -500,6 +524,38 @@ export class Resolver {
       if (reconstructed !== text) asTypedText = reconstructed;
     }
 
+    // Rich-text view: re-inject any markdown markers MarkdownRender has
+    // cached. The LLM sees this when EXTRACT runs and can preserve
+    // markers on its rewrite. Without it, asking "make it caps" on a
+    // word that's already bold loses the bold — markers don't exist
+    // in the visible buffer (stripped at write time).
+    //
+    // Cache-prefix match is TRAILING-WHITESPACE-TOLERANT: the cached
+    // text often carries preserved separators (newlines after a
+    // substitution) that the user has since typed over. We compare on
+    // the body — everything up to and including the last styled range —
+    // and accept the user's new typing as suffix.
+    let richText: string | undefined;
+    if (this.markdownRender) {
+      const cached = this.markdownRender.getCachedPayload();
+      if (cached) {
+        const allRanges = [
+          ...cached.bold, ...cached.italic, ...cached.code,
+          ...cached.strike, ...cached.heading, ...cached.list,
+        ];
+        const bodyEnd = allRanges.length === 0
+          ? cached.text.replace(/\s+$/, '').length
+          : Math.max(...allRanges.map(r => r.end));
+        const cachedBody = cached.text.slice(0, bodyEnd);
+        if (text.startsWith(cachedBody)) {
+          // Markers index into cached.text — re-inject them into
+          // cachedBody (a prefix), then append whatever the user has
+          // typed past that point.
+          richText = injectMarkdownMarkers(cachedBody, cached) + text.slice(cachedBody.length);
+        }
+      }
+    }
+
     // Loading animation: start animating every `_` slot before dispatch
     // and stop them all after the pipeline returns (success, error, or
     // empty result). Idempotent: BlankFill may have already started
@@ -527,6 +583,7 @@ export class Resolver {
         words: cleanWords,
         domain: 'claude-code',
         asTypedText,
+        richText,
         // User's caret position. TransformBlank's APPLY pass injects
         // a [CURSOR] sentinel here so the LLM can anchor positional
         // instructions ("insert X here _") at the user's actual
@@ -633,16 +690,21 @@ export class Resolver {
           this.adapter.log('info', 'FluidBlank: skipping — _ already substituted by another module');
           continue;
         }
-        const answer = alts[0];
+        // Splice the answer into [start, end) — the canonical
+        // FluidBlank shape. applyMarkdownAwareSplice handles strip +
+        // write + markdown.styled emit with ranges shifted into
+        // final-buffer coords. Same primitive TransformBlank uses
+        // below; the only difference is which range we hand it.
         const end = isMultiWordSpan ? r.spanEnd! : target.end;
-        const newText = text.slice(0, start) + answer + text.slice(end);
-        const newCursor = start + answer.length;
+        const sub = applyMarkdownAwareSplice(this.adapter, text, start, end, alts[0]);
+        const newText = sub.newText;
+        const answer = sub.stripped;
 
         // Find which word in the new text the answer sits at.
         const newWords = splitWords(newText);
         const newWord = newWords.find(w => w.start === start);
         const newWordIndex = newWord ? newWord.index : r.wordIndex;
-        const newSpanEnd = newWord ? newWord.end : newCursor;
+        const newSpanEnd = newWord ? newWord.end : sub.newCursor;
 
         const fluidDef: WordDef = {
           originalWord: '_',
@@ -659,13 +721,6 @@ export class Resolver {
         wrote++;
 
         this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex})`);
-        if (this.adapter.pushText) {
-          this.adapter.pushText(newText, newCursor);
-        } else {
-          this.adapter.setText(newText);
-          this.adapter.setCursorOffset(newCursor);
-          this.adapter.forceRender();
-        }
         continue; // skip the generic def-creation below
       }
 
@@ -698,18 +753,136 @@ export class Resolver {
           continue;
         }
 
+        // Compute the surgical splice range: find the TARGET in
+        // originalText (the body the LLM rewrote) and the TRIGGER (the
+        // instruction phrase + `_`). The splice replaces a contiguous
+        // range and preserves everything outside.
+        //
+        // Three layouts:
+        //   1. Target contiguous BEFORE trigger or AFTER trigger:
+        //        [ prefix ][ target ][ sep ][ instr _ ][ trail ]
+        //        Splice = [target_start, trigger_end), separator folded
+        //        into rewrite so trail survives via slice(end).
+        //
+        //   2. Target SANDWICHED around trigger (EXTRACT emits the
+        //      two halves joined by "\n"):
+        //        [ pt1 ][ sep ][ instr _ ][ sep ][ pt2 ]
+        //        Splice = [pt1_start, pt2_end), rewrite replaces the
+        //        ENTIRE composite span.
+        //
+        //   3. Target not found at all (LLM reworded it heavily):
+        //        Whole-body replace fallback.
+        // transformTarget may contain markdown markers when EXTRACT
+        // ran against the rich-text view (re-injected markers from
+        // MarkdownRender's cache). Strip them before locating the
+        // target in originalText (the unmarked visible buffer) —
+        // otherwise indexOf finds nothing and we drop to whole-body
+        // fallback even on a clean target match.
+        const transformTargetRaw = r.metadata?.transformTarget as string | undefined;
+        const transformTarget = transformTargetRaw !== undefined
+          ? stripMarkdownMarkers(transformTargetRaw)
+          : undefined;
+        const transformInstruction = r.metadata?.transformInstruction as string | undefined;
+        let spliceStart = 0;
+        let spliceEnd = originalText.length;
+        let rewriteWithSeparator = rewrittenText;
+        if (transformTarget && transformTarget.length > 0) {
+          const targetIdx = originalText.indexOf(transformTarget);
+          if (targetIdx >= 0) {
+            // Locate the trigger phrase (instruction + `_`) too. The
+            // splice must cover BOTH target and trigger; everything
+            // else is preservedPrefix/trailing.
+            const targetEnd = targetIdx + transformTarget.length;
+            const trigger = locateTrigger(originalText, transformInstruction, targetIdx, targetEnd);
+            if (trigger) {
+              // Span from earliest-of(target, trigger) → latest-of(target, trigger).
+              spliceStart = Math.min(targetIdx, trigger.start);
+              spliceEnd = Math.max(targetEnd, trigger.end);
+              // Separator = anything between target and trigger that
+              // wasn't part of either. Preserve newlines; drop spaces
+              // (a space between target and trigger is just a word
+              // boundary, not user-intended structure).
+              const gapStart = Math.min(targetEnd, trigger.end);
+              const gapEnd = Math.max(targetIdx, trigger.start);
+              const separator = gapStart < gapEnd
+                ? originalText.slice(gapStart, gapEnd).replace(/[ \t]+$/, '').replace(/^[ \t]+/, '')
+                : '';
+              rewriteWithSeparator = rewrittenText + separator;
+            } else {
+              // Trigger not located via instruction phrase. Conservative
+              // fallback: splice from target onward, preserving leading
+              // whitespace as separator. Splice covers target end → EOL.
+              spliceStart = targetIdx;
+              const remainder = originalText.slice(targetEnd);
+              const separator = (remainder.match(/^\s*/)?.[0] ?? '').replace(/[ \t]+$/, '');
+              spliceEnd = originalText.length;
+              rewriteWithSeparator = rewrittenText + separator;
+            }
+          } else {
+            // Sandwiched target — EXTRACT joined two halves with "\n"
+            // but in originalText they're separated by the trigger
+            // phrase. We replace ONLY the trigger phrase with "" and
+            // each half with its modified rewrite — surrounding
+            // structural whitespace (paragraph breaks) is preserved
+            // exactly, including the now-empty trigger LINE itself.
+            // Compose the final buffer here and splice it as one
+            // [pt1Start, pt2End) operation.
+            const sandwich = findSandwichedTarget(originalText, transformTarget, transformInstruction);
+            if (sandwich) {
+              spliceStart = sandwich.pt1Start;
+              spliceEnd = sandwich.pt2End;
+              // Split the LLM rewrite on its first `\n` — EXTRACT
+              // joined pt1+pt2 with a single newline, APPLY preserves
+              // that join. Falls back to "whole rewrite is pt1, pt2
+              // unchanged" when the rewrite has no \n.
+              const rewriteSplitIdx = rewrittenText.indexOf('\n');
+              const pt1Mod = rewriteSplitIdx >= 0
+                ? rewrittenText.slice(0, rewriteSplitIdx)
+                : rewrittenText;
+              const pt2Mod = rewriteSplitIdx >= 0
+                ? rewrittenText.slice(rewriteSplitIdx + 1)
+                : originalText.slice(sandwich.pt2Start, sandwich.pt2End);
+              const sepBeforeTrigger = originalText.slice(sandwich.pt1End, sandwich.triggerStart);
+              const sepAfterTrigger = originalText.slice(sandwich.triggerEnd, sandwich.pt2Start);
+              // Compose: pt1_mod + sep_before + (trigger consumed: empty) + sep_after + pt2_mod.
+              // The trigger LINE remains structurally — its surrounding
+              // whitespace is intact and its text is just empty now.
+              rewriteWithSeparator = pt1Mod + sepBeforeTrigger + sepAfterTrigger + pt2Mod;
+            }
+            // else: fall through to whole-body replace.
+          }
+        }
+
+        // Cursor lands at the END OF THE FULL NEW BUFFER. The user
+        // was typing past the trigger (after `_`), past any preserved
+        // separator (\n\n) between target and trigger. A targeted
+        // modification shouldn't yank the caret BACKWARDS across that
+        // preserved structure — they intentionally typed past it.
+        // End-of-buffer keeps continuity with where they were.
+        //
+        // Implementation: pass a huge cursor; the helper clamps to
+        // newText.length internally. Saves recomputing newText.length
+        // here.
+        const sub = applyMarkdownAwareSplice(
+          this.adapter, originalText, spliceStart, spliceEnd, rewriteWithSeparator,
+          { cursor: Number.MAX_SAFE_INTEGER },
+        );
+        const bufferText = sub.newText;
+
         // Find which word the rewrite's first word lands at in the new
-        // text (for keying the def). Default to index 0 since the entire
-        // text is being replaced.
-        const newWords = splitWords(rewrittenText);
-        const newWordIndex = newWords.length > 0 ? newWords[0].index : 0;
-        const newSpanEnd = newWords.length > 0 ? newWords[newWords.length - 1].end : rewrittenText.length;
+        // text (for keying the def). Defaults to wherever the splice
+        // inserted (spliceStart), which becomes the first word position
+        // in the post-substitution text.
+        const newWords = splitWords(bufferText);
+        const firstSpliceWord = newWords.find(w => w.start >= spliceStart);
+        const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
+        const newSpanEnd = newWords.length > 0 ? newWords[newWords.length - 1].end : bufferText.length;
 
         const transformDef: WordDef = {
           originalWord: originalText,
           // alternatives[0] = original full text (cycle Down to revert)
-          // alternatives[1] = rewritten text (currently showing)
-          alternatives: [originalText, rewrittenText],
+          // alternatives[1] = the post-substitution buffer (cycle Up returns here)
+          alternatives: [originalText, bufferText],
           currentIndex: 1,            // showing rewrite
           spanStart: 0,
           spanEnd: newSpanEnd,
@@ -722,17 +895,9 @@ export class Resolver {
 
         const previewLen = 60;
         const origPreview = originalText.length > previewLen ? originalText.slice(0, previewLen) + '…' : originalText;
-        const rewritePreview = rewrittenText.length > previewLen ? rewrittenText.slice(0, previewLen) + '…' : rewrittenText;
-        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${rewrittenText.length}, defAt=${newWordIndex})`);
-
-        const newCursor = rewrittenText.length;
-        if (this.adapter.pushText) {
-          this.adapter.pushText(rewrittenText, newCursor);
-        } else {
-          this.adapter.setText(rewrittenText);
-          this.adapter.setCursorOffset(newCursor);
-          this.adapter.forceRender();
-        }
+        const rewritePreview = bufferText.length > previewLen ? bufferText.slice(0, previewLen) + '…' : bufferText;
+        const markerNote = sub.hadMarkdown ? ', markdown stripped' : '';
+        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${bufferText.length}${markerNote}, defAt=${newWordIndex})`);
         continue;
       }
 
@@ -776,6 +941,162 @@ export const TASK_TRIGGER_KEYWORDS: Record<string, string> = {
   TASK_STOP: 'stop task',
   TASK_SHOW: 'current task',
 };
+
+/** Strip inline markdown markers from a string. Mirrors a subset of
+ *  the markdown-strip module; kept local so callers don't have to
+ *  invoke the full Range-returning version when they just want the
+ *  plain text (e.g. for indexOf lookups). */
+function stripMarkdownMarkers(s: string): string {
+  return s
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1');
+}
+
+/**
+ * Re-insert markdown markers into `plain` at the positions described
+ * by `cached`. Used to feed the LLM a "rich-text" view of the buffer
+ * so it can preserve existing styling across transforms. Inverse of
+ * the stripMarkdown step that runs at write time.
+ *
+ * Insertion is order-preserving: we walk the bounded list of
+ * insertions sorted by visible offset, walking the plain text once.
+ */
+function injectMarkdownMarkers(
+  plain: string,
+  cached: {
+    bold: ReadonlyArray<{ start: number; end: number }>;
+    italic: ReadonlyArray<{ start: number; end: number }>;
+    code: ReadonlyArray<{ start: number; end: number }>;
+    strike: ReadonlyArray<{ start: number; end: number }>;
+    heading: ReadonlyArray<{ start: number; end: number }>;
+    list: ReadonlyArray<{ start: number; end: number }>;
+  },
+): string {
+  type Ins = { at: number; mark: string; order: number };
+  const inserts: Ins[] = [];
+  const add = (rs: ReadonlyArray<{ start: number; end: number }>, open: string, close: string): void => {
+    for (const r of rs) {
+      inserts.push({ at: r.start, mark: open, order: 0 });
+      inserts.push({ at: r.end, mark: close, order: 1 });
+    }
+  };
+  add(cached.bold, '**', '**');
+  add(cached.italic, '*', '*');
+  add(cached.code, '`', '`');
+  add(cached.strike, '~~', '~~');
+  // heading + list are line-level and rarely round-trip through this
+  // path (LLM rewrites usually preserve them as text shape), but pin
+  // them too so we don't regress: heading prefixes the line with `# `,
+  // list prefixes each item with `- `. Implemented as just open markers
+  // (no close).
+  for (const r of cached.heading) inserts.push({ at: r.start, mark: '# ', order: 0 });
+  for (const r of cached.list) inserts.push({ at: r.start, mark: '- ', order: 0 });
+  if (inserts.length === 0) return plain;
+  inserts.sort((a, b) => a.at - b.at || a.order - b.order);
+  let out = '';
+  let cursor = 0;
+  for (const ins of inserts) {
+    if (ins.at > cursor) out += plain.slice(cursor, ins.at);
+    out += ins.mark;
+    cursor = ins.at;
+  }
+  if (cursor < plain.length) out += plain.slice(cursor);
+  return out;
+}
+
+/**
+ * Locate the trigger phrase (instruction text + `_`) in `originalText`.
+ * The trigger may sit BEFORE the target (layout: instruction first) or
+ * AFTER it (layout: instruction trailing). We pick the trigger nearest
+ * the target to handle the case where the instruction phrase
+ * coincidentally appears inside the target itself (e.g. APPLY's
+ * "make wilfred bold" instruction matches a phrase in a long paragraph).
+ *
+ * Returns the inclusive [start, end) span of the trigger phrase, or
+ * null when we can't find it (e.g. instruction phrase missing /
+ * trailing `_` not where we expect).
+ */
+function locateTrigger(
+  originalText: string,
+  instruction: string | undefined,
+  targetIdx: number,
+  targetEnd: number,
+): { start: number; end: number } | null {
+  if (!instruction || instruction.length === 0) return null;
+  // Search BOTH sides of the target. Prefer the side where the
+  // instruction phrase appears AND a `_` follows immediately (modulo
+  // whitespace).
+  const sides: Array<{ from: number; end: number }> = [
+    { from: targetEnd, end: originalText.length },     // after target
+    { from: 0, end: targetIdx },                        // before target
+  ];
+  for (const side of sides) {
+    const region = originalText.slice(side.from, side.end);
+    const idx = region.indexOf(instruction);
+    if (idx < 0) continue;
+    const instrEndInRegion = idx + instruction.length;
+    // Find next `_` after the instruction phrase in this region.
+    const underscoreInRegion = region.indexOf('_', instrEndInRegion);
+    if (underscoreInRegion < 0) continue;
+    return {
+      start: side.from + idx,
+      end: side.from + underscoreInRegion + 1,
+    };
+  }
+  return null;
+}
+
+/**
+ * Locate a sandwiched target — two halves joined by "\n" in EXTRACT's
+ * output, but in originalText separated by the trigger phrase. Returns
+ * the [pt1Start, pt2End) span the splice should replace, or null when
+ * the pattern doesn't fit.
+ *
+ * Splitting on the FIRST newline keeps the two halves recoverable
+ * (multi-line halves are uncommon in practice and a trade-off for the
+ * sandwich path).
+ */
+interface SandwichLayout {
+  pt1Start: number;
+  pt1End: number;
+  triggerStart: number;     // start of instruction phrase
+  triggerEnd: number;       // position just after the `_`
+  pt2Start: number;
+  pt2End: number;
+}
+
+function findSandwichedTarget(
+  originalText: string,
+  target: string,
+  instruction: string | undefined,
+): SandwichLayout | null {
+  if (!instruction) return null;
+  const splitIdx = target.indexOf('\n');
+  if (splitIdx < 0) return null;     // EXTRACT didn't emit a sandwich
+  const pt1 = target.slice(0, splitIdx);
+  const pt2 = target.slice(splitIdx + 1);
+  if (pt1.length === 0 || pt2.length === 0) return null;
+  const pt1Idx = originalText.indexOf(pt1);
+  if (pt1Idx < 0) return null;
+  const pt1End = pt1Idx + pt1.length;
+  // The instruction phrase + `_` MUST sit between pt1 and pt2.
+  const instrInBetween = originalText.indexOf(instruction, pt1End);
+  if (instrInBetween < 0) return null;
+  const triggerEnd = originalText.indexOf('_', instrInBetween + instruction.length);
+  if (triggerEnd < 0) return null;
+  const pt2Idx = originalText.indexOf(pt2, triggerEnd + 1);
+  if (pt2Idx < 0) return null;
+  return {
+    pt1Start: pt1Idx,
+    pt1End,
+    triggerStart: instrInBetween,
+    triggerEnd: triggerEnd + 1,    // exclusive: just past the `_`
+    pt2Start: pt2Idx,
+    pt2End: pt2Idx + pt2.length,
+  };
+}
 
 function trimTriggerFromText(
   action: string,

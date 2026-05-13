@@ -594,7 +594,10 @@ function normaliseKeyName(evt: any): string {
  */
 type OcExtmarkKey = string // `${kind}:${start}:${end}`
 let ocOwnedExtmarks = new Map<OcExtmarkKey, number>()
-let ocStyleIdsCache: { dim?: number; highlight?: number; typeId?: number } = {}
+let ocStyleIdsCache: {
+  dim?: number; highlight?: number; typeId?: number;
+  bold?: number; italic?: number; code?: number; strike?: number; heading?: number; list?: number;
+} = {}
 // Tracked so we can drop stale extmark IDs whenever the prompt re-mounts
 // (Solid.js reactive replacement of the textarea instance). Without this
 // guard, the diff sees a "match" by key for an extmark whose ID is dead
@@ -635,24 +638,64 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       syntax.getStyleId("opencues-highlight")
       ?? syntax.registerStyle("opencues-highlight", { fg: RGBA.fromValues(1, 1, 1, 1), bold: true })
   }
+  // Markdown styles — registered lazily on first use. Mirrors the dim /
+  // highlight pattern. code uses a faint background-like inverse via fg
+  // adjustment (full bg paint isn't part of the syntax style API).
+  if (ocStyleIdsCache.bold === undefined) {
+    ocStyleIdsCache.bold = syntax.getStyleId("opencues-bold") ?? syntax.registerStyle("opencues-bold", { bold: true })
+  }
+  if (ocStyleIdsCache.italic === undefined) {
+    ocStyleIdsCache.italic = syntax.getStyleId("opencues-italic") ?? syntax.registerStyle("opencues-italic", { italic: true })
+  }
+  if (ocStyleIdsCache.code === undefined) {
+    ocStyleIdsCache.code = syntax.getStyleId("opencues-code")
+      ?? syntax.registerStyle("opencues-code", { fg: RGBA.fromValues(0.9, 0.7, 0.4, 1) })
+  }
+  if (ocStyleIdsCache.strike === undefined) {
+    // strikethrough may not be exposed on every terminal — fall back to dim.
+    try {
+      ocStyleIdsCache.strike = syntax.getStyleId("opencues-strike")
+        ?? syntax.registerStyle("opencues-strike", { strikethrough: true } as any)
+    } catch {
+      ocStyleIdsCache.strike = syntax.getStyleId("opencues-strike-dim")
+        ?? syntax.registerStyle("opencues-strike-dim", { dim: true })
+    }
+  }
+  if (ocStyleIdsCache.heading === undefined) {
+    ocStyleIdsCache.heading = syntax.getStyleId("opencues-heading")
+      ?? syntax.registerStyle("opencues-heading", { bold: true, underline: true } as any)
+  }
+  if (ocStyleIdsCache.list === undefined) {
+    ocStyleIdsCache.list = syntax.getStyleId("opencues-list")
+      ?? syntax.registerStyle("opencues-list", { fg: RGBA.fromValues(0.7, 0.7, 0.7, 1) })
+  }
   if (ocStyleIdsCache.typeId === undefined) {
     ocStyleIdsCache.typeId = textarea.extmarks.registerType("opencues")
   }
 
   // Build the desired set from the current directive output.
-  type Spec = { kind: "d" | "h"; start: number; end: number }
+  type Kind = "d" | "h" | "b" | "i" | "c" | "s" | "H" | "L"
+  type Spec = { kind: Kind; start: number; end: number }
   const desired = new Map<OcExtmarkKey, Spec>()
+  const addRanges = (ranges: ReadonlyArray<{ start: number; end: number }> | undefined, kind: Kind): void => {
+    if (!ranges) return
+    for (const r of ranges) {
+      desired.set(`${kind}:${r.start}:${r.end}`, { kind, start: r.start, end: r.end })
+    }
+  }
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
-    if (directives.dimRanges) {
-      for (const r of directives.dimRanges) {
-        desired.set(`d:${r.start}:${r.end}`, { kind: "d", start: r.start, end: r.end })
-      }
-    }
+    addRanges(directives.dimRanges, "d")
     if (directives.highlight) {
       const h = directives.highlight
       desired.set(`h:${h.start}:${h.end}`, { kind: "h", start: h.start, end: h.end })
     }
+    addRanges(directives.boldRanges, "b")
+    addRanges(directives.italicRanges, "i")
+    addRanges(directives.codeRanges, "c")
+    addRanges(directives.strikeRanges, "s")
+    addRanges(directives.headingRanges, "H")
+    addRanges(directives.listRanges, "L")
   }
 
   // Delete extmarks no longer wanted.
@@ -663,9 +706,22 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   }
 
   // Create extmarks newly wanted (anything already present is reused).
+  const styleFor = (kind: Kind): number | undefined => {
+    switch (kind) {
+      case "d": return ocStyleIdsCache.dim
+      case "h": return ocStyleIdsCache.highlight
+      case "b": return ocStyleIdsCache.bold
+      case "i": return ocStyleIdsCache.italic
+      case "c": return ocStyleIdsCache.code
+      case "s": return ocStyleIdsCache.strike
+      case "H": return ocStyleIdsCache.heading
+      case "L": return ocStyleIdsCache.list
+    }
+  }
   for (const [key, spec] of desired) {
     if (ocOwnedExtmarks.has(key)) continue
-    const styleId = spec.kind === "d" ? ocStyleIdsCache.dim : ocStyleIdsCache.highlight
+    const styleId = styleFor(spec.kind)
+    if (styleId === undefined) continue
     const id = textarea.extmarks.create({
       start: spec.start,
       end: spec.end,

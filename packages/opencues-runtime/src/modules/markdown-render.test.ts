@@ -1,5 +1,7 @@
-// Scenario tests for MarkdownRender: trigger-on-LLM, invalidate-on-user,
-// blank-slot suppression, integration with the render pipeline.
+// Tests for MarkdownRender — receives `markdown.styled` events, caches
+// per-style ranges, emits them as RenderDirectives. The strip happens
+// upstream (markdown-substitute.ts); MarkdownRender is purely a
+// directive-emitter.
 
 import { describe, expect, it, beforeEach } from 'vitest';
 import { MarkdownRender } from './markdown-render';
@@ -10,7 +12,6 @@ type TextCallback = (event: TextChangeEvent) => void;
 
 interface TestAdapter {
   adapter: HostAdapter;
-  setBuffer: (text: string) => void;
   emitEvent: (type: string, body?: Record<string, unknown>) => void;
   emitText: (text: string, source: 'user' | 'runtime') => void;
 }
@@ -27,7 +28,6 @@ function makeAdapter(initial = ''): TestAdapter {
   };
   return {
     adapter: adapter as HostAdapter,
-    setBuffer: (t) => { buffer = t; },
     emitEvent: (type, body) => { for (const cb of eventSubs) cb(type, body); },
     emitText: (text, source) => {
       buffer = text;
@@ -38,7 +38,7 @@ function makeAdapter(initial = ''): TestAdapter {
 
 const ctx = (text: string): RenderContext => ({ text, cursor: 0, externalHighlights: [] });
 
-describe('MarkdownRender — cache lifecycle', () => {
+describe('MarkdownRender — cache from event', () => {
   let test: TestAdapter;
   let mr: MarkdownRender;
   beforeEach(() => {
@@ -47,130 +47,113 @@ describe('MarkdownRender — cache lifecycle', () => {
     mr.subscribe();
   });
 
-  it('returns null before any LLM-substitution event has fired', () => {
-    test.setBuffer('**hello** world');
-    const r = mr.compute(ctx('**hello** world'));
-    expect(r).toBe(null);
+  it('returns null before any markdown.styled event arrives', () => {
+    expect(mr.compute(ctx('hello'))).toBeNull();
   });
 
-  it('caches ranges after a blank.substituted event and emits them on render', () => {
-    test.setBuffer('**hello** world');
-    test.emitEvent('blank.substituted', { blankName: 'demo' });
-    const r = mr.compute(ctx('**hello** world'));
+  it('caches payload from markdown.styled and emits ranges on render', () => {
+    test.emitEvent('markdown.styled', {
+      text: 'bold here',
+      bold: [{ start: 0, end: 4 }],
+      italic: [], code: [], strike: [], heading: [], list: [],
+    });
+    const r = mr.compute(ctx('bold here'));
     expect(r).not.toBeNull();
-    expect(r!.boldRanges).toEqual([{ start: 0, end: 9 }]);
+    expect(r!.boldRanges).toEqual([{ start: 0, end: 4 }]);
   });
 
-  it('re-parses after a transform-blank.completed event', () => {
-    test.setBuffer('# Heading\n*italic* text');
-    test.emitEvent('transform-blank.completed', {});
-    const r = mr.compute(ctx('# Heading\n*italic* text'));
-    expect(r!.headingRanges?.length).toBe(1);
-    expect(r!.italicRanges?.length).toBe(1);
+  it('ignores events of other types', () => {
+    test.emitEvent('cursor.changed', { text: 'hi', bold: [] });
+    expect(mr.compute(ctx('hi'))).toBeNull();
   });
 
-  it('re-parses after an agent-rewrite.round-completed event', () => {
-    test.setBuffer('`code` and **bold**');
-    test.emitEvent('agent-rewrite.round-completed', {});
-    const r = mr.compute(ctx('`code` and **bold**'));
-    expect(r!.codeRanges?.length).toBe(1);
-    expect(r!.boldRanges?.length).toBe(1);
+  it('drops cache when ctx text drifts from cached text', () => {
+    test.emitEvent('markdown.styled', {
+      text: 'bold here',
+      bold: [{ start: 0, end: 4 }],
+      italic: [], code: [], strike: [], heading: [], list: [],
+    });
+    expect(mr.compute(ctx('something else'))).toBeNull();
   });
 
-  it('ignores events not in the trigger list', () => {
-    test.setBuffer('**hello**');
-    test.emitEvent('cursor.changed', {});
-    expect(mr.compute(ctx('**hello**'))).toBeNull();
-  });
-
-  it('user typing invalidates the cache; compute returns null until next substitution', () => {
-    test.setBuffer('**hello** world');
-    test.emitEvent('blank.substituted', {});
-    expect(mr.compute(ctx('**hello** world'))).not.toBeNull();
-    // User types — buffer changes.
-    test.emitText('**hello** world!', 'user');
-    expect(mr.compute(ctx('**hello** world!'))).toBeNull();
-  });
-
-  it('runtime-source text changes do NOT invalidate the cache', () => {
-    test.setBuffer('**hello**');
-    test.emitEvent('blank.substituted', {});
-    expect(mr.compute(ctx('**hello**'))).not.toBeNull();
-    // Runtime write (e.g. cycling, ZWS toggle) — must not clear cache.
-    test.emitText('**hello**', 'runtime');
-    const r = mr.compute(ctx('**hello**'));
+  it('user appending text after the styled prefix keeps the cache', () => {
+    // Cache should SURVIVE user typing that EXTENDS the styled prefix —
+    // the existing ranges are still valid at their original offsets.
+    // Only mutating the styled prefix itself drops the cache (next test).
+    test.emitEvent('markdown.styled', {
+      text: 'bold here',
+      bold: [{ start: 0, end: 4 }],
+      italic: [], code: [], strike: [], heading: [], list: [],
+    });
+    expect(mr.compute(ctx('bold here'))).not.toBeNull();
+    test.emitText('bold here!', 'user');
+    // Visible now extends with `!` — bold range still applies at [0,4].
+    const r = mr.compute(ctx('bold here!'));
     expect(r).not.toBeNull();
-    expect(r!.boldRanges?.length).toBe(1);
+    expect(r!.boldRanges).toEqual([{ start: 0, end: 4 }]);
   });
 
-  it('cache invalidates silently when the ctx text drifts from the parsed text', () => {
-    test.setBuffer('**hello**');
-    test.emitEvent('blank.substituted', {});
-    // Now compute against a DIFFERENT text — host moved on without firing events.
-    const r = mr.compute(ctx('plain text now'));
-    expect(r).toBeNull();
+  it('user mutating the styled prefix invalidates the cache', () => {
+    test.emitEvent('markdown.styled', {
+      text: 'bold here',
+      bold: [{ start: 0, end: 4 }],
+      italic: [], code: [], strike: [], heading: [], list: [],
+    });
+    expect(mr.compute(ctx('bold here'))).not.toBeNull();
+    test.emitText('BOLD here', 'user');
+    expect(mr.compute(ctx('BOLD here'))).toBeNull();
   });
 
-  it('back-to-back substitutions: latest LLM rewrite wins, cache is refreshed', () => {
-    test.setBuffer('**first**');
-    test.emitEvent('blank.substituted', {});
-    let r = mr.compute(ctx('**first**'));
-    expect(r!.boldRanges).toEqual([{ start: 0, end: 9 }]);
-    // Another substitution lands.
-    test.setBuffer('# Heading');
-    test.emitEvent('blank.substituted', {});
-    r = mr.compute(ctx('# Heading'));
-    expect(r!.headingRanges?.length).toBe(1);
-    expect(r!.boldRanges?.length ?? 0).toBe(0);
-  });
-});
-
-describe('MarkdownRender — output directive shape', () => {
-  let test: TestAdapter;
-  let mr: MarkdownRender;
-  beforeEach(() => {
-    test = makeAdapter();
-    mr = new MarkdownRender(test.adapter);
-    mr.subscribe();
+  it('runtime-source text changes do NOT invalidate', () => {
+    test.emitEvent('markdown.styled', {
+      text: 'bold here',
+      bold: [{ start: 0, end: 4 }],
+      italic: [], code: [], strike: [], heading: [], list: [],
+    });
+    test.emitText('bold here', 'runtime');   // same text, runtime source
+    const r = mr.compute(ctx('bold here'));
+    expect(r).not.toBeNull();
+    expect(r!.boldRanges).toEqual([{ start: 0, end: 4 }]);
   });
 
-  it('emits all 6 range types when present', () => {
-    const text = '# Title\n**bold** *italic* `code` ~~strike~~\n- bullet';
-    test.setBuffer(text);
-    test.emitEvent('blank.substituted', {});
-    const r = mr.compute(ctx(text));
-    expect(r!.headingRanges?.length).toBe(1);
+  it('emits all 6 range types when present in payload', () => {
+    test.emitEvent('markdown.styled', {
+      text: 'Title\nfoo bar baz\none\ntwo',
+      bold: [{ start: 6, end: 9 }],
+      italic: [{ start: 10, end: 13 }],
+      code: [{ start: 14, end: 17 }],
+      strike: [],
+      heading: [{ start: 0, end: 5 }],
+      list: [{ start: 18, end: 21 }, { start: 22, end: 25 }],
+    });
+    const r = mr.compute(ctx('Title\nfoo bar baz\none\ntwo'));
     expect(r!.boldRanges?.length).toBe(1);
     expect(r!.italicRanges?.length).toBe(1);
     expect(r!.codeRanges?.length).toBe(1);
-    expect(r!.strikeRanges?.length).toBe(1);
-    expect(r!.listRanges?.length).toBe(1);
+    expect(r!.headingRanges?.length).toBe(1);
+    expect(r!.listRanges?.length).toBe(2);
   });
 
-  it('plain prose: every range list is empty (or omitted) — null is also fine', () => {
-    test.setBuffer('Hello plain world.');
-    test.emitEvent('blank.substituted', {});
-    const r = mr.compute(ctx('Hello plain world.'));
-    // Non-null but every range list empty.
-    expect(r).not.toBeNull();
-    const total = (r!.boldRanges?.length ?? 0)
-      + (r!.italicRanges?.length ?? 0)
-      + (r!.codeRanges?.length ?? 0)
-      + (r!.strikeRanges?.length ?? 0)
-      + (r!.headingRanges?.length ?? 0)
-      + (r!.listRanges?.length ?? 0);
-    expect(total).toBe(0);
+  it('back-to-back substitutions: latest payload wins', () => {
+    test.emitEvent('markdown.styled', {
+      text: 'first',
+      bold: [{ start: 0, end: 5 }],
+      italic: [], code: [], strike: [], heading: [], list: [],
+    });
+    expect(mr.compute(ctx('first'))!.boldRanges).toEqual([{ start: 0, end: 5 }]);
+    test.emitEvent('markdown.styled', {
+      text: 'second word',
+      bold: [],
+      italic: [{ start: 7, end: 11 }],
+      code: [], strike: [], heading: [], list: [],
+    });
+    const r = mr.compute(ctx('second word'));
+    expect(r!.italicRanges).toEqual([{ start: 7, end: 11 }]);
+    expect(r!.boldRanges).toEqual([]);
   });
-});
 
-describe('MarkdownRender — forceReparse (test-only)', () => {
-  it('forceReparse re-runs the parse against current adapter text', () => {
-    const test = makeAdapter('# initial');
-    const mr = new MarkdownRender(test.adapter);
-    mr.forceReparse();
-    expect(mr.compute(ctx('# initial'))?.headingRanges?.length).toBe(1);
-    test.setBuffer('plain');
-    mr.forceReparse();
-    expect(mr.compute(ctx('plain'))?.headingRanges?.length ?? 0).toBe(0);
+  it('malformed event (missing text field) is ignored', () => {
+    test.emitEvent('markdown.styled', { bold: [{ start: 0, end: 4 }] });   // no `text`
+    expect(mr.compute(ctx('whatever'))).toBeNull();
   });
 });

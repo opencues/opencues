@@ -86,6 +86,15 @@ export interface BootResult {
    * resolves when the reload completes.
    */
   reloadConfig(): Promise<void>;
+  /**
+   * Subscribe to module-emitted lifecycle events (markdown.styled,
+   * blank.substituted, agent-rewrite.round-completed, etc.). The
+   * content-script bootstrap uses this for `markdown.styled` payloads
+   * — the per-style range info lets chrome apply native bold / italic
+   * markup over the live DOM after the runtime has written the
+   * stripped text.
+   */
+  onModuleEvent(handler: (type: string, body?: Record<string, unknown>) => void): () => void;
   dispose(): void;
 }
 
@@ -106,6 +115,12 @@ export function boot(host: HostInfo): BootResult {
   const textEvents = new EventEmitter<TextChangeEvent>();
   const cursorEvents = new EventEmitter<import('../../../src/adapter').CursorChangeEvent>();
   const renderEvents = new EventEmitter<RenderContext, RenderDirectives | null>();
+  // Module-event bus (markdown.styled, blank.substituted, etc.) —
+  // bindings.emitEvent posts onto it, BootResult.onModuleEvent subscribes.
+  // The shape is (type, body) so the chrome content-script bootstrap can
+  // pattern-match on the event name.
+  type ModuleEventPayload = { type: string; body?: Record<string, unknown> };
+  const moduleEvents = new EventEmitter<ModuleEventPayload>();
 
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
@@ -147,6 +162,10 @@ export function boot(host: HostInfo): BootResult {
     blankInvoke: host.blankInvoke,
     spawnProcess: host.spawnProcess,
     log,
+    emitEvent: (type, body) => {
+      moduleEvents.emit({ type, body }, err => log('error', 'module-event handler threw', err));
+    },
+    registerEventHandler: (cb) => moduleEvents.subscribe(({ type, body }) => cb(type, body)),
   };
 
   const adapter = new ChromeV1Adapter(bindings);
@@ -210,7 +229,7 @@ export function boot(host: HostInfo): BootResult {
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
-    }, spanFillState, agentTaskState, shared.blankLoading);
+    }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
     const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
@@ -261,6 +280,9 @@ export function boot(host: HostInfo): BootResult {
       // fires onTextChange-style re-renders downstream. Used by the
       // chrome extension's .version polling loop.
       await shared.configLoader.load();
+    },
+    onModuleEvent(handler) {
+      return moduleEvents.subscribe(({ type, body }) => handler(type, body));
     },
     dispose() {
       adapter.dispose();

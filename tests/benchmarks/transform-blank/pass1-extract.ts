@@ -28,13 +28,20 @@ VERDICT: TRANSFORM | NONE
 INSTRUCTION: <the imperative phrase, _ removed; or empty when NONE>
 TARGET: <the rest of the input text after removing the instruction phrase + _; or empty when NONE>
 
-LAYOUT — the imperative may appear in TWO positions:
-  (a) BEFORE _ at the start: "<INSTRUCTION> _ <TARGET>"
+LAYOUT — the imperative may appear in THREE positions:
+  (a) BEFORE _ at the start:   "<INSTRUCTION> _ <TARGET>"
       e.g. "change boy to girl _ the boy ran fast"
-  (b) BEFORE _ at the end:   "<TARGET> <INSTRUCTION> _"
+  (b) BEFORE _ at the end:     "<TARGET> <INSTRUCTION> _"
       e.g. "the boy ran fast change boy to girl _"
+  (c) SANDWICHED — body on BOTH sides of the instruction:
+      "<TARGET-PT1> <INSTRUCTION> _ <TARGET-PT2>"
+      e.g. "hi my name is wilfred\nmake wilfred bold _\nand I work on opencues"
+      TARGET is BOTH chunks joined by a single newline, in their original order.
+      Never silently drop either half.
 
 In layout (b), TARGET is everything BEFORE the instruction phrase, NOT after the underscore. There is nothing after the underscore in this layout. Detect by looking at where the imperative verb sits relative to the rest of the text: if the verb is in the LAST few words right before the underscore, it's layout (b) and TARGET is the leading text.
+
+In layout (c), TARGET output spans multiple lines. The parser stops at the next pipeline marker or end of output, so a multi-line TARGET is unambiguous.
 
 COMPOSED INSTRUCTIONS — when the imperative phrase joins TWO transforms with "and" ("make past tense and remove pronouns", "pluralize and make past tense", "make it british english and past tense"), output the two transforms pipe-joined in INSTRUCTION:
 
@@ -59,6 +66,14 @@ INPUT: the boy ran fast change boy to girl _
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
 TARGET: the boy ran fast
+
+INPUT: hi my name is wilfred
+make wilfred bold _
+and I work on opencues
+VERDICT: TRANSFORM
+INSTRUCTION: make wilfred bold
+TARGET: hi my name is wilfred
+and I work on opencues
 
 INPUT: The boy ran across the road with his big dog. He loved them lots. make all text lower case _
 VERDICT: TRANSFORM

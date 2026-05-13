@@ -250,13 +250,11 @@ export function buildSharedRuntime(
     .then(() => blankFill.subscribe())
     .catch(err => log('error', 'BlankFill: deferred subscribe failed', err));
 
-  // MarkdownRender — display-only overlay for **bold** / *italic* /
-  // `code` / ~~strike~~ / # heading / - list. Parses on LLM-origin
-  // substitution events; renders via the existing onRender pipeline
-  // alongside DimRender. Suppresses italic / code / strike spans that
-  // overlap an active blank slot so `_` doesn't get accidentally
-  // styled as markdown.
-  const markdownRender = new MarkdownRender(adapter, blankFill);
+  // MarkdownRender — receives `markdown.styled` events from substituting
+  // modules and exposes the per-style ranges as RenderDirectives. The
+  // strip happens in markdown-substitute.ts at write time; MarkdownRender
+  // is purely a directive-emitter.
+  const markdownRender = new MarkdownRender(adapter);
   markdownRender.subscribe();
 
   return {

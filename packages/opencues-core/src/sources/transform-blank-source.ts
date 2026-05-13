@@ -62,7 +62,25 @@ VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
 INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
 TARGET: <the rest of the input after removing instruction + _; or empty>
 
-The instruction can sit BEFORE _ at the start (<INSTRUCTION> _ <TARGET>) OR right BEFORE _ at the end (<TARGET> <INSTRUCTION> _).
+The instruction sits IMMEDIATELY before _. Three layouts are valid:
+  - <INSTRUCTION> _ <TARGET>                   (instruction first)
+  - <TARGET> <INSTRUCTION> _                   (instruction trailing)
+  - <TARGET-PT1> <INSTRUCTION> _ <TARGET-PT2>  (instruction sandwiched between two target chunks)
+
+CRITICAL — SANDWICHED LAYOUT:
+When the input contains text BOTH BEFORE the instruction line AND AFTER the
+_ token, you MUST concatenate BOTH chunks into a single TARGET, joined by a
+single newline character, preserving original order.
+
+Detection: if INPUT has ≥3 logical sections — content, then an instruction
+line ending in _, then more content — it is sandwiched. Never silently drop
+either half. The first chunk is NOT a "prefix to ignore"; the second chunk is
+NOT a "suffix to ignore". They are both part of the body the user wants
+edited.
+
+TARGET output spans MULTIPLE LINES when sandwiched. Emit it verbatim across
+lines; the parser stops at the next pipeline marker ("---APPLY---" or end of
+output), so a multi-line TARGET is unambiguous.
 
 For composed instructions joined by "and" ("make past tense and remove pronouns"), output them pipe-joined: "make past tense | remove pronouns".
 
@@ -102,6 +120,22 @@ INPUT: the boy ran fast change boy to girl _
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
 TARGET: the boy ran fast
+
+INPUT: hi my name is wilfred
+make wilfred bold _
+and I work on opencues
+VERDICT: TRANSFORM
+INSTRUCTION: make wilfred bold
+TARGET: hi my name is wilfred
+and I work on opencues
+
+INPUT: the meeting is at 3pm
+make it a question _
+on Friday
+VERDICT: TRANSFORM
+INSTRUCTION: make it a question
+TARGET: the meeting is at 3pm
+on Friday
 
 INPUT: pluralize and make past tense _ the child runs to the park
 VERDICT: TRANSFORM
@@ -193,6 +227,22 @@ RULES:
 
 10. CURSOR ANCHOR — the TARGET may contain a [CURSOR] marker showing where the user's caret was when they triggered the transform. If the INSTRUCTION is POSITIONAL (it says "here", "at this point", "add X", "insert X", "split here", "move here", "before this", "after this", or implies anchoring to a specific spot), apply the edit at the [CURSOR] location. For non-positional INSTRUCTIONs (translate, capitalise, fix typos, make shorter, etc.), IGNORE the [CURSOR] marker — treat the target as if it weren't there. ALWAYS strip the [CURSOR] marker from your output regardless. Never emit the literal string [CURSOR] in the REWRITE.
 
+11. MARKDOWN FORMATTING INSTRUCTIONS — when the INSTRUCTION asks for inline styling on a span ("make X bold", "bold the word X", "italicize Y", "italic Y", "strike through Z", "strikethrough Z"), you are NOT extracting the span; you are decorating it in place. CRITICAL: the rewrite MUST contain the ENTIRE TARGET verbatim, byte for byte, EXCEPT for adding the markdown markers around the named span. Counting check: if the target has N words, the rewrite must have at least N words. Do NOT emit just the bare span. Do NOT drop the surrounding text. Do NOT shorten the target.
+
+    Marker syntax:
+    - bold → \`**span**\`
+    - italic → \`*span*\`
+    - strikethrough → \`~~span~~\`
+    - code / inline code → \`\`\`\`span\`\`\`\`
+
+    For "make it a heading" / "make this a heading" applied to a line, prefix the line with \`# \`. For "turn into a list" / "make a list", prefix each item line with \`- \`. Markers are STRIPPED before the buffer is written; the visual style is rendered separately by the host. Do not refuse the instruction because you "can't apply styling" — emit the markers.
+
+    ANTI-PATTERN (DO NOT DO THIS):
+      INSTRUCTION: make wilfred bold
+      TARGET: hi my name is wilfred
+      WRONG REWRITE: **wilfred**                          ← collapsed body, lost context
+      RIGHT REWRITE: hi my name is **wilfred**            ← target preserved, marker added
+
 EXAMPLES:
 
 INSTRUCTION: change boy to girl
@@ -265,7 +315,37 @@ REWRITE: the children drank water and ate cookies at the tables
 
 INSTRUCTION: uppercase brands except apple
 TARGET: i bought apple, samsung, and sony products
-REWRITE: i bought apple, SAMSUNG, and SONY products`;
+REWRITE: i bought apple, SAMSUNG, and SONY products
+
+INSTRUCTION: make wilfred bold
+TARGET: hii my name is wilfred.
+REWRITE: hii my name is **wilfred**.
+
+INSTRUCTION: bold the word name
+TARGET: hii my name is wilfred.
+REWRITE: hii my **name** is wilfred.
+
+INSTRUCTION: italicize wilfred
+TARGET: hii my name is wilfred.
+REWRITE: hii my name is *wilfred*.
+
+INSTRUCTION: strike through the word wilfred
+TARGET: hii my name is wilfred.
+REWRITE: hii my name is ~~wilfred~~.
+
+INSTRUCTION: make the first line a heading
+TARGET: My Notes
+
+Today I worked on the runtime.
+REWRITE: # My Notes
+
+Today I worked on the runtime.
+
+INSTRUCTION: turn the items into a list
+TARGET: I bought apples bananas and oranges.
+REWRITE: - apples
+- bananas
+- oranges`;
 
 // Generative APPLY — runs when EXTRACT returns TRANSFORM with empty
 // TARGET. The instruction is a create/generate request ("write a
@@ -401,7 +481,21 @@ INSTRUCTION: make it a question
 TARGET: the meeting starts at 3pm
 DRAFT: the meeting starts at 3pm?
 VERDICT: REPAIR
-REWRITE: Does the meeting start at 3pm?`;
+REWRITE: Does the meeting start at 3pm?
+
+INSTRUCTION: make wilfred bold
+TARGET: hii my name is wilfred.
+DRAFT: wilfred
+VERDICT: REPAIR
+REWRITE: hii my name is **wilfred**.
+
+(The draft collapsed the body. For inline-styling instructions, the rewrite must preserve the entire TARGET and wrap the named span in markdown markers — \`**bold**\`, \`*italic*\`, \`~~strike~~\`, \`\`\`\`code\`\`\`\`. Never drop unrelated text.)
+
+INSTRUCTION: italicize wilfred
+TARGET: hii my name is wilfred.
+DRAFT: hii my name is *wilfred*.
+VERDICT: OK
+REWRITE: hii my name is *wilfred*.`;
 
 // ============================================================================
 // Parsers
@@ -771,12 +865,18 @@ export class TransformBlankSource implements CueSource {
       // works on whatever TARGET the user logically meant. The
       // substitute path uses context.text (the visible buffer) for
       // length checks and stripping, so visible-side state is intact.
-      const extractText = context.asTypedText ?? context.text;
+      // EXTRACT input precedence: richText (markdown markers re-injected)
+      // > asTypedText (agent rewrites reverted) > visible text. richText
+      // wins when set so the LLM can see prior styling and preserve it
+      // across transforms ("X is bold, now make it caps" → still bold).
+      // asTypedText is the legacy agent-defeat path.
+      const extractText = context.richText ?? context.asTypedText ?? context.text;
+      const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
       const p1Tokens = budgetForOutput(extractText.length, 1.0);
       const p1Start = Date.now();
       const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${extractText}`, p1Tokens);
       const ext = parseExtract(extractRaw);
-      this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${context.asTypedText ? 'as-typed' : 'visible'}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
+      this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${sourceTag}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
       this.emit({
         type: 'pass-completed',
         pass: 'P1',

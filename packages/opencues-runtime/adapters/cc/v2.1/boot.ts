@@ -22,6 +22,7 @@ import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { BlankFill } from '../../../src/modules/blank-fill';
 import { BlankLoadingAnimator } from '../../../src/modules/blank-loading';
+import { MarkdownRender } from '../../../src/modules/markdown-render';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
@@ -361,6 +362,13 @@ export function boot(host: HostInfo): BootResult {
     log: msg => log('debug', msg),
   });
 
+  // MarkdownRender — receives `markdown.styled` events from substituting
+  // modules (TransformBlank/FluidBlank) and caches per-style ranges. Used
+  // by the Resolver below to re-inject markers into the LLM's rich-text
+  // view so prior styling stacks across transforms.
+  const markdownRender = new MarkdownRender(adapter);
+  markdownRender.subscribe();
+
   const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
@@ -404,7 +412,7 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState, agentTaskState, blankLoading);
+    }, spanFillState, agentTaskState, blankLoading, markdownRender);
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',

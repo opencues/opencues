@@ -101,6 +101,21 @@ export interface ChromeBindings {
    */
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
   log?(level: LogLevel, msg: string, data?: unknown): void;
+  /**
+   * Module-event emit hook. Used by MarkdownRender, AgentRewrite, and
+   * other modules that publish lifecycle events (`markdown.styled`,
+   * `agent-rewrite.round-completed`, etc.). The content script wires
+   * this to a shared EventEmitter so the bootstrap can also subscribe
+   * — that's how chrome's per-site rich-write paths pick up
+   * `markdown.styled` payloads to apply bold/italic to live DOM
+   * contenteditables.
+   */
+  emitEvent?(type: string, body?: Record<string, unknown>): void;
+  /**
+   * Module-event subscribe hook. Bootstrap registers handlers via the
+   * same EventEmitter the bindings forward `emitEvent` calls into.
+   */
+  registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
 }
 
 /**
@@ -186,6 +201,13 @@ export class ChromeV1Adapter implements HostAdapter {
   }
   onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {
     return this.bindings.registerRenderHandler(handler);
+  }
+  emitEvent(type: string, body?: Record<string, unknown>): void {
+    this.bindings.emitEvent?.(type, body);
+  }
+  onEvent(handler: (type: string, body?: Record<string, unknown>) => void): Unsubscribe {
+    if (!this.bindings.registerEventHandler) return () => undefined;
+    return this.bindings.registerEventHandler(handler);
   }
 
   // ─── I/O ───────────────────────────────────────────────────────────────

@@ -64,6 +64,18 @@ export interface CueContext {
    */
   asTypedText?: string;
 
+  /**
+   * Optional "rich-text" view of the buffer with markdown markers
+   * re-injected at the positions the runtime knows are styled (from
+   * MarkdownRender's cache). Used by TransformBlank EXTRACT so the
+   * LLM sees prior bold/italic/strike markers on the next pass and
+   * can preserve them ("text is already bold, now also make it caps"
+   * → output keeps `**` markers around the now-uppercased word). When
+   * undefined, sources fall back to `text` (the unmarked visible
+   * buffer) — equivalent to "no prior styling to preserve."
+   */
+  richText?: string;
+
   /** Domain hint (e.g., 'claude-code', 'medical', 'legal') */
   domain?: string;
 

@@ -1,71 +1,89 @@
-// MarkdownRender — overlays bold / italic / code / strike / heading /
-// list styling onto buffer text written by an LLM. Display-only:
-// the syntax markers (`**`, `*`, `` ` ``, etc.) stay in the buffer; the
-// renderer just emits ANSI escapes (terminals) or per-site styling
-// (chrome, Phase 2) at the marker boundaries.
+// MarkdownRender — emits per-style RenderDirectives for an LLM
+// substitution that arrived with markdown. The runtime now strips
+// markers before writing to the host buffer (see markdown-substitute.ts),
+// so the buffer contains the rendered form ("bold" not "**bold**").
+// MarkdownRender's only job is to receive the strip metadata and
+// surface it as a RenderDirective so the host can wrap the ranges in
+// ANSI escapes (terminals) or per-site rich-write APIs (chrome).
 //
-// Triggering policy: parses only when an LLM-origin substitution lands.
-// User keystrokes invalidate the cache so we don't waste cycles re-
-// parsing on every text-change. Re-fires on the next substitution.
+// Lifecycle:
 //
-// Blank-slot suppression: when a `_` blank slot lives in the buffer
-// (BlankFill recorded it), italic / code / strike ranges that overlap
-// the slot are dropped. Bold (`**`) is two-character so its syntax
-// never collides with a single `_`; passes through unfiltered.
+//   1. A substitution module calls applyMarkdownAwareSubstitution,
+//      which strips, writes the stripped form, emits 'markdown.styled'
+//      with the per-style ranges in stripped-text coords.
+//
+//   2. MarkdownRender listens for 'markdown.styled', caches the
+//      payload keyed by the stripped text.
+//
+//   3. On render, if the live text === cached stripped text, emit
+//      the per-style ranges as RenderDirectives. Otherwise drop the
+//      cache silently (user typed, content drifted, etc.).
+//
+//   4. User text-change events with source='user' that diverge from
+//      the cached text invalidate the cache. Runtime writes (cycling,
+//      ZWS toggle) don't invalidate.
 
 import type { HostAdapter, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
-import { parseMarkdown, type ParsedMarkdown, type Range } from './markdown-parse';
-import type { BlankFill } from './blank-fill';
+import type { Range } from './markdown-strip';
 
-/** Events that trigger a markdown re-parse. Listed once so the
- *  subscription + module docs stay in lock-step. */
-const TRIGGER_EVENTS: ReadonlyArray<string> = [
-  'blank.substituted',
-  'transform-blank.completed',
-  'agent-rewrite.round-completed',
-];
+interface CachedStyles {
+  readonly text: string;
+  readonly bold: readonly Range[];
+  readonly italic: readonly Range[];
+  readonly code: readonly Range[];
+  readonly strike: readonly Range[];
+  readonly heading: readonly Range[];
+  readonly list: readonly Range[];
+}
+
+/** Body slice of `cached.text` — everything up to the end of the last
+ *  styled range. Anything past it is preserved separator/trailing the
+ *  user can type over without invalidating the styling. */
+function cachedBody(c: CachedStyles): string {
+  const ends = [
+    ...c.bold, ...c.italic, ...c.code, ...c.strike, ...c.heading, ...c.list,
+  ].map(r => r.end);
+  if (ends.length === 0) return c.text.replace(/\s+$/, '');
+  return c.text.slice(0, Math.max(...ends));
+}
 
 export class MarkdownRender {
-  /** Last parsed result + the text it was parsed for. When the live
-   *  text diverges from `_lastText`, the cache is stale and we either
-   *  re-parse (if cause = LLM substitution) or clear (if cause = user
-   *  typing). */
-  private _lastText: string | null = null;
-  private _ranges: ParsedMarkdown | null = null;
+  private _cached: CachedStyles | null = null;
   private _unsubRender: Unsubscribe | null = null;
   private _unsubEvent: Unsubscribe | null = null;
   private _unsubText: Unsubscribe | null = null;
 
-  constructor(
-    private adapter: HostAdapter,
-    /** Optional — used to derive blank-slot suppression ranges so
-     *  `_` glyphs in the buffer don't get italicised. When absent,
-     *  suppression is empty. */
-    private blankFill?: BlankFill,
-  ) {}
+  constructor(private adapter: HostAdapter) {}
 
   subscribe(): void {
     this._unsubRender = this.adapter.onRender(ctx => this.compute(ctx));
     if (this.adapter.onEvent) {
-      this._unsubEvent = this.adapter.onEvent((type: string) => {
-        if (TRIGGER_EVENTS.includes(type)) {
-          // Re-parse against the FRESH adapter text — the substitution
-          // path called setText before emitting; reading now gets the
-          // post-substitution buffer.
-          this._reparse();
-        }
+      this._unsubEvent = this.adapter.onEvent((type, body) => {
+        if (type !== 'markdown.styled') return;
+        const p = body as unknown as CachedStyles | undefined;
+        if (!p || typeof p.text !== 'string') return;
+        this._cached = p;
       });
     }
     this._unsubText = this.adapter.onTextChange(e => {
-      // User typing invalidates the cache — re-runs only on the next
-      // LLM substitution event. Runtime writes (the substitution path
-      // itself) reach us as source='runtime' and don't invalidate.
-      if (e.source === 'user' && this._lastText !== null && e.text !== this._lastText) {
-        this._ranges = null;
-        this._lastText = null;
+      if (e.source !== 'user') return;
+      // User typing keeps the cache as long as the STYLED BODY (text
+      // up to the end of the last styled range) is intact at the
+      // start of the buffer. Trailing whitespace / separators in
+      // cached.text aren't load-bearing — the user often types over
+      // them. Only invalidate when the styled body itself is mutated.
+      if (this._cached !== null && !e.text.startsWith(cachedBody(this._cached))) {
+        this._cached = null;
       }
     });
   }
+
+  /** Exposes the last-cached styled payload (null when nothing cached
+   *  or the cache was invalidated by user typing). Used by the
+   *  resolver to re-inject markdown markers into rich-text input so
+   *  EXTRACT/APPLY can preserve existing styling across transforms
+   *  ("text is bold, now also make it caps"). */
+  getCachedPayload(): CachedStyles | null { return this._cached; }
 
   unsubscribe(): void {
     if (this._unsubRender) { this._unsubRender(); this._unsubRender = null; }
@@ -73,68 +91,31 @@ export class MarkdownRender {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
   }
 
-  /** Force a re-parse against the host's current text. Exposed for
-   *  tests; subscribe()'d event handlers call it on substitution. */
-  forceReparse(): void { this._reparse(); }
-
-  /**
-   * Pure: takes a render context, returns directives or null. Exposed
-   * for unit testing without the subscribe pipeline.
-   *
-   * Returns null when no markdown is cached (haven't seen an LLM
-   * substitution yet, or user invalidated it). Returns directives
-   * with markdown ranges populated when a parse is in cache and the
-   * live text still matches.
-   */
+  /** Pure: takes a render context, returns directives or null. */
   compute(ctx: RenderContext): RenderDirectives | null {
-    if (this._ranges === null) return null;
-    // Cache validity — if the live text drifted from what we parsed,
-    // drop the cache silently. The next substitution event will
-    // re-parse against the fresh text.
-    if (this._lastText !== null && ctx.text !== this._lastText) {
-      this._ranges = null;
-      this._lastText = null;
+    if (this._cached === null) return null;
+    // Accept any text whose first chars match the cached styled BODY
+    // (the prefix up to the end of the last styled range). Trailing
+    // whitespace / separators in cached.text aren't load-bearing —
+    // the user often types over them. Only drop when the styled body
+    // itself is mutated.
+    if (!ctx.text.startsWith(cachedBody(this._cached))) {
+      this._cached = null;
       return null;
     }
     return {
-      boldRanges: this._ranges.bold,
-      italicRanges: this._ranges.italic,
-      codeRanges: this._ranges.code,
-      strikeRanges: this._ranges.strike,
-      headingRanges: this._ranges.heading,
-      listRanges: this._ranges.list,
+      boldRanges: this._cached.bold,
+      italicRanges: this._cached.italic,
+      codeRanges: this._cached.code,
+      strikeRanges: this._cached.strike,
+      headingRanges: this._cached.heading,
+      listRanges: this._cached.list,
     };
   }
 
-  // ─── Internals ──────────────────────────────────────────────────────
-
-  private _reparse(): void {
-    const text = this.adapter.getText();
-    this._lastText = text;
-    this._ranges = parseMarkdown(text, { suppressRanges: this._blankSuppressRanges(text) });
-  }
-
-  /** Compute char-range coverage for every `_` blank slot in the buffer
-   *  so italic / code / strike spans that overlap a slot are filtered
-   *  out. Reads from BlankFill's `slots` getter when available. */
-  private _blankSuppressRanges(text: string): readonly Range[] {
-    if (!this.blankFill) return [];
-    const slots = this.blankFill.slots;
-    if (slots.length === 0) return [];
-    // BlankFill's BlankSlot uses word indices. Convert to char ranges
-    // by walking the buffer.
-    const ranges: Range[] = [];
-    const cleaned = text.replace(/[\u200B\u200C]/g, '');
-    const wordRe = /\S+/g;
-    let m: RegExpExecArray | null;
-    let idx = 0;
-    const targetIdxs = new Set(slots.map(s => s.index));
-    while ((m = wordRe.exec(cleaned)) !== null) {
-      if (targetIdxs.has(idx)) {
-        ranges.push({ start: m.index, end: m.index + m[0].length });
-      }
-      idx++;
-    }
-    return ranges;
+  /** Test helper — inject a cache entry directly without going through
+   *  the event bridge. */
+  _setCacheForTesting(c: CachedStyles | null): void {
+    this._cached = c;
   }
 }

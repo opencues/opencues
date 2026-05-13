@@ -36,8 +36,23 @@ FAIL when:
 - The instruction phrase wasn't deleted from the output
 - A different transform was applied`;
 
+// Strip inline markdown markers from `s` before comparing. The runtime
+// strips markers before writing to the buffer, so the user-visible
+// final text never contains them. Test expectations are written in
+// the stripped form too — this lets the model emit `**wilfred**` and
+// still match an expectation of plain `wilfred`. Mirrors a subset of
+// @opencues/runtime/src/modules/markdown-strip.ts (kept local so the
+// benchmark doesn't depend on the runtime's build state).
+function stripInlineMarkdown(s: string): string {
+  return s
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // **bold**
+    .replace(/~~([^~]+)~~/g, '$1')       // ~~strike~~
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1')   // *italic* (not inside **)
+    .replace(/`([^`]+)`/g, '$1');        // `code`
+}
+
 function normalize(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return stripInlineMarkdown(s).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 export interface JudgeResult {

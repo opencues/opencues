@@ -201,12 +201,21 @@ export function boot(host: HostInfo): BootResult {
   // text. The actual buffer keeps the ZWS char — it's invisible to
   // the user and serves only as React's "string changed" signal.
   const stripTrailingZw = (s: string): string => s.replace(/[\u200B\u200C]+$/, '');
+  // Prefer pendingText/pendingCursor when set so synchronous code that
+  // writes-then-reads in the same React tick (e.g. resolver runs
+  // stopAllAnimations → setText("_") → reads getText() to decide
+  // whether to substitute) sees what we JUST wrote rather than React's
+  // pre-drain buffer. Without this, "write a poem about love _" hits
+  // the FluidBlank "_ already substituted" guard because the React
+  // buffer is still the braille loading char from the animator.
   const wrappedGetText = (): string => {
+    if (pendingText !== null) return stripTrailingZw(pendingText);
     const live = host.getText();
     if (live) return stripTrailingZw(live);
     return stripTrailingZw(lastSeenText ?? '');
   };
   const wrappedGetCursor = (): number => {
+    if (pendingCursor !== null) return pendingCursor;
     const live = host.getCursorOffset();
     return live > 0 ? live : lastSeenCursor;
   };
@@ -363,7 +372,7 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState, agentTaskState, shared.blankLoading);
+    }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender);
     // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
     // no cuesConfig/blanksConfig and bails.
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
@@ -484,38 +493,58 @@ export function boot(host: HostInfo): BootResult {
       const ctx: RenderContext = { text: fullText, cursor, externalHighlights: [] };
       const directiveSets = renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
 
-      // Clip every directive's dim ranges + highlight to [lineStart, lineEnd)
-      // and shift to be relative to lineStart so applyDirectives walks a
-      // string whose visible offset 0 is the line's first char.
+      // Clip every directive's ranges to [lineStart, lineEnd) and shift
+      // to be relative to lineStart so applyDirectives walks a string
+      // whose visible offset 0 is the line's first char.
       const clipped: RenderDirectives = { dimRanges: [] };
-      const out: { start: number; end: number }[] = [];
+      const dim: { start: number; end: number }[] = [];
+      const bold: { start: number; end: number }[] = [];
+      const italic: { start: number; end: number }[] = [];
+      const code: { start: number; end: number }[] = [];
+      const strike: { start: number; end: number }[] = [];
+      const heading: { start: number; end: number }[] = [];
+      const list: { start: number; end: number }[] = [];
+      const clip = (ranges: readonly { start: number; end: number }[] | undefined, dest: { start: number; end: number }[]): void => {
+        if (!ranges) return;
+        for (const r of ranges) {
+          const s = Math.max(r.start, lineStart);
+          const e = Math.min(r.end, lineEnd);
+          if (s < e) dest.push({ start: s - lineStart, end: e - lineStart });
+        }
+      };
       for (const d of directiveSets) {
         if (d.textOverride !== undefined) {
-          // Whole-line text override — uncommon for input rendering;
-          // honour by returning the override clipped to this line's window.
-          // (No current module emits this for input lines, but the contract
-          // allows it — keep parity with applyDirectives.)
           return d.textOverride.slice(lineStart, lineEnd);
         }
-        if (d.dimRanges) {
-          for (const r of d.dimRanges) {
-            const s = Math.max(r.start, lineStart);
-            const e = Math.min(r.end, lineEnd);
-            if (s < e) out.push({ start: s - lineStart, end: e - lineStart });
-          }
-        }
+        clip(d.dimRanges, dim);
+        clip(d.boldRanges, bold);
+        clip(d.italicRanges, italic);
+        clip(d.codeRanges, code);
+        clip(d.strikeRanges, strike);
+        clip(d.headingRanges, heading);
+        clip(d.listRanges, list);
         if (d.highlight) {
           const s = Math.max(d.highlight.start, lineStart);
           const e = Math.min(d.highlight.end, lineEnd);
           if (s < e) clipped.highlight = { start: s - lineStart, end: e - lineStart };
         }
       }
-      clipped.dimRanges = out;
+      clipped.dimRanges = dim;
+      clipped.boldRanges = bold;
+      clipped.italicRanges = italic;
+      clipped.codeRanges = code;
+      clipped.strikeRanges = strike;
+      clipped.headingRanges = heading;
+      clipped.listRanges = list;
 
       // No intersecting directives → return the line unchanged so the
       // InputPrompt patch keeps its per-segment <Text> rendering (preserves
       // syntax highlighting + cursor inverse for non-cued lines).
-      if (out.length === 0 && !clipped.highlight) return lineText;
+      if (
+        dim.length === 0 && bold.length === 0 && italic.length === 0 &&
+        code.length === 0 && strike.length === 0 && heading.length === 0 &&
+        list.length === 0 && !clipped.highlight
+      ) return lineText;
 
       return applyDirectives(lineText, clipped);
     },

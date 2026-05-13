@@ -438,16 +438,21 @@ class CommandRunner {
     switch (cmd) {
       case 'text':
       case 'text-keep-hl': {
+        // The inject protocol is line-oriented (split on real \n),
+        // so multi-line text must be encoded with literal \\n
+        // sequences which we decode here. \\\\ → \\ keeps backslashes
+        // injectable.
+        const decoded = arg.replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
         // Two-step write: (1) buffer set; (2) synthetic textChange so
         // the resolver / statusline see the change. OpenTUI's
         // replaceText skips onContentChange for programmatic writes —
         // see the file-header note + bootstrap source-reclassifier.
-        adapter.setText(arg);
+        adapter.setText(decoded);
         const source: 'user' | 'runtime' = cmd === 'text-keep-hl' ? 'runtime' : 'user';
         const cursor = adapter.getCursorOffset();
-        this.bindings.notifyTextChange?.(arg, cursor, source);
+        this.bindings.notifyTextChange?.(decoded, cursor, source);
         adapter.forceRender();
-        this.stream.emit({ type: 'text.injected', text: arg, source, cursor });
+        this.stream.emit({ type: 'text.injected', text: decoded, source, cursor });
         return;
       }
       case 'cursor': {

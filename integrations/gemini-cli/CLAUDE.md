@@ -166,6 +166,26 @@ Don't switch to per-segment Ink-prop application (`dimColor`/`inverse`
 on each `<Text>`). The CC-style string-wrap approach is intentional
 and consistent across host bands.
 
+### 4. wrappedGetText must prefer pendingText
+
+`wrappedGetText` / `wrappedGetCursor` in `boot.ts` read `pendingText`
+/ `pendingCursor` BEFORE falling back to `host.getText()` /
+`host.getCursorOffset()`. The fallback chain matters because the
+resolver runs synchronously: `stopAllAnimations` queues
+`setText("_")` (restores the underscore from the braille loading
+char), then the same tick enters the substitution loop which reads
+`adapter.getText()` to decide whether to write the LLM answer. The
+React buffer hasn't drained yet — `host.getText()` returns the stale
+braille char, FluidBlank's `!liveText.includes('_')` guard fires, and
+the substitution skips.
+
+Symptom: "write a poem about love _" plays the loading animation,
+then `_` returns and the answer never lands. BlankSource blanks
+(weather, volume) work because they fire from BlankFill
+synchronously without animator — they don't depend on getText
+reading the just-written `_`. Same trap applies to any future
+pull-model adapter (chrome React variants, etc).
+
 ## Things that LOOK like patch bugs but aren't
 
 ### "Blue background ▀/▄ blocks around the input box"

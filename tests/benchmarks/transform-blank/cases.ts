@@ -1770,18 +1770,11 @@ export const CASES: TransformCase[] = [
       ],
     },
   },
-  {
-    id: 'format-2',
-    category: 'format-transform',
-    input: 'convert to numbered list _ first wake up then make coffee then read the news',
-    expected: {
-      finalText: '1. wake up\n2. make coffee\n3. read the news',
-      finalTextAlternates: [
-        '1. Wake up\n2. Make coffee\n3. Read the news',
-        '1. wake up\n2. make coffee\n3. read the news\n',
-      ],
-    },
-  },
+  // (format-2 / 5 / 6 removed — out-of-scope structural markdown rewrites:
+  // "convert to numbered list", "convert to markdown table", "add a markdown
+  // heading". The current rendering pipeline doesn't support tables and
+  // these big-structure rewrites have always been flaky. If we revisit
+  // them, restore from git history.)
   {
     id: 'format-3',
     category: 'format-transform',
@@ -1805,31 +1798,6 @@ export const CASES: TransformCase[] = [
         'I went to the store. I bought milk. I came home and put it in the fridge.',
         'I went to the store. I bought milk. Then I came home. I put it in the fridge.',
       ],
-    },
-  },
-  {
-    id: 'format-5',
-    category: 'format-transform',
-    input: 'convert to a markdown table _ Apples cost $3, bananas cost $2, cherries cost $5',
-    expected: {
-      finalText: '| Item | Price |\n|---|---|\n| Apples | $3 |\n| Bananas | $2 |\n| Cherries | $5 |',
-      finalTextAlternates: [
-        '| Fruit | Price |\n|---|---|\n| Apples | $3 |\n| Bananas | $2 |\n| Cherries | $5 |',
-        '| Item | Price |\n| --- | --- |\n| Apples | $3 |\n| Bananas | $2 |\n| Cherries | $5 |',
-      ],
-    },
-  },
-  {
-    id: 'format-6',
-    category: 'format-transform',
-    input: 'add a markdown heading _ This document explains how the system works in detail',
-    expected: {
-      finalText: '# Overview\n\nThis document explains how the system works in detail',
-      finalTextAlternates: [
-        '# How the System Works\n\nThis document explains how the system works in detail',
-        '# Documentation\n\nThis document explains how the system works in detail',
-      ],
-      note: 'any reasonable heading + the original body',
     },
   },
   {
@@ -1868,6 +1836,260 @@ export const CASES: TransformCase[] = [
     category: 'format-transform',
     input: 'alphabetize _ banana, apple, cherry, date, elderberry',
     expected: { finalText: 'apple, banana, cherry, date, elderberry' },
+  },
+
+  // ---- inline markdown styling — anti-collapse cases ----
+  // These pin the "make X bold" failure mode where the model
+  // returns just the styled span ("**wilfred**") instead of the
+  // full target with the span wrapped ("hi my name is **wilfred**").
+  // The expected finalText is the STRIPPED form (what the runtime
+  // shows in the buffer); the markdown.styled event handles styling
+  // separately. See rule 11 in P2_APPLY_SYSTEM.
+  {
+    id: 'format-bold-1',
+    category: 'format-transform',
+    input: 'make wilfred bold _ hi my name is wilfred',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'rewrite must preserve the body; only the inline `**` markers around `wilfred` get added then stripped',
+    },
+  },
+  {
+    id: 'format-bold-2',
+    category: 'format-transform',
+    input: 'bold the word name _ hi my name is wilfred',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'bold a non-final word — full sentence still preserved',
+    },
+  },
+  {
+    id: 'format-italic-1',
+    category: 'format-transform',
+    input: 'italicize wilfred _ hi my name is wilfred',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: '*italic* markers around the target word; full body retained',
+    },
+  },
+  {
+    id: 'format-strike-1',
+    category: 'format-transform',
+    input: 'strike through the word wilfred _ hi my name is wilfred',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'strikethrough on a single word; body preserved',
+    },
+  },
+  {
+    id: 'format-bold-multiword',
+    category: 'format-transform',
+    input: 'make the project name bold _ The project name is OpenCues and it ships an open standard',
+    expected: {
+      finalText: 'The project name is OpenCues and it ships an open standard',
+      note: 'multi-word span — full sentence still intact',
+    },
+  },
+  {
+    id: 'format-bold-long-target',
+    category: 'format-transform',
+    input: 'make the date bold _ The release is scheduled for May 15 2026 and will include three new features that we have been working on for months',
+    expected: {
+      finalText: 'The release is scheduled for May 15 2026 and will include three new features that we have been working on for months',
+      note: 'long target with short bold span — model must not collapse to just "May 15 2026"',
+    },
+  },
+
+  // ---- bold across different layouts: trigger position vs target ----
+  // The same instruction tested across the common natural-writing
+  // layouts: trigger after target (what users typically write in
+  // chat), trigger separated by \n, trigger separated by \n\n
+  // (paragraph break), trigger before a multi-line target.
+  {
+    id: 'format-bold-trailing',
+    category: 'format-transform',
+    input: 'hi my name is wilfred make wilfred bold _',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'trigger trailing on same line — most common conversational layout',
+    },
+  },
+  {
+    id: 'format-bold-newline',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nmake wilfred bold _',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'trigger on next line via single \\n — separator preserved by runtime splice',
+    },
+  },
+  {
+    id: 'format-bold-paragraph',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\n\nmake wilfred bold _',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'trigger after paragraph break — the original reported failure mode',
+    },
+  },
+  {
+    id: 'format-bold-multiline-target',
+    category: 'format-transform',
+    input: 'make wilfred bold _ hi my name is wilfred\nand I am from london',
+    expected: {
+      finalText: 'hi my name is wilfred\nand I am from london',
+      finalTextAlternates: [
+        'hi my name is wilfred and I am from london',
+      ],
+      note: 'trigger precedes multi-line target — model must preserve both lines + only bold the named word',
+    },
+  },
+  {
+    id: 'format-bold-paragraph-multiline',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nI live in london\n\nmake wilfred bold _',
+    expected: {
+      finalText: 'hi my name is wilfred\nI live in london',
+      note: 'multi-line target + paragraph break + trigger — full body must survive',
+    },
+  },
+  {
+    id: 'format-bold-trigger-mid',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nmake wilfred bold _\nand I work on opencues',
+    expected: {
+      finalText: 'hi my name is wilfred\nand I work on opencues',
+      finalTextAlternates: [
+        'hi my name is wilfred and I work on opencues',
+      ],
+      note: 'trigger sandwiched between two target lines — both parts preserved, trigger removed',
+    },
+  },
+
+  // ---- italic / strikethrough across the same layout matrix ----
+  // Same 6 layouts × 3 inline-style instructions (bold already covered
+  // above; here we round out italic + strike). Pins the prompt
+  // generalises across markers, not just bold.
+  {
+    id: 'format-italic-newline',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nitalicize wilfred _',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'italic + \\n separator',
+    },
+  },
+  {
+    id: 'format-italic-paragraph',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\n\nitalicize wilfred _',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'italic + paragraph break',
+    },
+  },
+  {
+    id: 'format-italic-sandwich',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nitalicize wilfred _\nand I work on opencues',
+    expected: {
+      finalText: 'hi my name is wilfred\nand I work on opencues',
+      finalTextAlternates: ['hi my name is wilfred and I work on opencues'],
+      note: 'italic sandwiched between two target halves',
+    },
+  },
+  {
+    id: 'format-strike-newline',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nstrike through wilfred _',
+    expected: {
+      finalText: 'hi my name is wilfred',
+      note: 'strikethrough + \\n separator',
+    },
+  },
+  {
+    id: 'format-strike-sandwich',
+    category: 'format-transform',
+    input: 'hi my name is wilfred\nstrike through wilfred _\nand I work on opencues',
+    expected: {
+      finalText: 'hi my name is wilfred\nand I work on opencues',
+      finalTextAlternates: ['hi my name is wilfred and I work on opencues'],
+      note: 'strikethrough sandwiched',
+    },
+  },
+
+  // ---- non-formatting instructions across the same layouts ----
+  // Confirm the EXTRACT sandwich rule generalises beyond markdown
+  // styling — translation, case change, etc.
+  {
+    id: 'format-translate-newline',
+    category: 'format-transform',
+    input: 'the meeting is at 3pm\ntranslate to french _',
+    expected: {
+      finalText: 'la réunion est à 15h',
+      finalTextAlternates: [
+        'la réunion est à 15h00',
+        "la réunion est à 15 h",
+        'La réunion est à 15h.',
+        'La réunion est à 15 h.',
+        'La réunion est à 15h00.',
+      ],
+      note: 'translation + \\n separator — body translated, separator preserved',
+    },
+  },
+  {
+    id: 'format-uppercase-sandwich',
+    category: 'format-transform',
+    input: 'the meeting is at 3pm\nuppercase _\nand I will bring snacks',
+    expected: {
+      finalText: 'THE MEETING IS AT 3PM\nAND I WILL BRING SNACKS',
+      finalTextAlternates: [
+        'THE MEETING IS AT 3PM AND I WILL BRING SNACKS',
+      ],
+      note: 'uppercase across both sandwich halves',
+    },
+  },
+  {
+    id: 'format-question-paragraph',
+    category: 'format-transform',
+    input: 'the meeting is at 3pm\n\nmake it a question _',
+    expected: {
+      finalText: 'is the meeting at 3pm?',
+      finalTextAlternates: [
+        'Is the meeting at 3pm?',
+        'Is the meeting at 3 pm?',
+      ],
+      note: 'structural transform + paragraph break preserved before stripped trigger',
+    },
+  },
+
+  // ---- target spanning multiple lines internally ----
+  // Both target halves themselves contain newlines. Tests EXTRACT's
+  // ability to detect SANDWICH layout when target halves are
+  // multi-line.
+  {
+    id: 'format-multi-line-target-pre',
+    category: 'format-transform',
+    input: 'line one\nline two\nline three\nmake all caps _',
+    expected: {
+      finalText: 'LINE ONE\nLINE TWO\nLINE THREE',
+      finalTextAlternates: [
+        'LINE ONE LINE TWO LINE THREE',
+      ],
+      note: 'multi-line target, trigger trailing',
+    },
+  },
+  {
+    id: 'format-multi-line-sandwich',
+    category: 'format-transform',
+    input: 'paragraph one\nparagraph two\nmake all caps _\nparagraph three\nparagraph four',
+    expected: {
+      finalText: 'PARAGRAPH ONE\nPARAGRAPH TWO\nPARAGRAPH THREE\nPARAGRAPH FOUR',
+      finalTextAlternates: [
+        'PARAGRAPH ONE PARAGRAPH TWO PARAGRAPH THREE PARAGRAPH FOUR',
+      ],
+      note: 'multi-line halves both sides of trigger',
+    },
   },
 
   // ============================================================

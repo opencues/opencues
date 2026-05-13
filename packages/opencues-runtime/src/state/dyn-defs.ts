@@ -357,15 +357,22 @@ export function reconstructAsTypedWithMap(
     let visibleStart = w.start;
     let visibleEnd = w.end;
     const def = dynDefs.get(i);
-    // Skip transform-blank defs: their `originalWord` is the FULL prior
-    // visible body (body + the prior trigger phrase), not a single
-    // agent-edited word. Re-injecting it into the asTyped view bleeds
-    // the prior instruction phrase into the EXTRACT input on the NEXT
-    // transform — EXTRACT then sees two instructions and two `_`s,
-    // dropping the body or composing both instructions. The cycle-Down
-    // revert path doesn't go through asTyped, so this skip is safe.
-    const isTransformBlank = def?.blankName === 'transform-blank';
-    if (def && def.currentIndex > 0 && def.originalWord && !isTransformBlank) {
+    // Only revert AGENT-driven rewrites in the as-typed view. The
+    // as-typed shim exists so EXTRACT sees the user's TYPED text even
+    // after the agent (AgentRewrite module) has changed words —
+    // canonical example: user typed "agentically X _", agent
+    // translated "agentically" to something else in visible; EXTRACT
+    // still needs to recognise the trigger word.
+    //
+    // User-driven substitutions (spelling correction the user accepted
+    // by cycling Up, cue-word synonym they picked) MUST NOT be
+    // reverted — the user CHOSE that word; re-injecting the original
+    // would overwrite their explicit fix on the next substitute pass.
+    // Same rationale as the transform-blank skip (originalWord there
+    // is the whole prior body) but broader: any non-agent def is the
+    // user's choice.
+    const isAgentRewrite = def?.blankName === 'agent-task';
+    if (def && def.currentIndex > 0 && def.originalWord && isAgentRewrite) {
       writeWord = def.originalWord;
       const span = dynDefs.findSpanContaining(i);
       if (span && span.originIdx === i && span.spanLength > 1) {
