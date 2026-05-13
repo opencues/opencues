@@ -190,3 +190,44 @@ describe('cursor-position parity with native hosts (opencode / claude-code / gem
     expect(plainOffsetOfPosition(root, pos.node, pos.offset)).toBe(text.length);
   });
 });
+
+describe('walkPlainText — emoji-as-img (Gmail / Slack / Reddit pattern)', () => {
+  // Sites convert pasted unicode emojis into <img alt="😊"> elements.
+  // Before this was handled, the walker returned plain text without
+  // any emoji content — symptom: pre-existing emojis vanished from
+  // subsequent transforms (the substituted rewrite was based on a
+  // buffer read that had no emojis to preserve).
+  it('emits img alt content as text', () => {
+    root.innerHTML = '<div>Tu <img alt="😊" src="x"> es</div>';
+    const { text } = walkPlainText(root);
+    expect(text).toBe('Tu 😊 es');
+  });
+
+  it('multiple imgs in one line — gmail style', () => {
+    root.innerHTML = '<div>Tu <img alt="😊"> es <img alt="🌸"> le</div>';
+    const { text } = walkPlainText(root);
+    expect(text).toBe('Tu 😊 es 🌸 le');
+  });
+
+  it('plainOffsetOfPosition counts img alt length toward the offset', () => {
+    root.innerHTML = '<div>Tu <img alt="😊" src="x"> es</div>';
+    // walkPlainText emits "Tu 😊 es" (8 chars: T,u,space,emoji-hi,emoji-lo,space,e,s).
+    // Position just after the img should map to plain offset 5 (after the emoji's two code units).
+    const div = root.firstChild as HTMLElement;
+    // "Tu " text node (3 chars) + img (alt.length=2) → offset 5.
+    const offsetAfterImg = plainOffsetOfPosition(root, div, 2);  // 2 = after the img child
+    expect(offsetAfterImg).toBe(5);
+  });
+
+  it('img with no alt is skipped', () => {
+    root.innerHTML = '<div>Tu <img src="x"> es</div>';
+    const { text } = walkPlainText(root);
+    expect(text).toBe('Tu  es');
+  });
+
+  it('img with empty alt is skipped', () => {
+    root.innerHTML = '<div>Tu <img alt="" src="x"> es</div>';
+    const { text } = walkPlainText(root);
+    expect(text).toBe('Tu  es');
+  });
+});

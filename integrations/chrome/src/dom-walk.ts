@@ -86,6 +86,25 @@ export function walkPlainText(root: HTMLElement): WalkResult {
       text += '\n';
       return;
     }
+    // <img> rendered as emoji: many sites (Gmail, Slack, Twitter, Reddit)
+    // convert pasted unicode emojis into <img class="emoji" alt="😊">
+    // elements during paste handling. Without reading the alt, the
+    // walker returns text WITHOUT emojis but WITH the surrounding
+    // spaces — symptom: `Tu 😊 es` post-paste reads back as `Tu  es`,
+    // every emoji wiped. We emit the alt content as a synthetic text
+    // segment so the runtime sees what the user actually sees.
+    if (el.tagName === 'IMG') {
+      const alt = (el as HTMLImageElement).alt;
+      if (alt && alt.length > 0) {
+        const start = text.length;
+        text += alt;
+        // Pointer is the IMG element itself; downstream splice code
+        // treats this as a special segment (no .data to mutate) and
+        // routes to replaceAllText.
+        segments.push({ node: el as unknown as Text, plainStart: start, plainEnd: start + alt.length });
+      }
+      return;
+    }
     const isBlock = depth > 0 && isBlockElement(el);
     if (isBlock) maybeAddBoundary();
     depth++;
@@ -236,6 +255,16 @@ export function plainOffsetOfPosition(
       // BR always emits — matches walkPlainText.
       plain += 1;
       lastWasNewline = true;
+      return;
+    }
+    if (el.tagName === 'IMG') {
+      // Emoji-as-img: walkPlainText emits alt content; mirror here so
+      // offsets stay in sync. See walkPlainText's IMG branch.
+      const alt = (el as HTMLImageElement).alt;
+      if (alt && alt.length > 0) {
+        plain += alt.length;
+        lastWasNewline = false;
+      }
       return;
     }
     const isBlock = depth > 0 && isBlockElement(el);

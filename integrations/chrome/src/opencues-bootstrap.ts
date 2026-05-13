@@ -335,6 +335,17 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
     const seg = segments[startSegIdx];
     const textNode = seg.node;
 
+    // IMG-segment guard: walkPlainText emits an emoji's <img alt>
+    // content as a synthetic text segment whose "node" is the IMG
+    // element, not a real Text. We can't mutate `.data` on an IMG.
+    // Route to replaceAllText so the new full body gets pasted and
+    // the receiving editor (Gmail etc.) re-renders emojis from the
+    // plain unicode.
+    if (textNode.nodeType !== Node.TEXT_NODE) {
+      replaceAllText(newText);
+      return true;
+    }
+
     // Empty-segment guard: if the splice would WIPE the entire text
     // node (startOff=0, endOff=textNode.data.length, insert=""), the
     // containing block ends up as `<div></div>` — no BR, no text —
@@ -416,6 +427,15 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
     if (isManagedEditor(target)) {
       replaceAllText(newText);
       return true;
+    }
+    // IMG-segment guard: if any segment in the splice range is a
+    // synthetic IMG-emoji segment (not a Text node), the .data
+    // mutations below will throw. Route to replaceAllText.
+    for (let i = startSegIdx; i <= endSegIdx; i++) {
+      if (segments[i].node.nodeType !== Node.TEXT_NODE) {
+        replaceAllText(newText);
+        return true;
+      }
     }
     const startNode = segments[startSegIdx].node;
     const endNode = segments[endSegIdx].node;
