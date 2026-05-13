@@ -2,8 +2,8 @@ import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
 import {
   BlankLoadingAnimator,
   framesFor,
+  loopStartIdxFor,
   BOUNCE_FRAMES,
-  DOT_WALK_FRAMES,
   BRAILLE_ROTATE_FRAMES,
   ALL_FRAME_CHARS,
 } from './blank-loading';
@@ -32,10 +32,6 @@ describe('framesFor', () => {
   it('returns BOUNCE_FRAMES for "bounce"', () => {
     expect(framesFor('bounce')).toEqual(['_', '-', '‾', '-']);
     expect(framesFor('bounce')).toBe(BOUNCE_FRAMES);
-  });
-  it('returns DOT_WALK_FRAMES for "dot-walk"', () => {
-    expect(framesFor('dot-walk')).toEqual(['_', '.', '·', '.']);
-    expect(framesFor('dot-walk')).toBe(DOT_WALK_FRAMES);
   });
   it('returns BRAILLE_ROTATE_FRAMES for "braille-rotate"', () => {
     expect(framesFor('braille-rotate')).toEqual(['_', '⠁', '⠈', '⠐', '⠠', '⠄', '⠂']);
@@ -78,7 +74,6 @@ describe('BRAILLE_ROTATE_FRAMES — circular ordering', () => {
 describe('ALL_FRAME_CHARS — sanity', () => {
   it('contains every char from every sequence', () => {
     for (const c of BOUNCE_FRAMES) expect(ALL_FRAME_CHARS.has(c)).toBe(true);
-    for (const c of DOT_WALK_FRAMES) expect(ALL_FRAME_CHARS.has(c)).toBe(true);
     for (const c of BRAILLE_ROTATE_FRAMES) expect(ALL_FRAME_CHARS.has(c)).toBe(true);
   });
   it('does NOT contain ordinary letters (so user text doesn\'t trip detection)', () => {
@@ -134,18 +129,46 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
     ]);
   });
 
-  it('dot-walk produces its own progression', () => {
+  it('braille-rotate: intro `_` plays once then loops the 6 dot positions, never returning to `_`', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'dot-walk', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'braille-rotate', frameIntervalMs: 100 });
     a.start(1);
-    vi.advanceTimersByTime(100);
-    vi.advanceTimersByTime(100);
-    vi.advanceTimersByTime(100);
+    // Frames are: ['_', '⠁', '⠈', '⠐', '⠠', '⠄', '⠂']
+    // loopStartIdx = 1, so after frame 6 (⠂), the next wraps to frame 1 (⠁) — NOT 0.
+    for (let i = 0; i < 8; i++) vi.advanceTimersByTime(100);
     expect(setTextCalls).toEqual([
-      'volume .',
-      'volume ·',
-      'volume .',
+      'volume ⠁',  // tick 1: enter rotation
+      'volume ⠈',  // tick 2
+      'volume ⠐',  // tick 3
+      'volume ⠠',  // tick 4
+      'volume ⠄',  // tick 5
+      'volume ⠂',  // tick 6
+      'volume ⠁',  // tick 7: wrap to loopStartIdx=1, NOT back to `_`
+      'volume ⠈',  // tick 8
     ]);
+    // Confirm: `_` only appears as the initial slot state, never re-written.
+    expect(setTextCalls.filter(s => s.endsWith(' _'))).toHaveLength(0);
+  });
+
+  it('bounce: full loop INCLUDES `_` on every cycle (loopStartIdx === 0)', () => {
+    const { adapter, setTextCalls } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    a.start(1);
+    for (let i = 0; i < 6; i++) vi.advanceTimersByTime(100);
+    expect(setTextCalls).toEqual([
+      'volume -',  // tick 1
+      'volume ‾',  // tick 2
+      'volume -',  // tick 3
+      'volume _',  // tick 4: full-loop wraps to 0, returning to `_`
+      'volume -',  // tick 5
+      'volume ‾',  // tick 6
+    ]);
+  });
+
+  it('loopStartIdxFor: bounce=0, braille-rotate=1, off=0', () => {
+    expect(loopStartIdxFor('bounce')).toBe(0);
+    expect(loopStartIdxFor('braille-rotate')).toBe(1);
+    expect(loopStartIdxFor('off')).toBe(0);
   });
 
   it('stop() snaps the slot back to `_` and halts ticking', () => {
@@ -222,18 +245,18 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
   });
 
   it('mode is read lazily — switching mode between start() calls works', () => {
-    let mode: 'bounce' | 'dot-walk' = 'bounce';
+    let mode: 'bounce' | 'braille-rotate' = 'bounce';
     const { adapter, setTextCalls } = makeAdapter('a _ b _');
     const a = new BlankLoadingAnimator({ adapter, mode: () => mode, frameIntervalMs: 100 });
     a.start(1);
     vi.advanceTimersByTime(100);   // bounce: → '-'
     expect(setTextCalls.at(-1)).toBe('a - b _');
-    mode = 'dot-walk';
+    mode = 'braille-rotate';
     a.start(3);
     vi.advanceTimersByTime(100);
     // Slot 1 keeps bouncing (it was created with bounce frames).
-    // Slot 3 advances on dot-walk.
-    expect(setTextCalls.at(-1)).toContain('b .');
+    // Slot 3 advances on braille-rotate.
+    expect(setTextCalls.at(-1)).toContain('b ⠁');
   });
 
   it('frameIntervalMs default is 150 when not provided', () => {

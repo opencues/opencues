@@ -41,8 +41,8 @@ export class BlankFill {
   /**
    * Loading-animation owner for in-flight blank slots. Lazily created
    * on first dispatch; mode read from OPENCUES.md's
-   * `blank-loading-animation` scalar (bounce | dot-walk | off). Default
-   * is bounce.
+   * `blank-loading-animation` scalar (bounce | braille-rotate | off).
+   * Default is bounce.
    */
   private _loading: BlankLoadingAnimator | null = null;
 
@@ -69,7 +69,7 @@ export class BlankFill {
       adapter: this.adapter,
       mode: () => {
         const raw = this.configLoader.opencuesState.settings.get('blank-loading-animation');
-        if (raw === 'off' || raw === 'dot-walk' || raw === 'braille-rotate') return raw;
+        if (raw === 'off' || raw === 'braille-rotate') return raw;
         return 'bounce';
       },
       log: msg => this.adapter.log('debug', msg),

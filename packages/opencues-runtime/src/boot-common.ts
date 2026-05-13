@@ -229,7 +229,7 @@ export function buildSharedRuntime(
     adapter,
     mode: () => {
       const raw = configLoader.opencuesState.settings.get('blank-loading-animation');
-      if (raw === 'off' || raw === 'dot-walk' || raw === 'braille-rotate') return raw;
+      if (raw === 'off' || raw === 'braille-rotate') return raw;
       return 'bounce';
     },
     log: msg => log('debug', msg),

@@ -32,9 +32,8 @@ max-concurrent-auditors: 0
 # a short progression so the user can see "something is happening" —
 # crucial for slow sources like LLM-backed answer / prompt / weather
 # blanks. Set to `off` to disable.
-#   bounce          →  `_` `-` `‾` `-` `_` …       vertical pulse
-#   dot-walk        →  `_` `.` `·` `.` `_` …       horizontal compress
-#   braille-rotate  →  `_` `⠁` `⠈` `⠐` `⠠` `⠄` `⠂`  single dot clockwise
+#   bounce          →  `_` `-` `‾` `-` `_` …            vertical pulse, returns to `_`
+#   braille-rotate  →  `_` once, then `⠁` `⠈` `⠐` `⠠` `⠄` `⠂` looping  (single dot clockwise)
 blank-loading-animation: bounce
 
 # ─── settings: declarations + per-value tips ───────────────────────────
@@ -94,9 +93,8 @@ settings:
   blank-loading-animation:
     tip: Glyph progression shown at `_` while its source resolves. Stays in one column; restores to `_` on complete.
     values:
-      bounce: `_` `-` `‾` `-` — vertical pulse (default)
-      dot-walk: `_` `.` `·` `.` — horizontal compress
-      braille-rotate: `_` `⠁` `⠈` `⠐` `⠠` `⠄` `⠂` — single dot clockwise
+      bounce: `_` `-` `‾` `-` — vertical pulse, returns to `_` (default)
+      braille-rotate: `_` once, then loops `⠁ ⠈ ⠐ ⠠ ⠄ ⠂` clockwise
       off: No animation — `_` stays static until substitution
 ---
 

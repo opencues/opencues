@@ -25,10 +25,9 @@
 
 import type { HostAdapter } from '../adapter';
 
-export type BlankLoadingMode = 'bounce' | 'dot-walk' | 'braille-rotate' | 'off';
+export type BlankLoadingMode = 'bounce' | 'braille-rotate' | 'off';
 
 export const BOUNCE_FRAMES: readonly string[] = ['_', '-', '‾', '-'];
-export const DOT_WALK_FRAMES: readonly string[] = ['_', '.', '·', '.'];
 
 /** A single braille dot circles clockwise through the 6 cell positions,
  *  returning to `_` between cycles. The visual is a 6-frame rotation
@@ -55,9 +54,23 @@ export const BRAILLE_ROTATE_FRAMES: readonly string[] = [
 
 export function framesFor(mode: BlankLoadingMode): readonly string[] {
   if (mode === 'bounce') return BOUNCE_FRAMES;
-  if (mode === 'dot-walk') return DOT_WALK_FRAMES;
   if (mode === 'braille-rotate') return BRAILLE_ROTATE_FRAMES;
   return [];
+}
+
+/**
+ * Some modes have an "intro" prefix played once at the start, with the
+ * loop body following. `loopStartIdxFor(mode)` returns the first frame
+ * index that participates in the repeating loop — everything before it
+ * is intro-only and is skipped on wrap-around.
+ *
+ *   bounce        → 0  ('_' is part of the bounce; cycle returns to it)
+ *   braille-rotate → 1  (leading '_' is intro; loop spins only the 6
+ *                       dot positions, never returning to '_')
+ */
+export function loopStartIdxFor(mode: BlankLoadingMode): number {
+  if (mode === 'braille-rotate') return 1;
+  return 0;
 }
 
 /** Every character that may legitimately occupy a loading slot. The
@@ -66,7 +79,7 @@ export function framesFor(mode: BlankLoadingMode): readonly string[] {
  *  means the user typed over it OR the substitution path already
  *  replaced it. In either case the animator drops the slot. */
 export const ALL_FRAME_CHARS: ReadonlySet<string> = new Set([
-  ...BOUNCE_FRAMES, ...DOT_WALK_FRAMES, ...BRAILLE_ROTATE_FRAMES,
+  ...BOUNCE_FRAMES, ...BRAILLE_ROTATE_FRAMES,
 ]);
 
 export interface BlankLoadingOptions {
@@ -86,7 +99,13 @@ export interface BlankLoadingOptions {
 interface ActiveSlot {
   readonly wordIndex: number;
   readonly frames: readonly string[];
-  /** Index into `frames`. Starts at 0 (= `_`), ticks bump it. */
+  /** First frame index that participates in the repeating loop. Frames
+   *  in [0, loopStartIdx) are intro-only and are skipped on wrap.
+   *  Bounce uses 0 (full-loop palindrome includes `_`); braille-rotate
+   *  uses 1 (leading `_` is shown once then the dot rotation loops). */
+  readonly loopStartIdx: number;
+  /** Index into `frames`. Starts at 0, ticks bump it; wraps to
+   *  `loopStartIdx` (not 0) at end-of-array. */
   frameIdx: number;
 }
 
@@ -135,7 +154,12 @@ export class BlankLoadingAnimator {
     const frames = framesFor(mode);
     if (frames.length === 0) return;          // mode === 'off'
     if (this._active.has(wordIndex)) return;
-    this._active.set(wordIndex, { wordIndex, frames, frameIdx: 0 });
+    this._active.set(wordIndex, {
+      wordIndex,
+      frames,
+      loopStartIdx: loopStartIdxFor(mode),
+      frameIdx: 0,
+    });
     this._log(`BlankLoading: start wordIndex=${wordIndex} mode=${mode}`);
     if (this._timer === null) {
       this._timer = setInterval(() => this._tick(), this._frameIntervalMs);
@@ -176,8 +200,12 @@ export class BlankLoadingAnimator {
       // wrote over it (user typing, substitution path). Drop silently
       // — substitution will splice the answer when ready.
       if (!ALL_FRAME_CHARS.has(word)) { this._dropQuiet(slot.wordIndex); continue; }
-      // Advance frame and write.
-      slot.frameIdx = (slot.frameIdx + 1) % slot.frames.length;
+      // Advance frame and write. Wrap to loopStartIdx (not 0) so the
+      // intro prefix plays only once. For modes without an intro
+      // (loopStartIdx === 0) this behaves identically to the simple
+      // modulo loop.
+      const nextIdx = slot.frameIdx + 1;
+      slot.frameIdx = nextIdx >= slot.frames.length ? slot.loopStartIdx : nextIdx;
       const nextChar = slot.frames[slot.frameIdx];
       if (nextChar === word) continue;        // unlikely (same-frame edge); no-op
       this._writeChar(slot.wordIndex, nextChar);
