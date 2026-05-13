@@ -79,3 +79,27 @@ See [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md) f
 - [ ] Review git history — squash or clean commits with sensitive data
 - [ ] Test clean install — clone on fresh machine, follow README exactly
 - [x] Verify all doc links — zero broken links across 68 markdown files
+
+## Shipped-defaults curation
+
+- [ ] **Decide the default blank set for v0.1.** Today we ship 14
+  blanks under `defaults/blanks/` (affirmations, answer, brightness,
+  claude-status, countries, crypto, dictionary, gh-issues, hackernews,
+  opencues, prompt, stocks, volume, weather). Some are demo-ish or
+  niche and probably shouldn't be the user's first impression.
+  - `prompt` — likely drop. Improver only useful for Claude/Cursor
+    contexts and ships its own LLM call; overlaps with TransformBlank.
+  - `affirmations` — drop or move to an example pack.
+  - `gh-issues` — drop or gate behind a setup step (needs PAT).
+  - `hackernews` / `crypto` — keep or move? Demo-feeling.
+  - Keep: weather, dictionary, countries, answer, claude-status,
+    volume, brightness, stocks (with key), opencues, plus runtime
+    blanks (fluid + transform).
+  - Decide and prune `defaults/blanks/<name>/` accordingly. Removed
+    blanks can move to a `samples/` pack or live in CONTRIBUTING.md
+    as "starter kit ideas".
+
+- [ ] **Decide chrome TS-class fallback** (Option A vs B in
+  `integrations/chrome/CLAUDE.md` § Pre-launch decision). If we drop
+  the fallback, the curated default-blank set above is what gets
+  baked into the extension for first-run-without-host.
