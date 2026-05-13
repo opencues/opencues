@@ -186,6 +186,51 @@ synchronously without animator — they don't depend on getText
 reading the just-written `_`. Same trap applies to any future
 pull-model adapter (chrome React variants, etc).
 
+### 5. Code-point vs UTF-16 code-unit cursor offsets
+
+Gemini's text buffer uses **code points** for cursor offsets (each
+emoji counts as 1). The OpenCues runtime uses **UTF-16 code units**
+(each emoji surrogate pair counts as 2). Without conversion, every
+emoji to the left of the cursor drifts the highlight / selection /
+cursor visually one column to the right per emoji.
+
+See `packages/cli/src/ui/utils/textUtils.ts` — `cpLen`,
+`cpIndexToOffset`, `cpSlice`. `buffer.cursor()` is built on
+`logicalPosToOffset(lines, row, col)` which sums `cpLen(line) + 1`
+per row, so the returned offset is code-point space. Same goes for
+`buffer.setText(text, offset)` — its `offset` param is code points.
+
+Conversion lives in `opencuesBootstrap.ts` at every binding seam
+between Gemini and the runtime:
+
+| Path | Direction | Helper |
+|---|---|---|
+| `getCursorOffset` | cp → cu | `codePointsToCodeUnits(text, cp)` |
+| `setCursorOffset` | cu → cp | `codeUnitsToCodePoints(text, cu)` |
+| `pushText` (cursor arg) | cu → cp | conversion uses the NEW text |
+| `dispatchOpenCuesKey` | cp → cu | reads `buffer.cursor()` then converts |
+| `notifyOpenCuesTextChange` | cp → cu | InputPrompt sends `logicalPosToOffset`; runtime expects code units |
+| `notifyOpenCuesCursorChange` | cp → cu | same as text change |
+| `consumePendingOpenCues` IN | cp → cu | `currentCursor` arrives in cp |
+| `consumePendingOpenCues` OUT | cu → cp | `pending.cursor` returned in cu; InputPrompt's `buffer.setText` wants cp |
+| `decorateOpenCuesLine` | cp → cu (×3) | `cursor`, `lineStart`, `lineEnd` all converted before applying directives |
+
+The helpers (`isAsciiFast`, `codeUnitsToCodePoints`,
+`codePointsToCodeUnits`) live at the top of `opencuesBootstrap.ts`.
+`isAsciiFast` is a single-pass code-unit scan with no regex — pure
+ASCII text short-circuits to zero conversion cost (the common case).
+
+OpenCode and Claude Code don't need this — both use UTF-16
+code-unit cursor offsets throughout. Single-source conversion
+lives at the boundary so the runtime stays unit-agnostic. Any
+**future React-buffer adapter** (chrome React variants, OpenCode if
+it migrates) should check whether its buffer uses code points or
+code units and add the same boundary conversion if so.
+
+Pinned by manual test: type `Tu 😊 es 😊 le bluh` and run cycling /
+navigation on `bluh`. Highlight stays on `bluh`. Before this fix the
+highlight drifted 1 col right per emoji to its left.
+
 ## Things that LOOK like patch bugs but aren't
 
 ### "Blue background ▀/▄ blocks around the input box"
@@ -206,6 +251,15 @@ the user's `~/.gemini/settings.json` governs.
 Cause: see §2 above — ZWS toggle wasn't being marked as a runtime
 write, so the source reclassifier saw it as user input and Navigation
 deactivated. Fixed by `markRuntimeWrite` in `consumePendingOpenCues`.
+
+### "Highlight / selection drifts when emojis are in the buffer"
+
+Cause: see §5 above — Gemini buffer uses code-point cursor offsets,
+runtime uses UTF-16 code units. Without conversion at the binding
+seam, every emoji to the left of the cursor offsets the highlight
+~1 column right. Fixed by `codePointsToCodeUnits` /
+`codeUnitsToCodePoints` wrappers in `opencuesBootstrap.ts`. Pure
+ASCII buffers short-circuit (zero overhead).
 
 ### "Volume blank doesn't increment when I press up after selecting volume"
 
