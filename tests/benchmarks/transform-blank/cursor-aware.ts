@@ -41,6 +41,15 @@ interface CaseSpec {
   expectNearCursor?: string;
   /** For non-positional cases — substring that must appear in output. */
   expectInOutput?: string;
+  /**
+   * When set, the output's number of `\n` characters must equal this many
+   * PLUS however many `\n` the edit was supposed to ADD (expectAddedNewlines).
+   * Catches the "model collapsed pre-existing line breaks during a
+   * positional edit" failure mode.
+   */
+  requireOriginalNewlines?: number;
+  /** Newlines the edit is supposed to insert (0 for non-break edits). */
+  expectAddedNewlines?: number;
 }
 
 const CASES: CaseSpec[] = [
@@ -110,6 +119,208 @@ const CASES: CaseSpec[] = [
     category: 'non-positional',
     expectInOutput: 'colour',
   },
+  // ─────────── Line / paragraph breaks (regression-driven) ───────────
+  // The user observed "here" worked but "this" didn't, and that
+  // line-break-style instructions sometimes rewrote the whole target
+  // instead of inserting a break at the cursor. These cases pin the
+  // behaviour we want: a literal break inserted at [CURSOR], surrounding
+  // text preserved verbatim.
+  {
+    name: 'add a line break here',
+    instruction: 'add a line break here',
+    target: 'hi my name is wilfred and I work on opencues',
+    cursorOffset: 21,                           // after "wilfred"
+    category: 'positional',
+    expectNearCursor: '\n',
+    requireOriginalNewlines: 0,
+    expectAddedNewlines: 1,
+  },
+  {
+    name: 'new line here',
+    instruction: 'new line here',
+    target: 'first sentence. second sentence.',
+    cursorOffset: 15,                           // after "first sentence."
+    category: 'positional',
+    expectNearCursor: '\n',
+    requireOriginalNewlines: 0,
+    expectAddedNewlines: 1,
+  },
+  {
+    name: 'add a paragraph break here',
+    instruction: 'add a paragraph break here',
+    target: 'hi my name is wilfred and I work on opencues',
+    cursorOffset: 21,
+    category: 'positional',
+    expectNearCursor: '\n\n',
+    requireOriginalNewlines: 0,
+    expectAddedNewlines: 2,
+  },
+  {
+    name: 'new paragraph here',
+    instruction: 'new paragraph here',
+    target: 'The meeting starts at 3pm. We will cover budget.',
+    cursorOffset: 26,
+    category: 'positional',
+    expectNearCursor: '\n\n',
+    requireOriginalNewlines: 0,
+    expectAddedNewlines: 2,
+  },
+  {
+    name: 'split this paragraph (this-anchored)',
+    instruction: 'split this paragraph',
+    target: 'hi my name is wilfred and I work on opencues',
+    cursorOffset: 21,
+    category: 'positional',
+    expectNearCursor: '\n',
+  },
+  // ─────────── Pre-existing line breaks must SURVIVE positional edits ───────────
+  // User-reported failure mode: "I want the line break above not to
+  // break when we manipulate something 'here' / 'this line'". The
+  // model sometimes collapses pre-existing \n during in-line edits.
+  {
+    name: '"here" on a 3-line target — line breaks preserved',
+    instruction: 'add a comma here',
+    target: 'first line\nhello world\nlast line',
+    cursorOffset: 22,                           // end of "hello world"
+    category: 'positional',
+    expectNearCursor: ',',
+    requireOriginalNewlines: 2,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: '"this line" bolding — outer line breaks preserved',
+    instruction: 'bold this line',
+    target: 'first line\nsecond line\nthird line',
+    cursorOffset: 18,                           // mid-"second line"
+    category: 'positional',
+    expectNearCursor: '**',
+    requireOriginalNewlines: 2,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: '"insert here" on multi-line — surrounding breaks survive',
+    instruction: 'insert the word "TODO" here',
+    target: 'one\ntwo\nthree four\nfive',
+    cursorOffset: 13,                           // between "two\n" and "three"
+    category: 'positional',
+    expectNearCursor: 'TODO',
+    requireOriginalNewlines: 3,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: '"capitalise this line" — outer line breaks preserved',
+    instruction: 'capitalise this line',
+    target: 'alpha\nbeta gamma\ndelta',
+    cursorOffset: 10,                           // mid-"beta gamma"
+    category: 'positional',
+    expectNearCursor: 'BETA',
+    requireOriginalNewlines: 2,
+    expectAddedNewlines: 0,
+  },
+  // ─────────── Layout-consistency battery (10 cases) ───────────
+  // Each case: edit ONE thing inside a structured multi-line target;
+  // every original \n must survive. Pins the "I changed a line and the
+  // whole layout collapsed" failure mode.
+  {
+    name: 'L1: bold a word in paragraph 1 of 2 (\\n\\n preserved)',
+    instruction: 'bold the word wilfred',
+    target: 'hi my name is wilfred and I work on opencues.\n\nLove is a whisper in the quiet night.',
+    cursorOffset: 20,                           // mid-"wilfred"
+    category: 'positional',
+    expectNearCursor: '**wilfred**',
+    requireOriginalNewlines: 2,                 // the \n\n = two \n chars
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L2: capitalise middle of 3 lines (outer breaks intact)',
+    instruction: 'capitalise this line',
+    target: 'first line\nthe quick brown fox\nlast line',
+    cursorOffset: 21,                           // mid-"brown"
+    category: 'positional',
+    expectNearCursor: 'BROWN',
+    requireOriginalNewlines: 2,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L3: italicise one item in a 4-bullet list',
+    instruction: 'italicise this item',
+    target: '- apples\n- bananas\n- oranges\n- pears',
+    cursorOffset: 14,                           // mid-"bananas"
+    category: 'positional',
+    expectNearCursor: '*bananas*',
+    requireOriginalNewlines: 3,                 // 3 newlines separate 4 bullets
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L4: rewrite body, heading + blank line stay intact',
+    instruction: 'rephrase this line',
+    target: '# Meeting Notes\n\nThe meeting starts at 3pm sharp.\n\nWe will cover budget.',
+    cursorOffset: 35,                           // mid-"meeting starts"
+    category: 'positional',
+    expectNearCursor: '3pm',
+    requireOriginalNewlines: 4,                 // two \n\n = 4 \n total
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L5: 5-line poem — bold the middle line, all line breaks survive',
+    instruction: 'bold this line',
+    target: 'roses are red\nviolets are blue\nsugar is sweet\nand so are you\nthe end',
+    cursorOffset: 35,                           // mid-"sugar is sweet"
+    category: 'positional',
+    expectNearCursor: '**sugar is sweet**',
+    requireOriginalNewlines: 4,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L6: mixed \\n and \\n\\n — modify mid-line keeps both',
+    instruction: 'change "world" to "earth" on this line',
+    target: 'title\n\nhello world\nfooter line',
+    cursorOffset: 13,                           // mid-"world"
+    category: 'positional',
+    expectNearCursor: 'earth',
+    requireOriginalNewlines: 3,                 // \n\n + \n = 3 chars
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L7: long 3-paragraph body — fix typo on this line',
+    instruction: 'fix typos on this line',
+    target: 'Dear Manager,\n\nI hope you are well. I wantted to follow up on the proposal.\n\nBest regards,\nWilfred',
+    cursorOffset: 40,                           // mid-"wantted"
+    category: 'positional',
+    expectNearCursor: 'wanted',
+    requireOriginalNewlines: 5,                 // \n\n + \n\n + \n = 5
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L8: Q&A pair — modify only the answer',
+    instruction: 'capitalise the first word of this line',
+    target: 'Q: what is the capital of france?\n\nA: paris is the capital.',
+    cursorOffset: 36,                           // start of "paris"
+    category: 'positional',
+    expectNearCursor: 'Paris',
+    requireOriginalNewlines: 2,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L9: indented multi-line code-like — fix one line',
+    instruction: 'add a semicolon at the end of this line',
+    target: 'function foo() {\n  const x = 1\n  return x + 1;\n}',
+    cursorOffset: 30,                           // end of "const x = 1"
+    category: 'positional',
+    expectNearCursor: 'x = 1;',
+    requireOriginalNewlines: 3,
+    expectAddedNewlines: 0,
+  },
+  {
+    name: 'L10: 4-bullet list with descriptions — modify one description',
+    instruction: 'rephrase this line to be more formal',
+    target: '- apples\n  cheap and sweet\n- bananas\n  yellow tropical\n- oranges\n  citrus and round',
+    cursorOffset: 21,                           // mid-"cheap and sweet"
+    category: 'positional',
+    expectNearCursor: 'apples',                 // surrounding context survives
+    requireOriginalNewlines: 5,
+    expectAddedNewlines: 0,
+  },
 ];
 
 const RESET = '\x1b[0m';
@@ -165,6 +376,20 @@ async function runOnce(c: CaseSpec): Promise<AttemptResult> {
       // flag it so we can tune the prompt.
     } else {
       reasons.push(`${GREEN}✓ "${c.expectNearCursor}" found at offset ${found} (cursor ${c.cursorOffset}, within ±15)${RESET}`);
+    }
+
+    // Newline-preservation check: original \n boundaries must survive
+    // the edit. If the case declares the expected count, hard-fail when
+    // it doesn't match (collapsed / inserted-extra-by-mistake).
+    if (typeof c.requireOriginalNewlines === 'number') {
+      const expectedTotal = c.requireOriginalNewlines + (c.expectAddedNewlines ?? 0);
+      const actual = (stripped.match(/\n/g) ?? []).length;
+      if (actual !== expectedTotal) {
+        reasons.push(`${RED}✗ newline count = ${actual}, expected ${expectedTotal} (original=${c.requireOriginalNewlines}, added=${c.expectAddedNewlines ?? 0})${RESET}`);
+        pass = false;
+      } else {
+        reasons.push(`${GREEN}✓ ${actual} newlines preserved (original=${c.requireOriginalNewlines}, added=${c.expectAddedNewlines ?? 0})${RESET}`);
+      }
     }
   }
 

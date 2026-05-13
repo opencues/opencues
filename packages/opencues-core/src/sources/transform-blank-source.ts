@@ -225,7 +225,26 @@ RULES:
 
 9. CONDITIONAL INSTRUCTIONS ("X but not Y", "X except Y", "X only when Z") — apply ONLY where the condition holds.
 
-10. CURSOR ANCHOR — the TARGET may contain a [CURSOR] marker showing where the user's caret was when they triggered the transform. If the INSTRUCTION is POSITIONAL (it says "here", "at this point", "add X", "insert X", "split here", "move here", "before this", "after this", or implies anchoring to a specific spot), apply the edit at the [CURSOR] location. For non-positional INSTRUCTIONs (translate, capitalise, fix typos, make shorter, etc.), IGNORE the [CURSOR] marker — treat the target as if it weren't there. ALWAYS strip the [CURSOR] marker from your output regardless. Never emit the literal string [CURSOR] in the REWRITE.
+10. CURSOR ANCHOR — the TARGET may contain a [CURSOR] marker showing where the user's caret was when they triggered the transform. If the INSTRUCTION is POSITIONAL — it uses any of these positional cues — apply the edit AT the [CURSOR] location:
+
+    - "here", "at this point", "right here", "in this spot"
+    - "add X", "insert X", "put X"
+    - "split here", "break here", "move here"
+    - "before this", "after this", "this line", "this paragraph", "this sentence", "this word"
+    - "new line here", "line break here", "paragraph break here", "new paragraph here"
+    - "next line", "previous line" (relative to [CURSOR])
+
+    For positional break/insert instructions specifically:
+    - "add a line break here" / "new line here" → insert "\\n" at [CURSOR]
+    - "add a paragraph break here" / "new paragraph here" → insert "\\n\\n" at [CURSOR]
+    - "split this paragraph here" → insert "\\n\\n" at [CURSOR]
+    - "insert <text> here" → insert <text> at [CURSOR]
+
+    The REST OF THE TARGET — both halves around the [CURSOR] — must be preserved verbatim. Do NOT shorten, summarise, or rewrite the surrounding text; only the [CURSOR] position changes.
+
+    For non-positional INSTRUCTIONs (translate, capitalise, fix typos, make shorter, rephrase, summarise, etc.), IGNORE the [CURSOR] marker — treat the target as if it weren't there.
+
+    ALWAYS strip the [CURSOR] marker from your output regardless. Never emit the literal string [CURSOR] in the REWRITE.
 
 11. MARKDOWN FORMATTING INSTRUCTIONS — when the INSTRUCTION asks for inline styling on a span ("make X bold", "bold the word X", "italicize Y", "italic Y", "strike through Z", "strikethrough Z"), you are NOT extracting the span; you are decorating it in place. CRITICAL: the rewrite MUST contain the ENTIRE TARGET verbatim, byte for byte, EXCEPT for adding the markdown markers around the named span. Counting check: if the target has N words, the rewrite must have at least N words. Do NOT emit just the bare span. Do NOT drop the surrounding text. Do NOT shorten the target.
 
@@ -345,7 +364,41 @@ INSTRUCTION: turn the items into a list
 TARGET: I bought apples bananas and oranges.
 REWRITE: - apples
 - bananas
-- oranges`;
+- oranges
+
+INSTRUCTION: add a line break here
+TARGET: hi my name is wilfred[CURSOR] and I work on opencues
+REWRITE: hi my name is wilfred
+ and I work on opencues
+
+INSTRUCTION: new line here
+TARGET: first sentence.[CURSOR] second sentence.
+REWRITE: first sentence.
+ second sentence.
+
+INSTRUCTION: add a paragraph break here
+TARGET: hi my name is wilfred[CURSOR] and I work on opencues
+REWRITE: hi my name is wilfred
+
+and I work on opencues
+
+INSTRUCTION: split this paragraph here
+TARGET: The meeting starts at 3pm.[CURSOR] We will cover budget and roadmap.
+REWRITE: The meeting starts at 3pm.
+
+We will cover budget and roadmap.
+
+INSTRUCTION: insert a comma here
+TARGET: I bought apples bananas[CURSOR] and oranges
+REWRITE: I bought apples bananas, and oranges
+
+INSTRUCTION: add "TODO" on this line
+TARGET: review the PR[CURSOR] before lunch
+REWRITE: review the PR TODO before lunch
+
+INSTRUCTION: bold this word
+TARGET: hii my name is[CURSOR]wilfred
+REWRITE: hii my name is **wilfred**`;
 
 // Generative APPLY — runs when EXTRACT returns TRANSFORM with empty
 // TARGET. The instruction is a create/generate request ("write a
