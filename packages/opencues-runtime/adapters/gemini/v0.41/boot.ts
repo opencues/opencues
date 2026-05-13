@@ -504,6 +504,11 @@ export function boot(host: HostInfo): BootResult {
       const strike: { start: number; end: number }[] = [];
       const heading: { start: number; end: number }[] = [];
       const list: { start: number; end: number }[] = [];
+      // BlankLoadingAnimator emits coloredRanges per tick — each
+      // carries its own ansi token, so unlike the kind-based ranges
+      // they can't share a single bucket. Clip independently and
+      // hand the full list to applyDirectives.
+      const colored: Array<{ start: number; end: number; ansi?: string; rgb?: string }> = [];
       const clip = (ranges: readonly { start: number; end: number }[] | undefined, dest: { start: number; end: number }[]): void => {
         if (!ranges) return;
         for (const r of ranges) {
@@ -528,6 +533,14 @@ export function boot(host: HostInfo): BootResult {
           const e = Math.min(d.highlight.end, lineEnd);
           if (s < e) clipped.highlight = { start: s - lineStart, end: e - lineStart };
         }
+        const cr = (d as { coloredRanges?: readonly { start: number; end: number; ansi?: string; rgb?: string }[] }).coloredRanges;
+        if (cr) {
+          for (const r of cr) {
+            const s = Math.max(r.start, lineStart);
+            const e = Math.min(r.end, lineEnd);
+            if (s < e) colored.push({ start: s - lineStart, end: e - lineStart, ansi: r.ansi, rgb: r.rgb });
+          }
+        }
       }
       clipped.dimRanges = dim;
       clipped.boldRanges = bold;
@@ -536,6 +549,7 @@ export function boot(host: HostInfo): BootResult {
       clipped.strikeRanges = strike;
       clipped.headingRanges = heading;
       clipped.listRanges = list;
+      clipped.coloredRanges = colored;
 
       // No intersecting directives → return the line unchanged so the
       // InputPrompt patch keeps its per-segment <Text> rendering (preserves
@@ -543,7 +557,7 @@ export function boot(host: HostInfo): BootResult {
       if (
         dim.length === 0 && bold.length === 0 && italic.length === 0 &&
         code.length === 0 && strike.length === 0 && heading.length === 0 &&
-        list.length === 0 && !clipped.highlight
+        list.length === 0 && colored.length === 0 && !clipped.highlight
       ) return lineText;
 
       return applyDirectives(lineText, clipped);
