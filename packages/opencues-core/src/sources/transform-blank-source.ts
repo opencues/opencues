@@ -745,6 +745,61 @@ interface VerifyResult {
   rewrite: string;
 }
 
+// ============================================================================
+// Structured-output schemas — strict mode for groq gpt-oss
+// ============================================================================
+//
+// When the resolved provider is groq AND the model is gpt-oss-{20b,120b},
+// the call sets `response_format: { type: 'json_schema', strict: true }`
+// with these schemas. Constrained decoding guarantees the output matches.
+// Other providers (or other models on groq) keep the label-based prompt
+// + regex parsing path.
+
+const EXTRACT_SCHEMA = {
+  type: 'object',
+  properties: {
+    verdict: {
+      type: 'string',
+      enum: ['TRANSFORM', 'NONE', 'TASK_ARM', 'TASK_ADD', 'TASK_STOP', 'TASK_SHOW'],
+    },
+    instruction: { type: 'string' },
+    target: { type: 'string' },
+  },
+  required: ['verdict', 'instruction', 'target'],
+  additionalProperties: false,
+} as const;
+
+const RESOLVE_SCHEMA = {
+  type: 'object',
+  properties: { resolved: { type: 'string' } },
+  required: ['resolved'],
+  additionalProperties: false,
+} as const;
+
+const APPLY_SCHEMA = {
+  type: 'object',
+  properties: { rewrite: { type: 'string' } },
+  required: ['rewrite'],
+  additionalProperties: false,
+} as const;
+
+const VERIFY_SCHEMA = {
+  type: 'object',
+  properties: {
+    verdict: { type: 'string', enum: ['OK', 'REPAIR'] },
+    rewrite: { type: 'string' },
+  },
+  required: ['verdict', 'rewrite'],
+  additionalProperties: false,
+} as const;
+
+/** True when the resolved (provider, model) supports strict structured
+ *  outputs — currently Groq's gpt-oss-{20b,120b}. */
+function useStrictJson(provider: string | undefined, model: string): boolean {
+  if (provider !== 'groq') return false;
+  return /^openai\/gpt-oss-(20b|120b)/i.test(model);
+}
+
 function parseExtract(raw: string): ExtractResult {
   // Single-line fields use [ \t]* (NOT \s*) for trailing whitespace.
   // \s* matches \n, which makes the lazy .*? extend across line breaks
@@ -790,6 +845,56 @@ function parseVerify(raw: string): VerifyResult {
   const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'OK') as 'OK' | 'REPAIR';
   return { verdict, rewrite: rewriteMatch ? rewriteMatch[1].trim() : '' };
+}
+
+// ── JSON variants (strict mode on groq gpt-oss) ────────────────────────────
+//
+// In strict mode the model returns valid JSON conforming to the schema —
+// no preamble, no markdown fences, no missing fields. These parsers are
+// the JSON equivalents of the regex parsers above. Failure modes (rare
+// in strict mode but possible at API level) fall back to empty results
+// rather than throwing.
+
+function safeJsonParse(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw.trim());
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseExtractJson(raw: string): ExtractResult {
+  const obj = safeJsonParse(raw);
+  if (!obj) return { verdict: 'NONE', instruction: '', target: '' };
+  const verdict = typeof obj.verdict === 'string' ? (obj.verdict as ExtractVerdict) : 'NONE';
+  return {
+    verdict,
+    instruction: typeof obj.instruction === 'string' ? obj.instruction.trim() : '',
+    target: typeof obj.target === 'string' ? obj.target.trim() : '',
+  };
+}
+
+function parseResolveJson(raw: string): string {
+  const obj = safeJsonParse(raw);
+  if (!obj || typeof obj.resolved !== 'string') return '';
+  return obj.resolved.trim();
+}
+
+function parseApplyJson(raw: string): ApplyResult {
+  const obj = safeJsonParse(raw);
+  if (!obj || typeof obj.rewrite !== 'string') return { rewrite: '' };
+  return { rewrite: obj.rewrite.trim() };
+}
+
+function parseVerifyJson(raw: string): VerifyResult {
+  const obj = safeJsonParse(raw);
+  if (!obj) return { verdict: 'OK', rewrite: '' };
+  const verdict = (obj.verdict === 'REPAIR' ? 'REPAIR' : 'OK') as 'OK' | 'REPAIR';
+  return {
+    verdict,
+    rewrite: typeof obj.rewrite === 'string' ? obj.rewrite.trim() : '',
+  };
 }
 
 // ============================================================================
@@ -1124,8 +1229,14 @@ export class TransformBlankSource implements CueSource {
       const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
       const p1Tokens = budgetForOutput(extractText.length, 1.0);
       const p1Start = Date.now();
-      const extractRaw = await this.callLLM(P1_EXTRACT_SYSTEM, `INPUT: ${extractText}`, p1Tokens);
-      const ext = parseExtract(extractRaw);
+      const useJson = useStrictJson(this.provider.id, this.model);
+      const extractRaw = await this.callLLM(
+        P1_EXTRACT_SYSTEM,
+        `INPUT: ${extractText}`,
+        p1Tokens,
+        useJson ? { name: 'transform_extract', strict: true, schema: EXTRACT_SCHEMA as unknown as Record<string, unknown> } : undefined,
+      );
+      const ext = useJson ? parseExtractJson(extractRaw) : parseExtract(extractRaw);
       this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${sourceTag}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
       this.emit({
         type: 'pass-completed',
@@ -1181,8 +1292,9 @@ export class TransformBlankSource implements CueSource {
           P2_GENERATIVE_APPLY_SYSTEM,
           `INSTRUCTION: ${ext.instruction}`,
           genTokens,
+          useJson ? { name: 'transform_generative', strict: true, schema: APPLY_SCHEMA as unknown as Record<string, unknown> } : undefined,
         );
-        const generated = parseApply(genRaw).rewrite;
+        const generated = (useJson ? parseApplyJson(genRaw) : parseApply(genRaw)).rewrite;
         this.log(`TransformBlank P2 GENERATIVE (${Date.now() - genStart}ms, max_tokens=${genTokens}): "${preview(generated)}"`);
         if (!generated) {
           this.log(`TransformBlank: bailing — GENERATIVE returned empty`);
@@ -1226,9 +1338,14 @@ export class TransformBlankSource implements CueSource {
             P1_5_RESOLVE_DEICTICS_SYSTEM,
             `INSTRUCTION: ${ext.instruction}\nTARGET: ${targetWithCursor}`,
             p1_5Tokens,
+            useJson ? { name: 'transform_resolve', strict: true, schema: RESOLVE_SCHEMA as unknown as Record<string, unknown> } : undefined,
           );
-          const m = p1_5Raw.match(/RESOLVED:[ \t]*([\s\S]*?)\s*$/i);
-          const resolved = (m ? m[1].trim() : '').trim();
+          const resolved = useJson
+            ? parseResolveJson(p1_5Raw)
+            : (() => {
+                const m = p1_5Raw.match(/RESOLVED:[ \t]*([\s\S]*?)\s*$/i);
+                return (m ? m[1].trim() : '').trim();
+              })();
           if (resolved) {
             resolvedInstruction = resolved;
             this.log(`TransformBlank P1.5 RESOLVE (${Date.now() - p1_5Start}ms): "${ext.instruction}" → "${preview(resolved)}"`);
@@ -1274,9 +1391,10 @@ export class TransformBlankSource implements CueSource {
           P2_APPLY_SYSTEM,
           `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}`,
           p2Tokens,
+          useJson ? { name: 'transform_apply', strict: true, schema: APPLY_SCHEMA as unknown as Record<string, unknown> } : undefined,
         );
         // Strip any sentinel the model leaked into its output — input-only.
-        const draft = stripCursorSentinel(parseApply(applyRaw).rewrite);
+        const draft = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
         this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
         this.emit({
           type: 'pass-completed',
@@ -1317,8 +1435,9 @@ export class TransformBlankSource implements CueSource {
           P3_VERIFY_SYSTEM,
           `INSTRUCTION: ${verifyInstruction}\nTARGET: ${ext.target}\nDRAFT: ${lastRewrite}`,
           p3Tokens,
+          useJson ? { name: 'transform_verify', strict: true, schema: VERIFY_SCHEMA as unknown as Record<string, unknown> } : undefined,
         );
-        ver = parseVerify(verifyRaw);
+        ver = useJson ? parseVerifyJson(verifyRaw) : parseVerify(verifyRaw);
         this.log(`TransformBlank P3 VERIFY (${Date.now() - p3Start}ms, max_tokens=${p3Tokens}): verdict=${ver.verdict}, rewrite="${preview(ver.rewrite)}"`);
         this.emit({
           type: 'pass-completed',
@@ -1426,7 +1545,12 @@ export class TransformBlankSource implements CueSource {
     }
   }
 
-  private async callLLM(system: string, user: string, maxTokens: number): Promise<string> {
+  private async callLLM(
+    system: string,
+    user: string,
+    maxTokens: number,
+    responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
+  ): Promise<string> {
     const built = this.provider.buildRequest(
       {
         model: this.model,
@@ -1438,6 +1562,7 @@ export class TransformBlankSource implements CueSource {
         temperature: 0,
         reasoningEffort: 'low',
         seed: 42,
+        responseFormat,
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },
     );

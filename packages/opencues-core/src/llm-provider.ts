@@ -47,6 +47,20 @@ export interface ChatRequest {
    * this; other providers ignore it. Pass-through.
    */
   readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  /**
+   * Optional structured-output spec. When set, the request includes a
+   * `response_format: { type: 'json_schema', json_schema: ... }` field —
+   * Groq's `openai/gpt-oss-*` models in strict mode guarantee the
+   * output is valid JSON conforming to the schema (constrained
+   * decoding). Other providers either accept best-effort or ignore.
+   * Callers must JSON.parse the response themselves; the provider's
+   * `parseResponse` still returns the raw `message.content` string.
+   */
+  readonly responseFormat?: {
+    readonly name: string;
+    readonly strict?: boolean;
+    readonly schema: Record<string, unknown>;
+  };
 }
 
 export interface BuiltRequest {
@@ -113,6 +127,21 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking)/i.test(req.model);
   if (req.reasoningEffort !== undefined && (opts?.includeReasoningEffort || isReasoningModelName)) {
     body.reasoning_effort = req.reasoningEffort;
+  }
+  // Structured outputs. Groq's gpt-oss-{20b,120b} support `strict: true`
+  // with constrained decoding (guarantee). Other OpenAI-compatible
+  // providers accept best-effort (strict: false). The schema must
+  // include `additionalProperties: false` and mark every property as
+  // `required` for strict mode — caller's responsibility.
+  if (req.responseFormat) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: {
+        name: req.responseFormat.name,
+        strict: req.responseFormat.strict ?? false,
+        schema: req.responseFormat.schema,
+      },
+    };
   }
   return JSON.stringify(body);
 }
