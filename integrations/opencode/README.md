@@ -144,6 +144,31 @@ Idempotent — copies any file that doesn't already exist at the destination.
 
 ---
 
+## Rendering — how selection, dim and markdown are styled
+
+OpenCues paints its in-buffer styling through OpenTUI's `syntax.registerStyle` + `textarea.extmarks` APIs rather than ANSI codes. Each style is registered once on first use and reused by extmark ID — see `applyOpenCuesDirectives()` in `opencuesBootstrap.ts`.
+
+| Style ID | Use | StyleDefinition |
+|---|---|---|
+| `opencues-highlight` | **Active selection** (cycling) — chrome-style box | `fg: white, bg: black` |
+| `opencues-dim` | Dimmed words (alts not currently selected, agent-task context) | `dim: true` |
+| `opencues-bold` | LLM-emitted `**bold**` after marker strip | `bold: true` |
+| `opencues-italic` | LLM-emitted `*italic*` | `italic: true` |
+| `opencues-code` | LLM-emitted `` `code` `` | `fg: warm amber RGBA(0.9, 0.7, 0.4)` |
+| `opencues-strike` | LLM-emitted `~~strike~~` | `strikethrough: true` (falls back to `dim` if not supported) |
+| `opencues-heading` | `# heading` lines | `bold: true, underline: true` |
+| `opencues-list` | `- list` markers | `fg: muted grey RGBA(0.7, 0.7, 0.7)` |
+
+**Why a black-bg selection instead of inverse?** OpenTUI doesn't emit raw ANSI inverse — its style API takes `fg` / `bg` as RGBA. A `bg: black` paint reads as a chrome-style selection box; ANSI inverse would invert whatever the editor's current bg is (often dark anyway, so the effect would be invisible on many themes). Bold is explicitly OFF on `opencues-highlight` — the white-on-black contrast is already strong; bold adds visual noise on long selected spans.
+
+**To re-skin a style:** edit the `syntax.registerStyle(...)` call for the style ID. The change picks up on the next launch (no cache invalidation needed; the lazy register sees the new StyleDefinition).
+
+**To kill a style entirely:** leave the runtime emitting the directive but skip the `desired.set(...)` line in `applyOpenCuesDirectives()` for that range type. The extmark just won't be created.
+
+OpenTUI's `StyleDefinition` interface (in `@opentui/core/syntax-style.d.ts`) supports: `fg`, `bg`, `bold`, `italic`, `underline`, `dim`, `strikethrough`. No other style attributes are accepted — adding e.g. `blink: true` is silently dropped.
+
+---
+
 ## Update workflow
 
 ```bash
