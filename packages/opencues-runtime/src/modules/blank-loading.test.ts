@@ -4,6 +4,7 @@ import {
   framesFor,
   BOUNCE_FRAMES,
   DOT_WALK_FRAMES,
+  BRAILLE_ROTATE_FRAMES,
   ALL_FRAME_CHARS,
 } from './blank-loading';
 import type { HostAdapter } from '../adapter';
@@ -36,15 +37,49 @@ describe('framesFor', () => {
     expect(framesFor('dot-walk')).toEqual(['_', '.', '·', '.']);
     expect(framesFor('dot-walk')).toBe(DOT_WALK_FRAMES);
   });
+  it('returns BRAILLE_ROTATE_FRAMES for "braille-rotate"', () => {
+    expect(framesFor('braille-rotate')).toEqual(['_', '⠁', '⠈', '⠐', '⠠', '⠄', '⠂']);
+    expect(framesFor('braille-rotate')).toBe(BRAILLE_ROTATE_FRAMES);
+  });
   it('returns empty for "off" (disabled)', () => {
     expect(framesFor('off')).toEqual([]);
   });
 });
 
+describe('BRAILLE_ROTATE_FRAMES — circular ordering', () => {
+  it('starts at `_` rest and walks 6 dot positions clockwise', () => {
+    // Frame 0 = `_`, then top-left → top-right → mid-right → bot-right
+    // → bot-left → mid-left → loop back to `_`.
+    expect(BRAILLE_ROTATE_FRAMES[0]).toBe('_');
+    expect(BRAILLE_ROTATE_FRAMES[1]).toBe('⠁'); // top-left
+    expect(BRAILLE_ROTATE_FRAMES[2]).toBe('⠈'); // top-right
+    expect(BRAILLE_ROTATE_FRAMES[3]).toBe('⠐'); // mid-right
+    expect(BRAILLE_ROTATE_FRAMES[4]).toBe('⠠'); // bot-right
+    expect(BRAILLE_ROTATE_FRAMES[5]).toBe('⠄'); // bot-left
+    expect(BRAILLE_ROTATE_FRAMES[6]).toBe('⠂'); // mid-left
+  });
+  it('every position is a single-dot braille codepoint (one of U+2801..U+2820)', () => {
+    const singleDotMask = (cp: number): boolean => {
+      // Braille pattern dots block: U+2800 + bitmask of 8 dots.
+      const bits = cp - 0x2800;
+      if (bits < 0 || bits > 0xFF) return false;
+      // popcount: single dot = exactly one bit set.
+      let n = bits; let c = 0;
+      while (n) { c += n & 1; n >>= 1; }
+      return c === 1;
+    };
+    for (let i = 1; i < BRAILLE_ROTATE_FRAMES.length; i++) {
+      const cp = BRAILLE_ROTATE_FRAMES[i].codePointAt(0)!;
+      expect(singleDotMask(cp), `frame ${i} (${BRAILLE_ROTATE_FRAMES[i]}) should be a single-dot braille char`).toBe(true);
+    }
+  });
+});
+
 describe('ALL_FRAME_CHARS — sanity', () => {
-  it('contains every char from both sequences', () => {
+  it('contains every char from every sequence', () => {
     for (const c of BOUNCE_FRAMES) expect(ALL_FRAME_CHARS.has(c)).toBe(true);
     for (const c of DOT_WALK_FRAMES) expect(ALL_FRAME_CHARS.has(c)).toBe(true);
+    for (const c of BRAILLE_ROTATE_FRAMES) expect(ALL_FRAME_CHARS.has(c)).toBe(true);
   });
   it('does NOT contain ordinary letters (so user text doesn\'t trip detection)', () => {
     for (const c of 'abcXYZ012') expect(ALL_FRAME_CHARS.has(c)).toBe(false);

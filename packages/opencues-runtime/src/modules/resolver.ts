@@ -21,6 +21,7 @@ import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
 import type { AgentTaskState } from '../state/agent-task';
 import { splitWords } from './navigation';
+import type { BlankLoadingAnimator } from './blank-loading';
 
 export interface ResolverOptions {
   /** Legacy single-key endpoint. Prefer `apiKeys` for multi-provider. */
@@ -107,6 +108,11 @@ export class Resolver {
     private options: ResolverOptions,
     private spanFillState?: SpanFillState,
     private agentTaskState?: AgentTaskState,
+    /** Shared loading-animator from boot-common. Drives the per-slot
+     *  glyph progression while Fluid/Transform pipelines are in flight.
+     *  Optional — when omitted, slots stay static during resolution
+     *  (legacy behaviour pre-2026-05-13). */
+    private blankLoading?: BlankLoadingAnimator,
   ) {}
 
   subscribe(): void {
@@ -494,6 +500,26 @@ export class Resolver {
       if (reconstructed !== text) asTypedText = reconstructed;
     }
 
+    // Loading animation: start animating every `_` slot before dispatch
+    // and stop them all after the pipeline returns (success, error, or
+    // empty result). Idempotent: BlankFill may have already started
+    // animating a keyword-bound `_`, in which case start() is a no-op.
+    // stop() restores each slot to `_` so the substitution path's
+    // `target.word === '_'` check still passes.
+    const animatedSlots: number[] = [];
+    if (this.blankLoading) {
+      for (let i = 0; i < cleanWords.length; i++) {
+        if (cleanWords[i] === '_') {
+          this.blankLoading.start(i);
+          animatedSlots.push(i);
+        }
+      }
+    }
+    const stopAllAnimations = (): void => {
+      if (!this.blankLoading) return;
+      for (const i of animatedSlots) this.blankLoading.stop(i);
+    };
+
     let result;
     try {
       result = await this._resolver.resolve({
@@ -503,9 +529,11 @@ export class Resolver {
         asTypedText,
       });
     } catch (err) {
+      stopAllAnimations();
       this.adapter.log('error', 'Resolver.resolve threw', err);
       return;
     }
+    stopAllAnimations();
 
     this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
     // Per-word routing/skipped surfaces which ConfigSource claimed each

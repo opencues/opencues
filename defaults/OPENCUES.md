@@ -32,8 +32,9 @@ max-concurrent-auditors: 0
 # a short progression so the user can see "something is happening" —
 # crucial for slow sources like LLM-backed answer / prompt / weather
 # blanks. Set to `off` to disable.
-#   bounce   →  `_` `-` `‾` `-` `_` …  vertical pulse
-#   dot-walk →  `_` `.` `·` `.` `_` …  horizontal compress
+#   bounce          →  `_` `-` `‾` `-` `_` …       vertical pulse
+#   dot-walk        →  `_` `.` `·` `.` `_` …       horizontal compress
+#   braille-rotate  →  `_` `⠁` `⠈` `⠐` `⠠` `⠄` `⠂`  single dot clockwise
 blank-loading-animation: bounce
 
 # ─── settings: declarations + per-value tips ───────────────────────────
@@ -95,6 +96,7 @@ settings:
     values:
       bounce: `_` `-` `‾` `-` — vertical pulse (default)
       dot-walk: `_` `.` `·` `.` — horizontal compress
+      braille-rotate: `_` `⠁` `⠈` `⠐` `⠠` `⠄` `⠂` — single dot clockwise
       off: No animation — `_` stays static until substitution
 ---
 

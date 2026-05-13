@@ -21,6 +21,7 @@ import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { BlankFill } from '../../../src/modules/blank-fill';
+import { BlankLoadingAnimator } from '../../../src/modules/blank-loading';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
@@ -346,7 +347,21 @@ export function boot(host: HostInfo): BootResult {
   // E.8 adds the consume-all branch — needs SpanFillState as a writer
   // so E.9's Cycling can read the stash. F.a generalises the same state
   // for multi-word stepValues fills (affirmations etc.).
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs);
+  // Shared loading-glyph animator. Owned at this layer so BlankFill +
+  // Resolver (constructed below) share state — without that, both
+  // would spin their own animators and race on `_` slots that span
+  // both paths (rare but real).
+  const blankLoading = new BlankLoadingAnimator({
+    adapter,
+    mode: () => {
+      const raw = configLoader.opencuesState.settings.get('blank-loading-animation');
+      if (raw === 'off' || raw === 'dot-walk' || raw === 'braille-rotate') return raw;
+      return 'bounce';
+    },
+    log: msg => log('debug', msg),
+  });
+
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
@@ -389,7 +404,7 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState, agentTaskState);
+    }, spanFillState, agentTaskState, blankLoading);
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',

@@ -25,14 +25,38 @@
 
 import type { HostAdapter } from '../adapter';
 
-export type BlankLoadingMode = 'bounce' | 'dot-walk' | 'off';
+export type BlankLoadingMode = 'bounce' | 'dot-walk' | 'braille-rotate' | 'off';
 
 export const BOUNCE_FRAMES: readonly string[] = ['_', '-', '‾', '-'];
 export const DOT_WALK_FRAMES: readonly string[] = ['_', '.', '·', '.'];
 
+/** A single braille dot circles clockwise through the 6 cell positions,
+ *  returning to `_` between cycles. The visual is a 6-frame rotation
+ *  preceded by the rest frame `_` — 7 frames total, then loops.
+ *
+ *    _   ⠁   ⠈   ⠐   ⠠   ⠄   ⠂   _   …
+ *
+ *  Position map (Unicode 1-dot braille):
+ *    top-left  ⠁ (U+2801)        top-right  ⠈ (U+2808)
+ *    mid-left  ⠂ (U+2802)        mid-right  ⠐ (U+2810)
+ *    bot-left  ⠄ (U+2804)        bot-right  ⠠ (U+2820)
+ *
+ *  Walk order is clockwise from the top-left: top-left → top-right →
+ *  mid-right → bot-right → bot-left → mid-left → loop back to `_`. */
+export const BRAILLE_ROTATE_FRAMES: readonly string[] = [
+  '_',
+  '⠁',  // top-left
+  '⠈',  // top-right
+  '⠐',  // mid-right
+  '⠠',  // bot-right
+  '⠄',  // bot-left
+  '⠂',  // mid-left
+];
+
 export function framesFor(mode: BlankLoadingMode): readonly string[] {
   if (mode === 'bounce') return BOUNCE_FRAMES;
   if (mode === 'dot-walk') return DOT_WALK_FRAMES;
+  if (mode === 'braille-rotate') return BRAILLE_ROTATE_FRAMES;
   return [];
 }
 
@@ -42,7 +66,7 @@ export function framesFor(mode: BlankLoadingMode): readonly string[] {
  *  means the user typed over it OR the substitution path already
  *  replaced it. In either case the animator drops the slot. */
 export const ALL_FRAME_CHARS: ReadonlySet<string> = new Set([
-  ...BOUNCE_FRAMES, ...DOT_WALK_FRAMES,
+  ...BOUNCE_FRAMES, ...DOT_WALK_FRAMES, ...BRAILLE_ROTATE_FRAMES,
 ]);
 
 export interface BlankLoadingOptions {

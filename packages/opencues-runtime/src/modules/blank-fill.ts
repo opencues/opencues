@@ -53,7 +53,15 @@ export class BlankFill {
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
     private dynDefs?: DynDefs,
-  ) {}
+    /** Shared loading-animator. Injected by boot-common so BlankFill +
+     *  Resolver share one instance and avoid racing on slots that span
+     *  both paths. When omitted, BlankFill lazily creates its own (kept
+     *  for backward compat with external callers that haven't wired the
+     *  shared owner). */
+    blankLoading?: BlankLoadingAnimator,
+  ) {
+    if (blankLoading) this._loading = blankLoading;
+  }
 
   private _loadingAnimator(): BlankLoadingAnimator {
     if (this._loading !== null) return this._loading;
@@ -61,7 +69,7 @@ export class BlankFill {
       adapter: this.adapter,
       mode: () => {
         const raw = this.configLoader.opencuesState.settings.get('blank-loading-animation');
-        if (raw === 'off' || raw === 'dot-walk') return raw;
+        if (raw === 'off' || raw === 'dot-walk' || raw === 'braille-rotate') return raw;
         return 'bounce';
       },
       log: msg => this.adapter.log('debug', msg),

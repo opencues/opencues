@@ -210,7 +210,7 @@ export function boot(host: HostInfo): BootResult {
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
-    }, spanFillState, agentTaskState);
+    }, spanFillState, agentTaskState, shared.blankLoading);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
     const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };

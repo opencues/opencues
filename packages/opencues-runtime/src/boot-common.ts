@@ -135,6 +135,7 @@ import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
+import { BlankLoadingAnimator } from './modules/blank-loading';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
 import { SpanFillState } from './state/span-fill';
@@ -152,6 +153,10 @@ export interface SharedRuntime {
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
   readonly agentTaskState: AgentTaskState;
+  /** Shared loading-glyph animator for in-flight `_` slots. Passed to
+   *  BlankFill (keyword-bound slots) and to Resolver (Fluid/Transform
+   *  slots) so both code paths share state and don't race. */
+  readonly blankLoading: BlankLoadingAnimator;
 }
 
 export interface BuildSharedRuntimeOptions {
@@ -214,11 +219,27 @@ export function buildSharedRuntime(
   );
   cycling.subscribe();
 
+  // Shared loading-animation owner. Used by both BlankFill (keyword-
+  // bound slots like `volume _`) and the Resolver (TransformBlank +
+  // FluidBlank slots like `make this shorter _` and `capital of france _`).
+  // One instance keeps the animation timer + state coherent — without
+  // it BlankFill and Resolver would each spin their own and race on
+  // shared slots.
+  const blankLoading = new BlankLoadingAnimator({
+    adapter,
+    mode: () => {
+      const raw = configLoader.opencuesState.settings.get('blank-loading-animation');
+      if (raw === 'off' || raw === 'dot-walk' || raw === 'braille-rotate') return raw;
+      return 'bounce';
+    },
+    log: msg => log('debug', msg),
+  });
+
   // BlankFill subscribes only after ConfigLoader.load resolves so its
   // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline.
   const blankFill = new BlankFill(
-    adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs,
+    adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -232,5 +253,6 @@ export function buildSharedRuntime(
     dismissedBlanks,
     selectorSatelliteState,
     agentTaskState,
+    blankLoading,
   };
 }
