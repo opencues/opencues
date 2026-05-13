@@ -27,6 +27,15 @@ agent-debounce-ms: 1000
 # when many auditors are active. See spec/auditor-spec.md § Composition.
 max-concurrent-auditors: 0
 
+# Visual feedback while a `_` blank waits for its source (LLM call,
+# script invocation, HTTP fetch). The slot's character animates through
+# a short progression so the user can see "something is happening" —
+# crucial for slow sources like LLM-backed answer / prompt / weather
+# blanks. Set to `off` to disable.
+#   bounce   →  `_` `-` `‾` `-` `_` …  vertical pulse
+#   dot-walk →  `_` `.` `·` `.` `_` …  horizontal compress
+blank-loading-animation: bounce
+
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
 # means + the tip shown for each value. Schema is owned by the runtime;
@@ -81,6 +90,12 @@ settings:
       "0": Uncapped — all enabled auditors fire each tick
       "3": Bounded — top-3 priority-desc only
       "5": Bounded — top-5 priority-desc only
+  blank-loading-animation:
+    tip: Glyph progression shown at `_` while its source resolves. Stays in one column; restores to `_` on complete.
+    values:
+      bounce: `_` `-` `‾` `-` — vertical pulse (default)
+      dot-walk: `_` `.` `·` `.` — horizontal compress
+      off: No animation — `_` stays static until substitution
 ---
 
 # OPENCUES.md — Runtime Configuration

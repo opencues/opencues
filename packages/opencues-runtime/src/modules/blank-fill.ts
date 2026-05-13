@@ -14,6 +14,7 @@ import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
+import { BlankLoadingAnimator, type BlankLoadingMode } from './blank-loading';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -37,6 +38,13 @@ export class BlankFill {
   /** Dedup key (text + slot index) → in-flight script promise. */
   private _pendingScripts = new Set<string>();
   private _warnedSandboxBlanks = new Set<string>();
+  /**
+   * Loading-animation owner for in-flight blank slots. Lazily created
+   * on first dispatch; mode read from OPENCUES.md's
+   * `blank-loading-animation` scalar (bounce | dot-walk | off). Default
+   * is bounce.
+   */
+  private _loading: BlankLoadingAnimator | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -46,6 +54,20 @@ export class BlankFill {
     private selectorSatelliteState?: SelectorSatelliteState,
     private dynDefs?: DynDefs,
   ) {}
+
+  private _loadingAnimator(): BlankLoadingAnimator {
+    if (this._loading !== null) return this._loading;
+    this._loading = new BlankLoadingAnimator({
+      adapter: this.adapter,
+      mode: () => {
+        const raw = this.configLoader.opencuesState.settings.get('blank-loading-animation');
+        if (raw === 'off' || raw === 'dot-walk') return raw;
+        return 'bounce';
+      },
+      log: msg => this.adapter.log('debug', msg),
+    });
+    return this._loading;
+  }
 
   subscribe(): void {
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
@@ -230,6 +252,11 @@ export class BlankFill {
         keyword: slot.keyword,
         contextWords: contextWords.slice(0, 8),
       });
+      // Loading indicator — start animating the slot while the source
+      // resolves. No-op when blank-loading-animation is 'off'. Stopped
+      // in the .then/.catch handlers below.
+      this._loadingAnimator().start(slot.index);
+
       // Try host-native blank invocation first (Chrome, Electron,
       // anything without shell access). Fall through to spawnProcess
       // when the host returns null or doesn't implement blankInvoke.
@@ -287,6 +314,7 @@ export class BlankFill {
       }
       handle.result.then(res => {
         this._pendingScripts.delete(dedupKey);
+        this._loadingAnimator().stop(slot.index);
         this.adapter.log('debug', `BlankFill: script result for ${slot.blankName}`, { exitCode: res.exitCode, timedOut: res.timedOut, stdoutLen: res.stdout?.length ?? 0, stdoutPreview: res.stdout?.slice(0, 80) });
         if (res.exitCode !== 0 || res.timedOut) return;
         const stdout = res.stdout.trim();
@@ -294,6 +322,7 @@ export class BlankFill {
         this.applyAsyncFill(slot, stdout);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);
+        this._loadingAnimator().stop(slot.index);
         this.adapter.log('error', `BlankFill: script promise rejected for ${slot.blankName}`, err);
       });
     }
