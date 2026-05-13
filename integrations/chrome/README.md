@@ -206,6 +206,76 @@ detail): [`docs/features/chrome-sync.md`](../../docs/features/chrome-sync.md).
 
 ---
 
+## State + sync model — chrome.storage vs the file on disk
+
+OpenCues settings (cycled scalars in `OPENCUES.md`) live in one of two
+places depending on whether the chrome-host is installed.
+
+### Without the host
+
+In-page cycling — typing `opencues settings _` and toggling
+`voice-mode`, `tips-mode`, `blank-loading-animation`, etc. — persists
+**only in `chrome.storage.local`**. The file on disk at `~/.cues/`
+isn't touched by chrome alone (chrome has no filesystem access).
+
+- ✅ Settings survive page reloads and Chrome restarts.
+- ❌ They DON'T appear in `~/.cues/OPENCUES.md` — so Claude Code,
+  OpenCode, and Gemini CLI won't see your chrome-side changes.
+- ❌ Edits you make to `~/.cues/OPENCUES.md` from any editor or other
+  host DON'T flow into chrome — there's no live watcher.
+- ❌ Custom JS user-blanks and script-bearing blanks (`volume`,
+  `brightness`, anything `.sh`/`.py`-backed) require the host anyway.
+
+You're effectively running a chrome-only OpenCues. Fine for trying it
+out, awkward as soon as you also use one of the CLI hosts.
+
+### With the host installed
+
+`opencues install chrome-host` flips chrome into the same source-of-
+truth model as the CLI hosts: **the file on disk wins**.
+
+- In-page cycling writes through to `~/.cues/OPENCUES.md` via a
+  `write-file` message to the host. The host's `fs.watch` then pushes
+  the updated bundle back into `chrome.storage` (≈ 300 ms round-trip).
+- Edits you make to `~/.cues/OPENCUES.md` from any editor are picked up
+  by `fs.watch` and propagated into chrome on the next debounce
+  (≈ 300 ms).
+- Every host (CC, OC, gemini-cli, chrome) reads the same file. State
+  stays in lockstep.
+
+### Transitioning from no-host to host-installed (auto-heal)
+
+If you used chrome standalone for a while and then install the host,
+the two views may briefly disagree:
+
+- chrome.storage has whatever scalars you cycled in-page (`A` set).
+- The on-disk `~/.cues/OPENCUES.md` may have a different set (`B`,
+  possibly the shipped defaults).
+
+What happens automatically when the host comes online:
+
+1. The chrome-host pushes its first bundle (set `B` — the file's
+   content).
+2. The content script's onboot sync overwrites chrome.storage's
+   per-key OPENCUES.md entry to match the bundle.
+3. Any subsequent in-page cycling writes through to the file — both
+   sides converge to set `C` (whatever you cycle next).
+
+In practice: your chrome-only cycling done before host install **is
+lost** the moment the host comes online. The file is the new source
+of truth.
+
+**Recommended:** install the host first, then cycle. The file
+captures everything and every host stays in sync.
+
+If you have important chrome-only settings you want to preserve
+before installing the host, copy the values into `~/.cues/OPENCUES.md`
+manually first (open the file, edit the scalars to match what chrome
+shows). The host's first push will then be a no-op rather than an
+overwrite.
+
+---
+
 ## What this extension cannot do
 
 - **Native `<input>` / `<textarea>`** — the CSS Custom Highlight API can't reach into form-control internals (Chromium UA shadow DOM doesn't expose Text nodes to scripts). The extension only attaches to `contenteditable` elements. A "mirror div" workaround is possible but not currently implemented.
