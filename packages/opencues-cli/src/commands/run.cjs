@@ -11,6 +11,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const style = require('../lib/style.cjs');
+
+// Print the brand banner + a host/command/cwd tree, then yield stdio
+// to the spawned process. Output mirrors `seed-configs` / `install`
+// styling so all CLI surfaces look like one product. The style module
+// degrades to plain text when stdout isn't a TTY (NO_COLOR / pipes),
+// so this is safe to always call.
+function printLaunchBanner(ctx, host, rows) {
+  console.log(style.banner({
+    version: style.cliVersion(ctx),
+    tagline: `launching ${host}`,
+  }));
+  console.log('');
+  console.log(style.tree({ rows }));
+  console.log('');
+}
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
@@ -42,13 +58,13 @@ module.exports = function run(argv, ctx) {
     process.exit(2);
   }
 
-  if (folder === 'claude-code') return runCC(passthrough);
-  if (folder === 'opencode')    return runOC(passthrough, argv);
-  if (folder === 'chrome') return runChrome();
-  if (folder === 'gemini-cli') return runGemini(passthrough, argv);
+  if (folder === 'claude-code') return runCC(passthrough, ctx);
+  if (folder === 'opencode')    return runOC(passthrough, argv, ctx);
+  if (folder === 'chrome') return runChrome(ctx);
+  if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
 };
 
-function runCC(passthrough) {
+function runCC(passthrough, ctx) {
   // First choice: the patched cli.js at the known install location
   // (~/claude-code-cues/...). This is what `opencues install claude-code`
   // produces — the binary is `node <that-cli.js>`. Going direct skips
@@ -60,7 +76,10 @@ function runCC(passthrough) {
   if (binFlag >= 0 && passthrough[binFlag + 1]) {
     const explicit = passthrough[binFlag + 1];
     passthrough.splice(binFlag, 2);
-    console.log(`Launching ${explicit} (--bin override)...`);
+    printLaunchBanner(ctx, 'claude-code', [
+      ['host',    'claude-code  ' + style.dim('(--bin override)')],
+      ['command', `${explicit} ${passthrough.join(' ')}`.trim()],
+    ]);
     exitFromSpawn(spawnSync(explicit, passthrough, { stdio: 'inherit' }), explicit);
     return;
   }
@@ -68,7 +87,11 @@ function runCC(passthrough) {
   const patchedCli = path.join(os.homedir(), 'claude-code-cues', 'node_modules',
     '@anthropic-ai', 'claude-code', 'cli.js');
   if (fs.existsSync(patchedCli)) {
-    console.log(`Launching patched claude-code at ${patchedCli}...`);
+    printLaunchBanner(ctx, 'claude-code', [
+      ['host',    'claude-code  ' + style.dim('(patched)')],
+      ['command', `node cli.js ${passthrough.join(' ')}`.trim()],
+      ['fork',    style.fileLink(patchedCli, patchedCli)],
+    ]);
     const result = spawnSync('node', [patchedCli, ...passthrough], { stdio: 'inherit' });
     exitFromSpawn(result, patchedCli);
     return;
@@ -76,32 +99,35 @@ function runCC(passthrough) {
 
   // Fallback: PATH-based lookup. `claude-cues` shell alias won't
   // resolve via `which` — only a real binary on PATH works.
-  console.warn('opencues run claude-code: patched install not found at ~/claude-code-cues.');
-  console.warn('Install with: opencues install claude-code');
-  console.warn('Falling back to PATH lookup (likely UNPATCHED — cues will not work):');
+  console.warn(`${style.tag('warn')} patched install not found at ~/claude-code-cues`);
+  console.warn(`     Install with: ${style.bold('opencues install claude-code')}`);
+  console.warn(`     Falling back to PATH lookup (likely UNPATCHED — cues will not work):`);
   for (const c of ['claude-cues', 'claude']) {
     const which = spawnSync('which', [c], { stdio: ['ignore', 'pipe', 'ignore'] });
     if (which.status === 0) {
       const resolved = which.stdout.toString().trim();
-      console.log(`Launching ${resolved}...`);
+      printLaunchBanner(ctx, 'claude-code', [
+        ['host',    'claude-code  ' + style.yellow('(unpatched fallback)')],
+        ['command', `${resolved} ${passthrough.join(' ')}`.trim()],
+      ]);
       exitFromSpawn(spawnSync(resolved, passthrough, { stdio: 'inherit' }), resolved);
       return;
     }
   }
-  console.error('opencues run claude-code: no binary found.');
+  console.error(`${style.tag('err')} no binary found`);
   process.exit(127);
 }
 
-function runOC(passthrough, fullArgv) {
+function runOC(passthrough, fullArgv, ctx) {
   const targetIdx = fullArgv.indexOf('--target');
   const fork = (targetIdx >= 0 && fullArgv[targetIdx + 1])
     || process.env.OPENCODE_CUES_DIR
     || path.join(os.homedir(), 'opencode-cues');
 
   if (!fs.existsSync(path.join(fork, 'packages', 'opencode'))) {
-    console.error(`opencues run opencode: ${fork} doesn't look like an opencode checkout.`);
-    console.error('Install first: opencues install opencode');
-    console.error('Or pass --target /path/to/your/opencode-fork');
+    console.error(`${style.tag('err')} ${fork} doesn't look like an opencode checkout.`);
+    console.error(`     Install first: ${style.bold('opencues install opencode')}`);
+    console.error('     Or pass --target /path/to/your/opencode-fork');
     process.exit(1);
   }
 
@@ -109,9 +135,9 @@ function runOC(passthrough, fullArgv) {
   // gets a clear error rather than the spawn silently failing later.
   const bunCheck = spawnSync('which', ['bun'], { stdio: ['ignore', 'pipe', 'ignore'] });
   if (bunCheck.status !== 0) {
-    console.error('opencues run opencode: bun is not on PATH.');
-    console.error('Install bun first: https://bun.sh/');
-    console.error(`Then re-run: opencues run opencode${targetIdx >= 0 ? ` --target ${fork}` : ''}`);
+    console.error(`${style.tag('err')} bun is not on PATH`);
+    console.error(`     Install bun first: ${style.link('https://bun.sh/', 'https://bun.sh/')}`);
+    console.error(`     Then re-run: opencues run opencode${targetIdx >= 0 ? ` --target ${fork}` : ''}`);
     process.exit(127);
   }
 
@@ -128,7 +154,11 @@ function runOC(passthrough, fullArgv) {
   // See packages/opencode/src/storage/db.ts:30 (getChannelPath).
   const env = { ...process.env, OPENCODE_DISABLE_CHANNEL_DB: '1' };
 
-  console.log(`Launching: bun run dev ${cleaned.join(' ')} (cwd: ${fork})`.trim());
+  printLaunchBanner(ctx, 'opencode', [
+    ['host',    'opencode  ' + style.dim('(patched fork)')],
+    ['command', `bun run dev ${cleaned.join(' ')}`.trim()],
+    ['cwd',     style.fileLink(fork, fork)],
+  ]);
   const result = spawnSync('bun', ['run', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit', env });
   exitFromSpawn(result, 'bun');
 }
@@ -146,23 +176,23 @@ function exitFromSpawn(result, what) {
   process.exit(result.status ?? 0);
 }
 
-function runGemini(passthrough, fullArgv) {
+function runGemini(passthrough, fullArgv, ctx) {
   const targetIdx = fullArgv.indexOf('--target');
   const fork = (targetIdx >= 0 && fullArgv[targetIdx + 1])
     || process.env.GEMINI_CLI_CUES_DIR
     || path.join(os.homedir(), 'gemini-cli-cues');
 
   if (!fs.existsSync(path.join(fork, 'packages', 'cli'))) {
-    console.error(`opencues run gemini-cli: ${fork} doesn't look like a gemini-cli checkout.`);
-    console.error('Install first: opencues install gemini-cli');
-    console.error('Or pass --target /path/to/your/gemini-cli-fork');
+    console.error(`${style.tag('err')} ${fork} doesn't look like a gemini-cli checkout.`);
+    console.error(`     Install first: ${style.bold('opencues install gemini-cli')}`);
+    console.error('     Or pass --target /path/to/your/gemini-cli-fork');
     process.exit(1);
   }
 
   const builtCli = path.join(fork, 'packages', 'cli', 'dist', 'index.js');
   if (!fs.existsSync(builtCli)) {
-    console.error(`opencues run gemini-cli: built CLI not found at ${builtCli}.`);
-    console.error('Run setup again: opencues install gemini-cli');
+    console.error(`${style.tag('err')} built CLI not found at ${builtCli}`);
+    console.error(`     Run setup again: ${style.bold('opencues install gemini-cli')}`);
     process.exit(1);
   }
 
@@ -174,20 +204,28 @@ function runGemini(passthrough, fullArgv) {
   // Gemini picks up cwd-locally and renders the input box with a
   // blue background. Running from the user's cwd uses their own
   // settings.json (or none).
-  console.log(`Launching: node ${builtCli} ${cleaned.join(' ')}`.trim());
+  printLaunchBanner(ctx, 'gemini-cli', [
+    ['host',    'gemini-cli  ' + style.dim('(patched fork)')],
+    ['command', `node packages/cli/dist/index.js ${cleaned.join(' ')}`.trim()],
+    ['fork',    style.fileLink(fork, fork)],
+    ['cwd',     style.fileLink(process.cwd(), process.cwd())],
+  ]);
   const result = spawnSync('node', [builtCli, ...cleaned], { stdio: 'inherit' });
   exitFromSpawn(result, 'node');
 }
 
-function runChrome() {
-  console.log('Chrome extensions are loaded by Chrome itself, not by opencues.');
+function runChrome(ctx) {
+  printLaunchBanner(ctx, 'chrome', [
+    ['host', 'chrome  ' + style.dim('(extensions are loaded by chrome itself)')],
+  ]);
+  console.log(style.bold('Load the extension in chrome://extensions:'));
   console.log('');
-  console.log('  1. Open chrome://extensions');
-  console.log('  2. Enable Developer mode');
-  console.log('  3. Click "Load unpacked"');
-  console.log('  4. Select the path printed by `opencues install chrome`');
+  console.log(`  ${style.dim('1.')} Open ${style.cyan('chrome://extensions')}`);
+  console.log(`  ${style.dim('2.')} Enable ${style.bold('Developer mode')}`);
+  console.log(`  ${style.dim('3.')} Click ${style.bold('Load unpacked')}`);
+  console.log(`  ${style.dim('4.')} Select the path printed by ${style.bold('opencues install chrome')}`);
   console.log('');
-  console.log('If already loaded, just reload the page you want OpenCues active on.');
+  console.log(style.dim('If already loaded, reload the page you want OpenCues active on.'));
 }
 
 function printHelp() {
