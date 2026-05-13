@@ -40,6 +40,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
 import type { ProviderAdapter } from '../llm-provider';
+import { detectPartialTransform } from './transform-partial-detector';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -958,6 +959,27 @@ export class TransformBlankSource implements CueSource {
         this.emit({
           type: 'bailed',
           reason: 'rewrite-collapse',
+          latencyMs: Date.now() - startTime,
+        });
+        return { results: [], timing: Date.now() - startTime, model: this.model };
+      }
+
+      // Charset-coverage guard for partial translations. The length
+      // check above only fires for buffers > 100 chars; this catches
+      // the smaller-buffer case where the LLM left source-language
+      // characters in the output despite a "translate to <X>"
+      // instruction. See docs in transform-partial-detector.ts +
+      // tests in transform-partial-detector.test.ts.
+      const partial = detectPartialTransform({
+        input: ext.target,
+        output: finalRewrite,
+        taskHint: ext.instruction,
+      });
+      if (partial.partial) {
+        this.log(`TransformBlank: BAILING — partial translation (${partial.reason}). Refusing to substitute; next agent tick will retry.`);
+        this.emit({
+          type: 'bailed',
+          reason: 'partial-translation',
           latencyMs: Date.now() - startTime,
         });
         return { results: [], timing: Date.now() - startTime, model: this.model };
