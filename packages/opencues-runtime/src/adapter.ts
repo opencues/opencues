@@ -58,6 +58,20 @@ export interface RenderDirectives {
   textOverride?: string;
   dimRanges?: readonly Range[];
   highlight?: HighlightRange;
+  // ─── Markdown render ranges ────────────────────────────────────────
+  // Populated by MarkdownRender after an LLM substitution lands. The
+  // ranges are CHARACTER ranges into the buffer text — they include the
+  // markdown syntax characters themselves (`**`, `*`, `` ` ``, etc.) so
+  // the renderer can decide whether to dim the markers or not. Native
+  // hosts insert ANSI escapes; chrome translates into per-site styling
+  // (Phase 2). All optional — MarkdownRender omits the field entirely
+  // when no markdown is detected, keeping the directive cheap.
+  boldRanges?: readonly Range[];
+  italicRanges?: readonly Range[];
+  codeRanges?: readonly Range[];
+  strikeRanges?: readonly Range[];
+  headingRanges?: readonly Range[];
+  listRanges?: readonly Range[];
 }
 
 export interface Range {

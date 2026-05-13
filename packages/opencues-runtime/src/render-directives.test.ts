@@ -110,3 +110,69 @@ describe('applyDirectives', () => {
     expect(out).toBe(`${DIM_ON}abcdef${DIM_OFF}`);
   });
 });
+
+describe('applyDirectives — markdown ranges (Phase 1: terminals)', () => {
+  const BOLD_ON = '\x1b[1m';
+  const BOLD_OFF = '\x1b[22m';
+  const IT_ON = '\x1b[3m';
+  const IT_OFF = '\x1b[23m';
+  const CODE_ON = '\x1b[7m';
+  const CODE_OFF = '\x1b[27m';
+  const STRIKE_ON = '\x1b[9m';
+  const STRIKE_OFF = '\x1b[29m';
+  const HEAD_ON = '\x1b[1;4m';
+  const HEAD_OFF = '\x1b[22;24m';
+
+  it('wraps a bold range with ANSI bold codes (markers INCLUDED in the range)', () => {
+    const out = applyDirectives('a **X** b', { boldRanges: [{ start: 2, end: 7 }] });
+    expect(out).toBe(`a ${BOLD_ON}**X**${BOLD_OFF} b`);
+  });
+
+  it('wraps italic ranges', () => {
+    const out = applyDirectives('a *x* b', { italicRanges: [{ start: 2, end: 5 }] });
+    expect(out).toBe(`a ${IT_ON}*x*${IT_OFF} b`);
+  });
+
+  it('wraps inline code ranges (inverse video)', () => {
+    const out = applyDirectives('use `npm` here', { codeRanges: [{ start: 4, end: 9 }] });
+    expect(out).toBe(`use ${CODE_ON}\`npm\`${CODE_OFF} here`);
+  });
+
+  it('wraps strikethrough ranges', () => {
+    const out = applyDirectives('a ~~old~~ b', { strikeRanges: [{ start: 2, end: 9 }] });
+    expect(out).toBe(`a ${STRIKE_ON}~~old~~${STRIKE_OFF} b`);
+  });
+
+  it('wraps heading ranges with bold + underline', () => {
+    const out = applyDirectives('# Title', { headingRanges: [{ start: 0, end: 7 }] });
+    expect(out).toBe(`${HEAD_ON}# Title${HEAD_OFF}`);
+  });
+
+  it('wraps list items with dim (faint marker)', () => {
+    const out = applyDirectives('- one', { listRanges: [{ start: 0, end: 5 }] });
+    expect(out).toBe(`${DIM_ON}- one${DIM_OFF}`);
+  });
+
+  it('combines bold and italic ranges in one directive', () => {
+    const out = applyDirectives('**bold** and *italic*', {
+      boldRanges: [{ start: 0, end: 8 }],
+      italicRanges: [{ start: 13, end: 21 }],
+    });
+    expect(out).toContain(`${BOLD_ON}**bold**${BOLD_OFF}`);
+    expect(out).toContain(`${IT_ON}*italic*${IT_OFF}`);
+  });
+
+  it('empty range lists do not emit any ANSI', () => {
+    const out = applyDirectives('plain text', {
+      boldRanges: [],
+      italicRanges: [],
+      codeRanges: [],
+    });
+    expect(out).toBe('plain text');
+  });
+
+  it('omitted range fields: existing dim + highlight paths unaffected', () => {
+    const out = applyDirectives('hello', {});
+    expect(out).toBe('hello');
+  });
+});

@@ -136,6 +136,7 @@ import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
 import { BlankLoadingAnimator } from './modules/blank-loading';
+import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
 import { SpanFillState } from './state/span-fill';
@@ -157,6 +158,10 @@ export interface SharedRuntime {
    *  BlankFill (keyword-bound slots) and to Resolver (Fluid/Transform
    *  slots) so both code paths share state and don't race. */
   readonly blankLoading: BlankLoadingAnimator;
+  /** Markdown overlay renderer — parses **bold** / *italic* / `code`
+   *  etc. on LLM-substitution events and emits per-range directives
+   *  the host's render pipeline picks up. */
+  readonly markdownRender: MarkdownRender;
 }
 
 export interface BuildSharedRuntimeOptions {
@@ -245,6 +250,15 @@ export function buildSharedRuntime(
     .then(() => blankFill.subscribe())
     .catch(err => log('error', 'BlankFill: deferred subscribe failed', err));
 
+  // MarkdownRender — display-only overlay for **bold** / *italic* /
+  // `code` / ~~strike~~ / # heading / - list. Parses on LLM-origin
+  // substitution events; renders via the existing onRender pipeline
+  // alongside DimRender. Suppresses italic / code / strike spans that
+  // overlap an active blank slot so `_` doesn't get accidentally
+  // styled as markdown.
+  const markdownRender = new MarkdownRender(adapter, blankFill);
+  markdownRender.subscribe();
+
   return {
     configLoader,
     hlState,
@@ -254,5 +268,6 @@ export function buildSharedRuntime(
     selectorSatelliteState,
     agentTaskState,
     blankLoading,
+    markdownRender,
   };
 }

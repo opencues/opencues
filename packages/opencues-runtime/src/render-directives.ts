@@ -37,6 +37,25 @@ const ANSI_INVERSE_ON = '\x1b[97m';
 const ANSI_INVERSE_OFF = '\x1b[39m';
 const ANSI_DIM_ON = '\x1b[2m';
 const ANSI_DIM_OFF = '\x1b[22m';
+// Markdown render — terminal ANSI codes for bold / italic / inverse
+// (code spans) / strikethrough / underline (headings). The 22/23/27/29/24
+// closing codes specifically reset the matching attribute without
+// touching colour. Bold close (`22`) doubles as "normal intensity"; this
+// is the standard ANSI handling and matches how `tput` emits them.
+const ANSI_BOLD_ON = '\x1b[1m';
+const ANSI_BOLD_OFF = '\x1b[22m';
+const ANSI_ITALIC_ON = '\x1b[3m';
+const ANSI_ITALIC_OFF = '\x1b[23m';
+const ANSI_CODE_ON = '\x1b[7m';        // inverse video for code spans
+const ANSI_CODE_OFF = '\x1b[27m';
+const ANSI_STRIKE_ON = '\x1b[9m';
+const ANSI_STRIKE_OFF = '\x1b[29m';
+// Headings get bold + underline so the first character of `# ` is
+// visibly anchored even on terminals that handle bold subtly.
+const ANSI_HEADING_ON = '\x1b[1;4m';
+const ANSI_HEADING_OFF = '\x1b[22;24m';
+// List items get a faint marker dim on the bullet itself; the body
+// text reads as normal. Reuses the existing DIM codes — no new escape.
 
 interface Insertion {
   visibleAt: number;
@@ -62,6 +81,37 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     insertions.push({ visibleAt: directives.highlight.end, ansi: ANSI_INVERSE_OFF, order: 1 });
   }
   for (const r of dimBoundaries) {
+    insertions.push({ visibleAt: r.start, ansi: ANSI_DIM_ON, order: 0 });
+    insertions.push({ visibleAt: r.end, ansi: ANSI_DIM_OFF, order: 1 });
+  }
+  // Markdown ranges — each independent set produces its own ANSI open
+  // / close pair. Inner-style closes (close-orders later) fire BEFORE
+  // outer-style closes by their position; ANSI's per-attribute close
+  // codes mean overlapping styles compose cleanly (bold-italic both
+  // active sees both opens, closes in either order).
+  for (const r of coalesceRanges(directives.boldRanges ?? [])) {
+    insertions.push({ visibleAt: r.start, ansi: ANSI_BOLD_ON, order: 0 });
+    insertions.push({ visibleAt: r.end, ansi: ANSI_BOLD_OFF, order: 1 });
+  }
+  for (const r of coalesceRanges(directives.italicRanges ?? [])) {
+    insertions.push({ visibleAt: r.start, ansi: ANSI_ITALIC_ON, order: 0 });
+    insertions.push({ visibleAt: r.end, ansi: ANSI_ITALIC_OFF, order: 1 });
+  }
+  for (const r of coalesceRanges(directives.codeRanges ?? [])) {
+    insertions.push({ visibleAt: r.start, ansi: ANSI_CODE_ON, order: 0 });
+    insertions.push({ visibleAt: r.end, ansi: ANSI_CODE_OFF, order: 1 });
+  }
+  for (const r of coalesceRanges(directives.strikeRanges ?? [])) {
+    insertions.push({ visibleAt: r.start, ansi: ANSI_STRIKE_ON, order: 0 });
+    insertions.push({ visibleAt: r.end, ansi: ANSI_STRIKE_OFF, order: 1 });
+  }
+  for (const r of coalesceRanges(directives.headingRanges ?? [])) {
+    insertions.push({ visibleAt: r.start, ansi: ANSI_HEADING_ON, order: 0 });
+    insertions.push({ visibleAt: r.end, ansi: ANSI_HEADING_OFF, order: 1 });
+  }
+  for (const r of coalesceRanges(directives.listRanges ?? [])) {
+    // List items get dim on the bullet marker only — the body reads
+    // as normal text. Marker is the first non-whitespace run.
     insertions.push({ visibleAt: r.start, ansi: ANSI_DIM_ON, order: 0 });
     insertions.push({ visibleAt: r.end, ansi: ANSI_DIM_OFF, order: 1 });
   }
