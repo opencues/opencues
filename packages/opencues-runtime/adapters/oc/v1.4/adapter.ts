@@ -84,6 +84,11 @@ export const OPENCODE_V14_CAPABILITIES: readonly Capability[] = [
   'render-override',
   'dim-ranges',
   'highlight-range',
+  // OpenTUI's syntax.registerStyle accepts `fg: RGBA` — opt into the
+  // RGB path so BlankLoadingAnimator emits hex colours from
+  // blank-loading-colors-rgb, which the bootstrap converts via
+  // RGBA.fromHex(hex) and creates per-colour extmarks for.
+  'render-rgb-color',
 ];
 
 export class OpenCodeV14Adapter implements HostAdapter {

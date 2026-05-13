@@ -592,12 +592,17 @@ function normaliseKeyName(evt: any): string {
  * moment the agent applied any edit (or after Enter, because the agent
  * usually settled and fired during the post-newline pause).
  */
-type OcExtmarkKey = string // `${kind}:${start}:${end}`
+type OcExtmarkKey = string // `${kind}:${start}:${end}` — or `load:${hex}:${start}:${end}` for per-colour loading frames
 let ocOwnedExtmarks = new Map<OcExtmarkKey, number>()
 let ocStyleIdsCache: {
   dim?: number; highlight?: number; typeId?: number;
   bold?: number; italic?: number; code?: number; strike?: number; heading?: number; list?: number;
 } = {}
+// Per-hex style cache for blank-loading-colors-rgb. Each unique colour
+// gets one StyleDefinition with `fg: RGBA.fromHex(hex)` registered
+// lazily on first use. Cleared alongside `ocStyleIdsCache` on textarea
+// swap so a re-mounted prompt re-registers cleanly.
+let ocLoadingColorStyleIds = new Map<string, number>()
 // Tracked so we can drop stale extmark IDs whenever the prompt re-mounts
 // (Solid.js reactive replacement of the textarea instance). Without this
 // guard, the diff sees a "match" by key for an extmark whose ID is dead
@@ -626,6 +631,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   if (ocLastTextarea !== textarea) {
     ocOwnedExtmarks = new Map()
     ocStyleIdsCache = {}
+    ocLoadingColorStyleIds = new Map()
     ocLastTextarea = textarea
   }
 
@@ -689,6 +695,10 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       desired.set(`${kind}:${r.start}:${r.end}`, { kind, start: r.start, end: r.end })
     }
   }
+  // Per-hex loading frame ranges. Each gets a unique extmark keyed by
+  // colour + offset so the same range can change colour from one tick
+  // to the next without leaking stale extmarks.
+  const desiredColored = new Map<OcExtmarkKey, { hex: string; start: number; end: number }>()
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
     addRanges(directives.dimRanges, "d")
@@ -702,11 +712,24 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     addRanges(directives.strikeRanges, "s")
     addRanges(directives.headingRanges, "H")
     addRanges(directives.listRanges, "L")
+    // BlankLoadingAnimator emits coloredRanges with `rgb` (chrome +
+    // opencode opt into 'render-rgb-color') or `ansi` (CC / gemini).
+    // OpenCode handles rgb here; the ansi case never reaches OC.
+    const cr = (directives as { coloredRanges?: ReadonlyArray<{ start: number; end: number; rgb?: string; ansi?: string }> }).coloredRanges
+    if (cr) {
+      for (const r of cr) {
+        if (!r.rgb) continue
+        const hex = r.rgb.toLowerCase()
+        const key = `load:${hex}:${r.start}:${r.end}`
+        desiredColored.set(key, { hex, start: r.start, end: r.end })
+      }
+    }
   }
 
-  // Delete extmarks no longer wanted.
+  // Delete extmarks no longer wanted. Both maps participate — a key
+  // matches either set, otherwise it's stale.
   for (const [key, id] of ocOwnedExtmarks) {
-    if (desired.has(key)) continue
+    if (desired.has(key) || desiredColored.has(key)) continue
     try { (textarea.extmarks as any).delete?.(id) } catch { /* swallow */ }
     ocOwnedExtmarks.delete(key)
   }
@@ -728,6 +751,33 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     if (ocOwnedExtmarks.has(key)) continue
     const styleId = styleFor(spec.kind)
     if (styleId === undefined) continue
+    const id = textarea.extmarks.create({
+      start: spec.start,
+      end: spec.end,
+      styleId,
+      typeId: ocStyleIdsCache.typeId,
+    })
+    ocOwnedExtmarks.set(key, id)
+  }
+
+  // Per-colour loading-frame extmarks. Lazy-register the style on
+  // first sight of each hex; reuse cached style IDs on subsequent
+  // ticks. The animator emits these every tick at the same offset
+  // but with rotating hexes — the unique-key shape (`load:HEX:S:E`)
+  // means each colour change produces a new extmark and the
+  // delete-loop above retires the previous one.
+  for (const [key, spec] of desiredColored) {
+    if (ocOwnedExtmarks.has(key)) continue
+    let styleId = ocLoadingColorStyleIds.get(spec.hex)
+    if (styleId === undefined) {
+      const styleName = `opencues-load-${spec.hex.slice(1)}`
+      try {
+        styleId =
+          syntax.getStyleId(styleName)
+          ?? syntax.registerStyle(styleName, { fg: RGBA.fromHex(spec.hex) })
+      } catch { continue }
+      ocLoadingColorStyleIds.set(spec.hex, styleId)
+    }
     const id = textarea.extmarks.create({
       start: spec.start,
       end: spec.end,
