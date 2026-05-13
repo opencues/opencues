@@ -88,10 +88,49 @@ export interface PromptInputAccess {
   read(): string;
   /** Updates the TextBuffer in place via buffer.setText. */
   write(text: string): void;
-  /** Reads the textarea's cursor offset (logicalPosToOffset(buffer)). */
+  /** Reads the textarea's cursor offset — IN CODE POINTS (Gemini's
+   *  text-buffer uses cpLen-based offsets). */
   cursor(): number;
-  /** Sets the textarea's cursor offset (buffer.setText(text, offset)). */
+  /** Sets the textarea's cursor offset — IN CODE POINTS (Gemini's
+   *  buffer.setText expects logicalPosToOffset coordinates). */
   setCursor(offset: number): void;
+}
+
+// ─── Code-unit ↔ code-point conversion ──────────────────────────────────
+//
+// The runtime tracks cursor offsets in UTF-16 code units (each emoji
+// surrogate pair = 2 units). Gemini's text-buffer tracks them in
+// code points (each emoji = 1 point). Without conversion, every emoji
+// in the buffer drifts the cursor 1 unit to the right per emoji,
+// breaking highlight ranges, navigation, and the cursor's visual
+// column. See textUtils.ts → cpLen / cpIndexToOffset.
+//
+// Fast path: pure ASCII strings have units === points, skip the walk.
+
+function isAsciiFast(s: string): boolean {
+  // Inline-checking is faster than a regex on long buffers.
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) return false;
+  return true;
+}
+
+/** Convert a UTF-16 code-unit offset to a Gemini-buffer code-point index. */
+function codeUnitsToCodePoints(text: string, units: number): number {
+  if (isAsciiFast(text)) return units;
+  const clamped = Math.max(0, Math.min(units, text.length));
+  // [...slice] iterates by code point. Length is the code-point count.
+  return [...text.slice(0, clamped)].length;
+}
+
+/** Convert a Gemini-buffer code-point index to a UTF-16 code-unit offset. */
+function codePointsToCodeUnits(text: string, points: number): number {
+  if (isAsciiFast(text)) return points;
+  const cps = [...text];
+  const clamped = Math.max(0, Math.min(points, cps.length));
+  // Re-join the first `clamped` code points and measure code units.
+  // cps[i] is itself a 1- or 2-unit string per the code point.
+  let units = 0;
+  for (let i = 0; i < clamped; i++) units += cps[i].length;
+  return units;
 }
 
 const __gcPromptHolder: { current: PromptInputAccess | null } = { current: null };
@@ -248,18 +287,35 @@ export function startOpenCues(opts: {
     hostVersion: opts.hostVersion,
     cwd: opts.cwd || process.cwd(),
     getText: () => __gcPromptHolder.current?.read() ?? '',
-    getCursorOffset: () => __gcPromptHolder.current?.cursor() ?? 0,
+    getCursorOffset: () => {
+      // Gemini's buffer returns code-point offset; runtime expects
+      // UTF-16 code units. Convert against the current text.
+      const access = __gcPromptHolder.current;
+      if (!access) return 0;
+      const text = access.read();
+      const cp = access.cursor();
+      return codePointsToCodeUnits(text, cp);
+    },
     setText: (text: string) => {
       sourceReclassifier.markRuntimeWrite(text);
       __gcPromptHolder.current?.write(text);
     },
     setCursorOffset: (offset: number) => {
-      __gcPromptHolder.current?.setCursor(offset);
+      // Runtime sends UTF-16 code units; Gemini's buffer.setCursor
+      // expects code points.
+      const access = __gcPromptHolder.current;
+      if (!access) return;
+      access.setCursor(codeUnitsToCodePoints(access.read(), offset));
     },
     pushText: (text: string, cursor?: number) => {
       sourceReclassifier.markRuntimeWrite(text);
       __gcPromptHolder.current?.write(text);
-      if (cursor !== undefined) __gcPromptHolder.current?.setCursor(cursor);
+      // pushText sets text + cursor as a pair. We just wrote `text`,
+      // so the conversion uses that string directly (cheaper +
+      // guaranteed-consistent compared to a re-read).
+      if (cursor !== undefined) {
+        __gcPromptHolder.current?.setCursor(codeUnitsToCodePoints(text, cursor));
+      }
     },
     // Ink is reactive — the buffer change re-renders on its own. Nothing
     // No-op for now. ZWS toggle for forced re-render needs the
@@ -437,7 +493,9 @@ export function startOpenCues(opts: {
 export function dispatchOpenCuesKey(key: any): boolean {
   if (!bootResult) return false;
   const text = __gcPromptHolder.current?.read() ?? '';
-  const cursor = __gcPromptHolder.current?.cursor() ?? 0;
+  // Gemini buffer cursor → runtime code-unit offset.
+  const cpCursor = __gcPromptHolder.current?.cursor() ?? 0;
+  const cursor = codePointsToCodeUnits(text, cpCursor);
   // Gemini's Key has `name`, `shift`, `alt`, `ctrl`, `cmd`, `sequence`.
   const e: KeyEvent = {
     key: normaliseKeyName(key),
@@ -461,24 +519,27 @@ function normaliseKeyName(key: any): string {
 
 // ─── Buffer change observers — called from InputPrompt useEffect ─────────
 
-/** Notify runtime of text changes from the InputPrompt buffer watcher. */
+/** Notify runtime of text changes from the InputPrompt buffer watcher.
+ *  `cursor` arrives in Gemini's CODE-POINT space (logicalPosToOffset);
+ *  the runtime works in code units. Convert at the seam. */
 export function notifyOpenCuesTextChange(
   text: string,
   cursor: number,
   source: 'user' | 'runtime' = 'user',
 ): void {
   const actualSource = sourceReclassifier.reclassify(text, source);
-  bootResult?.notifyTextChange(text, cursor, actualSource);
+  bootResult?.notifyTextChange(text, codePointsToCodeUnits(text, cursor), actualSource);
 }
 
 /** Notify runtime of cursor-only moves (no text change). Drives
- *  cursor-navigate auto-highlight when the user clicks / arrow-keys. */
+ *  cursor-navigate auto-highlight when the user clicks / arrow-keys.
+ *  Same code-point → code-unit conversion as notifyTextChange. */
 export function notifyOpenCuesCursorChange(
   text: string,
   cursor: number,
   source: 'user' | 'runtime' = 'user',
 ): void {
-  bootResult?.notifyCursorChange(text, cursor, source);
+  bootResult?.notifyCursorChange(text, codePointsToCodeUnits(text, cursor), source);
 }
 
 // ─── Per-visual-line decorator — called from InputPrompt renderItem ──────
@@ -517,8 +578,13 @@ export function consumePendingOpenCues(
   currentCursor: number,
 ): { text: string; cursor: number } | null {
   if (!bootResult) return null;
-  const pending = bootResult.consumePendingRender(currentText, currentCursor);
-  if (pending && pending.text !== currentText) {
+  // Inputs arrive in Gemini's code-point space; runtime works in code
+  // units. Convert in, convert back out for InputPrompt's
+  // buffer.setText(text, cursor) call which expects code points.
+  const cuCursor = codePointsToCodeUnits(currentText, currentCursor);
+  const pending = bootResult.consumePendingRender(currentText, cuCursor);
+  if (!pending) return null;
+  if (pending.text !== currentText) {
     // The pull-model write goes through buffer.setText DIRECTLY (the
     // InputPrompt useEffect calls it), bypassing the wrapped setText
     // that normally marks runtime writes. Without this mark, the
@@ -528,7 +594,10 @@ export function consumePendingOpenCues(
     // ctrl+alt+arrow press.
     sourceReclassifier.markRuntimeWrite(pending.text);
   }
-  return pending;
+  return {
+    text: pending.text,
+    cursor: codeUnitsToCodePoints(pending.text, pending.cursor),
+  };
 }
 
 export function decorateOpenCuesLine(
@@ -539,7 +608,15 @@ export function decorateOpenCuesLine(
   lineEnd: number,
 ): string {
   if (!bootResult) return lineText;
-  return bootResult.decorateLine(lineText, fullText, cursor, lineStart, lineEnd);
+  // All four offsets arrive in Gemini's code-point space. The runtime's
+  // decorateLine slices fullText[lineStart..lineEnd] and applies ranges
+  // in those coordinates — so we convert all four to code units before
+  // calling. The returned string is the visible line decorated with
+  // ANSI escapes; no further offset conversion needed on the way back.
+  const cuCursor    = codePointsToCodeUnits(fullText, cursor);
+  const cuLineStart = codePointsToCodeUnits(fullText, lineStart);
+  const cuLineEnd   = codePointsToCodeUnits(fullText, lineEnd);
+  return bootResult.decorateLine(lineText, fullText, cuCursor, cuLineStart, cuLineEnd);
 }
 
 /**
