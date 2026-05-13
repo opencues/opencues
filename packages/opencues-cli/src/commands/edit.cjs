@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
+const style = require('../lib/style.cjs');
 
 // `cues` covers everything that used to be split across CUES.md /
 // OPENCUES.md / BLANKS.md: settings frontmatter, ignore list, project
@@ -13,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 // migration — every user file ends up at ~/.cues/CUES.md.
 const VALID = new Set(['cues']);
 
-module.exports = function edit(argv) {
+module.exports = function edit(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let name = null;
@@ -21,11 +22,11 @@ module.exports = function edit(argv) {
   for (const a of argv) { if (!a.startsWith('-') && !name) name = a; }
 
   if (!name) {
-    console.error(`opencues edit: missing <file>. One of: ${[...VALID].join(', ')}`);
+    console.error(`${style.tag('err')} missing <file>. One of: ${[...VALID].join(', ')}`);
     process.exit(2);
   }
   if (!VALID.has(name)) {
-    console.error(`opencues edit: unknown <file> "${name}". One of: ${[...VALID].join(', ')}`);
+    console.error(`${style.tag('err')} unknown <file> "${name}". One of: ${[...VALID].join(', ')}`);
     process.exit(2);
   }
 
@@ -34,15 +35,33 @@ module.exports = function edit(argv) {
     : path.join(os.homedir(), '.cues');
   const file = path.join(baseDir, `${name}.md`);
 
-  if (!fs.existsSync(file)) {
+  const created = !fs.existsSync(file);
+  if (created) {
     fs.mkdirSync(baseDir, { recursive: true });
     fs.writeFileSync(file, `# ${name}.md (auto-created by opencues edit)\n`);
-    console.log(`Created empty ${file}`);
   }
 
   const editor = process.env.VISUAL || process.env.EDITOR || 'vi';
-  console.log(`Opening ${file} in ${editor}...`);
+
+  console.log(style.banner({
+    version: style.cliVersion(ctx),
+    tagline: `editing ${name}${projectScope ? '  (project scope)' : ''}`,
+  }));
+  console.log('');
+  console.log(style.tree({
+    rows: [
+      ['file',   style.fileLink(file, file) + (created ? '  ' + style.dim('(created)') : '')],
+      ['editor', editor],
+      ['scope',  projectScope ? 'project  ' + style.dim(`(${baseDir})`) : 'user-level  ' + style.dim(`(~/.cues)`)],
+    ],
+  }));
+  console.log('');
+
   const result = spawnSync(editor, [file], { stdio: 'inherit' });
+  if (result.error) {
+    console.error(`${style.tag('err')} failed to launch ${editor}: ${result.error.message}`);
+    process.exit(127);
+  }
   process.exit(result.status ?? 0);
 };
 
