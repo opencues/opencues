@@ -616,22 +616,11 @@ export function decorateOpenCuesLine(
   const cuCursor    = codePointsToCodeUnits(fullText, cursor);
   const cuLineStart = codePointsToCodeUnits(fullText, lineStart);
   const cuLineEnd   = codePointsToCodeUnits(fullText, lineEnd);
-  const decorated = bootResult.decorateLine(lineText, fullText, cuCursor, cuLineStart, cuLineEnd);
-
-  // No directives applied → bootResult returned lineText unchanged.
-  // Skip the brand-color wrap so Gemini's per-segment <Text> colors
-  // (syntax highlighting, @path tints, etc.) are preserved on plain
-  // lines.
-  if (decorated === lineText) return lineText;
-
-  // Wrap the decorated line in OpenCues' brand foreground (bright
-  // white — see packages/opencues-cli/src/lib/style.cjs `accent`).
-  // Dim (\x1b[2m...\x1b[22m) and inverse (\x1b[7m...\x1b[27m) layer
-  // on top: \x1b[22m and \x1b[27m only reset their own attribute, not
-  // the foreground, so the brand color persists through the inner
-  // styling. \x1b[39m at the line end returns to terminal default
-  // so downstream segments (footer, status line) aren't affected.
-  return `\x1b[97m${decorated}\x1b[39m`;
+  // Pass through the runtime's decoration as-is. OpenCues only owns
+  // dim ranges (\x1b[2m...\x1b[22m) and active-selection inverse
+  // (\x1b[7m...\x1b[27m) — the surrounding plain text keeps whatever
+  // colour the terminal / Gemini's per-segment <Text> would give it.
+  return bootResult.decorateLine(lineText, fullText, cuCursor, cuLineStart, cuLineEnd);
 }
 
 /**
