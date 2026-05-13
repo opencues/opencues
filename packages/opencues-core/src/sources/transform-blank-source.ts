@@ -197,6 +197,121 @@ VERDICT: NONE
 INSTRUCTION:
 TARGET:`;
 
+// P1.5 — DEICTIC RESOLVER
+// =============================================================================
+// Conditional sub-step between EXTRACT and APPLY. Fires only when the
+// instruction contains a deictic reference ("this line", "this word",
+// "here", "that", "it", etc.) that needs resolving against the cursor
+// position. Most instructions are explicit and skip P1.5 entirely.
+//
+// Goal: rewrite the instruction so APPLY receives an UNAMBIGUOUS edit
+// command. Deictic words get replaced with explicit quoted spans drawn
+// from the target around the [CURSOR] marker. Positional cues like
+// "here" / "at this point" are LEFT ALONE — APPLY handles those via the
+// [CURSOR] marker itself.
+//
+// Implemented as a separate LLM call (not deterministic string mungery)
+// because real user phrasings vary widely: "make those better",
+// "shorten it", "fix this bit", "the third bullet", "the one with the
+// typo" — many require the same kind of reasoning EXTRACT does to find
+// the referent.
+//
+// Conditional trigger lives in `needsDeicticResolution` below.
+
+/** Returns true when the instruction contains a deictic that P1.5 should
+ *  try to resolve. Permissive — false positives only cost one extra LLM
+ *  call (P1.5 passes the instruction through unchanged). False negatives
+ *  bypass P1.5 entirely, so we err toward triggering. */
+export function needsDeicticResolution(instruction: string): boolean {
+  return /\b(this|that|these|those|it|them|there)\b/i.test(instruction);
+}
+
+export const P1_5_RESOLVE_DEICTICS_SYSTEM = `You receive an editing INSTRUCTION (a short imperative the user typed), a TARGET (the text to edit), and a [CURSOR] marker inside the TARGET showing where the user's caret was.
+
+The INSTRUCTION may contain DEICTIC references — words like "this line", "this word", "this paragraph", "this sentence", "that", "these", "those", "it", "them" — that point at specific spans in the TARGET. Your job is to rewrite the INSTRUCTION with those references RESOLVED into explicit, quoted spans, so a downstream editor reads the instruction unambiguously.
+
+Output exactly one line, nothing else:
+RESOLVED: <rewritten instruction>
+
+RULES:
+1. Preserve the verb and intent. ONLY resolve deictic references — do NOT perform the edit.
+2. Use the [CURSOR] location to find what each deictic refers to:
+   - "this line" / "the line" → \`the line "<line text containing cursor>"\`
+   - "this word" / "the word" → \`the word "<word containing cursor>"\`
+   - "this sentence" → \`the sentence "<sentence containing cursor>"\`
+   - "this paragraph" → \`the paragraph "<paragraph containing cursor>"\`
+   - "it" / "this" / "that" (standalone) → resolve to the smallest containing span (word > sentence > paragraph) based on what the verb implies
+   - "these"/"those" + plural noun → resolve to the relevant set, listed as a quoted comma-joined string
+3. Words like "here", "at this point", "right here" are POSITIONAL anchors — leave them UNCHANGED. The downstream APPLY pass uses the [CURSOR] marker for those.
+4. IDIOMATIC "it" in "make it X" / "make it Y" patterns is NOT deictic — it's a fixed English construction meaning "transform the whole thing". Examples: "make it british english", "make it past tense", "make it shorter", "make it a question", "make it formal", "make it caps". In these patterns, OUTPUT THE INSTRUCTION UNCHANGED. The "it" refers to the entire target, not a specific span.
+5. If the instruction contains NO resolvable deictic references, output it UNCHANGED.
+6. Do NOT include [CURSOR] in your output.
+7. Do NOT add extra commentary or explanations — only the rewritten instruction.
+
+EXAMPLES:
+
+INSTRUCTION: make this line bold
+TARGET: hi
+Dear Karen,[CURSOR]
+best regards
+RESOLVED: make the line "Dear Karen," bold
+
+INSTRUCTION: capitalize this word
+TARGET: hello wil[CURSOR]fred world
+RESOLVED: capitalize the word "wilfred"
+
+INSTRUCTION: make this paragraph italic
+TARGET: title
+
+The meeting starts at 3pm sharp.[CURSOR] We will cover budget and roadmap.
+
+footer
+RESOLVED: make the paragraph "The meeting starts at 3pm sharp. We will cover budget and roadmap." italic
+
+INSTRUCTION: rephrase this sentence
+TARGET: I went to the store yesterday. I bought[CURSOR] some apples. They were red.
+RESOLVED: rephrase the sentence "I bought some apples."
+
+INSTRUCTION: shorten it
+TARGET: Dear hiring manager, I am writing to express my strong[CURSOR] interest in the role of Senior Engineer at your company.
+RESOLVED: shorten the sentence "Dear hiring manager, I am writing to express my strong interest in the role of Senior Engineer at your company."
+
+INSTRUCTION: bold the word wilfred
+TARGET: hi my name is wilfred
+RESOLVED: bold the word wilfred
+
+INSTRUCTION: add a comma here
+TARGET: apples bananas[CURSOR] and oranges
+RESOLVED: add a comma here
+
+INSTRUCTION: insert a paragraph break here
+TARGET: hello world[CURSOR] and goodbye world
+RESOLVED: insert a paragraph break here
+
+INSTRUCTION: capitalize all words
+TARGET: the quick[CURSOR] brown fox
+RESOLVED: capitalize all words
+
+INSTRUCTION: fix this typo
+TARGET: helo wrl[CURSOR]d and bye
+RESOLVED: fix the typo in the word "wrld"
+
+INSTRUCTION: make it british english
+TARGET: the color of the harbor is gray[CURSOR]
+RESOLVED: make it british english
+
+INSTRUCTION: make it past tense
+TARGET: I run to the store[CURSOR] every day
+RESOLVED: make it past tense
+
+INSTRUCTION: make it shorter
+TARGET: A long sentence with extra words[CURSOR] that goes on
+RESOLVED: make it shorter
+
+INSTRUCTION: make it a question
+TARGET: The meeting is at 3pm.[CURSOR]
+RESOLVED: make it a question`;
+
 export const P2_APPLY_SYSTEM = `You receive:
 - INSTRUCTION: a short imperative editing command
 - TARGET: the text to apply the instruction to
@@ -261,6 +376,49 @@ RULES:
       TARGET: hi my name is wilfred
       WRONG REWRITE: **wilfred**                          ← collapsed body, lost context
       RIGHT REWRITE: hi my name is **wilfred**            ← target preserved, marker added
+
+12. ADDITION / INSERTION instructions — when the INSTRUCTION uses verbs like "add", "insert", "append", "fill", "fill in", "set", "put", the action is to ADD content to the TARGET, not transform it. Emit the rewritten target containing the new content. Handle these patterns:
+
+    (a) FILL PLACEHOLDER — when the TARGET contains bracketed/templated placeholders (e.g. \`[Your Name]\`, \`[Manager's Name]\`, \`[Manager's Name]\`, \`[Company]\`, \`[Date]\`, \`[Position]\`, \`[Your Position]\`, \`[Last Day]\`, \`[Your Address]\`, \`[xxx]\`, \`xxx\`, etc.) AND the INSTRUCTION supplies a value that semantically matches one of them (e.g. "add my name Wilfred", "add company CS Limited", "add last day 31st June 2026", "add position Engineer", "set manager Karen"), FIND the matching placeholder and REPLACE it with the value. Keep every OTHER placeholder and the surrounding text VERBATIM. Match by keyword overlap: "name" → \`[Your Name]\`, "manager" / "manager's name" / "boss" → \`[Manager's Name]\`, "position" / "role" / "title" → \`[Your Position]\` / \`[Your Role]\`, "company" / "employer" → \`[Company]\`, "last day" / "end date" / "leaving date" → \`[Last Working Day]\` / \`[Date]\`, "address" → \`[Your Address]\`. If the instruction itself names the field unambiguously (e.g. "add my name Wilfred"), the value to insert is the trailing tokens (everything after the field-name).
+
+    (b) ANCHORED INSERT — "add X after Y" / "add X before Y" / "add X to the Y line" / "add X after the dear line" → find Y in the target, insert X at the right position relative to it.
+
+    (c) CURSOR INSERT — "add X" with a [CURSOR] in the target and no clear placeholder match → insert X at [CURSOR]. Surrounding text preserved verbatim.
+
+    (d) APPEND — "add X" with no anchor, no placeholder match, no useful cursor info → append X to the end of the target on a new line.
+
+    (e) AUTO STYLING — "add bolding where appropriate" / "make bold the bits necessary" / "italicise key terms" / "highlight important words" → identify spans the reader's eye should land on (proper nouns, names, dates, titles, key phrases) and wrap them in the requested markdown markers (\`**...**\` for bold, \`*...*\` for italic). PICK reasonable spans — do not refuse on the grounds that "appropriate" is subjective. Aim for 2-5 emphasised spans per paragraph at most.
+
+    NEVER return an empty REWRITE for an "add X" instruction. If no placeholder matches and no cursor anchor is available, fall back to APPEND. The user expects something to happen.
+
+    EXAMPLES:
+      INSTRUCTION: add my name Wilfred
+      TARGET: Dear [Manager's Name],\\n\\nI am writing from [Your Address]. Sincerely,\\n[Your Name]
+      REWRITE: Dear [Manager's Name],\\n\\nI am writing from [Your Address]. Sincerely,\\nWilfred
+
+      INSTRUCTION: add company CS Limited
+      TARGET: Dear Karen,\\n\\nI am writing on behalf of [Company]. Regards.
+      REWRITE: Dear Karen,\\n\\nI am writing on behalf of CS Limited. Regards.
+
+      INSTRUCTION: add last working day 31st June 2026
+      TARGET: My last working day will be [Last Working Day]. Thank you.
+      REWRITE: My last working day will be 31st June 2026. Thank you.
+
+      INSTRUCTION: add position Senior Engineer
+      TARGET: I am writing to resign from my role as [Your Position] at the company.
+      REWRITE: I am writing to resign from my role as Senior Engineer at the company.
+
+      INSTRUCTION: add a joke after dear line
+      TARGET: Dear Karen,\\n\\nI hope you are well.
+      REWRITE: Dear Karen,\\n\\n(Why did the manager bring a ladder to work? To reach new heights.)\\n\\nI hope you are well.
+
+      INSTRUCTION: add bolding where appropriate
+      TARGET: Dear Karen,\\n\\nI am writing to formally resign from my position as Senior Engineer at CS Limited. My last day will be 31st June 2026.\\n\\nBest regards,\\nWilfred
+      REWRITE: Dear **Karen**,\\n\\nI am writing to formally resign from my position as **Senior Engineer** at **CS Limited**. My last day will be **31st June 2026**.\\n\\nBest regards,\\n**Wilfred**
+
+      INSTRUCTION: make bold the bits necessary
+      TARGET: This document contains private information about Acme Corp and is confidential.
+      REWRITE: This document contains **private information** about **Acme Corp** and is **confidential**.
 
 EXAMPLES:
 
