@@ -194,6 +194,42 @@ in `decorateOpenCuesLine` — `.replace(/\x1b\[7m/g, …)` /
 `.replace(/\x1b\[2m/g, …)`. Keep the swap scoped to the directive
 escapes; don't add a line-wide wrap.
 
+#### Preserve Gemini's per-line `color` prop on the replacement `<Text>`
+
+Companion rule to the no-line-wrap one above. Each segment Gemini's
+`renderItem` builds has an explicit `color` prop:
+
+```tsx
+const color = isOnCursorLine ? theme.text.accent : theme.text.primary;
+renderedLine.push(<Text key={`token-${segIdx}`} color={color}>{display}</Text>);
+```
+
+When OpenCues directives apply and we replace the `renderedLine`
+array with a single `<Text>`, **that replacement MUST carry the same
+`color` prop**:
+
+```tsx
+const __ocBaseColor = isOnCursorLine ? theme.text.accent : theme.text.primary;
+renderedLine.push(
+  <Text key="oc-decorated" color={__ocBaseColor}>{__ocDecorated}</Text>,
+);
+```
+
+Without it, Ink renders the replacement at terminal-default fg,
+which DROPS Gemini's per-line theme colour (accent on the cursor
+line, primary elsewhere). User symptom from the wild: "lines which
+have a solo cue in them DON'T get base colour. So the line is our
+alt word colour and the cue itself is dimmed."
+
+`color` is the OUTER attribute and our directive ANSI is INSIDE:
+- `\x1b[22m` (dim off) resets intensity only, not foreground — so
+  Ink's wrapping fg persists past a dim range.
+- `\x1b[27m` (inverse off) resets inverse only, not foreground — so
+  Ink's wrapping fg persists past an inverse range.
+
+The two attributes compose cleanly. Don't introduce a NEW fg colour
+(see no-line-wrap rule); preserve Gemini's EXISTING one.
+
 ### 4. wrappedGetText must prefer pendingText
 
 `wrappedGetText` / `wrappedGetCursor` in `boot.ts` read `pendingText`
