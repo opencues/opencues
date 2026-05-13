@@ -880,7 +880,16 @@ function repairLooksGarbled(repair: string): boolean {
  * for the model to finish reasoning AND emit a short reply.
  */
 function budgetForOutput(expectedChars: number, multiplier: number = 1.0): number {
-  const REASONING_HEADROOM = 400;
+  // REASONING_HEADROOM was 400; empirically `reasoning_effort: 'low'`
+  // on this model uses 500-800 tokens of reasoning before emitting
+  // the first output token. At 400 a ~700-char APPLY target ran out
+  // of budget mid-reasoning, never emitted the REWRITE: prefix, and
+  // production saw an empty output → FluidBlank cascade. Bumped to
+  // 700 to match observed model behaviour. Formula stays dynamic —
+  // larger targets still scale up linearly with chars × multiplier.
+  // See /tmp/probe-700.ts (5/5 at max_tokens=2048) and the
+  // 2026-05 resignation-letter failure in /tmp/opencues.log.
+  const REASONING_HEADROOM = 700;
   const FLOOR = 768;
   const CEILING = 4096;
   const est = Math.ceil((expectedChars * multiplier) / 3) + REASONING_HEADROOM;
