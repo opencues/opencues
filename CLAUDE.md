@@ -392,23 +392,29 @@ chrome-host's filesystem watch, subprocess via the chrome-host's
 been run. Without the host, chrome is sandboxed and scripted blanks
 fail with exit 127.
 
-Default: auto-detected from `script:` / `blankScript:` extension.
-`.sh .bash .ps1 .bat .cmd .exe .py .rb .pl` → not chrome (auto).
-With chrome-host installed, the host's bundler permissively includes
-these for chrome anyway (the host runs them on chrome's behalf). The
-core `inferHostCompat` stays conservative; the host's bundler is what
-flips the policy for the live-sync path. Everything else → all hosts.
+Default: every cue / blank advertises as compatible with every host.
+The runtime attempts the call; if the host can't fulfil it (e.g. chrome
+without chrome-host trying to spawn `.sh`), it fails at runtime (exit
+127) rather than being hidden behind a misleading "incompatible host"
+marker.
 
-Override via frontmatter:
+Historical note: `inferHostCompat` used to auto-exclude chrome for
+entries with `script: ./X.sh` / `.py` / etc., on the assumption chrome
+couldn't run subprocesses. With chrome-host (May 2026 native-messaging
+bridge) chrome CAN run POSIX scripts via the host process, so the
+heuristic became actively wrong. Removed in favour of explicit overrides.
+
+Override via frontmatter when you really need to scope:
 
 ```yaml
-on-host: [chrome, claude-code, gemini-cli, opencode]   # allow-list (platforms)
-not-on-host: [chrome]                                  # deny-list (platforms)
+on-host: [claude-code, opencode, gemini-cli]   # allow-list (chrome would fail)
+not-on-host: [chrome]                          # equivalent deny-list
 ```
 
-Resolution: `on-host` (if set) wins over auto-detect, then `not-on-host`
-filters. Surfaced by `opencues list` (per-entry marker), validated by
-`opencues validate` (typos + contradictions).
+Resolution: `on-host` (if set) is the allow-list; `not-on-host` removes
+denials from whichever set was chosen. Surfaced by `opencues list`
+(per-entry marker, hidden when "all"), validated by `opencues validate`
+(typos + contradictions).
 
 Full spec: `docs/features/host-compat.md`. Glossary entry:
 `docs/glossary.md § Host Compat`. API: `@opencues/core`'s
@@ -448,11 +454,9 @@ API: `@opencues/core`'s `inferSiteCompat(input, ctx)`,
 
 Real-world example: `.cues/blanks/opencues/BLANK.md` has
 `blankScript: ./opencues-blank.sh` (native fallback) AND a
-runtime-class implementation in `@opencues/runtime`. Auto-detect
-would exclude chrome because of the `.sh`; the file adds
-`on-host: chrome, claude-code, gemini-cli, opencode` to override. The
-validator warns about the contradiction (on-host + .sh), which is
-the expected nudge for readers to check.
+runtime-class implementation in `@opencues/runtime`. With the new
+default-all behaviour no override is needed — every host attempts
+the call and picks the right implementation at runtime.
 
 ---
 

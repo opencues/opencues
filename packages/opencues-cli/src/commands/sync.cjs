@@ -415,8 +415,10 @@ function walkSource(dir, core, cb) {
           cb({ absPath: cueMd, relPath: path.join(subdir, entry.name, folderFile), compat });
         } else {
           // Walk every file in the folder so colocated assets (README.md,
-          // sub-prompts, JSON manifests) come along. Skip script files
-          // (they wouldn't run in chrome anyway and just bloat the bundle).
+          // sub-prompts, JSON manifests) come along. Skip script files —
+          // bake-time bundles can't execute them, and chrome-host runs
+          // them from disk directly, so shipping the bytes just bloats
+          // the payload.
           walkFolder(folderPath, (file) => {
             const isScript = /\.(sh|bash|ps1|bat|cmd|exe|py|rb|pl|cs)$/i.test(file);
             if (isScript) return;

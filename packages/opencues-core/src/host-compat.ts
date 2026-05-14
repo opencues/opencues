@@ -2,38 +2,28 @@
  * Host-compat: which OpenCues integrations a cue or blank runs on.
  *
  * The OpenStandard supports multiple host integrations — claude-code,
- * opencode, gemini-cli, chrome — that share the same .md config format but
- * have different runtime capabilities. The most consequential split is:
+ * opencode, gemini-cli, chrome — that share the same .md config format.
+ * Most entries work on ALL hosts; the few that don't declare it explicitly
+ * via frontmatter.
  *
- *   - Native hosts (claude-code, opencode, gemini-cli) can spawn subprocesses
- *     and read arbitrary filesystem paths. Shell-script-backed blanks
- *     (volume.sh, brightness.sh, …) only run here.
+ * Default: every cue / blank advertises as compatible with every host. The
+ * runtime will attempt to invoke it; if the host genuinely can't fulfil the
+ * call (e.g. chrome without chrome-host trying to spawn a `.sh` script),
+ * the failure surfaces at runtime (exit 127 / "spawnProcess not supported")
+ * rather than being hidden behind a misleading "incompatible host" marker.
  *
- *   - Chrome can't spawn subprocesses or read arbitrary paths from a
- *     content-script context. Only LLM cues + runtime-class blanks
- *     (HackerNews, Stocks, Weather, …) work in chrome.
+ * Historical note: this used to auto-exclude chrome for entries with
+ * `script: ./X.sh` / `.py` / `.exe` / etc., on the assumption that chrome
+ * could never run subprocesses. With chrome-host (May 2026 native-messaging
+ * bridge) chrome CAN run POSIX scripts via the host process, so the
+ * heuristic became actively wrong. We removed the auto-exclusion in favour
+ * of explicit `on-host:` / `not-on-host:` overrides.
  *
- * Rather than make every cue author declare compatibility manually, we
- * INFER it from `script:` / `blankScript:` extension. Authors can override
- * with explicit `not-on-host:` / `on-host:` frontmatter when the auto-
- * detection is wrong.
+ * Override rules:
  *
- * Auto-detection rules:
- *
- *   script: ./X.sh             → not chrome  (subprocess)
- *   script: ./X.ps1            → not chrome  (subprocess)
- *   script: ./X.exe            → not chrome  (subprocess)
- *   script: ./X.bat            → not chrome  (subprocess)
- *   script: ./X.cmd            → not chrome  (subprocess)
- *   script: ./X.py             → not chrome  (subprocess)
- *   script: ./X.rb             → not chrome  (subprocess)
- *   blankScript: <same exts>   → not chrome
- *   no script: field           → all hosts   (LLM-only or runtime-class blank)
- *
- * Override rules (applied AFTER auto-detect):
- *
- *   on-host: [chrome]          → use as allow-list (everything else excluded)
- *   not-on-host: [chrome]      → remove chrome from the allow-list
+ *   on-host: [claude-code, opencode]    → allow-list (everything else excluded)
+ *   not-on-host: [chrome]               → deny-list (filtered out)
+ *   both                                → on-host allow AND not-on-host deny
  *
  * Conflicts (e.g. on-host: [chrome] AND not-on-host: [chrome]) are reported
  * as warnings by `opencues validate`; the runtime treats not-on-host as
@@ -44,22 +34,18 @@
 export const HOSTS = ['chrome', 'claude-code', 'gemini-cli', 'opencode'] as const;
 export type Host = typeof HOSTS[number];
 
-/** Native hosts can spawn subprocesses + access the filesystem. */
+/** Hosts that can spawn subprocesses + access the filesystem WITHOUT an
+ *  auxiliary helper. Chrome can also spawn subprocesses, but only when
+ *  chrome-host (the native-messaging bridge) is installed — so chrome's
+ *  capability is runtime-detected, not a static property. */
 export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'gemini-cli', 'opencode'];
 
-/** Script extensions that imply subprocess execution → not chrome. */
-const SUBPROCESS_EXTS = ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', '.rb', '.pl'];
-
 /**
- * The subset of frontmatter fields host-compat inference looks at.
- * Accepts both monolithic BlankConfig (camelCase) and SingleCueFrontmatter
- * (raw YAML keys) — the latter has `not-on-host` with hyphens.
+ * The subset of frontmatter fields host-compat resolution looks at. Accepts
+ * both monolithic BlankConfig (camelCase) and SingleCueFrontmatter (raw
+ * YAML keys) — the latter has `not-on-host` with hyphens.
  */
 export interface HostCompatInput {
-  /** Path to a script — extension is what matters. */
-  readonly script?: string;
-  /** Same as script but for blank mode. */
-  readonly blankScript?: string;
   /** Explicit allow-list. Camel + hyphenated forms both accepted. */
   readonly onHost?: readonly string[] | string;
   readonly 'on-host'?: readonly string[] | string;
@@ -74,7 +60,7 @@ export interface HostCompatResult {
   /** True if every host is in the allow-list (i.e. universal). */
   readonly all: boolean;
   /** Which mechanism produced this — useful for `opencues list` markers. */
-  readonly source: 'auto' | 'on-host' | 'not-on-host' | 'auto+not-on-host';
+  readonly source: 'auto' | 'on-host' | 'not-on-host';
 }
 
 /**
@@ -85,47 +71,35 @@ export interface HostCompatResult {
  *   inferHostCompat({})
  *     → { hosts: [chrome, claude-code, gemini-cli, opencode], all: true, source: 'auto' }
  *
- *   inferHostCompat({ script: './volume.sh' })
- *     → { hosts: [claude-code, gemini-cli, opencode], all: false, source: 'auto' }
- *
- *   inferHostCompat({ script: './foo.sh', 'not-on-host': ['opencode'] })
- *     → { hosts: [claude-code, gemini-cli], all: false, source: 'auto+not-on-host' }
- *
  *   inferHostCompat({ 'on-host': ['chrome'] })
  *     → { hosts: [chrome], all: false, source: 'on-host' }
+ *
+ *   inferHostCompat({ 'not-on-host': ['chrome'] })
+ *     → { hosts: [claude-code, gemini-cli, opencode], all: false, source: 'not-on-host' }
  */
 export function inferHostCompat(input: HostCompatInput): HostCompatResult {
   const onHost = normaliseHostList(input.onHost ?? input['on-host']);
   const notOnHost = normaliseHostList(input.notOnHost ?? input['not-on-host']);
 
-  // Stage 1: explicit on-host wins as allow-list.
+  // Start from on-host allow-list when provided; otherwise every host.
   let hosts: Host[];
   let source: HostCompatResult['source'];
   if (onHost.length > 0) {
     hosts = [...onHost];
     source = 'on-host';
   } else {
-    // Stage 2: auto-detect from script extension.
-    const subprocess = hasSubprocessScript(input.script) || hasSubprocessScript(input.blankScript);
-    hosts = subprocess ? [...NATIVE_HOSTS] : [...HOSTS];
+    hosts = [...HOSTS];
     source = 'auto';
   }
 
-  // Stage 3: not-on-host removes any explicit denials.
+  // not-on-host removes explicit denials.
   if (notOnHost.length > 0) {
     hosts = hosts.filter(h => !notOnHost.includes(h));
-    source = source === 'on-host' ? 'on-host' : 'auto+not-on-host';
+    if (source === 'auto') source = 'not-on-host';
   }
 
   hosts.sort();
   return { hosts, all: hosts.length === HOSTS.length, source };
-}
-
-/** True if a path's extension implies subprocess execution. */
-function hasSubprocessScript(p: string | undefined): boolean {
-  if (!p) return false;
-  const lower = p.toLowerCase().trim();
-  return SUBPROCESS_EXTS.some(ext => lower.endsWith(ext));
 }
 
 /**

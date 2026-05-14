@@ -19,45 +19,25 @@ import {
 const SORTED_HOSTS = [...HOSTS].sort();
 const SORTED_NATIVE = [...NATIVE_HOSTS].sort();
 
-describe('inferHostCompat: auto-detection', () => {
-  it('no script field → all hosts', () => {
+describe('inferHostCompat: defaults', () => {
+  it('no frontmatter → all hosts', () => {
     const r = inferHostCompat({});
     assert.deepStrictEqual(r.hosts, SORTED_HOSTS);
     assert.strictEqual(r.all, true);
     assert.strictEqual(r.source, 'auto');
   });
 
-  it('runtime-class blank (no script) → all hosts', () => {
-    // e.g. blanks/stocks.md with `name: stocks` resolves
-    // by name in the runtime's blanksRegistry; no script = chrome OK.
-    const r = inferHostCompat({});
-    assert.strictEqual(r.all, true);
-  });
-
-  for (const ext of ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', '.rb', '.pl']) {
-    it(`script ending in ${ext} → not chrome (subprocess)`, () => {
-      const r = inferHostCompat({ script: `./helper${ext}` });
-      assert.deepStrictEqual(r.hosts, SORTED_NATIVE);
-      assert.strictEqual(r.all, false);
-      assert.strictEqual(r.source, 'auto');
-      assert.ok(!r.hosts.includes('chrome'));
-    });
-  }
-
-  it('blankScript with .sh → not chrome (treated same as script)', () => {
-    const r = inferHostCompat({ blankScript: './volume-blank.sh' });
-    assert.deepStrictEqual(r.hosts, SORTED_NATIVE);
-  });
-
-  it('script extension is case-insensitive', () => {
-    assert.strictEqual(inferHostCompat({ script: './FOO.SH' }).all, false);
-    assert.deepStrictEqual(inferHostCompat({ script: './Foo.Bash' }).hosts, SORTED_NATIVE);
-  });
-
-  it('script with no recognised extension → all hosts (assume runtime-resolvable)', () => {
-    // e.g. script: 'volume' in monolithic ## Blanks JSON refers to a
-    // runtime registry name, not a file path.
-    const r = inferHostCompat({ script: 'volume' });
+  it('script/blankScript fields are IGNORED (no auto-exclusion)', () => {
+    // Historical note: `.sh` etc. used to auto-exclude chrome on the
+    // assumption it couldn't spawn subprocesses. With chrome-host
+    // (May 2026) chrome CAN run scripts via the native-messaging bridge,
+    // so the heuristic was actively wrong and got removed. Authors who
+    // genuinely want to exclude chrome use `not-on-host: [chrome]`.
+    // Cast through `unknown` — the type no longer admits a `script` field,
+    // but a future caller that forgets to drop the property mustn't see
+    // their entry vanish from chrome.
+    const r = inferHostCompat({ script: './foo.sh' } as unknown as Parameters<typeof inferHostCompat>[0]);
+    assert.deepStrictEqual(r.hosts, SORTED_HOSTS);
     assert.strictEqual(r.all, true);
   });
 });
@@ -72,11 +52,6 @@ describe('inferHostCompat: explicit on-host (allow-list)', () => {
   it('on-host narrows even when auto would include more', () => {
     const r = inferHostCompat({ 'on-host': ['claude-code', 'opencode'] });
     assert.deepStrictEqual(r.hosts, ['claude-code', 'opencode']);
-  });
-
-  it('on-host: [chrome] BEATS subprocess auto-detect (author opt-in)', () => {
-    const r = inferHostCompat({ script: './foo.sh', 'on-host': ['chrome'] });
-    assert.deepStrictEqual(r.hosts, ['chrome']);
   });
 
   it('on-host accepts a comma-separated string', () => {
@@ -104,13 +79,16 @@ describe('inferHostCompat: explicit not-on-host (deny)', () => {
   it('not-on-host: [chrome] removes chrome from default-all', () => {
     const r = inferHostCompat({ 'not-on-host': ['chrome'] });
     assert.deepStrictEqual(r.hosts, SORTED_NATIVE);
-    assert.strictEqual(r.source, 'auto+not-on-host');
+    assert.strictEqual(r.source, 'not-on-host');
   });
 
-  it('not-on-host stacks with auto-detected subprocess restriction', () => {
-    const r = inferHostCompat({ script: './volume.sh', 'not-on-host': ['opencode'] });
+  it('not-on-host stacks with on-host', () => {
+    const r = inferHostCompat({
+      'on-host': ['claude-code', 'opencode', 'gemini-cli'],
+      'not-on-host': ['opencode'],
+    });
     assert.deepStrictEqual(r.hosts, ['claude-code', 'gemini-cli']);
-    assert.strictEqual(r.source, 'auto+not-on-host');
+    assert.strictEqual(r.source, 'on-host');
   });
 
   it('not-on-host vs on-host: deny wins on overlap', () => {

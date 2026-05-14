@@ -1,44 +1,47 @@
+---
+last_updated: 2026-05-14
+---
+
 # Host Compatibility
 
 The OpenStandard runs on four integration hosts — `claude-code`, `opencode`,
-`chrome`, `gemini-cli` — that share the same `.md` config format but
-differ in runtime capabilities. Native hosts (CC, OC, gemini-cli) can
-spawn subprocesses and read arbitrary filesystem paths; chrome can't.
+`chrome`, `gemini-cli` — that share the same `.md` config format. Native
+hosts (CC, OC, gemini-cli) can spawn subprocesses and read the filesystem
+unconditionally. Chrome can too, but only when chrome-host (the
+native-messaging bridge) is installed — so chrome's spawn capability is
+*runtime-detected*, not a static property.
 
-A cue or blank can declare which hosts it works on. Most entries
-don't need to: OpenCues **infers** compatibility from what the entry
-uses. The annotation is only for the cases where inference can't.
+A cue or blank can declare which hosts it works on, but most entries
+don't need to: **every entry advertises as compatible with every host by
+default.** The runtime attempts the call; if the host can't fulfil it,
+the failure surfaces at runtime (exit 127) rather than being hidden
+behind a misleading "incompatible host" marker.
 
 ---
 
-## How inference works
+## Historical note
 
-`@opencues/core` exports `inferHostCompat(input)`. Inputs are read from
-frontmatter. The rule is one line:
+This used to do auto-exclusion: `script:` / `blankScript:` ending in
+`.sh / .bash / .ps1 / .py / .rb / .pl / .exe / .bat / .cmd` would
+auto-exclude chrome on the assumption it couldn't spawn subprocesses.
+That assumption stopped holding when chrome-host shipped (May 2026) —
+chrome-host runs scripts on chrome's behalf, so POSIX shell scripts now
+work everywhere with the host installed.
 
-> **If `script:` or `blankScript:` ends in a subprocess extension
-> (`.sh`, `.bash`, `.ps1`, `.bat`, `.cmd`, `.exe`, `.py`, `.rb`, `.pl`),
-> the entry can't run in chrome.** Otherwise it runs everywhere.
-
-That covers every cue + blank we ship today without a single annotation:
-
-| Entry | Auto-detected hosts | Why |
-|---|---|---|
-| `cues/grammar/CUE.md` (LLM only) | all | no script |
-| `blanks/math/BLANK.md` (compute parser) | all | no script |
-| `blanks/affirmations/BLANK.md` (list) | all | no script |
-| `blanks/stocks/BLANK.md` (runtime class) | all | no script |
-| `blanks/volume/BLANK.md` (`blankScript: ./volume-blank.sh`) | claude-code, opencode, gemini-cli | `.sh` |
-| `blanks/brightness/BLANK.md` (`blankScript: ./brightness-blank.sh`) | claude-code, opencode, gemini-cli | `.sh` |
+The heuristic was removed in favour of "default everywhere, scope explicitly
+when needed." `.sh`-bearing blanks no longer carry a misleading marker in
+`opencues list`, and `opencues sync chrome` no longer drops their folders
+from the bundle (it just strips the script bytes — chrome-host runs them
+from disk directly).
 
 ---
 
 ## Explicit overrides
 
-Two frontmatter fields, applied AFTER auto-detect:
+Two frontmatter fields:
 
 ```yaml
-on-host: [chrome]                              # allow-list
+on-host: [claude-code, opencode]               # allow-list
 not-on-host: [chrome]                          # deny-list
 ```
 
@@ -50,25 +53,25 @@ Both accept:
 
 ### Resolution order
 
-1. **`on-host:` is the allow-list** if set. Auto-detect is ignored.
-2. Otherwise, **auto-detect from `script:` / `blankScript:` extension.**
+1. **`on-host:` is the allow-list** if set. Default-all is bypassed.
+2. Otherwise the resolved set is every host.
 3. **`not-on-host:` filters** the result (deny wins on overlap).
 
 ### When you'd use `on-host:`
 
 - A demo cue that only makes sense in the browser (e.g. a "page word
   count" prompt that needs DOM access)
-- A runtime-class blank that ALSO has a shell fallback for native
-  hosts. Without `on-host:`, auto-detect sees the `.sh` and excludes
-  chrome — the override re-includes it. See
-  `.cues/blanks/opencues/BLANK.md` for a real example.
+- A diagnostic blank scoped to one specific host (rare)
 
 ### When you'd use `not-on-host:`
 
-- A blank that uses a runtime class but doesn't make sense outside
-  one specific host (rare)
-- Forcing exclusion when the auto-detect would say "all hosts" but you
-  know better
+- A blank you know will fail on a specific host and want to hide
+  rather than let it fail at runtime (e.g. a Windows-only `.exe`
+  blank you want excluded from non-Windows native hosts)
+
+In practice, most entries set neither field — failure at runtime is
+the friendlier surface than a hidden entry that the user can't figure
+out why they don't see.
 
 ---
 
@@ -76,9 +79,9 @@ Both accept:
 
 | Surface | What it does |
 |---|---|
-| `opencues list` | Shows `[host1, host2, host3]` per entry. `[all]` for universal. |
-| `opencues validate` | Warns on unknown host names, on-host:[chrome] + .sh contradictions, and empty allow-lists |
-| `opencues sync chrome` (planned) | Filters out entries where `chrome` isn't in the resolved hosts |
+| `opencues list` | Shows `[host1, host2, host3]` per entry. **Hidden when the entry resolves to "all"** (the common case) — `--all` re-surfaces every marker. |
+| `opencues validate` | Warns on unknown host names + redundant overrides |
+| `opencues sync chrome` | Filters out entries where `chrome` is explicitly excluded via `not-on-host` / `on-host` |
 
 ---
 
@@ -86,13 +89,12 @@ Both accept:
 
 ```yaml
 ---
-# Optional. Overrides auto-detect. When set, the listed hosts are the
-# only ones this entry runs on. Omit if you want the auto-detect default.
+# Optional. Narrows the default (every host) to this set.
 on-host: [chrome, claude-code, gemini-cli, opencode]   # array
-on-host: chrome, claude-code                       # comma-separated
-on-host: chrome                                    # single value
+on-host: chrome, claude-code                           # comma-separated
+on-host: chrome                                        # single value
 
-# Optional. Removes hosts from the resolved set (after on-host or auto).
+# Optional. Removes hosts from the default (or `on-host`) set.
 not-on-host: [chrome]
 not-on-host: chrome, opencode
 ---
@@ -112,29 +114,29 @@ warnings about them so typos are caught.
 ```ts
 import { inferHostCompat, formatHostList, HOSTS, NATIVE_HOSTS } from '@opencues/core';
 
-const result = inferHostCompat({
-  script: './volume.sh',
-  // optional: 'on-host': ['chrome'],
-  // optional: 'not-on-host': ['opencode'],
-});
-// → {
-//     hosts: ['claude-code', 'gemini-cli', 'opencode'],
-//     all: false,
-//     source: 'auto'   // or 'on-host' / 'auto+not-on-host'
-//   }
+inferHostCompat({});
+// → { hosts: ['chrome', 'claude-code', 'gemini-cli', 'opencode'], all: true, source: 'auto' }
 
-formatHostList(result.hosts);
-// → 'claude-code, gemini-cli, opencode'   (or 'all' if every host)
+inferHostCompat({ 'on-host': ['chrome'] });
+// → { hosts: ['chrome'], all: false, source: 'on-host' }
+
+inferHostCompat({ 'not-on-host': ['chrome'] });
+// → { hosts: ['claude-code', 'gemini-cli', 'opencode'], all: false, source: 'not-on-host' }
+
+formatHostList(['claude-code', 'gemini-cli', 'opencode']);
+// → 'claude-code, gemini-cli, opencode'
+formatHostList(['chrome', 'claude-code', 'gemini-cli', 'opencode']);
+// → 'all'
 ```
 
 | Constant | Value |
 |---|---|
 | `HOSTS` | `['chrome', 'claude-code', 'gemini-cli', 'opencode']` |
-| `NATIVE_HOSTS` | `['claude-code', 'gemini-cli', 'opencode']` (subprocess + filesystem capable) |
+| `NATIVE_HOSTS` | `['claude-code', 'gemini-cli', 'opencode']` — hosts that have subprocess + filesystem capability unconditionally (no auxiliary helper needed) |
 
 | Function | Returns |
 |---|---|
-| `inferHostCompat(input)` | `{ hosts, all, source }` |
+| `inferHostCompat(input)` | `{ hosts, all, source }` — `source` is `'auto'` / `'on-host'` / `'not-on-host'` |
 | `unknownHostNames(value)` | `string[]` of host names that aren't in `HOSTS` (validator helper) |
 | `formatHostList(hosts)` | Human display: `"all"` or `"claude-code, gemini-cli, opencode"` |
 
@@ -142,12 +144,10 @@ formatHostList(result.hosts);
 
 ## Why this exists
 
-Three motivations:
+Two motivations:
 
-1. **`opencues sync chrome`** has to know which entries are safe to bundle into the Chrome extension. Bundling a blank that calls `volume-blank.sh` would silently fail because chrome content scripts can't spawn processes — the user would see a missing-blank message in the extension. Filter it out at sync time, with an honest "this needs subprocess access" reason.
+1. **`opencues sync chrome`** filters the bundle: explicit `not-on-host: [chrome]` entries are dropped at bake time so the extension doesn't ship code it can never run. Script-bearing folders still bundle (chrome-host can run them) but their script bytes are stripped — host runs from disk.
 
-2. **`opencues list`** is a "what's actually going to fire?" diagnostic. Showing the host marker per entry makes it obvious why a cue you defined isn't appearing in chrome — you can see at a glance that it's restricted.
+2. **Author intent** — sometimes you DO want to gate (a chrome-only demo cue, a Linux-only diagnostic). The override fields make the gate explicit + machine-readable, vs hiding it in script logic.
 
-3. **Author intent** — sometimes you DO want to gate (a chrome-only demo cue, a Linux-only diagnostic). The override fields make the gate explicit + machine-readable, vs hiding it in script logic.
-
-The OpenStandard's design principle: **infer what's obvious, declare what isn't, validate everything.** Host-compat is a clean instance of that.
+The OpenStandard's design principle: **default to working, declare exceptions, validate everything.** Host-compat is a clean instance of that.

@@ -86,8 +86,8 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
   it('list: finds cue + blank with canonical CUE.md / BLANK.md filenames', () => {
     list([], ctx);
     const out = logs.join('\n');
-    expect(out).toMatch(/CUES \(1\)/);
-    expect(out).toMatch(/BLANKS \(1\)/);
+    expect(out).toMatch(/Cues \(1\)/);
+    expect(out).toMatch(/Blanks \(1\)/);
     expect(out).toContain('foo');
     expect(out).toContain('bar');
     expect(out).toContain('CUE.md');

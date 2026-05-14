@@ -363,10 +363,8 @@ function checkEndpoint(file, name, src, validateEndpoint, errors, warnings) {
 
 // Host-compat sanity. Three failure modes worth catching:
 //   1. Unknown host name in on-host: / not-on-host: (typo, e.g. "claud-code")
-//   2. on-host: [chrome] but the script: extension implies subprocess
-//      (auto-detect would say "not chrome" — author probably didn't realise)
-//   3. inferHostCompat() resolves to ZERO hosts (effectively disabled)
-function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, errors, warnings, fileContent) {
+//   2. inferHostCompat() resolves to ZERO hosts (effectively disabled)
+function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, errors, warnings, _fileContent) {
   if (!src) return;
   // 1. Typos in explicit lists.
   const onHost = src.onHost ?? src['on-host'];
@@ -377,29 +375,8 @@ function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, err
   for (const bad of unknownHostNames(notOnHost)) {
     warnings.push(`${file}: ${name}: unknown host in not-on-host: "${bad}"`);
   }
-  // 2. Author override likely wrong (script: ./X.sh but on-host: [chrome]).
-  // Suppressed when the blank declares `impl:` (the user-blank JS loader
-  // path — chrome runs it via the Worker loader) OR when the file body
-  // / frontmatter comments explain the override (mentions "chrome routes"
-  // / "@opencues/runtime" / "runtime class"). Both signal a deliberate
-  // override; the warning was meant to catch accidental on-host: chrome
-  // additions, not informed ones.
+  // 2. Empty allow-list = entry never runs anywhere.
   const compat = inferHostCompat(src);
-  const explicitChrome = compat.source === 'on-host' && compat.hosts.includes('chrome');
-  const sub = ['.sh', '.bash', '.ps1', '.bat', '.cmd', '.exe', '.py', '.rb', '.pl'];
-  const hasSubprocess = (s) => s && sub.some(e => s.toLowerCase().endsWith(e));
-  const hasImpl = !!src.impl;
-  const hasOverrideExplanation = fileContent && /(chrome\s+routes|@opencues\/runtime|runtime\s+class|OpenCuesSettingsBlank|impl:\s)/i.test(fileContent);
-  if (explicitChrome && !hasImpl && !hasOverrideExplanation
-      && (hasSubprocess(src.script) || hasSubprocess(src.blankScript))) {
-    warnings.push(
-      `${file}: ${name}: on-host includes "chrome" but script extension implies a subprocess ` +
-      `(${src.script || src.blankScript}). Chrome can't spawn processes — was this intended? ` +
-      `(if chrome routes through a runtime class or impl:, add a frontmatter comment ` +
-      `saying so to silence this warning)`
-    );
-  }
-  // 3. Empty allow-list = entry never runs anywhere.
   if (compat.hosts.length === 0) {
     warnings.push(`${file}: ${name}: host-compat resolves to 0 hosts — this entry will never run`);
   }

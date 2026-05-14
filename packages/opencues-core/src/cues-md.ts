@@ -252,15 +252,16 @@ export interface BlankConfig {
   /** Named prompts parsed from ## sections in the CUE.md / BLANK.md body (e.g. { Extract: "...", Transform: "..." }) */
   prompts?: Record<string, string>;
   /**
-   * Explicit host allow-list. When set, takes precedence over auto-detection.
-   * Use the canonical host names: claude-code, opencode, chrome, gemini-cli.
-   * See @opencues/core's `inferHostCompat()` for the resolution rules.
+   * Explicit host allow-list. When set, narrows the default (all hosts) to
+   * this set. Use the canonical host names: claude-code, opencode, chrome,
+   * gemini-cli. See @opencues/core's `inferHostCompat()` for the resolution rules.
    */
   onHost?: string[];
   /**
-   * Explicit host deny-list. Removes hosts from the auto-detected (or
-   * on-host) set. Useful for marking a blank as "not chrome" when the
-   * auto-detection (script: extension) didn't catch it.
+   * Explicit host deny-list. Removes hosts from the default (or `on-host`)
+   * set. Useful for marking a blank as "not chrome" when chrome genuinely
+   * can't run it (rare — chrome-host runs scripts on chrome's behalf, so
+   * `.sh`/`.py` entries work everywhere by default).
    */
   notOnHost?: string[];
   /**
@@ -771,9 +772,9 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   maxFetchesPerMinute?: number;
   maxLlmPerMinute?: number;
   maxStorageBytes?: number;
-  /** Explicit host allow-list (takes precedence over auto-detection from script: extension). */
+  /** Explicit host allow-list — narrows the default (every host) to this set. */
   onHost?: string[];
-  /** Explicit host deny-list (filters out from the auto-detected / on-host set). */
+  /** Explicit host deny-list — removes hosts from the default (or `on-host`) set. */
   notOnHost?: string[];
   /**
    * Scope allow-list. Each entry can be a platform name (claude-code,
