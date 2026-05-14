@@ -25,6 +25,7 @@ function stubSource(opts: {
   return {
     id: opts.id,
     priority: opts.priority ?? 50,
+    isCycleable: false,
     supports: () => true,
     async getCues(ctx) {
       opts.seenContexts?.push(ctx);

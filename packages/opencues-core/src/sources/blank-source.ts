@@ -18,9 +18,47 @@ export interface BlankSourceConfig {
   readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 }
 
+/**
+ * Pure inference: is this individual blank definition cycleable?
+ *
+ * Cycleable = user picks between values via Ctrl+Alt+arrow. Hosts
+ * without a cycling surface (chrome's normal-`<input>` mode) drop
+ * cycleable blanks at registration so they don't silently fill the
+ * first value and ignore the rest.
+ *
+ * Signals (in priority order):
+ *   - blankReadOnly: true             → false (explicit override)
+ *   - blankSatellite: true            → true  (selector/satellite shape)
+ *   - stepValues.length > 1           → true  (list cycling)
+ *   - blankStep present               → true  (numeric step cycling)
+ *   - blankScript:                    → true  (script-backed default;
+ *                                              opt out via blankReadOnly)
+ *   - impl: <class>                   → false (impl blanks single-shot
+ *                                              by default; satellite-shaped
+ *                                              impl blanks like
+ *                                              OpenCuesSettings set
+ *                                              blankSatellite above)
+ *   - everything else (e.g. compute)  → false
+ */
+export function isBlankConfigCycleable(blk: BlankConfig): boolean {
+  if (blk.blankReadOnly) return false;
+  if (blk.blankSatellite) return true;
+  if (blk.stepValues && blk.stepValues.length > 1) return true;
+  if (blk.blankStep !== undefined) return true;
+  if (blk.blankScript) return true;
+  return false;
+}
+
 export class BlankSource implements CueSource {
   readonly id = 'blank';
   readonly priority = 95;
+  /** BlankSource dispatches to potentially-many BlankConfig entries.
+   *  Cycleability is per-config, not per-source — `buildSourcesFromConfig`
+   *  prunes cycleable entries from the blanks map BEFORE constructing
+   *  BlankSource when the host advertises `supportsCycling: false`. At
+   *  this level the source is treated as not-cycleable; the pruning
+   *  upstream is what enforces compatibility. */
+  readonly isCycleable = false;
 
   private blanks: Record<string, BlankConfig>;
   private readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;

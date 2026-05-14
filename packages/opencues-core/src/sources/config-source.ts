@@ -76,6 +76,10 @@ export class ConfigSource implements CueSource {
   readonly id: string;
   readonly priority: number;
   readonly scope: 'words' | 'blanks' | 'all';
+  /** Word-cues + alternatives sources are always cycleable — they
+   *  present alternatives the user picks between. Hosts without a
+   *  cycling surface drop these at registration. */
+  readonly isCycleable = true;
 
   /** Source configuration from .md file (exposed for ClassifiedSourceGroup) */
   readonly sourceConfig: SourceConfig;

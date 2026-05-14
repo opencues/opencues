@@ -19,6 +19,7 @@ export {
 
 export {
   BlankSource,
+  isBlankConfigCycleable,
   type BlankSourceConfig,
 } from './sources/blank-source';
 

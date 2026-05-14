@@ -49,6 +49,11 @@ interface RouteEntry {
 export class RoutedWordSourceGroup implements CueSource {
   readonly id: string;
   readonly priority: number;
+  /** RoutedWordSourceGroup wraps word-cue ConfigSources — always
+   *  cycleable since cues by definition surface alternatives the
+   *  user picks between. Hosts without a cycling surface skip the
+   *  whole group at registration. */
+  readonly isCycleable = true;
 
   /** Sources with `match:` or `keywords:` — checked priority desc. */
   private readonly entries: readonly RouteEntry[];

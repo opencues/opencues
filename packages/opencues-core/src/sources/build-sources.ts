@@ -22,7 +22,7 @@ import { CueSource, HttpAdapter } from '../types';
 import { CuesMdConfig, SourceConfig, BlankConfig } from '../cues-md';
 import { ConfigSource } from './config-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
-import { BlankSource } from './blank-source';
+import { BlankSource, isBlankConfigCycleable } from './blank-source';
 import { FluidBlankSource, type FluidBlankSourceConfig } from './fluid-blank-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
@@ -135,6 +135,27 @@ export interface BuildSourcesOptions {
   onTransformBlankEvent?: TransformBlankSourceConfig['onEvent'];
   /** Subscriber for `FluidBlankSource` (2-pass pipeline). */
   onFluidBlankEvent?: FluidBlankSourceConfig['onEvent'];
+  /**
+   * Whether the host advertises a CYCLING SURFACE — i.e. it can
+   * intercept Ctrl+Alt+arrow keys AND render visual feedback for
+   * the user to pick between alternatives. Terminal hosts and
+   * chrome's contenteditable branch advertise true; chrome's normal
+   * `<input>` / `<textarea>` branch advertises false (no overlay,
+   * no key dispatch — "Universal Integration" profile).
+   *
+   * When false: every CueSource whose `isCycleable` is true is
+   * pruned at construction time, and cycleable individual BlankConfig
+   * entries are pruned from the blanks map BEFORE BlankSource sees
+   * them. Word-cues, selector/satellite blanks, list blanks,
+   * script-backed cycling blanks (volume, brightness) — all dropped.
+   *
+   * FluidBlankSource and TransformBlankSource (single-answer) plus
+   * compute blanks (weather/stocks/answer/etc.) survive.
+   *
+   * Defaults to `true` for back-compat — every existing host that
+   * has cycling continues to register everything.
+   */
+  supportsCycling?: boolean;
 }
 
 /**
@@ -185,6 +206,11 @@ export function buildSourcesFromConfig(
   const apiKeys = options.apiKeys ?? {};
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
+  // Universal-Integration profile: when the host can't cycle (chrome's
+  // normal `<input>` / `<textarea>` branch), drop everything that
+  // presents alternatives the user picks between. Default true keeps
+  // every existing host running unchanged.
+  const supportsCycling = options.supportsCycling !== false;
   // globalEndpoint reserved for future per-call resolution; resolveLLM
   // currently sources endpoint from the resolved provider's default.
 
@@ -233,6 +259,14 @@ export function buildSourcesFromConfig(
 
       if (scope === 'words' && parser === 'alternatives') {
         if (!options.enableWordCues) continue;
+        // Universal-Integration filter: word-cues are cycleable by
+        // definition (they surface alternatives). Skip when host has
+        // no cycling surface so we don't burn LLM tokens producing
+        // output that can't be presented to the user.
+        if (!supportsCycling) {
+          options.log?.(`buildSources: skipping word-cue '${srcCfg.name}' — host has no cycling surface`);
+          continue;
+        }
         // Every word-cue source must declare what it cares about via
         // match: or keywords:. Catch-all "default" sources were removed —
         // an explicit `match: .*` is required if the user really wants
@@ -284,9 +318,17 @@ export function buildSourcesFromConfig(
     const keywordBlanks: Record<string, BlankConfig> = {};
     for (const [name, blk] of Object.entries(options.blanks)) {
       if (blankDisableSet.has(name)) continue;
-      if (blk.blankKeywords?.length) {
-        keywordBlanks[name] = blk;
+      if (!blk.blankKeywords?.length) continue;
+      // Universal-Integration filter: skip cycleable blank defs (volume,
+      // brightness, opencues-settings, list blanks with stepValues) when
+      // host has no cycling surface. Single-shot compute blanks (weather,
+      // stocks, dictionary, etc.) survive — they're impl-based with no
+      // cycling signals on their BlankConfig.
+      if (!supportsCycling && isBlankConfigCycleable(blk)) {
+        options.log?.(`buildSources: skipping cycleable blank '${name}' — host has no cycling surface`);
+        continue;
       }
+      keywordBlanks[name] = blk;
     }
     if (Object.keys(keywordBlanks).length > 0) {
       sources.push(new BlankSource({

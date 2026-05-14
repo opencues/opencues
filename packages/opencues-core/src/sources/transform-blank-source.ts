@@ -1128,6 +1128,9 @@ export interface TransformBlankSourceConfig {
 export class TransformBlankSource implements CueSource {
   readonly id = 'transform-blank';
   readonly priority: number;
+  /** Transform-blank rewrites the buffer with a single LLM answer —
+   *  no cycling. Universal-compatible. */
+  readonly isCycleable = false;
 
   private httpAdapter: HttpAdapter;
   private provider: ProviderAdapter;

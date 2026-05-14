@@ -8,8 +8,9 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { buildSourcesFromConfig, combineWordSources } from './build-sources';
 import { ConfigSource } from './config-source';
+import { isBlankConfigCycleable } from './blank-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
-import { CuesMdConfig, SourceConfig, PromptConfig } from '../cues-md';
+import { CuesMdConfig, SourceConfig, PromptConfig, BlankConfig } from '../cues-md';
 import { HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
 
@@ -249,5 +250,170 @@ describe('ConfigSource.supports()', () => {
       ...configSourceWiring,
     });
     assert.strictEqual(src.scope, 'words');
+  });
+});
+
+// =====================================================================
+// Universal-Integration cycleability inference + filter
+// =====================================================================
+//
+// "Universal Integration" = host with no cycling surface. Today it's
+// chrome's normal-`<input>` / `<textarea>` branch; the design extends
+// to any future read-only / inline integration profile. The contract:
+//
+// - Every CueSource declares `isCycleable: boolean` (structural inference
+//   from the source class + def shape, no frontmatter changes).
+// - buildSourcesFromConfig accepts `supportsCycling: boolean`. When
+//   false, cycleable sources / blank defs are pruned at registration.
+// - Word-cues (always cycleable) are dropped entirely.
+// - Selector/satellite/list/script blanks are pruned from the BlankSource
+//   blanks map BEFORE construction.
+// - Single-answer sources (FluidBlank, TransformBlank) survive.
+// - Compute blanks (weather/stocks/answer — impl-based with no cycling
+//   signals on BlankConfig) survive.
+
+describe('isBlankConfigCycleable — structural inference', () => {
+  const stub = (overrides: Partial<BlankConfig>): BlankConfig => ({
+    name: 'x',
+    ...overrides,
+  });
+
+  it('stepValues with >1 entry → cycleable (list blank)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ stepValues: ['a', 'b'] })), true);
+  });
+
+  it('stepValues with 1 entry → not cycleable (degenerate, no choice)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ stepValues: ['only'] })), false);
+  });
+
+  it('blankSatellite: true → cycleable (selector/satellite shape)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ blankSatellite: true })), true);
+  });
+
+  it('blankStep numeric → cycleable (volume/brightness-style step)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ blankStep: 6 })), true);
+  });
+
+  it('blankScript present (no readOnly override) → cycleable (script default-deny)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ blankScript: './x.sh' })), true);
+  });
+
+  it('blankReadOnly: true overrides all signals → not cycleable', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({
+      blankReadOnly: true,
+      blankScript: './x.sh',
+      blankSatellite: true,
+      stepValues: ['a', 'b'],
+    })), false);
+  });
+
+  it('impl-only blank (compute: weather/stocks/answer) → not cycleable', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ impl: 'WeatherBlank' })), false);
+  });
+
+  it('plain blank with just blankKeywords → not cycleable (no cycling shape)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ blankKeywords: ['hello'] })), false);
+  });
+});
+
+describe('buildSourcesFromConfig — Universal-Integration filter', () => {
+  const baseBlanks: Record<string, BlankConfig> = {
+    weather: { name: 'weather', blankKeywords: ['weather'], impl: 'WeatherBlank' },
+    volume: { name: 'volume', blankKeywords: ['volume'], blankStep: 6, blankScript: './volume.sh' },
+    affirmations: { name: 'affirmations', blankKeywords: ['affirmation'], stepValues: ['a', 'b', 'c'] },
+    opencuesSettings: { name: 'opencues', blankKeywords: ['opencues settings'], blankSatellite: true },
+  };
+
+  function buildWith(supportsCycling: boolean): string[] {
+    const sources = buildSourcesFromConfig(undefined, undefined, {
+      httpAdapter: stubAdapter,
+      apiKeys: { GROQ_API_KEY: 'x' },
+      blanks: baseBlanks,
+      readBlankState: () => null,
+      enableFluidBlank: true,
+      enableTransformBlank: true,
+      enableWordCues: false,
+      supportsCycling,
+    });
+    // Return source ids in the order they appear.
+    return sources.map(s => s.id);
+  }
+
+  it('supportsCycling=true (default): all blanks reach BlankSource', () => {
+    // BlankSource has id 'blank' regardless of how many defs it carries.
+    // Test that we get one BlankSource + FluidBlankSource + TransformBlankSource.
+    const ids = buildWith(true);
+    assert.ok(ids.includes('blank'), 'BlankSource registered when cycling supported');
+    assert.ok(ids.includes('fluid-blank'));
+    assert.ok(ids.includes('transform-blank'));
+  });
+
+  it('supportsCycling=false: cycleable blanks dropped, single-answer survives', () => {
+    // weather (impl, not cycleable) should reach BlankSource; volume/
+    // affirmations/opencuesSettings should be pruned. BlankSource itself
+    // still registers (carries weather).
+    const droppedLogs: string[] = [];
+    const sources = buildSourcesFromConfig(undefined, undefined, {
+      httpAdapter: stubAdapter,
+      apiKeys: { GROQ_API_KEY: 'x' },
+      blanks: baseBlanks,
+      readBlankState: () => null,
+      enableFluidBlank: true,
+      enableTransformBlank: true,
+      enableWordCues: false,
+      supportsCycling: false,
+      log: (msg) => { if (msg.includes('skipping')) droppedLogs.push(msg); },
+    });
+    const ids = sources.map(s => s.id);
+    // BlankSource present because weather survives.
+    assert.ok(ids.includes('blank'), 'BlankSource still registered (compute survivor)');
+    assert.ok(ids.includes('fluid-blank'));
+    assert.ok(ids.includes('transform-blank'));
+    // The three cycleable blanks should each have produced a skip log.
+    assert.ok(droppedLogs.some(m => m.includes('volume')), 'volume pruned');
+    assert.ok(droppedLogs.some(m => m.includes('affirmations')), 'affirmations pruned');
+    assert.ok(droppedLogs.some(m => m.includes('opencues')), 'opencues settings pruned');
+  });
+
+  it('supportsCycling=false + no surviving blanks: BlankSource omitted', () => {
+    const sources = buildSourcesFromConfig(undefined, undefined, {
+      httpAdapter: stubAdapter,
+      apiKeys: { GROQ_API_KEY: 'x' },
+      blanks: {
+        volume: baseBlanks.volume,
+        affirmations: baseBlanks.affirmations,
+      },
+      readBlankState: () => null,
+      supportsCycling: false,
+    });
+    const ids = sources.map(s => s.id);
+    assert.ok(!ids.includes('blank'), 'BlankSource omitted when every def pruned');
+  });
+
+  it('supportsCycling=false + word-cues enabled: word-cue source dropped', () => {
+    const cuesMd: CuesMdConfig = mkConfig({
+      sources: {
+        legal: {
+          name: 'legal',
+          promptText: 'Provide alts.',
+          scope: 'words',
+          parser: 'alternatives',
+          priority: 70,
+          match: 'contract|liability',
+        },
+      },
+    } as PromptConfig);
+    const droppedLogs: string[] = [];
+    const sources = buildSourcesFromConfig(cuesMd, undefined, {
+      httpAdapter: stubAdapter,
+      apiKeys: { GROQ_API_KEY: 'x' },
+      enableWordCues: true,
+      supportsCycling: false,
+      log: (msg) => { if (msg.includes('skipping')) droppedLogs.push(msg); },
+    });
+    const ids = sources.map(s => s.id);
+    assert.ok(!ids.includes('legal'), 'word-cue source not registered');
+    assert.ok(!ids.includes('word-cues'), 'RoutedWordSourceGroup not built (no sources to wrap)');
+    assert.ok(droppedLogs.some(m => m.includes("legal")), 'legal word-cue logged as pruned');
   });
 });

@@ -345,6 +345,9 @@ export interface FluidBlankSourceConfig {
 export class FluidBlankSource implements CueSource {
   readonly id = 'fluid-blank';
   readonly priority: number;
+  /** Fluid-blank produces a single LLM answer per `_` — no cycling.
+   *  Universal-compatible on hosts without a cycling surface. */
+  readonly isCycleable = false;
 
   private httpAdapter: HttpAdapter;
   private provider: ProviderAdapter;

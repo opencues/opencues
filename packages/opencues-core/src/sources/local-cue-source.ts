@@ -673,6 +673,13 @@ export function validateLocalCueData(data: unknown): string[] {
 export class LocalCueSource implements CueSource {
   readonly id: string;
   readonly priority: number;
+  /** Local tips often include alternatives the user cycles between
+   *  — without an explicit per-word check at construction time we
+   *  treat the source as cycleable, which is the safer default for
+   *  hosts without a cycling surface (drop the source). Tip-only
+   *  entries with no alts would still produce no cycles, but the
+   *  whole source is excluded from no-cycle hosts. */
+  readonly isCycleable = true;
   private data: LocalCueData;
   private domain?: string;
 

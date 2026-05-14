@@ -156,6 +156,28 @@ export interface CueSource {
   /** Priority for resolution order (higher = checked first) */
   priority: number;
 
+  /**
+   * True when this source surfaces alternatives the user picks between
+   * via keyboard cycling — word-cues, selector/satellite blanks, list
+   * blanks, etc. False for single-answer sources (fluid-blank,
+   * transform-blank, compute blanks like weather/stocks).
+   *
+   * Hosts without a cycling surface (chrome's normal-`<input>` /
+   * `<textarea>` mode, future read-only integration profiles) drop
+   * cycleable sources at registration time — they have no UI to
+   * present alternatives, so running the source would be either
+   * wasted token spend (cues) or a confusing partial fill (selector
+   * blanks land on alt #1 with no way to step).
+   *
+   * Inferred structurally from each source's definition shape — no
+   * frontmatter changes for users. The one exception is
+   * script-backed cue-blanks (volume, brightness): the runtime
+   * can't introspect a shell script, so it reads the existing
+   * `cycleable:` BLANK.md flag (defaults to true → default-deny on
+   * universal hosts; explicit opt-in with `cycleable: false`).
+   */
+  isCycleable: boolean;
+
   /** Check if this source can handle the given context */
   supports(context: CueContext): boolean;
 
