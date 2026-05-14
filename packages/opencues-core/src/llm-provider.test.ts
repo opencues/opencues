@@ -16,6 +16,7 @@ import {
   resolveLLM,
   withFallback,
   PROVIDER_IDS,
+  _resetWarnDedupForTesting,
 } from './llm-provider';
 
 describe('groq provider — OpenAI-compatible (the back-compat default)', () => {
@@ -705,5 +706,131 @@ describe('withFallback — HTTP adapter wrapper', () => {
     const wrapped = withFallback(adapter, fallback);
     await wrapped.post('https://groq', '{"model":"openai/gpt-oss-120b"}', {});
     assert.strictEqual(calls.length, 1, 'should not retry on 400-class client error');
+  });
+});
+
+// ---------------------------------------------------------------------
+// Misconfiguration warnings — silent-no-op was the failure mode that
+// caused the May 2026 chrome regression where `llm-provider: gemini`
+// in CUES.md returned null from resolveLLM without any signal. These
+// tests pin the warn-once contract on the three failure shapes:
+//   1. provider chosen but key missing
+//   2. provider name typo'd
+//   3. no provider configured (NO warn — that's "no LLM yet" not "broken")
+// ---------------------------------------------------------------------
+
+function captureWarn(): { warnings: string[]; restore: () => void } {
+  const warnings: string[] = [];
+  const original = console.warn;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  console.warn = (...args: any[]) => { warnings.push(args.join(' ')); };
+  return { warnings, restore: () => { console.warn = original; } };
+}
+
+describe('resolveLLM — misconfiguration warnings (silent-no-op regressors)', () => {
+  it('warns once when a chosen provider has no API key', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      const result = resolveLLM({
+        globalProvider: 'gemini',
+        apiKeys: { GROQ_API_KEY: 'g' }, // gemini key missing
+      });
+      assert.strictEqual(result, null);
+      assert.strictEqual(warnings.length, 1, 'first call should warn');
+      assert.match(warnings[0], /gemini/);
+      assert.match(warnings[0], /GEMINI_API_KEY/);
+      assert.match(warnings[0], /silently do nothing/);
+
+      // Second call same (provider, envvar) → no duplicate warning.
+      resolveLLM({ globalProvider: 'gemini', apiKeys: { GROQ_API_KEY: 'g' } });
+      assert.strictEqual(warnings.length, 1, 'dedup — second call should not warn');
+    } finally { restore(); }
+  });
+
+  it('warns once per UNIQUE provider missing-key combo', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      resolveLLM({ globalProvider: 'gemini', apiKeys: {} });
+      resolveLLM({ globalProvider: 'anthropic', apiKeys: {} });
+      resolveLLM({ globalProvider: 'gemini', apiKeys: {} });    // dedup
+      resolveLLM({ globalProvider: 'anthropic', apiKeys: {} }); // dedup
+      assert.strictEqual(warnings.length, 2);
+      assert.match(warnings[0], /gemini/);
+      assert.match(warnings[1], /anthropic/);
+    } finally { restore(); }
+  });
+
+  it('warns once on unknown provider name (typo path)', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      // getProvider used directly
+      const p = getProvider('gimini');
+      assert.strictEqual(p, null);
+      assert.strictEqual(warnings.length, 1);
+      assert.match(warnings[0], /unknown provider "gimini"/);
+      assert.match(warnings[0], /Known providers:/);
+
+      // Second call same typo → no dup
+      getProvider('gimini');
+      assert.strictEqual(warnings.length, 1);
+    } finally { restore(); }
+  });
+
+  it('warns via resolveLLM when provider name is unknown', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      const result = resolveLLM({ globalProvider: 'nonsense', apiKeys: {} });
+      assert.strictEqual(result, null);
+      assert.strictEqual(warnings.length, 1);
+      assert.match(warnings[0], /unknown provider "nonsense"/);
+    } finally { restore(); }
+  });
+
+  it('does NOT warn when NO provider is configured (defaulted to groq, no groq key)', () => {
+    // "User hasn't configured an LLM yet" is a legitimate state — every
+    // LLM-driven cue/blank gracefully no-ops. We don't want to spam
+    // warnings on every keystroke in that mode; the boot-time
+    // verifyLlmKeyAtBoot (chrome) / doctor (CLI) handle that case once.
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      const result = resolveLLM({ apiKeys: {} });
+      assert.strictEqual(result, null);
+      assert.strictEqual(warnings.length, 0, 'no provider configured ≠ misconfiguration');
+    } finally { restore(); }
+  });
+
+  it('does NOT warn when the chosen provider HAS its key (happy path)', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      const result = resolveLLM({
+        globalProvider: 'gemini',
+        apiKeys: { GEMINI_API_KEY: 'g' },
+      });
+      assert.notStrictEqual(result, null);
+      assert.strictEqual(warnings.length, 0);
+    } finally { restore(); }
+  });
+
+  it('warns per-tier when per-feature provider override has no key', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      // Global groq works; feature override demands anthropic without a key.
+      const result = resolveLLM({
+        globalProvider: 'groq',
+        featureProvider: 'anthropic',
+        apiKeys: { GROQ_API_KEY: 'g' },
+      });
+      assert.strictEqual(result, null);
+      assert.strictEqual(warnings.length, 1);
+      assert.match(warnings[0], /anthropic/);
+      assert.match(warnings[0], /ANTHROPIC_API_KEY/);
+    } finally { restore(); }
   });
 });

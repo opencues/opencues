@@ -457,7 +457,12 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
  */
 export function getProvider(id: string | undefined | null): ProviderAdapter | null {
   if (!id) return null;
-  return PROVIDERS[id as ProviderId] ?? null;
+  const found = PROVIDERS[id as ProviderId];
+  if (!found) {
+    warnUnknownProviderOnce(id);
+    return null;
+  }
+  return found;
 }
 
 /** All built-in providers. Used by docs + the validate command. */
@@ -668,6 +673,56 @@ function warnCustomEndpointOnce(providerId: string, endpoint: string): void {
   } catch { /* host may have no console */ }
 }
 
+// One-time warnings for misconfiguration that previously silent-no-op'd.
+// These exist because `resolveLLM` returning null is BY DESIGN — callers
+// (FluidBlank, TransformBlank, WordCues, …) treat null as "no LLM
+// configured, skip silently." That's right when nothing is set; it's
+// catastrophic when a provider IS chosen but its key is absent, because
+// the user typed an LLM-driven trigger and got nothing back with no
+// signal at all. Caused the May 2026 chrome regression where
+// `llm-provider: gemini` worked in opencode but silently no-op'd on
+// chrome (chrome storage adapter dropped every non-groq key).
+const _warnedMissingKeys = new Set<string>();
+function warnMissingKeyOnce(providerId: string, envKeyName: string): void {
+  const key = `missing|${providerId}|${envKeyName}`;
+  if (_warnedMissingKeys.has(key)) return;
+  _warnedMissingKeys.add(key);
+  try {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[opencues] provider "${providerId}" is configured but ${envKeyName} ` +
+      `is not set. Every LLM-driven cue/blank routed to this provider will ` +
+      `silently do nothing until the key is provided. Fix: set ${envKeyName} ` +
+      `in your env (CC/OC/gemini-cli read from process.env + ~/.cues/.env), ` +
+      `or in the OpenCues popup → Settings (chrome). To verify configured ` +
+      `keys: \`opencues check-keys\`.`,
+    );
+  } catch { /* host may have no console */ }
+}
+
+const _warnedUnknownProviders = new Set<string>();
+function warnUnknownProviderOnce(providerId: string): void {
+  if (_warnedUnknownProviders.has(providerId)) return;
+  _warnedUnknownProviders.add(providerId);
+  try {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[opencues] unknown provider "${providerId}" referenced in config. ` +
+      `Known providers: ${PROVIDER_IDS.join(', ')}. ` +
+      `Check your CUES.md for typos in \`llm-provider:\` / \`<feature>-provider:\`.`,
+    );
+  } catch { /* host may have no console */ }
+}
+
+/** Test-only — reset the warn dedup sets so each test sees a fresh
+ *  warning state. Not exported to public API; used by *.test.ts files
+ *  that exercise the warning paths back-to-back. */
+export function _resetWarnDedupForTesting(): void {
+  _warnedEndpoints.clear();
+  _warnedMissingKeys.clear();
+  _warnedUnknownProviders.clear();
+}
+
 export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   // Three tiers, most → least specific. The Map index doubles as a
   // specificity score (lower = more specific). Provider and model are
@@ -688,7 +743,10 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   }
   const providerId = (providerTierIdx >= 0 ? tiers[providerTierIdx].p! : 'groq').trim() as ProviderId;
   const provider = PROVIDERS[providerId];
-  if (!provider) return null;
+  if (!provider) {
+    warnUnknownProviderOnce(providerId);
+    return null;
+  }
 
   let model: string | null = null;
   for (let i = 0; i < tiers.length; i += 1) {
@@ -705,7 +763,17 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   const resolvedModel = (model ?? provider.defaultModel).trim();
   const endpoint = opts.endpointOverride ?? provider.defaultEndpoint;
   const apiKey = opts.apiKeys[provider.envKeyName];
-  if (!apiKey) return null;
+  if (!apiKey) {
+    // Only warn when a provider was EXPLICITLY chosen (any tier set it).
+    // If no provider was set and we defaulted to groq, the user simply
+    // hasn't configured any LLM yet — that's "OpenCues without LLM is
+    // fine" mode, not a misconfiguration. The boot-level "no key
+    // configured" notice handles that case once.
+    if (providerTierIdx >= 0) {
+      warnMissingKeyOnce(providerId, provider.envKeyName);
+    }
+    return null;
+  }
 
   // One-time security warning when a non-stock endpoint is resolved.
   // The user's draft is sent as prompt context, so a custom URL is
