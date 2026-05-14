@@ -71,6 +71,7 @@ blank-loading-frames: ·,•,●,•,·
 # colour overrides and fall back to the host's default foreground.
 blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
 blank-loading-colors-ansi: red,yellow,green,cyan,blue
+blank-loading-interval-ms: 150
 
 # ─── settings: declarations + per-value tips ───────────────────────────
 # Schema for the selector/satellite UI. Describes what each setting
@@ -138,6 +139,12 @@ settings:
     tip: Per-frame RGB/HEX colours (chrome). Up to 5. Empty → host default.
   blank-loading-colors-ansi:
     tip: Per-frame ANSI colours (terminal hosts). Named or 256-index. Up to 5.
+  blank-loading-interval-ms:
+    tip: Per-frame duration in ms. Lower = snappier, higher = each colour stays visible longer.
+    values:
+      "75": Rapid — 75ms per frame, blurs into motion
+      "150": Snappy (default) — 150ms per frame
+      "300": Slow — 300ms per frame, each colour holds twice as long
 ---
 
 # OPENCUES.md — Runtime Configuration

@@ -6,6 +6,10 @@ import {
   parseCustomFrames,
   parseRgbColors,
   parseAnsiColors,
+  parseFrameIntervalMs,
+  FRAME_INTERVAL_DEFAULT_MS,
+  FRAME_INTERVAL_MIN_MS,
+  FRAME_INTERVAL_MAX_MS,
   BOUNCE_FRAMES,
   BRAILLE_ROTATE_FRAMES,
   FLIPPER_FRAMES,
@@ -95,7 +99,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('start is a no-op when mode is "off"', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'off', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'off', frameIntervalMs: () => 100 });
     a.start(1);
     expect(a.active).toBe(false);
     vi.advanceTimersByTime(500);
@@ -105,7 +109,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
   it('start with mode "bounce" registers the slot but does NOT write on frame 0', () => {
     // Frame 0 is `_` — the slot already shows `_`. No write until first tick.
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     expect(a.active).toBe(true);
     expect(setTextCalls).toEqual([]);
@@ -113,7 +117,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('first tick advances to frame 1 ("-") and writes the buffer', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     vi.advanceTimersByTime(100);
     expect(setTextCalls).toEqual(['volume -']);
@@ -121,7 +125,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('subsequent ticks cycle through frames (palindrome)', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     vi.advanceTimersByTime(100);  // → frame 1 (-)
     vi.advanceTimersByTime(100);  // → frame 2 (‾)
@@ -139,7 +143,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('braille-rotate: intro `_` plays once then loops the 6 dot positions, never returning to `_`', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'braille-rotate', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'braille-rotate', frameIntervalMs: () => 100 });
     a.start(1);
     // Frames are: ['_', '⠁', '⠈', '⠐', '⠠', '⠄', '⠂']
     // loopStartIdx = 1, so after frame 6 (⠂), the next wraps to frame 1 (⠁) — NOT 0.
@@ -160,7 +164,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('bounce: full loop INCLUDES `_` on every cycle (loopStartIdx === 0)', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     for (let i = 0; i < 6; i++) vi.advanceTimersByTime(100);
     expect(setTextCalls).toEqual([
@@ -175,7 +179,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('flipper: full loop returns to `_` every 4 frames (loopStartIdx === 0)', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'flipper', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'flipper', frameIntervalMs: () => 100 });
     a.start(1);
     for (let i = 0; i < 5; i++) vi.advanceTimersByTime(100);
     expect(setTextCalls).toEqual([
@@ -196,7 +200,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('stop() snaps the slot back to `_` and halts ticking', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     vi.advanceTimersByTime(100);   // → 'volume -'
     a.stop(1);
@@ -208,7 +212,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('stop() is a no-op if the slot is already on `_`', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     a.stop(1);                     // before any tick fires → slot still `_`
     expect(setTextCalls).toEqual([]);
@@ -217,7 +221,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
   it('stop() preserves user content when the slot is no longer one of our frame chars', () => {
     // User typed over the animating slot — animator must NOT clobber.
     const { adapter, setTextCalls, setBufferDirect } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     setBufferDirect('volume hello');  // user wiped the `_` and typed
     a.stop(1);
@@ -226,7 +230,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('start() on an already-active wordIndex is idempotent', () => {
     const { adapter } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     a.start(1);
     expect(a.activeSlots.size).toBe(1);
@@ -234,7 +238,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('multiple slots animate independently with a single shared timer', () => {
     const { adapter, setTextCalls } = makeAdapter('volume _ brightness _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     a.start(3);
     vi.advanceTimersByTime(100);
@@ -248,7 +252,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('user typing over the slot mid-animation drops the slot silently', () => {
     const { adapter, setTextCalls, setBufferDirect } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     vi.advanceTimersByTime(100);   // → 'volume -'
     setBufferDirect('volume X');   // user types over the loading char
@@ -259,7 +263,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('stopAll() drops every active slot', () => {
     const { adapter } = makeAdapter('volume _ brightness _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     a.start(3);
     expect(a.active).toBe(true);
@@ -270,7 +274,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
   it('mode is read lazily — switching mode between start() calls works', () => {
     let mode: 'bounce' | 'braille-rotate' = 'bounce';
     const { adapter, setTextCalls } = makeAdapter('a _ b _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => mode, frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => mode, frameIntervalMs: () => 100 });
     a.start(1);
     vi.advanceTimersByTime(100);   // bounce: → '-'
     expect(setTextCalls.at(-1)).toBe('a - b _');
@@ -294,7 +298,7 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
 
   it('handles disappearing slot (text shrank, wordIndex out of bounds)', () => {
     const { adapter, setTextCalls, setBufferDirect } = makeAdapter('volume _');
-    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: 100 });
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
     a.start(1);
     setBufferDirect('');           // user wiped the whole buffer
     vi.advanceTimersByTime(100);   // tick → can't find wordIndex 1 → drop quietly
@@ -345,7 +349,7 @@ describe('custom mode', () => {
       adapter,
       mode: () => 'custom',
       customFrames: () => ['◐', '◓', '◑', '◒'],
-      frameIntervalMs: 100,
+      frameIntervalMs: () => 100,
     });
     a.start(1);
     vi.advanceTimersByTime(100);
@@ -365,7 +369,7 @@ describe('custom mode', () => {
       adapter,
       mode: () => 'custom',
       customFrames: () => null,
-      frameIntervalMs: 100,
+      frameIntervalMs: () => 100,
     });
     a.start(1);
     vi.advanceTimersByTime(100);
@@ -379,7 +383,7 @@ describe('custom mode', () => {
       adapter,
       mode: () => 'custom',
       customFrames: () => [],
-      frameIntervalMs: 100,
+      frameIntervalMs: () => 100,
     });
     a.start(1);
     vi.advanceTimersByTime(100);
@@ -391,7 +395,7 @@ describe('custom mode', () => {
     const a = new BlankLoadingAnimator({
       adapter,
       mode: () => 'custom',
-      frameIntervalMs: 100,
+      frameIntervalMs: () => 100,
     });
     a.start(1);
     vi.advanceTimersByTime(100);
@@ -407,7 +411,7 @@ describe('custom mode', () => {
       adapter,
       mode: () => 'custom',
       customFrames: () => ['X', 'Y'],
-      frameIntervalMs: 100,
+      frameIntervalMs: () => 100,
     });
     a.start(1);
     vi.advanceTimersByTime(100);   // → 'X' or 'Y'
@@ -423,7 +427,7 @@ describe('custom mode', () => {
       adapter,
       mode: () => 'custom',
       customFrames: () => frames,
-      frameIntervalMs: 100,
+      frameIntervalMs: () => 100,
     });
     a.start(1);
     vi.advanceTimersByTime(100);
@@ -538,7 +542,7 @@ describe('getActiveColor', () => {
   it('walks the colour list parallel to frames', () => {
     const { adapter } = makeAdapter('volume _');
     const a = new BlankLoadingAnimator({
-      adapter, mode: () => 'flipper', frameIntervalMs: 100,
+      adapter, mode: () => 'flipper', frameIntervalMs: () => 100,
       ansiColors: () => ['red', 'yellow', 'green', 'cyan'],
     });
     a.start(1);
@@ -555,7 +559,7 @@ describe('getActiveColor', () => {
   it('wraps around when fewer colours than frames', () => {
     const { adapter } = makeAdapter('volume _');
     const a = new BlankLoadingAnimator({
-      adapter, mode: () => 'flipper', frameIntervalMs: 100,
+      adapter, mode: () => 'flipper', frameIntervalMs: () => 100,
       ansiColors: () => ['red', 'green'],   // only 2 colours for 4 frames
     });
     a.start(1);
@@ -576,5 +580,46 @@ describe('getActiveColor', () => {
     a.start(1);
     expect(a.getActiveColor(1, 'rgb')).toBe('#ff0000');
     expect(a.getActiveColor(1, 'ansi')).toBe('red');
+  });
+});
+
+describe('parseFrameIntervalMs', () => {
+  it('returns default for empty / undefined input', () => {
+    expect(parseFrameIntervalMs(undefined)).toBe(FRAME_INTERVAL_DEFAULT_MS);
+    expect(parseFrameIntervalMs('')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+  });
+
+  it('parses the three preset values', () => {
+    expect(parseFrameIntervalMs('75')).toBe(75);
+    expect(parseFrameIntervalMs('150')).toBe(150);
+    expect(parseFrameIntervalMs('300')).toBe(300);
+  });
+
+  it('accepts hand-edited values inside the clamp range', () => {
+    expect(parseFrameIntervalMs('100')).toBe(100);
+    expect(parseFrameIntervalMs('500')).toBe(500);
+    expect(parseFrameIntervalMs(String(FRAME_INTERVAL_MIN_MS))).toBe(FRAME_INTERVAL_MIN_MS);
+    expect(parseFrameIntervalMs(String(FRAME_INTERVAL_MAX_MS))).toBe(FRAME_INTERVAL_MAX_MS);
+  });
+
+  it('falls back to default for values outside the clamp range', () => {
+    // Below min — flicker risk
+    expect(parseFrameIntervalMs('10')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+    expect(parseFrameIntervalMs('0')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+    expect(parseFrameIntervalMs('-1')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+    // Above max — "is this stalled?" risk
+    expect(parseFrameIntervalMs('5000')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+  });
+
+  it('falls back to default for non-numeric input', () => {
+    expect(parseFrameIntervalMs('off')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+    expect(parseFrameIntervalMs('nope')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+    expect(parseFrameIntervalMs('NaN')).toBe(FRAME_INTERVAL_DEFAULT_MS);
+  });
+
+  it('parseInt strips trailing units / whitespace', () => {
+    // parseInt('150ms', 10) === 150 — friendly to users who type the unit.
+    expect(parseFrameIntervalMs('150ms')).toBe(150);
+    expect(parseFrameIntervalMs('  300  ')).toBe(300);
   });
 });

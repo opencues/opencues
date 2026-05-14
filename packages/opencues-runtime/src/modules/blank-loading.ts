@@ -102,6 +102,26 @@ const ANSI_NAMES = new Set([
   'gray', 'grey',
 ]);
 
+/** Default per-frame duration. 150ms is gentle on chrome's
+ *  contenteditable reconcilers and readable in terminals. */
+export const FRAME_INTERVAL_DEFAULT_MS = 150;
+/** Lower bound — anything faster flickers in most terminals + chokes
+ *  managed-editor mutation observers. */
+export const FRAME_INTERVAL_MIN_MS = 30;
+/** Upper bound — anything slower stops reading as "loading" and starts
+ *  looking like a stalled UI. */
+export const FRAME_INTERVAL_MAX_MS = 2000;
+
+/** Parse the `blank-loading-interval-ms` scalar to a number of ms.
+ *  Clamps to `[FRAME_INTERVAL_MIN_MS, FRAME_INTERVAL_MAX_MS]`; falls
+ *  back to `FRAME_INTERVAL_DEFAULT_MS` on unset / invalid input. */
+export function parseFrameIntervalMs(raw: string | undefined): number {
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n >= FRAME_INTERVAL_MIN_MS && n <= FRAME_INTERVAL_MAX_MS
+    ? n
+    : FRAME_INTERVAL_DEFAULT_MS;
+}
+
 /** Parse the `blank-loading-colors-ansi` scalar. Accepts named colours
  *  (`red`, `bright_cyan`, etc.) or 256-colour indices (`0`-`255`).
  *  Returns null when no valid entries. Caps at `CUSTOM_FRAMES_MAX`. */
@@ -197,8 +217,10 @@ export const ALL_FRAME_CHARS: ReadonlySet<string> = new Set([
 
 export interface BlankLoadingOptions {
   /** ms between frame swaps. Default 150 — readable in terminals, gentle
-   *  on chrome's contenteditable reconcilers. */
-  readonly frameIntervalMs?: number;
+   *  on chrome's contenteditable reconcilers. Thunk-shaped so a hot
+   *  OPENCUES.md edit takes effect on the NEXT slot activation (in-flight
+   *  animations keep their captured speed; restart is cheap once they end). */
+  readonly frameIntervalMs?: () => number;
   /** Currently active mode. The animator reads this lazily on every
    *  start() so callers can hot-flip via OPENCUES.md without recreating
    *  the instance. */
@@ -251,7 +273,7 @@ interface ActiveSlot {
 export class BlankLoadingAnimator {
   private readonly _active = new Map<number, ActiveSlot>();
   private _timer: ReturnType<typeof setInterval> | null = null;
-  private readonly _frameIntervalMs: number;
+  private readonly _frameIntervalMsFn: () => number;
   private readonly _modeFn: () => BlankLoadingMode;
   private readonly _customFramesFn: () => readonly string[] | null;
   private readonly _rgbColorsFn: () => readonly string[] | null;
@@ -260,7 +282,7 @@ export class BlankLoadingAnimator {
   private readonly _log: (msg: string) => void;
 
   constructor(opts: BlankLoadingOptions) {
-    this._frameIntervalMs = opts.frameIntervalMs ?? 150;
+    this._frameIntervalMsFn = opts.frameIntervalMs ?? (() => 150);
     this._modeFn = opts.mode;
     this._customFramesFn = opts.customFrames ?? (() => null);
     this._rgbColorsFn = opts.rgbColors ?? (() => null);
@@ -341,7 +363,7 @@ export class BlankLoadingAnimator {
     const framesPreview = frames.map(f => JSON.stringify(f)).join(',');
     this._log(`BlankLoading: start wordIndex=${wordIndex} mode=${modeTag} frames=[${framesPreview}]`);
     if (this._timer === null) {
-      this._timer = setInterval(() => this._tick(), this._frameIntervalMs);
+      this._timer = setInterval(() => this._tick(), this._frameIntervalMsFn());
     }
   }
 

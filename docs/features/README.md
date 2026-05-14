@@ -37,6 +37,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.cues → ~/.cues`), the `CUES.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.cues/` |
 | 29 | [Transform Blanks](transform-blank.md) | Imperative-instruction blanks at `_` — 3-pass LLM pipeline (EXTRACT → APPLY → VERIFY) that rewrites the surrounding text per the instruction. Plus a generative branch for "write a poem _" / "compose an email _" prompts. The third leg of the blank trio alongside BlankSource (keyword) and FluidBlankSource (lookup). |
 | 30 | [Agent Tasks](agent-task.md) | Continuously-running agent loop declared in plain English (`agentically <X> _`). Re-evaluates the doc on every debounce settle; applies edits as dimmed words you can revert via cycling. Per-task invalidation cache keyed on (textHash, taskId). Built on the same DynDef-backed ownership primitives the rest of the runtime uses. |
+| 31 | [Blank Loading Animation](blank-loading.md) | Per-frame glyph + colour cycling at `_` slots while their source resolves. Five OPENCUES.md scalars (mode, frames, RGB palette, ANSI palette, interval). Thunk-shaped re-read so hot edits propagate; capability-routed RGB vs ANSI per host. |
 
 ## Adding a new feature
 
