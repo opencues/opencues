@@ -53,15 +53,18 @@ module.exports = function list(argv, ctx) {
   for (const p of paths) console.log('  ' + dim(prettyPath(p, HOME)));
   console.log('');
 
-  for (const kind of ['cue', 'blank']) {
-    if (onlyKind && onlyKind !== kind) continue;
+  // Single name column width across Cues + Blanks so the arrow/path
+   // column aligns globally — eye doesn't have to re-anchor between sections.
+  const visibleKinds = onlyKind ? [onlyKind] : ['cue', 'blank'];
+  const nameW = visibleKinds
+    .flatMap(k => results[k])
+    .reduce((m, it) => Math.max(m, it.name.length), 0);
+
+  for (const kind of visibleKinds) {
     const items = results[kind];
     const label = kind === 'cue' ? 'Cues' : 'Blanks';
     console.log(bold(label) + ' ' + dim('(' + items.length + ')'));
     if (items.length === 0) { console.log('  ' + dim('(none)')); console.log(''); continue; }
-
-    // Longest name → column width for clean alignment.
-    const nameW = items.reduce((m, it) => Math.max(m, it.name.length), 0);
 
     for (const it of items) {
       // Path: relative to the matching root, so the redundant
