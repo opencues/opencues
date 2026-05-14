@@ -196,13 +196,68 @@ function isManagedEditor(el: HTMLElement): boolean {
  *  paint on these (browsers render input value via internal text
  *  layout, not DOM text nodes), so cues are not surfaced — but blanks
  *  still work via `.value` mutation + an `input` event dispatch. See
- *  `docs/features/chrome-normal-inputs.md` for the supported subset. */
+ *  `docs/features/chrome-normal-inputs.md` for the supported subset.
+ *
+ *  Sensitive-input exclusion: we DO NOT attach to password fields, OTP
+ *  one-time codes, payment fields (autocomplete=cc-*), or anything the
+ *  page has marked autocomplete="off" / autocomplete="new-password" /
+ *  similar. The runtime would be reading + writing the user's
+ *  credentials/PII through the LLM pipeline — a clear no. Defensive
+ *  heuristic for name/id is layered on top of the formal type +
+ *  autocomplete signal.
+ *
+ *  Allowed input types: text, email, search, url. Textarea always
+ *  allowed. Everything else (number, date, tel, color, hidden,
+ *  password, etc.) skipped — semantic inputs would have surprising
+ *  fill behaviour. */
 export function isNormalInput(el: Element | null): el is HTMLInputElement | HTMLTextAreaElement {
   if (!el) return false;
-  if (el instanceof HTMLTextAreaElement) return true;
+  if (el instanceof HTMLTextAreaElement) return !isSensitiveField(el);
   if (el instanceof HTMLInputElement) {
     const t = (el.type || 'text').toLowerCase();
-    return t === 'text' || t === 'email' || t === 'search' || t === 'url';
+    if (t !== 'text' && t !== 'email' && t !== 'search' && t !== 'url') return false;
+    if (isSensitiveField(el)) return false;
+    return true;
+  }
+  return false;
+}
+
+/** Defensive heuristic: should we refuse to attach to this field even
+ *  though its `type=` is allowed? Triggers on:
+ *  - autocomplete tokens for credentials / payment / OTP
+ *  - name/id substring match for password / cvv / ssn / pin / otp /
+ *    secret / token / api[-_]?key
+ *
+ *  The autocomplete check is the formal signal (pages following web
+ *  standards mark these correctly); the name/id heuristic is the
+ *  fallback for pages that don't bother. False positives (e.g. a
+ *  search box named "search-token") are acceptable trade-offs vs the
+ *  risk of feeding credentials through an LLM. */
+function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
+  const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+  // Comma- or space-separated tokens per spec.
+  const tokens = autocomplete.split(/[\s,]+/).filter(Boolean);
+  const sensitiveAutocompleteTokens = new Set<string>([
+    'current-password', 'new-password', 'one-time-code',
+    'cc-number', 'cc-exp', 'cc-exp-month', 'cc-exp-year',
+    'cc-csc', 'cc-name', 'cc-given-name', 'cc-family-name',
+  ]);
+  for (const tok of tokens) {
+    if (sensitiveAutocompleteTokens.has(tok)) return true;
+  }
+  // Bank/payment forms sometimes set autocomplete="off" on the whole
+  // form. That's a heavier signal than "I don't want to be remembered"
+  // — many sites use it for SSN / bank-account / verification entry.
+  // Honor it conservatively.
+  if (tokens.includes('off')) return true;
+
+  // Name/id heuristic — case-insensitive substring match against
+  // sensitive patterns. Captures sites that don't use autocomplete=*.
+  const name = (el.getAttribute('name') || '').toLowerCase();
+  const id = (el.id || '').toLowerCase();
+  const haystack = name + '|' + id;
+  if (/\b(password|passwd|pwd|cvv|cvc|ssn|sin|pin|otp|secret|token|api[_-]?key|access[_-]?key|auth)\b/.test(haystack)) {
+    return true;
   }
   return false;
 }
@@ -1703,6 +1758,15 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // hackernews / prompt-improver). Returns null for unknown
     // blanks so the spawnProcess fallback takes over.
     blankInvoke: (spec) => blankInvoke?.(spec) ?? null,
+    // Universal-Integration filter: tell the runtime whether the
+    // currently focused target supports cycling. Contenteditables
+    // get the full feature set; normal `<input>` / `<textarea>` get
+    // single-answer blanks only (no word-cues, no selector blanks,
+    // no volume/brightness, no list cycling). The runtime resolver
+    // reads this per-build and rebuilds sources when focus moves
+    // between the two kinds — sources/blanks pruned reactively
+    // without any popup save or page reload.
+    supportsCycling: () => !isNormalInput(currentTarget),
     // CE.9 — spawnProcess routes through the native-messaging host
     // when installed (`opencues install chrome-host`). Without it,
     // the adapter returns exitCode 127. Content scripts can't talk

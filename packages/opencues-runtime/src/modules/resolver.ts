@@ -375,6 +375,14 @@ export class Resolver {
         const { type, ...body } = event;
         this.adapter.emitEvent?.(`fluid-blank.${type}`, body);
       },
+      // Universal-Integration profile: when the adapter reports the
+      // current focused target has no cycling surface (chrome's normal-
+      // `<input>` branch, future read-only contexts), prune every
+      // cycleable source + cycleable BlankConfig entry. See
+      // build-sources.ts for the full filter contract. Adapters that
+      // don't implement supportsCycling default to true — every
+      // pre-existing host has cycling.
+      supportsCycling: this.adapter.supportsCycling?.() ?? true,
     };
     let sources: unknown[];
     try {
@@ -418,6 +426,12 @@ export class Resolver {
       s.get('word-cues-provider') ?? '', s.get('word-cues-model') ?? '', s.get('word-cues-endpoint') ?? '',
       s.get('fluid-blank-provider') ?? '', s.get('fluid-blank-model') ?? '', s.get('fluid-blank-endpoint') ?? '',
       s.get('transform-blank-provider') ?? '', s.get('transform-blank-model') ?? '', s.get('transform-blank-endpoint') ?? '',
+      // Universal-Integration: chrome's adapter answers per-current-target.
+      // When focus moves between a contenteditable (cycling) and a normal
+      // input (no cycling), the build key flips and sources rebuild on
+      // the next text-change — pruning/restoring cycleable sources without
+      // an explicit reload.
+      this.adapter.supportsCycling?.() ?? true ? '1' : '0',
     ].join('|');
   }
 

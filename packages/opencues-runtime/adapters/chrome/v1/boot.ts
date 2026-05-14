@@ -70,6 +70,18 @@ export interface HostInfo extends CommonHostInfo {
    * their own fetch()-based adapter here.
    */
   httpAdapter?: unknown;
+  /**
+   * Per-current-target capability — does the currently focused
+   * element support cycling (Ctrl+Alt+arrow + visual band)?
+   * Returns true for contenteditables, false for normal `<input>`
+   * / `<textarea>` (Universal-Integration profile).
+   *
+   * When omitted, defaults to true at the adapter level — every
+   * pre-existing host always cycles. Chrome's bootstrap supplies
+   * this binding so cycleable sources are pruned dynamically as
+   * focus moves between CE and normal-input targets.
+   */
+  supportsCycling?(): boolean;
 }
 
 export interface BootResult {
@@ -184,6 +196,7 @@ export function boot(host: HostInfo): BootResult {
     pushText: host.pushText,
     blankInvoke: host.blankInvoke,
     spawnProcess: host.spawnProcess,
+    supportsCycling: host.supportsCycling,
     log,
     emitEvent: (type, body) => {
       moduleEvents.emit({ type, body }, err => log('error', 'module-event handler threw', err));

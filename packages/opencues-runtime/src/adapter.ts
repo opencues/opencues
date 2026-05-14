@@ -265,6 +265,28 @@ export interface HostAdapter {
   readonly capabilities: readonly Capability[];
   readonly cwd: string;
 
+  /**
+   * True iff the host currently provides a CYCLING SURFACE — i.e. it
+   * intercepts Ctrl+Alt+arrow keys AND paints visual feedback for the
+   * user to step between alternatives.
+   *
+   * Dynamic, not static: chrome attaches to both contenteditables (full
+   * cycling surface) AND plain `<input>` / `<textarea>` (Universal
+   * Integration profile — no overlay, no key dispatch). The current
+   * focused-target type determines the answer.
+   *
+   * The Resolver reads this when building sources from config — every
+   * cycleable source (word-cues, selector/satellite blanks, list
+   * blanks, script-backed cycling blanks like volume/brightness) is
+   * dropped at registration time when this returns false. Single-
+   * answer sources (FluidBlankSource, TransformBlankSource, compute
+   * blanks like weather/stocks) survive.
+   *
+   * Defaults to true when the adapter omits the method — every
+   * pre-existing host has cycling.
+   */
+  supportsCycling?(): boolean;
+
   getText(): string;
   getCursorOffset(): number;
   getSelection(): Range | null;

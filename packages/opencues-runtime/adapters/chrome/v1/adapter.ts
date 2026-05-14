@@ -116,6 +116,24 @@ export interface ChromeBindings {
    * same EventEmitter the bindings forward `emitEvent` calls into.
    */
   registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
+  /**
+   * Returns true iff the currently focused target supports cycling
+   * (Ctrl+Alt+arrow + visual band). Chrome's contenteditable branch
+   * returns true; the normal-`<input>` / `<textarea>` branch returns
+   * false. Omit (or return undefined) when the host has only one
+   * mode — the adapter defaults to true for back-compat.
+   *
+   * Drives Universal-Integration filtering in the runtime resolver:
+   * cycleable sources (word-cues, selector/satellite blanks, list
+   * blanks, script-backed cycling) are pruned at registration when
+   * this returns false. Single-answer sources (fluid/transform/
+   * compute) survive.
+   *
+   * Dynamic — the resolver's build key incorporates the answer, so
+   * sources rebuild automatically when focus moves between a CE and
+   * a normal input.
+   */
+  supportsCycling?(): boolean;
 }
 
 /**
@@ -163,6 +181,12 @@ export class ChromeV1Adapter implements HostAdapter {
   }
   getCursorOffset(): number {
     try { return this.bindings.getCursorOffset(); } catch { return 0; }
+  }
+  supportsCycling(): boolean {
+    // Bootstrap supplies a per-current-target boolean (CE → true,
+    // normal-input → false). When the binding is absent the host has
+    // only one mode and we default to true (back-compat).
+    try { return this.bindings.supportsCycling?.() ?? true; } catch { return true; }
   }
   getSelection(): Range | null { return null; }
 

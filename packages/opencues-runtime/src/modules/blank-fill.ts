@@ -9,7 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { resolveReplaceMode, type EffectiveReplaceMode } from '@opencues/core';
+import { resolveReplaceMode, isBlankConfigCycleable, type EffectiveReplaceMode } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -898,10 +898,21 @@ export class BlankFill {
 
   /** Walk backward from blankIdx looking for a blank's blankKeywords match. */
   private matchKeyword(words: readonly string[], blankIdx: number): BlankSlot | null {
+    // Universal-Integration filter: when the host has no cycling
+    // surface (chrome's normal-`<input>` branch), skip cycleable blanks
+    // (volume, brightness, opencues-settings, list blanks). The same
+    // check runs in `buildSourcesFromConfig` for the resolver path, but
+    // BlankFill detects keyword-bound blanks DIRECTLY from
+    // configLoader.blanks — independent code path that needs its own
+    // filter. Without this, `volume _` in a normal input would still
+    // auto-populate the system volume even though the user can't see
+    // or cycle the result.
+    const supportsCycling = this.adapter.supportsCycling?.() ?? true;
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
+        if (!supportsCycling && isBlankConfigCycleable(blank as Parameters<typeof isBlankConfigCycleable>[0])) continue;
         // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
         // to _, no words between) when not explicitly set. The previous
         // default (no limit, when the field was undefined) caused
