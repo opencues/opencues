@@ -33,21 +33,88 @@ silent text substitution would break.
 The detector is `isNormalInput()` in
 `integrations/chrome/src/opencues-bootstrap.ts`.
 
+## Sensitive inputs — never attached
+
+Even when the input passes the type allowlist above, OpenCues
+refuses to attach when the field looks like credentials, payment,
+or sensitive PII. Reading + writing those through the LLM pipeline
+is a clear no.
+
+The detector is `isSensitiveField()` in `opencues-bootstrap.ts`.
+Triggers on any of:
+
+**Formal autocomplete signal** (page conforms to web standards):
+
+- `autocomplete="current-password"` / `"new-password"` — password fields
+- `autocomplete="one-time-code"` — OTP / 2FA codes
+- `autocomplete="cc-number"`, `"cc-exp"`, `"cc-exp-month"`, `"cc-exp-year"`, `"cc-csc"`, `"cc-name"`, `"cc-given-name"`, `"cc-family-name"` — payment fields
+- `autocomplete="off"` — banks/payment forms set this on whole forms; honored conservatively
+
+**Name/id heuristic** (fallback for pages that don't bother with
+autocomplete): case-insensitive word-boundary match on the
+field's `name` or `id` against `password`, `passwd`, `pwd`,
+`cvv`, `cvc`, `ssn`, `sin`, `pin`, `otp`, `secret`, `token`,
+`api[_-]?key`, `access[_-]?key`, `auth`.
+
+False positives (a legitimate search box named `search-token`)
+silently lose OpenCues. Acceptable trade — the alternative is
+feeding the user's credentials through an LLM. To confirm a
+specific field was excluded: in DevTools console, the
+`[OpenCues] Attaching to` log will NOT fire on focus.
+
 ## What works
 
-**Every blank kind except selector/satellite.** Specifically:
+**Every blank kind except cycleable ones.** "Cycleable" =
+presents alternatives the user picks between with Ctrl+Alt+arrow.
+Normal inputs have no key intercepts AND no visual surface for
+the cycling band, so cycleable blanks/cues are pruned at
+registration. Single-answer blanks survive.
 
 | Blank kind                          | Works on normal inputs? | Notes |
 |---|---|---|
 | Compute → text (weather, stocks, crypto, hackernews, dictionary, countries, claude-status, answer) | ✅ | First match fills, single-shot. |
 | Transform (prompt-improver, "make it louder _", …)                  | ✅ | Rewrites the whole `.value`. On single-line inputs the substitution still happens — surprise factor is on the user. |
 | Fluid blank (free-form `_` lookup)                                  | ✅ | Single substitution at the `_`. |
-| List blank (affirmations, stepValues)                               | ⚠ Degenerate | Fills with the FIRST list item only. Cycling has no UI, so the user can't step through alternatives. |
-| Selector / satellite (`opencues settings _`, `volume _`, brightness)| ❌ | Cycling is fundamental to these — without a visible band there's nothing to cycle. Triggers are ignored. |
-| Cue-blanks backed by `blankScript`                                  | ✅ | Same as on CC/OC, gated by chrome-host. |
+| List blank (affirmations, stepValues)                               | ❌ | Pruned — cycleable. The list shape means the user has multiple choices to step between; without a cycling surface there's nothing to step. |
+| Selector / satellite (`opencues settings _`)                        | ❌ | Pruned — `blankSatellite: true` means cycling-required. |
+| Script-backed cycling blanks (`volume _`, `brightness _`)           | ❌ | Pruned — `blankScript:` defaults to cycleable. Opt back in via `blankReadOnly: true` if the script truly is one-shot. |
+| Word-cues (alternatives, spelling, tips)                            | ❌ | Pruned at source-build time — cues are alternatives-by-definition. Zero LLM token spend in normal-input mode. |
+| Cue-blanks via `blankScript:` that are single-shot                  | ⚠ Opt-in   | Add `blankReadOnly: true` to the blank's frontmatter to mark it universal-compatible. Default-deny since scripts are opaque. |
 
 Blanks fire reactively on text-change, so typing `weather london _`
 fills as soon as the `_` lands.
+
+## How the cycleability filter works
+
+The "Universal Integration" profile (no cycling, no render) is a
+formal capability — see `docs/architecture/universal-integration.md`
+for the full design. The chrome content script's bootstrap
+advertises `supportsCycling: () => !isNormalInput(currentTarget)`
+to the runtime. Every focus change that crosses the CE / normal-
+input boundary triggers a resolver rebuild on the next keystroke
+— sources pruned or restored reactively.
+
+Two parallel filter paths both consult the same
+`isBlankConfigCycleable` helper:
+
+1. **Resolver sources** (`buildSourcesFromConfig` in `@opencues/core`)
+   — drops word-cues entirely and prunes cycleable BlankConfig
+   entries from the blanks map BEFORE constructing BlankSource.
+2. **BlankFill keyword detection** (`matchKeyword` in
+   `@opencues/runtime`) — skips cycleable defs during the per-
+   keystroke slot-detection walk over `configLoader.blanks`. The
+   two paths exist independently; both must filter or the
+   guarantee leaks.
+
+The inference (no frontmatter needed) for each `BlankConfig`:
+
+- `blankReadOnly: true` → not cycleable (explicit override)
+- `blankSatellite: true` → cycleable
+- `stepValues.length > 1` → cycleable
+- `blankStep` numeric → cycleable
+- `blankScript:` → cycleable (default-deny; opt out with
+  `blankReadOnly: true`)
+- otherwise (impl-only compute blanks) → not cycleable
 
 ## What doesn't work
 

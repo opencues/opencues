@@ -29,18 +29,31 @@ own read/write path:
    feature set: cues + blanks + cycling + dim render. Each engine
    needs its own write strategy; see the per-editor matrix below.
 2. **Normal `<input>` / `<textarea>`** — search boxes, form fields,
-   plain textareas. Blanks only (no cues, no cycling UI, no dim
-   render). The runtime still computes cues but they never paint
-   because CSS Custom Highlight ranges can't address an input's
-   internal text layout.
+   plain textareas. Single-answer blanks only. Word-cues, selector
+   blanks, list blanks, and script-backed cycling blanks (volume,
+   brightness) are pruned at registration. Implements the
+   **Universal Integration profile** — full architecture at
+   `docs/architecture/universal-integration.md`.
 
 The branch is an `isNormalInput(el)` check at the top of every
 read/write helper in `opencues-bootstrap.ts`. Full spec + supported
-blank subset + caveats live in
-`docs/features/chrome-normal-inputs.md`. Read that before changing
-anything in the normal-input branches — they're a deliberately
-limited surface and the doc explains what's intentionally NOT done
-(no badge, no preview, no cycling-on-list-blanks).
+blank subset + caveats live in `docs/features/chrome-normal-inputs.md`.
+
+**Sensitive inputs are NEVER attached** — even within normal-input
+mode. `isSensitiveField()` refuses to attach when the focused input
+looks like a password / OTP / payment / PII field (autocomplete
+tokens + name/id heuristic). The runtime would otherwise read +
+write credentials through the LLM pipeline. Default-deny on
+suspicion; false positives lose OpenCues but never leak secrets.
+
+**Cycleability filter** — the formal mechanism that lifts
+"normal-input mode" from a chrome-only hack to a generic
+no-cycling profile. Every cue/blank declares `isCycleable`
+(inferred structurally from its def shape — no frontmatter
+changes); the resolver's `buildSourcesFromConfig` and BlankFill's
+`matchKeyword` BOTH skip cycleable entries when the adapter
+reports `supportsCycling: false`. Reactive on focus change via
+the resolver's build key.
 
 ## Live config sync — native-messaging host (May 2026)
 
