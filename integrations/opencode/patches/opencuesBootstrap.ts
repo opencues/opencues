@@ -209,7 +209,20 @@ export function startOpenCues(opts: {
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     try {
       const ts = new Date().toISOString().slice(11, 23)
-      const line = `[${ts}][${level}] ${msg} ${data ? JSON.stringify(data).slice(0, 400) : ""}\n`
+      // JSON.stringify(err) returns "{}" for Error objects because the
+      // built-in props are non-enumerable. Extract message + stack when
+      // present so errors actually surface in the log.
+      let dataStr = ""
+      if (data !== undefined && data !== null) {
+        if (data instanceof Error) {
+          dataStr = `${data.name}: ${data.message}${data.stack ? "\n" + data.stack : ""}`
+        } else if (typeof data === "string") {
+          dataStr = data
+        } else {
+          dataStr = JSON.stringify(data).slice(0, 400)
+        }
+      }
+      const line = `[${ts}][${level}] ${msg} ${dataStr}\n`
       // Async append — keystroke path must not block on disk I/O.
       // O_APPEND is atomic for line-sized writes on Linux, so concurrent
       // appenders can't tear lines (ordering across writers may wobble,
