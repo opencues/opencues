@@ -48,6 +48,18 @@ Every animator option that depends on settings is **thunk-shaped** (`() => T`) s
 
 For `frameIntervalMs`, this means a hot edit from `150` to `300` while a blank is mid-load won't slow that animation — the next blank picks up the new speed. Acceptable trade-off: in-flight tweaks would require `clearInterval` + `setInterval` reschedule mid-animation, which adds complexity for a setting most users tune once and forget.
 
+## Failover palettes — invalid input never produces a dead slot
+
+When `blank-loading-colors-rgb` / `-ansi` is missing, empty, or fails to parse, the runtime falls back to the **shipped default palette** (`DEFAULT_RGB_PALETTE` / `DEFAULT_ANSI_PALETTE` in `blank-loading.ts` — `red,amber,green,cyan,blue` mirrored hex/named). Same colours as a fresh install.
+
+This is the same design principle that drives the `custom` → `braille-rotate` mode fallback: a misconfiguration should never produce a flat / uncoloured loading glyph. Users who want bespoke colours always get a recognisable visual; users who want the shipped palette get it whether they opt in or not.
+
+**Partial-invalid behaviour**: each parser iterates and keeps only valid tokens. `#ff0000,notahex,#0000ff` parses to `['#ff0000', '#0000ff']` — the bogus token is silently dropped, and since *some* valid entries remain, the failover does NOT fire. Failover only kicks in when the parser returns `null` (zero valid entries).
+
+The fallback policy lives at each caller site as a `?? DEFAULT_*_PALETTE` after the parser invocation. Three call sites in lock-step (`boot-common.ts`, `cc/v2.1/boot.ts`, `blank-fill.ts`). Parsers themselves stay pure — they answer "what valid tokens did I find?", not "what should the user see?".
+
+There is no way to render the loading glyph without colour — by design. If you want the glyph to be invisible against your background, set the scalar to a single colour matching your terminal/editor bg.
+
 ## Parsers — single source of truth
 
 Each scalar has a dedicated exported parser in `blank-loading.ts`:

@@ -10,6 +10,8 @@ import {
   FRAME_INTERVAL_DEFAULT_MS,
   FRAME_INTERVAL_MIN_MS,
   FRAME_INTERVAL_MAX_MS,
+  DEFAULT_RGB_PALETTE,
+  DEFAULT_ANSI_PALETTE,
   BOUNCE_FRAMES,
   BRAILLE_ROTATE_FRAMES,
   FLIPPER_FRAMES,
@@ -621,5 +623,62 @@ describe('parseFrameIntervalMs', () => {
     // parseInt('150ms', 10) === 150 — friendly to users who type the unit.
     expect(parseFrameIntervalMs('150ms')).toBe(150);
     expect(parseFrameIntervalMs('  300  ')).toBe(300);
+  });
+});
+
+describe('failover palettes', () => {
+  it('DEFAULT_RGB_PALETTE has five hex entries (parallel to default frames)', () => {
+    expect(DEFAULT_RGB_PALETTE).toHaveLength(5);
+    for (const hex of DEFAULT_RGB_PALETTE) {
+      expect(hex).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it('DEFAULT_ANSI_PALETTE has five named entries (parallel to default frames)', () => {
+    expect(DEFAULT_ANSI_PALETTE).toHaveLength(5);
+    expect(DEFAULT_ANSI_PALETTE).toEqual(['red', 'yellow', 'green', 'cyan', 'blue']);
+  });
+
+  it('animator with failover thunks renders the shipped palette when settings are empty', () => {
+    const { adapter } = makeAdapter('volume _');
+    // Mirror the caller-side ?? pattern used by boot-common / cc / blank-fill.
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'flipper',
+      frameIntervalMs: () => 100,
+      rgbColors: () => parseRgbColors(undefined) ?? DEFAULT_RGB_PALETTE,
+      ansiColors: () => parseAnsiColors('') ?? DEFAULT_ANSI_PALETTE,
+    });
+    a.start(1);
+    expect(a.getActiveColor(1, 'rgb')).toBe(DEFAULT_RGB_PALETTE[0]);
+    expect(a.getActiveColor(1, 'ansi')).toBe(DEFAULT_ANSI_PALETTE[0]);
+  });
+
+  it('animator with failover thunks renders the shipped palette when input is all-invalid', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'flipper',
+      frameIntervalMs: () => 100,
+      rgbColors: () => parseRgbColors('notahex,alsonope,##') ?? DEFAULT_RGB_PALETTE,
+      ansiColors: () => parseAnsiColors('zzz,500') ?? DEFAULT_ANSI_PALETTE,
+    });
+    a.start(1);
+    expect(a.getActiveColor(1, 'rgb')).toBe(DEFAULT_RGB_PALETTE[0]);
+    expect(a.getActiveColor(1, 'ansi')).toBe(DEFAULT_ANSI_PALETTE[0]);
+  });
+
+  it('partially-valid input still overrides defaults (failover only on null/empty)', () => {
+    const { adapter } = makeAdapter('volume _');
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'flipper',
+      frameIntervalMs: () => 100,
+      // One valid + one bogus → parser keeps the valid one, no failover.
+      rgbColors: () => parseRgbColors('#ff00ff,notahex') ?? DEFAULT_RGB_PALETTE,
+    });
+    a.start(1);
+    expect(a.getActiveColor(1, 'rgb')).toBe('#ff00ff');
+    expect(a.getActiveColor(1, 'rgb')).not.toBe(DEFAULT_RGB_PALETTE[0]);
   });
 });

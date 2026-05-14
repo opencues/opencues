@@ -135,7 +135,7 @@ import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
 import { BlankFill } from './modules/blank-fill';
-import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs } from './modules/blank-loading';
+import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from './modules/blank-loading';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
 import { DynDefs } from './state/dyn-defs';
@@ -242,10 +242,10 @@ export function buildSharedRuntime(
     ),
     rgbColors: () => parseRgbColors(
       configLoader.opencuesState.settings.get('blank-loading-colors-rgb'),
-    ),
+    ) ?? DEFAULT_RGB_PALETTE,
     ansiColors: () => parseAnsiColors(
       configLoader.opencuesState.settings.get('blank-loading-colors-ansi'),
-    ),
+    ) ?? DEFAULT_ANSI_PALETTE,
     frameIntervalMs: () => parseFrameIntervalMs(
       configLoader.opencuesState.settings.get('blank-loading-interval-ms'),
     ),

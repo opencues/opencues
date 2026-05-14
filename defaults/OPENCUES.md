@@ -66,9 +66,11 @@ blank-loading-frames: ·,•,●,•,·
 # simultaneously — each host picks the relevant one.
 #
 # Defaults below cycle red → amber → green → cyan → blue (parallel to
-# the 5-frame `blank-loading-frames` default). Comment out (prefix
-# with `#`) or set to empty (`blank-loading-colors-rgb:`) to disable
-# colour overrides and fall back to the host's default foreground.
+# the 5-frame `blank-loading-frames` default). If the scalar is missing,
+# empty, or fails to parse, the runtime falls back to this same shipped
+# palette — there's no way to render the loading glyph without colour.
+# (To make the colour invisible against your background, set the scalar
+# to a single colour matching your terminal/editor bg.)
 blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
 blank-loading-colors-ansi: red,yellow,green,cyan,blue
 blank-loading-interval-ms: 150

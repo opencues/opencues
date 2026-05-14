@@ -102,6 +102,24 @@ const ANSI_NAMES = new Set([
   'gray', 'grey',
 ]);
 
+/** Failover RGB palette when `blank-loading-colors-rgb` is unset, empty,
+ *  or fails to parse. Mirrors the shipped defaults in `defaults/OPENCUES.md`
+ *  so a misconfigured user sees the same colours as a fresh install
+ *  instead of a flat host-default fg. */
+export const DEFAULT_RGB_PALETTE: readonly string[] = [
+  '#ef4444', // red-500
+  '#f59e0b', // amber-500
+  '#10b981', // emerald-500
+  '#06b6d4', // cyan-500
+  '#3b82f6', // blue-500
+];
+
+/** Failover ANSI palette — parallel to `DEFAULT_RGB_PALETTE` for terminal
+ *  hosts that lack `render-rgb-color` capability (CC, gemini). */
+export const DEFAULT_ANSI_PALETTE: readonly string[] = [
+  'red', 'yellow', 'green', 'cyan', 'blue',
+];
+
 /** Default per-frame duration. 150ms is gentle on chrome's
  *  contenteditable reconcilers and readable in terminals. */
 export const FRAME_INTERVAL_DEFAULT_MS = 150;
