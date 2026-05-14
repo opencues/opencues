@@ -167,7 +167,14 @@ The resolver forwards consumed-slot indices into the `CueContext.consumedBlankSl
 
 Why this matters: without the claim, an EXTRACT verdict of `TRANSFORM` + a failed APPLY would let FluidBlank fall through and substitute the user's instruction as a *question* — "make this shorter _" becomes "Paris" because FluidBlank read the imperative as a lookup phrase. The user gave an instruction; we failed to apply it; substituting an unrelated answer is worse than leaving the buffer alone.
 
-The claim only fires on the IMPERATIVE path (`TRANSFORM` with non-empty TARGET, then empty APPLY). The generative branch (empty TARGET, e.g. "write a poem _") doesn't claim — if its single APPLY pass returns empty, FluidBlank gets to try (it has its own bail-on-no-segment / bail-on-no-answer paths).
+Rule: **if TransformBlank tries a slot, FluidBlank never does.** Both branches claim:
+
+- **Imperative** (`TRANSFORM` + non-empty TARGET + every APPLY step empty) → claim. User said "make this shorter _"; we failed to shorten it; FluidBlank substituting an unrelated answer is worse than leaving the buffer alone.
+- **Generative** (`TRANSFORM` + empty TARGET + GENERATIVE pass empty) → claim. User said "write a poem _"; we failed to write one; FluidBlank treating "write a poem" as a lookup phrase would vandalise the intent.
+
+The only paths that LEGITIMATELY hand off to FluidBlank:
+- EXTRACT verdict was `NONE` (input wasn't classified as imperative — "capital of france _", "atomic number of oxygen _").
+- TransformBlank short-circuited before EXTRACT (no `_`, partial-detector flagged still-typing, etc.) — empty result without claim.
 
 Pinned by `packages/opencues-core/src/resolver.test.ts` (consumed-slots forwarding) and the TransformBlank tests covering the EXTRACT=TRANSFORM + APPLY=empty case.
 
