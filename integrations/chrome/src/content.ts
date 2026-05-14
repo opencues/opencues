@@ -77,8 +77,15 @@ async function init(): Promise<void> {
   // Boot the runtime with config from chrome.storage. The runtime
   // owns Navigation, Cycling, BlankFill, Resolver, Statusline, TTS,
   // CursorStateExport, plus all 6 state classes.
+  //
+  // `llmApiKeys` is the multi-provider bag the resolver actually
+  // dispatches against. Without forwarding it, switching
+  // `llm-provider:` to anything but groq in CUES.md silently no-op'd
+  // on chrome — the resolver would look up the chosen provider's
+  // env-key, not find it, and return null without any visible error.
   startOpenCues({
     llmApiKey: config.apiKey,
+    llmApiKeys: config.llmApiKeys,
     llmEndpoint: config.apiUrl,
     llmDefaultModel: config.model,
     finnhubApiKey: config.finnhubApiKey,

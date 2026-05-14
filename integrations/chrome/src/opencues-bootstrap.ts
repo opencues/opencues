@@ -1384,6 +1384,161 @@ export interface RuntimeStartOptions {
 // (createBlankInvoke) lives in the runtime so all hosts share it.
 let blankInvoke: ((spec: BlankInvokeSpec) => ProcessHandle | null) | null = null;
 
+/** Provider → env-var name. Matches packages/opencues-core's PROVIDERS
+ *  table. Kept in sync manually because the chrome bundle imports a
+ *  bake-time slice of core and we don't want to drag the full provider
+ *  registry just for the audit. */
+const PROVIDER_ENV_KEY: Record<string, string> = {
+  groq: 'GROQ_API_KEY',
+  cerebras: 'CEREBRAS_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+};
+
+/** Scan the user's merged CUES.md / OPENCUES.md for provider directives
+ *  (`llm-provider:` and `<feature>-provider:`), cross-check against the
+ *  apiKeys bag, and emit one summary warn enumerating misconfigurations.
+ *  Catches "gemini set in CUES.md but no GEMINI_API_KEY on chrome" at
+ *  boot — before the user types a trigger and gets nothing back.
+ *
+ *  Reads from chrome.storage's merged OPENCUES.md key. Falls back to
+ *  the bake-time default. Tolerant of parse errors — best effort. */
+async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<void> {
+  const storageKey = `${STORAGE_PREFIX}${ROOT}/.cues/OPENCUES.md`;
+  let content: string;
+  try {
+    const result = await chrome.storage.local.get(storageKey);
+    content = typeof result[storageKey] === 'string' ? result[storageKey] : __DEFAULT_OPENCUES_MD__;
+  } catch { content = __DEFAULT_OPENCUES_MD__ ?? ''; }
+  if (!content) return;
+
+  // Extract frontmatter only — provider directives live there, NOT in
+  // the markdown body which can describe them in prose.
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  const fm = fmMatch ? fmMatch[1] : content;
+
+  // Match `<word>-?provider: <id>` lines. Captures both the feature
+  // name (or empty for global `provider:`) and the provider id.
+  const directives: { feature: string; provider: string }[] = [];
+  const re = /^(?:([\w-]+)-)?provider:\s*([a-z]+)\s*$/gim;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(fm)) !== null) {
+    const feature = m[1] ?? 'global';
+    const provider = m[2].toLowerCase();
+    directives.push({ feature, provider });
+  }
+  if (directives.length === 0) return;
+
+  const problems: string[] = [];
+  for (const d of directives) {
+    if (!(d.provider in PROVIDER_ENV_KEY)) {
+      problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — unknown provider`);
+      continue;
+    }
+    const envKey = PROVIDER_ENV_KEY[d.provider];
+    if (!keys[envKey]) {
+      problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — needs ${envKey}`);
+    }
+  }
+  if (problems.length === 0) return;
+  console.warn(
+    `[opencues] CUES.md provider audit found ${problems.length} ` +
+    `misconfigured ${problems.length === 1 ? 'directive' : 'directives'}:\n` +
+    problems.join('\n') + '\n' +
+    `Set the missing env keys (CC/OC/gemini-cli read process.env + ~/.cues/.env), ` +
+    `or save them in the OpenCues popup (chrome). Cues/blanks routed to these ` +
+    `providers will silently no-op until fixed.`,
+  );
+}
+
+/** Each provider's lightest read-only endpoint (model list, free).
+ *  Mirrors `opencues check-keys` (packages/opencues-cli/src/commands/
+ *  check-keys.cjs). Keep in sync if the CLI adds providers. */
+const PROVIDER_KEY_CHECKS: Record<string, (key: string) => { url: string; headers: Record<string, string> }> = {
+  groq:       (k) => ({ url: 'https://api.groq.com/openai/v1/models',                   headers: { Authorization: `Bearer ${k}` } }),
+  cerebras:   (k) => ({ url: 'https://api.cerebras.ai/v1/models',                       headers: { Authorization: `Bearer ${k}` } }),
+  openai:     (k) => ({ url: 'https://api.openai.com/v1/models',                        headers: { Authorization: `Bearer ${k}` } }),
+  anthropic:  (k) => ({ url: 'https://api.anthropic.com/v1/models',                     headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01' } }),
+  openrouter: (k) => ({ url: 'https://openrouter.ai/api/v1/models',                     headers: { Authorization: `Bearer ${k}` } }),
+  gemini:     (k) => ({ url: `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(k)}`, headers: {} }),
+};
+
+/** Verify LLM keys at boot — runs once after the runtime is constructed.
+ *  Mirrors `opencues check-keys` so chrome users get the same up-front
+ *  signal as terminal users: missing key → warn loudly; configured but
+ *  invalid → error loudly; works → quiet info line.
+ *
+ *  Without this, a stale/typo'd GROQ_API_KEY silently turned every
+ *  fluid-blank / transform-blank / word-cue resolve into a no-op. The
+ *  failure was invisible because the FetchHttpAdapter's throw was
+ *  swallowed inside the resolver and there was no boot-time probe. */
+async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
+  // Build the {provider → key} map the resolver will actually use.
+  // Single-key opts.llmApiKey is treated as groq by convention (the
+  // shipped default endpoint).
+  const keys: Record<string, string> = {};
+  if (opts.llmApiKey) keys.groq = opts.llmApiKey;
+  if (opts.llmApiKeys) {
+    for (const [provider, key] of Object.entries(opts.llmApiKeys)) {
+      if (key) keys[provider] = key;
+    }
+  }
+
+  if (Object.keys(keys).length === 0) {
+    console.warn(
+      '[opencues] no LLM provider key set — fluid-blank, transform-blank, ' +
+      'and word-cues will silently do nothing. Open the OpenCues popup ' +
+      'and paste a GROQ_API_KEY (free tier at https://console.groq.com/keys).',
+    );
+    return;
+  }
+
+  // Eager audit of the user's CUES.md provider directives: surfaces the
+  // "you set llm-provider: gemini but have no GEMINI_API_KEY" failure at
+  // boot time, BEFORE the user types a trigger and silently waits. The
+  // resolver also emits a one-time warn on first dispatch (lazy backstop
+  // in case CUES.md edits land mid-session) — this just makes the
+  // problem visible immediately.
+  await auditProvidersAgainstKeys(keys);
+
+  // Probe each configured provider. We route through the background SW
+  // because content scripts can't bypass CORS for cross-origin
+  // Authorization headers — same path the runtime LLM calls use.
+  for (const [provider, key] of Object.entries(keys)) {
+    const spec = PROVIDER_KEY_CHECKS[provider];
+    if (!spec) continue; // unknown provider — skip silently
+    const { url, headers } = spec(key);
+    try {
+      const reply = await chrome.runtime.sendMessage<unknown, { ok: boolean; status: number; statusText: string; text: string }>({
+        type: 'opencues:fetch',
+        method: 'GET',
+        url,
+        headers,
+      });
+      if (reply?.ok) {
+        // Quiet success — debug-mode only.
+        log.info(`[opencues] LLM key OK (${provider})`);
+      } else {
+        const status = reply?.status ?? 0;
+        const statusText = reply?.statusText ?? 'unknown';
+        const body = (reply?.text ?? '').slice(0, 200);
+        console.error(
+          `[opencues] LLM key INVALID for ${provider} — HTTP ${status} ${statusText}. ` +
+          `Open the OpenCues popup and check the ${provider.toUpperCase()}_API_KEY. ` +
+          (body ? `Server said: ${body}` : ''),
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[opencues] LLM key probe failed for ${provider} — ${err instanceof Error ? err.message : String(err)}. ` +
+        `Possible causes: extension service worker not running, no internet, provider down.`,
+      );
+    }
+  }
+}
+
 /**
  * Construct the runtime if not already running. Idempotent — second
  * call returns the cached BootResult. Call once at content-script
@@ -1573,6 +1728,13 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // listener above invalidates _bundleIndexPromise + calls
   // bootResult.reloadConfig().
   void refreshReadTraceFromStorage();
+
+  // Mirror `opencues check-keys` — ping the LLM provider at boot
+  // so users find out about missing/invalid keys without having to
+  // type a `_` and silently wait for nothing. The CLI hits each
+  // provider's lightest endpoint; we do the same for whichever
+  // provider key chrome has.
+  void verifyLlmKeyAtBoot(opts);
 
   // Eager bundle-to-storage sync at boot. chrome.storage.onChanged
   // only fires for CHANGES from this point forward — if the bundle

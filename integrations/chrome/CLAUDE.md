@@ -4,6 +4,21 @@ This document captures hard-won knowledge for the chrome extension that
 isn't obvious from the code alone. Read this before changing anything in
 `opencues-bootstrap.ts`'s write paths.
 
+## LLM API keys — multi-provider + real-time
+
+Chrome reads its provider keys from `chrome.storage`, not
+`process.env` (content scripts are sandboxed). The storage adapter
+forwards every `*_API_KEY` the native-messaging host pushes into a
+multi-provider `llmApiKeys` bag the resolver dispatches against. Key
+changes (host re-push, popup save, .env rotation) propagate
+real-time without a tab reload via `BootResult.updateApiKeys`.
+
+Full architecture: `docs/architecture/chrome-llm-keys.md` — covers the
+storage layout, the forwarding flow, the failure-mode surface, and
+the live-mutation contract on `Resolver.options.apiKeys` that makes
+real-time updates work. Read it before touching anything LLM-key
+related.
+
 ## Two attach modes — contenteditable vs normal input
 
 The integration attaches to TWO kinds of focused element, each with its

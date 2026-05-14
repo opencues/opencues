@@ -47,6 +47,17 @@ export class FetchHttpAdapter implements HttpAdapter {
     if (!response || !response.ok) {
       const status = response?.status ?? 0;
       const statusText = response?.statusText ?? 'sendMessage failed';
+      const body = (response?.text ?? '').slice(0, 200);
+      // Surface loudly — the resolver above catches and silently
+      // suppresses, so without this the user has no signal that an
+      // LLM call (cue/blank/transform) failed. Common cause: stale
+      // GROQ_API_KEY. Boot-time `verifyLlmKeyAtBoot` catches the
+      // already-bad case; this catches the "valid at boot, expired
+      // mid-session" case.
+      console.error(
+        `[opencues] LLM call failed — HTTP ${status} ${statusText} from ${url}. ` +
+        (body ? `Server said: ${body}` : 'No response body.'),
+      );
       throw new Error(`HTTP ${status}: ${statusText}`);
     }
     const text = response.text;
