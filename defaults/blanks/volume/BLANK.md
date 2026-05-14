@@ -11,6 +11,12 @@ blankSuffix: %
 # in the buffer so readers know what 70% is measuring.
 blankReplace: keep
 blankScript: ./volume-blank.sh
+# Auto-detect excludes chrome for `.sh` scripts. Override: with
+# chrome-host installed the host runs scripts on chrome's behalf
+# (path-sandboxed against CUE_ROOT). Without it the call exits 127 —
+# acceptable failure mode; we'd rather surface "needs chrome-host"
+# than hide the blank from the list entirely.
+on-host: [chrome, claude-code, gemini-cli, opencode]
 # Sandbox: declared OFF because volume-blank.sh needs:
 #   - /mnt/c/ access (WSL) to reach VolCtl.exe (Windows Core Audio)
 #   - nircmd.exe fallback in /mnt/c/Windows/
