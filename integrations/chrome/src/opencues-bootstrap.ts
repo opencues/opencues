@@ -176,6 +176,50 @@ function isManagedEditor(el: HTMLElement): boolean {
   );
 }
 
+/** Normal `<input>` / `<textarea>` mode. CSS Custom Highlights don't
+ *  paint on these (browsers render input value via internal text
+ *  layout, not DOM text nodes), so cues are not surfaced — but blanks
+ *  still work via `.value` mutation + an `input` event dispatch. See
+ *  `docs/features/chrome-normal-inputs.md` for the supported subset. */
+export function isNormalInput(el: Element | null): el is HTMLInputElement | HTMLTextAreaElement {
+  if (!el) return false;
+  if (el instanceof HTMLTextAreaElement) return true;
+  if (el instanceof HTMLInputElement) {
+    const t = (el.type || 'text').toLowerCase();
+    return t === 'text' || t === 'email' || t === 'search' || t === 'url';
+  }
+  return false;
+}
+
+/** Read the plain text of whichever kind of target is focused.
+ *  Inputs surface `.value`; contenteditables walk the DOM. */
+export function readTargetText(target: HTMLElement): string {
+  if (isNormalInput(target)) return target.value;
+  return walkPlainText(target).text;
+}
+
+/** Write `.value` through the native prototype setter — frameworks
+ *  (React/Vue/Svelte) stash a tracker on the setter that watches for
+ *  programmatic writes, then suppress their re-render unless the
+ *  tracker sees the change. The naive `el.value = x` bypasses the
+ *  setter on tracked inputs. Dispatching 'input' + 'change' is then
+ *  what cues the framework's onChange handler — synthetic events are
+ *  isTrusted=false so the document-level input listener filters them
+ *  out (no double-notify), but the framework's own event system runs
+ *  on the captured handler regardless. */
+function writeNormalInputValue(el: HTMLInputElement | HTMLTextAreaElement, text: string): void {
+  const proto = el instanceof HTMLTextAreaElement
+    ? HTMLTextAreaElement.prototype
+    : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) setter.call(el, text);
+  else el.value = text;
+  sourceReclassifier.markRuntimeWrite(text);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  log.info('[opencues][normal-input] writeValue: newLen=' + text.length);
+}
+
 function isLexicalEditor(el: HTMLElement): boolean {
   return !!el.closest('[data-lexical-editor="true"]');
 }
@@ -191,6 +235,7 @@ function isDraftJsEditor(el: HTMLElement): boolean {
 function readCursorOffset(): number {
   const target = currentTarget;
   if (!target) return 0;
+  if (isNormalInput(target)) return target.selectionStart ?? 0;
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return 0;
   const range = sel.getRangeAt(0);
@@ -218,6 +263,11 @@ function readCursorOffset(): number {
 function writeCursorOffset(offset: number, force: boolean = false): void {
   const target = currentTarget;
   if (!target) return;
+  if (isNormalInput(target)) {
+    const o = Math.max(0, Math.min(offset, target.value.length));
+    target.setSelectionRange(o, o);
+    return;
+  }
   if (isManagedEditor(target) && !force) return;
   const sel = window.getSelection();
   if (!sel) return;
@@ -455,6 +505,13 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
 function diffWriteText(text: string): void {
   const target = currentTarget;
   if (!target) return;
+  if (isNormalInput(target)) {
+    const cBefore = target.selectionStart ?? text.length;
+    writeNormalInputValue(target, text);
+    const o = Math.max(0, Math.min(cBefore, text.length));
+    target.setSelectionRange(o, o);
+    return;
+  }
   target.focus();
   log.info('[opencues] diffWriteText: newLen=' + text.length + ', hasNewline=' + text.includes('\n'));
   const cBefore = readCursorOffset();
@@ -491,6 +548,10 @@ function diffWriteText(text: string): void {
 function replaceAllText(text: string): void {
   const target = currentTarget;
   if (!target) return;
+  if (isNormalInput(target)) {
+    writeNormalInputValue(target, text);
+    return;
+  }
   target.focus();
   log.info('[opencues] replaceAllText: newLen=' + text.length + ', preDomLen=' + (target.textContent?.length ?? 0));
   const sel = window.getSelection();
@@ -1409,7 +1470,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   bootResult = boot({
     hostVersion: '0.1.0',
     cwd: ROOT,
-    getText: () => currentTarget ? walkPlainText(currentTarget).text : '',
+    getText: () => currentTarget ? readTargetText(currentTarget) : '',
     getCursorOffset: readCursorOffset,
     // Both setText and pushText route through diffWriteText so the
     // diff itself decides per-call whether the change is small
@@ -1758,6 +1819,12 @@ export function notifyOpenCuesCursorChange(
 function runtimeRender(): void {
   const target = currentTarget;
   if (!target || !bootResult) return;
+  // Normal `<input>` / `<textarea>` can't host CSS Custom Highlights —
+  // their value is laid out by the browser's internal text-rendering,
+  // not from DOM text nodes Range can address. So we skip every render
+  // tick. Cues are computed by the runtime but never painted; blank
+  // fills still land via writeNormalInputValue.
+  if (isNormalInput(target)) return;
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
@@ -1822,6 +1889,11 @@ function installKeyListener(): void {
     // hijacking keys on parts of the page outside our contenteditable.
     const target = currentTarget;
     if (!target) return;
+    // Normal `<input>` / `<textarea>` mode has no painted cues / cycling
+    // band / navigation overlay, so the runtime's key dispatch has
+    // nothing to act on (cycling would mutate text invisibly — worse
+    // than no-op). Let browser-default key behavior pass through.
+    if (isNormalInput(target)) return;
     const active = document.activeElement;
     if (active !== target && !target.contains(active)) return;
     const text = walkPlainText(target).text;

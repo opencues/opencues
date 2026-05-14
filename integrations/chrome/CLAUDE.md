@@ -4,6 +4,29 @@ This document captures hard-won knowledge for the chrome extension that
 isn't obvious from the code alone. Read this before changing anything in
 `opencues-bootstrap.ts`'s write paths.
 
+## Two attach modes — contenteditable vs normal input
+
+The integration attaches to TWO kinds of focused element, each with its
+own read/write path:
+
+1. **Contenteditable surfaces** — Gmail, Reddit/Lexical, Twitter/Draft,
+   ChatGPT/PM, LinkedIn/PM, claude.ai/PM, Luma/PM, YouTube. Full
+   feature set: cues + blanks + cycling + dim render. Each engine
+   needs its own write strategy; see the per-editor matrix below.
+2. **Normal `<input>` / `<textarea>`** — search boxes, form fields,
+   plain textareas. Blanks only (no cues, no cycling UI, no dim
+   render). The runtime still computes cues but they never paint
+   because CSS Custom Highlight ranges can't address an input's
+   internal text layout.
+
+The branch is an `isNormalInput(el)` check at the top of every
+read/write helper in `opencues-bootstrap.ts`. Full spec + supported
+blank subset + caveats live in
+`docs/features/chrome-normal-inputs.md`. Read that before changing
+anything in the normal-input branches — they're a deliberately
+limited surface and the doc explains what's intentionally NOT done
+(no badge, no preview, no cycling-on-list-blanks).
+
 ## Live config sync — native-messaging host (May 2026)
 
 Live `~/.cues/` sync replaced the 2.5s version-poll. The mechanism:

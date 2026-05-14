@@ -15,13 +15,15 @@ import {
   publishTarget,
   clearRuntimeHighlights,
   log,
+  isNormalInput,
+  readTargetText,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
 import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
 
 function isTextInput(el: HTMLElement): boolean {
-  return el.isContentEditable;
+  return el.isContentEditable || isNormalInput(el);
 }
 
 // CSS Custom Highlight pseudo-elements don't reliably inherit CSS
@@ -90,17 +92,25 @@ async function init(): Promise<void> {
       if (!el.matches(config.targetSelector)) return;
     }
     if (!isTextInput(el)) return;
-    log.info('[OpenCues] Attaching to', el.tagName, el.id || el.className || '');
-    // Strip derived colour vars from any previous target before tagging
+    const normalInput = isNormalInput(el);
+    log.info(
+      normalInput ? '[OpenCues][normal-input] Attaching to' : '[OpenCues] Attaching to',
+      el.tagName, el.id || el.className || '',
+    );
+    // Strip derived colour vars from any previous CE target before tagging
     // the new one, so the page is free of stale OpenCues styling if
     // focus moved between contenteditables without going through focusout.
-    if (currentTarget) clearDerivedColours(currentTarget);
+    // (Normal-input targets never had colours applied, so nothing to clear.)
+    if (currentTarget && !isNormalInput(currentTarget)) clearDerivedColours(currentTarget);
     currentTarget = el;
     // Derive --oc-active / --oc-dim from the host's own computed text +
     // background colour. The active highlight ends up matching the
     // contenteditable's own text colour, so reconciliation gaps don't
     // flash. See derive-colours.ts and content.css.
-    applyDerivedColours(el, config.dimMix);
+    //
+    // Normal `<input>` / `<textarea>` don't render CSS Custom Highlights,
+    // so we skip the colour derivation + style injection entirely.
+    if (!normalInput) applyDerivedColours(el, config.dimMix);
     publishTarget(el);
   };
 
@@ -119,7 +129,7 @@ async function init(): Promise<void> {
     const next = evt.relatedTarget as HTMLElement | null;
     if (!next || !isTextInput(next)) {
       if (currentTarget) {
-        clearDerivedColours(currentTarget);
+        if (!isNormalInput(currentTarget)) clearDerivedColours(currentTarget);
         currentTarget = null;
         publishTarget(null);
         clearRuntimeHighlights();
@@ -138,7 +148,7 @@ async function init(): Promise<void> {
   // follow or they'll be inverted.
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   mq.addEventListener('change', () => {
-    if (currentTarget) applyDerivedColours(currentTarget, config.dimMix);
+    if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, config.dimMix);
   });
 
   // SECURITY GATE — two layers to prevent hostile-page-triggered blanks.
@@ -186,7 +196,16 @@ async function init(): Promise<void> {
     queueMicrotask(() => {
       const target = currentTarget;
       if (!target) return;
-      const text = walkPlainText(target).text;
+      // readTargetText branches: `.value` for normal inputs, walk for CE.
+      // The runtime re-reads cursor via its own getCursorOffset hook,
+      // which is likewise branched in opencues-bootstrap — selectionStart
+      // for inputs, plain-offset walk for CE.
+      const text = readTargetText(target);
+      if (isNormalInput(target)) {
+        log.info('[opencues][normal-input] text-change: len=' + text.length +
+          ', hasUnderscore=' + text.includes('_') +
+          ', cursor=' + (target.selectionStart ?? 0));
+      }
       runtimeNotify(text);
     });
   });
@@ -196,6 +215,10 @@ async function init(): Promise<void> {
   document.addEventListener('selectionchange', () => {
     const target = currentTarget;
     if (!target) return;
+    // Normal-input mode has no auto-highlight surface, so cursor-only
+    // moves don't need to round-trip. The 'input' handler above is
+    // enough for typing.
+    if (isNormalInput(target)) return;
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
     const range = sel.getRangeAt(0);
@@ -218,7 +241,7 @@ async function init(): Promise<void> {
       // attachToFocused will fire again on next focusin.
     }
     config.dimMix = newConfig.dimMix;
-    if (currentTarget) applyDerivedColours(currentTarget, config.dimMix);
+    if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, config.dimMix);
   });
 }
 
