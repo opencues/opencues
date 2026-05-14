@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { tree, fileLink, bold, dim } = require('../lib/style.cjs');
+const { banner, cliVersion, fileLink, bold, dim, accent, G } = require('../lib/style.cjs');
 
 module.exports = function list(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -14,6 +14,7 @@ module.exports = function list(argv, ctx) {
     argv.includes('--cues')   ? 'cue'   :
     argv.includes('--blanks') ? 'blank' :
     null;
+  const showAll = argv.includes('--all') || argv.includes('-a');
 
   let parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList;
   try {
@@ -28,7 +29,7 @@ module.exports = function list(argv, ctx) {
   }
 
   const HOME = os.homedir();
-  // Same precedence as ConfigLoader; show source path for every entry.
+  // Same precedence as ConfigLoader.
   const paths = [
     process.env.OPENCUES_HOME,
     path.join(process.cwd(), '.cues'),
@@ -37,45 +38,49 @@ module.exports = function list(argv, ctx) {
 
   const tools = { parseCuesMd, parseSingleCueMd, inferHostCompat, formatHostList };
   const results = { cue: [], blank: [] };
-  for (const dir of paths) {
-    collect(dir, tools, results);
-  }
+  // Track which root each entry came from — used for the per-root grouping
+  // and to compute path-relative-to-root for display.
+  for (const dir of paths) collect(dir, tools, results);
 
-  // Width of the host-compat marker (consistent across kinds).
-  const allItems = [].concat(results.cue, results.blank);
-  const maxHostLen = allItems.reduce((m, it) => Math.max(m, (it.hosts || '').length), 0);
+  // Banner — wordmark + version. One-time at the top.
+  console.log('');
+  console.log(banner({ version: cliVersion(ctx) }));
+  console.log('');
+
+  // Search paths — show every dir we read from, once. Replaces the
+  // per-row path-prefix repetition.
+  console.log(bold('Reading from'));
+  for (const p of paths) console.log('  ' + dim(prettyPath(p, HOME)));
+  console.log('');
 
   for (const kind of ['cue', 'blank']) {
     if (onlyKind && onlyKind !== kind) continue;
     const items = results[kind];
-    console.log('');
-    console.log(`${bold(kind.toUpperCase() + 'S')} ${dim('(' + items.length + ')')}`);
-    if (items.length === 0) { console.log(dim('  (none)')); continue; }
+    const label = kind === 'cue' ? 'Cues' : 'Blanks';
+    console.log(bold(label) + ' ' + dim('(' + items.length + ')'));
+    if (items.length === 0) { console.log('  ' + dim('(none)')); console.log(''); continue; }
 
-    // Group items by source file, preserving discovery order. Each file
-    // becomes a tree title; its entries are leaves under it.
-    const bySource = new Map();
+    // Longest name → column width for clean alignment.
+    const nameW = items.reduce((m, it) => Math.max(m, it.name.length), 0);
+
     for (const it of items) {
-      if (!bySource.has(it.source)) bySource.set(it.source, []);
-      bySource.get(it.source).push(it);
+      // Path: relative to the matching root, so the redundant
+      // `~/.cues/` prefix doesn't repeat on every line.
+      const rel = relativeToRoot(it.source, paths);
+      // Host marker only when the entry is scoped to a subset of hosts.
+      // "all" is the common case — silencing it removes the visual noise
+      // that prompted this redesign. --all surfaces it for diagnostics.
+      const hostMarker = (it.hosts && it.hosts !== 'all')
+        ? '  ' + dim('[') + it.hosts + dim(']')
+        : (showAll && it.hosts === 'all' ? '  ' + dim('[all]') : '');
+      const linked = fileLink(rel, it.source);
+      console.log(
+        '  ' + it.name.padEnd(nameW) +
+        '  ' + dim(G.arrow) + ' ' + dim(linked) +
+        hostMarker,
+      );
     }
-    for (const [source, group] of bySource) {
-      const linkedSource = fileLink(source, source);
-      if (group.length === 1) {
-        // Single-entry source — render inline so the visual weight matches
-        // the data (a one-leaf tree is just noise).
-        const it = group[0];
-        const hostMarker = it.hosts ? '  ' + dim('[') + it.hosts.padEnd(maxHostLen) + dim(']') : '';
-        console.log(`  ${it.name.padEnd(22)}${hostMarker}  ${dim(linkedSource)}`);
-      } else {
-        console.log('');
-        const rows = group.map(it => {
-          const hostMarker = it.hosts ? dim('[') + it.hosts.padEnd(maxHostLen) + dim(']') : '';
-          return [it.name, '', hostMarker];
-        });
-        console.log(tree({ title: linkedSource, rows, labelWidth: 22 }));
-      }
-    }
+    console.log('');
   }
 };
 
@@ -135,8 +140,26 @@ function hostsLabel(input, inferHostCompat, formatHostList) {
   return formatHostList(r.hosts);
 }
 
+// Resolve a source path against the first matching root, returning the
+// path-relative-to-root. Falls back to the absolute path when no root
+// matches (shouldn't happen in practice, but keep it safe).
+function relativeToRoot(source, roots) {
+  for (const r of roots) {
+    if (source.startsWith(r + path.sep) || source === r) {
+      return source.slice(r.length + 1);
+    }
+  }
+  return source;
+}
+
+// `~/.cues/` for paths under HOME, absolute otherwise.
+function prettyPath(p, home) {
+  if (p.startsWith(home + path.sep)) return '~' + p.slice(home.length);
+  return p;
+}
+
 function printHelp() {
-  console.log('opencues list [--cues|--blanks]');
+  console.log('opencues list [--cues|--blanks] [--all]');
   console.log('');
   console.log('List every cue and blank discovered across your search paths,');
   console.log('with the source file each came from. Folder-based entries override');
@@ -144,5 +167,6 @@ function printHelp() {
   console.log('');
   console.log('  --cues        only cues');
   console.log('  --blanks      only blanks');
+  console.log('  --all, -a     show host-compat marker on every entry (including `all`)');
   console.log('  --help        Show this message');
 }
