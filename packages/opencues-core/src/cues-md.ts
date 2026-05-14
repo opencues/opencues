@@ -595,25 +595,35 @@ function parsePromptSection(content: string): PromptConfig {
     config.sources[sourceName] = source;
   }
 
-  // If no subsections but there is content, treat entire section as grammar prompt
+  // Legacy fallback: a `## Prompt` block with no `### subsections` used to
+  // become a single source named "grammar". Modern OpenCues uses folder-
+  // based cue sources (`cues/<name>/CUE.md`), so the inline form is rare.
+  //
+  // We still emit a source for back-compat, but ONLY when the body
+  // declares `match:` or `keywords:` (a source without either can't route
+  // any word — the runtime drops it, and including it would surface a
+  // phantom entry in `opencues list`). All-comments / docs-only bodies
+  // are correctly ignored.
   if (subs.length === 0 && content.trim()) {
     const yamlBlock = extractCodeBlock(content, 'yaml');
-    const text = extractTextOutsideCodeBlocks(content);
-    const source: SourceConfig = { name: 'grammar' };
     if (yamlBlock) {
       const kv = parseSimpleYamlFlat(yamlBlock);
-      if (kv.match) source.match = kv.match;
-      if (kv.keywords) source.keywords = kv.keywords;
-      if (kv.classify) source.classify = kv.classify;
-      if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
-      if (kv.model) source.model = kv.model;
-      if (kv.provider) source.provider = kv.provider;
-      if (kv.endpoint) source.endpoint = kv.endpoint;
-      if (kv.parser) source.parser = kv.parser as BlankParser;
-      if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
+      if (kv.match || kv.keywords) {
+        const text = extractTextOutsideCodeBlocks(content);
+        const source: SourceConfig = { name: 'grammar' };
+        if (kv.match) source.match = kv.match;
+        if (kv.keywords) source.keywords = kv.keywords;
+        if (kv.classify) source.classify = kv.classify;
+        if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
+        if (kv.model) source.model = kv.model;
+        if (kv.provider) source.provider = kv.provider;
+        if (kv.endpoint) source.endpoint = kv.endpoint;
+        if (kv.parser) source.parser = kv.parser as BlankParser;
+        if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
+        if (text) source.promptText = text;
+        config.sources['grammar'] = source;
+      }
     }
-    if (text) source.promptText = text;
-    config.sources['grammar'] = source;
   }
 
   return config;

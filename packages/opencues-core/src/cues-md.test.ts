@@ -253,10 +253,15 @@ describe('parseCuesMd: ## Prompt subsections', () => {
   });
 
   it('should handle ## Prompt with no ### subsections (legacy single prompt)', () => {
+    // The legacy back-compat path emits a "grammar" source ONLY when
+    // the YAML block declares match: or keywords: — without one the
+    // source can't route any word at runtime, so emitting it would
+    // surface a phantom entry in `opencues list`.
     const cfg = parseCuesMd([
       '## Prompt',
       '```yaml',
       'priority: 50',
+      'match: .*',
       '```',
       'Single prompt without subsections.',
     ].join('\n'));
@@ -264,6 +269,19 @@ describe('parseCuesMd: ## Prompt subsections', () => {
     assert.ok(cfg.promptConfig);
     assert.ok(cfg.promptConfig.sources.grammar);
     assert.ok(cfg.promptConfig.sources.grammar.promptText!.includes('Single prompt'));
+  });
+
+  it('should NOT emit a phantom "grammar" source when ## Prompt body has neither match: nor keywords:', () => {
+    // Real-world case: shipped CUES.md has only commented-out examples
+    // under ## Prompt. Pre-fix this produced a phantom entry visible
+    // in `opencues list` but unusable at runtime.
+    const cfg = parseCuesMd([
+      '## Prompt',
+      '# Just docs/comments — no actual source declaration.',
+      'Some descriptive paragraph.',
+    ].join('\n'));
+
+    assert.deepStrictEqual(Object.keys(cfg.promptConfig?.sources || {}), []);
   });
 
   it('should lowercase ### headings', () => {
