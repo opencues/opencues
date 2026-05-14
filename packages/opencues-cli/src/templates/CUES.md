@@ -111,26 +111,28 @@ version: 1
 ## Prompt
 
 # ─────────────────────────────────────────────────────────────────────
-# WORD-ALT ROUTING — DEFAULT vs DOMAIN SOURCES
+# WORD-ALT ROUTING — per-word source dispatch
 # ─────────────────────────────────────────────────────────────────────
 #
 # Multiple `### alternatives` cue sources can coexist. The runtime
 # routes each highlighted word to ONE source (not all of them) based
-# on per-source `match:` (regex) / `keywords:` (list).
+# on per-source `match:` (regex) / `keywords:` (list) + `priority:`.
 #
 # Every source MUST set match: or keywords:. Sources with neither are
-# dropped at runtime. If you really want a catch-all that fires on
-# every word, declare it explicitly with `match: .*`.
+# rejected at construction time — they would never claim any word.
+# For a catch-all that fires on every word, declare it explicitly
+# with `match: .*` and a LOW priority so domain cues win first.
 #
 # Routing per word:
-#   1. Highest-priority source whose match-regex hits OR whose
-#      keywords list contains the word wins.
-#   2. If nothing matched → no cue. Word isn't navigable.
+#   1. Walk sources in priority-descending order.
+#   2. First source whose `match:` hits OR whose `keywords:` contains
+#      the word wins. Claim the word for that source.
+#   3. If nothing matched → no cue. Word isn't navigable.
 #
-# Examples:
-#   "contract" → keyword in legal → legal wins
-#   "however"  → keyword in formal → formal wins
-#   "happy"    → no source claims it → no cue
+# Examples (with legal priority 70, spelling match: .* priority 10):
+#   "contract" → legal claims (priority 70, keyword hit)
+#   "hello"    → spelling claims (priority 10, match: .* hits)
+#   "the"      → spelling claims (same; match: .* hits)
 #
 # See docs/features/word-cue-routing.md for the full spec.
 
@@ -158,10 +160,12 @@ version: 1
 #
 # ```yaml
 # parser: alternatives
-# priority: 50
-# # No match: AND no keywords: → this is the DEFAULT source. Catches
-# # any word that no domain source claimed. Drop this section if you
-# # want an opt-in project (only specific words get cued).
+# priority: 10
+# match: .*
+# # `match: .*` makes this a catch-all. Pair with a LOW priority so
+# # any domain sources below (with their own match: / keywords:) win
+# # first; this only claims words those don't. Drop the section
+# # entirely if you want an opt-in project (only specific words get cued).
 # ```
 #
 # Suggest 3 alternative words for the highlighted word that fit the
@@ -176,8 +180,8 @@ version: 1
 # parser: alternatives
 # priority: 60
 # keywords: therefore, however, moreover, furthermore
-# # `keywords:` makes this a DOMAIN source. Fires only when the
-# # highlighted word is in the keyword list.
+# # `keywords:` claims only words in the list. Higher priority than
+# # the catch-all above so these words route here first.
 # tip: "more formal alternatives"
 # ```
 #

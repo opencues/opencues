@@ -460,7 +460,7 @@ the call and picks the right implementation at runtime.
 
 ---
 
-## Word-alt routing — DEFAULT vs DOMAIN sources
+## Word-alt routing — per-word source dispatch
 
 Every `### alternatives` section in `CUES.md` (or `cues/<name>/CUE.md`)
 becomes one `ConfigSource`. `buildSourcesFromConfig` wraps the whole
@@ -468,36 +468,56 @@ set in ONE `RoutedWordSourceGroup` that dispatches each highlighted
 word to exactly one child source — never combines them into a giant
 prompt.
 
-Classification per source (frontmatter):
+### Requirement: every source must declare `match:` OR `keywords:`
 
+The routing layer rejects sources lacking both at construction time —
+they would never claim any word, so emitting them would just be
+dead config. To catch words no domain source claims, use an explicit
+`match: .*` and set a low priority so domain cues win first.
+
+### Routing per word
+
+`RoutedWordSourceGroup` walks every word in priority-descending order
+and claims it for the FIRST source whose `match:` regex hits or whose
+`keywords:` list contains the word. If no source claims the word, the
+word isn't navigable (no cue surfaces for it).
+
+```yaml
+# Domain cue — claims specific terms, high priority
+name: legal
+priority: 70
+match: contract|agreement|clause|liability
+
+# Catch-all fallback — claims anything the domain cues didn't
+name: spelling
+priority: 10
+match: .*
 ```
-match: <regex> OR keywords: <list>     → DOMAIN  (only fires for matches)
-neither match: nor keywords:           → DEFAULT (catches everything else)
-```
 
-Routing per word: highest-priority domain whose match/keyword hits the
-word wins; otherwise highest-priority default; otherwise no cue (word
-isn't navigable). Words destined for the same source are batched into
-one parallel LLM call, then results are index-remapped back to the
-original positions.
+With this layout: `contract` → legal (priority 70 > spelling 10);
+`hello` → spelling (no domain match, spelling's `.*` catches it).
+Flip the priorities and spelling would suppress every domain cue.
 
-Why per-word dispatch:
+Words destined for the same source are batched into one parallel LLM
+call, then results are index-remapped back to the original positions.
+
+### Why per-word dispatch (not one big prompt)
+
 - **Isolation**: a hijacking prompt in one source cannot poison words
   that source isn't called for. A prompt of the form "always output
   bundled,deployed,shipped" only affects words its source claims.
-- **Symmetry**: each word gets ONE source (a domain match or the
-  default), the way each `_` gets ONE blank (`BlankSource` matches
-  on `blankKeywords`, falling back to `FluidBlankSource` for
-  unbound `_`).
+- **Symmetry**: each word gets ONE source (the highest-priority match),
+  the way each `_` gets ONE blank (`BlankSource` matches on
+  `blankKeywords`, falling back to `FluidBlankSource` for unbound `_`).
 
 Surfaces that enforce + surface this:
 - `@opencues/core` `RoutedWordSourceGroup` — runtime routing class
-- `CUES.md` / `new/CUE.md` templates — teach the distinction at scaffold time
-- `opencues list` — marks each source `domain` / `default`
-- `opencues validate` — warns on zero defaults + multi-default priority ties
+- `CUES.md` / `new/CUE.md` templates — show priority + match together
+- `opencues list` — counts sources per kind
+- `opencues validate` — warns when a source resolves to zero hosts
 
-Full spec: `docs/features/word-cue-routing.md`. Glossary entries:
-`docs/glossary.md § RoutedWordSourceGroup, Default Cue Source, Domain Cue Source`.
+Full spec: `docs/features/word-cue-routing.md`. Glossary entry:
+`docs/glossary.md § RoutedWordSourceGroup`.
 
 > **Don't** introduce code paths that concatenate multiple
 > `### alternatives` bodies into one `ConfigSource`. Per-word dispatch
