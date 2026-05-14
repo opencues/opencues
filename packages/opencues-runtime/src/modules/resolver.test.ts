@@ -326,6 +326,51 @@ describe('Resolver.resolveAndApply', () => {
     expect(capturedOpts?.defaultModel).toBe('openai/custom-model');
   });
 
+  it('picks up apiKeys mutations on rebuild (real-time host-key updates)', async () => {
+    // Regression pin: chrome's BootResult.updateApiKeys mutates the
+    // SAME apiKeys ref the resolver holds in options, then calls
+    // rebuildResolver. The resolver MUST re-read the live ref — not
+    // a snapshot captured at construction time — for mid-session key
+    // pushes (chrome-host install after page load, .env rotation,
+    // etc.) to take effect without a tab reload.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+
+    const liveApiKeys: Record<string, string | undefined> = { GROQ_API_KEY: 'old-key' };
+    let capturedKeys: Record<string, string | undefined> | undefined;
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'https://x',
+      apiKey: 'old-key',
+      defaultModel: 'm',
+      apiKeys: liveApiKeys,
+      httpAdapter: {},
+      resolverFactory: (_c, _b, opts) => {
+        capturedKeys = (opts as { apiKeys: Record<string, string | undefined> }).apiKeys;
+        return [{}];
+      },
+    });
+
+    resolver.rebuildResolver();
+    expect(capturedKeys?.GROQ_API_KEY).toBe('old-key');
+    expect(capturedKeys?.GEMINI_API_KEY).toBeUndefined();
+
+    // Simulate chrome's updateApiKeys mutating the live bag in place
+    // (NOT reassigning — reassignment wouldn't propagate to the
+    // resolver's options.apiKeys reference).
+    delete liveApiKeys.GROQ_API_KEY;
+    liveApiKeys.GEMINI_API_KEY = 'new-gemini-key';
+
+    resolver.rebuildResolver();
+    expect(capturedKeys?.GROQ_API_KEY).toBeUndefined();
+    expect(capturedKeys?.GEMINI_API_KEY).toBe('new-gemini-key');
+  });
+
   it('falls back to options.endpoint/defaultModel when OPENCUES.md has no overrides', async () => {
     const adapter = new MockAdapter({
       cwd: '/proj',

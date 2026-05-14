@@ -17,6 +17,7 @@ import {
   log,
   isNormalInput,
   readTargetText,
+  updateRuntimeApiKeys,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
@@ -239,6 +240,11 @@ async function init(): Promise<void> {
   // chrome.storage on its own; we just need to re-publish the target
   // in case the targetSelector changed, and re-apply the dim/italic
   // CSS vars so colour-tuning tweaks land without needing a refocus.
+  // Track the last-seen apiKey fingerprint so we only push updates
+  // into the runtime when the set actually changed (avoids spurious
+  // rebuilds on every popup-save).
+  let lastApiKeysFingerprint = Object.keys(config.llmApiKeys ?? {}).sort().join(',');
+
   onConfigChange((newConfig) => {
     if (newConfig.targetSelector !== config.targetSelector) {
       currentTarget = null;
@@ -249,6 +255,18 @@ async function init(): Promise<void> {
     }
     config.dimMix = newConfig.dimMix;
     if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, config.dimMix);
+
+    // Real-time key updates — call into the runtime when the API-key
+    // set changed. Fingerprint = sorted env-var names (no values,
+    // never want secrets in any log). When unchanged (e.g. popup
+    // saved a non-key field like dimMix), skip the runtime call.
+    const fp = Object.keys(newConfig.llmApiKeys ?? {}).sort().join(',');
+    if (fp !== lastApiKeysFingerprint) {
+      log.info('[opencues] apiKeys delta — propagating to runtime (envs: ' + (fp || '<empty>') + ')');
+      updateRuntimeApiKeys(newConfig.llmApiKeys ?? {});
+      lastApiKeysFingerprint = fp;
+      config.llmApiKeys = newConfig.llmApiKeys;
+    }
   });
 }
 

@@ -87,6 +87,29 @@ export interface BootResult {
    */
   reloadConfig(): Promise<void>;
   /**
+   * Mutate the live LLM api-key bag and force the Resolver +
+   * AgentRewrite + user-blanks-registry to re-resolve their per-source
+   * provider/key tuples on the NEXT dispatch — no page reload required.
+   *
+   * Why this exists: chrome.storage carries the host-pushed env keys.
+   * Without this method, a user who installs chrome-host AFTER opening
+   * a tab (or rotates a key in their .env mid-session) would have a
+   * resolver pinned to the keys that were present at boot, and every
+   * LLM dispatch would silently no-op until they reloaded the tab.
+   *
+   * Implementation: the apiKeys reference passed at boot is mutable.
+   * This method wipes it in place and re-fills from `newKeys`, then
+   * calls `Resolver.rebuildResolver()` so build-sources picks up the
+   * new bag. Sources that cached an old key are rebuilt; in-flight LLM
+   * calls already dispatched complete with their old credentials
+   * (acceptable — they're transient).
+   *
+   * No-op when the boot didn't construct a resolver (i.e. boot had no
+   * keys at all). For that case page reload is still required —
+   * documented in `integrations/chrome/CLAUDE.md`.
+   */
+  updateApiKeys(newKeys: Readonly<Record<string, string | undefined>>): void;
+  /**
    * Subscribe to module-emitted lifecycle events (markdown.styled,
    * blank.substituted, agent-rewrite.round-completed, etc.). The
    * content-script bootstrap uses this for `markdown.styled` payloads
@@ -218,9 +241,16 @@ export function boot(host: HostInfo): BootResult {
   // Resolver — opt-in via llmApiKey. Chrome injects its own fetch-
   // based httpAdapter because NodeHttpAdapter (node:https) doesn't
   // exist in a content-script context.
+  //
+  // `apiKeys` is the LIVE mutable bag — `updateApiKeys` below mutates
+  // it in place (rather than reassigning) so the resolver's
+  // `options.apiKeys` reference stays valid across key swaps. This is
+  // what makes mid-session host-key pushes actually reach the
+  // resolver on the next dispatch instead of requiring a tab reload.
   const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  let liveResolver: Resolver | null = null;
   if (hasAnyKey) {
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
@@ -231,6 +261,7 @@ export function boot(host: HostInfo): BootResult {
       httpAdapter: host.httpAdapter,
     }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+    liveResolver = resolver;
 
     const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
@@ -280,6 +311,28 @@ export function boot(host: HostInfo): BootResult {
       // fires onTextChange-style re-renders downstream. Used by the
       // chrome extension's .version polling loop.
       await shared.configLoader.load();
+    },
+    updateApiKeys(newKeys) {
+      // Mutate in place — the resolver holds the same reference via
+      // its options.apiKeys, and rebuilds sources from it on demand.
+      // Re-assigning the local `apiKeys` variable wouldn't propagate.
+      for (const k of Object.keys(apiKeys)) delete apiKeys[k];
+      for (const [k, v] of Object.entries(newKeys)) {
+        if (typeof v === 'string' && v.length > 0) apiKeys[k] = v;
+      }
+      // Force resolver rebuild so sources pick up new credentials on
+      // the next dispatch. No-op when no resolver exists (boot had no
+      // keys; user must reload tab to construct one fresh — building
+      // a resolver from nothing mid-session would require tearing
+      // down + recreating AgentRewrite too, which is out of scope).
+      if (liveResolver) {
+        liveResolver.rebuildResolver();
+        log('info', '[opencues] updateApiKeys: resolver rebuilt with new key set');
+      } else {
+        log('warn',
+          '[opencues] updateApiKeys: no resolver to update (boot had no keys). ' +
+          'Reload the tab to construct one from the new keys.');
+      }
     },
     onModuleEvent(handler) {
       return moduleEvents.subscribe(({ type, body }) => handler(type, body));

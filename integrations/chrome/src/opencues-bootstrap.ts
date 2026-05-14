@@ -164,6 +164,22 @@ export function publishTarget(el: HTMLElement | null): void {
   currentTarget = el;
 }
 
+/** Real-time API-key update — called by content.ts when chrome.storage
+ *  reports a host-push or popup-save changed the LLM key bag. The
+ *  runtime's BootResult exposes `updateApiKeys` which mutates the
+ *  resolver's live apiKeys ref and force-rebuilds sources, so the
+ *  next LLM dispatch uses the new credentials without a tab reload.
+ *
+ *  No-op when boot hasn't completed yet (rare race — content.ts
+ *  schedules updates after `startOpenCues` returns). Also no-op if
+ *  the runtime didn't construct a resolver at boot (the user had no
+ *  keys at all); that case requires a tab reload to wire the
+ *  resolver up fresh, and we surface a warn via the runtime side. */
+export function updateRuntimeApiKeys(newKeys: Readonly<Record<string, string>>): void {
+  if (!bootResult) return;
+  bootResult.updateApiKeys(newKeys);
+}
+
 /** Editors that own their contenteditable as a fully-managed surface
  *  (their model is the source of truth, DOM is rendered output, and
  *  their MutationObserver REVERTS direct text-node mutations that
