@@ -411,6 +411,14 @@ export class FluidBlankSource implements CueSource {
         this.emit({ type: 'bailed', reason: 'no-blank', latencyMs: 0 });
         return { results: [] };
       }
+      // Upstream source (typically TransformBlank when EXTRACT=TRANSFORM but
+      // APPLY failed) claimed this slot. Falling through and answering it
+      // as a question would "vandalise" the user's intent — they were
+      // giving an instruction, not asking. Leave the buffer alone.
+      if (context.consumedBlankSlots?.includes(blankIdx)) {
+        this.emit({ type: 'bailed', reason: 'consumed-upstream', latencyMs: 0 });
+        return { results: [] };
+      }
       this.emit({ type: 'started', textLen: context.text.length, blankIdx });
 
       // Strict JSON on groq gpt-oss — same gate as transform-blank.

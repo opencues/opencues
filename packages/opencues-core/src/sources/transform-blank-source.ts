@@ -1404,7 +1404,18 @@ export class TransformBlankSource implements CueSource {
         currentTarget = draft;
       }
       if (!lastRewrite) {
-        return { results: [], timing: Date.now() - startTime, model: this.model };
+        // EXTRACT said TRANSFORM but APPLY couldn't produce a rewrite.
+        // Claim the slot so downstream sources (notably FluidBlank) don't
+        // "vandalise" the buffer by answering it as a question. The user's
+        // input was an imperative — we just couldn't apply it. Better to
+        // leave the buffer alone than to substitute an unrelated answer.
+        this.log(`TransformBlank: claim-and-bail — APPLY empty after EXTRACT=TRANSFORM, slot ${blankIdx} consumed (no downstream fallback)`);
+        return {
+          results: [],
+          consumedBlankSlots: [blankIdx],
+          timing: Date.now() - startTime,
+          model: this.model,
+        };
       }
 
       // P3 VERIFY — check the final draft. Pass instruction in original

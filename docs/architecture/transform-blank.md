@@ -159,6 +159,18 @@ The six verdicts split into three branches:
 - **`TASK_ARM` / `TASK_ADD` / `TASK_STOP` / `TASK_SHOW`** — the agent-task path. Routes to the runtime's agent state machine via `metadata.taskAction` + `metadata.taskPayload`; APPLY and VERIFY do not run. See `docs/architecture/agent-task.md` for the task semantics.
 - **`NONE`** — the source bails immediately and FluidBlankSource (priority 92) takes the slot.
 
+### Claim-and-bail — protecting the slot from FluidBlank "vandalism"
+
+If EXTRACT classified the input as `TRANSFORM` but APPLY couldn't produce a rewrite (every step returned empty, parser couldn't parse the model output, etc.), the source **claims** the `_` slot before returning. Implemented by setting `CueSourceResult.consumedBlankSlots: [blankIdx]` on the empty result.
+
+The resolver forwards consumed-slot indices into the `CueContext.consumedBlankSlots` field of every downstream source. `FluidBlankSource.getCues` checks early: if its slot is in that list, it bails with `reason: 'consumed-upstream'` and the buffer is left unchanged.
+
+Why this matters: without the claim, an EXTRACT verdict of `TRANSFORM` + a failed APPLY would let FluidBlank fall through and substitute the user's instruction as a *question* — "make this shorter _" becomes "Paris" because FluidBlank read the imperative as a lookup phrase. The user gave an instruction; we failed to apply it; substituting an unrelated answer is worse than leaving the buffer alone.
+
+The claim only fires on the IMPERATIVE path (`TRANSFORM` with non-empty TARGET, then empty APPLY). The generative branch (empty TARGET, e.g. "write a poem _") doesn't claim — if its single APPLY pass returns empty, FluidBlank gets to try (it has its own bail-on-no-segment / bail-on-no-answer paths).
+
+Pinned by `packages/opencues-core/src/resolver.test.ts` (consumed-slots forwarding) and the TransformBlank tests covering the EXTRACT=TRANSFORM + APPLY=empty case.
+
 ### Why minimal prompts win here (Experiment 2)
 
 The first version of EXTRACT had ~200 lines of rules and 18 examples

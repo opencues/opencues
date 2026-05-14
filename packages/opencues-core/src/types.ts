@@ -99,6 +99,18 @@ export interface CueContext {
   /** Indices of words that have blanks (underscore placeholders) */
   blankIndices?: number[];
 
+  /**
+   * Indices of `_` slots that a higher-priority source already CLAIMED
+   * but failed to fill (e.g. TransformBlank's EXTRACT verdict was
+   * TRANSFORM but APPLY came back empty). Downstream blank sources
+   * MUST NOT fall through to substitute these slots — doing so risks
+   * "vandalising" the user's instruction (a transform attempt becoming
+   * a stray question answer). The resolver populates this as it
+   * iterates sources sequentially. Empty / undefined means "every
+   * `_` slot is still fair game."
+   */
+  consumedBlankSlots?: readonly number[];
+
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
 }
@@ -121,6 +133,17 @@ export interface CueSourceResult {
 
   /** Token usage (for LLM sources) */
   tokens?: { in: number; out: number };
+
+  /**
+   * `_` slot indices this source CLAIMED but failed to fill. The
+   * resolver forwards these to subsequent sources via `CueContext.
+   * consumedBlankSlots` so they can short-circuit and avoid stepping
+   * on the user's intent. Most sources should never populate this —
+   * it's the "I tried, give up cleanly" signal, NOT "I didn't match."
+   * Currently set by TransformBlank when EXTRACT classified the input
+   * as TRANSFORM but APPLY returned empty.
+   */
+  consumedBlankSlots?: readonly number[];
 }
 
 /**

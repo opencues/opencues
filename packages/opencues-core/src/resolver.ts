@@ -66,16 +66,32 @@ export class CueResolver {
     // Filter to applicable sources
     const applicableSources = this.sources.filter((s) => s.supports(context));
 
+    // Accumulated `_` slots that an upstream source CLAIMED but failed
+    // to fill (TransformBlank EXTRACT=TRANSFORM, APPLY empty, etc.).
+    // Forwarded to each subsequent source so they don't "vandalise" the
+    // user's intent by substituting a slot the upstream was supposed to
+    // own. See CueSourceResult.consumedBlankSlots.
+    const consumedBlankSlots = new Set<number>(context.consumedBlankSlots ?? []);
+
     if (this.config.parallel) {
-      // Query all sources in parallel
+      // Query all sources in parallel. Parallel mode can't forward
+      // claimed-slots between sources (every call sees the same starting
+      // context), so the consumed-slots channel is only enforced for
+      // sources that ran sequentially BEFORE this batch. Hosts that rely
+      // on the claim-then-bail pattern (TransformBlank → FluidBlank)
+      // should run with parallel: false — the default for the runtime
+      // resolver wrapper.
       const promises = applicableSources.map((source) =>
-        this.querySourceWithTimeout(source, context)
+        this.querySourceWithTimeout(source, withConsumed(context, consumedBlankSlots))
       );
       const sourceResults = await Promise.all(promises);
 
       for (let i = 0; i < sourceResults.length; i++) {
         const source = applicableSources[i];
         const result = sourceResults[i];
+        if (result.consumedBlankSlots) {
+          for (const idx of result.consumedBlankSlots) consumedBlankSlots.add(idx);
+        }
         this.processSourceResult(
           source,
           result,
@@ -85,9 +101,17 @@ export class CueResolver {
         );
       }
     } else {
-      // Query sources sequentially in priority order
+      // Query sources sequentially in priority order — claim propagation
+      // works as designed here: each source sees the slots upstream
+      // sources have already consumed.
       for (const source of applicableSources) {
-        const result = await this.querySourceWithTimeout(source, context);
+        const result = await this.querySourceWithTimeout(
+          source,
+          withConsumed(context, consumedBlankSlots),
+        );
+        if (result.consumedBlankSlots) {
+          for (const idx of result.consumedBlankSlots) consumedBlankSlots.add(idx);
+        }
         this.processSourceResult(
           source,
           result,
@@ -233,6 +257,15 @@ export class CueResolver {
   getSources(): CueSource[] {
     return [...this.sources];
   }
+}
+
+/** Spread the accumulating consumed-slots set into the per-source
+ *  context view. Pure function — doesn't mutate the input context. */
+function withConsumed(context: CueContext, consumed: ReadonlySet<number>): CueContext {
+  if (consumed.size === 0) return context;
+  const previous = new Set<number>(context.consumedBlankSlots ?? []);
+  for (const idx of consumed) previous.add(idx);
+  return { ...context, consumedBlankSlots: Array.from(previous) };
 }
 
 /**
