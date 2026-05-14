@@ -1291,6 +1291,19 @@ export class TransformBlankSource implements CueSource {
         this.log(`TransformBlank P2 GENERATIVE (${Date.now() - genStart}ms, max_tokens=${genTokens}): "${preview(generated)}"`);
         if (!generated) {
           this.log(`TransformBlank: bailing — GENERATIVE returned empty`);
+          // Note for future-us: the IMPERATIVE branch claim-and-bails here
+          // (sets consumedBlankSlots) so FluidBlank can't substitute the
+          // user's instruction as a stray lookup answer. We deliberately
+          // DON'T claim on generative bail. Rationale:
+          //   - Generative inputs ("write a poem _", "draft a tweet _")
+          //     usually fail FluidBlank's own P1-no-span / P3-no-answer
+          //     gates anyway — no lookup phrase to segment.
+          //   - Leaving the slot open lets a future LLM-improvement (or
+          //     a user retry that nudges the model into producing output)
+          //     fall through cleanly.
+          // If we ever see FluidBlank "answering" failed generatives in
+          // the wild, mirror the imperative-branch claim here:
+          //   return { results: [], consumedBlankSlots: [blankIdx], ... };
           return { results: [], timing: Date.now() - startTime, model: this.model };
         }
 
