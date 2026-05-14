@@ -1,5 +1,9 @@
 # OpenCues — TODOs
 
+## About.md — user context file
+
+- **User-level identity/preferences file injected into LLM prompts.** Lets the user declare stable facts (name, country, locale, tone, free-form notes) that the resolver fluidly weaves into every call. Lives at `~/.cues/ABOUT.md` (user-level only — projects can't override, same scoping as system-settings frontmatter). Likely shape: hybrid — structured frontmatter for fields blanks branch on (`name`, `locale`, `timezone`) + a `notes:` body for free-form prose. Resolver exposes `ctx.about` to sources/prompt templates; gated through one accessor rather than raw string-interp. Wire once into `RoutedWordSourceGroup` prompt assembly so every source benefits without per-source code. Open question: opt-in per source vs always-on (always-on is cheaper but leaks identity into every call).
+
 ## Keyword-bound blanks
 
 - **LLM-based prompt relevance detection.** Instead of relying solely on `blankKeywords` + `blankProximity` for binding `_` to a blank, use the LLM to determine if the user's input is semantically relevant to a registered blank. For example, "make it louder _" has no keyword match but is clearly a volume intent. A lightweight classifier could route ambiguous inputs to the right blank — bridging keyword-bound blanks (`BlankSource`) and free-form lookups (`FluidBlankSource`).
