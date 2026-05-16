@@ -377,6 +377,14 @@ export class Resolver {
       },
       onFluidBlankEvent: (event: import('@opencues/core').FluidBlankEvent) => {
         const { type, ...body } = event;
+        // Compact debug log for fluid-blank lifecycle — mirrors the
+        // direct `this.log(...)` calls TransformBlank uses, so chrome's
+        // debug-mode console sees fluid-blank model info too. Only the
+        // `started` event needs an explicit line; others are routed
+        // exclusively through the event-bridge.
+        if (event.type === 'started') {
+          this.adapter.log('debug', `FluidBlank: starting (textLen=${event.textLen}, blankIdx=${event.blankIdx}, llm=${event.llm})`);
+        }
         this.adapter.emitEvent?.(`fluid-blank.${type}`, body);
       },
       // Universal-Integration profile: when the adapter reports the
