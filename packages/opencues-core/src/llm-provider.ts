@@ -524,7 +524,7 @@ export const PROVIDER_AUTO_ORDER: readonly ProviderId[] = [
  * and silent-no-op (no LLM functionality without keys is the documented
  * "OpenCues is fine without an LLM" mode).
  */
-export function pickAutoProvider(apiKeys: Readonly<Record<string, string>>): ProviderId | null {
+export function pickAutoProvider(apiKeys: Readonly<Record<string, string | undefined>>): ProviderId | null {
   for (const id of PROVIDER_AUTO_ORDER) {
     const adapter = PROVIDERS[id];
     if (adapter && apiKeys[adapter.envKeyName]) return id;
