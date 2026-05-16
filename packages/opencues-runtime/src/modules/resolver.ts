@@ -371,19 +371,25 @@ export class Resolver {
       // imported dynamically because cuesCore is type-erased at the
       // seam (see CuesCoreLike) — the explicit parameter types keep
       // strict-mode happy without re-importing the whole core surface.
+      // TransformBlank + FluidBlank lifecycle events go through the
+      // event-bridge for runtime consumers (debug-mode visualisers,
+      // event-stream taps, etc.). The `started` events ALSO get an
+      // info-level log line — they carry the resolved provider/model
+      // (and mode, for transform-blank), and surfacing that without
+      // requiring "Verbose" console filter is worth the once-per-
+      // substitution noise. Per-pass diagnostic logs from the source
+      // (e.g. `TransformBlank P1 EXTRACT (...)`) stay at debug level.
       onTransformBlankEvent: (event: import('@opencues/core').TransformBlankEvent) => {
         const { type, ...body } = event;
+        if (event.type === 'started') {
+          this.adapter.log('info', `TransformBlank: starting (textLen=${event.textLen}, blankIdx=${event.blankIdx}, mode=${event.mode}, llm=${event.llm})`);
+        }
         this.adapter.emitEvent?.(`transform-blank.${type}`, body);
       },
       onFluidBlankEvent: (event: import('@opencues/core').FluidBlankEvent) => {
         const { type, ...body } = event;
-        // Compact debug log for fluid-blank lifecycle — mirrors the
-        // direct `this.log(...)` calls TransformBlank uses, so chrome's
-        // debug-mode console sees fluid-blank model info too. Only the
-        // `started` event needs an explicit line; others are routed
-        // exclusively through the event-bridge.
         if (event.type === 'started') {
-          this.adapter.log('debug', `FluidBlank: starting (textLen=${event.textLen}, blankIdx=${event.blankIdx}, llm=${event.llm})`);
+          this.adapter.log('info', `FluidBlank: starting (textLen=${event.textLen}, blankIdx=${event.blankIdx}, llm=${event.llm})`);
         }
         this.adapter.emitEvent?.(`fluid-blank.${type}`, body);
       },
