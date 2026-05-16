@@ -453,7 +453,7 @@ const REVIEW_MODEL_DEFAULTS = {
   // already routes general-purpose calls to. Override with --model
   // if you want a deeper-reasoning Groq model.
   groq: 'openai/gpt-oss-120b',
-  gemini: 'gemini-2.5-pro',
+  gemini: 'gemini-3.1-flash-lite',
   openrouter: 'anthropic/claude-opus-4-7',
   cerebras: 'gpt-oss-120b',
 };
@@ -597,7 +597,7 @@ function printHelp() {
   console.log('                     anthropic → claude-opus-4-7');
   console.log('                     openai    → gpt-5.4');
   console.log('                     groq      → openai/gpt-oss-120b');
-  console.log('                     gemini    → gemini-2.5-pro');
+  console.log('                     gemini    → gemini-3.1-flash-lite');
   console.log('                   Env override: OPENCUES_REVIEW_MODEL.');
   console.log('  --help           Show this message.');
   console.log('');

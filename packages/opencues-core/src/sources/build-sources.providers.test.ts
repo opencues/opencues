@@ -76,7 +76,7 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
     const sources = buildSourcesFromConfig(undefined, undefined, {
       httpAdapter: adapter,
       apiKeys,
-      fluidBlank: { provider: 'gemini', model: 'gemini-2.5-flash' },
+      fluidBlank: { provider: 'gemini', model: 'gemini-3.1-flash-lite' },
       enableFluidBlank: true,
     });
     const fluid = sources.find((s: CueSource) => s.id === 'fluid-blank');
@@ -84,7 +84,7 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
     await fluid!.getCues({ text: 'capital of france _', words: ['capital', 'of', 'france', '_'] });
     assert.ok(calls.length > 0);
     assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
-    assert.match(calls[0].url, /models\/gemini-2\.5-flash:generateContent\?key=gem_k/);
+    assert.match(calls[0].url, /models\/gemini-3\.1-flash-lite:generateContent\?key=gem_k/);
     const body = JSON.parse(calls[0].body);
     assert.ok(body.contents, 'expected gemini-shaped body with `contents`');
     assert.ok(body.systemInstruction, 'expected systemInstruction (gemini-shape)');
@@ -137,7 +137,7 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
       apiKeys,
       globalProvider: 'groq',
       globalModel: 'openai/gpt-oss-120b',
-      fluidBlank: { provider: 'gemini', model: 'gemini-2.5-flash' },
+      fluidBlank: { provider: 'gemini', model: 'gemini-3.1-flash-lite' },
       enableFluidBlank: true,
       enableWordCues: true,
     });
@@ -180,7 +180,7 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
             match: '.*',
             priority: 60,
             provider: 'gemini',
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.1-flash-lite',
           },
         },
       },

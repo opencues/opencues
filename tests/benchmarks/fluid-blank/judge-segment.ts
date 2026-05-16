@@ -6,7 +6,10 @@
  * verdict + one-line rationale.
  */
 
-import { chat, sysUser } from './groq';
+// Pin judge to Groq gpt-oss-120b regardless of OPENCUES_BENCH_PROVIDER —
+// otherwise each provider self-judges and cross-provider comparisons
+// drift by ~5pp (see transform-blank EXPERIMENTS.md § Experiment 6).
+import { chat, sysUser } from './groq-impl';
 
 const SYSTEM_PROMPT = `You judge whether an actual span-segmentation matches an expected span.
 

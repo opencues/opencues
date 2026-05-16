@@ -7,6 +7,17 @@ debug-mode: off
 tips-mode: on
 cursor-navigate: inactive
 
+# Forwards a low-fan-out, sanitized snapshot of the focused field
+# (label, placeholder, aria-*, input type, page title, page url
+# origin+path, meta description) to the fluid-blank LLM call ONLY,
+# for disambiguation ("destination" on flights.google.com vs
+# airbnb.com). OFF by default. No sibling field labels, no field
+# values, no env / cwd / agent state. Sensitive fields (password,
+# CC, OTP) get null even when on. Today only the chrome integration
+# gathers ambient context; native hosts return null. See
+# docs/architecture/ambient-context.md.
+ambient-context-mode: off
+
 # Surface-availability flags. "on" means the surface is registered and
 # ready to fire when matching input appears; "off" (or omitted) means the
 # source is not built at all. The actual "is something running right now"
@@ -100,6 +111,11 @@ settings:
     values:
       active: Highlight follows cursor to navigable words
       inactive: Manual navigation only
+  ambient-context-mode:
+    tip: Share focused-field label/placeholder/page-title with fluid-blank for disambiguation. No sibling field values; no system data. Sensitive fields excluded. Chrome only.
+    values:
+      on: Enabled — ambient block injected into fluid-blank prompt
+      off: Disabled (default) — host returns null; ambient block never built
   fluid-blank-mode:
     tip: Free-form `_` lookups (P1+P3 LLM pipeline)
     values:
@@ -203,9 +219,47 @@ auto-falls-back between them on transient errors.
 more specific tier overrides it. Add to the frontmatter above:
 
 ```yaml
-llm-provider: groq
-llm-model: openai/gpt-oss-120b
-# llm-endpoint: https://api.groq.com/openai/v1/chat/completions
+llm-provider: cerebras
+llm-model: gpt-oss-120b
+# llm-endpoint: https://api.cerebras.ai/v1/chat/completions
+```
+
+**Auto-route (default behavior)** — when NO `llm-provider:` is set,
+OpenCues inspects which `<PROVIDER>_API_KEY` env-vars you've supplied
+and picks the best provider you actually have, in this order:
+
+```
+cerebras > groq > gemini > anthropic > openai
+```
+
+Ranking is from the May 2026 5-provider benchmark sweep (see
+`tests/benchmarks/BENCHMARKS.md`). Examples:
+
+- `CEREBRAS_API_KEY` only → cerebras everywhere (fastest gpt-oss path)
+- `CEREBRAS_API_KEY` + `GROQ_API_KEY` (typical) → cerebras primary,
+  groq as transient-error fallback via the auto-fallback pair
+- `GEMINI_API_KEY` only → gemini everywhere
+- `ANTHROPIC_API_KEY` only → claude-haiku everywhere
+- no keys → silent no-op, boot warns once
+
+Set `llm-provider:` explicitly to override the auto-route.
+
+**OpenAI defaults to `gpt-5.4-mini` + `reasoning_effort: low`** (cheapest
+tier that performs well on rewrite tasks — `gpt-5.4-nano` was too
+small, dropping multi-paragraph rewrites to 0%). For users with a
+ChatGPT subscription, `chat-latest` (the gpt-5.5 Instant alias used in
+ChatGPT) is bundled into some API tiers and is competitive on
+accuracy (86–90% on transform-blank, 99–100% on fluid-blank) — opt in
+per-feature:
+
+```yaml
+transform-blank-provider: openai
+transform-blank-model:    chat-latest   # gpt-5.5 Instant
+# subscriptions: Plus/Team plans include API credit for chat-latest;
+# Enterprise plans bundle it. Listed price is $5/$30 per M tokens, so
+# only worth it via subscription credit OR when no other provider is
+# available. Cerebras / Gemini / Groq are ~30× cheaper per correct
+# answer at near-equal accuracy.
 ```
 
 **Per-feature overrides.** Each replaces the global pair for that

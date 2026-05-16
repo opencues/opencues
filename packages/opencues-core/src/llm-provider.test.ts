@@ -103,7 +103,8 @@ describe('openai provider — direct OpenAI', () => {
   });
 
   it('buildRequest: uses `max_completion_tokens` for gpt-5/o-series (legacy `max_tokens` 400s)', () => {
-    for (const model of ['gpt-5.4-nano', 'gpt-5-mini', 'o3-mini', 'o1-mini']) {
+    // o-series and non-nano/mini gpt-5 keep caller-provided max_tokens.
+    for (const model of ['o3-mini', 'o1-mini', 'gpt-5.4']) {
       const built = buildProviderRequest(
         'openai',
         { model, messages: [{ role: 'user', content: 'x' }], maxTokens: 100 },
@@ -112,6 +113,56 @@ describe('openai provider — direct OpenAI', () => {
       const body = JSON.parse(built.body);
       assert.strictEqual(body.max_completion_tokens, 100, `expected max_completion_tokens for ${model}`);
       assert.strictEqual(body.max_tokens, undefined, `legacy max_tokens leaked for ${model}`);
+    }
+  });
+
+  it('buildRequest: floors max_completion_tokens to 2048 on gpt-5 nano/mini', () => {
+    // Even when caller passes a smaller value (100 here), the adapter
+    // floors to 2048 because nano/mini reasoning models emit thinking
+    // preambles that gobble small budgets — leaving the API to return
+    // empty content with finish_reason: length. See May 2026 benchmark
+    // sweep: gpt-5.4-mini scored 9.5% on fluid-blank 2-pass because
+    // each pass got ~768 tokens and the model emitted nothing.
+    for (const model of ['gpt-5.4-nano', 'gpt-5-mini', 'gpt-5.4-mini']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], maxTokens: 100 },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.max_completion_tokens, 2048, `floored max_completion_tokens for ${model}`);
+    }
+  });
+
+  it('buildRequest: preserves caller-passed reasoning_effort on gpt-5 nano/mini', () => {
+    // Initial design clamped to 'none', but empirical results showed
+    // reasoning tokens are doing real work on these models (turning
+    // them off dropped transform-blank fused from 85% → 28% on mini).
+    // The adapter now passes through whatever the caller sent and only
+    // intervenes on max_completion_tokens (floored to 2048).
+    for (const model of ['gpt-5.4-nano', 'gpt-5-mini', 'gpt-5.4-mini']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'low', maxTokens: 4096 },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.reasoning_effort, 'low', `preserved reasoning_effort for ${model}`);
+    }
+  });
+
+  it('buildRequest: full-tier gpt-5/o-series keep caller-passed reasoning_effort', () => {
+    // o1/o3 + gpt-5.4 (full) are reasoning-headline models — keep
+    // whatever the caller passed so production prompts can still ask
+    // for high reasoning when needed.
+    for (const model of ['o1-mini', 'o3-mini', 'gpt-5.4']) {
+      const built = buildProviderRequest(
+        'openai',
+        { model, messages: [{ role: 'user', content: 'x' }], reasoningEffort: 'low', maxTokens: 4096 },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.reasoning_effort, 'low', `preserved reasoning_effort for ${model}`);
     }
   });
 
@@ -167,12 +218,12 @@ describe('gemini provider — translates to/from Google’s shape', () => {
   it('buildRequest: model in URL path, key in query string, no auth header', () => {
     const built = buildProviderRequest(
       'gemini',
-      { model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'hi' }] },
+      { model: 'gemini-3.1-flash-lite', messages: [{ role: 'user', content: 'hi' }] },
       { apiKey: 'gem_test' },
     );
     assert.strictEqual(
       built.url,
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=gem_test',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=gem_test',
     );
     assert.deepStrictEqual(built.headers, { 'Content-Type': 'application/json' });
   });
@@ -181,7 +232,7 @@ describe('gemini provider — translates to/from Google’s shape', () => {
     const built = buildProviderRequest(
       'gemini',
       {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         messages: [
           { role: 'user', content: 'hello' },
           { role: 'assistant', content: 'hi back' },
@@ -202,7 +253,7 @@ describe('gemini provider — translates to/from Google’s shape', () => {
     const built = buildProviderRequest(
       'gemini',
       {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         messages: [
           { role: 'system', content: 'You are terse.' },
           { role: 'user', content: 'explain X' },
@@ -218,7 +269,7 @@ describe('gemini provider — translates to/from Google’s shape', () => {
   it('buildRequest: maxTokens/temperature → generationConfig', () => {
     const built = buildProviderRequest(
       'gemini',
-      { model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'x' }], maxTokens: 256, temperature: 0.2 },
+      { model: 'gemini-3.1-flash-lite', messages: [{ role: 'user', content: 'x' }], maxTokens: 256, temperature: 0.2 },
       { apiKey: 'k' },
     );
     const body = JSON.parse(built.body);
@@ -228,7 +279,7 @@ describe('gemini provider — translates to/from Google’s shape', () => {
   it('buildRequest: omits OpenAI-only knobs (seed, reasoningEffort)', () => {
     const built = buildProviderRequest(
       'gemini',
-      { model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'x' }], seed: 42, reasoningEffort: 'low' },
+      { model: 'gemini-3.1-flash-lite', messages: [{ role: 'user', content: 'x' }], seed: 42, reasoningEffort: 'low' },
       { apiKey: 'k' },
     );
     const body = JSON.parse(built.body);
@@ -453,7 +504,7 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
   it('per-source override wins over feature + global', () => {
     const r = resolveLLM({
       providerOverride: 'gemini',
-      modelOverride: 'gemini-1.5-pro',
+      modelOverride: 'gemini-3.1-flash-lite',
       featureProvider: 'openrouter',
       featureModel: 'deepseek/deepseek-chat',
       globalProvider: 'groq',
@@ -461,7 +512,7 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
       apiKeys,
     });
     assert.strictEqual(r?.provider.id, 'gemini');
-    assert.strictEqual(r?.model, 'gemini-1.5-pro');
+    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
     assert.strictEqual(r?.apiKey, 'gem_k');
   });
 
@@ -485,10 +536,14 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
     assert.strictEqual(r?.apiKey, 'oai_k');
   });
 
-  it('falls through to groq + provider default model when nothing set', () => {
+  it('falls through to cerebras + provider default model when nothing set', () => {
+    // Default flipped from groq → cerebras after May 2026 benchmark sweep
+    // (see resolveLLM's inline note). Same gpt-oss-120b model, faster
+    // per-call latency. Override globally with `llm-provider: groq` if
+    // you want the old default behaviour.
     const r = resolveLLM({ apiKeys });
-    assert.strictEqual(r?.provider.id, 'groq');
-    assert.strictEqual(r?.model, 'openai/gpt-oss-120b');
+    assert.strictEqual(r?.provider.id, 'cerebras');
+    assert.strictEqual(r?.model, 'gpt-oss-120b');
   });
 
   it('per-source provider override pulls THAT provider’s default model', () => {
@@ -499,7 +554,7 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
       apiKeys,
     });
     assert.strictEqual(r?.provider.id, 'gemini');
-    assert.strictEqual(r?.model, 'gemini-2.5-flash');
+    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
   });
 
   it('returns null when the resolved provider has no api key', () => {
@@ -523,7 +578,7 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
       apiKeys,
     });
     assert.strictEqual(r?.provider.id, 'gemini');
-    assert.strictEqual(r?.model, 'gemini-2.5-flash');
+    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
   });
 
   it('per-source modelOverride applies to globally-set provider (model-only override)', () => {
@@ -550,6 +605,126 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
     assert.strictEqual(r1?.endpoint, 'https://api.groq.com/openai/v1/chat/completions');
     const r2 = resolveLLM({ providerOverride: 'groq', endpointOverride: 'https://custom/v1/chat/completions', apiKeys });
     assert.strictEqual(r2?.endpoint, 'https://custom/v1/chat/completions');
+  });
+});
+
+// ---------------------------------------------------------------------
+// AUTO-ROUTE: when NO tier is set, pick the best provider FROM THE
+// KEYS THE USER ACTUALLY HAS. Preference order is PROVIDER_AUTO_ORDER
+// (cerebras > groq > gemini > anthropic > openai). Explicit overrides
+// at any tier bypass auto-route — those paths are covered by the
+// "settings-hierarchy precedence" suite above.
+// ---------------------------------------------------------------------
+
+describe('resolveLLM — auto-route over present keys', () => {
+  it('picks cerebras when only CEREBRAS_API_KEY is set', () => {
+    const r = resolveLLM({ apiKeys: { CEREBRAS_API_KEY: 'c' } });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+    assert.strictEqual(r?.model, 'gpt-oss-120b');
+  });
+
+  it('picks groq when only GROQ_API_KEY is set', () => {
+    const r = resolveLLM({ apiKeys: { GROQ_API_KEY: 'g' } });
+    assert.strictEqual(r?.provider.id, 'groq');
+    assert.strictEqual(r?.model, 'openai/gpt-oss-120b');
+  });
+
+  it('picks gemini + gemini-3.1-flash-lite when only GEMINI_API_KEY is set', () => {
+    const r = resolveLLM({ apiKeys: { GEMINI_API_KEY: 'gm' } });
+    assert.strictEqual(r?.provider.id, 'gemini');
+    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
+  });
+
+  it('picks anthropic + claude-haiku when only ANTHROPIC_API_KEY is set', () => {
+    const r = resolveLLM({ apiKeys: { ANTHROPIC_API_KEY: 'a' } });
+    assert.strictEqual(r?.provider.id, 'anthropic');
+    assert.strictEqual(r?.model, 'claude-haiku-4-5-20251001');
+  });
+
+  it('picks openai + gpt-5.4-mini when only OPENAI_API_KEY is set (graceful degradation)', () => {
+    const r = resolveLLM({ apiKeys: { OPENAI_API_KEY: 'o' } });
+    assert.strictEqual(r?.provider.id, 'openai');
+    assert.strictEqual(r?.model, 'gpt-5.4-mini');
+  });
+
+  // Each auto-picked provider should also expose its own endpoint + API
+  // key. Locks in the wiring between PROVIDER_AUTO_ORDER (preference)
+  // and PROVIDERS (adapter metadata) — adding a new provider without
+  // updating its adapter would surface here as a test failure rather
+  // than a runtime "key not found" silent no-op.
+  it('auto-picked provider returns the matching apiKey, endpoint, and defaultModel', () => {
+    const cases = [
+      { keys: { CEREBRAS_API_KEY: 'c' }, want: { id: 'cerebras', model: 'gpt-oss-120b', endpoint: 'https://api.cerebras.ai/v1/chat/completions', apiKey: 'c' } },
+      { keys: { GROQ_API_KEY: 'g' },     want: { id: 'groq',     model: 'openai/gpt-oss-120b', endpoint: 'https://api.groq.com/openai/v1/chat/completions', apiKey: 'g' } },
+      { keys: { GEMINI_API_KEY: 'gm' },  want: { id: 'gemini',   model: 'gemini-3.1-flash-lite', apiKey: 'gm' } }, // gemini endpoint includes model name — checked separately
+      { keys: { ANTHROPIC_API_KEY: 'a' }, want: { id: 'anthropic', model: 'claude-haiku-4-5-20251001', endpoint: 'https://api.anthropic.com/v1/messages', apiKey: 'a' } },
+      { keys: { OPENAI_API_KEY: 'o' },   want: { id: 'openai',   model: 'gpt-5.4-mini', endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: 'o' } },
+    ];
+    for (const c of cases) {
+      const r = resolveLLM({ apiKeys: c.keys });
+      assert.ok(r, `auto-route should produce a result for ${JSON.stringify(c.keys)}`);
+      assert.strictEqual(r.provider.id, c.want.id);
+      assert.strictEqual(r.model, c.want.model);
+      assert.strictEqual(r.apiKey, c.want.apiKey);
+      if (c.want.endpoint) assert.strictEqual(r.endpoint, c.want.endpoint);
+    }
+  });
+
+  // Per-feature provider overrides should also pull THAT provider's
+  // default model when no per-feature model is set — verifies the
+  // auto-route logic respects feature-tier provider picks too.
+  it('per-feature provider override pulls THAT provider’s defaultModel', () => {
+    const allKeys = { CEREBRAS_API_KEY: 'c', GROQ_API_KEY: 'g', GEMINI_API_KEY: 'gm', ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' };
+    const cases = [
+      { feat: 'cerebras',  model: 'gpt-oss-120b' },
+      { feat: 'groq',      model: 'openai/gpt-oss-120b' },
+      { feat: 'gemini',    model: 'gemini-3.1-flash-lite' },
+      { feat: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+      { feat: 'openai',    model: 'gpt-5.4-mini' },
+    ];
+    for (const c of cases) {
+      const r = resolveLLM({ featureProvider: c.feat, apiKeys: allKeys });
+      assert.strictEqual(r?.provider.id, c.feat, `featureProvider=${c.feat}`);
+      assert.strictEqual(r?.model, c.model, `featureProvider=${c.feat} → defaultModel`);
+    }
+  });
+
+  it('prefers cerebras over groq when both are present (typical setup)', () => {
+    const r = resolveLLM({ apiKeys: { CEREBRAS_API_KEY: 'c', GROQ_API_KEY: 'g' } });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+  });
+
+  it('prefers cerebras over claude when both are present', () => {
+    const r = resolveLLM({ apiKeys: { CEREBRAS_API_KEY: 'c', ANTHROPIC_API_KEY: 'a' } });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+  });
+
+  it('prefers groq over gemini over claude over openai (full chain, no cerebras key)', () => {
+    const r = resolveLLM({
+      apiKeys: { GROQ_API_KEY: 'g', GEMINI_API_KEY: 'gm', ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' },
+    });
+    assert.strictEqual(r?.provider.id, 'groq');
+  });
+
+  it('global override beats auto-route — gemini wins even when cerebras key present', () => {
+    const r = resolveLLM({
+      globalProvider: 'gemini',
+      apiKeys: { CEREBRAS_API_KEY: 'c', GEMINI_API_KEY: 'gm' },
+    });
+    assert.strictEqual(r?.provider.id, 'gemini');
+  });
+
+  it('per-feature override beats auto-route', () => {
+    const r = resolveLLM({
+      featureProvider: 'anthropic',
+      apiKeys: { CEREBRAS_API_KEY: 'c', ANTHROPIC_API_KEY: 'a' },
+    });
+    assert.strictEqual(r?.provider.id, 'anthropic');
+  });
+
+  it('returns null when no provider is configured AND no keys are set', () => {
+    const r = resolveLLM({ apiKeys: {} });
+    assert.strictEqual(r, null);
   });
 });
 
@@ -790,7 +965,7 @@ describe('resolveLLM — misconfiguration warnings (silent-no-op regressors)', (
     } finally { restore(); }
   });
 
-  it('does NOT warn when NO provider is configured (defaulted to groq, no groq key)', () => {
+  it('does NOT warn when NO provider is configured (defaulted to cerebras, no cerebras key)', () => {
     // "User hasn't configured an LLM yet" is a legitimate state — every
     // LLM-driven cue/blank gracefully no-ops. We don't want to spam
     // warnings on every keystroke in that mode; the boot-time

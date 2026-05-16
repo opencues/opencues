@@ -63,7 +63,7 @@ export async function chat(messages: ChatMessage[], opts: { temperature?: number
     // Soft-fail Groq-side parse errors so one bad response doesn't kill a
     // 50-case benchmark. Caller's parser will treat empty text as a bail.
     const msg = parsed.error.message ?? JSON.stringify(parsed.error);
-    if (/Parsing failed|model generated output that could not be parsed/i.test(msg)) {
+    if (/Parsing failed|model generated output that could not be parsed|rate.?limit/i.test(msg)) {
       return { text: '', latencyMs };
     }
     throw new Error(`Groq error: ${msg}`);

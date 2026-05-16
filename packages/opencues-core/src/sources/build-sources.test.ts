@@ -327,7 +327,7 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
   function buildWith(supportsCycling: boolean): string[] {
     const sources = buildSourcesFromConfig(undefined, undefined, {
       httpAdapter: stubAdapter,
-      apiKeys: { GROQ_API_KEY: 'x' },
+      apiKeys: { GROQ_API_KEY: 'x', CEREBRAS_API_KEY: 'x' },
       blanks: baseBlanks,
       readBlankState: () => null,
       enableFluidBlank: true,
@@ -355,7 +355,7 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
     const droppedLogs: string[] = [];
     const sources = buildSourcesFromConfig(undefined, undefined, {
       httpAdapter: stubAdapter,
-      apiKeys: { GROQ_API_KEY: 'x' },
+      apiKeys: { GROQ_API_KEY: 'x', CEREBRAS_API_KEY: 'x' },
       blanks: baseBlanks,
       readBlankState: () => null,
       enableFluidBlank: true,
@@ -378,7 +378,7 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
   it('supportsCycling=false + no surviving blanks: BlankSource omitted', () => {
     const sources = buildSourcesFromConfig(undefined, undefined, {
       httpAdapter: stubAdapter,
-      apiKeys: { GROQ_API_KEY: 'x' },
+      apiKeys: { GROQ_API_KEY: 'x', CEREBRAS_API_KEY: 'x' },
       blanks: {
         volume: baseBlanks.volume,
         affirmations: baseBlanks.affirmations,
@@ -406,7 +406,7 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
     const droppedLogs: string[] = [];
     const sources = buildSourcesFromConfig(cuesMd, undefined, {
       httpAdapter: stubAdapter,
-      apiKeys: { GROQ_API_KEY: 'x' },
+      apiKeys: { GROQ_API_KEY: 'x', CEREBRAS_API_KEY: 'x' },
       enableWordCues: true,
       supportsCycling: false,
       log: (msg) => { if (msg.includes('skipping')) droppedLogs.push(msg); },

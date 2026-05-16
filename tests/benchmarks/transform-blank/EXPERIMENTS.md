@@ -340,4 +340,498 @@ count). Structural similarity is necessary but not sufficient —
 even short single-line outputs can have semantic agreement bugs
 (plural+verb, pronoun coreference, quantifier match).
 
+---
+
+## Experiment 5 — Gemini 3.1 flash-lite vs gpt-oss-120b on compressed pipelines
+
+> **Methodology footnote (added in Experiment 6):** the numbers below were
+> produced with `judge.ts` routed through the same `OPENCUES_BENCH_PROVIDER`
+> as the model under test — so each row was self-judged. This inflates
+> scores when the judge and the inference model are the same model family
+> (the judge marks its own near-misses generous). Experiment 6 re-runs
+> the same matrix with the judge pinned to Groq gpt-oss-120b regardless
+> of provider, and confirms a clean ranking. Treat the numbers in this
+> section as directionally correct (the relative ordering between
+> Gemini variants is fine — they share a judge) but not directly
+> comparable across providers. The corrected cross-provider table is in
+> Experiment 6.
+
+**Hypothesis:** A smarter model can fit more work into each call. If
+Gemini 3.1 flash-lite can juggle EXTRACT + APPLY + VERIFY in one prompt
+where gpt-oss-120b collapsed to 19% (Experiment 1's single-call), then
+per-call latency stops being the right axis — total calls × per-call
+latency is. Even a "slower" model can win on wall-clock by needing
+fewer hops.
+
+**Suite:** 231 cases (grew from 162 since Experiment 1), full transform-
+blank set including the newer code-transform, tone-shift, format-
+transform, creative-rewrite, and adversarial categories.
+
+**Setup:** `temperature: 0`, `parallel: 8`, runs sequenced to dodge
+per-provider rate limits. Gemini uses `thinkingBudget: 0` by default
+(see `OPENCUES_GEMINI_THINKING`). Provider switched via
+`OPENCUES_BENCH_PROVIDER=gemini-flash-lite`.
+
+**Variants tested:**
+
+| Run | Model | Pipeline | API calls/case |
+|---|---|---|---|
+| **B1** baseline | gpt-oss-120b | 3-pass (extract → apply → verify) | 3 (4 on composed) |
+| **B2** apples-to-apples | gemini-3.1-flash-lite | 3-pass | 3 (4 on composed) |
+| **E1** | gemini-3.1-flash-lite | single-call (existing prompt, no thinking) | 1 |
+| **E2** | gemini-3.1-flash-lite | single-call + `thinkingBudget: high` | 1 |
+| **E3a** | gemini-3.1-flash-lite | **fused extract+apply** (new prompt, no verify) | 1 |
+| **E3b** | gemini-3.1-flash-lite | fused + conditional verify (composed / paragraph / length-skew) | 1–2 |
+
+**Results (full 231-case suite, parallel=8):**
+
+```
+Run                     Accuracy           Per-case   Wall    vs B1 latency
+──────────────────────────────────────────────────────────────────────────
+B1  gpt-oss 3-pass      90.9% (210/231)    1789ms     54.5s   baseline
+B2  gemini  3-pass      92.6% (214/231)    2081ms     65.7s   +16%
+E1  gemini  single      93.9% (217/231)    849ms      30.9s   -53%  ✓
+E2  gemini  single+think 91.3% (211/231)   2672ms     88.4s   +49%  ✗
+E3a gemini  fused       95.2% (220/231)    1196ms     45.2s   -33%  ✓✓
+E3b gemini  fused+verify 94.4% (218/231)   1264ms     43.5s   -29%
+```
+
+**Per-category breakdown (B1 vs E3a — the winners):**
+
+```
+Category               B1 gpt-oss 3-pass    E3a gemini fused   Δ
+─────────────────────────────────────────────────────────────────
+literal                100%                 100%                =
+multi-span             100%                 100%                =
+concept                100%                 100%                =
+transform              100%                 100%                =
+negative               90%                  100%                +10
+math                   100%                 100%                =
+linked-concepts        100%                 80%                 -20  ✗
+long-text (40 cases)   87.5%                85%                 -2.5
+targeted               100%                 100%                =
+multi-paragraph        80%                  80%                 =
+conditional            100%                 100%                =
+context-referring      70%                  100%                +30  ✓
+trailing-instruction   100%                 100%                =
+code-transform         80%                  100%                +20  ✓
+tone-shift             60%                  100%                +40  ✓✓
+format-transform       100%                 96.6%               -3.4
+creative-rewrite       70%                  100%                +30  ✓
+adversarial            90%                  100%                +10
+```
+
+**Findings:**
+
+1. **The user's hypothesis lands.** Gemini single-call (E1) scores
+   93.9% in one API call — beating the gpt-oss 3-pass baseline on
+   *both* accuracy (+3pp) AND latency (-53%). The exact configuration
+   that collapsed gpt-oss to 19% in Experiment 1 (`single-call`) is a
+   strict improvement on Gemini. Per-call latency is the wrong frame;
+   total wall-clock is dominated by call count for any model that can
+   actually hold the full instruction.
+
+2. **Fused extract+apply (E3a) is the new sweet spot:**
+   **95.2% accuracy @ 1196ms** — beats B1 on accuracy by 4.3pp and on
+   latency by 33%. The pattern that wins: emit `VERDICT / INSTRUCTION /
+   TARGET / REWRITE` together, so the model lays out the decomposition
+   as inline chain-of-thought before applying. Roughly: the structure
+   we used to extract via a separate call now happens in one breath,
+   for free.
+
+3. **Conditional VERIFY barely earns its keep (E3b).** Adding a
+   composed/paragraph/length-skew gate that fires a second VERIFY call
+   trims 0.8pp off E3a's accuracy (95.2 → 94.4). The VERIFY pass —
+   which the production prompt was tuned for gpt-oss's failure modes
+   — sometimes "corrects" valid Gemini drafts into worse output. When
+   the first model is already this good, layered verification stops
+   being insurance and starts being a contamination vector. Don't ship.
+
+4. **Gemini thinking budget actively HURTS (E2).** `thinkingBudget:
+   high` drops accuracy 93.9 → 91.3 AND triples wall-clock (849 →
+   2672ms/case). The biggest regressions are in domains we'd expect
+   thinking to help: math (100 → 80), linked-concepts (70 → 60),
+   format-transform (96.6 → 89.7). The mechanism appears to be the
+   same one Experiment 2 surfaced for gpt-oss — extra reasoning room,
+   without a sharper instruction, lets the model talk itself out of
+   the obvious answer. For prompts that already include strong few-
+   shot examples, thinking is over-reasoning. Default to
+   `thinkingBudget: 0` on production fluid/transform pipelines.
+
+5. **Gemini's category profile is the *inverse* of gpt-oss's.**
+   gpt-oss-120b excels at structured/grammatical cases (linked-concepts
+   100%, format-transform 100%, multi-paragraph rule-following) but
+   struggles on subjective rewrites (tone-shift 60%, creative-rewrite
+   70%, context-referring 70%). Gemini flips that: tone-shift 100%,
+   creative-rewrite 100%, context-referring 100% — but loses 20pp on
+   linked-concepts. The two models have different blind spots; the
+   net is +4.3pp because subjective categories were where the
+   production pipeline was bleeding accuracy.
+
+6. **The "more calls = more accuracy" intuition is wrong for capable
+   models.** B2 (Gemini on the 3-pass pipeline) is 1.3pp *worse* and
+   16% slower than E1 (Gemini single-call). Three serial Gemini calls
+   compound stochastic noise more than they compound reasoning quality.
+   Capable-model pipelines should be flat, not pipelined.
+
+**Decision (provisional):** keep the production 3-pass on gpt-oss-120b
+for now (it's the structurally-stable baseline), but stand up the
+**fused-extract-apply pipeline on Gemini 3.1 flash-lite as the
+recommended high-accuracy / low-latency mode**. Two regression risks
+must be addressed before swapping defaults:
+
+- **linked-concepts (-20pp)** — Gemini under-propagates dependent
+  vocabulary. The fused prompt's CONCEPT-SWAP section is shorter than
+  pass2-apply's; needs the full "MINIMAL EDIT / PRESERVE STRUCTURE /
+  COMPLETE THE ACTION" treatment. Plausibly recoverable.
+- **multi-paragraph (-0pp here, but watch)** — fused keeps parity, but
+  paragraph preservation is the kind of bug that hides in production
+  traffic. Add a structural post-check.
+
+**Lessons:**
+
+- **Don't carry pipeline architecture between models.** A pipeline
+  designed around one model's failure modes (gpt-oss collapsing on
+  juggle) embeds those failure modes in its architecture. When the
+  model gets smarter, the scaffolding becomes deadweight.
+- **Per-call latency is the wrong axis.** Wall-clock = calls × per-
+  call latency × parallelism penalty. Gemini's per-call latency is
+  ~2× gpt-oss's, but it gets to 1 call instead of 3 — net 53% faster.
+- **Thinking budgets aren't free even when token usage isn't billed.**
+  Extra reasoning tokens add latency *and* drift the answer. Use only
+  when the instruction is genuinely under-specified for the model.
+- **3-pass pipelines suit gpt-oss because gpt-oss can't hold the full
+  problem.** They're a scaffolding fix, not an accuracy multiplier.
+  On a model that can hold the problem, more passes = more drift.
+
+---
+
+## Experiment 6 — 5-provider × 4-pipeline matrix, pinned judge
+
+**Why this exists:** Experiment 5 ran the LLM-judge on whichever
+provider was under test, so each row was effectively self-judged. To
+make a fair cross-provider comparison, `judge.ts` now imports `chat`
+directly from `./groq-impl` (always Groq gpt-oss-120b, regardless of
+`OPENCUES_BENCH_PROVIDER`). All numbers below come from one judge.
+
+**Hypothesis:** if "fewer-but-fatter calls beat more calls" is a real
+property of capable models, it should generalize beyond Gemini. Test
+the same 4 pipelines (`extract-apply-verify` 3-pass, `single-call`,
+`fused`, `fused-verify`) across 5 providers spanning the cheap-fast
+production-LLM tier:
+
+- **Groq gpt-oss-120b** — the production model + a 3-pass pipeline
+  designed around its failure modes (Experiment 1's winner).
+- **Cerebras gpt-oss-120b** — same model, different inference. Tests
+  the assumption that "model = name" rather than "model = name +
+  provider".
+- **Google Gemini 3.1 flash-lite** — Experiment 5's candidate.
+- **Anthropic Claude Haiku 4.5** — Claude's cheap/fast tier, no
+  extended thinking.
+- **OpenAI gpt-5.4-nano** — GPT-5.4's cheap/fast tier (reasoning
+  model, low effort).
+
+**Setup:** full 231-case suite, `temperature: 0`, `parallel: 8`
+(`parallel: 6` for OpenAI to stay under TPM). Providers run in
+parallel; each provider's 4 modes run sequentially. Judge is always
+Groq gpt-oss-120b, judge-call latency excluded from per-case timings.
+
+**Results (accuracy / per-case latency in ms):**
+
+```
+                          3-pass        single-call   fused         fused+verify
+─────────────────────────────────────────────────────────────────────────────────
+groq    gpt-oss-120b      91.8% / 1459  17.7% /  532  80.5% /  727  83.1% /  925
+gemini  flash-lite        90.0% / 2263  89.2% /  729  89.2% /  772  90.5% / 1213
+cerebras gpt-oss-120b     78.8% /  933  29.4% /  330  76.2% /  331  47.6% /  363
+claude  haiku-4.5         87.9% / 3048  82.3% /  912  88.7% / 1125  84.4% / 1497
+openai  gpt-5.4-nano      20.8% /  806  76.6% / 1431  48.9% / 1101  31.2% /  600
+```
+
+**Findings:**
+
+1. **gpt-oss-120b on Groq + 3-pass remains the accuracy king (91.8%).**
+   The Experiment-5 claim that "Gemini fused beats gpt-oss 3-pass" was
+   a judge-bias artefact — Gemini was rating its own outputs ~5pp more
+   generously than Groq does. Under a fair judge, gpt-oss 3-pass is
+   still the highest-accuracy config we have. Gemini's flat 90% ceiling
+   is real but doesn't clear gpt-oss's tuned production pipeline.
+
+2. **Provider matters as much as model name.** Cerebras and Groq both
+   serve "gpt-oss-120b" but differ by **13pp** on 3-pass (78.8% vs
+   91.8%) and **47pp** on fused-verify (47.6% vs 83.1%). Per-call
+   latency is the opposite direction — Cerebras is 36% faster — so
+   this isn't a speed-vs-accuracy slider; one inference path produces
+   systematically weaker outputs. Spot-checked failures: minor word-
+   substitution drift (`drew his staff` → `raised his staff`;
+   `walked` retained when context demands `swam`). Looks like quantization
+   or sampler-config drift, not prompting or pipeline shape.
+
+3. **The single-call collapse is gpt-oss-specific.** Groq gpt-oss
+   crashes from 91.8% (3-pass) → 17.7% (single-call) — confirms
+   Experiment 1's "wide jobs break gpt-oss" thesis. Every other
+   provider stays within their own 3-pass band on single-call
+   (Gemini 89.2 vs 90.0; Claude 82.3 vs 87.9). The "compressed
+   pipeline" hypothesis only fails on small-MoE-ish models like
+   gpt-oss.
+
+4. **Reasoning models (gpt-5.4-nano) invert the pattern.** OpenAI's
+   3-pass scores **20.8%** — worse than gpt-oss-Groq's single-call. The
+   reason: gpt-5.4-nano spends so much of its `max_completion_tokens`
+   budget on internal reasoning that each pass frequently terminates
+   with `finish_reason: length` and empty content. Three passes ×
+   short budget compounds. Single-call gives it one big budget and
+   it climbs to 76.6%. Fused (1 call, structured output) sits between
+   at 48.9% — the structural labels eat some of the reasoning budget.
+
+   **Implication:** pipeline shape isn't model-agnostic. Multi-pass
+   architectures designed around token-frugal models actively
+   sabotage reasoning models that need their full budget per call.
+
+5. **Verify nearly always hurts under a fair judge.** Compare `fused`
+   vs `fused-verify`:
+   - groq:    80.5 → 83.1 (+2.6pp, the only meaningful win — and
+                            still 11pp below its 3-pass)
+   - gemini:  89.2 → 90.5 (+1.3pp)
+   - cerebras: 76.2 → 47.6 (−28.6pp catastrophe)
+   - claude:  88.7 → 84.4 (−4.3pp)
+   - openai:  48.9 → 31.2 (−17.7pp)
+
+   The verify pass was tuned on gpt-oss-Groq's failure modes; on every
+   other provider it's a corruption vector. Cross-model VERIFY needs
+   model-aware prompts or it shouldn't ship.
+
+6. **Claude haiku is the all-rounder but expensive.** 88.7% on fused at
+   1125ms is competitive on accuracy, but per-call latency is ~2× Gemini
+   and ~4× Cerebras. Its 3-pass is 3048ms/case — twice Groq's. Claude
+   appears to spend "wall-clock per token" generously vs Groq/Cerebras
+   inference. For interactive UX, that 3-second 3-pass is too slow.
+
+**Per-pipeline rankings (best provider for each):**
+
+```
+                Best provider              Score
+─────────────────────────────────────────────────
+3-pass          groq gpt-oss-120b          91.8% / 1459ms
+single-call     gemini flash-lite          89.2% /  729ms  ✓ speed-king
+fused           gemini flash-lite          89.2% /  772ms
+fused-verify    gemini flash-lite          90.5% / 1213ms
+```
+
+Across the matrix:
+- **Highest accuracy:** Groq gpt-oss-120b 3-pass (91.8%, 1459ms).
+- **Best speed/accuracy tradeoff:** Gemini flash-lite single-call
+  (89.2%, 729ms) — only 2.6pp below the accuracy king at half the
+  per-call latency.
+- **Fastest acceptable config:** Cerebras gpt-oss fused (76.2%, 331ms)
+  if 76% is acceptable. Otherwise none below 700ms cross 80%.
+
+**Decision:**
+
+1. **Production stays on Groq gpt-oss-120b 3-pass.** Highest accuracy,
+   well-understood failure modes, judge bias works in its favour
+   (judge model = inference model = stable scoring).
+2. **Add Gemini flash-lite single-call as a "fast" mode toggle.**
+   2.6pp accuracy drop for ~50% wall-clock reduction is a clear win
+   for users on slow networks or who prefer responsiveness over peak
+   accuracy. Wire it via `transform-blank-mode: fast` config.
+3. **Don't switch to Cerebras for gpt-oss inference.** The 36% latency
+   win doesn't recover the 13pp accuracy loss. Re-evaluate if Cerebras
+   publishes a tuned gpt-oss endpoint.
+4. **Don't ship gpt-5.4-nano** for transform-blank without re-tuning
+   the pipeline. The 3-pass collapse (20.8%) isn't fixable by
+   parameter tweaks — it needs an architecture that gives the model
+   one big reasoning budget, not three small ones.
+5. **Skip the cross-model verify pass.** The current VERIFY prompt is
+   net-negative on every provider except groq and gemini (and there
+   the win is <2pp). When we re-tune VERIFY, do it per-provider or
+   drop it.
+
+**Lessons (added to the running list):**
+
+- **Pin the LLM-judge to one model across an A/B.** Self-judging
+  inflates by ~5pp in our setup; cross-provider comparisons need a
+  fixed referee.
+- **"Same model" across providers is a fiction.** Sampler config,
+  quantization, and inference-stack defaults all leak into output
+  quality. Always re-benchmark when migrating providers.
+- **Pipeline shape is model-class-coded, not universal.** The 3-pass
+  architecture is a gpt-oss-shaped fix; single-call is a capable-
+  generalist fix; neither is right for reasoning models. When the
+  model class changes, the pipeline assumption changes with it.
+- **Verify prompts overfit to the original model's failure modes.**
+  Carrying VERIFY across providers without retuning is worse than
+  dropping it.
+
+---
+
+## Experiment 7 — Cost analysis (May 2026 pricing)
+
+**Question:** if accuracy and latency are roughly known per provider×pipeline,
+what does each cost in dollars per 1K cases? And which configuration has
+the lowest **$-per-correct-answer** — the metric that matters when budget
+is finite and wrong answers don't help.
+
+**Price card (May 2026, $ per million tokens, from each provider's pricing
+page on 2026-05-16):**
+
+| Provider              | Input $/M | Output $/M |
+|-----------------------|-----------|------------|
+| Groq gpt-oss-120b     | $0.15     | $0.60      |
+| Cerebras gpt-oss-120b | $0.35     | $0.75      |
+| Gemini 3.1 flash-lite | $0.25     | $1.50      |
+| Claude Haiku 4.5      | $1.00     | $5.00      |
+| OpenAI gpt-5.4-nano   | $0.20     | $1.25      |
+
+**Token-count estimates (used for cost calc; not measured from API
+`usage` blocks yet):** transform-blank prompts run ~1000 input tokens
+for `single-call`, ~1430 for `fused`, ~4400 for `extract-apply-verify`
+(three pass-specific system prompts compound). Output ~50 tokens for
+`single-call`, ~80 for `fused`, ~180 across all three passes for
+`extract-apply-verify`.
+
+**$ per 1000 cases (Experiment 6 matrix):**
+
+```
+                          3-pass     single     fused      fused+verify
+─────────────────────────────────────────────────────────────────────────
+groq    gpt-oss-120b      $0.77      $0.18      $0.26      $0.42
+gemini  flash-lite        $1.37      $0.33      $0.48      $0.78
+cerebras gpt-oss-120b     $1.68      $0.40      $0.56      $0.90
+claude  haiku-4.5         $5.30      $1.28      $1.83      $3.07
+openai  gpt-5.4-nano  †   $1.11      $0.27      $0.39      $0.66
+```
+
+† OpenAI rates assume the same 50-180 token output budget as the others;
+gpt-5.4-nano actually spends most of `max_completion_tokens` on internal
+reasoning (billed at the output rate) so realistic OpenAI cost is
+2–4× the values shown. Instrumenting `chat()` to capture
+`response.usage` is the cleanest fix — open follow-up.
+
+**$ per correct answer (cost ÷ accuracy):**
+
+```
+                          3-pass     single     fused      fused+verify
+─────────────────────────────────────────────────────────────────────────
+groq    gpt-oss-120b      $0.84      $1.02      $0.32 ★    $0.51
+gemini  flash-lite        $1.52      $0.37      $0.54      $0.86
+cerebras gpt-oss-120b     $2.13      $1.36      $0.74      $1.89
+claude  haiku-4.5         $6.03      $1.56      $2.06      $3.64
+openai  gpt-5.4-nano †    $5.34      $0.35      $0.80      $2.12
+```
+
+**Findings:**
+
+1. **`groq · fused` is the cheapest correct answer ($0.32/correct).**
+   80.5% accuracy at $0.26/1K is unbeatable on cost-efficiency for any
+   provider that produces usable output. It's 4pp below `groq · 3-pass`'s
+   accuracy ceiling but at 1/3 the cost — for any budget-constrained
+   transform-blank deployment, this is the right default.
+
+2. **`gemini · single-call` is the cost king for high-accuracy.**
+   89.2% / $0.33/1K / **$0.37/correct** — within 2.5pp of gpt-oss-Groq
+   3-pass accuracy at less than half the cost-per-correct ($0.37 vs
+   $0.84). Better than `groq · fused` ($0.32) only if you need the
+   extra ~9pp of accuracy.
+
+3. **Claude is uneconomical here.** Best Claude variant is `claude · fused`
+   at $1.83/1K = **$2.06/correct** — 6× more expensive than `groq · fused`
+   for slightly higher accuracy (88.7 vs 80.5). The price-per-token gap
+   ($1/$5 vs $0.15/$0.60) is the dominant factor, not pipeline shape.
+
+4. **Cost-per-correct collapses faster than acc when accuracy drops.**
+   The two columns where acc < 50% (cerebras single-call, openai 3-pass,
+   etc.) all blow past $1/correct despite cheap unit pricing. The right
+   metric for production picking isn't $/1K — it's $/correct.
+
+5. **OpenAI gpt-5.4-nano's apparent cost advantage is fake.** List price
+   is competitive ($0.20 in / $1.25 out) and on `single-call` it lands at
+   $0.35/correct — best-looking number on the chart. BUT (a) accuracy is
+   only 76.6% so this is the bottom of the "usable" range, (b) actual
+   token cost is understated 2-4× because we aren't billing the reasoning
+   tokens in our estimate, and (c) 3-pass and fused-verify modes are
+   nonfunctional for this model. Don't pick from a leaderboard without
+   accounting for reasoning-token cost.
+
+**Decision:**
+
+- **Production default** stays `groq · 3-pass` (highest acc, $0.84/correct).
+- **"Cheap mode" toggle**: `groq · fused` — $0.32/correct, 80.5% acc,
+  727ms. Wire it as `transform-blank-mode: cheap` for cost-sensitive
+  users (batch processing, long-running agents).
+- **"Fast mode" toggle**: `gemini · single-call` — $0.37/correct, 89.2%
+  acc, 729ms. Better trade for interactive UX than cheap-mode.
+- **Don't ship**: Claude (cost), Cerebras (accuracy drift, see
+  Experiment 6), or OpenAI nano (unstable on multi-pass).
+
+**Open follow-up:** instrument `chat()` across all five providers to
+capture real `prompt_tokens` / `completion_tokens` from API responses.
+That replaces the token-length estimates with actual measurements, and
+fixes the OpenAI reasoning-token undercount. Until then treat all
+$/1K-cases numbers as ±30% accurate, with the OpenAI column especially
+unreliable.
+
+---
+
+## Experiment 8 — Cerebras vs Groq `fused` head-to-head (variance)
+
+**Question:** the single-shot Experiment 6 numbers had Cerebras `fused`
+at 331ms vs Groq `fused` at 727ms — a 2.2× gap on the same model. Is
+that stable across reruns, or noise?
+
+**Method:** run `fused` mode 5 times on each provider, full 231-case
+suite, parallel=8. Capture mean ± stddev of per-case latency, wall-clock,
+accuracy.
+
+**Results:**
+
+```
+Provider    Acc %          Per-case ms      Wall s        Per-rep ms
+────────────────────────────────────────────────────────────────────────
+groq        84.30 ±1.29    595 ±32          20.18 ±1.11   621, 582, 571, 637, 564
+cerebras    80.80 ±0.27    335 ±6           13.12 ±0.28   339, 338, 339, 326, 334
+```
+
+**Findings:**
+
+1. **Cerebras `fused` is reliably ~1.8× faster than Groq `fused`** on
+   transform-blank. Per-case mean ± 2σ intervals (Groq [531, 659] vs
+   Cerebras [323, 347]) don't overlap, so the gap is statistical
+   bedrock — not a single-run fluke.
+
+2. **Cerebras variance is ~5× tighter** (±6ms vs ±32ms). For interactive
+   UX, the tighter p99 matters more than the mean — Cerebras's worst
+   rep (339ms) is faster than Groq's best (564ms).
+
+3. **The accuracy delta survives reps too.** Cerebras 80.80 ±0.27 vs
+   Groq 84.30 ±1.29 — Cerebras is more accurate on its own runs (0.27
+   vs 1.29 stddev) but lower in absolute terms. The 3.5pp gap is real
+   and reproducible. The single-shot 76.2 vs 80.5 from Experiment 6
+   was within noise of the 5-rep mean — both runs land Cerebras
+   ~4pp behind on transform-blank, which is the canonical
+   "Cerebras-vs-Groq quality drift" finding.
+
+4. **Update to the picture from Experiment 6:** the original single-
+   run had Groq fused at 727ms; the 5-rep mean is 595ms. The
+   single-run sample landed on the high end of Groq's true distribution
+   (621–637ms is the realistic high-end). Cerebras's 331ms single-run
+   sample matched the 5-rep mean (335ms) almost exactly — its
+   distribution is so tight that any single sample is representative.
+
+**Decision:** the `fast-mode` toggle ships Cerebras `fused` on
+transform-blank **for users who explicitly want the latency win**,
+with a clear disclosure that accuracy drops 3-4pp. Don't make it
+default — Groq's accuracy advantage on rewrite tasks is real and
+worth the latency cost on the default path.
+
+Companion analysis on fluid-blank (`tests/benchmarks/fluid-blank/
+EXPERIMENTS.md § Experiment 1, open follow-up #1`): Cerebras `fused` is
+2.88× faster AND slightly more accurate (99.72 ±0.38 vs 99.12 ±0.63).
+On short-output tasks Cerebras is a strict improvement; on long-output
+tasks the drift cost is real.
+
+Raw logs: `tests/results/cerebras-vs-groq-fused/`.
+
+
+
 

@@ -725,6 +725,134 @@ VERDICT: OK
 REWRITE: hii my name is *wilfred*.`;
 
 // ============================================================================
+// FUSED system prompt — replaces P1 EXTRACT + P2 APPLY with one LLM call
+// ============================================================================
+//
+// Single-call replacement that emits VERDICT + INSTRUCTION + TARGET + REWRITE
+// in one shot. Used on capable-generalist providers (cerebras, gemini, claude,
+// openai) where the model can hold the full decompose+rewrite task in one
+// breath. Groq's gpt-oss-120b collapses to ~18% in single-call mode (it can't
+// juggle), so groq stays on the 3-pass pipeline — see `pickTransformBlankMode`
+// in this file. Benchmark evidence: tests/benchmarks/transform-blank/
+// EXPERIMENTS.md § Experiments 6-8.
+//
+// Verdict types match the 3-pass extract — TRANSFORM/NONE/TASK_*/GENERATIVE
+// (the GENERATIVE branch is signalled by VERDICT=TRANSFORM with empty TARGET).
+// For TRANSFORM cases the model produces the rewritten target in REWRITE in
+// the same call; downstream code uses REWRITE directly, skipping APPLY +
+// VERIFY entirely (verify net-hurts on every non-groq provider per
+// Experiment 6).
+const FUSED_SYSTEM = `Read the input and produce a structured edit result.
+
+The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
+
+Output exactly four lines:
+VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
+INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
+TARGET: <the rest of the input after removing instruction + _; or empty>
+REWRITE: <the rewritten TARGET (or generated content for empty target); empty when VERDICT is NONE / TASK_*>
+
+LAYOUTS — the instruction sits IMMEDIATELY before _. Three valid:
+  - <INSTRUCTION> _ <TARGET>
+  - <TARGET> <INSTRUCTION> _
+  - <TARGET-PT1> <INSTRUCTION> _ <TARGET-PT2>  (SANDWICHED — both halves form TARGET, joined by single newline in original order)
+
+COMPOSED INSTRUCTIONS (two distinct edits joined by "and") — pipe-join in INSTRUCTION, apply BOTH in REWRITE simultaneously: "make past tense and remove pronouns" → INSTRUCTION: make past tense | remove pronouns. Don't split single edits ("change boy to girl", "make it formal").
+
+NONE rules — bail when ANY apply:
+- _ is a UI placeholder ("click _ to continue")
+- pure lookup, no instruction ("capital of france _")
+- instruction-shaped phrase but no target ("I need to change boy to girl in this story _")
+- idiom that looks like an instruction but isn't ("change of plans _ we meet at 3pm")
+
+GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas"), VERDICT=TRANSFORM, TARGET is empty, REWRITE contains the generated content.
+
+AGENT TASK COMMANDS — REWRITE empty for all of these:
+- TASK_ARM: input has "agentically <X>" → INSTRUCTION = X (without "agentically").
+- TASK_ADD: input has "add task <X>" → INSTRUCTION = X.
+- TASK_STOP: input is "stop task _" → INSTRUCTION empty.
+- TASK_SHOW: input is "current task _" → INSTRUCTION empty.
+
+APPLY RULES when VERDICT=TRANSFORM with non-empty TARGET:
+1. Apply the instruction to ALL applicable spans, not just the first.
+2. Preserve everything not targeted (other words, punctuation, casing, paragraph breaks \\n\\n).
+3. CONCEPT-SWAP PROPAGATION — when the instruction names a CATEGORY (pet, vehicle, profession, era, setting, sport), propagate dependent vocabulary: cats meow not bark; cars use seatbelts not helmets. MINIMAL EDIT — only change words that become wrong; keep neutral verbs.
+4. ENVIRONMENT-BOUND VERBS flip when the setting changes (water doesn't burn — it cools).
+5. LITERAL swaps ("change boy to girl") swap only those tokens; CATEGORY swaps ("change pet from dog to cat") propagate.
+6. ROLE PRESERVATION — "add 10%" to "original price 100, final price 100" only changes FINAL → 110.
+7. CONDITIONAL — apply ONLY where the condition holds ("change boy to girl but not in second sentence").
+8. PRESERVE PARAGRAPHS — \\n\\n breaks survive verbatim.
+9. DELETE the instruction phrase + _ from REWRITE.
+
+EXAMPLES:
+
+INPUT: change boy to girl _ the boy ran fast
+VERDICT: TRANSFORM
+INSTRUCTION: change boy to girl
+TARGET: the boy ran fast
+REWRITE: the girl ran fast
+
+INPUT: he/she swap _ he gave the book to John
+VERDICT: TRANSFORM
+INSTRUCTION: he/she swap
+TARGET: he gave the book to John
+REWRITE: she gave the book to John
+
+INPUT: make it british english _ the color of the harbor is gray
+VERDICT: TRANSFORM
+INSTRUCTION: make it british english
+TARGET: the color of the harbor is gray
+REWRITE: the colour of the harbour is grey
+
+INPUT: pluralize _ the child found one mouse
+VERDICT: TRANSFORM
+INSTRUCTION: pluralize
+TARGET: the child found one mouse
+REWRITE: the children found mice
+
+INPUT: change pet from dog to cat _ the dog wagged its tail and barked at the postman
+VERDICT: TRANSFORM
+INSTRUCTION: change pet from dog to cat
+TARGET: the dog wagged its tail and barked at the postman
+REWRITE: the cat swished its tail and meowed at the postman
+
+INPUT: i bought apple and samsung phones online uppercase the brands _
+VERDICT: TRANSFORM
+INSTRUCTION: uppercase the brands
+TARGET: i bought apple and samsung phones online
+REWRITE: i bought APPLE and SAMSUNG phones online
+
+INPUT: pluralize and make past tense _ the child runs to the park
+VERDICT: TRANSFORM
+INSTRUCTION: pluralize | make past tense
+TARGET: the child runs to the park
+REWRITE: the children ran to the parks
+
+INPUT: write a poem about the sea _
+VERDICT: TRANSFORM
+INSTRUCTION: write a poem about the sea
+TARGET:
+REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
+
+INPUT: agentically correct spelling _
+VERDICT: TASK_ARM
+INSTRUCTION: correct spelling
+TARGET:
+REWRITE:
+
+INPUT: capital of france _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+REWRITE:
+
+INPUT: click _ to continue
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+REWRITE:`;
+
+// ============================================================================
 // Parsers
 // ============================================================================
 
@@ -743,6 +871,35 @@ interface ApplyResult {
 interface VerifyResult {
   verdict: 'OK' | 'REPAIR';
   rewrite: string;
+}
+
+interface FusedResult {
+  verdict: ExtractVerdict;
+  instruction: string;
+  target: string;
+  rewrite: string;
+}
+
+/**
+ * Parser for the fused-mode output (`FUSED_SYSTEM` prompt). Same shape as
+ * parseExtract but with an extra REWRITE field at the end. The TARGET field
+ * is multi-line-tolerant (sandwiched layout) but stops at the REWRITE label
+ * via a lookahead, since REWRITE itself can also span multiple lines.
+ */
+function parseFused(raw: string): FusedResult {
+  const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE|TASK_ARM|TASK_ADD|TASK_STOP|TASK_SHOW)[ \t]*$/im);
+  const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
+  // TARGET may span multiple lines but stops at the REWRITE: label.
+  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)(?=^REWRITE:|\s*$)/im);
+  // REWRITE is the last field — capture to end of output.
+  const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
+  const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as ExtractVerdict;
+  return {
+    verdict,
+    instruction: instructionMatch ? instructionMatch[1].trim() : '',
+    target: targetMatch ? targetMatch[1].trim() : '',
+    rewrite: rewriteMatch ? rewriteMatch[1].trim() : '',
+  };
 }
 
 // ============================================================================
@@ -1123,6 +1280,42 @@ export interface TransformBlankSourceConfig {
    * Core owns the names + body shapes; consumers adapt.
    */
   onEvent?: (event: TransformBlankEvent) => void;
+  /**
+   * Pipeline mode:
+   *   - `'3-pass'` — EXTRACT → APPLY → VERIFY. Maximum accuracy on groq's
+   *     gpt-oss-120b (~91% on the benchmark suite). The default for groq.
+   *   - `'fused'` — single LLM call emits VERDICT + INSTRUCTION + TARGET +
+   *     REWRITE together. ~1.8-3× lower latency on capable generalist
+   *     models (cerebras, gemini, claude, openai). The default for those.
+   *   - `'auto'` (or omitted) — picks per provider via
+   *     `pickTransformBlankMode()`: groq → 3-pass; everyone else → fused.
+   *
+   * Set via the `transform-blank-mode:` CUES.md frontmatter; passed
+   * through build-sources to here. Benchmark evidence:
+   * `tests/benchmarks/transform-blank/EXPERIMENTS.md § 6-8`.
+   */
+  mode?: TransformBlankMode;
+}
+
+export type TransformBlankMode = 'auto' | '3-pass' | 'fused';
+
+/**
+ * Resolve the auto-route mode based on provider. Capable generalists
+ * (cerebras, gemini, claude, openai) handle the full decompose+rewrite
+ * task in one call cleanly; groq's gpt-oss-120b collapses on the wide
+ * single-call task (~18% on benchmark), so groq stays multi-pass.
+ *
+ * Override via `transform-blank-mode: fused|3-pass` to force a mode
+ * regardless of provider — useful for A/B testing or for a future
+ * provider that's known to need the other shape.
+ */
+export function pickTransformBlankMode(
+  providerId: string,
+  configMode: TransformBlankMode | string | undefined,
+): '3-pass' | 'fused' {
+  if (configMode === '3-pass' || configMode === 'fused') return configMode;
+  // 'auto' or unset: groq → 3-pass; everyone else → fused.
+  return providerId === 'groq' ? '3-pass' : 'fused';
 }
 
 export class TransformBlankSource implements CueSource {
@@ -1140,6 +1333,7 @@ export class TransformBlankSource implements CueSource {
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
+  private mode: '3-pass' | 'fused';
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -1151,6 +1345,10 @@ export class TransformBlankSource implements CueSource {
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
+    // Resolve mode once at construction — provider doesn't change during
+    // the source's lifetime, and runtime callers can rebuild the source
+    // if the user flips `llm-provider:` mid-session.
+    this.mode = pickTransformBlankMode(this.provider.id, config.mode);
   }
 
   supports(context: CueContext): boolean {
@@ -1197,9 +1395,24 @@ export class TransformBlankSource implements CueSource {
       const blankIdx = context.words.indexOf('_');
       if (blankIdx === -1) return { results: [] };
 
-      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx})`);
+      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode})`);
       const __pipelineT0 = Date.now();
       this.emit({ type: 'started', textLen: context.text.length, blankIdx });
+
+      // FUSED MODE — single-call short-circuit. Capable generalist models
+      // (cerebras, gemini, claude, openai by default) emit VERDICT +
+      // INSTRUCTION + TARGET + REWRITE in one call, skipping P1.5/P2/P3
+      // entirely. Falls through to 3-pass on model failure (empty
+      // rewrite, missing verdict) so the user still gets a result.
+      // Benchmark evidence: tests/benchmarks/transform-blank/
+      // EXPERIMENTS.md § Experiment 6.
+      if (this.mode === 'fused') {
+        const fusedResult = await this.runFusedAndBuild(context, blankIdx, __pipelineT0, preview, startTime);
+        if (fusedResult) return fusedResult;
+        // Fused failed (empty result / parse miss) — fall through to
+        // the 3-pass pipeline below as graceful degradation.
+        this.log('TransformBlank: fused fallback → 3-pass');
+      }
 
       // P1 EXTRACT — split into instruction (pipe-joined for composed)
       // and target. Token budget: target text contributes ~chars/4
@@ -1562,6 +1775,105 @@ export class TransformBlankSource implements CueSource {
         timing: Date.now() - startTime,
       };
     }
+  }
+
+  /**
+   * Single-call fused pipeline. One LLM hop emits VERDICT + INSTRUCTION +
+   * TARGET + REWRITE; this method consumes those and builds the final
+   * CueResult (or returns null on failure → caller falls through to
+   * 3-pass).
+   *
+   * Result shape on success matches the 3-pass path exactly so downstream
+   * runtime code (Cycling, BlankFill, etc.) sees the same envelope —
+   * mode is invisible to consumers.
+   */
+  private async runFusedAndBuild(
+    context: CueContext,
+    blankIdx: number,
+    __pipelineT0: number,
+    preview: (s: string) => string,
+    startTime: number,
+  ): Promise<CueSourceResult | null> {
+    // Same text-source precedence as the 3-pass EXTRACT input (rich-text
+    // > as-typed > visible) so styling + agent-revert behaviour matches.
+    const extractText = context.richText ?? context.asTypedText ?? context.text;
+    const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
+    // Larger budget than 3-pass EXTRACT — fused emits the full REWRITE
+    // too. 2.5× input chars + headroom for VERDICT/INSTRUCTION labels.
+    const fusedTokens = budgetForOutput(extractText.length, 2.5);
+    const fusedStart = Date.now();
+    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}`, fusedTokens);
+    const f = parseFused(fusedRaw);
+    this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
+    this.emit({
+      type: 'pass-completed',
+      pass: 'P1',
+      verdict: f.verdict,
+      instruction: f.instruction,
+      target: preview(f.target),
+      latencyMs: Date.now() - fusedStart,
+    });
+
+    // TASK BRANCH — agent-task commands. Same metadata.taskAction
+    // shape as the 3-pass TASK branch; runtime's resolver consumes
+    // it identically.
+    if (f.verdict === 'TASK_ARM' || f.verdict === 'TASK_ADD'
+        || f.verdict === 'TASK_STOP' || f.verdict === 'TASK_SHOW') {
+      this.log(`TransformBlank FUSED: TASK branch (${f.verdict}, instruction="${f.instruction}")`);
+      const result: CueResult = {
+        wordIndex: blankIdx,
+        word: '_',
+        alternatives: [context.text, ''],
+        source: this.id,
+        priority: this.priority,
+        spanStart: 0,
+        spanEnd: context.text.length,
+        metadata: { taskAction: f.verdict, taskPayload: f.instruction },
+      };
+      return { results: [result], timing: Date.now() - startTime, model: this.model };
+    }
+
+    if (f.verdict === 'NONE' || !f.instruction) {
+      this.log('TransformBlank FUSED: bailing — verdict=NONE or empty instruction');
+      this.emit({ type: 'bailed', reason: 'FUSED-verdict-none-or-empty', latencyMs: Date.now() - __pipelineT0 });
+      return { results: [], timing: Date.now() - startTime, model: this.model };
+    }
+
+    // For TRANSFORM (with or without target), REWRITE must be non-empty —
+    // we either have the rewritten target or the generated content.
+    // Empty rewrite means the model parsed the input but couldn't produce
+    // the result in one call → fall through to 3-pass for retry.
+    if (!f.rewrite) {
+      this.log('TransformBlank FUSED: empty rewrite — falling through to 3-pass');
+      return null;
+    }
+
+    this.emit({
+      type: 'completed',
+      finalLen: f.rewrite.length,
+      finalPreview: preview(f.rewrite),
+      latencyMs: Date.now() - startTime,
+    });
+
+    const result: CueResult = {
+      wordIndex: blankIdx,
+      word: '_',
+      alternatives: [context.text, f.rewrite],
+      source: this.id,
+      priority: this.priority,
+      spanStart: 0,
+      spanEnd: context.text.length,
+      metadata: {
+        transformInstruction: f.instruction,
+        transformTarget: f.target,
+        // No verifyVerdict in fused — VERIFY is skipped (net-hurts on
+        // every non-groq provider per benchmark Experiment 6). Mark
+        // explicitly so the runtime/debug knows verify was skipped.
+        verifyVerdict: 'SKIPPED',
+        pipelineMode: 'fused',
+      },
+    };
+    return { results: [result], timing: Date.now() - startTime, model: this.model };
   }
 
   private async callLLM(

@@ -24,6 +24,7 @@ import { runExtract } from './pass1-extract';
 import { runApply } from './pass2-apply';
 import { runVerify } from './pass3-verify';
 import { runSingleCall } from './single-call';
+import { runFused } from './fused-extract-apply';
 import { runMinimalExtract, runMinimalApply, runMinimalVerify } from './minimal-prompts';
 import { judge, JudgeInput } from './judge';
 import { MODEL } from './groq';
@@ -36,10 +37,12 @@ const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 
 type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify' | 'extract-apply-verify-skip-easy' | 'single-call'
+  | 'fused' | 'fused-verify'
   | 'minimal-extract' | 'minimal-apply' | 'minimal-verify' | 'minimal-all'
   | 'skip-never' | 'skip-conservative' | 'skip-current' | 'skip-aggressive' | 'skip-always';
 const VALID_MODES: Mode[] = [
   'rewrite', 'extract-apply', 'extract-apply-verify', 'extract-apply-verify-skip-easy', 'single-call',
+  'fused', 'fused-verify',
   'minimal-extract', 'minimal-apply', 'minimal-verify', 'minimal-all',
   'skip-never', 'skip-conservative', 'skip-current', 'skip-aggressive', 'skip-always',
 ];
@@ -233,6 +236,95 @@ function shouldSkipByMode(
          isCaseChange(instruction) ||
          isSimpleTense(instruction) ||
          isBrEAmE(instruction);
+}
+
+/**
+ * VERIFY is suspected-useful when the rewrite either (a) involved a
+ * composed instruction (pipe-joined), (b) spans paragraphs (\n\n), or
+ * (c) the rewrite length deviates >25% from target (likely truncation /
+ * overrun). This is the gate used by `fused-verify` to decide whether
+ * to spend a second LLM call. Cheap heuristic — no LLM call.
+ */
+function shouldRunVerifyOnFused(instruction: string, target: string, rewrite: string): boolean {
+  if (instruction.includes('|')) return true;
+  if (target.includes('\n\n') || rewrite.includes('\n\n')) return true;
+  const tLen = target.length || 1;
+  const ratio = rewrite.length / tLen;
+  if (ratio < 0.75 || ratio > 1.25) return true;
+  return false;
+}
+
+async function runCaseFused(c: TransformCase, withVerify: boolean): Promise<RunOutcome> {
+  const f = await runFused(c.input);
+
+  if (f.verdict === 'NONE') {
+    const judgeInput: JudgeInput = {
+      input: c.input,
+      expected: c.expected.finalText ?? null,
+      alternates: c.expected.finalTextAlternates ?? [],
+      actual: null,
+      actualBail: true,
+      expectedBail: !!c.expected.shouldFailSoft,
+    };
+    const j = await judge(judgeInput);
+    return printAndScore(c, j, [{ label: 'fused', latencyMs: f.latencyMs }], {
+      'VERDICT': 'NONE',
+      'INSTRUCTION': '(none)',
+      'TARGET': '(none)',
+      'REWRITE': '(bailed)',
+    }, f.raw);
+  }
+
+  let finalRewrite = f.rewrite;
+  let verifyVerdict = '';
+  let verifyMs = 0;
+  let verifyRaw = '';
+
+  if (withVerify && shouldRunVerifyOnFused(f.instruction, f.target, f.rewrite)) {
+    const verifyInstruction = f.instruction.split('|').map(s => s.trim()).filter(Boolean).join(' and ');
+    const ver = await runVerify(verifyInstruction, f.target, f.rewrite);
+    if (ver.verdict === 'OK' || !ver.rewrite) {
+      finalRewrite = f.rewrite;
+    } else {
+      const isBadRepair = repairLooksTruncated(ver.rewrite, f.rewrite, f.target)
+        || repairLooksGarbled(ver.rewrite);
+      finalRewrite = isBadRepair ? f.rewrite : ver.rewrite;
+    }
+    verifyVerdict = ver.verdict;
+    verifyMs = ver.latencyMs;
+    verifyRaw = ver.raw;
+  }
+
+  const judgeInput: JudgeInput = {
+    input: c.input,
+    expected: c.expected.finalText ?? null,
+    alternates: c.expected.finalTextAlternates ?? [],
+    actual: finalRewrite,
+    actualBail: false,
+    expectedBail: !!c.expected.shouldFailSoft,
+  };
+  const j = await judge(judgeInput);
+
+  const steps = [{ label: 'fused', latencyMs: f.latencyMs }];
+  if (withVerify && verifyMs > 0) steps.push({ label: 'verify', latencyMs: verifyMs });
+
+  const fields: Record<string, string> = {
+    'INSTRUCTION': f.instruction,
+    'TARGET': f.target,
+    'DRAFT': f.rewrite,
+  };
+  if (withVerify && verifyMs > 0) {
+    fields['VERIFY'] = verifyVerdict;
+    fields['REWRITE'] = finalRewrite;
+  } else {
+    fields['REWRITE'] = f.rewrite;
+    delete fields['DRAFT'];
+  }
+
+  const rawForFail = withVerify && verifyMs > 0
+    ? `${f.raw}\n---VERIFY---\n${verifyRaw}`
+    : f.raw;
+  return printAndScore(c, j, steps, fields, rawForFail);
 }
 
 async function runCaseSingleCall(c: TransformCase): Promise<RunOutcome> {
@@ -439,11 +531,15 @@ async function main() {
     ? 'EXTRACT → APPLY → VERIFY [skip-on-literal] (speed variant)'
     : args.mode === 'single-call'
       ? 'SINGLE-CALL (one prompt does extract+apply+verify)'
-      : args.mode === 'extract-apply-verify'
-        ? 'EXTRACT → APPLY → VERIFY (3-pass pipeline)'
-        : args.mode === 'extract-apply'
-          ? 'EXTRACT → APPLY (2-pass pipeline)'
-          : 'REWRITE (1-pass pipeline)';
+      : args.mode === 'fused'
+        ? 'FUSED extract+apply (1 call, structured output)'
+        : args.mode === 'fused-verify'
+          ? 'FUSED extract+apply + conditional VERIFY (1-2 calls)'
+          : args.mode === 'extract-apply-verify'
+            ? 'EXTRACT → APPLY → VERIFY (3-pass pipeline)'
+            : args.mode === 'extract-apply'
+              ? 'EXTRACT → APPLY (2-pass pipeline)'
+              : 'REWRITE (1-pass pipeline)';
   console.log(`${BOLD}transform-blank benchmark — ${modeLabel}${RESET}`);
   console.log(`Model: ${MODEL}`);
   console.log(`Cases: ${selected.length}/${CASES.length}  (parallel=${args.parallel})`);
@@ -455,6 +551,8 @@ async function main() {
     if (args.mode === 'extract-apply-verify') return runCaseExtractApply(c, true);
     if (args.mode === 'extract-apply-verify-skip-easy') return runCaseExtractApply(c, true, /*skipEasy*/ true);
     if (args.mode === 'single-call') return runCaseSingleCall(c);
+    if (args.mode === 'fused') return runCaseFused(c, false);
+    if (args.mode === 'fused-verify') return runCaseFused(c, true);
     if (args.mode === 'minimal-extract')
       return runCaseExtractApply(c, true, false, { extract: runMinimalExtract });
     if (args.mode === 'minimal-apply')

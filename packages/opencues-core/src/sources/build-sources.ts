@@ -71,6 +71,15 @@ export interface BuildSourcesOptions {
   wordCues?: FeatureLLMSetting;
   fluidBlank?: FeatureLLMSetting;
   transformBlank?: FeatureLLMSetting;
+  /**
+   * Pipeline mode for TransformBlank. `'auto'` (default) picks per
+   * provider — groq → 3-pass, everyone else → fused — via
+   * `pickTransformBlankMode`. `'3-pass'` and `'fused'` force the mode
+   * regardless of provider. Read from CUES.md's `transform-blank-mode:`
+   * frontmatter scalar by the runtime/resolver before passing here.
+   * See `transform-blank-source.ts` for the dispatch logic.
+   */
+  transformBlankMode?: string;
   /** Merged blank configs */
   blanks?: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read current live blank value (raw string).
@@ -383,6 +392,7 @@ export function buildSourcesFromConfig(
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,
+        mode: options.transformBlankMode as ('auto' | '3-pass' | 'fused' | undefined),
       }));
     }
   }

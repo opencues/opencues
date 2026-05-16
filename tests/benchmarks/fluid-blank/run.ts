@@ -33,6 +33,7 @@ import { CASES_SPELLING_BENCH } from './cases-spelling-bench';
 import { runP1Segment } from './pass1-segment';
 import { judgeSegment } from './judge-segment';
 import { runP3Answer } from './pass3-answer';
+import { runFused } from './fused';
 import { judgeAnswer } from './judge-answer';
 import { runSpecializedFactual } from './specialized-factual';
 import { runSpecializedMath } from './specialized-math';
@@ -65,13 +66,13 @@ const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 
-type Mode = 'segment' | 'answer'
+type Mode = 'segment' | 'answer' | 'fused'
   | 'specialized-factual' | 'specialized-math' | 'specialized-unit' | 'specialized-color'
   | 'specialized-http' | 'specialized-roman' | 'specialized-translation' | 'specialized-spelling'
   | 'classified';
 
 const VALID_MODES: Mode[] = [
-  'segment', 'answer',
+  'segment', 'answer', 'fused',
   'specialized-factual', 'specialized-math', 'specialized-unit', 'specialized-color',
   'specialized-http', 'specialized-roman', 'specialized-translation', 'specialized-spelling',
   'classified',
@@ -84,11 +85,12 @@ interface Args {
   generated?: boolean;
   bench?: 'factual' | 'math' | 'unit' | 'color' | 'http' | 'roman' | 'translation' | 'spelling';
   mode: Mode;
+  parallel: number;
 }
 
 function parseArgs(): Args {
   const args = process.argv.slice(2);
-  const out: Args = { mode: 'segment' };
+  const out: Args = { mode: 'segment', parallel: 1 };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--case') out.caseId = args[++i];
     else if (args[i] === '--category') out.category = args[++i];
@@ -102,6 +104,14 @@ function parseArgs(): Args {
     else if (args[i] === '--roman-bench') out.bench = 'roman';
     else if (args[i] === '--translation-bench') out.bench = 'translation';
     else if (args[i] === '--spelling-bench') out.bench = 'spelling';
+    else if (args[i] === '--parallel') {
+      const v = parseInt(args[++i], 10);
+      if (Number.isNaN(v) || v < 1) {
+        console.error(`--parallel must be a positive integer, got: ${args[i]}`);
+        process.exit(2);
+      }
+      out.parallel = v;
+    }
     else if (args[i] === '--mode') {
       const v = args[++i];
       if (!VALID_MODES.includes(v as Mode)) {
@@ -307,6 +317,57 @@ async function runOneSpecializedFactual(c: FluidBlankCase) {
   return { pass, p1Ms: 0, p3Ms: ans.latencyMs, judgeMs: judge.latencyMs, realism };
 }
 
+async function runOneFused(c: FluidBlankCase) {
+  const realism = classifyRealism(c.input);
+  const f = await runFused(c.input);
+
+  if (!f.span) {
+    // Fused bailed — score as failure unless the case is fail-soft.
+    const fakeAnswer = c.expected.shouldFailSoft ? '(bailed)' : null;
+    const judge = await judgeAnswer({
+      question: c.expected.question,
+      expectedAnswer: c.expected.answer,
+      expectedAlternates: c.expected.answerAlternates,
+      actualAnswer: fakeAnswer,
+    });
+    const pass = c.expected.shouldFailSoft ? true : judge.verdict === 'PASS';
+    const tag = pass ? `${GREEN}PASS${RESET}` : `${RED}FAIL${RESET}`;
+    sep();
+    console.log(`${BOLD}${c.id}${RESET}  ${DIM}[${c.category}/${realism === 'realistic' ? 'r' : 's'}]${RESET}  ${tag}`);
+    console.log(`  ${DIM}INPUT   :${RESET} ${c.input}`);
+    console.log(`  ${DIM}FUSED   :${RESET} (bailed — SPAN=NONE)`);
+    console.log(`  ${DIM}EXP ANS :${RESET} ${c.expected.answer}`);
+    console.log(`  ${DIM}TIMING  :${RESET} fused=${f.latencyMs}ms`);
+    return { pass, p1Ms: f.latencyMs, p3Ms: 0, judgeMs: judge.latencyMs, realism };
+  }
+
+  const judge = await judgeAnswer({
+    question: c.expected.question,
+    expectedAnswer: c.expected.answer,
+    expectedAlternates: c.expected.answerAlternates,
+    actualAnswer: f.answer,
+  });
+
+  const pass = judge.verdict === 'PASS';
+  const tag = pass ? `${GREEN}PASS${RESET}` : `${RED}FAIL${RESET}`;
+  const cat = `${DIM}[${c.category}/${realism === 'realistic' ? 'r' : 's'}]${RESET}`;
+  const expFull = c.expected.answerAlternates?.length
+    ? `${c.expected.answer} ${DIM}(or: ${c.expected.answerAlternates.join(', ')})${RESET}`
+    : c.expected.answer;
+  sep();
+  console.log(`${BOLD}${c.id}${RESET}  ${cat}  ${tag}`);
+  console.log(`  ${DIM}INPUT   :${RESET} ${c.input}`);
+  console.log(`  ${DIM}SPAN    :${RESET} ${f.span}`);
+  console.log(`  ${DIM}ANSWER  :${RESET} ${f.answer ?? '(empty)'}`);
+  console.log(`  ${DIM}EXP ANS :${RESET} ${expFull}`);
+  console.log(`  ${DIM}JUDGE   :${RESET} ${judge.rationale}`);
+  console.log(`  ${DIM}TIMING  :${RESET} fused=${f.latencyMs}ms  judge=${judge.latencyMs}ms`);
+  if (!pass) {
+    console.log(`  ${YELLOW}RAW     :${RESET} ${f.raw.replace(/\n/g, '\n           ')}`);
+  }
+  return { pass, p1Ms: f.latencyMs, p3Ms: 0, judgeMs: judge.latencyMs, realism };
+}
+
 async function runOneAnswer(c: FluidBlankCase) {
   // P1: segment first to get span + context
   const seg = await runP1Segment(c.input);
@@ -383,6 +444,7 @@ async function main() {
   }
 
   const modeLabel = filter.mode === 'answer' ? 'P1 → P3 (2-pass, end-to-end answer)'
+    : filter.mode === 'fused' ? 'FUSED segment+answer (1 call, structured output)'
     : filter.mode === 'specialized-factual' ? 'SPECIALIZED FACTUAL (1 call, production prompt)'
     : filter.mode === 'classified' ? 'P1 → CLASSIFY → SPECIALIZED|P3 (3-call hybrid)'
     : 'P1 SEGMENT only';
@@ -398,23 +460,44 @@ async function main() {
   let totalJudge = 0;
   let passedR = 0, totalR = 0;
   let passedS = 0, totalS = 0;
-  for (const c of selected) {
-    const specHandlerByMode: Partial<Record<Mode, [(s: string) => Promise<{ answer: string | null; raw: string; latencyMs: number }>, string]>> = {
-      'specialized-factual': [runSpecializedFactual, 'factual'],
-      'specialized-math': [runSpecializedMath, 'math'],
-      'specialized-unit': [runSpecializedUnit, 'unit'],
-      'specialized-color': [runSpecializedColor, 'color'],
-      'specialized-http': [runSpecializedHttp, 'http'],
-      'specialized-roman': [runSpecializedRoman, 'roman'],
-      'specialized-translation': [runSpecializedTranslation, 'translation'],
-      'specialized-spelling': [runSpecializedSpelling, 'spelling'],
-    };
-    const r = filter.mode === 'answer' ? await runOneAnswer(c)
-      : filter.mode === 'classified' ? await runOneClassified(c)
-      : filter.mode === 'segment' ? await runOneSegment(c)
+  const specHandlerByMode: Partial<Record<Mode, [(s: string) => Promise<{ answer: string | null; raw: string; latencyMs: number }>, string]>> = {
+    'specialized-factual': [runSpecializedFactual, 'factual'],
+    'specialized-math': [runSpecializedMath, 'math'],
+    'specialized-unit': [runSpecializedUnit, 'unit'],
+    'specialized-color': [runSpecializedColor, 'color'],
+    'specialized-http': [runSpecializedHttp, 'http'],
+    'specialized-roman': [runSpecializedRoman, 'roman'],
+    'specialized-translation': [runSpecializedTranslation, 'translation'],
+    'specialized-spelling': [runSpecializedSpelling, 'spelling'],
+  };
+  const runOne = (c: FluidBlankCase) =>
+    filter.mode === 'answer' ? runOneAnswer(c)
+      : filter.mode === 'fused' ? runOneFused(c)
+      : filter.mode === 'classified' ? runOneClassified(c)
+      : filter.mode === 'segment' ? runOneSegment(c)
       : specHandlerByMode[filter.mode]
-        ? await runOneSpecializedDirect(c, specHandlerByMode[filter.mode]![0], specHandlerByMode[filter.mode]![1])
-        : await runOneSegment(c);
+        ? runOneSpecializedDirect(c, specHandlerByMode[filter.mode]![0], specHandlerByMode[filter.mode]![1])
+        : runOneSegment(c);
+
+  // Worker-pool concurrency (mirrors transform-blank/run.ts). Per-case
+  // output already streams to stdout from each runOne* helper; lines from
+  // concurrent workers may interleave but the final summary is still
+  // accurate (totals are computed from the returned RunOutcome objects).
+  const results: Array<{ pass: boolean; p1Ms: number; p3Ms: number; judgeMs: number; realism: 'realistic' | 'synthetic' }>
+    = new Array(selected.length);
+  let nextIdx = 0;
+  const workers = Array.from({ length: Math.min(filter.parallel, selected.length) }, async () => {
+    while (true) {
+      const i = nextIdx++;
+      if (i >= selected.length) return;
+      results[i] = await runOne(selected[i]);
+    }
+  });
+  const wallStart = Date.now();
+  await Promise.all(workers);
+  const wallMs = Date.now() - wallStart;
+
+  for (const r of results) {
     if (r.pass) passed++;
     totalP1 += r.p1Ms;
     totalP3 += r.p3Ms;
@@ -440,6 +523,14 @@ async function main() {
   } else {
     console.log(`Avg P1: ${avg(totalP1)}ms  Avg judge: ${avg(totalJudge)}ms`);
   }
+  // Surface the per-case model latency (excluding judge) and wall-clock
+  // in the same "Avg model (per case): Xms" / "Wall-clock total: Xs" /
+  // "Throughput: X cases/sec" format as transform-blank so the shared
+  // summarize.sh script can grep both benches identically.
+  const totalModel = totalP1 + totalP3;
+  console.log(`Avg model (per case): ${avg(totalModel)}ms  Avg judge: ${avg(totalJudge)}ms`);
+  console.log(`Wall-clock total: ${(wallMs / 1000).toFixed(1)}s  (parallel=${filter.parallel}, ${selected.length} cases)`);
+  console.log(`Throughput: ${(selected.length / (wallMs / 1000)).toFixed(2)} cases/sec`);
   process.exit(passed === selected.length ? 0 : 1);
 }
 

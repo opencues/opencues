@@ -1,35 +1,40 @@
 /**
- * Minimal Groq chat-completions client for the fluid-blank benchmark.
- * Direct https + keep-alive. Pinned to gpt-oss-120b — do NOT add
- * multi-model support here; the benchmark's point is comparing
- * pass-counts within ONE model. Use the OPENCUES_BENCH_PROVIDER env
- * switch (see groq.ts) to compare against a different provider.
+ * Minimal Cerebras client — OpenAI-compatible chat completions for
+ * gpt-oss-120b on Cerebras inference. Same `chat()` signature as
+ * groq-impl.ts so the benchmark runner can swap via env var.
+ *
+ * Set OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss to route here.
+ * Override the model via OPENCUES_CEREBRAS_MODEL.
  */
 
 import * as https from 'https';
 
-const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-export const MODEL = 'openai/gpt-oss-120b';
+const ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
+export const MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
 
-const API_KEY = process.env.GROQ_API_KEY;
+const API_KEY = process.env.CEREBRAS_API_KEY;
 if (!API_KEY) {
-  console.error('Set GROQ_API_KEY');
+  console.error('Set CEREBRAS_API_KEY');
   process.exit(1);
 }
 
-const agent = new https.Agent({ keepAlive: true, maxSockets: 4 });
+const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 
 export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; }
 export interface ChatResult { text: string; latencyMs: number; }
 
-export async function chat(messages: ChatMessage[], opts: { temperature?: number; maxTokens?: number; seed?: number } = {}): Promise<ChatResult> {
+export async function chat(
+  messages: ChatMessage[],
+  opts: { temperature?: number; maxTokens?: number; seed?: number } = {},
+): Promise<ChatResult> {
   const body = JSON.stringify({
     model: MODEL,
     messages,
     temperature: opts.temperature ?? 0,
-    max_tokens: opts.maxTokens ?? 256,
-    reasoning_effort: 'low',
+    max_tokens: opts.maxTokens ?? 512,
     seed: opts.seed ?? 42,
+    // Match Groq's gpt-oss-120b config for fair apples-to-apples
+    reasoning_effort: 'low',
   });
 
   const t0 = Date.now();
@@ -57,15 +62,13 @@ export async function chat(messages: ChatMessage[], opts: { temperature?: number
   const latencyMs = Date.now() - t0;
 
   let parsed: any;
-  try { parsed = JSON.parse(data); } catch { throw new Error(`Bad Groq response: ${data.slice(0, 200)}`); }
-  if (parsed.error) {
-    const msg = parsed.error.message ?? JSON.stringify(parsed.error);
-    // Soft-fail rate-limit + parse errors so one bad response doesn't
-    // kill a batch run. Caller's parser will treat empty text as bail.
-    if (/Parsing failed|model generated output that could not be parsed|rate.?limit/i.test(msg)) {
+  try { parsed = JSON.parse(data); } catch { throw new Error(`Bad Cerebras response: ${data.slice(0, 200)}`); }
+  if (parsed.error || parsed.message?.error) {
+    const msg = parsed.error?.message ?? parsed.message ?? JSON.stringify(parsed);
+    if (/parsing|could not be parsed|rate.?limit/i.test(msg)) {
       return { text: '', latencyMs };
     }
-    throw new Error(`Groq error: ${msg}`);
+    throw new Error(`Cerebras error: ${msg}`);
   }
 
   const text = parsed.choices?.[0]?.message?.content ?? '';

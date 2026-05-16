@@ -73,7 +73,32 @@ function configRows() {
   const settingsFile = fs.existsSync(path.join(HOME, '.cues', 'OPENCUES.md'))
     ? path.join(HOME, '.cues', 'OPENCUES.md')
     : path.join(HOME, '.cues', 'CUES.md');
-  const globalProvider = readScalar(settingsFile, 'llm-provider') || 'groq';
+
+  // Auto-route preference order — kept in sync with PROVIDER_AUTO_ORDER
+  // in packages/opencues-core/src/llm-provider.ts. cerebras first because
+  // it's 1.8-3× faster than groq on the same gpt-oss-120b model (May 2026
+  // benchmark sweep). openai-nano last — broken on most pipelines but
+  // better than silent no-op for users who only have an OpenAI key.
+  const AUTO_ORDER = [
+    { id: 'cerebras', envKey: 'CEREBRAS_API_KEY' },
+    { id: 'groq',     envKey: 'GROQ_API_KEY' },
+    { id: 'gemini',   envKey: 'GEMINI_API_KEY' },
+    { id: 'anthropic', envKey: 'ANTHROPIC_API_KEY' },
+    { id: 'openai',   envKey: 'OPENAI_API_KEY' },
+  ];
+  const envFileForRoute = path.join(HOME, '.cues', '.env');
+  const envFileContents = fs.existsSync(envFileForRoute) ? fs.readFileSync(envFileForRoute, 'utf8') : '';
+  function hasKey(envKey) {
+    return !!process.env[envKey] || new RegExp(`^${envKey}=\\S`, 'm').test(envFileContents);
+  }
+  function autoPickProvider() {
+    for (const p of AUTO_ORDER) if (hasKey(p.envKey)) return p.id;
+    return null;
+  }
+  const autoPicked = autoPickProvider();
+
+  const globalProviderSet = readScalar(settingsFile, 'llm-provider');
+  const globalProvider = globalProviderSet || autoPicked || 'cerebras';
   const globalModel    = readScalar(settingsFile, 'llm-model');
   const surfaces = [
     ['word-cues',       readScalar(settingsFile, 'word-cues-provider')       || globalProvider],
@@ -134,6 +159,19 @@ function configRows() {
     slotForSurface(surfaces[3], COL_LABEL_W[1]),
   ].join(PROVIDER_SEP);
 
+  // Auto-route annotation: when the user has NOT set llm-provider:
+  // explicitly, surface that the provider grid above was picked by the
+  // auto-router. Helps the user understand why fluid-blank suddenly
+  // routes to cerebras when they only set CEREBRAS_API_KEY.
+  const routeNote = globalProviderSet
+    ? null
+    : autoPicked
+      ? dim(`auto-routed (cerebras > groq > gemini > anthropic > openai); set ${bold('llm-provider:')} in OPENCUES.md to override`)
+      : dim('no keys set — set any of GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY');
+
+  const providerContinuations = [surfaceRow2];
+  if (routeNote) providerContinuations.push(routeNote);
+
   return [
     { label: 'Paths:',
       value: `${pathSummary}  ${dim(`(${cues} cues, ${blanks} blanks, ${auditors} auditors)`)}` },
@@ -142,7 +180,7 @@ function configRows() {
       continuations: [renderKeys(KEYS_ROW_B)] },
     { label: 'Providers:',
       value: surfaceRow1,
-      continuations: [surfaceRow2] },
+      continuations: providerContinuations },
   ];
 }
 
@@ -185,10 +223,10 @@ function displayProvider(id) {
 const PROVIDER_DEFAULT_MODEL = {
   groq:       'openai/gpt-oss-120b',
   cerebras:   'gpt-oss-120b',
-  openai:     'gpt-5.4-nano',
+  openai:     'gpt-5.4-mini',
   anthropic:  'claude-haiku-4-5-20251001',
   openrouter: 'openai/gpt-oss-120b:free',
-  gemini:     'gemini-2.5-flash',
+  gemini:     'gemini-3.1-flash-lite',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.

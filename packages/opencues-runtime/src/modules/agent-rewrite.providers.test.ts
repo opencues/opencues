@@ -65,7 +65,7 @@ describe('AgentRewrite — with a Gemini-shaped provider thunk', () => {
     // `candidates[].content.parts[].text`.
     const geminiMock: AgentRewriteProviderAdapter = {
       id: 'gemini',
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'gemini-3.1-flash-lite',
       buildRequest(req, ctx) {
         const url = `https://gen-ai.example/v1beta/models/${encodeURIComponent(req.model)}:generateContent?key=${encodeURIComponent(ctx.apiKey)}`;
         const sys = req.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
@@ -103,12 +103,12 @@ describe('AgentRewrite — with a Gemini-shaped provider thunk', () => {
 
     const r = new AgentRewrite(adapter, dynDefs, state, {
       endpoint: '',                                     // ignored — provider builds the URL
-      apiKey: 'gem_test', defaultModel: 'gemini-2.5-flash', httpAdapter,
-      resolveLLM: () => ({ provider: geminiMock, model: 'gemini-2.5-flash', endpoint: '', apiKey: 'gem_test' }),
+      apiKey: 'gem_test', defaultModel: 'gemini-3.1-flash-lite', httpAdapter,
+      resolveLLM: () => ({ provider: geminiMock, model: 'gemini-3.1-flash-lite', endpoint: '', apiKey: 'gem_test' }),
     });
     await r.tick();
     // URL was built by the provider, key embedded as query param.
-    expect(lastUrl).toContain('models/gemini-2.5-flash:generateContent');
+    expect(lastUrl).toContain('models/gemini-3.1-flash-lite:generateContent');
     expect(lastUrl).toContain('?key=gem_test');
     // No bearer auth header (Gemini auth is query-param).
     expect(lastAuth).toBe('');

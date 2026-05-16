@@ -12,12 +12,12 @@ a different provider/model for each LLM-driven feature.
 
 | Provider | Env key | Default endpoint | Default model | Wire shape |
 |---|---|---|---|---|
-| **groq** *(default)* | `GROQ_API_KEY` | `api.groq.com/openai/v1/chat/completions` | `openai/gpt-oss-120b` | OpenAI-compat |
-| **cerebras** | `CEREBRAS_API_KEY` | `api.cerebras.ai/v1/chat/completions` | `gpt-oss-120b` | OpenAI-compat |
-| **openai** | `OPENAI_API_KEY` | `api.openai.com/v1/chat/completions` | `gpt-5.4-nano` | OpenAI |
+| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `api.cerebras.ai/v1/chat/completions` | `gpt-oss-120b` | OpenAI-compat |
+| **groq** | `GROQ_API_KEY` | `api.groq.com/openai/v1/chat/completions` | `openai/gpt-oss-120b` | OpenAI-compat |
+| **gemini** | `GEMINI_API_KEY` | `generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` | `gemini-3.1-flash-lite` | Google `contents`/`parts` |
 | **anthropic** | `ANTHROPIC_API_KEY` | `api.anthropic.com/v1/messages` | `claude-haiku-4-5-20251001` | Messages API (different shape) |
+| **openai** | `OPENAI_API_KEY` | `api.openai.com/v1/chat/completions` | `gpt-5.4-mini` | OpenAI |
 | **openrouter** | `OPENROUTER_API_KEY` | `openrouter.ai/api/v1/chat/completions` | `openai/gpt-oss-120b:free` | OpenAI-compat |
-| **gemini** | `GEMINI_API_KEY` | `generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` | `gemini-2.5-flash` | Google `contents`/`parts` |
 
 The runtime picks the right env key automatically based on which
 provider is selected. Set as many keys as you want — the others stay
@@ -168,10 +168,11 @@ is a small change if a future surface needs it.
 |---|---|---|---|
 | **groq** | $0.15 | $0.60 | prompt caching halves input; Batch API halves all rates |
 | cerebras | $0.35 | $0.75 | ~3000 tok/sec on wafer silicon |
-| openai (gpt-5.4-nano) | $0.20 | $1.25 | latency-tuned, smallest gpt-5 variant |
-| anthropic (haiku 4.5) | (see anthropic.com) | | |
+| openai (gpt-5.4-mini, default) | $0.75 | $4.50 | mid-tier; nano was too small for multi-paragraph |
+| openai (gpt-5.4-nano, opt-in) | $0.20 | $1.25 | cheapest; works for short-output tasks only |
+| anthropic (haiku 4.5) | $1.00 | $5.00 | |
 | openrouter | varies by model | | `:free` tier available for many models |
-| gemini (2.5-flash) | (see ai.google.dev) | | |
+| gemini (3.1-flash-lite) | $0.25 | $1.50 | May 2026 GA; replaces 2.5-flash |
 
 Cerebras is roughly 2× Groq's cost for the same `gpt-oss-120b`
 weights. The trade-off: Cerebras wins on long-prompt latency and

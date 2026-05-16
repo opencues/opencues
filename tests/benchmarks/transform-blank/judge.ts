@@ -14,7 +14,12 @@
  *   RATIONALE: <one sentence>
  */
 
-import { chat, sysUser } from './groq';
+// Judge always runs on Groq gpt-oss-120b regardless of which provider
+// is under test (OPENCUES_BENCH_PROVIDER controls the inference router
+// in ./groq but NOT the judge). Pinning the judge keeps cross-provider
+// comparisons honest — otherwise each row would self-judge with its own
+// model and inflate or deflate inconsistently.
+import { chat, sysUser } from './groq-impl';
 
 const SYSTEM_PROMPT = `You are judging whether a text-editing model produced an acceptable rewrite.
 

@@ -44,9 +44,13 @@ export interface ChatRequest {
   readonly seed?: number;
   /**
    * Reasoning-model effort hint. Groq's `openai/gpt-oss-*` models read
-   * this; other providers ignore it. Pass-through.
+   * this; OpenAI's gpt-5 family (nano/mini/regular) and o-series read
+   * it too — `'none'` effectively disables reasoning on gpt-5
+   * nano/mini (and is the only mode where they don't starve a 2-pass
+   * pipeline's small max_completion_tokens budget). Other providers
+   * silently ignore. Pass-through.
    */
-  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  readonly reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
   /**
    * Optional structured-output spec. When set, the request includes a
    * `response_format: { type: 'json_schema', json_schema: ... }` field —
@@ -235,21 +239,45 @@ const OPENROUTER: ProviderAdapter = {
 const OPENAI: ProviderAdapter = {
   id: 'openai',
   defaultEndpoint: 'https://api.openai.com/v1/chat/completions',
-  // gpt-5.4-nano (released March 2026) — fastest + cheapest in the
-  // OpenAI lineup at $0.20/$1.25 per 1M in/out, low single-digit ms
-  // latency on short inputs. Right fit for OpenCues's per-cue/per-blank
-  // round-trips. Users pick gpt-5.4 or gpt-5.4-mini for prose-heavy
-  // work, or stay on gpt-4o-mini for back-compat.
-  defaultModel: 'gpt-5.4-nano',
+  // gpt-5.4-mini (released March 2026) — mid-tier in the OpenAI lineup
+  // at $0.75/$4.50 per 1M in/out. Picked as the default over gpt-5.4-nano
+  // ($0.20/$1.25) after the May 2026 benchmark sweep showed nano
+  // collapsing on multi-paragraph (0% on transform-blank 3-pass/fused/
+  // fused-verify) and long-form rewrites — the reasoning model spends
+  // its `max_completion_tokens` budget on internal reasoning and runs out
+  // before producing the rest of the output. Mini has enough budget to
+  // actually complete the task on long inputs. Users who want the cheaper
+  // tier can override per-feature with `openai-model: gpt-5.4-nano`.
+  defaultModel: 'gpt-5.4-mini',
   envKeyName: 'OPENAI_API_KEY',
   buildRequest(req, ctx) {
     // OpenAI renamed `max_tokens` to `max_completion_tokens` for the
     // gpt-5 / o-series. Detect by model name so users on legacy
     // gpt-4o-* keep working.
     const useCompletionTokensName = /^(gpt-5|o\d)/i.test(req.model);
+
+    // gpt-5 nano / mini tiers get a max_completion_tokens floor of 2048.
+    // With the typical caller budget (~768) AND `reasoning_effort: 'low'`
+    // (the level that actually produces good output on rewrite tasks),
+    // the model runs out of budget before emitting a complete answer.
+    // 2048 gives reasoning + output enough room on every case observed
+    // in the May 2026 benchmark. Caller's higher max wins.
+    //
+    // Earlier hypothesis: "reasoning should be off on nano/mini".
+    // Empirical refutation: reasoning_effort='none' drops
+    // transform-blank-fused 85.3% → 28.1% on mini (−57pp), and similar
+    // double-digit drops on nano. nano/mini aren't the o-series but
+    // they're still meaningfully reasoning-assisted — keep caller
+    // intent ('low' for OpenCues call sites).
+    const isLowReasoningTier = /gpt-5(\.\d+)?-(nano|mini)\b/i.test(req.model);
+    const reqForBody = isLowReasoningTier
+      && (req.maxTokens === undefined || req.maxTokens < 2048)
+        ? { ...req, maxTokens: 2048 }
+        : req;
+
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { useCompletionTokensName }),
+      body: buildOpenAIBody(reqForBody, { useCompletionTokensName }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -275,7 +303,15 @@ const GEMINI: ProviderAdapter = {
   id: 'gemini',
   // Templated — model is substituted at buildRequest time.
   defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-  defaultModel: 'gemini-2.5-flash',
+  // gemini-3.1-flash-lite is Google's cheapest 3.x-class flash tier
+  // (released March 2026, GA May 7 2026 at $0.25/M input / $1.50/M
+  // output — see https://ai.google.dev/gemini-api/docs/pricing).
+  // Picked over the older 2.5-flash because (a) lower price, (b) the
+  // model that the May 2026 benchmark sweep actually measured
+  // (89-100% across our pipelines, see tests/benchmarks/BENCHMARKS.md).
+  // Override per-feature with `<feature>-model:` if you want the
+  // 3.1-pro tier for accuracy-critical surfaces.
+  defaultModel: 'gemini-3.1-flash-lite',
   envKeyName: 'GEMINI_API_KEY',
   buildRequest(req, ctx) {
     const endpointTemplate = ctx.endpoint ?? this.defaultEndpoint;
@@ -450,6 +486,53 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
 };
 
 /**
+ * Provider auto-route preference order — best → worst — consulted when
+ * NO tier (per-cue, per-feature, global) has set a provider. The first
+ * entry whose env-var key the user has set is picked.
+ *
+ * Ranking from the May 2026 5-provider benchmark sweep:
+ * - Cerebras first: 1.8-3× faster per call on the same gpt-oss-120b
+ *   model that Groq serves, tied accuracy on short-output pipelines,
+ *   ~3.5pp behind on long-form rewrites (accepted as the speed trade).
+ * - Groq second: accuracy ceiling on long-form, slower but still
+ *   competitive everywhere.
+ * - Gemini third: 89-100% across the matrix, stable, but pricier and
+ *   slower than the gpt-oss tier.
+ * - Claude fourth: functional but 3-10× more expensive at parity acc.
+ * - OpenAI last: gpt-5.4-mini works on most tasks; gpt-5.4-nano
+ *   (the cheaper sibling) was broken on multi-paragraph + long-form
+ *   rewrites (reasoning-token starvation), so we default to mini and
+ *   leave nano as a per-feature override for cost-sensitive setups.
+ * - OpenRouter intentionally excluded — it's a routing layer over
+ *   other providers, not a "best for the job" pick on its own merits.
+ *
+ * Override the auto-route with `llm-provider:` or a per-feature
+ * `<feature>-provider:` in CUES.md.
+ */
+export const PROVIDER_AUTO_ORDER: readonly ProviderId[] = [
+  'cerebras',
+  'groq',
+  'gemini',
+  'anthropic',
+  'openai',
+];
+
+/**
+ * Walk the auto-route preference and pick the first provider whose API
+ * key the user has supplied. Returns null when the user has no keys at
+ * all — in which case the caller can fall back to a hardcoded literal
+ * and silent-no-op (no LLM functionality without keys is the documented
+ * "OpenCues is fine without an LLM" mode).
+ */
+export function pickAutoProvider(apiKeys: Readonly<Record<string, string>>): ProviderId | null {
+  for (const id of PROVIDER_AUTO_ORDER) {
+    const adapter = PROVIDERS[id];
+    if (adapter && apiKeys[adapter.envKeyName]) return id;
+  }
+  return null;
+}
+
+/**
  * Look up a provider adapter by id. Unknown id → null (caller must
  * decide whether to fall back to default or raise). The runtime's
  * config-loader validates the setting at parse time so this rarely
@@ -573,7 +656,8 @@ export function parseProviderResponse(providerId: ProviderId, rawJson: string): 
  *      — read from the per-feature frontmatter key by the caller
  *      (e.g. `agent-provider`, `fluid-blank-model`).
  *   3. Global default (`opts.globalProvider`, `opts.globalModel`).
- *   4. Built-in defaults (groq + openai/gpt-oss-120b).
+ *   4. Built-in defaults (cerebras + gpt-oss-120b). See note in
+ *      `resolveLLM` for the May 2026 benchmark justifying this choice.
  *
  * The endpoint follows the resolved provider — passing a custom
  * endpoint with a non-matching provider is a misconfiguration that
@@ -741,7 +825,25 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   for (let i = 0; i < tiers.length; i += 1) {
     if (tiers[i].p) { providerTierIdx = i; break; }
   }
-  const providerId = (providerTierIdx >= 0 ? tiers[providerTierIdx].p! : 'groq').trim() as ProviderId;
+  // No-tier-set path: AUTO-ROUTE over the user's available API keys.
+  // Picks the first provider from PROVIDER_AUTO_ORDER whose env-var key
+  // is set in `opts.apiKeys`. Ranking comes from the May 2026 5-provider
+  // benchmark sweep (tests/benchmarks/BENCHMARKS.md): Cerebras first
+  // because it's 1.8-3× faster per call at parity-or-better accuracy
+  // on short-output pipelines (fluid-blank, word-cues) AND because its
+  // 3.5pp accuracy drop on transform-blank long-form rewrites was
+  // judged an acceptable trade for the speed win on interactive UX.
+  // OpenAI is last (broken on most of our tasks, but better than a
+  // silent no-op for users who only have an OpenAI key).
+  //
+  // Hardcoded `'cerebras'` as the ultimate fallback if the user has
+  // zero keys — that path silent-no-ops downstream (warnMissingKeyOnce
+  // is suppressed when no tier picked it), so the literal here only
+  // matters for "no keys, but we still need to emit a ProviderId".
+  const autoPicked = providerTierIdx >= 0 ? null : pickAutoProvider(opts.apiKeys);
+  const providerId = (providerTierIdx >= 0
+    ? tiers[providerTierIdx].p!.trim()
+    : (autoPicked ?? 'cerebras')) as ProviderId;
   const provider = PROVIDERS[providerId];
   if (!provider) {
     warnUnknownProviderOnce(providerId);
@@ -765,7 +867,7 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   const apiKey = opts.apiKeys[provider.envKeyName];
   if (!apiKey) {
     // Only warn when a provider was EXPLICITLY chosen (any tier set it).
-    // If no provider was set and we defaulted to groq, the user simply
+    // If no provider was set and we defaulted to cerebras, the user simply
     // hasn't configured any LLM yet — that's "OpenCues without LLM is
     // fine" mode, not a misconfiguration. The boot-level "no key
     // configured" notice handles that case once.

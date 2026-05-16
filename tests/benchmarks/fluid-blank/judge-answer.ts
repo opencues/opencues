@@ -6,7 +6,10 @@
  * accepting reasonable variations in formatting/precision.
  */
 
-import { chat, sysUser } from './groq';
+// Pin judge to Groq gpt-oss-120b regardless of OPENCUES_BENCH_PROVIDER —
+// otherwise each provider self-judges and cross-provider comparisons
+// drift by ~5pp (see transform-blank EXPERIMENTS.md § Experiment 6).
+import { chat, sysUser } from './groq-impl';
 
 const SYSTEM_PROMPT = `You judge whether an actual answer is correct.
 
@@ -97,6 +100,19 @@ export async function judgeAnswer(args: {
   expectedAlternates?: string[];
   actualAnswer: string | null;
 }): Promise<JudgeAnswerResult> {
+  // Short-circuit exact-match BEFORE calling the LLM judge. Saves a
+  // round-trip on the common case + survives judge rate-limit. Compares
+  // case-insensitively with whitespace collapsed; checks expected and
+  // every alternate.
+  if (args.actualAnswer) {
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    const actualN = norm(args.actualAnswer);
+    const candidates = [args.expectedAnswer, ...(args.expectedAlternates ?? [])];
+    if (candidates.some(c => norm(c) === actualN)) {
+      return { verdict: 'PASS', rationale: '(exact match)', raw: '', latencyMs: 0 };
+    }
+  }
+
   const expectedFull = args.expectedAlternates?.length
     ? `${args.expectedAnswer} (or any of: ${args.expectedAlternates.join(', ')})`
     : args.expectedAnswer;

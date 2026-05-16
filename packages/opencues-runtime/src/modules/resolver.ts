@@ -305,7 +305,7 @@ export class Resolver {
     //   per-cue/blank frontmatter (`provider:` / `model:`)
     //     > per-feature (`agent-provider:`, `fluid-blank-model:`, …)
     //       > global (`llm-provider:` / `llm-model:`)
-    //         > built-in default (groq / openai/gpt-oss-120b)
+    //         > built-in default (cerebras / gpt-oss-120b)
     //
     // The build-sources factory does the actual resolution; we just
     // shovel the relevant settings down.
@@ -338,6 +338,10 @@ export class Resolver {
         model: settings.get('transform-blank-model'),
         endpoint: settings.get('transform-blank-endpoint'),
       },
+      // Pipeline mode for TransformBlank — `auto` (default) picks per
+      // provider via pickTransformBlankMode(); `fused` / `3-pass` force
+      // it. Set in CUES.md frontmatter as `transform-blank-mode:`.
+      transformBlankMode: settings.get('transform-blank-mode'),
       // Spelling is a regular config-driven cue now (defaults/cues/
       // spelling.md). It inherits per-cue / `word-cues-*` / global LLM
       // routing through the standard ConfigSource path — no per-feature
@@ -604,6 +608,23 @@ export class Resolver {
         // position. Sources that don't care about cursor (FluidBlank,
         // RoutedWordSourceGroup) ignore it. -1 means "no info".
         cursor: this.adapter.getCursorOffset?.() ?? -1,
+        // Optional ambient field/page context. Gated FIRST by the
+        // `ambient-context-mode` scalar (off by default) — when off,
+        // the host adapter is not even consulted, so a misbehaving
+        // host can't accidentally leak metadata.
+        //
+        // When on: ask the host. The host still returns null when it
+        // can't gather (e.g. CC/OC native hosts have no DOM) OR when
+        // the focused field is sensitive (password/CC/OTP).
+        //
+        // Only FluidBlankSource consumes this — see AmbientContext
+        // for the full security contract. The runtime is intentionally
+        // not plugged into any tool-handling or exec layer for fluid-
+        // blank prompts, so the ambient block can only land in text
+        // the user sees before submitting.
+        ambient: this.configLoader.opencuesState.ambientContextMode === 'on'
+          ? (this.adapter.getAmbientContext?.() ?? undefined)
+          : undefined,
       });
     } catch (err) {
       stopAllAnimations();

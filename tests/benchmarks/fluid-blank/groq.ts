@@ -1,22 +1,31 @@
 /**
- * Provider router for the fluid-blank benchmark.
+ * Provider router for the fluid-blank benchmark. Same shape as
+ * transform-blank/groq.ts — five providers behind one chat() interface,
+ * selected via OPENCUES_BENCH_PROVIDER:
  *
- * Default: re-exports `chat` / `sysUser` / `MODEL` from `./groq-impl`
- * (the original Groq + gpt-oss-120b client). Set the env var
- *
- *   OPENCUES_BENCH_PROVIDER=gemini-flash-lite
- *
- * to swap to `./gemini` (Gemini 3.1 Flash Lite). Same chat() signature,
- * same workload — apples-to-apples model comparison without touching
- * the benchmark's other source files.
+ *   gemini-flash-lite   → ./gemini       (Gemini 3.1 Flash Lite)
+ *   cerebras-gpt-oss    → ./cerebras     (gpt-oss-120b on Cerebras)
+ *   claude-haiku        → ./claude       (Claude Haiku 4.5)
+ *   openai-nano         → ./openai       (gpt-5.4-nano)
+ *   (unset / anything)  → ./groq-impl    (Groq + gpt-oss-120b, default)
  */
 
 import * as groqImpl from './groq-impl';
 import * as geminiImpl from './gemini';
+import * as cerebrasImpl from './cerebras';
+import * as claudeImpl from './claude';
+import * as openaiImpl from './openai';
 
-const impl = process.env.OPENCUES_BENCH_PROVIDER === 'gemini-flash-lite'
-  ? geminiImpl
-  : groqImpl;
+function pickImpl() {
+  switch (process.env.OPENCUES_BENCH_PROVIDER) {
+    case 'gemini-flash-lite': return geminiImpl;
+    case 'cerebras-gpt-oss':  return cerebrasImpl;
+    case 'claude-haiku':      return claudeImpl;
+    case 'openai-nano':       return openaiImpl;
+    default:                  return groqImpl;
+  }
+}
+const impl = pickImpl();
 
 export const chat = impl.chat;
 export const sysUser = impl.sysUser;
