@@ -209,11 +209,17 @@ async function init(): Promise<void> {
       // which is likewise branched in opencues-bootstrap — selectionStart
       // for inputs, plain-offset walk for CE.
       const text = readTargetText(target);
-      if (isNormalInput(target)) {
-        log.info('[opencues][normal-input] text-change: len=' + text.length +
-          ', hasUnderscore=' + text.includes('_') +
-          ', cursor=' + (target.selectionStart ?? 0));
-      }
+      // Per-keystroke trace was useful during normal-input bring-up
+      // (May 2026) but is pure noise now that the path is stable —
+      // every keystroke logs even when no `_` is present. Kept
+      // commented so future debugging can flip it back on without
+      // re-deriving the right fields. Real failures show up via the
+      // runtime's own bailed/completed event stream.
+      // if (isNormalInput(target)) {
+      //   log.info('[opencues][normal-input] text-change: len=' + text.length +
+      //     ', hasUnderscore=' + text.includes('_') +
+      //     ', cursor=' + (target.selectionStart ?? 0));
+      // }
       runtimeNotify(text);
     });
   });
