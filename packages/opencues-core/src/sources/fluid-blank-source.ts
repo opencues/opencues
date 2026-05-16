@@ -301,8 +301,11 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
  * their own event-stream format.
  */
 export type FluidBlankEvent =
-  /** Pipeline started. blankIdx = the `_` word index. */
-  | { type: 'started'; textLen: number; blankIdx: number }
+  /** Pipeline started. blankIdx = the `_` word index. `llm` is
+   *  `<providerId>/<model>` (e.g. `cerebras/gpt-oss-120b`) so debug
+   *  consumers can surface which provider is being called without
+   *  cross-referencing config. */
+  | { type: 'started'; textLen: number; blankIdx: number; llm: string }
   /** P1 SEGMENT completed. `span` is the extracted lookup phrase
    *  (incl. `_`); empty string means SEGMENT returned NONE. */
   | { type: 'pass-completed'; pass: 'P1'; latencyMs: number; span: string; context: string }
@@ -422,7 +425,7 @@ export class FluidBlankSource implements CueSource {
         this.emit({ type: 'bailed', reason: 'consumed-upstream', latencyMs: 0 });
         return { results: [] };
       }
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: `${this.provider.id}/${this.model}` });
 
       // Strict JSON on groq gpt-oss — same gate as transform-blank.
       const useJson = useStrictJson(this.provider.id, this.model);
