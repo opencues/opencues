@@ -1743,12 +1743,17 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
   // problem visible immediately.
   await auditProvidersAgainstKeys(keys);
 
-  // Probe each configured provider. We route through the background SW
-  // because content scripts can't bypass CORS for cross-origin
-  // Authorization headers — same path the runtime LLM calls use.
-  for (const [provider, key] of Object.entries(keys)) {
+  // Probe each configured provider in parallel. We route through the
+  // background SW because content scripts can't bypass CORS for
+  // cross-origin Authorization headers — same path the runtime LLM
+  // calls use. Probes fire in parallel and one summary log line lands
+  // when they all settle: `[opencues] LLM keys: ok=[groq, cerebras, …]
+  // invalid=[gemini (401)] failed=[]`. Per-provider errors still log
+  // their full diagnostic separately so the summary stays scannable.
+  const probeResults: Array<{ provider: string; status: 'ok' | 'invalid' | 'failed'; detail?: string }> = [];
+  await Promise.all(Object.entries(keys).map(async ([provider, key]) => {
     const spec = PROVIDER_KEY_CHECKS[provider];
-    if (!spec) continue; // unknown provider — skip silently
+    if (!spec) return; // unknown provider — skip silently
     const { url, headers } = spec(key);
     try {
       const reply = await chrome.runtime.sendMessage<unknown, { ok: boolean; status: number; statusText: string; text: string }>({
@@ -1758,12 +1763,12 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
         headers,
       });
       if (reply?.ok) {
-        // Quiet success — debug-mode only.
-        log.info(`[opencues] LLM key OK (${provider})`);
+        probeResults.push({ provider, status: 'ok' });
       } else {
         const status = reply?.status ?? 0;
         const statusText = reply?.statusText ?? 'unknown';
         const body = (reply?.text ?? '').slice(0, 200);
+        probeResults.push({ provider, status: 'invalid', detail: `HTTP ${status}` });
         console.error(
           `[opencues] LLM key INVALID for ${provider} — HTTP ${status} ${statusText}. ` +
           `Open the OpenCues popup and check the ${provider.toUpperCase()}_API_KEY. ` +
@@ -1771,12 +1776,27 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
         );
       }
     } catch (err) {
+      probeResults.push({ provider, status: 'failed', detail: err instanceof Error ? err.message : String(err) });
       console.error(
         `[opencues] LLM key probe failed for ${provider} — ${err instanceof Error ? err.message : String(err)}. ` +
         `Possible causes: extension service worker not running, no internet, provider down.`,
       );
     }
-  }
+  }));
+
+  // One-line summary. Each bucket is empty-suppressed so a clean run
+  // collapses to `LLM keys ok: groq, cerebras, gemini` without trailing
+  // empties. Sorted by provider name for stability across reloads.
+  const fmt = (st: 'ok' | 'invalid' | 'failed'): string => probeResults
+    .filter(r => r.status === st)
+    .map(r => r.detail ? `${r.provider} (${r.detail})` : r.provider)
+    .sort()
+    .join(', ');
+  const parts: string[] = [];
+  const ok = fmt('ok');       if (ok) parts.push(`ok: ${ok}`);
+  const bad = fmt('invalid'); if (bad) parts.push(`invalid: ${bad}`);
+  const err = fmt('failed');  if (err) parts.push(`failed: ${err}`);
+  if (parts.length > 0) log.info(`[opencues] LLM keys — ${parts.join('; ')}`);
 }
 
 /**
