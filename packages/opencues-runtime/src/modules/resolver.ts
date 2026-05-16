@@ -608,6 +608,11 @@ export class Resolver {
       for (const i of animatedSlots) this.blankLoading.stop(i);
     };
 
+    // Capture resolve-start so we can surface end-to-end pipeline
+    // latency on the substituting log lines below. Useful for
+    // diagnosing "why is this slow" without trawling per-pass debug
+    // timing from the LLM source.
+    const __resolveStart = Date.now();
     let result;
     try {
       result = await this._resolver.resolve({
@@ -769,7 +774,7 @@ export class Resolver {
         this.dynDefs.set(newWordIndex, fluidDef);
         wrote++;
 
-        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex})`);
+        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
         continue; // skip the generic def-creation below
       }
 
@@ -946,7 +951,7 @@ export class Resolver {
         const origPreview = originalText.length > previewLen ? originalText.slice(0, previewLen) + '…' : originalText;
         const rewritePreview = bufferText.length > previewLen ? bufferText.slice(0, previewLen) + '…' : bufferText;
         const markerNote = sub.hadMarkdown ? ', markdown stripped' : '';
-        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${bufferText.length}${markerNote}, defAt=${newWordIndex})`);
+        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${bufferText.length}${markerNote}, defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
         continue;
       }
 
