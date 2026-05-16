@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "test": "find dist -name '*.test.js' | xargs node --test",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs",
     "smoke:providers": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/smoke-providers.ts && node dist-smoke/scripts/smoke-providers.js",

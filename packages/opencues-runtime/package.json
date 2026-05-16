@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:dev": "vitest",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
