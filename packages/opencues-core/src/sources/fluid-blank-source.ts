@@ -446,6 +446,15 @@ export interface FluidBlankSourceConfig {
    * pure-event consumers.
    */
   log?: (msg: string) => void;
+  /**
+   * Optional info-level logger — same shape as `log` but routed at
+   * info level. Used for lines users want surfaced in chrome's
+   * default DevTools console (which hides debug behind the Verbose
+   * filter). Today only the ambient-context decision uses it —
+   * once-per-substitution, useful for security verification, not
+   * spam. Leave undefined to suppress.
+   */
+  logInfo?: (msg: string) => void;
 }
 
 export class FluidBlankSource implements CueSource {
@@ -463,6 +472,7 @@ export class FluidBlankSource implements CueSource {
   private blanks: Record<string, BlankConfig>;
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
+  private logInfo: (msg: string) => void;
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -474,6 +484,7 @@ export class FluidBlankSource implements CueSource {
     this.blanks = config.blanks ?? {};
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.log = config.log ?? (() => { /* default: silent */ });
+    this.logInfo = config.logInfo ?? this.log;
   }
 
   supports(context: CueContext): boolean {
@@ -561,7 +572,7 @@ export class FluidBlankSource implements CueSource {
       //   - "ambient: injected (N chars: a, b, c)"      — block rendered + appended; field NAMES (no values) so users see whether the gatherer found usable data without leaking content
       //   - "ambient: empty"                            — context arrived but renderAmbientBlock returned '' (all fields sanitized away or block exceeded caps)
       // Names only — values stay sealed in the prompt for the LLM.
-      if (!context.ambient) this.log('FluidBlank: ambient: off');
+      if (!context.ambient) this.logInfo('FluidBlank: ambient: off');
       else if (ambientBlock) {
         // Extract `key: value` pairs from the rendered block so users
         // can verify the gatherer grabbed useful content (not just
@@ -579,8 +590,8 @@ export class FluidBlankSource implements CueSource {
           pairs.push(`${m[1]}="${v}"`);
         }
         const pairsStr = pairs.length ? `; ${pairs.join(' ')}` : '';
-        this.log(`FluidBlank: ambient: injected (${ambientBlock.length} chars${pairsStr})`);
-      } else this.log('FluidBlank: ambient: empty (context present but sanitised to nothing)');
+        this.logInfo(`FluidBlank: ambient: injected (${ambientBlock.length} chars${pairsStr})`);
+      } else this.logInfo('FluidBlank: ambient: empty (context present but sanitised to nothing)');
       const p3User = `SPAN: ${span}\nCONTEXT: ${ctx || 'none'}${ambientBlock}`;
       const ansOut = await this.callLLM(P3_SYSTEM_PROMPT, p3User, 200,
         useJson ? buildJsonResponseFormat('fluid_answer', FLUID_ANSWER_SCHEMA) : undefined);

@@ -363,6 +363,10 @@ export class Resolver {
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
       // users get no log spam.
       log: (msg: string) => this.adapter.log('debug', msg),
+      // Info-level companion for FluidBlankSource's user-visible
+      // lines (ambient-context decision). Routed at info so chrome's
+      // default console shows it without enabling the Verbose filter.
+      logInfo: (msg: string) => this.adapter.log('info', msg),
       // Adapt core's typed source events into the runtime's namespaced
       // event stream. Core owns the event names + body shapes; runtime
       // adds the `<source-id>.` prefix when forwarding to

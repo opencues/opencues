@@ -126,6 +126,15 @@ export interface BuildSourcesOptions {
    * OPENCUES.md surfaces the trace. Silent when omitted.
    */
   log?: (msg: string) => void;
+  /**
+   * Optional info-level log sink. Used by FluidBlankSource for lines
+   * that should land in chrome's default DevTools console (which
+   * hides debug behind the Verbose filter) — once-per-substitution
+   * security-relevant logs like the ambient-context injection
+   * decision. Wire to `(msg) => adapter.log('info', msg)`. Falls
+   * back to `log` if omitted.
+   */
+  logInfo?: (msg: string) => void;
   // ─── Per-source event subscribers ─────────────────────────────────────
   //
   // Uniform pattern: each instrumented source defines its own
@@ -369,6 +378,7 @@ export function buildSourcesFromConfig(
         blanks: options.blanks ?? {},
         onEvent: options.onFluidBlankEvent,
         log: options.log,
+        logInfo: options.logInfo,
       }));
     }
   }
