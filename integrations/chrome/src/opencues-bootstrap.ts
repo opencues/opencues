@@ -66,6 +66,46 @@ const ROOT = '/chrome-storage';
 // they signal real failures (broken paste, host disconnect, etc.).
 let _readTrace = false;
 function tlog(msg: string): void { if (_readTrace) console.log(msg); }
+
+// readFile aggregation — at boot we hit 20-50 files (cues, blanks,
+// auditors, OPENCUES.md, etc.). Per-file tlog lines flooded the
+// console even when debug-mode is on. Aggregate into a single summary
+// that flushes after a 250ms quiet period:
+//   [opencues] readFile ×24: bundle×18 baketime×4 storage×1 null×1 (avg 3.4KB)
+// `tlogRead` is the new per-readFile call site; the dedicated tlog
+// stays available for one-off paths that genuinely want a per-line
+// emit. Failures go through console.warn as before, never aggregated.
+type ReadSource = 'bundle' | 'storage' | 'baketime' | 'merge' | 'null';
+const _readCounts: Record<ReadSource, { count: number; totalChars: number }> = {
+  bundle: { count: 0, totalChars: 0 },
+  storage: { count: 0, totalChars: 0 },
+  baketime: { count: 0, totalChars: 0 },
+  merge: { count: 0, totalChars: 0 },
+  null: { count: 0, totalChars: 0 },
+};
+let _readFlushTimer: ReturnType<typeof setTimeout> | null = null;
+function tlogRead(source: ReadSource, chars: number): void {
+  if (!_readTrace) return;
+  _readCounts[source].count += 1;
+  _readCounts[source].totalChars += chars;
+  if (_readFlushTimer) clearTimeout(_readFlushTimer);
+  _readFlushTimer = setTimeout(() => {
+    let total = 0, totalChars = 0;
+    const parts: string[] = [];
+    for (const k of Object.keys(_readCounts) as ReadSource[]) {
+      const c = _readCounts[k];
+      if (!c.count) continue;
+      parts.push(`${k}×${c.count}`);
+      total += c.count;
+      totalChars += c.totalChars;
+      _readCounts[k] = { count: 0, totalChars: 0 };
+    }
+    const avg = total ? Math.round(totalChars / total) : 0;
+    const avgStr = avg > 1024 ? `${(avg / 1024).toFixed(1)}KB` : `${avg}c`;
+    console.log(`[opencues] readFile ×${total}: ${parts.join(' ')} (avg ${avgStr})`);
+    _readFlushTimer = null;
+  }, 250);
+}
 // Forward a log line to the SW → native host → /tmp/opencues.log.
 // Fire-and-forget; silently drops when no host listener. We need this
 // at module scope so the exported `log` object below can use it from
@@ -904,20 +944,20 @@ async function readFile(path: string): Promise<string | null> {
     } catch (err) { console.warn(`[opencues] readFile(${path}) threw:`, err); }
     if (bundled !== null && stored !== null) {
       const merged = mergeOpencuesMd(bundled, stored);
-      tlog(`[opencues] readFile(${path}) ← merge(bundle+storage) (${merged.length} chars)`);
+      tlogRead('merge', merged.length);
       return merged;
     }
     if (bundled !== null) {
-      tlog(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
+      tlogRead('bundle', bundled.length);
       return bundled;
     }
     if (stored !== null) {
-      tlog(`[opencues] readFile(${path}) ← storage (${stored.length} chars)`);
+      tlogRead('storage', stored.length);
       return stored;
     }
     const bake = readBakeTimeDefault(path);
     if (bake !== null) {
-      tlog(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars)`);
+      tlogRead('baketime', bake.length);
       return bake;
     }
     return null;
@@ -926,7 +966,7 @@ async function readFile(path: string): Promise<string | null> {
   // 1. Synced bundle (opencues sync chrome --wsl) wins if present.
   const bundled = await readBundledConfig(path);
   if (bundled !== null) {
-    tlog(`[opencues] readFile(${path}) ← bundle (${bundled.length} chars)`);
+    tlogRead('bundle', bundled.length);
     return bundled;
   }
 
@@ -938,10 +978,10 @@ async function readFile(path: string): Promise<string | null> {
   if (isReadOnlyPath(path)) {
     const bake = readBakeTimeDefault(path);
     if (bake !== null) {
-      tlog(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars)`);
+      tlogRead('baketime', bake.length);
       return bake;
     }
-    tlog(`[opencues] readFile(${path}) ← null (no bundle, no bake-time)`);
+    tlogRead('null', 0);
     return null;
   }
 
@@ -952,7 +992,7 @@ async function readFile(path: string): Promise<string | null> {
     const result = await chrome.storage.local.get(key);
     const v = result[key];
     if (typeof v === 'string' && v.length > 0) {
-      tlog(`[opencues] readFile(${path}) ← storage (${v.length} chars)`);
+      tlogRead('storage', v.length);
       return v;
     }
   } catch (err) {
@@ -960,10 +1000,10 @@ async function readFile(path: string): Promise<string | null> {
   }
   const bake = readBakeTimeDefault(path);
   if (bake !== null) {
-    tlog(`[opencues] readFile(${path}) ← bake-time (${bake.length} chars, storage empty)`);
+    tlogRead('baketime', bake.length);
     return bake;
   }
-  tlog(`[opencues] readFile(${path}) ← null (no bundle, no storage, no bake-time)`);
+  tlogRead('null', 0);
   return null;
 }
 

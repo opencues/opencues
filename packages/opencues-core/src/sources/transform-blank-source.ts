@@ -1235,7 +1235,7 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
  */
 export type TransformBlankEvent =
   /** Pipeline started. textLen = full buffer length, blankIdx = the `_` word index. */
-  | { type: 'started'; textLen: number; blankIdx: number }
+  | { type: 'started'; textLen: number; blankIdx: number; llm: string; mode: string }
   /** One pipeline pass completed. P1 = EXTRACT, P2 = APPLY (one or more
    *  steps), P3 = VERIFY. P1 carries the verdict + extracted instruction;
    *  P2 carries step / totalSteps; P3 carries the verify verdict. */
@@ -1395,9 +1395,9 @@ export class TransformBlankSource implements CueSource {
       const blankIdx = context.words.indexOf('_');
       if (blankIdx === -1) return { results: [] };
 
-      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode})`);
+      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode}, llm=${this.provider.id}/${this.model})`);
       const __pipelineT0 = Date.now();
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: `${this.provider.id}/${this.model}`, mode: this.mode });
 
       // FUSED MODE — single-call short-circuit. Capable generalist models
       // (cerebras, gemini, claude, openai by default) emit VERDICT +
