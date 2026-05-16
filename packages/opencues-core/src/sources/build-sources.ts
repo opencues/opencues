@@ -368,6 +368,7 @@ export function buildSourcesFromConfig(
         model: resolved.model,
         blanks: options.blanks ?? {},
         onEvent: options.onFluidBlankEvent,
+        log: options.log,
       }));
     }
   }
