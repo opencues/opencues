@@ -302,6 +302,119 @@ function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   return false;
 }
 
+/**
+ * Gather sanitized ambient context for the currently focused field.
+ * Returns null when:
+ *   - No target is focused
+ *   - The target is a sensitive field (password / CC / OTP)
+ *   - Nothing usable can be read (all fields empty)
+ *
+ * SCOPE — single-field metadata + page-level metadata only. NO sibling
+ * field labels, NO sibling field values. The adjacent "email" input
+ * next to the focused `_` field does not appear here.
+ *
+ * The runtime gates this method via the `ambient-context-mode` scalar
+ * BEFORE calling — when off, we never get here. This gatherer is also
+ * called only when the bootstrap-level feature is enabled (chrome
+ * surfaces it via `getAmbientContext` only when the runtime asks).
+ *
+ * Sanitization (NFKC + length caps + sentinel escape) happens
+ * core-side in `renderAmbientBlock`. We return raw-but-trimmed values
+ * here; the trust boundary is at the core, not at the gatherer.
+ */
+function gatherAmbientContext(target: HTMLElement | null): {
+  label?: string;
+  placeholder?: string;
+  ariaLabel?: string;
+  ariaDescription?: string;
+  inputType?: string;
+  pageTitle?: string;
+  pageUrl?: string;
+  pageDescription?: string;
+} | null {
+  if (!target) return null;
+
+  // Sensitive-field exclusion — passwords/CC/OTP/etc never get an
+  // ambient block built. The cycleability gate already prevents the
+  // runtime from attaching to these, but be defence-in-depth here:
+  // a future code path that surfaces ambient context outside the
+  // attach gate would still skip them.
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    if (isSensitiveField(target)) return null;
+  }
+
+  const out: Record<string, string> = {};
+
+  // Field-level metadata.
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    const ph = target.getAttribute('placeholder');
+    if (ph) out.placeholder = ph;
+    if (target instanceof HTMLInputElement) {
+      out.inputType = (target.type || 'text').toLowerCase();
+    } else {
+      out.inputType = 'textarea';
+    }
+  } else {
+    out.inputType = 'contenteditable';
+  }
+
+  const aria = target.getAttribute('aria-label');
+  if (aria) out.ariaLabel = aria;
+  const ariaDesc = target.getAttribute('aria-description');
+  if (ariaDesc) out.ariaDescription = ariaDesc;
+  const ariaLabelledBy = target.getAttribute('aria-labelledby');
+  if (ariaLabelledBy && !aria) {
+    // Resolve aria-labelledby IDs into a concatenated string. Spec
+    // allows multiple IDs space-separated.
+    const ids = ariaLabelledBy.split(/\s+/).filter(Boolean);
+    const parts: string[] = [];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el?.textContent) parts.push(el.textContent.trim());
+    }
+    if (parts.length) out.ariaLabel = parts.join(' ');
+  }
+
+  // `<label for>` resolution.
+  if (target.id) {
+    const lbl = document.querySelector<HTMLLabelElement>(`label[for="${CSS.escape(target.id)}"]`);
+    if (lbl?.textContent) out.label = lbl.textContent.trim();
+  }
+  // Wrapping `<label>` resolution. Only checked when explicit `for=`
+  // didn't find one.
+  if (!out.label) {
+    let walk: HTMLElement | null = target;
+    for (let i = 0; i < 4 && walk; i++) {
+      if (walk instanceof HTMLLabelElement) {
+        // Strip the input's own text from the label (e.g. textContent
+        // includes the input's placeholder echo).
+        const labelText = (walk.textContent || '').replace(/\s+/g, ' ').trim();
+        if (labelText) out.label = labelText;
+        break;
+      }
+      walk = walk.parentElement;
+    }
+  }
+
+  // Page-level metadata.
+  try {
+    if (document.title) out.pageTitle = document.title;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (meta?.content) out.pageDescription = meta.content;
+    // Origin + pathname only. Query string + fragment stripped here
+    // even though the core re-strips defensively — better to never
+    // ship sensitive query-string tokens (auth tokens, search terms)
+    // over the wire even momentarily.
+    out.pageUrl = location.origin + location.pathname;
+  } catch {
+    // location/document access can throw in some sandboxed contexts;
+    // omit page-level fields rather than crash the gatherer.
+  }
+
+  if (Object.keys(out).length === 0) return null;
+  return out;
+}
+
 /** Read the plain text of whichever kind of target is focused.
  *  Inputs surface `.value`; contenteditables walk the DOM. */
 export function readTargetText(target: HTMLElement): string {
@@ -1591,9 +1704,25 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
   // shipped default endpoint).
   const keys: Record<string, string> = {};
   if (opts.llmApiKey) keys.groq = opts.llmApiKey;
+  // opts.llmApiKeys is keyed by ENV-VAR NAME (`GROQ_API_KEY`,
+  // `CEREBRAS_API_KEY`, …) because the runtime resolver looks up keys
+  // by env-var name. But PROVIDER_KEY_CHECKS below is keyed by
+  // PROVIDER ID (`groq`, `cerebras`, …). Translate before iterating
+  // — otherwise every non-legacy provider silently misses the check
+  // and the boot audit only ever reports `OK (groq)`.
+  const ENV_TO_PROVIDER: Record<string, string> = {
+    GROQ_API_KEY: 'groq',
+    CEREBRAS_API_KEY: 'cerebras',
+    GEMINI_API_KEY: 'gemini',
+    OPENAI_API_KEY: 'openai',
+    ANTHROPIC_API_KEY: 'anthropic',
+    OPENROUTER_API_KEY: 'openrouter',
+  };
   if (opts.llmApiKeys) {
-    for (const [provider, key] of Object.entries(opts.llmApiKeys)) {
-      if (key) keys[provider] = key;
+    for (const [envOrId, key] of Object.entries(opts.llmApiKeys)) {
+      if (!key) continue;
+      const provider = ENV_TO_PROVIDER[envOrId] ?? envOrId;
+      keys[provider] = key;
     }
   }
 
@@ -1807,6 +1936,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // between the two kinds — sources/blanks pruned reactively
     // without any popup save or page reload.
     supportsCycling: () => !isNormalInput(currentTarget),
+    // Ambient-context gatherer — gated by the `ambient-context-mode`
+    // scalar on the runtime side. Returns null for sensitive fields
+    // and when no usable metadata is present. See gatherAmbientContext
+    // for the read scope; see AmbientContext in @opencues/runtime for
+    // the security contract.
+    getAmbientContext: () => gatherAmbientContext(currentTarget),
     // CE.9 — spawnProcess routes through the native-messaging host
     // when installed (`opencues install chrome-host`). Without it,
     // the adapter returns exitCode 127. Content scripts can't talk
