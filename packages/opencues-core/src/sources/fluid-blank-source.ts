@@ -557,12 +557,30 @@ export class FluidBlankSource implements CueSource {
       // Compact debug line so users can verify whether the ambient
       // block actually landed in the P3 prompt without inspecting the
       // network tab. Three states surfaced:
-      //   - "ambient: off"                — no context arrived (mode off, host returned null, or sensitive field)
-      //   - "ambient: injected (N chars)" — block successfully rendered + appended
-      //   - "ambient: empty"              — context arrived but renderAmbientBlock returned '' (all fields sanitized away or block exceeded caps)
+      //   - "ambient: off"                              — no context arrived (mode off, host returned null, or sensitive field)
+      //   - "ambient: injected (N chars: a, b, c)"      — block rendered + appended; field NAMES (no values) so users see whether the gatherer found usable data without leaking content
+      //   - "ambient: empty"                            — context arrived but renderAmbientBlock returned '' (all fields sanitized away or block exceeded caps)
+      // Names only — values stay sealed in the prompt for the LLM.
       if (!context.ambient) this.log('FluidBlank: ambient: off');
-      else if (ambientBlock) this.log(`FluidBlank: ambient: injected (${ambientBlock.length} chars)`);
-      else this.log('FluidBlank: ambient: empty (context present but sanitised to nothing)');
+      else if (ambientBlock) {
+        // Extract `key: value` pairs from the rendered block so users
+        // can verify the gatherer grabbed useful content (not just
+        // empty fields). Each pair is truncated to keep the line
+        // scannable. Single-line format: `key1="v1" key2="v2"`. All on
+        // ONE log line — the per-field caps already prevent runaway
+        // length. Sensitive fields never reach this path (gatherer
+        // returns null upstream).
+        const TRUNC = 40;
+        const pairs: string[] = [];
+        for (const line of ambientBlock.split('\n')) {
+          const m = line.match(/^([a-z][a-z-]*):\s*(.*)$/);
+          if (!m) continue;
+          const v = m[2].length > TRUNC ? m[2].slice(0, TRUNC) + '…' : m[2];
+          pairs.push(`${m[1]}="${v}"`);
+        }
+        const pairsStr = pairs.length ? `; ${pairs.join(' ')}` : '';
+        this.log(`FluidBlank: ambient: injected (${ambientBlock.length} chars${pairsStr})`);
+      } else this.log('FluidBlank: ambient: empty (context present but sanitised to nothing)');
       const p3User = `SPAN: ${span}\nCONTEXT: ${ctx || 'none'}${ambientBlock}`;
       const ansOut = await this.callLLM(P3_SYSTEM_PROMPT, p3User, 200,
         useJson ? buildJsonResponseFormat('fluid_answer', FLUID_ANSWER_SCHEMA) : undefined);
