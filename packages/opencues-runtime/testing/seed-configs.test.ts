@@ -64,7 +64,7 @@ describe('opencues seed-configs', () => {
     expect(fs.existsSync(path.join(userDir, 'cues/tips/CUE.md'))).toBe(true);
   });
 
-  it('SEED phase: merges user OPENCUES.md with defaults (preserves user scalar VALUES + body; refreshes settings: schema)', () => {
+  it('SEED phase: merges user OPENCUES.md with defaults (preserves user scalar VALUES + body)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const userRc = '---\nvoice-mode: inactive\n---\n\n# my own custom config\n';
     const userDir = path.join(tmpHome, '.cues');
@@ -78,11 +78,13 @@ describe('opencues seed-configs', () => {
     expect(after).toMatch(/^voice-mode:\s*inactive\b/m);
     // User's body is preserved verbatim.
     expect(after).toContain('# my own custom config');
-    // Defaults' settings: schema block lands so the selector blank can
-    // navigate every shipped setting (was the gap that stranded new
-    // entries like `max-concurrent-auditors` on existing installs).
-    expect(after).toMatch(/^settings:\s*$/m);
-    expect(after).toMatch(/^\s+voice-mode:\s*$/m);
+    // Post-May-2026: defaults/OPENCUES.md NO LONGER ships a settings:
+    // schema block (the @opencues/core FEATURES + MENU_TUNABLES
+    // registry is the source of truth — see feature-registry.ts).
+    // Re-seeding doesn't add a settings: block; the runtime derives
+    // the menu from the registry. Assertion is the inverse: confirm
+    // we don't accidentally re-introduce the old block.
+    expect(after).not.toMatch(/^settings:\s*$/m);
   });
 
   it('HEAL phase: re-seeds a 0-byte OPENCUES.md from defaults', () => {

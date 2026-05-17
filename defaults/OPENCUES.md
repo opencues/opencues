@@ -102,94 +102,15 @@ blank-loading-colors-rgb:  #ef4444,#f59e0b,#10b981,#06b6d4,#3b82f6
 blank-loading-colors-ansi: red,yellow,green,cyan,blue
 blank-loading-interval-ms: 150
 
-# ─── settings: declarations + per-value tips ───────────────────────────
-# Schema for the selector/satellite UI. Describes what each setting
-# means + the tip shown for each value. Schema is owned by the runtime;
-# additions get overwritten on state writes.
-settings:
-  voice-mode:
-    tip: Gates TTS globally
-    values:
-      active: TTS reads tips aloud on navigation
-      inactive: TTS is silenced
-  debug-mode:
-    tip: Enable debug logging output
-    values:
-      on: Debug output emitted to console
-      off: Debug logging suppressed
-  tips-mode:
-    tip: Toggles tip display
-    values:
-      on: All tips shown
-      off: Tips hidden
-  cursor-navigate:
-    tip: Auto-highlight word at cursor
-    values:
-      active: Highlight follows cursor to navigable words
-      inactive: Manual navigation only
-  ambient-context-mode:
-    tip: Share focused-field label/placeholder/page-title with fluid-blank for disambiguation. No sibling field values; no system data. Sensitive fields excluded. Chrome only.
-    values:
-      on: Enabled — ambient block injected into fluid-blank prompt
-      off: Disabled (default) — host returns null; ambient block never built
-  user-context-mode:
-    tip: Inject ~/.cues/USER.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.
-    values:
-      off: Disabled (default) — USER.md never read
-      safe: Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.
-    # `raw` mode (catalog values inlined into the prompt — PII reaches
-    # the LLM provider) is implementation-complete but intentionally
-    # NOT cycleable from the menu — flipping it should be a deliberate
-    # file edit, not a one-keystroke toggle. Phase 2 will revisit
-    # exposure alongside per-pack capability disclosure. Power users
-    # can still set `user-context-mode: raw` directly above.
-  fluid-blank-mode:
-    tip: Free-form `_` lookups (P1+P3 LLM pipeline)
-    values:
-      on: Enabled — `_` next to a lookup phrase auto-substitutes the answer
-      off: Disabled — fluid-blank ignored
-  word-cues-mode:
-    tip: Per-word cues (RoutedWordSourceGroup) on plain text — domain alternatives, synonyms
-    values:
-      on: Enabled — words matching a cue source's match/keywords get cycled alternatives
-      off: Disabled — no word-cue LLM calls fire
-  transform-blank-mode:
-    tip: Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`, `stop task _`)
-    values:
-      on: Enabled — `_` reaches transform-blank's classifier; agent tasks can be armed
-      off: Disabled — `_` skips classification; `agentically X _` falls through to fluid-blank as a lookup
-  agent-debounce-ms:
-    tip: Pause after last keystroke before AgentRewrite fires (ms). Misparse → 1000.
-    values:
-      "150": Twitchy — fires almost immediately; great with cached rewrites, costly on cache misses
-      "250": Snappy — fires before most users finish a word; noticeably more responsive than the default
-      "500": Aggressive — fires shortly after each pause
-      "1000": Default — balanced
-      "2000": Relaxed — only fires after a clear stop
-  max-concurrent-auditors:
-    tip: Cap on parallel auditor calls per tick. 0 = uncapped. Bound LLM cost when many auditors are active.
-    values:
-      "0": Uncapped — all enabled auditors fire each tick
-      "3": Bounded — top-3 priority-desc only
-      "5": Bounded — top-5 priority-desc only
-  blank-loading-animation:
-    tip: Glyph progression shown at `_` while its source resolves. Stays in one column; restores to `_` on complete.
-    values:
-      bounce: `_` `-` `‾` `-` — vertical pulse, returns to `_` (default)
-      braille-rotate: `_` once, then loops `⠁ ⠈ ⠐ ⠠ ⠄ ⠂` clockwise
-      flipper: `_` `\` `|` `/` — a mark flipping through orientations
-      custom: Use the user-defined frames from `blank-loading-frames`
-      off: No animation — `_` stays static until substitution
-  blank-loading-colors-rgb:
-    tip: Per-frame RGB/HEX colours (chrome). Up to 5. Empty → host default.
-  blank-loading-colors-ansi:
-    tip: Per-frame ANSI colours (terminal hosts). Named or 256-index. Up to 5.
-  blank-loading-interval-ms:
-    tip: Per-frame duration in ms. Lower = snappier, higher = each colour stays visible longer.
-    values:
-      "75": Rapid — 75ms per frame, blurs into motion
-      "150": Snappy (default) — 150ms per frame
-      "300": Slow — 300ms per frame, each colour holds twice as long
+# The selector/satellite menu schema (tips + per-value descriptions
+# for every setting above) is now owned by the @opencues/core
+# FEATURES + MENU_TUNABLES registry — single source of truth shared
+# across doctor, install, the runtime, and every host. Adding a new
+# setting is one PR to packages/opencues-core/src/feature-registry.ts;
+# no edit to this file is required. To customise the menu (different
+# tips, hidden settings, custom value order), ship a `settings:` block
+# below — the file-level block fully replaces the registry defaults
+# when present.
 ---
 
 # OPENCUES.md — Runtime Configuration

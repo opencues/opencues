@@ -93,9 +93,17 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
       expect(out.trim()).toMatch(/^\d{1,3}$/);
     });
 
-    it.skipIf(skip)('opencues-blank.sh get: returns "<setting>\\t<value>" when a populated OPENCUES.md is at ~/.cues/', () => {
+    it.skipIf(skip)('opencues-blank.sh get: returns "<setting>\\t<value>" when an OPENCUES.md with a settings: block is at ~/.cues/', () => {
       // opencues-blank.sh's contract: read OPENCUES.md two levels up
       // from the script (~/.cues/blanks/opencues/ → ~/.cues/OPENCUES.md).
+      //
+      // Post-May-2026: defaults/OPENCUES.md no longer ships a
+      // settings: block (the @opencues/core registry owns the menu
+      // schema; the runtime TS path uses getMenuDefinitions()
+      // directly). The legacy bash script can't query the registry —
+      // it only works when the file ships its own settings: block.
+      // We test that path explicitly by writing a synthetic file with
+      // a block, not by copying defaults/OPENCUES.md.
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
       const ctlDir = path.join(tmpHome, '.cues/blanks/opencues');
       fs.mkdirSync(ctlDir, { recursive: true });
@@ -104,10 +112,17 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
         path.join(ctlDir, 'opencues-blank.sh'),
       );
       fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
-      fs.copyFileSync(
-        path.join(REPO_ROOT, 'defaults/OPENCUES.md'),
-        path.join(tmpHome, '.cues', 'OPENCUES.md'),
-      );
+      const userMd =
+        '---\n' +
+        'voice-mode: active\n' +
+        'settings:\n' +
+        '  voice-mode:\n' +
+        '    tip: Gates TTS\n' +
+        '    values:\n' +
+        '      active: TTS reads tips\n' +
+        '      inactive: TTS silenced\n' +
+        '---\n';
+      fs.writeFileSync(path.join(tmpHome, '.cues', 'OPENCUES.md'), userMd);
 
       const out = execFileSync('bash', [path.join(ctlDir, 'opencues-blank.sh'), 'get'], {
         encoding: 'utf8',

@@ -48,6 +48,26 @@
 // for the drift-prevention assertion there.)
 
 /**
+ * One valid value for a feature or menu tunable. Carries its own
+ * description (used in the cycling-menu satellite tip) + a flag
+ * controlling whether the value appears in the user-visible cycling
+ * menu at all.
+ *
+ * Hiding a value from the menu does NOT make it invalid — the parser
+ * still accepts it when set by direct file edit. The flag exists so
+ * footgun modes (e.g. `user-context-mode: raw`, which inlines PII
+ * into LLM prompts) can't be flipped by a single keystroke.
+ */
+export interface ValueSpec {
+  /** The literal value as it appears in OPENCUES.md frontmatter. */
+  readonly id: string;
+  /** Per-value tip shown in the satellite when this value is selected. */
+  readonly description: string;
+  /** Default true. Set false to keep the value parser-valid but absent from the cycling menu. */
+  readonly exposeInMenu?: boolean;
+}
+
+/**
  * A single optional feature exposed via an OPENCUES.md scalar.
  *
  * Features that aren't gated on a scalar (always-on services like
@@ -67,16 +87,40 @@ export interface FeatureSpec {
   readonly camelCase: string;
 
   /**
-   * Valid scalar values; first entry is treated as the default.
-   * Example: ['off', 'safe', 'raw'] — first is off-by-default.
+   * Valid scalar values, each carrying its own description + menu-
+   * exposure flag. First entry is treated as the default. Replaces
+   * the OPENCUES.md `settings:` block that used to duplicate this
+   * info — the registry is now the single source of truth for the
+   * selector-satellite cycling menu.
+   *
+   * Example:
+   *   values: [
+   *     { id: 'off',  description: 'Disabled (default)' },
+   *     { id: 'safe', description: 'Tokens-only catalog' },
+   *     { id: 'raw',  description: 'Inline values', exposeInMenu: false },
+   *   ]
+   *
+   * Use exposeInMenu: false for values that are intentionally hidden
+   * from cycling (e.g. footgun modes that should require a deliberate
+   * file edit). They remain VALID values (parser accepts them); they
+   * just don't show up when the user cycles `opencues settings _`.
    */
-  readonly values: readonly string[];
+  readonly values: readonly ValueSpec[];
 
   /**
-   * One-line description for doctor's feature wiring section + the
-   * selector-satellite settings menu tip.
+   * One-line description for doctor's feature wiring section + dev
+   * docs. NOT the menu tip — use `menuTip` for that (typically a more
+   * user-facing rewording).
    */
   readonly description: string;
+
+  /**
+   * Optional menu-specific tip shown when the user is cycling THIS
+   * setting in `opencues settings _`. Defaults to `description` when
+   * omitted. Provide a separate string when the menu deserves a
+   * shorter / more action-oriented phrasing than the dev description.
+   */
+  readonly menuTip?: string;
 
   /**
    * Optional config file the feature reads from ~/.cues/.
@@ -171,58 +215,100 @@ export const FEATURES: readonly FeatureSpec[] = [
   {
     scalar: 'fluid-blank-mode',
     camelCase: 'fluidBlankMode',
-    values: ['on', 'off'],
     description: 'Free-form `_` lookups (LLM pipeline)',
+    menuTip: 'Free-form `_` lookups (P1+P3 LLM pipeline)',
+    values: [
+      { id: 'on',  description: 'Enabled — `_` next to a lookup phrase auto-substitutes the answer' },
+      { id: 'off', description: 'Disabled — fluid-blank ignored' },
+    ],
   },
   {
     scalar: 'word-cues-mode',
     camelCase: 'wordCuesMode',
-    values: ['on', 'off'],
     description: 'LLM word alternatives surfaced on plain text',
+    menuTip: 'Per-word cues (RoutedWordSourceGroup) on plain text — domain alternatives, synonyms',
+    values: [
+      { id: 'on',  description: 'Enabled — words matching a cue source\'s match/keywords get cycled alternatives' },
+      { id: 'off', description: 'Disabled — no word-cue LLM calls fire' },
+    ],
   },
   {
     scalar: 'transform-blank-mode',
     camelCase: 'transformBlankMode',
-    values: ['on', 'off'],
     description: 'Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`)',
+    menuTip: 'Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`, `stop task _`)',
+    values: [
+      { id: 'on',  description: 'Enabled — `_` reaches transform-blank\'s classifier; agent tasks can be armed' },
+      { id: 'off', description: 'Disabled — `_` skips classification; `agentically X _` falls through to fluid-blank as a lookup' },
+    ],
   },
   {
     scalar: 'tips-mode',
     camelCase: 'tipsMode',
-    values: ['on', 'off'],
     description: 'Static tip groups from defaults/cues/*/CUE.md',
+    menuTip: 'Toggles tip display',
+    values: [
+      { id: 'on',  description: 'All tips shown' },
+      { id: 'off', description: 'Tips hidden' },
+    ],
   },
   {
     scalar: 'voice-mode',
     camelCase: 'voiceMode',
-    values: ['inactive', 'active'],
     description: 'TTS for highlighted words',
+    menuTip: 'Gates TTS globally',
+    values: [
+      { id: 'active',   description: 'TTS reads tips aloud on navigation' },
+      { id: 'inactive', description: 'TTS is silenced' },
+    ],
   },
   {
     scalar: 'cursor-navigate',
     camelCase: 'cursorNavigate',
-    values: ['inactive', 'active'],
     description: 'Auto-highlight word under cursor',
+    menuTip: 'Auto-highlight word at cursor',
+    values: [
+      { id: 'inactive', description: 'Manual navigation only' },
+      { id: 'active',   description: 'Highlight follows cursor to navigable words' },
+    ],
   },
   {
     scalar: 'debug-mode',
     camelCase: 'debugMode',
-    values: ['off', 'on'],
     description: 'Verbose runtime logging (every cue/blank decision)',
+    menuTip: 'Enable debug logging output',
+    values: [
+      { id: 'off', description: 'Debug logging suppressed' },
+      { id: 'on',  description: 'Debug output emitted to console' },
+    ],
   },
 
   // ── Context injection ────────────────────────────────────────────
   {
     scalar: 'ambient-context-mode',
     camelCase: 'ambientContextMode',
-    values: ['off', 'on'],
     description: 'Field label/placeholder/page-title sent with fluid-blank lookups (chrome only)',
+    menuTip: 'Share focused-field label/placeholder/page-title with fluid-blank for disambiguation. Sensitive fields excluded. Chrome only.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — host returns null; ambient block never built' },
+      { id: 'on',  description: 'Enabled — ambient block injected into fluid-blank prompt' },
+    ],
   },
   {
     scalar: 'user-context-mode',
     camelCase: 'userContextMode',
-    values: ['off', 'safe', 'raw'],
     description: 'Personal data injected into fluid-blank as sentinel tokens',
+    menuTip: 'Inject ~/.cues/USER.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.',
+    values: [
+      { id: 'off',  description: 'Disabled (default) — USER.md never read' },
+      { id: 'safe', description: 'Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.' },
+      // `raw` mode (catalog values inlined into the prompt — PII
+      // reaches the LLM provider) is implementation-complete but
+      // intentionally NOT cycleable from the menu — flipping it should
+      // be a deliberate file edit, not a one-keystroke toggle. Phase 2
+      // will revisit exposure alongside per-pack capability disclosure.
+      { id: 'raw',  description: 'Catalog values inlined into prompt; PII reaches the LLM provider', exposeInMenu: false },
+    ],
     prereqFile: {
       basename: 'USER.md',
       template: 'defaults/USER.md',
@@ -231,6 +317,125 @@ export const FEATURES: readonly FeatureSpec[] = [
     pushedBy: ['chrome-host'],
   },
 ];
+
+/**
+ * Non-feature menu tunables — numeric or enum settings that appear in
+ * the cycling menu but aren't OpenCues "features" in the capability
+ * sense (no prereq file, no scalar-as-surface-gate). Same ValueSpec
+ * shape so they slot into the same menu-derivation pipeline.
+ */
+export interface MenuTunableSpec {
+  /** OPENCUES.md scalar key, kebab-case. */
+  readonly scalar: string;
+  /** Menu tip shown when cycling this setting. */
+  readonly menuTip: string;
+  /** Cyclable values. First entry is the recommended default for the menu's initial render. */
+  readonly values: readonly ValueSpec[];
+}
+
+export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
+  {
+    scalar: 'agent-debounce-ms',
+    menuTip: 'Pause after last keystroke before AgentRewrite fires (ms). Misparse → 1000.',
+    values: [
+      { id: '150',  description: 'Twitchy — fires almost immediately; great with cached rewrites, costly on cache misses' },
+      { id: '250',  description: 'Snappy — fires before most users finish a word; noticeably more responsive than the default' },
+      { id: '500',  description: 'Aggressive — fires shortly after each pause' },
+      { id: '1000', description: 'Default — balanced' },
+      { id: '2000', description: 'Relaxed — only fires after a clear stop' },
+    ],
+  },
+  {
+    scalar: 'max-concurrent-auditors',
+    menuTip: 'Cap on parallel auditor calls per tick. 0 = uncapped. Bound LLM cost when many auditors are active.',
+    values: [
+      { id: '0', description: 'Uncapped — all enabled auditors fire each tick' },
+      { id: '3', description: 'Bounded — top-3 priority-desc only' },
+      { id: '5', description: 'Bounded — top-5 priority-desc only' },
+    ],
+  },
+  {
+    scalar: 'blank-loading-animation',
+    menuTip: 'Glyph progression shown at `_` while its source resolves. Stays in one column; restores to `_` on complete.',
+    values: [
+      { id: 'bounce',         description: '`_` `-` `‾` `-` — vertical pulse, returns to `_` (default)' },
+      { id: 'braille-rotate', description: '`_` once, then loops `⠁ ⠈ ⠐ ⠠ ⠄ ⠂` clockwise' },
+      { id: 'flipper',        description: '`_` `\\` `|` `/` — a mark flipping through orientations' },
+      { id: 'custom',         description: 'Use the user-defined frames from `blank-loading-frames`' },
+      { id: 'off',            description: 'No animation — `_` stays static until substitution' },
+    ],
+  },
+  {
+    scalar: 'blank-loading-interval-ms',
+    menuTip: 'Per-frame duration in ms. Lower = snappier, higher = each colour stays visible longer.',
+    values: [
+      { id: '75',  description: 'Rapid — 75ms per frame, blurs into motion' },
+      { id: '150', description: 'Snappy (default) — 150ms per frame' },
+      { id: '300', description: 'Slow — 300ms per frame, each colour holds twice as long' },
+    ],
+  },
+];
+
+// ──────────────────────────────────────────────────────────────────────
+// Helpers for consumers transitioning from `values: string[]` to
+// `values: ValueSpec[]`. Use these instead of `f.values[0]` etc.
+
+/** The default value (first entry's id) for a feature or tunable. */
+export function getDefaultValue(spec: { values: readonly ValueSpec[] }): string {
+  return spec.values[0]?.id ?? '';
+}
+
+/** All value ids (for tests / display lists). */
+export function getValueIds(spec: { values: readonly ValueSpec[] }): readonly string[] {
+  return spec.values.map(v => v.id);
+}
+
+/** Only the values that should appear in the cycling menu (exposeInMenu !== false). */
+export function getCyclableValues(spec: { values: readonly ValueSpec[] }): readonly ValueSpec[] {
+  return spec.values.filter(v => v.exposeInMenu !== false);
+}
+
+/**
+ * Build the menu-definitions map for the selector-satellite cycling
+ * UI. Combines FEATURES + MENU_TUNABLES, applying exposeInMenu
+ * filtering. Replaces the parseSettingsBlock() call in config-loader
+ * — the registry IS the menu schema now.
+ *
+ * Returned shape mirrors the legacy OpenCuesSettingDef so consumers
+ * (Cycling.ts, OpenCuesSettingsBlank) don't need to change.
+ */
+export function getMenuDefinitions(): Map<string, {
+  readonly tip?: string;
+  readonly valueOrder: readonly string[];
+  readonly valueTips: ReadonlyMap<string, string>;
+}> {
+  const out = new Map<string, { tip?: string; valueOrder: readonly string[]; valueTips: ReadonlyMap<string, string> }>();
+
+  // Features first (in declaration order), then tunables. Match the
+  // original OPENCUES.md ordering so the menu's first-setting probe
+  // returns the same first scalar.
+  for (const f of FEATURES) {
+    const cyclable = getCyclableValues(f);
+    if (cyclable.length === 0) continue;
+    const tips = new Map<string, string>();
+    for (const v of cyclable) tips.set(v.id, v.description);
+    out.set(f.scalar, {
+      tip: f.menuTip ?? f.description,
+      valueOrder: cyclable.map(v => v.id),
+      valueTips: tips,
+    });
+  }
+  for (const t of MENU_TUNABLES) {
+    const tips = new Map<string, string>();
+    for (const v of t.values) tips.set(v.id, v.description);
+    out.set(t.scalar, {
+      tip: t.menuTip,
+      valueOrder: t.values.map(v => v.id),
+      valueTips: tips,
+    });
+  }
+  return out;
+}
 
 /**
  * Look up a feature by scalar name. Returns undefined for unknown

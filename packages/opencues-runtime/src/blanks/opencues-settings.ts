@@ -16,6 +16,7 @@
 // wins so users can pin their preferred default first setting).
 
 import type { Blank } from './types';
+import { getMenuDefinitions } from '@opencues/core';
 
 export interface OpenCuesSettingsBlankOptions {
   /** Read the full OPENCUES.md content. Returns null when missing. */
@@ -46,7 +47,15 @@ export class OpenCuesSettingsBlank implements Blank {
       // satellite spawns something sensible.
     }
 
-    const first = firstSettingName(text);
+    // Find the first cyclable setting name. Prefer the file's
+    // `settings:` block when present (back-compat for users who ship
+    // a custom block); fall back to @opencues/core's registry order
+    // since defaults/OPENCUES.md no longer ships a settings: block.
+    let first = firstSettingName(text);
+    if (!first) {
+      const menu = getMenuDefinitions();
+      first = menu.keys().next().value ?? null;
+    }
     if (!first) return '';
     const value = lookupSetting(text, first) ?? '';
     return `${first}\t${value}`;

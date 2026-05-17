@@ -30,6 +30,7 @@ import {
   parseBlanksMaster,
   parseAuditorsMaster,
   parseUserMd,
+  getMenuDefinitions,
   type LocalCueLookupResult,
   type CuesMdConfig,
   type BlankConfig,
@@ -183,8 +184,38 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     userCtxRaw === 'safe' ? 'safe'
     : userCtxRaw === 'raw' ? 'raw'
     : 'off';
-  const definitions = parseSettingsBlock(lines);
+  // Menu definitions: registry-derived by default, with optional
+  // file-level overrides. The @opencues/core FEATURES + MENU_TUNABLES
+  // registry is the single source of truth; defaults/OPENCUES.md ships
+  // EMPTY (no `settings:` block) and the registry provides every
+  // cyclable setting. Advanced users who want different tips or value
+  // order can ship their own `settings:` block in ~/.cues/OPENCUES.md
+  // and the parser merges it on top — file entries WIN per scalar
+  // (whole-setting replacement, not field-level merge).
+  //
+  // Tests keep shipping mock `settings:` blocks; they get the
+  // file-driven definitions, identical to the pre-refactor behaviour.
+  const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
   return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, settings, definitions };
+}
+
+/**
+ * Pick file-parsed `settings:` definitions OR registry defaults.
+ * All-or-nothing semantics: if the file ships ANY settings block,
+ * that block is authoritative (full menu replacement, registry
+ * ignored). Empty/missing block → registry default.
+ *
+ * Rationale: the registry covers the shipping default set; users
+ * who want a custom menu (different order, different tips, hidden
+ * settings) ship their own complete block and get full control.
+ * A per-scalar merge would surprise users with registry-default
+ * settings appearing they hadn't asked for.
+ */
+function mergeDefinitions(
+  registryDefs: Map<string, OpenCuesSettingDef>,
+  fileDefs: Map<string, OpenCuesSettingDef>,
+): Map<string, OpenCuesSettingDef> {
+  return fileDefs.size > 0 ? fileDefs : registryDefs;
 }
 
 /**
@@ -192,6 +223,13 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
  * declared values. Indent semantics: 2 spaces = setting name, 4 spaces =
  * tip / `values:`, 6 spaces = a value entry. Tolerant of blank lines;
  * stops at the next top-level (zero-indent) key.
+ *
+ * Registry-first since the May 2026 simplification: this parser is
+ * now used only as an OVERLAY on top of `getMenuDefinitions()`. New
+ * default-shipped OPENCUES.md files have no `settings:` block at all
+ * and the registry provides every cyclable setting. Existing users
+ * who kept their old file get a per-scalar override behaviour (file
+ * wins) — see `mergeDefinitions` above.
  */
 function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSettingDef> {
   const out = new Map<string, OpenCuesSettingDef>();
@@ -223,7 +261,6 @@ function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSetti
       if (/^settings:\s*$/.test(raw)) inBlock = true;
       continue;
     }
-    // A zero-indent line ends the block.
     if (!raw.startsWith(' ') && !raw.startsWith('\t')) {
       commit();
       break;
@@ -231,7 +268,6 @@ function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSetti
     const indent = raw.match(/^(\s*)/)?.[1].length ?? 0;
     const trimmed = raw.trim();
     if (indent === 2 && trimmed.endsWith(':')) {
-      // New setting name.
       commit();
       currentSetting = trimmed.slice(0, -1).trim();
       continue;
@@ -246,10 +282,6 @@ function parseSettingsBlock(lines: readonly string[]): Map<string, OpenCuesSetti
       continue;
     }
     if (indent === 6 && inValues) {
-      // Value keys may be quoted in the source (`"500":`, `"0":`) when YAML
-      // would otherwise interpret them as integers. Strip surrounding
-      // quotes so numeric-keyed settings (agent-debounce-ms,
-      // max-concurrent-auditors) parse correctly.
       const m = trimmed.match(/^"?([A-Za-z0-9][A-Za-z0-9_\- ]*?)"?:\s*(.*)$/);
       if (!m) continue;
       const valueName = m[1].trim();

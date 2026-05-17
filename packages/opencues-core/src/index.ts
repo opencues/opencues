@@ -173,11 +173,18 @@ export {
   CORE_CONFIG_FILES,
   CORE_TEMPLATES,
   FEATURES,
+  MENU_TUNABLES,
   findFeature,
   chromeHostFileList,
   allConfigFileBasenames,
   seedableOptionalFiles,
+  getDefaultValue,
+  getValueIds,
+  getCyclableValues,
+  getMenuDefinitions,
   type FeatureSpec,
+  type ValueSpec,
+  type MenuTunableSpec,
   type SeedableFile,
 } from './feature-registry';
 

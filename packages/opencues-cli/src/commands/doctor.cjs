@@ -90,7 +90,8 @@ module.exports = function doctor(argv, ctx) {
 
     // Show each registered feature's current value (or default if unset)
     for (const f of registry.FEATURES) {
-      const value = scalars[f.scalar] != null ? scalars[f.scalar] : dim(`(${f.values[0]})`);
+      const defaultValue = f.values[0]?.id ?? f.values[0];  // ValueSpec.id or legacy string
+      const value = scalars[f.scalar] != null ? scalars[f.scalar] : dim(`(${defaultValue})`);
       s.info(f.scalar, value);
     }
 
@@ -123,7 +124,8 @@ module.exports = function doctor(argv, ctx) {
     for (const f of registry.FEATURES) {
       if (!f.prereqFile?.mustHavePopulatedFields) continue;
       const value = scalars[f.scalar];
-      if (!value || value === f.values[0]) continue;  // default → not enabled, skip
+      const defaultId = f.values[0]?.id ?? f.values[0];
+      if (!value || value === defaultId) continue;  // default → not enabled, skip
       const filePath = path.join(userConfigDir, f.prereqFile.basename);
       const populated = countPopulatedFields(filePath, f.prereqFile.basename);
       if (populated.count > 0) continue;

@@ -172,12 +172,22 @@ settings:
     expect(dm?.valueOrder).toEqual(['on', 'off']);
   });
 
-  it('empty/missing settings: block produces empty definitions', () => {
+  it('missing settings: block falls back to registry-derived definitions', () => {
+    // Post-May-2026: the parser ships registry defaults from
+    // @opencues/core's FEATURES + MENU_TUNABLES when the user's file
+    // has no settings: block. Previously this returned an empty Map;
+    // now it returns the full set of cyclable defaults. Users who
+    // want a custom menu still ship their own block (file wins).
     const md = `---
 voice-mode: active
 ---`;
     const state = parseOpenCuesMd(md);
-    expect(state.definitions.size).toBe(0);
+    expect(state.definitions.size).toBeGreaterThan(0);
+    // Canonical features the registry covers
+    expect(state.definitions.has('voice-mode')).toBe(true);
+    expect(state.definitions.has('user-context-mode')).toBe(true);
+    // Tunables from MENU_TUNABLES
+    expect(state.definitions.has('agent-debounce-ms')).toBe(true);
   });
 
   it('parses quoted numeric value keys (agent-debounce-ms / max-concurrent-auditors)', () => {
