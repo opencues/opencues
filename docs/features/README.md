@@ -42,6 +42,7 @@ Platform-agnostic feature specifications. Each integration implements these conc
 | 33 | [User Context](user-context.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/USER.md` frontmatter) as sentinel tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
 | 34 | [Chrome Normal Inputs](chrome-normal-inputs.md) | Chrome attaches `_`-trigger behaviour to plain `<input>` / `<textarea>`, not just contenteditables. Single-answer blanks only (no cycling — Universal Integration profile, #35). Sensitive-field exclusion gates attach for password / CC / OTP fields. |
 | 35 | [Universal Integration profile](../architecture/universal-integration.md) | `HostAdapter.supportsCycling` lets hosts advertise "no cycling surface" (chrome's normal-input branch, future read-only contexts). Cycleable cues/blanks (word-cues, selector/satellite, list blanks, script-backed cycling) are pruned at registration; single-answer sources (fluid / transform / compute) survive. Structural inference — no frontmatter changes needed. |
+| 36 | [Blank Trigger Mode](blank-trigger-mode.md) | Controls when `_` fires its blank. `immediate` (default): trigger on insertion (v0.1 behaviour). `spaced`: trigger only when a confirming space follows — lets markdown `_italic_` typists keep their formatting without the first `_` substituting. Cycleable via `opencues settings _`. |
 
 ## Adding a new feature
 

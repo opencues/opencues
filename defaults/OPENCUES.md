@@ -44,6 +44,18 @@ fluid-blank-mode: on
 word-cues-mode: on
 transform-blank-mode: on
 
+# blank-trigger-mode — when `_` actually fires its blank.
+#   immediate (default): blank fires the moment `_` is inserted —
+#                        the original v0.1 behaviour, snappy but
+#                        sometimes catches markdown italic typists
+#                        on the first underscore.
+#   spaced             : blank fires only after a confirming space
+#                        follows `_`. Lets you type `_italic_` without
+#                        the first `_` substituting. One extra keystroke
+#                        (the space) for cases where you DID want a blank.
+# See docs/features/blank-trigger-mode.md.
+blank-trigger-mode: immediate
+
 # Agent tuning. Debounce after the last keystroke before AgentRewrite
 # fires (ms). Misparses or non-positive values fall back to 1000.
 agent-debounce-ms: 1000
