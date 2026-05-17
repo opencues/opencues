@@ -13,7 +13,11 @@ The buffer alone doesn't tell `FluidBlankSource` enough. Ambient
 context fills the gap.
 
 **This feature is OFF by default.** It must be opted in via the
-`ambient-context-mode: on` scalar in `~/.cues/OPENCUES.md`.
+`ambient-context-mode: on` scalar in `~/.cues/OPENCUES.md`. The
+scalar is declared in the FEATURES registry
+(`packages/opencues-core/src/feature-registry.ts`) — doctor's
+Feature wiring section + the selector-satellite cycling menu derive
+from there. See `docs/architecture/feature-registry.md`.
 
 ---
 

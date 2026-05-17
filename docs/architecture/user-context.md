@@ -3,7 +3,12 @@
 OpenCues can offer the LLM your personal data (first name, email,
 work city, etc.) so `_` lookups personalise without you re-typing
 them each time. Off by default; opt-in via `user-context-mode: safe`
-(or `raw`) in `~/.cues/OPENCUES.md`.
+in `~/.cues/OPENCUES.md`. A third value (`raw`) is parser-valid but
+hidden from the cycling menu via `exposeInMenu: false` — see "Hiding
+values" in `docs/architecture/feature-registry.md`. The scalar +
+USER.md prereq + chrome-host push declaration all live in the
+FEATURES registry (one entry); doctor, seed-configs, and host.cjs
+derive from it.
 
 Phase 1 wires this for **fluid-blank only**. Other pipelines
 (transform-blank, word-cues, agent-rewrite) explicitly do NOT
