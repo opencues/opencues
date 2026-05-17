@@ -40,6 +40,7 @@ import type {
   DirEntry,
   LogLevel,
   Capability,
+  AmbientContext,
 } from '../../../src/adapter';
 import { HOST_ADAPTER_INTERFACE_VERSION } from '../../../src/adapter';
 
@@ -134,6 +135,21 @@ export interface ChromeBindings {
    * a normal input.
    */
   supportsCycling?(): boolean;
+
+  /**
+   * Sanitized ambient context for the focused field — see
+   * AmbientContext in @opencues/runtime/src/adapter.ts for the full
+   * security contract. Returns null when:
+   *   - no target is focused
+   *   - the focused field is sensitive (password / CC / OTP)
+   *   - the host has nothing usable to share
+   *
+   * The runtime gates calls to this method by the
+   * `ambient-context-mode` scalar — when off (default) we never get
+   * here. Bootstrap surfaces it unconditionally; the runtime decides
+   * whether to ask.
+   */
+  getAmbientContext?(): AmbientContext | null;
 }
 
 /**
@@ -187,6 +203,13 @@ export class ChromeV1Adapter implements HostAdapter {
     // normal-input → false). When the binding is absent the host has
     // only one mode and we default to true (back-compat).
     try { return this.bindings.supportsCycling?.() ?? true; } catch { return true; }
+  }
+  getAmbientContext(): AmbientContext | null {
+    // Runtime gates on `ambient-context-mode` BEFORE calling, so
+    // we'd only get here when the user has opted in. Still null-safe
+    // here: bootstrap may omit the binding (older boot script) or
+    // throw if DOM access fails.
+    try { return this.bindings.getAmbientContext?.() ?? null; } catch { return null; }
   }
   getSelection(): Range | null { return null; }
 

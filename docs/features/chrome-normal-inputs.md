@@ -170,6 +170,54 @@ The "big IF statement" lives in two files:
 - Cleanup paths (`focusout`, `onConfigChange`, `prefers-color-scheme`
   change) skip the highlight-colour calls when the target is an input.
 
+## Ambient context — off by default
+
+For free-form lookups (`paris _`, `cheap eats _`), the answer
+depends on **where the user is**: `destination` field on
+`flights.example.com` vs `topic` field on `forum.example.com`
+should produce different output. Buffer text alone doesn't tell
+the LLM enough.
+
+Chrome optionally forwards a sanitized snapshot of the focused
+field (label, placeholder, aria-*, input type) plus page-level
+metadata (title, origin+path URL, meta description) to the
+fluid-blank LLM call — **only** the fluid-blank call, no other
+source. **OFF by default.** Opt in via
+`ambient-context-mode: on` in `~/.cues/OPENCUES.md`.
+
+What's read:
+
+- Field-level: `label` (from `<label for>` / wrapping `<label>` /
+  `aria-labelledby`), `placeholder`, `aria-label`,
+  `aria-description`, input type.
+- Page-level: `document.title`, `location.origin + location.pathname`
+  (query string + fragment stripped at the gatherer AND re-stripped
+  at the core), `<meta name="description">`.
+
+What's never read (independent of feature state):
+
+- Any sibling field's value or label.
+- The URL query string or fragment.
+- Cookies, localStorage, sessionStorage.
+- DOM outside the focused field's own attributes and the listed
+  page-level fields.
+- Anything from sensitive fields — passwords / CC / OTP get
+  `null` regardless of the scalar.
+
+The fluid-blank prompt is locked to: static instruction text +
+the user's own buffer + sanitized ambient block. No env vars,
+no cwd, no agent state — pinned by the
+`no-system-data invariant` test in `fluid-blank-source.test.ts`.
+
+The structural reason this is safe: OpenCues has no tool
+handlers, no exec layer, no out-of-band action channel for
+fluid-blank LLM output. A prompt injection in a malicious
+page's `placeholder` can at worst cause the LLM to write
+misleading text into the user's buffer, which the user sees
+before submitting. There is no exfiltration channel.
+
+Full threat model + sanitization rules: `docs/architecture/ambient-context.md`.
+
 ## Trust gate behavior
 
 The `_` credit-based trust gate works identically on normal inputs:

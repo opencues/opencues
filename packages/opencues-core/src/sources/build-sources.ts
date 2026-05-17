@@ -86,8 +86,8 @@ export interface BuildSourcesOptions {
    * May return synchronously or as a Promise — async implementations avoid blocking the event loop. */
   readBlankState?: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
   /**
-   * Enable the fluid-blank source — a 2-pass (P1 SEGMENT + P3 ANSWER) handler
-   * that catches free-form lookup queries embedded in casual prose.
+   * Enable the fluid-blank source — a single-call FUSED handler that
+   * segments + answers free-form lookup queries embedded in casual prose.
    * See fluid-blank-source.ts and tests/benchmarks/fluid-blank/BUILD-LOG.md.
    * Defaults to false; flip on per-integration.
    */

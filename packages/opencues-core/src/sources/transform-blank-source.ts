@@ -84,7 +84,7 @@ output), so a multi-line TARGET is unambiguous.
 
 For composed instructions joined by "and" ("make past tense and remove pronouns"), output them pipe-joined: "make past tense | remove pronouns".
 
-Bail to NONE for: UI placeholders, pure lookups (no instruction), idioms.
+Bail to NONE for: UI placeholders, pure lookups (no instruction), idioms, and FluidBlank META-TRIGGERS (bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _") — these are short generic answer-requests where the form-field context (only FluidBlank sees it) carries the question, NOT transform instructions.
 
 GENERATIVE INSTRUCTIONS — when the imperative is a CREATE/GENERATE request ("write a poem", "compose an email", "give me 5 startup ideas", "draft a tweet about X"), there is NO target text to operate on. Output VERDICT: TRANSFORM with the instruction populated and TARGET empty. The downstream pipeline will route this to a generative branch.
 
@@ -193,6 +193,26 @@ INSTRUCTION: give me 5 startup ideas
 TARGET:
 
 INPUT: capital of france _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+
+INPUT: answer this _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+
+INPUT: answer _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+
+INPUT: fill in _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+
+INPUT: what is the answer _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:`;
@@ -764,6 +784,7 @@ NONE rules — bail when ANY apply:
 - pure lookup, no instruction ("capital of france _")
 - instruction-shaped phrase but no target ("I need to change boy to girl in this story _")
 - idiom that looks like an instruction but isn't ("change of plans _ we meet at 3pm")
+- META-TRIGGER for FluidBlank to answer using ambient context — bail to NONE when the ENTIRE input is a short generic answer-request with no real content to transform. Patterns: bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _". These have no TARGET text — the user is signalling that the surrounding FORM FIELD (which only FluidBlank sees) carries the question. Don't fabricate a conversational response.
 
 GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas"), VERDICT=TRANSFORM, TARGET is empty, REWRITE contains the generated content.
 
@@ -847,6 +868,30 @@ TARGET:
 REWRITE:
 
 INPUT: click _ to continue
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+REWRITE:
+
+INPUT: answer this _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+REWRITE:
+
+INPUT: answer _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+REWRITE:
+
+INPUT: fill in _
+VERDICT: NONE
+INSTRUCTION:
+TARGET:
+REWRITE:
+
+INPUT: what is the answer _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:

@@ -88,6 +88,23 @@ export interface OpenCuesState {
   readonly debugMode: 'on' | 'off';
   readonly tipsMode: 'on' | 'off';
   readonly cursorNavigate: 'active' | 'inactive';
+  /**
+   * Whether the host adapter is permitted to share AmbientContext —
+   * the field's label/placeholder/aria/title/page-url — with
+   * FluidBlankSource for lookup disambiguation. OFF BY DEFAULT.
+   *
+   * Off: HostAdapter.getAmbientContext() returns null. The core never
+   * sees the ambient block; nothing about the surrounding page leaves
+   * the host.
+   *
+   * On: ambient metadata for the focused field is sanitized and
+   * forwarded to the fluid-blank prompt (only — no other source
+   * receives it). Sensitive fields (password / CC / OTP) still get
+   * null even when on.
+   *
+   * See docs/architecture/ambient-context.md for the threat model.
+   */
+  readonly ambientContextMode: 'on' | 'off';
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
   /**
@@ -104,6 +121,7 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   debugMode: 'off',
   tipsMode: 'on',
   cursorNavigate: 'inactive',
+  ambientContextMode: 'off',
   settings: new Map(),
   definitions: new Map(),
 };
@@ -134,8 +152,9 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const debugMode = get('debug-mode', 'off') === 'on' ? 'on' : 'off';
   const tipsMode = get('tips-mode', 'on') === 'off' ? 'off' : 'on';
   const cursorNavigate = get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive';
+  const ambientContextMode = get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off';
   const definitions = parseSettingsBlock(lines);
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, settings, definitions };
 }
 
 /**
@@ -370,6 +389,7 @@ export class ConfigLoader {
       debugMode: (get('debug-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
       cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
+      ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       settings: newSettings as ReadonlyMap<string, string>,
       definitions: cur.definitions,
     };

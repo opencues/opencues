@@ -53,6 +53,13 @@ tests/benchmarks/
 │   └── archive/             # one-off probes (smoke-prod-path).
 │                            # See archive/README.md.
 │
+├── fluid-blank-ambient/    # ambient-context bench (field-aware lookup)
+│   ├── cases.ts            # 18 in-prompt cases × 3 classes
+│   ├── cases-holdout.ts    # 21 held-out cases (no overlap with examples)
+│   ├── prompts.ts          # 5 historical variants (A_baseline … E_minimal) — diff context only
+│   ├── run.ts              # `--variant <X> --klass <Y> --holdout` (runs historical variants)
+│   └── fused-bench.ts      # drives production `FUSED_SYSTEM_PROMPT` across all 176 cases
+│
 └── agent-rewrite/          # in-place agent-rewrite cadence (separate bench)
     └── run.ts + cases.ts + harness/
 ```
@@ -124,6 +131,7 @@ transient judge rate-limit during parallel sweeps.
 | **transform-blank** | Imperative rewrite (`change boy to girl _ the boy ran`) | 231 cases, 18 categories | `extract-apply-verify` (3-pass, default), `extract-apply` (2-pass), `single-call`, `fused`, `fused-verify`, plus minimal-* variants |
 | **fluid-blank** | Short factual lookup (`capital of france _`) | 137 cases + bench suites (math, factual, unit, color, http, roman, translation, spelling) | `answer` (2-pass), `classified` (3-call hybrid, legacy), `fused` (1-call), `specialized-*` |
 | **agent-rewrite** | Continuous in-place rewrite cadence | Separate suite | Custom — see `agent-rewrite/CONTINUE.md` |
+| **fluid-blank-ambient** | Field-aware fluid-blank — does the single FUSED LLM call use the field's label/placeholder/page-title to shape the answer? | 137 standard + 18 in-prompt + 21 held-out (3 ambient classes: helps / neutral / anti) | `fused-bench.ts` drives the production `FUSED_SYSTEM_PROMPT` across all three suites |
 
 Each pipeline has its own concept of "best mode" — picking the right
 mode for each provider is in BENCHMARKS.md and in
@@ -251,6 +259,62 @@ Heavier — create a new folder under `tests/benchmarks/<name>/` with:
 - An `EXPERIMENTS.md` log file
 
 Then add a row in BENCHMARKS.md.
+
+---
+
+## How the fluid-blank-ambient bench guards regressions
+
+The ambient-context feature lives in the single `FUSED_SYSTEM_PROMPT`
+in `@opencues/core/src/sources/fluid-blank-source.ts`. Any edit to
+that prompt should re-run `fused-bench.ts` *before* committing.
+
+Three things the bench measures in one run:
+
+1. **No regression on the standard 137-case suite.** The bench
+   imports the production prompt directly and runs every standard
+   fluid-blank case through it — currently 136/137 (99.3%) on
+   cerebras-gpt-oss. The single fail (`r-stomach-ph`) is a known
+   judge flake.
+2. **Ambient HELPS the right cases** (`klass: 'ambient-helps'`) —
+   `paris _` + Airport-code label → `CDG`; the answer changed
+   *because* of the field. 18 in-prompt + 21 held-out — all should
+   pass.
+3. **Ambient is IGNORED when it would hurt** (`klass:
+   'ambient-anti'`) — misleading page title, prompt injection in
+   the label, empty fields. The answer should NOT change.
+
+Plus a NEUTRAL class (`ambient-neutral`) — unambiguous lookups
+where ambient shouldn't matter either way. Useful to catch
+"the prompt now over-weights ambient" regressions.
+
+The 18 in-prompt cases are the variants the prompt's few-shot
+examples were tuned against; the 21 held-out cases use entirely
+different patterns (ZIP codes, postcodes, callsigns, currency
+symbols, "label IS the question" cases like `_` + "What is your
+LinkedIn profile?") to verify generalization.
+
+`prompts.ts` keeps five historical variants (`A_baseline` …
+`E_minimal`) and `run.ts` runs them — kept as diff context for
+future prompt edits, NOT connected to production. The winning
+shape (`E_minimal` + 3-field ambient block) was promoted into
+production's `FUSED_SYSTEM_PROMPT`.
+
+Standard re-run after any prompt edit:
+
+```bash
+OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
+  npx tsx tests/benchmarks/fluid-blank-ambient/fused-bench.ts
+```
+
+Target: 175/176 or better. Drops below that → investigate before
+shipping.
+
+The 3-field block (label + placeholder + page-title) sent to
+the LLM is also pinned by the design — adding fields to
+`renderAmbientBlock` (production) requires a bench re-run that
+shows ≥1-2pp gain with no latency cost. See
+[`docs/features/ambient-context.md`](../../docs/features/ambient-context.md)
+and [`docs/architecture/ambient-context.md`](../../docs/architecture/ambient-context.md).
 
 ---
 

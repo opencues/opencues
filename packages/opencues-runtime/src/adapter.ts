@@ -188,6 +188,62 @@ export type Capability =
   // routes through ANSI escapes instead.
   | 'render-rgb-color';
 
+/**
+ * Sanitized, low-fan-out context describing the field a user is
+ * currently filling. Used by FluidBlankSource (only) to disambiguate
+ * vague fluid-blank requests — e.g. an `_` in a field labelled
+ * "Destination" on flights.google.com should resolve differently than
+ * the same `_` on airbnb.com.
+ *
+ * Security contract — every field is treated as UNTRUSTED input.
+ * Reading rules (host-side gatherer):
+ *   - SINGLE-FIELD only. No sibling field labels. No sibling field
+ *     values, ever. The adjacent "email" input next to the `_` field
+ *     does not appear here.
+ *   - Page-level metadata is limited to title, description, and the
+ *     origin+path portion of the URL (no query string, no fragment).
+ *   - Hosts MUST return null for sensitive fields (password, CC, OTP).
+ *
+ * Sink rules (core-side consumer in FluidBlankSource):
+ *   - Sanitized (NFKC, control-char strip, length caps, sentinel
+ *     escape) before going into a prompt.
+ *   - Only injected as a labelled UNTRUSTED block — the LLM is told
+ *     to use it for disambiguation, never as instructions.
+ *   - The fluid-blank prompt MUST contain no other system data
+ *     (cwd, env, agent state, recent history). The single security
+ *     invariant the feature relies on.
+ *
+ * OpenCues as a whole MUST NOT plug ambient context into anything
+ * with side effects — no tool handlers, no exec layers, no
+ * structured-output channels that escape the text buffer. Worst-case
+ * if a label contains a prompt injection: the LLM produces wrong
+ * text, the user sees it before submitting. That envelope is the
+ * security boundary.
+ *
+ * Feature is OFF by default. Gated by the `ambient-context-mode`
+ * scalar in OPENCUES.md (off | on). When off, the host adapter's
+ * getAmbientContext returns null — the core never sees this shape.
+ */
+export interface AmbientContext {
+  /** Visible field label — from `<label for>` / wrapping `<label>` /
+   *  aria-labelledby resolution. */
+  readonly label?: string;
+  /** placeholder attribute. */
+  readonly placeholder?: string;
+  /** aria-label attribute (when label is otherwise missing). */
+  readonly ariaLabel?: string;
+  /** aria-description attribute. */
+  readonly ariaDescription?: string;
+  /** input type (text / email / search / url / textarea / contenteditable). */
+  readonly inputType?: string;
+  /** document.title. */
+  readonly pageTitle?: string;
+  /** location.origin + location.pathname — query + fragment stripped. */
+  readonly pageUrl?: string;
+  /** `<meta name="description">` content. */
+  readonly pageDescription?: string;
+}
+
 export type Unsubscribe = () => void;
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -286,6 +342,21 @@ export interface HostAdapter {
    * pre-existing host has cycling.
    */
   supportsCycling?(): boolean;
+
+  /**
+   * Optional — describes the field the user is currently filling, for
+   * fluid-blank disambiguation. See AmbientContext above for the full
+   * security contract.
+   *
+   * Returns null when (a) the `ambient-context-mode` scalar is off
+   * (default), (b) the host can't gather field metadata, or (c) the
+   * current focused field is sensitive (password / CC / OTP). Hosts
+   * that omit the method entirely are treated the same as returning
+   * null.
+   *
+   * Dynamic — re-evaluated per current target, like supportsCycling.
+   */
+  getAmbientContext?(): AmbientContext | null;
 
   getText(): string;
   getCursorOffset(): number;

@@ -111,8 +111,38 @@ export interface CueContext {
    */
   consumedBlankSlots?: readonly number[];
 
+  /**
+   * Sanitized, low-fan-out description of the field the user is
+   * currently filling. Only consumed by FluidBlankSource and only
+   * when the `ambient-context-mode` host scalar is on (off by
+   * default). Every field is UNTRUSTED — sanitized + wrapped in
+   * an explicit untrusted-content block before reaching any prompt.
+   *
+   * See `AmbientContext` in @opencues/runtime/adapter.ts for the
+   * full security contract. This is a deliberate mirror of that
+   * shape so core has no runtime dependency on the runtime package.
+   */
+  ambient?: AmbientContext;
+
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Field-and-page metadata about the input the user is filling. Mirror
+ * of @opencues/runtime's AmbientContext — see that file for the
+ * full security contract (single-field, no sibling values, off by
+ * default, sanitized before use, sink restricted to FluidBlankSource).
+ */
+export interface AmbientContext {
+  readonly label?: string;
+  readonly placeholder?: string;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
+  readonly inputType?: string;
+  readonly pageTitle?: string;
+  readonly pageUrl?: string;
+  readonly pageDescription?: string;
 }
 
 /**

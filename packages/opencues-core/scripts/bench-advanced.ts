@@ -15,9 +15,10 @@
  *     punctuation under task instruction. Uses the actual
  *     `REWRITE_SYSTEM_PROMPT` from agent-rewrite.ts (with [CURSOR]
  *     sentinel).
- *   - FLUID-BLANK P1  : span-extraction from chatter — the SEGMENT
- *     pass that has to spot a lookup query inside surrounding noise.
- *     Uses the actual `P1_SYSTEM_PROMPT` from fluid-blank-source.ts.
+ *   - FLUID-BLANK FUSED: span-extraction + answering — the single-call
+ *     pass that has to spot a lookup query inside surrounding noise
+ *     AND produce a canonical short answer.
+ *     Uses the actual `FUSED_SYSTEM_PROMPT` from fluid-blank-source.ts.
  *
  * Verdict criterion: at low reasoning, do these tasks fail more than
  * they did on the easy battery? Does medium / high recover them on

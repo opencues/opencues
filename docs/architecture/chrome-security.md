@@ -178,6 +178,38 @@ cannot be sent to "evil.com"
 Pinned by `packages/opencues-runtime/src/user-blanks/secret-leak-guard.test.ts`
 (11 tests).
 
+### Boundary 9 — Ambient-context scope + gate
+
+Chrome's `gatherAmbientContext` (in `src/opencues-bootstrap.ts`)
+collects field-level metadata (`label`, `placeholder`, `aria-*`,
+`inputType`) plus three page-level fields (`pageTitle`,
+`pageUrl` reduced to origin+path, `pageDescription`) for the
+currently focused field. It explicitly does NOT read:
+
+- Any sibling field's value or label.
+- The query string or fragment of the URL.
+- Cookies, localStorage, sessionStorage.
+- Any other DOM outside the focused field's attributes and the
+  page-level `<title>` / `<meta name="description">` / `location`.
+
+Sensitive fields (password / CC / OTP / fields with
+`autocomplete=off` / `name`-id matching `/password|cvv|ssn|pin|otp|secret|token|api[_-]?key|auth/`)
+return `null` regardless of the feature gate.
+
+The runtime never asks the host for ambient context unless
+`ambient-context-mode: on` is set in `~/.cues/OPENCUES.md`
+(off by default). Three layers of off-by-default — see
+`docs/architecture/ambient-context.md`.
+
+The structural property the model leans on: OpenCues has no
+tool / exec layer that consumes fluid-blank LLM output. Worst
+case if a page injects a prompt into its own `placeholder`,
+the LLM emits misleading text into the user's buffer, which
+the user sees before submitting. There is no parallel channel
+to exfiltrate to. **If you ever wire fluid-blank output into a
+side-effect layer, the ambient-context threat model must be
+re-reviewed before that change lands.**
+
 ## Trust assumptions (NOT boundaries — user responsibility)
 
 ### Cue-pack trust

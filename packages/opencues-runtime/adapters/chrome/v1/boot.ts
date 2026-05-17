@@ -82,6 +82,13 @@ export interface HostInfo extends CommonHostInfo {
    * focus moves between CE and normal-input targets.
    */
   supportsCycling?(): boolean;
+  /**
+   * Optional — gathers AmbientContext for the focused field. See the
+   * runtime adapter's AmbientContext for the contract; chrome's
+   * implementation lives in `gatherAmbientContext` in the bootstrap.
+   * The runtime gates calls on `ambient-context-mode` before calling.
+   */
+  getAmbientContext?(): import('../../../src/adapter').AmbientContext | null;
 }
 
 export interface BootResult {
@@ -197,6 +204,7 @@ export function boot(host: HostInfo): BootResult {
     blankInvoke: host.blankInvoke,
     spawnProcess: host.spawnProcess,
     supportsCycling: host.supportsCycling,
+    getAmbientContext: host.getAmbientContext,
     log,
     emitEvent: (type, body) => {
       moduleEvents.emit({ type, body }, err => log('error', 'module-event handler threw', err));

@@ -133,7 +133,7 @@ export type BridgeEventBody =
   | { type: 'transform-blank.completed'; finalLen: number; finalPreview: string; latencyMs: number }
   | { type: 'transform-blank.bailed'; reason: string; latencyMs: number }
   | { type: 'fluid-blank.started'; textLen: number; blankIdx: number }
-  | { type: 'fluid-blank.pass-completed'; pass: 'P1' | 'P3'; latencyMs: number; span?: string; context?: string; answer?: string }
+  | { type: 'fluid-blank.pass-completed'; pass: 'FUSED'; latencyMs: number; span?: string; answer?: string }
   | { type: 'fluid-blank.completed'; span: string; answer: string; mode: string; latencyMs: number }
   | { type: 'fluid-blank.bailed'; reason: string; latencyMs: number }
   // Cycling — Ctrl+Alt+Up/Down landed on a successful cycle. `path`

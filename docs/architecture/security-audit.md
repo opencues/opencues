@@ -13,6 +13,38 @@ Companion deep-dives:
   (trust gate, site filter, native-messaging path sandbox).
 - `docs/architecture/user-blanks.md` — the user-blank capability model
   (Figma-style: only declared capabilities reach the sandbox).
+- `docs/architecture/ambient-context.md` — field/page metadata
+  feature: off-by-default, single-field scope, no-system-data
+  invariant, structural reliance on "OpenCues has no tool / exec
+  layer for fluid-blank prompts."
+
+## Load-bearing structural invariants
+
+These are the structural properties the whole security model
+leans on. Breaking any of them — even for a "small" feature —
+invalidates threat-model assumptions across multiple attack
+classes in the table above.
+
+- **No tool handlers / exec layer for LLM prompts.** OpenCues
+  does not plug LLM responses into any side-effect channel
+  (no MCP-tool execution, no agentic actions, no clipboard
+  writes, no fetches outside user-blank `ctx.fetch` which has
+  its own capability + per-secret host binding). Worst-case
+  output of any LLM call lands as user-visible text in the
+  buffer the user reviews before submitting. This is what
+  makes prompt-injection at most a UX failure rather than a
+  data-exfiltration channel. If you add a feature that wires
+  LLM output into a side-effect channel, re-review every row
+  in the table above — many defences (especially #21 ambient
+  context) lean on this invariant.
+
+- **No system data in fluid-blank prompts.** The fluid-blank
+  prompt carries: static system text + the user's own buffer +
+  optionally sanitized ambient context. No env vars, no cwd,
+  no agent state, no recent buffer history. Pinned by the
+  "no-system-data invariant" test in
+  `fluid-blank-source.test.ts`. Don't interpolate system data
+  into FluidBlankSource — even for a debug log.
 
 ## Threat model — one paragraph
 
@@ -50,6 +82,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | 18 | API key in published bundle | `__GROQ_API_KEY__` baked into `dist/content.js` via esbuild | Build defines now resolve to `''`; keys come from popup or native-messaging host at runtime. `.env` is dev-only. | None on the build path. | 🟢 |
 | 19 | Content-loss via undersized rewrite | LLM hallucinates a 10-char rewrite for a 500-char body, deleting user content | TransformBlank refuses substitutions where new < 10% of target AND target > 100 chars. asTypedText skips transform-blank defs. | Edge cases under 100 chars can still produce a small rewrite. Acceptable for short bodies. | 🟢 |
 | 20 | Supply chain — registry compromise | Future blank-registry serves a backdoored pack | No registry exists yet. Today: users `git clone` packs they pick manually. | Will need signing + author pinning at registry launch. Tracked as pre-launch. | ⚪ |
+| 21 | Ambient-context exfiltration | A page's `placeholder` / `aria-label` / `<meta name=description>` contains a prompt injection that makes the fluid-blank LLM emit the user's nearby buffer or system data | (a) Feature OFF by default (`ambient-context-mode: off`). (b) Single-field only — no sibling field values, no env / cwd / agent-state in the prompt (pinned by `fluid-blank-source.test.ts` "no-system-data invariant"). (c) Sanitization: NFKC, control-char strip, sentinel-escape, per-field length caps, URL stripped to origin+path. (d) Sensitive fields (password / CC / OTP) get null regardless of feature state. (e) Structural — OpenCues has no tool handlers / exec layer for fluid-blank, so worst-case output lands as user-visible text in the buffer. | A user who opts in AND fills a field on a hostile page WILL see possibly-misleading LLM output before submitting. That's the entire envelope. | 🟢 |
 
 ## Open follow-ups
 
@@ -89,7 +122,7 @@ reaches `~/.cues/`. Two passes:
    + subtle-pattern recognition scale with model capability, and
    review is a one-shot operation where latency doesn't matter.
    Defaults: Anthropic → `claude-opus-4-7`, OpenAI → `gpt-5.4`,
-   Groq → `openai/gpt-oss-120b`, Gemini → `gemini-2.5-pro`.
+   Groq → `openai/gpt-oss-120b`, Gemini → `gemini-3.1-flash-lite`.
    Override via `--model <name>` or `OPENCUES_REVIEW_MODEL` env.
 
 Trust hierarchy: **static parse is the authority, LLM is a second

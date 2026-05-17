@@ -4,6 +4,56 @@ This document captures hard-won knowledge for the chrome extension that
 isn't obvious from the code alone. Read this before changing anything in
 `opencues-bootstrap.ts`'s write paths.
 
+## Rebuild → sync → reload (the only path)
+
+A change to `@opencues/core` or `@opencues/runtime` doesn't reach Chrome
+until **three** steps run, in this order. Skip any of them and the
+extension keeps running the previous code with **no error surfaced**.
+
+```bash
+# 1. Rebuild the changed package — esbuild bundles the package's
+#    DIST, not its source. A stale dist is the #1 cause of "I changed
+#    the prompt / parser / handler and nothing happened".
+cd packages/opencues-core && pnpm build   # or opencues-runtime
+
+# 2. Rebuild chrome — bundles the freshly built core/runtime dists
+#    into integrations/chrome/dist/{content,background,popup}.js
+cd integrations/chrome && npm run build
+
+# 3. Sync to the Windows-side unpacked extension path (WSL only — the
+#    extension Chrome loads is on the Windows desktop, NOT the WSL build dir)
+cp -r integrations/chrome/dist/* /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/dist/
+cp integrations/chrome/manifest.json /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/manifest.json
+
+# 4. In Chrome: chrome://extensions → click the reload arrow on OpenCues
+#    → hard-refresh the test page (Ctrl+Shift+R)
+```
+
+**Verify the new code actually got bundled before testing in-browser:**
+
+```bash
+# Grep the synced bundle for a unique string from your change. If it's
+# missing, one of steps 1-3 didn't take.
+grep -c "YOUR_NEW_SYMBOL" /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/dist/content.js
+```
+
+**Symptoms that step 1 was skipped** (most common failure mode): the
+build succeeds, the bundle is synced, the user reloads, but in-browser
+behaviour is unchanged AND no error appears in any console. The
+`packages/<pkg>/dist/` mtime is older than your source edit — that's
+the smoking gun.
+
+**Symptoms that step 3 was skipped**: the bundle in `integrations/chrome/dist/`
+has the new code (grep succeeds), but `/mnt/c/...opencues-chrome/dist/`
+doesn't, so Chrome loads the prior copy.
+
+**Symptoms that step 4 was skipped**: bundle has the new code, but
+`/tmp/opencues.log` shows zero new FluidBlank/TransformBlank entries
+after your reload time — content script never re-executed.
+
+For chrome-only changes (anything under `integrations/chrome/src/`),
+step 1 is unnecessary — chrome bundles its own TS directly.
+
 ## LLM API keys — multi-provider + real-time
 
 Chrome reads its provider keys from `chrome.storage`, not
@@ -54,6 +104,36 @@ changes); the resolver's `buildSourcesFromConfig` and BlankFill's
 `matchKeyword` BOTH skip cycleable entries when the adapter
 reports `supportsCycling: false`. Reactive on focus change via
 the resolver's build key.
+
+## Ambient context — off by default
+
+`gatherAmbientContext(target)` reads the focused field's label /
+placeholder / aria-* and a small page-level slice (`document.title`,
+`location.origin + pathname`, `<meta name="description">`) and
+forwards it to `FluidBlankSource` for disambiguating free-form
+lookups ("destination" on `flights.example.com` vs
+`airbnb.com`).
+
+**Off by default.** The runtime checks
+`ambient-context-mode: on` in `OPENCUES.md` BEFORE calling the
+host's `getAmbientContext()`. Sensitive fields return null
+regardless of the scalar.
+
+What's NOT read: sibling field values/labels, URL query strings
++ fragments, cookies/localStorage, the focused field's value
+itself (the buffer carries it), anything else from the DOM. Full
+scope + sanitization + threat model:
+`docs/architecture/ambient-context.md`.
+
+**Structural invariant** the security model leans on: OpenCues
+has no tool handlers, no exec layer, and no out-of-band action
+channel for fluid-blank LLM output. Worst-case prompt-injection
+in a hostile page's label produces misleading text in the user's
+buffer the user sees before submitting. If you ever add a feature
+that wires fluid-blank output into a side-effect layer (tool
+calls, MCP execution, fetch, clipboard write) — re-review the
+ambient-context threat model + `security-audit.md` row #21
+BEFORE landing it.
 
 ## Live config sync — native-messaging host (May 2026)
 

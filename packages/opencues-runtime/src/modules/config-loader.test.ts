@@ -98,6 +98,23 @@ some prose
     expect(state.tipsMode).toBe('on');
     expect(state.debugMode).toBe('off');
     expect(state.cursorNavigate).toBe('inactive');
+    expect(state.ambientContextMode).toBe('off');
+  });
+
+  it('ambient-context-mode defaults to off and only flips on explicit "on"', () => {
+    // OFF by default — the entire security model leans on this default.
+    // If anyone refactors and accidentally inverts the polarity, this
+    // test fails. See docs/architecture/ambient-context.md.
+    expect(parseOpenCuesMd('---\n---').ambientContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nambient-context-mode: off\n---').ambientContextMode).toBe('off');
+    // Anything ≠ exact "on" stays off — typos / unexpected values fail
+    // closed.
+    expect(parseOpenCuesMd('---\nambient-context-mode: yes\n---').ambientContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nambient-context-mode: true\n---').ambientContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nambient-context-mode: enabled\n---').ambientContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nambient-context-mode: 1\n---').ambientContextMode).toBe('off');
+    // Only the exact string "on" enables it.
+    expect(parseOpenCuesMd('---\nambient-context-mode: on\n---').ambientContextMode).toBe('on');
   });
 
   it('clamps unknown values to safe defaults', () => {
