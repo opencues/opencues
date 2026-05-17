@@ -139,37 +139,33 @@ module.exports = function seedConfigs(argv, ctx) {
     }
   }
 
-  // Seed AUDITORS.md — project-level auditor `disable:` list. SKIP-if-exists
-  // since the file is purely user content. Without seeding it at all, the
-  // runtime treats user-level as "no disable list" — fine, but means users
-  // can't disable an auditor at user scope without manually creating the
-  // file. Adding to the seed flow gives them the template.
-  const auditorsTarget = projectScope ? null : path.join(targetDir, 'AUDITORS.md');
-  const auditorsSource = path.join(sourceDir, 'AUDITORS.md');
-  if (auditorsTarget && fs.existsSync(auditorsSource)) {
-    if (hasContent(auditorsTarget)) {
-      log(`  ${dim('SKIP (exists)')} ${auditorsTarget}`);
-    } else {
-      fs.mkdirSync(path.dirname(auditorsTarget), { recursive: true });
-      fs.copyFileSync(auditorsSource, auditorsTarget);
-      log(`  ${tag('ok')} copied ${path.basename(auditorsTarget)}`);
-    }
-  }
-
-  // Seed USER.md — personal-data file consumed by FluidBlankSource
-  // when `user-context-mode` is `safe` / `raw` in OPENCUES.md.
-  // SKIP-if-exists — 100% user content; the shipped template is
-  // entirely commented out so dropping it in is feature-safe (the
-  // scalar in OPENCUES.md still defaults to `off`).
-  const userMdTarget = projectScope ? null : path.join(targetDir, 'USER.md');
-  const userMdSource = path.join(sourceDir, 'USER.md');
-  if (userMdTarget && fs.existsSync(userMdSource)) {
-    if (hasContent(userMdTarget)) {
-      log(`  ${dim('SKIP (exists)')} ${userMdTarget}`);
-    } else {
-      fs.mkdirSync(path.dirname(userMdTarget), { recursive: true });
-      fs.copyFileSync(userMdSource, userMdTarget);
-      log(`  ${tag('ok')} copied ${path.basename(userMdTarget)} (template — uncomment fields to opt in)`);
+  // Seed every optional templated file from the @opencues/core registry.
+  // Today: AUDITORS.md (core) + USER.md (feature). Adding a new templated
+  // file = appending to CORE_TEMPLATES or to a feature's prereqFile.template;
+  // no edit to this loop required.
+  if (!projectScope) {
+    let registry;
+    try {
+      // ctx isn't available at this scope — locate via __dirname walk
+      const corePath = path.resolve(__dirname, '../../../opencues-core/dist/feature-registry.js');
+      registry = require(corePath);
+    } catch { registry = null; }
+    if (registry?.seedableOptionalFiles) {
+      for (const seed of registry.seedableOptionalFiles()) {
+        const target = path.join(targetDir, seed.basename);
+        const source = path.join(sourceDir, seed.basename);
+        if (!fs.existsSync(source)) continue;
+        if (hasContent(target)) {
+          log(`  ${dim('SKIP (exists)')} ${target}`);
+        } else {
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.copyFileSync(source, target);
+          const suffix = seed.mustHavePopulatedFields
+            ? ' (template — populate fields to opt in)'
+            : '';
+          log(`  ${tag('ok')} copied ${seed.basename}${suffix}`);
+        }
+      }
     }
   }
 

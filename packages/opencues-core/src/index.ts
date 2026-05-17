@@ -161,3 +161,20 @@ export {
   type PostProcessReport as UserContextPostProcessReport,
 } from './user-context';
 
+// Feature registry — single source of truth for the set of optional
+// features OpenCues exposes via OPENCUES.md scalars. Consumed by
+// ConfigLoader, doctor, host.cjs, and seed-configs to prevent the
+// install-boundary drift class of bug. See feature-registry.ts for
+// the "how to add a feature" contract.
+export {
+  CORE_CONFIG_FILES,
+  CORE_TEMPLATES,
+  FEATURES,
+  findFeature,
+  chromeHostFileList,
+  allConfigFileBasenames,
+  seedableOptionalFiles,
+  type FeatureSpec,
+  type SeedableFile,
+} from './feature-registry';
+

@@ -136,7 +136,11 @@ export interface OpenCuesState {
   readonly definitions: ReadonlyMap<string, OpenCuesSettingDef>;
 }
 
-const DEFAULT_OPENCUES_STATE: OpenCuesState = {
+// Exported so the feature-registry-alignment test can reflect on its
+// field names — the test pins OpenCuesState keys against the FEATURES
+// registry to catch drift. Don't import this constant from runtime
+// modules; use ConfigLoader.opencuesState instead.
+export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   voiceMode: 'active',
   debugMode: 'off',
   tipsMode: 'on',

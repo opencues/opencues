@@ -79,22 +79,6 @@ See [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md) f
 - [ ] Review git history — squash or clean commits with sensitive data
 - [ ] Test clean install — clone on fresh machine, follow README exactly
 - [ ] Verify all doc links — last clean pass found zero broken links across 68 markdown files, but several new docs have landed since (user-context, ambient-context, universal-integration, chrome-llm-keys, plus per-feature summaries). Re-run before launch.
-- [ ] **Build a feature registry to kill install-boundary drift.**
-  Today the set of optional features (their scalars, their config
-  prerequisites, which host script must push them) is encoded
-  separately in `packages/opencues-runtime/src/modules/config-loader.ts`
-  (scalar enum + parsing), `integrations/chrome/host/host.cjs` (file
-  push list), `packages/opencues-cli/src/commands/doctor.cjs` (the
-  feature-wiring section), and `packages/opencues-cli/src/commands/seed-configs.cjs`
-  (which files to copy). Adding a feature requires editing all four.
-  We've already hit two drift bugs from this — USER.md not pushed by
-  host.cjs, and doctor's hardcoded scalar list staying valid only as
-  long as someone remembers. Replace with a single
-  `packages/opencues-core/src/feature-registry.ts` declaring each
-  feature's scalar / default / prereq file / required-fields-test /
-  pushedBy hosts; have all four sites import from it. New feature =
-  one PR touching the registry; impossible for the sites to drift.
-
 - [ ] **Add chrome e2e install-chain harness.** Every "go test"
   cycle during the user-context + ambient-context ship (May 2026)
   hit a hidden defect at an install-boundary join — USER.md not

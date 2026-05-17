@@ -288,28 +288,35 @@ path explicitly when you hand the feature back for testing. Treat
 
 **Per-feature checklist when adding a new scalar or config file:**
 
-Until the feature registry lands (tracked in `pre-launch-readme.md`),
-the set of optional features is encoded in four separate places that
-WILL drift if you only update one. When adding a new scalar / config
-file / host-pushed file, touch ALL of these:
+There is ONE source of truth for the set of optional features:
+`packages/opencues-core/src/feature-registry.ts`. Adding a feature is
+one PR appending to `FEATURES` (or `CORE_TEMPLATES` for a new always-on
+config file with a starter template). Every install-boundary site
+reads from the registry:
 
-1. `packages/opencues-runtime/src/modules/config-loader.ts` — parse
-   the scalar into `opencuesState`; add to the typed enum.
-2. `integrations/chrome/host/host.cjs` — add any new config file
-   (USER.md / AUDITORS.md / future) to the explicit file-push list,
-   or chrome will silently never receive it.
-3. `packages/opencues-cli/src/commands/doctor.cjs` — add the scalar
-   to the "Feature wiring" section's `s.info(...)` list AND the
-   chrome-host parity check's `required` array. Doctor's whole
-   point is catching drift; if you don't teach it the new feature
-   it can't catch the drift on that feature.
-4. `packages/opencues-cli/src/commands/seed-configs.cjs` — seed any
-   new template config file (SKIP-if-exists, CREATE-if-missing) so
-   re-running seed-configs after upgrade self-heals.
+- `packages/opencues-cli/src/commands/doctor.cjs` — iterates `FEATURES`
+  for the Feature wiring section + `chromeHostFileList()` for the
+  chrome-host parity check.
+- `integrations/chrome/host/host.cjs` — iterates `chromeHostFileList()`
+  to know which files to push into chrome.storage.
+- `packages/opencues-cli/src/commands/seed-configs.cjs` — iterates
+  `seedableOptionalFiles()` to know which template files to copy.
 
-If you skip step 3, doctor will still say "ok" while the feature
-silently doesn't fire. That's the worst failure mode — a false
-green. Always update doctor.
+The one thing the registry does NOT replace yet:
+
+- `packages/opencues-runtime/src/modules/config-loader.ts` — still
+  manually parses each scalar into a typed `OpenCuesState` field. This
+  is a deliberate trade-off: keeping the typed enum gives TypeScript
+  consumers narrow types (`opencuesState.userContextMode: 'off' |
+  'safe' | 'raw'`) instead of `string`. Drift between the registry
+  and `OpenCuesState` is caught by a test pinning that every scalar
+  in `FEATURES` has a matching `OpenCuesState` field.
+
+When you add a feature, update `FEATURES` first. If the feature needs
+typed access in TypeScript consumers, also add the field to
+`OpenCuesState` + the parse case in `config-loader.ts` — but NEVER
+add the file-push list to host.cjs or the diagnostic row to doctor
+or the seed copy to seed-configs. Those are now derived.
 
 ---
 

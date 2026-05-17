@@ -70,13 +70,30 @@ function loadRuntime() {
 
 // ─── Bundle builder (mirrors sync.cjs walkSource) ────────────────────────
 function buildBundle(dir, core) {
-  const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, chromeHostFileList } = core;
   const files = {};
   if (!fs.existsSync(dir)) return files;
 
-  // Top-level monolithic files. Include whole file when any section is
-  // chrome-compatible (or sections empty).
-  for (const filename of ['CUES.md', 'BLANKS.md']) {
+  // The full set of basenames we must push lives in @opencues/core's
+  // FEATURES registry — chromeHostFileList() returns CORE_CONFIG_FILES
+  // (OPENCUES.md / CUES.md / AUDITORS.md) plus every feature-gated
+  // file whose FeatureSpec declares pushedBy: ['chrome-host']. Adding a
+  // new pushed-by-chrome feature is one PR to feature-registry.ts;
+  // this loop picks it up automatically.
+  const allPushed = chromeHostFileList();
+
+  // CUES.md (and the legacy BLANKS.md for migration-period users) need
+  // host-compat filtering — their entries may carry on-host /
+  // not-on-host markers that exclude chrome. Every other registry file
+  // is host-neutral schema (settings / auditor configs / user data)
+  // and passes through verbatim.
+  const FILTERED_FILES = new Set(['CUES.md', 'BLANKS.md']);
+  const passThroughList = allPushed.filter(f => !FILTERED_FILES.has(f));
+  const filteredList = ['CUES.md', 'BLANKS.md'];  // BLANKS.md is legacy, not in registry
+
+  // Filtered pass — include the file when any section is chrome-compatible
+  // (or sections empty).
+  for (const filename of filteredList) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {
@@ -91,14 +108,10 @@ function buildBundle(dir, core) {
     } catch { /* skip on parse error */ }
   }
 
-  // OPENCUES.md (runtime settings) + AUDITORS.md (auditor `disable:` list)
-  // + USER.md (sentinel-mode personal data, when user-context-mode is on)
-  // — pass through verbatim. No host-compat gating: all three are
-  // host-neutral schema, and the chrome runtime applies its own merge with
-  // chrome.storage when reading OPENCUES.md (cycled scalars live there).
-  // Without including them here, edits made on CC/OC never reach chrome
-  // and the selector blank only sees chrome's stale storage copy.
-  for (const filename of ['OPENCUES.md', 'AUDITORS.md', 'USER.md']) {
+  // Pass-through pass — every registry-pushed file that isn't filtered.
+  // Today: OPENCUES.md, AUDITORS.md, USER.md. Tomorrow: whatever you
+  // add to feature-registry.ts with pushedBy: ['chrome-host'].
+  for (const filename of passThroughList) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try { files[filename] = fs.readFileSync(p, 'utf8'); } catch { /* skip */ }

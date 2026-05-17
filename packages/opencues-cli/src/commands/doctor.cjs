@@ -29,6 +29,17 @@ module.exports = function doctor(argv, ctx) {
   const HOME = os.homedir();
   const findings = [];
 
+  // Single source of truth for what features + config files OpenCues
+  // knows about. Load lazily so `opencues doctor --help` works even
+  // when core isn't built yet.
+  let registry;
+  try {
+    registry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/feature-registry.js'));
+  } catch (err) {
+    console.error('opencues doctor: failed to load @opencues/core feature-registry (run `pnpm build`):', err.message);
+    return 1;
+  }
+
   console.log(banner({ version: cliVersion(ctx), tagline: 'cross-host install diagnostics' }));
   console.log('');
 
@@ -66,42 +77,61 @@ module.exports = function doctor(argv, ctx) {
   }
 
   // ── Feature wiring ────────────────────────────────────────────────────
-  // Surface optional-feature state at the install boundary. Each row
-  // pairs a scalar in OPENCUES.md with its prerequisites; when the
-  // scalar is on but a prerequisite is missing, the feature is silently
-  // inert. This is the exact failure class we hit during the
-  // user-context + ambient-context ship — USER.md absent + scalar set
-  // → no log, no error, the LLM just gets no catalog.
+  // Surface optional-feature state at the install boundary. Every row
+  // here is derived from the FEATURES registry in @opencues/core. To
+  // add a row, append a FeatureSpec to that registry — do NOT hardcode
+  // a new s.info() call here. Drift between this section and the
+  // runtime is the exact failure class the registry exists to prevent.
   {
-    const s = section('Feature wiring', 'optional features + their prerequisites');
+    const s = section('Feature wiring', 'optional features + their prerequisites (sourced from @opencues/core FEATURES)');
     const opencuesMd = path.join(userConfigDir, 'CUES.md');
-    const userMd = path.join(userConfigDir, 'USER.md');
-    const auditorsMd = path.join(userConfigDir, 'AUDITORS.md');
     const scalars = readOpencuesScalars(opencuesMd);
-    const userFieldCount = countUserMdFields(userMd);
-    const auditorCount = countAuditorEntries(auditorsMd);
 
-    const fmtScalar = (key, def = 'off') => scalars[key] != null ? scalars[key] : dim(`(${def})`);
-    s.info('user-context-mode',    fmtScalar('user-context-mode'));
-    s.info('ambient-context-mode', fmtScalar('ambient-context-mode'));
-    s.info('fluid-blank-mode',     fmtScalar('fluid-blank-mode', 'on'));
-    s.info('voice-mode',           fmtScalar('voice-mode'));
-    s.info('tips-mode',            fmtScalar('tips-mode', 'on'));
-    s.info('debug-mode',           fmtScalar('debug-mode'));
-    s.info('cursor-navigate',      fmtScalar('cursor-navigate'));
-    s.info('word-cues-mode',       fmtScalar('word-cues-mode', 'on'));
-    s.ok(`USER.md present (${userFieldCount} field${userFieldCount === 1 ? '' : 's'})`, fs.existsSync(userMd));
-    s.ok(`AUDITORS.md present (${auditorCount} auditor${auditorCount === 1 ? '' : 's'})`, fs.existsSync(auditorsMd));
+    // Show each registered feature's current value (or default if unset)
+    for (const f of registry.FEATURES) {
+      const value = scalars[f.scalar] != null ? scalars[f.scalar] : dim(`(${f.values[0]})`);
+      s.info(f.scalar, value);
+    }
+
+    // Show prerequisite-file presence for every feature that has one
+    for (const f of registry.FEATURES) {
+      if (!f.prereqFile) continue;
+      const filePath = path.join(userConfigDir, f.prereqFile.basename);
+      const populated = countPopulatedFields(filePath, f.prereqFile.basename);
+      const label = `${f.prereqFile.basename} present (${populated.count} ${populated.unit})`;
+      s.ok(label, fs.existsSync(filePath));
+    }
+
+    // Always-on core files (OPENCUES.md / CUES.md / AUDITORS.md)
+    for (const basename of registry.CORE_CONFIG_FILES) {
+      // OPENCUES.md is the legacy filename — settings now live in CUES.md.
+      // Show whichever variant the user has (some installs have both
+      // post-migration). Skip showing OPENCUES.md if absent + CUES.md
+      // present, to keep the section short.
+      if (basename === 'OPENCUES.md' && !fs.existsSync(path.join(userConfigDir, basename))) continue;
+      const filePath = path.join(userConfigDir, basename);
+      const populated = countPopulatedFields(filePath, basename);
+      const label = `${basename} present (${populated.count} ${populated.unit})`;
+      s.ok(label, fs.existsSync(filePath));
+    }
     s.render();
 
-    // user-context-mode is set, but USER.md missing or empty → feature won't fire
-    if (scalars['user-context-mode'] && scalars['user-context-mode'] !== 'off' && userFieldCount === 0) {
+    // Cross-check: scalar set to non-default, but the feature's prereq
+    // file is missing or empty → silently-inert feature. This is the
+    // exact "I enabled it but nothing happens" failure we want to catch.
+    for (const f of registry.FEATURES) {
+      if (!f.prereqFile?.mustHavePopulatedFields) continue;
+      const value = scalars[f.scalar];
+      if (!value || value === f.values[0]) continue;  // default → not enabled, skip
+      const filePath = path.join(userConfigDir, f.prereqFile.basename);
+      const populated = countPopulatedFields(filePath, f.prereqFile.basename);
+      if (populated.count > 0) continue;
       findings.push({
         sev: 'warn',
-        msg: `user-context-mode=${scalars['user-context-mode']} but USER.md is missing or has no populated fields — fluid-blank won't get any user catalog`,
-        fix: fs.existsSync(userMd)
-          ? `populate ${userMd} frontmatter with at least one field (e.g. firstName: Alice)`
-          : `opencues seed-configs   # creates USER.md template; then edit ${userMd}`,
+        msg: `${f.scalar}=${value} but ${f.prereqFile.basename} is missing or has no populated fields — the feature won't fire`,
+        fix: fs.existsSync(filePath)
+          ? `populate ${filePath} (see ${f.prereqFile.template || 'docs'} for the template)`
+          : `opencues seed-configs   # creates ${f.prereqFile.basename} template; then edit ${filePath}`,
       });
     }
   }
@@ -272,7 +302,7 @@ module.exports = function doctor(argv, ctx) {
       const hostScript = resolveHostScript(manifestPaths[0], shimPath);
       if (hostScript && fs.existsSync(hostScript)) {
         const text = fs.readFileSync(hostScript, 'utf8');
-        const required = ['OPENCUES.md', 'CUES.md', 'AUDITORS.md', 'USER.md'];
+        const required = registry.chromeHostFileList();
         const missing = required.filter(f => !text.includes(f));
         s.ok(`host pushes [${required.join(', ')}]`, missing.length === 0);
         if (missing.length > 0) {
@@ -417,20 +447,25 @@ function readOpencuesScalars(file) {
   return out;
 }
 
-// Count non-comment populated frontmatter fields in USER.md.
-function countUserMdFields(file) {
-  if (!file || !fs.existsSync(file)) return 0;
-  return Object.keys(readOpencuesScalars(file)).length;
-}
-
-// Count `### name` entries (auditor blocks) in AUDITORS.md.
-function countAuditorEntries(file) {
-  if (!file || !fs.existsSync(file)) return 0;
-  try {
-    const text = fs.readFileSync(file, 'utf8');
-    const matches = text.match(/^###\s+\S/gm);
-    return matches ? matches.length : 0;
-  } catch { return 0; }
+// Count "populated entries" in a config file, choosing the metric
+// appropriate to the file's shape. Returns {count, unit} so the
+// renderer can say "11 fields" vs "3 auditors" etc.
+function countPopulatedFields(file, basename) {
+  if (!file || !fs.existsSync(file)) return { count: 0, unit: 'fields' };
+  // AUDITORS.md uses `### name` blocks
+  if (basename === 'AUDITORS.md') {
+    try {
+      const text = fs.readFileSync(file, 'utf8');
+      const matches = text.match(/^###\s+\S/gm);
+      const n = matches ? matches.length : 0;
+      return { count: n, unit: n === 1 ? 'auditor' : 'auditors' };
+    } catch { return { count: 0, unit: 'auditors' }; }
+  }
+  // CUES.md / OPENCUES.md / USER.md → frontmatter scalar count
+  const n = Object.keys(readOpencuesScalars(file)).length;
+  // CUES.md is special — it's also a cue config, so "frontmatter
+  // fields" is the right metric for the always-on settings half.
+  return { count: n, unit: n === 1 ? 'field' : 'fields' };
 }
 
 // WSL helper — find every unpacked-extension `dist/` directory the
