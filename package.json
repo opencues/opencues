@@ -12,7 +12,9 @@
   "devDependencies": {
     "opencues": "workspace:*",
     "turbo": "^2.9.6",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.9",
+    "jsdom": "^29.0.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
