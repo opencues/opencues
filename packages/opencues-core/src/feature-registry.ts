@@ -243,6 +243,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'blank-trigger-mode',
+    camelCase: 'blankTriggerMode',
+    description: 'When `_` fires its blank — immediately on insertion vs only after a space follows',
+    menuTip: 'Defer blank firing until `_` is followed by a space (lets you type markdown `_italic_` without the first `_` triggering)',
+    values: [
+      { id: 'immediate', description: 'Default — `_` triggers its blank the moment you type it' },
+      { id: 'spaced',    description: 'Markdown-friendly — `_` only triggers after you type a following space; bare `_…_` stays inert' },
+    ],
+  },
+  {
     scalar: 'tips-mode',
     camelCase: 'tipsMode',
     description: 'Static tip groups from defaults/cues/*/CUE.md',

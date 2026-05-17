@@ -126,6 +126,17 @@ export interface OpenCuesState {
    * sentinel-free.
    */
   readonly userContextMode: 'off' | 'safe' | 'raw';
+  /**
+   * Controls when `_` fires its blank.
+   *
+   * - `immediate` (default): blank fires the instant `_` is inserted.
+   *   Current behaviour since OpenCues v0.1.
+   * - `spaced`: blank fires only when the trigger ends with `_` + space.
+   *   Lets users type markdown italic (`_italic_`) without the first
+   *   `_` immediately substituting. Costs one extra keystroke (the
+   *   space) for users who DO want to trigger a blank.
+   */
+  readonly blankTriggerMode: 'immediate' | 'spaced';
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
   /**
@@ -148,6 +159,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   cursorNavigate: 'inactive',
   ambientContextMode: 'off',
   userContextMode: 'off',
+  blankTriggerMode: 'immediate',
   settings: new Map(),
   definitions: new Map(),
 };
@@ -184,6 +196,8 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     userCtxRaw === 'safe' ? 'safe'
     : userCtxRaw === 'raw' ? 'raw'
     : 'off';
+  const blankTriggerMode: 'immediate' | 'spaced' =
+    get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
   // Menu definitions: registry-derived by default, with optional
   // file-level overrides. The @opencues/core FEATURES + MENU_TUNABLES
   // registry is the single source of truth; defaults/OPENCUES.md ships
@@ -196,7 +210,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, blankTriggerMode, settings, definitions };
 }
 
 /**
@@ -476,6 +490,7 @@ export class ConfigLoader {
         const v = get('user-context-mode', 'off').toLowerCase();
         return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
       })(),
+      blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
       settings: newSettings as ReadonlyMap<string, string>,
       definitions: cur.definitions,
     };

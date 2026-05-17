@@ -771,3 +771,69 @@ describe('Resolver ambient-context gate', () => {
     expect(capturedCtxs[0]?.ambient).toBeUndefined();
   });
 });
+
+describe('Resolver blank-trigger-mode gate', () => {
+  // The user-facing distinction: in `immediate` mode a bare `_` at the
+  // end of the buffer bypasses the debounce and resolves NOW. In
+  // `spaced` mode it doesn't — the user has to type a confirming
+  // space before the trigger fires. Lets users type markdown
+  // `_italic_` without the first `_` instantly substituting.
+
+  function setupTriggerScenario(mode: 'immediate' | 'spaced') {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    adapter.pushText('');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    loader.applyOpenCuesScalar('blank-trigger-mode', mode);
+
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm',
+      debounceMs: 10_000,  // huge so only the bypass path counts
+      httpAdapter: {},
+    });
+    let resolveCallCount = 0;
+    (resolver as unknown as { _resolver: { resolve(): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async () => { resolveCallCount++; return { results: [] }; },
+    };
+    resolver.subscribe();
+    return { adapter, resolver, callCount: () => resolveCallCount };
+  }
+
+  it('immediate mode: bare `_` at end of buffer bypasses debounce', async () => {
+    const { adapter, callCount } = setupTriggerScenario('immediate');
+    adapter.pushText('alpha _');
+    await new Promise(r => setTimeout(r, 50));
+    expect(callCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it('spaced mode: bare `_` at end of buffer does NOT bypass debounce', async () => {
+    const { adapter, callCount } = setupTriggerScenario('spaced');
+    adapter.pushText('alpha _');
+    await new Promise(r => setTimeout(r, 50));
+    expect(callCount()).toBe(0);
+  });
+
+  it('spaced mode: `_` followed by a space DOES bypass debounce', async () => {
+    const { adapter, callCount } = setupTriggerScenario('spaced');
+    adapter.pushText('alpha _');
+    await new Promise(r => setTimeout(r, 20));
+    adapter.pushText('alpha _ ');
+    await new Promise(r => setTimeout(r, 50));
+    expect(callCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it('spaced mode: typing `_italic_` markdown produces NO trigger', async () => {
+    const { adapter, callCount } = setupTriggerScenario('spaced');
+    adapter.pushText('this is _');           // first `_`
+    await new Promise(r => setTimeout(r, 20));
+    adapter.pushText('this is _italic');
+    await new Promise(r => setTimeout(r, 20));
+    adapter.pushText('this is _italic_');    // closing `_`
+    await new Promise(r => setTimeout(r, 50));
+    expect(callCount()).toBe(0);
+  });
+});

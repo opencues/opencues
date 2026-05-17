@@ -482,11 +482,37 @@ export class Resolver {
     const text = e.text;
     const prev = this._lastInputText;
     this._lastInputText = text;
-    const blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
+    // Trigger detection — gated by blank-trigger-mode.
+    //
+    // - `immediate` (default): bypass debounce the instant `_` becomes
+    //   the buffer's last non-whitespace char (current behaviour since v0.1).
+    // - `spaced`: bypass only when the buffer ends with `_` + at least one
+    //   trailing whitespace. Lets users type markdown `_italic_` without
+    //   the first `_` immediately substituting; firing waits for the
+    //   space that confirms blank intent.
+    const triggerMode = this.configLoader.opencuesState.blankTriggerMode;
+    let blankJustTyped: boolean;
+    if (triggerMode === 'spaced') {
+      // Buffer ends with `_` then whitespace, AND the prior text didn't
+      // already satisfy that condition (so we don't re-fire on every space).
+      blankJustTyped = /_\s+$/.test(text) && !/_\s+$/.test(prev);
+    } else {
+      blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
+    }
     if (blankJustTyped) {
       if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
-      this.adapter.log('debug', 'Resolver: _ trigger — bypassing debounce');
+      this.adapter.log('debug', `Resolver: _ trigger — bypassing debounce (mode=${triggerMode})`);
       void this.resolveAndApply(text);
+      return;
+    }
+
+    // In spaced mode, an unconfirmed lone `_` at end of buffer should
+    // never fire blanks — not via bypass (handled above) AND not via
+    // the debounced fall-through (handled here). Skip scheduling so a
+    // user pausing after `_` doesn't end up substituted. The next
+    // text-change (typing more or the confirming space) re-evaluates.
+    if (triggerMode === 'spaced' && text.trimEnd().endsWith('_') && !/_\s+$/.test(text)) {
+      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
       return;
     }
 

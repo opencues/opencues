@@ -796,6 +796,15 @@ export class BlankFill {
     const m = event.modifiers;
     if (m.ctrl || m.alt || m.meta) return false;
 
+    // `blank-trigger-mode: spaced` defers blank firing until a space
+    // follows the `_`. Letting the keypress fall through to the host's
+    // default insert keeps markdown `_italic_` typing intact — the
+    // resolver's onTextChange path will pick up the trigger once the
+    // user types a confirming space.
+    if (this.configLoader.opencuesState.blankTriggerMode === 'spaced') {
+      return false;
+    }
+
     const insertedText =
       event.text.slice(0, event.cursorOffset) +
       '_' +
