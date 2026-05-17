@@ -322,7 +322,7 @@ function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
  * core-side in `renderAmbientBlock`. We return raw-but-trimmed values
  * here; the trust boundary is at the core, not at the gatherer.
  */
-function gatherAmbientContext(target: HTMLElement | null): {
+export function gatherAmbientContext(target: HTMLElement | null): {
   label?: string;
   placeholder?: string;
   ariaLabel?: string;
@@ -2196,6 +2196,14 @@ const trustGate = createTrustGate();
  *  N for paste/drop with N underscores). */
 export function noteUserUnderscoreInsertion(count = 1): void {
   trustGate.noteUnderscoreInsertion(count);
+}
+
+/** Wipe pending trust-gate credits without clearing the baseline.
+ *  Wired to focusin/focusout in content.ts so a credit earned in
+ *  field A can't fund an injection in field B. Closes the
+ *  "cross-field stale credit" attack. */
+export function resetTrustGateCredits(): void {
+  trustGate.resetCredits();
 }
 
 /** Call from content.ts's input handler to forward text changes.

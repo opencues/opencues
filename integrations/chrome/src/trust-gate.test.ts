@@ -8,7 +8,7 @@
 // importantly that doesn't leave a "blessed window" where a real
 // keystroke earlier in the session lets later injections through.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTrustGate, type TrustGate } from './trust-gate';
 
 describe('TrustGate — credit accounting', () => {
@@ -131,5 +131,94 @@ describe('TrustGate — adversarial sequences', () => {
     gate.checkAndConsume('a_b_c', false);
     gate.reset();
     expect(gate.inspect()).toEqual({ credits: 0, lastAcceptedCount: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Strengthened gate — credit TTL + focus-change reset
+// ---------------------------------------------------------------------------
+// Closes two stale-credit attacks the pure credit-balance design didn't
+// rule out:
+//
+//   - "preventDefault attack": hostile page consumes the user's `_`
+//     keydown via preventDefault (so no input event fires + no consume),
+//     then later injects via execCommand. Credit-balance gate would
+//     accept because the balance is +1.
+//
+//   - "cross-field attack": user types `_` in field A (where OpenCues
+//     isn't attached, e.g. an iframe), then clicks into field B
+//     (attached). Hostile page injects via execCommand in field B.
+//     Credit was earned in field A's context but funds an attack in B's.
+
+describe('TrustGate — credit TTL (preventDefault-attack defence)', () => {
+  let gate: TrustGate;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T00:00:00Z'));
+    gate = createTrustGate();
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('credit stays valid within the TTL window', () => {
+    gate.noteUnderscoreInsertion(1);
+    vi.advanceTimersByTime(499);  // still inside 500ms TTL
+    expect(gate.checkAndConsume('volume _', false)).toBe(true);
+  });
+
+  it('credit expires after CREDIT_TTL_MS — page-preventDefault attack blocked', () => {
+    // Hostile page does:
+    //   document.addEventListener('keydown', e => { if (e.key === '_') e.preventDefault(); })
+    // User presses `_` → credit += 1, but DOM never receives the
+    // underscore so no input event fires to consume the credit.
+    // After the TTL, the credit must be gone — otherwise the page
+    // can wait + inject `_` later and still pass the gate.
+    gate.noteUnderscoreInsertion(1);
+    vi.advanceTimersByTime(501);  // past TTL
+    expect(gate.checkAndConsume('volume _', false)).toBe(false);
+    // Inspect reports zero too — the prune happens lazily on read.
+    expect(gate.inspect().credits).toBe(0);
+  });
+
+  it('mixed credits — fresh ones survive, stale ones drop', () => {
+    // Two `_` keystrokes 600ms apart. First credit expires before the
+    // second is added.
+    gate.noteUnderscoreInsertion(1);
+    vi.advanceTimersByTime(600);  // first credit stale
+    gate.noteUnderscoreInsertion(1);
+    expect(gate.inspect().credits).toBe(1);  // only the fresh one survives
+    // Try to use 2 credits → reject, only 1 valid.
+    expect(gate.checkAndConsume('_ _', false)).toBe(false);
+    expect(gate.checkAndConsume('_', false)).toBe(true);
+  });
+});
+
+describe('TrustGate — focus-change credit reset (cross-field defence)', () => {
+  let gate: TrustGate;
+  beforeEach(() => { gate = createTrustGate(); });
+
+  it('resetCredits clears the credit balance but preserves baseline', () => {
+    // User typed `_` (baseline=1) in field A. Focus moves away —
+    // wiped credits but the baseline COUNT stays so that if the user
+    // returns and OpenCues re-attaches with the same buffer text, the
+    // gate doesn't double-count the existing `_`.
+    gate.noteUnderscoreInsertion(1);
+    gate.checkAndConsume('_', false);  // consumes credit, baseline = 1
+    gate.noteUnderscoreInsertion(2);   // user types 2 more _'s in field A
+    expect(gate.inspect().credits).toBe(2);
+    gate.resetCredits();
+    expect(gate.inspect().credits).toBe(0);
+    expect(gate.inspect().lastAcceptedCount).toBe(1);  // baseline preserved
+  });
+
+  it('cross-field attack: A earns credit, focus → B, attacker injects in B → reject', () => {
+    // User presses `_` in iframe / unattached field A → credit += 1.
+    // No input event fires (OpenCues not attached to A).
+    gate.noteUnderscoreInsertion(1);
+    expect(gate.inspect().credits).toBe(1);
+    // User clicks into field B (attached). Bootstrap calls resetCredits
+    // on focusin.
+    gate.resetCredits();
+    // Hostile page injects `_` in B.
+    expect(gate.checkAndConsume('volume _', false)).toBe(false);
   });
 });

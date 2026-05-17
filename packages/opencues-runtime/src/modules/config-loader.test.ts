@@ -117,6 +117,24 @@ some prose
     expect(parseOpenCuesMd('---\nambient-context-mode: on\n---').ambientContextMode).toBe('on');
   });
 
+  it('user-context-mode defaults to off and only accepts safe/raw', () => {
+    // Same fail-closed contract as ambient-context-mode — the privacy
+    // model leans on `off` being the default + on unrecognised values
+    // not silently flipping the gate. See docs/architecture/user-context.md.
+    expect(parseOpenCuesMd('---\n---').userContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nuser-context-mode: off\n---').userContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nuser-context-mode: safe\n---').userContextMode).toBe('safe');
+    expect(parseOpenCuesMd('---\nuser-context-mode: raw\n---').userContextMode).toBe('raw');
+    // Case-insensitive.
+    expect(parseOpenCuesMd('---\nuser-context-mode: SAFE\n---').userContextMode).toBe('safe');
+    expect(parseOpenCuesMd('---\nuser-context-mode: Raw\n---').userContextMode).toBe('raw');
+    // Anything else stays off — typos / unexpected values fail closed.
+    expect(parseOpenCuesMd('---\nuser-context-mode: on\n---').userContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nuser-context-mode: yes\n---').userContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nuser-context-mode: true\n---').userContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nuser-context-mode: enabled\n---').userContextMode).toBe('off');
+  });
+
   it('clamps unknown values to safe defaults', () => {
     const md = `---
 voice-mode: muted
@@ -368,5 +386,73 @@ describe('ConfigLoader hot-reload', () => {
     await loader.maybeReload();
     // File-driven reload took precedence post-suppression.
     expect(loader.opencuesState.voiceMode).toBe('inactive');
+  });
+
+  it('user-context-mode hot-reloads from OPENCUES.md edits', async () => {
+    // Same load-bearing contract as ambient — flipping the scalar
+    // in OPENCUES.md must take effect on the NEXT keystroke without
+    // a host restart. Off → safe → raw → off all need to round-trip.
+    const initial = `---\nuser-context-mode: off\n---\n`;
+    const adapter = new MockAdapter({
+      files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': initial },
+      cwd: '/proj',
+    });
+    const loader = new ConfigLoader(adapter, {
+      reloadDebounceMs: 0,
+      settingsFile: '/proj/.cues/OPENCUES.md',
+    });
+    await loader.load();
+    expect(loader.opencuesState.userContextMode).toBe('off');
+
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nuser-context-mode: safe\n---\n`);
+    await loader.maybeReload();
+    expect(loader.opencuesState.userContextMode).toBe('safe');
+
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nuser-context-mode: raw\n---\n`);
+    await loader.maybeReload();
+    expect(loader.opencuesState.userContextMode).toBe('raw');
+
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nuser-context-mode: off\n---\n`);
+    await loader.maybeReload();
+    expect(loader.opencuesState.userContextMode).toBe('off');
+  });
+
+  it('ambient-context-mode hot-reloads from OPENCUES.md edits', async () => {
+    // The runtime gates ambient gathering on opencuesState.ambientContextMode.
+    // When the user flips the scalar in OPENCUES.md, the NEXT keystroke's
+    // resolve must see the new value — otherwise opting in/out requires
+    // a host restart. Mirror of the voice-mode reload test above, scoped
+    // to ambient so the property is pinned independently.
+    const initial = `---\nambient-context-mode: off\n---\n`;
+    const adapter = new MockAdapter({
+      files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': initial },
+      cwd: '/proj',
+    });
+    const loader = new ConfigLoader(adapter, {
+      reloadDebounceMs: 0,
+      settingsFile: '/proj/.cues/OPENCUES.md',
+    });
+    await loader.load();
+    expect(loader.opencuesState.ambientContextMode).toBe('off');
+
+    // User edits OPENCUES.md (or another host writes the scalar via
+    // applyOpenCuesScalar + flush). We simulate the file-driven path
+    // since that's the load-bearing one: a user opening the file in
+    // their editor and changing the value MUST propagate.
+    await adapter.writeFile(
+      '/proj/.cues/OPENCUES.md',
+      `---\nambient-context-mode: on\n---\n`,
+    );
+    await loader.maybeReload();
+    expect(loader.opencuesState.ambientContextMode).toBe('on');
+
+    // Flip back off — the same path must turn it off as cleanly as
+    // it turned it on so a security-conscious user can disable mid-session.
+    await adapter.writeFile(
+      '/proj/.cues/OPENCUES.md',
+      `---\nambient-context-mode: off\n---\n`,
+    );
+    await loader.maybeReload();
+    expect(loader.opencuesState.ambientContextMode).toBe('off');
   });
 });

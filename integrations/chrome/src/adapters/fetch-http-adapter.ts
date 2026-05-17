@@ -1,4 +1,5 @@
 import type { HttpAdapter } from '@opencues/core';
+import { log } from '../opencues-bootstrap';
 
 interface ProxiedFetchResponse {
   ok: boolean;
@@ -29,12 +30,17 @@ interface ProxiedFetchResponse {
  */
 export class FetchHttpAdapter implements HttpAdapter {
   async post(url: string, body: string, headers: Record<string, string>): Promise<string> {
-    // Debug: log the prompt sent to LLM
+    // Per-call prompt-tail log. Gated behind `debug-mode: on` per the
+    // chrome integration's logging policy (CLAUDE.md → "Debug logging"
+    // section). The string printed is the user's own buffer + ambient
+    // block — same data the user has on screen — but firing it on
+    // every keystroke pollutes screen-share / support-session devtools
+    // logs, so default to quiet.
     try {
       const parsed = JSON.parse(body);
       const content = parsed.messages?.[0]?.content || '';
       const lastLine = content.split('\n').filter((l: string) => l.trim()).pop() || '';
-      console.log('[OpenCues] LLM prompt tail:', lastLine.slice(0, 200));
+      log.debug('[OpenCues] LLM prompt tail:', lastLine.slice(0, 200));
     } catch { /* ignore */ }
 
     const response = await chrome.runtime.sendMessage<unknown, ProxiedFetchResponse>({
@@ -62,11 +68,12 @@ export class FetchHttpAdapter implements HttpAdapter {
     }
     const text = response.text;
 
-    // Debug: log the raw LLM response
+    // Per-call raw-response log. Same gating as the prompt-tail log
+    // above — `debug-mode: on` only, to keep production devtools clean.
     try {
       const data = JSON.parse(text);
       const raw = data.choices?.[0]?.message?.content || '';
-      console.log('[OpenCues] LLM raw response:', raw);
+      log.debug('[OpenCues] LLM raw response:', raw);
 
       // Normalize space-separated INDEX:alts to pipe-separated
       // Some models return "1:a,b 2:c,d" instead of "1:a,b|2:c,d"

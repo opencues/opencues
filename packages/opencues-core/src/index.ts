@@ -145,3 +145,19 @@ export {
   injectCursorSentinel,
 } from './cursor-sentinel';
 
+// User-context (sentinel-mode personal data): parser, catalog
+// renderer, post-processor. Consumed by FluidBlankSource when
+// `user-context-mode` is on in OPENCUES.md.
+export {
+  parseUserMd,
+  deriveToken,
+  renderUserCatalog,
+  postProcessUserContext,
+  type UserContext,
+  type UserContextField,
+  type UserContextMode,
+  type PostProcessOptions as UserContextPostProcessOptions,
+  type PostProcessResult as UserContextPostProcessResult,
+  type PostProcessReport as UserContextPostProcessReport,
+} from './user-context';
+

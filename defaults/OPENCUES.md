@@ -18,6 +18,21 @@ cursor-navigate: inactive
 # docs/architecture/ambient-context.md.
 ambient-context-mode: off
 
+# user-context-mode — sentinel-mode personal data injection.
+# Pulls field data from ~/.cues/User.md (your first name, email,
+# work city, etc.) and offers it to FluidBlankSource so `_` lookups
+# personalise without you re-typing the same info. Three values:
+#   off  (default): User.md never read; no personal data reaches any prompt.
+#   safe          : catalog of TOKENS + descriptions injected. The LLM
+#                   emits `[FIRST NAME]` etc; a post-processor substitutes
+#                   your real values AFTER the response. Your PII never
+#                   reaches the LLM provider's logs.
+#   raw           : catalog includes actual VALUES inline. LLM may emit
+#                   them directly. Better prose quality for transform-blank,
+#                   but PII reaches the provider. Opt-in only.
+# Today wired for fluid-blank only. See docs/architecture/user-context.md.
+user-context-mode: off
+
 # Surface-availability flags. "on" means the surface is registered and
 # ready to fire when matching input appears; "off" (or omitted) means the
 # source is not built at all. The actual "is something running right now"
@@ -116,6 +131,12 @@ settings:
     values:
       on: Enabled — ambient block injected into fluid-blank prompt
       off: Disabled (default) — host returns null; ambient block never built
+  user-context-mode:
+    tip: Inject ~/.cues/User.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.
+    values:
+      off: Disabled (default) — User.md never read
+      safe: Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.
+      raw: Catalog includes actual values inline; PII reaches the LLM provider. Opt-in only.
   fluid-blank-mode:
     tip: Free-form `_` lookups (P1+P3 LLM pipeline)
     values:

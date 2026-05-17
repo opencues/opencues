@@ -29,6 +29,7 @@ import {
   parseCuesMaster,
   parseBlanksMaster,
   parseAuditorsMaster,
+  parseUserMd,
   type LocalCueLookupResult,
   type CuesMdConfig,
   type BlankConfig,
@@ -105,6 +106,25 @@ export interface OpenCuesState {
    * See docs/architecture/ambient-context.md for the threat model.
    */
   readonly ambientContextMode: 'on' | 'off';
+  /**
+   * Whether `~/.cues/User.md` field data (first name, email, etc.) is
+   * forwarded to FluidBlankSource as sentinel tokens for prompt
+   * personalization.
+   *
+   * - `off` (default): User.md is not read. CueContext.userContext stays
+   *   undefined. No personal data reaches any prompt.
+   * - `safe`: catalog of TOKENs + descriptions injected into the
+   *   prompt. LLM emits tokens; a post-processor substitutes real
+   *   values AFTER the response. PII never reaches the LLM provider.
+   * - `raw`: catalog includes actual VALUES inline. PII reaches the
+   *   provider. Use only when register/tone fidelity matters more
+   *   than provider-log privacy.
+   *
+   * See docs/architecture/user-context.md (when added) for the threat
+   * model. Phase 1 wires only fluid-blank; other pipelines stay
+   * sentinel-free.
+   */
+  readonly userContextMode: 'off' | 'safe' | 'raw';
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
   /**
@@ -122,6 +142,7 @@ const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   tipsMode: 'on',
   cursorNavigate: 'inactive',
   ambientContextMode: 'off',
+  userContextMode: 'off',
   settings: new Map(),
   definitions: new Map(),
 };
@@ -153,8 +174,13 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const tipsMode = get('tips-mode', 'on') === 'off' ? 'off' : 'on';
   const cursorNavigate = get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive';
   const ambientContextMode = get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off';
+  const userCtxRaw = get('user-context-mode', 'off').toLowerCase();
+  const userContextMode: 'off' | 'safe' | 'raw' =
+    userCtxRaw === 'safe' ? 'safe'
+    : userCtxRaw === 'raw' ? 'raw'
+    : 'off';
   const definitions = parseSettingsBlock(lines);
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, settings, definitions };
 }
 
 /**
@@ -242,6 +268,21 @@ export interface LoadedConfig {
   /** cwd BLANKS.md + folder blanks/* merged. The resolver consumes this. */
   readonly mergedBlanksConfig: CuesMdConfig | null;
   /**
+   * Parsed user-context from `<settingsFile-dir>/User.md`. Always
+   * populated (parser returns an empty UserContext when the file is
+   * missing or has no frontmatter). The resolver consults
+   * `opencuesState.userContextMode` to decide whether to pass this
+   * through to FluidBlankSource — when mode is `off` the data still
+   * lives here but never reaches any prompt.
+   *
+   * Mirror of @opencues/core's UserContext shape, kept structural to
+   * avoid an import cycle.
+   */
+  readonly userContext: {
+    readonly fields: readonly { readonly key: string; readonly token: string; readonly value: string; readonly description: string }[];
+    readonly catalog: ReadonlyMap<string, string>;
+  };
+  /**
    * All words known to be navigable, lowercased. Union of:
    *   - cueMap keys (tip-having words)
    *   - blank names from folder discovery (`blanks/X/BLANK.md` → "X")
@@ -275,6 +316,7 @@ export class ConfigLoader {
     mergedBlanksConfig: null,
     navigableWords: new Set(),
     blanksByWord: new Map(),
+    userContext: { fields: [], catalog: new Map() },
   };
   private _loaded = false;
   private _lastLoadAt = 0;
@@ -306,6 +348,10 @@ export class ConfigLoader {
   get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
   get blanksByWord(): ReadonlyMap<string, BlankEntry> { return this._config.blanksByWord; }
+  /** Parsed `~/.cues/User.md`. Always populated; the runtime gate on
+   *  `opencuesState.userContextMode` decides whether it ever leaves
+   *  the ConfigLoader. See `LoadedConfig.userContext`. */
+  get userContext(): LoadedConfig['userContext'] { return this._config.userContext; }
 
   /** Unique blanks by name (lowercased).
    *  Sourced from folderConfigs + blanksConfig. Useful when a consumer
@@ -390,6 +436,10 @@ export class ConfigLoader {
       tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
       cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
+      userContextMode: ((): 'off' | 'safe' | 'raw' => {
+        const v = get('user-context-mode', 'off').toLowerCase();
+        return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
+      })(),
       settings: newSettings as ReadonlyMap<string, string>,
       definitions: cur.definitions,
     };
@@ -479,6 +529,20 @@ export class ConfigLoader {
     const settingsContent = this.options.settingsFile
       ? await this._safeReadFile(this.options.settingsFile)
       : null;
+
+    // User context lives in `User.md` alongside OPENCUES.md (so the
+    // user-level `~/.cues/` directory holds both). Global only by
+    // design — user data is user data; per-project overlays make no
+    // sense. Always read when settingsFile is set; the runtime gate
+    // (`user-context-mode`) decides whether the parsed data ever
+    // reaches a prompt.
+    const userMdPath = this.options.settingsFile
+      ? this.options.settingsFile.replace(/[^/]+$/, 'User.md')
+      : null;
+    const userMdContent = userMdPath
+      ? await this._safeReadFile(userMdPath)
+      : null;
+    const userContext = parseUserMd(userMdContent);
 
     // Per-search-path master file reads. Master files declare the
     // surface as a whole — project metadata, ignore[], disable[]. Each
@@ -654,6 +718,7 @@ export class ConfigLoader {
       mergedBlanksConfig,
       navigableWords,
       blanksByWord,
+      userContext,
     };
     this.adapter.log('debug', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,

@@ -551,6 +551,133 @@ describe('FluidBlankSource with ambient context', () => {
     }
   });
 
+  // ─── User-context (sentinel-mode personal data) integration ────────────
+
+  it('injects USER CONTEXT catalog into the fused user message in safe mode', async () => {
+    const { adapter, bodies } = makeRecordingAdapter([
+      'SPAN: my email _\nANSWER: [EMAIL]',
+    ]);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    await src.getCues({
+      text: 'my email _',
+      words: ['my', 'email', '_'],
+      userContext: {
+        fields: [
+          { key: 'firstName', token: '[FIRST NAME]', value: 'Wilfred', description: "user's first name" },
+          { key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" },
+        ],
+        catalog: new Map([
+          ['[FIRST NAME]', 'Wilfred'],
+          ['[EMAIL]', 'wilfred@example.com'],
+        ]),
+        mode: 'safe',
+      },
+    });
+    const userMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'user').content;
+    // Catalog present in safe mode...
+    assert.match(userMsg, /USER CONTEXT/);
+    assert.match(userMsg, /\[FIRST NAME\] — user's first name/);
+    assert.match(userMsg, /\[EMAIL\] — user's email/);
+    // ...with NO values inlined. Safe-mode guarantee.
+    assert.doesNotMatch(userMsg, /Wilfred/);
+    assert.doesNotMatch(userMsg, /wilfred@example.com/);
+  });
+
+  it('inlines values in raw mode', async () => {
+    const { adapter, bodies } = makeRecordingAdapter([
+      'SPAN: my email _\nANSWER: wilfred@example.com',
+    ]);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    await src.getCues({
+      text: 'my email _',
+      words: ['my', 'email', '_'],
+      userContext: {
+        fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
+        catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
+        mode: 'raw',
+      },
+    });
+    const userMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'user').content;
+    assert.match(userMsg, /USER CONTEXT/);
+    // Raw mode DOES carry values.
+    assert.match(userMsg, /value: wilfred@example.com/);
+  });
+
+  it('omits USER CONTEXT block when context.userContext is undefined', async () => {
+    const { adapter, bodies } = makeRecordingAdapter([
+      'SPAN: capital of france _\nANSWER: Paris',
+    ]);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    await src.getCues(ctxFromText('capital of france _'));
+    const userMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'user').content;
+    assert.doesNotMatch(userMsg, /USER CONTEXT/);
+  });
+
+  it('post-processes the answer: verbatim sentinel → value', async () => {
+    // LLM emits `[EMAIL]`; the post-processor substitutes the real
+    // value before it reaches the user's buffer.
+    const { adapter } = makeRecordingAdapter([
+      'SPAN: my email _\nANSWER: [EMAIL]',
+    ]);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    const result = await src.getCues({
+      text: 'my email _',
+      words: ['my', 'email', '_'],
+      userContext: {
+        fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
+        catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
+        mode: 'safe',
+      },
+    });
+    assert.strictEqual(result.results.length, 1);
+    // alternatives is ['_', finalAnswer] — the post-processed value, not the raw `[EMAIL]`.
+    assert.deepStrictEqual(result.results[0]!.alternatives, ['_', 'wilfred@example.com']);
+  });
+
+  it('post-processes: hallucinated unlisted token is stripped before reaching the buffer', async () => {
+    // Claude-style hallucination case: LLM invents `[DATE OF BIRTH]`
+    // which isn't in the catalog. The post-processor must strip it
+    // so the literal bracket-string never lands in the user's text.
+    const { adapter } = makeRecordingAdapter([
+      'SPAN: my dob _\nANSWER: [DATE OF BIRTH]',
+    ]);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    const result = await src.getCues({
+      text: 'my dob _',
+      words: ['my', 'dob', '_'],
+      userContext: {
+        fields: [{ key: 'firstName', token: '[FIRST NAME]', value: 'Wilfred', description: "user's first name" }],
+        catalog: new Map([['[FIRST NAME]', 'Wilfred']]),
+        mode: 'safe',
+      },
+    });
+    // Empty string means the LLM's invented bracket was stripped —
+    // FluidBlank still treats it as a successful substitution (the
+    // span IS replaced; with empty in this case).
+    assert.strictEqual(result.results.length, 1);
+    assert.deepStrictEqual(result.results[0]!.alternatives, ['_', '']);
+  });
+
+  it('post-processes: tolerant match recovers Claude format drift', async () => {
+    // Claude sometimes emits `[WORK_CITY]` underscore form even when
+    // the catalog says `[WORK CITY]` space form. Post-processor
+    // recovers via canonicalisation.
+    const { adapter } = makeRecordingAdapter([
+      'SPAN: i work in _\nANSWER: [WORK_CITY]',
+    ]);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    const result = await src.getCues({
+      text: 'i work in _',
+      words: ['i', 'work', 'in', '_'],
+      userContext: {
+        fields: [{ key: 'workCity', token: '[WORK CITY]', value: 'London', description: "user's work city" }],
+        catalog: new Map([['[WORK CITY]', 'London']]),
+        mode: 'safe',
+      },
+    });
+    assert.deepStrictEqual(result.results[0]!.alternatives, ['_', 'London']);
+  });
+
   it('sentinel-escape — a label containing the closing sentinel cannot break out of the block', async () => {
     const { adapter, bodies } = makeRecordingAdapter([
       'SPAN: capital of france _\nANSWER: Paris',

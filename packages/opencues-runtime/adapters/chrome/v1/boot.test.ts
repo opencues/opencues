@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { boot } from './boot';
+import { ChromeV1Adapter, type ChromeBindings } from './adapter';
 import type { KeyEvent } from '../../../src/adapter';
 
 // Minimal HostInfo factory — use everywhere defaults make sense.
@@ -140,5 +141,68 @@ describe('Chrome v1 boot()', () => {
     // because the host-supplied adapter wins.
     const adapterFailLines = log.mock.calls.filter(c => String(c[1]).includes('NodeHttpAdapter load failed'));
     expect(adapterFailLines).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// ChromeV1Adapter.getAmbientContext — error-path / null-path contract
+// ===========================================================================
+//
+// The runtime gates on `ambient-context-mode` BEFORE calling this method,
+// but if it DOES call it, the adapter MUST:
+//   - return null when the binding is missing (older bootstrap)
+//   - return null when the binding throws (DOM access SecurityError, etc.)
+//   - forward the result when the binding returns a valid AmbientContext
+//   - forward null when the binding returns null (sensitive field, etc.)
+//
+// Catch removal would turn a DOM throw into a resolver crash → fluid-blank
+// silently dies and the user thinks the feature is broken.
+
+function makeBindings(overrides: Partial<ChromeBindings> = {}): ChromeBindings {
+  return {
+    hostVersion: '0.1.0',
+    cwd: '/chrome-storage',
+    getText: () => '',
+    getCursorOffset: () => 0,
+    setText: () => {},
+    setCursorOffset: () => {},
+    forceRender: () => {},
+    registerKeyHandler: () => () => {},
+    registerTextChangeHandler: () => () => {},
+    registerCursorChangeHandler: () => () => {},
+    registerRenderHandler: () => () => {},
+    ...overrides,
+  };
+}
+
+describe('ChromeV1Adapter.getAmbientContext', () => {
+  it('returns null when the binding is omitted', () => {
+    const adapter = new ChromeV1Adapter(makeBindings());
+    expect(adapter.getAmbientContext()).toBeNull();
+  });
+
+  it('returns null when the binding throws (SecurityError / DOM detached)', () => {
+    const adapter = new ChromeV1Adapter(makeBindings({
+      getAmbientContext: () => { throw new Error('SecurityError: blocked'); },
+    }));
+    // The whole point of the try/catch in the adapter: a throw upstream
+    // becomes a benign null, NOT a crashed resolver.
+    expect(() => adapter.getAmbientContext()).not.toThrow();
+    expect(adapter.getAmbientContext()).toBeNull();
+  });
+
+  it('returns null when the binding returns null (sensitive field path)', () => {
+    const adapter = new ChromeV1Adapter(makeBindings({
+      getAmbientContext: () => null,
+    }));
+    expect(adapter.getAmbientContext()).toBeNull();
+  });
+
+  it('forwards a valid AmbientContext object verbatim', () => {
+    const ctx = { label: 'Search', placeholder: 'Where to?', pageTitle: 'Trivia' };
+    const adapter = new ChromeV1Adapter(makeBindings({
+      getAmbientContext: () => ctx,
+    }));
+    expect(adapter.getAmbientContext()).toEqual(ctx);
   });
 });

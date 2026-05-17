@@ -642,6 +642,78 @@ plug OpenCues into anything that would change that.
 
 Full threat model + sanitization rules: [docs/architecture/ambient-context.md](docs/architecture/ambient-context.md).
 
+### User context — sentinel-mode personal data
+
+A sibling opt-in to ambient context: tell OpenCues your
+**own** personal data once via `~/.cues/User.md`, and `_`
+lookups personalise without you re-typing.
+
+Edit `~/.cues/User.md`:
+
+```yaml
+---
+firstName:    Wilfred
+email:        wilfred@example.com
+workCity:     London
+github:       https://github.com/wilfred
+---
+```
+
+Flip the mode in `~/.cues/OPENCUES.md`:
+
+```yaml
+user-context-mode: safe
+```
+
+Now on any form: `my email _` → fluid-blank substitutes
+`wilfred@example.com`. `i work in _` → substitutes `London`.
+
+**The privacy guarantee.** In `safe` mode (recommended), the LLM
+only receives a catalog of token names + descriptions
+(`[EMAIL] — user's email`); it emits sentinels like `[EMAIL]`, and
+a runtime post-processor swaps in the real value **after** the
+response — your PII never reaches the LLM provider's logs.
+
+The alternative `raw` mode inlines actual values into the prompt
+(better prose register for transform-blank-style rewrites, worse
+privacy). Opt-in only.
+
+Phase 1 wires this for FluidBlank only. Word-cues, transform-blank,
+agent-rewrite, and auditors all explicitly skip user-context.
+Per-pack `requires-user: [...]` declarations + free-text body
+injection are Phase 2/3.
+
+Full design + threat model: [docs/architecture/user-context.md](docs/architecture/user-context.md).
+
+### Chrome normal `<input>` / `<textarea>` support
+
+By default the Chrome extension attaches to **contenteditable**
+surfaces (Gmail, LinkedIn, ChatGPT, Reddit, etc.). May 2026
+added a parallel attach mode for plain `<input type="text" | email | search | url>`
+and `<textarea>` — every form on the web. `_` triggers + blank
+fills work; cycling and the dim/highlight UI don't (browsers
+lay out `<input>` text internally, not via Range-addressable
+DOM nodes).
+
+**Credential safety.** OpenCues NEVER attaches to:
+
+- `<input type="password">` and every other non-text type
+  (`number`, `date`, `tel`, `color`, `hidden`, `file`, etc.)
+- Fields marked `autocomplete=current-password` /
+  `new-password` / `one-time-code` / any `cc-*` (credit card) /
+  `autocomplete=off`
+- Fields whose `name` or `id` substring-matches
+  `password|cvv|ssn|pin|otp|secret|token|api[_-]?key|auth`
+
+Same exclusion gates ambient context and user context (no
+field metadata read, no User.md catalog injected). False
+positives — `<input name="search-token">` refusing to attach —
+are accepted; OpenCues never silently routes a credential
+through an LLM.
+
+Full spec: [docs/features/chrome-normal-inputs.md](docs/features/chrome-normal-inputs.md).
+Security boundary: [docs/architecture/chrome-security.md](docs/architecture/chrome-security.md) Boundary 11.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to:

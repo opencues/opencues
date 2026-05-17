@@ -648,6 +648,19 @@ export class Resolver {
         ambient: this.configLoader.opencuesState.ambientContextMode === 'on'
           ? (this.adapter.getAmbientContext?.() ?? undefined)
           : undefined,
+        // Optional user-context (sentinel-mode personal data). Gated by
+        // `user-context-mode` in OPENCUES.md (`off` by default — when
+        // `off` we don't even forward the parsed catalog, so a future
+        // misconfigured source can't accidentally read it). When on,
+        // ship the catalog + mode through to FluidBlankSource; no
+        // other source consumes this field today by design.
+        userContext: this.configLoader.opencuesState.userContextMode !== 'off'
+          ? {
+              fields: this.configLoader.userContext.fields,
+              catalog: this.configLoader.userContext.catalog,
+              mode: this.configLoader.opencuesState.userContextMode,
+            }
+          : undefined,
       });
     } catch (err) {
       stopAllAnimations();

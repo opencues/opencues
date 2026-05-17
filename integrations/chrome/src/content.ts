@@ -125,6 +125,12 @@ async function init(): Promise<void> {
   document.addEventListener('focusin', (e) => {
     const el = e.target as HTMLElement;
     if (el) attachToFocused(el);
+    // Wipe any pending trust-gate credits. A `_` keypress in a
+    // different field (e.g. an iframe OpenCues isn't attached to)
+    // would otherwise leave credits that fund an injection here.
+    // The CREDIT_TTL_MS already limits stale-credit windows, but
+    // focus reset is a stronger guarantee for cross-field flows.
+    resetTrustGateCredits();
   });
 
   // Mirror OpenCode's per-component lifecycle by clearing the runtime
@@ -143,6 +149,10 @@ async function init(): Promise<void> {
         clearRuntimeHighlights();
         clearStatusbar();
       }
+      // Wipe credits on real focus-out too. Same rationale as
+      // focusin: any unconsumed credits earned in this field are no
+      // longer relevant once focus has left.
+      resetTrustGateCredits();
     }
   });
 
@@ -279,7 +289,7 @@ async function init(): Promise<void> {
 // Forward declared — defined as the bootstrap re-export to avoid
 // circular import at module load. The runtime owns text-change
 // dispatch but we only need to call it once per actual change.
-import { notifyOpenCuesTextChange, notifyOpenCuesCursorChange, noteUserUnderscoreInsertion } from './opencues-bootstrap';
+import { notifyOpenCuesTextChange, notifyOpenCuesCursorChange, noteUserUnderscoreInsertion, resetTrustGateCredits } from './opencues-bootstrap';
 function runtimeNotify(text: string): void {
   notifyOpenCuesTextChange(text, 0, 'user');
 }

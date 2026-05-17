@@ -647,3 +647,127 @@ describe('Resolver TASK_* commands', () => {
     expect(agentTaskState.prompt).toBe('correct spelling');
   });
 });
+
+// ===========================================================================
+// Resolver — ambient-context gate (security property)
+// ===========================================================================
+//
+// `ambient-context-mode: off` in OPENCUES.md (the default) MUST cause the
+// runtime to skip calling `adapter.getAmbientContext()` entirely. The
+// load-bearing security property: a misbehaving host can't accidentally
+// gather ambient metadata when the user hasn't opted in.
+//
+// Conversely, `ambient-context-mode: on` MUST cause the runtime to call
+// the adapter's gatherer AND forward the result into the context object
+// the underlying resolver receives.
+//
+// The toggle must take effect on the NEXT resolve without a Resolver
+// rebuild — `opencuesState` is read at resolve-time, not at construction
+// time.
+
+describe('Resolver ambient-context gate', () => {
+  interface CapturedCtx { ambient?: unknown }
+
+  function setupGateScenario(initialMode: 'on' | 'off') {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    adapter.pushText('alpha _');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+
+    let getAmbientCallCount = 0;
+    const sampleAmbient = { label: 'Search', pageTitle: 'Trivia' };
+    (adapter as unknown as { getAmbientContext: () => typeof sampleAmbient | null }).getAmbientContext =
+      () => { getAmbientCallCount++; return sampleAmbient; };
+
+    // Apply initial mode via the in-memory scalar setter (mirrors how
+    // selector-satellite cycling flips it at runtime).
+    loader.applyOpenCuesScalar('ambient-context-mode', initialMode);
+
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+      httpAdapter: {},
+    });
+    // Replace the underlying resolver with a spy that captures the ctx.
+    const capturedCtxs: CapturedCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => { capturedCtxs.push(ctx); return { results: [] }; },
+    };
+
+    return {
+      adapter, loader, resolver, capturedCtxs,
+      callCount: () => getAmbientCallCount,
+      sampleAmbient,
+    };
+  }
+
+  it('mode=off: adapter.getAmbientContext is NEVER called', async () => {
+    const { resolver, callCount, capturedCtxs } = setupGateScenario('off');
+    await resolver.resolveAndApply('alpha _');
+    expect(callCount()).toBe(0);
+    expect(capturedCtxs[0]?.ambient).toBeUndefined();
+  });
+
+  it('mode=on: adapter.getAmbientContext IS called and its result reaches the ctx', async () => {
+    const { resolver, callCount, capturedCtxs, sampleAmbient } = setupGateScenario('on');
+    await resolver.resolveAndApply('alpha _');
+    expect(callCount()).toBe(1);
+    expect(capturedCtxs[0]?.ambient).toEqual(sampleAmbient);
+  });
+
+  it('toggling mode mid-session takes effect on the NEXT resolve (no rebuild)', async () => {
+    const { resolver, loader, callCount, capturedCtxs } = setupGateScenario('off');
+
+    // First resolve: gate is OFF.
+    await resolver.resolveAndApply('alpha _');
+    expect(callCount()).toBe(0);
+    expect(capturedCtxs[0]?.ambient).toBeUndefined();
+
+    // Flip to ON in-memory (mirrors `opencues ambient-context-mode on _`).
+    loader.applyOpenCuesScalar('ambient-context-mode', 'on');
+
+    // Second resolve: gate is ON. Same Resolver instance.
+    await resolver.resolveAndApply('beta _');
+    expect(callCount()).toBe(1);
+    expect(capturedCtxs[1]?.ambient).toBeDefined();
+
+    // Flip OFF again.
+    loader.applyOpenCuesScalar('ambient-context-mode', 'off');
+
+    // Third resolve: gate is OFF. Call count must NOT increment.
+    await resolver.resolveAndApply('gamma _');
+    expect(callCount()).toBe(1);
+    expect(capturedCtxs[2]?.ambient).toBeUndefined();
+  });
+
+  it('mode=on but adapter has no getAmbientContext: ambient is undefined, no throw', async () => {
+    // Native hosts (CC/OC/gemini-cli) intentionally don't ship a
+    // getAmbientContext binding. Mode=on should degrade to "no ambient"
+    // without crashing the resolve.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    adapter.pushText('alpha _');
+    // Deliberately do NOT attach getAmbientContext to the adapter.
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    loader.applyOpenCuesScalar('ambient-context-mode', 'on');
+
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+      httpAdapter: {},
+    });
+    const capturedCtxs: CapturedCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => { capturedCtxs.push(ctx); return { results: [] }; },
+    };
+
+    await resolver.resolveAndApply('alpha _');
+    expect(capturedCtxs[0]?.ambient).toBeUndefined();
+  });
+});
