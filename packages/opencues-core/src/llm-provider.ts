@@ -515,7 +515,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
  *   other providers, not a "best for the job" pick on its own merits.
  *
  * Override the auto-route with `llm-provider:` or a per-feature
- * `<feature>-provider:` in CUES.md.
+ * `<feature>-provider:` in OPENCUES.md.
  */
 export const PROVIDER_AUTO_ORDER: readonly ProviderId[] = [
   'cerebras',
@@ -801,7 +801,7 @@ function warnUnknownProviderOnce(providerId: string): void {
     console.warn(
       `[opencues] unknown provider "${providerId}" referenced in config. ` +
       `Known providers: ${PROVIDER_IDS.join(', ')}. ` +
-      `Check your CUES.md for typos in \`llm-provider:\` / \`<feature>-provider:\`.`,
+      `Check your OPENCUES.md for typos in \`llm-provider:\` / \`<feature>-provider:\`.`,
     );
   } catch { /* host may have no console */ }
 }

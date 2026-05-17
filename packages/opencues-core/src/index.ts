@@ -171,6 +171,7 @@ export {
 // the "how to add a feature" contract.
 export {
   CORE_CONFIG_FILES,
+  CORE_SETTINGS_FILE,
   CORE_TEMPLATES,
   FEATURES,
   MENU_TUNABLES,

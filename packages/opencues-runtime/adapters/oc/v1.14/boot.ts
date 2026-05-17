@@ -210,7 +210,7 @@ export function boot(host: HostInfo): BootResult {
   // LLM Resolver. Opt-in via any LLM key being available
   // (legacy `llmApiKey` OR any entry in the multi-provider `llmApiKeys`
   // map). The resolver routes per-cue / per-blank / per-feature requests
-  // to whichever provider the user has configured in CUES.md.
+  // to whichever provider the user has configured in OPENCUES.md.
   const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
@@ -234,10 +234,10 @@ export function boot(host: HostInfo): BootResult {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // Re-resolves per tick so CUES.md edits to `agent-provider:` /
+      // Re-resolves per tick so OPENCUES.md edits to `agent-provider:` /
       // `agent-model:` / `llm-provider:` take effect without a restart.
       // null means "use the static fallback" — usually transient until
-      // CUES.md is fully loaded.
+      // OPENCUES.md is fully loaded.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
       cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),

@@ -67,7 +67,8 @@ opencues/
 │   │                              # self-dogfood via `<cwd>/.cues` anymore. Devs working
 │   │                              # on opencues run `seed-configs` once just like any user.
 │   │                              # See docs/features/shipped-defaults.md.
-│   ├── CUES.md                    # Master config: settings frontmatter + ignore: array + project metadata
+│   ├── CUES.md                    # Cue master: project metadata frontmatter + ## Tips / ## Ignore / ## Prompt sections (LLM cue sources)
+│   ├── OPENCUES.md                # Runtime settings (voice-mode, fluid-blank-mode, llm-provider, agent-debounce-ms, ...)
 │   ├── cues/                      # Folder-based cue configs (LLM word-cues + static tip groups)
 │   │   ├── extended-thinking/CUE.md  # type: tips, words: { ultrathink: { tip, alts } }
 │   │   ├── …                      # 38 shipped tip-group folders
@@ -173,7 +174,7 @@ export GROQ_API_KEY="your-key"
 
 1. **`opencues seed-configs --silent`** — owns all writes to `~/.cues/`
    (shared by every native host: CC, OC). First-time copy +
-   library-script sync + 0-byte CUES.md self-heal + colocated `.cs`
+   library-script sync + 0-byte OPENCUES.md self-heal + colocated `.cs`
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
    Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code@2.1.110`
@@ -429,27 +430,47 @@ A user with no `.cues/` anywhere gets empty config (CC/OC)
 — not a crash. Hot-reload polls every search path on every keystroke
 (same `maybeReload` mechanism as before).
 
-The OpenCuesSettingsBlank read/write of system settings now happens
-on the user-level `OPENCUES.md` frontmatter. The frontmatter holds
-system-wide settings (voice-mode, tips-mode, debug-mode, cursor-navigate,
-fluid-blank-mode, word-cues-mode) whose schema is
-owned by the OpenCues runtime. A single value applies across every
-integration, so projects cannot override it. The file lives at
-`~/.cues/CUES.md` (or `$OPENCUES_HOME/CUES.md` when set).
+### OPENCUES.md vs CUES.md — two different files
 
-- `opencues seed-configs` copies `defaults/CUES.md` to `~/.cues/`
-  and runs an idempotent migration that splits any legacy
-  `OPENCUES.md` + `## Tips` / `## Ignore` / `## Blanks` sections into
-  the new layout (tip groups become folders under `cues/<id>/CUE.md`,
-  ignore moves to a frontmatter array, OPENCUES.md and BLANKS.md are
-  deleted).
-- **A 0-byte `CUES.md` is treated as missing** — `OpenCuesSettingsBlank`
-  silently no-ops on null/empty content, which would otherwise break
-  `opencues ___` / `config ___` blank-fills on every native host.
-  Chrome falls back to the bake-time `__DEFAULT_CUES_MD__` constant.
-  The seed-configs HEAL phase ensures `CUES.md` is always non-empty.
-- `ConfigLoader._loadOnce` reads settings from the last search path's
-  CUES.md frontmatter (the user-level entry).
+These names look similar but the files are unrelated. The
+distinction is the source of past confusion (a planned 2026
+migration to merge them was started, never finished, and left
+contradictory comments behind that were finally cleaned in May
+2026). Canonical filename for the runtime settings file is
+exported as `CORE_SETTINGS_FILE` from `@opencues/core`.
+
+**`~/.cues/OPENCUES.md`** — runtime system settings (user-level only).
+Frontmatter holds scalars like `voice-mode`, `tips-mode`,
+`debug-mode`, `cursor-navigate`, `fluid-blank-mode`,
+`word-cues-mode`, `blank-trigger-mode`, `llm-provider`, plus
+numeric tunables (`agent-debounce-ms`, etc.). Schema owned by the
+runtime via the FEATURES + MENU_TUNABLES registry. A single value
+applies across every integration; projects can't override.
+`OpenCuesSettingsBlank` reads + writes this file.
+
+**`~/.cues/CUES.md`** (or `<project>/.cues/CUES.md`) — cue master
+config. Frontmatter has project metadata (`name`, `domain`,
+`version`). Body has `## Tips` (static word tips), `## Ignore`
+(words the runtime never suggests alts for), and `## Prompt`
+with `### <source-name>` LLM-backed cue source declarations.
+Parsed via `parseCuesMd` → `RoutedWordSourceGroup`. Lives at
+user-level OR project-level; project wins on name conflicts.
+
+Lifecycle:
+
+- `opencues seed-configs` copies `defaults/OPENCUES.md` to
+  `~/.cues/OPENCUES.md` (SEED) and re-seeds a 0-byte file (HEAL).
+  CUES.md is seeded the same way separately.
+- **A 0-byte `OPENCUES.md` is treated as missing** —
+  `OpenCuesSettingsBlank` silently no-ops on null/empty content,
+  which would otherwise break `opencues ___` / `config ___`
+  blank-fills on every native host. Chrome falls back to the
+  bake-time `__DEFAULT_OPENCUES_MD__` constant. The seed-configs
+  HEAL phase ensures it's always non-empty.
+- `ConfigLoader._loadOnce` reads settings from the explicit
+  `settingsFile` option (each host passes
+  `~/.cues/OPENCUES.md`); cue sources come from `parseCuesMd`
+  on every CUES.md across the search paths.
 
 ---
 

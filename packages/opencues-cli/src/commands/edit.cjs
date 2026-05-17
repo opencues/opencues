@@ -8,10 +8,12 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const style = require('../lib/style.cjs');
 
-// `cues` covers everything that used to be split across CUES.md /
-// OPENCUES.md / BLANKS.md: settings frontmatter, ignore list, project
-// metadata. Legacy `opencues` and `blanks` aliases are gone post-
-// migration — every user file ends up at ~/.cues/CUES.md.
+// `cues` shorthand for editing the cue master config
+// (~/.cues/CUES.md). Runtime settings live in OPENCUES.md and have
+// their own editor path via `opencues debug` + the
+// selector-satellite cycling menu; this command intentionally
+// doesn't expose them (one less footgun for hand-editing scalars
+// the runtime auto-manages).
 const VALID = new Set(['cues']);
 
 module.exports = function edit(argv, ctx) {

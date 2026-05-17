@@ -12,9 +12,9 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 
 | Priority | Word type | Example | Tip shown | Source |
 |---|---|---|---|---|
-| 1 | Satellite (per-value) | `active` under selector `voice-mode` | "TTS reads tips aloud on navigation" | `CUES.md` `settings:` block, nested value line |
-| 2 | Satellite (fallback) | `on` under selector `debug-mode`, no per-value tip defined | "Enable debug logging output" | `CUES.md` `settings:` block, setting-level line |
-| 3 | Selector | `voice-mode` | "Gates TTS globally" | `CUES.md` `settings:` block, setting-level line |
+| 1 | Satellite (per-value) | `active` under selector `voice-mode` | "TTS reads tips aloud on navigation" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), nested value line |
+| 2 | Satellite (fallback) | `on` under selector `debug-mode`, no per-value tip defined | "Enable debug logging output" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), setting-level line |
+| 3 | Selector | `voice-mode` | "Gates TTS globally" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), setting-level line |
 | 4 | Cue-blank value | `72` after `volume` | "System volume" | Blank's `BLANK.md` `blankTip` field |
 | 5 | Cue-blank keyword | `volume` (the trigger word) | "85" (live reading) | `blankInvoke get` output; falls back to `tip` in `BLANK.md` |
 | 6 | Local cue (folder-based) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `cues/<name>/CUE.md` body JSON via `cueMap` (built in `ConfigLoader`) |
@@ -29,7 +29,7 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 The navigation export code checks three branches in order. The first match wins; the rest are skipped:
 
 1. **Blank-bound word** — the WordDef has `metadata.blankName` set (auto-populated by the blank pipeline)
-   - Selector/satellite sub-branch (`metadata.selectorWord` or `metadata.satelliteWord`): reads `CUES.md` `settings:` block (priorities 1-3)
+   - Selector/satellite sub-branch (`metadata.selectorWord` or `metadata.satelliteWord`): reads `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`) (priorities 1-3)
    - Regular cue-blank value: reads `cueTip` from the WordDef, set by `blankTip` in the blank's `BLANK.md` (priority 4)
 2. **Cue-blank keyword** — the word text matches a registered `blankKeywords` entry
    - Calls `blankInvoke({ action: 'get' })` for a live reading; falls back to `tip` from `BLANK.md` (priority 5)
@@ -64,9 +64,9 @@ When a word is cycled, the tip is updated inline within each cycling branch:
 
 ---
 
-## The `CUES.md` Settings Block
+## The settings menu (registry-derived)
 
-Settings, valid values, and tips are defined together in `CUES.md` frontmatter under a unified `settings:` block. Each setting is self-contained:
+Settings, valid values, and tips are declared in `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry (`packages/opencues-core/src/feature-registry.ts`). The runtime derives the cycling menu at boot. Users who want a custom menu can ship a `settings:` block in `OPENCUES.md` frontmatter as an overlay — when present, the file-level block fully replaces the registry defaults. Example registry entry shape:
 
 ```yaml
 ---
@@ -107,7 +107,7 @@ Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openC
 - `CueResult.cueTip` carries the primary tip for any word
 - `CueResult.altCueTips` maps each alternative to its own tip (for per-alt display during cycling)
 - Cue-blanks use `blankTip` from the blank's config
-- Selector/satellite tips are read from `CUES.md` frontmatter `settings:` block, not from per-cue `CUE.md` files
+- Selector/satellite tips are derived from `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry, not from per-cue `CUE.md` files (file-level `settings:` block in `OPENCUES.md` is an optional override)
 
 ### Integration responsibilities
 

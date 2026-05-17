@@ -85,8 +85,14 @@ module.exports = function doctor(argv, ctx) {
   // runtime is the exact failure class the registry exists to prevent.
   {
     const s = section('Feature wiring', 'optional features + their prerequisites (sourced from @opencues/core FEATURES)');
-    const opencuesMd = path.join(userConfigDir, 'CUES.md');
-    const scalars = readOpencuesScalars(opencuesMd);
+    // Runtime canonical: ~/.cues/OPENCUES.md (via the registry's
+    // CORE_SETTINGS_FILE constant). Native hosts (CC/OC/gemini-cli)
+    // and chrome all read runtime scalars from there. CUES.md is a
+    // separate file (cue master config + project metadata) that has
+    // never carried runtime settings — a previous design plan to
+    // merge them never landed.
+    const settingsFile = path.join(userConfigDir, registry.CORE_SETTINGS_FILE);
+    const scalars = readOpencuesScalars(settingsFile);
 
     // Show each registered feature's current value (or default if unset)
     for (const f of registry.FEATURES) {
@@ -104,12 +110,14 @@ module.exports = function doctor(argv, ctx) {
       s.ok(label, fs.existsSync(filePath));
     }
 
-    // Always-on core files (OPENCUES.md / CUES.md / AUDITORS.md)
+    // Always-on core files (OPENCUES.md / CUES.md / AUDITORS.md).
+    // OPENCUES.md is the canonical runtime-settings file (read by
+    // ConfigLoader via OpenCuesSettingsBlank). CUES.md is the
+    // cue-config master + carries project metadata; only some installs
+    // have it co-located with settings (back-compat with the pre-2026
+    // single-file layout). Skip showing OPENCUES.md if absent + CUES.md
+    // present, to keep the section short.
     for (const basename of registry.CORE_CONFIG_FILES) {
-      // OPENCUES.md is the legacy filename — settings now live in CUES.md.
-      // Show whichever variant the user has (some installs have both
-      // post-migration). Skip showing OPENCUES.md if absent + CUES.md
-      // present, to keep the section short.
       if (basename === 'OPENCUES.md' && !fs.existsSync(path.join(userConfigDir, basename))) continue;
       const filePath = path.join(userConfigDir, basename);
       const populated = countPopulatedFields(filePath, basename);

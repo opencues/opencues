@@ -87,7 +87,7 @@ export interface HostInfo {
    * Optional: API keys keyed by provider env-var name
    * (GROQ_API_KEY / OPENROUTER_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY).
    * The patch reads `process.env` and forwards whichever keys are set;
-   * the runtime picks the right one based on CUES.md `llm-provider:` /
+   * the runtime picks the right one based on OPENCUES.md `llm-provider:` /
    * `<feature>-provider:` settings. Legacy `llmApiKey` is still accepted
    * and registered as GROQ_API_KEY when this map isn't supplied.
    */
@@ -443,10 +443,10 @@ export function boot(host: HostInfo): BootResult {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // Re-resolves per tick — picks up CUES.md `agent-provider:` /
+      // Re-resolves per tick — picks up OPENCUES.md `agent-provider:` /
       // `agent-model:` / `llm-provider:` edits without a restart.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
-      // Sliding-window mode (lazy thunk so CUES.md edits take effect
+      // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
       // without a restart). 0 = full-buffer; e.g. 200 = cursor ± 100
       // words, expanded to paragraph boundaries.
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,

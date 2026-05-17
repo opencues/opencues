@@ -18,7 +18,8 @@ Config file changes take effect within ~2 seconds, without restarting the integr
 1. **At startup**, `_configLoadedAt = 0` and `_reloadCuesConfig()` runs immediately, parsing all config files and building the resolver
 2. **On every analysis pass** (when the user types), the auto-submit code checks: `Date.now() - _configLoadedAt > 2000` and `!_dynPending` and `!_configReloading`. If all conditions are met, `_reloadCuesConfig()` fires
 3. **`_reloadCuesConfig()`** sets `_configReloading = true`, then parses all config files into local variables:
-   - `CUES.md` (frontmatter: settings, current values, selector/satellite tips, ignore array — **user-level only**, `~/.cues/CUES.md`)
+   - `OPENCUES.md` (frontmatter: runtime system settings + selector/satellite tips for cyclable scalars — **user-level only**, `~/.cues/OPENCUES.md`)
+   - `CUES.md` (frontmatter: project metadata; body: `## Tips` / `## Ignore` / `## Prompt` cue sources — user OR project level)
    - `cues/{name}/CUE.md` (folder-based cue sources via `discoverFolderConfigs` — static cues with body JSON, or LLM cues with prompt body)
    - `blanks/{name}/BLANK.md` (folder-based cue-blanks)
 4. **Atomic apply** — all parsed results are assigned to globals in a single block (`_cueBlankOverrides`, `_localCueMap`, `_cuesIgnoreWords`, etc.). If parsing throws, the previous config is preserved (`_applied` stays false and the resolver rebuild is skipped)
@@ -29,7 +30,8 @@ Config file changes take effect within ~2 seconds, without restarting the integr
 
 ## What Hot-Reloads
 
-- `CUES.md` — settings, current values, selector/satellite tips, `ignore:` array (`_openCuesSettings`, `_openCuesCurrent`, `_openCuesTips`, `_openCuesSatTips`, `_cuesIgnoreWords`). **User-level only** for the system-settings half (`~/.cues/CUES.md`); projects can't override system settings.
+- `OPENCUES.md` — system settings, current values, selector/satellite tips (`_openCuesSettings`, `_openCuesCurrent`, `_openCuesTips`, `_openCuesSatTips`). **User-level only** (`~/.cues/OPENCUES.md`); projects can't override system settings.
+- `CUES.md` — project metadata + cue sources + `ignore:` (`_cuesIgnoreWords`). User OR project level.
 - `cues/{name}/CUE.md` — folder-based cue sources (adding or removing a folder; static + LLM)
 - `blanks/{name}/BLANK.md` — folder-based cue-blanks (adding or removing a folder)
 

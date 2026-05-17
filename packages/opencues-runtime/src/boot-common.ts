@@ -96,9 +96,9 @@ import { ConfigLoader } from './modules/config-loader';
 
 /**
  * Build the AgentRewrite `resolveLLM` thunk for boot files. Reads the
- * current `agent-provider:` / `agent-model:` / `agent-endpoint:` CUES.md
- * frontmatter (with falls-through to global `llm-provider:` /
- * `llm-model:` / `llm-endpoint:`), looks up the right ProviderAdapter
+ * current `agent-provider:` / `agent-model:` / `agent-endpoint:`
+ * OPENCUES.md frontmatter (with falls-through to global `llm-provider:`
+ * / `llm-model:` / `llm-endpoint:`), looks up the right ProviderAdapter
  * from @opencues/core, and returns the resolved tuple. Returns null
  * when no key is available for the resolved provider, OR when
  * @opencues/core can't be require()'d (rare — usually a packaging
@@ -106,7 +106,7 @@ import { ConfigLoader } from './modules/config-loader';
  * in that case.
  *
  * Re-resolves on every tick (callers wrap this in an arrow), so
- * CUES.md hot-reload propagates without an integration restart.
+ * OPENCUES.md hot-reload propagates without an integration restart.
  */
 export function buildAgentLLMResolver(
   configLoader: ConfigLoader,

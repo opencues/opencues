@@ -30,10 +30,10 @@ import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-
 /**
  * Per-feature provider/model/endpoint trio. Each LLM-driven source
  * (word cues, fluid blank, transform blank, agent) reads its own
- * settings from CUES.md root frontmatter; the caller flattens those
- * into this struct before calling buildSourcesFromConfig.
+ * settings from OPENCUES.md root frontmatter; the caller flattens
+ * those into this struct before calling buildSourcesFromConfig.
  *
- * Example mapping in the boot layer (CUES.md frontmatter → here):
+ * Example mapping in the boot layer (OPENCUES.md frontmatter → here):
  *   word-cues-provider:    → wordCues.provider
  *   word-cues-model:       → wordCues.model
  *   word-cues-endpoint:    → wordCues.endpoint
@@ -60,14 +60,14 @@ export interface BuildSourcesOptions {
    */
   apiKeys?: Readonly<Record<string, string | undefined>>;
   /**
-   * Global llm-provider/model/endpoint defaults from CUES.md root
-   * frontmatter. The least-specific tier — overridden by per-feature
-   * and per-cue settings.
+   * Global llm-provider/model/endpoint defaults from OPENCUES.md
+   * root frontmatter. The least-specific tier — overridden by
+   * per-feature and per-cue settings.
    */
   globalProvider?: string;
   globalModel?: string;
   globalEndpoint?: string;
-  /** Per-feature defaults read from CUES.md root frontmatter. */
+  /** Per-feature defaults read from OPENCUES.md root frontmatter. */
   wordCues?: FeatureLLMSetting;
   fluidBlank?: FeatureLLMSetting;
   transformBlank?: FeatureLLMSetting;
@@ -75,7 +75,7 @@ export interface BuildSourcesOptions {
    * Pipeline mode for TransformBlank. `'auto'` (default) picks per
    * provider — groq → 3-pass, everyone else → fused — via
    * `pickTransformBlankMode`. `'3-pass'` and `'fused'` force the mode
-   * regardless of provider. Read from CUES.md's `transform-blank-mode:`
+   * regardless of provider. Read from OPENCUES.md's `transform-blank-mode:`
    * frontmatter scalar by the runtime/resolver before passing here.
    * See `transform-blank-source.ts` for the dispatch logic.
    */

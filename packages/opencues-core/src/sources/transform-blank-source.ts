@@ -1335,7 +1335,7 @@ export interface TransformBlankSourceConfig {
    *   - `'auto'` (or omitted) — picks per provider via
    *     `pickTransformBlankMode()`: groq → 3-pass; everyone else → fused.
    *
-   * Set via the `transform-blank-mode:` CUES.md frontmatter; passed
+   * Set via the `transform-blank-mode:` OPENCUES.md frontmatter; passed
    * through build-sources to here. Benchmark evidence:
    * `tests/benchmarks/transform-blank/EXPERIMENTS.md § 6-8`.
    */

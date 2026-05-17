@@ -161,6 +161,26 @@ export const CORE_CONFIG_FILES: readonly string[] = [
 ];
 
 /**
+ * Canonical filename for the user-level RUNTIME SETTINGS file —
+ * lives at `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md`).
+ * Carries all OPENCUES.md scalars (voice-mode, debug-mode,
+ * fluid-blank-mode, llm-provider, etc.).
+ *
+ * NOT to be confused with `CUES.md` — that's the cue master
+ * config (cue source declarations, project metadata, optional
+ * tips/ignore lists). The two files have different schemas and
+ * different lifecycles; they happen to share a similar name.
+ *
+ * Single source of truth — every CLI command, host bootstrap, and
+ * documentation reference should derive from here rather than
+ * hardcoding the filename. A previous (aborted) migration plan
+ * intended to merge OPENCUES.md into CUES.md; that migration
+ * never landed, so CLAUDE.md and some old comments still say
+ * "settings live in CUES.md" — those are wrong.
+ */
+export const CORE_SETTINGS_FILE = 'OPENCUES.md';
+
+/**
  * Map of core-file basename → repo-relative template path, for
  * files that ship a seed template the user can edit. Iterated by
  * seed-configs alongside the per-feature templates. Files without

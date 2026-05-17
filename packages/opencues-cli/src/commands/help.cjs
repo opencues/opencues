@@ -82,11 +82,13 @@ function configRows(ctx) {
     ? active.map(a => bold(a.label)).join(dim(' + '))
     : dim('(no config — run `opencues seed-configs`)');
 
-  // Providers live in OPENCUES.md frontmatter (legacy/runtime-managed)
-  // when present; CUES.md is the post-migration location.
-  const settingsFile = fs.existsSync(path.join(HOME, '.cues', 'OPENCUES.md'))
-    ? path.join(HOME, '.cues', 'OPENCUES.md')
-    : path.join(HOME, '.cues', 'CUES.md');
+  // Runtime scalars (llm-provider, llm-model, debug-mode, …) live in
+  // OPENCUES.md frontmatter — canonical filename declared in
+  // packages/opencues-core/src/feature-registry.ts as CORE_SETTINGS_FILE.
+  // (A pre-2026 design considered merging OPENCUES.md into CUES.md
+  // but the migration never landed; that CUES.md fallback was
+  // vestigial and has been removed.)
+  const settingsFile = path.join(HOME, '.cues', 'OPENCUES.md');
 
   // Auto-route preference order — sourced from @opencues/core's
   // PROVIDER_AUTO_ORDER. cerebras first (1.8-3× faster than groq on
