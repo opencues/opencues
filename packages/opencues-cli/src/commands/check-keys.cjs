@@ -25,15 +25,37 @@ module.exports = async function checkKeys(argv, ctx) {
   }
   const get = (k) => process.env[k] || fileEnv[k];
 
-  const checks = [
-    { provider: 'groq',       env: 'GROQ_API_KEY',       fn: checkGroq },
-    { provider: 'cerebras',   env: 'CEREBRAS_API_KEY',   fn: checkCerebras },
-    { provider: 'openai',     env: 'OPENAI_API_KEY',     fn: checkOpenAI },
-    { provider: 'anthropic',  env: 'ANTHROPIC_API_KEY',  fn: checkAnthropic },
-    { provider: 'openrouter', env: 'OPENROUTER_API_KEY', fn: checkOpenRouter },
-    { provider: 'gemini',     env: 'GEMINI_API_KEY',     fn: checkGemini },
-    { provider: 'finnhub',    env: 'FINNHUB_API_KEY',    fn: checkFinnhub },
-  ];
+  // Map provider id → live-probe function. Each function hits the
+  // provider's lightest endpoint (model list, free) using the user's
+  // key, surfacing 401/403/network errors. Keep keyed by provider id
+  // since each probe is unique per-provider's auth shape.
+  const PROBE_FN = {
+    groq: checkGroq, cerebras: checkCerebras, openai: checkOpenAI,
+    anthropic: checkAnthropic, openrouter: checkOpenRouter, gemini: checkGemini,
+  };
+
+  // Provider list sourced from @opencues/core's PROVIDERS registry —
+  // adding a provider auto-flows into check-keys (just add a PROBE_FN
+  // entry above). Falls back to the hardcoded list if core isn't built.
+  let registry = null;
+  try {
+    registry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+  } catch { /* core not built — fall back below */ }
+  const llmChecks = registry
+    ? registry.listProviders().map(p => ({
+        provider: p.id, env: p.envKeyName, fn: PROBE_FN[p.id],
+      })).filter(c => c.fn)  // skip any provider missing a probe
+    : [
+        { provider: 'groq',       env: 'GROQ_API_KEY',       fn: checkGroq },
+        { provider: 'cerebras',   env: 'CEREBRAS_API_KEY',   fn: checkCerebras },
+        { provider: 'openai',     env: 'OPENAI_API_KEY',     fn: checkOpenAI },
+        { provider: 'anthropic',  env: 'ANTHROPIC_API_KEY',  fn: checkAnthropic },
+        { provider: 'openrouter', env: 'OPENROUTER_API_KEY', fn: checkOpenRouter },
+        { provider: 'gemini',     env: 'GEMINI_API_KEY',     fn: checkGemini },
+      ];
+  // Finnhub is non-LLM (stocks blank); kept hardcoded as the lone
+  // non-LLM service-key check.
+  const checks = [...llmChecks, { provider: 'finnhub', env: 'FINNHUB_API_KEY', fn: checkFinnhub }];
   let bad = 0;
   for (const c of checks) {
     const key = get(c.env);

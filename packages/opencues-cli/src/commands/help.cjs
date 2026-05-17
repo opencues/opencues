@@ -43,12 +43,26 @@ function cmdL(name, desc, pad = 24) {
 }
 function head(title) { return bold(title); }
 
-// Compact snapshot of the user's current setup. Filesystem-only (no
-// @opencues/core load) so it stays fast on every `opencues help`.
-// Returns rows for the standard cmd() layout — caller wraps in a
-// `Configuration:` section heading.
-function configRows() {
+// Lazy-load the provider registry (just llm-provider.js, ~2ms — NOT
+// the full core which transitively pulls in resolver/sources). Cached
+// across calls. Returns null if core isn't built yet; callers degrade
+// gracefully.
+let _cachedProviderRegistry = null;
+function loadProviderRegistry(ctx) {
+  if (_cachedProviderRegistry !== null) return _cachedProviderRegistry;
+  try {
+    _cachedProviderRegistry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+  } catch { _cachedProviderRegistry = false; }
+  return _cachedProviderRegistry || null;
+}
+
+// Compact snapshot of the user's current setup. Provider data sourced
+// from @opencues/core's PROVIDERS registry (single source of truth);
+// filesystem reads for everything else. Returns rows for the standard
+// cmd() layout — caller wraps in a `Configuration:` section heading.
+function configRows(ctx) {
   const HOME = os.homedir();
+  const core = loadProviderRegistry(ctx);
 
   const candidates = [
     { label: '$OPENCUES_HOME', dir: process.env.OPENCUES_HOME },
@@ -74,18 +88,21 @@ function configRows() {
     ? path.join(HOME, '.cues', 'OPENCUES.md')
     : path.join(HOME, '.cues', 'CUES.md');
 
-  // Auto-route preference order — kept in sync with PROVIDER_AUTO_ORDER
-  // in packages/opencues-core/src/llm-provider.ts. cerebras first because
-  // it's 1.8-3× faster than groq on the same gpt-oss-120b model (May 2026
-  // benchmark sweep). openai-nano last — broken on most pipelines but
-  // better than silent no-op for users who only have an OpenAI key.
-  const AUTO_ORDER = [
-    { id: 'cerebras', envKey: 'CEREBRAS_API_KEY' },
-    { id: 'groq',     envKey: 'GROQ_API_KEY' },
-    { id: 'gemini',   envKey: 'GEMINI_API_KEY' },
-    { id: 'anthropic', envKey: 'ANTHROPIC_API_KEY' },
-    { id: 'openai',   envKey: 'OPENAI_API_KEY' },
-  ];
+  // Auto-route preference order — sourced from @opencues/core's
+  // PROVIDER_AUTO_ORDER. cerebras first (1.8-3× faster than groq on
+  // same gpt-oss-120b model), openai last (broken on most pipelines
+  // but better than silent no-op). If core isn't loaded, fall back to
+  // a frozen snapshot so help still works pre-build.
+  const AUTO_ORDER = core
+    ? core.PROVIDER_AUTO_ORDER.map(id => ({ id, envKey: core.getProvider(id)?.envKeyName }))
+        .filter(p => !!p.envKey)
+    : [
+        { id: 'cerebras', envKey: 'CEREBRAS_API_KEY' },
+        { id: 'groq',     envKey: 'GROQ_API_KEY' },
+        { id: 'gemini',   envKey: 'GEMINI_API_KEY' },
+        { id: 'anthropic', envKey: 'ANTHROPIC_API_KEY' },
+        { id: 'openai',   envKey: 'OPENAI_API_KEY' },
+      ];
   const envFileForRoute = path.join(HOME, '.cues', '.env');
   const envFileContents = fs.existsSync(envFileForRoute) ? fs.readFileSync(envFileForRoute, 'utf8') : '';
   function hasKey(envKey) {
@@ -109,6 +126,7 @@ function configRows() {
     const model =
       readScalar(settingsFile, `${s}-model`) ||
       globalModel ||
+      (core?.getProvider(p.toLowerCase())?.defaultModel) ||
       PROVIDER_DEFAULT_MODEL[p.toLowerCase()] ||
       '';
     return [s, p, model];
@@ -118,8 +136,15 @@ function configRows() {
   // land on the same column as the Keys row's MIDDLE divider).
   const envFile = path.join(HOME, '.cues', '.env');
   const envContents = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '';
-  const KEYS_ROW_A = ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
-  const KEYS_ROW_B = ['OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'FINNHUB_API_KEY'];
+  // Keys to show in the env-var grid. LLM keys sourced from the
+  // registry; FINNHUB_API_KEY (stocks blank, non-LLM) is the lone
+  // hardcoded entry. Split into two rows for layout — 4 + (rest)
+  // keeps the grid square. Adding a provider auto-flows into the rows.
+  const allLlmEnvKeys = core
+    ? core.listProviders().map(p => p.envKeyName)
+    : ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY'];
+  const KEYS_ROW_A = allLlmEnvKeys.slice(0, 4);
+  const KEYS_ROW_B = [...allLlmEnvKeys.slice(4), 'FINNHUB_API_KEY'];
   const KEY_WIDTH = Math.max(...[...KEYS_ROW_A, ...KEYS_ROW_B].map(k => k.length));
   const SEP = '  │  ';                          // 5 visible chars
   const KEYS_SLOT_W = KEY_WIDTH + 1 + 1;        // key + space + tick
@@ -140,7 +165,7 @@ function configRows() {
     Math.max(surfaces[1][0].length, surfaces[3][0].length),
   ];
   const slotForSurface = ([s, p, m], labelW) => {
-    const pname = displayProvider(p);
+    const pname = displayProvider(p, core);
     const labelCol = (s + ':').padEnd(labelW + 1);
     const usedBeforeModel = (labelW + 1) + 1 + pname.length + 3;
     const modelBudget = Math.max(0, PROVIDER_SLOT_W - usedBeforeModel);
@@ -163,11 +188,16 @@ function configRows() {
   // explicitly, surface that the provider grid above was picked by the
   // auto-router. Helps the user understand why fluid-blank suddenly
   // routes to cerebras when they only set CEREBRAS_API_KEY.
+  // Auto-route chain text + "no keys" hint both derived from the
+  // same AUTO_ORDER above. Adding a provider to the registry updates
+  // both strings automatically.
+  const chainText = AUTO_ORDER.map(p => p.id).join(' > ');
+  const envKeysList = AUTO_ORDER.map(p => p.envKey).join(' / ');
   const routeNote = globalProviderSet
     ? null
     : autoPicked
-      ? dim(`auto-routed (cerebras > groq > gemini > anthropic > openai); set ${bold('llm-provider:')} in OPENCUES.md to override`)
-      : dim('no keys set — set any of GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY');
+      ? dim(`auto-routed (${chainText}); set ${bold('llm-provider:')} in OPENCUES.md to override`)
+      : dim(`no keys set — set any of ${envKeysList}`);
 
   const providerContinuations = [surfaceRow2];
   if (routeNote) providerContinuations.push(routeNote);
@@ -207,19 +237,22 @@ function readScalar(filePath, key) {
   return m ? m[1] : null;
 }
 
-// Display-case for known LLM provider IDs. Falls back to first-letter
-// capitalisation for unknown providers.
-const PROVIDER_DISPLAY = {
-  groq: 'Groq', cerebras: 'Cerebras', openai: 'OpenAI',
-  anthropic: 'Anthropic', openrouter: 'OpenRouter', gemini: 'Gemini',
-};
-function displayProvider(id) {
+// Display-case fallback for when the @opencues/core registry isn't
+// loadable (pre-build). Live data sourced from getProvider(id).displayName.
+function displayProvider(id, core) {
   if (!id) return null;
+  const fromRegistry = core?.getProvider(id.toLowerCase())?.displayName;
+  if (fromRegistry) return fromRegistry;
+  // Fallback for pre-build / unknown id
   return PROVIDER_DISPLAY[id.toLowerCase()] || (id[0].toUpperCase() + id.slice(1));
 }
+const PROVIDER_DISPLAY = {
+  groq: 'Groq', cerebras: 'Cerebras', openai: 'OpenAI',
+  anthropic: 'Claude', openrouter: 'OpenRouter', gemini: 'Gemini',
+};
 
-// Default model per provider (per docs/guides/llm-providers.md). Used
-// when the user hasn't pinned a model in OPENCUES.md frontmatter.
+// Default model fallback for pre-build. Live data sourced from
+// getProvider(id).defaultModel.
 const PROVIDER_DEFAULT_MODEL = {
   groq:       'openai/gpt-oss-120b',
   cerebras:   'gpt-oss-120b',
@@ -253,7 +286,7 @@ module.exports = function help(argv, ctx) {
   const { pkg } = ctx;
   console.log(banner({ version: pkg.version, tagline: 'LLM cues and `_`-gated blanks for any editor.' }));
   console.log(dim(G.treeStart));   // dim │ — visual link from the C_ badge down into the tree
-  console.log(configTree(configRows()));
+  console.log(configTree(configRows(ctx)));
   console.log('');
   console.log('');
   console.log(`Usage: opencues ${bold('<command>')} [options]`);

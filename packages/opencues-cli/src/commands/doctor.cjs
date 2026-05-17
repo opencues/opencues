@@ -32,11 +32,12 @@ module.exports = function doctor(argv, ctx) {
   // Single source of truth for what features + config files OpenCues
   // knows about. Load lazily so `opencues doctor --help` works even
   // when core isn't built yet.
-  let registry;
+  let registry, providers;
   try {
     registry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/feature-registry.js'));
+    providers = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
   } catch (err) {
-    console.error('opencues doctor: failed to load @opencues/core feature-registry (run `pnpm build`):', err.message);
+    console.error('opencues doctor: failed to load @opencues/core (run `pnpm build`):', err.message);
     return 1;
   }
 
@@ -367,30 +368,55 @@ module.exports = function doctor(argv, ctx) {
   }
 
   // ── Env / API keys ────────────────────────────────────────────────────
+  // Sourced from @opencues/core's PROVIDERS registry — same list
+  // check-keys probes + host.cjs pushes. Display order follows
+  // PROVIDER_AUTO_ORDER (the actual auto-fallback chain) so the
+  // first-line provider is the one a fresh user without configured
+  // overrides will hit.
   {
     const s = section('Environment', 'API keys exported in this shell session');
-    // Every supported provider — matches the set check-keys probes + the
-    // chrome host's host-pushed API key list. Each is independent:
-    // unsetting one disables only that provider, not the runtime overall.
-    s.ok('GROQ_API_KEY (LLM — default)',     !!process.env.GROQ_API_KEY);
-    s.ok('CEREBRAS_API_KEY (LLM)',           !!process.env.CEREBRAS_API_KEY);
-    s.ok('OPENAI_API_KEY (LLM)',             !!process.env.OPENAI_API_KEY);
-    s.ok('ANTHROPIC_API_KEY (LLM)',          !!process.env.ANTHROPIC_API_KEY);
-    s.ok('OPENROUTER_API_KEY (LLM)',         !!process.env.OPENROUTER_API_KEY);
-    s.ok('GEMINI_API_KEY (LLM)',             !!process.env.GEMINI_API_KEY);
-    s.ok('FINNHUB_API_KEY (stocks blank)',   !!process.env.FINNHUB_API_KEY);
+    const order = providers.PROVIDER_AUTO_ORDER;
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      const adapter = providers.getProvider(id);
+      if (!adapter) continue;
+      const suffix = i === 0 ? ' (LLM — auto-pick when set)' : ' (LLM)';
+      s.ok(`${adapter.envKeyName}${suffix}`, !!process.env[adapter.envKeyName]);
+    }
+    // Show every other LLM provider (e.g. openrouter, intentionally
+    // excluded from PROVIDER_AUTO_ORDER as a routing layer) so doctor
+    // still surfaces whether the user has that key set.
+    for (const adapter of providers.listProviders()) {
+      if (order.includes(adapter.id)) continue;
+      s.ok(`${adapter.envKeyName} (LLM)`, !!process.env[adapter.envKeyName]);
+    }
+    // Non-LLM service keys — kept hardcoded; one entry today (FINNHUB
+    // for the stocks blank). Lift into a SERVICE_KEYS registry when
+    // there's a second one.
+    s.ok('FINNHUB_API_KEY (stocks blank)', !!process.env.FINNHUB_API_KEY);
     s.render();
   }
-  // GROQ is the shipped default — flag if it's missing AND no other LLM
-  // provider key is set (any one of them lets the runtime cover LLM-driven
-  // surfaces via per-cue / global tier overrides).
-  const hasAnyLlmKey = !!(process.env.GROQ_API_KEY || process.env.CEREBRAS_API_KEY
-    || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY
-    || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+  // No LLM provider key set → every LLM-driven cue/blank is inert.
+  // hasAnyLlmKey iterates the registry so adding a provider auto-counts.
+  const hasAnyLlmKey = providers.listProviders().some(p => !!process.env[p.envKeyName]);
   if (!hasAnyLlmKey) {
-    findings.push({ sev: 'warn', msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert', fix: 'export GROQ_API_KEY=... (or another supported provider)' });
-  } else if (!process.env.GROQ_API_KEY) {
-    findings.push({ sev: 'info', msg: 'GROQ_API_KEY unset — non-default provider configured; ensure your CUES.md / OPENCUES.md sets `llm-provider:` to a host you have a key for', fix: 'opencues check-keys' });
+    const firstChoice = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
+    findings.push({
+      sev: 'warn',
+      msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert',
+      fix: `export ${firstChoice?.envKeyName ?? 'GROQ_API_KEY'}=... (or another supported provider)`,
+    });
+  } else {
+    // First-in-auto-order key missing AND a non-default provider is set
+    // → user has likely overridden llm-provider:, verify their setup.
+    const top = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
+    if (top && !process.env[top.envKeyName]) {
+      findings.push({
+        sev: 'info',
+        msg: `${top.envKeyName} unset — auto-fallback's first choice (${top.displayName}) won't pick; ensure CUES.md / OPENCUES.md sets \`llm-provider:\` to a host you have a key for`,
+        fix: 'opencues check-keys',
+      });
+    }
   }
 
   // ── Runtime IPC files ─────────────────────────────────────────────────

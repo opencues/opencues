@@ -12,27 +12,39 @@ const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
 
-// Map every recognised host name to its folder under integrations/.
-// Descriptive forms are the canonical folder names now; short codes
-// ('cc', 'oc') remain as accepted aliases for power users / typing speed.
-const HOST_ALIASES = {
-  'claude-code': 'claude-code',
-  'claudecode':  'claude-code',
-  'claude':      'claude-code',
-  'cc':          'claude-code',
-  'opencode':    'opencode',
-  'oc':          'opencode',
-  'chrome':      'chrome',
-  'chrome-host': 'chrome',          // native-messaging host (separate sub-action)
-  'gemini-cli':  'gemini-cli',
-  'geminicli':   'gemini-cli',
-  'gemini':      'gemini-cli',
-};
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];     // canonical names
-const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli']; // resolved folders for --all
+// Host name resolution comes from @opencues/core (HOSTS + HOST_ALIASES +
+// resolveHost). 'chrome-host' is the lone special case kept local — it's
+// a sub-action of chrome (the native-messaging host install), not a
+// distinct host. Caught here and routed in subcommand dispatch.
+function loadHostResolver(ctx) {
+  try {
+    const core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/host-compat.js'));
+    return {
+      HOSTS: core.HOSTS.slice().sort(),
+      resolve: (name) => name === 'chrome-host' ? 'chrome' : core.resolveHost(name),
+    };
+  } catch {
+    // Pre-build fallback — keep CLI usable.
+    return {
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode'],
+      resolve: (name) => {
+        const map = {
+          'claude-code': 'claude-code', 'claudecode': 'claude-code',
+          'claude': 'claude-code', 'cc': 'claude-code',
+          'opencode': 'opencode', 'oc': 'opencode',
+          'chrome': 'chrome', 'chrome-host': 'chrome',
+          'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli',
+          'gemini': 'gemini-cli',
+        };
+        return map[name?.toLowerCase?.()] ?? null;
+      },
+    };
+  }
+}
 
 module.exports = function install(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
+  const { HOSTS, resolve } = loadHostResolver(ctx);
 
   // Parse: first non-flag positional is the host. `--all` is a special
   // pseudo-host. Everything else flows through to the per-host installer.
@@ -53,9 +65,9 @@ module.exports = function install(argv, ctx) {
 
   // Resolve descriptive name → folder code; --all expands to all folders.
   const folders = target === '--all'
-    ? HOST_FOLDERS
-    : [HOST_ALIASES[target]];
-  if (folders[0] === undefined) {
+    ? HOSTS.slice()
+    : [resolve(target)];
+  if (folders[0] === undefined || folders[0] === null) {
     console.error(`opencues install: unknown host "${target}". Known: ${HOSTS.join(', ')}, --all`);
     process.exit(2);
   }

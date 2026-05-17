@@ -28,16 +28,27 @@ function printLaunchBanner(ctx, host, rows) {
   console.log('');
 }
 
-const HOST_ALIASES = {
-  'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
-  'opencode':    'opencode',    'oc':         'opencode',
-  'chrome':      'chrome',
-  'gemini-cli':  'gemini-cli',  'geminicli':  'gemini-cli',  'gemini': 'gemini-cli',
-};
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
+// Host name resolution — sourced from @opencues/core.
+function loadHostResolver(ctx) {
+  try {
+    const core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/host-compat.js'));
+    return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
+  } catch {
+    return {
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode'],
+      resolve: (n) => ({
+        'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
+        'opencode': 'opencode', 'oc': 'opencode',
+        'chrome': 'chrome',
+        'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
+      })[n?.toLowerCase?.()] ?? null,
+    };
+  }
+}
 
 module.exports = function run(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  const { HOSTS, resolve } = loadHostResolver(ctx);
 
   let target = null;
   const passthrough = [];
@@ -52,7 +63,7 @@ module.exports = function run(argv, ctx) {
     process.exit(2);
   }
 
-  const folder = HOST_ALIASES[target];
+  const folder = resolve(target);
   if (!folder) {
     console.error(`opencues run: unknown host "${target}". Known: ${HOSTS.join(', ')}`);
     process.exit(2);

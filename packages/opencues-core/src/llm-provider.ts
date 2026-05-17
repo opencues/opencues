@@ -106,6 +106,8 @@ export interface BuiltRequest {
 
 export interface ProviderAdapter {
   readonly id: ProviderId;
+  /** Human-readable name for CLI banners + doctor / help output. e.g. 'Cerebras', 'OpenAI'. */
+  readonly displayName: string;
   /** Default endpoint URL when the user hasn't overridden. Some providers (Gemini) substitute the model into the URL. */
   readonly defaultEndpoint: string;
   /** Default model when the user hasn't picked one. */
@@ -196,6 +198,7 @@ function parseOpenAIResponse(rawJson: string): string {
 
 const GROQ: ProviderAdapter = {
   id: 'groq',
+  displayName: 'Groq',
   defaultEndpoint: 'https://api.groq.com/openai/v1/chat/completions',
   defaultModel: 'openai/gpt-oss-120b',
   envKeyName: 'GROQ_API_KEY',
@@ -213,6 +216,7 @@ const GROQ: ProviderAdapter = {
 
 const OPENROUTER: ProviderAdapter = {
   id: 'openrouter',
+  displayName: 'OpenRouter',
   defaultEndpoint: 'https://openrouter.ai/api/v1/chat/completions',
   // Free-tier non-llama default. `openai/gpt-oss-120b:free` is the same
   // gpt-oss-120b model Groq ships, just hosted on OpenRouter's free
@@ -238,6 +242,7 @@ const OPENROUTER: ProviderAdapter = {
 
 const OPENAI: ProviderAdapter = {
   id: 'openai',
+  displayName: 'OpenAI',
   defaultEndpoint: 'https://api.openai.com/v1/chat/completions',
   // gpt-5.4-mini (released March 2026) — mid-tier in the OpenAI lineup
   // at $0.75/$4.50 per 1M in/out. Picked as the default over gpt-5.4-nano
@@ -301,6 +306,7 @@ const OPENAI: ProviderAdapter = {
  */
 const GEMINI: ProviderAdapter = {
   id: 'gemini',
+  displayName: 'Gemini',
   // Templated — model is substituted at buildRequest time.
   defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
   // gemini-3.1-flash-lite is Google's cheapest 3.x-class flash tier
@@ -381,6 +387,7 @@ const GEMINI: ProviderAdapter = {
  */
 const ANTHROPIC: ProviderAdapter = {
   id: 'anthropic',
+  displayName: 'Claude',
   defaultEndpoint: 'https://api.anthropic.com/v1/messages',
   // Haiku 4.5 — fastest + cheapest Claude, well-suited to the
   // sub-second cue / blank-fill round-trips OpenCues makes. Users
@@ -459,6 +466,7 @@ const ANTHROPIC: ProviderAdapter = {
  */
 const CEREBRAS: ProviderAdapter = {
   id: 'cerebras',
+  displayName: 'Cerebras',
   defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
   defaultModel: 'gpt-oss-120b',
   envKeyName: 'CEREBRAS_API_KEY',

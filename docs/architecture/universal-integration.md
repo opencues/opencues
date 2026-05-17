@@ -115,7 +115,18 @@ BlankFill.onUnderscoreKey / on-text-change
 filtered output of `buildSourcesFromConfig`. The first version of
 the universal-mode filter only patched path 1, and `volume _` in a
 normal input still populated because BlankFill claimed it via path
-2. The two filters must stay in sync.
+2.
+
+Both paths now import the same `isBlankConfigCycleable` predicate
+from `@opencues/core` (verified at `build-sources.ts:25` and
+`blank-fill.ts:12`). Since they call the identical function, they
+cannot drift on cycleability semantics — adding a new "cycleable"
+condition automatically propagates to both. The remaining
+correctness obligation is that each filter site actually CALLS the
+predicate; a third path that bound cycleable defs to user input
+without consulting it would re-introduce the bug. Tests
+(`build-sources.test.ts`, the chrome end-to-end suite) pin both
+sites' filter calls.
 
 When either filter trips, an info log fires:
 

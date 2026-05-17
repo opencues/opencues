@@ -143,8 +143,17 @@ export function formatHostList(hosts: readonly Host[]): string {
 // to "only on reddit.com" or "only the /r/claudeai subreddit", while
 // still allowing platform-only scopes (just like on-host).
 
-/** Common aliases accepted alongside canonical host names. */
-const HOST_ALIASES: Record<string, Host> = {
+/**
+ * Common aliases accepted alongside canonical host names. Maps
+ * alias → canonical Host. The canonical names themselves
+ * ('claude-code', 'opencode', 'chrome', 'gemini-cli') are NOT in
+ * this map — use `resolveHost()` to handle both in one call.
+ *
+ * Single source of truth for every CLI subcommand that accepts a
+ * host argument (install, run, sync, uninstall, update). Adding an
+ * alias = one entry here.
+ */
+export const HOST_ALIASES: Readonly<Record<string, Host>> = {
   'cc': 'claude-code',
   'claudecode': 'claude-code',
   'claude': 'claude-code',
@@ -152,6 +161,24 @@ const HOST_ALIASES: Record<string, Host> = {
   'gemini': 'gemini-cli',
   'geminicli': 'gemini-cli',
 };
+
+/**
+ * Resolve a user-supplied host string (canonical name or alias)
+ * to its canonical Host. Returns null when the input doesn't match
+ * any known host. CLI subcommands should call this rather than
+ * maintaining their own alias map.
+ *
+ * @example
+ *   resolveHost('cc')          // 'claude-code'
+ *   resolveHost('claude-code') // 'claude-code'
+ *   resolveHost('vscode')      // null
+ */
+export function resolveHost(input: string | null | undefined): Host | null {
+  if (!input) return null;
+  const key = input.toLowerCase();
+  if ((HOSTS as readonly string[]).includes(key)) return key as Host;
+  return HOST_ALIASES[key] ?? null;
+}
 
 /** Site-compat evaluation context. */
 export interface SiteCompatContext {

@@ -568,15 +568,21 @@ function buildAndPush(reason) {
 // Cycle: user updates ~/.bashrc → restarts WSL → next host spawn
 // reads the new value → sends → SW writes to chrome.storage →
 // content-script onChanged listener picks it up live.
-const API_KEY_VARS = [
-  'GROQ_API_KEY',
-  'CEREBRAS_API_KEY',
-  'OPENAI_API_KEY',
-  'ANTHROPIC_API_KEY',
-  'OPENROUTER_API_KEY',
-  'GEMINI_API_KEY',
-  'FINNHUB_API_KEY',
-];
+// LLM API keys sourced from @opencues/core's PROVIDERS registry —
+// adding a provider auto-flows into chrome's storage. FINNHUB is the
+// lone non-LLM service key (stocks blank). Re-use the same core
+// loader the bundle builder uses.
+const API_KEY_VARS = (function () {
+  try {
+    const core = loadCore();
+    return [...core.listProviders().map(p => p.envKeyName), 'FINNHUB_API_KEY'];
+  } catch {
+    return [
+      'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
+      'OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'FINNHUB_API_KEY',
+    ];
+  }
+})();
 function sendHostConfig() {
   const apiKeys = {};
   for (const v of API_KEY_VARS) {

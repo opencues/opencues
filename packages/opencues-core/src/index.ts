@@ -102,6 +102,7 @@ export {
 // LLM provider abstraction
 export {
   PROVIDER_IDS,
+  PROVIDER_AUTO_ORDER,
   getProvider,
   listProviders,
   buildProviderRequest,
@@ -130,6 +131,8 @@ export {
   formatHostList,
   HOSTS,
   NATIVE_HOSTS,
+  HOST_ALIASES,
+  resolveHost,
   type Host,
   type HostCompatInput,
   type HostCompatResult,
