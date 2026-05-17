@@ -72,13 +72,22 @@ describe('OpenCuesSettingsBlank', () => {
     expect(storage.value).toContain('tips-mode: on');
   });
 
-  it('set is a no-op when the setting line does not exist', async () => {
-    const { ctl, storage, writes } = makeBlank(SAMPLE_MD);
-    await ctl.set('unknown-key', 'whatever');
-    expect(storage.value).toBe(SAMPLE_MD);
-    // No-op skips writeFile entirely (avoids touching mtime when nothing
-    // changed — popups + hot-reload watchers don't get false-positives).
-    expect(writes).toBe(0);
+  it('set APPENDS to frontmatter when the setting line does not exist (cycling-first-time)', async () => {
+    // Pre-fix this was a no-op — symptom: cycling a registry-only
+    // scalar (like blank-trigger-mode on a default install) updated
+    // in-memory state for 2.5s then ConfigLoader hot-reloaded the
+    // unchanged file and reverted. Now: append `name: value` inside
+    // the frontmatter and persist. NB: `writes` is a getter, so we
+    // hold onto the wrapper and read it post-await (destructuring
+    // freezes the value at creation time — same trap the pre-existing
+    // `set is a no-op…` tests had: their `expect(writes).toBe(0)`
+    // checks always trivially passed because `writes` was frozen at 0).
+    const ctx = makeBlank(SAMPLE_MD);
+    await ctx.ctl.set('unknown-key', 'whatever');
+    expect(ctx.writes).toBe(1);
+    expect(ctx.storage.value).toMatch(/^unknown-key: whatever$/m);
+    expect(ctx.storage.value.startsWith('---\n')).toBe(true);
+    expect(ctx.storage.value).toContain('\n---\n');
   });
 
   it('set is a no-op when value is missing', async () => {
@@ -140,6 +149,44 @@ describe('OpenCuesSettingsBlank', () => {
     await ctl.set('debug-mode', 'on');
     expect(storage.value.startsWith('---\n')).toBe(true);
     expect(storage.value.endsWith('---\n')).toBe(true);
+  });
+
+  // Regression: cycling a scalar for the FIRST time (no existing
+  // line in OPENCUES.md, just defaults applying) used to silently
+  // skip the file write — rewriteSetting's regex required an
+  // existing line to match. The in-memory state updated for 2.5s,
+  // then ConfigLoader hot-reloaded the still-unchanged file and
+  // reverted the scalar to its default. User-visible symptom:
+  // cycling "blank-trigger-mode" to "spaced" appeared to work but
+  // the next `_` trigger logged `mode=immediate` 5 seconds later.
+  it('set(setting, value) APPENDS to frontmatter when no existing line', async () => {
+    const md = `---\nfluid-blank-mode: on\n---\n\nbody\n`;
+    const writes: string[] = [];
+    const ctl = new OpenCuesSettingsBlank({
+      readFile: async () => md,
+      writeFile: async (s) => { writes.push(s); },
+    });
+    await ctl.set('blank-trigger-mode', 'spaced');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/^---\n/);
+    expect(writes[0]).toContain('fluid-blank-mode: on');
+    expect(writes[0]).toMatch(/^blank-trigger-mode: spaced$/m);
+    expect(writes[0]).toContain('\n---\n\nbody');  // body preserved
+  });
+
+  it('set() append-path is idempotent — second set() rewrites the just-added line', async () => {
+    // After the append-path runs once, the line exists; a subsequent
+    // set() must REWRITE the value, not append a duplicate line.
+    let storage = `---\nfluid-blank-mode: on\n---\n`;
+    const ctl = new OpenCuesSettingsBlank({
+      readFile: async () => storage,
+      writeFile: async (s) => { storage = s; },
+    });
+    await ctl.set('blank-trigger-mode', 'spaced');
+    await ctl.set('blank-trigger-mode', 'immediate');
+    const matches = storage.match(/^blank-trigger-mode:/gm) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(storage).toMatch(/^blank-trigger-mode: immediate$/m);
   });
 
   it("first-setting probe ignores the inline frontmatter scalar lines and finds the first nested key", async () => {

@@ -123,12 +123,36 @@ function firstSettingName(text: string): string | null {
   return null;
 }
 
-/** Replace the value half of a top-level `name:` line, leaving any
- *  surrounding whitespace + comments intact. No-op when the line
- *  doesn't exist (so a typo'd setting name doesn't corrupt the file). */
+/** Replace the value half of a top-level `name:` line. If no such
+ *  line exists, APPEND `name: value` inside the frontmatter (before
+ *  the closing `---`). This matters for cycling scalars that aren't
+ *  yet in the user's file — e.g. cycling `blank-trigger-mode` for
+ *  the first time on a fresh install where defaults/OPENCUES.md
+ *  ships without the line. Pre-fix: the rewrite regex didn't match,
+ *  text was unchanged, write was skipped, and 2.5s later ConfigLoader
+ *  hot-reloaded and reverted the in-memory state to the default.
+ *  Symptom: cycling appears to work momentarily then snaps back. */
 function rewriteSetting(text: string, name: string, value: string): string {
   const re = new RegExp(`^(${escapeRegex(name)}:)[^\\n]*$`, 'm');
-  return text.replace(re, `$1 ${value}`);
+  if (re.test(text)) {
+    return text.replace(re, `$1 ${value}`);
+  }
+  // Line doesn't exist → append inside the closing frontmatter
+  // delimiter. Match the LAST `---` standalone line that closes a
+  // YAML frontmatter block (the first `---` opens it, the second
+  // closes it). Insert `name: value` on its own line just before.
+  // No frontmatter at all → bail (caller's set() already no-ops on
+  // empty file; for malformed content we leave untouched rather
+  // than risk corrupting it).
+  const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return text;
+  const fmEnd = (fmMatch.index ?? 0) + fmMatch[0].length;
+  const fmStart = (fmMatch.index ?? 0) + '---\n'.length;
+  const fmBody = text.slice(fmStart, fmEnd - '\n---'.length);
+  const inserted = fmBody.endsWith('\n') || fmBody.length === 0
+    ? `${fmBody}${name}: ${value}\n`
+    : `${fmBody}\n${name}: ${value}\n`;
+  return text.slice(0, fmStart) + inserted + text.slice(fmEnd - '\n---'.length);
 }
 
 function escapeRegex(s: string): string {
