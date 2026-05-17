@@ -47,9 +47,18 @@ describe('OpenCuesSettingsBlank', () => {
     expect(await ctl.get('tips-mode')).toBe('on');
   });
 
-  it('get(unknown) falls back to first setting tab-delimited (so satellite still spawns)', async () => {
+  it('get(unknown-to-registry) falls through to first-setting tab-delimited (BlankFill init path)', async () => {
+    // BlankFill's keyword detection sometimes synthesises a multi-
+    // word keyword like 'opencues settings' (from the trigger phrase)
+    // that isn't a single scalar name. For those genuinely-unknown
+    // keywords the satellite init fallback IS the right behaviour —
+    // populates `<firstSetting>\t<value>` so the satellite has
+    // something to spawn.
+    //
+    // The bug this fixes (separately) is the REGISTRY-known case —
+    // see the next test. Keep both paths green.
     const { ctl } = makeBlank(SAMPLE_MD);
-    expect(await ctl.get('not-a-setting')).toBe('voice-mode\tinactive');
+    expect(await ctl.get('not-a-real-setting')).toBe('voice-mode\tinactive');
   });
 
   it('set(setting, value) rewrites the matching line in CUES.md', async () => {
@@ -140,5 +149,43 @@ describe('OpenCuesSettingsBlank', () => {
     // top-level scalars.
     const { ctl } = makeBlank(SAMPLE_MD);
     expect((await ctl.get()).startsWith('voice-mode\t')).toBe(true);
+  });
+
+  // Regression: when the caller asks `get(keyword)` for a scalar that
+  // exists in the @opencues/core FEATURES registry but the user's
+  // OPENCUES.md doesn't have a line for it (just defaults apply), the
+  // contract is "return the registry default value for THIS keyword."
+  // Pre-fix: the unknown-keyword path fell through to
+  // "<firstSetting>\t<value>", which the cycling code at
+  // cycling.ts:218 spliced into the satellite slot — producing
+  // `<askedSetting> <other>\t<v>` in the buffer (tab renders as
+  // multiple spaces in most hosts). Canonical symptom:
+  // "blank-trigger-mode fluid-blank-mode    on" after cycling the
+  // selector to a registry-only setting.
+  it('get(keyword) returns registry default when keyword absent from file (no tab leak)', async () => {
+    const md = `---\nfluid-blank-mode: on\n---\n`;
+    const ctl = new OpenCuesSettingsBlank({
+      readFile: async () => md,
+      writeFile: async () => { /* unused */ },
+    });
+    const got = await ctl.get('blank-trigger-mode');
+    expect(got).toBe('immediate');
+    expect(got).not.toContain('\t');
+    expect(got).not.toContain('fluid-blank-mode');
+  });
+
+  it('get(unknown-to-everything) falls through to registry first-setting init', async () => {
+    // File has only fluid-blank-mode. Registry knows many more. An
+    // unknown-to-registry keyword falls through to satellite-init
+    // shape, which finds the first cyclable setting in the registry
+    // (fluid-blank-mode) and returns it tab-delimited.
+    const md = `---\nfluid-blank-mode: on\n---\n`;
+    const ctl = new OpenCuesSettingsBlank({
+      readFile: async () => md,
+      writeFile: async () => { /* unused */ },
+    });
+    const result = await ctl.get('not-a-real-setting');
+    expect(result).toContain('\t');
+    expect(result.split('\t')[0]).toMatch(/^[a-z][a-z0-9-]*$/);  // first-setting name
   });
 });

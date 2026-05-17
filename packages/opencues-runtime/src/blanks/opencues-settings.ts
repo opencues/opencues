@@ -40,24 +40,40 @@ export class OpenCuesSettingsBlank implements Blank {
     const text = await this._read();
     if (!text) return '';
 
+    // Menu schema: file overlay if present, else the @opencues/core
+    // registry. Used both for the registry-driven default-value
+    // fallback below AND the first-setting probe at the bottom.
+    const menu = getMenuDefinitions();
+
     if (keyword) {
       const v = lookupSetting(text, keyword);
       if (v !== null) return v;
-      // Unknown / unset — fall through to first-setting probe so the
-      // satellite spawns something sensible.
+      // Keyword exists in the registry but not in the user's file →
+      // return the registry default for THIS scalar. Don't fall
+      // through to first-setting init: the caller (cycling.ts:218)
+      // splices the result verbatim into the satellite, and a tab-
+      // separated `<other>\t<v>` fallback would land a literal tab
+      // in the buffer (rendered as multiple spaces in most hosts —
+      // the canonical visible symptom of the pre-fix bug).
+      const def = menu.get(keyword);
+      if (def) return def.valueOrder[0] ?? '';
+      // Genuinely-unknown keyword (e.g. a multi-word phrase that
+      // BlankFill's keyword detection synthesised like
+      // 'opencues settings') → fall through to first-setting init
+      // so the satellite still spawns something sensible.
     }
 
-    // Find the first cyclable setting name. Prefer the file's
-    // `settings:` block when present (back-compat for users who ship
-    // a custom block); fall back to @opencues/core's registry order
-    // since defaults/OPENCUES.md no longer ships a settings: block.
+    // No keyword → satellite initialisation. Find the first cyclable
+    // setting name. Prefer the file's `settings:` block when present
+    // (back-compat for users who ship a custom block); fall back to
+    // @opencues/core's registry order since defaults/OPENCUES.md no
+    // longer ships a settings: block.
     let first = firstSettingName(text);
     if (!first) {
-      const menu = getMenuDefinitions();
       first = menu.keys().next().value ?? null;
     }
     if (!first) return '';
-    const value = lookupSetting(text, first) ?? '';
+    const value = lookupSetting(text, first) ?? menu.get(first)?.valueOrder[0] ?? '';
     return `${first}\t${value}`;
   }
 
