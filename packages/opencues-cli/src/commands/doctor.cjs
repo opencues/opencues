@@ -65,6 +65,47 @@ module.exports = function doctor(argv, ctx) {
     findings.push({ sev: 'info', msg: 'no user-level configs', fix: 'opencues seed-configs' });
   }
 
+  // ── Feature wiring ────────────────────────────────────────────────────
+  // Surface optional-feature state at the install boundary. Each row
+  // pairs a scalar in OPENCUES.md with its prerequisites; when the
+  // scalar is on but a prerequisite is missing, the feature is silently
+  // inert. This is the exact failure class we hit during the
+  // user-context + ambient-context ship — USER.md absent + scalar set
+  // → no log, no error, the LLM just gets no catalog.
+  {
+    const s = section('Feature wiring', 'optional features + their prerequisites');
+    const opencuesMd = path.join(userConfigDir, 'CUES.md');
+    const userMd = path.join(userConfigDir, 'USER.md');
+    const auditorsMd = path.join(userConfigDir, 'AUDITORS.md');
+    const scalars = readOpencuesScalars(opencuesMd);
+    const userFieldCount = countUserMdFields(userMd);
+    const auditorCount = countAuditorEntries(auditorsMd);
+
+    const fmtScalar = (key, def = 'off') => scalars[key] != null ? scalars[key] : dim(`(${def})`);
+    s.info('user-context-mode',    fmtScalar('user-context-mode'));
+    s.info('ambient-context-mode', fmtScalar('ambient-context-mode'));
+    s.info('fluid-blank-mode',     fmtScalar('fluid-blank-mode', 'on'));
+    s.info('voice-mode',           fmtScalar('voice-mode'));
+    s.info('tips-mode',            fmtScalar('tips-mode', 'on'));
+    s.info('debug-mode',           fmtScalar('debug-mode'));
+    s.info('cursor-navigate',      fmtScalar('cursor-navigate'));
+    s.info('word-cues-mode',       fmtScalar('word-cues-mode', 'on'));
+    s.ok(`USER.md present (${userFieldCount} field${userFieldCount === 1 ? '' : 's'})`, fs.existsSync(userMd));
+    s.ok(`AUDITORS.md present (${auditorCount} auditor${auditorCount === 1 ? '' : 's'})`, fs.existsSync(auditorsMd));
+    s.render();
+
+    // user-context-mode is set, but USER.md missing or empty → feature won't fire
+    if (scalars['user-context-mode'] && scalars['user-context-mode'] !== 'off' && userFieldCount === 0) {
+      findings.push({
+        sev: 'warn',
+        msg: `user-context-mode=${scalars['user-context-mode']} but USER.md is missing or has no populated fields — fluid-blank won't get any user catalog`,
+        fix: fs.existsSync(userMd)
+          ? `populate ${userMd} frontmatter with at least one field (e.g. firstName: Alice)`
+          : `opencues seed-configs   # creates USER.md template; then edit ${userMd}`,
+      });
+    }
+  }
+
   // ── CC install ────────────────────────────────────────────────────────
   const ccFork = path.join(HOME, 'claude-code-cues');
   const ccSupport = path.join(ccFork, '.opencues');
@@ -140,6 +181,32 @@ module.exports = function doctor(argv, ctx) {
     const s = section('Chrome', 'MV3 extension build output');
     s.ok(`build output ${chromeDist}/`, fs.existsSync(chromeDist));
     s.ok(`content.js`, fs.existsSync(chromeContentJs));
+    // WSL-only: compare repo dist mtime to whatever lives at the
+    // Windows-loaded path. Drift means the user ran `npm run build`
+    // but forgot to sync — Chrome runs stale code, no error, just no
+    // new behaviour. The friction we hit personally during this ship.
+    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
+      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
+      catch { return false; }
+    })();
+    if (wslEnv && fs.existsSync(chromeContentJs)) {
+      const winCandidates = findWindowsChromeUnpacked();
+      for (const winDist of winCandidates) {
+        const winContent = path.join(winDist, 'content.js');
+        if (!fs.existsSync(winContent)) continue;
+        const repoMtime = fs.statSync(chromeContentJs).mtimeMs;
+        const winMtime = fs.statSync(winContent).mtimeMs;
+        const fresh = repoMtime <= winMtime + 1000;  // 1s slop for cp delay
+        s.ok(`${winDist}/content.js up-to-date with repo dist`, fresh);
+        if (!fresh) {
+          findings.push({
+            sev: 'warn',
+            msg: `Chrome bundle at ${winDist}/ is older than the repo build — Chrome will run stale code until you re-sync`,
+            fix: `cp -r ${chromeDist}/* ${winDist}/ && cp ${path.join(ctx.REPO_ROOT, 'integrations/chrome/manifest.json')} ${path.dirname(winDist)}/manifest.json   # then reload at chrome://extensions`,
+          });
+        }
+      }
+    }
     s.render();
   }
   if (!fs.existsSync(chromeContentJs)) {
@@ -196,6 +263,26 @@ module.exports = function doctor(argv, ctx) {
     } else {
       for (const p of manifestPaths) s.ok(p, true);
       if (wslEnv) s.ok('sync-host.bat shim', !!shimPath);
+      // File-push parity — the host script must push every config
+      // file the runtime expects to read from chrome.storage. When a
+      // new file (USER.md, AUDITORS.md, ...) is added on the runtime
+      // side, the host script's hardcoded file list must be updated
+      // too or the file is silently never pushed. We hit this in May
+      // 2026 with USER.md.
+      const hostScript = resolveHostScript(manifestPaths[0], shimPath);
+      if (hostScript && fs.existsSync(hostScript)) {
+        const text = fs.readFileSync(hostScript, 'utf8');
+        const required = ['OPENCUES.md', 'CUES.md', 'AUDITORS.md', 'USER.md'];
+        const missing = required.filter(f => !text.includes(f));
+        s.ok(`host pushes [${required.join(', ')}]`, missing.length === 0);
+        if (missing.length > 0) {
+          findings.push({
+            sev: 'warn',
+            msg: `chrome-host script at ${hostScript} doesn't push ${missing.join(', ')} — those config files will never reach the extension`,
+            fix: 'opencues install chrome-host --extension-id <id>   # re-installs from current repo',
+          });
+        }
+      }
     }
     s.render();
   }
@@ -302,6 +389,92 @@ module.exports = function doctor(argv, ctx) {
   // killing the runtime mid-assertion.
   return errors > 0 ? 1 : 0;
 };
+
+// Read OPENCUES.md (or CUES.md) frontmatter and return a flat
+// {scalar: value} map. Best-effort YAML — only top-level
+// `key: value` lines, no nesting. Missing file → empty object.
+function readOpencuesScalars(file) {
+  if (!file || !fs.existsSync(file)) return {};
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); }
+  catch { return {}; }
+  if (!text || !text.length) return {};
+  const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return {};
+  const out = {};
+  for (const line of fmMatch[1].split('\n')) {
+    const m = line.match(/^([a-z][a-z0-9-]*)\s*:\s*(.*?)\s*(#.*)?$/i);
+    if (!m) continue;
+    const k = m[1].trim();
+    let v = m[2].trim();
+    // strip surrounding quotes
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1);
+    }
+    if (v.length === 0) continue;  // bare key — skip
+    out[k] = v;
+  }
+  return out;
+}
+
+// Count non-comment populated frontmatter fields in USER.md.
+function countUserMdFields(file) {
+  if (!file || !fs.existsSync(file)) return 0;
+  return Object.keys(readOpencuesScalars(file)).length;
+}
+
+// Count `### name` entries (auditor blocks) in AUDITORS.md.
+function countAuditorEntries(file) {
+  if (!file || !fs.existsSync(file)) return 0;
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    const matches = text.match(/^###\s+\S/gm);
+    return matches ? matches.length : 0;
+  } catch { return 0; }
+}
+
+// WSL helper — find every unpacked-extension `dist/` directory the
+// user may have placed under %LOCALAPPDATA%. Returns the dist paths
+// (not the parent extension dirs). Used by the bundle-freshness check.
+function findWindowsChromeUnpacked() {
+  const out = [];
+  try {
+    const users = fs.readdirSync('/mnt/c/Users', { withFileTypes: true })
+      .filter(e => e.isDirectory() && !['Public', 'Default', 'Default User', 'All Users'].includes(e.name));
+    for (const u of users) {
+      const base = `/mnt/c/Users/${u.name}/AppData/Local`;
+      for (const candidate of ['opencues-chrome', 'opencues']) {
+        const dist = path.join(base, candidate, 'dist');
+        if (fs.existsSync(dist)) out.push(dist);
+      }
+    }
+  } catch { /* not WSL or /mnt/c not accessible */ }
+  return out;
+}
+
+// Read a native-messaging manifest and resolve the host script path
+// it points at. For WSL setups the manifest points at a .bat shim;
+// the shim's last `node <path>` line is the real host.cjs.
+function resolveHostScript(manifestPath, shimPath) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const target = manifest.path;
+    if (!target) return null;
+    // Windows path → WSL path translation
+    let normalized = target;
+    if (target.match(/^[A-Z]:\\/i)) {
+      normalized = '/mnt/' + target[0].toLowerCase() + target.slice(2).replace(/\\/g, '/');
+    }
+    // If it's a .bat shim, read it for the node invocation
+    if (normalized.endsWith('.bat') || (shimPath && fs.existsSync(shimPath))) {
+      const bat = fs.existsSync(normalized) ? normalized : shimPath;
+      const batText = fs.readFileSync(bat, 'utf8');
+      const m = batText.match(/node\s+(\S+\.cjs)/);
+      if (m) return m[1];
+    }
+    return normalized;
+  } catch { return null; }
+}
 
 // Resolve a binary on $PATH. Returns the absolute path or null.
 function findOnPath(bin) {

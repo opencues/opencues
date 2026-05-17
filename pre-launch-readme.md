@@ -78,7 +78,45 @@ See [docs/architecture/repo-structure.md](docs/architecture/repo-structure.md) f
 - [x] Audit for secrets — no hardcoded keys found; `.claude/` with personal paths is not tracked
 - [ ] Review git history — squash or clean commits with sensitive data
 - [ ] Test clean install — clone on fresh machine, follow README exactly
-- [x] Verify all doc links — zero broken links across 68 markdown files
+- [ ] Verify all doc links — last clean pass found zero broken links across 68 markdown files, but several new docs have landed since (user-context, ambient-context, universal-integration, chrome-llm-keys, plus per-feature summaries). Re-run before launch.
+- [ ] **Build a feature registry to kill install-boundary drift.**
+  Today the set of optional features (their scalars, their config
+  prerequisites, which host script must push them) is encoded
+  separately in `packages/opencues-runtime/src/modules/config-loader.ts`
+  (scalar enum + parsing), `integrations/chrome/host/host.cjs` (file
+  push list), `packages/opencues-cli/src/commands/doctor.cjs` (the
+  feature-wiring section), and `packages/opencues-cli/src/commands/seed-configs.cjs`
+  (which files to copy). Adding a feature requires editing all four.
+  We've already hit two drift bugs from this — USER.md not pushed by
+  host.cjs, and doctor's hardcoded scalar list staying valid only as
+  long as someone remembers. Replace with a single
+  `packages/opencues-core/src/feature-registry.ts` declaring each
+  feature's scalar / default / prereq file / required-fields-test /
+  pushedBy hosts; have all four sites import from it. New feature =
+  one PR touching the registry; impossible for the sites to drift.
+
+- [ ] **Add chrome e2e install-chain harness.** Every "go test"
+  cycle during the user-context + ambient-context ship (May 2026)
+  hit a hidden defect at an install-boundary join — USER.md not
+  pushed by chrome-host, template frontmatter in wrong position,
+  ConfigLoader silent on missing files, DynDefs leaking across
+  buffers. Unit tests covered each component in isolation (35 for
+  user-context, 23 for ambient, etc.) but the *path from filesystem
+  → chrome-host → chrome.storage → ConfigLoader → Resolver → LLM*
+  has never been exercised by a single test. `opencues doctor` now
+  surfaces the join state statically, but a runtime e2e would
+  prove the chain is wired end-to-end.
+  - Spawn the chrome-host process (`host/host.cjs`) against a
+    temp `.cues/` containing OPENCUES.md + USER.md + AUDITORS.md.
+  - Stand up a fake chrome.storage shim that captures pushes.
+  - Boot the runtime against a fake DOM with a focused `<input>`.
+  - Assert: the host pushed every expected file; ConfigLoader read
+    USER.md and parsed the scalar; an `_` keypress triggers a
+    FluidBlank call that includes the user-context catalog.
+  - One slow test, but it would have caught all four defects in a
+    single run instead of four back-and-forth rounds. Eats into
+    integration-test budget; worth it because the install boundary
+    is exactly where unit tests can't reach.
 
 ## Shipped-defaults curation
 

@@ -214,7 +214,7 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
 - **docs/architecture/agent-rewrite-cache.md** ⚠️ Canonical reference for the AgentRewrite two-tier cache (skip-on-stable + LRU). Covers cache-key composition (snapshot + task + cursor + windowWords + auditorSignature), the determinism assumption (Groq temp=0 + seed pinning), and the list of extension points (size, cross-session persistence, approximate-match keys, negative caching, telemetry, manual invalidation). Read before touching `_rewriteCache` / `_lastStableSnapshot` / `makeCacheKey` / `computeAuditorSignature` in `agent-rewrite.ts`.
 - **docs/architecture/universal-integration.md** ⚠️ Canonical reference for the no-cycling attach profile. A host that can't paint colour or intercept Ctrl+Alt+arrow advertises `supportsCycling: false`; every cycleable cue/blank is then pruned at registration (word-cues, selector/satellite, list blanks, script-backed cycling like volume/brightness). Inference is structural — no frontmatter changes needed (`isBlankConfigCycleable` reads each def's shape). Today's only host in this profile: chrome's normal-`<input>` / `<textarea>` mode. Two filter paths (resolver's `buildSourcesFromConfig` + BlankFill's `matchKeyword`) MUST stay in sync — they're independent. Read this before touching `HostAdapter.supportsCycling`, the cycleable getters on each `CueSource`, or either filter point.
 - **docs/architecture/chrome-llm-keys.md** ⚠️ Canonical reference for chrome's multi-provider key forwarding + real-time updates. Covers the three-tier merge, failure-mode surface (missing/invalid/typo'd provider), boot-time probes (`verifyLlmKeyAtBoot`, `auditProvidersAgainstKeys`), and the live-mutation contract on `Resolver.options.apiKeys` that makes mid-session key swaps work without a tab reload. Read before touching chrome's storage adapter, the bootstrap's key-audit code, or the runtime's `BootResult.updateApiKeys`.
-- **docs/architecture/user-context.md** ⚠️ Canonical reference for the optional `user-context-mode` feature — FluidBlankSource receives the user's own personal data (`~/.cues/User.md` frontmatter) as sentinel tokens so `_` lookups personalise without re-typing. **OFF by default** (`user-context-mode: off | safe | raw` scalar in OPENCUES.md). `safe` mode sends only token names + descriptions; a runtime post-processor substitutes real values AFTER the LLM responds — PII never reaches the provider's logs. `raw` mode inlines values (opt-in). Phase 1 wired for **fluid-blank only**; widening to other pipelines requires per-pipeline threat-model review. Post-processor handles: verbatim resolve, tolerant matching (Claude's `[WORK_CITY]` underscore drift), hallucination strip (Claude's invented `[DATE OF BIRTH]`), and originalBody preservation (user-typed brackets are sacred). Bench evidence: `tests/benchmarks/user-context/FINDINGS.md` — 5 providers × 42 cases, 100% buffer-safe output, zero raw-value leaks. Tests: 32 unit + 6 FluidBlankSource integration + 1 scalar-parsing. **Phase 2/3** (raw mode body injection, pack-side `requires-user:` declaration, per-pack capability) all stay deferred — see "Future work" in the architecture doc. User-facing summary: `docs/features/user-context.md`.
+- **docs/architecture/user-context.md** ⚠️ Canonical reference for the optional `user-context-mode` feature — FluidBlankSource receives the user's own personal data (`~/.cues/USER.md` frontmatter) as sentinel tokens so `_` lookups personalise without re-typing. **OFF by default** (`user-context-mode: off | safe | raw` scalar in OPENCUES.md). `safe` mode sends only token names + descriptions; a runtime post-processor substitutes real values AFTER the LLM responds — PII never reaches the provider's logs. `raw` mode inlines values (opt-in). Phase 1 wired for **fluid-blank only**; widening to other pipelines requires per-pipeline threat-model review. Post-processor handles: verbatim resolve, tolerant matching (Claude's `[WORK_CITY]` underscore drift), hallucination strip (Claude's invented `[DATE OF BIRTH]`), and originalBody preservation (user-typed brackets are sacred). Bench evidence: `tests/benchmarks/user-context/FINDINGS.md` — 5 providers × 42 cases, 100% buffer-safe output, zero raw-value leaks. Tests: 32 unit + 6 FluidBlankSource integration + 1 scalar-parsing. **Phase 2/3** (raw mode body injection, pack-side `requires-user:` declaration, per-pack capability) all stay deferred — see "Future work" in the architecture doc. User-facing summary: `docs/features/user-context.md`.
 - **docs/architecture/ambient-context.md** ⚠️ Canonical reference for the optional `ambient-context-mode` feature — fluid-blank receives sanitized field metadata for disambiguating lookups. The host gathers a wider set (label/placeholder/aria/title/url-origin+path/meta-description) but the prompt ships only **label + placeholder + page-title** (the bench-validated 3-field minimal). OFF by default; chrome-only gatherer today but host-agnostic at the `HostAdapter` contract level; single-field scope (no sibling values, no system data). The whole model leans on a **structural invariant**: OpenCues has no tool handlers, no exec layer, and no out-of-band action channel for fluid-blank LLM output — worst-case prompt-injection lands as user-visible text the user sees before submitting. **Don't plug fluid-blank output into any side-effect layer** (tool execution, agentic actions, clipboard, fetch, etc.); doing so invalidates row #21 in `security-audit.md` and the threat model in this doc must be re-reviewed first. Read before touching `FluidBlankSource`, `AmbientContext`, the chrome gatherer, or the resolver's ambient-context gate. **Any edit to `FUSED_SYSTEM_PROMPT` or `renderAmbientBlock`'s field list MUST re-run `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` first** — the rewrite that introduced ambient handling cost 2pp on the standard 137-case suite until a CONTEXT-vs-UNTRUSTED_FIELD_CONTEXT distinction rule was added back; later (May 2026) the 2-pass P1+P3 pipeline was collapsed to a single fused call so the segmenter could also use the field's label for meta-triggers like `_` / `answer _`. Target: 175/176 or better. Bench orientation: `tests/benchmarks/CLAUDE.md`. User-facing summary: `docs/features/ambient-context.md`.
 
 ---
@@ -251,6 +251,65 @@ TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply
 > the cli.js bootstrap — cli.js is ESM-converted and `require` isn't
 > defined at module scope. Use the `createRequire`-derived var that
 > `getRequireFuncName(oldFile)` returns (see `opencuesRuntime.ts`).
+
+---
+
+## Upgrade path — name the steps BEFORE saying "go test"
+
+When you finish a feature and are about to suggest the user try it,
+state the upgrade path explicitly first, in this shape:
+
+> "To exercise this, you will need to: (1) rebuild X, (2) sync Y to
+> Z, (3) re-run `opencues install …` if file W changed, (4) seed any
+> new config file, (5) edit OPENCUES.md to flip the scalar, (6) reload
+> the extension / restart the host."
+
+Then ask: "is any step in that list non-obvious or non-seamless?" —
+because that list is *also* what users will hit when they upgrade.
+If the path has more than two steps the user has to remember, the
+feature isn't shippable yet; we need a `seed-configs` self-heal, a
+chained installer, or a doctor check to collapse the steps.
+
+Why this lives here: in the user-context + ambient-context ship
+(May 2026) every "go test" had a hidden defect at an install-boundary
+join — USER.md not pushed by chrome-host, template frontmatter at
+the wrong position, ConfigLoader silent on missing file, DynDefs
+leaking across buffers. Unit tests covered each component in
+isolation but missed the chain. Naming the upgrade path up front
+forces the chain to be walked mentally before the user walks it
+manually — defects in the chain become observations instead of
+back-and-forth debugging sessions.
+
+The rule applies to every new feature, not just chrome's. Whenever
+a feature adds a config file, a scalar, a host-process update, a
+bundle change, or any cross-component wire — call out the upgrade
+path explicitly when you hand the feature back for testing. Treat
+"seamlessness" as a feature requirement, not a polish item.
+
+**Per-feature checklist when adding a new scalar or config file:**
+
+Until the feature registry lands (tracked in `pre-launch-readme.md`),
+the set of optional features is encoded in four separate places that
+WILL drift if you only update one. When adding a new scalar / config
+file / host-pushed file, touch ALL of these:
+
+1. `packages/opencues-runtime/src/modules/config-loader.ts` — parse
+   the scalar into `opencuesState`; add to the typed enum.
+2. `integrations/chrome/host/host.cjs` — add any new config file
+   (USER.md / AUDITORS.md / future) to the explicit file-push list,
+   or chrome will silently never receive it.
+3. `packages/opencues-cli/src/commands/doctor.cjs` — add the scalar
+   to the "Feature wiring" section's `s.info(...)` list AND the
+   chrome-host parity check's `required` array. Doctor's whole
+   point is catching drift; if you don't teach it the new feature
+   it can't catch the drift on that feature.
+4. `packages/opencues-cli/src/commands/seed-configs.cjs` — seed any
+   new template config file (SKIP-if-exists, CREATE-if-missing) so
+   re-running seed-configs after upgrade self-heals.
+
+If you skip step 3, doctor will still say "ok" while the feature
+silently doesn't fire. That's the worst failure mode — a false
+green. Always update doctor.
 
 ---
 
