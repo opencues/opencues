@@ -25,6 +25,144 @@ export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
 
+// Imports for the BUILTIN_BLANKS registry below. The above `export`
+// lines re-publish them; these `import` lines bring them into scope
+// so the factories can reference them.
+import { HackerNewsBlank } from './hackernews';
+import { StocksBlank } from './stocks';
+import { WeatherBlank } from './weather';
+import { AnswerBlank } from './answer';
+import { PromptImproverBlank } from './prompt-improver';
+import { OpenCuesSettingsBlank } from './opencues-settings';
+import { DictionaryBlank } from './dictionary';
+import { CryptoBlank } from './crypto';
+import { CountriesBlank } from './countries';
+import { ClaudeStatusBlank } from './claude-status';
+
+// ──────────────────────────────────────────────────────────────────────
+// Built-in blanks registry — single source of truth across hosts.
+//
+// THE PROBLEM THIS SOLVES
+//
+// Each host bootstrap (CC / OC / chrome / gemini-cli) used to maintain
+// its own `['name', new BlankClass(opts)]` Map. They overlapped but
+// were never identical: claude-status was registered on opencode + chrome
+// but missing from CC and gemini-cli — a silent feature gap shipped to
+// users. Adding a new built-in required editing four bootstraps.
+//
+// HOW TO ADD A NEW BUILT-IN BLANK
+//
+//   1. Implement the class under packages/opencues-runtime/src/blanks/.
+//   2. Add an `export { … }` line above.
+//   3. Add an entry to BUILTIN_BLANKS below.
+//
+// That's it. All four host bootstraps invoke `createDefaultBlanksRegistry(ctx)`
+// and pick up the new blank automatically.
+//
+// FACTORY CONTRACT
+//
+// Each factory takes a BuiltinBlankContext and returns either a Blank
+// instance or null. Return null when prereqs aren't met (e.g. no LLM
+// key for the answer blank, no settings-file IO for the opencues
+// blank). `createDefaultBlanksRegistry` filters nulls out so the host
+// doesn't need to know which prereqs each blank checks.
+
+/**
+ * Context passed to every BUILTIN_BLANKS factory. Hosts populate the
+ * subset they have available; factories check what they need and
+ * return null when they don't have enough to construct a usable blank.
+ */
+export interface BuiltinBlankContext {
+  /**
+   * LLM config for blanks that talk to an OpenAI-compatible chat API
+   * (answer, prompt). When absent, both blanks skip registration.
+   * apiUrl / model default to Groq's gpt-oss-120b when omitted.
+   */
+  readonly llmConfig?: {
+    readonly apiKey: string;
+    readonly apiUrl?: string;
+    readonly model?: string;
+  };
+  /**
+   * Finnhub API key for the stocks blank. Optional — without it the
+   * blank still registers but live quote requests will fail at runtime
+   * (handled in StocksBlank itself).
+   */
+  readonly finnhubApiKey?: string;
+  /**
+   * Custom ticker name → symbol overrides for the stocks blank.
+   * Chrome-only today.
+   */
+  readonly customTickers?: Record<string, string>;
+  /**
+   * Read/write accessors for the user's OPENCUES.md (or CUES.md)
+   * settings file. Required to register the `opencues` selector-
+   * satellite blank. Hosts that don't supply this skip the opencues
+   * blank.
+   */
+  readonly opencuesMdIO?: {
+    readonly readFile: () => Promise<string | null>;
+    readonly writeFile: (content: string) => Promise<void>;
+  };
+}
+
+/** One entry in BUILTIN_BLANKS. */
+export interface BuiltinBlankSpec {
+  /** Keyword the blank is registered under (the part before `_`). */
+  readonly name: string;
+  /** Construct the blank, or return null if prereqs aren't met. */
+  readonly factory: (ctx: BuiltinBlankContext) => Blank | null;
+}
+
+/**
+ * Every built-in blank that ships with OpenCues. Hosts iterate this
+ * via `createDefaultBlanksRegistry(ctx)`; do NOT maintain per-host
+ * copies. Drift across hosts is the exact failure class this registry
+ * exists to prevent.
+ *
+ * Order matters only for the resulting Map's iteration order (and
+ * therefore the order they appear in `opencues list`). Group: HTTP
+ * fetch blanks first, then static lookups, then LLM-driven, then the
+ * settings blank.
+ */
+export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
+  // ── HTTP fetch / external API ────────────────────────────────────
+  { name: 'hackernews',    factory: () => new HackerNewsBlank() },
+  { name: 'stocks',        factory: ctx => new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers }) },
+  { name: 'weather',       factory: () => new WeatherBlank() },
+  { name: 'claude-status', factory: () => new ClaudeStatusBlank() },
+
+  // ── Static lookups (offline / cached) ────────────────────────────
+  { name: 'dictionary',    factory: () => new DictionaryBlank() },
+  { name: 'crypto',        factory: () => new CryptoBlank() },
+  { name: 'countries',     factory: () => new CountriesBlank() },
+
+  // ── LLM-driven (skip when llmConfig absent) ──────────────────────
+  { name: 'answer',        factory: ctx => ctx.llmConfig?.apiKey ? new AnswerBlank(ctx.llmConfig) : null },
+  { name: 'prompt',        factory: ctx => ctx.llmConfig?.apiKey ? new PromptImproverBlank(ctx.llmConfig) : null },
+
+  // ── Settings / selector-satellite (skip when no IO supplied) ─────
+  { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank(ctx.opencuesMdIO) : null },
+];
+
+/**
+ * Build the canonical `Map<string, Blank>` registry for a host. Hosts
+ * supply whatever context they have; blanks whose prereqs aren't met
+ * are silently skipped (null factory result).
+ *
+ * Replaces the per-host hardcoded Map literals that used to drift —
+ * canonical Set of registered blanks is now `BUILTIN_BLANKS` ∩
+ * `factory(ctx) !== null`.
+ */
+export function createDefaultBlanksRegistry(ctx: BuiltinBlankContext): Map<string, Blank> {
+  const out = new Map<string, Blank>();
+  for (const spec of BUILTIN_BLANKS) {
+    const instance = spec.factory(ctx);
+    if (instance) out.set(spec.name, instance);
+  }
+  return out;
+}
+
 /**
  * Build a blankInvoke handler that dispatches into the given registry.
  * Returns null when the blankName isn't registered — the runtime then

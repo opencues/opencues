@@ -23,15 +23,7 @@ import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter.js';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common.js';
 import {
   createBlankInvoke,
-  AnswerBlank,
-  CountriesBlank,
-  CryptoBlank,
-  DictionaryBlank,
-  HackerNewsBlank,
-  OpenCuesSettingsBlank,
-  PromptImproverBlank,
-  StocksBlank,
-  WeatherBlank,
+  createDefaultBlanksRegistry,
   type Blank,
 } from '@opencues/runtime/dist/src/blanks/index.js';
 import { validateScriptPath, appendAuditLog } from '@opencues/runtime/dist/src/security/spawn-sandbox.js';
@@ -188,20 +180,19 @@ function resolveTtsScript(): string {
   return path.join(root, 'scripts/speak.sh');
 }
 
-const blanksRegistry = new Map<string, Blank>([
-  ['hackernews', new HackerNewsBlank()],
-  ['stocks', new StocksBlank({ apiKey: process.env['FINNHUB_API_KEY'] })],
-  ['weather', new WeatherBlank()],
-  ['dictionary', new DictionaryBlank()],
-  ['crypto', new CryptoBlank()],
-  ['countries', new CountriesBlank()],
-  ['answer', new AnswerBlank({ apiKey: process.env['GROQ_API_KEY'] })],
-  ['prompt', new PromptImproverBlank({ apiKey: process.env['GROQ_API_KEY'] })],
-  ['opencues', new OpenCuesSettingsBlank({
+// All built-in blanks come from @opencues/runtime's BUILTIN_BLANKS
+// registry — single source of truth. Adding a new built-in is one
+// entry there; this file picks it up automatically. Previously this
+// list was missing `claude-status` (silent feature gap on this host).
+const groqApiKey = process.env['GROQ_API_KEY'];
+const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
+  llmConfig: groqApiKey ? { apiKey: groqApiKey } : undefined,
+  finnhubApiKey: process.env['FINNHUB_API_KEY'],
+  opencuesMdIO: {
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), 'utf8'); } catch { return null; } },
     writeFile: async (content: string) => { await fs.writeFile(findOpenCuesMdPath(), content, 'utf8'); },
-  })],
-]);
+  },
+});
 // Discover user-shipped JS blanks (`impl: ./blank.js` in BLANK.md)
 // and register them alongside the built-in TS classes. Each runs in
 // a fresh vm.Context with only the capabilities declared in

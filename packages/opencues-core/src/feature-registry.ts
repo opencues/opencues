@@ -181,6 +181,12 @@ export const FEATURES: readonly FeatureSpec[] = [
     description: 'LLM word alternatives surfaced on plain text',
   },
   {
+    scalar: 'transform-blank-mode',
+    camelCase: 'transformBlankMode',
+    values: ['on', 'off'],
+    description: 'Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`)',
+  },
+  {
     scalar: 'tips-mode',
     camelCase: 'tipsMode',
     values: ['on', 'off'],

@@ -301,17 +301,35 @@ export function isNormalInput(el: Element | null): el is HTMLInputElement | HTML
  *  fallback for pages that don't bother. False positives (e.g. a
  *  search box named "search-token") are acceptable trade-offs vs the
  *  risk of feeding credentials through an LLM. */
+/**
+ * Sensitive-field autocomplete tokens. Match a field's
+ * `autocomplete="X"` attribute against these (per the WHATWG
+ * autofill spec) and refuse attach when one matches. SINGLE SOURCE
+ * OF TRUTH for the autocomplete deny-list — every doc that
+ * enumerates these should reference this export, not re-list them.
+ * See docs/architecture/chrome-security.md § Sensitive-field gate.
+ */
+export const SENSITIVE_AUTOCOMPLETE_TOKENS: ReadonlySet<string> = new Set<string>([
+  'current-password', 'new-password', 'one-time-code',
+  'cc-number', 'cc-exp', 'cc-exp-month', 'cc-exp-year',
+  'cc-csc', 'cc-name', 'cc-given-name', 'cc-family-name',
+]);
+
+/**
+ * Name/id heuristic regex — case-insensitive word-boundary match
+ * against credential-related tokens. The fallback for pages that
+ * don't honour the autocomplete spec. SINGLE SOURCE OF TRUTH; every
+ * doc that quotes the token list should link to this export.
+ */
+export const SENSITIVE_FIELD_NAME_PATTERN: RegExp =
+  /\b(password|passwd|pwd|cvv|cvc|ssn|sin|pin|otp|secret|token|api[_-]?key|access[_-]?key|auth)\b/;
+
 function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
   // Comma- or space-separated tokens per spec.
   const tokens = autocomplete.split(/[\s,]+/).filter(Boolean);
-  const sensitiveAutocompleteTokens = new Set<string>([
-    'current-password', 'new-password', 'one-time-code',
-    'cc-number', 'cc-exp', 'cc-exp-month', 'cc-exp-year',
-    'cc-csc', 'cc-name', 'cc-given-name', 'cc-family-name',
-  ]);
   for (const tok of tokens) {
-    if (sensitiveAutocompleteTokens.has(tok)) return true;
+    if (SENSITIVE_AUTOCOMPLETE_TOKENS.has(tok)) return true;
   }
   // Bank/payment forms sometimes set autocomplete="off" on the whole
   // form. That's a heavier signal than "I don't want to be remembered"
@@ -324,7 +342,7 @@ function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   const name = (el.getAttribute('name') || '').toLowerCase();
   const id = (el.id || '').toLowerCase();
   const haystack = name + '|' + id;
-  if (/\b(password|passwd|pwd|cvv|cvc|ssn|sin|pin|otp|secret|token|api[_-]?key|access[_-]?key|auth)\b/.test(haystack)) {
+  if (SENSITIVE_FIELD_NAME_PATTERN.test(haystack)) {
     return true;
   }
   return false;

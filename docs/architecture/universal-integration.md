@@ -219,10 +219,11 @@ Triggers when ANY of these are true:
 
 **Name/id heuristic** (fallback for pages that don't bother with autocomplete):
 
-Substring match (case-insensitive, word-boundary) on the field's
-`name` or `id` against: `password`, `passwd`, `pwd`, `cvv`,
-`cvc`, `ssn`, `sin`, `pin`, `otp`, `secret`, `token`, `api[_-]?key`,
-`access[_-]?key`, `auth`.
+Case-insensitive word-boundary match on the field's `name` or
+`id` against `SENSITIVE_FIELD_NAME_PATTERN` (exported from
+`integrations/chrome/src/opencues-bootstrap.ts`). See
+`docs/architecture/chrome-security.md` § Sensitive-field gate for
+the current token enumeration.
 
 **Input type allowlist** (every check above runs only after this):
 

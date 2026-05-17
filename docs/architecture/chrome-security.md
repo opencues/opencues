@@ -292,13 +292,19 @@ The check is layered:
   (`password`, `number`, `date`, `tel`, `color`, `hidden`,
   `file`, etc.) is silently skipped.
 - **Autocomplete-token deny-list**: any field with
-  `autocomplete` ∈ {`current-password`, `new-password`,
-  `one-time-code`, `cc-number`, `cc-exp`, `cc-exp-month`,
-  `cc-exp-year`, `cc-csc`, `cc-name`, `cc-given-name`,
-  `cc-family-name`} OR `autocomplete=off` is refused.
+  `autocomplete` matches an entry in `SENSITIVE_AUTOCOMPLETE_TOKENS`
+  (`integrations/chrome/src/opencues-bootstrap.ts`) — currently
+  `current-password`, `new-password`, `one-time-code`, all `cc-*`
+  variants — OR `autocomplete=off` is refused.
 - **Name/id heuristic** (defence in depth — sites that don't
-  use autocomplete correctly): refused when name/id contains
-  `/\b(password|passwd|pwd|cvv|cvc|ssn|sin|pin|otp|secret|token|api[_-]?key|access[_-]?key|auth)\b/`.
+  use autocomplete correctly): refused when name/id matches
+  `SENSITIVE_FIELD_NAME_PATTERN` in
+  `integrations/chrome/src/opencues-bootstrap.ts`. Tokens today:
+  password, passwd, pwd, cvv, cvc, ssn, sin, pin, otp, secret,
+  token, api-key/access-key (any separator), auth. **The exported
+  constant is the canonical list** — every other doc references it
+  rather than duplicating the regex (so adding e.g. `mfa` is a
+  one-place edit).
 
 When ANY of these match, the chrome bootstrap:
 

@@ -52,9 +52,11 @@ Triggers on any of:
 
 **Name/id heuristic** (fallback for pages that don't bother with
 autocomplete): case-insensitive word-boundary match on the
-field's `name` or `id` against `password`, `passwd`, `pwd`,
-`cvv`, `cvc`, `ssn`, `sin`, `pin`, `otp`, `secret`, `token`,
-`api[_-]?key`, `access[_-]?key`, `auth`.
+field's `name` or `id` against the canonical
+`SENSITIVE_FIELD_NAME_PATTERN` exported from
+`integrations/chrome/src/opencues-bootstrap.ts`. See
+`docs/architecture/chrome-security.md` § Sensitive-field gate for
+the current token list.
 
 False positives (a legitimate search box named `search-token`)
 silently lose OpenCues. Acceptable trade — the alternative is
