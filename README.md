@@ -645,10 +645,10 @@ Full threat model + sanitization rules: [docs/architecture/ambient-context.md](d
 ### User context — sentinel-mode personal data
 
 A sibling opt-in to ambient context: tell OpenCues your
-**own** personal data once via `~/.cues/User.md`, and `_`
+**own** personal data once via `~/.cues/USER.md`, and `_`
 lookups personalise without you re-typing.
 
-Edit `~/.cues/User.md`:
+Edit `~/.cues/USER.md`:
 
 ```yaml
 ---
@@ -706,7 +706,7 @@ DOM nodes).
   `password|cvv|ssn|pin|otp|secret|token|api[_-]?key|auth`
 
 Same exclusion gates ambient context and user context (no
-field metadata read, no User.md catalog injected). False
+field metadata read, no USER.md catalog injected). False
 positives — `<input name="search-token">` refusing to attach —
 are accepted; OpenCues never silently routes a credential
 through an LLM.

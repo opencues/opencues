@@ -19,18 +19,19 @@ cursor-navigate: inactive
 ambient-context-mode: off
 
 # user-context-mode — sentinel-mode personal data injection.
-# Pulls field data from ~/.cues/User.md (your first name, email,
+# Pulls field data from ~/.cues/USER.md (your first name, email,
 # work city, etc.) and offers it to FluidBlankSource so `_` lookups
-# personalise without you re-typing the same info. Three values:
-#   off  (default): User.md never read; no personal data reaches any prompt.
+# personalise without you re-typing the same info.
+#   off  (default): USER.md never read; no personal data reaches any prompt.
 #   safe          : catalog of TOKENS + descriptions injected. The LLM
 #                   emits `[FIRST NAME]` etc; a post-processor substitutes
 #                   your real values AFTER the response. Your PII never
 #                   reaches the LLM provider's logs.
-#   raw           : catalog includes actual VALUES inline. LLM may emit
-#                   them directly. Better prose quality for transform-blank,
-#                   but PII reaches the provider. Opt-in only.
-# Today wired for fluid-blank only. See docs/architecture/user-context.md.
+# A `raw` mode (catalog values inlined into the prompt) is also
+# implementation-complete but deferred to Phase 2 — set it directly
+# here if you want, but it's intentionally not exposed in the
+# selector-satellite menu to prevent accidental flips. See
+# docs/architecture/user-context.md § Future work.
 user-context-mode: off
 
 # Surface-availability flags. "on" means the surface is registered and
@@ -132,11 +133,16 @@ settings:
       on: Enabled — ambient block injected into fluid-blank prompt
       off: Disabled (default) — host returns null; ambient block never built
   user-context-mode:
-    tip: Inject ~/.cues/User.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.
+    tip: Inject ~/.cues/USER.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.
     values:
-      off: Disabled (default) — User.md never read
+      off: Disabled (default) — USER.md never read
       safe: Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.
-      raw: Catalog includes actual values inline; PII reaches the LLM provider. Opt-in only.
+    # `raw` mode (catalog values inlined into the prompt — PII reaches
+    # the LLM provider) is implementation-complete but intentionally
+    # NOT cycleable from the menu — flipping it should be a deliberate
+    # file edit, not a one-keystroke toggle. Phase 2 will revisit
+    # exposure alongside per-pack capability disclosure. Power users
+    # can still set `user-context-mode: raw` directly above.
   fluid-blank-mode:
     tip: Free-form `_` lookups (P1+P3 LLM pipeline)
     values:

@@ -139,6 +139,31 @@ describe('parseUserMd — description comments', () => {
     const ctx = parseUserMd('---\njobTitle: SWE\n---');
     assert.strictEqual(ctx.fields[0].description, "user's job title");
   });
+
+  it('strips arbitrary trailing `# comment` from the value', () => {
+    // Real bite: the shipped template uses `# → [TOKEN NAME]` hints
+    // after each key as documentation. Users copy the template,
+    // uncomment a line, and the hint stays attached. Without this
+    // strip the value becomes "Wilfred                   # → [FIRST NAME]"
+    // and the catalog entry resolves to that garbage.
+    const ctx = parseUserMd('---\nfirstName: Wilfred   # → [FIRST NAME]\n---');
+    assert.strictEqual(ctx.fields[0].value, 'Wilfred');
+    assert.strictEqual(ctx.catalog.get('[FIRST NAME]'), 'Wilfred');
+  });
+
+  it('preserves `#` inside a quoted value', () => {
+    // CSS hex colour, IRC channel, etc. — `#` inside quotes is data,
+    // not a comment. Pin so the comment-stripper doesn't over-reach.
+    const ctx = parseUserMd('---\nfavoriteColor: "#FF0000"  # → [FAVORITE COLOR]\n---');
+    assert.strictEqual(ctx.fields[0].value, '#FF0000');
+  });
+
+  it('handles `value#comment` (no space before #) as one token', () => {
+    // Matches YAML: a comment must be space-prefixed. `a@b.c#frag`
+    // is one value, not value + comment.
+    const ctx = parseUserMd('---\nemail: a@b.c#frag\n---');
+    assert.strictEqual(ctx.fields[0].value, 'a@b.c#frag');
+  });
 });
 
 describe('parseUserMd — collision handling', () => {

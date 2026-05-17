@@ -238,7 +238,7 @@ re-reviewed before that change lands.**
 
 ### Boundary 10 — User-context scope + gate
 
-`~/.cues/User.md` frontmatter (the user's own personal data:
+`~/.cues/USER.md` frontmatter (the user's own personal data:
 first name, email, work city, etc.) is forwarded to
 FluidBlankSource as a catalog of sentinel tokens when
 `user-context-mode: safe` or `: raw` is set in
@@ -268,7 +268,7 @@ Two attack-class-specific rules baked into the catalog prompt
 
 Sensitive fields are excluded the same way as in Boundary 9 —
 gate enforced via `isSensitiveField` in the chrome bootstrap;
-no User.md data reaches a `_` trigger on a password / CC / OTP
+no USER.md data reaches a `_` trigger on a password / CC / OTP
 field even when feature is on.
 
 Same structural property as Boundary 9: the post-processed

@@ -206,3 +206,44 @@ describe('ChromeV1Adapter.getAmbientContext', () => {
     expect(adapter.getAmbientContext()).toEqual(ctx);
   });
 });
+
+// ===========================================================================
+// BootResult.resetBufferState — per-buffer state contract
+// ===========================================================================
+//
+// Chrome's normal-input mode (Universal Integration profile) attaches to
+// MANY independent buffers per page. Per-buffer state (DynDefs, etc.) is
+// keyed by word-index in the current buffer. The chrome bootstrap calls
+// `resetBufferState()` on focus change to prevent state leakage.
+//
+// The canonical bug (May 2026): user fluid-blanks `_` on a LinkedIn URL
+// field → DynDef[0] = `https://linkedin.com/...` with blankName. User
+// tabs to a GitHub URL field → types `_` → Resolver's "don't clobber
+// blank-bound entries" guard blocks the new substitution silently.
+// Symptom: bare `_` returns nothing, `answer _` works (different
+// wordIndex). No log, no error.
+
+describe('BootResult.resetBufferState (per-buffer-state contract)', () => {
+  it('exposes resetBufferState as a method', () => {
+    const result = boot(makeHost());
+    expect(typeof result.resetBufferState).toBe('function');
+  });
+
+  it('is idempotent — calling repeatedly is safe (focus-change spam)', () => {
+    const result = boot(makeHost());
+    expect(() => {
+      result.resetBufferState();
+      result.resetBufferState();
+      result.resetBufferState();
+    }).not.toThrow();
+  });
+
+  // The cross-buffer state-leak property is integration-shaped (needs
+  // the full Resolver + dynDefs + a fluid-blank result + a focus
+  // transition). The unit-level guarantee here is just "method exists,
+  // doesn't throw, callable any number of times." The end-to-end
+  // contract is documented at:
+  //   docs/architecture/universal-integration.md § "Per-buffer state
+  //   must reset on focus change"
+  //   integrations/chrome/src/opencues-bootstrap.ts:publishTarget
+});

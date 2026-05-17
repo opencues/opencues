@@ -458,3 +458,208 @@ Other:
 - **Open-Meteo / Finnhub / HN RSS** — Free APIs used by the weather, stocks, and news blanks.
 
 The CLI (`opencues …`) wraps install / sync / validate / list / seed-configs / which / update / uninstall across every host. `pnpm exec opencues install <host>` is the one-command setup.
+
+---
+
+## Updates — May 2026
+
+A lot has landed since the last pass. Headline changes:
+
+- **A fourth host**: Gemini CLI joined CC, OC, and Chrome.
+- **A new cue type**: Transform Blank — imperative in-place rewrites driven from `_`.
+- **A third surface**: Auditors — buffer-wide rewrite concerns (grammar, clarity, tone) running in parallel with diff-merge.
+- **A capability model**: third-party blanks can ship as TypeScript with declared `network:` / `llm:` / `secrets:` permissions, gated by `opencues review`.
+- **Chrome got a native-messaging host**: live `~/.cues/` sync into open tabs, subprocess blanks (`volume _`, `brightness _`), and mid-session API-key swaps with no reload.
+
+---
+
+### 6. Transform Blank (imperative rewrite)
+
+Same `_` trigger, opposite direction from FluidBlank. Instead of asking a question and getting an answer, you give an instruction and the surrounding text gets rewritten in place. The `_` slot is bidirectional now — lookup vs imperative is detected, not configured.
+
+Examples:
+- `change boy to girl _ the boy ran fast` → `the girl ran fast`
+- `the cat ran home pluralize and make past tense _` → `the cats ran home`
+- `remove pronouns _ the cat sat on the mat` → `sat on the mat`
+
+Three-pass pipeline — EXTRACT (is this imperative? what's the instruction span?) → APPLY (rewrite the body) → VERIFY (catch agreement bugs, partial translations, charset coverage). The 3-pass design beats one-shot by ~70pp on the benchmark; the canonical writeup is `docs/architecture/transform-blank.md` (1000+ lines including the experiment log).
+
+Two subtleties worth knowing:
+
+- **Cursor-aware "here"** — instructions like `add a comma here _` use a shared `[CURSOR]` sentinel passed through every pass so APPLY knows what "here" points at.
+- **Claim-and-bail** — if EXTRACT verdicts an instruction but APPLY can't apply it, TransformBlank still *claims* the slot. Without this, FluidBlank would try to treat the instruction phrase as a free-form lookup and vandalise the input.
+
+---
+
+### 7. Auditors — buffer-wide rewrite concerns
+
+Auditors are the third surface (cues, blanks, auditors). Each auditor is a single concern — grammar, clarity, tone, PII removal — that runs whenever an agentic rewrite fires. Configured the same way as a cue, in `~/.cues/auditors/<name>/AUDITOR.md`, with a priority and a prompt body.
+
+```yaml
+---
+name: grammar
+description: Fix grammar and style errors
+priority: 50
+---
+Check for grammar errors. Fix subject-verb disagreement, comma
+splices, dropped articles. Preserve voice and intentional fragments.
+```
+
+**Isolated dispatch by default.** One LLM call per auditor, fired in parallel, results diff-merged by priority — highest priority wins on overlapping spans. Total latency is `max(N)` not `sum(N)`, and the per-item dispatch property (same one that makes word-routing safe) means one auditor's prompt body can't steer the LLM calls for other auditors. No cross-auditor injection.
+
+Two-tier cache fronts every call: a skip-on-stable check (no LLM round-trip if the buffer hasn't changed since the last rewrite) plus an LRU on `(snapshot, task, cursor, windowWords, auditorSignature)`. Canonical doc: `docs/architecture/agent-rewrite-cache.md`.
+
+---
+
+### 8. User-blanks (capability-gated TypeScript)
+
+Authors can now ship custom blanks as TypeScript/JavaScript modules. The runtime loads them in a constrained context — `vm.Context` on Node, Web Worker on Chrome — and grants only the capabilities the blank declares in its frontmatter.
+
+```yaml
+---
+name: gh-issues
+blankKeywords: [gh]
+network: [api.github.com]
+secrets: [GITHUB_TOKEN]
+secret-hosts:
+  GITHUB_TOKEN: [api.github.com]
+storage: gh-issues
+---
+```
+
+```js
+export default {
+  async get(ctx, args) {
+    const repo = args[1] ?? 'opencues/opencues';
+    const r = await ctx.fetch(`https://api.github.com/repos/${repo}`);
+    return `${(await r.json()).open_issues_count} open`;
+  }
+};
+```
+
+User types `gh opencues/opencues _` → API hit → answer injected.
+
+The interesting work is in the **capability model**, not the loader:
+
+- **Secret host-binding** — every named secret MUST declare which hosts it can be sent to. The runtime scans every outbound request body + headers for bound secrets; if `GITHUB_TOKEN` shows up in a fetch to anywhere other than `api.github.com`, the call is refused. Exfil is structurally blocked even if the JS is malicious.
+- **Output sanitization by default** — HTML, zero-width chars, bidi overrides stripped. Opt-in `output: rich` for legitimate markdown/emoji.
+- **OS sandbox for shell-script blanks** — `bwrap` confines `.sh`-backed blanks on Linux; mac sandbox-exec equivalent. Opt-in, off-by-default to keep the warm path warm; see `docs/architecture/sandbox.md`.
+
+The built-in Stocks / Weather / Answer / PromptImprover blanks were migrated onto this format too — they're now user-blanks with the same capability declarations every third-party blank uses. Canonical writeup: `docs/architecture/user-blanks.md`.
+
+---
+
+### 9. `opencues review` — pre-install pack audit
+
+Reviewing a third-party cue pack before it lands in `~/.cues/`:
+
+```
+$ opencues review ~/downloaded-pack.zip [--llm]
+```
+
+Two layers, both run in a sandbox:
+
+- **Static (always)** — secrets without `secret-hosts` bindings (error), `network:` wildcards / IPs (error), `output: rich` (warn), AST-level pattern checks for `eval` / `Function` / dynamic `import()` after stripping comments + strings. Static checks are authoritative.
+- **LLM (opt-in)** — text-in/text-out only, no tool use, untrusted source wrapped in XML delimiters, strict-JSON schema, malformed → fail. The LLM can downgrade severity but cannot upgrade past a static verdict.
+
+Surfaces every finding with file:line, capability summary, and a one-line "what this blank would be allowed to do if installed." Threat model lives in `docs/architecture/security-audit.md`.
+
+---
+
+### 10. Universal Integration profile (no-cycling hosts)
+
+Some hosts can't paint colour or intercept Ctrl+Alt+Arrow — Chrome's normal `<input>` / `<textarea>` is the live example today (vs. contenteditable, where the highlight overlay does work). The adapter advertises `supportsCycling: false`, and every cycleable cue or blank is filtered out at registration: word-cues, selector/satellite blanks, list blanks, anything script-backed (`volume`, `brightness`).
+
+The check is **structural, not annotation-driven** — `isBlankConfigCycleable` reads each definition's shape, so blank authors don't need to add `on-host: …` lists. Read-only blanks (stocks, weather, dictionary) keep firing because they don't need cycling. FluidBlank and TransformBlank keep firing because their result is single-shot.
+
+Two filter points (resolver-side and BlankFill-side) live in different files and MUST stay in sync — the canonical doc (`docs/architecture/universal-integration.md`) is the contract.
+
+Chrome additionally **refuses sensitive inputs** — `autocomplete="current-password"`, names containing `password` / `cvv` / `ssn`, and a `type` allowlist (text/email/search/url only). Errs toward blocking: false positives lose OpenCues for that input; false negatives would leak credentials through the LLM.
+
+---
+
+### 11. Chrome native-messaging host
+
+Chrome now has an optional local daemon (`opencues install chrome-host`) that does two things the extension sandbox can't:
+
+- **Live `~/.cues/` sync.** Filesystem watch → framed JSON over native-messaging → `chrome.storage.local.set` → `onChanged` broadcast → every open tab reloads config. ~300ms end-to-end. The bake-time bundle is still the fallback if the host isn't installed.
+- **Subprocess execution.** Script-backed blanks (`volume _`, `brightness _`, anything with `blankScript: ./x.sh`) work in Chrome by routing through the host. Path-confined to `~/.cues/` — absolute paths outside `CUE_ROOT` are refused.
+
+Bonus: **API keys are now mutable mid-session.** `BootResult.updateApiKeys` lets the host push fresh keys into a running tab without a reload — the runtime live-mutates `Resolver.options.apiKeys` and re-audits providers. Useful when you rotate Groq / OpenAI / Anthropic keys mid-flow. The boot-time path also probes every configured provider once and surfaces missing/typo'd keys as a single warning instead of silently failing on the next analysis pulse. Canonical doc: `docs/architecture/chrome-llm-keys.md`.
+
+---
+
+### 12. Site scoping + Chrome trust gate
+
+Two related additions on the "where does this cue fire?" axis.
+
+**Site scoping** — any cue, blank, or auditor can declare an `on-site:` / `not-on-site:` list. Entries can be platform names (`chrome`, `claude-code`), hostnames (`reddit.com`), wildcards (`*.reddit.com`), or hostname + path prefix (`reddit.com/r/claudeai`). `not-on-site` is checked first; if `on-site` is non-empty, at least one entry must match. Native hosts have null hostname/path, so platform-name entries still match while hostname-only entries cleanly drop.
+
+```yaml
+on-site: [chrome, reddit.com/r/claudeai]
+not-on-site: [twitter.com, *.evil.example]
+```
+
+SPA navigation re-runs the filter via `popstate` + monkey-patched `pushState` / `replaceState`, so route changes inside Gmail / Slack / Linear don't strand a cue that should have unloaded.
+
+**Trust gate** — Chrome refuses to run cue packs from origins the user hasn't explicitly trusted. First time a pack appears, the popup prompts; trust is stored per-origin. Combined with the capability model + `opencues review`, the three layers cover: *can I read the code*, *what is the code allowed to do*, *do I trust this source at all*.
+
+---
+
+### 13. Markdown inline rendering
+
+LLM-substituted text gets light markdown styling rendered inline — `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, `# heading`, `- list`. ANSI on terminals (CC, OC, gemini-cli), CSS Custom Highlight ranges on Chrome. The buffer keeps the raw markdown; the styling is overlay metadata.
+
+Parse-once cache: the parser runs only when the LLM lands new text (blank fill, transform completed, agent rewrite tick). User typing invalidates the cache; runtime cycling and ZWS toggles don't. Ranges include the markers themselves so the renderer can dim the `*` in `*italic*` rather than hide it.
+
+Blank-slot suppression: `_` characters inside a pending italic/code/strike span are stripped from the styling so an in-flight blank animation doesn't accidentally trigger markdown markup.
+
+---
+
+### 14. Blank loading animation
+
+While a `_` is waiting for its source (LLM round-trip, HTTP fetch), the slot animates. Default braille-rotate plays `_` once and then spins through `⠁⠂⠄⡀⢀⠠⠐⠈`. Bounce, flipper, and arbitrary custom frames are also available.
+
+Configured per-host via `~/.cues/OPENCUES.md`:
+
+```
+blank-loading-animation: bounce | braille-rotate | flipper | custom | off
+blank-loading-colors-rgb: #ef4444,#f97316,#22c55e,#06b6d4,#3b82f6
+blank-loading-colors-ansi: red,amber,green,cyan,blue
+blank-loading-interval-ms: 150
+```
+
+Per-frame colours cycle through the palette. Hot-reloadable within ~2s — animations in flight keep their captured interval; the next frame reads the fresh palette. Malformed colours fall back to the shipped defaults instead of breaking the animation.
+
+---
+
+### 15. Strict JSON mode for LLMs
+
+Groq's `gpt-oss-20b` / `gpt-oss-120b` support constrained-decoding for structured outputs. We now use it across every prompt-parsing surface: TransformBlank (P1 / APPLY / VERIFY), FluidBlank (SEGMENT / ANSWER), WordCues (alternatives / raw), AgentRewrite. JSON schema is enforced server-side; parse errors basically vanish.
+
+A single `useStrictJson(provider, model)` gate decides per-call. Non-Groq providers (Claude, Gemini, OpenRouter) still go through the legacy label-based parsers (`REWRITE: …`, `ANSWER: …`) — backward compatible, no migration needed.
+
+Eliminated failure classes: missing prefix tokens, preamble leakage (`"Sure, here's …"`), refusals smuggled as content.
+
+---
+
+### 16. Gemini CLI integration (4th host)
+
+OpenCues now patches Google's Gemini CLI (`0.41.x`) the same way it patches OpenCode — fork the source, apply patches, build. `opencues run gemini-cli` launches the patched host with full cues/blanks/transform/auditors. Setup is idempotent (substring-anchored patches survive minor version bumps).
+
+Gemini CLI is the **first React/Ink host** in the lineup, and the integration uncovered two non-obvious things worth pinning here:
+
+- **Render-kick from every wrapped setter.** React only re-renders on state change. Every wrapped `setText` / `setCursor` / `pushText` / `forceRender` MUST call `host.forceRender?.()` to bump a useState tick. Without it, the UI freezes mid-operation and only un-freezes when the user moves the cursor.
+- **Code-point ↔ UTF-16 cursor conversion.** Gemini's buffer indexes by Unicode code points; OpenCues indexes by UTF-16 code units. Boundary conversions at every seam — without them, a single emoji in the input drifts every highlight by one position.
+
+Adding a fifth host now mostly means handling whatever the host's own quirks are; the host-agnostic contract has held.
+
+---
+
+### Other notable improvements
+
+- **`opencues review` + capability model + sandboxes** form a security baseline that lets third-party blanks ship without each user reading the code. The threat model + remaining follow-ups are tracked in `docs/architecture/security-audit.md`.
+- **`opencues doctor` and `opencues check-keys`** now probe every supported provider (was: Groq + Finnhub only), surface install drift across hosts, and detect the chrome native-messaging host.
+- **`seed-configs` got a SHIPPED-MD REFRESH phase** so updates to the shipped defaults overlay onto user values without clobbering customisations.
+- **`blankReplace` unified field** (`keep` / `wipe` / `wipe-all` / `auto`) replaces the older per-blank patchwork. `auto` runs a deterministic copula/equation/question heuristic — see `docs/architecture/blank-replace-modes.md`.
+- **AgentRewrite two-tier cache** — skip-on-stable + LRU keyed on `(snapshot, task, cursor, windowWords, auditorSignature)` — keeps the agentic rewrite path warm. `docs/architecture/agent-rewrite-cache.md`.

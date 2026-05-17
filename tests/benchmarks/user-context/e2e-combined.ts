@@ -1,7 +1,7 @@
 /**
  * End-to-end combined ambient-context + user-context bench.
  *
- * Real LLM, fake everything else: synthetic User.md (16 fake fields)
+ * Real LLM, fake everything else: synthetic USER.md (16 fake fields)
  * + synthetic AmbientContext (form labels, placeholders, page titles
  * — the data chrome's gatherer would normally produce from a live
  * DOM). Drives production FluidBlankSource through the full fused
@@ -10,7 +10,7 @@
  *
  * This is the scenario the feature exists for: user opens a form,
  * focuses a "GitHub URL" field, types `_`, and OpenCues drops in
- * the github URL from their User.md without them having to retype
+ * the github URL from their USER.md without them having to retype
  * it. Mixes the two opt-in surfaces:
  *
  *   - ambient context tells the LLM WHAT the field wants
@@ -39,7 +39,7 @@ import { getProvider } from '../../../packages/opencues-core/src/llm-provider';
 import type { HttpAdapter, CueContext, AmbientContext } from '../../../packages/opencues-core/src/types';
 import * as https from 'https';
 
-// ─── synthetic User.md ─────────────────────────────────────────────────────
+// ─── synthetic USER.md ─────────────────────────────────────────────────────
 
 const FAKE_USER_MD = `---
 firstName:    Wilfred
@@ -593,7 +593,7 @@ async function main(): Promise<void> {
   const src = new FluidBlankSource({ provider, endpoint, apiKey, model, httpAdapter });
 
   console.log(`${BOLD}user-context + ambient-context combined e2e${RESET}`);
-  console.log(`Provider: ${model}   Cases: ${CASES.length}   User.md fields: ${USER_CTX.fields.length}\n`);
+  console.log(`Provider: ${model}   Cases: ${CASES.length}   USER.md fields: ${USER_CTX.fields.length}\n`);
 
   const t0 = Date.now();
   const outcomes = await runConc(CASES, c => runCase(src, c), 6);

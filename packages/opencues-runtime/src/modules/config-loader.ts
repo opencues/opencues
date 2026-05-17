@@ -107,11 +107,11 @@ export interface OpenCuesState {
    */
   readonly ambientContextMode: 'on' | 'off';
   /**
-   * Whether `~/.cues/User.md` field data (first name, email, etc.) is
+   * Whether `~/.cues/USER.md` field data (first name, email, etc.) is
    * forwarded to FluidBlankSource as sentinel tokens for prompt
    * personalization.
    *
-   * - `off` (default): User.md is not read. CueContext.userContext stays
+   * - `off` (default): USER.md is not read. CueContext.userContext stays
    *   undefined. No personal data reaches any prompt.
    * - `safe`: catalog of TOKENs + descriptions injected into the
    *   prompt. LLM emits tokens; a post-processor substitutes real
@@ -268,7 +268,7 @@ export interface LoadedConfig {
   /** cwd BLANKS.md + folder blanks/* merged. The resolver consumes this. */
   readonly mergedBlanksConfig: CuesMdConfig | null;
   /**
-   * Parsed user-context from `<settingsFile-dir>/User.md`. Always
+   * Parsed user-context from `<settingsFile-dir>/USER.md`. Always
    * populated (parser returns an empty UserContext when the file is
    * missing or has no frontmatter). The resolver consults
    * `opencuesState.userContextMode` to decide whether to pass this
@@ -348,7 +348,7 @@ export class ConfigLoader {
   get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
   get blanksByWord(): ReadonlyMap<string, BlankEntry> { return this._config.blanksByWord; }
-  /** Parsed `~/.cues/User.md`. Always populated; the runtime gate on
+  /** Parsed `~/.cues/USER.md`. Always populated; the runtime gate on
    *  `opencuesState.userContextMode` decides whether it ever leaves
    *  the ConfigLoader. See `LoadedConfig.userContext`. */
   get userContext(): LoadedConfig['userContext'] { return this._config.userContext; }
@@ -530,19 +530,27 @@ export class ConfigLoader {
       ? await this._safeReadFile(this.options.settingsFile)
       : null;
 
-    // User context lives in `User.md` alongside OPENCUES.md (so the
+    // User context lives in `USER.md` alongside OPENCUES.md (so the
     // user-level `~/.cues/` directory holds both). Global only by
     // design — user data is user data; per-project overlays make no
     // sense. Always read when settingsFile is set; the runtime gate
     // (`user-context-mode`) decides whether the parsed data ever
     // reaches a prompt.
     const userMdPath = this.options.settingsFile
-      ? this.options.settingsFile.replace(/[^/]+$/, 'User.md')
+      ? this.options.settingsFile.replace(/[^/]+$/, 'USER.md')
       : null;
     const userMdContent = userMdPath
       ? await this._safeReadFile(userMdPath)
       : null;
     const userContext = parseUserMd(userMdContent);
+    // Diagnostic: one line per load so the failure mode is greppable
+    // ("no path" / "missing" / "empty" / "N fields"). Trace why
+    // user-context isn't firing without having to bisect chrome.storage.
+    const userMdState = !userMdPath ? 'no settingsFile (no path derivable)'
+      : userMdContent === null ? `missing at ${userMdPath}`
+      : userContext.fields.length === 0 ? `read but parsed 0 fields from ${userMdPath} (${userMdContent.length} bytes)`
+      : `${userContext.fields.length} fields from ${userMdPath}`;
+    this.adapter.log('info', `ConfigLoader: USER.md → ${userMdState}`);
 
     // Per-search-path master file reads. Master files declare the
     // surface as a whole — project metadata, ignore[], disable[]. Each

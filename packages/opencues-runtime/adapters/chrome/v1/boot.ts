@@ -137,6 +137,27 @@ export interface BootResult {
    * stripped text.
    */
   onModuleEvent(handler: (type: string, body?: Record<string, unknown>) => void): () => void;
+  /**
+   * Reset per-buffer runtime state — DynDefs, HighlightState, SpanFill,
+   * BlankLoading frames. Called by chrome's content script when the
+   * focused field changes (focusin / focusout) because chrome's
+   * normal-input mode attaches to many independent `<input>` elements
+   * in one page, each with its own buffer text and word-position
+   * semantics.
+   *
+   * Without this, a fluid-blank substitution in field A leaves a
+   * `DynDef` at wordIndex 0 with `blankName: 'fluid-blank'`. When the
+   * user focuses field B and types `_`, the Resolver's "don't clobber
+   * blank-bound entries" guard (`if (existing.blankName) continue;`)
+   * silently refuses to substitute in field B because dynDefs[0] is
+   * still B-relevant from field A's leftover state. Bug surfaces as
+   * "first `_` doesn't work, `answer _` does" (different wordIndex).
+   *
+   * Native hosts (CC/OC/gemini-cli) work on ONE buffer per session, so
+   * this is a no-op there. Chrome with normal-input mode is the only
+   * caller today; safe to call from any host.
+   */
+  resetBufferState(): void;
   dispose(): void;
 }
 
@@ -357,6 +378,39 @@ export function boot(host: HostInfo): BootResult {
     },
     onModuleEvent(handler) {
       return moduleEvents.subscribe(({ type, body }) => handler(type, body));
+    },
+    resetBufferState() {
+      // Per-buffer state — clear on focused-field switch. Each cleared
+      // object's leakage causes a distinct subtle bug:
+      //
+      //   dynDefs                — leftover word-position entries block
+      //                            legit substitutions in the new buffer
+      //                            ("first `_` doesn't work, `answer _`
+      //                            does" — different wordIndex).
+      //   hlState                — stale highlight pointer renders the
+      //                            wrong word as "current" in the new
+      //                            buffer until the user moves the caret.
+      //   spanFillState          — span-fill blank in flight from buffer
+      //                            A would resolve into buffer B at the
+      //                            same character range.
+      //   selectorSatelliteState — user mid-cycle on a settings selector
+      //                            in A would resume on B (wrong-buffer
+      //                            settings writes).
+      //
+      // NOT cleared (intentionally session-scoped, not buffer-scoped):
+      //   agentTaskState — armed `agentically X _` task survives buffer
+      //                    switches so the user can leave a Gmail draft
+      //                    to check a tab + return without re-arming.
+      //   dismissedBlanks — dismissing `weather _` once stays dismissed
+      //                     in this page until reload.
+      shared.dynDefs.clear();
+      shared.hlState.deactivate();
+      shared.spanFillState.clear();
+      shared.selectorSatelliteState.clear();
+      // Reset lastSeen so the next collectRenderDirectives doesn't
+      // diff against a stale snapshot from the prior buffer.
+      lastSeenText = '';
+      lastSeenCursor = 0;
     },
     dispose() {
       adapter.dispose();

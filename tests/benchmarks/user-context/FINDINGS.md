@@ -161,7 +161,7 @@ Raw logs:
 After landing the feature into production, ran a real-LLM e2e suite
 through the FULL production code path (`FluidBlankSource` →
 `renderUserCatalog` → fused LLM call → `postProcessUserContext` →
-`alternatives`) against a synthetic User.md with 16 fake fields.
+`alternatives`) against a synthetic USER.md with 16 fake fields.
 Mirrors what happens in chrome / CC / OC when a user types `_`
 after opting in.
 
@@ -183,7 +183,7 @@ OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
 **Notable**:
 
 - **Off-mode is bulletproof.** 27/27 across every provider —
-  when the scalar is `off`, no User.md value leaks into any
+  when the scalar is `off`, no USER.md value leaks into any
   answer. The runtime gate works.
 - **Safe-mode substitution works as advertised.** Real values
   land in `result.alternatives` after the LLM emitted the
@@ -198,7 +198,7 @@ OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
 
 The 4 STEPS the e2e exercises:
 
-1. `parseUserMd` against a 16-field synthetic User.md
+1. `parseUserMd` against a 16-field synthetic USER.md
 2. `renderUserCatalog` in safe/raw/off — verify NO values in
    safe, values present in raw, empty in off
 3. `FluidBlankSource` against a real LLM provider — 9 cases ×
@@ -215,11 +215,11 @@ fluid-blank.
 ## Combined user-context + ambient-context e2e (May 2026)
 
 The real production scenario: chrome users fill out a form (ambient
-context = field labels + page title) and want their User.md data
+context = field labels + page title) and want their USER.md data
 to autofill. Bench: `tests/benchmarks/user-context/e2e-combined.ts`
 — 27 cases × 3 providers = 81 trials. Categories:
 
-- **direct**     — field label maps directly to a User.md token (`label: "GitHub URL"` + `_`)
+- **direct**     — field label maps directly to a USER.md token (`label: "GitHub URL"` + `_`)
 - **meta-bare**  — buffer is just `_`; label IS the question (`label: "What is your GitHub profile?"` + `_`)
 - **meta-answer**— buffer is `fill _` / `answer _` / `this _`
 - **format**     — field wants a derived form (`label: "Country code (ISO 3166)"` but catalog has the full country)
@@ -258,8 +258,8 @@ in the configuration most users will use.
    **Implication:** for fields like "ISO code" where the catalog
    doesn't directly contain the wanted format, the user needs to
    either (a) add a dedicated `homeCountryCode: GB` field to their
-   User.md, or (b) accept that the model can't derive it. Document
-   this in the User.md template.
+   USER.md, or (b) accept that the model can't derive it. Document
+   this in the USER.md template.
 
 2. **page-title-only without a label**. When ambient has only
    `pageTitle: "GitHub — Profile Setup"` and no field `label`, the
@@ -293,7 +293,7 @@ the field wants; user-context provides WHAT to fill in.
 Anti-cases (no catalog match) correctly produce no user-data
 output; injection cases (hostile label) are absorbed. Format
 conversion is a known limitation; recommend dedicated fields
-in User.md for derived formats users care about.
+in USER.md for derived formats users care about.
 
 Raw logs: `tests/results/user-context-combined/{cerebras-gpt-oss,gemini-flash-lite,groq}.log`.
 
@@ -382,8 +382,8 @@ Effect after fix (cerebras):
   airport code, name initials, state/province, email username —
   models can't reliably derive these from catalog tokens that
   contain the full form. Fix: users add dedicated fields to
-  User.md (`homeCountryCode: GB`, `nearestAirport: LHR`). Already
-  in `defaults/User.md` template.
+  USER.md (`homeCountryCode: GB`, `nearestAirport: LHR`). Already
+  in `defaults/USER.md` template.
 - **Some alt phrasings drop on cerebras/groq**. "Organization"
   (vs Company) and "Role" (vs Job title) sometimes bail empty.
   Gemini handles them, the gpt-oss models don't always. Borderline

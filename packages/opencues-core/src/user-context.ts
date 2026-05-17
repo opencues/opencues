@@ -1,7 +1,7 @@
 /**
  * User-context — sentinel-mode personal-data injection for fluid-blank.
  *
- * Parses `~/.cues/User.md`'s YAML frontmatter into a `UserContext`, and
+ * Parses `~/.cues/USER.md`'s YAML frontmatter into a `UserContext`, and
  * provides the runtime helpers FluidBlankSource needs to:
  *
  *   - render a catalog block for injection into the LLM prompt (in
@@ -26,7 +26,7 @@ export type UserContextMode = 'off' | 'safe' | 'raw';
 /** Single field — `firstName: Wilfred` → token=`[FIRST NAME]`,
  *  key=`firstName`, value=`Wilfred`. Description auto-derived from
  *  the key unless an explicit `# description` comment was on the
- *  same line in User.md. */
+ *  same line in USER.md. */
 export interface UserContextField {
   /** Frontmatter key, verbatim (`firstName`, `first_name`, `first-name`). */
   key: string;
@@ -38,7 +38,7 @@ export interface UserContextField {
   description: string;
 }
 
-/** Parsed User.md — the runtime hands this through to FluidBlankSource
+/** Parsed USER.md — the runtime hands this through to FluidBlankSource
  *  when `user-context-mode` is on. */
 export interface UserContext {
   readonly fields: readonly UserContextField[];
@@ -79,7 +79,7 @@ export function deriveToken(key: string): string {
 }
 
 /**
- * Parse User.md content (YAML frontmatter + optional body).
+ * Parse USER.md content (YAML frontmatter + optional body).
  *
  * Only the frontmatter is parsed in v1; the body is reserved for a
  * future Phase 3 (free-text body injection) and is silently ignored.
@@ -103,7 +103,7 @@ export function deriveToken(key: string): string {
  * description is auto-derived from the key.
  *
  * Returns an empty UserContext on missing/empty frontmatter so
- * downstream code can treat "no User.md" and "empty User.md" the same.
+ * downstream code can treat "no USER.md" and "empty USER.md" the same.
  */
 export function parseUserMd(content: string | null | undefined): UserContext {
   const empty: UserContext = { fields: [], catalog: new Map() };
@@ -116,20 +116,42 @@ export function parseUserMd(content: string | null | undefined): UserContext {
   for (const line of fmMatch[1].split('\n')) {
     if (!line || line.startsWith('#')) continue;
     if (line.startsWith(' ') || line.startsWith('\t')) continue;
-    // Allow descriptions via `# description: ...` after the value.
-    // Strip a same-line `#` comment but PRESERVE `#` inside quoted
-    // values (uncommon but defensive).
     const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*?):\s*([^\n]*)$/);
     if (!m) continue;
     const key = m[1].trim();
     const rest = m[2];
-    // Split off a description comment if present.
+
+    // Two-step inline-comment handling:
+    //   1. Optional `# description: <text>` override — captures the
+    //      catalog description for the LLM prompt.
+    //   2. Any OTHER `# ...` trailing comment (e.g. the template's
+    //      `# → [FIRST NAME]` token-name hints) gets stripped from
+    //      the value. Matches YAML's inline-comment behaviour.
+    //
+    // Quoted values protect their `#` (a `#` inside `"..."` or
+    // `'...'` is data, not a comment). Pre-scan for the first
+    // unquoted `#` and split there.
     let rawValue = rest;
     let description: string | null = null;
     const descMatch = rest.match(/^(.*?)\s+#\s*description:\s*(.+)$/i);
     if (descMatch) {
       rawValue = descMatch[1];
       description = descMatch[2].trim();
+    } else {
+      // Generic inline comment: find first ` #` (space + hash) NOT
+      // inside quotes. Loops once per line — cost is negligible.
+      let inQuote: '"' | "'" | null = null;
+      for (let i = 0; i < rest.length - 1; i++) {
+        const ch = rest[i];
+        if (inQuote) {
+          if (ch === inQuote) inQuote = null;
+        } else if (ch === '"' || ch === "'") {
+          inQuote = ch;
+        } else if (ch === ' ' && rest[i + 1] === '#') {
+          rawValue = rest.slice(0, i);
+          break;
+        }
+      }
     }
     // Strip surrounding quotes if present.
     let value = rawValue.trim();

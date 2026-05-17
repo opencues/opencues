@@ -105,6 +105,26 @@ changes); the resolver's `buildSourcesFromConfig` and BlankFill's
 reports `supportsCycling: false`. Reactive on focus change via
 the resolver's build key.
 
+**Per-buffer state reset on focus change** — chrome's
+normal-input mode attaches to MANY independent buffers per page.
+The runtime's per-buffer state objects (`DynDefs`,
+`HighlightState`, `SpanFillState`, `SelectorSatelliteState`) are
+keyed by word-index in the *current* buffer; leftover entries
+from a prior field silently corrupt the new one. Canonical bug
+(May 2026): LinkedIn URL field `_` registers `DynDef[0]` with
+`blankName: 'fluid-blank'` → tab to GitHub URL field → bare `_`
+silently no-ops because the resolver's "don't clobber blank-bound
+entries" guard blocks it, while `answer _` works (different
+wordIndex). Fix: `publishTarget(el)` calls
+`bootResult.resetBufferState()` on every real focus change.
+`AgentTaskState` + `dismissedBlanks` deliberately persist
+(session-scoped). Full per-state-object table + rationale for
+each NO entry:
+`docs/architecture/universal-integration.md` § "Per-buffer state
+must reset on focus change". Any new host advertising
+`supportsCycling: false` with multiple focusable buffers per
+runtime instance MUST call `resetBufferState()` on focus change.
+
 ## Ambient context — off by default
 
 `gatherAmbientContext(target)` reads the focused field's label /
@@ -137,7 +157,7 @@ BEFORE landing it.
 
 ## User context — off by default
 
-Sibling to ambient. The runtime reads `~/.cues/User.md`
+Sibling to ambient. The runtime reads `~/.cues/USER.md`
 frontmatter into a structured catalog of sentinel tokens
 (`firstName: Wilfred` → `[FIRST NAME]`) and forwards it to
 `FluidBlankSource` when `user-context-mode: safe` (or `: raw`) is
@@ -171,7 +191,7 @@ Full design + threat model: `docs/architecture/user-context.md`.
 Bench evidence: `tests/benchmarks/user-context/FINDINGS.md`.
 Chrome doesn't have anything special to do for this feature —
 it's a runtime + core concern; chrome just provides the focused
-target. The ConfigLoader reads `User.md` next to `OPENCUES.md`,
+target. The ConfigLoader reads `USER.md` next to `OPENCUES.md`,
 the Resolver gates on the scalar, and FluidBlankSource consumes
 the catalog. No chrome-specific code path.
 

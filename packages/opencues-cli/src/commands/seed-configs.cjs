@@ -4,7 +4,7 @@
 // Four responsibilities, all idempotent + safe to re-run:
 //
 //   1. SEED   first-time copy of repo defaults → ~/.cues/
-//             (CUES.md, BLANKS.md, OPENCUES.md, AUDITORS.md, User.md,
+//             (CUES.md, BLANKS.md, OPENCUES.md, AUDITORS.md, USER.md,
 //              cues/, blanks/, auditors/, scripts/)
 //             Skips files that already exist with content (preserves user edits).
 //
@@ -156,13 +156,13 @@ module.exports = function seedConfigs(argv, ctx) {
     }
   }
 
-  // Seed User.md — personal-data file consumed by FluidBlankSource
+  // Seed USER.md — personal-data file consumed by FluidBlankSource
   // when `user-context-mode` is `safe` / `raw` in OPENCUES.md.
   // SKIP-if-exists — 100% user content; the shipped template is
   // entirely commented out so dropping it in is feature-safe (the
   // scalar in OPENCUES.md still defaults to `off`).
-  const userMdTarget = projectScope ? null : path.join(targetDir, 'User.md');
-  const userMdSource = path.join(sourceDir, 'User.md');
+  const userMdTarget = projectScope ? null : path.join(targetDir, 'USER.md');
+  const userMdSource = path.join(sourceDir, 'USER.md');
   if (userMdTarget && fs.existsSync(userMdSource)) {
     if (hasContent(userMdTarget)) {
       log(`  ${dim('SKIP (exists)')} ${userMdTarget}`);

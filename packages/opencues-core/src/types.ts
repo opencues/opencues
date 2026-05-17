@@ -125,7 +125,7 @@ export interface CueContext {
   ambient?: AmbientContext;
 
   /**
-   * Sentinel-mode user context derived from `~/.cues/User.md`. Only
+   * Sentinel-mode user context derived from `~/.cues/USER.md`. Only
    * consumed by FluidBlankSource and only when
    * `user-context-mode: safe` or `: raw` is set in OPENCUES.md (off
    * by default). The runtime gate filters before this is populated;

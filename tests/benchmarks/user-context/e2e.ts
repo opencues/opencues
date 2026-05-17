@@ -2,11 +2,11 @@
  * End-to-end smoke test for the User Context feature.
  *
  * Drives PRODUCTION code paths — not the bench prompt — against a
- * real LLM, with a synthetic User.md that includes obviously-fake
+ * real LLM, with a synthetic USER.md that includes obviously-fake
  * but realistic-looking fields.
  *
  * Specifically exercises:
- *   1. parseUserMd parses the synthetic User.md into a catalog
+ *   1. parseUserMd parses the synthetic USER.md into a catalog
  *   2. renderUserCatalog produces a prompt block in `safe` mode
  *   3. A real call to FluidBlankSource (production class, real
  *      provider via OPENCUES_BENCH_PROVIDER) with userContext
@@ -31,7 +31,7 @@ import { getProvider } from '../../../packages/opencues-core/src/llm-provider';
 import type { HttpAdapter, CueContext } from '../../../packages/opencues-core/src/types';
 import * as https from 'https';
 
-// ─── synthetic User.md (FAKE — for testing only) ───────────────────────────
+// ─── synthetic USER.md (FAKE — for testing only) ───────────────────────────
 
 const FAKE_USER_MD = `---
 firstName:    Wilfred
@@ -52,7 +52,7 @@ twitter:      "@wkasekende"
 website:      https://wkasekende.com
 ---
 
-# User.md body — IGNORED in Phase 1.
+# USER.md body — IGNORED in Phase 1.
 This is documentation for myself; the runtime parses only the
 frontmatter above.
 `;
@@ -209,7 +209,7 @@ async function main(): Promise<void> {
   // Step 1 — verify the parser.
   const userContext = parseUserMd(FAKE_USER_MD);
   console.log(`${BOLD}STEP 1: parseUserMd${RESET}`);
-  console.log(`  Parsed ${userContext.fields.length} fields from fake User.md`);
+  console.log(`  Parsed ${userContext.fields.length} fields from fake USER.md`);
   console.log(`  Sample tokens: ${userContext.fields.slice(0, 5).map(f => f.token).join(', ')} …`);
   if (userContext.fields.length !== 16) {
     console.error(`  ${RED}FAIL${RESET}: expected 16 fields, got ${userContext.fields.length}`);

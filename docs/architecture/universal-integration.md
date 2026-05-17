@@ -143,6 +143,52 @@ keystroke rebuilds with cycleable sources pruned. Move back to a
 CE, the next keystroke rebuilds with them restored. No reload, no
 manual recapture — the resolver self-heals on the focus boundary.
 
+### Per-buffer state must reset on focus change
+
+A subtler concern this profile introduces: chrome's normal-input
+mode means a SINGLE page can attach to MANY independent buffers
+(every `<input>` / `<textarea>` on the page). The runtime's
+per-buffer state objects are keyed by word-index in the current
+buffer. Leftover entries from a prior field silently corrupt the
+new one.
+
+The canonical bug (caught May 2026): user types `_` on a LinkedIn
+URL field, gets substituted. A `DynDef` is registered at wordIndex
+0 with `blankName: 'fluid-blank'`. User tabs to a GitHub URL field
+on the same page, types `_`. The Resolver's "don't clobber
+blank-bound entries" guard (`if (existing.blankName) continue;`)
+silently refuses the new substitution because dynDefs[0] is still
+the LinkedIn-relevant entry. Symptom: bare `_` returns nothing,
+`answer _` works (because `answer _` has `_` at wordIndex 1, not
+0). No log line, no error — completely silent.
+
+Fix: `BootResult.resetBufferState()` clears per-buffer state on
+focus change. The chrome bootstrap's `publishTarget(el)` calls it
+when `el !== currentTarget`. The contract:
+
+| State | Cleared on focus change? | Why |
+|---|---|---|
+| `DynDefs` | yes | word-position keyed; the canonical bug |
+| `HighlightState` | yes | stale highlight = wrong word marked "current" in new buffer |
+| `SpanFillState` | yes | in-flight span-fill from A would land in B at same char range |
+| `SelectorSatelliteState` | yes | user mid-cycle on settings in A would resume on B (wrong-buffer writes) |
+| `AgentTaskState` | **NO** | armed `agentically X _` task is session-scoped — user expects continuity if they leave + return to a contenteditable |
+| `dismissedBlanks` | **NO** | dismissing `weather _` should carry across fields within the page session |
+
+### Implications for future hosts in this profile
+
+Any new host adapter advertising `supportsCycling: false` AND
+exposing multiple focusable buffers within one runtime instance
+MUST call `BootResult.resetBufferState()` on the focus-change
+event. The native hosts (CC, OC, gemini-cli) work on ONE buffer
+per runtime instance — this call is a no-op there, safe to omit.
+
+If you're adding a host where the user can focus multiple
+independent text fields (a VS Code extension with form views, a
+browser extension for a different browser, a desktop UI with
+multiple inputs) — the per-buffer state reset is a real
+correctness concern, not a chrome quirk.
+
 ## Chrome — what's NOT eligible for normal-input mode
 
 Even within the universal profile, chrome refuses to attach to

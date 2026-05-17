@@ -14,7 +14,7 @@ threat-model review.
 
 ## What "user context" contains
 
-Fields the user has put in `~/.cues/User.md`'s YAML frontmatter.
+Fields the user has put in `~/.cues/USER.md`'s YAML frontmatter.
 Each frontmatter key auto-derives to a canonical sentinel token:
 
 ```yaml
@@ -76,7 +76,7 @@ in provider logs. Opt-in only.
 
 ### `off` (default)
 
-User.md is read into the runtime cache so settings reload paths
+USER.md is read into the runtime cache so settings reload paths
 work, but `CueContext.userContext` is **never** populated.
 FluidBlankSource sees `undefined` and skips the entire injection
 path. The runtime gate (`Resolver.resolveAndApply`) does this
@@ -117,9 +117,9 @@ stripped).
   or auditors.** Hard-coded scope. Widening requires explicit
   per-pipeline threat-model review.
 - **Body text is ignored.** Only frontmatter is parsed. The body
-  of `User.md` is reserved for a future Phase 3 (free-text body
+  of `USER.md` is reserved for a future Phase 3 (free-text body
   injection) — see "Future work" below.
-- **No per-project User.md overlays.** User data is user data;
+- **No per-project USER.md overlays.** User data is user data;
   per-project user data makes no sense and would create
   weird overlays. Global only (lives next to OPENCUES.md).
 - **No automatic refresh of stale data.** If you change jobs and
@@ -136,7 +136,7 @@ stripped).
 | **Pack greedily requests every field.** | N/A in Phase 1 — only built-in FluidBlankSource consumes user-context; user packs cannot. When packs do consume it (future phase), parallel the `secrets:` model: `requires-user: [firstName, email]` declaration, `opencues review` flags >N fields. |
 | **Pack exfils via fetch.** | Pack JS sandbox already gates network via per-secret host binding (audit row #5). The same pattern extends — pack must declare `user-context-hosts.firstName: [llm-host]`, fetch body-scan refuses unbound hosts. Deferred to the packs-consume phase. |
 | **Pack overrides mode silently.** | The runtime decides mode (global OPENCUES.md scalar), not the pack. Pack-requested raw is at most a HINT; the user's global setting is the ceiling. Today no pack-side request exists (FluidBlankSource is core); this lands with the packs phase. |
-| **Prompt injection via User.md itself.** | The catalog block is wrapped in clear delimiters. Values are sanitized via the same NFKC + control-strip + sentinel-escape that AmbientContext goes through. Lower threat than ambient because users probably aren't attacking themselves — but defence-in-depth for screen-share / committed-to-git-by-accident scenarios. |
+| **Prompt injection via USER.md itself.** | The catalog block is wrapped in clear delimiters. Values are sanitized via the same NFKC + control-strip + sentinel-escape that AmbientContext goes through. Lower threat than ambient because users probably aren't attacking themselves — but defence-in-depth for screen-share / committed-to-git-by-accident scenarios. |
 | **Cross-pack data leak.** | The Resolver's per-source dispatch (audit row #1) keeps user-context scoped to FluidBlankSource only. Other sources see `CueContext.userContext === undefined`. |
 | **Provider correlation across sessions.** | In `safe` mode the catalog ships only token + description ("[FIRST NAME] resolves to user's first name"). A provider with multi-user access could in theory correlate sessions by description text — but no PII values flow. Documented residual; same envelope as audit row #6 (LLM body exfil). |
 | **Post-processor leaves a hallucinated bracket in the buffer.** | The "strip unlisted" rule + the body-preservation guard collide cleanly: any bracket-token that's NOT in the catalog AND NOT in the user's original text is stripped. Pinned by 6 integration tests in `fluid-blank-source.test.ts`. |
@@ -167,13 +167,13 @@ the LLM is at honouring the sentinel-only rule.
   inlining, off-mode omission, post-process resolve/strip/
   tolerant-recover).
 - `packages/opencues-runtime/src/modules/config-loader.ts` —
-  reads `User.md` alongside `OPENCUES.md`, exposes the parsed
+  reads `USER.md` alongside `OPENCUES.md`, exposes the parsed
   `userContext` via the loader's public surface.
 - `packages/opencues-runtime/src/modules/resolver.ts` — gate.
   Off-mode produces `undefined`; safe/raw produces `{ fields,
   catalog, mode }`.
-- `defaults/User.md` — shipped template, fully commented out.
-  `opencues seed-configs` copies to `~/.cues/User.md`.
+- `defaults/USER.md` — shipped template, fully commented out.
+  `opencues seed-configs` copies to `~/.cues/USER.md`.
 - `defaults/OPENCUES.md` — `user-context-mode` scalar +
   selector-satellite cycling entry under `settings:`.
 
@@ -211,10 +211,10 @@ OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
 
 ## Future work
 
-**Phase 2 — raw mode + body injection (free-text User.md body).**
+**Phase 2 — raw mode + body injection (free-text USER.md body).**
 
 `raw` mode is implemented today but only exposed via the catalog
-shape. The body of `User.md` (free prose after the closing `---`)
+shape. The body of `USER.md` (free prose after the closing `---`)
 is currently parsed-and-discarded. The plan when it lands:
 
 - A new `requires-user-body: true` declaration on packs that want
@@ -247,7 +247,7 @@ requires-user: [linkedin, fullName, email]
 ```
 
 `opencues validate` flags packs requesting fields not in
-User.md. `opencues review` summarises requested fields at install
+USER.md. `opencues review` summarises requested fields at install
 time so the user can decide before approving. Parallels the
 `secrets:` capability model from audit rows #5 / #7.
 

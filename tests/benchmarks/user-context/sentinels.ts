@@ -10,7 +10,7 @@
  *                    mode is supposed to be active)
  *
  * Field set chosen to cover the realistic surface a user might put in
- * `~/.cues/User.md`: identity (name/pronouns/title), contact (email/
+ * `~/.cues/USER.md`: identity (name/pronouns/title), contact (email/
  * phone), location (city/country/postcode), online presence (github/
  * linkedin/twitter/website), employer (company/job title), plus one
  * "fun" field (favourite colour) as a low-stakes default-on test.
@@ -48,7 +48,7 @@ export const SENTINELS: Sentinel[] = [
 ];
 
 /** Catalog block injected into the system prompt. Format matches what a
- *  production User.md adapter would emit. */
+ *  production USER.md adapter would emit. */
 export function renderCatalog(): string {
   const lines = SENTINELS.map(s => `- ${s.token} — ${s.description}`);
   return `USER CONTEXT — available tokens (emit verbatim; the runtime substitutes the real value before it reaches the user's buffer):

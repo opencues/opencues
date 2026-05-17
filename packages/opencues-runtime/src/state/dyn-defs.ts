@@ -237,6 +237,24 @@ export class DynDefs {
     this._defs.delete(wordIndex);
   }
 
+  /**
+   * Wipe every word-index → WordDef entry.
+   *
+   * Lifecycle note: DynDefs entries are keyed by word-index in the
+   * CURRENT buffer. For single-buffer-per-session hosts (CC, OC,
+   * gemini-cli) the runtime's lifetime matches the buffer's, so this
+   * is rarely called outside tests. For multi-buffer hosts (chrome's
+   * normal-input mode — every `<input>` on the page is a separate
+   * buffer) the integration MUST call `clear()` on focus change.
+   *
+   * Why: a `blankName`-bound entry from buffer A silently blocks the
+   * Resolver from substituting in buffer B at the same wordIndex
+   * (`if (existing.blankName) continue`). Surfaces as "fluid-blank
+   * works on one input then stops working on the next." See
+   * `docs/architecture/universal-integration.md` § "Per-buffer state
+   * must reset on focus change" for the full per-state-object table
+   * and `BootResult.resetBufferState()` for the runtime entry point.
+   */
   clear(): void {
     this._defs.clear();
   }

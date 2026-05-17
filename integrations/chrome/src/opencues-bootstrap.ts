@@ -199,9 +199,37 @@ const speech = new WebSpeechAdapter();
 // (potentially whitespace-normalised) text is what gets compared.
 const sourceReclassifier = createSourceReclassifier();
 
-/** Called by content.ts when the focused contenteditable changes. */
+/** Called by content.ts when the focused contenteditable changes.
+ *
+ *  Chrome's normal-input mode (May 2026) attaches to MANY independent
+ *  `<input>` / `<textarea>` elements per page — each is its own buffer
+ *  with its own word-position semantics. The runtime's per-buffer
+ *  state (DynDefs, HighlightState, SpanFillState,
+ *  SelectorSatelliteState) is keyed by word-index in the current
+ *  buffer, so leftover entries from the prior field silently corrupt
+ *  the new one.
+ *
+ *  Worst observed failure (caught May 2026 testing): user fluid-blanks
+ *  `_` on a LinkedIn URL field → DynDef[0] = `https://linkedin.com/...`
+ *  with `blankName: 'fluid-blank'`. User tabs to a GitHub URL field on
+ *  the same page → types `_` → Resolver's `if (existing.blankName)
+ *  continue` guard blocks the new substitution silently. Symptom:
+ *  bare `_` returns nothing, `answer _` works (because `answer _` has
+ *  `_` at wordIndex 1, not 0).
+ *
+ *  `bootResult.resetBufferState()` clears the per-buffer state objects
+ *  while leaving session-scoped state (agent task, dismissed blanks)
+ *  intact. See `packages/opencues-runtime/adapters/chrome/v1/boot.ts`
+ *  for the full clear list + rationale per object.
+ *
+ *  Skip the reset when there's no change of element (el === currentTarget)
+ *  — focusin can fire spuriously during typing in some sites and we
+ *  don't want to clear state on those.
+ */
 export function publishTarget(el: HTMLElement | null): void {
+  if (el === currentTarget) return;
   currentTarget = el;
+  if (bootResult) bootResult.resetBufferState();
 }
 
 /** Real-time API-key update — called by content.ts when chrome.storage

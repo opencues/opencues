@@ -649,7 +649,7 @@ export class FluidBlankSource implements CueSource {
       if (userCtx && userCatalogBlock) {
         this.logInfo(`FluidBlank: user-context: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
       } else if (context.userContext) {
-        this.logInfo('FluidBlank: user-context: empty (mode on but User.md has no fields)');
+        this.logInfo('FluidBlank: user-context: empty (mode on but USER.md has no fields)');
       }
 
       const fusedUser = `INPUT: ${context.text}${ambientBlock}${userCatalogBlock}`;
