@@ -126,9 +126,14 @@ keystroke picks it up within ~2s.
 
 The runtime auto-manages this file via `OpenCuesSettingsBlank`: when
 you cycle a setting through the selector/satellite UI, the runtime
-rewrites the matching scalar in place. Hand-editing is allowed; the
-`settings:` block schema is NOT user-customisable (additions get
-overwritten).
+rewrites the matching scalar in place. Hand-editing is allowed.
+
+The cycling menu itself (tips + per-value descriptions for every
+setting) lives in `@opencues/core`'s `FEATURES` + `MENU_TUNABLES`
+registry, NOT in this file. To customise the menu (different tip
+text, hide settings, custom value order), ship your own `settings:`
+block in the frontmatter above — when present, it fully replaces
+the registry defaults.
 
 ---
 
