@@ -362,7 +362,33 @@ label: What is your GitHub profile? (full URL)
 placeholder: https://github.com/...
 </UNTRUSTED_FIELD_CONTEXT>
 SPAN: what is the label _
-ANSWER: https://github.com/yourname`;
+ANSWER: https://github.com/yourname
+
+INPUT: danielsunderland _
+
+<UNTRUSTED_FIELD_CONTEXT>
+label: What is your LinkedIn profile? (full URL)
+placeholder: https://www.linkedin.com/in/...
+</UNTRUSTED_FIELD_CONTEXT>
+SPAN: danielsunderland _
+ANSWER: https://www.linkedin.com/in/danielsunderland
+
+INPUT: devvaa _
+
+<UNTRUSTED_FIELD_CONTEXT>
+label: What is your GitHub profile? (full URL)
+placeholder: https://github.com/...
+</UNTRUSTED_FIELD_CONTEXT>
+SPAN: devvaa _
+ANSWER: https://github.com/devvaa
+
+INPUT: UK _
+
+<UNTRUSTED_FIELD_CONTEXT>
+label: Country
+</UNTRUSTED_FIELD_CONTEXT>
+SPAN: UK _
+ANSWER: United Kingdom`;
 
 /**
  * Decide whether the user wants the answer to FILL the `_` (preserve the

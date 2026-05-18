@@ -116,6 +116,59 @@ stripped).
 
 ---
 
+## Steering — typed hint vs catalog token
+
+When ambient context AND user context are both active in the same
+fluid-blank call, the LLM gets three signals:
+
+| Signal | Carries | Role |
+|---|---|---|
+| **Ambient label** ("LinkedIn profile URL (full URL)") | shape | tells the LLM *what kind of value* the field wants |
+| **User-typed buffer** (`danielsunderland _`) | content (if present) | the literal handle/value the user wants embedded |
+| **USER.md catalog** (`[LINKEDIN]` token) | content fallback | user's own data when no hint is typed |
+
+**Priority rule (`user-context.ts` rule #10):** when the buffer
+contains a non-trivial typed hint before the `_` — a handle, a
+name fragment, a country abbreviation, raw digits, anything that
+isn't a connecting word like *my* / *the* / *for* — the LLM uses
+the hint as content and shapes it according to the label. The
+catalog tokens are the fallback when the buffer is bare `_` or
+contains only generic context words.
+
+The pattern: **label tells the LLM the FORMAT; buffer tells the LLM
+the CONTENT; the LLM merges them.**
+
+Worked examples (label + buffer → output):
+
+| Field label | Typed buffer | Output |
+|---|---|---|
+| LinkedIn profile URL (full URL) | `danielsunderland _` | `https://linkedin.com/in/danielsunderland` |
+| GitHub profile URL (full URL) | `wkasekende _` | `https://github.com/wkasekende` |
+| Twitter / X profile URL | `danielsunderland _` | `https://twitter.com/danielsunderland` |
+| Mastodon (full URL) | `@daniel@fosstodon.org _` | `https://fosstodon.org/@daniel` |
+| Country | `UK _` | `United Kingdom` |
+| Phone (UK format) | `447700900123 _` | `+44 7700 900123` |
+| Date (ISO) | `tomorrow _` | `2026-05-19` |
+| LinkedIn profile URL (no hint) | `_` | `[LINKEDIN]` → post-processed to user's URL |
+
+The mechanism that makes this work is a combination of the
+priority rule (declared verbatim in the catalog's strict-rules
+block) and few-shot examples in `FUSED_SYSTEM_PROMPT` that
+demonstrate the typed-hint case for LinkedIn / GitHub / Country.
+Without the examples, smaller / faster providers (Cerebras
+gpt-oss-120b at temp=0) sometimes weighted rule #6 ("emit the
+catalog token when label asks for a user field") over rule #10;
+adding the few-shots pinned the behaviour.
+
+Bench evidence:
+`tests/benchmarks/fluid-blank-ambient/label-steering-bench.ts`
+runs the full case grid with AND without user-context injected,
+across providers. All 7 hint-bearing cases pass with user-context
+on (Cerebras + Groq). The no-hint cases correctly fall through to
+the catalog token (post-processor resolves to user's value).
+
+---
+
 ## What it does NOT do
 
 - **Never injected into word-cues, transform-blank, agent-rewrite,
