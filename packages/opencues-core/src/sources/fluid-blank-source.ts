@@ -25,7 +25,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter, AmbientContext } from '../types';
 import { BlankConfig } from '../cues-md';
-import { useStrictJson, buildJsonResponseFormat, type ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, describeLLMCall, type ProviderAdapter } from '../llm-provider';
 import { renderUserCatalog, postProcessUserContext, type UserContext, type UserContextMode } from '../user-context';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
@@ -628,7 +628,7 @@ export class FluidBlankSource implements CueSource {
         this.emit({ type: 'bailed', reason: 'consumed-upstream', latencyMs: 0 });
         return { results: [] };
       }
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: `${this.provider.id}/${this.model}` });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: describeLLMCall(this.provider, this.model) });
 
       // Strict JSON on groq gpt-oss — same gate as transform-blank.
       const useJson = useStrictJson(this.provider.id, this.model);
@@ -779,7 +779,9 @@ export class FluidBlankSource implements CueSource {
         ],
         maxTokens,
         temperature: 0,
-        reasoningEffort: 'low',
+        // reasoningEffort omitted — provider adapter applies its
+        // bench-derived default (see ProviderAdapter.defaultReasoningEffort
+        // in @opencues/core/llm-provider.ts).
         seed: 42,
         responseFormat,
       },

@@ -46,6 +46,7 @@ type Reasoning = 'none' | 'low' | 'medium' | 'high';
 type ProviderId = 'groq' | 'cerebras' | 'gemini' | 'openai';
 
 const PARALLEL = parseInt(process.env.PARALLEL ?? '8', 10);
+const MAX_TOKENS = parseInt(process.env.MAX_TOKENS ?? '512', 10);
 
 interface Adapter {
   id: ProviderId;
@@ -138,7 +139,7 @@ async function runCell(adapter: Adapter, reasoning: Reasoning): Promise<CellResu
       if (!c) return;
       try {
         const r = await adapter.chat(sysUser(SYSTEM_PROMPT, `INPUT: ${c.input}`), {
-          maxTokens: 512, seed: 42, reasoning,
+          maxTokens: MAX_TOKENS, seed: 42, reasoning,
         });
         const parsed = parseFusedOutput(r.text, r.latencyMs);
         const actual = parsed.answer ?? '';

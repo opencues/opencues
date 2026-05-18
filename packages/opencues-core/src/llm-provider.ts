@@ -114,6 +114,19 @@ export interface ProviderAdapter {
   readonly defaultModel: string;
   /** The env-var name the boot layer reads to find this provider's API key. */
   readonly envKeyName: string;
+  /**
+   * Per-provider reasoning-effort default. Applied when a call site
+   * leaves `req.reasoningEffort` undefined. Derived from the May 18
+   * 2026 thinking-budget bench (`tests/results/thinking-budget-2026-05-18.md`):
+   * each value is the highest reasoning level whose p50 still fits
+   * fluid-blank's 1500ms budget AND keeps accuracy ≥ 90% AND doesn't
+   * regress other production pipelines (transform-blank).
+   *
+   * `undefined` means "don't pass reasoning_effort at all" — for
+   * providers that ignore the field (anthropic) or that would
+   * 400 on it.
+   */
+  readonly defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high';
   /** Translate the neutral ChatRequest into wire format for this provider. */
   buildRequest(req: ChatRequest, ctx: { apiKey: string; endpoint?: string }): BuiltRequest;
   /** Extract the assistant's text from this provider's response shape. */
@@ -138,19 +151,35 @@ export interface ProviderAdapter {
  * pass `includeReasoningEffort: true`; others omit the field unless
  * the model name suggests it's a reasoning model.
  */
-function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean }): string {
+function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high' }): string {
   const body: Record<string, unknown> = {
     model: req.model,
     messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
   };
+  // Resolve the reasoning level FIRST so the max_tokens pairing below
+  // can see it. Caller's explicit value wins over the adapter default.
+  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking)/i.test(req.model);
+  const reasoningForwarded = opts?.includeReasoningEffort || isReasoningModelName;
+  const reasoning = reasoningForwarded
+    ? (req.reasoningEffort ?? opts?.defaultReasoningEffort)
+    : undefined;
   if (req.maxTokens !== undefined) {
+    // Pair max_tokens with reasoning='high' on gpt-oss models: with
+    // the typical 512-token default the model spends the entire budget
+    // on internal reasoning and emits empty content (98%→20% acc
+    // collapse in the May 18 2026 bench — see
+    // tests/results/thinking-budget-2026-05-18.md). 2048 is the
+    // empirically-validated floor (restores 98% on cerebras-high).
+    // Caller's higher max wins.
+    const needsHighReasoningFloor = reasoning === 'high' && /gpt-oss/i.test(req.model);
+    const effectiveMax = needsHighReasoningFloor ? Math.max(req.maxTokens, 2048) : req.maxTokens;
     // OpenAI renamed `max_tokens` → `max_completion_tokens` for the
     // gpt-5 / o-series chat-completions API. The old field 400s on
     // those models. Other OpenAI-compatible hosts (Groq, OpenRouter,
     // Cerebras) keep `max_tokens` even for the same models, so we
     // can't blindly rewrite — let each adapter signal which field it
     // wants based on its own routing.
-    body[opts?.useCompletionTokensName ? 'max_completion_tokens' : 'max_tokens'] = req.maxTokens;
+    body[opts?.useCompletionTokensName ? 'max_completion_tokens' : 'max_tokens'] = effectiveMax;
   }
   // gpt-5 / o-series lock temperature to 1 — passing any other value
   // (including 0) returns HTTP 400 "Only the default (1) value is
@@ -161,9 +190,8 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   // Pass reasoning_effort only when the provider opts in OR the model
   // name suggests it's an OpenAI reasoning model (o1/o3/o4/gpt-5).
   // Leaves gpt-4o-mini-class models alone, where the field 400s.
-  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking)/i.test(req.model);
-  if (req.reasoningEffort !== undefined && (opts?.includeReasoningEffort || isReasoningModelName)) {
-    body.reasoning_effort = req.reasoningEffort;
+  if (reasoning !== undefined) {
+    body.reasoning_effort = reasoning;
   }
   // Structured outputs. Groq's gpt-oss-{20b,120b} support `strict: true`
   // with constrained decoding (guarantee). Other OpenAI-compatible
@@ -202,12 +230,17 @@ const GROQ: ProviderAdapter = {
   defaultEndpoint: 'https://api.groq.com/openai/v1/chat/completions',
   defaultModel: 'openai/gpt-oss-120b',
   envKeyName: 'GROQ_API_KEY',
+  // gpt-oss-120b at `medium`+`high` overshoots OpenCues' fluid-blank
+  // (1500ms) and word-cue (500ms) budgets at Groq's throughput; `low`
+  // is the only level that fits every pipeline. `high` also collapses
+  // accuracy with the default 512-token cap (see buildOpenAIBody).
+  defaultReasoningEffort: 'low',
   buildRequest(req, ctx) {
     // Groq's gpt-oss-* models REQUIRE reasoning_effort; their
     // non-reasoning models silently ignore it. Always-on is safe.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { includeReasoningEffort: true }),
+      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -224,10 +257,15 @@ const OPENROUTER: ProviderAdapter = {
   // rate-limited or down. Users override per-feature for paid models.
   defaultModel: 'openai/gpt-oss-120b:free',
   envKeyName: 'OPENROUTER_API_KEY',
+  // OpenRouter is a multi-model router — `low` is the cross-model safe
+  // default that mirrors what every call site used to hardcode. Picks
+  // a sensible level for whichever underlying gpt-oss / gpt-5 / o-series
+  // model the user routes to without overshooting latency budgets.
+  defaultReasoningEffort: 'low',
   buildRequest(req, ctx) {
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort }),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${ctx.apiKey}`,
@@ -255,6 +293,11 @@ const OPENAI: ProviderAdapter = {
   // tier can override per-feature with `openai-model: gpt-5.4-nano`.
   defaultModel: 'gpt-5.4-mini',
   envKeyName: 'OPENAI_API_KEY',
+  // `low` (not `none`) — bench showed `none` is fastest on fluid-blank,
+  // but it drops transform-blank-fused 85.3%→28.1% on gpt-5.4-mini
+  // (see floor-bump comment below). `low` is the safe default that
+  // covers every OpenCues pipeline.
+  defaultReasoningEffort: 'low',
   buildRequest(req, ctx) {
     // OpenAI renamed `max_tokens` to `max_completion_tokens` for the
     // gpt-5 / o-series. Detect by model name so users on legacy
@@ -282,7 +325,7 @@ const OPENAI: ProviderAdapter = {
 
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(reqForBody, { useCompletionTokensName }),
+      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -470,6 +513,11 @@ const CEREBRAS: ProviderAdapter = {
   defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
   defaultModel: 'gpt-oss-120b',
   envKeyName: 'CEREBRAS_API_KEY',
+  // Cerebras's wafer-scale silicon serves gpt-oss-120b fast enough that
+  // `medium` fits every OpenCues pipeline (358ms p50 fluid-blank,
+  // well under the 500ms word-cue budget). The only provider in the
+  // May 18 2026 bench that sustains useful reasoning on word-cue.
+  defaultReasoningEffort: 'medium',
   buildRequest(req, ctx) {
     // Unlike Groq (non-reasoning models silently ignore the field),
     // Cerebras's non-reasoning models hard-error on `reasoning_effort`.
@@ -477,7 +525,7 @@ const CEREBRAS: ProviderAdapter = {
     // gpt-oss-* / qwen-3-thinking-* and similar.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -628,6 +676,26 @@ export function validateEndpoint(
       `including the user's draft as prompt context — will go to the custom URL. ` +
       `Verify this is a server you trust.`,
   };
+}
+
+/**
+ * Compact debug-log token for "which LLM was called with what
+ * reasoning level". Used by sources (transform-blank, fluid-blank,
+ * config-source) so debug consumers can verify a per-provider default
+ * actually flowed through to the wire call without inspecting
+ * network traces.
+ *
+ * Pass `req.reasoningEffort` (the caller's explicit value, if any);
+ * the helper falls back to the adapter's default and surfaces
+ * `(reasoning=off)` when neither set it.
+ */
+export function describeLLMCall(
+  provider: ProviderAdapter,
+  model: string,
+  reqReasoning?: 'none' | 'low' | 'medium' | 'high',
+): string {
+  const resolved = reqReasoning ?? provider.defaultReasoningEffort ?? 'off';
+  return `${provider.id}/${model} (reasoning=${resolved})`;
 }
 
 /**

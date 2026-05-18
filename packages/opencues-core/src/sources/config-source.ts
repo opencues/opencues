@@ -147,9 +147,11 @@ export class ConfigSource implements CueSource {
           messages: [{ role: 'user', content: fullPrompt }],
           maxTokens: 800,
           temperature: 0.3,
-          // Provider adapter passes this through only to providers that
-          // honor it (Groq); ignored by Gemini/OpenRouter/OpenAI.
-          reasoningEffort: 'low',
+          // reasoningEffort omitted — provider adapter applies its
+          // bench-derived default (see ProviderAdapter.defaultReasoningEffort
+          // in @opencues/core/llm-provider.ts). Honored by groq /
+          // cerebras / openai / openrouter on reasoning models;
+          // ignored by gemini / anthropic.
           responseFormat: useJson
             ? buildJsonResponseFormat(
                 this.parser === 'alternatives' ? 'word_cues_alts' : 'word_cues_raw',

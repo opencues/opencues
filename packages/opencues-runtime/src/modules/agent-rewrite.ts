@@ -574,7 +574,12 @@ export class AgentRewrite {
       ],
       maxTokens: Math.max(1024, Math.ceil(windowedText.length * 1.5) + 256),
       temperature: 0,
-      reasoningEffort: 'low' as const,
+      // reasoningEffort omitted — provider adapter applies its
+      // bench-derived default (see ProviderAdapter.defaultReasoningEffort
+      // in @opencues/core/llm-provider.ts). The legacy Groq-shaped
+      // path below substitutes 'low' since it bypasses the adapter
+      // and Groq's gpt-oss-* models REQUIRE the field.
+      reasoningEffort: undefined as 'low' | 'medium' | 'high' | undefined,
       seed: 42,
       responseFormat: useJson ? buildJsonResponseFormat('agent_rewrite', AGENT_REWRITE_SCHEMA) : undefined,
     };
@@ -597,7 +602,7 @@ export class AgentRewrite {
         messages: chatRequest.messages,
         max_tokens: chatRequest.maxTokens,
         temperature: chatRequest.temperature,
-        reasoning_effort: chatRequest.reasoningEffort,
+        reasoning_effort: chatRequest.reasoningEffort ?? 'low',
         seed: chatRequest.seed,
       };
       if (chatRequest.responseFormat) {

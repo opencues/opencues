@@ -39,7 +39,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import { useStrictJson, buildJsonResponseFormat, type ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, describeLLMCall, type ProviderAdapter } from '../llm-provider';
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
@@ -1440,9 +1440,10 @@ export class TransformBlankSource implements CueSource {
       const blankIdx = context.words.indexOf('_');
       if (blankIdx === -1) return { results: [] };
 
-      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode}, llm=${this.provider.id}/${this.model})`);
+      const __llmDesc = describeLLMCall(this.provider, this.model);
+      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode}, llm=${__llmDesc})`);
       const __pipelineT0 = Date.now();
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: `${this.provider.id}/${this.model}`, mode: this.mode });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: __llmDesc, mode: this.mode });
 
       // FUSED MODE — single-call short-circuit. Capable generalist models
       // (cerebras, gemini, claude, openai by default) emit VERDICT +
@@ -1936,7 +1937,9 @@ export class TransformBlankSource implements CueSource {
         ],
         maxTokens,
         temperature: 0,
-        reasoningEffort: 'low',
+        // reasoningEffort omitted — provider adapter applies its
+        // bench-derived default (see ProviderAdapter.defaultReasoningEffort
+        // in @opencues/core/llm-provider.ts).
         seed: 42,
         responseFormat,
       },
