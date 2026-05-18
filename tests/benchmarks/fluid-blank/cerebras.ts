@@ -25,7 +25,7 @@ export interface ChatResult { text: string; latencyMs: number; }
 
 export async function chat(
   messages: ChatMessage[],
-  opts: { temperature?: number; maxTokens?: number; seed?: number } = {},
+  opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
 ): Promise<ChatResult> {
   const body = JSON.stringify({
     model: MODEL,
@@ -33,8 +33,7 @@ export async function chat(
     temperature: opts.temperature ?? 0,
     max_tokens: opts.maxTokens ?? 512,
     seed: opts.seed ?? 42,
-    // Match Groq's gpt-oss-120b config for fair apples-to-apples
-    reasoning_effort: 'low',
+    reasoning_effort: opts.reasoning ?? 'low',
   });
 
   const t0 = Date.now();

@@ -14,7 +14,7 @@
 
 import { chat, sysUser } from './groq';
 
-const SYSTEM_PROMPT = `You read a sentence containing _ and produce a structured lookup result.
+export const SYSTEM_PROMPT = `You read a sentence containing _ and produce a structured lookup result.
 
 The user is typing a casual note/sentence and has dropped an underscore (_) next to a TERSE LOOKUP PHRASE — something they want looked up, like a search query. Examples: "unicode for ampersand", "ascii code for tab", "100 celsius in fahrenheit", "capital of france", "atomic number of oxygen", "year apollo 11 landed on moon".
 

@@ -25,7 +25,7 @@ export interface ChatResult { text: string; latencyMs: number; }
 
 export async function chat(
   messages: ChatMessage[],
-  opts: { temperature?: number; maxTokens?: number; seed?: number } = {},
+  opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
 ): Promise<ChatResult> {
   // gpt-5.x reasoning models only accept temperature=1 and use
   // max_completion_tokens (not max_tokens). Branch on model name.
@@ -46,7 +46,7 @@ export async function chat(
     // bigger models with reasoning disabled.
     const isLowReasoningTier = /gpt-5(\.\d+)?-(nano|mini)\b/i.test(MODEL);
     payload.max_completion_tokens = Math.max(opts.maxTokens ?? 2048, isLowReasoningTier ? 2048 : 1024);
-    payload.reasoning_effort = process.env.OPENCUES_OPENAI_REASONING ?? 'low';
+    payload.reasoning_effort = opts.reasoning ?? process.env.OPENCUES_OPENAI_REASONING ?? 'low';
     // Don't set temperature on reasoning models (only default=1 allowed).
   } else {
     payload.max_tokens = opts.maxTokens ?? 512;

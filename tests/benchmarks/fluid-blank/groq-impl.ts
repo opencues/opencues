@@ -22,13 +22,13 @@ const agent = new https.Agent({ keepAlive: true, maxSockets: 4 });
 export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; }
 export interface ChatResult { text: string; latencyMs: number; }
 
-export async function chat(messages: ChatMessage[], opts: { temperature?: number; maxTokens?: number; seed?: number } = {}): Promise<ChatResult> {
+export async function chat(messages: ChatMessage[], opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {}): Promise<ChatResult> {
   const body = JSON.stringify({
     model: MODEL,
     messages,
     temperature: opts.temperature ?? 0,
     max_tokens: opts.maxTokens ?? 256,
-    reasoning_effort: 'low',
+    reasoning_effort: opts.reasoning ?? 'low',
     seed: opts.seed ?? 42,
   });
 

@@ -30,7 +30,7 @@ export interface ChatResult { text: string; latencyMs: number; }
  * Gemini uses `user` / `model` for roles (not `assistant`) and folds
  * the system message into a separate `systemInstruction` field.
  */
-function toGeminiBody(messages: ChatMessage[], opts: { temperature?: number; maxTokens?: number }): string {
+function toGeminiBody(messages: ChatMessage[], opts: { temperature?: number; maxTokens?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' }): string {
   const systemMsgs = messages.filter(m => m.role === 'system');
   const turnMsgs = messages.filter(m => m.role !== 'system');
   return JSON.stringify({
@@ -49,11 +49,15 @@ function toGeminiBody(messages: ChatMessage[], opts: { temperature?: number; max
       // OPENCUES_GEMINI_THINKING={low|high|none}; default 'none' for
       // production runtime use.
       thinkingConfig: ((): any => {
-        const level = process.env.OPENCUES_GEMINI_THINKING ?? 'none';
+        const level = opts.reasoning ?? process.env.OPENCUES_GEMINI_THINKING ?? 'none';
         if (level === 'none' || level === 'off' || level === '0') {
           return { thinkingBudget: 0 };
         }
-        return { thinkingLevel: level };
+        // Gemini's `thinkingLevel` officially accepts 'low' | 'high'.
+        // Map 'medium' to 'low' as the closest valid value (its API
+        // rejects 'medium' explicitly) — the bench reports the mapping.
+        const mapped = level === 'medium' ? 'low' : level;
+        return { thinkingLevel: mapped };
       })(),
     },
   });
@@ -61,7 +65,7 @@ function toGeminiBody(messages: ChatMessage[], opts: { temperature?: number; max
 
 export async function chat(
   messages: ChatMessage[],
-  opts: { temperature?: number; maxTokens?: number; seed?: number } = {},
+  opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
 ): Promise<ChatResult> {
   const body = toGeminiBody(messages, opts);
   const path = `/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
