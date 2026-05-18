@@ -70,6 +70,8 @@ The two surfaces have fundamentally different contracts — see `concept.md` at 
 
 ## Cue Types
 
+> **★ NEW this week:** **Sentence Cues** (§ 21) extend the cue surface from word-scope to whole sentences (`scope: sentence`); **Fluid Config** (§ 20) adds a new flavour of `_`-blank that routes natural-language settings phrasing to OPENCUES.md; **Blank Trigger Mode** (§ 17) makes `_` markdown-friendly. See the *Updates — May 2026 (week 3)* section near the bottom for details.
+
 ---
 
 ### 1. Remote Word Cues
@@ -663,3 +665,122 @@ Adding a fifth host now mostly means handling whatever the host's own quirks are
 - **`seed-configs` got a SHIPPED-MD REFRESH phase** so updates to the shipped defaults overlay onto user values without clobbering customisations.
 - **`blankReplace` unified field** (`keep` / `wipe` / `wipe-all` / `auto`) replaces the older per-blank patchwork. `auto` runs a deterministic copula/equation/question heuristic — see `docs/architecture/blank-replace-modes.md`.
 - **AgentRewrite two-tier cache** — skip-on-stable + LRU keyed on `(snapshot, task, cursor, windowWords, auditorSignature)` — keeps the agentic rewrite path warm. `docs/architecture/agent-rewrite-cache.md`.
+
+---
+
+## Updates — May 2026 (week 3)
+
+A second wave landed since the May write-up above. **★ NEW** highlights — three features any user will notice:
+
+- **★ NEW · Sentence Cues** — cues can now operate on whole sentences (`scope: sentence`), not just words. Cycle through alternative phrasings of the highlighted sentence. First shipped cue: `more-formal` (informal → formal rewrites). § 21.
+- **★ NEW · Fluid Config** — type natural English next to `_` to flip OpenCues settings: `enable debug logging _` flips `debug-mode: on` and pre-populates the standard settings menu. § 20.
+- **★ NEW · Blank Trigger Mode** — `blank-trigger-mode: spaced` makes `_` defer firing until followed by a space, so markdown `_italic_` works without first `_` auto-substituting. § 17.
+
+Plus infrastructure that supports them:
+
+- **Feature registry as single source of truth** — adding any new OPENCUES.md scalar is now a one-PR change. § 18.
+- **Thinking-budget bench + per-provider reasoning/max_tokens pairing** — measured how much reasoning each provider can afford on each pipeline; production routing tunes both knobs together per provider. § 19.
+
+---
+
+### 17. ★ NEW · Blank trigger mode — `_italic_` markdown friendly
+
+Adding `blank-trigger-mode: spaced` to OPENCUES.md tells the runtime to defer firing a blank until `_` is followed by a space. Markdown italics (`_italic_`) typists can keep their formatting habits without the first `_` immediately substituting.
+
+```yaml
+# ~/.cues/OPENCUES.md
+blank-trigger-mode: spaced       # markdown-friendly (no auto-fire on bare `_`)
+blank-trigger-mode: immediate    # default — fires on insertion (v0.1 behaviour)
+```
+
+Cycleable from the OpenCues settings cue-blank (`opencues settings _` → cycle to `blank-trigger-mode` → cycle satellite to `spaced`). User-facing summary: `docs/features/blank-trigger-mode.md`.
+
+---
+
+### 18. Feature registry — single source of truth for optional features
+
+Every OpenCues feature gated on an OPENCUES.md scalar (voice-mode, debug-mode, fluid-blank-mode, transform-blank-mode, …) used to require coordinated edits across four files (parser + chrome-host file-push + doctor wiring + seed-configs templates). Drift between them produced silent "feature looks shipped but is inert" bugs.
+
+Now there's a single `FEATURES` registry at `packages/opencues-core/src/feature-registry.ts`. Every consumer (parser, doctor, host.cjs, seed-configs) iterates the registry instead of hardcoding its own copy. **Adding a feature is one PR appending one entry.** Three more registries follow the same pattern: `MENU_TUNABLES` for numeric/glyph settings (`agent-debounce-ms`, `blank-loading-animation`), `BUILTIN_BLANKS` for shipped blank classes, and `CORE_CONFIG_FILES` for the always-on config files.
+
+The drift-prevention test suite (71 tests across 6 files) catches anything that bypasses the registry. Canonical writeup: `docs/architecture/feature-registry.md`.
+
+---
+
+### 19. Thinking-budget bench + paired reasoning / max_tokens per provider
+
+A new bench at `tests/benchmarks/thinking-budget/` answers "how much reasoning can each provider afford before per-case latency exceeds OpenCues's use-case threshold?" 40-case fluid-blank stride sample × 4 providers × 4 reasoning levels.
+
+Output: a per-provider × per-reasoning-level latency + accuracy grid that pinpoints the **knee** — the max reasoning each provider supports while staying under each pipeline's target (word-cue 500ms, fluid-blank 1500ms, transform 1000ms).
+
+The grid uncovered a deceptive failure mode: `reasoning: high` on gpt-oss-120b looked catastrophic (98% → 20% accuracy) under the default 512-token budget. Re-running with `MAX_TOKENS=2048` recovered to 95-98% — the reasoning tokens were starving the output budget, not the model failing. Production now pairs per-provider reasoning defaults with proportional max_tokens (commit `132fd3d`):
+
+```
+groq, cerebras, openai → reasoning: low + max_tokens 512
+                          reasoning: medium + max_tokens 1024
+                          reasoning: high + max_tokens 2048
+```
+
+**Headline finding:** Cerebras is the only provider that hits all three pipelines green with `medium` reasoning enabled (244-358ms p50). It's also the only one that fits the word-cue 500ms budget AT ALL with reasoning beyond `none`. The throughput advantage that was "nice-to-have" is structurally load-bearing for any feature that needs reasoning on the inline word-cue surface.
+
+Full matrix + cross-bench landing page now at `tests/benchmarks/BENCHMARKS.md`. Bench source: `tests/benchmarks/thinking-budget/run.ts`.
+
+---
+
+### 20. ★ NEW · Fluid Config — semantic `_` → settings change
+
+A new optional source (`fluid-config-mode: on`) at priority 94 that classifies a `_` against the FEATURES registry when no keyword matched. Type `enable debug logging _` and OpenCues flips `debug-mode: on` in OPENCUES.md, wipes the summon words, and leaves the standard `opencues settings _` selector-satellite menu pre-positioned at the now-current state. Backspace deletes the satellite pair as one span (`clearOnEdit: true`).
+
+```
+You type:        "stop showing tip popups _"
+You see:          tips-mode off              ← satellite cycling active here
+OPENCUES.md gets: tips-mode: off
+```
+
+Five examples that work:
+
+| You type | Buffer becomes | OPENCUES.md changes |
+|---|---|---|
+| `enable debug logging _` | `debug-mode on` | `debug-mode: on` |
+| `stop showing tip popups _` | `tips-mode off` | `tips-mode: off` |
+| `I want to hear the tips read aloud _` | `voice-mode active` | `voice-mode: active` |
+| `let it use my personal info _` | `user-context-mode safe` | `user-context-mode: safe` |
+| `make blanks wait for a space before firing _` | `blank-trigger-mode spaced` | `blank-trigger-mode: spaced` |
+
+**Trust boundary** — and the design's load-bearing decision — is that the classifier routes ONLY to FEATURES registry scalars, NEVER to user blanks (volume / brightness / weather / stocks / etc.). User blanks can shell out, fetch, or exec; auto-applying them from semantic intent would widen the prompt-injection blast radius. FEATURES scalars have bounded enum codomains; flipping one cannot exec or fetch. Three structural defences enforce this: (a) classifier prompt only enumerates registry-cyclable values, (b) runtime `validateAgainstRegistry` rejects unknown setting / unlisted value / `exposeInMenu: false` footgun modes, (c) apply path reuses the same `applyOpenCuesScalar` (write + 2.5s reload-suppression) the satellite cycling has used since v0.1.
+
+Bench: `tests/benchmarks/fluid-config/` validated v2.1 prompt across 5 providers — **100% precision** (210 reject decisions, zero false positives) + **90-100% holdout recall**. User-facing summary: `docs/features/fluid-config.md`. Canonical architecture + threat model: `docs/architecture/fluid-config.md`.
+
+---
+
+### 21. ★ NEW · Sentence Cues — `scope: sentence` cue declarations
+
+A cue can now declare `scope: sentence` in its CUE.md frontmatter and operate on whole sentences instead of individual words. Highlights span the sentence; cycling Up/Down swaps in alternative rewrites. Default priority 85 — higher than typical word-cues (60-80) so an overlapping word-cue gets suppressed outright (sentence wins). Sentence-cues cede to `_`-gated sources (BlankSource, ConfigIntent, TransformBlank, FluidBlank).
+
+Shipped canonical cue: `defaults/cues/more-formal/CUE.md` — rewrites informal sentences to formal register.
+
+```
+You type:    "thanks a bunch for the help."
+You see:     "Thank you very much for your assistance."   ← cycle Down to revert
+Cycle Up:    "I am grateful for your help."
+Cycle Up:    "Many thanks for your assistance."
+```
+
+Implementation: `SentenceCueSource` segments the buffer (regex-based v1), one LLM call per cue per buffer per resolve, emits one CueResult per sentence with `alternatives = [original, ...rewrites]` + char-range spans. Resolver auto-splices `alts[1]` and registers a DynDef. Multi-sentence buffers in v1 cap at one cue per resolve (avoids word-index shift cascade; v2 will batch in reverse-span order).
+
+Bench: `tests/benchmarks/sentence-cues/` validated 100% precision (CEDE on fragments / code / already-formal) + 91-100% recall across 5 providers. Same trust property as fluid-config: every reject decision rejected by every provider; only false-negative failures.
+
+Adding a second sentence-cue (`more-concise`, `active-voice`, `plain-english`, `more-empathetic`) is one CUE.md file — no source-class changes. User-facing summary: `docs/features/sentence-cues.md`. Canonical architecture: `docs/architecture/sentence-cues.md`.
+
+---
+
+### Other (week 3) notable improvements
+
+- **`FluidBlankSource` typed-hint precedence** — when a fluid-blank has both a `tip:` (typed) and a catalog-sentinel match, the typed hint now takes precedence. Closes a class of confused-output cases on user-context-aware lookups.
+- **`OpenCuesSettings.set()` registry default for unset keywords** — cycling through a scalar that didn't yet exist in OPENCUES.md now appends the new key to the frontmatter rather than silently dropping the write. Pinned by `registry-persistence.drift.test.ts`.
+- **vitest workspace** at the repo root — `npx vitest run` from the top-level now executes every package's suite cleanly without per-package config gymnastics. Makes the cross-package test surface coherent.
+- **Cross-host repo docs catch-up** — ~30 places in the docs that said `CUES.md` when they meant `OPENCUES.md` got fixed; cross-link from `user-context` and `ambient-context` docs to the feature registry doc landed; CLAUDE.md key-references list was refreshed for the new feature surface.
+
+---
+
+*Last updated: 2026-05-18.*
