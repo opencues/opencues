@@ -25,6 +25,7 @@ import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource, isBlankConfigCycleable } from './blank-source';
 import { FluidBlankSource, type FluidBlankSourceConfig } from './fluid-blank-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
+import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
 
 /**
@@ -71,6 +72,7 @@ export interface BuildSourcesOptions {
   wordCues?: FeatureLLMSetting;
   fluidBlank?: FeatureLLMSetting;
   transformBlank?: FeatureLLMSetting;
+  configIntent?: FeatureLLMSetting;
   /**
    * Pipeline mode for TransformBlank. `'auto'` (default) picks per
    * provider — groq → 3-pass, everyone else → fused — via
@@ -103,6 +105,25 @@ export interface BuildSourcesOptions {
    * Defaults to false; flip on per-integration.
    */
   enableTransformBlank?: boolean;
+  /**
+   * Enable the config-intent source — a single-call LLM classifier
+   * that routes `_` to an OPENCUES.md settings change ("stop showing
+   * tips _" → tips-mode=off) when no keyword matched. Priority 94 —
+   * sits ABOVE transform-blank (93) so settings phrasings beat
+   * imperative-rewrite interpretation. Settings-only (never user
+   * blanks) — see config-intent-source.ts for the trust-boundary rationale.
+   * Defaults to false; flip on via OPENCUES.md `fluid-config-mode: on`.
+   */
+  enableConfigIntent?: boolean;
+  /**
+   * Side-effect callback invoked by ConfigIntentSource to write the
+   * inferred (setting, value) into OPENCUES.md. Runtime wires
+   * `ConfigLoader.applyOpenCuesScalar` here — it writes the file AND
+   * updates in-memory state with the write-race suppression guard.
+   * Required when `enableConfigIntent: true`; omitting it skips the
+   * source instantiation.
+   */
+  applyOpencuesScalar?: (setting: string, value: string) => void | Promise<void>;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -153,6 +174,8 @@ export interface BuildSourcesOptions {
   onTransformBlankEvent?: TransformBlankSourceConfig['onEvent'];
   /** Subscriber for `FluidBlankSource` (2-pass pipeline). */
   onFluidBlankEvent?: FluidBlankSourceConfig['onEvent'];
+  /** Subscriber for `ConfigIntentSource` (single-call settings classifier). */
+  onConfigIntentEvent?: ConfigIntentSourceConfig['onEvent'];
   /**
    * Whether the host advertises a CYCLING SURFACE — i.e. it can
    * intercept Ctrl+Alt+arrow keys AND render visual feedback for
@@ -360,6 +383,34 @@ export function buildSourcesFromConfig(
   // ConfigSource entry shipped at `defaults/cues/spelling.md` (a
   // word-scope cue with `match: .*`, priority 80, parser
   // alternatives). It loads through the same path as legal/medical/etc.
+
+  // Config-intent: settings-change classifier (priority 94). Routes
+  // `_` to an OPENCUES.md scalar flip when the surrounding text
+  // semantically asks for one — runs BEFORE transform-blank (93) and
+  // fluid-blank (92). Settings-only — never user blanks. Cedes to
+  // keyword-bound BlankSource when a registered blank would claim
+  // the slot. See config-intent-source.ts for the bench-validated
+  // prompt + trust boundary.
+  if (options.enableConfigIntent) {
+    const resolved = resolveFor(options.configIntent);
+    if (!resolved) {
+      fallbackForLog('config-intent', options.configIntent?.provider || globalProvider || 'groq');
+    } else if (!options.applyOpencuesScalar) {
+      options.log?.('buildSources: skipping config-intent — no applyOpencuesScalar callback provided');
+    } else {
+      sources.push(new ConfigIntentSource({
+        httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+        provider: resolved.provider,
+        endpoint: resolved.endpoint,
+        apiKey: resolved.apiKey,
+        model: resolved.model,
+        applyScalar: options.applyOpencuesScalar,
+        blanks: options.blanks ?? {},
+        log: options.log,
+        onEvent: options.onConfigIntentEvent,
+      }));
+    }
+  }
 
   // Fluid-blank: free-form `_` lookup handler (P1 SEGMENT + P3 ANSWER).
   // Cedes to keyword-bound BlankSource when a registered blank would

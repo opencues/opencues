@@ -20,6 +20,7 @@ import { reconstructAsTyped, reconstructAsTypedWithMap } from '../state/dyn-defs
 import type { HighlightState } from '../state/highlight-state';
 import type { SpanFillState } from '../state/span-fill';
 import type { AgentTaskState } from '../state/agent-task';
+import type { SelectorSatelliteState as SelectorSatelliteStateRef } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 import type { BlankLoadingAnimator } from './blank-loading';
 import { applyMarkdownAwareSplice } from './markdown-substitute';
@@ -137,6 +138,14 @@ export class Resolver {
      *  write time and the LLM never sees them on the next pass.
      *  Optional — when omitted, no rich-text view is built. */
     private markdownRender?: MarkdownStylesProvider,
+    /** Shared SelectorSatelliteState — needed by the config-intent
+     *  substitution branch to register the same cycling state that
+     *  BlankFill registers for the keyword-bound `opencues settings _`
+     *  path. Without this, ConfigIntent can paint the satellite shape
+     *  but cycling won't act on it. Optional — when omitted, the
+     *  config-intent branch falls back to inline paint only (no
+     *  cycling). */
+    private selectorSatelliteState?: SelectorSatelliteStateRef,
   ) {}
 
   subscribe(): void {
@@ -338,6 +347,11 @@ export class Resolver {
         model: settings.get('transform-blank-model'),
         endpoint: settings.get('transform-blank-endpoint'),
       },
+      configIntent: {
+        provider: settings.get('fluid-config-provider'),
+        model: settings.get('fluid-config-model'),
+        endpoint: settings.get('fluid-config-endpoint'),
+      },
       // Pipeline mode for TransformBlank — `auto` (default) picks per
       // provider via pickTransformBlankMode(); `fused` / `3-pass` force
       // it. Set in CUES.md frontmatter as `transform-blank-mode:`.
@@ -357,7 +371,14 @@ export class Resolver {
       // each flag gates.
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
+      enableConfigIntent: settings.get('fluid-config-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
+      // applyOpencuesScalar — ConfigIntentSource's side-effect callback.
+      // Wraps ConfigLoader.applyOpenCuesScalar (which writes the file +
+      // updates in-memory state with the write-race suppression guard
+      // already used by satellite cycling).
+      applyOpencuesScalar: (setting: string, value: string) =>
+        this.configLoader.applyOpenCuesScalar(setting, value),
       // Debug log sink — surfaces TransformBlankSource pipeline traces
       // when OPENCUES.md `debug-mode: on`. The adapter.log gates 'debug'
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
@@ -441,6 +462,7 @@ export class Resolver {
     return [
       s.get('fluid-blank-mode') ?? '',
       s.get('transform-blank-mode') ?? '',
+      s.get('fluid-config-mode') ?? '',
       s.get('word-cues-mode') ?? '',
       s.get('llm-endpoint') ?? '',
       s.get('llm-model') ?? '',
@@ -448,6 +470,7 @@ export class Resolver {
       s.get('word-cues-provider') ?? '', s.get('word-cues-model') ?? '', s.get('word-cues-endpoint') ?? '',
       s.get('fluid-blank-provider') ?? '', s.get('fluid-blank-model') ?? '', s.get('fluid-blank-endpoint') ?? '',
       s.get('transform-blank-provider') ?? '', s.get('transform-blank-model') ?? '', s.get('transform-blank-endpoint') ?? '',
+      s.get('fluid-config-provider') ?? '', s.get('fluid-config-model') ?? '', s.get('fluid-config-endpoint') ?? '',
       // Universal-Integration: chrome's adapter answers per-current-target.
       // When focus moves between a contenteditable (cycling) and a normal
       // input (no cycling), the build key flips and sources rebuild on
@@ -769,6 +792,12 @@ export class Resolver {
         && r.spanEnd > r.spanStart;
       const isFluidBlank = r.source === 'fluid-blank';
       const isTransformBlank = r.source === 'transform-blank';
+      // ConfigIntent emits the same FluidBlank-style shape
+      // (alternatives = ['_', confirmation]) — splice the
+      // confirmation in at the `_`, register a DynDef for
+      // cycling-Down revert. blankName below differs so the def
+      // isn't re-resolved as a fluid-blank lookup.
+      const isConfigIntent = r.source === 'config-intent';
       // Fluid-blank substitutes inline (BlankFill-style). For WIPE mode the
       // text shrinks so the wordIndex shifts — we have to compute the def's
       // FINAL position in the new text and key the def there, not at the
@@ -819,6 +848,95 @@ export class Resolver {
 
         this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
         continue; // skip the generic def-creation below
+      }
+
+      // ConfigIntent: emits a selector-satellite-shaped result.
+      // alternatives=[<setting>], metadata.selectorBlank=true,
+      // metadata.satelliteValue=<value>, metadata.displaySeparator,
+      // metadata.blankName='opencues', spanStart/spanEnd cover the
+      // user's full summon-words + `_` range to wipe. Splice
+      // "<setting><sep><value>" into [spanStart, spanEnd) and register
+      // a SelectorSatelliteEntry so standard cycling works on it
+      // (mirrors the wiring BlankFill does for keyword-bound
+      // `opencues settings _`).
+      if (isConfigIntent && alts.length > 0 && isMultiWordSpan) {
+        const liveText = this.adapter.getText();
+        // Race guard: bail if the `_` we classified against is no
+        // longer in the live buffer. ConfigIntent's wipe is more
+        // aggressive than FluidBlank's localized splice (we wipe
+        // [0, text.length)), so any sign the user moved past or
+        // typed away from the original prompt should abort —
+        // otherwise unrelated edits silently get destroyed.
+        if (!liveText.includes('_')) {
+          this.adapter.log('info', `ConfigIntent: skipping — _ no longer in live text (len=${liveText.length})`);
+          continue;
+        }
+        // Stricter check: the range we're about to wipe must still
+        // match the analyzed text byte-for-byte. If the user typed in
+        // the prefix, we'd otherwise wipe their edit.
+        if (liveText.slice(r.spanStart!, r.spanEnd!) !== text.slice(r.spanStart!, r.spanEnd!)) {
+          this.adapter.log('info', `ConfigIntent: skipping — wipe range no longer matches analyzed text`);
+          continue;
+        }
+        const selector = alts[0];
+        const meta = r.metadata as Record<string, unknown> | undefined;
+        const satellite = String(meta?.satelliteValue ?? '');
+        const sep = String(meta?.displaySeparator ?? ' ');
+        const blankName = String(meta?.blankName ?? 'opencues');
+        if (!satellite) {
+          this.adapter.log('info', 'ConfigIntent: skipping — metadata.satelliteValue missing');
+          continue;
+        }
+        const start = r.spanStart!;
+        const end = r.spanEnd!;
+        const pair = `${selector}${sep}${satellite}`;
+        const newText = liveText.slice(0, start) + pair + liveText.slice(end);
+        const newCursor = start + pair.length;
+        if (this.adapter.pushText) {
+          this.adapter.pushText(newText, newCursor);
+        } else {
+          this.adapter.setText(newText);
+          this.adapter.setCursorOffset(newCursor);
+          this.adapter.forceRender();
+        }
+
+        // Register the satellite-cycling state so cycling Up/Down at
+        // either word triggers applyOpenCuesScalar via the existing
+        // path (cycling.ts:cycleSelectorSatellite). Same shape that
+        // BlankFill.applySatelliteFill builds.
+        if (this.selectorSatelliteState) {
+          const newWords = splitWords(newText);
+          const selStartWord = newWords.find(w => w.start === start);
+          if (selStartWord) {
+            const selectorLength = Math.max(1, selector.split(/\s+/).filter(Boolean).length);
+            const satelliteLength = Math.max(1, satellite.split(/\s+/).filter(Boolean).length);
+            this.selectorSatelliteState.set({
+              blankName,
+              scriptPath: '',
+              selectorIndex: selStartWord.index,
+              selectorLength,
+              satelliteIndex: selStartWord.index + selectorLength,
+              satelliteLength,
+              currentSetting: selector,
+              currentValue: satellite,
+              separator: sep,
+              // clearOnEdit: true — backspacing into either word wipes
+              // the whole pair in one go via applyClearOnEdit. The
+              // user typed a natural-language summon ("enable debug
+              // logging _"); the satellite pair is just the
+              // visual confirmation of the resulting state, so it
+              // should behave as a single span on cleanup (not as two
+              // independent words requiring per-char backspace).
+              clearOnEdit: true,
+              pairCharStart: start,
+              pairCharEnd: start + pair.length,
+            }, newText);
+          }
+        }
+
+        wrote++;
+        this.adapter.log('info', `ConfigIntent: substituting "${text.slice(start, end)}" → "${pair}" (range=[${start},${end}), totalMs=${Date.now() - __resolveStart})`);
+        continue;
       }
 
       // TransformBlank: imperative-instruction handler. Source returns

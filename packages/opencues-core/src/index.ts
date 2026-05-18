@@ -40,6 +40,15 @@ export {
 } from './sources/transform-blank-source';
 
 export {
+  ConfigIntentSource,
+  parseConfigIntentOutput,
+  validateAgainstRegistry,
+  type ConfigIntentSourceConfig,
+  type ConfigIntentEvent,
+  type ConfigIntentVerdict,
+} from './sources/config-intent-source';
+
+export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,
 } from './sources/build-sources';

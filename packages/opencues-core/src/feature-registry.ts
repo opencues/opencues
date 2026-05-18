@@ -263,6 +263,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'fluid-config-mode',
+    camelCase: 'fluidConfigMode',
+    description: 'Semantic `_` → settings-change routing (LLM classifier over the FEATURES registry)',
+    menuTip: 'Route `_` to a settings change when no keyword matched ("stop showing tips _" → tips-mode=off). Only routes to OPENCUES settings, never user blanks.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — `_` falls through to fluid-blank as a lookup' },
+      { id: 'on',  description: 'Enabled — one LLM call classifies the surrounding text against the FEATURES registry; on hit, the matched setting is applied' },
+    ],
+  },
+  {
     scalar: 'blank-trigger-mode',
     camelCase: 'blankTriggerMode',
     description: 'When `_` fires its blank — immediately on insertion vs only after a space follows',

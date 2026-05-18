@@ -301,7 +301,7 @@ export function boot(host: HostInfo): BootResult {
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
-    }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender);
+    }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
 

@@ -437,7 +437,7 @@ export function boot(host: HostInfo): BootResult {
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState, agentTaskState, blankLoading, markdownRender);
+    }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState);
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',

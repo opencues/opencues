@@ -5,6 +5,7 @@ import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
 import { AgentTaskState } from '../state/agent-task';
+import { SelectorSatelliteState } from '../state/selector-satellite';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({ concepts: [] });
@@ -837,3 +838,172 @@ describe('Resolver blank-trigger-mode gate', () => {
     expect(callCount()).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Source-specific substitution branches — pins the user-journey from
+// ConfigIntent classification → selector-satellite buffer paint.
+//
+// The bug fixed alongside these tests: the original ship had no
+// resolver branch for `source: 'config-intent'` and the result silently
+// no-op'd the UI even though the file write fired. The CURRENT shape
+// is the selector-satellite one — ConfigIntent acts as a smart
+// shortcut into the existing `opencues settings _` menu (summon words
+// get wiped, buffer becomes "<setting> <value>", standard satellite
+// cycling is active afterwards).
+// ---------------------------------------------------------------------------
+
+describe('Resolver config-intent substitution', () => {
+  // The runtime branch reads r.source — MockResult above doesn't carry
+  // source/priority/cueTip. Use this richer interface for these tests.
+  interface RichMockResult {
+    wordIndex: number;
+    word: string;
+    alternatives: string[];
+    source: string;
+    priority: number;
+    cueTip?: string;
+    metadata?: Record<string, unknown>;
+    spanStart?: number;
+    spanEnd?: number;
+  }
+
+  function setupRich(scriptedResults: RichMockResult[]) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const selectorSatelliteState = new SelectorSatelliteState();
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+      httpAdapter: {},
+    }, undefined, undefined, undefined, undefined, selectorSatelliteState);
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: RichMockResult[] }> } })._resolver = {
+      resolve: async () => ({ results: scriptedResults }),
+    };
+    return { adapter, hlState, dynDefs, loader, selectorSatelliteState, resolver };
+  }
+
+  function configIntentResult(opts: { input: string; selector: string; satellite: string }): RichMockResult {
+    return {
+      wordIndex: opts.input.split(/\s+/).indexOf('_'),
+      word: '_',
+      alternatives: [opts.selector],
+      source: 'config-intent',
+      priority: 94,
+      spanStart: 0,
+      spanEnd: opts.input.length,
+      metadata: {
+        blankName: 'opencues',
+        selectorBlank: true,
+        satelliteValue: opts.satellite,
+        displaySeparator: ' ',
+        configIntent: { setting: opts.selector, value: opts.satellite, confidence: 0.97 },
+      },
+    };
+  }
+
+  it('wipes the summon words and replaces with "<setting> <value>"', async () => {
+    const { adapter, resolver } = setupRich([
+      configIntentResult({ input: 'enable debug logging _', selector: 'debug-mode', satellite: 'on' }),
+    ]);
+    adapter.pushText('enable debug logging _');
+    await resolver.resolveAndApply('enable debug logging _');
+
+    // Whole prompt becomes the satellite-shape pair. No trace of
+    // "enable debug logging _" remains — the summon words ARE the
+    // apply action, and the resulting visible state is just the
+    // selector + satellite the user would have seen if they'd typed
+    // `opencues settings _` and cycled to the right setting.
+    expect(adapter.getText()).toBe('debug-mode on');
+  });
+
+  it('registers a SelectorSatelliteEntry pointing at the new selector + satellite words', async () => {
+    const { adapter, selectorSatelliteState, resolver } = setupRich([
+      configIntentResult({ input: 'enable debug logging _', selector: 'debug-mode', satellite: 'on' }),
+    ]);
+    adapter.pushText('enable debug logging _');
+    await resolver.resolveAndApply('enable debug logging _');
+
+    // The satellite state is what makes Ctrl+Alt+arrow on either
+    // word cycle the setting/value pair (cycling.ts:cycleSelectorSatellite).
+    // Without this entry, ConfigIntent could paint but the user
+    // couldn't cycle further to a different value.
+    const entry = selectorSatelliteState.current;
+    expect(entry).not.toBeNull();
+    expect(entry!.blankName).toBe('opencues');
+    expect(entry!.currentSetting).toBe('debug-mode');
+    expect(entry!.currentValue).toBe('on');
+    expect(entry!.separator).toBe(' ');
+    expect(entry!.selectorIndex).toBe(0); // first word in the new buffer
+    expect(entry!.selectorLength).toBe(1);
+    expect(entry!.satelliteIndex).toBe(1);
+    expect(entry!.satelliteLength).toBe(1);
+    expect(entry!.pairCharStart).toBe(0);
+    expect(entry!.pairCharEnd).toBe('debug-mode on'.length);
+    // clearOnEdit: true → backspacing into either word wipes the whole
+    // pair in one go (delete-the-span semantics, not per-char). Without
+    // this, the user has to backspace through 13 chars to remove what
+    // started as one summon-phrase.
+    expect(entry!.clearOnEdit).toBe(true);
+  });
+
+  it('does NOT splice when live text changed mid-flight (race guard)', async () => {
+    const { adapter, selectorSatelliteState, resolver } = setupRich([
+      configIntentResult({ input: 'enable debug logging _', selector: 'debug-mode', satellite: 'on' }),
+    ]);
+    adapter.pushText('enable debug logging _');
+    // Simulate the user (or another module) editing the buffer
+    // BEFORE the LLM call returns.
+    adapter.pushText('enable debug logging something else');
+    await resolver.resolveAndApply('enable debug logging something else');
+
+    // Buffer untouched. Satellite state never set (no half-applied UI).
+    expect(adapter.getText()).toBe('enable debug logging something else');
+    expect(selectorSatelliteState.current).toBeNull();
+  });
+
+  it('does NOT splice when metadata.satelliteValue is missing (defence in depth)', async () => {
+    const { adapter, selectorSatelliteState, resolver } = setupRich([
+      {
+        wordIndex: 3,
+        word: '_',
+        alternatives: ['debug-mode'],
+        source: 'config-intent',
+        priority: 94,
+        spanStart: 0,
+        spanEnd: 'enable debug logging _'.length,
+        metadata: { blankName: 'opencues', selectorBlank: true, displaySeparator: ' ' },
+      },
+    ]);
+    adapter.pushText('enable debug logging _');
+    await resolver.resolveAndApply('enable debug logging _');
+
+    expect(adapter.getText()).toBe('enable debug logging _');
+    expect(selectorSatelliteState.current).toBeNull();
+  });
+
+  it('fluid-blank still uses the inline-paint branch (no cross-contamination)', async () => {
+    // Pin that the config-intent branch hasn't accidentally swallowed
+    // the fluid-blank substitution path. fluid-blank's alternatives
+    // shape is ['_', answer]; buffer should splice the answer in
+    // place of the `_`, NOT wipe the whole prefix.
+    const { adapter, dynDefs, resolver } = setupRich([
+      {
+        wordIndex: 3,
+        word: '_',
+        alternatives: ['_', 'Paris'],
+        source: 'fluid-blank',
+        priority: 92,
+      },
+    ]);
+    adapter.pushText('capital of france _');
+    await resolver.resolveAndApply('capital of france _');
+
+    expect(adapter.getText()).toBe('capital of france Paris');
+    expect(dynDefs.get(3)?.blankName).toBe('fluid-blank');
+  });
+});
+
