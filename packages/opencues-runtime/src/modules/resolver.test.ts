@@ -1007,3 +1007,254 @@ describe('Resolver config-intent substitution', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Sentence-cue substitution — pins the user-journey from a `scope:sentence`
+// cue's CueResult through the resolver's splice + word-cue suppression.
+//
+// Source design: SentenceCueSource emits
+//   alternatives = [originalSentence, alt1, alt2, ...]
+//   spanStart/spanEnd = char range of the sentence
+//   source = 'sentence-cue:<cue-name>'
+//
+// Resolver job: splice alts[1] into [spanStart, spanEnd); register
+// DynDef at the post-splice word index with currentIndex=1 + blankName
+// locked to the source id; track the claimed word-range; suppress any
+// non-LLM-blank word-cue result whose wordIndex falls in the claim.
+// ---------------------------------------------------------------------------
+
+describe('Resolver sentence-cue substitution', () => {
+  interface RichMockResult {
+    wordIndex: number;
+    word: string;
+    alternatives: string[];
+    source: string;
+    priority: number;
+    cueTip?: string;
+    metadata?: Record<string, unknown>;
+    spanStart?: number;
+    spanEnd?: number;
+  }
+
+  function setupRich(scriptedResults: RichMockResult[]) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+      httpAdapter: {},
+    });
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: RichMockResult[] }> } })._resolver = {
+      resolve: async () => ({ results: scriptedResults }),
+    };
+    return { adapter, hlState, dynDefs, loader, resolver };
+  }
+
+  function sentenceCueResult(opts: {
+    cueName: string;
+    sentence: string;
+    spanStart: number;
+    spanEnd: number;
+    wordIndex: number;
+    rewrites: string[];
+  }): RichMockResult {
+    return {
+      wordIndex: opts.wordIndex,
+      word: opts.sentence.split(/\s+/)[0] ?? opts.sentence,
+      alternatives: [opts.sentence, ...opts.rewrites],
+      source: `sentence-cue:${opts.cueName}`,
+      priority: 85,
+      spanStart: opts.spanStart,
+      spanEnd: opts.spanEnd,
+      cueTip: opts.cueName,
+      metadata: { sentenceCue: { cueName: opts.cueName, altCount: opts.rewrites.length } },
+    };
+  }
+
+  it('splices first rewrite into the sentence span', async () => {
+    const input = 'thanks a bunch.';
+    const { adapter, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: input,
+        spanStart: 0,
+        spanEnd: input.length,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.', 'Many thanks.', 'I am grateful.'],
+      }),
+    ]);
+    adapter.pushText(input);
+    await resolver.resolveAndApply(input);
+
+    // First rewrite gets spliced in; original is preserved in the
+    // DynDef for cycling Down → revert.
+    expect(adapter.getText()).toBe('Thank you very much.');
+  });
+
+  it('registers a DynDef with all alternatives, currentIndex=1, blankName locked', async () => {
+    const input = 'thanks a bunch.';
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: input,
+        spanStart: 0,
+        spanEnd: input.length,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.', 'Many thanks.', 'I am grateful.'],
+      }),
+    ]);
+    adapter.pushText(input);
+    await resolver.resolveAndApply(input);
+
+    const def = dynDefs.get(0);
+    expect(def).toBeDefined();
+    expect(def!.originalWord).toBe(input);
+    expect(def!.alternatives).toEqual([
+      input,
+      'Thank you very much.',
+      'Many thanks.',
+      'I am grateful.',
+    ]);
+    expect(def!.currentIndex).toBe(1);
+    expect(def!.spanStart).toBe(0);
+    expect(def!.spanEnd).toBe('Thank you very much.'.length);
+    // blankName uses the source id so the entry is locked against
+    // re-resolution AND distinguishable in logs from other span-bearing defs.
+    expect(def!.blankName).toBe('sentence-cue:more-formal');
+  });
+
+  it('race-guards: skip if the buffer slice [spanStart, spanEnd) no longer matches the analyzed sentence', async () => {
+    const input = 'thanks a bunch.';
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: input,
+        spanStart: 0,
+        spanEnd: input.length,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.'],
+      }),
+    ]);
+    // Push the original, then mutate the buffer BEFORE resolveAndApply
+    // runs — simulates the user editing during the LLM call.
+    adapter.pushText(input);
+    adapter.pushText('totally different text');
+    await resolver.resolveAndApply('totally different text');
+
+    expect(adapter.getText()).toBe('totally different text');
+    expect(dynDefs.get(0)).toBeUndefined();
+  });
+
+  it('suppresses word-cue results whose wordIndex falls inside the sentence claim', async () => {
+    // Buffer: "thanks a bunch ." (4 words after segmentation:
+    // ["thanks", "a", "bunch."]). Sentence-cue covers indices 0-2.
+    // Word-cue at wordIndex 1 ("a") should be SUPPRESSED.
+    const input = 'thanks a bunch.';
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: input,
+        spanStart: 0,
+        spanEnd: input.length,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.'],
+      }),
+      // A word-cue at index 1 inside the sentence span — must be dropped.
+      {
+        wordIndex: 1,
+        word: 'a',
+        alternatives: ['a', 'an', 'one'],
+        source: 'config:grammar',
+        priority: 50,
+      },
+    ]);
+    adapter.pushText(input);
+    await resolver.resolveAndApply(input);
+
+    // Only the sentence-cue def survives. The word-cue at idx 1 was
+    // suppressed before def-creation.
+    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
+    // Idx 1 in the NEW buffer points at a word in "Thank you very much."
+    // which has no def (the cue was suppressed before def-creation).
+    const wordCueDef = dynDefs.get(1);
+    if (wordCueDef) {
+      expect(wordCueDef.blankName).toBe('sentence-cue:more-formal');
+    }
+  });
+
+  it('does NOT suppress word-cue results outside any sentence claim', async () => {
+    // Two-sentence buffer where ONLY the first sentence gets cued.
+    // A word-cue in the SECOND (uncued) sentence should survive.
+    const buffer = 'thanks a bunch. some other words.';
+    const sentence1End = 'thanks a bunch.'.length;
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: 'thanks a bunch.',
+        spanStart: 0,
+        spanEnd: sentence1End,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.'],
+      }),
+      // Word-cue at index 4 (the word "words" in the second sentence).
+      {
+        wordIndex: 4,
+        word: 'words',
+        alternatives: ['words', 'terms', 'phrases'],
+        source: 'config:grammar',
+        priority: 50,
+      },
+    ]);
+    adapter.pushText(buffer);
+    await resolver.resolveAndApply(buffer);
+
+    // Sentence-cue def survives.
+    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
+    // Word-cue OUTSIDE the sentence-cue claim is NOT suppressed.
+    // (After splice, word indices may have shifted — the def is
+    // wherever the resolver placed it. We just check that some def
+    // contains "words" / "terms" / "phrases" as alternatives.)
+    const allDefs = Array.from({ length: 20 }, (_, i) => dynDefs.get(i)).filter(Boolean);
+    const wordCueDef = allDefs.find(d => d!.alternatives.includes('terms'));
+    expect(wordCueDef, 'word-cue outside sentence span should survive suppression').toBeDefined();
+  });
+
+  it('v1 caps at one sentence-cue per resolve (multi-sentence-cue handling deferred)', async () => {
+    // Two sentence-cue results in the same resolve pass — only the
+    // first should apply. Documented v1 limitation to avoid the
+    // word-index shift cascading across multiple in-pass splices.
+    const buffer = 'thanks a bunch. ping me when ready.';
+    const s1End = 'thanks a bunch.'.length;
+    const s2Start = 'thanks a bunch. '.length;
+    const s2End = buffer.length;
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: 'thanks a bunch.',
+        spanStart: 0,
+        spanEnd: s1End,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.'],
+      }),
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: 'ping me when ready.',
+        spanStart: s2Start,
+        spanEnd: s2End,
+        wordIndex: 3,
+        rewrites: ['Please notify me when ready.'],
+      }),
+    ]);
+    adapter.pushText(buffer);
+    await resolver.resolveAndApply(buffer);
+
+    // First sentence applied, second sentence's source-text remains in the buffer.
+    const liveText = adapter.getText();
+    expect(liveText.startsWith('Thank you very much.')).toBe(true);
+    expect(liveText.includes('ping me when ready.')).toBe(true);
+  });
+});
+

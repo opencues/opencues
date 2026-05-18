@@ -75,7 +75,7 @@ function numToWord(n: string): string {
 export class ConfigSource implements CueSource {
   readonly id: string;
   readonly priority: number;
-  readonly scope: 'words' | 'blanks' | 'all';
+  readonly scope: 'words' | 'blanks' | 'sentence' | 'all';
   /** Word-cues + alternatives sources are always cycleable — they
    *  present alternatives the user picks between. Hosts without a
    *  cycling surface drop these at registration. */

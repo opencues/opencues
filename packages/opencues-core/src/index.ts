@@ -49,6 +49,17 @@ export {
 } from './sources/config-intent-source';
 
 export {
+  SentenceCueSource,
+  segmentSentences,
+  parseSentenceAltOutput,
+  SENTENCE_ALT_FORMAT_SPEC,
+  type SentenceCueSourceConfig,
+  type SentenceCueEvent,
+  type SentenceSpan,
+  type SentenceAltBlock,
+} from './sources/sentence-cue-source';
+
+export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,
 } from './sources/build-sources';

@@ -273,6 +273,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'sentence-cues-mode',
+    camelCase: 'sentenceCuesMode',
+    description: 'Sentence-scope cues — whole-sentence alternatives via `scope: sentence` cue declarations',
+    menuTip: 'Whole-sentence alternative rewrites (e.g. more-formal). Highlights span the sentence; sentence-scope wins over overlapping word-cues.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — every `scope: sentence` cue is filtered at build time' },
+      { id: 'on',  description: 'Enabled — sentence cues fire on prose buffers, suppressing any word-cues for words inside the sentence span' },
+    ],
+  },
+  {
     scalar: 'blank-trigger-mode',
     camelCase: 'blankTriggerMode',
     description: 'When `_` fires its blank — immediately on insertion vs only after a space follows',

@@ -83,12 +83,13 @@ export interface SourceConfig {
 
   /**
    * When this source activates:
-   * words  — only when no blanks present (word alternatives)
-   * blanks — only when blanks (_) present (fill-in)
-   * all    — always
+   * words    — only when no blanks present (word alternatives — RoutedWordSourceGroup)
+   * blanks   — only when blanks (_) present (fill-in)
+   * sentence — sentence-scope cue (whole-sentence alternatives via SentenceCueSource)
+   * all      — always
    * (default: inferred from context — 'words' for CUES.md, 'blanks' for BLANKS.md)
    */
-  scope?: 'words' | 'blanks' | 'all';
+  scope?: 'words' | 'blanks' | 'sentence' | 'all';
 }
 
 /**
@@ -727,7 +728,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
    *  and LLM-driven) are inferred from data shape — body JSON ⇒ static,
    *  otherwise prompt-driven. Only `'blank'` is meaningful here. */
   type?: 'blank';
-  scope?: 'words' | 'blanks' | 'all';
+  scope?: 'words' | 'blanks' | 'sentence' | 'all';
   parser?: BlankParser;
   priority?: number;
   match?: string;

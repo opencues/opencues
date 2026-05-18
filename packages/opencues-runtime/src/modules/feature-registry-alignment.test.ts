@@ -34,6 +34,7 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'wordCuesMode',       // consumed in resolver.ts:enableWordCues
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
+  'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
 ]);
 
 describe('feature-registry ↔ OpenCuesState alignment', () => {

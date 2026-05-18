@@ -26,6 +26,7 @@ import { BlankSource, isBlankConfigCycleable } from './blank-source';
 import { FluidBlankSource, type FluidBlankSourceConfig } from './fluid-blank-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
+import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
 
 /**
@@ -73,6 +74,7 @@ export interface BuildSourcesOptions {
   fluidBlank?: FeatureLLMSetting;
   transformBlank?: FeatureLLMSetting;
   configIntent?: FeatureLLMSetting;
+  sentenceCues?: FeatureLLMSetting;
   /**
    * Pipeline mode for TransformBlank. `'auto'` (default) picks per
    * provider — groq → 3-pass, everyone else → fused — via
@@ -124,6 +126,14 @@ export interface BuildSourcesOptions {
    * source instantiation.
    */
   applyOpencuesScalar?: (setting: string, value: string) => void | Promise<void>;
+  /**
+   * Enable sentence-scope cues. When false, every CUES.md / CUE.md
+   * entry with `scope: sentence` is silently filtered at build time —
+   * no LLM calls fire and no cues surface. Defaults to false; flip on
+   * via OPENCUES.md `sentence-cues-mode: on`. Mirrors `enableWordCues`
+   * shape — global kill-switch on top of per-cue declaration.
+   */
+  enableSentenceCues?: boolean;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -176,6 +186,8 @@ export interface BuildSourcesOptions {
   onFluidBlankEvent?: FluidBlankSourceConfig['onEvent'];
   /** Subscriber for `ConfigIntentSource` (single-call settings classifier). */
   onConfigIntentEvent?: ConfigIntentSourceConfig['onEvent'];
+  /** Subscriber for `SentenceCueSource` (one batch call per cue per buffer). */
+  onSentenceCueEvent?: SentenceCueSourceConfig['onEvent'];
   /**
    * Whether the host advertises a CYCLING SURFACE — i.e. it can
    * intercept Ctrl+Alt+arrow keys AND render visual feedback for
@@ -298,6 +310,38 @@ export function buildSourcesFromConfig(
       const scope = srcCfg.scope ?? 'words';
       const parser = srcCfg.parser ?? 'alternatives';
 
+      // Sentence-scope cues — one SentenceCueSource per CUE.md entry.
+      // Gated independently from word-cues (sentence-cues-mode scalar
+      // in OPENCUES.md). The source segments the buffer, batches one
+      // LLM call per cue per resolve, and emits one CueResult per
+      // sentence (alternatives = [original, ...rewrites], char-range
+      // spanStart/spanEnd). Priority defaults to 85 — higher than
+      // word-cues so an overlapping word-cue gets suppressed in the
+      // resolver (design decision: sentence wins outright).
+      if (scope === 'sentence') {
+        if (!options.enableSentenceCues) continue;
+        if (!supportsCycling) {
+          options.log?.(`buildSources: skipping sentence-cue '${srcCfg.name}' — host has no cycling surface`);
+          continue;
+        }
+        if (!srcCfg.promptText) continue;
+        const resolved = resolveFor(options.sentenceCues, srcCfg);
+        if (!resolved) {
+          fallbackForLog(`sentence-cue '${srcCfg.name}'`, srcCfg.provider || options.sentenceCues?.provider || globalProvider || 'groq');
+          continue;
+        }
+        sources.push(new SentenceCueSource({
+          httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+          provider: resolved.provider,
+          endpoint: resolved.endpoint,
+          apiKey: resolved.apiKey,
+          model: resolved.model,
+          sourceConfig: srcCfg,
+          log: options.log,
+          onEvent: options.onSentenceCueEvent,
+        }));
+        continue;
+      }
       if (scope === 'words' && parser === 'alternatives') {
         if (!options.enableWordCues) continue;
         // Universal-Integration filter: word-cues are cycleable by

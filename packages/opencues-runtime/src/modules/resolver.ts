@@ -352,6 +352,11 @@ export class Resolver {
         model: settings.get('fluid-config-model'),
         endpoint: settings.get('fluid-config-endpoint'),
       },
+      sentenceCues: {
+        provider: settings.get('sentence-cues-provider'),
+        model: settings.get('sentence-cues-model'),
+        endpoint: settings.get('sentence-cues-endpoint'),
+      },
       // Pipeline mode for TransformBlank — `auto` (default) picks per
       // provider via pickTransformBlankMode(); `fused` / `3-pass` force
       // it. Set in CUES.md frontmatter as `transform-blank-mode:`.
@@ -372,6 +377,7 @@ export class Resolver {
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableConfigIntent: settings.get('fluid-config-mode') === 'on',
+      enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // applyOpencuesScalar — ConfigIntentSource's side-effect callback.
       // Wraps ConfigLoader.applyOpenCuesScalar (which writes the file +
@@ -463,6 +469,7 @@ export class Resolver {
       s.get('fluid-blank-mode') ?? '',
       s.get('transform-blank-mode') ?? '',
       s.get('fluid-config-mode') ?? '',
+      s.get('sentence-cues-mode') ?? '',
       s.get('word-cues-mode') ?? '',
       s.get('llm-endpoint') ?? '',
       s.get('llm-model') ?? '',
@@ -471,6 +478,7 @@ export class Resolver {
       s.get('fluid-blank-provider') ?? '', s.get('fluid-blank-model') ?? '', s.get('fluid-blank-endpoint') ?? '',
       s.get('transform-blank-provider') ?? '', s.get('transform-blank-model') ?? '', s.get('transform-blank-endpoint') ?? '',
       s.get('fluid-config-provider') ?? '', s.get('fluid-config-model') ?? '', s.get('fluid-config-endpoint') ?? '',
+      s.get('sentence-cues-provider') ?? '', s.get('sentence-cues-model') ?? '', s.get('sentence-cues-endpoint') ?? '',
       // Universal-Integration: chrome's adapter answers per-current-target.
       // When focus moves between a contenteditable (cycling) and a normal
       // input (no cycling), the build key flips and sources rebuild on
@@ -754,7 +762,35 @@ export class Resolver {
     if (generation !== this._generation) return;
 
     let wrote = 0;
+    // Sentence-cue suppression state. When any `sentence-cue:*` result
+    // applies, subsequent word-cue results whose wordIndex falls within
+    // the applied sentence's word range get suppressed (design rule:
+    // sentence wins outright). v1 also caps at ONE sentence-cue per
+    // resolve to avoid the word-index shift cascading when multiple
+    // sentences splice in the same pass (each splice changes downstream
+    // word offsets; subsequent sentence-cue results carry the
+    // pre-splice spanStart and would splice at the wrong location).
+    // Multi-sentence-cue handling is a v2 followup (process in reverse
+    // span-order, or apply via a single batched splice).
+    let sentenceCueApplied = false;
+    let sentenceClaimWordStart = -1;
+    let sentenceClaimWordEnd = -1;
     for (const r of result.results) {
+      const isSentenceCue = typeof r.source === 'string' && r.source.startsWith('sentence-cue:');
+      // ── Suppression check: word-cue (or any non-LLM-blank result)
+      //    inside an applied sentence's word range is dropped.
+      const isLlmBlank = r.source === 'fluid-blank' || r.source === 'transform-blank' || r.source === 'config-intent';
+      if (sentenceCueApplied && !isSentenceCue && !isLlmBlank) {
+        if (r.wordIndex >= sentenceClaimWordStart && r.wordIndex <= sentenceClaimWordEnd) {
+          this.adapter.log('debug', `Resolver: suppressing word-cue at wordIndex=${r.wordIndex} — inside sentence-cue span [${sentenceClaimWordStart},${sentenceClaimWordEnd}]`);
+          continue;
+        }
+      }
+      // v1: only the first sentence-cue per resolve applies (see comment above).
+      if (isSentenceCue && sentenceCueApplied) {
+        this.adapter.log('debug', `Resolver: skipping additional sentence-cue at wordIndex=${r.wordIndex} — v1 caps at one per resolve`);
+        continue;
+      }
       const target = wordSpans[r.wordIndex];
       if (!target) continue;
       const existing = this.dynDefs.get(r.wordIndex);
@@ -936,6 +972,67 @@ export class Resolver {
 
         wrote++;
         this.adapter.log('info', `ConfigIntent: substituting "${text.slice(start, end)}" → "${pair}" (range=[${start},${end}), totalMs=${Date.now() - __resolveStart})`);
+        continue;
+      }
+
+      // Sentence-cue: scope:'sentence' cue from CUES.md / CUE.md.
+      // Source returns:
+      //   alternatives = [originalSentence, rewrite1, rewrite2, ...]
+      //   spanStart/spanEnd = char range of the sentence in the buffer
+      // Auto-substitutes alternatives[1] (the first rewrite) at the
+      // sentence span, registers a DynDef keyed at the post-splice word
+      // index with currentIndex=1 so cycling Down restores the original
+      // and Up reveals further rewrites. Marks the sentence's original
+      // word range as "claimed" so subsequent word-cue results inside
+      // that range are suppressed (design 4a — sentence wins outright).
+      if (isSentenceCue && r.alternatives.length >= 2 && isMultiWordSpan) {
+        const originalSentence = r.alternatives[0];
+        const liveText = this.adapter.getText();
+        // Race guard: the sentence span we're about to splice must
+        // still match what we analyzed. If the user typed elsewhere,
+        // the indices may have shifted; if they edited THIS sentence,
+        // the substitution is no longer faithful.
+        const start = r.spanStart!;
+        const end = r.spanEnd!;
+        if (liveText.slice(start, end) !== originalSentence) {
+          this.adapter.log('info', `SentenceCue[${r.source}]: skipping — buffer edit at [${start},${end}) changed the sentence since resolve`);
+          continue;
+        }
+        const firstAlt = r.alternatives[1];
+        const sub = applyMarkdownAwareSplice(this.adapter, text, start, end, firstAlt);
+        const newText = sub.newText;
+        const writtenAlt = sub.stripped;
+
+        // Compute the post-splice word position of the spliced sentence
+        // (start word index + word count). DynDef gets keyed at the
+        // first word of the rewritten sentence; spanEnd in chars is the
+        // end of the spliced text.
+        const newWords = splitWords(newText);
+        const newFirstWord = newWords.find(w => w.start === start);
+        const newWordIndex = newFirstWord ? newFirstWord.index : r.wordIndex;
+        const newSpanEnd = start + writtenAlt.length;
+
+        this.dynDefs.set(newWordIndex, {
+          originalWord: originalSentence,
+          alternatives: r.alternatives, // [original, ...rewrites]
+          currentIndex: 1, // showing first rewrite
+          spanStart: start,
+          spanEnd: newSpanEnd,
+          // blankName uses the source id (sentence-cue:<name>) so the
+          // entry is locked against re-resolution AND distinguishable
+          // from other span-bearing defs in logs / event traces.
+          blankName: r.source,
+        });
+        wrote++;
+
+        // Record claim using ORIGINAL word indices (suppression check
+        // runs against the priority-sorted result list, which uses the
+        // original-buffer indices).
+        sentenceClaimWordStart = r.wordIndex;
+        sentenceClaimWordEnd = r.wordIndex + originalSentence.split(/\s+/).filter(Boolean).length - 1;
+        sentenceCueApplied = true;
+
+        this.adapter.log('info', `SentenceCue[${r.source}]: substituting [${start},${end}) "${originalSentence.slice(0, 50)}…" → "${writtenAlt.slice(0, 50)}…" (alts=${r.alternatives.length - 1}, defAt=${newWordIndex}, claimWords=[${sentenceClaimWordStart},${sentenceClaimWordEnd}])`);
         continue;
       }
 
