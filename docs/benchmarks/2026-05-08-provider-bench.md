@@ -11,8 +11,9 @@ and `REWRITE_SYSTEM_PROMPT` (agent-rewrite). No abbreviation.
 sourced from `tests/benchmarks/agent-rewrite/cases.ts`,
 `tests/benchmarks/fluid-blank/cases.ts`, and the rules section of
 `P2_APPLY_SYSTEM`.
-**Bench scripts:** `packages/opencues-core/scripts/bench-realistic.ts`,
-`bench-providers.ts`, `bench-quality.ts`, `bench-advanced.ts`.
+**Bench scripts:** `packages/opencues-core/scripts/bench-providers.ts`,
+`bench-quality.ts`, `bench-advanced.ts` (the original `bench-realistic.ts`
+was retired in the May 2026 bench-matrix consolidation).
 
 ---
 

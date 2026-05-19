@@ -35,16 +35,16 @@
 
 | File | Lines | Role |
 |---|---|---|
-| `src/modules/word-diff.ts` | ~155 | Pure word-LCS diff — `wordDiff`, `applyHunks`, `translateAToC`, `threeWayMerge`. No external dep. |
-| `src/modules/agent-rewrite.ts` | ~250 | Timer + LLM call + three-way merge + DynDef placement + cursor translation. The single agent module. |
+| `packages/opencues-runtime/src/modules/word-diff.ts` | ~155 | Pure word-LCS diff — `wordDiff`, `applyHunks`, `translateAToC`, `threeWayMerge`. No external dep. |
+| `packages/opencues-runtime/src/modules/agent-rewrite.ts` | ~250 | Timer + LLM call + three-way merge + DynDef placement + cursor translation. The single agent module. |
 
 ### New tests
 
 | File | Tests | What it covers |
 |---|---|---|
-| `src/modules/word-diff.test.ts` | 27 | Every diff edge case — substitutions, deletions, insertions, ranges, paragraphs, ordering. |
-| `src/modules/word-diff.scenarios.test.ts` | 13 | Live-typing merge scenarios (synthetic, no LLM). |
-| `src/modules/agent-rewrite.test.ts` | 33 | Full pipeline integration — basic flow, live typing, task changes mid-round, LLM failures, DynDefs, cursor, concurrency. |
+| `packages/opencues-runtime/src/modules/word-diff.test.ts` | 27 | Every diff edge case — substitutions, deletions, insertions, ranges, paragraphs, ordering. |
+| `packages/opencues-runtime/src/modules/word-diff.scenarios.test.ts` | 13 | Live-typing merge scenarios (synthetic, no LLM). |
+| `packages/opencues-runtime/src/modules/agent-rewrite.test.ts` | 33 | Full pipeline integration — basic flow, live typing, task changes mid-round, LLM failures, DynDefs, cursor, concurrency. |
 
 ### Boot wiring
 

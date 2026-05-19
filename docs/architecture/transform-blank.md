@@ -325,7 +325,7 @@ here` are NOT resolved. APPLY handles those via the `[CURSOR]` marker
 itself. The resolver passes the instruction through.
 
 **Empirical gain** (benchmark
-`tests/benchmarks/transform-blank/deictic-resolve.ts`, 75 cases):
+`tests/benchmarks/transform-blank/archive/deictic-resolve.ts`, 75 cases):
 
 | Category | Raw APPLY | P1.5 + APPLY |
 |---|---|---|
@@ -414,7 +414,7 @@ The current ruleset (in `P2_APPLY_SYSTEM`):
 
 Plus ~50 worked examples covering each rule. Examples are the
 load-bearing part for APPLY (unlike EXTRACT, where they hurt).
-Pinned by `tests/benchmarks/transform-blank/apply-tune.ts` —
+Pinned by `tests/benchmarks/transform-blank/archive/apply-tune.ts` —
 95 cases × 3 fanout = 285 attempts; current pass rate **279/279
 (100%)** with zero regressions across literal/concept/tense/case/
 pluralise/composed/conditional/role-preserve/markdown/positional/
@@ -623,7 +623,7 @@ The same gate (`useStrictJson(providerId, model)`, exported from
 `@opencues/core`) is used by every other LLM-calling surface in the
 runtime: FluidBlank's SEGMENT + ANSWER, WordCues' alternatives/raw
 parsers, and AgentRewrite. All 10 schemas pinned by
-`tests/benchmarks/transform-blank/json-consistency.ts` — empirically
+`tests/benchmarks/transform-blank/archive/json-consistency.ts` — empirically
 100/100 parseable, 100/100 schema-conformant on gpt-oss-120b.
 
 **Failure classes eliminated:**
@@ -758,7 +758,7 @@ EXTRACT sees `<no-emoji body> add emojis where appropriate _ remove
 emojis _` as INPUT, returns `INSTRUCTION: Add emojis where
 appropriate / TARGET: remove emojis`, body collapses to a 17-char
 rewrite. Repro lives at
-`tests/benchmarks/transform-blank/repro-astyped-contamination.ts`.
+`tests/benchmarks/transform-blank/archive/repro-astyped-contamination.ts`.
 
 The skip lives at `dyn-defs.ts` in `reconstructAsTypedWithMap`,
 gated on `def.blankName === 'transform-blank'`. The cycle-Down

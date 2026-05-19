@@ -185,8 +185,7 @@ Each runner emits a deterministic provider-router (default Groq + `gpt-oss-120b`
 | `src/sources/config-source.ts` | Generic config-driven LLM source |
 | `src/sources/routed-word-source-group.ts` | Per-word routing for folder-based cue sources |
 | `src/sources/blank-source.ts` | Keyword-bound blank dispatcher (auto-populate + cycling) |
-| `src/sources/fluid-blank-source.ts` | Free-form `_` lookup (P1 segment + P3 answer) |
-| `src/sources/spelling-source.ts` | Typo correction on plain text |
+| `src/sources/fluid-blank-source.ts` | Free-form `_` lookup (FUSED single-call) |
 | `src/sources/build-sources.ts` | Factory: .md configs → CueSource[] |
 | `src/sources/parsers.ts` | Response parsers (math, compute, answer, alternatives, raw) |
 | `src/cues-md.ts` | .md config file parser |
