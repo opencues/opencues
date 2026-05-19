@@ -10,7 +10,10 @@
 import * as https from 'https';
 
 const ENDPOINT_HOST = 'generativelanguage.googleapis.com';
-export const MODEL = 'gemini-3.1-flash-lite';
+// Override via `OPENCUES_GEMINI_MODEL=gemini-3.5-flash` (or any other
+// Gemini model the v1beta endpoint accepts). Default `gemini-3.1-
+// flash-lite` (lightest 3.x tier as of 2026-05).
+export const MODEL = process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.1-flash-lite';
 
 const API_KEY = process.env.GEMINI_API_KEY;
 if (!API_KEY) {
