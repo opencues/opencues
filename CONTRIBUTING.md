@@ -4,6 +4,8 @@ Thank you for your interest in OpenCues. This guide covers what you need to know
 
 OpenCues has three areas of contribution, each with different expectations. Pick the one that fits — you don't need to understand the whole system to contribute a word source or blank mode.
 
+> **Onboarding deep-dive:** [`CLAUDE.md`](CLAUDE.md) at the repo root is the de-facto project-context doc. It was originally written for AI agents using Claude Code, but it's the single best on-boarding artifact for human contributors too — covers the runtime/core split, the integration architecture, where things live, why things are the way they are, the dev loop, the build commands, the gotchas surfaced by past sessions. Read it before tackling anything beyond a doc fix.
+
 ## Good first issues
 
 If you're new, look for issues labelled **`good first issue`** on GitHub. These are typically:
