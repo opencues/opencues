@@ -79,14 +79,58 @@ generation, multi-turn) — those aren't OpenCues's surfaces. Users
 who want it can opt in via per-feature `fluid-blank-model:` /
 `<feature>-model:` overrides in `~/.cues/OPENCUES.md`.
 
+## Transform-blank fused (231 cases, parallel=6, thinking off) — added 2026-05-19
+
+| Model                       | Accuracy   | Avg model | Δ vs 3.1-flash-lite |
+|-----------------------------|------------|-----------|---------------------|
+| `gemini-3.1-flash-lite` (baseline, from `BENCHMARKS.md` matrix) | 89.2% / 206 | 772ms     | —                   |
+| `gemini-3.5-flash` (this run)                                   | **85.7%** / 198 | **892ms** | **−3.5pp accuracy**, **+120ms** (+15%) slower |
+
+So the regression is NOT fluid-blank-specific — it generalises to
+transform-blank too. Per-category breakdown reveals where 3.5-flash
+loses ground vs 3.1-flash-lite:
+
+```
+linked-concepts        4/10  (40.0%)   ← worst regression
+tone-shift             4/10  (40.0%)   ← worst regression
+multi-paragraph        7/10  (70.0%)
+long-text             32/40  (80.0%)
+context-referring      8/10  (80.0%)
+creative-rewrite       8/10  (80.0%)
+adversarial            8/10  (80.0%)
+code-transform         9/10  (90.0%)
+conditional            9/10  (90.0%)
+format-transform      27/29  (93.1%)
+transform / negative / math / targeted / trailing-instruction  100%
+```
+
+The categories that hold (math, targeted, simple transforms) suggest
+3.5-flash handles SHORT, LITERAL rewrites fine; it struggles on
+LONG-CONTEXT or NUANCED tasks (linked-concepts, tone-shift,
+multi-paragraph) — the model picks the wrong target or partially
+rewrites. This matches the fluid-blank thinking-off-wins pattern:
+3.5-flash's added capability comes with added inference variance
+that hurts on workloads needing precise behaviour.
+
+**Conclusion still holds:** keep `gemini-3.1-flash-lite` as shipped
+default. Users with linked-concepts / tone-shift / multi-paragraph
+needs (rare in interactive cue / blank flows) should NOT pick
+3.5-flash either; 3.1-flash-lite remains higher accuracy at lower
+latency.
+
 ## Followups
 
-- Run transform-blank bench against 3.5-flash to confirm/deny that
-  the regression generalises. Current evidence: fluid-blank only.
 - Watch for `gemini-3.5-flash-lite` — Google may ship a flash-lite
   variant of 3.5 (probed today, returned 404). When it lands,
   re-bench — `-lite` variants historically fit OpenCues budgets
   better than full `-flash`.
+- A `3.5-flash · high reasoning` transform-blank run would tell us
+  whether thinking RECOVERS accuracy on the hard categories
+  (linked-concepts, tone-shift) at the cost of latency. Today's
+  fluid-blank thinking-budget evidence says no — but the workload
+  is different enough that transform-blank with thinking might
+  behave differently. Skipped here because the thinking-off result
+  already disqualifies it.
 
 ## Repro
 
