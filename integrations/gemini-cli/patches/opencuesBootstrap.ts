@@ -260,7 +260,9 @@ export function startOpenCues(opts: {
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     const ts = new Date().toISOString().slice(11, 23);
-    const line = `[${ts}][${level}] ${msg} ${data ? JSON.stringify(data).slice(0, 400) : ''}\n`;
+    // Per-host prefix so a shared /tmp/opencues.log (multiple hosts
+    // running side-by-side) is filterable by `tail | grep '\[gemini\]'`.
+    const line = `[${ts}][gemini][${level}] ${msg} ${data ? JSON.stringify(data).slice(0, 400) : ''}\n`;
     // Async append — keystroke path must not block on disk I/O.
     // O_APPEND is atomic for line-sized writes on Linux.
     //

@@ -220,7 +220,9 @@ export function startOpenCues(opts: {
           dataStr = JSON.stringify(data).slice(0, 400)
         }
       }
-      const line = `[${ts}][${level}] ${msg} ${dataStr}\n`
+      // Per-host prefix so a shared /tmp/opencues.log (multiple hosts
+      // running side-by-side) is filterable by `tail | grep '\[oc\]'`.
+      const line = `[${ts}][oc][${level}] ${msg} ${dataStr}\n`
       // Async append — keystroke path must not block on disk I/O.
       // O_APPEND is atomic for line-sized writes on Linux, so concurrent
       // appenders can't tear lines (ordering across writers may wobble,

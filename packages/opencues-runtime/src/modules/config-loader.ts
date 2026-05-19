@@ -785,6 +785,15 @@ export class ConfigLoader {
       debugMode: opencuesState.debugMode,
       cursorNavigate: opencuesState.cursorNavigate,
     })}`);
+    // INFO-level reload signal — visible without debug-mode being on.
+    // First load is treated specially (counts as initial boot, not a
+    // user-perceptible hot-reload). Subsequent loads — triggered by
+    // user edits to ~/.cues/*.md — emit a tail-visible "reloaded" line
+    // so the user knows their save took effect, without needing to
+    // turn on verbose debug logging.
+    if (this._loaded) {
+      this.adapter.log('info', `ConfigLoader: reloaded (${cueMap.size} cue entries, ${blanksByWord.size} blanks)`);
+    }
     this.adapter.emitEvent?.('config.reloaded', {
       cueEntries: cueMap.size,
       blankCount: blanksByWord.size,

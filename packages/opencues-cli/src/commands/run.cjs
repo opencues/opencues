@@ -26,6 +26,21 @@ function printLaunchBanner(ctx, host, rows) {
   console.log('');
   console.log(style.tree({ rows }));
   console.log('');
+  // Proof-of-life pointer for first-time users: the host TUI is about
+  // to take over stdio, after which OpenCues activity is only visible
+  // via the statusline + /tmp/opencues.log. Tell the user where to
+  // look BEFORE that handoff so silent-failure looks like silent-
+  // failure instead of "I guess it just doesn't do anything".
+  console.log(style.dim('  Try: type "the happy dog" then Ctrl+Alt+Right → Ctrl+Alt+Up'));
+  console.log(style.dim(`  Logs: tail -f /tmp/opencues.log${host ? ` | grep '\\[${shortPrefix(host)}\\]'` : ''}`));
+  console.log(style.dim('  Stuck? Run `opencues doctor` in another shell'));
+  console.log('');
+}
+
+// Map full host name → the short prefix used in /tmp/opencues.log so the
+// printed `grep` filter actually matches the lines that host writes.
+function shortPrefix(host) {
+  return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini' })[host] ?? host;
 }
 
 // Host name resolution — sourced from @opencues/core.

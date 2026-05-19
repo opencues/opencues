@@ -370,7 +370,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // tail -f /tmp/opencues.log in a separate shell while reproducing.
     // Always-on log fn — runtime decides whether to emit (gated on env
     // OR OPENCUES.md `debug-mode: on`).
-    `log:function(l,m,d){try{${requireFn}("fs").appendFile("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n",function(){});}catch(__ocLe){}}` +
+    `log:function(l,m,d){try{${requireFn}("fs").appendFile("/tmp/opencues.log","["+new Date().toISOString().slice(11,23)+"][cc]["+l+"] "+m+" "+(d?JSON.stringify(d).slice(0,400):"")+"\\n",function(){});}catch(__ocLe){}}` +
     `});}` +
     `catch(__ocBe){console.error("[opencues] boot failed:",__ocBe&&__ocBe.stack||__ocBe);globalThis.__oc={failed:true};}` +
     `}` +
