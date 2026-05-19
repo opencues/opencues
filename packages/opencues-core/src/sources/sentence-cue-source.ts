@@ -252,7 +252,9 @@ export class SentenceCueSource implements CueSource {
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
-    const llmDesc = describeLLMCall(this.provider, this.model);
+    const llmDesc = describeLLMCall(this.provider, this.model, undefined, {
+      maxTokens: this.sourceConfig.maxTokens, temperature: this.sourceConfig.temperature,
+    });
     this.log(`SentenceCue[${this.sourceConfig.name}]: starting (textLen=${context.text.length}, sentences=${spans.length}, llm=${llmDesc})`);
     this.emit({ type: 'started', textLen: context.text.length, sentenceCount: spans.length, llm: llmDesc });
 
@@ -279,7 +281,13 @@ export class SentenceCueSource implements CueSource {
       // unconditional 768 producing empty content
       // (`emitted=0, ceded=0` in 120-187ms) on cerebras-gpt-oss-120b
       // with reasoning=medium; the provider floor closed the gap.
-      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, 768);
+      // Per-source overrides: sourceConfig.maxTokens / .temperature
+      // win when set in the cue's CUE.md frontmatter. Defaults (768 +
+      // 0.3) reflect bench-tuned values; lowering maxTokens too far
+      // on a reasoning model risks the same budget-starvation that
+      // motivated the provider-level reasoning-floor (see
+      // llm-provider.ts:needsReasoningFloor).
+      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, this.sourceConfig.maxTokens ?? 768);
     } catch (e) {
       this.log(`SentenceCue[${this.sourceConfig.name}]: LLM call failed — ${(e as Error).message}`);
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - t0 });
@@ -335,7 +343,7 @@ export class SentenceCueSource implements CueSource {
           { role: 'user', content: user },
         ],
         maxTokens,
-        temperature: 0.3,
+        temperature: this.sourceConfig.temperature ?? 0.3,
         seed: 42,
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },

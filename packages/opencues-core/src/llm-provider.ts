@@ -716,9 +716,18 @@ export function describeLLMCall(
   provider: ProviderAdapter,
   model: string,
   reqReasoning?: 'none' | 'low' | 'medium' | 'high',
+  overrides?: { maxTokens?: number; temperature?: number },
 ): string {
   const resolved = reqReasoning ?? provider.defaultReasoningEffort ?? 'off';
-  return `${provider.id}/${model} (reasoning=${resolved})`;
+  // Surface per-source / per-feature overrides in the log line so
+  // operators can SEE that a custom budget or temperature is in
+  // effect — otherwise the override fires silently and a misconfig
+  // produces "weird LLM behaviour with no obvious cause".
+  const extras: string[] = [];
+  if (overrides?.maxTokens !== undefined) extras.push(`maxTokens=${overrides.maxTokens}`);
+  if (overrides?.temperature !== undefined) extras.push(`temp=${overrides.temperature}`);
+  const extrasStr = extras.length > 0 ? `, ${extras.join(', ')}` : '';
+  return `${provider.id}/${model} (reasoning=${resolved}${extrasStr})`;
 }
 
 /**

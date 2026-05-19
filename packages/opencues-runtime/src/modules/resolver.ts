@@ -93,6 +93,31 @@ interface RoutedWordSourceGroupLike {
   readonly id: string;
   classify(word: string): { id?: string } | null;
 }
+/**
+ * Build the per-feature LLM-routing block from OPENCUES.md scalars.
+ * Each feature reads `<feature>-provider`, `<feature>-model`,
+ * `<feature>-endpoint`, `<feature>-max-tokens`, `<feature>-temperature`
+ * and surfaces them as a FeatureLLMSetting that build-sources.ts
+ * threads into the source class. Source-class defaults still hold
+ * when a scalar is absent.
+ */
+function featureLLM(settings: { get(k: string): string | undefined }, prefix: string): {
+  provider?: string; model?: string; endpoint?: string;
+  maxTokens?: number; temperature?: number;
+} {
+  const maxStr = settings.get(`${prefix}-max-tokens`);
+  const tempStr = settings.get(`${prefix}-temperature`);
+  const maxN = maxStr !== undefined ? parseInt(maxStr, 10) : NaN;
+  const tempN = tempStr !== undefined ? parseFloat(tempStr) : NaN;
+  return {
+    provider: settings.get(`${prefix}-provider`),
+    model: settings.get(`${prefix}-model`),
+    endpoint: settings.get(`${prefix}-endpoint`),
+    maxTokens: Number.isFinite(maxN) && maxN > 0 ? maxN : undefined,
+    temperature: Number.isFinite(tempN) && tempN >= 0 && tempN <= 2 ? tempN : undefined,
+  };
+}
+
 function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
   return !!s
     && typeof s === 'object'
@@ -332,31 +357,11 @@ export class Resolver {
       globalModel: settings.get('llm-model') ?? this.options.defaultModel,
       globalEndpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       // Per-feature tier.
-      wordCues: {
-        provider: settings.get('word-cues-provider'),
-        model: settings.get('word-cues-model'),
-        endpoint: settings.get('word-cues-endpoint'),
-      },
-      fluidBlank: {
-        provider: settings.get('fluid-blank-provider'),
-        model: settings.get('fluid-blank-model'),
-        endpoint: settings.get('fluid-blank-endpoint'),
-      },
-      transformBlank: {
-        provider: settings.get('transform-blank-provider'),
-        model: settings.get('transform-blank-model'),
-        endpoint: settings.get('transform-blank-endpoint'),
-      },
-      configIntent: {
-        provider: settings.get('fluid-config-provider'),
-        model: settings.get('fluid-config-model'),
-        endpoint: settings.get('fluid-config-endpoint'),
-      },
-      sentenceCues: {
-        provider: settings.get('sentence-cues-provider'),
-        model: settings.get('sentence-cues-model'),
-        endpoint: settings.get('sentence-cues-endpoint'),
-      },
+      wordCues: featureLLM(settings, 'word-cues'),
+      fluidBlank: featureLLM(settings, 'fluid-blank'),
+      transformBlank: featureLLM(settings, 'transform-blank'),
+      configIntent: featureLLM(settings, 'fluid-config'),
+      sentenceCues: featureLLM(settings, 'sentence-cues'),
       // Pipeline mode for TransformBlank — `auto` (default) picks per
       // provider via pickTransformBlankMode(); `fused` / `3-pass` force
       // it. Set in CUES.md frontmatter as `transform-blank-mode:`.

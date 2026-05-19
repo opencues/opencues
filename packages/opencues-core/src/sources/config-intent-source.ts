@@ -248,6 +248,12 @@ export interface ConfigIntentSourceConfig {
   endpoint: string;
   apiKey: string;
   model: string;
+  /** Per-feature max-tokens override (`fluid-config-max-tokens:`).
+   *  Falls back to 128 (classifier output is tiny) when absent. */
+  maxTokens?: number;
+  /** Per-feature temperature override (`fluid-config-temperature:`).
+   *  Falls back to 0 (classifier must be deterministic) when absent. */
+  temperature?: number;
   /**
    * Side-effect callback: write the (setting, value) into OPENCUES.md
    * and refresh in-memory state. Runtime injects
@@ -277,6 +283,8 @@ export class ConfigIntentSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
+  private maxTokensOverride: number | undefined;
+  private temperatureOverride: number | undefined;
   private applyScalar: (setting: string, value: string) => void | Promise<void>;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
@@ -288,6 +296,8 @@ export class ConfigIntentSource implements CueSource {
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
+    this.maxTokensOverride = config.maxTokens;
+    this.temperatureOverride = config.temperature;
     this.applyScalar = config.applyScalar;
     this.blanks = config.blanks ?? {};
     this.priority = config.priority ?? 94;
@@ -330,13 +340,19 @@ export class ConfigIntentSource implements CueSource {
     const blankIdx = context.words.indexOf('_');
     if (blankIdx === -1) return { results: [] };
 
-    const llmDesc = describeLLMCall(this.provider, this.model);
+    const llmDesc = describeLLMCall(this.provider, this.model, undefined, {
+      maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride,
+    });
     this.log(`ConfigIntent: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, llm=${llmDesc})`);
     this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: llmDesc });
 
     let raw: string;
     try {
-      raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, 128);
+      // Per-feature `fluid-config-max-tokens:` override; 128 default
+      // is tight because the classifier output is tiny (VERDICT,
+      // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
+      // model wraps the output in extra prose.
+      raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128);
     } catch (e) {
       this.log(`ConfigIntent: LLM call failed — ${(e as Error).message}`);
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - t0 });
@@ -414,7 +430,10 @@ export class ConfigIntentSource implements CueSource {
           { role: 'user', content: user },
         ],
         maxTokens,
-        temperature: 0,
+        // Per-feature override; 0 default — classifier must be
+        // deterministic. Raising temperature risks the validator
+        // flagging unrecognised setting/value pairs.
+        temperature: this.temperatureOverride ?? 0,
         seed: 42,
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },

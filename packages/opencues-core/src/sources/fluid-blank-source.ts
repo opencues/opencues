@@ -506,6 +506,12 @@ export interface FluidBlankSourceConfig {
   endpoint: string;
   apiKey: string;
   model: string;
+  /** Per-feature max-tokens override (e.g. `fluid-blank-max-tokens: 1024`
+   *  in OPENCUES.md). Falls back to the bench-tuned 512 when absent. */
+  maxTokens?: number;
+  /** Per-feature temperature override. Falls back to 0 (deterministic
+   *  lookups) when absent. */
+  temperature?: number;
   /** Source priority. Default 92 — sits below keyword-bound BlankSource
    * (95) so a blank claims a slot whose keyword is in proximity, fluid
    * handles everything else. */
@@ -556,6 +562,8 @@ export class FluidBlankSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
+  private maxTokensOverride: number | undefined;
+  private temperatureOverride: number | undefined;
   private blanks: Record<string, BlankConfig>;
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
@@ -567,6 +575,8 @@ export class FluidBlankSource implements CueSource {
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
+    this.maxTokensOverride = config.maxTokens;
+    this.temperatureOverride = config.temperature;
     this.priority = config.priority ?? 92;
     this.blanks = config.blanks ?? {};
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
@@ -628,7 +638,7 @@ export class FluidBlankSource implements CueSource {
         this.emit({ type: 'bailed', reason: 'consumed-upstream', latencyMs: 0 });
         return { results: [] };
       }
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: describeLLMCall(this.provider, this.model) });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: describeLLMCall(this.provider, this.model, undefined, { maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride }) });
 
       // Strict JSON on groq gpt-oss — same gate as transform-blank.
       const useJson = useStrictJson(this.provider.id, this.model);
@@ -679,7 +689,9 @@ export class FluidBlankSource implements CueSource {
       }
 
       const fusedUser = `INPUT: ${context.text}${ambientBlock}${userCatalogBlock}`;
-      const fusedOut = await this.callLLM(FUSED_SYSTEM_PROMPT, fusedUser, 512,
+      // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
+      // 512 default is bench-tuned for short-factual answers.
+      const fusedOut = await this.callLLM(FUSED_SYSTEM_PROMPT, fusedUser, this.maxTokensOverride ?? 512,
         useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined);
       const { span, answer } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
       this.emit({ type: 'pass-completed', pass: 'FUSED', latencyMs: Date.now() - fusedStart, span: span ?? '', answer: answer ?? '' });
@@ -778,7 +790,9 @@ export class FluidBlankSource implements CueSource {
           { role: 'user', content: user },
         ],
         maxTokens,
-        temperature: 0,
+        // Per-feature temperature override (`fluid-blank-temperature:`).
+        // 0 default — lookups should be deterministic.
+        temperature: this.temperatureOverride ?? 0,
         // reasoningEffort omitted — provider adapter applies its
         // bench-derived default (see ProviderAdapter.defaultReasoningEffort
         // in @opencues/core/llm-provider.ts).

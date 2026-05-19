@@ -1299,6 +1299,14 @@ export interface TransformBlankSourceConfig {
   endpoint: string;
   apiKey: string;
   model: string;
+  /** Per-feature max-tokens override (`transform-blank-max-tokens:`).
+   *  When set, ALL passes (3-pass EXTRACT/APPLY/VERIFY + FUSED) use
+   *  it as the max instead of the per-pass bench-tuned defaults.
+   *  Useful for very-long-buffer rewrites that exceed the defaults. */
+  maxTokens?: number;
+  /** Per-feature temperature override (`transform-blank-temperature:`).
+   *  Falls back to 0 (deterministic rewrites) when absent. */
+  temperature?: number;
   /** Source priority. Default 93 — sits ABOVE FluidBlankSource (92) so
    * imperative-shaped inputs route here, BELOW BlankSource (95) so
    * keyword-bound blanks always win. */
@@ -1375,6 +1383,8 @@ export class TransformBlankSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
+  private maxTokensOverride: number | undefined;
+  private temperatureOverride: number | undefined;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
@@ -1386,6 +1396,8 @@ export class TransformBlankSource implements CueSource {
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
+    this.maxTokensOverride = config.maxTokens;
+    this.temperatureOverride = config.temperature;
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
@@ -1440,7 +1452,9 @@ export class TransformBlankSource implements CueSource {
       const blankIdx = context.words.indexOf('_');
       if (blankIdx === -1) return { results: [] };
 
-      const __llmDesc = describeLLMCall(this.provider, this.model);
+      const __llmDesc = describeLLMCall(this.provider, this.model, undefined, {
+        maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride,
+      });
       this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode}, llm=${__llmDesc})`);
       const __pipelineT0 = Date.now();
       this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: __llmDesc, mode: this.mode });
@@ -1928,6 +1942,12 @@ export class TransformBlankSource implements CueSource {
     maxTokens: number,
     responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
   ): Promise<string> {
+    // Per-feature override (`transform-blank-max-tokens:` /
+    // `transform-blank-temperature:`). When set, applies UNIFORMLY to
+    // every pass (3-pass EXTRACT/APPLY/VERIFY + fused). Per-pass
+    // tuning would need a richer API; the simple uniform override
+    // covers the long-buffer-rewrite use case.
+    const effectiveMaxTokens = this.maxTokensOverride ?? maxTokens;
     const built = this.provider.buildRequest(
       {
         model: this.model,
@@ -1935,8 +1955,8 @@ export class TransformBlankSource implements CueSource {
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-        maxTokens,
-        temperature: 0,
+        maxTokens: effectiveMaxTokens,
+        temperature: this.temperatureOverride ?? 0,
         // reasoningEffort omitted — provider adapter applies its
         // bench-derived default (see ProviderAdapter.defaultReasoningEffort
         // in @opencues/core/llm-provider.ts).

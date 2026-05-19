@@ -145,8 +145,10 @@ export class ConfigSource implements CueSource {
         {
           model: this.model,
           messages: [{ role: 'user', content: fullPrompt }],
-          maxTokens: 800,
-          temperature: 0.3,
+          // Per-source overrides via SourceConfig frontmatter — when
+          // absent the bench-tuned defaults (800 / 0.3) hold.
+          maxTokens: this.sourceConfig.maxTokens ?? 800,
+          temperature: this.sourceConfig.temperature ?? 0.3,
           // reasoningEffort omitted — provider adapter applies its
           // bench-derived default (see ProviderAdapter.defaultReasoningEffort
           // in @opencues/core/llm-provider.ts). Honored by groq /

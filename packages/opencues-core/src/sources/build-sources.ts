@@ -51,6 +51,13 @@ export interface FeatureLLMSetting {
   readonly provider?: string;
   readonly model?: string;
   readonly endpoint?: string;
+  /** Per-feature max-tokens override (e.g. `fluid-blank-max-tokens: 1024`
+   *  in OPENCUES.md). Source class uses its own bench-tuned default
+   *  when absent. */
+  readonly maxTokens?: number;
+  /** Per-feature temperature override (e.g. `fluid-blank-temperature: 0.5`).
+   *  Source class uses its own default when absent. */
+  readonly temperature?: number;
 }
 
 export interface BuildSourcesOptions {
@@ -448,6 +455,8 @@ export function buildSourcesFromConfig(
         endpoint: resolved.endpoint,
         apiKey: resolved.apiKey,
         model: resolved.model,
+        maxTokens: options.configIntent?.maxTokens,
+        temperature: options.configIntent?.temperature,
         applyScalar: options.applyOpencuesScalar,
         blanks: options.blanks ?? {},
         log: options.log,
@@ -470,6 +479,8 @@ export function buildSourcesFromConfig(
         endpoint: resolved.endpoint,
         apiKey: resolved.apiKey,
         model: resolved.model,
+        maxTokens: options.fluidBlank?.maxTokens,
+        temperature: options.fluidBlank?.temperature,
         blanks: options.blanks ?? {},
         onEvent: options.onFluidBlankEvent,
         log: options.log,
@@ -495,6 +506,8 @@ export function buildSourcesFromConfig(
         endpoint: resolved.endpoint,
         apiKey: resolved.apiKey,
         model: resolved.model,
+        maxTokens: options.transformBlank?.maxTokens,
+        temperature: options.transformBlank?.temperature,
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,

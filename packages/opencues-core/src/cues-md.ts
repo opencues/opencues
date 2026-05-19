@@ -90,6 +90,32 @@ export interface SourceConfig {
    * (default: inferred from context — 'words' for CUES.md, 'blanks' for BLANKS.md)
    */
   scope?: 'words' | 'blanks' | 'sentence' | 'all';
+
+  /**
+   * Max output tokens for this source's LLM calls. Per-source override
+   * — when absent the source class uses its own bench-tuned default
+   * (ConfigSource 800, FluidBlank 512, SentenceCue 768, ConfigIntent 128,
+   * TransformBlank varies per pass).
+   *
+   * Useful when one cue source needs a tighter ceiling (terse single-
+   * word alternatives) or a looser one (long-form rewrites). The
+   * provider's reasoning-token floor still applies — setting
+   * `maxTokens: 100` on a gpt-oss reasoning model will be floored to
+   * 2048 to avoid budget-starvation (see llm-provider.ts).
+   */
+  maxTokens?: number;
+
+  /**
+   * Sampling temperature for this source's LLM calls. Range 0..2 for
+   * most providers (gpt-5/o-series lock at 1; the provider adapter
+   * strips temperature on those). Per-source override — when absent
+   * the source class uses its own default (ConfigSource 0.3, SentenceCue
+   * 0.3, FluidBlank 0, TransformBlank 0, ConfigIntent 0).
+   *
+   * Lower = more deterministic (use 0 for classifiers / lookups).
+   * Higher = more variety (use 0.5-1.0 for creative rewrites).
+   */
+  temperature?: number;
 }
 
 /**
@@ -242,6 +268,13 @@ export interface BlankConfig {
   blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
   /** LLM model identifier for script-based LLM calls (e.g. 'openai/gpt-oss-120b') */
   model?: string;
+  /** Max output tokens for this blank's LLM calls (when the blank's
+   *  impl makes one). Per-blank override; falls back to source-class
+   *  default when absent. See SourceConfig.maxTokens for full semantics. */
+  maxTokens?: number;
+  /** Sampling temperature for this blank's LLM calls. Per-blank
+   *  override; falls back to source-class default. */
+  temperature?: number;
   /** API endpoint URL for script-based LLM calls (default: Groq) */
   apiUrl?: string;
   /** Environment variable name holding the API key (default: GROQ_API_KEY) */
@@ -621,6 +654,14 @@ function parsePromptSection(content: string): PromptConfig {
       if (kv.endpoint) source.endpoint = kv.endpoint;
       if (kv.parser) source.parser = kv.parser as BlankParser;
       if (kv.scope) source.scope = kv.scope as SourceConfig['scope'];
+      if (kv['max-tokens'] || kv.maxTokens) {
+        const n = parseInt(kv['max-tokens'] ?? kv.maxTokens, 10);
+        if (Number.isFinite(n) && n > 0) source.maxTokens = n;
+      }
+      if (kv.temperature !== undefined) {
+        const t = parseFloat(kv.temperature);
+        if (Number.isFinite(t) && t >= 0 && t <= 2) source.temperature = t;
+      }
     }
 
     // Extract freeform text as inline prompt
@@ -779,6 +820,10 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   provider?: string;
   /** Per-cue endpoint override. Rare. */
   endpoint?: string;
+  /** Per-cue max-tokens override. See SourceConfig.maxTokens. */
+  maxTokens?: number;
+  /** Per-cue temperature override. See SourceConfig.temperature. */
+  temperature?: number;
   enabled?: boolean;
   promptPath?: string;
   // Blank-specific fields
@@ -882,6 +927,18 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'model': fm.model = value; break;
       case 'provider': fm.provider = value; break;
       case 'endpoint': fm.endpoint = value; break;
+      case 'max-tokens': case 'maxTokens': case 'maxtokens': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n > 0) fm.maxTokens = n;
+        break;
+      }
+      case 'temperature': {
+        const t = parseFloat(value);
+        // Range: 0..2 covers every shipped provider. Higher rejected
+        // to avoid 400s; sub-zero rejected outright.
+        if (Number.isFinite(t) && t >= 0 && t <= 2) fm.temperature = t;
+        break;
+      }
       case 'enabled': fm.enabled = value !== 'false'; break;
       case 'promptPath': fm.promptPath = value; break;
       case 'tip': fm.tip = value; break;
@@ -1040,6 +1097,8 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.blankConsumeAll !== undefined) blank.blankConsumeAll = frontmatter.blankConsumeAll;
       if (frontmatter.blankReplace !== undefined) blank.blankReplace = frontmatter.blankReplace;
       if (frontmatter.model !== undefined) blank.model = frontmatter.model;
+      if (frontmatter.maxTokens !== undefined) blank.maxTokens = frontmatter.maxTokens;
+      if (frontmatter.temperature !== undefined) blank.temperature = frontmatter.temperature;
       if (frontmatter.apiUrl !== undefined) blank.apiUrl = frontmatter.apiUrl;
       if (frontmatter.apiKeyEnv !== undefined) blank.apiKeyEnv = frontmatter.apiKeyEnv;
       if (frontmatter.altCount !== undefined) blank.altCount = frontmatter.altCount;
@@ -1144,6 +1203,8 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.endpoint) source.endpoint = frontmatter.endpoint;
       if (frontmatter.parser) source.parser = frontmatter.parser;
       if (frontmatter.scope) source.scope = frontmatter.scope;
+      if (frontmatter.maxTokens !== undefined) source.maxTokens = frontmatter.maxTokens;
+      if (frontmatter.temperature !== undefined) source.temperature = frontmatter.temperature;
 
       // Resolve promptPath relative to folder
       if (frontmatter.promptPath) {

@@ -693,6 +693,85 @@ describe('parseCuesMd: unknown scope forward-compat', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Per-source maxTokens + temperature overrides
+// ---------------------------------------------------------------------------
+//
+// Pin that the parser accepts `maxTokens:` / `temperature:` in CUE.md
+// frontmatter AND inline ### subsection YAML, and surfaces them on
+// SourceConfig / BlankConfig for the source classes to consume.
+
+describe('parseCuesMd: per-source maxTokens + temperature overrides', () => {
+  it('parseSingleCueMd lifts maxTokens + temperature from frontmatter onto the SourceConfig', () => {
+    const content = '---\nname: hot-cue\nmatch: hello\nmaxTokens: 100\ntemperature: 1.2\n---\nPrompt body.';
+    const cfg = parseSingleCueMd(content, '/cues/hot-cue');
+    const src = cfg.promptConfig?.sources?.['hot-cue'];
+    assert.ok(src, 'source should be built');
+    assert.strictEqual(src.maxTokens, 100);
+    assert.strictEqual(src.temperature, 1.2);
+  });
+
+  it('parseSingleCueMd accepts the hyphenated YAML form (max-tokens)', () => {
+    const content = '---\nname: cool-cue\nmatch: world\nmax-tokens: 250\ntemperature: 0.5\n---\nBody.';
+    const cfg = parseSingleCueMd(content, '/cues/cool-cue');
+    const src = cfg.promptConfig?.sources?.['cool-cue'];
+    assert.strictEqual(src?.maxTokens, 250);
+    assert.strictEqual(src?.temperature, 0.5);
+  });
+
+  it('parseSingleCueMd rejects negative / non-numeric / out-of-range values', () => {
+    const cases = [
+      '---\nname: bad-tokens\nmatch: x\nmaxTokens: -10\n---\nbody',
+      '---\nname: bad-tokens\nmatch: x\nmaxTokens: not-a-number\n---\nbody',
+      '---\nname: bad-temp\nmatch: x\ntemperature: 5\n---\nbody',
+      '---\nname: bad-temp\nmatch: x\ntemperature: -0.5\n---\nbody',
+    ];
+    for (const content of cases) {
+      const cfg = parseSingleCueMd(content, '/cues/bad');
+      const name = content.match(/name: (\S+)/)?.[1] ?? 'bad';
+      const src = cfg.promptConfig?.sources?.[name];
+      assert.ok(src, `source should still build (we silently reject bad overrides): ${content.slice(0, 60)}`);
+      assert.strictEqual(src.maxTokens, undefined, `maxTokens should NOT be set for: ${content.slice(0, 60)}`);
+      assert.strictEqual(src.temperature, undefined, `temperature should NOT be set for: ${content.slice(0, 60)}`);
+    }
+  });
+
+  it('parseSingleCueMd lifts maxTokens + temperature onto BlankConfig (type:blank path)', () => {
+    const content = '---\nname: my-blank\ntype: blank\nblankKeywords: trigger\nmaxTokens: 200\ntemperature: 0.7\n---\nbody';
+    const cfg = parseSingleCueMd(content, '/blanks/my-blank');
+    const blank = cfg.blanks?.['my-blank'];
+    assert.ok(blank, 'blank should be built');
+    assert.strictEqual(blank.maxTokens, 200);
+    assert.strictEqual(blank.temperature, 0.7);
+  });
+
+  it('parsePromptSection lifts maxTokens + temperature from inline ### YAML', () => {
+    const md = [
+      '## Prompt',
+      '### tone',
+      '```yaml',
+      'match: foo',
+      'priority: 70',
+      'maxTokens: 400',
+      'temperature: 0.4',
+      '```',
+      'inline prompt body',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    const src = cfg.promptConfig?.sources?.['tone'];
+    assert.strictEqual(src?.maxTokens, 400);
+    assert.strictEqual(src?.temperature, 0.4);
+  });
+
+  it('absent overrides leave fields undefined (source class will use its bench default)', () => {
+    const content = '---\nname: vanilla-cue\nmatch: hi\n---\nbody';
+    const cfg = parseSingleCueMd(content, '/cues/vanilla-cue');
+    const src = cfg.promptConfig?.sources?.['vanilla-cue'];
+    assert.strictEqual(src?.maxTokens, undefined);
+    assert.strictEqual(src?.temperature, undefined);
+  });
+});
+
 describe('parseCuesMd: real CUES.md', () => {
   const fs = require('fs');
   const path = require('path');
