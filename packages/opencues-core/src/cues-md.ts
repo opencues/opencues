@@ -344,6 +344,34 @@ export interface AuditorConfig {
 }
 
 // ============================================================================
+// Forward-compat: known scope values
+// ============================================================================
+
+/**
+ * Allowlist of `scope:` values this runtime understands. When a CUE.md
+ * declares a scope outside this set (typically because a newer scope
+ * shipped in a future version that this runtime hasn't been rebuilt
+ * for yet), the parser DROPS the source rather than building a generic
+ * one and misrendering its LLM output.
+ *
+ * Mirrors `SourceConfig['scope']`. Update both when adding a scope.
+ *
+ * Why drop instead of coerce: integrations frequently fall behind core
+ * (chrome rebuild + sync is a separate step from `pnpm install`). When
+ * a new scope ships, the cue config gets distributed via `~/.cues/` but
+ * the integration runtime may not have the source class to render it.
+ * Silently dropping means "no cue surfaces"; coercing means "wrong
+ * surface, garbled output". The first is recoverable by rebuilding;
+ * the second looks like a real bug. See May 2026 sentence-cue chrome
+ * misrender for the motivating incident.
+ */
+export const KNOWN_SCOPES: ReadonlySet<string> = new Set(['words', 'blanks', 'sentence', 'all']);
+
+function isKnownScope(value: unknown): value is SourceConfig['scope'] {
+  return typeof value === 'string' && KNOWN_SCOPES.has(value);
+}
+
+// ============================================================================
 // Frontmatter parsing
 // ============================================================================
 
@@ -576,6 +604,12 @@ function parsePromptSection(content: string): PromptConfig {
     const yamlBlock = extractCodeBlock(sub.content, 'yaml');
     if (yamlBlock) {
       const kv = parseSimpleYamlFlat(yamlBlock);
+      // Forward-compat: drop the source if scope is set but unknown
+      // to this runtime. See KNOWN_SCOPES above.
+      if (kv.scope && !isKnownScope(kv.scope)) {
+        console.warn(`[opencues] cues-md: dropping source "${sourceName}" — unknown scope "${kv.scope}" (known: ${[...KNOWN_SCOPES].join('|')}). This runtime is likely older than the cue config; rebuild the integration to enable.`);
+        continue;
+      }
       if (kv.match) source.match = kv.match;
       if (kv.keywords) source.keywords = kv.keywords;
       if (kv.classify) source.classify = kv.classify;
@@ -586,7 +620,7 @@ function parsePromptSection(content: string): PromptConfig {
       if (kv.provider) source.provider = kv.provider;
       if (kv.endpoint) source.endpoint = kv.endpoint;
       if (kv.parser) source.parser = kv.parser as BlankParser;
-      if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
+      if (kv.scope) source.scope = kv.scope as SourceConfig['scope'];
     }
 
     // Extract freeform text as inline prompt
@@ -610,19 +644,25 @@ function parsePromptSection(content: string): PromptConfig {
     if (yamlBlock) {
       const kv = parseSimpleYamlFlat(yamlBlock);
       if (kv.match || kv.keywords) {
-        const text = extractTextOutsideCodeBlocks(content);
-        const source: SourceConfig = { name: 'grammar' };
-        if (kv.match) source.match = kv.match;
-        if (kv.keywords) source.keywords = kv.keywords;
-        if (kv.classify) source.classify = kv.classify;
-        if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
-        if (kv.model) source.model = kv.model;
-        if (kv.provider) source.provider = kv.provider;
-        if (kv.endpoint) source.endpoint = kv.endpoint;
-        if (kv.parser) source.parser = kv.parser as BlankParser;
-        if (kv.scope) source.scope = kv.scope as 'words' | 'blanks' | 'all';
-        if (text) source.promptText = text;
-        config.sources['grammar'] = source;
+        // Forward-compat: drop the legacy grammar source if scope is
+        // set but unknown to this runtime.
+        if (kv.scope && !isKnownScope(kv.scope)) {
+          console.warn(`[opencues] cues-md: dropping legacy "grammar" source — unknown scope "${kv.scope}" (known: ${[...KNOWN_SCOPES].join('|')}).`);
+        } else {
+          const text = extractTextOutsideCodeBlocks(content);
+          const source: SourceConfig = { name: 'grammar' };
+          if (kv.match) source.match = kv.match;
+          if (kv.keywords) source.keywords = kv.keywords;
+          if (kv.classify) source.classify = kv.classify;
+          if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
+          if (kv.model) source.model = kv.model;
+          if (kv.provider) source.provider = kv.provider;
+          if (kv.endpoint) source.endpoint = kv.endpoint;
+          if (kv.parser) source.parser = kv.parser as BlankParser;
+          if (kv.scope) source.scope = kv.scope as SourceConfig['scope'];
+          if (text) source.promptText = text;
+          config.sources['grammar'] = source;
+        }
       }
     }
   }
@@ -1078,6 +1118,17 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
           }
           break; // static cue — done
         } catch { /* malformed JSON — fall through to prompt parsing */ }
+      }
+
+      // Forward-compat: drop the source entirely if scope is set but
+      // unknown to this runtime. Treating an unknown-scope cue as a
+      // generic word-cue causes the LLM's scope-specific output (e.g.
+      // whole-sentence rewrites) to render in word-cue slots — the
+      // sentence-cues-on-stale-chrome misrender of May 2026 was
+      // exactly this. Silent drop is the safe degrade.
+      if (frontmatter.scope !== undefined && !isKnownScope(frontmatter.scope)) {
+        console.warn(`[opencues] cues-md: dropping cue "${name}" — unknown scope "${frontmatter.scope}" (known: ${[...KNOWN_SCOPES].join('|')}). This runtime is likely older than the cue config; rebuild the integration to enable.`);
+        break;
       }
 
       // LLM prompt source — frontmatter fields become SourceConfig,

@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { parseCuesMd, validateCuesMd } from './cues-md';
+import { parseCuesMd, parseSingleCueMd, validateCuesMd, KNOWN_SCOPES } from './cues-md';
 
 // ---------------------------------------------------------------------------
 // Frontmatter
@@ -602,6 +602,94 @@ describe('parseCuesMd: real BLANKS.md', () => {
   (blanksExists ? it : it.skip)('should have ignore words', () => {
     const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
     assert.ok(cfg.ignore && cfg.ignore.length > 0, 'BLANKS.md should have ignore words');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Forward-compat: unknown scope values
+// ---------------------------------------------------------------------------
+//
+// Pin the contract that a cue declaring a scope this runtime doesn't
+// recognize is DROPPED rather than coerced to the default ('words').
+// Coercion causes scope-specific LLM output (e.g. sentence rewrites)
+// to land in word-cue slots — the May 2026 sentence-cues-on-stale-chrome
+// misrender. Silent drop is the safe degrade for integrations that have
+// fallen behind core.
+
+describe('parseCuesMd: unknown scope forward-compat', () => {
+  // Capture console.warn so the test output stays clean and we can also
+  // assert the warning fired (one-shot — restored in each test).
+  function captureWarn<T>(fn: () => T): { result: T; warnings: string[] } {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    try { return { result: fn(), warnings }; }
+    finally { console.warn = original; }
+  }
+
+  it('KNOWN_SCOPES is the exact allowlist', () => {
+    assert.deepStrictEqual([...KNOWN_SCOPES].sort(), ['all', 'blanks', 'sentence', 'words']);
+  });
+
+  it('parseSingleCueMd drops a source whose scope is unknown', () => {
+    const content = '---\nname: future-cue\nscope: paragraph\npriority: 80\n---\nRewrite each paragraph.';
+    const { result: cfg, warnings } = captureWarn(() => parseSingleCueMd(content, '/cues/future-cue'));
+    assert.strictEqual(cfg.promptConfig, undefined, 'no source should be built for unknown scope');
+    assert.ok(warnings.some(w => w.includes('future-cue') && w.includes('paragraph')), 'warning should name the cue and the unknown scope');
+  });
+
+  it('parseSingleCueMd still builds a source for a known scope', () => {
+    const content = '---\nname: sentence-cue\nscope: sentence\npriority: 85\n---\nRewrite each sentence.';
+    const { result: cfg, warnings } = captureWarn(() => parseSingleCueMd(content, '/cues/sentence-cue'));
+    assert.ok(cfg.promptConfig?.sources?.['sentence-cue'], 'known scope should produce a source');
+    assert.strictEqual(cfg.promptConfig?.sources?.['sentence-cue'].scope, 'sentence');
+    assert.strictEqual(warnings.length, 0, 'no warning for a known scope');
+  });
+
+  it('parseSingleCueMd treats absent scope as default (no drop)', () => {
+    const content = '---\nname: vanilla-cue\nmatch: hello\npriority: 60\n---\nRewrite hello.';
+    const { result: cfg, warnings } = captureWarn(() => parseSingleCueMd(content, '/cues/vanilla-cue'));
+    assert.ok(cfg.promptConfig?.sources?.['vanilla-cue'], 'absent scope should not trigger drop');
+    assert.strictEqual(warnings.length, 0);
+  });
+
+  it('parsePromptSection drops a ### source whose scope is unknown', () => {
+    const md = [
+      '## Prompt',
+      '### future',
+      '```yaml',
+      'match: foo',
+      'priority: 50',
+      'scope: paragraph',
+      '```',
+      'prompt body',
+      '',
+      '### legacy',
+      '```yaml',
+      'match: bar',
+      'priority: 50',
+      'scope: words',
+      '```',
+      'legacy body',
+    ].join('\n');
+    const { result: cfg, warnings } = captureWarn(() => parseCuesMd(md));
+    assert.strictEqual(cfg.promptConfig?.sources?.['future'], undefined, 'unknown-scope subsection should not appear');
+    assert.ok(cfg.promptConfig?.sources?.['legacy'], 'known-scope subsection should appear');
+    assert.ok(warnings.some(w => w.includes('future') && w.includes('paragraph')));
+  });
+
+  it('parsePromptSection drops the legacy single-grammar source on unknown scope', () => {
+    const md = [
+      '## Prompt',
+      '```yaml',
+      'match: foo',
+      'scope: paragraph',
+      '```',
+      'inline prompt body',
+    ].join('\n');
+    const { result: cfg, warnings } = captureWarn(() => parseCuesMd(md));
+    assert.ok(!cfg.promptConfig?.sources?.['grammar'], 'legacy grammar source should be dropped on unknown scope');
+    assert.ok(warnings.some(w => w.includes('grammar') && w.includes('paragraph')));
   });
 });
 
