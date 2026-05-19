@@ -137,31 +137,57 @@ followup if the LLM-cede recovery proves insufficient in real use.
 
 ---
 
-## Apply path — splice + DynDef
+## Apply path — passive DynDef registration
+
+Sentence-cues are CUES, not agents — the runtime does **NOT** modify
+the user's prose when the LLM returns a rewrite. The original sentence
+stays in the buffer; the rewrite is held in a DynDef and surfaces only
+when the user explicitly cycles. This is the same passive surface
+word-cues use.
 
 The runtime resolver's sentence-cue branch (in
 `resolver.ts:resolveAndApply`):
 
 1. **Race-guard.** If `liveText.slice(spanStart, spanEnd) !==
-   originalSentence`, the user edited the sentence mid-flight — bail
-   without splicing.
-2. **Splice** `alternatives[1]` (the first rewrite) into
-   `[spanStart, spanEnd)` via `applyMarkdownAwareSplice`. The
-   markdown-aware splice preserves any rich-text styling around the
-   range; for plain prose it's a regular `replace`.
-3. **Register a DynDef** at the post-splice word index:
-   - `originalWord` = original sentence (used by cycling Down to revert)
+   originalSentence`, the user edited the sentence mid-flight — bail.
+2. **Managed-span overlap guard.** If `[spanStart, spanEnd)` overlaps
+   an active selector/satellite pair (`SelectorSatelliteState.current`)
+   OR any `blankName`-locked DynDef with a span (fluid-blank /
+   transform-blank / config-intent / a prior sentence-cue), bail. A
+   sentence-cue cycling Up across one of those would mid-overwrite
+   the managed span. The May 2026 "took part of the satellite selector
+   with it" misrender was the motivating incident.
+3. **Register a DynDef** at the original sentence's first word index:
+   - `originalWord` = original sentence
    - `alternatives` = the full `[original, ...rewrites]` array
-   - `currentIndex` = 1 (showing first rewrite)
-   - `spanStart` / `spanEnd` = the NEW char range (after splice)
+   - `currentIndex` = **0** (passive — buffer shows `alternatives[0]`,
+     which IS the original sentence)
+   - `spanStart` / `spanEnd` = the ORIGINAL char range (no splice
+     happened, no recalculation needed)
    - `blankName` = `sentence-cue:<cue-name>` — locks the entry
      against re-resolution and distinguishes it in logs from other
      span-bearing defs (fluid-blank, transform-blank, config-intent)
 
 Cycling Up/Down at this def cycles through `alternatives` via the
-existing cycle plumbing — same primitive word-cues use. Up at
-`currentIndex=N` moves to `N+1`; Down to `N-1`. Down from `1` lands
-on the original (`alternatives[0]`).
+existing `applyAltCycle` path — exactly the same primitive word-cues
+use. Up at `currentIndex=N` moves to `N+1` and splices the new alt at
+the live char range derived from the current alt's word count; Down
+to `N-1` reverts. At `currentIndex=0` the buffer matches `alternatives[0]`
+(the original sentence) so no splice is needed.
+
+### Why passive (was agent-like in the May 2026 prototype)
+
+Earlier builds of the sentence-cue branch auto-spliced `alternatives[1]`
+the moment the LLM returned, registered the DynDef at `currentIndex: 1`,
+and relied on cycling Down to restore the original. That was copied
+from TransformBlank — but TransformBlank fires only after the user
+explicitly types `_` to invoke it. Sentence-cues fire on plain prose
+with no user opt-in keystroke, so the auto-splice behaviour was
+**agent-like**: prose was rewritten in the background without consent,
+and overlapping satellite pairs got mid-overwritten because the
+auto-splice didn't check for managed-span overlap. The contract is
+now "cue, not agent" — and the agentic harness test in
+`tests/agentic/scenarios/` pins it.
 
 ---
 

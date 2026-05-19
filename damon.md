@@ -755,18 +755,19 @@ Bench: `tests/benchmarks/fluid-config/` validated v2.1 prompt across 5 providers
 
 ### 21. ★ NEW · Sentence Cues — `scope: sentence` cue declarations
 
-A cue can now declare `scope: sentence` in its CUE.md frontmatter and operate on whole sentences instead of individual words. Highlights span the sentence; cycling Up/Down swaps in alternative rewrites. Default priority 85 — higher than typical word-cues (60-80) so an overlapping word-cue gets suppressed outright (sentence wins). Sentence-cues cede to `_`-gated sources (BlankSource, ConfigIntent, TransformBlank, FluidBlank).
+A cue can now declare `scope: sentence` in its CUE.md frontmatter and operate on whole sentences instead of individual words. Sentence-cues behave exactly like word-cues, just at sentence span granularity: the buffer is left alone, the sentence is marked as having alternatives, and Ctrl+Alt+Up at any word inside the sentence swaps in the next rewrite. Default priority 85 — higher than typical word-cues (60-80) so an overlapping word-cue gets suppressed outright (sentence wins). Sentence-cues cede to `_`-gated sources (BlankSource, ConfigIntent, TransformBlank, FluidBlank).
 
 Shipped canonical cue: `defaults/cues/more-formal/CUE.md` — rewrites informal sentences to formal register.
 
 ```
-You type:    "thanks a bunch for the help."
-You see:     "Thank you very much for your assistance."   ← cycle Down to revert
-Cycle Up:    "I am grateful for your help."
-Cycle Up:    "Many thanks for your assistance."
+You type:    "thanks a bunch for the help."     ← buffer stays exactly as typed
+Ctrl+Alt+Up: "Thank you very much for your assistance."
+Ctrl+Alt+Up: "I am grateful for your help."
+Ctrl+Alt+Up: "Many thanks for your assistance."
+Ctrl+Alt+Down → cycles back to the original.
 ```
 
-Implementation: `SentenceCueSource` segments the buffer (regex-based v1), one LLM call per cue per buffer per resolve, emits one CueResult per sentence with `alternatives = [original, ...rewrites]` + char-range spans. Resolver auto-splices `alts[1]` and registers a DynDef. Multi-sentence buffers in v1 cap at one cue per resolve (avoids word-index shift cascade; v2 will batch in reverse-span order).
+Implementation: `SentenceCueSource` segments the buffer (regex-based v1), one LLM call per cue per buffer per resolve, emits one CueResult per sentence with `alternatives = [original, ...rewrites]` + char-range spans. The resolver registers a DynDef at `currentIndex: 0` (passive — the buffer continues to show the original sentence; cycling Up advances through the rewrites via the existing `applyAltCycle` path that word-cues use). Earlier May-2026 prototype builds auto-spliced `alts[1]` the moment the LLM returned — that was agent-like behaviour and was retired; sentence-cues are CUES, not agents. Multi-sentence buffers in v1 cap at one cue per resolve (v2 will batch). The resolver also drops the cue if its sentence span overlaps an active selector/satellite pair or other span-bound DynDef, so cycling never mid-overwrites a managed span.
 
 Bench: `tests/benchmarks/sentence-cues/` validated 100% precision (CEDE on fragments / code / already-formal) + 91-100% recall across 5 providers. Same trust property as fluid-config: every reject decision rejected by every provider; only false-negative failures.
 

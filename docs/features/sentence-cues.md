@@ -26,16 +26,17 @@ With sentence cues on, sentences in your buffer also get cued — each
 becomes a one-span highlight with cycling-Up/Down for alternative
 rewrites. The cycle is the same Ctrl+Alt+arrow you use for word cues.
 
-| You type | Buffer becomes (first cycle) | Cycle Up | Cycle Down |
+| You type (buffer stays as-is) | Ctrl+Alt+Up | Cycle Up again | Cycle Down |
 |---|---|---|---|
 | `thanks a bunch.` | `Thank you very much.` | `Many thanks.` | (original) |
 | `let me know what you think.` | `Please share your thoughts.` | `Your feedback would be appreciated.` | (original) |
 | `gonna head out early today.` | `I will be leaving early today.` | `I plan to leave early today.` | (original) |
 
-The first rewrite is applied automatically on emission (same shape
-TransformBlank uses today for the whole buffer). Cycling Down
-restores the original sentence; cycling Up moves through additional
-rewrites.
+Sentence-cues are passive — your prose is **never** rewritten without
+your keystroke. The runtime keeps the original sentence in place and
+holds the rewrites in a cue you cycle through with Ctrl+Alt+Up at any
+word inside the sentence. Same gesture as word-cues, just at sentence
+granularity.
 
 ---
 
