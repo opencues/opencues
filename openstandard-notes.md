@@ -144,7 +144,7 @@ There is no flat-file shape. A source that ships nothing alongside its entry fil
 
 ### Source naming
 
-Folder name **is** the source name. `cues/legal/CUE.md` → source `legal`. `blanks/volume/BLANK.md` → source `volume`. `auditors/grammar/AUDITOR.md` → source `grammar`. Frontmatter `name:` should match the folder name (the validator warns if not).
+Folder name **is** the source name. `defaults/cues/legal/CUE.md` → source `legal`. `defaults/blanks/volume/BLANK.md` → source `volume`. `defaults/auditors/grammar/AUDITOR.md` → source `grammar`. Frontmatter `name:` should match the folder name (the validator warns if not).
 
 ---
 

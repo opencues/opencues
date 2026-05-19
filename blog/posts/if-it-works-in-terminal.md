@@ -121,7 +121,7 @@ This is what makes the "if it works in terminal" claim *structurally* true. The 
 What this enables, end-to-end:
 
 - The same `cue.md` file in `~/.cues/cues/legal/CUE.md` works in Claude Code and OpenCode without modification. No host-specific tags, no per-host config blocks.
-- The same `blanks/volume/BLANK.md` (with its colocated `.sh` script) works on every native host that can spawn a subprocess. Chrome filters the script out via the `host-compat` declaration.
+- The same `defaults/blanks/volume/BLANK.md` (with its colocated `.sh` script) works on every native host that can spawn a subprocess. Chrome filters the script out via the `host-compat` declaration.
 - Hot-reload works in every host: native hosts poll file mtimes, Chrome polls a `.version` hash. Different mechanisms, identical user-visible behaviour.
 - A user authoring a new cue or blank does it once. The runtime distributes it to every installed host on the next keystroke.
 

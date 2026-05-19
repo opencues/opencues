@@ -19,7 +19,7 @@ The easiest way to contribute is adding a new domain word source. This requires 
 
 **Example: adding a "formal" source that claims informal words and suggests formal alternatives**
 
-Create `cues/formal/CUE.md`:
+Create `defaults/cues/formal/CUE.md`:
 
 ````markdown
 ---

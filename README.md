@@ -40,9 +40,9 @@ OpenCues is built on `.md` config files — three master files plus folder-based
 | **CUES.md** | Cue-surface master: project metadata + `ignore:` (words never cued) + `disable:` (skip cue ids at this layer). | `name: my-project`, `disable: [spelling]` |
 | **BLANKS.md** | Blank-surface master: project metadata + `ignore:` + `disable:` for blank ids. | `disable: [stocks]` |
 | **AUDITORS.md** | Auditor-surface master: project metadata + `disable:` for auditor ids. | `disable: [grammar]` |
-| **cues/{name}/CUE.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `cues/legal/CUE.md` for legal terminology, `cues/grammar/CUE.md` with a synonym prompt |
-| **blanks/{name}/BLANK.md** | Folder-based blank with optional colocated script or runtime class. | `blanks/volume/BLANK.md` + `volume-blank.sh` |
-| **auditors/{name}/AUDITOR.md** | Inline-rewrite concern (grammar, clarity, tone, ...) — body is the prompt fragment. Multiple auditors compose into one LLM call per agent tick. | `auditors/grammar/AUDITOR.md` |
+| **cues/{name}/CUE.md** | Folder-based cue source. Static cues put a JSON words map in the body; LLM cues declare `match:`/`keywords:` and put the prompt in the body. | `defaults/cues/legal/CUE.md` for legal terminology, `defaults/cues/grammar/CUE.md` with a synonym prompt |
+| **blanks/{name}/BLANK.md** | Folder-based blank with optional colocated script or runtime class. | `defaults/blanks/volume/BLANK.md` + `volume-blank.sh` |
+| **auditors/{name}/AUDITOR.md** | Inline-rewrite concern (grammar, clarity, tone, ...) — body is the prompt fragment. Multiple auditors compose into one LLM call per agent tick. | `defaults/auditors/grammar/AUDITOR.md` |
 
 Integrations read these files via `@opencues/core` (the reference implementation in pure TypeScript). Folder-based configs are auto-discovered. To build an integration for a new editor, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -284,7 +284,7 @@ Pure TypeScript module for LLM-based text analysis. No I/O dependencies. Source:
 - **ConfigSource** — generic config-driven LLM source (one per `###` section in `.md` files)
 - **BlankSource** — keyword-bound blank dispatcher (auto-populate + cycling for `volume _`, `stocks aapl _`, etc.)
 - **FluidBlankSource** — free-form `_` lookup (P1 segment + P3 answer pipeline) for any unmatched blank
-- **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority. Spelling is just a regular ConfigSource cue at `defaults/cues/spelling.md` shipped at priority 80; no dedicated class.
+- **RoutedWordSourceGroup** — per-word dispatch of word-cue sources via `match`/`keywords`/priority. Spelling is just a regular ConfigSource cue at `defaults/cues/spelling/CUE.md` shipped at priority 80; no dedicated class.
 - **buildSourcesFromConfig** — factory: parses master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) + per-source folders (`cues/<name>/CUE.md`, `blanks/<name>/BLANK.md`, `auditors/<name>/AUDITOR.md`) → `CueSource[]`
 - **NodeHttpAdapter** — HTTPS with connection keep-alive, ~200ms latency to Groq
 

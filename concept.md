@@ -50,7 +50,7 @@ The two surfaces have **fundamentally different contracts**:
 | You want… | You build… |
 |---|---|
 | Synonyms for a class of words | a domain cue source: `defaults/cues/<name>/CUE.md` with `match:` regex |
-| A new spell-check style cue | a regular `defaults/cues/<name>.md` with `match: .*` and a custom prompt (same shape as the shipped `defaults/cues/spelling.md`) |
+| A new spell-check style cue | a regular `defaults/cues/<name>/CUE.md` with `match: .*` and a custom prompt (same shape as the shipped `defaults/cues/spelling/CUE.md`) |
 | External state lookup (API / system / file) | a runtime blank class implementing `Blank` (mirror `StocksBlank`) + BLANK.md with `blankKeywords:` |
 | External state via a shell script (native hosts only) | drop a `<name>-blank.sh` next to a BLANK.md with `blankScript:` |
 | A pre-baked rotation list | BLANK.md with `blankKeywords:` + `stepValues: [...]` |

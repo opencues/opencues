@@ -20,7 +20,7 @@ blanks/volume/
 └── volume-blank.sh    # Script colocated (blankScript: ./volume-blank.sh)
 ```
 
-**`blanks/volume/BLANK.md`:**
+**`defaults/blanks/volume/BLANK.md`:**
 ```yaml
 ---
 name: volume
@@ -115,7 +115,7 @@ esac
 
 List blanks cycle through an ordered set of values on a blank — no script, no arithmetic. Type a keyword + `_` and the blank auto-populates with the first value; Up/Down cycles. Multi-word values are span-tracked automatically.
 
-**`blanks/affirmations/BLANK.md`:**
+**`defaults/blanks/affirmations/BLANK.md`:**
 ```yaml
 ---
 name: affirmations
@@ -162,7 +162,7 @@ blankProximity: 2
 
 For dynamic list blanks (Hacker News pattern): the class returns multiple newline-separated lines; the runtime treats each as a cycling alternative. Add `blankDismissible: true` to the BLANK.md to append `_` as the last option.
 
-For OS-level blanks (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the BLANK.md (`blanks/volume/volume-blank.sh`) and `BLANK.md` declares `blankScript: ./volume-blank.sh`.
+For OS-level blanks (e.g. `volume`, `brightness`): keep using shell scripts. They wrap platform-specific OS APIs that have no portable JavaScript replacement. The script lives next to the BLANK.md (`defaults/blanks/volume/volume-blank.sh`) and `BLANK.md` declares `blankScript: ./volume-blank.sh`.
 
 ## Cycling pitfalls: numeric stepping vs list cycling
 

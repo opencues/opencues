@@ -34,7 +34,7 @@ Modes:
 
 All list-based blanks (static `stepValues`, dynamic multi-line, and consume-all) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
 
-Example list blank (`blanks/affirmations/BLANK.md`):
+Example list blank (`defaults/blanks/affirmations/BLANK.md`):
 ```yaml
 ---
 type: blank

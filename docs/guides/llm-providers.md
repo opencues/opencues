@@ -83,7 +83,7 @@ This cue alone will use Anthropic; everything else inherits the
 global / per-feature settings. Useful when one specialist domain
 benefits from a different model character.
 
-The shipped spelling cue lives at `defaults/cues/spelling.md` —
+The shipped spelling cue lives at `defaults/cues/spelling/CUE.md` —
 add `provider:` / `model:` to its frontmatter (or to a project-level
 copy at `<cwd>/.cues/cues/spelling.md`) to route spelling specifically
 without affecting the rest of `word-cues-*`.

@@ -13,7 +13,7 @@ This folder contains design notes for the prompts shipped in `defaults/`. **All 
 | Word alternatives (per-domain synonyms) | `cues/<name>/CUE.md` (folder-based) or inline `CUES.md ## Prompt ### <name>` | one source per file/section, dispatched per-word by `RoutedWordSourceGroup` |
 | Keyword-bound blanks (volume, stocks, hn, …) | `blanks/<name>/BLANK.md` | one folder per blank; matched by `BlankSource` via `blankKeywords` |
 | Free-form `_` lookup | `packages/opencues-core/src/sources/fluid-blank-source.ts` | `FluidBlankSource` single FUSED call (segment + answer + ambient format-steering), prompt in TS |
-| Spell-check on plain text | `defaults/cues/spelling.md` | regular `ConfigSource` cue (priority 80, `match: .*`) — user-editable like any other word cue |
+| Spell-check on plain text | `defaults/cues/spelling/CUE.md` | regular `ConfigSource` cue (priority 80, `match: .*`) — user-editable like any other word cue |
 
 There are **no hardcoded prompt constants in `ConfigSource`**. ConfigSource instances are driven entirely by `SourceConfig` parsed from `.md` files via `buildSourcesFromConfig()`. `FluidBlankSource` is the only remaining exception — its prompts live in TS because the two-pass pipeline isn't a single-prompt source. Spelling used to be a hardcoded `SpellingSource` class; it was retired in May 2026 once it became clear it duplicated `ConfigSource` with no real specialness.
 
