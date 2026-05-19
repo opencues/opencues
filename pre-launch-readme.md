@@ -51,6 +51,7 @@ Checklist for open-sourcing OpenCues. Items marked "cannot do now" require manua
 - [x] Update License section — TODO comment added, awaiting license choice
 - [x] Add "Community" section — placeholder added, commented out
 - [ ] Add "Star History" widget — social proof for discovery
+- [ ] Replace "the happy dog" example prompt — it's a toy example that doesn't sell the product. Strong candidates (all already in shipped scenarios): `we should ultrathink this approach` (instant ✓ — resolves locally from `defaults/cues/tips/CUE.md`, no LLM call, CC-coder relevant), `the lawyer filed today` (canonical agentic scenario 01-basic-cycling.json), or `the contract requires good faith` (multi-word legal hits). Appears in 4 places: README vocab box, README starter-prompts table (§ Try it in 5 minutes), launch-banner Try hint in `packages/opencues-cli/src/commands/run.cjs`, and the demo-gif TODO comment.
 
 ## Documentation
 
