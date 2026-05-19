@@ -4,6 +4,13 @@ type: blank
 tip: system volume
 speak: true
 blankKeywords: volume
+# Allow up to 3 words between the keyword and `_` — so natural
+# phrasings like `volume is _`, `volume was _`, `volume right now _`
+# all fire the blank. Matches the proximity set on the network
+# blanks (weather, countries, hackernews). Default proximity is 0
+# (keyword must be directly adjacent to `_`), which would miss
+# every copula form.
+blankProximity: 3
 blankStep: 6
 blankAutoPopulate: true
 blankSuffix: %
