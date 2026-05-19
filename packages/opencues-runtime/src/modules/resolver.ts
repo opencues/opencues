@@ -380,11 +380,49 @@ export class Resolver {
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // applyOpencuesScalar — ConfigIntentSource's side-effect callback.
-      // Wraps ConfigLoader.applyOpenCuesScalar (which writes the file +
-      // updates in-memory state with the write-race suppression guard
-      // already used by satellite cycling).
-      applyOpencuesScalar: (setting: string, value: string) =>
-        this.configLoader.applyOpenCuesScalar(setting, value),
+      //
+      // Does TWO things, matching the pair that satellite cycling
+      // always does together (cycling.ts:cycleSelectorSatellite):
+      //   1. ConfigLoader.applyOpenCuesScalar — updates in-memory
+      //      state + arms 2.5s reload suppression.
+      //   2. invokeOrSpawn opencues blank with `set <setting> <value>`
+      //      — actually writes the file. Without this the in-memory
+      //      flip reverts the next time reload-suppression expires and
+      //      ConfigLoader reads the un-modified file (caught 2026-05-19
+      //      via the agentic harness — `turn on voice mode _` showed
+      //      `voice-mode active` for ~2.5s then snapped back to
+      //      inactive). Cycling's path always pairs the in-memory
+      //      update with a `set` invocation; ConfigIntent was missing
+      //      the second half.
+      applyOpencuesScalar: (setting: string, value: string) => {
+        this.configLoader.applyOpenCuesScalar(setting, value);
+        // Fire-and-forget the file write via the opencues blank's
+        // script. Looked up at call time so a missing blank entry
+        // (degraded install) degrades gracefully — the in-memory
+        // flip still takes effect, just with no persistence.
+        const oc = this.configLoader.lookupBlank('opencues');
+        const scriptPath = oc?.blank.blankScript;
+        if (!scriptPath && !this.adapter.blankInvoke) return;
+        try {
+          const native = this.adapter.blankInvoke?.({
+            blankName: 'opencues',
+            action: 'set',
+            args: [setting, value],
+            timeoutMs: 4000,
+          });
+          if (native) return;
+          if (!scriptPath) return;
+          if (!this.adapter.capabilities.includes('spawn-process')) return;
+          this.adapter.spawnProcess({
+            command: 'bash',
+            args: [scriptPath, 'set', setting, value],
+            detached: true,
+            timeoutMs: 4000,
+          });
+        } catch (err) {
+          this.adapter.log('error', `ConfigIntent: file write failed for ${setting}=${value}`, err);
+        }
+      },
       // Debug log sink — surfaces TransformBlankSource pipeline traces
       // when OPENCUES.md `debug-mode: on`. The adapter.log gates 'debug'
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
