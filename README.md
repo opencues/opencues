@@ -573,6 +573,8 @@ opencues new blank <name> --dry-run     # prints the plan, creates nothing
 
 `<name>` must match `/^[a-z][a-z0-9-]*$/`. The scaffold ships every supported shape inline-commented — pick one block, delete the rest. Refuses to overwrite an existing file. Hot-reload picks the new file up within ~2.5s of saving.
 
+**Prefer copy-and-edit over filling in a template?** The shipped `example/` packs are deliberately tiny working references — see [`defaults/cues/example/CUE.md`](defaults/cues/example/CUE.md) (minimal word-cue: `hi|hey|hello` → three formal greetings) and [`defaults/blanks/example/BLANK.md`](defaults/blanks/example/BLANK.md) + [`time-blank.sh`](defaults/blanks/example/time-blank.sh) (minimal script-blank: `time _` → `HH:MM`). Each ~30-70 lines with every field commented inline.
+
 ### Cue scopes
 
 Cues declare `scope:` in their CUE.md frontmatter — pick what the cue operates on:

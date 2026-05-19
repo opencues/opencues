@@ -1,0 +1,71 @@
+---
+# ─────────────────────────────────────────────────────────────────
+# example — minimal hello-world blank
+#
+# A deliberately tiny script-blank you can copy-and-edit.
+# Production blanks (volume/brightness/weather) have many fields for
+# many reasons; this one shows the minimum that fires.
+#
+# What it does: when you type `time _` the runtime calls
+# ./time-blank.sh with `get`, which prints the local time (HH:MM)
+# to stdout. That value replaces the `_` in the buffer.
+#
+# How the runtime picks it up: BlankSource scans every `_` for a
+# keyword (`blankKeywords`) within `blankProximity` words. If found,
+# it invokes the colocated script. The script gets stdin context
+# words on `get`; on `set <value>` it would write the new value
+# back. This example is GET-only — there's nothing to set on a
+# clock.
+#
+# Why no `blankStep` / `blankSuffix` / `blankReplace` here? Defaults
+# work for a read-only blank with no cycling. Look at
+# defaults/blanks/volume/BLANK.md for the full set of options.
+# ─────────────────────────────────────────────────────────────────
+
+# Required — must match the folder name (the runtime keys on this).
+name: example
+
+# Discriminator. `blank` means `_`-triggered slot (vs cue sources,
+# which run on plain text). Cue sources omit this field.
+type: blank
+
+# Triggered when any of these words appears within `blankProximity`
+# words of `_`. Use comma-separated short triggers — they're
+# matched as whole words, case-insensitive.
+blankKeywords: time, clock
+
+# Max words between keyword and `_`. 0 means "directly adjacent
+# only" (`time _`). 2 lets `time is _` and `time right now _` fire.
+# Volume / brightness use 3 to handle copulas like `volume is _`.
+blankProximity: 2
+
+# Auto-populate on text-change: as soon as the keyword+`_` pattern
+# is detected, fire `get` without waiting for the user to navigate
+# to the `_`. Read-only blanks always want this on.
+blankAutoPopulate: true
+
+# Read-only — the user can't cycle the value with Up/Down (you'd
+# get an error from the script if they tried, since we don't
+# implement `set`). Affirmations / volume blanks set this to false.
+blankReadOnly: true
+
+# The script that does the actual work. Relative paths (./X) are
+# resolved against THIS folder. So time-blank.sh sits in
+# defaults/blanks/example/ alongside this BLANK.md.
+blankScript: ./time-blank.sh
+---
+
+# Try it
+
+After `opencues seed-configs` copies this folder to `~/.cues/blanks/example/`,
+fire up your editor and type:
+
+```
+the time is _
+```
+
+The `_` should become the current `HH:MM`. Backspace + retype to
+refresh.
+
+Edit `time-blank.sh` to change what the blank returns. The runtime
+re-invokes the script on every fire — no caching at this layer.

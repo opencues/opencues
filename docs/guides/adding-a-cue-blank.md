@@ -27,6 +27,15 @@ The scaffold ships every supported shape (typed-with-script, list, selector+sate
 
 After editing, drop your `<name>-blank.sh` next to the BLANK.md (for typed-blank shape) and `chmod +x` it. The rest of this guide explains each field.
 
+### Hello-world reference packs
+
+If you'd rather copy-and-edit a working example than fill in a template, the shipped `example/` packs are deliberately tiny (~30-70 lines each) with every field commented inline:
+
+- [`defaults/cues/example/CUE.md`](../../defaults/cues/example/CUE.md) — minimal word-cue. Matches `hi|hey|hello`, returns three formal-greeting alternatives via the LLM. Shows: `name`, `parser`, `scope: words`, `priority`, `match`, prompt body.
+- [`defaults/blanks/example/BLANK.md`](../../defaults/blanks/example/BLANK.md) + [`time-blank.sh`](../../defaults/blanks/example/time-blank.sh) — minimal script-blank. `time _` fires the script which prints `date '+%H:%M'`. Shows: `blankKeywords`, `blankProximity`, `blankAutoPopulate`, `blankReadOnly`, `blankScript`, the get/set script contract.
+
+Production packs (legal/medical/financial/volume/brightness/weather) are bigger because they need more fields for production reasons; the example packs strip those back to "what fires the simplest version".
+
 ## 1. Folder-based blank (canonical)
 
 Create a self-contained folder with the config and script together:
