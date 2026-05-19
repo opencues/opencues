@@ -4,8 +4,8 @@ OpenCode integration. Pin: **opencode v1.14.17 (`40ba8f3`)**, served by the `oc/
 
 The runtime side is host-agnostic; the only band-specific code lives at:
 
-- `packages/opencues-runtime/adapters/opencode/v1.4/adapter.ts`
-- `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts`
+- `packages/opencues-runtime/adapters/oc/v1.4/adapter.ts`
+- `packages/opencues-runtime/adapters/oc/v1.4/boot.ts`
 - `integrations/opencode/patches/opencuesBootstrap.ts`
 - `integrations/opencode/patches/setup.sh`
 
@@ -21,7 +21,7 @@ lose during a forward port.
 
 ### LF-1. Adapter `onKey` ignored its `KeyFilter` (O.3)
 
-**File:** `adapters/opencode/v1.4/adapter.ts` — `onKey()`.
+**File:** `adapters/oc/v1.4/adapter.ts` — `onKey()`.
 
 **Symptom:** can only type one character before keystrokes get swallowed.
 
@@ -97,7 +97,7 @@ as the user typing).
 
 ### LF-6. Resolver subscribed before ConfigLoader.load resolved (O.7)
 
-**File:** `packages/opencues-runtime/adapters/opencode/v1.4/boot.ts` —
+**File:** `packages/opencues-runtime/adapters/oc/v1.4/boot.ts` —
 the `if (host.llmApiKey)` Resolver block.
 
 **Symptom:** `/tmp/opencues.log` shows `Resolver: no cuesConfig/blanksConfig,
@@ -236,7 +236,7 @@ OpenCode releases frequently. Each bump may move the seams.
 | **Trivial** | Identifier renames (e.g. `useKeyboard` → `useKeys`) | Update import in `opencuesBootstrap.ts`. |
 | **Small** | New required prop on `TextareaRenderable` | Update bootstrap's bindings. |
 | **Medium** | `Prompt` component restructured (autocomplete, history) | Re-derive the read/write/cursor accessors against the new tree. |
-| **Large** | TUI moves off OpenTUI (e.g. back to Bubble Tea) | New adapter band: `adapters/opencode/v<NEW>/`. Runtime stays. |
+| **Large** | TUI moves off OpenTUI (e.g. back to Bubble Tea) | New adapter band: `adapters/oc/v<NEW>/`. Runtime stays. |
 
 ## Diagnostic flow
 

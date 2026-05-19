@@ -289,7 +289,7 @@ is the **only** file that knows Claude Code internals. It finds 3 seams in
 the minified `cli.js` and injects two anchors: one bootstrap at the
 key-dispatcher, one wrapper around the rendered-value expression. The
 bootstrap calls a single function — `boot()` exported from
-`adapters/claude-code/<VERSION>/boot.js` — passing in tiny callbacks that
+`adapters/cc/<VERSION>/boot.js` — passing in tiny callbacks that
 read host state. Everything else (adapter construction, module wiring,
 state, rendering, ANSI work) lives in the runtime and is host-agnostic.
 
@@ -310,7 +310,7 @@ tweakcc patch  ──require──▶  boot.js  ──uses──▶  Runtime mod
 | S3  | The `renderedValue:` expression in the return object | The full expression text (e.g. `m.render(X,H,M,j6,G)`) | Wrap it with `applyRender(...)` to paint highlights on top of host output.     |
 
 Source of truth for the seam predicates:
-`packages/opencues-runtime/adapters/claude-code/v2.1/seams.ts`. The patch
+`packages/opencues-runtime/adapters/cc/v2.1/seams.ts`. The patch
 inlines a vendored copy — keep both in sync.
 
 ---
@@ -336,10 +336,10 @@ When a v2 install fails or behaves wrong:
    seam targets (e.g. `case"escape":` for S1) — not the captured
    identifier names, which are minified per build.
 4. **Update the regex** in both
-   `packages/opencues-runtime/adapters/claude-code/<VERSION>/seams.ts` and
+   `packages/opencues-runtime/adapters/cc/<VERSION>/seams.ts` and
    the inlined copy in
    `integrations/claude-code/patches/opencuesRuntime.ts`. Run
-   `npx vitest run adapters/claude-code/<VERSION>/seams.test.ts` to verify.
+   `npx vitest run adapters/cc/<VERSION>/seams.test.ts` to verify.
 5. **Re-apply, restart claude-cues, retest.**
 
 ---
@@ -454,8 +454,8 @@ anymore.
 
 **Action:** New adapter band. Copy the existing band:
 ```
-cp -r packages/opencues-runtime/adapters/claude-code/v2.1 \
-      packages/opencues-runtime/adapters/claude-code/v3.0
+cp -r packages/opencues-runtime/adapters/cc/v2.1 \
+      packages/opencues-runtime/adapters/cc/v3.0
 ```
 Then rewrite each file against the new shape. The runtime modules
 (`Navigation`, `DimRender`, `applyDirectives`) and state classes stay
@@ -495,7 +495,7 @@ change down into the adapter or boot.ts instead.
 | Seam shape change                  | `seams.ts` + `opencuesRuntime.ts` (regex)                                                                                   | `seams.test.ts`                               |
 | Method rename on captured object   | `opencuesRuntime.ts` (substitution)                                                                                         | live install                                  |
 | Captured object's API replaced     | `opencuesRuntime.ts` (closures) + maybe `seams.ts` (extend captures)                                                        | `seams.test.ts` + live install                |
-| New CC major version               | New `adapters/claude-code/<version>/` band: `seams.ts`, `boot.ts`, mirror inlined regex into `opencuesRuntime.ts`           | full `vitest run` + live install              |
+| New CC major version               | New `adapters/cc/<version>/` band: `seams.ts`, `boot.ts`, mirror inlined regex into `opencuesRuntime.ts`           | full `vitest run` + live install              |
 
 ---
 
