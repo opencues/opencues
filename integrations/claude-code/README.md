@@ -195,5 +195,5 @@ Reverts `cli.js` from the backup in `~/claude-code-cues/.opencues/patch-state/`,
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — overall repo shape + stage tracker
 - [`integrations/claude-code/docs/`](docs/) — feature reference (navigation, cycling, alternatives, blanks, status line, etc.)
-- [`integrations/claude-code/docs/architecture.md`](docs/architecture.md) — patch architecture + development notes
+- [`integrations/claude-code/patches/README.md`](patches/README.md) — patch architecture + development notes
 - [`CLAUDE.md`](../../CLAUDE.md) — internal project notes including the `claude-cues` vs `claude` install distinction

@@ -186,4 +186,4 @@ opencues run opencode         # restart
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — repo layout + stage tracker
 - [`integrations/opencode/patches/opencuesBootstrap.ts`](patches/opencuesBootstrap.ts) — the actual bootstrap (read for what gets injected)
-- [`@opencues/runtime` adapter band](../../packages/opencues-runtime/adapters/opencode/v1.4/) — the OC v1.4 host adapter (what `boot()` resolves to)
+- [`@opencues/runtime` adapter band](../../packages/opencues-runtime/adapters/oc/v1.4/) — the OC v1.4 host adapter (what `boot()` resolves to)
