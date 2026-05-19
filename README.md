@@ -9,6 +9,15 @@
 
 An open standard for real-time guidance as you type. OpenCues works on top of any text input — LLM prompts, word processors, mobile keyboards — providing alternatives, suggestions, and context before you press enter. Define all behaviour in `.md` config files; integrations bring them to life.
 
+> **In 30 seconds — the vocabulary**
+>
+> - **Cue** — a word the runtime offers alternatives for. You navigate to it with Ctrl+Alt+arrow and cycle synonyms with Ctrl+Alt+Up/Down. The buffer stays as you typed it until you cycle.
+> - **Blank** — a `_` you type. The runtime auto-fills it (`volume _` → `70%`, `capital of france _` → `Paris`, `enable debug logging _` → `debug-mode on`). Each blank is gated by a keyword or by free-form lookup.
+> - **Auditor** — an inline rewriter that composes with other auditors (grammar, clarity, tone, ...) into one LLM call per agent tick.
+>
+> Everything else in this README assumes these three.
+
+<!-- TODO: drop a demo gif at assets/demo.gif and uncomment the line below. ~10s loop of: type "the happy dog" → cycle "happy", then type "volume _" → see "70%", then type "enable debug logging _" → see "debug-mode on". -->
 <!-- ![Demo](assets/demo.gif) -->
 
 ## Why OpenCues?
@@ -52,8 +61,10 @@ Quickest path to a patched Claude Code with cues live. Replaces five separate co
 
 ```bash
 # 1. Free LLM key — Groq's free tier covers every feature.
-#    https://console.groq.com/keys to grab one.
+#    https://console.groq.com/keys to grab one. Set it BEFORE step 2:
 export GROQ_API_KEY="your-key"
+# Or after step 2 (works on any shell, no .bashrc/.zshrc edits):
+#   opencues set-key groq your-key  →  writes ~/.cues/.env (chmod 600)
 
 # 2. Clone + bootstrap + patch Claude Code, one chain.
 git clone https://github.com/opencues/opencues ~/opencues && \
@@ -64,7 +75,29 @@ git clone https://github.com/opencues/opencues ~/opencues && \
 claude-cues
 ```
 
-That's it. Type any prompt, navigate words with **Ctrl+Alt+Left/Right**, cycle alternatives with **Ctrl+Alt+Up/Down**. Try `volume _` for a system-volume blank, `weather london _` for a lookup, or `agentically correct spelling _` to arm the inline agent.
+That's it. **Launch with `claude-cues`, not `claude`** — `claude-cues` is the patched fork on your PATH; your existing `claude` install stays untouched.
+
+### Your first three prompts (and what to expect)
+
+Type these into `claude-cues` to confirm the three surfaces are live. Each one should give a visible result inside 1-2 seconds.
+
+| Type | What you should see |
+|---|---|
+| `the happy dog` | The word **happy** subtly dims (cue marker). Press **Ctrl+Alt+Right** to navigate to it, then **Ctrl+Alt+Up** — the word swaps to `joyful` / `cheerful` / etc. Down to revert. |
+| `volume _` | The `_` becomes `70%` (or whatever your system volume is). Ctrl+Alt+Up steps it by 6%. This proves keyword-bound blanks + scripts. |
+| `enable debug logging _` | The whole phrase becomes `debug-mode on` (a satellite pair). One backspace wipes both words at once. This proves the fluid-config feature flipped `~/.cues/OPENCUES.md`. |
+
+Once you've seen those three, every other feature works the same way — see § Features for the catalogue.
+
+### Stuck? Run this first
+
+```bash
+opencues doctor           # cross-host install diagnostics + suggested fixes
+tail /tmp/opencues.log    # everything the runtime logged — boots, LLM calls, errors
+opencues which            # what's installed where + which pin
+```
+
+If `claude-cues` launches but cues never fire, it's almost always (a) a missing API key, (b) Ctrl+Alt+arrow being eaten by your desktop's workspace switcher (Linux especially), or (c) the runtime didn't boot. `opencues doctor` catches the first; the second needs an OS-level unbind; the third shows up in `/tmp/opencues.log` within seconds of typing.
 
 > **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.14.17 (sha `40ba8f3`), cloned into `~/opencode-cues/`. Gemini CLI is pinned to v0.41.2, cloned into `~/gemini-cli-cues/`. All pins live in `integrations/<host>/pin.json`. Your native `claude`, your existing OpenCode install, and your native `gemini` stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
 
@@ -75,14 +108,21 @@ That's it. Type any prompt, navigate words with **Ctrl+Alt+Left/Right**, cycle a
 OpenCues supports **six LLM providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, and Gemini. Set the env key for whichever you want; pick different ones per feature in `~/.cues/OPENCUES.md` (see [docs/guides/llm-providers.md](docs/guides/llm-providers.md)). Setting both `GROQ_API_KEY` and `CEREBRAS_API_KEY` enables auto-fallback between them.
 
 ```bash
-# Easiest path — Groq's free tier covers every feature
-echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
-
 # Clone + install (one time)
 git clone https://github.com/opencues/opencues ~/opencues
 cd ~/opencues
 pnpm install
 pnpm build
+
+# Store the API key (works on any shell — writes ~/.cues/.env chmod 600).
+# For other providers (cerebras, openai, anthropic, openrouter, gemini)
+# set the corresponding env var instead — see docs/guides/llm-providers.md.
+pnpm exec opencues set-key groq your-key
+
+# (Or, if you'd rather use env vars in your shell config:
+#   bash: echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
+#   zsh : echo 'export GROQ_API_KEY="your-key"' >> ~/.zshrc  && source ~/.zshrc
+#   fish: set -Ux GROQ_API_KEY your-key)
 
 # Install the integration you want
 pnpm exec opencues install claude-code     # patches Claude Code (or: claude, cc)
