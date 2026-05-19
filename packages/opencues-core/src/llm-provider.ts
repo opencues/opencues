@@ -164,15 +164,22 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
     ? (req.reasoningEffort ?? opts?.defaultReasoningEffort)
     : undefined;
   if (req.maxTokens !== undefined) {
-    // Pair max_tokens with reasoning='high' on gpt-oss models: with
-    // the typical 512-token default the model spends the entire budget
-    // on internal reasoning and emits empty content (98%→20% acc
-    // collapse in the May 18 2026 bench — see
-    // tests/results/thinking-budget-2026-05-18.md). 2048 is the
-    // empirically-validated floor (restores 98% on cerebras-high).
-    // Caller's higher max wins.
-    const needsHighReasoningFloor = reasoning === 'high' && /gpt-oss/i.test(req.model);
-    const effectiveMax = needsHighReasoningFloor ? Math.max(req.maxTokens, 2048) : req.maxTokens;
+    // Pair max_tokens with reasoning on gpt-oss models: the model
+    // spends reasoning tokens against the same budget as output, and a
+    // tight ceiling can starve content entirely. The May 18 2026
+    // thinking-budget bench showed a 98%→20% accuracy collapse on
+    // gpt-oss-120b · high at 512 tokens (see
+    // tests/results/thinking-budget-2026-05-18.md). Same class of bug
+    // hit sentence-cues on the SAME day's agentic-harness run with
+    // reasoning='medium' at 768 — the LLM returned empty content in
+    // ~150ms, parsing produced zero blocks (emitted=0, ceded=0). So
+    // the floor applies to ANY reasoning level on gpt-oss, not just
+    // high. 2048 covers reasoning + content for every shipped level.
+    // Other reasoning model families (o-series, gpt-5) aren't included
+    // until the same bench is rerun against them. Caller's higher max
+    // wins.
+    const needsReasoningFloor = reasoning !== undefined && reasoning !== 'none' && /gpt-oss/i.test(req.model);
+    const effectiveMax = needsReasoningFloor ? Math.max(req.maxTokens, 2048) : req.maxTokens;
     // OpenAI renamed `max_tokens` → `max_completion_tokens` for the
     // gpt-5 / o-series chat-completions API. The old field 400s on
     // those models. Other OpenAI-compatible hosts (Groq, OpenRouter,
@@ -215,8 +222,24 @@ function parseOpenAIResponse(rawJson: string): string {
   const data = JSON.parse(rawJson) as {
     choices?: Array<{ message?: { content?: string } }>;
     error?: { message?: string };
+    // Cerebras + a few other gateways put the error fields at the
+    // ROOT instead of nesting them under `error:` the way OpenAI does.
+    // Cerebras 402 example:
+    //   {"message":"Payment required to access this resource. Visit
+    //   your billing tab.","type":"payment_required_error","param":
+    //   "quota","code":"payment_required"}
+    // Without this branch, parseOpenAIResponse silently returned ''
+    // (no choices) on 402/429/etc — the runtime kept calling and
+    // every source emitted empty output. Caught 2026-05-18 via the
+    // agentic harness against a Cerebras account out of credits.
+    message?: string;
+    code?: string;
+    type?: string;
   };
   if (data.error) throw new Error(`provider error: ${data.error.message ?? JSON.stringify(data.error)}`);
+  if (!data.choices && typeof data.message === 'string' && typeof data.code === 'string') {
+    throw new Error(`provider error: ${data.message} (code=${data.code}${data.type ? `, type=${data.type}` : ''})`);
+  }
   return data.choices?.[0]?.message?.content ?? '';
 }
 
@@ -1004,6 +1027,14 @@ function looksTransient(raw: string): boolean {
   if (/too[_ -]?many[_ -]?requests|rate[_ -]?limit/i.test(raw)) return true;
   if (/server[_ -]?error|service[_ -]?unavailable|overloaded|timeout/i.test(raw)) return true;
   if (/queue[_ -]?exceeded|queue[_ -]?full/i.test(raw)) return true;
+  // Billing failures — strictly not "transient" in the time sense, but
+  // the user-visible behaviour we want IS to fall back to a working
+  // provider so the runtime stays useful while the billing issue is
+  // resolved. Caught 2026-05-18 via the agentic harness against a
+  // Cerebras account out of credits — 402 / payment_required was
+  // returning empty content silently across every source.
+  if (/"code"\s*:\s*"?(402|payment_required|insufficient_quota)"?/i.test(raw)) return true;
+  if (/payment[_ -]?required|insufficient[_ -]?(?:quota|credit|balance)|out[_ -]?of[_ -]?credit/i.test(raw)) return true;
   return false;
 }
 

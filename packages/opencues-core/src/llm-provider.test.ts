@@ -26,7 +26,10 @@ describe('groq provider — OpenAI-compatible (the back-compat default)', () => 
       {
         model: 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: 'hi' }],
-        maxTokens: 100, temperature: 0, seed: 42, reasoningEffort: 'low',
+        // Use reasoningEffort='none' so the gpt-oss reasoning-floor
+        // doesn't kick in — this test pins the BASE body shape, not the
+        // floor behaviour (the dedicated floor test below covers that).
+        maxTokens: 100, temperature: 0, seed: 42, reasoningEffort: 'none',
       },
       { apiKey: 'gsk_test' },
     );
@@ -36,8 +39,50 @@ describe('groq provider — OpenAI-compatible (the back-compat default)', () => 
     assert.deepStrictEqual(body, {
       model: 'openai/gpt-oss-120b',
       messages: [{ role: 'user', content: 'hi' }],
-      max_tokens: 100, temperature: 0, seed: 42, reasoning_effort: 'low',
+      max_tokens: 100, temperature: 0, seed: 42, reasoning_effort: 'none',
     });
+  });
+
+  it('buildRequest: floors max_tokens to 2048 on gpt-oss when reasoning is on (any level)', () => {
+    // Caught 2026-05-18 via the agentic harness: with the previous
+    // narrow floor (`reasoning === 'high'` only), sentence-cues calling
+    // cerebras-gpt-oss-120b with reasoning='medium' at maxTokens=768
+    // were returning empty content in ~150ms — reasoning ate the
+    // budget before output emitted. The floor now fires for any
+    // reasoning level that's actually on (medium, low, high — not
+    // 'none' or undefined). 2048 matches the proven floor from the
+    // thinking-budget bench at high; it's enough headroom for every
+    // reasoning level on gpt-oss-120b.
+    for (const reasoning of ['low', 'medium', 'high'] as const) {
+      const built = buildProviderRequest(
+        'groq',
+        {
+          model: 'openai/gpt-oss-120b',
+          messages: [{ role: 'user', content: 'x' }],
+          maxTokens: 768, reasoningEffort: reasoning,
+        },
+        { apiKey: 'k' },
+      );
+      const body = JSON.parse(built.body);
+      assert.strictEqual(body.max_tokens, 2048, `expected 2048 floor at reasoning=${reasoning}`);
+    }
+  });
+
+  it('buildRequest: does NOT floor max_tokens when reasoning is none / undefined on gpt-oss', () => {
+    // Reasoning explicitly off → caller's budget honoured. Pins the
+    // negative side of the floor so the rule doesn't drift into a
+    // blanket override.
+    const built = buildProviderRequest(
+      'groq',
+      {
+        model: 'openai/gpt-oss-120b',
+        messages: [{ role: 'user', content: 'x' }],
+        maxTokens: 256, reasoningEffort: 'none',
+      },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    assert.strictEqual(body.max_tokens, 256);
   });
 
   it('buildRequest: honours endpoint override', () => {
