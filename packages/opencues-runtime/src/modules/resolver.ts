@@ -979,45 +979,62 @@ export class Resolver {
       // Source returns:
       //   alternatives = [originalSentence, rewrite1, rewrite2, ...]
       //   spanStart/spanEnd = char range of the sentence in the buffer
-      // Auto-substitutes alternatives[1] (the first rewrite) at the
-      // sentence span, registers a DynDef keyed at the post-splice word
-      // index with currentIndex=1 so cycling Down restores the original
-      // and Up reveals further rewrites. Marks the sentence's original
-      // word range as "claimed" so subsequent word-cue results inside
-      // that range are suppressed (design 4a — sentence wins outright).
+      //
+      // Behaves as a PASSIVE cue (like word-cues, just at sentence span
+      // granularity): the original sentence stays in the buffer, a
+      // DynDef is registered at currentIndex=0 so the existing cycling
+      // path (Ctrl+Alt+Up) swaps in alts[1+] on user keystroke. The
+      // sentence's word range is "claimed" so subsequent word-cue
+      // results inside it are suppressed (design 4a — sentence wins).
+      //
+      // Earlier versions auto-spliced alts[1] the moment the LLM
+      // returned (TransformBlank-style). That was agent-like — the
+      // user's prose was rewritten in the background without any
+      // keystroke. Sentence-cues are CUES, not agents; the user must
+      // explicitly cycle to apply.
       if (isSentenceCue && r.alternatives.length >= 2 && isMultiWordSpan) {
         const originalSentence = r.alternatives[0];
         const liveText = this.adapter.getText();
-        // Race guard: the sentence span we're about to splice must
-        // still match what we analyzed. If the user typed elsewhere,
-        // the indices may have shifted; if they edited THIS sentence,
-        // the substitution is no longer faithful.
         const start = r.spanStart!;
         const end = r.spanEnd!;
+        // Race guard: the sentence span we're about to claim must still
+        // match what we analyzed. If the user typed elsewhere or edited
+        // this sentence, abandon — the cue would point at stale chars.
         if (liveText.slice(start, end) !== originalSentence) {
           this.adapter.log('info', `SentenceCue[${r.source}]: skipping — buffer edit at [${start},${end}) changed the sentence since resolve`);
           continue;
         }
-        const firstAlt = r.alternatives[1];
-        const sub = applyMarkdownAwareSplice(this.adapter, text, start, end, firstAlt);
-        const newText = sub.newText;
-        const writtenAlt = sub.stripped;
+        // Managed-span overlap guard. SentenceCueSource segments the
+        // WHOLE buffer regardless of any active selector/satellite pair
+        // or other span-bound DynDef (fluid-blank substitute, transform
+        // rewrite). A sentence-cue cycling Up across one of those would
+        // mid-overwrite the span — refuse to register the def at all if
+        // there's overlap.
+        const sat = this.selectorSatelliteState?.current;
+        const overlapsSatellite = sat ? (start < sat.pairCharEnd && sat.pairCharStart < end) : false;
+        let overlapsDynDef = false;
+        for (const [idx, def] of this.dynDefs.entries()) {
+          if (!def.blankName) continue;
+          if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
+          if (def.spanEnd <= def.spanStart) continue;
+          if (idx === r.wordIndex && typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')) continue; // refreshing our own def is fine
+          if (start < def.spanEnd && def.spanStart < end) { overlapsDynDef = true; break; }
+        }
+        if (overlapsSatellite || overlapsDynDef) {
+          this.adapter.log('info', `SentenceCue[${r.source}]: skipping — sentence span [${start},${end}) overlaps an active managed span (satellite=${overlapsSatellite}, dyndef=${overlapsDynDef})`);
+          continue;
+        }
 
-        // Compute the post-splice word position of the spliced sentence
-        // (start word index + word count). DynDef gets keyed at the
-        // first word of the rewritten sentence; spanEnd in chars is the
-        // end of the spliced text.
-        const newWords = splitWords(newText);
-        const newFirstWord = newWords.find(w => w.start === start);
-        const newWordIndex = newFirstWord ? newFirstWord.index : r.wordIndex;
-        const newSpanEnd = start + writtenAlt.length;
-
-        this.dynDefs.set(newWordIndex, {
+        // Register the DynDef passively. No splice; the buffer keeps
+        // the original sentence. alts[0] === originalSentence so cycling
+        // Up to currentIndex=1 swaps in the first rewrite via the
+        // existing applyAltCycle path.
+        this.dynDefs.set(r.wordIndex, {
           originalWord: originalSentence,
           alternatives: r.alternatives, // [original, ...rewrites]
-          currentIndex: 1, // showing first rewrite
+          currentIndex: 0, // passive — buffer shows alts[0] (the original)
           spanStart: start,
-          spanEnd: newSpanEnd,
+          spanEnd: end,
           // blankName uses the source id (sentence-cue:<name>) so the
           // entry is locked against re-resolution AND distinguishable
           // from other span-bearing defs in logs / event traces.
@@ -1025,14 +1042,14 @@ export class Resolver {
         });
         wrote++;
 
-        // Record claim using ORIGINAL word indices (suppression check
-        // runs against the priority-sorted result list, which uses the
-        // original-buffer indices).
+        // Record claim for downstream word-cue suppression. Uses the
+        // ORIGINAL word indices (the result list is in original-buffer
+        // coords since we didn't splice).
         sentenceClaimWordStart = r.wordIndex;
         sentenceClaimWordEnd = r.wordIndex + originalSentence.split(/\s+/).filter(Boolean).length - 1;
         sentenceCueApplied = true;
 
-        this.adapter.log('info', `SentenceCue[${r.source}]: substituting [${start},${end}) "${originalSentence.slice(0, 50)}…" → "${writtenAlt.slice(0, 50)}…" (alts=${r.alternatives.length - 1}, defAt=${newWordIndex}, claimWords=[${sentenceClaimWordStart},${sentenceClaimWordEnd}])`);
+        this.adapter.log('info', `SentenceCue[${r.source}]: cue ready [${start},${end}) "${originalSentence.slice(0, 50)}…" (alts=${r.alternatives.length - 1}, defAt=${r.wordIndex}, claimWords=[${sentenceClaimWordStart},${sentenceClaimWordEnd}])`);
         continue;
       }
 

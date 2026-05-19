@@ -1043,14 +1043,15 @@ describe('Resolver sentence-cue substitution', () => {
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const selectorSatelliteState = new SelectorSatelliteState();
     const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
       endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
       httpAdapter: {},
-    });
+    }, undefined, undefined, undefined, undefined, selectorSatelliteState);
     (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: RichMockResult[] }> } })._resolver = {
       resolve: async () => ({ results: scriptedResults }),
     };
-    return { adapter, hlState, dynDefs, loader, resolver };
+    return { adapter, hlState, dynDefs, loader, selectorSatelliteState, resolver };
   }
 
   function sentenceCueResult(opts: {
@@ -1074,7 +1075,12 @@ describe('Resolver sentence-cue substitution', () => {
     };
   }
 
-  it('splices first rewrite into the sentence span', async () => {
+  it('leaves the buffer untouched and registers a passive DynDef (cue, not agent)', async () => {
+    // Passive cue contract: the LLM returning rewrites does NOT mutate
+    // the user's prose. The runtime registers a DynDef at currentIndex=0
+    // (showing the original) so the EXISTING word-cycling path (Up at
+    // the sentence's first word) swaps in the first rewrite. This is
+    // exactly how word-cues work — cue-level signal, user-driven apply.
     const input = 'thanks a bunch.';
     const { adapter, resolver } = setupRich([
       sentenceCueResult({
@@ -1089,12 +1095,11 @@ describe('Resolver sentence-cue substitution', () => {
     adapter.pushText(input);
     await resolver.resolveAndApply(input);
 
-    // First rewrite gets spliced in; original is preserved in the
-    // DynDef for cycling Down → revert.
-    expect(adapter.getText()).toBe('Thank you very much.');
+    // Buffer is exactly what the user typed.
+    expect(adapter.getText()).toBe(input);
   });
 
-  it('registers a DynDef with all alternatives, currentIndex=1, blankName locked', async () => {
+  it('registers a DynDef with currentIndex=0 (passive), alternatives ready for cycling', async () => {
     const input = 'thanks a bunch.';
     const { adapter, dynDefs, resolver } = setupRich([
       sentenceCueResult({
@@ -1118,9 +1123,14 @@ describe('Resolver sentence-cue substitution', () => {
       'Many thanks.',
       'I am grateful.',
     ]);
-    expect(def!.currentIndex).toBe(1);
+    // currentIndex=0 means the buffer currently shows alts[0] (the
+    // original sentence). Cycling Up advances to currentIndex=1 and
+    // splices alts[1] via the existing applyAltCycle path.
+    expect(def!.currentIndex).toBe(0);
+    // Span covers the ORIGINAL sentence in the buffer (no splice
+    // happened, so no post-splice recalculation).
     expect(def!.spanStart).toBe(0);
-    expect(def!.spanEnd).toBe('Thank you very much.'.length);
+    expect(def!.spanEnd).toBe(input.length);
     // blankName uses the source id so the entry is locked against
     // re-resolution AND distinguishable in logs from other span-bearing defs.
     expect(def!.blankName).toBe('sentence-cue:more-formal');
@@ -1146,6 +1156,138 @@ describe('Resolver sentence-cue substitution', () => {
 
     expect(adapter.getText()).toBe('totally different text');
     expect(dynDefs.get(0)).toBeUndefined();
+  });
+
+  // Managed-span overlap guards. SentenceCueSource segments the WHOLE
+  // buffer regardless of any active selector/satellite pair or other
+  // span-bound DynDef. Without these guards, a sentence-cue substitution
+  // can mid-overwrite a span the user is interacting with — the
+  // "took part of the satellite selector with it" misrender observed
+  // in chrome on 2026-05-18.
+
+  it('skips substitution when the sentence span overlaps an active selector/satellite pair', async () => {
+    // Buffer shape: user typed prose, then typed `opencues settings _`
+    // which expanded to the satellite pair `voice-mode inactive` at
+    // chars [16, 36). Sentence-cue's segmenter sees the whole
+    // 36-char buffer and proposes a rewrite spanning the satellite.
+    const text = 'Cool thanks a lot voice-mode inactive';
+    const satStart = 'Cool thanks a lot '.length; // 18
+    const satEnd = text.length; // 37
+    const { adapter, dynDefs, selectorSatelliteState, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: text,
+        spanStart: 0,
+        spanEnd: text.length,
+        wordIndex: 0,
+        rewrites: ['Thank you very much voice mode is inactive'],
+      }),
+    ]);
+    // Pre-arm the satellite state — same shape ConfigIntent /
+    // BlankFill register when an `opencues settings` flow completes.
+    selectorSatelliteState.set({
+      blankName: 'opencues',
+      scriptPath: '',
+      selectorIndex: 4,
+      selectorLength: 1,
+      satelliteIndex: 5,
+      satelliteLength: 1,
+      currentSetting: 'voice-mode',
+      currentValue: 'inactive',
+      separator: ' ',
+      clearOnEdit: true,
+      pairCharStart: satStart,
+      pairCharEnd: satEnd,
+    }, text);
+    adapter.pushText(text);
+    await resolver.resolveAndApply(text);
+
+    // No splice, no DynDef. The satellite pair stays intact in the
+    // buffer; the user can keep cycling it.
+    expect(adapter.getText()).toBe(text);
+    expect(dynDefs.get(0)).toBeUndefined();
+    expect(selectorSatelliteState.current).not.toBeNull();
+  });
+
+  it('skips substitution when the sentence span overlaps an active fluid-blank DynDef', async () => {
+    // A prior fluid-blank fill landed inside the buffer (e.g. user typed
+    // `_` for a quick lookup and got `Paris` back). The DynDef is
+    // blankName-locked. A sentence-cue spanning that range must not
+    // overwrite the fluid-blank answer.
+    const text = 'It is in Paris and we like it.';
+    const fluidStart = 'It is in '.length; // 9
+    const fluidEnd = fluidStart + 'Paris'.length; // 14
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: text,
+        spanStart: 0,
+        spanEnd: text.length,
+        wordIndex: 0,
+        rewrites: ['It is located in Paris, and we are fond of it.'],
+      }),
+    ]);
+    // Pre-arm a fluid-blank DynDef (blankName-locked, with a span).
+    dynDefs.set(2, {
+      originalWord: '_',
+      alternatives: ['_', 'Paris'],
+      currentIndex: 1,
+      spanStart: fluidStart,
+      spanEnd: fluidEnd,
+      blankName: 'fluid-blank',
+    });
+    adapter.pushText(text);
+    await resolver.resolveAndApply(text);
+
+    // Sentence-cue declined; fluid-blank DynDef survives intact.
+    expect(adapter.getText()).toBe(text);
+    expect(dynDefs.get(2)?.blankName).toBe('fluid-blank');
+    // No NEW def was created at the sentence's first-word index.
+    const newDef = dynDefs.get(0);
+    if (newDef) expect(newDef.blankName).not.toBe('sentence-cue:more-formal');
+  });
+
+  it('still registers the passive def when no managed span overlaps (regression guard for the overlap check)', async () => {
+    // Same shape as the happy-path test up top, but with an UNRELATED
+    // satellite pair sitting outside the sentence's char range. The
+    // overlap check must not over-trigger — the def should still get
+    // registered so cycling Up surfaces the rewrite.
+    const text = 'thanks a bunch.';
+    const { adapter, dynDefs, selectorSatelliteState, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: text,
+        spanStart: 0,
+        spanEnd: text.length,
+        wordIndex: 0,
+        rewrites: ['Thank you very much.'],
+      }),
+    ]);
+    // Satellite pair lives FAR outside the sentence span (chars 100-120)
+    // — represents a stale state from a different buffer; should not
+    // block the passive def registration.
+    selectorSatelliteState.set({
+      blankName: 'opencues',
+      scriptPath: '',
+      selectorIndex: 10,
+      selectorLength: 1,
+      satelliteIndex: 11,
+      satelliteLength: 1,
+      currentSetting: 'tips-mode',
+      currentValue: 'on',
+      separator: ' ',
+      clearOnEdit: true,
+      pairCharStart: 100,
+      pairCharEnd: 120,
+    }, text);
+    adapter.pushText(text);
+    await resolver.resolveAndApply(text);
+
+    // Buffer untouched (passive cue); def is ready for cycling.
+    expect(adapter.getText()).toBe(text);
+    const def = dynDefs.get(0);
+    expect(def?.blankName).toBe('sentence-cue:more-formal');
+    expect(def?.currentIndex).toBe(0);
   });
 
   it('suppresses word-cue results whose wordIndex falls inside the sentence claim', async () => {
@@ -1224,8 +1366,10 @@ describe('Resolver sentence-cue substitution', () => {
 
   it('v1 caps at one sentence-cue per resolve (multi-sentence-cue handling deferred)', async () => {
     // Two sentence-cue results in the same resolve pass — only the
-    // first should apply. Documented v1 limitation to avoid the
-    // word-index shift cascading across multiple in-pass splices.
+    // first should register a DynDef. Documented v1 limitation: future
+    // multi-sentence handling would need per-sentence cue suppression
+    // tracking so independent sentence cues don't all claim the same
+    // word range. The buffer is untouched either way (passive cue).
     const buffer = 'thanks a bunch. ping me when ready.';
     const s1End = 'thanks a bunch.'.length;
     const s2Start = 'thanks a bunch. '.length;
@@ -1251,10 +1395,14 @@ describe('Resolver sentence-cue substitution', () => {
     adapter.pushText(buffer);
     await resolver.resolveAndApply(buffer);
 
-    // First sentence applied, second sentence's source-text remains in the buffer.
-    const liveText = adapter.getText();
-    expect(liveText.startsWith('Thank you very much.')).toBe(true);
-    expect(liveText.includes('ping me when ready.')).toBe(true);
+    // Buffer untouched — passive cue. First sentence's def registered;
+    // second sentence's def skipped (one-per-resolve cap).
+    expect(adapter.getText()).toBe(buffer);
+    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
+    // Second sentence's wordIndex=3 should NOT have a def (the cap
+    // dropped it before def-creation).
+    const secondDef = dynDefs.get(3);
+    if (secondDef) expect(secondDef.blankName).not.toBe('sentence-cue:more-formal');
   });
 });
 

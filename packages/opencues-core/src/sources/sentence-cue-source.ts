@@ -271,8 +271,14 @@ export class SentenceCueSource implements CueSource {
     let raw: string;
     try {
       // Token budget — ~3 sentences × 3 alts × ~30 tokens each + framing
-      // = ~400 tokens with reasoning headroom. 768 covers most prose
-      // buffers; bump if real-world buffers truncate.
+      // = ~400 tokens of OUTPUT. 768 covers most prose buffers when
+      // reasoning is OFF. When reasoning is on for a gpt-oss model,
+      // the provider auto-floors to 2048 (see llm-provider.ts:
+      // `needsReasoningFloor`) — covers reasoning + content. The
+      // agentic harness on 2026-05-18 caught the previous
+      // unconditional 768 producing empty content
+      // (`emitted=0, ceded=0` in 120-187ms) on cerebras-gpt-oss-120b
+      // with reasoning=medium; the provider floor closed the gap.
       raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, 768);
     } catch (e) {
       this.log(`SentenceCue[${this.sourceConfig.name}]: LLM call failed — ${(e as Error).message}`);
