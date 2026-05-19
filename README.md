@@ -31,13 +31,13 @@ Most writing tools suggest after you submit. OpenCues suggests *while* you type 
 
 ## Supported Editors
 
-| Editor | Status | Integration | Compatible with |
-|--------|--------|-------------|-----------------|
-| **Claude Code** | Available | `integrations/claude-code/` (via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches) | Claude Code 2.1.110+ |
-| **OpenCode** | Available | `integrations/opencode/` (TUI patches) | OpenCode 1.4.x |
-| **Chrome** | Beta | `integrations/chrome/` (MV3 extension) | Chrome 121+ |
-| **Gemini CLI** | Beta | `integrations/gemini-cli/` (TSX source patches) | Gemini CLI 0.41.x |
-| **VS Code** | Planned | Extension | — |
+| Editor | Status | Should I try this? | Integration | Compatible with |
+|--------|--------|--------------------|-------------|-----------------|
+| **Claude Code** | Available | **Yes — daily driver** | `integrations/claude-code/` (via [tweakcc](https://github.com/Piebald-AI/tweakcc) patches) | Claude Code 2.1.110+ |
+| **OpenCode** | Available | **Yes — daily driver** | `integrations/opencode/` (TUI patches) | OpenCode 1.4.x |
+| **Chrome** | Beta | Yes — works on most pages, rough edges on heavy SPAs | `integrations/chrome/` (MV3 extension) | Chrome 121+ |
+| **Gemini CLI** | Beta | Yes — feature-complete, React/Ink quirks logged | `integrations/gemini-cli/` (TSX source patches) | Gemini CLI 0.41.x |
+| **VS Code** | Planned | Not yet | Extension | — |
 
 ## The Standard
 
@@ -99,6 +99,14 @@ opencues which            # what's installed where + which pin
 
 If `claude-cues` launches but cues never fire, it's almost always (a) a missing API key, (b) Ctrl+Alt+arrow being eaten by your desktop's workspace switcher (Linux especially), or (c) the runtime didn't boot. `opencues doctor` catches the first; the second needs an OS-level unbind; the third shows up in `/tmp/opencues.log` within seconds of typing.
 
+> **Linux/Wayland workspace conflict:** GNOME, KDE, and most tiling WMs bind Ctrl+Alt+arrow to workspace switching by default. The OS swallows the keystroke before OpenCues ever sees it — typing feels normal but cycling does nothing. To unbind:
+> - **GNOME:** `gsettings set org.gnome.desktop.wm.keybindings switch-to-workspace-left "[]"` (repeat for `-right`, `-up`, `-down`). Revert with `... reset switch-to-workspace-left`.
+> - **KDE:** *System Settings → Shortcuts → Global Shortcuts → KWin* → clear "Switch One Desktop to the Left/Right/Up/Down".
+> - **Sway/i3:** comment out the `Ctrl+Alt+Left/Right` bindings in your config.
+> - **macOS:** *System Settings → Keyboard → Keyboard Shortcuts → Mission Control* → uncheck "Move left a space" / "Move right a space" (or change to Ctrl+arrow only).
+>
+> Test: in a fresh shell, press Ctrl+Alt+Right inside `claude-cues`. If your workspace switches, the OS still owns the binding.
+
 > **Heads-up:** OpenCues installs a **separate, patched copy of the editor at a pinned version** — it doesn't modify your existing one. Claude Code is pinned to v2.1.110, cloned into `~/claude-code-cues/`, and exposed as `claude-cues` on your PATH. OpenCode is pinned to v1.14.17 (sha `40ba8f3`), cloned into `~/opencode-cues/`. Gemini CLI is pinned to v0.41.2, cloned into `~/gemini-cli-cues/`. All pins live in `integrations/<host>/pin.json`. Your native `claude`, your existing OpenCode install, and your native `gemini` stay untouched. Uninstall (`opencues uninstall <host>`) just removes the patched copy — no rollback work on the originals. See § Where things land for the per-host paths. **No npm/Homebrew package yet** — clone-and-build is the only path until v1 publishes.
 
 ## Install
@@ -147,6 +155,23 @@ pnpm exec opencues run gemini-cli
 | **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.x | `opencues run gemini-cli` |
 
 For per-host details (paths it touches, uninstall, troubleshooting): see each integration's README under `integrations/<host>/README.md`.
+
+### Common install failures (and the fix)
+
+If `opencues install <host>` exits non-zero, it's usually one of these:
+
+| What you see | Why | Fix |
+|---|---|---|
+| `pnpm: command not found` | pnpm isn't on PATH | `corepack enable pnpm` (Node 16+ ships it) or `npm install -g pnpm` |
+| `claude-cues: command not found` after a successful install | Your shell hasn't picked up `~/.local/bin/` (or wherever pnpm linked the bin) | Open a fresh shell, or `export PATH="$HOME/.local/bin:$PATH"` |
+| Install hangs at `Cloning into ~/claude-code-cues...` | Slow git clone or proxy issue — installer fetches the upstream fork | Wait it out (first install pulls ~50MB); set `https_proxy` if behind a corporate proxy |
+| `GROQ_API_KEY not set` warning at the end | Key isn't visible to the install shell | `opencues set-key groq <key>` (writes `~/.cues/.env`, no shell config needed) and re-run install |
+| Linux: Ctrl+Alt+arrow switches workspace instead of cycling cues | Your DE owns those keys | Unbind in your DE (GNOME/KDE/Sway/macOS one-liners in the Stuck? panel above) |
+| `claude-cues` launches but typing does nothing visible | Runtime didn't boot, or `voice-mode: inactive` and you expected TTS | `tail /tmp/opencues.log` for the boot lines; `opencues doctor` cross-checks every install boundary |
+| OpenCode install fails at `bun install` | Bun isn't installed | `curl -fsSL https://bun.sh/install \| bash` then re-run |
+| Chrome extension loads but does nothing on a page | Bundle didn't sync or extension is stale | Hard-reload at `chrome://extensions` (the reload icon on the OpenCues card) + hard-refresh the page |
+
+`opencues doctor` runs every one of these checks (and more) — if you're stuck on something else, start there.
 
 ### What each install does
 
