@@ -16,7 +16,8 @@ reintegration.
 | `../../packages/opencues-runtime/adapters/gemini/v0.41/boot.ts` | Adapter band — owns `wrappedSetText/Cursor/Push/ForceRender`, pull-model state (`pendingText/Cursor/Render`), `consumePendingRenderImpl`, `decorateLine`. |
 | `../../packages/opencues-runtime/adapters/gemini/v0.41/adapter.ts` | `GeminiV041Adapter` — implements the runtime's `HostAdapter` contract using the `GeminiBindings` from boot.ts. |
 
-The four files patched in the fork:
+The four files patched in the fork (paths relative to the cloned
+`~/gemini-cli-cues/` tree — they are NOT files in the OpenCues repo):
 
 - `packages/cli/src/ui/AppContainer.tsx` — adds `useEffect(() => startOpenCues(...), [])` and `useKeypress(... KeypressPriority.Critical)` so we intercept keys before any other subscriber.
 - `packages/cli/src/ui/components/InputPrompt.tsx` — publishes `PromptInputAccess`, observes text+cursor, registers the render-kick (`useOpenCuesRenderTick`), pulls pending render state on every render via `consumePendingOpenCues`, decorates each visual line via `decorateOpenCuesLine`.
@@ -340,7 +341,7 @@ all use `match:` regexes that route specific words but don't
 enumerate them. `lawyer` isn't in any cueMap → not navigable.
 
 Test cycling with words that are explicitly in a tip group (e.g.
-`ci-cd` from `cues/tips/CUE.md`) or with words that match a cue
+`ci-cd` from `defaults/cues/tips/CUE.md`) or with words that match a cue
 source's regex (e.g. `clause`, `contract` for legal) AND are also in
 its keyword/word list. Or add a default-source (no `match:`) that
 catches everything.

@@ -29,7 +29,7 @@ That's the whole install — one command, end to end. The installer will:
 2. **Install fork dependencies** via `bun install` so the fork's own deps (e.g. `@opentui/solid/preload`) land
 3. **Build** `@opencues/core` + `@opencues/runtime` (turbo-cached)
 4. **Install** the built artefacts into the fork at `node_modules/@opencues/{core,runtime}/`
-5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`, `feature-plugins/sidebar/footer.tsx`
+5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits `app.tsx`, `component/prompt/index.tsx`, `feature-plugins/home/footer.tsx`, `feature-plugins/sidebar/footer.tsx` (all paths relative to `~/opencode-cues/packages/opencode/src/cli/cmd/tui/` — NOT files in the OpenCues repo)
 
 Re-runs are idempotent — unchanged patches skip, unchanged builds skip. First install is ~5 min (mostly `git clone` + `bun install`); re-runs are under 30s.
 

@@ -76,11 +76,13 @@ constitutes a "good" alternative for THIS cue. The runtime appends a
 standard output-format spec (the SENTENCE/ALT/--- block shape) so
 authors only write the *intent*, never the wire format.
 
-You can ship multiple sentence-scope cues side-by-side
-(`more-formal/CUE.md`, `more-concise/CUE.md`, `active-voice/CUE.md`,
-etc.). Each gets its own LLM call per buffer per resolve. The
-sentence-cues-mode scalar is a single global kill-switch on top of
-all per-cue declarations.
+You can ship multiple sentence-scope cues side-by-side. Today's
+default install ships only `more-formal/CUE.md`; future cues like
+`more-concise/CUE.md`, `active-voice/CUE.md`, `plain-english/CUE.md`
+follow the exact same one-file pattern (no source-class edits — see
+the architecture doc). Each gets its own LLM call per buffer per
+resolve. The sentence-cues-mode scalar is a single global
+kill-switch on top of all per-cue declarations.
 
 ---
 
