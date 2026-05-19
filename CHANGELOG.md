@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **First-party script config fields in `cue.md`** — `model`, `altCount`, `includeOriginal`, and body sections (e.g. `## Extract`, `## Transform`) parsed by opencues-core into `ControlConfig`. The integration passes them to blank scripts as `CUES_MODEL`, `CUES_ALT_COUNT`, `CUES_INCLUDE_ORIGINAL`, `CUES_PROMPT_*` env vars — keeping scripts free of config parsing.
 - **Claude CLI provider support** — `prompt-blank.sh` detects `claude-*` model names and calls `claude -p` instead of the HTTP API, using existing Claude Code auth. Switch by setting `model: claude-sonnet-4-6` in `cue.md`.
 - **`setup.sh --clean` flag** — wipes `~/.claude/node_modules/opencues-core` before reinstalling, removing stale files from old builds.
-- **Prompt improver benchmark** (`tests/benchmarks/prompt-improve.sh`) — 99 test cases across 6 categories (creative, technical, professional, research, edge). Automated intent check + verbatim-echo detection. Run per-category with `--category technical`.
+- **Prompt improver benchmark** — 99 test cases across 6 categories (creative, technical, professional, research, edge). Automated intent check + verbatim-echo detection. Output preserved at `tests/results/historical/prompt-improve-2026-04-10.txt`. (The runnable `prompt-improve.sh` script was retired when the runtime moved to in-process `prompt-improver.ts`.)
 
 ### Fixed
 - **`_consumeAllAlts` not clearing when highlight inactive** — cleanup was inside `if(_hlState.active)` guard. Moved unconditionally before the guard so it fires whether or not the highlight is active when the user edits.

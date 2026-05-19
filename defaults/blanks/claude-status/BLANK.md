@@ -19,7 +19,7 @@ storage: claude-status
 
 Dispatched by the shared runtime `ClaudeStatusBlank`
 (`packages/opencues-runtime/src/blanks/claude-status.ts`). Hits the
-public Statuspage API at `status.claude.com/api/v2/summary.json` and
+public Statuspage API at `https://status.claude.com/api/v2/summary.json` and
 synthesises four cycling alts from one fetch:
 
 1. `Yes/No — <reason>` (default — answers the literal question)
