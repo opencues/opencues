@@ -67,6 +67,7 @@ Raw result matrices under [`tests/results/`](../results/) per bench
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 groq    gpt-oss-120b      91.8% / 1459 / $0.84    17.7% /  532 / $1.02    80.5% /  727 / $0.32 ★   83.1% /  925 / $0.51
 gemini  flash-lite        90.0% / 2263 / $1.52    89.2% /  729 / $0.37    89.2% /  772 / $0.54     90.5% / 1213 / $0.86
+gemini  3.5-flash ‡       —                       —                       85.7% /  892 / —          —
 cerebras gpt-oss-120b     78.8% /  933 / $2.13    29.4% /  330 / $1.36    76.2% /  331 / $0.74     47.6% /  363 / $1.89
 claude  haiku-4.5         87.9% / 3048 / $6.03    82.3% /  912 / $1.56    88.7% / 1125 / $2.06     84.4% / 1497 / $3.64
 openai  gpt-5.4-nano †    20.8% /  806 / $5.34    76.6% / 1431 / $0.35    48.9% / 1101 / $0.80     31.2% /  600 / $2.12
@@ -74,6 +75,7 @@ openai  gpt-5.4-mini  †   23.4% /  964 / $4.75    81.4% / 1251 / $0.79    85.3
 openai  chat-latest   †   90.0% / 2766 / $30.44   86.1% /  970 / $7.72    86.6% / 1056 / $11.03    81.4% / 1382 / $12.53
 ```
 † OpenAI rows: nano @ $0.20/$1.25, mini @ $0.75/$4.50, chat-latest @ $5/$30 per M tokens.
+‡ `gemini-3.5-flash` 2026-05-19 spot-bench (fused only, thinking off) — regression vs `flash-lite` (−3.5pp acc, +15% latency). See [`../results/gemini-3.5-flash-2026-05-19.md`](../results/gemini-3.5-flash-2026-05-19.md).
 
 **Fluid-blank (137 cases) — accuracy / per-case ms / $-per-correct:**
 
@@ -82,12 +84,14 @@ openai  chat-latest   †   90.0% / 2766 / $30.44   86.1% /  970 / $7.72    86.6
 ─────────────────────────────────────────────────────────────────────────────────────────
 groq    gpt-oss-120b     100.0% / 1216 / $0.37    97.1% / 1674 / $0.49    99.3% /  686 / $0.17 ★
 gemini  flash-lite        98.5% / 1025 / $0.65    97.8% / 1629 / $0.87    98.5% /  613 / $0.30
+gemini  3.5-flash ‡       —                       —                       98.5% /  727 / —
 cerebras gpt-oss-120b     99.3% /  530 / $0.83    95.6% /  722 / $1.11   100.0% /  262 / $0.38   ← fastest
 claude  haiku-4.5         99.3% / 1676 / $2.52    94.9% / 2479 / $3.48    99.3% /  837 / $1.18
 openai  gpt-5.4-nano      27.0% /  964 / $1.93     3.6% /  261 / $18.89   40.9% /  425 / $0.59
 openai  gpt-5.4-mini       9.5% /  480 / $5.47    13.1% /  603 / $5.19    80.3% / 1062 / $1.46
 openai  chat-latest      100.0% / 1529 / $12.80   98.5% / 2249 / $17.26   99.3% /  855 / $6.04
 ```
+‡ `gemini-3.5-flash` 2026-05-19 spot-bench (fused only, thinking off) — same accuracy as `flash-lite`, +19% slower. Not a strict upgrade.
 
 ★ = best cost-per-correct in the bench.
 
