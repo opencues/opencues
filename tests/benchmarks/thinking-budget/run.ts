@@ -15,7 +15,7 @@
  * Each provider runs 4 levels: none / low / medium / high. Cell
  * results: median, mean, p95 latency + accuracy. Then we apply
  * use-case latency thresholds (word-cue 500ms, fluid-blank 1500ms,
- * transform-blank 3000ms — the p50 the user perceives as "feels
+ * transform-blank 1000ms — the p50 the user perceives as "feels
  * instant" / "tolerable wait" / "long but acceptable") to compute
  * each provider's max useable thinking budget per pipeline.
  *
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
   console.log(`\nUse-case latency thresholds (p50 target):`);
   console.log(`  word-cue     ≤ 500ms`);
   console.log(`  fluid-blank  ≤ 1500ms`);
-  console.log(`  transform    ≤ 3000ms\n`);
+  console.log(`  transform    ≤ 1000ms\n`);
 
   // Run all cells concurrently across providers (different rate-limit
   // domains) but serially within each provider (avoid burning a
@@ -242,7 +242,7 @@ async function main(): Promise<void> {
   const thresholds = [
     { name: 'word-cue', ms: 500 },
     { name: 'fluid-blank', ms: 1500 },
-    { name: 'transform', ms: 3000 },
+    { name: 'transform', ms: 1000 },
   ];
   console.log(`provider     ${thresholds.map(t => t.name.padEnd(15)).join('')}`);
   console.log(`─────────────────────────────────────────────────────────`);
