@@ -1,55 +1,60 @@
 # Benchmarks — provider, pipeline, and cost landscape
 
-Cross-benchmark summary of what we've measured across the two LLM-
-driven pipelines that the runtime ships today. Each pipeline has its
-own running experiment log; this doc is the consolidated reference
-for "given my task and constraints, which provider × pipeline should
-I pick?"
+Cross-bench landing page for everything OpenCues measures. Each
+pipeline has its own running experiment log; this doc consolidates
+"given my task and constraints, which provider × mode should I pick?"
 
-Source documents:
-- `tests/benchmarks/transform-blank/EXPERIMENTS.md` — imperative-rewrite
-  pipeline (Experiments 1–7). The 3-pass EXTRACT → APPLY → VERIFY
-  architecture and its variants.
-- `tests/benchmarks/fluid-blank/EXPERIMENTS.md` — short-factual-lookup
-  pipeline (Experiment 1). The fused 1-call replacement for the
-  legacy classified hybrid.
+---
 
-Raw logs:
-- `tests/results/matrix-v2/` — transform-blank 5×4 matrix.
-- `tests/results/fluid-matrix-v1/` — fluid-blank 5×3 matrix.
-- `tests/results/cerebras-vs-groq-fused/` — 5-rep head-to-head.
+## Landing map — what every bench measures
+
+| Pipeline | What it tests | Cases | Status | Source |
+|---|---|---|---|---|
+| **transform-blank** | Imperative rewrite (`change boy to girl _ the boy ran`) | 231 across 18 categories | shipped, ⭐ 5×4 matrix | [`transform-blank/EXPERIMENTS.md`](transform-blank/EXPERIMENTS.md) |
+| **fluid-blank** | Short factual lookup (`capital of france _`) | 137 + 7 category bench suites (math, factual, unit, color, http, roman, translation, spelling) | shipped, ⭐ 5×3 matrix | [`fluid-blank/EXPERIMENTS.md`](fluid-blank/EXPERIMENTS.md) |
+| **fluid-blank-ambient** | Field-aware lookup (label/placeholder/page-title disambiguates `paris _` → `CDG` on Airport-code field) | 137 standard + 18 in-prompt + 21 held-out | shipped, chrome-only feature | [`fluid-blank-ambient/`](fluid-blank-ambient/) |
+| **agent-rewrite** | Continuous in-place cadence-driven rewrite (`agentically X _`) | live-typing scenarios + unit-level merge cases | shipped, integration-level | [`agent-rewrite/CONTINUE.md`](agent-rewrite/CONTINUE.md) |
+| **user-context** | Sentinel-token PII handling — model emits `[FIRST NAME]`, post-processor substitutes | 32 standard + 10 multi-sentinel (up to 16 tokens/answer) × 5 providers | shipped | [`user-context/FINDINGS.md`](user-context/FINDINGS.md) |
+| **fluid-config** | Semantic `_` → settings change classifier (`stop showing tips _` → tips-mode=off) | 61 in-prompt + 34 holdout × 5 providers | shipped May 2026 | [`fluid-config/EXPERIMENTS.md`](fluid-config/EXPERIMENTS.md) |
+| **sentence-cues** | Sentence-scope rewrites (`scope: sentence` cue declaration) — first cue: more-formal | 30 cases × 6 buckets × 5 providers | shipped May 2026 | [`sentence-cues/EXPERIMENTS.md`](sentence-cues/EXPERIMENTS.md) |
+| **thinking-budget** | Per-provider × per-reasoning-level latency budget (which provider can afford which reasoning effort on which pipeline?) | 40-case fluid-blank stride sample × 4 providers × 4 reasoning levels | shipped May 18 2026 | [`../results/thinking-budget-2026-05-18.md`](../results/thinking-budget-2026-05-18.md) |
+
+Raw result matrices under [`tests/results/`](../results/) per bench
+(`matrix-v2/` for transform-blank, `fluid-matrix-v1/` for fluid-blank,
+`fluid-config-matrix/`, `sentence-cues-matrix/`, `user-context-*/`,
+`cerebras-vs-groq-fused/` for the 5-rep head-to-head, etc.).
 
 ---
 
 ## Methodology — what makes a number trustworthy here
 
-1. **Judge pinned to Groq gpt-oss-120b.** Self-judging (when judge and
-   inference share a provider) inflates accuracy ~5pp. Both benches now
-   import `judge*.ts` from `./groq-impl` directly, ignoring
-   `OPENCUES_BENCH_PROVIDER`.
-2. **Same suite per bench every run.** transform-blank: 231 cases.
-   fluid-blank: 137 cases.
-3. **`temperature: 0`, `seed: 42`** on every provider that exposes them.
-   Gemini's `thinkingBudget: 0` by default.
-4. **`parallel: 8`** worker pool by default (6 for OpenAI nano to stay
-   under TPM). Wall-clock numbers reflect this.
-5. **Exact-match short-circuit in fluid-blank judge** — answers matching
-   expected/alternates case-insensitively skip the LLM judge entirely.
-   Both saves judge cost AND survives transient rate-limit on judge
-   endpoint.
-6. **Soft-fail on rate-limit & parse errors** — `groq-impl.ts` returns
-   empty text rather than throwing, so one rate-limited case during a
-   parallel sweep doesn't kill a whole 137-case run.
+1. **Judge pinned to Groq gpt-oss-120b.** Self-judging (when judge
+   and inference share a provider) inflates accuracy ~5pp. Every
+   bench's `judge*.ts` imports from `./groq-impl` directly,
+   ignoring `OPENCUES_BENCH_PROVIDER`.
+2. **Same suite per bench every run.** Cases are versioned in
+   `cases.ts` / `cases-holdout.ts`; reruns produce comparable numbers.
+3. **`temperature: 0`, `seed: 42`** on every provider that exposes
+   them. Gemini's `thinkingBudget: 0` by default.
+4. **`parallel: 8`** worker pool by default (6 for OpenAI nano to
+   stay under TPM). Wall-clock numbers reflect this.
+5. **Exact-match short-circuit in fluid-blank judge** — answers
+   matching expected/alternates case-insensitively skip the LLM
+   judge entirely.
+6. **Deterministic judge for fluid-config + sentence-cues** — verdict
+   is a bounded enum (setting+value or sentence-cede), so the judge
+   is string-equality + registry-validation, not LLM-driven. No
+   judge-rate-limit failure mode.
+7. **Soft-fail on rate-limit & parse errors** — `groq-impl.ts`
+   returns empty text rather than throwing.
 
 **Known limitations:**
-- Cost numbers are estimated from prompt-length × per-token prices, NOT
-  from API `usage` blocks. OpenAI gpt-5.4-nano's reasoning-token spend
-  is understated 2-4× as a result.
-- Run-to-run variance hasn't been formally measured for most rows
-  (single sample each, except the cerebras-vs-groq head-to-heads).
-  Treat ±3pp accuracy and ±15% latency as the practical noise floor.
-- Pricing snapshot: 2026-05-16. Re-fetch before quoting in external
-  material.
+- Cost numbers estimated from prompt-length × per-token prices, NOT
+  API `usage` blocks. OpenAI reasoning-token spend understated 2-4×.
+- Run-to-run variance only formally measured for cerebras-vs-groq
+  `fused` heads. Treat ±3pp accuracy and ±15% latency as practical
+  noise floor on single-trial cells.
+- Pricing snapshot: 2026-05-16. Re-fetch before quoting externally.
 
 ---
 
@@ -68,8 +73,7 @@ openai  gpt-5.4-nano †    20.8% /  806 / $5.34    76.6% / 1431 / $0.35    48.9
 openai  gpt-5.4-mini  †   23.4% /  964 / $4.75    81.4% / 1251 / $0.79    85.3% / 1332 / $2.14     58.4% / 1129 / $3.92
 openai  chat-latest   †   90.0% / 2766 / $30.44   86.1% /  970 / $7.72    86.6% / 1056 / $11.03    81.4% / 1382 / $12.53
 ```
-† OpenAI rows: nano @ $0.20/$1.25, mini @ $0.75/$4.50, chat-latest (gpt-5.5 Instant) @ $5/$30 per M tokens.
-   chat-latest forces `reasoning_effort: 'medium'` minimum (no 'low' or 'none' allowed).
+† OpenAI rows: nano @ $0.20/$1.25, mini @ $0.75/$4.50, chat-latest @ $5/$30 per M tokens.
 
 **Fluid-blank (137 cases) — accuracy / per-case ms / $-per-correct:**
 
@@ -78,7 +82,7 @@ openai  chat-latest   †   90.0% / 2766 / $30.44   86.1% /  970 / $7.72    86.6
 ─────────────────────────────────────────────────────────────────────────────────────────
 groq    gpt-oss-120b     100.0% / 1216 / $0.37    97.1% / 1674 / $0.49    99.3% /  686 / $0.17 ★
 gemini  flash-lite        98.5% / 1025 / $0.65    97.8% / 1629 / $0.87    98.5% /  613 / $0.30
-cerebras gpt-oss-120b     99.3% /  530 / $0.83    95.6% /  722 / $1.11   100.0% /  262 / $0.38   (fastest)
+cerebras gpt-oss-120b     99.3% /  530 / $0.83    95.6% /  722 / $1.11   100.0% /  262 / $0.38   ← fastest
 claude  haiku-4.5         99.3% / 1676 / $2.52    94.9% / 2479 / $3.48    99.3% /  837 / $1.18
 openai  gpt-5.4-nano      27.0% /  964 / $1.93     3.6% /  261 / $18.89   40.9% /  425 / $0.59
 openai  gpt-5.4-mini       9.5% /  480 / $5.47    13.1% /  603 / $5.19    80.3% / 1062 / $1.46
@@ -87,148 +91,217 @@ openai  chat-latest      100.0% / 1529 / $12.80   98.5% / 2249 / $17.26   99.3% 
 
 ★ = best cost-per-correct in the bench.
 
-### New scores vs the original Groq gpt-oss-120b setup
+---
 
-Original production default (Q1 2026): `groq · openai/gpt-oss-120b · 3-pass`
-on transform-blank, `groq · openai/gpt-oss-120b · classified` on fluid-blank.
-Below: what each May 2026 alternative buys you vs that baseline.
+## Thinking-budget grid — which reasoning level fits which pipeline
+
+**Source:** [`tests/results/thinking-budget-2026-05-18-maxtokens-2048.md`](../results/thinking-budget-2026-05-18-maxtokens-2048.md)
+(MAX_TOKENS=2048 run; replaces the initial 512-token run which showed
+a `gpt-oss · high` accuracy collapse since proven to be pure budget
+starvation).
+
+40-case fluid-blank stride sample, single trial per cell, p50 latency.
+
+Cell colour:
+- 🟢 = on-target latency AND ≥ 90 % accuracy
+- 🟡 = on-target latency BUT accuracy < 90 % (inaccurate-but-fast)
+- 🔴 = OVER latency (any amount; accuracy is irrelevant once we miss the deadline)
+- ⚪ = provider rejected / produced empty output
+
+Latency targets: word-cue ≤ 500 ms · fluid-blank ≤ 1500 ms · transform ≤ 1000 ms.
 
 ```
-TRANSFORM-BLANK — vs groq gpt-oss 3-pass (91.8% / 1459ms / $0.84)
-─────────────────────────────────────────────────────────────────────────────────
-groq      · fused              80.5% / 727ms  / $0.32    −11.3pp  -50% lat  -62% $   ← cheap mode
-gemini    · single-call        89.2% / 729ms  / $0.37    −2.6pp   -50% lat  -56% $
-gemini    · fused              89.2% / 772ms  / $0.54    −2.6pp   -47% lat  -36% $
-cerebras  · fused              83.1% / 425ms  / $0.74    −8.7pp   -71% lat  -12% $   ← speed mode
-claude    · fused              88.7% / 1125ms / $2.06    −3.1pp   -23% lat  +145% $
-openai    · mini · fused       85.3% / 1332ms / $2.14    −6.5pp   -9%  lat  +155% $
-openai    · chat-latest · 3p   90.0% / 2766ms / $30.44   −1.8pp   +90% lat  +3522% $
-openai    · chat-latest · fused 86.6% / 1056ms / $11.03  −5.2pp   -28% lat  +1213% $
+                       p50    word-cue   fluid-blank  transform
+                              (≤500ms)   (≤1500ms)    (≤1000ms)
+                       ───    ────────   ─────────    ─────────
+groq      · none         0    ⚪          ⚪           ⚪         (gpt-oss rejects 'none')
+groq      · low        834    🔴          🟢           🟢
+groq      · medium    1668    🔴          🔴           🔴
+groq      · high      3685    🔴          🔴           🔴         ← acc 95% but 3.7× over transform target
 
-FLUID-BLANK — vs groq gpt-oss classified (97.1% / 1674ms / $0.49)
-─────────────────────────────────────────────────────────────────────────────────
-cerebras  · fused             100.0% / 262ms  / $0.38    +2.9pp   -84% lat  -22% $   ← new default
-groq      · fused              99.3% / 686ms  / $0.17    +2.2pp   -59% lat  -65% $   ← cheapest fallback
-gemini    · fused              98.5% / 613ms  / $0.30    +1.4pp   -63% lat  -39% $
-claude    · fused              99.3% / 837ms  / $1.18    +2.2pp   -50% lat  +141% $
-openai    · chat-latest · fused 99.3% / 855ms / $6.04    +2.2pp   -49% lat  +1133% $
+cerebras  · none       187    ⚪          ⚪           ⚪         (returns empty)
+cerebras  · low        244    🟢          🟢           🟢         ★
+cerebras  · medium     329    🟢          🟢           🟢         ★ wins every pipeline
+cerebras  · high       529    🔴          🟢           🟢         ← over word-cue target by 29ms
+
+gemini    · none       502    🔴          🟢           🟢         (over word-cue by 2ms — knife edge)
+gemini    · low        787    🔴          🟢           🟢
+gemini    · medium     795    🔴          🟢           🟢         (API maps medium→low)
+gemini    · high      1557    🔴          🔴           🔴
+
+openai    · none       742    🔴          🟢           🟢         (maps to 'minimal')
+openai    · low       1040    🔴          🟢           🔴         (over transform by 40ms)
+openai    · medium    1953    🔴          🔴           🔴
+openai    · high      1928    🔴          🔴           🔴         (p95 12.7s)
 ```
 
-**Takeaway:** the old Groq baseline is no longer the right default on either
-pipeline. On transform-blank, no alternative beats it on accuracy under a
-fair judge, but `groq · fused` and `cerebras · fused` win on latency at a
-real but defensible accuracy cost. On fluid-blank, every other provider's
-`fused` mode beats it on every axis — the old `classified` 3-call hybrid
-is strictly dominated.
+**Note: no 🟡 cells in this run** — the accuracy floor is 93 % across
+every reasoning level after the MAX_TOKENS=2048 fix, so latency is
+always the disqualifier when a cell fails. 🟡 stays in the legend as
+the slot for future cells that come in fast-but-inaccurate (e.g. if
+we re-add small-model variants like gpt-5.4-nano).
+
+**Reading the grid:**
+
+- **Reds dominate the word-cue column.** Only Cerebras (low / medium)
+  hits 🟢 there. Everyone else — including Cerebras at `high` (529ms,
+  29ms over) — misses the 500ms bar by some margin. The word-cue
+  surface is the strictest budget and the most selective.
+- **Cerebras at low / medium is the ONLY provider × reasoning combo
+  with all three cells green.** Every other row gives up at least
+  one pipeline. The cerebras-high row stays green on fluid + transform
+  (529ms fits both 1500ms and 1000ms targets) but goes red on
+  word-cue.
+- **The 1000ms transform target makes Cerebras structural, not
+  preferred.** At the old 3000ms target, every provider had at least
+  one viable transform configuration. At 1000ms:
+  - groq: only `low` fits (834ms) — every other level red
+  - gemini: low / medium fit (787-795ms) — high red
+  - openai: only `none` fits (742ms) — every reasoning level red, low misses by 40ms
+  - cerebras: every level except `none` fits — including `high` at 529ms ★
+- **Per-provider knee** — max reasoning where the provider hits 🟢 on every pipeline:
+
+  | Provider | Word-cue | Fluid-blank | Transform |
+  |---|---|---|---|
+  | **cerebras** | medium | high | **high** ★ |
+  | groq | — (no level fits) | low | low |
+  | gemini | — | medium | medium |
+  | openai | — | low | none only (low misses transform by 40ms) |
+
+- **Gemini-none at 502ms is the closest near-miss.** 2ms over the
+  word-cue target. Re-running with `parallel=4` (less queue contention)
+  would likely tip it green; could be worth a follow-up bench.
+
+---
+
+## Optional-feature benches — headline numbers
+
+These features each ship with their own bench under
+`tests/benchmarks/<feature>/`. All are off-by-default opt-ins;
+all were validated across 5 providers before shipping.
+
+### Fluid-config (semantic `_` → settings change)
+
+**Bench:** 61 in-prompt cases + 34 holdout cases × 5 providers ×
+2 suites = **210 reject decisions and 165 hit decisions**.
+
+| Provider | In-prompt | Holdout (recall) | Holdout (precision) | Latency (HO) |
+|---|---|---|---|---|
+| gemini-flash-lite | 100% | **100%** | 100% | 491 ms |
+| groq gpt-oss-120b | 100% | 95% | 100% | **251 ms** |
+| cerebras gpt-oss-120b | 100% | 95% | 100% | 248 ms |
+| openai-nano | 100% | 95% | 100% | 845 ms |
+| claude-haiku-4-5 | 100% | 90% | 100% | 848 ms |
+
+**Trust-boundary metric:** precision (reject → NONE) is **100% across
+all 210 reject decisions**. Zero false positives means routing
+"capital of france _" or "make it louder _" never mis-flips a
+setting. Recall ≥ 80% target met by every provider; 90-100% range.
+Full table: [`fluid-config/EXPERIMENTS.md`](fluid-config/EXPERIMENTS.md).
+
+### Sentence-cues (sentence-scope alternatives)
+
+**Bench:** 30 cases × 6 buckets (clean-informal, fuzzy-informal,
+already-formal, multi-sentence, edge-short, edge-technical) ×
+5 providers. Default cue: `more-formal`.
+
+| Provider | Precision (CEDE) | Recall (MORE_FORMAL) | Avg latency |
+|---|---|---|---|
+| groq gpt-oss-120b | 100% | **100%** | 387 ms |
+| cerebras gpt-oss-120b | 100% | 95.7% | **247 ms** |
+| gemini-flash-lite | 100% | 95.7% | 628 ms |
+| claude-haiku-4-5 | 100% | 91.3% | 1107 ms |
+| openai-nano | 100% | 91.3% | 1347 ms |
+
+Same trust property as fluid-config: 100% precision across all
+30 reject decisions × 5 providers (150 total, zero false positives).
+Full table: [`sentence-cues/EXPERIMENTS.md`](sentence-cues/EXPERIMENTS.md).
+
+### User-context (sentinel-token PII handling)
+
+**Bench:** 32 standard + 10 multi-sentinel (up to 16 tokens per
+answer) × 5 providers.
+
+| Provider | Raw pass (standard) | Buffer-safe after PP | Multi (10 cases × 64 slots) | Avg latency |
+|---|---|---|---|---|
+| cerebras gpt-oss-120b | 32/32 (100%) | **32/32** | 10/10 + 64/64 slots | **276 ms** |
+| groq gpt-oss-120b | 32/32 | 32/32 | 10/10 + 64/64 | 407 ms |
+| openai gpt-5.4-nano | 32/32 | 32/32 | 10/10 + 64/64 | 1267 ms |
+| gemini-flash-lite | 31/32 | **32/32** (PP fixed 1) | 10/10 + 64/64 | 569 ms |
+| claude-haiku-4-5 | 30/32 | **32/32** (PP stripped 2 hallucinations) | 10/10 + 64/64 | 781 ms |
+
+**Headline:** the 90-line post-processor turns every model's output
+into 100% buffer-safe text. Zero PII leaks across the entire suite.
+Full doc: [`user-context/FINDINGS.md`](user-context/FINDINGS.md).
+
+### Fluid-blank-ambient (field-aware lookup)
+
+**Bench:** 137 standard + 18 in-prompt + 21 held-out across three
+classes (`ambient-helps`, `ambient-neutral`, `ambient-anti`).
+
+Drives the production `FUSED_SYSTEM_PROMPT` from
+`@opencues/core/src/sources/fluid-blank-source.ts` to validate
+that the field's label/placeholder/page-title disambiguates
+`paris _` → `CDG` on an Airport-code field WITHOUT degrading
+the unambiguous baseline (`paris _` on a generic field still →
+`Paris`).
+
+**Target:** 175/176 or better on cerebras-gpt-oss. Re-run after any
+edit to `FUSED_SYSTEM_PROMPT` or `renderAmbientBlock`. Full bench:
+[`fluid-blank-ambient/`](fluid-blank-ambient/).
+
+### Agent-rewrite (continuous cadence-driven rewrite)
+
+Not a numeric-acc bench — covers the cadence-driven rewrite +
+three-way merge that lets the agent run while the user types.
+27 word-diff unit tests + 13 live-typing scenarios + 33
+end-to-end integration tests. Full state:
+[`agent-rewrite/CONTINUE.md`](agent-rewrite/CONTINUE.md).
 
 ---
 
 ## When to pick which
 
 ### Production defaults (today)
+
 | Pipeline | Provider × mode | Acc | Latency | $/correct |
 |---|---|---|---|---|
 | transform-blank | groq gpt-oss · 3-pass | 91.8% | 1.5s | $0.84 |
-| fluid-blank | groq gpt-oss · classified (currently) | 97.1% | 1.7s | $0.49 |
+| fluid-blank | **cerebras gpt-oss · fused** | **100%** | **0.3s** | **$0.38** |
+| fluid-config | auto (groq/cerebras chain) · single-call | 95-100% | ~250 ms | n/a (rejects cheap) |
+| sentence-cues | auto (groq/cerebras chain) · fused | 91-100% | ~250-400 ms | n/a |
+| user-context | inherits global · fused | 100% buffer-safe | ~276-1267 ms | n/a |
 
-### Proposed defaults (post-benchmark)
-| Pipeline | Provider × mode | Acc | Latency | $/correct | Why switch |
-|---|---|---|---|---|---|
-| transform-blank | groq gpt-oss · 3-pass (no change) | 91.8% | 1.5s | $0.84 | Still accuracy ceiling under fair judge |
-| fluid-blank | **cerebras gpt-oss · fused** | **100.0%** | **0.3s** | **$0.38** | +2.9pp acc, 84% faster than current `classified`; tied for top accuracy, fastest in the matrix |
+### Reasoning level — stay on `low` everywhere by default
+
+`reasoning-effort: 'low'` is the global default — the thinking-budget
+bench shows accuracy saturates at `low` for short-output pipelines.
+Two exceptions: cerebras can afford `medium` if you want the
+accuracy headroom (and is still <500ms on word-cue), and openai
+gpt-5.4-mini scales to `high` cleanly on transform-blank (95% acc).
 
 ### Mode toggles to expose
-| Toggle name | Pipeline | Provider × mode | Use case |
+
+| Toggle | Pipeline | Provider × mode | Use case |
 |---|---|---|---|
 | `transform-blank-mode: cheap` | transform-blank | groq · fused | Batch / agentic / cost-sensitive — 80.5% acc at $0.32/correct |
 | `transform-blank-mode: fast` | transform-blank | gemini · single-call | Interactive UX — 89.2% acc at 729ms |
 
 ### Don't ship
+
 | Config | Why |
 |---|---|
-| Claude haiku (any mode, either bench) | 3–10× more expensive than groq/gemini for marginal accuracy gain |
+| Claude haiku (any mode, either main bench) | 3–10× more expensive than groq/gemini for marginal accuracy gain |
 | Cerebras gpt-oss on transform-blank | Word-choice quality drift — 13pp behind Groq's gpt-oss-120b on the rewrite task |
-| OpenAI gpt-5.4-nano (any mode, either bench) | Reasoning model wastes budget on every short-output task; max 76.6% acc |
+| OpenAI gpt-5.4-nano (any mode, either main bench) | Reasoning model wastes budget on every short-output task; max 76.6% acc |
+| `reasoning: high` on gpt-oss with default `max_tokens` (512) | Acc collapses to 20% — reasoning tokens consume the budget. Fix: pair with `max_tokens ≥ 1024`. Already done in commit `132fd3d`. See thinking-budget 2048-token re-run for the recovery (20% → 95-98%). |
+| `reasoning: medium` on fluid-blank with `low` available | Word-cue / inline UX takes the latency hit for no acc gain |
 | Fused-verify (any provider except groq) | Verify prompt tuned to gpt-oss failure modes; net-hurts every other model |
 | classified (fluid-blank, any provider) | Strictly dominated by `fused` on every axis |
 
-### Historical context — Cuescore replay (Feb 2026 → May 2026)
+---
 
-The repo had an older "cuescore" benchmark from Feb 18, 2026 (raw logs
-in `tests/results/cerebras-120b-20260218-173230.txt` etc.) that ran
-math + factual + grammar cases through gpt-oss-120b via Groq and via
-Cerebras. The original harness depended on a now-deleted external
-script (`~/.claude/llm-analyze-auto.sh`), but the cases themselves
-were ported into `tests/benchmarks/fluid-blank/cases-{math,factual}
--bench.ts` and run via `--math-bench` / `--factual-bench` flags.
-
-Replaying the math + factual portion on May 16, 2026:
-
-```
-                    Feb 2026 acc   May 2026 acc   Δ          Feb→May latency
-─────────────────────────────────────────────────────────────────────────────
-groq    gpt-oss     73.5%          99.2%         +25.7pp    489ms → 1148ms
-cerebras gpt-oss    64.0%          99.2%         +35.2pp    1687ms →  526ms (3.2× faster)
-```
-
-(May columns: 257/259 cases passing for both. Full table is in the
-matrix above — this row is just the math+factual subset for the
-historical comparison.)
-
-**Important methodology caveat — the Feb and May benchmarks are NOT
-directly comparable.** Settings deltas explain most of the delta:
-
-| Setting | Feb 18 cuescore | May 16 replay |
-|---|---|---|
-| Codebase | pre-monorepo `cues-core` (now removed) | `@opencues/core` + fluid-blank suite (introduced 2026-04-30) |
-| Pipeline | Single specialized call per type (MathSource / FactualSource) | 2-pass P1 SEGMENT → P3 ANSWER |
-| Placeholder | `BLANK` | `_` |
-| Output format | Free-form `ANSWER=value` | Structured `SPAN:` + `ANSWER:` |
-| Temperature | **0.3 (factual), 0.1 (math)** | **0.0** |
-| reasoning_effort | **default (high)** | **`low`** |
-| seed | not set | **42** pinned |
-| Concurrency | sequential | `parallel=8` |
-| Math case count | 109 | 157 (expanded) |
-
-**Revised findings:**
-
-1. **The 25-35pp accuracy jump is mostly opencues-side, not
-   provider-side.** The shift from `temperature=0.3` to `0.0` alone
-   explains a large fraction of the gain (T=0.3 trades determinism
-   for plausibly-wrong sampling on borderline cases). Combined with
-   the 2-pass pipeline + structured-output prompts + pinned seed,
-   the opencues-side changes account for most of the accuracy delta.
-   Provider inference quality has plausibly improved too, but this
-   benchmark can't separate the two contributions.
-
-2. **Cerebras's 3.2× latency drop (1687ms → 526ms) IS real provider
-   improvement.** Pipeline changes can only add latency (2-pass
-   doubles the call count); they cannot make individual API calls
-   faster. So Cerebras genuinely shipped faster inference between
-   Feb and May. Groq's apparent slowdown (489 → 1148ms) is the
-   opposite — likely `parallel=8` TPM contention against the shared
-   judge endpoint, not Groq getting slower.
-
-3. **The Feb-era "Cerebras < Groq" accuracy rule is partly settings-
-   coupled.** At temp=0.3 (Feb), Cerebras's slightly noisier inference
-   on the same model produced more wrong answers; at temp=0.0 (May),
-   the gap closes for short-answer tasks. The drift gap survives on
-   long-form rewrites (transform-blank) because rewriting forces many
-   sampling decisions where the deterministic-vs-noisy difference
-   still leaks through.
-
-**What we'd need to actually settle "did the provider get faster":**
-re-run Feb's cuescore on today's Groq + Cerebras endpoints using the
-*old* harness (single call, temp 0.3, sequential). The old harness
-depends on a deleted external script (`~/.claude/llm-analyze-auto.sh`)
-so this would require reconstructing the harness from the shell
-scripts + the deleted `cues-core` prompts that are in git history at
-commit `23a2eab` (2026-03-24). Open follow-up if the Cerebras-
-infrastructure-improvement claim ever needs to be defended rigorously.
-
-Raw logs: `tests/results/cuescore-replay/`.
-
-### Cerebras vs Groq head-to-head on `fused` (5 reps each)
+## Cerebras vs Groq head-to-head on `fused` (5 reps each)
 
 ```
 Bench       Provider    Acc %          Per-case ms      Wall s        Reps
@@ -239,11 +312,11 @@ fluid       groq        99.12 ±0.63    762 ±37          14.28 ±0.75   5
 fluid       cerebras    99.72 ±0.38    265 ±17          4.98  ±0.41   5
 ```
 
-- **Cerebras `fused` is 1.8–3× faster than Groq `fused`** on both benches.
-  Per-case latency intervals (mean ± 2σ) do not overlap on either bench —
-  the gap is statistically overwhelming, not noise.
-- **Cerebras has dramatically tighter latency variance** (±6ms vs ±32ms
-  on transform; ±17ms vs ±37ms on fluid). Predictability matters for
+- **Cerebras `fused` is 1.8–3× faster than Groq `fused`** on both
+  benches. Per-case latency intervals (mean ± 2σ) do not overlap on
+  either bench — the gap is statistically overwhelming, not noise.
+- **Cerebras has 2-5× tighter latency variance** (±6ms vs ±32ms on
+  transform; ±17ms vs ±37ms on fluid). Predictability matters for
   interactive UX where p99 latency drives perceived snappiness.
 - **Fluid-blank: pure win.** Cerebras matches accuracy (99.7 vs 99.1)
   AND is 2.9× faster. No tradeoff.
@@ -252,16 +325,19 @@ fluid       cerebras    99.72 ±0.38    265 ±17          4.98  ±0.41   5
 
 ---
 
-## Headline findings (cross-bench)
+## Cross-bench findings
 
-1. **"Fewer-but-fatter calls beat more calls" is real but task-coupled.**
+1. **"Fewer-but-fatter calls beat more calls" is real but
+   task-coupled.**
    - On fluid-blank (easy short-output task): fused wins on every
      provider that can produce usable output.
-   - On transform-blank (hard rewrite task): fused wins on Gemini/Claude,
-     loses to 3-pass on Groq gpt-oss (the smallest/cheapest model).
-   - **Rule of thumb:** the smaller the model and harder the task, the
-     more scaffolding helps. The larger the model and easier the task,
-     the more scaffolding hurts.
+   - On transform-blank (hard rewrite task): fused wins on Gemini /
+     Claude, loses to 3-pass on Groq gpt-oss.
+   - On fluid-config + sentence-cues (medium-output, bounded codomain):
+     single fused call hits 100% precision across all 5 providers.
+   - **Rule of thumb:** the smaller the model and harder the task,
+     the more scaffolding helps. The larger the model and easier the
+     task, the more scaffolding hurts.
 
 2. **"Same model name" doesn't mean "same output quality" across
    providers.** Cerebras's gpt-oss-120b is 13pp behind Groq's on the
@@ -270,29 +346,53 @@ fluid       cerebras    99.72 ±0.38    265 ±17          4.98  ±0.41   5
    show up on tasks that tax word-choice precision.
 
 3. **Pipeline shape is model-class-coded, not universal.** A pipeline
-   tuned to one model embeds that model's failure modes. Crossing
-   model classes (small MoE → general LLM → reasoning model) requires
-   re-evaluating the pipeline, not just swapping the API key.
+   tuned to one model embeds that model's failure modes.
    - Multi-pass scaffolding suits gpt-oss-class models.
-   - Single-call suits general capable models (Gemini/Claude).
+   - Single-call suits general capable models (Gemini / Claude).
    - Reasoning models (gpt-5.4-nano) want one big budget per call —
      multi-pass starves them.
 
 4. **Layered verify nets out negative across providers.** The VERIFY
    pass was tuned to gpt-oss's failure modes; on every other provider
    it "corrects" valid drafts into worse outputs. Cerebras fused-verify
-   was the worst (76.2 → 47.6%, −28.6pp catastrophe). Either retune
-   per-provider or drop it.
+   was the worst (76.2 → 47.6%, −28.6pp).
 
 5. **Cost-per-correct is the right pick metric, not $/1K.** A cheap
    model that's only 30% accurate costs more per usable output than a
    moderately-priced model at 90%. Always compute `$/1K ÷ accuracy`
    before picking from a price-per-token leaderboard.
 
-6. **Self-judging inflates accuracy ~5pp.** Both pipelines now pin the
-   LLM judge to Groq gpt-oss-120b regardless of inference provider.
-   Cross-provider A/Bs must use one fixed judge or the comparison is
-   meaningless.
+6. **Self-judging inflates accuracy ~5pp.** Both numeric pipelines
+   pin the LLM judge to Groq gpt-oss-120b regardless of inference
+   provider. Cross-provider A/Bs must use one fixed judge or the
+   comparison is meaningless.
+
+7. **(NEW)** **Bounded-codomain tasks are precision-trivial across
+   providers.** Both fluid-config (classify to FEATURES registry
+   scalar+value) and sentence-cues (cede vs rewrite) hit 100%
+   precision on every provider — the LLM's job is constrained
+   enough that even small models don't hallucinate the schema. The
+   load-bearing design choice is keeping the codomain bounded
+   (validators reject hallucinated outputs at the runtime layer too).
+
+8. **(NEW)** **`reasoning: high` on small models needs paired
+   `max_tokens`.** The initial 512-token thinking-budget run showed
+   a catastrophic 98% → 20% accuracy collapse on gpt-oss-120b at high
+   reasoning. Re-running with 2048 tokens recovered to 95-98% — the
+   collapse was 100% budget starvation (reasoning tokens consumed the
+   entire output budget), not model failure. The right pattern is
+   pairing reasoning-effort changes with proportional `max_tokens`
+   headroom, which commit `132fd3d` codifies per-provider in
+   production. Standalone "high is broken" is wrong; "high without
+   matched budget is broken" is right.
+
+9. **(NEW)** **Cerebras's per-token throughput buys reasoning
+   headroom no other provider has.** Cerebras at `medium` reasoning
+   still fits inside the 500 ms word-cue budget — the only provider
+   that does. The structural argument for routing OpenCues's
+   reasoning-friendly surfaces to Cerebras isn't "Cerebras is
+   smarter", it's "Cerebras is fast enough to use reasoning where
+   nobody else is".
 
 ---
 
@@ -300,22 +400,73 @@ fluid       cerebras    99.72 ±0.38    265 ±17          4.98  ±0.41   5
 
 1. **Real token accounting.** Instrument `chat()` to capture
    `response.usage.{prompt_tokens, completion_tokens}` and write to
-   each per-case log line. Replaces all $/1K estimates with measurements.
-   Especially fixes OpenAI's 2-4× reasoning-token undercount.
+   each per-case log line. Replaces all $/1K estimates with
+   measurements. Especially fixes OpenAI's 2-4× reasoning-token
+   undercount.
 2. **Variance bands.** ≥5 repetitions per row to compute mean/stddev
-   of accuracy and latency. Started for cerebras-vs-groq `fused` on
-   both benches — `tests/results/cerebras-vs-groq-fused/`.
-3. **Per-pipeline provider routing in runtime.** Today's runtime picks
-   one provider for everything; benchmarks point at different winners
-   per pipeline. Add `fluid-blank-provider` / `transform-blank-provider`
-   override fields to the host config.
-4. **Auto-pick.** Given a user's network speed and budget, the runtime
-   could pick mode/provider automatically. Out of scope for now but
-   worth a sketch.
+   of accuracy and latency. Done for cerebras-vs-groq `fused` on
+   both main benches (see `tests/results/cerebras-vs-groq-fused/`);
+   extend to the new features.
+3. **Per-pipeline provider routing in runtime.** Today's runtime
+   supports per-feature overrides
+   (`fluid-blank-provider`, `transform-blank-provider`,
+   `fluid-config-provider`, `sentence-cues-provider`,
+   `agent-provider`) but the auto-route picks the same provider for
+   everything. Letting it pick Cerebras for fluid-blank and Groq for
+   transform-blank automatically would be a real UX win.
+4. **Auto-pick.** Given a user's network speed and budget, the
+   runtime could pick mode + reasoning level automatically. The
+   thinking-budget grid + the existing per-feature bench gates give
+   the signal. Out of scope for now but worth a sketch.
 5. **Re-tune VERIFY per provider** (or per model class). The current
    prompt is gpt-oss-shaped. If we want a verify step in a generalist-
    model pipeline, it needs different instructions.
+6. **(NEW)** **Sentence-cues holdout suite.** Today's 30-case bench
+   is in-prompt only. Mirror fluid-config's `cases-holdout.ts`
+   pattern to validate generalisation honestly.
+7. **(NEW)** **Multi-sentence-cue handling.** v1 caps at one
+   sentence-cue per resolve to avoid word-index shift cascading.
+   v2 plan: reverse-span-order application or single-batched splice.
+   Currently logged in `docs/architecture/sentence-cues.md` § v1
+   limitations.
+
+### Resolved this session
+
+- ✅ **Re-run thinking-budget with `maxTokens: 2048`** — confirmed the
+  gpt-oss `high` accuracy collapse was 100% budget starvation. Recovery:
+  20% → 95-98% across both gpt-oss providers. Full numbers in
+  [`tests/results/thinking-budget-2026-05-18-maxtokens-2048.md`](../results/thinking-budget-2026-05-18-maxtokens-2048.md).
+  Production already paired per-provider reasoning defaults with
+  max_tokens bumps in commit `132fd3d`.
 
 ---
 
-*Last updated: 2026-05-16.*
+## Historical context — Cuescore replay (Feb 2026 → May 2026)
+
+An older "cuescore" benchmark from Feb 18, 2026 (raw logs in
+`tests/results/cerebras-120b-20260218-173230.txt` etc.) ran math +
+factual + grammar cases through gpt-oss-120b via Groq and Cerebras.
+The original harness depended on a now-deleted external script;
+the cases themselves were ported into
+`tests/benchmarks/fluid-blank/cases-{math,factual}-bench.ts`.
+
+Replaying the math + factual portion on May 16, 2026:
+
+```
+                    Feb 2026 acc   May 2026 acc   Δ          Feb→May latency
+─────────────────────────────────────────────────────────────────────────────
+groq    gpt-oss     73.5%          99.2%         +25.7pp    489ms → 1148ms
+cerebras gpt-oss    64.0%          99.2%         +35.2pp    1687ms →  526ms (3.2× faster)
+```
+
+**The Feb and May benchmarks are NOT directly comparable.** Settings
+deltas explain most of the gap (temperature 0.3 → 0.0, reasoning
+default → 'low', sequential → parallel=8, free-form prompts →
+structured-output prompts, etc.). The opencues-side changes account
+for most of the accuracy delta; Cerebras's 3.2× latency drop IS
+real provider improvement (pipeline changes can only add latency).
+Full caveats: see commit `e96c4b2`'s log + `tests/results/cuescore-replay/`.
+
+---
+
+*Last updated: 2026-05-18.*
