@@ -560,20 +560,46 @@ EOF
 pnpm exec opencues install claude-code
 ```
 
-## Adding blanks
+## Adding cues + blanks
 
-A blank is a `_`-triggered slot. There are four shapes; pick by what your blank does:
+The one-liner that scaffolds either:
+
+```bash
+opencues new cue <name>                 # ~/.cues/cues/<name>/CUE.md (user-level)
+opencues new blank <name>               # ~/.cues/blanks/<name>/BLANK.md
+opencues new cue <name> --project       # writes to <cwd>/.cues/ instead
+opencues new blank <name> --dry-run     # prints the plan, creates nothing
+```
+
+`<name>` must match `/^[a-z][a-z0-9-]*$/`. The scaffold ships every supported shape inline-commented — pick one block, delete the rest. Refuses to overwrite an existing file. Hot-reload picks the new file up within ~2.5s of saving.
+
+### Cue scopes
+
+Cues declare `scope:` in their CUE.md frontmatter — pick what the cue operates on:
+
+| `scope:` | What it operates on | Example shipped cue |
+|---|---|---|
+| `words` (default) | Each highlighted word individually. The classic "navigate to word, cycle synonyms" surface. | `defaults/cues/legal/CUE.md`, `defaults/cues/spelling/CUE.md` |
+| `sentence` | Whole sentences. The runtime registers a passive DynDef at the first word of the sentence; cycling Up swaps the entire sentence for an alternative rewrite. | `defaults/cues/more-formal/CUE.md` (rewrites informal sentences to formal register) |
+| `blanks` | Only runs when the buffer contains `_`. Rare for cues — most blank-shaped surfaces are blanks proper, not cues. | (no shipped defaults today) |
+| `all` | Runs in both prose-flow and `_`-flow contexts. | (no shipped defaults today) |
+
+Sentence-scope cues need `sentence-cues-mode: on` in `~/.cues/OPENCUES.md` (off by default). Word-scope cues are always on if `word-cues-mode: on` (default).
+
+### Blank shapes
+
+A blank is a `_`-triggered slot. Four shapes — pick by what your blank does:
 
 | Shape | Trigger | Implementation |
 |---|---|---|
-| **Typed blank with script** | `volume _`, `brightness _` | `blanks/<name>/BLANK.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
-| **List blank** (no script) | `affirmation _` | `blanks/<name>/BLANK.md` with `stepValues: [...]` |
-| **Selector + Satellite** | `opencues settings _` → expands to `<setting> <value>` | `blanks/<name>/BLANK.md` with `blankSatellite: true` |
-| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _`, `define X _` | TS class in `packages/opencues-runtime/src/blanks/` + `blanks/<name>/BLANK.md` declaring `blankKeywords` |
+| **Typed blank with script** | `volume _`, `brightness _` | `defaults/blanks/<name>/BLANK.md` + `<name>-blank.sh` (responds to `get` / `set <value>`) |
+| **List blank** (no script) | `affirmation _` | `defaults/blanks/<name>/BLANK.md` with `stepValues: [...]` |
+| **Selector + Satellite** | `opencues settings _` → expands to `<setting> <value>` | `defaults/blanks/<name>/BLANK.md` with `blankSatellite: true` |
+| **Runtime-class blank** (LLM/HTTP) | `nvda _`, `weather _`, `define X _` | TS class in `packages/opencues-runtime/src/blanks/` + `defaults/blanks/<name>/BLANK.md` declaring `blankKeywords` |
 
 For free-form `_` lookups (`capital of france _`, `unicode for em dash _`) there's no per-blank config — `FluidBlankSource` handles any `_` the keyword-bound blanks didn't claim.
 
-**Word sources** under `cues/<name>/CUE.md` use per-word routing — every source declares `match:` or `keywords:`, and the highest-priority matching source claims each word. Words no source claims get no cue (not navigable). See `docs/features/word-cue-routing.md`.
+**Word sources** under `defaults/cues/<name>/CUE.md` use per-word routing — every source declares `match:` or `keywords:`, and the highest-priority matching source claims each word. Words no source claims get no cue (not navigable). See `docs/features/word-cue-routing.md`.
 
 See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 

@@ -10,6 +10,23 @@ Cue-blanks ship as either:
 - A folder under `defaults/blanks/<name>/` with a colocated shell script (OS-level work like volume, brightness)
 - A TypeScript class under `packages/opencues-runtime/src/blanks/<name>.ts` (HTTP/LLM/API work — runs on chrome too)
 
+## 0. Scaffold the folder with `opencues new`
+
+The one-liner that creates the folder + a pre-filled template:
+
+```bash
+opencues new blank <name>               # scaffolds ~/.cues/blanks/<name>/BLANK.md
+opencues new blank <name> --project     # scaffolds <cwd>/.cues/blanks/<name>/BLANK.md
+opencues new blank <name> --dry-run     # prints the plan, creates nothing
+
+# Cues use the same verb:
+opencues new cue <name>                 # scaffolds ~/.cues/cues/<name>/CUE.md
+```
+
+The scaffold ships every supported shape (typed-with-script, list, selector+satellite, runtime-class) inline-commented — pick one block, delete the rest. `<name>` must match `/^[a-z][a-z0-9-]*$/` (lowercase, hyphens). Refuses to overwrite an existing file. The runtime hot-reloads within ~2.5s of saving — no restart needed.
+
+After editing, drop your `<name>-blank.sh` next to the BLANK.md (for typed-blank shape) and `chmod +x` it. The rest of this guide explains each field.
+
 ## 1. Folder-based blank (canonical)
 
 Create a self-contained folder with the config and script together:

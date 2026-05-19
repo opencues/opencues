@@ -115,7 +115,7 @@ Each `cues/<name>/CUE.md` supports these YAML frontmatter fields:
 | `match` | regex | Fast pre-LLM regex pattern for classification |
 | `keywords` | string | Comma-separated keywords for classification |
 | `model` | string | LLM model override for this source |
-| `scope` | string | `words` / `blanks` / `all` (default: inferred from config file) |
+| `scope` | string | `words` (per highlighted word — default for cues) / `blanks` (only when `_` is present) / `sentence` (whole-sentence rewrites — needs `sentence-cues-mode: on`) / `all` (both contexts) |
 | `enabled` | boolean | Set `false` to disable (default: `true`) |
 
 ## 2. Building an Integration

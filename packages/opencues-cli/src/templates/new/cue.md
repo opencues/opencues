@@ -25,12 +25,18 @@ parser: alternatives
 # ─────────────────────────────────────────────────────────────────────
 # SCOPE
 # ─────────────────────────────────────────────────────────────────────
-# scope: words | blanks | all
-#   words   — runs per highlighted word (default for cues — what you want
-#             for an alternatives source).
-#   blanks  — runs only when the user types `_` (used by blank modes,
-#             not normally a cue concern).
-#   all     — runs in both contexts.
+# scope: words | blanks | sentence | all
+#   words    — runs per highlighted word (default for cues — what you want
+#              for an alternatives source).
+#   blanks   — runs only when the user types `_` (used by blank modes,
+#              not normally a cue concern).
+#   sentence — operates on whole sentences instead of individual words.
+#              The runtime registers a passive DynDef at the first word
+#              of the sentence; Ctrl+Alt+Up swaps the entire sentence for
+#              an alternative rewrite. Gated by `sentence-cues-mode: on`
+#              in OPENCUES.md (off by default). Reference cue:
+#              defaults/cues/more-formal/CUE.md.
+#   all      — runs in both prose-flow and `_`-flow contexts.
 
 scope: words
 
