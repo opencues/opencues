@@ -248,6 +248,46 @@ they want to undo.
 
 ---
 
+## Known precision boundary — FluidBlank eagerness on imperatives
+
+ConfigIntent's own precision is solid (100% in bench, verified via the
+agentic harness on 2026-05-19). But the full _-claim chain after
+ConfigIntent cedes is `TransformBlank (93) → FluidBlank (92)`, and
+**FluidBlank is too eager on imperative phrases that ConfigIntent
+correctly rejected**:
+
+| Summon | ConfigIntent | TransformBlank | FluidBlank claims (incorrectly) |
+|---|---|---|---|
+| `make it louder _` | NONE ✓ | NONE ✓ | `increase volume` |
+| `change the theme to dark _` | NONE ✓ | NONE ✓ | `mode` (one-word garbage) |
+
+These look like fluid-config "false positives" from the user's seat
+("I asked to change theme — it answered 'mode'?") but the classifier
+is innocent: it correctly ceded. The actual defect is FluidBlank's
+fallback claim. Two reasonable follow-ups, neither blocking today:
+
+1. **FluidBlank cede gate on imperative phrasing.** If the prompt
+   has verb-first shape (`make`, `change`, `set`, `turn`, ...) AND
+   no question/lookup marker, cede. Same boundary ConfigIntent uses
+   structurally — verb-first imperatives without a registry hit are
+   the user-blank territory ConfigIntent is forbidden from touching.
+   Code: `fluid-blank-source.ts` `supports()` or the fused prompt's
+   "WHEN TO EMIT NONE" rules.
+
+2. **User-blank routing for verb-imperatives.** `make it louder` is
+   semantically "volume + (delta: up)". Today no source maps verb-
+   intent to user-blank cycling. A future `verb-route` source could
+   bridge the gap — but it would need the same trust-boundary
+   discipline ConfigIntent has (whitelist of safe blanks, no
+   exec/fetch routing without a keyword gate).
+
+Surfaced via the agentic harness re-walk of `MORNING.md`'s test
+phrases on 2026-05-19. The two scenarios are not committed as
+agentic tests because they'd assert on broken behaviour; they live
+here as a documented follow-up.
+
+---
+
 ## Adding a new feature → automatic classifier extension
 
 This is the most important property: adding a new feature to FEATURES
