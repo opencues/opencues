@@ -1,0 +1,18 @@
+description: blankProximity controls how many words can sit between the keyword and the _
+blanks:
+  - { name: volume,  blankKeywords: [volume],  blankProximity: 1 }
+  - { name: weather, blankKeywords: [weather], blankProximity: 3 }
+expectations:
+  # Default proximity (1): keyword directly adjacent to _
+  - { text: "volume _",          routesTo: volume }
+  - { text: "set volume to _",   routesTo: null   }  # proximity=1, "to" sits between
+
+  # Proximity 3: up to 3 words between keyword and _
+  - { text: "weather _",                 routesTo: weather }
+  - { text: "weather in paris _",        routesTo: weather }  # 2 words: "in", "paris"
+  - { text: "weather in central paris _",routesTo: weather }  # 3 words: "in", "central", "paris"
+  - { text: "weather in the city of paris _", routesTo: null }  # 5 words — exceeds proximity=3
+
+  # No keyword match
+  - { text: "_",      routesTo: null }
+  - { text: "hi _",   routesTo: null }

@@ -1,0 +1,5 @@
+{
+  "rule": "blank-missing-keywords",
+  "severity": "error",
+  "summary": "BLANK.md frontmatter has no blankKeywords field — blank would never fire"
+}

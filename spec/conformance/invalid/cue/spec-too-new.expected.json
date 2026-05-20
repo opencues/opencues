@@ -1,0 +1,5 @@
+{
+  "rule": "spec-too-new",
+  "severity": "error",
+  "summary": "File declares spec: opencues/99.0 — runtime supports only opencues/0.1-alpha"
+}

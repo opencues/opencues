@@ -1,0 +1,5 @@
+{
+  "rule": "blank-missing-name",
+  "severity": "error",
+  "summary": "BLANK.md frontmatter has no name field"
+}

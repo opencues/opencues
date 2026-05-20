@@ -1,0 +1,5 @@
+{
+  "rule": "auditor-missing-name",
+  "severity": "error",
+  "summary": "AUDITOR.md frontmatter has no name field"
+}

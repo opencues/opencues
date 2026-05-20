@@ -1,0 +1,20 @@
+description: Each word goes to exactly one source — the highest-priority match wins
+sources:
+  - { name: legal,    priority: 70, match: "contract|clause|agreement" }
+  - { name: medical,  priority: 70, match: "diagnosis|symptom|patient" }
+  - { name: catchall, priority: 10, match: ".*" }
+expectations:
+  # Legal source claims its words
+  - { word: "contract",  routesTo: "legal" }
+  - { word: "clause",    routesTo: "legal" }
+  - { word: "agreement", routesTo: "legal" }
+
+  # Medical source claims its words
+  - { word: "diagnosis", routesTo: "medical" }
+  - { word: "symptom",   routesTo: "medical" }
+  - { word: "patient",   routesTo: "medical" }
+
+  # Everything else falls to catchall
+  - { word: "hello",     routesTo: "catchall" }
+  - { word: "world",     routesTo: "catchall" }
+  - { word: "lawyer",    routesTo: "catchall" }  # legal doesn't list "lawyer" — falls through

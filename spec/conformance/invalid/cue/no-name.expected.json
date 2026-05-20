@@ -1,0 +1,5 @@
+{
+  "rule": "cue-missing-name",
+  "severity": "error",
+  "summary": "Frontmatter has no name field — every cue source MUST declare a name"
+}

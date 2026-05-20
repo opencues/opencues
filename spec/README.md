@@ -38,6 +38,7 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`schemas/blanks-master.schema.json`](./schemas/blanks-master.schema.json) | JSON Schema for the `BLANKS.md` master file. |
 | [`schemas/auditors-master.schema.json`](./schemas/auditors-master.schema.json) | JSON Schema for the `AUDITORS.md` master file. |
 | [`schemas/opencues.schema.json`](./schemas/opencues.schema.json) | JSON Schema for the `OPENCUES.md` runtime config file (non-standard — OpenCues-specific). |
+| [`conformance/`](./conformance/) | Executable test fixtures any conformant runtime can exercise against — valid + invalid examples for every surface, wire-format cases for the LLM parser, and routing scenarios. See its [`README`](./conformance/README.md). |
 
 ## Reading order
 

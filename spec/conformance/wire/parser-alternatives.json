@@ -1,0 +1,75 @@
+[
+  {
+    "description": "single line, one word, two alts",
+    "input": "0:lawyer,attorney",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  },
+  {
+    "description": "multi-line, one word per line",
+    "input": "0:lawyer,attorney,counsel\n1:contract,agreement,deal",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney", "counsel"] },
+      { "wordIndex": 1, "alts": ["contract", "agreement", "deal"] }
+    ]
+  },
+  {
+    "description": "whitespace around colon and commas",
+    "input": "0  :  lawyer , attorney , counsel",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney", "counsel"] }
+    ]
+  },
+  {
+    "description": "equals sign as colon synonym",
+    "input": "0=lawyer,attorney",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  },
+  {
+    "description": "numeric-only alt rejected (skipped from parser output)",
+    "input": "0:lawyer,42,attorney",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  },
+  {
+    "description": "numeric-only decimal also rejected",
+    "input": "0:lawyer,3.14,attorney,-99",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  },
+  {
+    "description": "empty lines between groups tolerated",
+    "input": "0:lawyer,attorney\n\n\n1:contract,deal",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] },
+      { "wordIndex": 1, "alts": ["contract", "deal"] }
+    ]
+  },
+  {
+    "description": "pipe terminates alts list (regex stops at | or newline)",
+    "input": "0:lawyer,attorney|ignored,extra,stuff",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  },
+  {
+    "description": "index with leading zero",
+    "input": "00:lawyer,attorney",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  },
+  {
+    "description": "unicode and emoji passthrough in alts",
+    "input": "0:café,résumé,naïve\n1:🚀,launch,take off",
+    "expected": [
+      { "wordIndex": 0, "alts": ["café", "résumé", "naïve"] },
+      { "wordIndex": 1, "alts": ["🚀", "launch", "take off"] }
+    ]
+  }
+]

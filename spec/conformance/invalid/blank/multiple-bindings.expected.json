@@ -1,0 +1,5 @@
+{
+  "rule": "blank-multiple-bindings",
+  "severity": "error",
+  "summary": "BLANK.md declares both stepValues and blankScript — exactly one binding profile is allowed"
+}

@@ -1,0 +1,5 @@
+{
+  "rule": "cue-empty-body",
+  "severity": "error",
+  "summary": "Body has neither a JSON tip-group block nor non-empty prompt text — no behaviour declared"
+}

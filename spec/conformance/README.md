@@ -1,0 +1,223 @@
+# Conformance suite — opencues/0.1-alpha
+
+A corpus of fixtures any conformant OpenCues implementation can exercise against. This suite is the bridge between "I read [`../cue-spec.md`](../cue-spec.md)" and "my parser actually matches the standard".
+
+The suite is **non-executable** — no test runner. It's a tree of fixture files plus expectation metadata, and each implementation wires its own runner. The reference implementation (`@opencues/core`) ships its own runner; second implementers can follow the pattern in [`docs/runner-template.md`](#runner-template) below.
+
+## What's here
+
+```
+conformance/
+├── README.md                       ← you are here
+│
+├── valid/                          ← MUST be accepted by any conformant runtime
+│   ├── cue/<name>.md               ← valid CUE.md examples
+│   ├── blank/<name>.md             ← valid BLANK.md examples
+│   ├── auditor/<name>.md           ← valid AUDITOR.md examples
+│   └── masters/<MASTER>.md         ← valid CUES.md / BLANKS.md / AUDITORS.md / OPENCUES.md
+│
+├── invalid/                        ← MUST be rejected by any conformant runtime
+│   ├── cue/<name>.md               ← invalid CUE.md examples
+│   ├── cue/<name>.expected.json    ← which linter rule MUST fire
+│   ├── blank/<name>.md             ← invalid BLANK.md examples
+│   ├── blank/<name>.expected.json
+│   ├── auditor/<name>.md
+│   └── auditor/<name>.expected.json
+│
+├── wire/
+│   ├── README.md
+│   └── parser-alternatives.json    ← LLM wire-format inputs + expected parse output
+│
+└── routing/
+    ├── README.md
+    ├── per-word-dispatch.yaml
+    ├── priority-tiebreak.yaml
+    ├── catch-all-fallback.yaml
+    └── blank-proximity.yaml
+```
+
+## How to use the suite
+
+### As an implementer building a second runtime
+
+You're targeting `opencues/0.1-alpha`. The fixtures pin what your parser / router / wire-format-handler MUST agree with for interop.
+
+1. **Parse every `valid/**/*.md`** with your runtime's loader. Each one MUST be accepted. If your parser rejects a valid fixture, that's a conformance bug.
+2. **Parse every `invalid/**/*.md`** with your runtime's loader. Each one MUST be rejected, and the rejection MUST raise the rule code declared in the sibling `<name>.expected.json` file. (A rejection with a different rule code is allowed but suggests your loader's diagnostics drift from the standard's vocabulary.)
+3. **Run every `wire/parser-alternatives.json` case** through your LLM-response parser. The structured output MUST equal `expected`.
+4. **Run every `routing/*.yaml` scenario** through your router. For each scenario, the listed words MUST route to the listed sources in the order shown.
+
+Implementers MAY skip:
+- LLM-mode cue fixtures if their runtime is static-only.
+- `blankScript:` fixtures if their runtime is browser-only (host-compat auto-detects).
+- Auditor fixtures if their runtime doesn't implement the auditor surface.
+
+A runtime that skips a surface is still **conformant for the surfaces it implements** — there's no "you must implement everything" rule. The suite labels each section so implementers know what's scoped to which surface.
+
+### As a contributor to OpenCues
+
+Adding a feature that changes the spec? You update the suite:
+
+- New frontmatter field accepted? Add a fixture to `valid/`.
+- New rejection rule? Add a fixture to `invalid/` + a sibling `.expected.json`.
+- New wire-format extension? Add cases to `wire/parser-alternatives.json`.
+
+PRs that change `spec/*.md` without touching `spec/conformance/` get flagged in review. The suite is the executable contract.
+
+## Fixture format
+
+### `valid/**/*.md`
+
+Just the file. If your runtime accepts it, you pass. No expectation metadata needed — the rule is "accept".
+
+### `invalid/**/*.md` + sibling `.expected.json`
+
+```json
+{
+  "rule": "cue-missing-trigger",
+  "severity": "error",
+  "summary": "Source declares neither match: nor keywords: — unreachable"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `rule` | string | yes | The linter rule from [`core.md` § Linting rules](../core.md#linting-rules) that this fixture MUST trigger. |
+| `severity` | `"error"` \| `"warn"` | yes | Whether the rule blocks load (`error`) or allows load with a warning (`warn`). Conformant runtimes treat `error` rules as load-blocking. |
+| `summary` | string | yes | Human-readable description of what makes the fixture invalid. |
+
+A runtime that rejects with a different rule code is allowed (the rejection itself is correct), but vocabulary drift is worth flagging in your own conformance run.
+
+### `wire/parser-alternatives.json`
+
+```json
+[
+  {
+    "description": "single line, one word, two alts",
+    "input": "0:lawyer,attorney",
+    "expected": [
+      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+    ]
+  }
+]
+```
+
+The `expected` array is the structured output your parser MUST produce. The original word (`alternatives[0]` per [`cue-spec.md` § Alternatives invariant](../cue-spec.md#alternatives-invariant)) is added by the runtime at substitution time and is NOT part of the wire format itself — these fixtures cover the parser only.
+
+### `routing/*.yaml`
+
+```yaml
+description: Two sources, domain wins over default
+sources:
+  - { name: legal, priority: 70, match: "contract|clause" }
+  - { name: catchall, priority: 10, match: ".*" }
+expectations:
+  - { word: "contract", routesTo: "legal" }
+  - { word: "hello", routesTo: "catchall" }
+  - { word: "clause", routesTo: "legal" }
+```
+
+The `sources` list declares the cue sources in scope (frontmatter-equivalent — the body doesn't matter for routing). The `expectations` list pairs an input word with the source `name:` that MUST claim it.
+
+## Out of scope for this suite
+
+- **Cycling behaviour** — what happens after cycle Up/Down on a substituted alt. Cycling is OpenCues-runtime-specific; the standard only specifies the alternatives invariant.
+- **Render directives** — ANSI dim, inverse, CSS Custom Highlight. Each integration owns rendering.
+- **Hot-reload cadence** — `core.md` says SHOULD detect changes; the standard doesn't specify polling intervals.
+- **LLM provider routing** — each runtime picks providers however it wants.
+- **Performance** — no latency, throughput, or memory bounds are part of conformance.
+
+## Versioning
+
+The suite versions with the spec. Files declare:
+
+```yaml
+spec: opencues/0.1-alpha
+```
+
+When the spec bumps to `0.2-alpha`, the suite forks: `conformance/0.1-alpha/` and `conformance/0.2-alpha/` coexist for one minor cycle, so an implementer running against `0.1-alpha` still has the fixtures pinned at that version.
+
+(This forking has not happened yet — the suite is `0.1-alpha` flat. The split lands when the first `0.2-alpha` change ships.)
+
+## Runner template
+
+A complete conformance runner is ~80 lines in TypeScript. Pseudo-shape:
+
+```ts
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const root = './spec/conformance';
+
+// 1. Valid fixtures — all MUST be accepted
+for (const surface of ['cue', 'blank', 'auditor']) {
+  for (const file of readdirSync(join(root, 'valid', surface))) {
+    const content = readFileSync(join(root, 'valid', surface, file), 'utf8');
+    const result = myRuntime.parse(content);
+    assert(result.ok, `${file} MUST be accepted`);
+  }
+}
+
+// 2. Invalid fixtures — all MUST be rejected with the expected rule code
+for (const surface of ['cue', 'blank', 'auditor']) {
+  for (const file of readdirSync(join(root, 'invalid', surface))) {
+    if (!file.endsWith('.md')) continue;
+    const content = readFileSync(join(root, 'invalid', surface, file), 'utf8');
+    const expected = JSON.parse(
+      readFileSync(join(root, 'invalid', surface, file.replace('.md', '.expected.json')), 'utf8')
+    );
+    const result = myRuntime.parse(content);
+    assert(!result.ok, `${file} MUST be rejected`);
+    assert(result.rule === expected.rule, `${file} expected ${expected.rule}, got ${result.rule}`);
+  }
+}
+
+// 3. Wire format fixtures — parser output MUST equal expected
+const wireCases = JSON.parse(readFileSync(join(root, 'wire/parser-alternatives.json'), 'utf8'));
+for (const { description, input, expected } of wireCases) {
+  const actual = myRuntime.parseLLMResponse(input);
+  assert.deepEqual(actual, expected, description);
+}
+
+// 4. Routing scenarios — each word MUST route to the named source
+const yaml = await import('js-yaml');
+for (const file of readdirSync(join(root, 'routing'))) {
+  if (!file.endsWith('.yaml')) continue;
+  const scenario = yaml.load(readFileSync(join(root, 'routing', file), 'utf8'));
+  for (const { word, routesTo } of scenario.expectations) {
+    const actual = myRuntime.route(scenario.sources, word);
+    assert.equal(actual?.name, routesTo, `${file}: '${word}' MUST route to '${routesTo}'`);
+  }
+}
+```
+
+Wrap with whatever test framework you use. The reference implementation's runner lives under `packages/opencues-core/src/conformance.test.ts` (to be added).
+
+## Status
+
+The 0.1-alpha suite is **seed**, not exhaustive. Coverage:
+
+| Area | Fixtures | Notes |
+|---|---|---|
+| Valid CUE.md | 5 | Static, LLM, combined, full-frontmatter, groups-synonyms |
+| Valid BLANK.md | 5 | stepValues, blankScript, impl, full-frontmatter, selector-satellite |
+| Valid AUDITOR.md | 2 | Minimal, full-frontmatter |
+| Valid masters | 4 | CUES.md, BLANKS.md, AUDITORS.md, OPENCUES.md |
+| Invalid CUE.md | 5 | Missing name, missing trigger, empty body, unknown host, spec-too-new |
+| Invalid BLANK.md | 5 | Missing name, missing keywords, no binding, multiple bindings, script missing |
+| Invalid AUDITOR.md | 2 | Missing name, empty body |
+| Wire fixtures | 10 | Single/multi-line, whitespace tolerance, numeric skip, `=` synonym |
+| Routing scenarios | 4 | Per-word dispatch, priority tiebreak, catch-all fallback, blank proximity |
+
+Expand by appending fixtures — the runner discovers files structurally, no central registry to update.
+
+## Contributing fixtures
+
+Each new fixture:
+
+1. Pick the right directory (`valid/<surface>/`, `invalid/<surface>/`, `wire/`, `routing/`).
+2. Name it after the property it pins (`blank-readonly-with-set.md` is better than `case47.md`).
+3. For invalid examples, add the sibling `.expected.json` with the linter rule code from [`core.md` § Linting rules](../core.md#linting-rules).
+4. If the fixture exercises a new rule code, update `core.md` § Linting rules first.
+
+PRs land in `spec/conformance/` separate from spec narrative changes. Reviewer is whoever maintains the spec.

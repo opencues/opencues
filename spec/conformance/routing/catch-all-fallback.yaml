@@ -1,0 +1,12 @@
+description: DEFAULT source (no match, no keywords) claims words no DOMAIN source matched
+sources:
+  # DOMAIN — declares match
+  - { name: legal,   priority: 70, match: "contract|clause" }
+  # DEFAULT — no match, no keywords; it's the catch-all
+  - { name: default, priority: 50 }
+expectations:
+  - { word: "contract", routesTo: "legal" }    # DOMAIN claims it
+  - { word: "clause",   routesTo: "legal" }    # DOMAIN claims it
+  - { word: "hello",    routesTo: "default" }  # DEFAULT catches the rest
+  - { word: "anything", routesTo: "default" }
+  - { word: "lawyer",   routesTo: "default" }  # legal doesn't list it

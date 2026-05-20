@@ -1,0 +1,5 @@
+{
+  "rule": "blank-script-missing",
+  "severity": "error",
+  "summary": "blankScript: references ./does-not-exist.sh which is not present in the blank's folder"
+}

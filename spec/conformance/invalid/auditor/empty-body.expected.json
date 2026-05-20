@@ -1,0 +1,5 @@
+{
+  "rule": "auditor-empty-body",
+  "severity": "error",
+  "summary": "AUDITOR.md body is empty — no prompt concern declared, auditor would no-op"
+}

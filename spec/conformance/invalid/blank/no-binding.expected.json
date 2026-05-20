@@ -1,0 +1,5 @@
+{
+  "rule": "blank-no-binding",
+  "severity": "error",
+  "summary": "BLANK.md declares zero binding profiles (no stepValues, blankScript, impl, and no class resolvable from name)"
+}

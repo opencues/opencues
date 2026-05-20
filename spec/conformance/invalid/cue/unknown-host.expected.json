@@ -1,0 +1,5 @@
+{
+  "rule": "unknown-host",
+  "severity": "error",
+  "summary": "on-host references 'nethack-cli', which is not in the standard's known-hosts set"
+}

@@ -1,0 +1,5 @@
+{
+  "rule": "cue-missing-trigger",
+  "severity": "error",
+  "summary": "Per-source CUE.md declares neither match: nor keywords: — would be unreachable"
+}
