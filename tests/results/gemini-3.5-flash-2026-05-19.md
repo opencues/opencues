@@ -118,6 +118,57 @@ needs (rare in interactive cue / blank flows) should NOT pick
 3.5-flash either; 3.1-flash-lite remains higher accuracy at lower
 latency.
 
+## Min-token-floor sweep — both models at `OPENCUES_BENCH_MAX_TOKENS=2048` (added 2026-05-20)
+
+Followup to rule out the "3.5-flash needed more budget" hypothesis.
+Re-ran both pipelines with the bench harness's new `OPENCUES_BENCH_MAX_TOKENS`
+env-var floor at 2048 (default was 512 / 1024 — see
+`fluid-blank/fused.ts` and `transform-blank/fused-extract-apply.ts`).
+
+**Transform-blank fused (231 cases, thinking off, min 2048 tokens):**
+
+| Model                     | Accuracy   | Avg model | Δ vs 3.1-flash-lite |
+|---------------------------|------------|-----------|---------------------|
+| `gemini-3.1-flash-lite`   | **90.0%** (208/231) | **579ms** | —                   |
+| `gemini-3.5-flash`        | 87.0% (201/231)     | 821ms     | **−3.0pp, +42% slower** |
+
+**Fluid-blank fused (137 cases, thinking off, min 2048 tokens):**
+
+| Model                     | Accuracy   | Avg model | Δ vs 3.1-flash-lite |
+|---------------------------|------------|-----------|---------------------|
+| `gemini-3.1-flash-lite`   | 97.8% (134/137) | **517ms** | —                   |
+| `gemini-3.5-flash`        | 97.8% (134/137) | 689ms     | **same accuracy, +33% slower** |
+
+### Verdict at higher budget
+
+**Verdict unchanged — 3.5-flash still regresses, but the shape shifted:**
+
+- Accuracy gap NARROWED slightly on transform-blank (was −3.5pp at default budgets, now −3.0pp at min 2048). The extra budget recovered ~2pp on `tone-shift` (40% → 60%).
+- Latency gap WIDENED on both pipelines (was +15% / +19% at default budgets, now +42% / +33% at min 2048). The wider budget lets 3.1-flash-lite finish faster on cases that previously hit its cap; 3.5-flash sees only marginal latency gain.
+- 3.1-flash-lite also benefits from the higher budget (+0.8pp on transform-blank, slight perf gain on both). So bumping the floor isn't a "free lunch" that only helps 3.5-flash — both models get headroom.
+
+### Per-category breakdown at min 2048 (transform-blank)
+
+3.5-flash gains:
+- `tone-shift`: 40% → 60% (+2 cases)
+- `creative-rewrite`: 80% → 90% (+1)
+- Lost ground: none vs the 1024-floor baseline.
+
+But 3.1-flash-lite ALSO gained at 2048:
+- `tone-shift`: holds 80% (better than 3.5-flash's 60%)
+- `linked-concepts`: 60% (vs 3.5-flash's 40% — still the worst category)
+- `long-text`: 85% (vs 3.5-flash's 80%)
+
+So the gap persists category-by-category. 3.5-flash isn't "starved" at the lower budget — it's structurally weaker on the long-context / nuanced categories.
+
+## Verdict (final)
+
+**`gemini-3.5-flash` regresses vs `gemini-3.1-flash-lite` on OpenCues
+workloads at every budget tested.** Don't promote it to default.
+Per-cue / per-feature overrides remain available for users who want
+to opt in for other reasons (e.g. larger context window, different
+training data — neither tested here).
+
 ## Followups
 
 - Watch for `gemini-3.5-flash-lite` — Google may ship a flash-lite

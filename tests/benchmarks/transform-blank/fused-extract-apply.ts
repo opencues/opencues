@@ -144,8 +144,10 @@ export interface FusedResult {
 export async function runFused(input: string): Promise<FusedResult> {
   // Generous max_tokens — output carries INSTRUCTION + TARGET + REWRITE,
   // and long-text cases need room. Floor 1024 for reasoning headroom on
-  // gemini's thinking pathway.
-  const maxTokens = Math.max(1024, Math.min(4096, Math.ceil((input.length * 2) / 3) + 512));
+  // gemini's thinking pathway. Env override `OPENCUES_BENCH_MAX_TOKENS`
+  // lifts the floor for reasoning sweeps.
+  const minTokens = parseInt(process.env.OPENCUES_BENCH_MAX_TOKENS ?? '1024', 10);
+  const maxTokens = Math.max(minTokens, Math.min(4096, Math.ceil((input.length * 2) / 3) + 512));
   const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens });
   return parseFusedOutput(r.text, r.latencyMs);
 }

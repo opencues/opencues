@@ -115,7 +115,12 @@ export interface FusedResult {
 }
 
 export async function runFused(input: string): Promise<FusedResult> {
-  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens: 512 });
+  // Env override `OPENCUES_BENCH_MAX_TOKENS` lifts the floor — useful
+  // for reasoning models that spend tokens on internal thinking
+  // before content emits. Default 512 is bench-tuned for non-reasoning
+  // fluid-blank lookups; bump to 2048+ for reasoning sweeps.
+  const maxTokens = parseInt(process.env.OPENCUES_BENCH_MAX_TOKENS ?? '512', 10);
+  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens });
   return parseFusedOutput(r.text, r.latencyMs);
 }
 
