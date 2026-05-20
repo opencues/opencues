@@ -1,0 +1,84 @@
+# Spec changelog
+
+All notable changes to the OpenCues standard (`spec/`) are
+recorded here. The reference implementation (`@opencues/core`)
+maintains its own changelog at the repo root; this file tracks
+only what would affect a third-party implementation.
+
+This changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+format. Versions follow [SemVer](https://semver.org/) within the
+`0.x` pre-release line — at this stage every change is potentially
+breaking.
+
+---
+
+## [Unreleased]
+
+(Nothing yet. Add a section above when a spec field changes.)
+
+---
+
+## [0.1-alpha] — 2026-05-08
+
+Initial open-source publication of the standard. Sets the
+baseline that future changes diff against.
+
+### Surfaces
+
+Three normative surfaces, one folder format each:
+
+- **Cues** — LLM → user, surfaced over plain text.
+  `cues/<name>/CUE.md` defines a source.
+  See [`cue-spec.md`](./cue-spec.md).
+- **Blanks** — user → system, `_`-gated value substitutions.
+  `blanks/<name>/BLANK.md` defines a source.
+  See [`blank-spec.md`](./blank-spec.md).
+- **Auditors** — LLM → buffer, composed inline rewrites.
+  `auditors/<name>/AUDITOR.md` defines a source.
+  See [`auditor-spec.md`](./auditor-spec.md).
+
+### Master files
+
+Four master files at the root of any `.cues/` directory:
+
+- `OPENCUES.md` — runtime settings (voice-mode, llm-provider,
+  feature flags). User-level only.
+- `CUES.md` — cue-surface master (project metadata + `ignore[]` +
+  `disable[]`).
+- `BLANKS.md` — blank-surface master.
+- `AUDITORS.md` — auditor-surface master.
+
+### Cross-cutting
+
+- Project layout + search paths in [`core.md`](./core.md).
+- Runtime contracts a conformant implementation must satisfy in
+  [`opencues-runtime.md`](./opencues-runtime.md).
+- JSON schemas (`Draft 7`) for every config file in
+  [`schemas/`](./schemas/).
+
+### Out of scope (deliberately)
+
+- UI rendering (how alternatives display, how keys cycle them, how
+  the cursor moves) — each integration decides.
+- Prompt design — the LLM-mode wire format (`INDEX:alt1,alt2`) is
+  normative; the prompts themselves are runtime-private.
+- LLM provider selection / routing — left to the implementation.
+
+---
+
+## How to add an entry
+
+When a spec field changes:
+
+1. Move the `[Unreleased]` heading to a new versioned heading
+   (`[0.1-beta] — YYYY-MM-DD` or whatever the next version is).
+2. Add the bumped `[Unreleased]` heading back at the top.
+3. Each entry: one line describing what changed, plus a link to
+   the PR / commit that made the change.
+4. Group entries by `### Added`, `### Changed`, `### Deprecated`,
+   `### Removed`, `### Fixed`, `### Security` per Keep a Changelog.
+
+Reference-implementation-only changes (TypeScript API, internal
+helpers, build tooling) do NOT go here — they belong in the root
+`CHANGELOG.md`. Only changes a third-party implementation would
+need to know about belong here.

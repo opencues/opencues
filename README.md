@@ -9,6 +9,8 @@
 
 An open standard for real-time guidance as you type. OpenCues works on top of any text input — LLM prompts, word processors, mobile keyboards — providing alternatives, suggestions, and context before you press enter. Define all behaviour in `.md` config files; integrations bring them to life.
 
+> **The standard itself lives at [`spec/`](spec/)** — six markdown docs + seven JSON schemas covering `cues/<name>/CUE.md`, `blanks/<name>/BLANK.md`, `auditors/<name>/AUDITOR.md`, their master files, and the runtime contracts a conformant implementation must satisfy. Read it if you want to build OpenCues for another editor, in another language, or just understand what every file format means. Status: `0.1-alpha`. Spec changes are recorded in [`spec/CHANGELOG.md`](spec/CHANGELOG.md).
+
 > **In 30 seconds — the vocabulary**
 >
 > - **Cue** — a word the runtime offers alternatives for. You navigate to it with Ctrl+Alt+arrow and cycle synonyms with Ctrl+Alt+Up/Down. The buffer stays as you typed it until you cycle.
