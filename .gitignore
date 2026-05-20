@@ -19,3 +19,6 @@ tests/benchmarks/fluid-blank/cases-generated.jsonl
 
 # Internal harness — lives in its own private repo, cloned into this path.
 tests/agentic/
+
+# Internal docs — strategy, handoffs, audits not for public consumption.
+.internal/

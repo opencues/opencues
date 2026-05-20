@@ -1,12 +1,31 @@
 # @opencues/core
 
-Pure-TypeScript core of [OpenCues](https://github.com/opencues/opencues) — the open standard for real-time guidance as you type. No I/O dependencies, no host coupling. Given text + config, answers "what should we suggest for this word / blank?"
+**Reference implementation of the [OpenCues open standard](https://github.com/opencues/opencues/tree/master/spec)** — the cross-editor file-format spec for **Cues** (LLM → user, surfaced over plain text), **Blanks** (user → system, `_`-gated value substitutions), and **Auditors** (LLM → buffer, composed inline rewrites). Pure TypeScript, no I/O dependencies, no host coupling. Given text + config, answers "what should we suggest for this word / blank?"
+
+The standard lives at [`spec/`](https://github.com/opencues/opencues/tree/master/spec) in the umbrella repo:
+
+| Doc | What |
+|---|---|
+| [`spec/README.md`](https://github.com/opencues/opencues/blob/master/spec/README.md) | Intro to the three surfaces + what's in/out of scope |
+| [`spec/core.md`](https://github.com/opencues/opencues/blob/master/spec/core.md) | Shared rules — project layout, search paths, hot-reload, routing |
+| [`spec/cue-spec.md`](https://github.com/opencues/opencues/blob/master/spec/cue-spec.md) | Cue-source format (`cues/<name>/CUE.md`) |
+| [`spec/blank-spec.md`](https://github.com/opencues/opencues/blob/master/spec/blank-spec.md) | Blank-source format (`blanks/<name>/BLANK.md`) |
+| [`spec/auditor-spec.md`](https://github.com/opencues/opencues/blob/master/spec/auditor-spec.md) | Auditor-source format (`auditors/<name>/AUDITOR.md`) |
+| [`spec/opencues-runtime.md`](https://github.com/opencues/opencues/blob/master/spec/opencues-runtime.md) | Runtime contracts a conformant impl must satisfy |
+| [`spec/schemas/`](https://github.com/opencues/opencues/tree/master/spec/schemas) | JSON schemas for every config file |
+
+Standard status: `0.1-alpha` — expect changes pre-v1.
+
+This package is the reference parser + resolver + LLM-router. Other implementations can target the same standard in other languages or with different runtime trade-offs — the spec defines what they must agree on.
 
 > **Pre-1.0 — internal package.** Today this ships as a workspace dep
 > for `@opencues/runtime` + per-host integrations. Subject to change
 > until v1.0. If you're building an editor integration, start at
 > [opencues/opencues](https://github.com/opencues/opencues) and read
-> `CONTRIBUTING.md` + `docs/guides/adding-an-integration.md`.
+> `CONTRIBUTING.md` + `docs/guides/adding-an-integration.md`. If you're
+> implementing the standard in a different language, the spec/ dir
+> is the load-bearing reference — this package's TypeScript API
+> is implementation detail.
 
 ## What it does
 
