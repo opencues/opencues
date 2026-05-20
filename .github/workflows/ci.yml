@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Cancel older runs of the same branch when a new push lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build · typecheck · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm is pinned in package.json's `packageManager` field —
+      # action/setup-node honours that when corepack is enabled.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # turbo run build — builds @opencues/core, @opencues/runtime,
+      # and the chrome extension's dist/ in dependency order. Cached
+      # via .turbo/ but cache isn't restored across CI runs yet (would
+      # need actions/cache with the turbo cache dir).
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+        env:
+          # Tests should never need a real LLM key. If a unit test
+          # requires one, that's the bug — file it instead of unsetting
+          # this. Existing tests use mocked providers (see
+          # @opencues/core's source-class tests).
+          GROQ_API_KEY: ''
+          CEREBRAS_API_KEY: ''
+          OPENAI_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+          GEMINI_API_KEY: ''
