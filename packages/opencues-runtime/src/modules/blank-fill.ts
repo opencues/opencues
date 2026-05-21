@@ -169,7 +169,28 @@ export class BlankFill {
     }
     const slots = this.scan(e.text);
     if (e.source === 'user') {
-      this.maybeRunScripts(e.text, slots);
+      // `blank-trigger-mode: spaced` — gate text-change-based blank
+      // fills per-slot, mirroring the keypress handler's gate at the
+      // text-change level. Without this, any programmatic text-set
+      // (the agentic harness bridge, an external paste, a host that
+      // delivers the buffer as a single text-change after composing)
+      // bypasses the spaced-mode gate.
+      //
+      // Per-slot rule (mirrors `keypress` semantics): a `_` is
+      // "confirmed" iff something follows it — either another word
+      // (slot.index < lastWordIdx) or trailing whitespace
+      // (text has trailing whitespace AFTER the slot's `_`).
+      // The trailing `_` at end of buffer with no whitespace is the
+      // unconfirmed case — skip it.
+      let filteredSlots: readonly BlankSlot[] = slots;
+      if (slots.length > 0 && this.configLoader?.opencuesState.blankTriggerMode === 'spaced') {
+        const cleanText = e.text.replace(/[\u200B\u200C]/g, '');
+        const words = cleanText.split(/\s+/).filter(Boolean);
+        const lastWordIdx = words.length - 1;
+        const hasTrailingWs = /\s$/.test(cleanText);
+        filteredSlots = slots.filter(s => s.index < lastWordIdx || hasTrailingWs);
+      }
+      this.maybeRunScripts(e.text, filteredSlots);
     }
   }
 
