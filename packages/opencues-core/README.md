@@ -1,6 +1,6 @@
 # @opencues/core
 
-**Reference implementation of the [OpenCues open standard](https://github.com/opencues/opencues/tree/master/spec)** — the cross-editor file-format spec for **Cues** (LLM → user, surfaced over plain text), **Blanks** (user → system, `_`-gated value substitutions), and **Auditors** (LLM → buffer, composed inline rewrites). Pure TypeScript, no I/O dependencies, no host coupling. Given text + config, answers "what should we suggest for this word / blank?"
+**Reference parser + resolver for the [OpenCues file-format standards](https://github.com/opencues/opencues/tree/master/spec)** — three cross-editor formats: **Cues** (LLM → user, surfaced over plain text), **Blanks** (user → system, `_`-gated value substitutions), and **Auditors** (LLM → buffer, composed inline rewrites). Pure TypeScript, no I/O dependencies, no host coupling. Given text + config, answers "what should we suggest for this word / blank?"
 
 The standard lives at [`spec/`](https://github.com/opencues/opencues/tree/master/spec) in the umbrella repo:
 

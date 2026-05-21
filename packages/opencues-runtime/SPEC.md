@@ -219,7 +219,7 @@ A future spec version may promote `fluid-blank-mode` to `BLANKS.md` if multiple 
 
 ## Transform blank — runtime implementation
 
-A second runtime-only blank source. Where fluid blank handles **interrogative** patterns ("what is X?"), transform blank handles **imperative** ones ("change X to Y", "make this past tense", "translate to French"). Like fluid, it's a runtime feature with no `BLANK.md` configurable.
+A second runtime-only blank source (sibling to fluid blank, above). Where fluid blank handles **interrogative** patterns ("what is X?"), transform blank handles **imperative** ones ("change X to Y", "make this past tense", "translate to French"). Like fluid, it's a runtime feature with no `BLANK.md` configurable.
 
 `TransformBlankSource` (`packages/opencues-core/src/sources/transform-blank-source.ts`) registers at **priority 93** — above fluid (92), below keyword-bound blanks (95). When a `_` slot is up for grabs, the source chain races: keyword blank → transform blank → fluid blank.
 

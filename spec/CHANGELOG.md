@@ -59,10 +59,11 @@ breaking.
   any conformant runtime can exercise against. Seeds with 12 valid examples,
   12 invalid examples (with sibling `.expected.json` declaring the linter
   rule each MUST trigger), 10 LLM-wire-format parser cases, and 4 routing
-  scenarios. Non-executable; each implementation wires its own runner. See
-  the suite's [`README`](./conformance/README.md) for the runner template
-  and the contribution model. No spec field changed — this is purely
-  additive infrastructure for second implementers.
+  scenarios. The reference runtime (`@opencues/core`) is the current
+  primary user — it exercises the suite as its parser regression net.
+  A future second runtime would target the same fixtures. See the suite's
+  [`README`](./conformance/README.md) for the runner template and the
+  contribution model. No spec field changed — purely additive infrastructure.
 
 ---
 

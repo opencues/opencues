@@ -1,6 +1,6 @@
 # @opencues/runtime
 
-Host-agnostic runtime for [OpenCues](https://github.com/opencues/opencues) — the open standard for real-time guidance as you type. Takes the cue/blank decisions from [`@opencues/core`](../opencues-core) and turns them into keystroke-aware editor behaviour: navigation, cycling, dim rendering, blank fill, statusline, TTS, hot-reload.
+Host-agnostic runtime for [OpenCues](https://github.com/opencues/opencues) — the reference implementation of three open file-format standards (Cues, Blanks, Auditors) for real-time guidance as you type. Takes the cue/blank decisions from [`@opencues/core`](../opencues-core) and turns them into keystroke-aware editor behaviour: navigation, cycling, dim rendering, blank fill, statusline, TTS, hot-reload.
 
 > **Pre-1.0 — internal package.** Today this ships as a workspace dep
 > for per-host integrations (Claude Code, OpenCode, Chrome, Gemini

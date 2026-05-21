@@ -2,7 +2,7 @@
 
 > **Status:** `0.1-alpha`. Expect changes.
 
-This directory holds the open standard for **Cues**, **Blanks**, and **Auditors** — three file formats that any text editor, IDE, or LLM-pipeline can implement to interoperate. The standard is licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
+This directory holds three open file-format standards — **Cues**, **Blanks**, and **Auditors** — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all three). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 
 ## What the standard is
 
