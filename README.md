@@ -1,16 +1,48 @@
+<!-- TODO[logo]: drop a centered logo block. opencode pattern:
+<p align="center">
+  <a href="https://opencues.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
+      <img alt="OpenCues" src="assets/logo-light.svg" width="320">
+    </picture>
+  </a>
+</p>
+-->
+
 # OpenCues
 
-<!-- Badges: uncomment when ready
+<!-- TODO[badges]: uncomment + fill DISCORD_ID + INVITE once those exist.
+The license badge text needs to match LICENSE (currently Proprietary → flip
+to MIT/Apache-2.0 at private-beta-end). The npm badge needs the package
+published. Star + Build are already wireable.
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Build](https://github.com/opencues/opencues/actions/workflows/ci.yml/badge.svg)](https://github.com/opencues/opencues/actions)
-[![GitHub](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
+[![npm](https://img.shields.io/npm/v/@opencues/cli.svg)](https://www.npmjs.com/package/@opencues/cli)
 [![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE)
+[![GitHub stars](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 -->
 
 **Open standards + reference implementation for real-time guidance as you type.** OpenCues defines three open standards — **Cues**, **Blanks**, and **Auditors** — that any text editor, IDE, or LLM pipeline can implement. This repo holds the standards (at [`spec/`](spec/)) plus a working reference runtime you can install today in Claude Code, OpenCode, Gemini CLI, and Chrome.
 
-<!-- TODO: drop a demo gif at assets/demo.gif and uncomment the line below. ~10s loop of: type "the happy dog" → cycle "happy", then type "volume _" → see "70%", then type "enable debug logging _" → see "debug-mode on". -->
-<!-- ![Demo](assets/demo.gif) -->
+<!-- TODO[hero]: pick ONE of these three (or ship all three over time):
+
+(a) Animated demo gif. ~10s loop of: type "the happy dog" → cycle "happy",
+    then type "volume _" → see "70%", then type "enable debug logging _" → see
+    "debug-mode on". Drop at assets/demo.gif and uncomment:
+    ![Demo](assets/demo.gif)
+
+(b) Static hero screenshot of a patched Claude Code session mid-cycle.
+    Less visceral than a gif but lighter for slow connections + readable
+    on GitHub mobile. Drop at assets/hero.png and uncomment:
+    ![OpenCues in Claude Code](assets/hero.png)
+
+(c) YouTube embed of a 60-90s walkthrough (intro + the three smoke-test
+    prompts + one auditor demo). Best for shareable launch posts.
+    Drop a thumbnail at assets/hero.png linking to the YT URL:
+    [![Demo video](assets/hero.png)](https://youtu.be/VIDEO_ID)
+-->
 
 > **In 30 seconds — the vocabulary**
 >
@@ -173,13 +205,67 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 
 Version-bump runbooks for each integration: [`integrations/<host>/UPGRADING.md`](integrations).
 
-<!-- ## Community
+## Community
+
+<!-- TODO[community]: fill in Discord invite, Reddit go-live, and Discussions
+once enabled. The pre-launch checklist (.internal/pre-launch-readme.md)
+tracks state.
 
 - [Discord](https://discord.gg/INVITE) — questions, feedback, feature requests
-- [GitHub Discussions](https://github.com/opencues/opencues/discussions) — ideas, Q&A
+- [GitHub Discussions](https://github.com/opencues/opencues/discussions) — long-form Q&A
+- [Reddit r/OpenCues](https://www.reddit.com/r/OpenCues/) — private until launch
 -->
-- [Twitter/X](https://x.com/openCues_) — announcements
+
+- [Twitter/X — @openCues_](https://x.com/openCues_) — announcements
+- [GitHub Issues](https://github.com/opencues/opencues/issues) — bug reports + feature requests
+- Email — `hello@opencues.com` (security disclosures: see [`SECURITY.md`](SECURITY.md))
+
+<!-- TODO[star-history]: enable once the repo is public + has accumulated
+some stars. The widget polls api.star-history.com and renders without a
+GitHub API key. Place under Community, above License.
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=opencues/opencues&type=Date)](https://star-history.com/#opencues/opencues&Date)
+-->
+
+<!-- TODO[sponsors]: enable once .github/FUNDING.yml has a real account
+configured (currently a stub). One-line shape if GitHub Sponsors only;
+expand to a logo wall if you take corporate sponsors later.
+
+## Sponsors
+
+If OpenCues helps you, consider [sponsoring development](https://github.com/sponsors/opencues).
+-->
+
+<!-- TODO[contributors]: once there are >5 external contributors, enable
+the all-contributors bot OR drop in the simpler GitHub avatar wall:
+
+## Contributors
+
+<a href="https://github.com/opencues/opencues/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=opencues/opencues" />
+</a>
+
+(`contrib.rocks` updates daily; no bot needed.)
+-->
+
+<!-- TODO[used-by]: if any company / project adopts OpenCues publicly,
+add a "Used by" logo wall under Community. Standard OSS social-proof
+shape. Skip until at least 3 logos exist.
+-->
 
 ## License
 
 Proprietary. All rights reserved. See [LICENSE](LICENSE).
+
+<!-- TODO[license-flip]: switch to MIT/Apache-2.0 at private-beta-end.
+Update this section text + the badge above + LICENSE itself.
+-->
+
+<!-- TODO[translations]: opencode ships 22 README translations as a
+"global community" signal. Optional but high-effort. If you go for it,
+the standard shape is a centered `<p align="center">` row of links to
+README.<lang>.md files right under the badges. Don't bother until the
+content stabilises — every translation has to re-sync on each change.
+-->
