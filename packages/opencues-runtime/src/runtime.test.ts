@@ -14,9 +14,10 @@ describe('Runtime.create', () => {
     const runtime = await Runtime.create(adapter);
     expect(runtime).toBeInstanceOf(Runtime);
     expect(runtime.adapter).toBe(adapter);
-    const startup = adapter.logs.find(l => l.msg === 'OpenCues runtime starting');
-    expect(startup).toBeDefined();
-    expect(startup?.level).toBe('info');
+    // Runtime.create itself no longer logs — the boot log is owned by
+    // each per-adapter boot.ts (which prepends the band version). Tested
+    // in per-adapter boot.test.ts files. MockAdapter has no per-adapter
+    // wrapper, so we only verify Runtime.create succeeded.
   });
 
   it('throws on interface version mismatch', async () => {

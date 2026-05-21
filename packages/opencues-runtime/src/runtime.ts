@@ -32,11 +32,12 @@ export class Runtime {
         throw new Error(`HostAdapter missing required capability: ${cap}`);
       }
     }
-    adapter.log('info', 'OpenCues runtime starting', {
-      host: adapter.hostName,
-      hostVersion: adapter.hostVersion,
-      capabilities: adapter.capabilities,
-    });
+    // Boot log is owned by the per-adapter boot.ts — it knows the band
+    // version ("Chrome v1", "OpenCode v1.14", "Gemini CLI v0.41") which
+    // is more useful for triage than `adapter.hostVersion` alone.
+    // Runtime.create deliberately does NOT log here. Previously it did,
+    // producing a duplicate ~4ms before the per-adapter line; consolidated
+    // to the per-adapter line in May 2026.
     return new Runtime(adapter, config);
   }
 
