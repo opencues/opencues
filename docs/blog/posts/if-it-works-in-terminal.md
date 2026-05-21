@@ -8,7 +8,7 @@ I further confirmed this when I utilised the WhatsApp MCP in May 2025 to control
 
 The core simplicity of the terminal allowed for its functionality to be mirrored onto other platforms relatively easily and in quick order.
 
-This simplicity is one of the key design decisions me and the team working on OpenCues are attempting to explore with Inline Prompting & Inline Agents.
+This simplicity is one of the key design decisions I'm exploring with OpenCues, through Inline Prompting and Inline Agents.
 
 What is the 'minimum' amount of UI needed to deliver an LLM experience and novel experiences could come to life as a result of us further removing the dependencies on UI?
 

@@ -51,8 +51,6 @@ For dev iteration on patch sources, use `--keep-state` (skips nuke + npm install
 
 > **Future:** post-publish, the same script runs as `npx @opencues/claude-code`. Same flags, same behaviour.
 
-> **Future:** post-publish, the same script runs as `npx @opencues/claude-code`. Same flags, same behaviour.
-
 ---
 
 ## Verify

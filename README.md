@@ -14,12 +14,14 @@
 
 <!-- TODO[badges]: uncomment + fill DISCORD_ID + INVITE once those exist.
 The license badge text needs to match LICENSE (currently Proprietary → flip
-to MIT/Apache-2.0 at private-beta-end). The npm badge needs the package
-published. Star + Build are already wireable.
+to MIT/Apache-2.0 at private-beta-end). The npm badge depends on
+where we publish — packages currently target GitHub Packages
+(restricted), NOT npmjs.com, so the standard `shields.io/npm/v/...`
+URL would 404. Either swap to a GitHub Packages badge, or wait until
+the publish target broadens. Star + Build are wireable today.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Build](https://github.com/opencues/opencues/actions/workflows/ci.yml/badge.svg)](https://github.com/opencues/opencues/actions)
-[![npm](https://img.shields.io/npm/v/@opencues/cli.svg)](https://www.npmjs.com/package/@opencues/cli)
 [![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE)
 [![GitHub stars](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 -->
