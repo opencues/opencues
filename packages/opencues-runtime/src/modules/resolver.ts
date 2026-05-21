@@ -135,6 +135,18 @@ export class Resolver {
   /** Last user-typed text — used to detect when `_` was just added so we
    *  can bypass the debounce and fire fluid-blank resolution immediately. */
   private _lastInputText = '';
+  /** Timestamp of the most recent TASK_STOP dispatch. Used to suppress
+   *  TASK_ARM verdicts that arrive shortly after a stop — they're almost
+   *  certainly stale in-flight TransformBlank responses (the LLM call was
+   *  issued when the task was armed, returned after the user disarmed).
+   *  Without this guard, the stale ARM re-arms the task and the agent
+   *  starts rewriting subsequent text — observed in scenarios that run
+   *  AFTER agent-rewrite tests inadvertently see their buffer rewritten.
+   *  Window: 3s — covers typical LLM round-trip (cerebras ~300ms,
+   *  generous slack). A user who intentionally re-arms an identical
+   *  prompt within 3s of stopping is the only false-positive case;
+   *  acceptable trade for blocking the silent task leak. */
+  private _lastTaskStopAt = 0;
 
   /** Snapshot of the opt-in settings the resolver was last built with.
    *  Re-computed on every resolve; mismatch → rebuildResolver before
@@ -212,6 +224,20 @@ export class Resolver {
     let newText: string;
     let newCursor: number;
 
+    // Stale-arm guard: a TASK_ARM verdict arriving within 3s of a
+    // TASK_STOP is almost certainly an in-flight LLM response from
+    // BEFORE the stop (the source's call was issued when the task was
+    // armed, returned after the user disarmed). Without this guard the
+    // stale ARM re-arms the task silently and the agent starts
+    // rewriting subsequent text. See _lastTaskStopAt for the rationale.
+    if ((action === 'TASK_ARM' || action === 'TASK_ADD') && this._lastTaskStopAt > 0) {
+      const sinceStopMs = Date.now() - this._lastTaskStopAt;
+      if (sinceStopMs < 3000) {
+        this.adapter.log('info', `AgentTask: dropping stale ${action} (arrived ${sinceStopMs}ms after TASK_STOP — likely in-flight LLM response, prompt="${payload}")`);
+        return;
+      }
+    }
+
     switch (action) {
       case 'TASK_ARM':
         state.arm(payload);
@@ -234,6 +260,7 @@ export class Resolver {
       case 'TASK_STOP':
         this.adapter.log('info', `AgentTask: STOP (was prompt="${state.prompt}")`);
         state.stop();
+        this._lastTaskStopAt = Date.now();
         newText = prefix;
         newCursor = newText.length;
         break;
