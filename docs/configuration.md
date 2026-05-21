@@ -1,6 +1,6 @@
 # Configuration
 
-Everything OpenCues reads from your filesystem, what each file does, and how cycleable settings flip live. For the spec defining these formats, see [`spec/`](../spec/) — this doc is the user-facing reference; the spec is the implementer-facing reference.
+Everything OpenCues reads from your filesystem, what each file does, and how cycleable settings flip live. For the formats defining these files, see [`spec/`](../spec/). This doc is the task-oriented user reference ("how do I do X"); the spec is the field-by-field reference (used today by config authors writing CUE.md / BLANK.md / AUDITOR.md files, and forward-looking by any future second runtime implementation).
 
 ## Directory shape
 
@@ -244,7 +244,7 @@ When a runtime mutates `OPENCUES.md` (e.g. `opencues settings _` flipping a scal
 ## See also
 
 - [`spec/`](../spec/) — the standards themselves (`CUE.md`, `BLANK.md`, `AUDITOR.md`, master files, runtime contracts)
-- [`spec/conformance/`](../spec/conformance/) — executable fixtures any conformant runtime can exercise against
+- [`spec/conformance/`](../spec/conformance/) — executable fixture tree; used today as `@opencues/core`'s parser regression suite, available to any future second runtime
 - [`docs/glossary.md`](glossary.md) — terminology reference
 - [`docs/features/`](features/) — 40+ feature concepts grouped into 10 chapters
 - [`docs/architecture/`](architecture/) — deep dives on each pipeline (transform-blank, agent-rewrite, fluid-config, sentence-cues, ambient/user context, ...)

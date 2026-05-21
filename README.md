@@ -24,7 +24,9 @@ published. Star + Build are already wireable.
 [![GitHub stars](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 -->
 
-**Open standards + reference implementation for real-time guidance as you type.** OpenCues defines three open standards — **Cues**, **Blanks**, and **Auditors** — that any text editor, IDE, or LLM pipeline can implement. This repo holds the standards (at [`spec/`](spec/)) plus a working reference runtime you can install today in Claude Code, OpenCode, Gemini CLI, and Chrome.
+**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, and Chrome.
+
+The three file formats (Cues / Blanks / Auditors) are open standards — designed so a non-JS port or alternative runtime *could* ship — and the spec at [`spec/`](spec/) is the field reference for anyone authoring those files. Today only the reference runtime in this repo implements them, powering all four integrations as thin host adapters over a shared core.
 
 <!-- TODO[hero]: pick ONE of these three (or ship all three over time):
 
@@ -126,9 +128,9 @@ Each install pins a specific upstream version (e.g. Claude Code 2.1.110, OpenCod
 
 Full feature catalogue: [`docs/features/`](docs/features/) (40+ feature concepts grouped into 10 chapters).
 
-## The three open standards
+## The three file formats
 
-OpenCues defines three surface formats. Each has its own spec file and its own conformance — a runtime can implement one surface and be conformant for that surface; you don't have to commit to all three.
+OpenCues defines three surface formats. Each has its own spec file. Most users only interact with one or two — pick what you need; you don't have to use all three.
 
 | Surface | Direction | Operates on | Spec | Trigger |
 |---|---|---|---|---|
@@ -138,7 +140,9 @@ OpenCues defines three surface formats. Each has its own spec file and its own c
 
 Each surface ships as a folder under `<root>/{cues,blanks,auditors}/<name>/` with an uppercase entry file (`CUE.md`, `BLANK.md`, `AUDITOR.md`). Master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) configure the surface as a whole. All behaviour lives in `.md` files, never in integration code.
 
-**Building a second implementation?** [`spec/`](spec/) holds six markdown docs + seven JSON schemas covering every file format and runtime contract. [`spec/conformance/`](spec/conformance/) ships an executable fixture tree (valid examples MUST be accepted, invalid examples MUST be rejected with the right rule code, wire-format parser cases, routing scenarios) — your runtime can exercise it directly. Status: `0.1-alpha`; changes tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md).
+**Authoring your own cues / blanks / auditors?** The spec docs above are the field reference for what every frontmatter field does. [`spec/conformance/`](spec/conformance/) ships an executable fixture tree — valid examples your authored files should look like, invalid examples for the gotchas. The reference runtime in this repo uses it as its own regression net (`packages/opencues-core/src/conformance.test.ts`). A non-JS port could exercise the same fixtures someday; none exists today.
+
+Spec status: `0.1-alpha`; changes tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md).
 
 ## Configuration
 

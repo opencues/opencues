@@ -52,7 +52,7 @@ These six are conformance MUSTs — a runtime that violates any of them is not c
 
 ## What the standard does NOT require
 
-- **OS-level sandboxing.** [`blank-spec.md` § Opt-in OS-level sandbox](./blank-spec.md#opt-in-os-level-sandbox-v10) defines an OPTIONAL frontmatter syntax (`sandbox: strict`, `sandbox-net`, `sandbox-fs`) for runtimes that want to confine `blankScript:` execution. The reference implementation honours it via bubblewrap on Linux/WSL and `sandbox-exec` on macOS; other runtimes MAY omit the sandbox entirely.
+- **OS-level sandboxing.** [`blank-spec.md` § Opt-in OS-level sandbox](./blank-spec.md#opt-in-os-level-sandbox-v10) defines an OPTIONAL frontmatter syntax (`sandbox: strict`, `sandbox-net`, `sandbox-fs`) for runtimes that want to confine `blankScript:` execution. The reference implementation honours it via bubblewrap on Linux/WSL and `sandbox-exec` on macOS; a future second runtime would be free to omit the sandbox entirely.
 - **Network egress restrictions** on the standard's own LLM calls. Each runtime decides how it routes provider traffic.
 - **PII handling rules** beyond the `user-context` runtime feature, which is itself non-normative — see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md).
 - **Cryptographic provenance** for cue/blank/auditor packs. Deferred until a registry mechanism exists.

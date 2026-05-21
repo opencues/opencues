@@ -30,7 +30,7 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`blank-spec.md`](./blank-spec.md) | The `BLANK.md` format and the blank runtime contract |
 | [`auditor-spec.md`](./auditor-spec.md) | The `AUDITOR.md` format and the auditor runtime contract |
 | [`core.md`](./core.md) | Shared rules: search-path, host-compat, hot-reload, master `CUES.md` / `BLANKS.md` / `AUDITORS.md`, routing |
-| [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) | **Non-standard, lives outside `spec/`.** Documents OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation details for fluid blank and transform blank. Reference-impl documentation; other runtimes ignore. |
+| [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) | **Non-standard, lives outside `spec/`.** Documents OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation details for fluid blank and transform blank. Reference-impl documentation; not part of the standard a future second runtime would need to implement. |
 | [`schemas/cue.schema.json`](./schemas/cue.schema.json) | JSON Schema for `CUE.md` frontmatter. Editor integrations may use this for live validation. |
 | [`schemas/blank.schema.json`](./schemas/blank.schema.json) | JSON Schema for `BLANK.md` frontmatter. |
 | [`schemas/auditor.schema.json`](./schemas/auditor.schema.json) | JSON Schema for `AUDITOR.md` frontmatter. |
@@ -44,9 +44,11 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 
 ## Reading order
 
-Implementers building a new runtime: read `cue-spec.md`, `blank-spec.md`, `auditor-spec.md`, `core.md` in that order. The OpenCues reference-runtime extensions doc (`../packages/opencues-runtime/SPEC.md`) is reference-only and can be skipped.
+**Authors writing `CUE.md` / `BLANK.md` / `AUDITOR.md` files** (the everyday audience): read the §§ Configuration spec and Examples in each spec doc. Skip the Runtime contract sections — those are for runtime implementers.
 
-Authors writing `CUE.md` / `BLANK.md` / `AUDITOR.md` files: read the §§ Configuration spec and Examples in each spec doc. Skip the Runtime contract sections — those are for runtime implementers.
+**Anyone contemplating a second runtime implementation** (a non-JS port, an alternative impl): also read the Runtime contract sections + `core.md` in full. As of `0.1-alpha`, no second implementation exists; the spec is designed so one could ship, and the conformance suite ([`conformance/`](./conformance/)) is the contract such a runtime would target.
+
+The OpenCues reference-runtime extensions doc ([`../packages/opencues-runtime/SPEC.md`](../packages/opencues-runtime/SPEC.md)) is reference-only — describes how *this* runtime extends the standard with its own non-normative knobs (TTS, debug-mode, etc.). Authors and second implementers can both skip it.
 
 ## Status & versioning
 

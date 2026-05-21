@@ -1,8 +1,8 @@
 # Conformance suite — opencues/0.1-alpha
 
-A corpus of fixtures any conformant OpenCues implementation can exercise against. This suite is the bridge between "I read [`../cue-spec.md`](../cue-spec.md)" and "my parser actually matches the standard".
+A corpus of fixtures any conformant OpenCues implementation can exercise against. This suite is the bridge between "I read [`../cue-spec.md`](../cue-spec.md)" and "the parser actually matches the standard". Used today by `@opencues/core` as its parser regression net (adding a fixture this week caught one drift); designed so a future second runtime could exercise the same fixtures.
 
-The suite is **non-executable** — no test runner. It's a tree of fixture files plus expectation metadata, and each implementation wires its own runner. The reference implementation (`@opencues/core`) ships its own runner; second implementers can follow the pattern in [`docs/runner-template.md`](#runner-template) below.
+The suite is **a fixture tree, not a runner** — files describing what conformant behaviour looks like; each consumer wires its own runner. The reference implementation ships one under [`packages/opencues-core/src/conformance.test.ts`](../../packages/opencues-core/src/conformance.test.ts) (the everyday user of these fixtures today). A future second-runtime author would follow the same template at [§ Runner template](#runner-template) below.
 
 ## What's here
 
@@ -38,19 +38,27 @@ conformance/
 
 ## How to use the suite
 
-### As an implementer building a second runtime
+### As the reference runtime (current primary user)
 
-You're targeting `opencues/0.1-alpha`. The fixtures pin what your parser / router / wire-format-handler MUST agree with for interop.
+The suite is `@opencues/core`'s regression net. The runner at [`packages/opencues-core/src/conformance.test.ts`](../../packages/opencues-core/src/conformance.test.ts) loads every fixture and asserts the reference parsers + wire-format handler + routing algorithm agree with what the spec describes.
+
+Run it: `cd packages/opencues-core && npx vitest run src/conformance.test.ts`. 54 tests pass; 6 are `.todo` markers naming linter rule codes the parser doesn't emit yet (visible-by-design gaps for a follow-up parser-side change).
+
+This is the everyday value of the suite today — every parser change runs against the fixture tree before merge.
+
+### As an implementer building a second runtime (not yet — forward-looking)
+
+No second implementation of OpenCues exists today. The spec is designed so one could ship (a non-JS port, an alternative implementation); the conformance suite is the contract such a runtime would target. If you're considering it:
 
 1. **Parse every `valid/**/*.md`** with your runtime's loader. Each one MUST be accepted. If your parser rejects a valid fixture, that's a conformance bug.
 2. **Parse every `invalid/**/*.md`** with your runtime's loader. Each one MUST be rejected, and the rejection MUST raise the rule code declared in the sibling `<name>.expected.json` file. (A rejection with a different rule code is allowed but suggests your loader's diagnostics drift from the standard's vocabulary.)
 3. **Run every `wire/parser-alternatives.json` case** through your LLM-response parser. The structured output MUST equal `expected`.
 4. **Run every `routing/*.json` scenario** through your router. For each scenario, the listed words MUST route to the listed sources in the order shown.
 
-Implementers MAY skip:
-- LLM-mode cue fixtures if their runtime is static-only.
-- `blankScript:` fixtures if their runtime is browser-only (host-compat auto-detects).
-- Auditor fixtures if their runtime doesn't implement the auditor surface.
+You MAY skip:
+- LLM-mode cue fixtures if your runtime is static-only.
+- `blankScript:` fixtures if your runtime is browser-only (host-compat auto-detects).
+- Auditor fixtures if your runtime doesn't implement the auditor surface.
 
 A runtime that skips a surface is still **conformant for the surfaces it implements** — there's no "you must implement everything" rule. The suite labels each section so implementers know what's scoped to which surface.
 
@@ -198,7 +206,7 @@ for (const file of readdirSync(join(root, 'routing'))) {
 }
 ```
 
-Wrap with whatever test framework you use. The reference implementation's runner lives under `packages/opencues-core/src/conformance.test.ts` (to be added).
+Wrap with whatever test framework you use. The reference implementation's runner lives at [`packages/opencues-core/src/conformance.test.ts`](../../packages/opencues-core/src/conformance.test.ts) — uses vitest, ~280 lines, exactly the pattern above plus a hand-rolled routing algorithm (since `@opencues/core` doesn't ship a router — that lives in `@opencues/runtime`).
 
 ## Status
 

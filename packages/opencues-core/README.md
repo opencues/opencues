@@ -16,7 +16,7 @@ The standard lives at [`spec/`](https://github.com/opencues/opencues/tree/master
 
 Standard status: `0.1-alpha` — expect changes pre-v1.
 
-This package is the reference parser + resolver + LLM-router. Other implementations can target the same standard in other languages or with different runtime trade-offs — the spec defines what they must agree on.
+This package is the reference parser + resolver + LLM-router. The standard at [`spec/`](https://github.com/opencues/opencues/tree/master/spec) is designed so other implementations could target it (in other languages, with different runtime trade-offs); as of `0.1-alpha` no second implementation exists.
 
 > **Pre-1.0 — internal package.** Today this ships as a workspace dep
 > for `@opencues/runtime` + per-host integrations. Subject to change

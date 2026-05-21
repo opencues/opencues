@@ -6,6 +6,8 @@
 
 This file lives under `packages/opencues-runtime/` rather than `spec/` deliberately. Reference-implementation docs colocated with the spec muddle the standard/implementation boundary; every peer open standard (MCP, OpenAPI, JSON Schema, CommonMark) keeps the two cleanly separated. This file is the reference-impl side of that split.
 
+As of `0.1-alpha`, the OpenCues reference runtime is the only runtime that exists; this doc keeps that fact from contaminating the standard. The forward-looking framing throughout ("other runtimes MAY", "another runtime could ship") is structural — the standard is designed so a second runtime could ship, even though none does today.
+
 ---
 
 ## Why this exists
