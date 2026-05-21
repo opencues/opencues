@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Resolver } from './resolver';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
@@ -395,6 +395,83 @@ describe('Resolver.resolveAndApply', () => {
     resolver.rebuildResolver();
     expect(capturedOpts?.endpoint).toBe('https://patch-default.example.com');
     expect(capturedOpts?.defaultModel).toBe('patch-default-model');
+  });
+});
+
+describe('Resolver — same-text dedupe (regression: double LLM call on `_` trigger)', () => {
+  // Regression for the May 2026 bug where OpenCode's Solid prompt
+  // re-emitted onContentChange for the same buffer content multiple
+  // times after a single change, causing two parallel TransformBlank
+  // LLM calls per `_` trigger. The first event hit the resolver's
+  // fast-path; the second fell through to scheduleResolve() and fired
+  // a redundant resolveAndApply 500ms later.
+  //
+  // Fix: early-return in onTextChange when text === _lastInputText.
+  // These tests pin the dedupe so any future host whose event loop
+  // re-emits identical text events still gets one resolve per change.
+
+  it('two identical text events fire resolveAndApply exactly once', async () => {
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    // First event: text ends with `_` (fast-path bypass).
+    adapter.pushText('hello _');
+    // Second event: identical text — must be deduped.
+    adapter.pushText('hello _');
+
+    // Wait past the test's debounceMs (10) by enough margin to be
+    // sure any scheduled debounce would have fired.
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('three identical text events still fire resolveAndApply exactly once', async () => {
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    adapter.pushText('hello _');
+    adapter.pushText('hello _');
+    adapter.pushText('hello _');
+
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('identical events without `_` (no fast-path) also dedupe — single scheduled resolve', async () => {
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    // No `_` → no fast-path → first event goes through scheduleResolve.
+    adapter.pushText('hello world');
+    // Second event with identical text must not re-schedule.
+    adapter.pushText('hello world');
+
+    // Wait past debounce so any scheduled resolve fires.
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('genuinely different text fires resolveAndApply twice — dedupe is text-equality only', async () => {
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    adapter.pushText('hello _');
+    adapter.pushText('hello world _');  // different text
+
+    await new Promise(r => setTimeout(r, 50));
+
+    // Both fast-paths fire — first because `_` was just typed against
+    // empty `prev`, second because `_` is at the trailing edge against
+    // a `prev` that didn't end in `_` after we strip the trailing space.
+    // The point is: dedupe MUST NOT swallow a real text change.
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 
