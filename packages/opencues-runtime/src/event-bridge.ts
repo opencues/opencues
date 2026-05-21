@@ -421,7 +421,10 @@ class CommandRunner {
    *  per-line do not abort the script. */
   runScript(text: string): void {
     for (const raw of text.split('\n')) {
-      const line = raw.trim();
+      // Only skip blank lines / strip leading whitespace. Trailing
+      // whitespace is content (e.g. `text:volume _ ` for the spaced
+      // blank-trigger contract — the trailing space is load-bearing).
+      const line = raw.replace(/^\s+/, '');
       if (!line) continue;
       const { cmd, arg } = parseLine(line);
       this.stream.emit({ type: 'command', cmd, arg: arg.slice(0, 200) });
