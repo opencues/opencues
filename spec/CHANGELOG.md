@@ -61,7 +61,9 @@ Four master files at the root of any `.cues/` directory:
 
 - Project layout + search paths in [`core.md`](./core.md).
 - Runtime contracts a conformant implementation must satisfy in
-  [`opencues-runtime.md`](./opencues-runtime.md).
+  [`opencues-runtime.md`](../packages/opencues-runtime/SPEC.md)
+  (moved out of `spec/` 2026-05-21 — reference-impl docs stay with
+  the reference impl).
 - JSON schemas (`Draft 7`) for every config file in
   [`schemas/`](./schemas/).
 

@@ -1,12 +1,16 @@
-# opencues-runtime — non-standard knobs for the OpenCues runtime
+# @opencues/runtime — reference-implementation extensions
 
-> **This document is NOT part of the open standard.** It describes settings that the OpenCues runtime honors but that other implementations of the standard are free to ignore. If you're building a third-party runtime that conforms to [`cue-spec.md`](./cue-spec.md) and [`blank-spec.md`](./blank-spec.md), you can stop reading here.
+> **This document is NOT part of the open standard.** It describes settings and behaviours specific to the OpenCues *reference runtime* (`@opencues/runtime`). Other implementations of the standard are free to ignore everything here.
+>
+> If you're building a third-party runtime conformant to the standard at [`spec/`](../../spec/), stop reading — start at [`spec/README.md`](../../spec/README.md). The standard is what you implement; this doc is what one specific runtime (ours) happens to do on top.
+
+This file lives under `packages/opencues-runtime/` rather than `spec/` deliberately. Reference-implementation docs colocated with the spec muddle the standard/implementation boundary; every peer open standard (MCP, OpenAPI, JSON Schema, CommonMark) keeps the two cleanly separated. This file is the reference-impl side of that split.
 
 ---
 
 ## Why this exists
 
-The standard ([`cue-spec.md`](./cue-spec.md), [`blank-spec.md`](./blank-spec.md), [`core.md`](./core.md)) describes only the two file formats and their runtime contracts. Anything that's purely an OpenCues-the-runtime concern — TTS voice selection, debug logging, cursor behavior — lives here, in a separate file that other implementations don't have to honor.
+The standard ([`cue-spec.md`](../../spec/cue-spec.md), [`blank-spec.md`](../../spec/blank-spec.md), [`core.md`](../../spec/core.md)) describes only the file formats and their runtime contracts. Anything that's purely an OpenCues-the-runtime concern — TTS voice selection, debug logging, cursor behavior — lives here, in a separate file that other implementations don't have to honor.
 
 A future "VimCues" or "EmacsCues" reads `CUE.md`, `BLANK.md`, and `AUDITOR.md` and works. It can ignore `OPENCUES.md` entirely and park its own knobs in `VIMCUES.md` / wherever fits its conventions.
 
@@ -18,7 +22,7 @@ A future "VimCues" or "EmacsCues" reads `CUE.md`, `BLANK.md`, and `AUDITOR.md` a
 
 Unlike the standard masters `CUES.md` / `BLANKS.md` / `AUDITORS.md`, `OPENCUES.md` is **not resolved through the project search path**. Settings here apply across every integration (Claude Code, OpenCode, Chrome) and across every project — they're properties of the runtime install, not of any one project. A project-level override would silently change behaviour for any other project the user opens, which is a class of bug worth designing out.
 
-If a runtime needs project-scoped overrides for any of these knobs, it SHOULD promote the relevant fields to `CUES.md` / `BLANKS.md` / `AUDITORS.md` (which DO support project override) via the [promotion path in core.md](./core.md#promotion-path--runtime-specific-to-standard).
+If a runtime needs project-scoped overrides for any of these knobs, it SHOULD promote the relevant fields to `CUES.md` / `BLANKS.md` / `AUDITORS.md` (which DO support project override) via the [promotion path in core.md](../../spec/core.md#promotion-path--runtime-specific-to-standard).
 
 ---
 
@@ -119,7 +123,7 @@ These are wire-format quirks, not protocol features — they get encoded once in
 | `default-provider`, `default-model`, `llm-provider`, `llm-model`, `llm-endpoint`, `<feature>-provider`, `<feature>-model`, `<feature>-endpoint` | LLM provider config is a per-runtime concern. The list of recognised providers, their wire formats, and their env-var conventions are runtime-specific; another runtime could ship a single provider with a hardcoded model and conform to the standard equally. |
 | `resolver-*` | Caching strategy is implementation-private. |
 
-Any of these could be promoted to the standard if multiple runtimes adopt them. See [`core.md`](./core.md) § Promotion path.
+Any of these could be promoted to the standard if multiple runtimes adopt them. See [`core.md`](../../spec/core.md) § Promotion path.
 
 ---
 
@@ -133,7 +137,7 @@ A 0-byte `CUES.md`, `BLANKS.md`, `AUDITORS.md`, or `OPENCUES.md` MUST be treated
 
 Some settings can be modified by the user from inside text — e.g. typing `opencues voice-mode _` in a buffer and accepting the alternative flips the in-file value. The OpenCues runtime ships a built-in `OpenCuesSettingsBlank` that targets this file.
 
-When the runtime writes to `OPENCUES.md`, it MUST honor the [hot-reload write-race guard](./core.md#hot-reload) by suppressing its own re-read for at least 2 seconds after the write completes.
+When the runtime writes to `OPENCUES.md`, it MUST honor the [hot-reload write-race guard](../../spec/core.md#hot-reload) by suppressing its own re-read for at least 2 seconds after the write completes.
 
 Other runtimes are free to omit this self-mutation behavior entirely.
 
@@ -141,7 +145,7 @@ Other runtimes are free to omit this self-mutation behavior entirely.
 
 ## Fluid blank — runtime implementation
 
-The blank spec defines a runtime-side fallback when `_` matches no `blankKeywords`: see [`blank-spec.md` § Fluid-blank fallback](./blank-spec.md). Implementing the fallback is OPTIONAL for conformance; this section describes how the OpenCues runtime implements one. Other runtimes may mirror, replace, or omit.
+The blank spec defines a runtime-side fallback when `_` matches no `blankKeywords`: see [`blank-spec.md` § Fluid-blank fallback](../../spec/blank-spec.md). Implementing the fallback is OPTIONAL for conformance; this section describes how the OpenCues runtime implements one. Other runtimes may mirror, replace, or omit.
 
 ### What it is
 

@@ -30,7 +30,7 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`blank-spec.md`](./blank-spec.md) | The `BLANK.md` format and the blank runtime contract |
 | [`auditor-spec.md`](./auditor-spec.md) | The `AUDITOR.md` format and the auditor runtime contract |
 | [`core.md`](./core.md) | Shared rules: search-path, host-compat, hot-reload, master `CUES.md` / `BLANKS.md` / `AUDITORS.md`, routing |
-| [`opencues-runtime.md`](./opencues-runtime.md) | **Non-standard.** OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation specs for fluid blank and transform blank. Documents the promotion path from runtime-specific to standard. |
+| [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) | **Non-standard, lives outside `spec/`.** Documents OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation details for fluid blank and transform blank. Reference-impl documentation; other runtimes ignore. |
 | [`schemas/cue.schema.json`](./schemas/cue.schema.json) | JSON Schema for `CUE.md` frontmatter. Editor integrations may use this for live validation. |
 | [`schemas/blank.schema.json`](./schemas/blank.schema.json) | JSON Schema for `BLANK.md` frontmatter. |
 | [`schemas/auditor.schema.json`](./schemas/auditor.schema.json) | JSON Schema for `AUDITOR.md` frontmatter. |
@@ -39,10 +39,12 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`schemas/auditors-master.schema.json`](./schemas/auditors-master.schema.json) | JSON Schema for the `AUDITORS.md` master file. |
 | [`schemas/opencues.schema.json`](./schemas/opencues.schema.json) | JSON Schema for the `OPENCUES.md` runtime config file (non-standard — OpenCues-specific). |
 | [`conformance/`](./conformance/) | Executable test fixtures any conformant runtime can exercise against — valid + invalid examples for every surface, wire-format cases for the LLM parser, and routing scenarios. See its [`README`](./conformance/README.md). |
+| [`SECURITY.md`](./SECURITY.md) | Spec-scoped security claims (auditor trust model, blank-script carve-out, capability contract for user-shipped JS blanks). Links to the reference impl's full threat model. |
+| [`proposals/`](./proposals/) | Where spec-change proposals land. Template + process modeled on MCP SEPs. Seeded but not yet exercised — no proposals as of `0.1-alpha`. |
 
 ## Reading order
 
-Implementers building a new runtime: read `cue-spec.md`, `blank-spec.md`, `auditor-spec.md`, `core.md` in that order. `opencues-runtime.md` is reference-only and can be skipped.
+Implementers building a new runtime: read `cue-spec.md`, `blank-spec.md`, `auditor-spec.md`, `core.md` in that order. The OpenCues reference-runtime extensions doc (`../packages/opencues-runtime/SPEC.md`) is reference-only and can be skipped.
 
 Authors writing `CUE.md` / `BLANK.md` / `AUDITOR.md` files: read the §§ Configuration spec and Examples in each spec doc. Skip the Runtime contract sections — those are for runtime implementers.
 

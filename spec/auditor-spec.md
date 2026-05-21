@@ -81,7 +81,7 @@ Trade-off: cheaper (one call instead of N), but loses the structural injection i
 
 ### Standard's coverage
 
-The merge mechanism is a runtime concern (the OpenCues runtime uses `AgentRewrite` — see [`opencues-runtime.md`](./opencues-runtime.md)). The standard specifies the auditor file format, the composition rules, and the requirement that *some* mode preserves user in-flight edits via three-way merge. The standard does NOT specify the diff/merge algorithm under isolated mode, nor the exact text wrapping under either mode.
+The merge mechanism is a runtime concern (the OpenCues runtime uses `AgentRewrite` — see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)). The standard specifies the auditor file format, the composition rules, and the requirement that *some* mode preserves user in-flight edits via three-way merge. The standard does NOT specify the diff/merge algorithm under isolated mode, nor the exact text wrapping under either mode.
 
 ### Composition rules
 
@@ -234,7 +234,7 @@ A runtime MAY support per-feature LLM routing for auditors. The OpenCues runtime
 - `auditors-model:` — which model id to use
 - `auditors-endpoint:` — override URL (rare; CI / local proxy)
 
-These mirror `word-cues-provider`, `fluid-blank-provider`, `transform-blank-provider` — the same per-feature LLM routing pattern used by every other surface. See [`opencues-runtime.md`](./opencues-runtime.md) § Multi-provider routing.
+These mirror `word-cues-provider`, `fluid-blank-provider`, `transform-blank-provider` — the same per-feature LLM routing pattern used by every other surface. See [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) § Multi-provider routing.
 
 Per-auditor `provider:` / `model:` is currently NOT specified. Under composed mode it is structurally impossible (one prompt → one provider). Under isolated mode it is structurally possible (each auditor is its own call), but the standard does not yet require runtimes to support it. Future revisions MAY add per-auditor LLM choice as an optional capability.
 

@@ -116,7 +116,7 @@ Same defensive treatment: missing or 0-byte = treated as absent. See [`auditor-s
 | `tips-mode`, `word-cues-mode` | `CUES.md` | Cue-surface enable flags. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling/CUE.md`.) |
 | `ignore: [<word>, ...]` | `CUES.md`, `BLANKS.md` | Per-surface ignore lists. Words/blanks the runtime never surfaces, regardless of source matches. |
 | `disable: [<source-id>, ...]` | every master | Subtract a named source from this layer's composition without modifying the user-level library. Symmetric across cues, blanks, auditors. |
-| Anything else (voice, debug, navigation, fluid-/transform-blank toggles, per-feature LLM routing) | `OPENCUES.md` | Runtime knobs — not part of this standard. See [`opencues-runtime.md`](./opencues-runtime.md). |
+| Anything else (voice, debug, navigation, fluid-/transform-blank toggles, per-feature LLM routing) | `OPENCUES.md` | Runtime knobs — not part of this standard. See [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md). |
 
 A conformant runtime MUST refuse to honor surface settings declared in the wrong master file. Runtime-owned settings (TTS, debug, fluid-blank toggles, etc.) are NOT part of this spec and live in `OPENCUES.md`; another implementation that parks its runtime config in a different file is conformant.
 
@@ -154,7 +154,7 @@ Per-project rules:
 - At most one DEFAULT source SHOULD exist. Validators warn on multiple defaults at the same priority.
 - A project with zero DEFAULT sources is valid; words outside any `match:`/`keywords:` simply produce no cue.
 
-For blanks, routing is by `blankKeywords` exact match, with `blankProximity` controlling word distance from `_`. Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` with no `blankKeywords` match. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`opencues-runtime.md` § Task-trigger guard](./opencues-runtime.md#task-trigger-guard) for the OpenCues runtime's implementation).
+For blanks, routing is by `blankKeywords` exact match, with `blankProximity` controlling word distance from `_`. Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` with no `blankKeywords` match. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
 
 ---
 
@@ -221,7 +221,7 @@ Runtimes MAY add commands; the three above are the interop surface that authorin
 
 ## Promotion path — runtime-specific to standard
 
-Fields not in this spec live in `OPENCUES.md` (see [`opencues-runtime.md`](./opencues-runtime.md)). Other runtimes ignore that file.
+Fields not in this spec live in `OPENCUES.md` (see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)). Other runtimes ignore that file.
 
 If a runtime-specific field proves universally useful, it can be **promoted** to this spec in a future version:
 
@@ -230,7 +230,7 @@ If a runtime-specific field proves universally useful, it can be **promoted** to
 3. The spec version bumps (e.g. `0.1-alpha` → `0.2-alpha`).
 4. The promoted field MAY remain in `OPENCUES.md` for backward compat for one minor version.
 
-Promotion candidates appear in [`opencues-runtime.md` § Future surfaces](./opencues-runtime.md#future-surfaces). The criterion is independent adoption: a setting becomes a candidate once a second conformant runtime ships it, not before.
+Promotion candidates appear in [`@opencues/runtime`'s `SPEC.md` § Future surfaces](../packages/opencues-runtime/SPEC.md#future-surfaces). The criterion is independent adoption: a setting becomes a candidate once a second conformant runtime ships it, not before.
 
 ---
 

@@ -231,7 +231,7 @@ For the `raw` parser, the response is opaque to the runtime; sources using `raw`
 
 - Display `cueTip` in a secondary surface (status line, tooltip, side pane).
 - Implement multi-word spans (`spanStart`/`spanEnd`) and linked-word cycling (`linked`).
-- Honor per-word `speak: true` hints to read alternatives via TTS. TTS itself is non-standard (see [`opencues-runtime.md`](./opencues-runtime.md)); the `speak` field is reserved here only so static-mode authors have a portable place to declare the intent.
+- Honor per-word `speak: true` hints to read alternatives via TTS. TTS itself is non-standard (see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)); the `speak` field is reserved here only so static-mode authors have a portable place to declare the intent.
 - Cache LLM responses.
 
 ---
@@ -356,6 +356,6 @@ Resist the urge to write a regex that catches everything. A narrow, accurate `ma
 
 ## Relationship to OpenCues runtime
 
-The OpenCues runtime ([`opencues-runtime.md`](./opencues-runtime.md)) implements this spec plus its own non-standard knobs (TTS voice, debug logging, cursor navigation). Other runtimes that read this spec are not required to implement those knobs.
+The OpenCues runtime ([`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)) implements this spec plus its own non-standard knobs (TTS voice, debug logging, cursor navigation). Other runtimes that read this spec are not required to implement those knobs.
 
 If a runtime-specific field proves universally useful, it can be promoted to this spec in a future version. See `core.md` § Promotion path.

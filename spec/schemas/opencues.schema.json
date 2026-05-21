@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opencues.org/schemas/opencues.schema.json",
   "title": "OpenCues OPENCUES.md frontmatter",
-  "description": "JSON Schema for the YAML frontmatter of OPENCUES.md, the runtime config file. NOT part of the standard — runtime-specific. See /spec/opencues-runtime.md.",
+  "description": "JSON Schema for the YAML frontmatter of OPENCUES.md, the runtime config file. NOT part of the standard — runtime-specific. See /packages/opencues-runtime/SPEC.md.",
   "type": "object",
   "properties": {
     "name": { "type": "string" },

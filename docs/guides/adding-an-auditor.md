@@ -165,7 +165,7 @@ The auditor is filtered out at this layer's composition. cd out of the project, 
 
 - [`spec/auditor-spec.md`](../../spec/auditor-spec.md) — full standard for the `AUDITOR.md` file format and runtime contract
 - [`spec/core.md`](../../spec/core.md) §Master files — `AUDITORS.md` master file, `disable:` semantics
-- [`spec/opencues-runtime.md`](../../spec/opencues-runtime.md) §Agent-task lifecycle keywords — how `agentically X _` arms and triggers the agent that consumes auditors
+- [`@opencues/runtime`'s `SPEC.md`](../../packages/opencues-runtime/SPEC.md) §Agent-task lifecycle keywords — how `agentically X _` arms and triggers the agent that consumes auditors
 - [`docs/features/agent-task.md`](../features/agent-task.md) — agent-task UX and behaviour (debounce, atomic span delete, statusline indicator)
 
 ## 10. Examples worth writing

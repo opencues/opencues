@@ -11,7 +11,7 @@ The standard lives at [`spec/`](https://github.com/opencues/opencues/tree/master
 | [`spec/cue-spec.md`](https://github.com/opencues/opencues/blob/master/spec/cue-spec.md) | Cue-source format (`cues/<name>/CUE.md`) |
 | [`spec/blank-spec.md`](https://github.com/opencues/opencues/blob/master/spec/blank-spec.md) | Blank-source format (`blanks/<name>/BLANK.md`) |
 | [`spec/auditor-spec.md`](https://github.com/opencues/opencues/blob/master/spec/auditor-spec.md) | Auditor-source format (`auditors/<name>/AUDITOR.md`) |
-| [`spec/opencues-runtime.md`](https://github.com/opencues/opencues/blob/master/spec/opencues-runtime.md) | Runtime contracts a conformant impl must satisfy |
+| [`@opencues/runtime`'s `SPEC.md`](https://github.com/opencues/opencues/blob/master/packages/opencues-runtime/SPEC.md) | Reference-impl extensions (non-normative). Lives outside `spec/`. |
 | [`spec/schemas/`](https://github.com/opencues/opencues/tree/master/spec/schemas) | JSON schemas for every config file |
 
 Standard status: `0.1-alpha` — expect changes pre-v1.

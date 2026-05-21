@@ -41,7 +41,7 @@ A blank fires when **all** of these hold:
 
 Blanks fire deterministically. The `description:` field is documentation only — it does NOT control invocation. (Contrast with [SKILL.md](https://github.com/anthropics/skills), where `description` is the LLM's invocation hook.)
 
-When `_` matches no blank, a runtime MAY provide a **fluid-blank fallback** (typically a free-form LLM lookup). The fallback is a runtime feature, not a `BLANK.md` configurable. A runtime that provides no fallback MUST leave unmatched `_` literal. See [`opencues-runtime.md`](./opencues-runtime.md) for the OpenCues runtime's implementation.
+When `_` matches no blank, a runtime MAY provide a **fluid-blank fallback** (typically a free-form LLM lookup). The fallback is a runtime feature, not a `BLANK.md` configurable. A runtime that provides no fallback MUST leave unmatched `_` literal. See [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) for the OpenCues runtime's implementation.
 
 ---
 
@@ -431,4 +431,4 @@ Pulls from Open-Meteo. Geocodes the location word in `context`.
 
 ## Relationship to OpenCues runtime
 
-OpenCues' runtime ships a fluid-blank fallback (free-form `_` lookup), specific in-process blank classes (`WeatherBlank`, `StocksBlank`, `OpenCuesSettingsBlank`, etc.), TTS for blank values, and cursor-aware cycling. None of those are required for spec conformance. See [`opencues-runtime.md`](./opencues-runtime.md).
+OpenCues' runtime ships a fluid-blank fallback (free-form `_` lookup), specific in-process blank classes (`WeatherBlank`, `StocksBlank`, `OpenCuesSettingsBlank`, etc.), TTS for blank values, and cursor-aware cycling. None of those are required for spec conformance. See [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md).
