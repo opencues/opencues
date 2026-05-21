@@ -1,7 +1,7 @@
 # Spec changelog
 
-All notable changes to the OpenCues standard (`spec/`) are
-recorded here. The reference implementation (`@opencues/core`)
+All notable changes to the OpenCues standards (`spec/` — Cues,
+Blanks, Auditors, and the shared `core.md`) are recorded here. The reference implementation (`@opencues/core`)
 maintains its own changelog at the repo root; this file tracks
 only what would affect a third-party implementation.
 

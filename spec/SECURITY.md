@@ -1,6 +1,6 @@
 # Spec security
 
-What the OpenCues standard claims about security, and where the reference implementation's full threat model lives.
+What the OpenCues standards (Cues, Blanks, Auditors) claim about security, and where the reference implementation's full threat model lives.
 
 This file scopes to the **standard's** security claims — the trust model baked into the file formats and runtime contracts. For the reference runtime's full security posture (sandbox mechanism, capability enforcement, ANSI sanitization, the eight closed attack classes from the May 2026 hardening sprint), see [`docs/architecture/security-audit.md`](../docs/architecture/security-audit.md) at the repo root.
 

@@ -1,6 +1,6 @@
 # Proposals
 
-How to propose a change to the OpenCues standard. Modeled on MCP's [SEPs](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/seps) and OpenAPI's [`proposals/`](https://github.com/OAI/OpenAPI-Specification/tree/main/proposals).
+How to propose a change to one of the OpenCues standards (Cues, Blanks, Auditors, or the shared `core.md` rules). Modeled on MCP's [SEPs](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/seps) and OpenAPI's [`proposals/`](https://github.com/OAI/OpenAPI-Specification/tree/main/proposals).
 
 This directory is **seeded but not yet exercised** — no external proposers as of `0.1-alpha`. The structure is here so the first proposal has a place to land.
 
