@@ -555,6 +555,15 @@ export class Resolver {
     // mid-word typing.
     const text = e.text;
     const prev = this._lastInputText;
+    // Same-text dedupe — some hosts (notably OpenCode's Solid prompt)
+    // re-emit `onContentChange` for the same buffer content after the
+    // initial change event. Without this guard, the second event falls
+    // through to scheduleResolve() (it's not a fresh `_` trigger), which
+    // fires a redundant resolveAndApply ~500ms later. For a `_`-trigger,
+    // that meant two parallel LLM calls on the same text → two
+    // substitutions → duplicated body content the user sees. Same text
+    // in, same text out, nothing for the resolver to do — early return.
+    if (text === prev) return;
     this._lastInputText = text;
     // Trigger detection — gated by blank-trigger-mode.
     //
