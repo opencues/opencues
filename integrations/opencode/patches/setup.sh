@@ -201,16 +201,28 @@ if 'publishPromptAccess' not in src:
                 publishPromptAccess({
                   read: () => input.plainText,
                   write: (t) => {
-                    // opentui's replaceText resets cursor to 0 even though
-                    // its docstring says "preserves undo history" — the
-                    // d.ts wording doesn't promise cursor preservation.
-                    // Capture cursor before the write and restore it after,
-                    // clamped to new text length. The runtime's explicit
-                    // setCursor (cycling, BlankFill repositioning) will
-                    // override; async writes that pass no cursor keep the
-                    // prior position instead of snapping to 0.
+                    // opentui's setText AND replaceText both reset the
+                    // cursor to 0 — neither d.ts entry promises cursor
+                    // preservation. We capture cBefore and restore after
+                    // so async writes that pass no cursor keep the prior
+                    // position; the runtime's explicit setCursor (cycling,
+                    // BlankFill repositioning) still overrides.
+                    //
+                    // We use setText (NOT replaceText) because OpenTUI's
+                    // EditBuffer.replaceText registers a NEW mem buffer
+                    // on every call without ever clearing the old one —
+                    // the textBuffer registry is u16-bounded (~65k IDs)
+                    // and overflows after a few minutes of cycling /
+                    // blank-fill activity, throwing "Failed to register
+                    // memory buffer" on every subsequent setText (silent
+                    // dropped writes for the rest of the session). The
+                    // earlier switch from setText to replaceText was
+                    // motivated by undo-history preservation, but the
+                    // tradeoff is unacceptable: programmatic writes from
+                    // cycling / blank-fill / agent-rewrite happen often
+                    // enough to fill the registry in normal use.
                     const cBefore = input.cursorOffset ?? 0
-                    input.replaceText(t)
+                    input.setText(t)
                     setStore("prompt", "input", t)
                     input.cursorOffset = Math.min(cBefore, t.length)
                     if (process.env.OPENCUES_TRACE_CURSOR !== "0") {
@@ -255,18 +267,20 @@ if 'notifyOpenCuesCursorChange' not in src:
       'import { publishPromptAccess, notifyOpenCuesTextChange, triggerOpenCuesRender } from "../../opencues"',
       'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
     )
-# Migration for installs patched before the setText → replaceText switch.
-# setText resets the textarea buffer (incl. cursor to 0); replaceText
-# preserves cursor + undo history. Pre-migration installs see the cursor
-# jump to 0 on every async pushText (cycling, BlankFill etc.).
-if 'input.setText(t)\n                    setStore' in src:
-    src = src.replace(
-      'write: (t) => {\n                    input.setText(t)\n                    setStore("prompt", "input", t)\n                  },',
-      '''write: (t) => {
-                    input.replaceText(t)
-                    setStore("prompt", "input", t)
-                  },''',
-    )
+# Migration for installs patched with the leaky replaceText path.
+# OpenTUI's EditBuffer.replaceText registers a NEW textBuffer mem-buffer
+# on every call without ever clearing the old one; the registry is
+# u16-bounded (~65k slots) and overflows after a few minutes of cycling /
+# blank-fill activity, throwing "Failed to register memory buffer" on
+# every subsequent setText (silent dropped writes for the rest of the
+# session). setText caches a single memId and reuses it via
+# replaceMemBuffer — no leak. We accept the loss of undo-history
+# preservation for programmatic writes; user typing goes through the
+# textarea's own key handlers, not promptAccess.write.
+src = src.replace(
+    'input.replaceText(t)\n                    setStore("prompt", "input", t)',
+    'input.setText(t)\n                    setStore("prompt", "input", t)',
+)
 # Migration for installs that switched to replaceText but DIDN'T add
 # cursor preservation. Cursor tracer revealed replaceText also resets
 # cursor to 0 in opentui's actual implementation, despite the d.ts
