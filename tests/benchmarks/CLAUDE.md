@@ -8,6 +8,30 @@ how to add a new model / provider without breaking the matrix.
 > per-pipeline `EXPERIMENTS.md` files. This doc is the operational
 > guide for editing the harness.
 
+## What these benchmarks DON'T catch
+
+The benchmarks call source classes directly (`TransformBlankSource.resolve(...)`
+etc.). They measure **LLM quality** — accuracy, latency, cost per case.
+
+They do NOT exercise the **runtime dispatch layer** — the Resolver's
+text-change handling, the fast-path + debounce, the host's event-emit
+pattern. The May 2026 double-fire bug (resolver fired TransformBlank
+TWICE for each `_` trigger on OpenCode because the Solid prompt re-emits
+identical text events) was invisible to these benchmarks for 21 days
+because each bench case calls the source once and grades the output —
+the fact that production fires the source twice for the same user input
+isn't observable from a single-shot eval call.
+
+**The structural fix**: dispatch-count assertions live in the
+**agentic scenario harness** at `tests/agentic/`, not here. Scenarios
+08 (transform-blank) and 09 (fluid-blank) now ship an `expectEventCount`
+step pinning "exactly one `<surface>.started` event per `_` trigger" —
+caught the regression class. A future bench-level dispatch-count
+restructure would require routing each bench case through a headless
+runtime instead of calling the source directly; useful but a bigger
+lift. Until then, the agentic harness is the canonical place for this
+class of test.
+
 ---
 
 ## What lives where
