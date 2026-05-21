@@ -1455,7 +1455,11 @@ export class TransformBlankSource implements CueSource {
       const __llmDesc = describeLLMCall(this.provider, this.model, undefined, {
         maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride,
       });
-      this.log(`TransformBlank: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, mode=${this.mode}, llm=${__llmDesc})`);
+      // The resolver subscribes to the `started` event and emits the
+      // info-level "TransformBlank: starting (…)" log line itself. Don't
+      // also log here — it produces a duplicate at debug + info, 1ms
+      // apart. FluidBlank already only logs via the resolver subscriber;
+      // this comment + the missing this.log() mirror that pattern.
       const __pipelineT0 = Date.now();
       this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: __llmDesc, mode: this.mode });
 
