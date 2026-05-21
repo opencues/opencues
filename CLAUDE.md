@@ -96,11 +96,13 @@ opencues/
 │
 ├── packages/                      # Core packages (publish as @opencues/*)
 │   ├── opencues-core/             # LLM analysis library — publishes as @opencues/core
+│   │   ├── node-http-adapter.js  # HTTPS w/ keep-alive — hand-written CJS at PACKAGE ROOT (not src/);
+│   │   │                         # bypasses tsc so every integration's setup.sh has an explicit cp.
+│   │   │                         # See packages/opencues-runtime/adapters/oc/REPAIR.md § LF-7.
 │   │   ├── src/
 │   │   │   ├── resolver.ts        # CueResolver orchestration
 │   │   │   ├── cues-md.ts         # CUES.md parser (parseCuesMd, parseSingleCueMd)
 │   │   │   ├── discover.ts        # Folder-based config discovery
-│   │   │   ├── node-http-adapter.ts  # HTTPS with keep-alive
 │   │   │   └── sources/           # ConfigSource, RoutedWordSourceGroup, BlankSource, FluidBlankSource, SpellingSource, parsers
 │   │   ├── prompts/               # Prompt references + documentation
 │   │   │   ├── linked.txt         # Linked words prompt

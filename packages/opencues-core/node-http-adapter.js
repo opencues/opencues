@@ -1,9 +1,26 @@
 "use strict";
 /**
- * cues-core/node-http-adapter.ts
+ * @opencues/core/node-http-adapter
  *
  * Built-in Node.js HTTP adapter with keep-alive and provider-specific config.
  * Eliminates the need for callers to build their own httpAdapter.
+ *
+ * WHY THIS LIVES AT THE PACKAGE ROOT (not src/, not dist/):
+ *
+ * Hand-written CommonJS. tsc doesn't see it, so it never lands in dist/
+ * via the normal build path. Consumers import it as
+ * `@opencues/core/node-http-adapter` — Node resolves that to this file at
+ * the package root via the standard bare-specifier walk.
+ *
+ * Every integration's setup.sh explicitly copies this file when assembling
+ * the in-fork @opencues/core install (see oc/REPAIR.md § LF-7 for the
+ * incident that established the pattern). The chrome bundle replaces it
+ * with a throwing stub at esbuild time (src/stubs/node-http-adapter-stub.ts)
+ * because the browser has no Node https module.
+ *
+ * Don't move this to src/ + compile via tsc — the bare-specifier import
+ * path is load-bearing across resolver.ts, agent-rewrite.ts, and four
+ * integrations. Re-pathing means a coordinated change across all of them.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NodeHttpAdapter = void 0;

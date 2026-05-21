@@ -237,7 +237,7 @@ Uninstall is one command per integration: `opencues uninstall <host>` (or `--all
 │  packages/opencues-core/      LLM analysis library            │
 │  ├── resolver.ts              CueResolver orchestration       │
 │  ├── cues-md.ts               Config parser (CUES.md, CUE.md, etc.) │
-│  ├── node-http-adapter.ts     HTTPS with keep-alive           │
+│  ├── node-http-adapter.js     HTTPS w/ keep-alive (hand-CJS)  │
 │  └── sources/                 ConfigSource, parsers...        │
 │                                                               │
 │  packages/opencues-runtime/   Host-agnostic runtime           │
