@@ -29,17 +29,18 @@
     ]
   },
   {
-    "description": "numeric-only alt rejected (skipped from parser output)",
-    "input": "0:lawyer,42,attorney",
+    "description": "numeric-only INPUT word skips the group entirely (per spec wire format)",
+    "input": "0:lawyer,attorney\n1:doctor,physician",
+    "words": ["42", "patient"],
     "expected": [
-      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+      { "wordIndex": 1, "alts": ["doctor", "physician"] }
     ]
   },
   {
-    "description": "numeric-only decimal also rejected",
-    "input": "0:lawyer,3.14,attorney,-99",
+    "description": "numeric ALTS pass through unchanged — spec only skips numeric input words, not numeric alts",
+    "input": "0:lawyer,42,attorney",
     "expected": [
-      { "wordIndex": 0, "alts": ["lawyer", "attorney"] }
+      { "wordIndex": 0, "alts": ["lawyer", "42", "attorney"] }
     ]
   },
   {

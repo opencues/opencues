@@ -1,0 +1,17 @@
+{
+  "description": "blankProximity controls how far before _ the keyword may sit (distance = N positions back from _)",
+  "blanks": [
+    { "name": "volume",  "blankKeywords": ["volume"],  "blankProximity": 1 },
+    { "name": "weather", "blankKeywords": ["weather"], "blankProximity": 3 }
+  ],
+  "expectations": [
+    { "text": "volume _",                       "routesTo": "volume"  },
+    { "text": "set volume to _",                "routesTo": null      },
+    { "text": "weather _",                      "routesTo": "weather" },
+    { "text": "weather in paris _",             "routesTo": "weather" },
+    { "text": "weather in central paris _",     "routesTo": null      },
+    { "text": "weather in the city of paris _", "routesTo": null      },
+    { "text": "_",      "routesTo": null },
+    { "text": "hi _",   "routesTo": null }
+  ]
+}

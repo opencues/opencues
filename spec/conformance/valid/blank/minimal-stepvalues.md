@@ -1,4 +1,5 @@
 ---
+type: blank
 name: affirmations
 description: Daily affirmations — cycle through short positive statements
 blankKeywords: affirmation, affirm

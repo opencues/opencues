@@ -1,4 +1,5 @@
 ---
+type: blank
 name: stocks
 description: Live stock prices — major US tickers
 blankKeywords: nvidia, nvda, apple, aapl, googl, msft, amzn

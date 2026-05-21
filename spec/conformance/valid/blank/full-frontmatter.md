@@ -1,4 +1,5 @@
 ---
+type: blank
 name: weather
 description: Local weather — temperature + conditions for a city
 blankKeywords: weather, forecast, temp

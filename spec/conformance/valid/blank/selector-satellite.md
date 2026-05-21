@@ -1,4 +1,5 @@
 ---
+type: blank
 name: opencues
 description: Selector + satellite for OpenCues runtime settings
 blankKeywords: opencues, settings, config

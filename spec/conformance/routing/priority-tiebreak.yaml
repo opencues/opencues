@@ -1,7 +1,0 @@
-description: Equal-priority sources fall back to declaration order (first wins)
-sources:
-  - { name: declared-first,  priority: 50, match: "shared" }
-  - { name: declared-second, priority: 50, match: "shared" }
-expectations:
-  # Same priority, both match — earlier declaration wins
-  - { word: "shared", routesTo: "declared-first" }

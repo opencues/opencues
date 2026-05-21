@@ -1,4 +1,5 @@
 ---
+type: blank
 name: volume
 description: System volume — get, set, and cycle in 6% steps
 blankKeywords: volume

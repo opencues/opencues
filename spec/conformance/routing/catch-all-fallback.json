@@ -1,0 +1,14 @@
+{
+  "description": "DEFAULT source (no match, no keywords) claims words no DOMAIN source matched",
+  "sources": [
+    { "name": "legal",   "priority": 70, "match": "contract|clause" },
+    { "name": "default", "priority": 50 }
+  ],
+  "expectations": [
+    { "word": "contract", "routesTo": "legal" },
+    { "word": "clause",   "routesTo": "legal" },
+    { "word": "hello",    "routesTo": "default" },
+    { "word": "anything", "routesTo": "default" },
+    { "word": "lawyer",   "routesTo": "default" }
+  ]
+}

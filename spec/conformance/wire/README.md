@@ -18,6 +18,7 @@ Each fixture is an array of cases. Each case is:
 {
   "description": "Human-readable name for the case",
   "input": "Raw LLM response text",
+  "words": ["optional", "input", "word", "array"],
   "expected": [
     { "wordIndex": 0, "alts": ["alt1", "alt2", "alt3"] }
   ]
@@ -26,6 +27,7 @@ Each fixture is an array of cases. Each case is:
 
 - `description` — what property this case pins. Used in test failure messages.
 - `input` — the LLM response string as it would arrive from the model. May span multiple lines.
+- `words` — (optional) the input words[] array passed to the parser. When absent, runners SHOULD synthesize a placeholder array (`["word0", "word1", ...]`) long enough to cover the highest index in `input`. Only required when the test exercises a case where the input-word identity matters — e.g. numeric-only input words being skipped per the spec's wire-format rule.
 - `expected` — the parsed structure. An array of objects, each `{ wordIndex, alts }`.
 
 The original word (`alternatives[0]` per the spec) is added by the runtime at substitution time and is NOT part of the wire format. These fixtures cover the parser only — `alts` in `expected` is the bare list of LLM-proposed alternatives.

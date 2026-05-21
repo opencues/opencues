@@ -4,15 +4,21 @@ Per [`../../core.md` § Routing](../../core.md#routing--which-source-handles-a-w
 
 ## Fixture shape
 
-```yaml
-description: Two sources, domain wins over default
-sources:
-  - { name: legal, priority: 70, match: "contract|clause" }
-  - { name: catchall, priority: 10, match: ".*" }
-expectations:
-  - { word: "contract", routesTo: "legal" }
-  - { word: "hello", routesTo: "catchall" }
-  - { word: "clause", routesTo: "legal" }
+Fixtures ship as JSON (no YAML parser dependency required). Cue-routing scenarios:
+
+```json
+{
+  "description": "Two sources, domain wins over default",
+  "sources": [
+    { "name": "legal",    "priority": 70, "match": "contract|clause" },
+    { "name": "catchall", "priority": 10, "match": ".*" }
+  ],
+  "expectations": [
+    { "word": "contract", "routesTo": "legal" },
+    { "word": "hello",    "routesTo": "catchall" },
+    { "word": "clause",   "routesTo": "legal" }
+  ]
+}
 ```
 
 - `description` — pins what property this scenario tests.
@@ -21,15 +27,19 @@ expectations:
 
 Blank-routing scenarios use a different shape:
 
-```yaml
-description: Blank proximity controls keyword↔_ distance
-blanks:
-  - { name: volume, blankKeywords: [volume], blankProximity: 1 }
-  - { name: weather, blankKeywords: [weather], blankProximity: 3 }
-expectations:
-  - { text: "volume _",          routesTo: volume }
-  - { text: "weather in paris _", routesTo: weather }
-  - { text: "volume up loud _",   routesTo: null   }
+```json
+{
+  "description": "Blank proximity controls keyword↔_ distance",
+  "blanks": [
+    { "name": "volume",  "blankKeywords": ["volume"],  "blankProximity": 1 },
+    { "name": "weather", "blankKeywords": ["weather"], "blankProximity": 3 }
+  ],
+  "expectations": [
+    { "text": "volume _",           "routesTo": "volume"  },
+    { "text": "weather in paris _", "routesTo": "weather" },
+    { "text": "volume up loud _",   "routesTo": null      }
+  ]
+}
 ```
 
 `routesTo: null` means no blank claims the slot.
@@ -38,10 +48,10 @@ expectations:
 
 | File | Pins |
 |---|---|
-| [`per-word-dispatch.yaml`](./per-word-dispatch.yaml) | Each word goes to exactly one source — the highest priority match. |
-| [`priority-tiebreak.yaml`](./priority-tiebreak.yaml) | Equal-priority sources fall back to declaration order. |
-| [`catch-all-fallback.yaml`](./catch-all-fallback.yaml) | DEFAULT source claims words no DOMAIN source matched. |
-| [`blank-proximity.yaml`](./blank-proximity.yaml) | `blankProximity` controls keyword→`_` word distance. |
+| [`per-word-dispatch.json`](./per-word-dispatch.json) | Each word goes to exactly one source — the highest priority match. |
+| [`priority-tiebreak.json`](./priority-tiebreak.json) | Equal-priority sources fall back to declaration order. |
+| [`catch-all-fallback.json`](./catch-all-fallback.json) | DEFAULT source claims words no DOMAIN source matched. |
+| [`blank-proximity.json`](./blank-proximity.json) | `blankProximity` controls keyword→`_` word distance. |
 
 ## What's covered
 

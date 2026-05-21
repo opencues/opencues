@@ -14,7 +14,46 @@ breaking.
 
 ## [Unreleased]
 
+### Changed
+
+- **Conformance routing fixtures** now ship as JSON, not YAML
+  ([`conformance/routing/*.json`](./conformance/routing/)). No parser
+  dependency required for runners. Fixture shape is unchanged — just
+  the serialization format. Implementers who prefer YAML can translate;
+  the JSON shape is intentionally minimal.
+- **Conformance wire fixtures** gained an optional `words` field on
+  each case. When present, the runner passes it as the input-words
+  array to the parser; when absent, the runner synthesizes
+  `["word0", "word1", ...]`. Required for cases that exercise the
+  numeric-only-word skip rule (per `cue-spec.md` § Wire format).
+- **`valid/blank/*.md` fixtures** now declare `type: blank` explicitly.
+  Spec text unchanged (the field is still "rarely needed" because
+  production runtimes infer from path). Explicit discriminator makes
+  fixtures parser-portable so runners can load by content alone.
+
 ### Added
+
+- **`SECURITY.md`** in `spec/` — scopes the spec's normative trust
+  claims (auditor trust model, blank-script carve-out, capability
+  contract for user-shipped JS blanks) + links to the reference
+  impl's full threat model. Closes the gap vs MCP's and OpenAPI's
+  spec-scoped security docs.
+- **`proposals/`** directory — seeded with `README.md` (process doc)
+  and `template.md` (7-section template). Models the SEPs / proposals
+  pattern every peer open standard has. Not yet exercised — no
+  proposals as of `0.1-alpha`.
+
+### Moved
+
+- `opencues-runtime.md` moved from `spec/` to
+  `packages/opencues-runtime/SPEC.md`. The file is non-normative
+  (reference-impl extensions) and belongs with the reference impl,
+  not in the spec dir. Every peer (MCP, OpenAPI, JSON Schema,
+  CommonMark) keeps ref-impl docs out of the spec repo. All cross-
+  references updated; `spec/README.md` still links to it as a
+  reading-order signpost.
+
+### Added (May 2026 — earlier in `[Unreleased]`)
 
 - **Conformance suite** at [`conformance/`](./conformance/) — fixture tree
   any conformant runtime can exercise against. Seeds with 12 valid examples,

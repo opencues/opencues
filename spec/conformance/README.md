@@ -30,10 +30,10 @@ conformance/
 │
 └── routing/
     ├── README.md
-    ├── per-word-dispatch.yaml
-    ├── priority-tiebreak.yaml
-    ├── catch-all-fallback.yaml
-    └── blank-proximity.yaml
+    ├── per-word-dispatch.json
+    ├── priority-tiebreak.json
+    ├── catch-all-fallback.json
+    └── blank-proximity.json
 ```
 
 ## How to use the suite
@@ -45,7 +45,7 @@ You're targeting `opencues/0.1-alpha`. The fixtures pin what your parser / route
 1. **Parse every `valid/**/*.md`** with your runtime's loader. Each one MUST be accepted. If your parser rejects a valid fixture, that's a conformance bug.
 2. **Parse every `invalid/**/*.md`** with your runtime's loader. Each one MUST be rejected, and the rejection MUST raise the rule code declared in the sibling `<name>.expected.json` file. (A rejection with a different rule code is allowed but suggests your loader's diagnostics drift from the standard's vocabulary.)
 3. **Run every `wire/parser-alternatives.json` case** through your LLM-response parser. The structured output MUST equal `expected`.
-4. **Run every `routing/*.yaml` scenario** through your router. For each scenario, the listed words MUST route to the listed sources in the order shown.
+4. **Run every `routing/*.json` scenario** through your router. For each scenario, the listed words MUST route to the listed sources in the order shown.
 
 Implementers MAY skip:
 - LLM-mode cue fixtures if their runtime is static-only.
@@ -69,6 +69,8 @@ PRs that change `spec/*.md` without touching `spec/conformance/` get flagged in 
 ### `valid/**/*.md`
 
 Just the file. If your runtime accepts it, you pass. No expectation metadata needed — the rule is "accept".
+
+**Note on `type: blank` discriminator** — `valid/blank/*.md` fixtures explicitly declare `type: blank` in their frontmatter, even though the spec says `type` is "rarely needed" (production runtimes typically infer it from folder layout — files under `blanks/` are blanks). Including the explicit discriminator makes the fixtures parser-portable: any conformance runner that loads fixtures by content alone (without preserving the `valid/blank/` path hint) can still tell what surface the file is. Implementers MAY treat path-inferred `type` and explicit `type:` as equivalent.
 
 ### `invalid/**/*.md` + sibling `.expected.json`
 
@@ -104,18 +106,24 @@ A runtime that rejects with a different rule code is allowed (the rejection itse
 
 The `expected` array is the structured output your parser MUST produce. The original word (`alternatives[0]` per [`cue-spec.md` § Alternatives invariant](../cue-spec.md#alternatives-invariant)) is added by the runtime at substitution time and is NOT part of the wire format itself — these fixtures cover the parser only.
 
-### `routing/*.yaml`
+### `routing/*.json`
 
-```yaml
-description: Two sources, domain wins over default
-sources:
-  - { name: legal, priority: 70, match: "contract|clause" }
-  - { name: catchall, priority: 10, match: ".*" }
-expectations:
-  - { word: "contract", routesTo: "legal" }
-  - { word: "hello", routesTo: "catchall" }
-  - { word: "clause", routesTo: "legal" }
+```json
+{
+  "description": "Two sources, domain wins over default",
+  "sources": [
+    { "name": "legal",    "priority": 70, "match": "contract|clause" },
+    { "name": "catchall", "priority": 10, "match": ".*" }
+  ],
+  "expectations": [
+    { "word": "contract", "routesTo": "legal" },
+    { "word": "hello",    "routesTo": "catchall" },
+    { "word": "clause",   "routesTo": "legal" }
+  ]
+}
 ```
+
+(JSON rather than YAML so the runner needs no parser dependency. Implementers who prefer YAML can translate; this shape is intentionally minimal.)
 
 The `sources` list declares the cue sources in scope (frontmatter-equivalent — the body doesn't matter for routing). The `expectations` list pairs an input word with the source `name:` that MUST claim it.
 
@@ -180,10 +188,9 @@ for (const { description, input, expected } of wireCases) {
 }
 
 // 4. Routing scenarios — each word MUST route to the named source
-const yaml = await import('js-yaml');
 for (const file of readdirSync(join(root, 'routing'))) {
-  if (!file.endsWith('.yaml')) continue;
-  const scenario = yaml.load(readFileSync(join(root, 'routing', file), 'utf8'));
+  if (!file.endsWith('.json')) continue;
+  const scenario = JSON.parse(readFileSync(join(root, 'routing', file), 'utf8'));
   for (const { word, routesTo } of scenario.expectations) {
     const actual = myRuntime.route(scenario.sources, word);
     assert.equal(actual?.name, routesTo, `${file}: '${word}' MUST route to '${routesTo}'`);
