@@ -165,9 +165,14 @@ describe('invalid/cue/*.md', () => {
       case 'unknown-host': {
         it(`${file} on-host lists an unknown host name`, () => {
           const config = parseSingleCueMd(content, ROOT, 'invalid');
-          const onHost = config.frontmatter.onHost;
-          expect(onHost).toBeDefined();
-          const unknown = unknownHostNames((onHost as string[]) ?? []);
+          // parseSingleCueMd uses parseExtendedFrontmatter under the hood,
+          // which populates SingleCueFrontmatter (a superset of
+          // CuesMdFrontmatter that includes onHost). The static type on
+          // config.frontmatter is the narrower base; cast to read the
+          // extended field.
+          const fm = config.frontmatter as { onHost?: string[] };
+          expect(fm.onHost).toBeDefined();
+          const unknown = unknownHostNames(fm.onHost ?? []);
           expect(unknown.length).toBeGreaterThan(0);
         });
         break;
@@ -235,7 +240,8 @@ describe('invalid/auditor/*.md', () => {
         it(`${file} has empty body`, () => {
           const config = parseSingleAuditorMd(content, ROOT, 'invalid');
           const auditor = config.auditors && Object.values(config.auditors)[0];
-          const hasBody = !!(auditor?.prompt && auditor.prompt.trim().length > 0);
+          // AuditorConfig stores the body in `promptText`, not `prompt`.
+          const hasBody = !!(auditor?.promptText && auditor.promptText.trim().length > 0);
           expect(hasBody).toBe(false);
         });
         break;
