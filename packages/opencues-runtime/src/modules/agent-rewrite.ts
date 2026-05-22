@@ -29,7 +29,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
 import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-diff';
-import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrictJson, buildJsonResponseFormat } from '@opencues/core';
+import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrictJson, buildJsonResponseFormat, dispatchChat } from '@opencues/core';
 
 /**
  * Subset of the @opencues/core `ProviderAdapter` shape that
@@ -45,6 +45,10 @@ import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrict
 export interface AgentRewriteProviderAdapter {
   readonly id: string;
   readonly defaultModel: string;
+  /** Optional — present on CLI-transport providers (claude-cli).
+   *  When 'cli', AgentRewrite routes via dispatchChat → invokeCli and
+   *  skips the buildRequest / postWithFallback / parseResponse triple. */
+  readonly transport?: 'http' | 'cli';
   buildRequest(
     req: {
       model: string;
@@ -57,6 +61,15 @@ export interface AgentRewriteProviderAdapter {
     ctx: { apiKey: string; endpoint?: string },
   ): { url: string; body: string; headers: Record<string, string> };
   parseResponse(rawJson: string): string;
+  /** Optional — CLI-transport providers supply this; AgentRewrite calls
+   *  it via dispatchChat. */
+  invokeCli?(
+    req: {
+      model: string;
+      messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    },
+    ctx: { apiKey: string; endpoint?: string },
+  ): Promise<string>;
 }
 
 export interface ResolvedAgentLLM {
@@ -583,6 +596,33 @@ export class AgentRewrite {
       seed: 42,
       responseFormat: useJson ? buildJsonResponseFormat('agent_rewrite', AGENT_REWRITE_SCHEMA) : undefined,
     };
+    // CLI-transport short-circuit: the provider (e.g. claude-cli)
+    // owns its own subprocess + queue + response correlation.
+    // dispatchChat routes straight to invokeCli, bypassing buildRequest
+    // (which throws for CLI providers) and the HTTP/fallback machinery
+    // below. Returns the assistant text directly — same shape as
+    // provider.parseResponse(response) on the HTTP path.
+    if (provider?.transport === 'cli') {
+      try {
+        // dispatchChat accepts the full ProviderAdapter from @opencues/core.
+        // Our narrower AgentRewriteProviderAdapter is structurally
+        // compatible for the CLI path (id + transport + invokeCli) but
+        // missing displayName / defaultEndpoint / envKeyName — fields
+        // dispatchChat doesn't read on the CLI branch. Cast through
+        // unknown to bridge the type gap without widening the interface
+        // with fields that are noise for AgentRewrite.
+        const out = await dispatchChat(
+          provider as unknown as Parameters<typeof dispatchChat>[0],
+          { post: async () => '' },
+          chatRequest,
+          { apiKey, endpoint },
+        );
+        return out && out.trim() ? out : null;
+      } catch (err) {
+        this._logFn(`AgentRewrite: CLI provider error — ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    }
     let url: string;
     let body: string;
     let headers: Record<string, string>;

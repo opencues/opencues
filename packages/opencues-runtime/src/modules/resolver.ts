@@ -147,6 +147,15 @@ export class Resolver {
    *  prompt within 3s of stopping is the only false-positive case;
    *  acceptable trade for blocking the silent task leak. */
   private _lastTaskStopAt = 0;
+  /** Prompt of the task that was last stopped — paired with
+   *  _lastTaskStopAt to make the stale-arm guard PRECISE. A TASK_ARM
+   *  within the stale window whose prompt MATCHES the just-stopped
+   *  task's prompt is the in-flight LLM response we want to drop. A
+   *  TASK_ARM with a DIFFERENT prompt is a fresh user action and
+   *  must be allowed. Pre-prompt-comparison the guard was too
+   *  aggressive — back-to-back agent-rewrite scenarios with a fast
+   *  provider (claude-cli) would drop the second scenario's ARM. */
+  private _lastTaskStopPrompt = '';
 
   /** Snapshot of the opt-in settings the resolver was last built with.
    *  Re-computed on every resolve; mismatch → rebuildResolver before
@@ -232,8 +241,13 @@ export class Resolver {
     // rewriting subsequent text. See _lastTaskStopAt for the rationale.
     if ((action === 'TASK_ARM' || action === 'TASK_ADD') && this._lastTaskStopAt > 0) {
       const sinceStopMs = Date.now() - this._lastTaskStopAt;
-      if (sinceStopMs < 3000) {
-        this.adapter.log('info', `AgentTask: dropping stale ${action} (arrived ${sinceStopMs}ms after TASK_STOP — likely in-flight LLM response, prompt="${payload}")`);
+      // Only drop if WITHIN the stale window AND the prompt matches the
+      // task we just stopped — that's the in-flight-LLM-response case.
+      // A different prompt within the window is a fresh user action
+      // (e.g. running scenario 31 right after scenario 21's cleanup) and
+      // must be allowed through; the original guard was too aggressive.
+      if (sinceStopMs < 3000 && payload === this._lastTaskStopPrompt) {
+        this.adapter.log('info', `AgentTask: dropping stale ${action} (arrived ${sinceStopMs}ms after TASK_STOP, prompt matches just-stopped task — likely in-flight LLM response, prompt="${payload}")`);
         return;
       }
     }
@@ -259,6 +273,7 @@ export class Resolver {
         break;
       case 'TASK_STOP':
         this.adapter.log('info', `AgentTask: STOP (was prompt="${state.prompt}")`);
+        this._lastTaskStopPrompt = state.prompt;
         state.stop();
         this._lastTaskStopAt = Date.now();
         newText = prefix;

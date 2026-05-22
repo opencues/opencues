@@ -127,6 +127,7 @@ export {
   listProviders,
   buildProviderRequest,
   parseProviderResponse,
+  dispatchChat,
   resolveLLM,
   validateEndpoint,
   withFallback,
