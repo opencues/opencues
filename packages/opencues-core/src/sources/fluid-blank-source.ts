@@ -25,7 +25,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter, AmbientContext } from '../types';
 import { BlankConfig } from '../cues-md';
-import { useStrictJson, buildJsonResponseFormat, describeLLMCall, type ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { renderUserCatalog, postProcessUserContext, type UserContext, type UserContextMode } from '../user-context';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
@@ -782,7 +782,9 @@ export class FluidBlankSource implements CueSource {
     maxTokens: number,
     responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
   ): Promise<string> {
-    const built = this.provider.buildRequest(
+    return dispatchChat(
+      this.provider,
+      this.httpAdapter,
       {
         model: this.model,
         messages: [
@@ -801,8 +803,6 @@ export class FluidBlankSource implements CueSource {
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },
     );
-    const response = await this.httpAdapter.post(built.url, built.body, built.headers);
-    return this.provider.parseResponse(response);
   }
 }
 

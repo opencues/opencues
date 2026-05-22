@@ -57,7 +57,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import { describeLLMCall, type ProviderAdapter } from '../llm-provider';
+import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
 import {
   FEATURES,
   getCyclableValues,
@@ -422,7 +422,9 @@ export class ConfigIntentSource implements CueSource {
     user: string,
     maxTokens: number,
   ): Promise<string> {
-    const built = this.provider.buildRequest(
+    return dispatchChat(
+      this.provider,
+      this.httpAdapter,
       {
         model: this.model,
         messages: [
@@ -438,7 +440,5 @@ export class ConfigIntentSource implements CueSource {
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },
     );
-    const response = await this.httpAdapter.post(built.url, built.body, built.headers);
-    return this.provider.parseResponse(response);
   }
 }

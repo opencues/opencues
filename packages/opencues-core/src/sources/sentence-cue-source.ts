@@ -42,7 +42,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { SourceConfig } from '../cues-md';
-import { describeLLMCall, type ProviderAdapter } from '../llm-provider';
+import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
 
 // ============================================================================
 // Sentence segmenter — regex-based, robust over linguistic perfection
@@ -335,7 +335,9 @@ export class SentenceCueSource implements CueSource {
   }
 
   private async callLLM(system: string, user: string, maxTokens: number): Promise<string> {
-    const built = this.provider.buildRequest(
+    return dispatchChat(
+      this.provider,
+      this.httpAdapter,
       {
         model: this.model,
         messages: [
@@ -348,7 +350,5 @@ export class SentenceCueSource implements CueSource {
       },
       { apiKey: this.apiKey, endpoint: this.endpoint },
     );
-    const response = await this.httpAdapter.post(built.url, built.body, built.headers);
-    return this.provider.parseResponse(response);
   }
 }

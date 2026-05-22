@@ -753,6 +753,30 @@ export function parseProviderResponse(providerId: ProviderId, rawJson: string): 
 }
 
 /**
+ * The full request → response dispatch for an HTTP-backed provider.
+ * Wraps the three steps every source repeated identically:
+ *   1. provider.buildRequest(req, ctx)            → url + body + headers
+ *   2. httpAdapter.post(url, body, headers)       → raw response text
+ *   3. provider.parseResponse(raw)                → assistant text
+ *
+ * Extracted so a future transport variant (e.g. the `claude-cli` daemon,
+ * which is subprocess-backed and bypasses HTTP entirely) can be dispatched
+ * from a single location instead of editing five call sites in lockstep.
+ * Today every provider is HTTP-transport — this helper preserves that
+ * exact path. See providers/cli-transport.ts (Phase 2+) for the CLI fork.
+ */
+export async function dispatchChat(
+  provider: ProviderAdapter,
+  httpAdapter: HttpAdapterShape,
+  req: ChatRequest,
+  ctx: { apiKey: string; endpoint?: string },
+): Promise<string> {
+  const built = provider.buildRequest(req, ctx);
+  const raw = await httpAdapter.post(built.url, built.body, built.headers);
+  return provider.parseResponse(raw);
+}
+
+/**
  * Resolve a (provider, model, endpoint, apiKey) tuple from a
  * settings hierarchy. Used by every LLM call site so the same precedence
  * rules apply everywhere.

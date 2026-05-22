@@ -1,0 +1,162 @@
+/**
+ * Pin the `dispatchChat` helper — the single transport gateway every
+ * source uses to call an LLM.
+ *
+ * Until May 2026 the dispatch was inlined at five call sites
+ * (ConfigSource, FluidBlankSource, TransformBlankSource,
+ * SentenceCueSource, ConfigIntentSource), all doing the same three-step
+ * dance:
+ *
+ *   const built = provider.buildRequest(req, ctx);
+ *   const raw   = await httpAdapter.post(built.url, built.body, built.headers);
+ *   return provider.parseResponse(raw);
+ *
+ * Extracting it to one helper means a future transport (e.g. the
+ * subprocess-backed `claude-cli` daemon) can fork the dispatch in ONE
+ * place instead of editing five sources in lockstep. These tests pin
+ * the HTTP behavior so that fork lands without breaking the existing
+ * path.
+ *
+ * Run with: node --test dist/dispatch.test.js
+ */
+import { describe, it } from 'node:test';
+import * as assert from 'node:assert';
+import { dispatchChat, type HttpAdapterShape } from './llm-provider';
+import type { ProviderAdapter, ChatRequest, BuiltRequest } from './llm-provider';
+
+interface CapturedPost { url: string; body: string; headers: Record<string, string> }
+
+function makeFakeProvider(opts: {
+  buildReturn?: BuiltRequest;
+  parseReturn?: string;
+  onBuild?: (req: ChatRequest, ctx: { apiKey: string; endpoint?: string }) => void;
+  onParse?: (raw: string) => void;
+}): ProviderAdapter {
+  return {
+    id: 'groq', // ProviderId enum member — any will do for the test
+    displayName: 'fake',
+    defaultEndpoint: 'https://fake.example/v1/chat',
+    defaultModel: 'fake-model',
+    envKeyName: 'FAKE_API_KEY',
+    buildRequest(req, ctx) {
+      opts.onBuild?.(req, ctx);
+      return opts.buildReturn ?? {
+        url: 'https://fake.example/v1/chat',
+        body: JSON.stringify({ model: req.model, messages: req.messages }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+      };
+    },
+    parseResponse(raw) {
+      opts.onParse?.(raw);
+      return opts.parseReturn ?? `parsed:${raw}`;
+    },
+  };
+}
+
+function makeCapture(response = '{"ok":true}'): { adapter: HttpAdapterShape; calls: CapturedPost[] } {
+  const calls: CapturedPost[] = [];
+  return {
+    adapter: { post: async (url, body, headers) => { calls.push({ url, body, headers }); return response; } },
+    calls,
+  };
+}
+
+describe('dispatchChat — HTTP transport contract', () => {
+  it('calls provider.buildRequest with (req, ctx) and httpAdapter.post with that built request', async () => {
+    let buildArgs: { req: ChatRequest; ctx: { apiKey: string; endpoint?: string } } | null = null;
+    const provider = makeFakeProvider({
+      onBuild: (req, ctx) => { buildArgs = { req, ctx }; },
+      buildReturn: {
+        url: 'https://built.example/v1',
+        body: '{"built":"body"}',
+        headers: { 'X-Built': 'header' },
+      },
+    });
+    const { adapter, calls } = makeCapture();
+    const req: ChatRequest = { model: 'm', messages: [{ role: 'user', content: 'hi' }], maxTokens: 100 };
+    const ctx = { apiKey: 'AKEY', endpoint: 'https://override.example' };
+
+    await dispatchChat(provider, adapter, req, ctx);
+
+    // (1) buildRequest received the exact req + ctx (no mutation, no extras)
+    assert.deepStrictEqual(buildArgs!.req, req);
+    assert.deepStrictEqual(buildArgs!.ctx, ctx);
+
+    // (2) httpAdapter.post called exactly once with buildRequest's output
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0].url, 'https://built.example/v1');
+    assert.strictEqual(calls[0].body, '{"built":"body"}');
+    assert.deepStrictEqual(calls[0].headers, { 'X-Built': 'header' });
+  });
+
+  it('returns the result of provider.parseResponse on the raw HTTP response', async () => {
+    let parseArg: string | null = null;
+    const provider = makeFakeProvider({
+      onParse: (raw) => { parseArg = raw; },
+      parseReturn: 'final-parsed-text',
+    });
+    const { adapter } = makeCapture('{"choices":[{"message":{"content":"hello"}}]}');
+
+    const result = await dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' });
+
+    // (3) parseResponse saw the raw HTTP body
+    assert.strictEqual(parseArg, '{"choices":[{"message":{"content":"hello"}}]}');
+    // (4) dispatchChat returns whatever parseResponse returned
+    assert.strictEqual(result, 'final-parsed-text');
+  });
+
+  it('passes httpAdapter.post errors through unchanged', async () => {
+    const provider = makeFakeProvider({});
+    const adapter: HttpAdapterShape = { post: async () => { throw new Error('network bork'); } };
+
+    await assert.rejects(
+      dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
+      /network bork/,
+    );
+  });
+
+  it('passes provider.buildRequest errors through unchanged (e.g. unsupported req shape)', async () => {
+    const provider: ProviderAdapter = {
+      id: 'groq', displayName: 'fake', defaultEndpoint: '', defaultModel: '', envKeyName: '',
+      buildRequest() { throw new Error('cannot build'); },
+      parseResponse() { return ''; },
+    };
+    const { adapter } = makeCapture();
+
+    await assert.rejects(
+      dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
+      /cannot build/,
+    );
+  });
+
+  it('passes provider.parseResponse errors through unchanged (e.g. malformed JSON)', async () => {
+    const provider: ProviderAdapter = {
+      id: 'groq', displayName: 'fake', defaultEndpoint: '', defaultModel: '', envKeyName: '',
+      buildRequest: (req) => ({ url: 'u', body: 'b', headers: {} }),
+      parseResponse() { throw new Error('bad json'); },
+    };
+    const { adapter } = makeCapture('garbage');
+
+    await assert.rejects(
+      dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
+      /bad json/,
+    );
+  });
+
+  it('does not retry on transient errors (retry policy belongs to withFallback wrapper)', async () => {
+    // Pin that dispatchChat itself is a pure pass-through. Retry behavior
+    // lives in `withFallback` (llm-provider.ts) — wrapping the adapter
+    // before passing it here is the only way to opt into peer-fallback.
+    let calls = 0;
+    const provider = makeFakeProvider({});
+    const adapter: HttpAdapterShape = {
+      post: async () => { calls++; throw new Error('429 rate-limited'); },
+    };
+
+    await assert.rejects(
+      dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
+      /rate-limited/,
+    );
+    assert.strictEqual(calls, 1, 'dispatchChat must not retry');
+  });
+});

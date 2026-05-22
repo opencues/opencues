@@ -15,7 +15,7 @@ import {
 } from '../types';
 import { SourceConfig, BlankParser } from '../cues-md';
 import { parseAlternatives, parseRaw } from './parsers';
-import { useStrictJson, buildJsonResponseFormat, type ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, dispatchChat, type ProviderAdapter } from '../llm-provider';
 
 /**
  * The canonical output-format reminder for `parser: alternatives`
@@ -141,7 +141,9 @@ export class ConfigSource implements CueSource {
         : promptText.trimEnd();
       const fullPrompt = ensuredPrompt + separator + input;
 
-      const built = this.provider.buildRequest(
+      const raw = await dispatchChat(
+        this.provider,
+        this.httpAdapter,
         {
           model: this.model,
           messages: [{ role: 'user', content: fullPrompt }],
@@ -163,8 +165,6 @@ export class ConfigSource implements CueSource {
         },
         { apiKey: this.apiKey, endpoint: this.endpoint },
       );
-      const response = await this.httpAdapter.post(built.url, built.body, built.headers);
-      const raw = this.provider.parseResponse(response);
 
       const results = useJson
         ? this.parseJsonResponse(raw, context.words)
