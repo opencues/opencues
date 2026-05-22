@@ -38,9 +38,14 @@
  * `claude-cli-daemon.test.ts`.
  */
 
-import type { ChildProcessByStdio } from 'child_process';
-import type { Readable, Writable } from 'stream';
-import { spawn as nodeSpawn } from 'child_process';
+// child_process is lazy-required inside defaultSpawn (NOT imported at
+// module-top-level) — esbuild traces top-level imports even when the
+// only call site is dynamically imported (`await import(...)` in
+// llm-provider.ts's invokeCli). A top-level import here would break
+// the chrome extension build with "Could not resolve 'child_process'"
+// because chrome bundles for the browser. Daemon code is never reached
+// in chrome (no subprocess support), but the bundler still walks the
+// import graph; lazy-require keeps the module browser-safe.
 
 /** Model name as passed to `claude --model`. Accepts either the
  *  short aliases (`haiku` | `sonnet` | `opus` — claude resolves to
@@ -134,12 +139,15 @@ export type SpawnFn = (
 ) => SpawnedProcess;
 
 const defaultSpawn: SpawnFn = (command, args, env) => {
-  // Use child_process.spawn with merged env (caller-provided + process.env).
-  // stdio: piped so we own stdin/stdout/stderr.
+  // Lazy require — see top-of-file note. Browser bundlers never reach
+  // this code path (chrome has no spawn capability), and node trees
+  // resolve `require('child_process')` cheaply on first hit.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodeSpawn = (eval('require') as NodeRequire)('child_process').spawn;
   return nodeSpawn(command, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, ...env } as NodeJS.ProcessEnv,
-  }) as unknown as SpawnedProcess;
+    env: { ...process.env, ...env },
+  });
 };
 
 export interface ClaudeCliDaemonOptions {
