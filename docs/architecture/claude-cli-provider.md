@@ -72,6 +72,35 @@ The per-model flag table is baked into `MODEL_FLAGS` in
 bench when bumping `claude` CLI versions; values are pinned to the May 22
 2026 measurement on CC 2.1.111.
 
+### Model-name handling: aliases and full names
+
+`claude --model` accepts both short aliases (`haiku` / `sonnet` /
+`opus` — auto-resolve to the latest version of that family) and full
+version-pinned names (`claude-haiku-4-5-20251001`, `claude-sonnet-4-6`,
+etc.). The claude-cli provider accepts both forms unchanged.
+
+For flag-table lookup we map any model string to its FAMILY via
+`resolveModelFamily()` in `claude-cli-daemon.ts`:
+
+```ts
+resolveModelFamily('haiku')                       → 'haiku'
+resolveModelFamily('claude-haiku-3-5')            → 'haiku'
+resolveModelFamily('claude-haiku-4-5-20251001')   → 'haiku'
+resolveModelFamily('claude-sonnet-4-6')           → 'sonnet'
+resolveModelFamily('claude-opus-4-7')             → 'opus'
+resolveModelFamily('gpt-4o-mini')                 → throws
+```
+
+Substring match — generation-agnostic within a family because flag
+tuning is structural (e.g. Haiku 3.5 / 4 / 4.5 all benefit from the
+same `CLAUDE_CODE_DISABLE_THINKING=1` env). If a future generation
+breaks the family-shared assumption, add a more specific case in
+`resolveModelFamily` and refresh `MODEL_FLAGS`.
+
+Unknown model names throw at spawn time with an actionable error
+listing the valid shapes, rather than silently picking the wrong flag
+table.
+
 ## Pipeline viability
 
 | pipeline        | target p50 | claude-cli viable? |
@@ -164,10 +193,10 @@ source.
 ---
 # Per-feature opt-in. Defaults stay on whatever provider you had set.
 agent-rewrite-provider: claude-cli
-agent-rewrite-model: haiku       # haiku | sonnet | opus
+agent-rewrite-model: haiku                          # alias — auto-tracks latest Haiku
 
 fluid-blank-provider: claude-cli
-fluid-blank-model: sonnet
+fluid-blank-model: claude-sonnet-4-6                # full name — pinned version
 ---
 ```
 

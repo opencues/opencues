@@ -23,7 +23,7 @@ prose-heavy surfaces like agent-rewrite use Claude via your subscription.
    ```yaml
    ---
    agent-rewrite-provider: claude-cli
-   agent-rewrite-model: haiku        # haiku | sonnet | opus
+   agent-rewrite-model: haiku        # see "Model names" below
    ---
    ```
 
@@ -31,6 +31,27 @@ prose-heavy surfaces like agent-rewrite use Claude via your subscription.
    a `claude -p` daemon in the background and routes the call through it.
    Subsequent calls reuse the same daemon (Anthropic prompt cache stays
    hot — fast).
+
+### Model names
+
+Both short aliases and full version-pinned names work — same as the
+`claude --model` flag:
+
+```yaml
+agent-rewrite-model: haiku                          # latest Haiku (auto-tracks releases)
+agent-rewrite-model: claude-haiku-4-5-20251001      # pinned to one version
+agent-rewrite-model: claude-sonnet-4-6              # pinned Sonnet
+agent-rewrite-model: claude-opus-4-7                # pinned Opus
+```
+
+Use an **alias** (`haiku` / `sonnet` / `opus`) when you want the latest
+release of a family automatically. Use a **full name** when you want
+reproducibility (your config keeps the same model even when Anthropic
+ships a new generation — useful if you're benchmarking or want to lock
+in a tested setup).
+
+Either form picks the right latency-tuning automatically. The daemon
+maps both `haiku` and `claude-haiku-*-*` to the same flag set internally.
 
 ## Pick the right model per pipeline
 

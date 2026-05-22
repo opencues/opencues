@@ -47,6 +47,15 @@ table at `packages/opencues-core/src/providers/claude-cli-daemon.ts`.
 Users never touch them; pick a model and the daemon applies the right
 combo.
 
+**Model-name handling.** The daemon accepts BOTH short aliases
+(`haiku` / `sonnet` / `opus`) AND full version-pinned names
+(`claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, etc.) — same shapes
+`claude --model` itself accepts. Flag-table lookup keys on the
+resolved FAMILY (substring match in `resolveModelFamily`), so a future
+version within the same family inherits the tuning unchanged. If you're
+re-running these benches to validate a new model generation, both forms
+will hit the same code path; pick whichever your config uses.
+
 ## What we tried that DIDN'T help
 
 | lever                                    | result                                          |
