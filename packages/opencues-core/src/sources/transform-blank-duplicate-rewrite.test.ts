@@ -41,12 +41,15 @@ describe('isLikelyDuplicatedRewrite — heuristic for echo-style LLM failures', 
     assert.strictEqual(isLikelyDuplicatedRewrite(clean), false);
   });
 
-  it('does NOT flag short rewrites (below the 200-char floor)', () => {
-    // Sanity: small outputs (typical word-cue alternatives, short fluid-
-    // blank answers) MUST never get falsely flagged regardless of content.
+  it('does NOT flag short non-repeating rewrites', () => {
+    // Typical word-cue alternatives + short fluid-blank answers MUST
+    // never get falsely flagged. Natural short content with no first-
+    // chunk repeat and no 100-char window repeat is fine.
     assert.strictEqual(isLikelyDuplicatedRewrite('the cat ran'), false);
-    assert.strictEqual(isLikelyDuplicatedRewrite('the cat ran the cat ran'), false);
-    assert.strictEqual(isLikelyDuplicatedRewrite('a'.repeat(199)), false);
+    assert.strictEqual(isLikelyDuplicatedRewrite('A short factual answer about the topic at hand for this query.'), false);
+    // Note: Layer 1 (first-chunk probe) WILL catch pathological inputs
+    // like 'a'.repeat(199) — that's the intended behavior. Real prose
+    // never repeats 30-80 char openings within its own body.
   });
 
   it('does NOT flag long prose with naturally repeated short phrases', () => {
@@ -70,6 +73,51 @@ describe('isLikelyDuplicatedRewrite — heuristic for echo-style LLM failures', 
     const prefix = 'Unique opening content that introduces the topic without any repetition whatsoever, padded to length. '.repeat(2);
     const span = 'Concluding paragraph with at least one hundred chars that the model accidentally output twice in succession. ';
     const dup = prefix + span + ' interlude ' + span;
+    assert.strictEqual(isLikelyDuplicatedRewrite(dup), true);
+  });
+
+  // ── Layer 1: first-line / first-chunk repeat ───────────────────────
+  // The 100-char sliding window missed the "model restarted the body"
+  // pattern where ONLY the first ~40 chars repeat (with new content
+  // following). Live repro: poem at 20:49:57 — rewrite started
+  // "In whispered breaths the heart confides,\n" then later contained
+  // the same 40 chars again. Layer 1 catches this with a shorter
+  // first-chunk probe.
+
+  it('flags poem repro: first-line repeats with new content after', () => {
+    // Exact pattern from the May 22 2026 chrome log at 20:49:57.
+    const firstLine = 'In whispered breaths the heart confides,';
+    const dup = `${firstLine}\nTwo souls entwine where shadows glide, and time stands still in love's domain.\n\n${firstLine}\nA second stanza added with completely new content for the paragraph addition request.`;
+    assert.strictEqual(isLikelyDuplicatedRewrite(dup), true);
+  });
+
+  it('flags shorter first-line repeat (30+ chars)', () => {
+    const firstLine = 'Subject: Important meeting today';  // 32 chars
+    const dup = `${firstLine}\nFirst body paragraph.\n${firstLine}\nDifferent second body.`;
+    assert.strictEqual(isLikelyDuplicatedRewrite(dup), true);
+  });
+
+  it('does NOT flag a unique opening line (no first-chunk repeat)', () => {
+    const text = `Dear Manager,\nThis is a normal letter body with no repetition of the opening line at all.`;
+    assert.strictEqual(isLikelyDuplicatedRewrite(text), false);
+  });
+
+  it('does NOT flag when first line is too short (under 30 chars)', () => {
+    // Short opening like "Hi.\n" — even if "Hi." appears 5 times in
+    // a list, the floor at 30 chars prevents false positives.
+    const text = `Hi.\nHi there. Hi friend. Hi everyone. Hi.`;
+    assert.strictEqual(isLikelyDuplicatedRewrite(text), false);
+  });
+
+  it('does NOT flag when no newline AND text < 30 chars (no first chunk)', () => {
+    assert.strictEqual(isLikelyDuplicatedRewrite('short text'), false);
+  });
+
+  it('caps first-chunk probe at 80 chars even with long first line', () => {
+    // Very long first line should still be probed (using its first 80
+    // chars). A 200-char first line repeated would trigger Layer 1.
+    const longFirst = 'A first line so long that it exceeds eighty characters and tests the upper cap on the first-chunk probe length';
+    const dup = `${longFirst} continues uniquely. ${longFirst} repeats here.`;
     assert.strictEqual(isLikelyDuplicatedRewrite(dup), true);
   });
 });

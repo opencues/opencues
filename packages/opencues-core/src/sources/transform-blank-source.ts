@@ -945,17 +945,34 @@ interface FusedResult {
  * Exported for testing — see transform-blank-source.test.ts.
  */
 export function isLikelyDuplicatedRewrite(rewrite: string): boolean {
+  // Layer 1 — first-line / first-chunk repeat (catches the "model
+  // restarted the body" failure mode). Take the first 30-80 chars (or
+  // up to the first newline, whichever is shorter) and look for that
+  // exact sequence later in the rewrite. Real prose doesn't repeat
+  // its opening line; LLMs that misfire on long-body rewrites often do.
+  //
+  // Live failure pattern this catches: poem at 20:49:57 — rewrite
+  // started "In whispered breaths the heart confides,\n" then later
+  // contained the same 40 chars again before the new content. The
+  // 100-char sliding window missed this because the duplication was
+  // just the first line. A short-window first-chunk probe catches it.
+  const firstNewline = rewrite.indexOf('\n');
+  const firstChunkEnd = Math.min(firstNewline < 0 ? rewrite.length : firstNewline, 80);
+  if (firstChunkEnd >= 30) {
+    const firstChunk = rewrite.slice(0, firstChunkEnd);
+    if (rewrite.indexOf(firstChunk, firstChunkEnd) >= 0) return true;
+  }
+
+  // Layer 2 — sliding 100-char window (catches mid-body duplication
+  // that doesn't include the rewrite's opening). The May 22 letter
+  // bug had whole-body duplication; this is the original detector.
   const WINDOW = 100;
-  if (rewrite.length < WINDOW * 2) return false;
-  // Sliding window: every STEP chars take a WINDOW-char slice, look for
-  // it later in the string. First hit returns true. STEP = WINDOW/2 so
-  // we never miss a duplication that's offset by less than a full window.
-  // O(n × WINDOW) — for a 1KB rewrite ~10k char comparisons. Fast enough
-  // for a per-LLM-call check.
-  const STEP = WINDOW / 2;
-  for (let i = 0; i + WINDOW <= rewrite.length - WINDOW; i += STEP) {
-    const slice = rewrite.slice(i, i + WINDOW);
-    if (rewrite.indexOf(slice, i + WINDOW) >= 0) return true;
+  if (rewrite.length >= WINDOW * 2) {
+    const STEP = WINDOW / 2;
+    for (let i = 0; i + WINDOW <= rewrite.length - WINDOW; i += STEP) {
+      const slice = rewrite.slice(i, i + WINDOW);
+      if (rewrite.indexOf(slice, i + WINDOW) >= 0) return true;
+    }
   }
   return false;
 }
