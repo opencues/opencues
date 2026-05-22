@@ -1111,6 +1111,19 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   }
   const resolvedModel = (model ?? provider.defaultModel).trim();
   const endpoint = opts.endpointOverride ?? provider.defaultEndpoint;
+  // CLI-transport providers have external auth (e.g. claude-cli uses
+  // the user's locally-installed `claude` session) — no API key in
+  // opts.apiKeys. Skip the key check and the fallback-peer machinery
+  // (no HTTP peer exists for a CLI transport).
+  if (provider.transport === 'cli') {
+    return {
+      provider,
+      model: resolvedModel,
+      endpoint, // unused but kept for ResolvedLLM shape compat
+      apiKey: '',
+      fallback: null,
+    };
+  }
   const apiKey = opts.apiKeys[provider.envKeyName];
   if (!apiKey) {
     // Only warn when a provider was EXPLICITLY chosen (any tier set it).

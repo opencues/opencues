@@ -1061,3 +1061,45 @@ describe('resolveLLM — misconfiguration warnings (silent-no-op regressors)', (
     } finally { restore(); }
   });
 });
+
+describe('resolveLLM — claude-cli (CLI-transport, no API key)', () => {
+  it('resolves to claude-cli with no apiKey + no fallback (auth is external)', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      const result = resolveLLM({
+        globalProvider: 'claude-cli',
+        globalModel: 'haiku',
+        apiKeys: {}, // intentionally empty — CLI transport doesn't use apiKeys
+      });
+      assert.notStrictEqual(result, null);
+      assert.strictEqual(result!.provider.id, 'claude-cli');
+      assert.strictEqual(result!.provider.transport, 'cli');
+      assert.strictEqual(result!.model, 'haiku');
+      assert.strictEqual(result!.apiKey, '', 'CLI providers carry an empty apiKey');
+      assert.strictEqual(result!.fallback, null, 'CLI providers have no HTTP fallback peer');
+      assert.strictEqual(warnings.length, 0, 'no warning — CLI auth is intentionally external');
+    } finally { restore(); }
+  });
+
+  it('per-feature claude-cli override resolves without env keys', () => {
+    _resetWarnDedupForTesting();
+    const result = resolveLLM({
+      featureProvider: 'claude-cli',
+      featureModel: 'sonnet',
+      apiKeys: { GROQ_API_KEY: 'unused-here' },
+    });
+    assert.strictEqual(result?.provider.id, 'claude-cli');
+    assert.strictEqual(result?.model, 'sonnet');
+  });
+
+  it('claude-cli is NOT auto-picked when only env keys for other providers are set', () => {
+    // claude-cli is opt-in only — not in PROVIDER_AUTO_ORDER. pickAutoProvider
+    // should never return it just because the user has a `claude` install.
+    _resetWarnDedupForTesting();
+    const result = resolveLLM({
+      apiKeys: { CEREBRAS_API_KEY: 'k' }, // cerebras IS in auto-order
+    });
+    assert.strictEqual(result?.provider.id, 'cerebras', 'auto-route must pick cerebras, not claude-cli');
+  });
+});

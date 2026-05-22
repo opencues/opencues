@@ -398,6 +398,10 @@ module.exports = function doctor(argv, ctx) {
     // still surfaces whether the user has that key set.
     for (const adapter of providers.listProviders()) {
       if (order.includes(adapter.id)) continue;
+      // CLI-transport providers (claude-cli) have no env key — auth
+      // is external (via the user's `claude` install). Skip here;
+      // they get their own check block below.
+      if (adapter.transport === 'cli' || !adapter.envKeyName) continue;
       s.ok(`${adapter.envKeyName} (LLM)`, !!process.env[adapter.envKeyName]);
     }
     // Non-LLM service keys — kept hardcoded; one entry today (FINNHUB
@@ -406,9 +410,41 @@ module.exports = function doctor(argv, ctx) {
     s.ok('FINNHUB_API_KEY (stocks blank)', !!process.env.FINNHUB_API_KEY);
     s.render();
   }
+  // CLI-transport providers (subscription-backed) probed separately.
+  // Today: claude-cli only. Checks the binary is on PATH; we DON'T
+  // probe `claude auth status` because that spawns a subprocess every
+  // doctor run — slow + noisy. Users see a runtime error from the
+  // daemon if auth has expired, which is recoverable via `claude auth`.
+  {
+    const cliProviders = providers.listProviders().filter(p => p.transport === 'cli');
+    if (cliProviders.length > 0) {
+      const s = section('Subscription providers', 'CLI-transport providers that use external auth (no env key)');
+      const { spawnSync } = require('child_process');
+      for (const adapter of cliProviders) {
+        // claude-cli looks for `claude` on PATH by default
+        const bin = adapter.id === 'claude-cli' ? 'claude' : adapter.id;
+        const which = spawnSync('which', [bin], { encoding: 'utf8' });
+        const installed = which.status === 0;
+        s.ok(`${adapter.displayName} (${bin} on PATH)`, installed);
+        if (!installed) {
+          findings.push({
+            sev: 'info',
+            msg: `${adapter.displayName} provider needs the \`${bin}\` CLI installed — set \`agent-rewrite-provider: ${adapter.id}\` etc. in OPENCUES.md once installed`,
+            fix: `install Claude Code from https://claude.com/code, run \`${bin} auth\`, then \`${bin} -p hi\` to confirm`,
+          });
+        }
+      }
+      s.render();
+    }
+  }
   // No LLM provider key set → every LLM-driven cue/blank is inert.
   // hasAnyLlmKey iterates the registry so adding a provider auto-counts.
-  const hasAnyLlmKey = providers.listProviders().some(p => !!process.env[p.envKeyName]);
+  // CLI-transport providers don't have an env key — they count as "key
+  // present" when their binary is installed (probed in the block above).
+  const hasAnyLlmKey = providers.listProviders().some(p => {
+    if (p.transport === 'cli') return false; // doesn't count toward "no key" check
+    return !!process.env[p.envKeyName];
+  });
   if (!hasAnyLlmKey) {
     const firstChoice = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
     findings.push({
