@@ -1276,6 +1276,33 @@ export class Resolver {
           }
         }
 
+        // Overlap-extension guard (May 2026 — long-body rewrite bug).
+        // When the LLM's TARGET is just the first sentence/line of a
+        // multi-paragraph body but its REWRITE covers the WHOLE body
+        // (model couldn't accurately identify the target boundary), the
+        // splice above replaces only the narrow target span and the
+        // rest of originalText (which the rewrite has ALREADY produced
+        // its own version of) leaks through verbatim, duplicating the
+        // body in the user's buffer. Reproduced live on the modify-
+        // resignation-letter flow: target="Dear [Manager's Name],"
+        // (22 chars), rewrite=278-char full body → buffer ended at 538
+        // chars with the body appearing twice. The fix: if the text we
+        // were about to KEEP after splice (originalText[spliceEnd:])
+        // substantially appears inside rewrittenText, the rewrite owns
+        // that range too — extend spliceEnd to cover it. 60-char
+        // probe is long enough to dodge incidental prose matches
+        // (no real rewrite has the same 60-char span as random
+        // surrounding text by coincidence).
+        if (spliceEnd < originalText.length) {
+          const tailAfterSplice = originalText.slice(spliceEnd).trim();
+          const probe = tailAfterSplice.slice(0, 60);
+          if (probe.length >= 60 && rewrittenText.includes(probe)) {
+            spliceEnd = originalText.length;
+            rewriteWithSeparator = rewrittenText;
+            this.adapter.log('info', `TransformBlank: overlap-extension — rewrite covers post-splice tail (probe matched), extending splice to EOL to prevent body duplication`);
+          }
+        }
+
         // Cursor lands at the END OF THE FULL NEW BUFFER. The user
         // was typing past the trigger (after `_`), past any preserved
         // separator (\n\n) between target and trigger. A targeted

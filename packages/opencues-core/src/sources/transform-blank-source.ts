@@ -926,6 +926,41 @@ interface FusedResult {
 }
 
 /**
+ * Detect when an LLM-emitted rewrite contains the SAME 100-char span
+ * more than once — a strong signal the model echoed the body twice
+ * (once with the edit applied, once verbatim) instead of producing a
+ * single transformed version.
+ *
+ * Reproduced repeatedly on the modify-resignation-letter flow with
+ * cerebras gpt-oss-120b: input "replace [Your Name] with Wilfred _
+ * <300-char letter>" → rewrite that's 1.9× the body, containing both
+ * the Wilfred version AND the original [Your Name] version.
+ *
+ * Heuristic: any 100-char window appearing twice in the same string
+ * is almost certainly duplication — natural prose doesn't repeat
+ * 100-char spans. Sampling three windows (start/middle/end) catches
+ * partial-only duplication too. Caller falls through to 3-pass which
+ * has a VERIFY pass that re-validates the rewrite.
+ *
+ * Exported for testing — see transform-blank-source.test.ts.
+ */
+export function isLikelyDuplicatedRewrite(rewrite: string): boolean {
+  const WINDOW = 100;
+  if (rewrite.length < WINDOW * 2) return false;
+  // Sliding window: every STEP chars take a WINDOW-char slice, look for
+  // it later in the string. First hit returns true. STEP = WINDOW/2 so
+  // we never miss a duplication that's offset by less than a full window.
+  // O(n × WINDOW) — for a 1KB rewrite ~10k char comparisons. Fast enough
+  // for a per-LLM-call check.
+  const STEP = WINDOW / 2;
+  for (let i = 0; i + WINDOW <= rewrite.length - WINDOW; i += STEP) {
+    const slice = rewrite.slice(i, i + WINDOW);
+    if (rewrite.indexOf(slice, i + WINDOW) >= 0) return true;
+  }
+  return false;
+}
+
+/**
  * Parser for the fused-mode output (`FUSED_SYSTEM` prompt). Same shape as
  * parseExtract but with an extra REWRITE field at the end. The TARGET field
  * is multi-line-tolerant (sandwiched layout) but stops at the REWRITE label
@@ -1909,6 +1944,24 @@ export class TransformBlankSource implements CueSource {
     // the result in one call → fall through to 3-pass for retry.
     if (!f.rewrite) {
       this.log('TransformBlank FUSED: empty rewrite — falling through to 3-pass');
+      return null;
+    }
+
+    // Duplicated-rewrite sanity check (May 2026 — long-body bug class).
+    // On long bodies with bracketed placeholders ("[Your Name]", etc.)
+    // some models emit a REWRITE containing the body twice (once with
+    // the edit applied, once verbatim). Without this guard the runtime
+    // replaces the whole buffer with the duplicated rewrite and the
+    // user sees the body appear twice. Reproduced on cerebras gpt-oss-120b
+    // with the modify-resignation-letter flow. Heuristic: find a 100-char
+    // substring near the middle of the rewrite and check whether it
+    // appears MORE than once in the same rewrite. Cheap, no false-
+    // positive on legitimate output (no real rewrite has the same 100-char
+    // span repeated). Fall through to 3-pass which uses EXTRACT → APPLY
+    // → VERIFY and is less prone to this whole-body echo.
+    if (isLikelyDuplicatedRewrite(f.rewrite)) {
+      this.log(`TransformBlank FUSED: duplicated-content rewrite detected (${f.rewrite.length} chars, body appears 2x) — falling through to 3-pass`);
+      this.emit({ type: 'bailed', reason: 'FUSED-duplicated-rewrite', latencyMs: Date.now() - __pipelineT0 });
       return null;
     }
 
