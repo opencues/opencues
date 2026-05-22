@@ -639,15 +639,18 @@ const CLAUDE_CLI: ProviderAdapter = {
     const userParts = req.messages.filter((m) => m.role !== 'system').map((m) => m.content);
     const systemPrompt = sysParts.join('\n\n');
     const userPrompt = userParts.join('\n\n');
-    const modelAlias = (req.model || 'haiku') as 'haiku' | 'sonnet' | 'opus';
-    if (modelAlias !== 'haiku' && modelAlias !== 'sonnet' && modelAlias !== 'opus') {
-      throw new Error(`claude-cli: unsupported model "${req.model}" — use haiku | sonnet | opus`);
-    }
+    // Pass `model` through verbatim — accepts both aliases
+    // ('haiku'|'sonnet'|'opus') AND full names like
+    // 'claude-haiku-4-5-20251001'. The daemon's resolveModelFamily()
+    // maps both to the right flag tuning. Unknown names throw there
+    // (not here) so a typo surfaces with a clear error including the
+    // valid shapes.
+    const model = (req.model || 'haiku').trim();
     // Lazy import to avoid pulling child_process into bundles that
     // don't use claude-cli (e.g. the chrome extension). When the
     // adapter is never invoked, this module is never loaded.
     const { getGlobalClaudeCliPool } = await import('./providers/claude-cli-daemon');
-    const daemon = getGlobalClaudeCliPool().get(modelAlias, systemPrompt);
+    const daemon = getGlobalClaudeCliPool().get(model, systemPrompt);
     return daemon.invoke(userPrompt);
   },
 };

@@ -42,13 +42,44 @@ import type { ChildProcessByStdio } from 'child_process';
 import type { Readable, Writable } from 'stream';
 import { spawn as nodeSpawn } from 'child_process';
 
-/** Logical model name the daemon understands. Maps to a `claude --model` argument. */
-export type ClaudeCliModel = 'haiku' | 'sonnet' | 'opus';
+/** Model name as passed to `claude --model`. Accepts either the
+ *  short aliases (`haiku` | `sonnet` | `opus` — claude resolves to
+ *  the latest version) or a full model identifier
+ *  (`claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, etc.). */
+export type ClaudeCliModel = string;
+
+/** Logical model family — used as the key into MODEL_FLAGS. The
+ *  per-family flag tuning is the same regardless of model generation:
+ *  Haiku's behaviour-under-thinking is similar across 3.5 / 4 / 4.5
+ *  generations, etc. If a future generation needs different flags,
+ *  add a more specific case in `resolveModelFamily` below. */
+export type ClaudeCliModelFamily = 'haiku' | 'sonnet' | 'opus';
+
+/**
+ * Map any model string to its family for flag-table lookup.
+ *
+ *   'haiku' / 'claude-haiku-3-5' / 'claude-haiku-4-5-20251001' → 'haiku'
+ *   'sonnet' / 'claude-sonnet-4-6'                              → 'sonnet'
+ *   'opus' / 'claude-opus-4-7'                                  → 'opus'
+ *
+ * Throws on unknown names so a typo in OPENCUES.md surfaces immediately
+ * instead of silently picking the wrong flag table.
+ */
+export function resolveModelFamily(model: string): ClaudeCliModelFamily {
+  const m = model.toLowerCase();
+  if (m === 'haiku' || m.includes('haiku')) return 'haiku';
+  if (m === 'sonnet' || m.includes('sonnet')) return 'sonnet';
+  if (m === 'opus' || m.includes('opus')) return 'opus';
+  throw new Error(
+    `claude-cli: cannot infer model family from "${model}" ` +
+    `(expected an alias 'haiku'|'sonnet'|'opus' or a full name like ` +
+    `'claude-haiku-4-5-20251001')`,
+  );
+}
 
 /** Per-model launch flags + environment overrides, derived from the
- *  bench at tests/benchmarks/thinking-budget/. Each entry is the
- *  optimal configuration for THAT specific model — keep them in sync
- *  with the bench results when re-tuning. */
+ *  bench at tests/benchmarks/thinking-budget/. Keyed on family so the
+ *  same tuning applies across point releases within a family. */
 interface ModelFlagConfig {
   /** Extra CLI args appended after the baseline. */
   extraArgs: string[];
@@ -56,7 +87,7 @@ interface ModelFlagConfig {
   env: Record<string, string>;
 }
 
-const MODEL_FLAGS: Record<ClaudeCliModel, ModelFlagConfig> = {
+const MODEL_FLAGS: Record<ClaudeCliModelFamily, ModelFlagConfig> = {
   haiku: {
     extraArgs: [], // no --effort (Haiku ignores it; adding it slows things down)
     env: { CLAUDE_CODE_DISABLE_THINKING: '1', MAX_THINKING_TOKENS: '0' },
@@ -217,7 +248,10 @@ export class ClaudeCliDaemon {
   }
 
   private buildArgs(): string[] {
-    const flags = MODEL_FLAGS[this.model];
+    // Pass `--model` through verbatim (alias OR full name — `claude`
+    // accepts both). Flag selection keys on the resolved family so a
+    // future generation within the same family inherits the tuning.
+    const flags = MODEL_FLAGS[resolveModelFamily(this.model)];
     return [
       ...BASELINE_ARGS,
       '--model', this.model,
@@ -227,7 +261,7 @@ export class ClaudeCliDaemon {
   }
 
   private buildEnv(): Record<string, string> {
-    return { ...MODEL_FLAGS[this.model].env };
+    return { ...MODEL_FLAGS[resolveModelFamily(this.model)].env };
   }
 
   private ensureSpawned(): void {

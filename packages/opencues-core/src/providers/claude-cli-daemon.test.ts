@@ -13,6 +13,7 @@ import { EventEmitter } from 'node:events';
 import {
   ClaudeCliDaemon,
   ClaudeCliDaemonPool,
+  resolveModelFamily,
   type SpawnedProcess,
   type SpawnFn,
 } from './claude-cli-daemon';
@@ -244,6 +245,73 @@ describe('ClaudeCliDaemon — lazy spawn + queue + correlation', () => {
     children[1].emitStdoutLine(resultEvent('R2'));
     assert.strictEqual(await p2, 'R2');
     d.shutdown();
+  });
+});
+
+describe('resolveModelFamily — alias + full-name handling', () => {
+  it('aliases map to themselves', () => {
+    assert.strictEqual(resolveModelFamily('haiku'), 'haiku');
+    assert.strictEqual(resolveModelFamily('sonnet'), 'sonnet');
+    assert.strictEqual(resolveModelFamily('opus'), 'opus');
+  });
+
+  it('case-insensitive', () => {
+    assert.strictEqual(resolveModelFamily('Haiku'), 'haiku');
+    assert.strictEqual(resolveModelFamily('SONNET'), 'sonnet');
+  });
+
+  it('full version-pinned names resolve to family', () => {
+    assert.strictEqual(resolveModelFamily('claude-haiku-4-5-20251001'), 'haiku');
+    assert.strictEqual(resolveModelFamily('claude-haiku-3-5'), 'haiku');
+    assert.strictEqual(resolveModelFamily('claude-sonnet-4-6'), 'sonnet');
+    assert.strictEqual(resolveModelFamily('claude-opus-4-7'), 'opus');
+  });
+
+  it('throws on unknown names with a clear error', () => {
+    assert.throws(
+      () => resolveModelFamily('gpt-4o-mini'),
+      /cannot infer model family/,
+    );
+    assert.throws(
+      () => resolveModelFamily('llama-3-70b'),
+      /haiku.*sonnet.*opus/,
+    );
+  });
+});
+
+describe('ClaudeCliDaemon — model pass-through (alias vs full name)', () => {
+  it('passes full version-pinned name verbatim to --model', () => {
+    const { spawn, children } = makeFakeSpawn();
+    const d = new ClaudeCliDaemon({
+      model: 'claude-haiku-4-5-20251001',
+      systemPrompt: 'sys',
+      spawn,
+    });
+    d.invoke('q').catch(() => {});
+    const args = children[0].spawnedArgs;
+    // --model gets the literal string the user supplied
+    const modelIdx = args.indexOf('--model');
+    assert.strictEqual(args[modelIdx + 1], 'claude-haiku-4-5-20251001');
+    // Flag tuning still picks the haiku family
+    assert.doesNotMatch(args.join(' '), /--effort/);
+    assert.strictEqual(children[0].spawnedEnv.MAX_THINKING_TOKENS, '0');
+  });
+
+  it('claude-sonnet-4-6 (full name) gets the sonnet flag tuning', () => {
+    const { spawn, children } = makeFakeSpawn();
+    const d = new ClaudeCliDaemon({ model: 'claude-sonnet-4-6', systemPrompt: 's', spawn });
+    d.invoke('q').catch(() => {});
+    const args = children[0].spawnedArgs;
+    assert.strictEqual(args[args.indexOf('--model') + 1], 'claude-sonnet-4-6');
+    assert.match(args.join(' '), /--effort low/);
+    // Sonnet must NOT set MAX_THINKING_TOKENS (interferes)
+    assert.strictEqual(children[0].spawnedEnv.MAX_THINKING_TOKENS, undefined);
+  });
+
+  it('unsupported model name throws at spawn time (not silently)', () => {
+    const { spawn } = makeFakeSpawn();
+    const d = new ClaudeCliDaemon({ model: 'gpt-4o-mini', systemPrompt: 's', spawn });
+    return assert.rejects(d.invoke('q'), /cannot infer model family/);
   });
 });
 
