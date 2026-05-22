@@ -159,4 +159,87 @@ describe('dispatchChat — HTTP transport contract', () => {
     );
     assert.strictEqual(calls, 1, 'dispatchChat must not retry');
   });
+
+  // ── Transport-tag dispatch ───────────────────────────────────────────
+  // Pin that the `transport?: 'http' | 'cli'` switch on ProviderAdapter
+  // routes correctly. Existing providers (no transport field) MUST
+  // continue to use the HTTP path; CLI providers MUST bypass the http
+  // adapter entirely and call invokeCli instead.
+
+  it('transport omitted → HTTP path (back-compat with all existing providers)', async () => {
+    const provider = makeFakeProvider({}); // no transport field
+    const { adapter, calls } = makeCapture();
+
+    await dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' });
+    assert.strictEqual(calls.length, 1, 'omitted transport must use HTTP');
+  });
+
+  it("transport: 'http' explicit → HTTP path", async () => {
+    const provider: ProviderAdapter = { ...makeFakeProvider({}), transport: 'http' };
+    const { adapter, calls } = makeCapture();
+
+    await dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' });
+    assert.strictEqual(calls.length, 1, 'explicit http must use HTTP');
+  });
+
+  it("transport: 'cli' → invokeCli is called, httpAdapter.post is NEVER touched", async () => {
+    let invokeCalls = 0;
+    let receivedReq: ChatRequest | null = null;
+    let receivedCtx: { apiKey: string; endpoint?: string } | null = null;
+    const provider: ProviderAdapter = {
+      id: 'groq', displayName: 'cli-fake', defaultEndpoint: '', defaultModel: '', envKeyName: '',
+      transport: 'cli',
+      buildRequest() { throw new Error('buildRequest must NOT be called for cli transport'); },
+      parseResponse() { throw new Error('parseResponse must NOT be called for cli transport'); },
+      invokeCli(req, ctx) {
+        invokeCalls++;
+        receivedReq = req;
+        receivedCtx = ctx;
+        return Promise.resolve('cli-result-text');
+      },
+    };
+    const { adapter, calls } = makeCapture();
+    const req: ChatRequest = { model: 'haiku', messages: [{ role: 'user', content: 'q' }] };
+    const ctx = { apiKey: 'unused-for-cli', endpoint: 'unused' };
+
+    const result = await dispatchChat(provider, adapter, req, ctx);
+
+    assert.strictEqual(result, 'cli-result-text');
+    assert.strictEqual(invokeCalls, 1, 'invokeCli must run exactly once');
+    assert.strictEqual(calls.length, 0, 'httpAdapter.post must NOT run for cli transport');
+    assert.deepStrictEqual(receivedReq, req, 'invokeCli receives the neutral req unchanged');
+    assert.deepStrictEqual(receivedCtx, ctx, 'invokeCli receives the ctx unchanged');
+  });
+
+  it("transport: 'cli' WITHOUT invokeCli → throws clear error", async () => {
+    const provider: ProviderAdapter = {
+      id: 'groq', displayName: 'broken-cli', defaultEndpoint: '', defaultModel: '', envKeyName: '',
+      transport: 'cli',
+      buildRequest: () => ({ url: '', body: '', headers: {} }),
+      parseResponse: () => '',
+      // invokeCli intentionally missing — misconfiguration check
+    };
+    const { adapter } = makeCapture();
+
+    await assert.rejects(
+      dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
+      /transport='cli' but has no invokeCli/,
+    );
+  });
+
+  it('invokeCli errors propagate through dispatchChat unchanged', async () => {
+    const provider: ProviderAdapter = {
+      id: 'groq', displayName: 'cli-fake', defaultEndpoint: '', defaultModel: '', envKeyName: '',
+      transport: 'cli',
+      buildRequest: () => ({ url: '', body: '', headers: {} }),
+      parseResponse: () => '',
+      invokeCli: async () => { throw new Error('daemon spawn failed'); },
+    };
+    const { adapter } = makeCapture();
+
+    await assert.rejects(
+      dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
+      /daemon spawn failed/,
+    );
+  });
 });

@@ -108,6 +108,23 @@ export interface ProviderAdapter {
   readonly id: ProviderId;
   /** Human-readable name for CLI banners + doctor / help output. e.g. 'Cerebras', 'OpenAI'. */
   readonly displayName: string;
+  /**
+   * Transport — how `dispatchChat` reaches this provider.
+   *
+   *   - `'http'` (default): builds a request via `buildRequest`, POSTs
+   *     via the `HttpAdapter`, parses with `parseResponse`. Every
+   *     OpenAI-compatible provider plus Anthropic + Gemini.
+   *   - `'cli'`: bypasses HTTP entirely. The provider declares an
+   *     `invokeCli(req, ctx)` method instead; `dispatchChat` routes
+   *     to it directly. Used by the subprocess-backed `claude-cli`
+   *     daemon (subscription-auth, no API key). Sources are unaffected
+   *     by the choice — they call `dispatchChat` and get the assistant
+   *     text back either way.
+   *
+   * Default is `'http'` when omitted. Every existing provider in
+   * `PROVIDERS` leaves this undefined; the dispatch path is unchanged.
+   */
+  readonly transport?: 'http' | 'cli';
   /** Default endpoint URL when the user hasn't overridden. Some providers (Gemini) substitute the model into the URL. */
   readonly defaultEndpoint: string;
   /** Default model when the user hasn't picked one. */
@@ -127,10 +144,27 @@ export interface ProviderAdapter {
    * 400 on it.
    */
   readonly defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high';
-  /** Translate the neutral ChatRequest into wire format for this provider. */
+  /**
+   * Translate the neutral ChatRequest into wire format for this provider.
+   * Required for `transport: 'http'` (the default). CLI-transport
+   * providers may stub this — it's never called.
+   */
   buildRequest(req: ChatRequest, ctx: { apiKey: string; endpoint?: string }): BuiltRequest;
-  /** Extract the assistant's text from this provider's response shape. */
+  /**
+   * Extract the assistant's text from this provider's response shape.
+   * Required for `transport: 'http'`. CLI-transport providers may stub
+   * this — it's never called.
+   */
   parseResponse(rawJson: string): string;
+  /**
+   * CLI-transport entry point. Returns the assistant text directly.
+   * Only called when `transport === 'cli'`. The provider owns its own
+   * lifecycle (subprocess spawning, request queueing, idle reap, etc.).
+   * Receives the neutral request + the same auth/endpoint context as
+   * buildRequest, but the `apiKey` field is typically ignored (CLI
+   * providers use external auth like a logged-in `claude` session).
+   */
+  invokeCli?(req: ChatRequest, ctx: { apiKey: string; endpoint?: string }): Promise<string>;
 }
 
 // ---------------------------------------------------------------------
@@ -771,6 +805,19 @@ export async function dispatchChat(
   req: ChatRequest,
   ctx: { apiKey: string; endpoint?: string },
 ): Promise<string> {
+  // CLI-transport providers (e.g. claude-cli daemon) handle their own
+  // lifecycle and return the assistant text directly. The httpAdapter
+  // argument is intentionally ignored — caller still passes it because
+  // resolveLLM doesn't know which transport will be picked until after
+  // the dispatch, and the call sites are transport-agnostic.
+  if (provider.transport === 'cli') {
+    if (!provider.invokeCli) {
+      throw new Error(`provider ${provider.id} declared transport='cli' but has no invokeCli`);
+    }
+    return provider.invokeCli(req, ctx);
+  }
+  // Default HTTP transport — byte-for-byte identical to pre-May-2026
+  // inline dispatch at the five source call sites.
   const built = provider.buildRequest(req, ctx);
   const raw = await httpAdapter.post(built.url, built.body, built.headers);
   return provider.parseResponse(raw);
