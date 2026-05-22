@@ -522,10 +522,17 @@ describe('getProvider / listProviders / PROVIDER_IDS', () => {
     );
   });
 
-  it('every provider has a working defaults round-trip', () => {
+  it('every HTTP-transport provider has a working defaults round-trip', () => {
     for (const id of PROVIDER_IDS) {
       const p = getProvider(id);
       assert.ok(p, `provider missing: ${id}`);
+      // CLI-transport providers (claude-cli) don't have a buildRequest
+      // contract — they go through invokeCli instead. Round-trip the
+      // CLI path separately.
+      if (p!.transport === 'cli') {
+        assert.strictEqual(typeof p!.invokeCli, 'function', `${id}: cli transport missing invokeCli`);
+        continue;
+      }
       const built = p!.buildRequest(
         { model: p!.defaultModel, messages: [{ role: 'user', content: 'x' }] },
         { apiKey: 'test' },

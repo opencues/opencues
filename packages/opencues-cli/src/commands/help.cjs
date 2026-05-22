@@ -251,6 +251,7 @@ function displayProvider(id, core) {
 const PROVIDER_DISPLAY = {
   groq: 'Groq', cerebras: 'Cerebras', openai: 'OpenAI',
   anthropic: 'Claude', openrouter: 'OpenRouter', gemini: 'Gemini',
+  'claude-cli': 'Claude (CLI, subscription)',
 };
 
 // Default model fallback for pre-build. Live data sourced from
@@ -262,6 +263,7 @@ const PROVIDER_DEFAULT_MODEL = {
   anthropic:  'claude-haiku-4-5-20251001',
   openrouter: 'openai/gpt-oss-120b:free',
   gemini:     'gemini-3.1-flash-lite',
+  'claude-cli': 'haiku',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.

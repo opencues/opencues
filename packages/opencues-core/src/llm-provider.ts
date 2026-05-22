@@ -20,9 +20,9 @@
  * model defaults + request/response translators. Nothing else changes.
  */
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'anthropic' | 'cerebras';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'anthropic' | 'cerebras' | 'claude-cli';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli'];
 
 /**
  * Internal chat-request shape — provider-neutral. Each provider's
@@ -589,6 +589,69 @@ const CEREBRAS: ProviderAdapter = {
   parseResponse: parseOpenAIResponse,
 };
 
+/**
+ * claude-cli — subscription-backed Anthropic transport via the user's
+ * locally-installed `claude` CLI. Bypasses HTTP entirely; routes through
+ * a persistent `claude -p` subprocess (one per model+system-prompt pair)
+ * that authenticates with the user's Claude Pro/Max subscription.
+ *
+ * Why not just talk to the API directly? OAuth-token extraction from
+ * `~/.claude/.credentials.json` was attempted and explicitly forbidden
+ * by Anthropic's Feb 2026 ToS (server-side enforcement; many tokens
+ * return 401). The `claude` CLI is the only sanctioned subscription
+ * transport.
+ *
+ * Latency floor: ~700ms direct API + ~140ms CC overhead. Per-model:
+ * Haiku p50 840ms, Sonnet p50 1338ms, Opus p50 1982ms (full bench in
+ * tests/benchmarks/thinking-budget/CLAUDE-CLI-FINDINGS.md). Not
+ * viable for the word-cue ≤500ms surface; comfortable for transform-
+ * blank, fluid-blank, agent-rewrite, prompt-improver.
+ *
+ * The actual subprocess + queue + idle-reap lifecycle lives in
+ * providers/claude-cli-daemon.ts. This adapter just dispatches to the
+ * global pool — sources call dispatchChat → invokeCli → daemon.invoke.
+ *
+ * apiKey is unused (the daemon authenticates via the user's `claude`
+ * install), but the field stays in the adapter for shape compatibility.
+ */
+const CLAUDE_CLI: ProviderAdapter = {
+  id: 'claude-cli',
+  displayName: 'Claude (CLI, subscription)',
+  transport: 'cli',
+  defaultEndpoint: '', // unused for CLI transport
+  defaultModel: 'haiku', // fastest / cheapest of the supported aliases
+  envKeyName: '', // no env var — auth via `claude` install
+  buildRequest() {
+    // Never called for transport: 'cli'. Throw if it somehow IS called
+    // so the bug surfaces immediately instead of silently producing
+    // a malformed HTTP request.
+    throw new Error('claude-cli: buildRequest is not used (transport is cli)');
+  },
+  parseResponse() {
+    throw new Error('claude-cli: parseResponse is not used (transport is cli)');
+  },
+  async invokeCli(req) {
+    // Extract system + user prompt from the neutral ChatRequest. The
+    // daemon model is "one launched daemon per system prompt" (because
+    // --append-system-prompt is a launch-time flag) — the pool keys
+    // daemons accordingly.
+    const sysParts = req.messages.filter((m) => m.role === 'system').map((m) => m.content);
+    const userParts = req.messages.filter((m) => m.role !== 'system').map((m) => m.content);
+    const systemPrompt = sysParts.join('\n\n');
+    const userPrompt = userParts.join('\n\n');
+    const modelAlias = (req.model || 'haiku') as 'haiku' | 'sonnet' | 'opus';
+    if (modelAlias !== 'haiku' && modelAlias !== 'sonnet' && modelAlias !== 'opus') {
+      throw new Error(`claude-cli: unsupported model "${req.model}" — use haiku | sonnet | opus`);
+    }
+    // Lazy import to avoid pulling child_process into bundles that
+    // don't use claude-cli (e.g. the chrome extension). When the
+    // adapter is never invoked, this module is never loaded.
+    const { getGlobalClaudeCliPool } = await import('./providers/claude-cli-daemon');
+    const daemon = getGlobalClaudeCliPool().get(modelAlias, systemPrompt);
+    return daemon.invoke(userPrompt);
+  },
+};
+
 const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   groq: GROQ,
   openrouter: OPENROUTER,
@@ -596,6 +659,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   openai: OPENAI,
   anthropic: ANTHROPIC,
   cerebras: CEREBRAS,
+  'claude-cli': CLAUDE_CLI,
 };
 
 /**
@@ -897,6 +961,10 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   openai: undefined,
   anthropic: undefined,
   gemini: undefined,
+  // claude-cli is a different transport entirely — no HTTP peer to fall
+  // back to. If the subscription daemon dies, the user picks a different
+  // provider in OPENCUES.md.
+  'claude-cli': undefined,
 };
 
 /**
