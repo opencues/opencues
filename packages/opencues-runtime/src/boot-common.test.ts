@@ -5,7 +5,7 @@
 // testing.
 
 import { describe, it, expect, vi } from 'vitest';
-import { createSourceReclassifier, createLogFunction } from './boot-common';
+import { createSourceReclassifier, createLogFunction, RUNTIME_WRITE_TTL_MS } from './boot-common';
 
 describe('createSourceReclassifier', () => {
   it('returns the proposed source when no runtime write was marked', () => {
@@ -20,29 +20,74 @@ describe('createSourceReclassifier', () => {
     expect(r.reclassify('hello world', 'user')).toBe('runtime');
   });
 
-  it('clears the stash after one match (subsequent identical user text stays user)', () => {
+  // MULTI-SHOT contract — the May 2026 runaway-loop regression fix.
+  //
+  // Old one-shot semantics: only the FIRST echo input event after a
+  // runtime write was reclassified. The 2nd-Nth echoes (Gmail/Lexical/
+  // ProseMirror reconcilers fire 2-4 input events per programmatic
+  // write) got tagged 'user' and reached the Resolver, which then
+  // fired the `_`-pipeline on the runtime's own substituted buffer.
+  // If the LLM had left a `_` in its rewrite (translation prompts
+  // commonly do — `translate to japanese _` preserves the `_` as a
+  // non-translatable glyph), this re-fired ConfigIntent + TransformBlank
+  // + FluidBlank. Observed: one user `_ trigger` → 4 full cycles in
+  // 7 seconds on chrome (12 LLM calls instead of 3).
+  it('multi-shot: every echo within TTL of one write reclassifies to runtime', () => {
     const r = createSourceReclassifier();
-    r.markRuntimeWrite('hello');
-    expect(r.reclassify('hello', 'user')).toBe('runtime');
-    // Second time with same text — stash already cleared, treat as user edit.
-    expect(r.reclassify('hello', 'user')).toBe('user');
+    r.markRuntimeWrite('rewrite');
+    expect(r.reclassify('rewrite', 'user')).toBe('runtime');
+    // 2nd-4th echo from the same write (DOM reconciler re-fires).
+    expect(r.reclassify('rewrite', 'user')).toBe('runtime');
+    expect(r.reclassify('rewrite', 'user')).toBe('runtime');
+    expect(r.reclassify('rewrite', 'user')).toBe('runtime');
   });
 
-  it('keeps proposed source when text does not match marked write', () => {
+  it('echo events past TTL stop reclassifying', () => {
+    let now = 1_000_000;
+    const r = createSourceReclassifier(() => now);
+    r.markRuntimeWrite('rewrite');
+    now += RUNTIME_WRITE_TTL_MS - 1;
+    expect(r.reclassify('rewrite', 'user')).toBe('runtime');
+    now += 2;  // now past TTL
+    expect(r.reclassify('rewrite', 'user')).toBe('user');
+  });
+
+  it('keeps proposed source when text does not match any marked write', () => {
     const r = createSourceReclassifier();
     r.markRuntimeWrite('runtime wrote this');
     expect(r.reclassify('user typed this', 'user')).toBe('user');
-    // Stash NOT cleared on miss — runtime write is still pending.
+    // Stash still has the original — matching text still reclassifies.
     expect(r.reclassify('runtime wrote this', 'user')).toBe('runtime');
   });
 
-  it('overwrites the stash when markRuntimeWrite is called twice', () => {
-    const r = createSourceReclassifier();
+  it('remembers multiple recent writes (back-to-back substitutes)', () => {
+    let now = 1_000_000;
+    const r = createSourceReclassifier(() => now);
     r.markRuntimeWrite('first');
+    now += 50;  // well within TTL
     r.markRuntimeWrite('second');
-    // Only the latest write is matched.
-    expect(r.reclassify('first', 'user')).toBe('user');
+    // BOTH writes are remembered — echoes from either reclassify.
+    expect(r.reclassify('first', 'user')).toBe('runtime');
     expect(r.reclassify('second', 'user')).toBe('runtime');
+    // Identical text echoed multiple times stays runtime within window.
+    expect(r.reclassify('first', 'user')).toBe('runtime');
+  });
+
+  it('a user keystroke after TTL is correctly classified', () => {
+    let now = 1_000_000;
+    const r = createSourceReclassifier(() => now);
+    r.markRuntimeWrite('the same text');
+    now += RUNTIME_WRITE_TTL_MS + 100;
+    // User happens to type the same text moments later — past TTL,
+    // so genuine user input is preserved.
+    expect(r.reclassify('the same text', 'user')).toBe('user');
+  });
+
+  it('runtime-proposed source stays runtime even on a miss', () => {
+    const r = createSourceReclassifier();
+    r.markRuntimeWrite('runtime wrote A');
+    // A miss returns the proposed source — proposed='runtime' should pass through.
+    expect(r.reclassify('different text', 'runtime')).toBe('runtime');
   });
 });
 

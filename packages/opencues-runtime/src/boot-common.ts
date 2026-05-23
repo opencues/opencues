@@ -23,37 +23,77 @@ import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 
 /* ─── Source reclassification helper ─────────────────────────────────────
  *
- * Both bootstraps need the same shape: stash the text the runtime just
- * wrote, then reclassify the next text-change event as source='runtime'
- * if its text matches the stash. One-shot — cleared after match so a
- * later identical user-typed text isn't misclassified.
+ * Both bootstraps need the same shape: stash text the runtime wrote,
+ * then reclassify subsequent text-change events as source='runtime' if
+ * the text matches a recent stash. Multi-shot within a short TTL
+ * window — DOM reconciliation pipelines (Lexical, ProseMirror,
+ * Gmail's compose) fire MULTIPLE input events per programmatic write,
+ * and a single-shot reclassifier only catches the first.
+ *
+ * Bug history (May 2026): with one-shot matching, the FIRST input
+ * event from a TransformBlank substitute was reclassified to
+ * 'runtime' and skipped by the Resolver. The SECOND+ echo events (from
+ * MutationObserver-triggered re-renders) arrived after the stash was
+ * cleared and got tagged 'user'. The Resolver then processed them
+ * normally, fired the `_`-pipeline on the runtime's own substituted
+ * buffer (which often still contained a `_` the LLM had failed to
+ * strip), and produced a runaway loop — one user `_ trigger` → 4+
+ * full ConfigIntent+TransformBlank+FluidBlank cycles in 7 seconds
+ * observed on chrome.
+ *
+ * Multi-shot fix: keep a list of recent writes, TTL them out after
+ * 250ms (long enough to cover the typical 10-150ms DOM echo window,
+ * short enough that a user typing the exact same content moments
+ * later isn't misclassified).
  *
  * Hosts call markRuntimeWrite(text) inside their setText/pushText, and
  * reclassify(text, source) inside their notifyOpenCuesTextChange.
  */
 export interface SourceReclassifier {
-  /** Stash text written by the runtime so the next input event flips
-   *  source to 'runtime'. Hosts whose write path normalises whitespace
-   *  (chrome's execCommand) should call this AFTER the write with the
-   *  actual post-DOM text. */
+  /** Stash text written by the runtime so subsequent matching input
+   *  events flip source to 'runtime' (within the TTL window). Hosts
+   *  whose write path normalises whitespace (chrome's execCommand)
+   *  should call this AFTER the write with the actual post-DOM text. */
   markRuntimeWrite(text: string): void;
-  /** Returns 'runtime' when the incoming text matches the last marked
-   *  runtime write, otherwise the proposed source. Clears the stash on
-   *  match. */
+  /** Returns 'runtime' when the incoming text matches a recent marked
+   *  runtime write (within RUNTIME_WRITE_TTL_MS), otherwise the
+   *  proposed source. */
   reclassify(text: string, proposedSource: 'user' | 'runtime'): 'user' | 'runtime';
 }
 
-export function createSourceReclassifier(): SourceReclassifier {
-  let lastRuntimeSetText: string | null = null;
+/** Time window in which subsequent matching input events are still
+ *  reclassified to 'runtime'. 250ms covers the typical DOM-echo
+ *  window (50-200ms on Gmail/Lexical/PM) with margin, while staying
+ *  well under any realistic gap between a runtime substitute and a
+ *  user typing the identical text manually. */
+export const RUNTIME_WRITE_TTL_MS = 250;
+
+export function createSourceReclassifier(now: () => number = Date.now): SourceReclassifier {
+  const recent: Array<{ text: string; addedAt: number }> = [];
+
+  function pruneStale(t: number): void {
+    const cutoff = t - RUNTIME_WRITE_TTL_MS;
+    while (recent.length > 0 && recent[0].addedAt < cutoff) recent.shift();
+  }
+
   return {
     markRuntimeWrite(text: string): void {
-      lastRuntimeSetText = text;
+      const t = now();
+      pruneStale(t);
+      recent.push({ text, addedAt: t });
     },
     reclassify(text: string, proposedSource: 'user' | 'runtime'): 'user' | 'runtime' {
-      if (lastRuntimeSetText !== null && text === lastRuntimeSetText) {
-        lastRuntimeSetText = null;
-        return 'runtime';
-      }
+      const t = now();
+      pruneStale(t);
+      // Multi-shot match WITHOUT consumption — a single runtime write
+      // can produce multiple DOM-echo input events (Gmail compose
+      // fires 2-4; ProseMirror's reconciler can fire more). All of
+      // them carry the same text; all of them need to reclassify to
+      // 'runtime' so the Resolver skips the entire batch. Consuming
+      // on first match leaves the remaining echoes mislabeled as
+      // 'user', which was the May 2026 runaway-loop bug. Stale
+      // entries age out via pruneStale's TTL.
+      if (recent.some(w => w.text === text)) return 'runtime';
       return proposedSource;
     },
   };
