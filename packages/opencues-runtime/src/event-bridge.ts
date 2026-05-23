@@ -499,6 +499,34 @@ class CommandRunner {
         // split across multiple file writes can sleep in the driver.
         return;
       }
+      case 'emit': {
+        // emit:<event-type>:<json-payload> — fires a runtime event
+        // through adapter.emitEvent so subscribers (MarkdownRender,
+        // Resolver caches, etc.) see it exactly as if a module had
+        // emitted it. Test-only — lets the agentic harness reach
+        // internal subscriber state without doing a full LLM round-
+        // trip first. Primary use: prime MarkdownRender's cache with
+        // a `markdown.styled` payload so the next TransformBlank
+        // resolve uses the rich-text injection path
+        // (resolver.ts:738) on hosts (terminal / TUI) that never
+        // produce styled output organically.
+        const colon = arg.indexOf(':');
+        if (colon < 0) {
+          this.stream.emit({ type: 'command.error', cmd, arg, error: 'emit: expected emit:<type>:<json>' });
+          return;
+        }
+        const eventType = arg.slice(0, colon);
+        const jsonStr = arg.slice(colon + 1);
+        let payload: Record<string, unknown>;
+        try { payload = JSON.parse(jsonStr) as Record<string, unknown>; }
+        catch (err) {
+          this.stream.emit({ type: 'command.error', cmd, arg: arg.slice(0, 100), error: `emit: bad json — ${(err as Error).message}` });
+          return;
+        }
+        adapter.emitEvent?.(eventType, payload);
+        this.stream.emit({ type: 'emit.injected', eventType, payloadKeys: Object.keys(payload) });
+        return;
+      }
       default: {
         this.stream.emit({ type: 'command.unknown', line: `${cmd}:${arg.slice(0, 100)}` });
         return;
