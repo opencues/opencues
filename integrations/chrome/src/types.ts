@@ -6,9 +6,10 @@
  * settings panel only.
  */
 export interface StoredConfig {
-  /** Groq API key. Legacy field — kept for popup back-compat. The
-   *  resolver-level bag lives in `llmApiKeys` (which also includes
-   *  GROQ_API_KEY for free, so this duplicates it). */
+  /** Groq API key. Legacy single-field projection of
+   *  `llmApiKeys.GROQ_API_KEY` for popup back-compat. Read-only from
+   *  the popup's perspective — writes go through `saveUserKeys`
+   *  ({GROQ_API_KEY: '...'}), not `saveConfig`. */
   apiKey: string;
   /** CSS selector for the target element */
   targetSelector: string;
@@ -22,34 +23,43 @@ export interface StoredConfig {
   ttsRate: number;
   /** Finnhub API key for stock prices */
   finnhubApiKey: string;
-  /** Multi-provider key bag, keyed by env-var name
-   *  (GROQ_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
+  /** Multi-provider key bag, keyed by env-var name (GROQ_API_KEY,
+   *  GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
    *  CEREBRAS_API_KEY, OPENROUTER_API_KEY). Forwarded straight to the
-   *  runtime resolver. Without this, switching `llm-provider:` in
-   *  CUES.md to anything other than Groq would silently no-op on
-   *  chrome — the resolver couldn't find a key for the chosen
-   *  provider and would return null without surfacing the failure.
-   *  Populated by the native-messaging host's config push;
-   *  chrome-storage-adapter writes both this AND the legacy
-   *  fields above so popup-only users keep working. */
+   *  runtime resolver. **Derived in `loadConfig`** by merging the
+   *  host bag (`opencues_host_keys`) and the user bag
+   *  (`opencues_user_keys`); user keys win on collision. NEVER
+   *  persisted into `opencues_config` — that snapshot-into-storage
+   *  was the May 2026 regression that made `llm-provider: cerebras`
+   *  silently no-op on chrome. */
   llmApiKeys: Readonly<Record<string, string>>;
   /** How far the dim colour is mixed toward the page background (0-1).
    *  0 = identical to host text colour; 1 = invisible. Default 0.45. */
   dimMix: number;
 }
 
-// Build-time injection — esbuild replaces these with literals from .env.
-declare const __GROQ_API_KEY__: string;
+// Build-time injection — esbuild replaces these with literals.
+// `__FINNHUB_API_KEY__` is kept inert for parity; secrets are never
+// baked into the published bundle (esbuild defines them as '' — see
+// `esbuild.config.mjs`). The TS declaration keeps the symbol
+// addressable for the type-checker.
 declare const __FINNHUB_API_KEY__: string;
 
+// In-memory fallback used by `loadConfig` when a field hasn't been
+// written to storage yet. **Never persisted** — writing a snapshot of
+// the bake-time secrets into `opencues_config` was the structural
+// cause of the May 2026 cerebras regression (the snapshot then
+// clobbered the host's multi-provider push on every reload).
+// `apiKey` is derived at read-time from the live host/user key bags;
+// `llmApiKeys` is composed from those bags in `loadConfig`.
 export const DEFAULT_CONFIG: StoredConfig = {
-  apiKey: __GROQ_API_KEY__,
+  apiKey: '',
   targetSelector: '[contenteditable="true"]',
   model: 'openai/gpt-oss-120b',
   apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
   ttsEnabled: false,
   ttsRate: 2,
   finnhubApiKey: __FINNHUB_API_KEY__,
-  llmApiKeys: __GROQ_API_KEY__ ? { GROQ_API_KEY: __GROQ_API_KEY__ } : {},
+  llmApiKeys: {},
   dimMix: 0.45,
 };
