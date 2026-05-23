@@ -152,12 +152,17 @@ export interface FusedFullResult {
 
 /** Same dynamic budget as fused but multiplier 3.0 — output is the
  *  WHOLE final buffer plus INSTRUCTION + TARGET CoT, so we need more
- *  headroom than fused's target-only REWRITE. Floor 2048 matches the
- *  prior flat-budget baseline; ceiling 4096 caps multi-paragraph. */
+ *  headroom than fused's target-only REWRITE. May 23 2026: FLOOR
+ *  2048 → 4096 + CEILING 4096 → 8192 to match the production raise
+ *  after the translate-to-japanese truncation bug. Latency + cost
+ *  measured FLAT across 2048-8192 (see `budget-translate-probe.ts`);
+ *  the extra headroom only matters when the model verbatim-echoes
+ *  TARGET + emits dense-script output (Japanese/Chinese/Korean/
+ *  Arabic) under reasoning_effort='medium'. */
 function budgetForFullOutput(inputChars: number, multiplier: number = 3.0): number {
   const REASONING_HEADROOM = 700;
-  const FLOOR = 2048;
-  const CEILING = 4096;
+  const FLOOR = 4096;
+  const CEILING = 8192;
   const est = Math.ceil((inputChars * multiplier) / 3) + REASONING_HEADROOM;
   return Math.max(FLOOR, Math.min(CEILING, est));
 }

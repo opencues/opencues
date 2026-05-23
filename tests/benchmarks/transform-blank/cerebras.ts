@@ -33,8 +33,11 @@ export async function chat(
     temperature: opts.temperature ?? 0,
     max_tokens: opts.maxTokens ?? 512,
     seed: opts.seed ?? 42,
-    // Match Groq's gpt-oss-120b config for fair apples-to-apples
-    reasoning_effort: 'low',
+    // Match Groq's gpt-oss-120b config for fair apples-to-apples.
+    // Override via OPENCUES_CEREBRAS_REASONING=medium for probes that
+    // need to mirror production (production uses 'medium' for
+    // transform-blank — see llm-provider.ts).
+    reasoning_effort: (process.env.OPENCUES_CEREBRAS_REASONING ?? 'low') as 'low' | 'medium' | 'high',
   });
 
   const t0 = Date.now();

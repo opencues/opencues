@@ -1288,7 +1288,13 @@ export type TransformBlankEvent =
    *  P2 carries step / totalSteps; P3 carries the verify verdict. */
   | { type: 'pass-completed'; pass: 'P1' | 'P2' | 'P3'; latencyMs: number;
       verdict?: string; instruction?: string; target?: string;
-      step?: number; totalSteps?: number }
+      step?: number; totalSteps?: number;
+      /** EXTRACT/FUSED input precedence — 'rich-text' when markdown
+       *  markers were re-injected from MarkdownRender's cache,
+       *  'as-typed' when the agent-revert path applied, 'visible'
+       *  otherwise. Only set on P1 (the input-bearing pass). Used by
+       *  agentic tests to assert the right input path was exercised. */
+      source?: 'rich-text' | 'as-typed' | 'visible' }
   /** Pipeline bailed early. `reason` is a stable kebab-case identifier
    *  (P1-verdict-none-or-empty, P2-empty-result, etc.). */
   | { type: 'bailed'; reason: string; latencyMs: number };
@@ -1528,6 +1534,7 @@ export class TransformBlankSource implements CueSource {
         instruction: ext.instruction,
         target: preview(ext.target),
         latencyMs: Date.now() - p1Start,
+        source: sourceTag,
       });
 
       // TASK BRANCH — agent-task commands. Route to the runtime via
@@ -1871,15 +1878,23 @@ export class TransformBlankSource implements CueSource {
     // > as-typed > visible) so styling + agent-revert behaviour matches.
     const extractText = context.richText ?? context.asTypedText ?? context.text;
     const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
-    // FULL_REWRITE budget — fused now emits the WHOLE final buffer (May
+    // FULL_REWRITE budget — fused emits the WHOLE final buffer (May
     // 2026 contract change). Output is ~input-length plus VERDICT/
-    // INSTRUCTION/TARGET label headers. Floor 2048 matches the bench's
-    // fused-full configuration (validated 80-88% across 5 providers);
-    // the prior 768 floor truncated long letters mid-output. Multiplier
-    // 3.0 (vs old 2.5) accounts for the larger payload — bench evidence
-    // in `tests/results/single-call-dynamic-budget/`.
-    const FUSED_FLOOR = 2048;
-    const FUSED_CEILING = 4096;
+    // INSTRUCTION/TARGET label headers. May 23 2026: raised floor
+    // 2048 → 4096 and ceiling 4096 → 8192 after the chrome translate-
+    // to-japanese truncation bug. Bench (`budget-translate-probe.ts`)
+    // measured latency + cost as FLAT across 2048-8192 — the model
+    // emits what it needs and providers bill on actual tokens, not
+    // the cap. The 2048 floor was just enough for English↔English
+    // but cerebras + dense-script outputs (Japanese, Chinese,
+    // Korean, Arabic) at reasoning=medium need ~2500-3000 tokens
+    // when the model verbatim-echoes the TARGET section. Floor of
+    // 4096 gives ~1.5x headroom over the observed worst case.
+    // Multiplier 3.0 accounts for the larger payload — bench evidence
+    // in `tests/results/single-call-dynamic-budget/` (original) +
+    // `tests/results/budget-translate-probe.log` (this raise).
+    const FUSED_FLOOR = 4096;
+    const FUSED_CEILING = 8192;
     const FUSED_HEADROOM = 700;
     const fusedTokens = Math.max(
       FUSED_FLOOR,
@@ -1896,6 +1911,11 @@ export class TransformBlankSource implements CueSource {
       instruction: f.instruction,
       target: preview(f.target),
       latencyMs: Date.now() - fusedStart,
+      // Source-tag exposes the input precedence (rich-text > as-typed >
+      // visible) so agentic scenarios can assert the right code path
+      // exercised. Primarily for testing MarkdownRender-cache priming
+      // scenarios that prove rich-text injection took effect.
+      source: sourceTag,
     });
 
     // TASK BRANCH — agent-task commands. Same metadata.taskAction
