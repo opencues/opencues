@@ -232,3 +232,19 @@ Means the fork's `bun install` hasn't run. Re-run `opencues install opencode` �
 ### `opencues run opencode` silently exits 0 with no output
 
 Shouldn't happen anymore — the runtime detects spawn failures and reports exit 127 with a reason (missing bun, binary unfindable, etc.). If you're still seeing silent exits, you're likely on a stale checkout; `git pull && pnpm install`.
+
+### A transform-blank produced a half-translated / bilingual buffer (e.g. Japanese first half, English second half)
+
+Symptom: you typed something like `translate to japanese _` on a long letter and got back a buffer that's Japanese for the first few paragraphs and English for the rest, often with the original `translate to japanese _` trigger phrase still visible at the end.
+
+Cause: the LLM hit its `max_tokens` cap mid-output. Dense scripts (Japanese / Chinese / Korean / Arabic) take ~3 BPE tokens per character. Combined with the FUSED prompt's reasoning overhead (`reasoning_effort: medium` typically costs 500-1500 tokens before any output) and the model's tendency to verbatim-echo the TARGET section (~700 tokens for a long letter), the cumulative output can exceed the budget on long letters. The runtime's three-way merge then preserves the English tail of the live buffer — which produces the bilingual result rather than silently dropping content.
+
+What's already done: as of May 2026 the FUSED budget is `floor=4096, ceiling=16384` (was `2048/4096`). The probe in `tests/benchmarks/transform-blank/budget-translate-probe.ts` measured latency + cost as flat across budgets — providers bill on emitted tokens, not the cap, so a higher ceiling has no downside. This handles all typical letters.
+
+If you still see the bilingual buffer:
+
+- **Confirm via the log.** `/tmp/opencues.log` contains a line like `TransformBlank FUSED (...ms, max_tokens=4096, source=...): verdict=TRANSFORM, instruction="...", target="...", rewrite="<truncated>...` — if the rewrite ends mid-sentence with no closing punctuation, the LLM was truncated.
+- **Workaround**: clear the bilingual content, paste the original English back, and re-trigger. Cerebras's output is non-deterministic — a re-run often completes.
+- **Open an issue** with the relevant log snippet (the `TransformBlank FUSED` line + the next 10 lines). We may need to raise the ceiling further or add a parser-side truncation detector that refuses the substitute when the LLM output looks incomplete.
+
+Note: the *runaway loop* class (LLM leaves a `_` in its rewrite → runtime re-fires the `_`-pipeline indefinitely) was structurally fixed in the same May 2026 sprint by the multi-shot source reclassifier in `boot-common.ts`. Even when the LLM mis-emits a trigger character into its output, the runtime tags the substitute as `source='runtime'` and the Resolver skips it — so this bug class no longer produces 4+ cycles per `_` like it did in chrome's Gmail compose.

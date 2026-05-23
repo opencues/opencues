@@ -1881,20 +1881,23 @@ export class TransformBlankSource implements CueSource {
     // FULL_REWRITE budget — fused emits the WHOLE final buffer (May
     // 2026 contract change). Output is ~input-length plus VERDICT/
     // INSTRUCTION/TARGET label headers. May 23 2026: raised floor
-    // 2048 → 4096 and ceiling 4096 → 8192 after the chrome translate-
-    // to-japanese truncation bug. Bench (`budget-translate-probe.ts`)
-    // measured latency + cost as FLAT across 2048-8192 — the model
-    // emits what it needs and providers bill on actual tokens, not
-    // the cap. The 2048 floor was just enough for English↔English
-    // but cerebras + dense-script outputs (Japanese, Chinese,
-    // Korean, Arabic) at reasoning=medium need ~2500-3000 tokens
-    // when the model verbatim-echoes the TARGET section. Floor of
-    // 4096 gives ~1.5x headroom over the observed worst case.
-    // Multiplier 3.0 accounts for the larger payload — bench evidence
-    // in `tests/results/single-call-dynamic-budget/` (original) +
-    // `tests/results/budget-translate-probe.log` (this raise).
+    // 2048 → 4096 and ceiling 4096 → 16384 after the chrome
+    // translate-to-japanese truncation bug. Bench
+    // (`budget-translate-probe.ts`) measured latency + cost as FLAT
+    // across 2048-8192 — the model emits what it needs and providers
+    // bill on actual tokens, not the cap. The 2048 floor was just
+    // enough for English↔English but cerebras + dense-script outputs
+    // (Japanese, Chinese, Korean, Arabic) at reasoning=medium need
+    // ~2500-3000 tokens when the model verbatim-echoes the TARGET
+    // section. Floor of 4096 gives ~1.5x headroom over the observed
+    // worst case; ceiling 16384 protects longer letters (5000-8000
+    // char inputs translated to dense scripts can need 6000-10000
+    // output tokens). Multiplier 3.0 accounts for the larger
+    // payload — bench evidence in
+    // `tests/results/single-call-dynamic-budget/` (original) +
+    // `tests/results/budget-bump-floor4096/` (this raise).
     const FUSED_FLOOR = 4096;
-    const FUSED_CEILING = 8192;
+    const FUSED_CEILING = 16384;
     const FUSED_HEADROOM = 700;
     const fusedTokens = Math.max(
       FUSED_FLOOR,
