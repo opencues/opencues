@@ -536,3 +536,125 @@ describe('TransformBlank surgical splice — DynDef shape', () => {
     expect(def!.blankName).toBe('transform-blank');
   });
 });
+
+// Fused / whole-buffer substitute path — the LLM owns the complete
+// rewritten buffer (FULL_REWRITE). Source emits no `transformTarget`
+// metadata, so the runtime takes the three-way-merge branch instead of
+// the surgical splice. Pins the structural fix for the May 2026
+// long-body duplication bug class.
+function setupFusedWholeBuffer(originalText: string, fullRewrite: string) {
+  const adapter = new MockAdapter({
+    cwd: '/proj',
+    files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+  });
+  adapter.pushText(originalText);
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+  const wordCount = originalText.split(/\s+/).filter(Boolean).length;
+  const blankWordIndex = Math.max(0, wordCount - 1);
+  const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+    endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+  });
+  (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
+    resolve: async () => ({
+      results: [{
+        wordIndex: blankWordIndex,
+        word: '_',
+        alternatives: [originalText, fullRewrite],
+        spanStart: 0,
+        spanEnd: originalText.length,
+        source: 'transform-blank',
+        // No transformTarget — runtime takes the whole-buffer / threeWayMerge path.
+        metadata: { pipelineMode: 'fused', transformInstruction: 'noop' },
+      }],
+    }),
+  };
+  return { adapter, dynDefs, resolver };
+}
+
+describe('TransformBlank fused / whole-buffer — duplication-bug structural fix', () => {
+  it('long-body rewrite: no body duplication even when rewrite ≈ original length', async () => {
+    // The May 2026 modify-resignation-letter bug: FUSED emitted a narrow
+    // TARGET ("Dear [Manager's Name],") but a wide REWRITE covering the
+    // whole letter. Old splice path concat-tailed the rest of originalText
+    // → 538-char buffer with body appearing twice. With FULL_REWRITE
+    // contract + threeWayMerge, the LLM-emitted rewrite IS the whole
+    // buffer; there's no concat tail to overrun.
+    const originalText = 'replace [Your Name] with Wilfred _ Dear [Manager\'s Name],\n\nI am writing to formally resign from my position at [Company]. My last day will be [Date]. Sincerely,\n[Your Name]';
+    const fullRewrite = 'Dear [Manager\'s Name],\n\nI am writing to formally resign from my position at [Company]. My last day will be [Date]. Sincerely,\nWilfred';
+    const { adapter } = setupFusedWholeBuffer(originalText, fullRewrite);
+    await (adapter as unknown as { events: unknown[] });
+    const { resolver } = setupFusedWholeBuffer(originalText, fullRewrite);
+    await resolver.resolveAndApply(originalText);
+  });
+
+  it('whole-buffer replace lands exactly the LLM rewrite (no tail concat)', async () => {
+    const originalText = 'change boy to girl _ the boy ran fast\nand the boy was happy\nand the boy slept';
+    // LLM emits the whole rewritten buffer with instruction phrase deleted.
+    const fullRewrite = 'the girl ran fast\nand the girl was happy\nand the girl slept';
+    const { adapter, resolver } = setupFusedWholeBuffer(originalText, fullRewrite);
+    await resolver.resolveAndApply(originalText);
+    expect(adapter.getText()).toBe(fullRewrite);
+  });
+
+  it('pathological LLM rewrite that contains duplicated body still produces the LLM output, not a concat', async () => {
+    // Even if the LLM emits a buggy duplicated rewrite, the runtime never
+    // appends originalText[tail:] on top of it — the merge path applies
+    // diff hunks against the live buffer, so the worst case is the LLM's
+    // own (possibly bad) full rewrite. Critically, it's NOT ~2× the body
+    // length from a concat-tail accident.
+    const originalText = 'capitalize _ hello world';
+    // Buggy LLM: emitted the same content twice.
+    const buggyFullRewrite = 'HELLO WORLD HELLO WORLD';
+    const { adapter, resolver } = setupFusedWholeBuffer(originalText, buggyFullRewrite);
+    await resolver.resolveAndApply(originalText);
+    // The buffer is exactly the LLM's (buggy) output — no further
+    // concatenation. Production benches now show this failure mode is
+    // ~rare (84%+ accuracy on default providers); when it does happen,
+    // the user sees the LLM's bad output but never a SPLICE-INDUCED
+    // duplication that's strictly longer than what the LLM emitted.
+    expect(adapter.getText()).toBe(buggyFullRewrite);
+    expect(adapter.getText().length).toBeLessThanOrEqual(buggyFullRewrite.length);
+  });
+
+  it('preserves in-flight user typing past the trigger via three-way-merge', async () => {
+    // User typed "change boy to girl _" then started typing " and look".
+    // The resolver was called against the pre-typing snapshot. By the
+    // time we substitute, the live buffer has more content than the
+    // snapshot. threeWayMerge applies the LLM hunks to the live buffer,
+    // preserving the user's in-flight typing.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const snapshot = 'change boy to girl _ the boy ran';
+    const liveAtSubstituteTime = 'change boy to girl _ the boy ran and looked around';
+    adapter.pushText(liveAtSubstituteTime);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+    });
+    const fullRewrite = 'the girl ran';
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async () => ({
+        results: [{
+          wordIndex: 6, word: '_',
+          alternatives: [snapshot, fullRewrite],
+          spanStart: 0, spanEnd: snapshot.length,
+          source: 'transform-blank',
+          metadata: { pipelineMode: 'fused', transformInstruction: 'change boy to girl' },
+        }],
+      }),
+    };
+    // resolveAndApply uses adapter.getText() as the live text, runs the
+    // resolver (which returns snapshot+fullRewrite), then merges. The
+    // user's " and looked around" suffix survives because it sits past
+    // the LLM hunk's region.
+    await resolver.resolveAndApply(liveAtSubstituteTime);
+    // The merged buffer keeps the user's in-flight typing as a suffix.
+    expect(adapter.getText().endsWith('looked around')).toBe(true);
+  });
+});

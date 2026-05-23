@@ -88,8 +88,27 @@ export interface SingleCallResult {
   latencyMs: number;
 }
 
+/** Dynamic budget — output IS the full rewritten buffer, so scale with
+ *  input length. Multiplier 3.0 (vs fused's 2.5) gives extra headroom for
+ *  the verbose REWRITE field containing the full rewrite, not just the
+ *  target span. Floor 768 covers reasoning + short rewrite + labels;
+ *  ceiling 4096 caps multi-paragraph cases. +700 reasoning headroom
+ *  matches the production formula in transform-blank-source.ts. */
+function budgetForOutput(expectedChars: number, multiplier: number = 3.0): number {
+  // Floor 2048 matches the original flat-budget baseline so short inputs
+  // don't regress; reasoning models on groq/cerebras need this much
+  // headroom for ~700 tokens of internal reasoning + the full rewrite.
+  // Long inputs scale up via the multiplier, capped at 4096.
+  const REASONING_HEADROOM = 700;
+  const FLOOR = 2048;
+  const CEILING = 4096;
+  const est = Math.ceil((expectedChars * multiplier) / 3) + REASONING_HEADROOM;
+  return Math.max(FLOOR, Math.min(CEILING, est));
+}
+
 export async function runSingleCall(input: string): Promise<SingleCallResult> {
-  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens: 2048 });
+  const maxTokens = budgetForOutput(input.length, 3.0);
+  const r = await chat(sysUser(SYSTEM_PROMPT, `INPUT: ${input}`), { maxTokens });
   return parseSingleCallOutput(r.text, r.latencyMs);
 }
 

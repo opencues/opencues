@@ -25,6 +25,7 @@ import { runApply } from './pass2-apply';
 import { runVerify } from './pass3-verify';
 import { runSingleCall } from './single-call';
 import { runFused } from './fused-extract-apply';
+import { runFusedFull } from './fused-full';
 import { runMinimalExtract, runMinimalApply, runMinimalVerify } from './minimal-prompts';
 import { judge, JudgeInput } from './judge';
 import { MODEL } from './groq';
@@ -37,12 +38,12 @@ const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 
 type Mode = 'rewrite' | 'extract-apply' | 'extract-apply-verify' | 'extract-apply-verify-skip-easy' | 'single-call'
-  | 'fused' | 'fused-verify'
+  | 'fused' | 'fused-verify' | 'fused-full'
   | 'minimal-extract' | 'minimal-apply' | 'minimal-verify' | 'minimal-all'
   | 'skip-never' | 'skip-conservative' | 'skip-current' | 'skip-aggressive' | 'skip-always';
 const VALID_MODES: Mode[] = [
   'rewrite', 'extract-apply', 'extract-apply-verify', 'extract-apply-verify-skip-easy', 'single-call',
-  'fused', 'fused-verify',
+  'fused', 'fused-verify', 'fused-full',
   'minimal-extract', 'minimal-apply', 'minimal-verify', 'minimal-all',
   'skip-never', 'skip-conservative', 'skip-current', 'skip-aggressive', 'skip-always',
 ];
@@ -327,6 +328,25 @@ async function runCaseFused(c: TransformCase, withVerify: boolean): Promise<RunO
   return printAndScore(c, j, steps, fields, rawForFail);
 }
 
+async function runCaseFusedFull(c: TransformCase): Promise<RunOutcome> {
+  const f = await runFusedFull(c.input);
+  const judgeInput: JudgeInput = {
+    input: c.input,
+    expected: c.expected.finalText ?? null,
+    alternates: c.expected.finalTextAlternates ?? [],
+    actual: f.verdict === 'TRANSFORM' ? f.fullRewrite : null,
+    actualBail: f.verdict === 'NONE',
+    expectedBail: !!c.expected.shouldFailSoft,
+  };
+  const j = await judge(judgeInput);
+  return printAndScore(c, j, [{ label: 'fused-full', latencyMs: f.latencyMs }], {
+    'VERDICT': f.verdict,
+    'INSTRUCTION': f.instruction || '(none)',
+    'TARGET': f.target || '(none)',
+    'FULL_REWRITE': f.verdict === 'TRANSFORM' ? f.fullRewrite : '(bailed)',
+  }, f.raw);
+}
+
 async function runCaseSingleCall(c: TransformCase): Promise<RunOutcome> {
   const r = await runSingleCall(c.input);
   const judgeInput: JudgeInput = {
@@ -553,6 +573,7 @@ async function main() {
     if (args.mode === 'single-call') return runCaseSingleCall(c);
     if (args.mode === 'fused') return runCaseFused(c, false);
     if (args.mode === 'fused-verify') return runCaseFused(c, true);
+    if (args.mode === 'fused-full') return runCaseFusedFull(c);
     if (args.mode === 'minimal-extract')
       return runCaseExtractApply(c, true, false, { extract: runMinimalExtract });
     if (args.mode === 'minimal-apply')

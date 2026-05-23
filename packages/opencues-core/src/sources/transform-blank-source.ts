@@ -766,18 +766,18 @@ const FUSED_SYSTEM = `Read the input and produce a structured edit result.
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
 
-Output exactly four lines:
+Output exactly four labelled lines (FULL_REWRITE may span multiple lines):
 VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
 INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
 TARGET: <the rest of the input after removing instruction + _; or empty>
-REWRITE: <the rewritten TARGET (or generated content for empty target); empty when VERDICT is NONE / TASK_*>
+FULL_REWRITE: <the ENTIRE final buffer with the instruction applied AND the instruction phrase + _ removed. Contains ONLY what the user should see. Empty when VERDICT is NONE / TASK_*>
 
 LAYOUTS — the instruction sits IMMEDIATELY before _. Three valid:
   - <INSTRUCTION> _ <TARGET>
   - <TARGET> <INSTRUCTION> _
-  - <TARGET-PT1> <INSTRUCTION> _ <TARGET-PT2>  (SANDWICHED — both halves form TARGET, joined by single newline in original order)
+  - <TARGET-PT1> <INSTRUCTION> _ <TARGET-PT2>  (SANDWICHED — both halves form TARGET, joined by single newline in original order. FULL_REWRITE preserves the original paragraph break(s) — the sandwich's blank LINE where the trigger sat survives as a blank line in the output.)
 
-COMPOSED INSTRUCTIONS (two distinct edits joined by "and") — pipe-join in INSTRUCTION, apply BOTH in REWRITE simultaneously: "make past tense and remove pronouns" → INSTRUCTION: make past tense | remove pronouns. Don't split single edits ("change boy to girl", "make it formal").
+COMPOSED INSTRUCTIONS (two distinct edits joined by "and") — pipe-join in INSTRUCTION, apply BOTH in FULL_REWRITE simultaneously: "make past tense and remove pronouns" → INSTRUCTION: make past tense | remove pronouns. Don't split single edits ("change boy to girl", "make it formal").
 
 NONE rules — bail when ANY apply:
 - _ is a UI placeholder ("click _ to continue")
@@ -786,9 +786,9 @@ NONE rules — bail when ANY apply:
 - idiom that looks like an instruction but isn't ("change of plans _ we meet at 3pm")
 - META-TRIGGER for FluidBlank to answer using ambient context — bail to NONE when the ENTIRE input is a short generic answer-request with no real content to transform. Patterns: bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _". These have no TARGET text — the user is signalling that the surrounding FORM FIELD (which only FluidBlank sees) carries the question. Don't fabricate a conversational response.
 
-GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas"), VERDICT=TRANSFORM, TARGET is empty, REWRITE contains the generated content.
+GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas"), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content.
 
-AGENT TASK COMMANDS — REWRITE empty for all of these:
+AGENT TASK COMMANDS — FULL_REWRITE empty for all of these:
 - TASK_ARM: input has "agentically <X>" → INSTRUCTION = X (without "agentically").
 - TASK_ADD: input has "add task <X>" → INSTRUCTION = X.
 - TASK_STOP: input is "stop task _" → INSTRUCTION empty.
@@ -803,7 +803,7 @@ APPLY RULES when VERDICT=TRANSFORM with non-empty TARGET:
 6. ROLE PRESERVATION — "add 10%" to "original price 100, final price 100" only changes FINAL → 110.
 7. CONDITIONAL — apply ONLY where the condition holds ("change boy to girl but not in second sentence").
 8. PRESERVE PARAGRAPHS — \\n\\n breaks survive verbatim.
-9. DELETE the instruction phrase + _ from REWRITE.
+9. FULL_REWRITE contains ONLY what the user should see — instruction phrase + _ deleted, all surrounding context preserved verbatim or transformed per the instruction.
 
 EXAMPLES:
 
@@ -811,91 +811,91 @@ INPUT: change boy to girl _ the boy ran fast
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
 TARGET: the boy ran fast
-REWRITE: the girl ran fast
+FULL_REWRITE: the girl ran fast
 
 INPUT: he/she swap _ he gave the book to John
 VERDICT: TRANSFORM
 INSTRUCTION: he/she swap
 TARGET: he gave the book to John
-REWRITE: she gave the book to John
+FULL_REWRITE: she gave the book to John
 
 INPUT: make it british english _ the color of the harbor is gray
 VERDICT: TRANSFORM
 INSTRUCTION: make it british english
 TARGET: the color of the harbor is gray
-REWRITE: the colour of the harbour is grey
+FULL_REWRITE: the colour of the harbour is grey
 
 INPUT: pluralize _ the child found one mouse
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize
 TARGET: the child found one mouse
-REWRITE: the children found mice
+FULL_REWRITE: the children found mice
 
 INPUT: change pet from dog to cat _ the dog wagged its tail and barked at the postman
 VERDICT: TRANSFORM
 INSTRUCTION: change pet from dog to cat
 TARGET: the dog wagged its tail and barked at the postman
-REWRITE: the cat swished its tail and meowed at the postman
+FULL_REWRITE: the cat swished its tail and meowed at the postman
 
 INPUT: i bought apple and samsung phones online uppercase the brands _
 VERDICT: TRANSFORM
 INSTRUCTION: uppercase the brands
 TARGET: i bought apple and samsung phones online
-REWRITE: i bought APPLE and SAMSUNG phones online
+FULL_REWRITE: i bought APPLE and SAMSUNG phones online
 
 INPUT: pluralize and make past tense _ the child runs to the park
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize | make past tense
 TARGET: the child runs to the park
-REWRITE: the children ran to the parks
+FULL_REWRITE: the children ran to the parks
 
 INPUT: write a poem about the sea _
 VERDICT: TRANSFORM
 INSTRUCTION: write a poem about the sea
 TARGET:
-REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
+FULL_REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
 
 INPUT: agentically correct spelling _
 VERDICT: TASK_ARM
 INSTRUCTION: correct spelling
 TARGET:
-REWRITE:
+FULL_REWRITE:
 
 INPUT: capital of france _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-REWRITE:
+FULL_REWRITE:
 
 INPUT: click _ to continue
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-REWRITE:
+FULL_REWRITE:
 
 INPUT: answer this _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-REWRITE:
+FULL_REWRITE:
 
 INPUT: answer _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-REWRITE:
+FULL_REWRITE:
 
 INPUT: fill in _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-REWRITE:
+FULL_REWRITE:
 
 INPUT: what is the answer _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-REWRITE:`;
+FULL_REWRITE:`;
 
 // ============================================================================
 // Parsers
@@ -926,58 +926,6 @@ interface FusedResult {
 }
 
 /**
- * Detect when an LLM-emitted rewrite contains the SAME 100-char span
- * more than once — a strong signal the model echoed the body twice
- * (once with the edit applied, once verbatim) instead of producing a
- * single transformed version.
- *
- * Reproduced repeatedly on the modify-resignation-letter flow with
- * cerebras gpt-oss-120b: input "replace [Your Name] with Wilfred _
- * <300-char letter>" → rewrite that's 1.9× the body, containing both
- * the Wilfred version AND the original [Your Name] version.
- *
- * Heuristic: any 100-char window appearing twice in the same string
- * is almost certainly duplication — natural prose doesn't repeat
- * 100-char spans. Sampling three windows (start/middle/end) catches
- * partial-only duplication too. Caller falls through to 3-pass which
- * has a VERIFY pass that re-validates the rewrite.
- *
- * Exported for testing — see transform-blank-source.test.ts.
- */
-export function isLikelyDuplicatedRewrite(rewrite: string): boolean {
-  // Layer 1 — first-line / first-chunk repeat (catches the "model
-  // restarted the body" failure mode). Take the first 30-80 chars (or
-  // up to the first newline, whichever is shorter) and look for that
-  // exact sequence later in the rewrite. Real prose doesn't repeat
-  // its opening line; LLMs that misfire on long-body rewrites often do.
-  //
-  // Live failure pattern this catches: poem at 20:49:57 — rewrite
-  // started "In whispered breaths the heart confides,\n" then later
-  // contained the same 40 chars again before the new content. The
-  // 100-char sliding window missed this because the duplication was
-  // just the first line. A short-window first-chunk probe catches it.
-  const firstNewline = rewrite.indexOf('\n');
-  const firstChunkEnd = Math.min(firstNewline < 0 ? rewrite.length : firstNewline, 80);
-  if (firstChunkEnd >= 30) {
-    const firstChunk = rewrite.slice(0, firstChunkEnd);
-    if (rewrite.indexOf(firstChunk, firstChunkEnd) >= 0) return true;
-  }
-
-  // Layer 2 — sliding 100-char window (catches mid-body duplication
-  // that doesn't include the rewrite's opening). The May 22 letter
-  // bug had whole-body duplication; this is the original detector.
-  const WINDOW = 100;
-  if (rewrite.length >= WINDOW * 2) {
-    const STEP = WINDOW / 2;
-    for (let i = 0; i + WINDOW <= rewrite.length - WINDOW; i += STEP) {
-      const slice = rewrite.slice(i, i + WINDOW);
-      if (rewrite.indexOf(slice, i + WINDOW) >= 0) return true;
-    }
-  }
-  return false;
-}
-
-/**
  * Parser for the fused-mode output (`FUSED_SYSTEM` prompt). Same shape as
  * parseExtract but with an extra REWRITE field at the end. The TARGET field
  * is multi-line-tolerant (sandwiched layout) but stops at the REWRITE label
@@ -986,10 +934,12 @@ export function isLikelyDuplicatedRewrite(rewrite: string): boolean {
 function parseFused(raw: string): FusedResult {
   const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE|TASK_ARM|TASK_ADD|TASK_STOP|TASK_SHOW)[ \t]*$/im);
   const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
-  // TARGET may span multiple lines but stops at the REWRITE: label.
-  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)(?=^REWRITE:|\s*$)/im);
-  // REWRITE is the last field — capture to end of output.
-  const rewriteMatch = raw.match(/REWRITE:[ \t]*([\s\S]*?)\s*$/i);
+  // TARGET may span multiple lines but stops at the FULL_REWRITE: (or
+  // legacy REWRITE:) label via lookahead.
+  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)(?=^(?:FULL_)?REWRITE:|\s*$)/im);
+  // FULL_REWRITE is the last field — capture to end of output. Accept
+  // bare REWRITE: too for back-compat with models that drop the prefix.
+  const rewriteMatch = raw.match(/(?:FULL_)?REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as ExtractVerdict;
   return {
     verdict,
@@ -1339,11 +1289,19 @@ export type TransformBlankEvent =
   | { type: 'pass-completed'; pass: 'P1' | 'P2' | 'P3'; latencyMs: number;
       verdict?: string; instruction?: string; target?: string;
       step?: number; totalSteps?: number }
-  /** Pipeline finished and produced a final rewrite. */
-  | { type: 'completed'; finalLen: number; finalPreview: string; latencyMs: number }
   /** Pipeline bailed early. `reason` is a stable kebab-case identifier
    *  (P1-verdict-none-or-empty, P2-empty-result, etc.). */
   | { type: 'bailed'; reason: string; latencyMs: number };
+
+// NOTE: `transform-blank.completed` is fired by the RESOLVER from its
+// substitute branch (resolver.ts isTransformBlank path), AFTER setText
+// commits the new buffer. It is NOT emitted from this source. This
+// keeps the public event semantically tied to "user-visible buffer is
+// now the final rewrite" — observers (tests / statusline) never catch
+// a loading-animation intermediate state between source-return and
+// resolver-substitute. The event body shape is
+// `{ finalLen, finalPreview, latencyMs }` — the latency rides through
+// the CueResult's `metadata.pipelineLatencyMs`.
 
 export interface TransformBlankSourceConfig {
   httpAdapter: HttpAdapter;
@@ -1857,12 +1815,10 @@ export class TransformBlankSource implements CueSource {
         return { results: [], timing: Date.now() - startTime, model: this.model };
       }
 
-      this.emit({
-        type: 'completed',
-        finalLen: finalRewrite.length,
-        finalPreview: preview(finalRewrite),
-        latencyMs: Date.now() - startTime,
-      });
+      // `transform-blank.completed` is intentionally emitted from the
+      // RESOLVER's substitute branch (see runFusedAndBuild for the
+      // rationale). Latency carried via metadata.pipelineLatencyMs.
+      const pipelineLatencyMs = Date.now() - startTime;
 
       // Build the CueResult. spanStart/spanEnd cover the FULL input
       // region (instruction phrase + target) so the runtime knows to
@@ -1880,6 +1836,7 @@ export class TransformBlankSource implements CueSource {
           transformInstruction: ext.instruction,
           transformTarget: ext.target,
           verifyVerdict: ver.verdict,
+          pipelineLatencyMs,
         },
       };
 
@@ -1914,9 +1871,20 @@ export class TransformBlankSource implements CueSource {
     // > as-typed > visible) so styling + agent-revert behaviour matches.
     const extractText = context.richText ?? context.asTypedText ?? context.text;
     const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
-    // Larger budget than 3-pass EXTRACT — fused emits the full REWRITE
-    // too. 2.5× input chars + headroom for VERDICT/INSTRUCTION labels.
-    const fusedTokens = budgetForOutput(extractText.length, 2.5);
+    // FULL_REWRITE budget — fused now emits the WHOLE final buffer (May
+    // 2026 contract change). Output is ~input-length plus VERDICT/
+    // INSTRUCTION/TARGET label headers. Floor 2048 matches the bench's
+    // fused-full configuration (validated 80-88% across 5 providers);
+    // the prior 768 floor truncated long letters mid-output. Multiplier
+    // 3.0 (vs old 2.5) accounts for the larger payload — bench evidence
+    // in `tests/results/single-call-dynamic-budget/`.
+    const FUSED_FLOOR = 2048;
+    const FUSED_CEILING = 4096;
+    const FUSED_HEADROOM = 700;
+    const fusedTokens = Math.max(
+      FUSED_FLOOR,
+      Math.min(FUSED_CEILING, Math.ceil(extractText.length * 3.0 / 3) + FUSED_HEADROOM),
+    );
     const fusedStart = Date.now();
     const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}`, fusedTokens);
     const f = parseFused(fusedRaw);
@@ -1964,31 +1932,24 @@ export class TransformBlankSource implements CueSource {
       return null;
     }
 
-    // Duplicated-rewrite sanity check (May 2026 — long-body bug class).
-    // On long bodies with bracketed placeholders ("[Your Name]", etc.)
-    // some models emit a REWRITE containing the body twice (once with
-    // the edit applied, once verbatim). Without this guard the runtime
-    // replaces the whole buffer with the duplicated rewrite and the
-    // user sees the body appear twice. Reproduced on cerebras gpt-oss-120b
-    // with the modify-resignation-letter flow. Heuristic: find a 100-char
-    // substring near the middle of the rewrite and check whether it
-    // appears MORE than once in the same rewrite. Cheap, no false-
-    // positive on legitimate output (no real rewrite has the same 100-char
-    // span repeated). Fall through to 3-pass which uses EXTRACT → APPLY
-    // → VERIFY and is less prone to this whole-body echo.
-    if (isLikelyDuplicatedRewrite(f.rewrite)) {
-      this.log(`TransformBlank FUSED: duplicated-content rewrite detected (${f.rewrite.length} chars, body appears 2x) — falling through to 3-pass`);
-      this.emit({ type: 'bailed', reason: 'FUSED-duplicated-rewrite', latencyMs: Date.now() - __pipelineT0 });
-      return null;
-    }
-
-    this.emit({
-      type: 'completed',
-      finalLen: f.rewrite.length,
-      finalPreview: preview(f.rewrite),
-      latencyMs: Date.now() - startTime,
-    });
-
+    // Whole-buffer contract (May 2026 — FULL_REWRITE replaces
+    // REWRITE-of-target). The LLM owns the entire rewritten buffer;
+    // the runtime three-way-merges it against the live text. This
+    // structurally eliminates the duplication bug class that arose
+    // when narrow-TARGET + wide-REWRITE made the splice path concat
+    // an already-rewritten tail. No detector needed.
+    //
+    // NOTE: the `transform-blank.completed` event is intentionally NOT
+    // fired here. It's emitted from the RESOLVER's substitute branch
+    // AFTER the buffer setText commits (resolver.ts isTransformBlank
+    // path). The reason: firing here would mean observers (tests,
+    // statusline) can read the buffer BETWEEN the source returning
+    // and the resolver's substitute committing, catching the loading-
+    // animation braille char. Emitting post-setText makes `completed`
+    // the user-visible commit marker — the buffer is final when the
+    // event fires. Latency is carried through the result so the
+    // resolver can include it on the event body.
+    const pipelineLatencyMs = Date.now() - startTime;
     const result: CueResult = {
       wordIndex: blankIdx,
       word: '_',
@@ -1998,13 +1959,20 @@ export class TransformBlankSource implements CueSource {
       spanStart: 0,
       spanEnd: context.text.length,
       metadata: {
+        // INSTRUCTION + TARGET kept for debug + event payloads — they
+        // are CoT scaffolding the model produced, NOT splice geometry.
+        // `transformTarget` is intentionally omitted from the metadata
+        // shape the runtime reads for substitution: its presence on a
+        // result is the signal to take the surgical-splice path (used
+        // by 3-pass). Whole-buffer fused results skip that branch and
+        // route through `threeWayMerge` instead.
         transformInstruction: f.instruction,
-        transformTarget: f.target,
-        // No verifyVerdict in fused — VERIFY is skipped (net-hurts on
-        // every non-groq provider per benchmark Experiment 6). Mark
-        // explicitly so the runtime/debug knows verify was skipped.
+        transformTargetDebug: f.target,
         verifyVerdict: 'SKIPPED',
         pipelineMode: 'fused',
+        // Latency carried for the resolver to use on the post-substitute
+        // `transform-blank.completed` event (see header comment).
+        pipelineLatencyMs,
       },
     };
     return { results: [result], timing: Date.now() - startTime, model: this.model };

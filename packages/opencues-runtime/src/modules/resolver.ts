@@ -23,7 +23,8 @@ import type { AgentTaskState } from '../state/agent-task';
 import type { SelectorSatelliteState as SelectorSatelliteStateRef } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 import type { BlankLoadingAnimator } from './blank-loading';
-import { applyMarkdownAwareSplice } from './markdown-substitute';
+import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './markdown-substitute';
+import { threeWayMerge } from './word-diff';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
@@ -1276,48 +1277,35 @@ export class Resolver {
           }
         }
 
-        // Overlap-extension guard (May 2026 — long-body rewrite bug).
-        // When the LLM's TARGET is just the first sentence/line of a
-        // multi-paragraph body but its REWRITE covers the WHOLE body
-        // (model couldn't accurately identify the target boundary), the
-        // splice above replaces only the narrow target span and the
-        // rest of originalText (which the rewrite has ALREADY produced
-        // its own version of) leaks through verbatim, duplicating the
-        // body in the user's buffer. Reproduced live on the modify-
-        // resignation-letter flow: target="Dear [Manager's Name],"
-        // (22 chars), rewrite=278-char full body → buffer ended at 538
-        // chars with the body appearing twice. The fix: if the text we
-        // were about to KEEP after splice (originalText[spliceEnd:])
-        // substantially appears inside rewrittenText, the rewrite owns
-        // that range too — extend spliceEnd to cover it. 60-char
-        // probe is long enough to dodge incidental prose matches
-        // (no real rewrite has the same 60-char span as random
-        // surrounding text by coincidence).
-        if (spliceEnd < originalText.length) {
-          const tailAfterSplice = originalText.slice(spliceEnd).trim();
-          const probe = tailAfterSplice.slice(0, 60);
-          if (probe.length >= 60 && rewrittenText.includes(probe)) {
-            spliceEnd = originalText.length;
-            rewriteWithSeparator = rewrittenText;
-            this.adapter.log('info', `TransformBlank: overlap-extension — rewrite covers post-splice tail (probe matched), extending splice to EOL to prevent body duplication`);
-          }
-        }
-
-        // Cursor lands at the END OF THE FULL NEW BUFFER. The user
-        // was typing past the trigger (after `_`), past any preserved
-        // separator (\n\n) between target and trigger. A targeted
-        // modification shouldn't yank the caret BACKWARDS across that
-        // preserved structure — they intentionally typed past it.
-        // End-of-buffer keeps continuity with where they were.
+        // ── Two substitute paths ───────────────────────────────────────
         //
-        // Implementation: pass a huge cursor; the helper clamps to
-        // newText.length internally. Saves recomputing newText.length
-        // here.
-        const sub = applyMarkdownAwareSplice(
-          this.adapter, originalText, spliceStart, spliceEnd, rewriteWithSeparator,
-          { cursor: Number.MAX_SAFE_INTEGER },
-        );
-        const bufferText = sub.newText;
+        // 3-pass (transformTarget set): the LLM rewrote ONLY the target
+        // span, so the runtime splices [spliceStart, spliceEnd) computed
+        // above. Structurally safe because APPLY only saw the target as
+        // input — it can't produce content outside that span.
+        //
+        // Fused / whole-buffer (transformTarget empty/undefined): the
+        // LLM emitted the WHOLE final buffer in FULL_REWRITE. We diff
+        // (originalText → rewrittenText) and three-way-merge against
+        // the live buffer so any in-flight user typing past the trigger
+        // survives. No splice-scope ambiguity → duplication bug class
+        // is structurally impossible (no concat tail to overrun).
+        let bufferText: string;
+        let sub: { newText: string; hadMarkdown: boolean };
+        if (transformTarget && transformTarget.length > 0) {
+          sub = applyMarkdownAwareSplice(
+            this.adapter, originalText, spliceStart, spliceEnd, rewriteWithSeparator,
+            { cursor: Number.MAX_SAFE_INTEGER },
+          );
+          bufferText = sub.newText;
+        } else {
+          const merge = threeWayMerge(originalText, rewrittenText, liveText);
+          sub = applyMarkdownAwareSubstitution(
+            this.adapter, merge.newText, { cursor: Number.MAX_SAFE_INTEGER },
+          );
+          bufferText = sub.newText;
+          spliceStart = 0;
+        }
 
         // Find which word the rewrite's first word lands at in the new
         // text (for keying the def). Defaults to wherever the splice
@@ -1348,6 +1336,21 @@ export class Resolver {
         const rewritePreview = bufferText.length > previewLen ? bufferText.slice(0, previewLen) + '…' : bufferText;
         const markerNote = sub.hadMarkdown ? ', markdown stripped' : '';
         this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${bufferText.length}${markerNote}, defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
+
+        // Fire `transform-blank.completed` AFTER the buffer commit so
+        // that observers (statusline, agentic tests) can rely on the
+        // event marking a final, user-visible buffer state — never an
+        // intermediate loading-animation frame. The source's pipeline
+        // latency rides through via metadata.pipelineLatencyMs; this
+        // structurally closes the race that allowed the braille
+        // loading char (⠁/⠈/…) to be caught between completion of the
+        // LLM call and the resolver's substitute commit.
+        const pipelineLatencyMs = (r.metadata?.pipelineLatencyMs as number | undefined) ?? (Date.now() - __resolveStart);
+        this.adapter.emitEvent?.('transform-blank.completed', {
+          finalLen: bufferText.length,
+          finalPreview: rewritePreview,
+          latencyMs: pipelineLatencyMs,
+        });
         continue;
       }
 
