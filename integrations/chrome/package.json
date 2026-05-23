@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:dev": "vitest",
+    "prebuild": "pnpm --filter @opencues/core --filter @opencues/runtime build",
     "build": "npm run typecheck && npm test && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "dev-install": "node bin/install.cjs install",
