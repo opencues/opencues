@@ -106,6 +106,22 @@ function tlogRead(source: ReadSource, chars: number): void {
     _readFlushTimer = null;
   }, 250);
 }
+// Strip non-serialisable payload (DOM nodes, circular refs) into a
+// shape sendMessage's structured clone can carry. Errors are the
+// common case the naive `JSON.parse(JSON.stringify(data))` clobbers:
+// `message` / `stack` / `name` are non-enumerable, so stringify
+// returns `{}` and the log line carries zero diagnostic info — which
+// is exactly how `forceRender failed {}` appeared in the log for
+// months. Pull those fields out explicitly first.
+function serialiseLogData(data: unknown): unknown {
+  if (data === undefined) return undefined;
+  if (data instanceof Error) {
+    return { name: data.name, message: data.message, stack: data.stack };
+  }
+  try { return JSON.parse(JSON.stringify(data)); }
+  catch { return String(data); }
+}
+
 // Forward a log line to the SW → native host → /tmp/opencues.log.
 // Fire-and-forget; silently drops when no host listener. We need this
 // at module scope so the exported `log` object below can use it from
@@ -114,11 +130,7 @@ function tlogRead(source: ReadSource, chars: number): void {
 function mirrorToHostLog(level: 'info' | 'debug' | 'warn' | 'error', args: unknown[]): void {
   const msg = args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ');
   const data = args.find(a => typeof a !== 'string');
-  let safeData: unknown;
-  if (data !== undefined) {
-    try { safeData = JSON.parse(JSON.stringify(data)); }
-    catch { safeData = String(data); }
-  }
+  const safeData = serialiseLogData(data);
   try {
     chrome.runtime.sendMessage({ type: 'opencues:log', level, msg, data: safeData })
       .catch(() => { /* no listener */ });
@@ -1911,15 +1923,10 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // runtime events land alongside CC/OC/gemini. Fire-and-forget;
     // when the host isn't connected the SW drops silently. The
     // page-console output above is the always-on local surface.
-    // Strip non-serialisable `data` (DOM nodes, circular refs) so the
-    // sendMessage's structured-clone doesn't throw; we only need a
-    // readable scalar for the log line.
+    // Uses the shared serialiseLogData helper so Errors carry their
+    // message + stack into the log line (not `{}`).
     try {
-      let safeData: unknown;
-      if (data !== undefined) {
-        try { safeData = JSON.parse(JSON.stringify(data)); }
-        catch { safeData = String(data); }
-      }
+      const safeData = serialiseLogData(data);
       chrome.runtime.sendMessage({ type: 'opencues:log', level, msg, data: safeData })
         .catch(() => { /* port closed or no listener — local console still has it */ });
     } catch { /* ditto */ }

@@ -73,7 +73,13 @@ export class FetchHttpAdapter implements HttpAdapter {
     try {
       const data = JSON.parse(text);
       const raw = data.choices?.[0]?.message?.content || '';
-      log.debug('[OpenCues] LLM raw response:', raw);
+      // Suppress the log when content is empty — happens when the
+      // model emitted only reasoning tokens, or the response was
+      // truncated mid-stream. Otherwise the log line is just noise:
+      // `[OpenCues] LLM raw response: ` with no body.
+      if (raw.trim().length > 0) {
+        log.debug('[OpenCues] LLM raw response:', raw);
+      }
 
       // Normalize space-separated INDEX:alts to pipe-separated
       // Some models return "1:a,b 2:c,d" instead of "1:a,b|2:c,d"
