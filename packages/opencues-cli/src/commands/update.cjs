@@ -28,8 +28,9 @@ const HOST_ALIASES = {
   opencode: 'opencode', oc: 'opencode',
   chrome: 'chrome',
   'gemini-cli': 'gemini-cli', geminicli: 'gemini-cli', gemini: 'gemini-cli',
+  terminal: 'terminal', term: 'terminal', 'oc-edit': 'terminal',
 };
-const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
+const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'terminal'];
 
 module.exports = async function update(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -392,6 +393,12 @@ function detectInstalled(HOME, REPO_ROOT) {
   const geminiFork = path.join(HOME, 'gemini-cli-cues');
   if (fs.existsSync(path.join(geminiFork, 'node_modules/@opencues/runtime'))) {
     out.push({ host: 'gemini-cli', folder: 'gemini-cli', evidence: `${geminiFork}/node_modules/@opencues/runtime exists` });
+  }
+  // Terminal: self-owned app — install lives inside the repo at
+  // integrations/terminal/node_modules/@opencues/runtime (staged by setup.sh).
+  const termRt = path.join(REPO_ROOT, 'integrations/terminal/node_modules/@opencues/runtime');
+  if (fs.existsSync(termRt)) {
+    out.push({ host: 'terminal', folder: 'terminal', evidence: `${termRt} exists` });
   }
   return out;
 }

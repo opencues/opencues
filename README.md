@@ -26,9 +26,9 @@ the publish target broadens. Star + Build are wireable today.
 [![GitHub stars](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 -->
 
-**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, and Chrome.
+**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone terminal app (`oc-edit`).
 
-The three file formats (Cues / Blanks / Auditors) are open standards — designed so a non-JS port or alternative runtime *could* ship — and the spec at [`spec/`](spec/) is the field reference for anyone authoring those files. Today only the reference runtime in this repo implements them, powering all four integrations as thin host adapters over a shared core.
+The three file formats (Cues / Blanks / Auditors) are open standards — designed so a non-JS port or alternative runtime *could* ship — and the spec at [`spec/`](spec/) is the field reference for anyone authoring those files. Today only the reference runtime in this repo implements them, powering all five integrations as thin host adapters over a shared core.
 
 <!-- TODO[hero]: pick ONE of these three (or ship all three over time):
 
@@ -105,6 +105,7 @@ For per-host installs, deeper troubleshooting, and uninstall: [`docs/install.md`
 | **OpenCode** | Available | `opencues install opencode` | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
 | **Gemini CLI** | Beta | `opencues install gemini-cli` | [`integrations/gemini-cli/README.md`](integrations/gemini-cli/README.md) |
 | **Chrome** | Beta | `opencues install chrome` | [`integrations/chrome/README.md`](integrations/chrome/README.md) |
+| **Terminal (`oc-edit`)** | Beta | `opencues install terminal` | [`integrations/terminal/README.md`](integrations/terminal/README.md) |
 | **VS Code** | Planned | — | — |
 
 Each install pins a specific upstream version (e.g. Claude Code 2.1.110, OpenCode 1.14.17), clones it into its own dir (`~/claude-code-cues/`, `~/opencode-cues/`), and patches that copy. **Your native editor installs are never touched.** Uninstall is `opencues uninstall <host>`.

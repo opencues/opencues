@@ -20,9 +20,12 @@ const HOST_ALIASES = {
   'gemini-cli':  'gemini-cli',
   'geminicli':   'gemini-cli',
   'gemini':      'gemini-cli',
+  'terminal':    'terminal',
+  'term':        'terminal',
+  'oc-edit':     'terminal',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
-const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'terminal'];
+const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'terminal'];
 
 module.exports = function uninstall(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

@@ -1,0 +1,14 @@
+{
+  "//": "OpenCues compatibility manifest for the standalone terminal integration. Unlike CC/OC/Gemini, there is no upstream host to pin — the integration ships its own Bun/OpenTUI app. Pin still tracked here for the @opentui/* dep so a UI break upstream can be re-tested against a known-good combo.",
+  "host-kind": "self",
+  "host-repo": "opencues/opencues",
+  "current-pin-source": {
+    "kind": "json-file",
+    "path-from-repo": "integrations/terminal/pin.json"
+  },
+  "tested": [
+    { "version": "0.1.0", "opentui": "0.1.99" }
+  ],
+  "compat-range": ["0.1.x"],
+  "known-incompatible": []
+}

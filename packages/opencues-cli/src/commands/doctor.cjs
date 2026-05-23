@@ -328,6 +328,33 @@ module.exports = function doctor(argv, ctx) {
     s.render();
   }
 
+  // ── Terminal install (standalone Bun + OpenTUI app) ──────────────────
+  // No upstream fork — staged @opencues/{core,runtime} live inside the
+  // repo at integrations/terminal/node_modules/. Bun is a hard prereq.
+  {
+    const s = section('Terminal (oc-edit)', 'standalone Bun + OpenTUI app');
+    const termDir = path.join(ctx.REPO_ROOT, 'integrations/terminal');
+    const termRt = path.join(termDir, 'node_modules/@opencues/runtime');
+    const termCore = path.join(termDir, 'node_modules/@opencues/core');
+    const ocEditBin = path.join(termDir, 'bin/oc-edit');
+    s.ok(`integration dir at ${termDir}`, fs.existsSync(termDir));
+    s.ok(`bin/oc-edit`, fs.existsSync(ocEditBin));
+    s.ok(`node_modules/@opencues/runtime (staged)`, fs.existsSync(termRt));
+    s.ok(`node_modules/@opencues/core (staged)`, fs.existsSync(termCore));
+    s.ok(`bun on PATH`, !!findOnPath('bun'));
+    if (!findOnPath('bun')) {
+      findings.push({
+        sev: 'warn',
+        msg: 'bun not on PATH — terminal integration needs Bun',
+        fix: 'curl -fsSL https://bun.sh/install | bash   # then re-run setup',
+      });
+    }
+    if (!fs.existsSync(termRt)) {
+      findings.push({ sev: 'info', msg: 'Terminal integration not installed', fix: 'opencues install terminal' });
+    }
+    s.render();
+  }
+
   // ── Gemini CLI install ────────────────────────────────────────────────
   {
     const s = section('Gemini CLI', 'patched Gemini CLI fork + installed runtime');

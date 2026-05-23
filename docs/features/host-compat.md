@@ -4,12 +4,14 @@ last_updated: 2026-05-14
 
 # Host Compatibility
 
-The OpenStandard runs on four integration hosts — `claude-code`, `opencode`,
-`chrome`, `gemini-cli` — that share the same `.md` config format. Native
-hosts (CC, OC, gemini-cli) can spawn subprocesses and read the filesystem
-unconditionally. Chrome can too, but only when chrome-host (the
-native-messaging bridge) is installed — so chrome's spawn capability is
-*runtime-detected*, not a static property.
+The OpenStandard runs on five integration hosts — `claude-code`, `opencode`,
+`chrome`, `gemini-cli`, `terminal` — that share the same `.md` config
+format. Native hosts (CC, OC, gemini-cli, terminal) can spawn
+subprocesses and read the filesystem unconditionally. Chrome can too,
+but only when chrome-host (the native-messaging bridge) is installed —
+so chrome's spawn capability is *runtime-detected*, not a static
+property. `terminal` is the standalone Bun + OpenTUI app (`oc-edit`);
+the others patch an upstream host.
 
 A cue or blank can declare which hosts it works on, but most entries
 don't need to: **every entry advertises as compatible with every host by
@@ -100,7 +102,7 @@ not-on-host: chrome, opencode
 ---
 ```
 
-Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**.
+Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**, **`terminal`**.
 
 Unknown names are silently dropped at runtime; `opencues validate` prints
 warnings about them so typos are caught.
