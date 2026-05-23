@@ -29,6 +29,13 @@ function plainOffsetsToDomRanges(target: HTMLElement, offsets: PlainRange[]): Ra
   const { segments } = walkPlainText(target);
   const out: Range[] = [];
   for (const seg of segments) {
+    // Skip IMG-emoji segments (`<img alt="👋">` on Gmail/Slack/etc.) —
+    // dom-walk emits them so plain-text math agrees with the visible
+    // string, but they're not real Text nodes (no `.data`) and a
+    // browser Range can't anchor on the IMG character. Same policy
+    // the doc-comment above already applies to virtual `\n` segments:
+    // silently skip; the highlight just doesn't render on that glyph.
+    if (seg.node.nodeType !== Node.TEXT_NODE) continue;
     for (const o of offsets) {
       if (o.end <= seg.plainStart || o.start >= seg.plainEnd) continue;
       const rangeStart = Math.max(o.start - seg.plainStart, 0);

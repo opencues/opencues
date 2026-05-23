@@ -103,6 +103,35 @@ describe('runtime-renderer applyDirectives', () => {
     expect(highlights.setCalls).toBe(4);
   });
 
+  it('skips IMG-emoji segments without crashing (regression: forceRender failed on Gmail)', () => {
+    // dom-walk emits one synthetic Text-shaped segment per <img alt="...">
+    // so plain-text math agrees with the visible string on Gmail / Slack /
+    // Twitter / Reddit / YouTube (they convert pasted emojis to <img>).
+    // The renderer used to crash with "Cannot read properties of undefined
+    // (reading 'length')" because IMG elements have no `.data` field —
+    // visible as `forceRender failed {}` in /tmp/opencues.log after every
+    // emoji-bearing TransformBlank rewrite. The diagnostic was useless
+    // until serialiseLogData stopped JSON-stringifying Errors (which clears
+    // their non-enumerable message/stack fields into "{}"). The fix here:
+    // skip segments whose node isn't a real Text node, mirroring the
+    // existing "virtual \n boundaries are silently skipped" policy in
+    // plainOffsetsToDomRanges' doc-comment.
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    target.appendChild(document.createTextNode('Hi '));
+    const img = document.createElement('img');
+    img.setAttribute('alt', '👋');
+    target.appendChild(img);
+    target.appendChild(document.createTextNode(' there'));
+    // Highlight a range that straddles the IMG-segment — exactly the
+    // pattern markdown-styling produced when bolding `Hi 👋 there`.
+    expect(() => applyDirectives(target, [{
+      highlight: { start: 0, end: 9 },
+    }])).not.toThrow();
+    // Highlight should still register; just no Range on the IMG glyph.
+    expect(highlights.has('oc-active')).toBe(true);
+  });
+
   it('clearDirectives drops oc-dim + oc-active from the map', () => {
     const target = makeTarget('hello');
     applyDirectives(target, [{ dimRanges: [{ start: 0, end: 5 }] }]);
