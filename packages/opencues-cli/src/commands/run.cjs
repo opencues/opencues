@@ -265,7 +265,19 @@ function runTerminal(passthrough, ctx) {
     console.error(`${style.tag('err')} bun not found on PATH. Install: https://bun.sh`);
     process.exit(127);
   }
-  const result = spawnSync('bun', [ocEdit, ...passthrough], { stdio: 'inherit' });
+  // Bun reads bunfig.toml from the cwd, NOT from the script's directory.
+  // The terminal app's bunfig.toml supplies `preload = ["@opentui/solid
+  // /preload"]` — without it the JSX runtime resolves to react/jsx-dev-
+  // runtime and the app dies on import. cwd-pin to integrations/terminal
+  // so bunfig is found regardless of where `opencues run terminal` was
+  // invoked from. Also pass --preload explicitly as a belt-and-braces
+  // guard in case bunfig discovery breaks in a future Bun release.
+  const termDir = path.join(ctx.REPO_ROOT, 'integrations', 'terminal');
+  const result = spawnSync(
+    'bun',
+    ['--preload', '@opentui/solid/preload', ocEdit, ...passthrough],
+    { stdio: 'inherit', cwd: termDir },
+  );
   exitFromSpawn(result, 'bun');
 }
 
