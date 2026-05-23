@@ -53,6 +53,16 @@ reset `ownedExtmarks = new Map()` to force the rebuild. See
 `packages/opencues-runtime/adapters/oc/REPAIR.md` § "OpenTUI extmark
 contract" for the full ADJUSTS-vs-CLEARS table — same applies here.
 
+## Repair guide
+
+Terminal-specific quirks (separate from the OpenTUI-shared OC ones)
+are catalogued in `packages/opencues-runtime/adapters/terminal/REPAIR.md`
+— LT-1 through LT-4 today. Check both REPAIR files after any version
+bump of `@opentui/core` or `@opentui/solid`: the OC catalogue is
+authoritative for OpenTUI bugs that bite both bands; the terminal
+catalogue covers the install-boundary quirks unique to a self-owned
+host (bunfig discovery, JSX preload, etc.).
+
 ## Iteration loop
 
 ```bash
