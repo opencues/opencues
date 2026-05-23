@@ -77,19 +77,42 @@ The bypass token is intentionally obnoxious. Don't add it to scripts, CI, or she
 
 ## Installing (alpha tester instructions)
 
-Anyone with read access to `opencues/opencues` can install. Setup:
+Anyone with read access to `opencues/opencues` can install. The install is one command:
 
 ```bash
-# Generate a PAT at https://github.com/settings/tokens with `read:packages` scope.
-# Then add to ~/.npmrc:
-echo "@opencues:registry=https://npm.pkg.github.com" >> ~/.npmrc
-echo "//npm.pkg.github.com/:_authToken=<YOUR_PAT>" >> ~/.npmrc
-
-# Install
-pnpm add @opencues/cli
-# Or for a one-shot run
-pnpm dlx @opencues/cli install claude-code
+npx @opencues/cli install claude-code
 ```
+
+If you get a 401 Unauthorized, your `~/.npmrc` doesn't have GH Packages
+auth yet. Set it up once (uses your existing `gh` CLI token — no
+manual PAT generation):
+
+```bash
+echo -e "@opencues:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=$(gh auth token)" >> ~/.npmrc
+```
+
+Re-run `npx @opencues/cli install claude-code`. From then on, every
+future install / upgrade is the single command — the auth setup is
+one-time.
+
+**Other hosts** — same shape:
+
+```bash
+npx @opencues/cli install opencode      # OpenCode
+npx @opencues/cli install gemini-cli    # Gemini CLI
+npx @opencues/cli install chrome        # Chrome extension
+```
+
+**Without `gh` CLI** — generate a PAT manually at <https://github.com/settings/tokens>
+with `read:packages` scope, then substitute it for `$(gh auth token)`
+in the npmrc setup above.
+
+> **Stage 8 status (2026-05-23):** the `install <host>` path from a
+> published-package install (`npx`) requires the published-package
+> branch in each integration's `bin/install.cjs`, which is in flight
+> but not yet shipped. Until it lands, alpha testers should use the
+> clone-based install from the public README. Tracker:
+> [`bin/install.cjs:82` "Published-package install path is not implemented yet"](https://github.com/opencues/opencues/blob/master/integrations/claude-code/bin/install.cjs#L82).
 
 ## What's locked down where
 
