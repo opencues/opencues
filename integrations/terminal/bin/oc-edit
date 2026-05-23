@@ -1,0 +1,11 @@
+#!/usr/bin/env bun
+// Entry shim. Resolves the bundled or source app.tsx and runs it.
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const distApp = path.join(here, '..', 'dist', 'app.js');
+const srcApp = path.join(here, '..', 'src', 'app.tsx');
+const entry = fs.existsSync(distApp) ? distApp : srcApp;
+await import(entry);

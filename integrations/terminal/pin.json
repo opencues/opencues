@@ -1,0 +1,5 @@
+{
+  "//": "OpenTUI pin for the terminal integration. The terminal app has no upstream fork; what's pinned is the rendering stack. Bump in lockstep with OpenCode's catalog when a new OpenTUI lands so REPAIR.md fixes apply uniformly.",
+  "opentui": "0.1.99",
+  "solid-js": "1.9.10"
+}

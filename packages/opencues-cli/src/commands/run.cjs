@@ -40,7 +40,7 @@ function printLaunchBanner(ctx, host, rows) {
 // Map full host name → the short prefix used in /tmp/opencues.log so the
 // printed `grep` filter actually matches the lines that host writes.
 function shortPrefix(host) {
-  return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini' })[host] ?? host;
+  return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini', 'terminal': 'term' })[host] ?? host;
 }
 
 // Host name resolution — sourced from @opencues/core.
@@ -50,12 +50,13 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode'],
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'terminal'],
       resolve: (n) => ({
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
         'chrome': 'chrome',
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
+        'terminal': 'terminal', 'term': 'terminal', 'oc-edit': 'terminal',
       })[n?.toLowerCase?.()] ?? null,
     };
   }
@@ -88,6 +89,7 @@ module.exports = function run(argv, ctx) {
   if (folder === 'opencode')    return runOC(passthrough, argv, ctx);
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
+  if (folder === 'terminal') return runTerminal(passthrough, ctx);
 };
 
 function runCC(passthrough, ctx) {
@@ -242,6 +244,31 @@ function runGemini(passthrough, fullArgv, ctx) {
   exitFromSpawn(result, 'node');
 }
 
+function runTerminal(passthrough, ctx) {
+  // Standalone Bun app — invoke bin/oc-edit directly. The shim chooses
+  // dist/app.js (if built) or falls through to src/app.tsx (Bun handles TSX).
+  const ocEdit = path.join(ctx.REPO_ROOT, 'integrations', 'terminal', 'bin', 'oc-edit');
+  if (!fs.existsSync(ocEdit)) {
+    console.error(`${style.tag('err')} oc-edit not found at ${ocEdit}`);
+    console.error(`     Install first: ${style.bold('opencues install terminal')}`);
+    process.exit(1);
+  }
+  printLaunchBanner(ctx, 'terminal', [
+    ['host', 'terminal  ' + style.dim('(standalone Bun + OpenTUI app)')],
+    ['command', `oc-edit ${passthrough.join(' ')}`.trim()],
+    ['bin', style.fileLink(ocEdit, ocEdit)],
+  ]);
+  // Bun is the runtime — exec bun directly rather than depending on the
+  // shebang resolving (which fails when bun isn't first on PATH).
+  const bunCheck = spawnSync('which', ['bun'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  if (bunCheck.status !== 0) {
+    console.error(`${style.tag('err')} bun not found on PATH. Install: https://bun.sh`);
+    process.exit(127);
+  }
+  const result = spawnSync('bun', [ocEdit, ...passthrough], { stdio: 'inherit' });
+  exitFromSpawn(result, 'bun');
+}
+
 function runChrome(ctx) {
   printLaunchBanner(ctx, 'chrome', [
     ['host', 'chrome  ' + style.dim('(extensions are loaded by chrome itself)')],
@@ -266,6 +293,7 @@ function printHelp() {
   console.log('  opencode      cd into the fork dir + bun run dev');
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
+  console.log('  terminal      bun integrations/terminal/bin/oc-edit  (standalone Bun + OpenTUI app)');
   console.log('');
   console.log('Flags:');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');

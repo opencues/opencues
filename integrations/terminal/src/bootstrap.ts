@@ -1,0 +1,492 @@
+// OpenCues bootstrap for the standalone terminal app.
+//
+// Mirrors integrations/opencode/patches/opencuesBootstrap.ts but
+// targets a self-owned OpenTUI app (no fork, no patch, no holder/
+// publish dance). The textarea + renderer refs are passed directly
+// in by src/app.tsx on mount.
+
+import type { CliRenderer, TextareaRenderable } from '@opentui/core';
+import { RGBA, SyntaxStyle } from '@opentui/core';
+import { boot, type BootResult } from '@opencues/runtime/dist/adapters/terminal/v1/boot';
+import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter';
+import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
+import {
+  createBlankInvoke,
+  createDefaultBlanksRegistry,
+  type Blank,
+} from '@opencues/runtime/dist/src/blanks';
+import {
+  validateScriptPath,
+  appendAuditLog,
+} from '@opencues/runtime/dist/src/security/spawn-sandbox';
+import { wrapWithBwrap } from '@opencues/runtime/dist/src/security/sandbox-runner';
+import {
+  buildUserBlankRegistry,
+  createNativeLlmAdapter,
+  type BlankConfigLike,
+} from '@opencues/runtime/dist/src/user-blanks/registry';
+import { parseSingleCueMd } from '@opencues/core';
+import {
+  existsSync as fsExistsSync,
+  readdirSync as fsReaddirSync,
+  readFileSync as fsReadFileSync,
+} from 'node:fs';
+import * as path from 'node:path';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import { spawn as nodeSpawn } from 'node:child_process';
+
+function getCuesRoots(): string[] {
+  const roots: string[] = [];
+  if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME']);
+  roots.push(path.join(process.cwd(), '.cues'));
+  roots.push(path.join(os.homedir(), '.cues'));
+  return roots;
+}
+
+function findOpenCuesMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], 'OPENCUES.md');
+  }
+  return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'OPENCUES.md');
+}
+
+function resolveTtsScript(): string {
+  const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? os.homedir(), '.cues');
+  return path.join(root, 'scripts/speak.sh');
+}
+
+const groqApiKey = process.env['GROQ_API_KEY'];
+const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
+  llmConfig: groqApiKey ? { apiKey: groqApiKey } : undefined,
+  finnhubApiKey: process.env['FINNHUB_API_KEY'],
+  opencuesMdIO: {
+    readFile: async () => {
+      try { return await fs.readFile(findOpenCuesMdPath(), 'utf8'); } catch { return null; }
+    },
+    writeFile: async (content) => {
+      await fs.writeFile(findOpenCuesMdPath(), content, 'utf8');
+    },
+  },
+});
+
+function _discoverUserBlankConfigs(): BlankConfigLike[] {
+  const rawRoots: string[] = [];
+  if (process.env['OPENCUES_HOME']) rawRoots.push(process.env['OPENCUES_HOME']);
+  rawRoots.push(path.join(process.cwd(), '.cues'));
+  rawRoots.push(path.join(process.env['HOME'] ?? os.homedir(), '.cues'));
+  const seen = new Set<string>();
+  const roots: string[] = [];
+  for (const r of rawRoots) {
+    const abs = path.resolve(r);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    roots.push(abs);
+  }
+  const out: BlankConfigLike[] = [];
+  for (const root of roots) {
+    const blanksDir = path.join(root, 'blanks');
+    if (!fsExistsSync(blanksDir)) continue;
+    for (const entry of fsReaddirSync(blanksDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const blankMdPath = path.join(blanksDir, entry.name, 'BLANK.md');
+      if (!fsExistsSync(blankMdPath)) continue;
+      try {
+        const content = fsReadFileSync(blankMdPath, 'utf8');
+        const parsed = parseSingleCueMd(content, path.dirname(blankMdPath));
+        const blk = parsed.blanks?.[entry.name];
+        if (blk?.impl) out.push(blk as BlankConfigLike);
+      } catch { /* skip on parse error */ }
+    }
+  }
+  return out;
+}
+
+const _userBlanks = buildUserBlankRegistry(_discoverUserBlankConfigs(), {
+  storageRoot: process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? os.homedir(), '.cues'),
+  secrets: process.env as Readonly<Record<string, string>>,
+  llm: createNativeLlmAdapter(process.env as Record<string, string>),
+  log: (lvl, msg) => {
+    if (lvl === 'warn' || lvl === 'error') console.warn(`[opencues] user-blank ${lvl}: ${msg}`);
+    else if (process.env['DEBUG_OPENCUES']) console.log(`[opencues] user-blank ${lvl}: ${msg}`);
+  },
+});
+for (const [n, b] of _userBlanks) blanksRegistry.set(n, b);
+const blankInvoke = createBlankInvoke(blanksRegistry);
+
+export interface TerminalBootOpts {
+  renderer: CliRenderer;
+  textarea: TextareaRenderable;
+  /** SyntaxStyle attached to the textarea (created by app.tsx on mount). */
+  syntax: SyntaxStyle;
+  cwd: string;
+  /** Live tip subscriber — the footer reads from this. */
+  onTipChange?: (tip: string | null) => void;
+}
+
+const sourceReclassifier = createSourceReclassifier();
+let bootResult: BootResult | undefined;
+
+export function startOpenCues(opts: TerminalBootOpts): BootResult {
+  if (bootResult) return bootResult;
+
+  const log = (level: LogLevel, msg: string, data?: unknown): void => {
+    try {
+      const ts = new Date().toISOString().slice(11, 23);
+      let dataStr = '';
+      if (data !== undefined && data !== null) {
+        if (data instanceof Error) {
+          dataStr = `${data.name}: ${data.message}${data.stack ? '\n' + data.stack : ''}`;
+        } else if (typeof data === 'string') {
+          dataStr = data;
+        } else {
+          dataStr = JSON.stringify(data).slice(0, 400);
+        }
+      }
+      const line = `[${ts}][term][${level}] ${msg} ${dataStr}\n`;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('fs').appendFile('/tmp/opencues.log', line, () => {});
+    } catch { /* swallow */ }
+  };
+
+  const getText = (): string => opts.textarea.plainText;
+  const getCursor = (): number => opts.textarea.cursorOffset;
+
+  bootResult = boot({
+    hostVersion: '0.1.0',
+    cwd: opts.cwd || process.cwd(),
+    getText,
+    getCursorOffset: getCursor,
+    setText: (text) => {
+      sourceReclassifier.markRuntimeWrite(text);
+      opts.textarea.setText(text);
+      // OpenTUI's editBuffer.setText clears every extmark — see comment
+      // by ocOwnedExtmarks in opencode's bootstrap. Drop our owned map
+      // so the next render rebuilds.
+      ownedExtmarks = new Map();
+    },
+    setCursorOffset: (offset) => {
+      opts.textarea.cursorOffset = offset;
+    },
+    pushText: (text, cursor) => {
+      sourceReclassifier.markRuntimeWrite(text);
+      opts.textarea.setText(text);
+      if (cursor !== undefined) opts.textarea.cursorOffset = cursor;
+      ownedExtmarks = new Map();
+    },
+    forceRender: () => {
+      try { triggerOpenCuesRender(getText(), getCursor()); } catch { /* swallow */ }
+      opts.renderer.requestRender();
+    },
+    readFile: async (p) => { try { return await fs.readFile(p, 'utf8'); } catch { return null; } },
+    readDir: async (p) => {
+      try {
+        const entries = await fs.readdir(p, { withFileTypes: true });
+        return entries.map(e => ({ name: e.name, isDirectory: e.isDirectory() }));
+      } catch { return null; }
+    },
+    writeFile: async (p, c) => { await fs.writeFile(p, c); },
+    spawnProcess: (spec: any) => {
+      const cuesRoots = getCuesRoots();
+      const rawArgs: string[] = Array.isArray(spec.args) ? spec.args.map(String) : [];
+      const safeArgs: string[] = [];
+      for (const a of rawArgs) {
+        const r = validateScriptPath(a, cuesRoots);
+        if (!r.ok) {
+          appendAuditLog('terminal', spec, { exitCode: 126 }, cuesRoots);
+          return {
+            result: Promise.resolve({ exitCode: 126, stdout: '', stderr: r.reason ?? 'path outside CUES roots', timedOut: false }),
+            kill: () => {},
+          };
+        }
+        safeArgs.push(r.resolved ?? a);
+      }
+      const wrapped = wrapWithBwrap(spec.command, safeArgs, spec.sandbox, cuesRoots);
+      const finalCommand = wrapped?.command ?? spec.command;
+      const finalArgs = wrapped?.args ?? safeArgs;
+
+      const startedAt = Date.now();
+      const wantStdin = typeof spec.input === 'string' && spec.input.length > 0;
+      const stdio: any = spec.detached
+        ? 'ignore'
+        : [wantStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'];
+      let child: any;
+      try {
+        child = nodeSpawn(finalCommand, finalArgs, {
+          env: spec.env,
+          cwd: spec.cwd,
+          detached: !!spec.detached,
+          stdio,
+        });
+      } catch (err: any) {
+        appendAuditLog('terminal', spec, { exitCode: 127 }, cuesRoots);
+        return {
+          result: Promise.resolve({ exitCode: 127, stdout: '', stderr: String(err?.message ?? err), timedOut: false }),
+          kill: () => {},
+        };
+      }
+      if (wantStdin && child.stdin) {
+        try { child.stdin.write(spec.input); child.stdin.end(); } catch {}
+      }
+      let stdout = '', stderr = '';
+      child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+      const result = new Promise<{ exitCode: number; stdout: string; stderr: string; timedOut: boolean }>((resolve) => {
+        let timedOut = false;
+        let killer: NodeJS.Timeout | null = null;
+        const timer = spec.timeoutMs
+          ? setTimeout(() => {
+              timedOut = true;
+              try { child.kill('SIGTERM'); } catch {}
+              killer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1000);
+            }, spec.timeoutMs)
+          : null;
+        const finish = (code: number | null): void => {
+          if (timer) clearTimeout(timer);
+          if (killer) clearTimeout(killer);
+          const exit = code ?? 0;
+          appendAuditLog('terminal', spec, { exitCode: exit, timedOut }, cuesRoots, Date.now() - startedAt);
+          resolve({ exitCode: exit, stdout, stderr, timedOut });
+        };
+        child.on('exit', finish);
+        child.on('error', (err: any) => {
+          stderr += String(err?.message ?? err);
+          finish(127);
+        });
+      });
+      if (spec.detached) child.unref();
+      return { result, kill: (sig?: string) => { try { child.kill((sig as any) || 'SIGTERM'); } catch {} } };
+    },
+    log,
+    blankInvoke,
+    statusFilePath: `/tmp/opencues-status-${process.pid}.json`,
+    cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
+    statusSnapshotHook: (payload: any) => {
+      if (!opts.onTipChange) return;
+      const agentTask = payload?.agentTask as string | null | undefined;
+      const agentBadge = agentTask ? `[task: ${agentTask}]` : null;
+      let wordPart: string | null = null;
+      if (payload?.active) {
+        const tip = payload?.cueTip as string | null | undefined;
+        const word = payload?.highlightedWord as string | undefined;
+        const alts = payload?.alts as readonly string[] | undefined;
+        const cueBlank = !!payload?.cueBlank;
+        if (cueBlank) {
+          wordPart = tip ?? null;
+        } else if (alts && alts.length > 1 && word) {
+          const idx = (payload?.currentAltIndex ?? 0) + 1;
+          const head = `${word} (${idx}/${alts.length})`;
+          wordPart = tip ? `${head} - ${tip}` : head;
+        } else {
+          wordPart = tip ?? null;
+        }
+      }
+      const combined = wordPart && agentBadge ? `${wordPart} | ${agentBadge}` : (agentBadge ?? wordPart ?? null);
+      opts.onTipChange(combined);
+    },
+    ttsScriptPath: resolveTtsScript(),
+    ttsRate: 2,
+    llmApiKey: process.env['GROQ_API_KEY'],
+    llmEndpoint: process.env['OPENCUES_LLM_ENDPOINT'],
+    llmDefaultModel: process.env['OPENCUES_LLM_MODEL'],
+    llmApiKeys: {
+      GROQ_API_KEY: process.env['GROQ_API_KEY'],
+      OPENROUTER_API_KEY: process.env['OPENROUTER_API_KEY'],
+      GEMINI_API_KEY: process.env['GEMINI_API_KEY'],
+      OPENAI_API_KEY: process.env['OPENAI_API_KEY'],
+      ANTHROPIC_API_KEY: process.env['ANTHROPIC_API_KEY'],
+      CEREBRAS_API_KEY: process.env['CEREBRAS_API_KEY'],
+    },
+  });
+
+  // Wire OpenTUI's content-change → notify runtime + repaint extmarks.
+  opts.textarea.onContentChange = () => {
+    const text = getText();
+    const cursor = getCursor();
+    const actualSource = sourceReclassifier.reclassify(text, 'user');
+    bootResult!.notifyTextChange(text, cursor, actualSource);
+    triggerOpenCuesRender(text, cursor);
+  };
+  opts.textarea.onCursorChange = () => {
+    bootResult!.notifyCursorChange(getText(), getCursor(), 'user');
+  };
+
+  // Stash refs for the renderer helper.
+  _textareaRef = opts.textarea;
+  _syntaxRef = opts.syntax;
+
+  return bootResult;
+}
+
+export function dispatchOpenCuesKey(evt: any): boolean {
+  if (!bootResult) return false;
+  const text = _textareaRef?.plainText ?? '';
+  const cursor = _textareaRef?.cursorOffset ?? 0;
+  const e: KeyEvent = {
+    key: normaliseKeyName(evt),
+    modifiers: {
+      ctrl: !!evt.ctrl,
+      alt: !!evt.option || !!evt.alt,
+      shift: !!evt.shift,
+      meta: !!evt.meta,
+    },
+    text,
+    cursorOffset: cursor,
+  };
+  const consumed = bootResult.dispatchKey(e);
+  if (consumed) triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor);
+  return consumed;
+}
+
+function normaliseKeyName(evt: any): string {
+  if (evt.name) return String(evt.name).toLowerCase();
+  if (evt.sequence) return String(evt.sequence);
+  return '';
+}
+
+// ─── Extmark applier ────────────────────────────────────────────────────
+// Lifted from integrations/opencode/patches/opencuesBootstrap.ts. The
+// diff-based approach (keep / delete-stale / create-new) avoids the
+// 100-300ms input-lag from clearing-and-recreating ~30 dim extmarks
+// per keystroke. See the OpenTUI extmark-contract comment in that
+// file for the ADJUSTS vs CLEARS table — same trap applies here.
+
+type ExtmarkKey = string;
+let ownedExtmarks = new Map<ExtmarkKey, number>();
+let styleIds: {
+  dim?: number; highlight?: number; typeId?: number;
+  bold?: number; italic?: number; code?: number; strike?: number; heading?: number; list?: number;
+} = {};
+let loadingColorIds = new Map<string, number>();
+let _textareaRef: TextareaRenderable | null = null;
+let _syntaxRef: SyntaxStyle | null = null;
+
+export function triggerOpenCuesRender(text: string, cursor: number): void {
+  if (!bootResult || !_textareaRef || !_syntaxRef) return;
+  const syntax = _syntaxRef;
+  const textarea = _textareaRef;
+  if (textarea.isDestroyed) return;
+
+  if (styleIds.dim === undefined) {
+    styleIds.dim = syntax.getStyleId('opencues-dim') ?? syntax.registerStyle('opencues-dim', { dim: true });
+  }
+  if (styleIds.highlight === undefined) {
+    styleIds.highlight = syntax.getStyleId('opencues-highlight')
+      ?? syntax.registerStyle('opencues-highlight', {
+        fg: RGBA.fromValues(1, 1, 1, 1),
+        bg: RGBA.fromValues(0, 0, 0, 1),
+      });
+  }
+  if (styleIds.bold === undefined) {
+    styleIds.bold = syntax.getStyleId('opencues-bold') ?? syntax.registerStyle('opencues-bold', { bold: true });
+  }
+  if (styleIds.italic === undefined) {
+    styleIds.italic = syntax.getStyleId('opencues-italic') ?? syntax.registerStyle('opencues-italic', { italic: true });
+  }
+  if (styleIds.code === undefined) {
+    styleIds.code = syntax.getStyleId('opencues-code')
+      ?? syntax.registerStyle('opencues-code', { fg: RGBA.fromValues(0.9, 0.7, 0.4, 1) });
+  }
+  if (styleIds.strike === undefined) {
+    try {
+      styleIds.strike = syntax.getStyleId('opencues-strike')
+        ?? syntax.registerStyle('opencues-strike', { strikethrough: true } as any);
+    } catch {
+      styleIds.strike = syntax.getStyleId('opencues-strike-dim')
+        ?? syntax.registerStyle('opencues-strike-dim', { dim: true });
+    }
+  }
+  if (styleIds.heading === undefined) {
+    styleIds.heading = syntax.getStyleId('opencues-heading')
+      ?? syntax.registerStyle('opencues-heading', { bold: true, underline: true } as any);
+  }
+  if (styleIds.list === undefined) {
+    styleIds.list = syntax.getStyleId('opencues-list')
+      ?? syntax.registerStyle('opencues-list', { fg: RGBA.fromValues(0.7, 0.7, 0.7, 1) });
+  }
+  if (styleIds.typeId === undefined) {
+    styleIds.typeId = textarea.extmarks.registerType('opencues');
+  }
+
+  type Kind = 'd' | 'h' | 'b' | 'i' | 'c' | 's' | 'H' | 'L';
+  type Spec = { kind: Kind; start: number; end: number };
+  const desired = new Map<ExtmarkKey, Spec>();
+  const addRanges = (ranges: ReadonlyArray<{ start: number; end: number }> | undefined, kind: Kind): void => {
+    if (!ranges) return;
+    for (const r of ranges) {
+      desired.set(`${kind}:${r.start}:${r.end}`, { kind, start: r.start, end: r.end });
+    }
+  };
+  const desiredColored = new Map<ExtmarkKey, { hex: string; start: number; end: number }>();
+  const directiveSets = bootResult.collectRenderDirectives(text, cursor);
+  for (const directives of directiveSets) {
+    addRanges(directives.dimRanges, 'd');
+    if (directives.highlight) {
+      const h = directives.highlight;
+      desired.set(`h:${h.start}:${h.end}`, { kind: 'h', start: h.start, end: h.end });
+    }
+    addRanges(directives.boldRanges, 'b');
+    addRanges(directives.italicRanges, 'i');
+    addRanges(directives.codeRanges, 'c');
+    addRanges(directives.strikeRanges, 's');
+    addRanges(directives.headingRanges, 'H');
+    addRanges(directives.listRanges, 'L');
+    const cr = (directives as { coloredRanges?: ReadonlyArray<{ start: number; end: number; rgb?: string }> }).coloredRanges;
+    if (cr) {
+      for (const r of cr) {
+        if (!r.rgb) continue;
+        const hex = r.rgb.toLowerCase();
+        desiredColored.set(`load:${hex}:${r.start}:${r.end}`, { hex, start: r.start, end: r.end });
+      }
+    }
+  }
+
+  for (const [key, id] of ownedExtmarks) {
+    if (desired.has(key) || desiredColored.has(key)) continue;
+    try { (textarea.extmarks as any).delete?.(id); } catch {}
+    ownedExtmarks.delete(key);
+  }
+
+  const styleFor = (kind: Kind): number | undefined => {
+    switch (kind) {
+      case 'd': return styleIds.dim;
+      case 'h': return styleIds.highlight;
+      case 'b': return styleIds.bold;
+      case 'i': return styleIds.italic;
+      case 'c': return styleIds.code;
+      case 's': return styleIds.strike;
+      case 'H': return styleIds.heading;
+      case 'L': return styleIds.list;
+    }
+  };
+  for (const [key, spec] of desired) {
+    if (ownedExtmarks.has(key)) continue;
+    const styleId = styleFor(spec.kind);
+    if (styleId === undefined) continue;
+    const id = textarea.extmarks.create({
+      start: spec.start,
+      end: spec.end,
+      styleId,
+      typeId: styleIds.typeId,
+    });
+    ownedExtmarks.set(key, id);
+  }
+  for (const [key, spec] of desiredColored) {
+    if (ownedExtmarks.has(key)) continue;
+    let styleId = loadingColorIds.get(spec.hex);
+    if (styleId === undefined) {
+      const styleName = `opencues-load-${spec.hex.slice(1)}`;
+      try {
+        styleId = syntax.getStyleId(styleName) ?? syntax.registerStyle(styleName, { fg: RGBA.fromHex(spec.hex) });
+      } catch { continue; }
+      loadingColorIds.set(spec.hex, styleId);
+    }
+    const id = textarea.extmarks.create({
+      start: spec.start,
+      end: spec.end,
+      styleId,
+      typeId: styleIds.typeId,
+    });
+    ownedExtmarks.set(key, id);
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@opencues/terminal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues for the terminal — a standalone Bun/OpenTUI TUI you launch as `oc-edit`. Brings full cues, blanks, cycling, agent-rewrite to any shell via $EDITOR or a ZLE widget.",
+  "type": "module",
+  "bin": {
+    "oc-edit": "./bin/oc-edit"
+  },
+  "scripts": {
+    "build": "bun build src/app.tsx --outfile=dist/app.js --target=bun --external @opentui/core --external @opentui/solid --external solid-js --external @opencues/core --external @opencues/runtime",
+    "dev": "bun --conditions=browser src/app.tsx"
+  },
+  "dependencies": {
+    "@opentui/core": "0.1.99",
+    "@opentui/solid": "0.1.99",
+    "solid-js": "1.9.10"
+  },
+  "//comment-on-opencues-deps": "@opencues/{core,runtime} are NOT npm-resolved deps here. setup.sh cp -r's the built dist into node_modules/@opencues/{core,runtime}/, mirroring the way integrations/opencode/patches/setup.sh wires the same packages into its fork. This keeps the install path identical across hosts and avoids workspace-resolution drift between pnpm (top-level) and bun (this integration).",
+  "devDependencies": {
+    "@tsconfig/bun": "1.0.9",
+    "@types/bun": "1.3.11",
+    "typescript": "5.8.2"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ]
+}
