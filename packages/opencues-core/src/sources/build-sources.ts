@@ -27,7 +27,7 @@ import { FluidBlankSource, type FluidBlankSourceConfig } from './fluid-blank-sou
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
-import { resolveLLM, getProvider, withFallback, type ResolvedLLM } from '../llm-provider';
+import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 
 /**
  * Per-feature provider/model/endpoint trio. Each LLM-driven source
@@ -76,6 +76,28 @@ export interface BuildSourcesOptions {
   globalProvider?: string;
   globalModel?: string;
   globalEndpoint?: string;
+  /**
+   * Provider routing for BLANK-CLASS sources only (FluidBlank /
+   * TransformBlank / ConfigIntent / keyword BlankSource). Sits BETWEEN
+   * per-feature and global in the precedence chain — overrides
+   * `globalProvider` for blank-class sources only. Cue-class sources
+   * (ConfigSource word-cues, SentenceCueSource) ignore it entirely.
+   *
+   * Set from OPENCUES.md `blank-llm-provider:`. The runtime translates
+   * the special value `'free'` → `'opencode-zen'` before passing here;
+   * other ProviderId values flow through verbatim. `'inherit'` (the
+   * default) collapses to undefined — falls through to globalProvider.
+   *
+   * The structural rule: NEVER let cue-class sources resolve to
+   * `opencode-zen` via this path — OpenCode Zen's free-tier ToS says
+   * inputs may be used for training, and cues run automatically on
+   * user prose (not opt-in like blanks). The build-sources factory
+   * enforces this by reading blankGlobalProvider only at blank-class
+   * call sites.
+   */
+  blankGlobalProvider?: string;
+  blankGlobalModel?: string;
+  blankGlobalEndpoint?: string;
   /** Per-feature defaults read from OPENCUES.md root frontmatter. */
   wordCues?: FeatureLLMSetting;
   fluidBlank?: FeatureLLMSetting;
@@ -266,6 +288,13 @@ export function buildSourcesFromConfig(
   const apiKeys = options.apiKeys ?? {};
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
+  // blank-class override tier. `inherit` from the scalar has already
+  // been collapsed to undefined by the runtime; only concrete values
+  // (or 'free' pre-translation) reach us. Defensive: empty/inherit are
+  // treated as undefined here too.
+  const rawBlankProvider = options.blankGlobalProvider?.toLowerCase();
+  const blankGlobalProvider = (!rawBlankProvider || rawBlankProvider === 'inherit') ? undefined : rawBlankProvider;
+  const blankGlobalModel = options.blankGlobalModel;
   // Universal-Integration profile: when the host can't cycle (chrome's
   // normal `<input>` / `<textarea>` branch), drop everything that
   // presents alternatives the user picks between. Default true keeps
@@ -278,18 +307,48 @@ export function buildSourcesFromConfig(
    * Resolve the provider/model/endpoint/key tuple for one source given
    * its per-source override (frontmatter) and a per-feature default.
    * Returns null when no api key is available — caller skips the source.
+   *
+   * `isBlankClass: true` opts the source into the blank-class provider
+   * override tier (blankGlobalProvider) when set. Cue-class sources
+   * MUST pass false (or omit) so they never accidentally route through
+   * the free pool — see BuildSourcesOptions.blankGlobalProvider for the
+   * trust-boundary rationale.
    */
-  function resolveFor(featureSetting: FeatureLLMSetting | undefined, perSource?: SourceConfig): ResolvedLLM | null {
+  function resolveFor(featureSetting: FeatureLLMSetting | undefined, perSource?: SourceConfig, isBlankClass?: boolean): ResolvedLLM | null {
+    // When the blank-class provider override fires, the global `llm-model`
+    // would otherwise leak into resolveLLM as the model for the
+    // overridden provider — e.g. `blank-llm-provider: free` +
+    // `llm-model: gpt-oss-120b` would try to ask opencode-zen for a
+    // model that doesn't exist there. If the user hasn't set a
+    // matching `blank-llm-model`, pass undefined so resolveLLM picks
+    // the provider's defaultModel (big-pickle for opencode-zen).
+    const useBlankOverride = isBlankClass && !!blankGlobalProvider;
+    const effectiveGlobalProvider = useBlankOverride ? blankGlobalProvider : globalProvider;
+    const effectiveGlobalModel = useBlankOverride
+      ? (blankGlobalModel ?? undefined)
+      : globalModel;
     return resolveLLM({
       providerOverride: perSource?.provider,
       modelOverride: perSource?.model,
       endpointOverride: perSource?.endpoint,
       featureProvider: featureSetting?.provider,
       featureModel: featureSetting?.model,
-      globalProvider,
-      globalModel,
+      globalProvider: effectiveGlobalProvider,
+      globalModel: effectiveGlobalModel,
       apiKeys,
     });
+  }
+
+  /**
+   * Pick the right HTTP-adapter wrapper for a resolved blank-class
+   * source. When the resolved provider is `opencode-zen`, we wrap with
+   * `withFreePool` so transient failures walk the free-pool model list
+   * (and sticky auth/quota errors bubble up for ProviderHealth). Other
+   * providers get the standard `withFallback` (groq↔cerebras).
+   */
+  function wrapAdapterForBlank(resolved: ResolvedLLM) {
+    if (resolved.provider.id === 'opencode-zen') return withFreePool(options.httpAdapter);
+    return withFallback(options.httpAdapter, resolved.fallback);
   }
 
   function fallbackForLog(label: string, providerName: string): void {
@@ -443,14 +502,14 @@ export function buildSourcesFromConfig(
   // the slot. See config-intent-source.ts for the bench-validated
   // prompt + trust boundary.
   if (options.enableConfigIntent) {
-    const resolved = resolveFor(options.configIntent);
+    const resolved = resolveFor(options.configIntent, undefined, true);
     if (!resolved) {
-      fallbackForLog('config-intent', options.configIntent?.provider || globalProvider || 'groq');
+      fallbackForLog('config-intent', options.configIntent?.provider || blankGlobalProvider || globalProvider || 'groq');
     } else if (!options.applyOpencuesScalar) {
       options.log?.('buildSources: skipping config-intent — no applyOpencuesScalar callback provided');
     } else {
       sources.push(new ConfigIntentSource({
-        httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+        httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
         endpoint: resolved.endpoint,
         apiKey: resolved.apiKey,
@@ -469,12 +528,12 @@ export function buildSourcesFromConfig(
   // Cedes to keyword-bound BlankSource when a registered blank would
   // claim the slot (keyword within blankProximity of the `_`).
   if (options.enableFluidBlank) {
-    const resolved = resolveFor(options.fluidBlank);
+    const resolved = resolveFor(options.fluidBlank, undefined, true);
     if (!resolved) {
-      fallbackForLog('fluid-blank', options.fluidBlank?.provider || globalProvider || 'groq');
+      fallbackForLog('fluid-blank', options.fluidBlank?.provider || blankGlobalProvider || globalProvider || 'groq');
     } else {
       sources.push(new FluidBlankSource({
-        httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+        httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
         endpoint: resolved.endpoint,
         apiKey: resolved.apiKey,
@@ -496,12 +555,12 @@ export function buildSourcesFromConfig(
   // BlankSource if applicable AND only claims when the surrounding text
   // starts with an imperative verb (heuristic in supports()).
   if (options.enableTransformBlank) {
-    const resolved = resolveFor(options.transformBlank);
+    const resolved = resolveFor(options.transformBlank, undefined, true);
     if (!resolved) {
-      fallbackForLog('transform-blank', options.transformBlank?.provider || globalProvider || 'groq');
+      fallbackForLog('transform-blank', options.transformBlank?.provider || blankGlobalProvider || globalProvider || 'groq');
     } else {
       sources.push(new TransformBlankSource({
-        httpAdapter: withFallback(options.httpAdapter, resolved.fallback),
+        httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
         endpoint: resolved.endpoint,
         apiKey: resolved.apiKey,

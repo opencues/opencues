@@ -95,6 +95,18 @@ openai  chat-latest      100.0% / 1529 / $12.80   98.5% / 2249 / $17.26   99.3% 
 
 ★ = best cost-per-correct in the bench.
 
+**Free pool — OpenCode Zen (`blank-llm-provider: free`) — 30-case fluid-blank fused, anonymous, 1500ms throttle:**
+
+| Model | Accuracy | Per-case ms | Cost | Notes |
+|---|---|---|---|---|
+| `nemotron-3-super-free`      | **86.7%** (26/30) | 14002 | **$0** | NVIDIA terms; "trial use only — not for production / sensitive data". Slow but accurate. |
+| `deepseek-v4-flash-free`     | 46.7% (14/30)     | 4990  | $0     | Fast but mediocre; ToS says inputs may be used to train the model. |
+| `big-pickle`                 | 40.0% (12/30)     | 5064  | $0     | A stealth deepseek-v4-flash variant; same speed, worse accuracy. Same data-use clause as deepseek. |
+| ~~`qwen3.6-plus-free`~~      | —                 | —     | —      | Promotion ended May 2026; now requires paid OpenCode Go subscription. |
+| ~~`minimax-m2.5-free`~~      | —                 | —     | —      | Promotion ended May 2026; now requires paid OpenCode Go subscription. |
+
+**Source:** [`tests/results/opencode-zen-free/`](../results/opencode-zen-free/). 30-case slice of the canonical 137-case fluid-blank suite (`--limit 30`), `--parallel 1`, `OPENCUES_OPENCODE_ZEN_DELAY_MS=1500`. Free models are **blank-only**: the runtime refuses `llm-provider: free` at startup because cues + auditors run on prose automatically and the free-tier ToS allows training on inputs. Pool ordering in `OPENCODE_ZEN_FREE_POOL` (`packages/opencues-core/src/llm-provider.ts`) is accuracy-desc; the runtime walks it on transient failure and 30s-cools-down failing models. Re-bench when the live `/v1/models` set changes.
+
 ---
 
 ## Thinking-budget grid — which reasoning level fits which pipeline

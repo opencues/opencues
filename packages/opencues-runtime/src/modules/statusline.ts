@@ -16,6 +16,7 @@ import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { AgentTaskState } from '../state/agent-task';
+import type { ProviderHealth, ProviderHealthEvent } from './provider-health';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -57,6 +58,20 @@ export interface StatuslinePayload {
   /** Agent-task indicator. When armed, contains a truncated form of the
    *  current task prompt (last ~40 chars). null when no task is armed. */
   agentTask?: string | null;
+  /**
+   * Current ProviderHealth event, if any — sticky errors (auth /
+   * quota / model-missing) stay until cleared; transient (rate-limit /
+   * outage) auto-clear after the bus's TTL. The shell consumer renders
+   * this as a prefix like `[opencues: bad / missing API key]` so the
+   * user has visible feedback when LLM calls are silently failing.
+   */
+  providerError?: {
+    readonly kind: ProviderHealthEvent['kind'];
+    readonly message: string;
+    readonly sticky: boolean;
+    readonly provider?: string;
+    readonly model?: string;
+  } | null;
 }
 
 export class Statusline {
@@ -88,17 +103,40 @@ export class Statusline {
      * `[task: ...]` so the user can see which agent is running.
      */
     private agentTaskState?: AgentTaskState,
+    /**
+     * Optional. When provided, the latest event from the bus is
+     * mirrored into StatuslinePayload.providerError on every render.
+     * Subscribing to the bus also triggers an immediate re-render so
+     * sticky errors (auth/quota) appear without waiting for the user
+     * to type — without this the user wouldn't see the error until
+     * the next keystroke.
+     */
+    private providerHealth?: ProviderHealth,
   ) {}
+
+  /** Unsub fn for the ProviderHealth bus. Null when no health bus wired. */
+  private _phUnsub: (() => void) | null = null;
 
   subscribe(): void {
     this._unsub = this.adapter.onRender(ctx => {
       this.maybeWrite(ctx);
       return null;
     });
+    // Mirror ProviderHealth changes into the statusline immediately —
+    // sticky errors should be visible without the user having to type.
+    // The host adapter may not expose a synchronous redraw, so we just
+    // ask for one via forceRender if available; otherwise the next
+    // keystroke's onRender will pick up the new state.
+    if (this.providerHealth) {
+      this._phUnsub = this.providerHealth.subscribe(() => {
+        try { this.adapter.forceRender?.(); } catch { /* host may not support force-render */ }
+      });
+    }
   }
 
   unsubscribe(): void {
     if (this._unsub) { this._unsub(); this._unsub = null; }
+    if (this._phUnsub) { this._phUnsub(); this._phUnsub = null; }
   }
 
   /** Exposed for testing — build the payload from current state + render ctx. */
@@ -263,9 +301,25 @@ export class Statusline {
     return '…' + prompt.slice(-MAX);
   }
 
+  /** Snapshot the current ProviderHealth event into the payload shape. */
+  private currentProviderError(): StatuslinePayload['providerError'] {
+    if (!this.providerHealth) return undefined;
+    const ev = this.providerHealth.current();
+    if (!ev) return null;
+    return {
+      kind: ev.kind, message: ev.message, sticky: ev.sticky,
+      provider: ev.provider, model: ev.model,
+    };
+  }
+
   private maybeWrite(ctx: RenderContext): void {
     if (!this.adapter.capabilities.includes('file-write')) return;
-    const payload = this.buildPayload(ctx);
+    // Always re-merge providerError so it appears even when buildPayload
+    // returned an `active: false` early branch. Cleaner than threading
+    // through every return — health is orthogonal to highlight state.
+    const built = this.buildPayload(ctx);
+    const providerError = this.currentProviderError();
+    const payload: StatuslinePayload = providerError !== undefined ? { ...built, providerError } : built;
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.
     const { timestamp: _t, ...stable } = payload;
