@@ -448,16 +448,29 @@ module.exports = function doctor(argv, ctx) {
       const s = section('Subscription providers', 'CLI-transport providers that use external auth (no env key)');
       const { spawnSync } = require('child_process');
       for (const adapter of cliProviders) {
-        // claude-cli looks for `claude` on PATH by default
-        const bin = adapter.id === 'claude-cli' ? 'claude' : adapter.id;
+        // Map CLI-transport provider id → binary name needed for auth
+        // setup. claude-cli → `claude`. openai-subscription needs
+        // `codex` for the one-time `codex login` (the runtime then
+        // reads ~/.codex/auth.json directly; codex isn't on the hot
+        // path). Default to the id for any future CLI provider whose
+        // binary matches its id.
+        const BIN_BY_ID = {
+          'claude-cli': 'claude',
+          'openai-subscription': 'codex',
+        };
+        const bin = BIN_BY_ID[adapter.id] || adapter.id;
         const which = spawnSync('which', [bin], { encoding: 'utf8' });
         const installed = which.status === 0;
         s.ok(`${adapter.displayName} (${bin} on PATH)`, installed);
         if (!installed) {
+          const FIX_BY_ID = {
+            'claude-cli': `install Claude Code from https://claude.com/code, run \`claude auth\`, then \`claude -p hi\` to confirm`,
+            'openai-subscription': `install OpenAI Codex via \`npm i -g @openai/codex\`, then run \`codex login\` to sign in with your ChatGPT plan (writes ~/.codex/auth.json which the runtime reads on every call — the codex binary is not on the request hot path)`,
+          };
           findings.push({
             sev: 'info',
             msg: `${adapter.displayName} provider needs the \`${bin}\` CLI installed — set \`agent-rewrite-provider: ${adapter.id}\` etc. in OPENCUES.md once installed`,
-            fix: `install Claude Code from https://claude.com/code, run \`${bin} auth\`, then \`${bin} -p hi\` to confirm`,
+            fix: FIX_BY_ID[adapter.id] || `install ${bin}, authenticate it, then re-run`,
           });
         }
       }

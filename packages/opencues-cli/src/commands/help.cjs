@@ -252,6 +252,7 @@ const PROVIDER_DISPLAY = {
   groq: 'Groq', cerebras: 'Cerebras', openai: 'OpenAI',
   anthropic: 'Claude', openrouter: 'OpenRouter', gemini: 'Gemini',
   'claude-cli': 'Claude (CLI, subscription)',
+  'openai-subscription': 'OpenAI (ChatGPT subscription)',
 };
 
 // Default model fallback for pre-build. Live data sourced from
@@ -264,6 +265,7 @@ const PROVIDER_DEFAULT_MODEL = {
   openrouter: 'openai/gpt-oss-120b:free',
   gemini:     'gemini-3.1-flash-lite',
   'claude-cli': 'haiku',
+  'openai-subscription': 'gpt-5.4-mini',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.

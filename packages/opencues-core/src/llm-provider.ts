@@ -20,9 +20,9 @@
  * model defaults + request/response translators. Nothing else changes.
  */
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'anthropic' | 'cerebras' | 'claude-cli';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-cli';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-cli'];
 
 /**
  * Internal chat-request shape — provider-neutral. Each provider's
@@ -390,6 +390,71 @@ const OPENAI: ProviderAdapter = {
 };
 
 /**
+ * openai-subscription — OpenAI's Responses API via your ChatGPT plan.
+ *
+ * Same OpenAI models, different auth: instead of `OPENAI_API_KEY` (paid
+ * per-token API access via the `openai` provider above), this provider
+ * reads the OAuth token codex stored in `~/.codex/auth.json` after a
+ * one-time `codex login` and POSTs directly to OpenAI's Responses
+ * endpoint. Calls are billed against your ChatGPT subscription —
+ * effectively free if you already have a Plus/Pro/Team plan.
+ *
+ * No codex subprocess is spawned at request time — we just read its
+ * auth file. The `codex` binary is required for `codex login` (which
+ * runs the OAuth + PKCE flow that writes auth.json) but is not on the
+ * hot path.
+ *
+ * Subscription model allow-list (May 2026, verified by probing the
+ * Responses endpoint directly):
+ *
+ *   - `gpt-5.4-mini` (default — warm median ~600-1000ms, FASTEST)
+ *   - `gpt-5.4`      (warm median ~1.3s, smarter)
+ *   - `gpt-5.5`      (warm median ~1.2s, newest frontier model)
+ *   - `gpt-5.3-codex` (warm median ~1.0s, code-tuned)
+ *
+ * Every other name (`gpt-5`, `gpt-5-nano`, `gpt-5-codex`, `o3`,
+ * `o4-mini`, `codex-mini-latest`, `gpt-4o`, `gpt-5.4-pro`,
+ * `gpt-5.3-instant`, `gpt-5.3-chat-latest`, etc.) returns 400 *"not
+ * supported when using Codex with a ChatGPT account"*. The paid
+ * `openai` provider supports the full catalogue.
+ *
+ * Why a separate provider id from `openai`: lets users mix billing
+ * paths per-feature — e.g. `agent-rewrite-provider: openai-subscription`
+ * (free, slow) while `transform-blank-provider: openai` (paid, full
+ * catalogue). Auto-detection would have collapsed that choice.
+ *
+ * Reference pattern: Zed's ChatGPT subscription provider
+ * ([zed-industries/zed#56811]), opencode-openai-codex-auth, LiteLLM.
+ * OpenAI's documented "personal local-use" pattern — don't run as a
+ * shared/hosted service.
+ *
+ * apiKey is unused (auth is via the user's `codex login` session), but
+ * the field stays in the adapter for shape compatibility.
+ */
+const OPENAI_SUBSCRIPTION: ProviderAdapter = {
+  id: 'openai-subscription',
+  displayName: 'OpenAI (ChatGPT subscription)',
+  transport: 'cli',
+  defaultEndpoint: '', // unused for CLI transport
+  defaultModel: 'gpt-5.4-mini',
+  envKeyName: '', // no env var — auth via `codex login`
+  buildRequest() {
+    throw new Error('openai-subscription: buildRequest is not used (transport is cli)');
+  },
+  parseResponse() {
+    throw new Error('openai-subscription: parseResponse is not used (transport is cli)');
+  },
+  async invokeCli(req) {
+    const model = (req.model || 'gpt-5.4-mini').trim();
+    // Lazy import — keeps node:fs / global fetch out of bundles that
+    // never need the subscription path (chrome).
+    const { invokeCodexResponses, splitMessagesForResponses } = await import('./providers/codex-responses-client');
+    const { systemPrompt, userPrompt } = splitMessagesForResponses(req.messages);
+    return invokeCodexResponses({ model, systemPrompt, userPrompt });
+  },
+};
+
+/**
  * Gemini's API takes a fundamentally different shape:
  *   POST /v1beta/models/{model}:generateContent?key={apiKey}
  *   { contents: [{ role, parts: [{ text }] }],
@@ -660,6 +725,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   openrouter: OPENROUTER,
   gemini: GEMINI,
   openai: OPENAI,
+  'openai-subscription': OPENAI_SUBSCRIPTION,
   anthropic: ANTHROPIC,
   cerebras: CEREBRAS,
   'claude-cli': CLAUDE_CLI,
@@ -872,11 +938,12 @@ export async function dispatchChat(
   req: ChatRequest,
   ctx: { apiKey: string; endpoint?: string },
 ): Promise<string> {
-  // CLI-transport providers (e.g. claude-cli daemon) handle their own
-  // lifecycle and return the assistant text directly. The httpAdapter
-  // argument is intentionally ignored — caller still passes it because
-  // resolveLLM doesn't know which transport will be picked until after
-  // the dispatch, and the call sites are transport-agnostic.
+  // CLI-transport providers (e.g. claude-cli daemon, openai-subscription)
+  // handle their own lifecycle and return the assistant text directly.
+  // The httpAdapter argument is intentionally ignored — caller still
+  // passes it because resolveLLM doesn't know which transport will be
+  // picked until after the dispatch, and the call sites are
+  // transport-agnostic.
   if (provider.transport === 'cli') {
     if (!provider.invokeCli) {
       throw new Error(`provider ${provider.id} declared transport='cli' but has no invokeCli`);
@@ -962,6 +1029,9 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   cerebras: 'groq',
   openrouter: undefined,
   openai: undefined,
+  // openai-subscription is a different transport entirely (CLI/OAuth);
+  // no HTTP peer to fall back to.
+  'openai-subscription': undefined,
   anthropic: undefined,
   gemini: undefined,
   // claude-cli is a different transport entirely — no HTTP peer to fall

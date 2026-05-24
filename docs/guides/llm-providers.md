@@ -1,23 +1,33 @@
 ---
-last_updated: 2026-05-08
+last_updated: 2026-05-23
 ---
 
 # LLM Providers
 
-OpenCues ships with **six built-in providers** plus auto-fallback
-between wire-compatible peers. Configuration is per-surface — pick
-a different provider/model for each LLM-driven feature.
+OpenCues ships with **eight built-in providers** (six HTTP, two
+subscription-backed) plus auto-fallback between wire-compatible peers.
+Configuration is per-surface — pick a different provider/model for
+each LLM-driven feature.
 
 ## Built-in providers
 
-| Provider | Env key | Default endpoint | Default model | Wire shape |
-|---|---|---|---|---|
-| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `api.cerebras.ai/v1/chat/completions` | `gpt-oss-120b` | OpenAI-compat |
-| **groq** | `GROQ_API_KEY` | `api.groq.com/openai/v1/chat/completions` | `openai/gpt-oss-120b` | OpenAI-compat |
-| **gemini** | `GEMINI_API_KEY` | `generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` | `gemini-3.1-flash-lite` | Google `contents`/`parts` |
-| **anthropic** | `ANTHROPIC_API_KEY` | `api.anthropic.com/v1/messages` | `claude-haiku-4-5-20251001` | Messages API (different shape) |
-| **openai** | `OPENAI_API_KEY` | `api.openai.com/v1/chat/completions` | `gpt-5.4-mini` | OpenAI |
-| **openrouter** | `OPENROUTER_API_KEY` | `openrouter.ai/api/v1/chat/completions` | `openai/gpt-oss-120b:free` | OpenAI-compat |
+| Provider | Auth | Default model | Notes |
+|---|---|---|---|
+| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `gpt-oss-120b` | OpenAI-compat HTTP |
+| **groq** | `GROQ_API_KEY` | `openai/gpt-oss-120b` | OpenAI-compat HTTP |
+| **gemini** | `GEMINI_API_KEY` | `gemini-3.1-flash-lite` | Google `contents`/`parts` shape |
+| **anthropic** | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | Messages API |
+| **openai** | `OPENAI_API_KEY` | `gpt-5.4-mini` | paid API, full model catalogue |
+| **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |
+| **openrouter** | `OPENROUTER_API_KEY` | `openai/gpt-oss-120b:free` | OpenAI-compat HTTP |
+| **claude-cli** *(subscription)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
+
+The two subscription providers (`openai-subscription` and `claude-cli`)
+use your existing AI plan — no per-token billing. Use them on
+expensive surfaces (agent-rewrite, transform-blank) when you want the
+quality of frontier models without the per-call cost. The paid HTTP
+providers stay available for surfaces that need a model your plan
+doesn't allow, or when you want a specific (e.g. nano-tier) model.
 
 The runtime picks the right env key automatically based on which
 provider is selected. Set as many keys as you want — the others stay
@@ -208,6 +218,109 @@ The Chrome extension currently has no settings UI for entering API
 keys directly — they must be supplied via `chrome.storage.local`
 (future popup work). Native hosts (CC, OC) read `process.env`
 directly.
+
+## Subscription-backed providers
+
+Two providers let you use your existing AI subscription instead of
+per-token billing:
+
+- **`openai-subscription`** — OpenAI's Responses API via your ChatGPT
+  Plus/Pro/Team plan. Calls go to `chatgpt.com/backend-api/codex/responses`
+  using the OAuth token `codex login` stored in `~/.codex/auth.json`.
+  No codex subprocess on the request hot path — we just borrow its
+  auth file.
+- **`claude-cli`** — Anthropic's Messages API via your Claude Pro/Max
+  plan. Routes through a persistent `claude -p` subprocess (Anthropic
+  server-enforces against direct OAuth-token reuse, so the subprocess
+  is the only sanctioned path).
+
+### Setup
+
+```bash
+# OpenAI ChatGPT plan (Pro / Plus / Team / Edu)
+npm i -g @openai/codex
+codex login              # one-time browser sign-in
+
+# Claude Pro / Max plan
+# Install Claude Code, then:
+claude auth              # one-time browser sign-in
+```
+
+### Opt in via OPENCUES.md
+
+```yaml
+# Mix and match — pick the best billing path per surface
+agent-rewrite-provider: openai-subscription      # free, ~730ms warm
+agent-rewrite-model: gpt-5.4-mini
+
+transform-blank-provider: claude-cli             # free, ~840ms warm
+transform-blank-model: haiku
+```
+
+### Subscription model allow-list (`openai-subscription`)
+
+| Model | Warm median | Notes |
+|---|---|---|
+| `gpt-5.4-mini` *(default)* | ~600-1000ms | fastest, general use |
+| `gpt-5.4` | ~1.3s | smarter, ~2× slower |
+| `gpt-5.5` | ~1.2s | newest frontier model |
+| `gpt-5.3-codex` | ~1.0s | code-tuned variant |
+
+Every other name (`gpt-5`, `gpt-5-nano`, `gpt-5-codex`, `o3`,
+`o4-mini`, etc.) returns 400 *"not supported when using Codex with a
+ChatGPT account"* on the subscription tier. Use the paid `openai`
+provider for those.
+
+### Measured latency (May 2026, end-to-end via opencues)
+
+| Provider | Per-call median | Min |
+|---|---|---|
+| `claude-cli` (Haiku) | ~840ms | ~840ms |
+| `openai-subscription` (gpt-5.4-mini) | **~730ms** | **~600ms** |
+
+### Architecture notes
+
+**`openai-subscription`** does not spawn the `codex` binary at request
+time. It reads `~/.codex/auth.json` (codex itself refreshes that file
+in place when you use it; we just consume the latest), extracts the
+`access_token` + `account_id`, and POSTs to OpenAI's Responses
+endpoint directly. The `codex` binary is required for the one-time
+`codex login` (the OAuth + PKCE flow that writes auth.json) but is
+NOT on the hot path.
+
+Reference pattern: Zed's ChatGPT subscription provider
+([zed-industries/zed#56811](https://github.com/zed-industries/zed/pull/56811)),
+opencode's codex-auth plugin, LiteLLM. Same OAuth + same endpoint;
+OpenAI's documented "personal local-use" pattern. Don't run this as
+a hosted/shared service.
+
+### When to use which surface
+
+- **Word cues / fluid blank** — HTTP provider (groq / cerebras).
+  Subscription providers are ~600-900ms even warm; well over the
+  ≤500ms budget short surfaces need.
+- **Transform blank** — viable on either subscription. `openai-subscription`
+  at ~730ms median fits inside the 1-3s sweet spot.
+- **Agent rewrite / prompt improver** — best fit for subscription.
+  Latency budget is already in seconds, and the per-call cost is free
+  (covered by your existing AI plan).
+
+### Auto-route exemption
+
+Both subscription providers are never auto-picked. The auto-route only
+walks HTTP providers in `PROVIDER_AUTO_ORDER` (cerebras → groq →
+gemini → anthropic → openai). You must explicitly set
+`<feature>-provider: openai-subscription` or `<feature>-provider: claude-cli`
+in OPENCUES.md. This prevents silently routing time-sensitive surfaces
+(word-cues, fluid-blank) through slower subscription endpoints just
+because you happen to have logged in.
+
+### No HTTP fallback peer
+
+If a subscription provider fails (auth expired, rate-limited, binary
+missing, network blip), the call fails — there's no silent retry
+against an HTTP provider. Run `opencues doctor` to see which
+subscription providers are detected on PATH.
 
 ## Adding a new provider
 

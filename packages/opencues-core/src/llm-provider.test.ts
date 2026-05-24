@@ -1103,3 +1103,48 @@ describe('resolveLLM — claude-cli (CLI-transport, no API key)', () => {
     assert.strictEqual(result?.provider.id, 'cerebras', 'auto-route must pick cerebras, not claude-cli');
   });
 });
+
+describe('resolveLLM — openai-subscription (CLI-transport, no API key)', () => {
+  // Separate provider from `openai`. Lets users mix billing paths per
+  // feature — `agent-rewrite-provider: openai-subscription` (free, via
+  // codex login) alongside `transform-blank-provider: openai` (paid
+  // API, full model catalogue).
+
+  it('resolves to openai-subscription with no apiKey + no fallback (auth is external)', () => {
+    _resetWarnDedupForTesting();
+    const { warnings, restore } = captureWarn();
+    try {
+      const result = resolveLLM({
+        globalProvider: 'openai-subscription',
+        apiKeys: {},
+      });
+      assert.notStrictEqual(result, null);
+      assert.strictEqual(result!.provider.id, 'openai-subscription');
+      assert.strictEqual(result!.provider.transport, 'cli');
+      assert.strictEqual(result!.model, 'gpt-5.4-mini', 'default = fastest subscription-allowed model');
+      assert.strictEqual(result!.apiKey, '');
+      assert.strictEqual(result!.fallback, null);
+      assert.strictEqual(warnings.length, 0);
+    } finally { restore(); }
+  });
+
+  it('per-feature openai-subscription override resolves without env keys', () => {
+    _resetWarnDedupForTesting();
+    const result = resolveLLM({
+      featureProvider: 'openai-subscription',
+      featureModel: 'gpt-5.5',
+      apiKeys: { OPENAI_API_KEY: 'sk-unused-here' },
+    });
+    assert.strictEqual(result?.provider.id, 'openai-subscription');
+    assert.strictEqual(result?.model, 'gpt-5.5');
+  });
+
+  it('openai-subscription is NOT auto-picked over env-key providers', () => {
+    // Subscription auth requires explicit opt-in. A user with codex
+    // installed but who set up CEREBRAS_API_KEY should NOT silently get
+    // routed to OpenAI's slower subscription path.
+    _resetWarnDedupForTesting();
+    const result = resolveLLM({ apiKeys: { CEREBRAS_API_KEY: 'k' } });
+    assert.strictEqual(result?.provider.id, 'cerebras', 'auto-route picks cerebras, not openai-subscription');
+  });
+});
