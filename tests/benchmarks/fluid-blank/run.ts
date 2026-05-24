@@ -86,6 +86,8 @@ interface Args {
   bench?: 'factual' | 'math' | 'unit' | 'color' | 'http' | 'roman' | 'translation' | 'spelling';
   mode: Mode;
   parallel: number;
+  /** Cap on cases to run (after filters). For directional sweeps against slow / throttled providers. */
+  limit?: number;
 }
 
 function parseArgs(): Args {
@@ -111,6 +113,14 @@ function parseArgs(): Args {
         process.exit(2);
       }
       out.parallel = v;
+    }
+    else if (args[i] === '--limit') {
+      const v = parseInt(args[++i], 10);
+      if (Number.isNaN(v) || v < 1) {
+        console.error(`--limit must be a positive integer, got: ${args[i]}`);
+        process.exit(2);
+      }
+      out.limit = v;
     }
     else if (args[i] === '--mode') {
       const v = args[++i];
@@ -437,7 +447,8 @@ async function main() {
     : filter.bench ? `${filter.bench.toUpperCase()}-BENCH (${benchCases[filter.bench].length})`
     : filter.holdout ? 'HOLDOUT'
     : 'main';
-  const selected = filterCases(allCases, filter);
+  const filtered = filterCases(allCases, filter);
+  const selected = filter.limit ? filtered.slice(0, filter.limit) : filtered;
   if (selected.length === 0) {
     console.error(`No cases matched filter ${JSON.stringify(filter)}`);
     process.exit(2);

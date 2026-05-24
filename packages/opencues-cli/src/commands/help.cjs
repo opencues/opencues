@@ -253,6 +253,7 @@ const PROVIDER_DISPLAY = {
   anthropic: 'Claude', openrouter: 'OpenRouter', gemini: 'Gemini',
   'claude-cli': 'Claude (CLI, subscription)',
   'openai-subscription': 'OpenAI (ChatGPT subscription)',
+  'opencode-zen': 'OpenCode Zen',
 };
 
 // Default model fallback for pre-build. Live data sourced from
@@ -266,6 +267,7 @@ const PROVIDER_DEFAULT_MODEL = {
   gemini:     'gemini-3.1-flash-lite',
   'claude-cli': 'haiku',
   'openai-subscription': 'gpt-5.4-mini',
+  'opencode-zen': 'big-pickle',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.

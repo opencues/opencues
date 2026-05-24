@@ -4,10 +4,11 @@
  * Default: re-exports `chat` / `sysUser` / `MODEL` from `./groq-impl`
  * (Groq + gpt-oss-120b). Switch via OPENCUES_BENCH_PROVIDER:
  *
- *   gemini-flash-lite   → ./gemini       (Gemini 3.1 Flash Lite)
- *   cerebras-gpt-oss    → ./cerebras     (gpt-oss-120b on Cerebras)
- *   claude-haiku        → ./claude       (Claude Haiku 4.5)
- *   openai-nano         → ./openai       (gpt-5.4-nano)
+ *   gemini-flash-lite   → ./gemini        (Gemini 3.1 Flash Lite)
+ *   cerebras-gpt-oss    → ./cerebras      (gpt-oss-120b on Cerebras)
+ *   claude-haiku        → ./claude        (Claude Haiku 4.5)
+ *   openai-nano         → ./openai        (gpt-5.4-nano)
+ *   opencode-zen        → ./opencode-zen  (free pool — model via OPENCUES_OPENCODE_ZEN_MODEL)
  *
  * Same chat() signature, same workload — apples-to-apples model
  * comparison without touching the benchmark's other source files.
@@ -18,6 +19,7 @@ import * as geminiImpl from './gemini';
 import * as cerebrasImpl from './cerebras';
 import * as claudeImpl from './claude';
 import * as openaiImpl from './openai';
+import * as opencodeZenImpl from './opencode-zen';
 
 function pickImpl() {
   switch (process.env.OPENCUES_BENCH_PROVIDER) {
@@ -25,6 +27,7 @@ function pickImpl() {
     case 'cerebras-gpt-oss':  return cerebrasImpl;
     case 'claude-haiku':      return claudeImpl;
     case 'openai-nano':       return openaiImpl;
+    case 'opencode-zen':      return opencodeZenImpl;
     default:                  return groqImpl;
   }
 }

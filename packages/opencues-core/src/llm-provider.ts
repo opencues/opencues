@@ -20,9 +20,9 @@
  * model defaults + request/response translators. Nothing else changes.
  */
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-cli';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-cli' | 'opencode-zen';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-cli'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen'];
 
 /**
  * Internal chat-request shape — provider-neutral. Each provider's
@@ -131,6 +131,17 @@ export interface ProviderAdapter {
   readonly defaultModel: string;
   /** The env-var name the boot layer reads to find this provider's API key. */
   readonly envKeyName: string;
+  /**
+   * When true, `resolveLLM` will return a usable tuple even if the API
+   * key is unset — `apiKey` resolves to `''`. The provider's
+   * `buildRequest` is responsible for handling the empty case (e.g.
+   * omitting the Authorization header). Today only `opencode-zen` opts
+   * in: its free model pool authenticates anonymously, paid models
+   * still need a key. Without this flag, the provider is unusable
+   * until a key is set — which would break `blank-llm-provider: free`
+   * for the no-account case the feature was designed for.
+   */
+  readonly optionalAuth?: boolean;
   /**
    * Per-provider reasoning-effort default. Applied when a call site
    * leaves `req.reasoningEffort` undefined. Derived from the May 18
@@ -720,6 +731,258 @@ const CLAUDE_CLI: ProviderAdapter = {
   },
 };
 
+/**
+ * OpenCode Zen — the curated hosted gateway at opencode.ai. OpenAI-shape
+ * chat-completions at `https://opencode.ai/zen/v1/chat/completions`. The
+ * gateway hosts both paid and free models; free models do not require an
+ * API key (verified May 2026 — anonymous POSTs returned 200 + a
+ * `"cost":"0"` field).
+ *
+ * Model IDs are BARE (e.g. `big-pickle`), not `opencode/<id>` despite
+ * what the docs at opencode.ai/docs/zen suggest — the prefixed form
+ * 401s with "Model … is not supported". The `/v1/models` GET endpoint
+ * is the authoritative live list.
+ *
+ * Used by the `blank-llm-provider: free` mode. The pool of free
+ * model IDs is in OPENCODE_ZEN_FREE_POOL (priority order) and
+ * `dispatchWithFreePool` walks it on transient failure with 30s
+ * health-caching of dead entries.
+ *
+ * IMPORTANT: free-tier ToS says collected data may be used to improve
+ * the models. Never route cues / auditors / agent-rewrite through this
+ * adapter — only blanks (the user typed `_`, an opt-in surface).
+ */
+const OPENCODE_ZEN: ProviderAdapter = {
+  id: 'opencode-zen',
+  displayName: 'OpenCode Zen',
+  defaultEndpoint: 'https://opencode.ai/zen/v1/chat/completions',
+  // First entry of the free pool. Used when no model is explicitly set
+  // (most common case for `blank-llm-provider: free`).
+  defaultModel: 'big-pickle',
+  // Optional. Free models work without it; paid models need it.
+  envKeyName: 'OPENCODE_ZEN_API_KEY',
+  optionalAuth: true,
+  // Most free models are reasoning models; low keeps latency reasonable.
+  defaultReasoningEffort: 'low',
+  buildRequest(req, ctx) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // API key is optional — free models authenticate as anonymous.
+    // Don't send a bearer header when the key is empty; some gateways
+    // reject `Authorization: Bearer ` (empty bearer) with 401.
+    if (ctx.apiKey) headers.Authorization = `Bearer ${ctx.apiKey}`;
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort }),
+      headers,
+    };
+  },
+  parseResponse: parseOpenAIResponse,
+};
+
+/**
+ * Free-tier model pool in priority order — first entry is preferred.
+ * `dispatchWithFreePool` walks this list on transient failure.
+ *
+ * Ranking from the May 2026 fluid-blank bench (`tests/results/opencode-zen-free/`,
+ * 30-case sample, fused mode). Order = accuracy-desc; the latency
+ * trade is the user's to accept by editing `free-model-preference:`
+ * in OPENCUES.md if they want speed over accuracy.
+ *
+ *   nemotron-3-super-free   86.7% acc · ~14000ms p50  (winner — slow but solid)
+ *   deepseek-v4-flash-free  46.7% acc · ~5000ms p50   (fast, mediocre)
+ *   big-pickle              40.0% acc · ~5000ms p50   (a deepseek-v4-flash variant — same speed, worse)
+ *
+ * Pool entries removed in the May 2026 sweep:
+ *   - qwen3.6-plus-free     → moved to paid OpenCode Go (HTTP 402)
+ *   - minimax-m2.5-free     → moved to paid OpenCode Go (HTTP 402)
+ *
+ * The `/v1/models` endpoint is the authoritative live list — entries
+ * here that 4xx are health-cached out of rotation for 30s in
+ * dispatchWithFreePool, so a quietly-rotated-out model doesn't break
+ * the pool. Re-bench when the user reports an unexpected miss rate.
+ */
+export const OPENCODE_ZEN_FREE_POOL: readonly string[] = [
+  'nemotron-3-super-free',
+  'deepseek-v4-flash-free',
+  'big-pickle',
+];
+
+/**
+ * In-process health cache for the free pool. Maps model id → epoch ms
+ * when the model is allowed to be retried. Modules that need to
+ * inspect or reset this (tests, doctor) use the exported reset helper.
+ */
+const _opencodeZenHealth = new Map<string, number>();
+
+/** Default cool-down before retrying a model that returned a transient failure. */
+const FREE_POOL_COOLDOWN_MS = 30_000;
+
+/** Test hook — reset health cache between cases. */
+export function _resetOpencodeZenHealthForTesting(): void {
+  _opencodeZenHealth.clear();
+}
+
+/**
+ * Inspect the health cache. Useful for doctor's "which free models are
+ * currently down?" diagnostic and for tests asserting cache state.
+ */
+export function getOpencodeZenHealth(now?: () => number): ReadonlyArray<{ model: string; nextRetryAt: number }> {
+  const n = (now ?? (() => Date.now()))();
+  return Array.from(_opencodeZenHealth.entries())
+    .filter(([_, at]) => at > n)
+    .map(([model, nextRetryAt]) => ({ model, nextRetryAt }));
+}
+
+/**
+ * Dispatch a chat against the OpenCode Zen free pool. Walks
+ * `OPENCODE_ZEN_FREE_POOL` in order; on transient failure (rate-limit,
+ * outage, model-missing) marks the model unhealthy for 30s and tries
+ * the next. Sticky failures (auth, quota) bubble up immediately —
+ * they're config issues, not "try a different model" issues.
+ *
+ * The `req.model` field is overwritten with the pool entry per attempt.
+ *
+ * Returns the assistant text on first success. Throws an Error with
+ * a synthesized message when every pool entry is exhausted.
+ *
+ * `opts.now` lets tests fake the clock; `opts.pool` lets tests pass a
+ * shorter pool. In production both should be omitted.
+ */
+export async function dispatchWithFreePool(
+  httpAdapter: HttpAdapterShape,
+  req: ChatRequest,
+  ctx: { apiKey: string; endpoint?: string },
+  opts: {
+    readonly pool?: readonly string[];
+    readonly now?: () => number;
+    readonly cooldownMs?: number;
+    /** Called with classification input on each failed attempt — used by ProviderHealth wiring. */
+    readonly onFailure?: (info: { model: string; status?: number; body?: string; cause?: unknown }) => void;
+  } = {},
+): Promise<string> {
+  const pool = opts.pool ?? OPENCODE_ZEN_FREE_POOL;
+  const now = opts.now ?? (() => Date.now());
+  const cooldown = opts.cooldownMs ?? FREE_POOL_COOLDOWN_MS;
+  const errors: string[] = [];
+  for (const model of pool) {
+    const downUntil = _opencodeZenHealth.get(model) ?? 0;
+    if (downUntil > now()) continue; // skip — still in cool-down
+    try {
+      const result = await dispatchChat(OPENCODE_ZEN, httpAdapter, { ...req, model }, ctx);
+      // parseResponse already throws on error envelopes — if we got
+      // here with an empty string we treat that as a transient failure
+      // too (some free models return empty body on overload).
+      if (result === '') {
+        _opencodeZenHealth.set(model, now() + cooldown);
+        opts.onFailure?.({ model, body: '' });
+        errors.push(`${model}: empty response`);
+        continue;
+      }
+      _opencodeZenHealth.delete(model); // mark healthy
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${model}: ${msg}`);
+      // Heuristic: if the message smells like auth or quota, bubble
+      // immediately — no other model in the pool will work either.
+      if (/unauthorized|invalid[_ -]?api[_ -]?key|forbidden|payment[_ -]?required|insufficient[_ -]?(?:quota|credit)/i.test(msg)) {
+        opts.onFailure?.({ model, cause: err });
+        throw err;
+      }
+      // Otherwise treat as transient — cool down this model and try next.
+      _opencodeZenHealth.set(model, now() + cooldown);
+      opts.onFailure?.({ model, cause: err });
+    }
+  }
+  throw new Error(`opencode-zen free pool exhausted: ${errors.join('; ')}`);
+}
+
+/**
+ * HTTP-adapter wrapper that walks `OPENCODE_ZEN_FREE_POOL` on transient
+ * failure. Symmetric in shape with `withFallback` — wraps a base
+ * `HttpAdapterShape` and exposes the same `post(url, body, headers)`
+ * surface; pool walking is invisible to the caller.
+ *
+ * Each post:
+ *   1. Parses the JSON body to read `body.model`. If the model isn't in
+ *      the pool, passes through to the base (no walking — the request
+ *      isn't a free-pool request).
+ *   2. Walks the pool from the current model. Skips entries still in
+ *      health cool-down (the same `_opencodeZenHealth` cache that
+ *      `dispatchWithFreePool` uses).
+ *   3. On transient failure (looksTransient + auth/quota-bubble rule)
+ *      marks the model down and retries with the next pool entry's
+ *      model substituted into the body. Auth/quota bubble through
+ *      immediately so ProviderHealth can show the right error class.
+ *
+ * Use this in build-sources.ts when the resolved provider is
+ * `opencode-zen` so existing sources (FluidBlankSource etc.) get
+ * pool-walking for free.
+ */
+export function withFreePool(
+  base: HttpAdapterShape,
+  opts: {
+    readonly pool?: readonly string[];
+    readonly now?: () => number;
+    readonly cooldownMs?: number;
+    readonly onFailure?: (info: { model: string; status?: number; body?: string; cause?: unknown }) => void;
+  } = {},
+): HttpAdapterShape {
+  const pool = opts.pool ?? OPENCODE_ZEN_FREE_POOL;
+  const now = opts.now ?? (() => Date.now());
+  const cooldown = opts.cooldownMs ?? FREE_POOL_COOLDOWN_MS;
+  return {
+    post: async (url, body, headers) => {
+      let parsedBody: { model?: string } | null = null;
+      try { parsedBody = JSON.parse(body) as { model?: string }; }
+      catch { return base.post(url, body, headers); }            // non-JSON body — passthrough
+      const startModel = parsedBody?.model;
+      // Pass through requests for models not in the pool — the wrapper
+      // is opt-in by virtue of the resolved model. This lets the same
+      // adapter be reused safely if a caller mixes routes.
+      if (!startModel || !pool.includes(startModel)) return base.post(url, body, headers);
+      const errors: string[] = [];
+      // Reorder the pool: tried model first, then the rest in pool order.
+      const startIdx = pool.indexOf(startModel);
+      const ordered = [...pool.slice(startIdx), ...pool.slice(0, startIdx)];
+      for (const model of ordered) {
+        const downUntil = _opencodeZenHealth.get(model) ?? 0;
+        if (downUntil > now()) continue;
+        const attemptBody = model === startModel
+          ? body
+          : JSON.stringify({ ...parsedBody, model });
+        try {
+          const raw = await base.post(url, attemptBody, headers);
+          // Inspect for OpenAI-error envelope without throwing — the
+          // wrapper sits BELOW parseResponse, so error envelopes still
+          // come back as raw JSON. looksTransient handles both raw
+          // bodies and parsed-out envelopes.
+          if (looksTransient(raw)) {
+            _opencodeZenHealth.set(model, now() + cooldown);
+            opts.onFailure?.({ model, body: raw });
+            errors.push(`${model}: transient`);
+            continue;
+          }
+          _opencodeZenHealth.delete(model);
+          return raw;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // Auth / quota are sticky — bubble immediately. No other
+          // pool entry can rescue.
+          if (/unauthorized|invalid[_ -]?api[_ -]?key|forbidden|payment[_ -]?required|insufficient[_ -]?(?:quota|credit)/i.test(msg)) {
+            opts.onFailure?.({ model, cause: err });
+            throw err;
+          }
+          _opencodeZenHealth.set(model, now() + cooldown);
+          opts.onFailure?.({ model, cause: err });
+          errors.push(`${model}: ${msg}`);
+        }
+      }
+      throw new Error(`opencode-zen free pool exhausted: ${errors.join('; ')}`);
+    },
+  };
+}
+
 const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   groq: GROQ,
   openrouter: OPENROUTER,
@@ -729,6 +992,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   anthropic: ANTHROPIC,
   cerebras: CEREBRAS,
   'claude-cli': CLAUDE_CLI,
+  'opencode-zen': OPENCODE_ZEN,
 };
 
 /**
@@ -1038,6 +1302,9 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   // back to. If the subscription daemon dies, the user picks a different
   // provider in OPENCUES.md.
   'claude-cli': undefined,
+  // opencode-zen has its own pool-walking dispatcher
+  // (dispatchWithFreePool); no cross-provider fallback needed.
+  'opencode-zen': undefined,
 };
 
 /**
@@ -1199,6 +1466,13 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   }
   const apiKey = opts.apiKeys[provider.envKeyName];
   if (!apiKey) {
+    // Providers that opt into anonymous auth (today: opencode-zen for
+    // the free model pool) resolve with apiKey: '' instead of bailing.
+    // The provider's buildRequest is responsible for omitting the
+    // Authorization header when the key is empty.
+    if (provider.optionalAuth) {
+      return { provider, model: resolvedModel, endpoint, apiKey: '', fallback: null };
+    }
     // Only warn when a provider was EXPLICITLY chosen (any tier set it).
     // If no provider was set and we defaulted to cerebras, the user simply
     // hasn't configured any LLM yet — that's "OpenCues without LLM is

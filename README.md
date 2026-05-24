@@ -163,9 +163,17 @@ Full config reference, scalar table, and authoring guide: [`docs/configuration.m
 
 ## LLM providers
 
-OpenCues supports **six providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, Gemini. Set the env key for whichever you want; pick different providers per feature (word-cues vs fluid-blank vs transform-blank vs agent-rewrite) in `~/.cues/OPENCUES.md`.
+OpenCues supports **seven providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, Gemini, and OpenCode Zen. Set the env key for whichever you want; pick different providers per feature (word-cues vs fluid-blank vs transform-blank vs agent-rewrite) in `~/.cues/OPENCUES.md`.
 
 Setting both `GROQ_API_KEY` and `CEREBRAS_API_KEY` enables automatic 429/5xx failover between them — same `gpt-oss-120b` weights mean no quality shift when one provider rate-limits.
+
+### Free mode (no API key)
+
+Add `blank-llm-provider: free` to `~/.cues/OPENCUES.md` and **blanks** (FluidBlank / TransformBlank / ConfigIntent) route through [OpenCode Zen](https://opencode.ai/zen)'s free model pool — anonymously, no key required. The runtime walks the pool on transient failures and surfaces the resolved model in the status line.
+
+> ⚠️ **Data warning.** OpenCode Zen's free tier ToS says **your inputs may be used to train the underlying models**. Free mode is **blank-only by design** — cues, auditors, agent-rewrite (which run automatically on prose) never use this path, and `llm-provider: free` (the cue path) is refused at startup. Only `_` triggers go through the free pool, and only the surrounding context window — but treat anything you type next to a `_` in free mode as public.
+
+> ⚠️ **The pool changes.** Free models on OpenCode Zen rotate in and out — promotions end, models move behind paid tiers, new ones arrive. As of May 2026 the working set is `big-pickle` + `deepseek-v4-flash-free` + `nemotron-3-super-free`; the other two we benched (`qwen3.6-plus-free`, `minimax-m2.5-free`) have already moved to the paid OpenCode Go tier. The runtime health-caches dead entries for 30s and walks the rest, but the **canonical live list** is `GET https://opencode.ai/zen/v1/models` — re-check before relying on any specific model.
 
 Per-provider setup, per-feature routing, and the bench data behind the recommendations: [`docs/guides/llm-providers.md`](docs/guides/llm-providers.md).
 

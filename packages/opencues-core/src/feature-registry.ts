@@ -333,6 +333,30 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
 
+  // ── Provider routing ─────────────────────────────────────────────
+  {
+    scalar: 'blank-llm-provider',
+    camelCase: 'blankLlmProvider',
+    description: 'LLM provider used for blank-class sources (FluidBlank / TransformBlank / ConfigIntent / keyword blanks). Inherits llm-provider by default.',
+    menuTip: 'Pick a separate provider for blanks (the opt-in `_` surface). `free` routes blanks through OpenCode Zen\'s free model pool — no API key, but the provider trains on data. Cues + auditors are unaffected by this setting.',
+    values: [
+      { id: 'inherit', description: 'Default — blanks use the same provider as llm-provider' },
+      { id: 'free',    description: 'OpenCode Zen free pool (no API key required; providers train on blank inputs). Cues + auditors never use this.' },
+      // The seven concrete provider ids stay parser-valid but are hidden
+      // from the menu — picking a specific paid provider per-surface is
+      // an advanced override better edited in OPENCUES.md directly. The
+      // menu's job is the inherit-vs-free split.
+      { id: 'groq',         description: 'Pin blanks to Groq',         exposeInMenu: false },
+      { id: 'openrouter',   description: 'Pin blanks to OpenRouter',   exposeInMenu: false },
+      { id: 'gemini',       description: 'Pin blanks to Gemini',       exposeInMenu: false },
+      { id: 'openai',       description: 'Pin blanks to OpenAI',       exposeInMenu: false },
+      { id: 'anthropic',    description: 'Pin blanks to Anthropic',    exposeInMenu: false },
+      { id: 'cerebras',     description: 'Pin blanks to Cerebras',     exposeInMenu: false },
+      { id: 'claude-cli',   description: 'Pin blanks to claude-cli',   exposeInMenu: false },
+      { id: 'opencode-zen', description: 'Pin blanks to opencode-zen', exposeInMenu: false },
+    ],
+  },
+
   // ── Context injection ────────────────────────────────────────────
   {
     scalar: 'ambient-context-mode',

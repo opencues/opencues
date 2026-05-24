@@ -137,6 +137,20 @@ export interface OpenCuesState {
    *   space) for users who DO want to trigger a blank.
    */
   readonly blankTriggerMode: 'immediate' | 'spaced';
+  /**
+   * Separate provider for blank-class sources (FluidBlank / TransformBlank
+   * / ConfigIntent / keyword blanks). `inherit` (default) reuses
+   * `llm-provider`. `free` routes blanks through OpenCode Zen's free
+   * pool — no API key, but providers train on data. Cues + auditors
+   * are unaffected.
+   *
+   * Stored as the raw scalar string (not a typed union) because the set
+   * of valid provider ids is owned by `@opencues/core`'s ProviderId
+   * union — pinning the union here would force config-loader to import
+   * that and create a circular structural dependency. Resolver maps
+   * 'free' → 'opencode-zen' at dispatch time.
+   */
+  readonly blankLlmProvider: string;
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
   /**
@@ -160,6 +174,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   userContextMode: 'off',
   blankTriggerMode: 'immediate',
+  blankLlmProvider: 'inherit',
   settings: new Map(),
   definitions: new Map(),
 };
@@ -198,6 +213,18 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : 'off';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
+  // blank-llm-provider — `inherit` (default), `free` (opencode-zen
+  // pool), or any concrete provider id. Stored raw; resolver translates
+  // `free` → `opencode-zen` at dispatch time. Unknown values fall back
+  // to `inherit` rather than silently picking an invalid provider —
+  // protects users from typos that would otherwise silently disable all
+  // blanks.
+  const blankProviderRaw = get('blank-llm-provider', 'inherit').toLowerCase();
+  const VALID_BLANK_PROVIDERS = new Set([
+    'inherit', 'free',
+    'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen',
+  ]);
+  const blankLlmProvider = VALID_BLANK_PROVIDERS.has(blankProviderRaw) ? blankProviderRaw : 'inherit';
   // Menu definitions: registry-derived by default, with optional
   // file-level overrides. The @opencues/core FEATURES + MENU_TUNABLES
   // registry is the single source of truth; defaults/OPENCUES.md ships
@@ -210,7 +237,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, blankTriggerMode, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, blankTriggerMode, blankLlmProvider, settings, definitions };
 }
 
 /**
@@ -491,6 +518,11 @@ export class ConfigLoader {
         return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
       })(),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
+      blankLlmProvider: ((): string => {
+        const v = get('blank-llm-provider', 'inherit').toLowerCase();
+        const VALID = new Set(['inherit', 'free', 'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen']);
+        return VALID.has(v) ? v : 'inherit';
+      })(),
       settings: newSettings as ReadonlyMap<string, string>,
       definitions: cur.definitions,
     };

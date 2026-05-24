@@ -395,10 +395,35 @@ export class Resolver {
       apiKey: this.options.apiKey,
       endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
-      // Global tier (read once per build).
-      globalProvider: settings.get('llm-provider'),
+      // Global tier (read once per build). `llm-provider: free` is
+      // rejected here — `free` is a blank-only opt-in (see
+      // `blank-llm-provider`). Routing cues + auditors through the
+      // OpenCode Zen free pool would leak prose to a provider that
+      // trains on inputs; we refuse rather than silently allow it.
+      globalProvider: (() => {
+        const raw = settings.get('llm-provider');
+        if (raw?.toLowerCase() === 'free') {
+          this.adapter.log('warn', 'llm-provider: free is blank-only — ignoring (set blank-llm-provider: free instead). Cues + auditors fall back to inherit.');
+          return undefined;
+        }
+        return raw;
+      })(),
       globalModel: settings.get('llm-model') ?? this.options.defaultModel,
       globalEndpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
+      // Blank-class override tier — applies only to FluidBlank /
+      // TransformBlank / ConfigIntent / keyword BlankSource (the
+      // user-opt-in `_` surface). Cues + auditors never read these.
+      // `free` is translated to `opencode-zen` (the underlying provider
+      // adapter id); other values flow through verbatim. `inherit`
+      // falls through to globalProvider at the resolveFor layer.
+      blankGlobalProvider: (() => {
+        const v = this.configLoader.opencuesState.blankLlmProvider;
+        if (v === 'free') return 'opencode-zen';
+        if (v === 'inherit') return undefined;
+        return v;
+      })(),
+      blankGlobalModel: settings.get('blank-llm-model'),
+      blankGlobalEndpoint: settings.get('blank-llm-endpoint'),
       // Per-feature tier.
       wordCues: featureLLM(settings, 'word-cues'),
       fluidBlank: featureLLM(settings, 'fluid-blank'),
