@@ -315,7 +315,15 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `getCursorOffset:function(){return ${iz}.offset;},` +
     `readFile:function(p){return new Promise(function(res){try{${requireFn}("fs").readFile(p,"utf8",function(err,data){res(err?null:data);});}catch(__ocFe){res(null);}});},` +
     `readDir:function(p){return new Promise(function(res){try{${requireFn}("fs").readdir(p,{withFileTypes:true},function(err,entries){if(err){res(null);return;}res(entries.map(function(e){return{name:e.name,isDirectory:e.isDirectory()};}));});}catch(__ocDe){res(null);}});},` +
-    `writeFile:function(p,c){return new Promise(function(res,rej){try{${requireFn}("fs").writeFile(p,c,"utf8",function(err){err?rej(err):res();});}catch(__ocWe){rej(__ocWe);}});},` +
+    // Synchronous writeFile. The Promise-returning shape keeps the runtime
+    // contract (HostInfo.writeFile? returns Promise<void>) but the actual
+    // write happens INSIDE the call, not on a microtask. Closes the
+    // race between Statusline.maybeWrite (called from onRender during
+    // dispatch) and the harness's `expect` poll after waitForEvent. On
+    // CC, where applyRender is called sync from the patched renderedValue,
+    // the sync write means by the time the runtime emits highlight.activated
+    // the status JSON file is already current on disk.
+    `writeFile:function(p,c){try{${requireFn}("fs").writeFileSync(p,c,"utf8");return Promise.resolve();}catch(__ocWe){return Promise.reject(__ocWe);}},` +
     // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
     // a ProcessHandle whose .result resolves on exit (or never, if detached).
     `pushText:function(t,c){try{if(globalThis.__oc_pushHostText)globalThis.__oc_pushHostText(t,c);}catch(__ocXe){}},` +

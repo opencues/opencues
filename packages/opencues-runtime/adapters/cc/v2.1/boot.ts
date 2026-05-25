@@ -279,47 +279,82 @@ export function boot(host: HostInfo): BootResult {
       if (lastSeenText !== null) return lastSeenCursor;
       try { return host.getCursorOffset(); } catch { return 0; }
     },
-    setText: (text) => { pendingText = text; },
-    setCursorOffset: (offset) => { pendingCursor = offset; },
+    setText: (text) => {
+      const prev = lastSeenText;
+      pendingText = text;
+      lastSeenText = text;
+      // CC's J68 (the InputZone parent on 2.1.150) discards WH's return,
+      // so the consumePendingRender → return-new-IZ pattern can't actually
+      // propagate text changes. Only host.pushText reaches the parent's
+      // onChange. Commit immediately + fire text.changed for runtime
+      // subscribers (Statusline, resolver onTextChange, event-bridge).
+      if (host.pushText) {
+        host.pushText(text, lastSeenCursor);
+        pendingText = null;
+      }
+      if (prev !== null && visible(prev) !== visible(text)) {
+        const event: TextChangeEvent = {
+          text, cursorOffset: lastSeenCursor, previousText: prev, source: 'runtime',
+        };
+        for (const handler of textHandlers) {
+          try { handler(event); } catch (err) { log('error', 'setText textChange handler error', err); }
+        }
+      }
+      // Synchronously fire renderHandlers (Statusline.maybeWrite etc.)
+      // so any state-derived snapshot file lands the same tick as the
+      // setText call. Without this, Cycling.applyAltCycle's def.currentIndex
+      // update doesn't reach /tmp/opencues-status-<pid>.json until React
+      // commits the kickRender + applyRender chain — 96-500ms later. The
+      // harness's `expect currentAltIndex equals 1` polls the file
+      // immediately after waitForEvent on text.changed, before that
+      // chain settles. Synthetic ctx is fine: render handlers that
+      // return directives don't actually mutate the buffer here (no
+      // applyDirectives call) — they just observe state.
+      const synthCtx: RenderContext = { text, cursor: lastSeenCursor, externalHighlights: [] };
+      for (const handler of renderHandlers) {
+        try { handler(synthCtx); } catch (err) {
+          log('error', 'setText synthetic-render handler error', err);
+        }
+      }
+    },
+    setCursorOffset: (offset) => {
+      pendingCursor = offset;
+      lastSeenCursor = offset;
+      // Same rationale as setText. CC has no onCursorChange path that
+      // reaches the parent, but the cursor moves through pushText's
+      // cursor arg. Use the existing pushText with current text.
+      if (host.pushText && lastSeenText !== null) {
+        host.pushText(lastSeenText, offset);
+        pendingCursor = null;
+      }
+    },
     forceRender: () => {
       pendingRender = true;
-      // Outside dispatch (timer-driven writes — spinner, agent-task refresh,
-      // Navigation highlight moves) the runtime needs to nudge the host to
-      // render. Two paths:
+      // CC's J68 discards WH's return value, so consumePendingRender's
+      // ZWS-toggled-IZ trick never reaches the parent. We MUST go through
+      // host.forceRender (S7-wired __oc_kickRender) to bump the parent's
+      // useState and trigger a real re-render. Both inside-dispatch
+      // (Navigation activating a highlight) and outside-dispatch (timer-
+      // driven spinner, agent-task refresh) take the same path.
       //
-      //   1. PendingText set → commit it via host.pushText so the buffer
-      //      content actually updates. host.pushText also kicks the parent
-      //      re-render under the hood (via S7's __oc_kickRender or, on
-      //      legacy CC, a ZWS toggle). Spinner ticks + agent-task spans
-      //      take this path.
-      //
-      //   2. No pendingText → pure re-render request (Navigation moved the
-      //      highlight; no buffer change needed). Call host.forceRender —
-      //      patches with S7 wired call __oc_kickRender, bumping a
-      //      useState in the InputZone parent and forcing a parent
-      //      re-render. applyRender then emits fresh ANSI for the new
-      //      hlState without any text mutation. Gemini-style.
-      //
-      // Older CC (S7 missing) → host.forceRender is a no-op; we fall back
-      // to host.pushText(lastSeenText) which still works via the ZWS toggle
-      // in __oc_pushHostText.
-      if (!insideDispatch) {
-        if (pendingText !== null && host.pushText) {
-          const text = pendingText;
-          const cursor = pendingCursor ?? undefined;
-          try { host.pushText(text, cursor); } catch (err) { log('error', 'async pushText (forceRender drain) failed', err); }
-          pendingText = null;
-          pendingCursor = null;
-          pendingRender = false;
-          lastSeenText = text;
-        } else if (host.forceRender) {
-          try { host.forceRender(); } catch (err) { log('error', 'host.forceRender (kick) failed', err); }
-          pendingRender = false;
-        } else if (host.pushText && lastSeenText !== null) {
-          // Last resort: ZWS-toggle the current text via pushText.
-          try { host.pushText(lastSeenText, lastSeenCursor); } catch { /* swallow */ }
-          pendingRender = false;
-        }
+      // If pendingText is queued (e.g. setText was called by a host
+      // without pushText), drain it through pushText for completeness.
+      // S7-missing fallback: host.forceRender is undefined, so we ZWS-
+      // toggle the current text via pushText to defeat React equality.
+      if (pendingText !== null && host.pushText) {
+        const text = pendingText;
+        const cursor = pendingCursor ?? undefined;
+        try { host.pushText(text, cursor); } catch (err) { log('error', 'forceRender pushText drain failed', err); }
+        pendingText = null;
+        pendingCursor = null;
+        lastSeenText = text;
+      }
+      if (host.forceRender) {
+        try { host.forceRender(); } catch (err) { log('error', 'host.forceRender (kick) failed', err); }
+        pendingRender = false;
+      } else if (host.pushText && lastSeenText !== null) {
+        try { host.pushText(lastSeenText, lastSeenCursor); } catch { /* swallow */ }
+        pendingRender = false;
       }
     },
     registerKeyHandler: (cb): Unsubscribe => {
@@ -355,9 +390,31 @@ export function boot(host: HostInfo): BootResult {
     // and Navigation deactivates the highlight.
     pushText: host.pushText
       ? (text: string, cursor?: number): void => {
+          const prev = lastSeenText;
           lastSeenText = text;
           if (typeof cursor === 'number') lastSeenCursor = cursor;
           host.pushText!(text, cursor);
+          // Fire text.changed with source='runtime' so consumers
+          // (event-bridge, Resolver onTextChange, etc.) see the swap. The
+          // host's next applyRender will also call checkTextDrift, but
+          // by then lastSeenText already matches the new text and drift
+          // detection skips. Cycling alt-swaps on CC go through pushText —
+          // without this emit, the harness's text.changed assertion (the
+          // canonical "buffer mutated" signal) never sees the post-cycle
+          // text, even though the visible buffer actually changed.
+          if (prev !== null && visible(prev) !== visible(text)) {
+            const event: TextChangeEvent = {
+              text,
+              cursorOffset: typeof cursor === 'number' ? cursor : lastSeenCursor,
+              previousText: prev,
+              source: 'runtime',
+            };
+            for (const handler of textHandlers) {
+              try { handler(event); } catch (err) {
+                log('error', 'pushText textChange handler error', err);
+              }
+            }
+          }
         }
       : undefined,
     log,

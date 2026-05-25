@@ -116,11 +116,24 @@ export class Statusline {
 
   /** Unsub fn for the ProviderHealth bus. Null when no health bus wired. */
   private _phUnsub: (() => void) | null = null;
+  /** Unsub fn for the hlState change bus. */
+  private _hlUnsub: (() => void) | null = null;
 
   subscribe(): void {
     this._unsub = this.adapter.onRender(ctx => {
       this.maybeWrite(ctx);
       return null;
+    });
+    // Subscribe to hlState changes too. The onRender path runs the FIRST
+    // applyRender after the host re-renders, which on CC happens AFTER
+    // React commits the state-bumper kick. The agentic harness's
+    // `expect path:active equals true` polls the status file the same
+    // tick the highlight.activated event is observed — without a
+    // direct hlState subscription, the file is one React-render-cycle
+    // behind. Subscribing here lets us flush the snapshot synchronously
+    // when activate/deactivate fires.
+    this._hlUnsub = this.hlState.onChange(() => {
+      this.maybeWrite({ text: this.hlState.text, cursor: 0, externalHighlights: [] });
     });
     // Mirror ProviderHealth changes into the statusline immediately —
     // sticky errors should be visible without the user having to type.
@@ -137,6 +150,7 @@ export class Statusline {
   unsubscribe(): void {
     if (this._unsub) { this._unsub(); this._unsub = null; }
     if (this._phUnsub) { this._phUnsub(); this._phUnsub = null; }
+    if (this._hlUnsub) { this._hlUnsub(); this._hlUnsub = null; }
   }
 
   /** Exposed for testing — build the payload from current state + render ctx. */
