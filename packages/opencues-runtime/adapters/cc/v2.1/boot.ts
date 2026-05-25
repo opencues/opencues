@@ -71,6 +71,14 @@ export interface HostInfo {
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   /** Optional: async text push (calls captured onChange + onOffsetChange). */
   pushText?(text: string, cursor?: number): void;
+  /**
+   * Optional: parent-component React-state bumper. When the patch's S7
+   * seam is wired, this calls the InputZone-parent's `useState` setter,
+   * forcing a parent re-render without changing the buffer. Used for
+   * Navigation highlight moves + any other pure-redraw trigger. Falls
+   * back to host.pushText(lastSeenText) when undefined.
+   */
+  forceRender?(): void;
   /** Optional: absolute path to the TTS script (CC ships speak.sh + SpeakCtl.exe colocated in <CC_FORK>/.cues/scripts/). */
   ttsScriptPath?: string;
   /** Optional: TTS rate (-10 to 10) passed as 2nd arg to the script. Defaults to 2. */
@@ -275,18 +283,43 @@ export function boot(host: HostInfo): BootResult {
     setCursorOffset: (offset) => { pendingCursor = offset; },
     forceRender: () => {
       pendingRender = true;
-      // Outside dispatch (timer-driven writes — spinner, agent-task refresh)
-      // drain pendingText/pendingCursor through host.pushText so the host
-      // actually paints. Without this, async setText calls just buffer the
-      // flag until the next keystroke, breaking BlankLoading animation +
-      // any other async repaint on 2.1.150 (S6 not available).
-      if (!insideDispatch && host.pushText) {
-        const base = pendingText ?? lastSeenText ?? '';
-        try { host.pushText(base, pendingCursor ?? undefined); } catch (err) { log('error', 'async pushText (forceRender) failed', err); }
-        pendingText = null;
-        pendingCursor = null;
-        pendingRender = false;
-        lastSeenText = base;
+      // Outside dispatch (timer-driven writes — spinner, agent-task refresh,
+      // Navigation highlight moves) the runtime needs to nudge the host to
+      // render. Two paths:
+      //
+      //   1. PendingText set → commit it via host.pushText so the buffer
+      //      content actually updates. host.pushText also kicks the parent
+      //      re-render under the hood (via S7's __oc_kickRender or, on
+      //      legacy CC, a ZWS toggle). Spinner ticks + agent-task spans
+      //      take this path.
+      //
+      //   2. No pendingText → pure re-render request (Navigation moved the
+      //      highlight; no buffer change needed). Call host.forceRender —
+      //      patches with S7 wired call __oc_kickRender, bumping a
+      //      useState in the InputZone parent and forcing a parent
+      //      re-render. applyRender then emits fresh ANSI for the new
+      //      hlState without any text mutation. Gemini-style.
+      //
+      // Older CC (S7 missing) → host.forceRender is a no-op; we fall back
+      // to host.pushText(lastSeenText) which still works via the ZWS toggle
+      // in __oc_pushHostText.
+      if (!insideDispatch) {
+        if (pendingText !== null && host.pushText) {
+          const text = pendingText;
+          const cursor = pendingCursor ?? undefined;
+          try { host.pushText(text, cursor); } catch (err) { log('error', 'async pushText (forceRender drain) failed', err); }
+          pendingText = null;
+          pendingCursor = null;
+          pendingRender = false;
+          lastSeenText = text;
+        } else if (host.forceRender) {
+          try { host.forceRender(); } catch (err) { log('error', 'host.forceRender (kick) failed', err); }
+          pendingRender = false;
+        } else if (host.pushText && lastSeenText !== null) {
+          // Last resort: ZWS-toggle the current text via pushText.
+          try { host.pushText(lastSeenText, lastSeenCursor); } catch { /* swallow */ }
+          pendingRender = false;
+        }
       }
     },
     registerKeyHandler: (cb): Unsubscribe => {

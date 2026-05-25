@@ -100,6 +100,44 @@ function findStatusLineRefresh(source: string): StatusLineRefreshMatch | null {
   };
 }
 
+// ─── S7: RenderKick ────────────────────────────────────────────────────
+// Captures the InputZone-parent component (e.g. `function J68({inputState:H,
+// ...})` in 2.1.150) so we can inject a useState bumper at its body start.
+// The bumper's setter is exposed as `globalThis.__oc_kickRender`. Calling
+// the kick triggers a parent re-render → the whole input subtree re-renders →
+// applyRender sees fresh runtime state (highlight position, dim ranges) and
+// emits new ANSI without needing to change the buffer text.
+//
+// Eliminates the ZWS-toggle hack in `__oc_pushHostText`: with a real state-
+// bumper available, force-renders no longer require polluting the buffer
+// with invisible chars to defeat React's string-equality bail-out. Same
+// pattern Gemini's adapter uses (see `useOpenCuesRenderTick`).
+//
+// S7 is OPTIONAL — if missing, `__oc_pushHostText` falls back to the ZWS
+// toggle path. The patch logs a warning but doesn't fail.
+//
+// Capture groups: (1) full match through the opening `{` of the function
+// body, (2) function name, (3) inputState param name, (4) the React
+// namespace local used inside the body (first `X.useRef(` we see).
+const RENDER_KICK_REGEX =
+  /(function ([$\w]+)\(\{inputState:([$\w]+),[\s\S]*?\)\{)[\s\S]{0,500}?([$\w]+)\.useRef\(/;
+
+interface RenderKickMatch {
+  readonly injectAt: number;     // position AFTER the opening `{` of the function body
+  readonly funcName: string;
+  readonly reactNs: string;
+}
+
+function findRenderKick(source: string): RenderKickMatch | null {
+  const m = source.match(RENDER_KICK_REGEX);
+  if (!m || m.index === undefined) return null;
+  return {
+    injectAt: m.index + m[1].length,
+    funcName: m[2],
+    reactNs: m[4],
+  };
+}
+
 // ─── S3: RenderedValue ─────────────────────────────────────────────────
 const RV_RAINBOW = /renderedValue:\(function\(\)\{/;
 const RV_5 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
@@ -194,6 +232,19 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     );
   }
 
+  // S7 is OPTIONAL — if missing, host.forceRender becomes a no-op and
+  // __oc_pushHostText falls back to the ZWS-toggle path. With S7 found,
+  // we inject a useState bumper into the InputZone-parent component and
+  // expose its setter as globalThis.__oc_kickRender — Gemini-style.
+  const s7 = findRenderKick(oldFile);
+  if (!s7) {
+    console.warn(
+      'OpenCues v2 installer: S7 (RenderKick) not found. ' +
+      '__oc_pushHostText falls back to ZWS toggling. ' +
+      'Update RENDER_KICK_REGEX to restore explicit render-kick on this CC version.',
+    );
+  }
+
   // Bare specifiers — Node's CJS resolver walks up from cli.js
   // (~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js)
   // and finds @opencues/{runtime,core} in the fork's own
@@ -268,6 +319,11 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
     // a ProcessHandle whose .result resolves on exit (or never, if detached).
     `pushText:function(t,c){try{if(globalThis.__oc_pushHostText)globalThis.__oc_pushHostText(t,c);}catch(__ocXe){}},` +
+    // Render-kick: bumps a useState in the InputZone parent (S7 injected
+    // useState). Triggers a React re-render even if text/cursor unchanged,
+    // letting the runtime force ANSI redraws (Navigation highlight moves,
+    // dim updates) without polluting the buffer with ZWS toggles.
+    `forceRender:function(){try{if(globalThis.__oc_kickRender)globalThis.__oc_kickRender();}catch(__ocFRe){}},` +
     // Sandbox + audit log via the shared @opencues/runtime helpers.
     // Path-validate every arg against the CUES roots, refuse on
     // escape, append to <root>/.opencues-log on every exit.
@@ -402,9 +458,25 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `if(globalThis.__oc&&!globalThis.__oc.failed){` +
     // Refresh global async-text-push handle each dispatch. Async modules
     // (BlankFill, Resolver) call this to commit text outside the dispatch
-    // return path. K = onChange, B = onOffsetChange — both captured fresh
-    // per-render via closure scope.
-    `globalThis.__oc_pushHostText=function(__ocPt,__ocPc){try{var __ocPv=${iz}.text||"";var __ocPhasB=__ocPv.indexOf("\\u200B")>=0;var __ocPtc=__ocPhasB?"\\u200C":"\\u200B";${s2!.bindings.onChangeParam}(__ocPt+__ocPtc);if(typeof __ocPc==="number"&&${s2!.bindings.onOffsetChangeVar})${s2!.bindings.onOffsetChangeVar}(__ocPc);}catch(__ocPe){}};` +
+    // return path. onChangeParam = parent's onChange, onOffsetChangeVar =
+    // local onOffsetChange handler — both captured fresh per-render via
+    // closure scope.
+    //
+    // Prefer the kick path: if S7 wired a useState bumper, call the parent's
+    // onChange with RAW text (no ZWS), then kick to force re-render even
+    // if the text happens to equal the previous string. Falls back to the
+    // ZWS toggle when S7 was not found (legacy CC versions / missed seam).
+    `globalThis.__oc_pushHostText=function(__ocPt,__ocPc){try{` +
+    `if(globalThis.__oc_kickRender){` +
+      `${s2!.bindings.onChangeParam}(__ocPt);` +
+      `globalThis.__oc_kickRender();` +
+    `}else{` +
+      // Fallback: ZWS toggle defeats React's string-equality bail-out.
+      `var __ocPv=${iz}.text||"";var __ocPhasB=__ocPv.indexOf("\\u200B")>=0;var __ocPtc=__ocPhasB?"\\u200C":"\\u200B";` +
+      `${s2!.bindings.onChangeParam}(__ocPt+__ocPtc);` +
+    `}` +
+    `if(typeof __ocPc==="number"&&${s2!.bindings.onOffsetChangeVar})${s2!.bindings.onOffsetChangeVar}(__ocPc);` +
+    `}catch(__ocPe){}};` +
     `if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","dispatch in",{key:${ev}.key,ctrl:!!${ev}.ctrl,alt:!!${ev}.alt,meta:!!${ev}.meta,option:!!${ev}.option,shift:!!${ev}.shift,mtext:${iz}.text,moff:${iz}.offset});` +
     `if(globalThis.__oc.dispatchKey(${ev},${iz}.text,${iz}.offset)){` +
     // Pass fresh m.text/m.offset to consumePendingRender — the closure in
@@ -439,13 +511,30 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     ? `${oldFile.slice(s6.startIndex, s6.endIndex)},__oc_ts6=(globalThis.__oc_refreshHostStatusline=${s6.callbackVar})`
     : null;
 
+  // S7 injection: prepend a useState bumper at the start of the InputZone
+  // parent's body. Captures the setter as globalThis.__oc_kickRender so
+  // the runtime can imperatively trigger a parent re-render. React
+  // re-running through the same renderedValue path lets applyRender emit
+  // fresh ANSI (with the latest hlState / dim ranges) without needing to
+  // change the buffer text. Replaces the ZWS-toggle hack.
+  const s7Injection = s7
+    ? `var __ocS7=${s7.reactNs}.useState(0)[1];globalThis.__oc_kickRender=function(){try{__ocS7(function(n){return(n+1)|0;});}catch(__ocS7e){}};`
+    : null;
+
   // Apply in descending position order so each application leaves earlier
-  // indices valid. S6 > S3 > S1 in v2.1.110.
+  // indices valid. Positions in 2.1.150: S6 (~12M) > S3 (~3.97M) > S7 (~3.98M) > S1 (~3.97M),
+  // but we compare dynamically since version-to-version drift can reorder.
+  // Sort the available injection sites and apply right-to-left.
+  type Edit = { start: number; end: number; replacement: string };
+  const edits: Edit[] = [];
+  if (s6 && s6Replacement) edits.push({ start: s6.startIndex, end: s6.endIndex, replacement: s6Replacement });
+  if (s7 && s7Injection) edits.push({ start: s7.injectAt, end: s7.injectAt, replacement: s7Injection });
+  edits.push({ start: s3!.startIndex, end: s3!.endIndex, replacement: s3Wrapper });
+  edits.push({ start: s1!.startIndex, end: s1!.endIndex, replacement: s1Bootstrap });
+  edits.sort((a, b) => b.start - a.start);
   let out = oldFile;
-  if (s6 && s6Replacement) {
-    out = out.slice(0, s6.startIndex) + s6Replacement + out.slice(s6.endIndex);
+  for (const e of edits) {
+    out = out.slice(0, e.start) + e.replacement + out.slice(e.end);
   }
-  out = out.slice(0, s3!.startIndex) + s3Wrapper + out.slice(s3!.endIndex);
-  out = out.slice(0, s1!.startIndex) + s1Bootstrap + out.slice(s1!.endIndex);
   return out;
 }

@@ -249,6 +249,44 @@ export function findStatusLineRefresh(source: string): SeamMatch | null {
   };
 }
 
+// ─── S7: RenderKick ───────────────────────────────────────────────────────
+//
+// Shape: the React component that consumes InputStateHandler's return —
+// in 2.1.150:
+//   function J68({inputState:H, ...}){
+//     let {handleKeyDown:Y, renderedValue:f, cursorLine:O, ...} = H;
+//     ... w = BV.useRef(null), D = BV.useCallback(...) ...
+//   }
+//
+// The patch injects a useState bumper at the start of this function's body
+// (right after the opening `{`) and exposes the setter as
+// globalThis.__oc_kickRender. Calling the kick re-renders the parent
+// without changing the buffer — Gemini-style React-state nudge. Replaces
+// the ZWS-toggle hack in __oc_pushHostText for the force-render-with-no-
+// text-change case.
+//
+// Capture: (1) full prefix through `){`, (2) function name, (3) inputState
+// param, (4) the React namespace local used inside the body.
+
+const RENDER_KICK_REGEX =
+  /(function ([$\w]+)\(\{inputState:([$\w]+),[\s\S]*?\)\{)[\s\S]{0,500}?([$\w]+)\.useRef\(/;
+
+export function findRenderKick(source: string): SeamMatch | null {
+  const m = source.match(RENDER_KICK_REGEX);
+  if (!m || m.index === undefined) return null;
+  const injectAt = m.index + m[1].length;
+  return {
+    startIndex: injectAt,
+    endIndex: injectAt,
+    bindings: {
+      funcName: m[2],
+      inputStateParam: m[3],
+      reactNs: m[4],
+    },
+    method: 'regex',
+  };
+}
+
 // ─── Assertion helper — installer aggregates misses ───────────────────────
 
 export interface SeamResult {
