@@ -38,6 +38,22 @@ Wilfred's voice on long-form pieces (mechanics essays, blog posts). This is *dif
 - Mix technical and casual registers — "extract value", "grok", "rapidly iterate" alongside "bums", "neigh endless", "chin up".
 - Recurring metaphor families: fighting-game frames (`start-up frames` / `active window duration` / `end-lag` — see canonical names below), `flow`, `in the zone`, gaming/RPG framings.
 
+### Plain-language substitutions
+
+Engineering jargon undercuts the post for non-engineering readers. Substitute throughout:
+
+- *buffer* → *text* / *draft* / *document* / *text input* (pick whichever fits)
+- *arm / armed / arming* (the agent) → *start* / *starting*
+- *disarm* → *stop*
+- *pulse* (the loop iteration) → *run*
+- *debounce* (in prose; keep in code) → *pause* / *brief pause* / *<N>ms pause in typing*
+- *DSL* → *special syntax*
+- *imperative shape* → *paired with an instruction*
+- *free-form* (describing user-facing behaviour) → *plain lookup*
+- *formal register* → *more formal tone*
+
+The principle: if the word would feel out of place in *The Economist*'s tech section, find a plainer one. Code identifiers stay backticked and exact; prose around them gets translated.
+
 ### Rhetorical moves
 
 - Question → answer. "Ok, but how does it work?", "How tight is tight?".
@@ -63,6 +79,11 @@ Wilfred's voice on long-form pieces (mechanics essays, blog posts). This is *dif
 - Imperatives with **both** subject and object implicit. *"Activate by typing in any prompt with cue sources installed"* leaves both *who* (the user) and *what* (the cues) unstated. The reader has to infer them. In activation lines, definitions, or other foundational positions, name at least one — and if it's a foundational sentence, name both: *"Cues activate automatically as the user types in any prompt with cue sources installed."*
 - Circular qualifications. *"Any **non-blocking** cue must use a different modality"* loads the conclusion into the premise — *non-blocking* is what the rule is establishing, so qualifying the subject with it makes the rule tautological. Drop the qualifier and let the rule stand: *"Any cue must use a different modality."* Same applies any time a rule's subject already names its outcome.
 - Declarative absolutes where the post is making a normative argument. *"This **is** the foundational rule for AI HCI"* asserts the rule already governs the field; the post's actual claim is *"this **should be** a foundational rule when designing AI HCIs."* The same pattern applies to *"where AI HCI **goes** next"* vs *"where AI HCI **should go** next"*. When the prose argues for a direction, use *should* / *ought*. Reserve *is* / *will* for fact-claims the post can defend.
+- Self-announcing meta-narrative. *"The post claims this is X"*, *"The post opened on Y"*, *"This is one place where the Z framing earns its keep"* all refer to the post talking about itself. The section heading or the prose above already does that work; the announcement is throat-clearing. Drop it and let the next sentence carry the thesis directly.
+- Aphorisms that require unpacking. If a pull-quote needs to be parsed before the reader gets it, the body has already failed to establish the idea (or the aphorism is too clever for its own good). *"Anywhere the work is the surface, the teaching can live with the work"* required mental gymnastics and was deleted in favour of the prose above it. Cut, don't explain.
+- Unverified specific numbers. Latency figures, percentages, throughput claims must come from a current benchmark or shipped constant. If you can't trace the number to a bench file or a config default, soften to a qualitative range (*"typically sub-second on fast providers"* / *"a few hundred milliseconds"*). Specific numbers without provenance read as authoritative but cannot be defended; readers who know the codebase will spot the gap.
+- Costs the user isn't paying. *"The user is paying ~365ms per run for the agent's presence"* implies the user waits on each run; with a background process triggered after a typing pause, they don't. Don't frame background latency as user-paid time.
+- Soft-rejected security claims. Don't write *"the agent does not need per-feature permission prompts, sandbox escapes, or undo machinery"* — OpenCues has all of these (sensitive-field block, bwrap/sandbox-exec, output sanitisation, rate quota, secrets whitelist; see `docs/architecture/security-audit.md`). The defensible safety boundary for Inline Agents is structural: LLM output has no side-effect channel (no MCP tools, no agentic actions), so the worst case is user-visible text the user sees before submitting. Name the structural property, not the absence of mechanisms.
 
 ---
 
@@ -124,6 +145,29 @@ Generic uses of *cue* / *prompt* / *agent* in lowercase are fine when not naming
 - Use **resolve / resolved** in technical descriptions (mechanism sections, *Ownership lock*, *Visible failure*, *How blanks resolve*).
 - Use **fill in the blank** only when explicitly invoking the schoolchild idiom or the marketing framing (e.g. the *Lineage: fill in the blank* section title).
 - The two terms describe the same physical action; the choice signals register. Default to *resolve* unless the marketing/cultural reference is doing real work.
+
+## Describing OpenCues mechanics accurately
+
+Three concrete claims this blog tree has gotten wrong in the past. Verify each before re-using.
+
+### Inline Agents — edits are live, not proposals
+
+The agent applies its edits directly to the user's text and dims the *new* word so the change is visible. There is no accept gesture; ignoring the dim is acceptance. Only reverting is an action.
+
+- Don't describe agent edits as *"proposals the user has not yet committed"*, *"suggestions to accept"*, or *"changes the user can apply"*. They're applied.
+- Don't claim Google Docs Suggestions parallel works because both require an *"accept click"* — Suggestions does, Inline Agents doesn't. The inverted default is the real distinction.
+- The reverting gesture is **two keys**: `Ctrl+Alt+Left/Right` to navigate the cue-selection indicator to the dimmed word, then `Ctrl+Alt+Down` to cycle it back to the original. The indicator is decoupled from the cursor by default. Never write *"one keystroke to revert"*.
+
+### Inline Agents — granularity is arbitrary-span, not per-word
+
+The runtime word-diffs the LLM's full-document rewrite into hunks, and hunks can span a single word, a phrase, a sentence, or a paragraph. The cache is also whole-document (skip-on-stable on `(snapshot, task, cursor)` plus an LRU keyed on `windowWords + auditorSignature + cursor + task + snapshot`), not per-word.
+
+- Don't say *"per-word grain"* or *"per-word cache"* — both are stale references to a retired architecture.
+- Don't say the EDITS prompt format is current; it was retired with the per-edit `Judge` pipeline. Current shipping format is full-document rewrite with a `[CURSOR]` sentinel.
+
+### Submit gesture is host-specific
+
+A draft's *"final commit"* depends on the host. In a chat input, `Enter` submits. In a multi-line email body, `Enter` is a newline and clicking *Send* submits. In a form, posting submits. Don't write *"the user presses Enter, the way they would in any text field"* — that's wrong in most text fields. Use the formula: *"the user submits the draft, however the host handles submission (`Enter` in a chat input, Send in an email client, posting a form)"*.
 
 ## Two-direction model — naming the directions
 
@@ -264,6 +308,10 @@ Before declaring a re-render done, run a backwards audit on the diff. None of th
 - Inconsistent verbs for the same effect. The *Human Interaction* re-render used both *shifts the chat window* and *would push the chat window* for the same chat-window displacement. Same effect → same verb. Search for verb variants describing the same phenomenon before declaring done.
 - Inconsistent shorthand for the same keychord. The *Inline Cues* re-render used *Ctrl+Alt+Up / Ctrl+Alt+Down* in one place and bare *Up / Down* in another for the same cycling action. The bare-arrow shorthand reads as if it might be an unmodified key. Use the full keychord every time the action is named, even when it lengthens the sentence.
 - Subject/verb/complement agreement, especially on plural subjects with singular noun complements. *"Inline cues are a system-to-user signal"* mismatched plural *cues* with singular *signal*. Fix is plural throughout (*"are system-to-user signals"*) or singular subject (*"An inline cue is a system-to-user signal"*). Check every *X are Y* / *X is Y* sentence for agreement, not just verb agreement but noun-complement agreement too.
+- **Code-derived names must match the code.** Filenames (`CUE.md` not `cue.md`), config keys (`agent-debounce-ms` not `agentDebounce`), class/interface names (no fictional `LLMRequest` — the actual surface is a generic provider interface), provider names (*Cerebras* / *Groq*, capitalised), model identifiers (`gpt-oss-120b` backticked, lowercase). Grep the codebase before publishing any of these. If you can't find it, you invented it.
+- **Cross-system comparison rows must distinguish on real differences.** When comparing OpenCues to an analogue (Google Docs Suggestions, RSS, autocomplete, etc.), every row in a `| X | Y |` table must name a property where the two genuinely differ. Don't enumerate properties both systems share — the row tells the reader nothing. Example: *"Granularity is per-marked-edit | Granularity is per-word"* claimed a distinction that doesn't hold (both are arbitrary-span); deleted.
+- **Validate every code-related claim against the actual implementation before publishing.** Architecture evolves; the post's facts shouldn't lag. Re-render passes have caught: per-word vs whole-document cache, stale EDITS/DECISIONS prompt formats, retired Groq default (now Cerebras), wrong filename casing (`cue.md` vs `CUE.md`), invented interface name `LLMRequest`, wrong debounce default (500ms claimed vs 1000ms shipped), unverified latency figures (365ms, 200–500ms, 600ms–1.5s). When in doubt, run an explore agent against `agent-rewrite.ts`, `fluid-blank-source.ts`, `transform-blank-source.ts`, `defaults/OPENCUES.md`, and `docs/architecture/*.md`.
+- **Verb-noun pair must be plausible.** *"empty response returns no edits"* sounds like the response itself is doing the returning. Make the run/agent/runtime the subject of the action: *"if the LLM returns nothing, the run produces no edits"*. Check every sentence where the subject is a state, an error, or a passive thing.
 
 If any of those survive into the re-render, the polish stopped early. Run another pass.
 
