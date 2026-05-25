@@ -30,10 +30,10 @@ pnpm exec opencues install claude-code --target /path/to/cli.js
 2. **`integrations/claude-code/patches/setup.sh`** (CC-specific only)
    - Default behavior: nuke + rebuild from scratch (`~/claude-code-cues/{node_modules/@anthropic-ai, node_modules/@opencues, .cues/}`). `--keep-state` flag skips the nuke for dev iteration.
    - `npm install @anthropic-ai/claude-code` — pinned to exact version 2.1.110 (no caret) so cli.js is bit-identical every install.
-   - `git clone tweakcc` into `<CC_FORK>/.opencues/tweakcc/` — the patcher lives inside the fork too (compact footprint).
+   - `git clone tweakcc` into `<CC_FORK>/.cues/tweakcc/` — the patcher lives inside the fork too (compact footprint).
    - Patch tweakcc's `types.ts` (add OpenCues fields), `defaultSettings.ts` (set OpenCues defaults + flip `showTweakcc{Version,PatchesApplied}` to false), `src/patches/index.ts` (wire `writeOpenCuesRuntimeV2` into the orchestrator + disable every other tweakcc patch).
    - Build `@opencues/{core,runtime}` and install into `<CC_FORK>/node_modules/@opencues/`.
-   - Install statusline.sh into `<CC_FORK>/.opencues/statusline.sh`.
+   - Install statusline.sh into `<CC_FORK>/.cues/statusline.sh`.
    - Auto-fix `~/.claude/settings.json`'s `statusLine.command` if it points at a stale path.
    - Build tweakcc + **verify** dist contains the wiring (fail loud if missing).
    - Apply tweakcc to cli.js + **verify** cli.js contains `@opencues/runtime` (fail loud if seam-miss).
@@ -67,7 +67,7 @@ No `verbose-property` token-count modification, no `opusplan1m` model option, no
 integrations/claude-code/patches/
 ├── setup.sh                  # CC-specific install pipeline (called by opencues install)
 ├── opencuesRuntime.ts        # The patch source — boot + blankInvoke wiring at S1/S3/S6
-└── highlight-statusline.sh   # CC's statusline command — copied to <CC_FORK>/.opencues/statusline.sh
+└── highlight-statusline.sh   # CC's statusline command — copied to <CC_FORK>/.cues/statusline.sh
 ```
 
 Cross-host scripts (`speak.sh`, `SpeakCtl.cs`, brightness/volume helpers) live under `defaults/blanks/<name>/` and `defaults/scripts/`, NOT here — they're managed by `opencues seed-configs` and shared by every native host (CC + OC).

@@ -175,7 +175,7 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 |------------|--------|-------------|---------|
 | `VolCtl.exe` | `defaults/blanks/volume/VolCtl.cs` | `~/.cues/blanks/volume/VolCtl.exe` | Volume via Core Audio API (colocated with `volume-blank.sh`) |
 | `BrightCtl.exe` | `defaults/blanks/brightness/BrightCtl.cs` | `~/.cues/blanks/brightness/BrightCtl.exe` | Brightness via powrprof.dll (colocated with `brightness-blank.sh`) |
-| `SpeakCtl.exe` | `integrations/claude-code/patches/actions/SpeakCtl.cs` | `<CC_FORK>/.opencues/scripts/SpeakCtl.exe` | TTS via System.Speech (host runtime utility, not a user-blank) |
+| `SpeakCtl.exe` | `integrations/claude-code/patches/actions/SpeakCtl.cs` | `<CC_FORK>/.cues/scripts/SpeakCtl.exe` | TTS via System.Speech (host runtime utility, not a user-blank) |
 
 Blank-colocated executables (`VolCtl`, `BrightCtl`) sit in the same folder as the script that calls them — `volume-blank.sh` does `"${SCRIPT_DIR}/VolCtl.exe"`. No path walking, no fallback list.
 

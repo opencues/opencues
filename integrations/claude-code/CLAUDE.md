@@ -16,7 +16,7 @@ shipped bundle. That choice constrains everything below.
 | `patches/setup.sh` | One-command installer (clone CC, build runtime/core, install tweakcc, apply patch). Idempotent. `--keep-state` skips the nuke for dev iteration |
 | `patches/opencuesRuntime.ts` | The patch source itself — emits a JS string that tweakcc injects into `cli.js`. Boots `@opencues/runtime` via the S1/S3/S6 seams |
 | `patches/highlight-statusline.sh` | Status line script — reads `/tmp/opencues-status-*.json` and renders the inline tip |
-| `tweakcc/` | The patched-into-place tweakcc install (gitignored — cloned during setup, lives at `<CC_FORK>/.opencues/tweakcc/`) |
+| `tweakcc/` | The patched-into-place tweakcc install (gitignored — cloned during setup, lives at `<CC_FORK>/.cues/tweakcc/`) |
 | `../../packages/opencues-runtime/adapters/cc/v2.1/boot.ts` | Adapter band — declares the host capabilities + boots the runtime with the bindings the patch supplies |
 | `../../packages/opencues-runtime/adapters/cc/REPAIR.md` | Version-bump playbook |
 | `docs/` | Integration-specific reference (cycling, alternatives, blank fill, status line, etc.) |
@@ -32,9 +32,9 @@ two scripts:
 2. **`patches/setup.sh`** — strictly CC-specific. Default: nuke +
    rebuild. Pinned `@anthropic-ai/claude-code` reinstalled into
    `~/claude-code-cues/` + cloned tweakcc inside
-   `<CC_FORK>/.opencues/tweakcc/` + `@opencues/{core,runtime}` built
+   `<CC_FORK>/.cues/tweakcc/` + `@opencues/{core,runtime}` built
    and installed under `<CC_FORK>/node_modules/@opencues/` + statusline
-   into `<CC_FORK>/.opencues/` + tweakcc patched (only the OpenCues v2
+   into `<CC_FORK>/.cues/` + tweakcc patched (only the OpenCues v2
    wiring; every stock tweakcc patch disabled) + verified at build AND
    apply time. ~1m 5s warm install.
 

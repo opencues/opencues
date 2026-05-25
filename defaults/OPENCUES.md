@@ -156,7 +156,7 @@ defaults:
 
 ```yaml
 tts-rate: 2
-tts-script: ~/claude-code-cues/.opencues/scripts/speak.sh
+tts-script: ~/claude-code-cues/.cues/scripts/speak.sh
 ```
 
 ---

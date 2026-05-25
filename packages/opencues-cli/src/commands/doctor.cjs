@@ -149,7 +149,7 @@ module.exports = function doctor(argv, ctx) {
 
   // ── CC install ────────────────────────────────────────────────────────
   const ccFork = path.join(HOME, 'claude-code-cues');
-  const ccSupport = path.join(ccFork, '.opencues');
+  const ccSupport = path.join(ccFork, '.cues');
   const ccCore = path.join(ccFork, 'node_modules/@opencues/core');
   const ccRuntime = path.join(ccFork, 'node_modules/@opencues/runtime');
   const ccBackup = path.join(ccSupport, 'patch-state/cli.js.backup');
@@ -187,14 +187,14 @@ module.exports = function doctor(argv, ctx) {
   }
   // Only surface "CC not installed" when the fork is actually absent.
   // If the fork is present (cli.js patched + runtime/core installed) but
-  // .opencues/ support dir is missing, it usually means the patch was
+  // .cues/ support dir is missing, it usually means the patch was
   // applied without the latest compact-footprint setup.sh — runtime
   // works fine, but tweakcc state + statusline + scripts live in the
   // wrong place. Surface that distinctly, not as "not installed".
   if (!fs.existsSync(ccFork)) {
     findings.push({ sev: 'info', msg: 'CC not installed', fix: 'opencues install claude-code' });
   } else if (!fs.existsSync(ccSupport)) {
-    findings.push({ sev: 'info', msg: 'CC fork present but missing the .opencues/ support dir (statusline script, tweakcc state). Runtime works; re-install to land the support files.', fix: 'opencues install claude-code' });
+    findings.push({ sev: 'info', msg: 'CC fork present but missing the .cues/ support dir (statusline script, tweakcc state). Runtime works; re-install to land the support files.', fix: 'opencues install claude-code' });
   }
 
   // ── OC install ────────────────────────────────────────────────────────

@@ -91,8 +91,8 @@ opencues uninstall claude-code
 ```
 
 This restores `cli.js` from the tweakcc backup in
-`~/claude-code-cues/.opencues/patch-state/`, then removes the
-`~/claude-code-cues/.opencues/` dir entirely (tweakcc clone, statusline,
+`~/claude-code-cues/.cues/patch-state/`, then removes the
+`~/claude-code-cues/.cues/` dir entirely (tweakcc clone, statusline,
 patch state). The pinned npm install of `@anthropic-ai/claude-code` stays
 in place — we replace it in step 5.
 
@@ -110,10 +110,10 @@ The default (no `--keep-state`) is a destructive nuke + rebuild:
 
 - `npm install @anthropic-ai/claude-code` reinstalls the pinned version
   (which is now the new one from step 3).
-- tweakcc gets re-cloned into `<CC_FORK>/.opencues/tweakcc/`.
+- tweakcc gets re-cloned into `<CC_FORK>/.cues/tweakcc/`.
 - `@opencues/{core,runtime}` are built and copied into
   `<CC_FORK>/node_modules/@opencues/`.
-- `highlight-statusline.sh` lands at `<CC_FORK>/.opencues/`.
+- `highlight-statusline.sh` lands at `<CC_FORK>/.cues/`.
 - tweakcc patches itself with OpenCues v2 wiring (every stock tweakcc
   patch is disabled).
 - tweakcc applies the patch to the new `cli.js`.
@@ -199,7 +199,7 @@ non-trivial findings from step 2's diff.
   log, dead TUI).
 
 - **Statusline path drift.** The statusline lives at
-  `~/claude-code-cues/.opencues/highlight-statusline.sh` and CC reads it
+  `~/claude-code-cues/.cues/highlight-statusline.sh` and CC reads it
   via an absolute path in `~/.claude/settings.json`. If you move the
   fork, settings.json points at a dead path. `opencues install
   claude-code` rewrites settings.json on every run; manual fork moves

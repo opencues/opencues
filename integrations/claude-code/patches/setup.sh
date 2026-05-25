@@ -10,7 +10,7 @@
 #   ./setup.sh [tweakcc-dir] [--keep-state]
 #
 # State that gets nuked + rebuilt every install (default):
-#   ~/claude-code-cues/.opencues/                        recreated (incl. tweakcc clone)
+#   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
 #   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pinned 2.1.110)
 #

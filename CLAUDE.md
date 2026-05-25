@@ -181,9 +181,9 @@ export GROQ_API_KEY="your-key"
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
    Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code@2.1.110`
-   reinstalled + cloned tweakcc inside `<CC_FORK>/.opencues/tweakcc/` +
+   reinstalled + cloned tweakcc inside `<CC_FORK>/.cues/tweakcc/` +
    `@opencues/{core,runtime}` built and installed into `<CC_FORK>/node_modules/@opencues/`
-   + statusline.sh into `<CC_FORK>/.opencues/` + tweakcc patched (only
+   + statusline.sh into `<CC_FORK>/.cues/` + tweakcc patched (only
    the OpenCues v2 wiring; every stock tweakcc patch disabled) +
    verified at build AND apply time. ~1m 5s warm install.
 
@@ -209,7 +209,7 @@ works for contributors hacking on the patches (also accepts `--keep-state`).
   - **`adding-a-cue-blank.md`** ⚠️ Must-read before adding any new cue-blank — covers blank routing, cycling pitfalls (list-only — no numeric stepping), span invalidation contract, and `def.word` post-populate behaviour. **Update the pitfalls section** when new failure modes are found.
   - **`adding-an-auditor.md`** Reference for shipping a new inline-rewrite concern (grammar, clarity, tone, etc.). Explains the composition model (one LLM call per agent tick, all auditors concatenated by priority desc), what the frontmatter does, why per-auditor `provider:` / `match:` are inert, and `<project>/.cues/AUDITORS.md` `disable:` for project-level scoping.
 - **integrations/claude-code/docs/** — Claude Code implementation docs
-- **`<CC_FORK>/.opencues/tweakcc/`** — tweakcc install lives inside the CC fork (re-cloned every from-scratch install — no global `~/tweakcc/` dir to manage)
+- **`<CC_FORK>/.cues/tweakcc/`** — tweakcc install lives inside the CC fork (re-cloned every from-scratch install — no global `~/tweakcc/` dir to manage)
 - **docs/features/** — 21+ feature concepts (one file each)
 - **docs/architecture/spans-and-cycling.md** ⚠️ Canonical implementation reference for the cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), the cycling priority order (selector/satellite → spanFill → list blank → blankStep DynDef → static alts), the shift+prune flow, the bugs we've already fixed. Read this before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`.
 - **docs/architecture/transform-blank.md** ⚠️ Canonical reference for the imperative-blank pipeline (EXTRACT → APPLY → VERIFY). Covers the 3-pass design rationale, prompt design (why minimal-EXTRACT but verbose-APPLY), sequential composition for "X and Y", skip-VERIFY rules, parser quirks (`[ \t]*` not `\s*`), runtime substitution, debug logs, and 10 concrete lessons from the experiment log. Read this before touching `transform-blank-source.ts` or any of the prompts. Companion: `tests/benchmarks/transform-blank/EXPERIMENTS.md` for the empirical justification of every design decision.
@@ -241,7 +241,7 @@ integrations/claude-code/patches/setup.sh
 The script:
 1. Copies `opencuesRuntime.ts` to tweakcc and rebuilds it (compiles the patch into `dist/`)
 2. Builds `@opencues/core` and copies to `<CC_FORK>/node_modules/@opencues/core/` (so cli.js's bare-specifier `require("@opencues/core")` resolves via Node's standard upward walk — no symlinks)
-3. Builds `@opencues/runtime` and rsyncs `dist/` to `<CC_FORK>/node_modules/@opencues/runtime/`. Statusline script + OS action scripts go under `<CC_FORK>/.opencues/{statusline.sh,scripts/}`. tweakcc's own config + `cli.js.backup` redirect to `<CC_FORK>/.opencues/patch-state/` via `TWEAKCC_CONFIG_DIR`. **Compact footprint**: everything (runtime, support files, patcher state, patched cli.js) lives inside `~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert (mirrors OpenCode).
+3. Builds `@opencues/runtime` and rsyncs `dist/` to `<CC_FORK>/node_modules/@opencues/runtime/`. Statusline script + OS action scripts go under `<CC_FORK>/.cues/{statusline.sh,scripts/}`. tweakcc's own config + `cli.js.backup` redirect to `<CC_FORK>/.cues/patch-state/` via `TWEAKCC_CONFIG_DIR`. **Compact footprint**: everything (runtime, support files, patcher state, patched cli.js) lives inside `~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` + tweakcc revert (mirrors OpenCode).
 4. Applies compiled patches to `claude-cues` (`~/claude-code-cues`)
 
 To re-apply patches without rebuilding (after a Claude Code version bump, no source changes):

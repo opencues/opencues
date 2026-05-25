@@ -39,9 +39,9 @@ The installer (`opencues install claude-code`) chains two scripts:
 
 2. **CC-specific setup.sh** (default behavior: nuke + rebuild from scratch)
    - `npm install @anthropic-ai/claude-code` — pinned to exact version 2.1.110
-   - Clones tweakcc into `<CC_FORK>/.opencues/tweakcc/` (the patcher lives inside the fork)
+   - Clones tweakcc into `<CC_FORK>/.cues/tweakcc/` (the patcher lives inside the fork)
    - Builds + installs `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/`
-   - Installs `statusline.sh` into `<CC_FORK>/.opencues/`
+   - Installs `statusline.sh` into `<CC_FORK>/.cues/`
    - Patches tweakcc to wire OpenCues v2 + disable every stock patch
    - Builds tweakcc + verifies dist contains v2 wiring (fail loud if not)
    - Applies tweakcc to cli.js + verifies the boot landed (fail loud if not)
@@ -185,7 +185,7 @@ pnpm --filter @opencues/claude-code dev-uninstall -- \
   --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
-Reverts `cli.js` from the backup in `~/claude-code-cues/.opencues/patch-state/`, then removes `~/claude-code-cues/.opencues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
+Reverts `cli.js` from the backup in `~/claude-code-cues/.cues/patch-state/`, then removes `~/claude-code-cues/.cues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.
 
 ---
 

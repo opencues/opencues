@@ -136,7 +136,7 @@ function doInstall() {
   // self-heal, .cs compilation, TTS speak.sh) live in `opencues seed-configs`,
   // which the top-level `opencues install` invokes BEFORE this script runs.
   //
-  // tweakcc clones into <CC_FORK>/.opencues/tweakcc by default — no need
+  // tweakcc clones into <CC_FORK>/.cues/tweakcc by default — no need
   // to pass an override unless the user is hacking on a side checkout.
   // Pass through --keep-state for dev iteration; otherwise default to
   // from-scratch.

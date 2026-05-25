@@ -151,7 +151,7 @@ pnpm exec opencues install claude-code
 If you need to manually revert (e.g. the tweakcc backup is the only good copy):
 
 ```bash
-cp ~/claude-code-cues/.opencues/patch-state/cli.js.backup \
+cp ~/claude-code-cues/.cues/patch-state/cli.js.backup \
    ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
@@ -181,7 +181,7 @@ agents (1/3) - Spawn parallel workers via Task tool
 **Enable:** Run `/statusline` in Claude Code and set the command to:
 
 ```
-~/claude-code-cues/.opencues/statusline.sh
+~/claude-code-cues/.cues/statusline.sh
 ```
 
 **Disable:** Run `/statusline` again and clear the command.

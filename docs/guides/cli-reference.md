@@ -319,7 +319,7 @@ opencues list --blanks | grep -c domain  # how many domain blanks exist
 
 | Host | What `install` does | Notes |
 |---|---|---|
-| `claude-code` | Builds `@opencues/core` + `@opencues/runtime`, copies them into `~/claude-code-cues/.opencues/`, builds tweakcc with the patches, applies to `cli.js` | Targets `~/claude-code-cues` (NOT the native `claude` install) |
+| `claude-code` | Builds `@opencues/core` + `@opencues/runtime`, copies them into `~/claude-code-cues/.cues/`, builds tweakcc with the patches, applies to `cli.js` | Targets `~/claude-code-cues` (NOT the native `claude` install) |
 | `opencode` | Patches the fork at `~/opencode-cues` | Quiet by default; `--verbose` for full output |
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
 | `gemini-cli` | Clones the fork at `~/gemini-cli-cues`, installs deps, builds + installs `@opencues/{core,runtime}`, drops `opencuesBootstrap.ts` in, patches 4 source files, runs `npm run build` | Pinned to Gemini CLI 0.41.x via `integrations/gemini-cli/pin.json` |

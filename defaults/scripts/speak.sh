@@ -18,7 +18,7 @@ PID_FILE="/tmp/cue-tts.pid"
 (( RATE < -10 )) && RATE=-10
 
 # SpeakCtl.exe is colocated in this same directory (setup.sh ships both
-# speak.sh and SpeakCtl.exe to <CC_FORK>/.opencues/scripts/ together).
+# speak.sh and SpeakCtl.exe to <CC_FORK>/.cues/scripts/ together).
 # Falls through to the PowerShell / espeak branches below if it's missing.
 SPEAK_CTL="${SCRIPT_DIR}/SpeakCtl.exe"
 

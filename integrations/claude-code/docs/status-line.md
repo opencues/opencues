@@ -19,7 +19,7 @@ word (N/M) - Tip text for this word
 
 - **word** — the currently highlighted word
 - **N/M** — current alternative position / total alternatives
-- **Tip text** — from `~/claude-code-cues/.opencues/tips.json` (only for tips words, not LLM alternatives)
+- **Tip text** — from `~/claude-code-cues/.cues/tips.json` (only for tips words, not LLM alternatives)
 
 Words without alts or a cue-blank tip produce no status line output.
 
@@ -87,7 +87,7 @@ Cue-blanks (auto-populated values, list blanks, dynamic list blanks, read-only b
 
 ## Tips Source
 
-Tips come from `~/claude-code-cues/.opencues/tips.json`. Two formats:
+Tips come from `~/claude-code-cues/.cues/tips.json`. Two formats:
 
 **Groups** (synonyms share a tip, alts point to other groups):
 ```json
@@ -130,7 +130,7 @@ Each Claude Code instance uses its PID in the file path: `/tmp/opencues-highligh
 |---------|---------|--------|
 | `highlightExportEnabled` | `true` | Write JSON state file on navigation |
 
-Set in `~/claude-code-cues/.opencues/patch-state/config.json` under `misc`.
+Set in `~/claude-code-cues/.cues/patch-state/config.json` under `misc`.
 
 ## Disabling
 
@@ -138,12 +138,12 @@ Set in `~/claude-code-cues/.opencues/patch-state/config.json` under `misc`.
 |------|-----|
 | Status line display | Run `/statusline` in Claude Code, clear command |
 | State file export | Set `highlightExportEnabled: false` in config |
-| Remove script | `rm ~/claude-code-cues/.opencues/statusline.sh` |
+| Remove script | `rm ~/claude-code-cues/.cues/statusline.sh` |
 
 ## Script Location
 
 - **Source:** `opencues/integrations/claude-code/patches/highlight-statusline.sh`
-- **Installed to:** `~/claude-code-cues/.opencues/statusline.sh`
+- **Installed to:** `~/claude-code-cues/.cues/statusline.sh`
 - **Customise:** Edit the installed copy — it's a plain bash script.
 
 ## Related

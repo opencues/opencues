@@ -21,7 +21,7 @@ That covers everything the host needs. Specifically:
 
 | Host | What the installer does |
 |---|---|
-| `claude-code` | `opencues seed-configs` (shared `~/.cues/`) → nuke prior CC state + reinstall pinned `@anthropic-ai/claude-code@2.1.110` → clone tweakcc into `<CC_FORK>/.opencues/tweakcc/` → patch tweakcc (every stock patch disabled, only OpenCues v2 wiring) → build `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/` → install statusline.sh into `<CC_FORK>/.opencues/` → apply tweakcc to cli.js + verify v2 boot landed. ~1m warm. tweakcc is just our patcher tool. |
+| `claude-code` | `opencues seed-configs` (shared `~/.cues/`) → nuke prior CC state + reinstall pinned `@anthropic-ai/claude-code@2.1.110` → clone tweakcc into `<CC_FORK>/.cues/tweakcc/` → patch tweakcc (every stock patch disabled, only OpenCues v2 wiring) → build `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/` → install statusline.sh into `<CC_FORK>/.cues/` → apply tweakcc to cli.js + verify v2 boot landed. ~1m warm. tweakcc is just our patcher tool. |
 | `opencode` | Clone `sst/opencode` fork → `bun install` the fork's deps → build `@opencues/{core,runtime}` → install into `<fork>/node_modules/@opencues/` → patch 3 TSX files in place |
 | `chrome` | Build MV3 extension → copy `dist/` to `--target` if provided |
 
@@ -90,7 +90,7 @@ Yes: `opencues uninstall <host>` (or `--all`). Each integration reverts its patc
 
 | Host | What uninstall does |
 |---|---|
-| `claude-code` | Revert `cli.js` from backup → `rm -rf ~/claude-code-cues/.opencues/` |
+| `claude-code` | Revert `cli.js` from backup → `rm -rf ~/claude-code-cues/.cues/` |
 | `opencode` | `git checkout --` on 3 patched TSX files → remove `<fork>/node_modules/@opencues/` → remove bootstrap |
 | `chrome` | Remove the Chrome extension's `dist/` in the repo; remove the `--target` deploy if one was used |
 
@@ -125,7 +125,7 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `~/claude-code-cues/.opencues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
+| `~/claude-code-cues/.cues/` | `@opencues/claude-code` | Everything CC needs — `core/`, `runtime/`, `scripts/`, `patch-state/`, `tips.json`, `statusline.sh`. Uninstall = `rm -rf` this dir + revert `cli.js`. |
 | `~/claude-code-cues/` | Your local Claude Code install (optional) | Where the `claude-cues` alias points. The auto-detect in `opencues install claude-code` looks here and at the standard native install path. |
 | `~/opencode-cues/` | OpenCode fork (cloned on install) | Patched fork; `~/opencode-cues/node_modules/@opencues/` contains our built libs; three TSX files are patched in place. |
 | `~/.cues/` | You (user configs) | Your cues/blanks + user-level `OPENCUES.md`. Shared by every host. |
