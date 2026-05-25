@@ -73,7 +73,7 @@ A source with neither `match` nor `keywords` is unreachable. Validators MUST err
 | `model` | string | provider default | Override the model for this source. When `provider:` is also set on the same tier, this MUST be a model the resolved provider serves. |
 | `endpoint` | string | provider default | Override the HTTP endpoint URL. Rare — only useful when pointing at a self-hosted gateway speaking the resolved provider's wire shape. |
 | `enabled` | boolean | `true` | `false` = source is disabled, kept on disk for documentation. |
-| `scope` | `"words"` \| `"blanks"` \| `"all"` | inferred from path | Where this source applies. Inferred from the parent directory (`cues/` → `words`, `blanks/` → `blanks`); explicit only when overriding. |
+| `scope` | `"words"` \| `"blanks"` \| `"sentence"` \| `"all"` | inferred from path | Where this source applies. `words` (default for `cues/`) — per-word triggers via `match:` / `keywords:`. `blanks` (default for `blanks/`) — `_`-triggered. `sentence` — whole-sentence rewrites; needs neither `match:` nor `keywords:` and is gated by the runtime's `sentence-cues-mode` toggle (off by default). `all` — any of the above. Explicit only when overriding the path-inferred default. |
 | `classify` | string | none | Free-text classification hint surfaced to the LLM and validators (e.g. "Legal terminology, contract drafting"). |
 | `on-host` | list | auto-detected | Allow-list: which hosts may load this source. See `core.md`. |
 | `not-on-host` | list | none | Deny-list, applied after `on-host`. |
@@ -224,7 +224,7 @@ For the `raw` parser, the response is opaque to the runtime; sources using `raw`
 
 ### What a runtime SHOULD do
 
-- Support DEFAULT vs DOMAIN classification: a source with neither `match:` nor `keywords:` is the catch-all default. At most one default per project.
+- Reject cue sources that declare neither `match:` nor `keywords:` (`cue-missing-trigger` error). Catch-all behaviour is expressed as `match: .*` plus a low `priority:`, not via field absence — see `core.md` § Routing.
 - Emit telemetry compatible with `opencues list` / `opencues validate`.
 
 ### What a runtime MAY do
@@ -342,7 +342,7 @@ Resist the urge to write a regex that catches everything. A narrow, accurate `ma
 - The `CUE.md` file format and frontmatter schema.
 - The `CueResult` runtime output shape.
 - The LLM `alternatives` parser wire format.
-- Routing rules (DEFAULT vs DOMAIN, priority resolution — detailed in `core.md`).
+- Routing rules (per-word dispatch, priority resolution, catch-all idiom — detailed in `core.md`).
 
 ## Out of scope
 

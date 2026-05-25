@@ -1,15 +1,16 @@
 {
-  "description": "blankProximity controls how far before _ the keyword may sit (distance = N positions back from _)",
+  "description": "blankProximity is the max number of words allowed *between* a keyword and `_`. 0 = adjacent (default), 1 = up to one word between, 2 = up to two, etc. Blanks that omit blankProximity are adjacency-only.",
   "blanks": [
     { "name": "volume",  "blankKeywords": ["volume"],  "blankProximity": 1 },
     { "name": "weather", "blankKeywords": ["weather"], "blankProximity": 3 }
   ],
   "expectations": [
     { "text": "volume _",                       "routesTo": "volume"  },
-    { "text": "set volume to _",                "routesTo": null      },
+    { "text": "set volume to _",                "routesTo": "volume"  },
+    { "text": "i set the volume to half _",     "routesTo": null      },
     { "text": "weather _",                      "routesTo": "weather" },
     { "text": "weather in paris _",             "routesTo": "weather" },
-    { "text": "weather in central paris _",     "routesTo": null      },
+    { "text": "weather in central paris _",     "routesTo": "weather" },
     { "text": "weather in the city of paris _", "routesTo": null      },
     { "text": "_",      "routesTo": null },
     { "text": "hi _",   "routesTo": null }

@@ -140,19 +140,13 @@ A runtime MUST NOT auto-write to any of these locations except via the user's ex
 
 For cues, every matched word is routed to **exactly one** source.
 
-1. **DOMAIN sources** — declare `match:` and/or `keywords:`. Fire only on matches.
-2. **DEFAULT sources** — declare neither `match:` nor `keywords:`. Catch-all for words no DOMAIN claims.
+Every cue source MUST declare `match:` or `keywords:` (or both). Sources with neither are rejected at construction time — there is no implicit "default" mechanism via field absence. A catch-all behaviour is expressed as `match: .*` paired with a low `priority:` so domain-specific sources win first; the shipped `defaults/cues/spelling/CUE.md` (priority `10`, `match: .*`) is the canonical example.
 
 Resolution algorithm:
 
-1. Among all DOMAIN sources whose `match:` or `keywords:` hits the word, pick the highest `priority`.
+1. Among all sources whose `match:` or `keywords:` hits the word, pick the highest `priority`.
 2. On priority ties, declaration order wins (sources from earlier search-path entries first; then file-system order within a directory).
-3. If no DOMAIN matches, route to the highest-priority DEFAULT source.
-4. If no DEFAULT exists, the word produces no cue (it's not navigable).
-
-Per-project rules:
-- At most one DEFAULT source SHOULD exist. Validators warn on multiple defaults at the same priority.
-- A project with zero DEFAULT sources is valid; words outside any `match:`/`keywords:` simply produce no cue.
+3. If no source claims the word, the word produces no cue (it's not navigable).
 
 For blanks, routing is by `blankKeywords` exact match, with `blankProximity` controlling word distance from `_`. Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` with no `blankKeywords` match. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
 
@@ -190,16 +184,17 @@ The standard reserves these host identifiers:
 - `opencode`
 - `chrome`
 - `gemini-cli`
+- `terminal`
 
 Runtimes MAY define additional host names. Other implementations SHOULD ignore unknown host names rather than failing.
 
-The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library are non-normative reference values.
+The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (`packages/opencues-core/src/host-compat.ts`) are non-normative reference values that enumerate the above set; `terminal`, `claude-code`, `gemini-cli`, and `opencode` are members of `NATIVE_HOSTS` (can spawn subprocesses and touch the filesystem without a bridge); `chrome` is the lone non-native host.
 
 ---
 
 ## Hot-reload
 
-A conformant runtime SHOULD detect changes to any file in the search path and apply them without restart. The reference cadence is one filesystem poll per user keystroke (debounced). Atomic / locked files SHOULD be skipped until they settle.
+A conformant runtime SHOULD detect changes to any file in the search path and apply them without restart. The reference cadence is a fixed-interval filesystem poll (~100ms in `@opencues/runtime`, see `event-bridge.ts`'s `POLL_INTERVAL_MS`); a runtime MAY instead drive the poll off user-input events as long as edits are picked up within a few hundred milliseconds of saving. Atomic / locked files SHOULD be skipped until they settle.
 
 A runtime that mutates files in the search path (e.g. an `OpenCuesSettingsBlank`-equivalent) MUST suppress its own re-read for at least 2 seconds after writing, to avoid races where the in-memory state and the file disagree mid-flight.
 

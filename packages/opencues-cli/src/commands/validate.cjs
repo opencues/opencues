@@ -1,7 +1,12 @@
 // `opencues validate` — lint .md configs across search paths.
 //
 // Walks the same search paths ConfigLoader uses, parses every .md, and
-// reports issues. Exit 0 on success, 1 on errors.
+// reports issues tagged with their spec lint-rule codes (per
+// spec/core.md § Linting rules). Exit 0 on success, 1 on errors.
+//
+// Each finding is `{ rule, severity, file, summary }`. Default output is
+// human-readable; `--json` emits machine-readable findings for CI / agent
+// consumption (e.g. the conformance suite's CLI runner).
 
 'use strict';
 
@@ -10,17 +15,23 @@ const path = require('node:path');
 const os = require('node:os');
 const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
+// Spec version this runtime targets. Anything strictly newer in a file's
+// `spec:` frontmatter trips `spec-too-new`. Kept in sync with
+// spec/core.md § Status & versioning.
+const SUPPORTED_SPEC_MAJOR = 0;
+const SUPPORTED_SPEC_MINOR = 1;
+
 module.exports = function validate(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
-  console.log(banner({ version: cliVersion(ctx), tagline: 'lint .cues/ configs' }));
-  console.log('');
+  const jsonOut = argv.includes('--json');
+  if (!jsonOut) {
+    console.log(banner({ version: cliVersion(ctx), tagline: 'lint .cues/ configs' }));
+    console.log('');
+  }
   const projectOnly = argv.includes('--project');
   const userOnly = argv.includes('--user');
   const strict = argv.includes('--strict');
 
-  // Load core's parser + host-compat helpers. OPENCUES.md uses a
-  // runtime-side parser (different shape — top-level YAML state, not
-  // section-based); for now we just verify OPENCUES.md is readable text.
   let core;
   try {
     core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/index.js'));
@@ -29,20 +40,22 @@ module.exports = function validate(argv, ctx) {
     console.error(`  ${err.message}`);
     process.exit(1);
   }
-  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint } = core;
+  const {
+    parseCuesMd, parseSingleCueMd, parseSingleAuditorMd,
+    inferHostCompat, unknownHostNames, validateEndpoint,
+  } = core;
 
   const HOME = os.homedir();
   const searchPaths = [];
   if (!userOnly) searchPaths.push({ label: 'project', dir: path.join(process.cwd(), '.cues') });
   if (!projectOnly) searchPaths.push({ label: 'user', dir: path.join(HOME, '.cues') });
 
-  const errors = [];
-  const warnings = [];
-  // Per-kind name → source-file map. Within ONE source (one CUES.md OR
-  // one per-folder CUE.md / BLANK.md), duplicates are errors. Across sources (CUES.md
-  // + cues/<name>/CUE.md), folder takes precedence — that's the merge
-  // contract, not a conflict. So we track names per source file.
-  const seen = { cue: new Map(), blank: new Map() };
+  // Findings collector. Each entry: { rule, severity: 'error'|'warn'|'info', file, summary }.
+  const findings = [];
+  const lint = (rule, severity, file, summary) => findings.push({ rule, severity, file, summary });
+
+  // Per-kind name → source-file map for duplicate detection within a single file.
+  const seen = { cue: new Map(), blank: new Map(), auditor: new Map() };
 
   // Track every word-cue source we see so we can warn on entries that
   // would be dropped at runtime (no match: / no keywords: → not routable).
@@ -50,43 +63,52 @@ module.exports = function validate(argv, ctx) {
 
   for (const { label, dir } of searchPaths) {
     if (!fs.existsSync(dir)) {
-      warnings.push(`${label} dir does not exist: ${dir}`);
+      if (!jsonOut) console.log(`${dim(label + '-level')} ${dir} ${dim('(missing — skipped)')}`);
       continue;
     }
-    console.log(`${bold('Checking')} ${bold(label + '-level')} ${dim(fileLink(dir, dir))}`);
-    walkConfigDir(dir, label, { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint }, seen, errors, warnings, wordCueSources);
+    if (!jsonOut) console.log(`${bold('Checking')} ${bold(label + '-level')} ${dim(fileLink(dir, dir))}`);
+    walkConfigDir(dir, label, {
+      parseCuesMd, parseSingleCueMd, parseSingleAuditorMd,
+      inferHostCompat, unknownHostNames, validateEndpoint,
+    }, seen, lint, wordCueSources);
   }
 
-  // Sources without match: AND keywords: would be dropped silently by
-  // RoutedWordSourceGroup at runtime. Surface them so the author can
-  // either add a rule or delete the source.
-  checkUnroutableWordCues(wordCueSources, warnings);
+  checkUnroutableWordCues(wordCueSources, lint);
 
-  // Report.
-  console.log('');
-  for (const w of warnings) console.log(`  ${tag('warn')} ${w}`);
-  for (const e of errors)   console.log(`  ${tag('err')} ${e}`);
+  // Output.
+  if (jsonOut) {
+    console.log(JSON.stringify(findings, null, 2));
+  } else {
+    console.log('');
+    for (const f of findings) renderFinding(f);
+    console.log('');
+    const errCount = findings.filter(f => f.severity === 'error').length;
+    const warnCount = findings.filter(f => f.severity === 'warn').length;
+    const summary = `${bold(errCount)} error(s), ${bold(warnCount)} warning(s)`;
+    if (errCount === 0 && warnCount === 0) console.log(`${tag('ok')} ${summary}`);
+    else if (errCount === 0)               console.log(`${tag('warn')} ${summary}`);
+    else                                   console.log(`${tag('err')} ${summary}`);
+  }
 
-  console.log('');
-  const summary = `${bold(errors.length)} error(s), ${bold(warnings.length)} warning(s)`;
-  if (errors.length === 0 && warnings.length === 0) console.log(`${tag('ok')} ${summary}`);
-  else if (errors.length === 0)                     console.log(`${tag('warn')} ${summary}`);
-  else                                              console.log(`${tag('err')} ${summary}`);
-  if (errors.length > 0) process.exit(1);
-  if (strict && warnings.length > 0) process.exit(1);
+  const errCount = findings.filter(f => f.severity === 'error').length;
+  const warnCount = findings.filter(f => f.severity === 'warn').length;
+  if (errCount > 0) process.exit(1);
+  if (strict && warnCount > 0) process.exit(1);
 };
 
-function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources) {
-  const { parseCuesMd, parseSingleCueMd, inferHostCompat, unknownHostNames, validateEndpoint } = tools;
-  // Helper: record a word-cue source so we can later check that every
-  // entry has match:/keywords: (else it gets dropped at runtime).
-  //
+function renderFinding(f) {
+  const t = f.severity === 'error' ? tag('err') : f.severity === 'warn' ? tag('warn') : tag('info');
+  console.log(`  ${t} ${dim('[' + f.rule + ']')} ${f.file}: ${f.summary}`);
+}
+
+function walkConfigDir(dir, label, tools, seen, lint, wordCueSources) {
+  const {
+    parseCuesMd, parseSingleCueMd, parseSingleAuditorMd,
+    inferHostCompat, unknownHostNames, validateEndpoint,
+  } = tools;
+
   // Static-alts cues (LocalCueSource) classify per-word against their
-  // JSON `words:` map and don't need match/keywords — they're inert
-  // for words not in the map. Detect them by the JSON code-block body
-  // and skip the routing check entirely. Without this, the shipped
-  // `tips` cue gets a false-positive "would be dropped at runtime"
-  // warning.
+  // JSON words map; they don't need match/keywords. Detect by JSON body.
   const STATIC_ALTS_BODY_RE = /```json\b/;
   const noteWordCue = (name, src, file, content) => {
     if (!wordCueSources) return;
@@ -102,162 +124,257 @@ function walkConfigDir(dir, label, tools, seen, errors, warnings, wordCueSources
       priority: src?.priority ?? 50,
     });
   };
-  // Top-level .md files (CUES.md, BLANKS.md). Duplicates WITHIN one
-  // file = error. OPENCUES.md uses a different schema; we just check
-  // it's readable.
-  for (const [filename, kind] of [
-    ['CUES.md',   'cue'],
-    ['BLANKS.md', 'blank'],
-  ]) {
+
+  // Master files: CUES.md, BLANKS.md. Duplicates within one file = error.
+  for (const [filename, kind] of [['CUES.md', 'cue'], ['BLANKS.md', 'blank']]) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {
       const content = fs.readFileSync(p, 'utf8');
       const parsed = parseCuesMd(content);
-      // parseCuesMd is forgiving by design — it returns empty
-      // frontmatter + sections on garbage rather than throwing. Catch
-      // the "looks like the user tried frontmatter but broke it" case:
-      // a `---` fence present but nothing extracted.
       const looksLikeFrontmatterAttempt = /^---\s*$/m.test(content);
       const parsedNothing =
         (!parsed?.frontmatter || Object.keys(parsed.frontmatter).length === 0) &&
         (!parsed?.sections || Object.keys(parsed.sections).length === 0) &&
         (!parsed?.promptConfig?.sources || Object.keys(parsed.promptConfig.sources).length === 0);
       if (looksLikeFrontmatterAttempt && parsedNothing) {
-        errors.push(`${p}: looks like frontmatter is malformed — nothing parsed`);
+        lint('master-malformed', 'error', p, `looks like frontmatter is malformed — nothing parsed`);
       }
+      checkSpecVersion(p, content, lint);
       const namesInThisFile = new Set();
       if (parsed && parsed.promptConfig && parsed.promptConfig.sources) {
         for (const [name, src] of Object.entries(parsed.promptConfig.sources)) {
-          if (namesInThisFile.has(name)) errors.push(`${p}: duplicate name "${name}" within file`);
+          if (namesInThisFile.has(name)) {
+            lint('name-collision', 'error', p, `duplicate name "${name}" within file`);
+          }
           namesInThisFile.add(name);
           seen[kind].set(name, p);
-          checkHostCompat(p, name, src, inferHostCompat, unknownHostNames, errors, warnings);
-          checkEndpoint(p, name, src, validateEndpoint, errors, warnings);
+          checkHostCompat(p, name, src, inferHostCompat, unknownHostNames, lint);
+          checkEndpoint(p, name, src, validateEndpoint, lint);
           if (kind === 'cue') noteWordCue(name, src, p);
         }
       }
       if (parsed && parsed.blanks) {
         for (const [name, blk] of Object.entries(parsed.blanks)) {
           seen.blank.set(name, p);
-          checkHostCompat(p, name, blk, inferHostCompat, unknownHostNames, errors, warnings);
-          checkEndpoint(p, name, blk, validateEndpoint, errors, warnings);
+          checkHostCompat(p, name, blk, inferHostCompat, unknownHostNames, lint);
+          checkEndpoint(p, name, blk, validateEndpoint, lint);
         }
       }
     } catch (err) {
-      errors.push(`${p}: parse failed — ${err.message}`);
+      lint('parse-failed', 'error', p, `parse failed — ${err.message}`);
     }
   }
 
-  // OPENCUES.md — readable check only. Tolerate the lowercase legacy
-  // name (seed-configs migrates these eventually) so half-migrated
-  // dirs don't generate spurious errors.
+  // AUDITORS.md master. Readable check + spec version.
+  const auditorsMaster = path.join(dir, 'AUDITORS.md');
+  if (fs.existsSync(auditorsMaster)) {
+    try {
+      const content = fs.readFileSync(auditorsMaster, 'utf8');
+      checkSpecVersion(auditorsMaster, content, lint);
+    } catch (err) {
+      lint('parse-failed', 'error', auditorsMaster, `read failed — ${err.message}`);
+    }
+  }
+
+  // OPENCUES.md — readable check only (runtime-specific schema).
   for (const settingsName of ['OPENCUES.md', 'opencues.md']) {
     const settingsPath = path.join(dir, settingsName);
     if (!fs.existsSync(settingsPath)) continue;
     try { fs.readFileSync(settingsPath, 'utf8'); }
-    catch (err) { errors.push(`${settingsPath}: read failed — ${err.message}`); }
+    catch (err) { lint('parse-failed', 'error', settingsPath, `read failed — ${err.message}`); }
     break;
   }
 
-  // Folder discoveries: .cues/{cues,blanks}/<name>/{CUE.md|BLANK.md}.
-  // Folder name IS the cue/blank name. Per the open standard the
-  // per-folder file is uppercase + type-specific (CUE.md inside cues/,
-  // BLANK.md inside blanks/). Tolerate lowercase + legacy cue.md so
-  // half-migrated user dirs don't get drowned in spurious warnings.
-  // Within the same dir filesystems prevent duplicate folder names;
-  // folder + monolithic of the same name is fine — folder overrides.
+  // Per-folder sources: cues/<name>/CUE.md, blanks/<name>/BLANK.md, auditors/<name>/AUDITOR.md.
   for (const [subdir, kind, primaryFile] of [
-    ['cues',   'cue',   'CUE.md'],
-    ['blanks', 'blank', 'BLANK.md'],
+    ['cues',     'cue',     'CUE.md'],
+    ['blanks',   'blank',   'BLANK.md'],
+    ['auditors', 'auditor', 'AUDITOR.md'],
   ]) {
     const sub = path.join(dir, subdir);
     if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
     for (const entry of fs.readdirSync(sub, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const candidates = [primaryFile, primaryFile.toLowerCase(), 'cue.md'];
-      const cueMd = candidates
+      const candidates = [primaryFile, primaryFile.toLowerCase()];
+      const sourceFile = candidates
         .map(f => path.join(sub, entry.name, f))
         .find(p => fs.existsSync(p));
-      if (!cueMd) {
-        warnings.push(`${sub}/${entry.name}/ has no ${primaryFile}`);
+      if (!sourceFile) {
+        lint('source-empty-folder', 'warn', path.join(sub, entry.name), `has no ${primaryFile}`);
         continue;
       }
       try {
-        const content = fs.readFileSync(cueMd, 'utf8');
-        const folderParsed = parseSingleCueMd(content, path.dirname(cueMd));
-        seen[kind].set(entry.name, cueMd); // overrides any monolithic mention; that's intentional
-        checkHostCompat(cueMd, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, errors, warnings, content);
-        checkEndpoint(cueMd, entry.name, folderParsed.frontmatter, validateEndpoint, errors, warnings);
-        if (kind === 'cue') noteWordCue(entry.name, folderParsed.frontmatter, cueMd, content);
-        // Sanity: if the per-folder file declares a script, check it exists + executable.
-        const scriptMatch = content.match(/^\s*(?:script|blankScript):\s*(.+)$/m);
-        if (scriptMatch) {
-          let scriptPath = scriptMatch[1].trim().replace(/^["']|["']$/g, '');
-          if (scriptPath.startsWith('./')) scriptPath = path.join(path.dirname(cueMd), scriptPath);
-          if (!fs.existsSync(scriptPath)) {
-            errors.push(`${cueMd}: script not found at ${scriptPath}`);
-          } else {
-            try {
-              const stat = fs.statSync(scriptPath);
-              if (!(stat.mode & 0o111)) {
-                warnings.push(`${cueMd}: script ${scriptPath} is not executable (chmod +x)`);
-              }
-            } catch { /* ignore */ }
-          }
-        }
-        // Sandbox declaration hygiene: a blankScript: blank with no
-        // explicit `sandbox:` declaration is ambiguous — author may
-        // have intended strict isolation but forgot to opt in, OR
-        // may need filesystem access (volume / brightness) and just
-        // forgot to declare 'off'. Encourage explicit.
-        const fm = folderParsed.frontmatter || {};
-        if (fm.blankScript && fm.sandbox === undefined) {
-          warnings.push(
-            `${cueMd}: blankScript declared without sandbox: setting. ` +
-            `Add \`sandbox: strict\` (recommended — see docs/architecture/sandbox.md) ` +
-            `OR \`sandbox: off\` with a rationale comment for blanks that need ` +
-            `filesystem / network access outside the runtime sandbox.`,
-          );
-        }
-        // User-shipped JS blank sanity: if impl: is a relative path,
-        // check that the JS file exists and that the blank declared
-        // at least one capability (zero capabilities is allowed but
-        // usually a sign the author forgot to enable network/etc.).
-        const implMatch = content.match(/^\s*impl:\s*(.+)$/m);
-        if (implMatch) {
-          const implRaw = implMatch[1].trim().replace(/^["']|["']$/g, '');
-          if (implRaw.startsWith('./') || implRaw.startsWith('../')) {
-            const jsPath = path.join(path.dirname(cueMd), implRaw);
-            if (!fs.existsSync(jsPath)) {
-              errors.push(`${cueMd}: impl: points to ${jsPath} which does not exist`);
-            }
-            const fm = folderParsed.frontmatter || {};
-            const hasCap = (fm.userBlankNetwork && fm.userBlankNetwork.length)
-              || fm.userBlankLlm || fm.userBlankStorage;
-            if (!hasCap) {
-              warnings.push(
-                `${cueMd}: user-shipped JS blank with no capabilities declared — ` +
-                `the blank can compute and log but can't fetch / call LLM / persist state. ` +
-                `Add \`network: [host1, host2]\`, \`llm: <provider>\`, or \`storage: <namespace>\` to enable.`,
-              );
-            }
-            checkUserBlankCapabilities(cueMd, fm, jsPath, errors, warnings);
-          }
+        const content = fs.readFileSync(sourceFile, 'utf8');
+        const folderParsed = kind === 'auditor'
+          ? parseSingleAuditorMd(content, path.dirname(sourceFile))
+          : parseSingleCueMd(content, path.dirname(sourceFile));
+        seen[kind].set(entry.name, sourceFile);
+
+        checkSpecVersion(sourceFile, content, lint);
+        checkNameField(sourceFile, kind, folderParsed.frontmatter, lint);
+
+        if (kind === 'cue') {
+          checkCueBody(sourceFile, folderParsed, lint);
+          noteWordCue(entry.name, folderParsed.frontmatter, sourceFile, content);
+          checkHostCompat(sourceFile, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, lint);
+          checkEndpoint(sourceFile, entry.name, folderParsed.frontmatter, validateEndpoint, lint);
+        } else if (kind === 'blank') {
+          checkBlankKeywords(sourceFile, folderParsed.frontmatter, lint);
+          checkBlankBindings(sourceFile, folderParsed.frontmatter, content, lint);
+          checkBlankScript(sourceFile, folderParsed.frontmatter, content, lint);
+          checkBlankSandbox(sourceFile, folderParsed.frontmatter, lint);
+          checkBlankImpl(sourceFile, folderParsed.frontmatter, content, lint);
+          checkHostCompat(sourceFile, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, lint);
+          checkEndpoint(sourceFile, entry.name, folderParsed.frontmatter, validateEndpoint, lint);
+        } else if (kind === 'auditor') {
+          checkAuditorBody(sourceFile, folderParsed, lint);
+          checkHostCompat(sourceFile, entry.name, folderParsed.frontmatter, inferHostCompat, unknownHostNames, lint);
         }
       } catch (err) {
-        errors.push(`${cueMd}: parse failed — ${err.message}`);
+        lint('parse-failed', 'error', sourceFile, `parse failed — ${err.message}`);
       }
     }
   }
 }
 
-// Word-cue sources without match: AND keywords: would be dropped silently
-// by RoutedWordSourceGroup at runtime. Surface them so the author can
-// either declare a rule or remove the source.
-function checkUnroutableWordCues(wordCueSources, warnings) {
+// ─── Per-rule check helpers ─────────────────────────────────────────────────
+
+// spec-too-new: file declares spec: opencues/<M>.<N> with version strictly
+// newer than this runtime's SUPPORTED_SPEC_*. Absent spec: is treated as
+// the current version (per core.md § Status & versioning).
+function checkSpecVersion(file, content, lint) {
+  const m = content.match(/^\s*spec\s*:\s*opencues\/([0-9]+)\.([0-9]+)/m);
+  if (!m) return;
+  const major = parseInt(m[1], 10);
+  const minor = parseInt(m[2], 10);
+  const tooNew = major > SUPPORTED_SPEC_MAJOR ||
+    (major === SUPPORTED_SPEC_MAJOR && minor > SUPPORTED_SPEC_MINOR);
+  if (tooNew) {
+    lint('spec-too-new', 'error', file,
+      `declares spec: opencues/${major}.${minor}, newer than this runtime's opencues/${SUPPORTED_SPEC_MAJOR}.${SUPPORTED_SPEC_MINOR}-alpha`);
+  }
+}
+
+// cue-missing-name / blank-missing-name / auditor-missing-name.
+function checkNameField(file, kind, frontmatter, lint) {
+  if (frontmatter && frontmatter.name) return;
+  const rule = `${kind}-missing-name`;
+  lint(rule, 'error', file, `${kind === 'auditor' ? 'AUDITOR.md' : kind.toUpperCase() + '.md'} frontmatter has no name field`);
+}
+
+// cue-empty-body + cue-missing-trigger (the latter is also surfaced via
+// checkUnroutableWordCues at end-of-walk, but emit per-file too for
+// fixture-precise reporting).
+function checkCueBody(file, parsed, lint) {
+  const fm = parsed.frontmatter || {};
+  // Static cues don't need triggers — the JSON words map is the trigger.
+  const isStatic = !!(parsed.tips && parsed.tips.length > 0);
+  // Sentence-scope cues apply to whole sentences, not per-word; they
+  // legitimately omit match: / keywords: (see core.md § Routing and the
+  // shipped `more-formal` cue).
+  const isSentenceScope = fm.scope === 'sentence';
+  const src = parsed.promptConfig?.sources && Object.values(parsed.promptConfig.sources)[0];
+  const hasPromptText = !!(src && src.promptText && src.promptText.trim().length > 0);
+  if (!isStatic && !hasPromptText) {
+    lint('cue-empty-body', 'error', file, `body has neither a JSON tip-group block nor non-empty prompt text — no behaviour declared`);
+  }
+  if (!isStatic && !isSentenceScope && !fm.match && !fm.keywords) {
+    lint('cue-missing-trigger', 'error', file, `frontmatter declares neither match: nor keywords: — cue would be unreachable`);
+  }
+}
+
+// blank-missing-keywords.
+function checkBlankKeywords(file, frontmatter, lint) {
+  if (frontmatter && frontmatter.blankKeywords) return;
+  lint('blank-missing-keywords', 'error', file, `frontmatter has no blankKeywords field — blank would never fire`);
+}
+
+// blank-multiple-bindings + blank-no-binding. Reads raw content for
+// multi-binding because the parser collapses to a single profile.
+function checkBlankBindings(file, frontmatter, content, lint) {
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) return;
+  const raw = fmMatch[1];
+  const profiles = [
+    /^\s*stepValues\s*:/m.test(raw),
+    /^\s*blankScript\s*:/m.test(raw),
+    /^\s*impl\s*:/m.test(raw),
+  ].filter(Boolean).length;
+  if (profiles > 1) {
+    lint('blank-multiple-bindings', 'error', file, `declares more than one binding profile (stepValues / blankScript / impl) — exactly one is allowed`);
+  }
+  // blank-no-binding: zero bindings AND no implicit-impl-by-name path.
+  // Implicit impl is the convention `<PascalCase(name)>Blank`; the parser
+  // can't tell whether that class exists in the runtime registry, so we
+  // surface zero-explicit-bindings as a warn rather than error here.
+  if (profiles === 0) {
+    lint('blank-no-binding', 'warn', file, `declares zero binding profiles (no stepValues / blankScript / impl) — implicit-impl-by-name may resolve at runtime, otherwise the blank is unreachable`);
+  }
+}
+
+// blank-script-missing. (Tagged version of the existing script-exists check.)
+function checkBlankScript(file, frontmatter, _content, lint) {
+  const scriptPath = frontmatter && frontmatter.blankScript;
+  if (!scriptPath) return;
+  // The parser preserves relative paths if no `type: blank` was set; the
+  // blank branch resolves them. Handle both shapes.
+  let resolved = scriptPath;
+  if (scriptPath.startsWith('./')) resolved = path.join(path.dirname(file), scriptPath.slice(2));
+  if (!path.isAbsolute(resolved)) resolved = path.join(path.dirname(file), resolved);
+  if (!fs.existsSync(resolved)) {
+    lint('blank-script-missing', 'error', file, `blankScript: references ${scriptPath} which is not present in the blank's folder`);
+    return;
+  }
+  try {
+    const stat = fs.statSync(resolved);
+    if (!(stat.mode & 0o111)) {
+      lint('blank-script-not-executable', 'warn', file, `blankScript: ${scriptPath} is not executable (chmod +x recommended)`);
+    }
+  } catch { /* ignore */ }
+}
+
+function checkBlankSandbox(file, frontmatter, lint) {
+  const fm = frontmatter || {};
+  if (fm.blankScript && fm.sandbox === undefined) {
+    lint('blank-sandbox-unset', 'warn', file,
+      `blankScript declared without sandbox: setting. Add \`sandbox: strict\` (recommended) or \`sandbox: off\` with a rationale.`);
+  }
+}
+
+function checkBlankImpl(file, frontmatter, content, lint) {
+  const implMatch = content.match(/^\s*impl\s*:\s*(.+)$/m);
+  if (!implMatch) return;
+  const implRaw = implMatch[1].trim().replace(/^["']|["']$/g, '');
+  if (!(implRaw.startsWith('./') || implRaw.startsWith('../'))) return;
+  const jsPath = path.join(path.dirname(file), implRaw);
+  if (!fs.existsSync(jsPath)) {
+    lint('blank-impl-missing', 'error', file, `impl: points to ${jsPath} which does not exist`);
+    return;
+  }
+  const fm = frontmatter || {};
+  const hasCap = (fm.userBlankNetwork && fm.userBlankNetwork.length)
+    || fm.userBlankLlm || fm.userBlankStorage;
+  if (!hasCap) {
+    lint('blank-impl-no-capabilities', 'warn', file,
+      `user-shipped JS blank with no capabilities declared — add \`network: [...]\`, \`llm: <provider>\`, or \`storage: <namespace>\` to enable.`);
+  }
+  checkUserBlankCapabilities(file, fm, jsPath, lint);
+}
+
+// auditor-empty-body.
+function checkAuditorBody(file, parsed, lint) {
+  const auditor = parsed.auditors && Object.values(parsed.auditors)[0];
+  const hasBody = !!(auditor && auditor.promptText && auditor.promptText.trim().length > 0);
+  if (!hasBody) {
+    lint('auditor-empty-body', 'error', file, `AUDITOR.md body is empty — no prompt concern declared, auditor would no-op`);
+  }
+}
+
+// cue-missing-trigger (cross-file aggregate). Word-cue sources without
+// match: AND keywords: are dropped silently at runtime.
+function checkUnroutableWordCues(wordCueSources, lint) {
   if (wordCueSources.length === 0) return;
-  // De-dup by source name (ConfigLoader merges across paths).
   const byName = new Map();
   for (const s of wordCueSources) {
     const cur = byName.get(s.name);
@@ -265,142 +382,106 @@ function checkUnroutableWordCues(wordCueSources, warnings) {
   }
   for (const s of byName.values()) {
     if (!s.hasMatch && !s.hasKeywords) {
-      warnings.push(
-        `${s.file}: word-cue source "${s.name}" has neither match: nor keywords: — ` +
-        `it would be dropped at runtime. Add an explicit match/keywords (or use \`match: .*\`).`
-      );
+      lint('cue-missing-trigger', 'error', s.file,
+        `word-cue source "${s.name}" has neither match: nor keywords: — would be dropped at runtime (use \`match: .*\` for catch-all)`);
     }
   }
 }
 
-// User-blank capability hygiene. Three classes of mistake we catch
-// at validate time so the author doesn't discover them at load time:
-//
-//   1. Orphan binding: secret-hosts.<NAME> entry for a NAME not in
-//      secrets: [...] — the binding has no value to enforce and is
-//      almost always a typo.
-//   2. Binding outside network allow-list: secret-hosts.<NAME>
-//      lists a host that isn't in network: [...]. ctx.fetch would
-//      refuse the request anyway (hostname not allowed); the binding
-//      is unreachable.
-//   3. Unused secret: secrets: declares <NAME> but the JS source
-//      never references ctx.secrets.<NAME> / ctx.secrets[<NAME>] /
-//      destructures it. Best-effort substring scan; false positives
-//      possible (dynamic key names) so this is a warning, not error.
-function checkUserBlankCapabilities(cueMd, fm, jsPath, errors, warnings) {
+// JS-blank capability hygiene (orphan bindings, out-of-allow-list hosts,
+// unused secrets). Same checks as the previous implementation; tagged
+// with rule codes so JSON consumers can filter.
+function checkUserBlankCapabilities(cueMd, fm, jsPath, lint) {
   const secrets = fm.userBlankSecrets || [];
   const bindings = fm.userBlankSecretBindings || {};
   const network = fm.userBlankNetwork || [];
   const netLower = new Set(network.map(h => h.toLowerCase()));
   const declaredNames = new Set(secrets);
 
-  // 1. Orphan bindings — secret-hosts.X without secrets: [..., X, ...].
   for (const name of Object.keys(bindings)) {
     if (!declaredNames.has(name)) {
-      warnings.push(
-        `${cueMd}: secret-hosts.${name} declared but "${name}" is not in secrets: [...]. ` +
-        `Add to secrets: or remove the binding.`,
-      );
+      lint('blank-secret-binding-orphan', 'warn', cueMd,
+        `secret-hosts.${name} declared but "${name}" is not in secrets: [...]. Add to secrets: or remove the binding.`);
     }
   }
-
-  // 2. Binding hosts not in network: allow-list.
   for (const [name, hosts] of Object.entries(bindings)) {
     if (!Array.isArray(hosts)) continue;
     for (const h of hosts) {
       if (!netLower.has(String(h).toLowerCase())) {
-        warnings.push(
-          `${cueMd}: secret-hosts.${name} lists "${h}" which is not in network: [...]. ` +
-          `ctx.fetch refuses unlisted hosts anyway — add "${h}" to network: or drop the binding.`,
-        );
+        lint('blank-secret-binding-unreachable', 'warn', cueMd,
+          `secret-hosts.${name} lists "${h}" which is not in network: [...]. Add to network: or drop the binding.`);
       }
     }
   }
-
-  // 3. Unused secret declarations — secrets: [X] but no ctx.secrets.X
-  //    anywhere in the JS source. Substring scan is good enough; the
-  //    failure mode of a false positive is "warn about a real use" not
-  //    "miss an unsafe one".
   if (secrets.length > 0 && fs.existsSync(jsPath)) {
     let src = '';
     try { src = fs.readFileSync(jsPath, 'utf8'); } catch { /* */ }
     for (const name of secrets) {
-      // Match ctx.secrets.NAME, ctx.secrets["NAME"], ctx.secrets['NAME'],
-      // and destructured `const { NAME } = ctx.secrets`.
       const dot = new RegExp(`\\bctx\\.secrets\\.${name}\\b`).test(src);
       const bracket = new RegExp(`\\bctx\\.secrets\\[\\s*['"]${name}['"]\\s*\\]`).test(src);
       const destruct = new RegExp(`\\b${name}\\b`).test(src) && /ctx\.secrets/.test(src);
       if (!dot && !bracket && !destruct) {
-        warnings.push(
-          `${cueMd}: secrets: [${name}] declared but ctx.secrets.${name} doesn't appear in ${path.basename(jsPath)}. ` +
-          `Remove the declaration or use the secret.`,
-        );
+        lint('blank-secret-unused', 'warn', cueMd,
+          `secrets: [${name}] declared but ctx.secrets.${name} not referenced in ${path.basename(jsPath)}. Remove or use it.`);
       }
     }
   }
 }
 
-// Endpoint allow-list sanity. A cue/blank/auditor's frontmatter can
-// specify provider: + endpoint:; a malicious / typo'd endpoint would
-// route the user's draft (used as prompt context) to an attacker
-// server. validateEndpoint() classifies the URL as default / stock /
-// custom / invalid; we surface anything that isn't "default" or
-// "stock" as a warning so authors verify the URL before installing.
-function checkEndpoint(file, name, src, validateEndpoint, errors, warnings) {
+function checkEndpoint(file, name, src, validateEndpoint, lint) {
   if (!src || !validateEndpoint) return;
   const provider = src.provider;
   const endpoint = src.endpoint;
   if (!provider && !endpoint) return;
   const r = validateEndpoint(provider, endpoint);
   if (!r.ok) {
-    errors.push(`${file}: ${name}: ${r.warning}`);
+    lint('endpoint-invalid', 'error', file, `${name}: ${r.warning}`);
     return;
   }
   if (r.kind === 'custom') {
-    warnings.push(`${file}: ${name}: ${r.warning}`);
+    lint('endpoint-custom', 'warn', file, `${name}: ${r.warning}`);
   }
 }
 
-// Host-compat sanity. Three failure modes worth catching:
-//   1. Unknown host name in on-host: / not-on-host: (typo, e.g. "claud-code")
-//   2. inferHostCompat() resolves to ZERO hosts (effectively disabled)
-function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, errors, warnings, _fileContent) {
+function checkHostCompat(file, name, src, inferHostCompat, unknownHostNames, lint) {
   if (!src) return;
-  // 1. Typos in explicit lists.
   const onHost = src.onHost ?? src['on-host'];
   const notOnHost = src.notOnHost ?? src['not-on-host'];
   for (const bad of unknownHostNames(onHost)) {
-    warnings.push(`${file}: ${name}: unknown host in on-host: "${bad}"`);
+    lint('unknown-host', 'error', file, `${name}: unknown host in on-host: "${bad}"`);
   }
   for (const bad of unknownHostNames(notOnHost)) {
-    warnings.push(`${file}: ${name}: unknown host in not-on-host: "${bad}"`);
+    lint('unknown-host', 'error', file, `${name}: unknown host in not-on-host: "${bad}"`);
   }
-  // 2. Empty allow-list = entry never runs anywhere.
   const compat = inferHostCompat(src);
   if (compat.hosts.length === 0) {
-    warnings.push(`${file}: ${name}: host-compat resolves to 0 hosts — this entry will never run`);
+    lint('host-compat-empty', 'warn', file, `${name}: host-compat resolves to 0 hosts — this entry will never run`);
   }
 }
 
 function printHelp() {
-  console.log('opencues validate [--project] [--user] [--strict]');
+  console.log('opencues validate [--project] [--user] [--strict] [--json]');
   console.log('');
-  console.log('Walk the .cues/ search paths, parse every .md, report issues.');
+  console.log('Walk the .cues/ search paths, parse every .md, report issues');
+  console.log('tagged with their spec lint-rule codes (see spec/core.md § Linting rules).');
   console.log('Exit 0 on success, 1 on errors (or warnings with --strict).');
   console.log('');
   console.log('  --project    Only check <cwd>/.cues/');
   console.log('  --user       Only check ~/.cues/');
   console.log('  --strict     Treat warnings as errors');
+  console.log('  --json       Machine-readable findings to stdout (for CI / conformance runners)');
   console.log('  --help       Show this message');
   console.log('');
-  console.log('Detects:');
-  console.log('  * Frontmatter parse errors (with file path)');
-  console.log('  * Duplicate cue/blank names within a path');
-  console.log('  * script: / blankScript: paths that don\'t exist or aren\'t executable');
-  console.log('  * Empty cue folders (no CUE.md / BLANK.md inside)');
-  console.log('  * Host-compat issues: unknown host names, contradictions, empty allow-list');
-  console.log('  * Endpoint security: unknown provider:, invalid URL, custom endpoint that');
-  console.log('    overrides the stock provider endpoint (warned, not errored)');
-  console.log('  * User-blank capability hygiene: orphan secret-hosts bindings,');
-  console.log('    bindings pointing outside network: allow-list, unused secrets:');
+  console.log('Spec-rule coverage (errors unless noted):');
+  console.log('  cue-missing-name, cue-missing-trigger, cue-empty-body');
+  console.log('  blank-missing-name, blank-missing-keywords, blank-multiple-bindings');
+  console.log('  blank-no-binding (warn), blank-script-missing');
+  console.log('  auditor-missing-name, auditor-empty-body');
+  console.log('  spec-too-new, unknown-host, name-collision');
+  console.log('');
+  console.log('Additional runtime hygiene (warn):');
+  console.log('  blank-sandbox-unset, blank-impl-missing, blank-impl-no-capabilities,');
+  console.log('  blank-secret-binding-orphan, blank-secret-binding-unreachable,');
+  console.log('  blank-secret-unused, endpoint-invalid, endpoint-custom,');
+  console.log('  host-compat-empty, source-empty-folder, parse-failed');
 }

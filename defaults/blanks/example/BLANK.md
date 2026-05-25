@@ -53,6 +53,15 @@ blankReadOnly: true
 # resolved against THIS folder. So time-blank.sh sits in
 # defaults/blanks/example/ alongside this BLANK.md.
 blankScript: ./time-blank.sh
+
+# Sandbox the script. `strict` (recommended) is the most restrictive
+# profile — the script runs without filesystem write, network, or
+# environment access. `time-blank.sh` only needs to read the clock,
+# so strict is the right pick. Use `sandbox: off` (with a comment
+# explaining why) for blanks that legitimately need filesystem or
+# network access — volume-blank.sh / brightness-blank.sh are
+# canonical examples. See `docs/architecture/sandbox.md`.
+sandbox: strict
 ---
 
 # Try it

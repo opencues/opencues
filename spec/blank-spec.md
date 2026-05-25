@@ -36,7 +36,7 @@ Every blank is folder-shaped — there is no flat-file alternative. A declarativ
 A blank fires when **all** of these hold:
 
 1. The user's text contains `_` (the blank marker).
-2. A word adjacent to `_` (within `blankProximity`, default 1) matches one of the blank's `blankKeywords`.
+2. One of the blank's `blankKeywords` appears within `blankProximity` words of `_` (default `0`, i.e. immediately adjacent). `blankProximity` counts the words *between* the keyword and `_`: `0` = adjacent, `1` = up to one word between, etc.
 3. The runtime has loaded the blank source.
 
 Blanks fire deterministically. The `description:` field is documentation only — it does NOT control invocation. (Contrast with [SKILL.md](https://github.com/anthropics/skills), where `description` is the LLM's invocation hook.)
@@ -77,7 +77,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `blankSatellite` | boolean | `false` | Two-word selector + value pattern. See § Flag obligations. |
 | `blankDismissible` | boolean | `false` | `_` becomes the last cycling option. |
 | `blankReadOnly` | boolean | `false` | Skip `set` / `up` / `down`. |
-| `blankProximity` | number | `1` | Word distance from `_` allowed for keyword match. |
+| `blankProximity` | number | `0` | Max number of words allowed *between* the keyword and `_`. `0` = keyword must be adjacent to `_`; `N` ≥ 1 = up to N words may sit between them. |
 | `blankTip` | string | none | Multi-line display hint. Distinct from `tip:`: runtimes that show only short hints SHOULD use `tip`; runtimes with a side pane MAY use `blankTip`. If a file declares both, runtimes pick whichever fits their UI. |
 | `blankClearKeywords` | boolean | `false` | After fill, strip the keyword (and any context words between keyword and `_`) from the resulting text. Used when the keyword is purely a trigger and shouldn't survive in the output (e.g. `volume _` → `50%`, not `volume 50%`). |
 | `blankKeywordExpansions` | mapping `<keyword>: <expansion>` | none | Map short-form keywords to their expanded form (e.g. `nvda: Nvidia`). The expanded form is passed to `get` as `context` instead of the raw keyword. Authors MAY use the dotted shape `blankKeywordExpansions.nvda: Nvidia` for terse YAML. |
@@ -87,6 +87,8 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `on-host` / `not-on-host` | list | auto-detected | Host filtering. See `core.md`. |
 | `speak` | boolean | `false` | Per-blank TTS hint. Reserved here so authors have a portable place to declare intent; TTS itself is non-standard. |
 | `spec` | string | `"opencues/0.1-alpha"` | Spec version this file targets. Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`. Runtimes MUST refuse files declaring a newer `spec:` than they support. |
+
+> **Runtime extensions to this table.** The reference runtime parses additional fluid-blank-specific keys not (yet) elevated to this standard: `blankReplace` (`keep` | `wipe` | `wipe-all` | `auto`, controls how the resolved value substitutes into the buffer), `blankSatelliteSeparator`, `blankClearOnEdit`, `altCount`, and the credential fields `secrets:` / `secret-hosts.*`. These are runtime-only knobs documented in [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md); other implementations MAY ignore them. They become candidates for the promotion path (see `core.md`) once a second runtime adopts them.
 
 ### Body
 
@@ -316,7 +318,7 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 
 - **`blankSatellite: true`** — `get` MAY return `<selector>\t<satellite>` (tab-separated). The runtime MUST splice both as adjacent words. Cycling targets the selector; satellite is updated via `set <selector> <value>`.
 - **`blankDismissible: true`** — runtime MUST append `_` to the cycling list. Selecting it sets a "dismissed" flag for that slot; runtime MUST NOT re-populate until the user explicitly cycles away.
-- **`blankProximity: N`** — the keyword may sit up to N words before `_`. Default 1.
+- **`blankProximity: N`** — up to N words may sit *between* the keyword and `_`. Default 0 (adjacent). With `N = 2`, `"weather in paris _"` matches (2 words between); `"weather in central paris _"` does not (3 words between, exceeds N).
 - **`blankKeywordExpansions.<key>`** — when `<key>` triggers, the runtime MAY pass the expanded form as `context` instead of the raw keyword.
 - **`blankStep`, `blankFormat`, `blankSuffix`** — numeric/format hints. Runtime MUST honor for numeric blanks.
 
