@@ -10,7 +10,7 @@ cross_links: [hci-human-to-computer-interface, inline-cues-continuous-onboarding
 
 Humans don't really take turns. While one person speaks, the other steers via nods, expressions, micro-vocalisations, and glances at the door. The resulting conversation feels fluent because the listener never has to wait their turn to be heard.
 
-Current LLM chat strips all of this away. The user types, submits, waits, reads, types, submits. As Head of HCI (Human to Computer Interface) at Command Stick, I find this gap fascinating, and pivotal to where AI HCI should go next.
+Current LLM chat strips all of this away. The user types, submits, waits, reads, types, submits. As Head of HCI (Human to Computer Interface) at Command Stick, I find this gap fascinating, and I believe it is pivotal to where AI HCI should go next.
 
 ---
 
@@ -33,7 +33,7 @@ Each is sub-second, non-blocking, and on a different modality from the speaker's
 
 Humans have already invented digital versions of this pattern. The reactions in WhatsApp let you respond to a message without producing a new message that shifts the chat window. Typing indicators ("Wilfred is typing...") signal that someone is composing without producing a chat message of their own. Read receipts mark acknowledgement without requiring a reply. Google Docs presence cursors show another user's caret moving in real time, on a separate visual layer, without disturbing the document.
 
-The pattern extends into single-user software too. Spell-check red squiggles since the 1990s, Grammarly underlines, IDE inlay hints, Copilot ghost text, browser address-bar autocomplete, search-engine "did you mean...?" suggestions: each is a system → user cue that lives in a separate visual layer and is fully ignore-able. The user takes the suggestion or not, with no commitment cost on either side.
+The pattern extends into single-user software too. Spell-check red squiggles (since the 1990s), Grammarly underlines, IDE inlay hints, Copilot ghost text, browser address-bar autocomplete, search-engine "did you mean...?" suggestions: each is a system → user cue that lives in a separate visual layer and is fully ignorable. The user takes the suggestion or not, with no commitment cost on either side.
 
 Each of these surfaces shares a structural property: the cue lives outside the user's primary input channel. It steers without blocking.
 
@@ -49,13 +49,13 @@ We have regressed from human conversation rather than matched it. Faux turn-base
 
 ### Why non-blocking cues work: the modality rule
 
-Underneath the examples is one mechanism. Two people speaking at the same time produces chaos. Two people texting each other in real time produces interleaved confusion. But one person speaking and the other nodding produces *steered* communication, because nodding doesn't occupy the audio channel.
+Underneath the examples is one mechanism. Two people speaking at the same time produce chaos. Two people texting each other in real time produce interleaved confusion. But one person speaking and the other nodding produces *steered* communication, because nodding doesn't occupy the audio channel.
 
 The same principle explains why the WhatsApp reaction works and why a "👍" sent as a message would not. The reaction lives in a separate visual layer attached to the original message. The same emoji sent as a message would shift the chat window and demand attention from the recipient as they composed their reply.
 
 This should be a foundational rule when designing AI HCIs:
 
-> To create an optimal experience, any cue between a user and an AI system should use a different modality than the user's primary input channel.
+> To create an optimal experience, any cue between a user and an AI system should use a different modality from the user's primary input channel.
 
 If the user is typing, the system's cue can be a visual mark, an underline, a status-line note. It cannot be a popup that takes focus. If the user is speaking, the system's cue can be visual or haptic. It cannot be audio that competes with the user's voice. The modality rule is what separates a cue that helps from a cue that interrupts.
 

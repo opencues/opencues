@@ -3,12 +3,12 @@ title: HCI (Human to Computer Interface)
 date: 2026-05-06
 description: HCI is any means through which we interface with a computer. The sharpest framework I know for evaluating one is borrowed from fighting games.
 tags: [hci, framework, fighting-games, foundational]
-cross_links: [inline-cues-continuous-onboarding, inline-prompting-blank, inline-agents, cross-domain-pollination, seamlessly-integration]
+cross_links: [human-interaction, inline-cues-continuous-onboarding, inline-prompting-blank, inline-agents, cross-domain-pollination, seamlessly-integration]
 ---
 
 # HCI (Human to Computer Interface)
 
-A human-to-computer interface is any means through which we interface with a computer system, not just hardware. Sliders, dials, buttons, widgets, touchscreens, keyboards, chat windows, dropdown menus, command palettes, swipe gestures, swipe-to-type: all are HCIs, all were invented by someone, all were chosen over alternatives.
+A human-to-computer interface is any means by which we interact with a computer system, not just hardware. Sliders, dials, buttons, widgets, touchscreens, keyboards, chat windows, dropdown menus, command palettes, swipe gestures, swipe-to-type: all are HCIs, all were invented by someone, all were chosen over alternatives.
 
 I have spent seven years inventing and patenting HCIs at Command Stick, across desktop, mobile, tablet, and smartwatch platforms. The work taught me to evaluate HCIs more rigorously than my discipline typically does, and that rigour came from an unexpected place.
 
@@ -46,7 +46,7 @@ How long the HCI's process actually takes to finish, from the moment the user in
 
 A blocking modal is the canonical bad case: the user initiates the action and is prevented from doing anything else until it completes. Active window duration cannot be circumvented with background processes. If the user needs the result to proceed, they are still waiting for it to return. Allowing them to keep typing while the operation runs softens the perceived cost but does not shorten the actual duration. The operation's time-to-completion governs how soon the user can move onto the next task.
 
-Reducing active window duration is the HCI design decision that lets the user get onto their next task sooner, and extends where the HCI can be applied (as does optimising start-up frames and end-lag).
+Reducing active window duration is the HCI design decision that lets the user move onto their next task sooner, and extends where the HCI can be applied (as does optimising start-up frames and end-lag).
 
 ### End-lag
 
@@ -96,4 +96,4 @@ We are entering an era where the substrate is shifting again. LLMs unlock a clas
 
 ---
 
-See Also: [Inline Cues](inline-cues-continuous-onboarding.md) · [Inline Prompting](inline-prompting-blank.md) · [Inline Agents](inline-agents.md) · [Cross-domain Pollination](cross-domain-pollination.md) · [Seamless Integration](seamlessly-integration.md)
+See Also: [Human Interaction](human-interaction.md) · [Inline Cues](inline-cues-continuous-onboarding.md) · [Inline Prompting](inline-prompting-blank.md) · [Inline Agents](inline-agents.md) · [Cross-domain Pollination](cross-domain-pollination.md) · [Seamless Integration](seamlessly-integration.md)

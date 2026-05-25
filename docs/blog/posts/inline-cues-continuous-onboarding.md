@@ -1,16 +1,16 @@
 ---
 title: Inline Cues (Continuous Onboarding)
 date: 2026-05-06
-description: Inline Cues are a system-to-user signal that teaches the tool in context, while the user uses it. The structural answer to AI-era feature churn outpacing documentation.
+description: Inline Cues are system-to-user signals that teach users about the tool in context, while they use it. The structural answer to AI-era feature churn outpacing documentation.
 tags: [hci, cues, continuous-onboarding, llm, mechanic]
 cross_links: [hci-human-to-computer-interface, human-interaction, inline-prompting-blank, inline-agents, seamlessly-integration]
 ---
 
 # Inline Cues (Continuous Onboarding)
 
-Inline Cues are system-to-user signals embedded in the text the user is already typing. They surface information about the tool in context, while the user is working, without requiring the user to leave the prompt.
+Inline Cues are system-to-user signals layered onto the user's text. They surface information about the tool in context, while the user is working, without requiring the user to leave the prompt.
 
-Cues activate automatically as the user types in any prompt with cue sources installed. Cues surface as dimmed words; navigate between cues with `Ctrl+Alt+Right` / `Ctrl+Alt+Left`, and cycle through a cue's alternative words with `Ctrl+Alt+Up` / `Ctrl+Alt+Down`.
+Cues activate automatically as the user types in any prompt with cue sources installed. Cues surface as dimmed words. Navigate between cues with `Ctrl+Alt+Right` / `Ctrl+Alt+Left`, and cycle through a cue's alternative words with `Ctrl+Alt+Up` / `Ctrl+Alt+Down`.
 
 Claude Code is a new class of HCI (Human to Computer Interface): an agentic CLI tool, or what I call a Human-to-AI Interface (HAII). I have watched it emerge and evolve while moderating [r/ClaudeAI](https://www.reddit.com/r/ClaudeAI) and building Claude Code learning resources at [ClaudeLog.com](https://claudelog.com). That experience has shown me why continuous onboarding is necessary, and I believe Inline Cues are how to deliver it.
 
@@ -18,7 +18,7 @@ Claude Code is a new class of HCI (Human to Computer Interface): an agentic CLI 
 
 ### Prior to Inline Cues
 
-In the past, a developer could read a tool's documentation, internalise how it works, and trust that mental model would be valid for months. Modern agentic tools break that assumption. They are subject to two compounding sources of variance:
+In the past, a developer could read a tool's documentation, internalise how it works, and trust that the mental model would be valid for months. Modern agentic tools break that assumption. They are subject to two compounding sources of variance:
 
 - **Model variance:** the model behind the tool may shift week-to-week as providers update system prompts, alignment, or pricing.
 - **Harness variance:** the tool itself ships features faster than docs can describe them, partly because the tools are now used to build themselves.
@@ -43,9 +43,9 @@ Six months of iteration was gated by a hard set of design constraints. None of t
 - **No interrupting typing.** No popups, no modals, no taking focus. The user keeps typing while the system thinks.
 - **No overloading rendering meanings.** Bold, italic, and underline are already used to indicate meaning. The cue indicator must not collide with those.
 - **Universality.** The solution must work in any text input on any platform: terminal, browser, mobile, IDE.
-- **Felt latency.** A cue that arrives 30ms after the user has moved on is noise; a cue that arrives 5 seconds later is irrelevant.
-- **Ignorable.** A cue the user does not engage with should cost zero. No dismiss action, no follow-up modal.
-- **Cross-domain isolation.** A cue source for legal terminology must not contaminate one for medical terminology. One bad config should not break the whole system.
+- **Perceived latency.** A cue that arrives 30ms after the user has moved on is visual noise; a cue that arrives 5 seconds later is irrelevant.
+- **Ignorable.** A cue the user does not engage with should not interrupt their experience. No dismiss action, no follow-up modal.
+- **Cross-domain isolation.** A cue source for legal terminology must not contaminate one for medical terminology. Sources must not interfere with each other's output.
 - **Discoverable without docs.** The user must be able to learn what cues exist *while using the tool*, not by reading a manual.
 - **Decoupled from cursor position.** The user's cursor is for typing. The cue-selection indicator must be separate so the user can browse cues without losing their place.
 
@@ -61,12 +61,12 @@ The dim is the entry point. Three primitives compose around it:
 
 Editing a word clears its cue and starts fresh; other words in the input keep their state.
 
-Two cue sources cover the space:
+Two main kinds of cue source:
 
 - **Local cues** are static dictionaries of word → tip + alternatives, loaded into RAM at boot and looked up in roughly zero milliseconds.
-- **Remote (LLM) cues** are domain prompts that fire on words matching a regex or keyword list. Latency 200–500ms.
+- **Remote (LLM) cues** are domain prompts that trigger on words matching a regex or keyword list. Latency typically sub-second on fast providers.
 
-A user defines cues by dropping a `cue.md` file into `~/.cues/cues/<name>/`. The frontmatter declares `match:` (regex) or `keywords:` (list); the body is the prompt or a dictionary of words. Folder-based discovery, no registration, hot-reload picks up changes on the next keystroke.
+A user defines cues by dropping a `CUE.md` file into `~/.cues/cues/<name>/`. The frontmatter declares `match:` (regex) or `keywords:` (list); the body is the prompt or a dictionary of words. Folder-based discovery, no registration, hot-reload picks up changes on the next keystroke.
 
 ### Why the dim works
 
@@ -74,15 +74,13 @@ The dim works because it occupies a different modality from the words the user i
 
 ### Continuous onboarding
 
-The post opened on feature churn outpacing documentation. Inline Cues are the structural answer.
+Feature churn outpaces documentation. Inline Cues are the structural answer.
 
 Inline Cues put the teaching surface inside the prompt. The user types a feature name; the dim signals "there is something to know"; navigation surfaces the tip. The user has learnt the feature in context. There is no documentation site to fall behind, because there is no separate documentation site. When the feature changes, a config file updates and every user picks it up on their next keystroke.
 
-For product owners, this same mechanism gives a fast cycle. A `cue.md` file authored today, dropped into a user's `~/.cues/cues/` or shipped via a defaults bundle, becomes a live cue on the next keystroke. No build, no deploy, no restart.
+For product owners, this same mechanism gives a fast cycle. A `CUE.md` file authored today, dropped into a user's `~/.cues/cues/` or shipped via a defaults bundle, becomes a live cue on the next keystroke. No build, no deploy, no restart.
 
 Continuous onboarding generalises beyond the LLM era. It is the answer to *any* fast-moving substrate where the user's mental model is liable to go stale: product features, terminology, deprecations, community best practices.
-
-> Anywhere the work is the surface, the teaching can live with the work.
 
 ### Looking forward
 
