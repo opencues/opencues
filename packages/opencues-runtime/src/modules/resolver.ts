@@ -1187,7 +1187,11 @@ export class Resolver {
 
         // Race guard — if the live text no longer matches what we
         // analyzed, another module already touched it. Skip.
-        if (liveText !== originalText) {
+        // Compare ZWS-stripped to ignore runtime-internal toggles (e.g.
+        // BlankLoading spinner ticks via pushText flip ZWS every frame on
+        // CC 2.1.x to force a repaint; those toggles aren't user edits).
+        const stripZw = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
+        if (stripZw(liveText) !== stripZw(originalText)) {
           this.adapter.log('info', `TransformBlank: skipping — live text changed since resolve (live len=${liveText.length}, original len=${originalText.length})`);
           continue;
         }
@@ -1324,7 +1328,19 @@ export class Resolver {
           );
           bufferText = sub.newText;
         } else {
-          const merge = threeWayMerge(originalText, rewrittenText, liveText);
+          // Strip ZWS from BOTH originalText and liveText before merging.
+          // The spinner's per-frame pushText flips \u200B/\u200C to force a
+          // host repaint, and threeWayMerge would otherwise see those toggles
+          // as "user edits". Stripping only liveText (the prior attempt at
+          // this fix) was worse: it made liveText differ from originalText
+          // by 1 char (the ZWS), which the merge counted as a real user edit
+          // at the trigger's last char position. The LLM's trigger-removal
+          // hunk overlapped that fake edit → got dropped → the trigger
+          // survived in the merged result. Stripping both inputs equally
+          // lets the merge see the buffers as actually-equal modulo ZWS,
+          // so no fake user-edits arise.
+          const stripZw = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
+          const merge = threeWayMerge(stripZw(originalText), rewrittenText, stripZw(liveText));
           sub = applyMarkdownAwareSubstitution(
             this.adapter, merge.newText, { cursor: Number.MAX_SAFE_INTEGER },
           );
@@ -1353,6 +1369,28 @@ export class Resolver {
           // same mechanism fluid-blank uses.
           blankName: 'transform-blank',
         };
+        // Prune stale defs the substitute invalidated.
+        // (a) Sentence-cue defs were resolved against pre-substitute text;
+        //     their spanStart/spanEnd indices now point at unrelated content
+        //     in the new buffer → the dim ranges paint nonsense overlay.
+        // (b) Any other def whose spanEnd > bufferText.length is out-of-range
+        //     in the new buffer → keeping it is structurally meaningless.
+        // Navigation's onTextChange short-circuits on runtime events, so it
+        // doesn't run pruneStale for us. Substitute is the right place.
+        let prunedCount = 0;
+        for (const [idx, d] of this.dynDefs.entries()) {
+          if (idx === newWordIndex) continue;            // keep the one we just set
+          const isSentenceCue = d.blankName?.startsWith('sentence-cue:') ?? false;
+          const outOfRange = d.spanEnd !== undefined && d.spanEnd > bufferText.length;
+          if (isSentenceCue || outOfRange) {
+            this.dynDefs.delete(idx);
+            prunedCount++;
+          }
+        }
+        if (prunedCount > 0) {
+          this.adapter.log('debug', `TransformBlank: pruned ${prunedCount} stale def(s) after substitute`);
+        }
+
         this.dynDefs.set(newWordIndex, transformDef);
         wrote++;
 

@@ -71,7 +71,7 @@ export interface HostInfo {
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   /** Optional: async text push (calls captured onChange + onOffsetChange). */
   pushText?(text: string, cursor?: number): void;
-  /** Optional: absolute path to the TTS script (CC ships speak.sh + SpeakCtl.exe colocated in <CC_FORK>/.opencues/scripts/). */
+  /** Optional: absolute path to the TTS script (CC ships speak.sh + SpeakCtl.exe colocated in <CC_FORK>/.cues/scripts/). */
   ttsScriptPath?: string;
   /** Optional: TTS rate (-10 to 10) passed as 2nd arg to the script. Defaults to 2. */
   ttsRate?: number;
@@ -211,6 +211,14 @@ export function boot(host: HostInfo): BootResult {
   let pendingRender = false;
   let pendingText: string | null = null;
   let pendingCursor: number | null = null;
+  // `true` while inside dispatchKey — setText/forceRender then buffer into
+  // pending* flags which consumePendingRender drains synchronously after
+  // dispatch. `false` everywhere else (async timer callbacks, promise
+  // resolutions, etc.) — setText/forceRender must then push actively via
+  // host.pushText, or the buffer stalls until the next user keystroke
+  // (which breaks BlankLoading's spinner animation + agent-task highlight
+  // refresh on 2.1.150 where S6 isn't available to drive renders).
+  let insideDispatch = false;
   // Drift detection: lastSeenText is what we last observed during a dispatch
   // or render. If the visible-character content changes between observations
   // and we didn't initiate the change ourselves, fire a 'user' textChange.
@@ -265,7 +273,22 @@ export function boot(host: HostInfo): BootResult {
     },
     setText: (text) => { pendingText = text; },
     setCursorOffset: (offset) => { pendingCursor = offset; },
-    forceRender: () => { pendingRender = true; },
+    forceRender: () => {
+      pendingRender = true;
+      // Outside dispatch (timer-driven writes — spinner, agent-task refresh)
+      // drain pendingText/pendingCursor through host.pushText so the host
+      // actually paints. Without this, async setText calls just buffer the
+      // flag until the next keystroke, breaking BlankLoading animation +
+      // any other async repaint on 2.1.150 (S6 not available).
+      if (!insideDispatch && host.pushText) {
+        const base = pendingText ?? lastSeenText ?? '';
+        try { host.pushText(base, pendingCursor ?? undefined); } catch (err) { log('error', 'async pushText (forceRender) failed', err); }
+        pendingText = null;
+        pendingCursor = null;
+        pendingRender = false;
+        lastSeenText = base;
+      }
+    },
     registerKeyHandler: (cb): Unsubscribe => {
       keyHandlers.push(cb);
       return () => removeFrom(keyHandlers, cb);
@@ -538,17 +561,22 @@ export function boot(host: HostInfo): BootResult {
     dispatchKey(rawEvent, text, cursorOffset) {
       checkTextDrift(text, cursorOffset);
       const event = normaliseKeyEvent(rawEvent, text, cursorOffset);
-      for (const handler of keyHandlers) {
-        try {
-          if (handler(event)) return true;
-        } catch (err) {
-          if (!handlerErrLogged) {
-            handlerErrLogged = true;
-            log('error', 'key handler error', err);
+      insideDispatch = true;
+      try {
+        for (const handler of keyHandlers) {
+          try {
+            if (handler(event)) return true;
+          } catch (err) {
+            if (!handlerErrLogged) {
+              handlerErrLogged = true;
+              log('error', 'key handler error', err);
+            }
           }
         }
+        return false;
+      } finally {
+        insideDispatch = false;
       }
-      return false;
     },
 
     consumePendingRender(currentText, currentCursor) {

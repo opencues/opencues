@@ -464,6 +464,12 @@ export class BlankLoadingAnimator {
         const before = cleaned.slice(0, m.index);
         const after = cleaned.slice(m.index + m[0].length);
         this._adapter.setText(before + next + after);
+        // Without this, async timer-driven setText only buffers pendingText
+        // on hosts that consume it via keystroke dispatch (CC 2.1.x). The
+        // adapter's forceRender pushes the buffered text actively when not
+        // inside a dispatch, letting the spinner actually animate. Optional-
+        // chained for test mocks that don't implement forceRender.
+        this._adapter.forceRender?.();
         return;
       }
       idx++;
