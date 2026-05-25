@@ -9,13 +9,10 @@
     "field": "dependencies.@anthropic-ai/claude-code",
     "fork-default": "~/claude-code-cues"
   },
-  "tested": ["2.1.110"],
+  "tested": ["2.1.110", "2.1.150"],
   "compat-range": "2.1.x",
-  "known-incompatible": [
-    {
-      "version": "2.1.119",
-      "reason": "Switched to native binary distribution. No cli.js to patch — would need a totally different patcher approach.",
-      "first-broken": "2.1.119"
-    }
-  ]
+  "//notes": {
+    "binary-cutover": "2.1.113 (not 2.1.119 — that was an earlier guess). From 2.1.113 onward, @anthropic-ai/claude-code ships a thin Node wrapper + a bun-compile native binary in @anthropic-ai/claude-code-<platform>. Tweakcc 4.0.13+ extracts cli.js from the binary's .bun ELF section, patches the text, and repacks (handles ELF/MachO/PE). Same tweakcc anchor regexes work on both formats; the cli.js text inside the .bun section runs unchanged at startup (bun honours text over its own precompiled bytecode).",
+    "native-binary-fork": "For 2.1.113+ installs, the patched binary lives at <fork>/node_modules/@anthropic-ai/claude-code/bin/claude.exe (a hardlink to claude-code-linux-x64/claude or similar). @opencues/{core,runtime} go in <fork>/node_modules/@opencues/. The injected bootstrap uses __oc_req() — tries bare-spec first, falls back to walking up from process.execPath looking for node_modules/<spec> — so the same patch source works against both cli.js and native-binary installs."
+  }
 }

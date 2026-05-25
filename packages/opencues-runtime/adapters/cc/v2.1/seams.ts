@@ -20,12 +20,14 @@ export interface SeamMatch {
 
 // ─── S1: KeyDispatcher ────────────────────────────────────────────────────
 //
-// Shape: function NAME(EVENT, ?){ switch (EVENT.key) { case "escape": ... } }
+// Shape: function NAME(EVENT, ?){ switch (EVENT.key|name) { case "escape": ... } }
+// 2.1.110 uses `event.key`; 2.1.150 refactored to `event.name`. Both still
+// expose .key/.name on the event object, so the regex tries either.
 // Injection point: just after the opening { of the function body, before the
 // switch. We capture (funcName, eventParam, keyParam).
 
 const KEY_DISPATCHER_REGEX =
-  /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{switch\(\2\.key\)\{case"escape":/;
+  /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{switch\(\2\.(?:key|name)\)\{case"escape":/;
 
 export function findKeyDispatcher(source: string): SeamMatch | null {
   const m = source.match(KEY_DISPATCHER_REGEX);
@@ -71,7 +73,7 @@ function astFindKeyDispatcher(source: string): SeamMatch | null {
       const disc = firstStmt.discriminant;
       if (!disc || disc.type !== 'MemberExpression') return;
       if (disc.object?.name !== eventParam.name) return;
-      if (disc.property?.name !== 'key') return;
+      if (disc.property?.name !== 'key' && disc.property?.name !== 'name') return;
       const hasEscape = firstStmt.cases?.some(c =>
         c.test?.type === 'Literal' && c.test.value === 'escape',
       );
@@ -144,6 +146,11 @@ export function findInputStateHandler(source: string): SeamMatch | null {
 // it in an applyRender() call.
 
 const RENDERED_VALUE_RAINBOW = /renderedValue:\(function\(\)\{/;
+// 2.1.150 ships a 7-arg render with a `??`-nullish-coalesce expression as one
+// of the args, e.g. `renderedValue:Q.render(D,j,J,VH,W,C??void 0,I)`. Match
+// any args between the parens that don't themselves contain a paren — covers
+// 3/4/5/7-arg shapes uniformly without a per-arity regex.
+const RENDERED_VALUE_GENERIC = /renderedValue:([$\w]+)\.render\(([^()]+)\)/;
 const RENDERED_VALUE_5 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
 const RENDERED_VALUE_4 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
 const RENDERED_VALUE_3 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+)\)/;
@@ -175,11 +182,14 @@ export function findRenderedValue(source: string): SeamMatch | null {
     return null; // unbalanced
   }
 
-  // 2) Plain VAR.render(...) variants. Try most-args first.
+  // 2) Plain VAR.render(...) variants. Try strict ident-only patterns first
+  // (matches identical args quickly), then a generic catch-all for arg lists
+  // containing non-identifier expressions like `C??void 0`.
   for (const [pat, kind] of [
     [RENDERED_VALUE_5, 'render-5'],
     [RENDERED_VALUE_4, 'render-4'],
     [RENDERED_VALUE_3, 'render-3'],
+    [RENDERED_VALUE_GENERIC, 'render-n'],
   ] as const) {
     const m = source.match(pat);
     if (m && m.index !== undefined) {

@@ -30,8 +30,10 @@ interface SeamMatch {
 }
 
 // ─── S1: KeyDispatcher ─────────────────────────────────────────────────
+// 2.1.110 uses event.key; 2.1.150 refactored to event.name. Both still exist
+// on the event object, so we just widen the regex.
 const KEY_DISPATCHER_REGEX =
-  /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{switch\(\2\.key\)\{case"escape":/;
+  /function ([$\w]+)\(([$\w]+),([$\w]+)\)\{switch\(\2\.(?:key|name)\)\{case"escape":/;
 
 function findKeyDispatcher(source: string): SeamMatch | null {
   const m = source.match(KEY_DISPATCHER_REGEX);
@@ -103,6 +105,10 @@ const RV_RAINBOW = /renderedValue:\(function\(\)\{/;
 const RV_5 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
 const RV_4 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+,[$\w]+)\)/;
 const RV_3 = /renderedValue:([$\w]+)\.render\(([$\w]+,[$\w]+,[$\w]+)\)/;
+// 2.1.150 ships a 7-arg call with a `??`-expression as one arg
+// (e.g. `Q.render(D,j,J,VH,W,C??void 0,I)`). Generic catch-all matches any
+// argument list that doesn't contain a nested paren — covers all shapes.
+const RV_GENERIC = /renderedValue:([$\w]+)\.render\(([^()]+)\)/;
 
 interface RenderedValueMatch {
   readonly startIndex: number;
@@ -129,7 +135,7 @@ function findRenderedValue(source: string): RenderedValueMatch | null {
     }
     return null;
   }
-  for (const pat of [RV_5, RV_4, RV_3]) {
+  for (const pat of [RV_5, RV_4, RV_3, RV_GENERIC]) {
     const m = source.match(pat);
     if (m && m.index !== undefined) {
       const exprStart = m.index + 'renderedValue:'.length;
@@ -194,6 +200,13 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   // node_modules/ where setup.sh installs them. Mirrors OpenCode's
   // approach. Robust by design — no path drama, no symlinks, no
   // bundling needed. Uninstalling claude-cues cleans these up too.
+  //
+  // 2.1.150+ ships as a bun-compile native binary. From inside the
+  // bunfs vfs, bare-specifier resolution doesn't reach the host
+  // filesystem. `__oc_req` below tries bare-specifier first (works on
+  // npm cli.js installs), falls back to a manual upward walk from
+  // process.execPath looking for node_modules/<spec> (works on native
+  // binary installs). One bootstrap, both flavours.
   const bootPath = `"@opencues/runtime/dist/adapters/cc/v2.1/boot.js"`;
   // Hoisted blank classes (HackerNews / Stocks / Weather / Answer /
   // PromptImprover / OpenCuesSettings) live in the runtime's blanks
@@ -228,12 +241,24 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `__ocR.push(__ocPth.join(process.cwd(),".cues"));` +
     `__ocR.push(__ocPth.join(__ocOs.homedir(),".cues"));return __ocR;})()`;
 
+  // Resolver helper — bare-spec first (npm cli.js install), then upward
+  // walk from execPath looking for node_modules/<spec> (native binary).
+  // Defined once at the start of the bootstrap; used for every @opencues/*
+  // require below.
+  const reqHelper =
+    `function __oc_req(s){try{return ${requireFn}(s);}catch(__ocReqE){` +
+    `var __ocRP=${requireFn}("path"),__ocRF=${requireFn}("fs"),__ocRD=__ocRP.dirname(process.execPath);` +
+    `while(__ocRD.length>1){var __ocRC=__ocRP.join(__ocRD,"node_modules",s);` +
+    `if(__ocRF.existsSync(__ocRC))return ${requireFn}(__ocRC);__ocRD=__ocRP.dirname(__ocRD);}` +
+    `throw __ocReqE;}}`;
+
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
   const s1Bootstrap =
     `try{` +
     `if(!globalThis.__oc){` +
-    `try{globalThis.__oc=${requireFn}(${bootPath}).boot({` +
+    reqHelper +
+    `try{globalThis.__oc=__oc_req(${bootPath}).boot({` +
     `hostVersion:"2.1.x",cwd:process.cwd(),` +
     `getText:function(){return ${iz}.text;},` +
     `getCursorOffset:function(){return ${iz}.offset;},` +
@@ -247,7 +272,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // Path-validate every arg against the CUES roots, refuse on
     // escape, append to <root>/.opencues-log on every exit.
     `spawnProcess:function(spec){` +
-    `var __ocSec=${requireFn}(${securityPath});var __ocRoots=${cuesRootsExpr};` +
+    `var __ocSec=__oc_req(${securityPath});var __ocRoots=${cuesRootsExpr};` +
     `var __ocRaw=Array.from(spec.args||[]);var __ocSafeArgs=[];` +
     `for(var __ocI=0;__ocI<__ocRaw.length;__ocI++){var __ocV=__ocSec.validateScriptPath(String(__ocRaw[__ocI]),__ocRoots);` +
     `if(!__ocV.ok){__ocSec.appendAuditLog("claude-code",spec,{exitCode:126},__ocRoots);` +
@@ -257,7 +282,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // `sandbox: strict` AND bwrap is available. Returns null for
     // off / unavailable — we run the spec unwrapped (path sandbox +
     // audit log still apply).
-    `var __ocSb=${requireFn}(${sandboxPath});` +
+    `var __ocSb=__oc_req(${sandboxPath});` +
     `var __ocWrap=__ocSb.wrapWithBwrap(spec.command,__ocSafeArgs,spec.sandbox,__ocRoots);` +
     `var __ocFinalCmd=__ocWrap?__ocWrap.command:spec.command;` +
     `var __ocFinalArgs=__ocWrap?__ocWrap.args:__ocSafeArgs;` +
@@ -287,7 +312,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // (silent feature gap on CC). Adding a new built-in is one
     // entry in packages/opencues-runtime/src/blanks/index.ts; this
     // bootstrap picks it up automatically via createDefaultBlanksRegistry.
-    `var __ocCtl=${requireFn}(${blanksPath});` +
+    `var __ocCtl=__oc_req(${blanksPath});` +
     `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
     `var __ocGroq=process.env.GROQ_API_KEY;` +
     `var __ocReg=__ocCtl.createDefaultBlanksRegistry({` +
@@ -303,8 +328,8 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // so older runtime installs (without user-blanks support) degrade
     // silently — built-in blanks keep working.
     `try{` +
-    `var __ocUbReg=${requireFn}(${userBlanksPath});` +
-    `var __ocCore=${requireFn}(${corePath});` +
+    `var __ocUbReg=__oc_req(${userBlanksPath});` +
+    `var __ocCore=__oc_req(${corePath});` +
     `var __ocPath=${requireFn}("path");var __ocOs=${requireFn}("os");` +
     `var __ocRoots2=[];if(process.env.OPENCUES_HOME)__ocRoots2.push(process.env.OPENCUES_HOME);` +
     `__ocRoots2.push(__ocPath.join(process.cwd(),".cues"));` +
