@@ -414,12 +414,15 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}` +
     `return __ocCtl.createBlankInvoke(__ocReg);` +
     `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
-    // Statusline export path. Per-PID so two CC instances don't collide.
-    `statusFilePath:"/tmp/opencues-highlight-state-"+process.pid+".json",` +
-    // Cursor state export — single shared path. Internal tooling
-    // reads this; last-writer-wins is fine because only one CC
-    // instance is driven at a time.
-    `cursorStatePath:"/tmp/opencues-cursor-state.json",` +
+    // Statusline + cursor-state export paths. Per-PID, canonical names
+    // shared across every host adapter so the agentic harness (oc-state,
+    // scenario-runner, /tmp/opencues-status-<pid>.json contract in
+    // tests/agentic/README.md) reads CC the same way it reads OC,
+    // Gemini, Terminal, etc. The CC statusline script
+    // (highlight-statusline.sh) ALSO reads /tmp/opencues-status-<pid>.json
+    // — both consumers share one filename.
+    `statusFilePath:"/tmp/opencues-status-"+process.pid+".json",` +
+    `cursorStatePath:"/tmp/opencues-cursor-state-"+process.pid+".json",` +
     // TTS: speak.sh + SpeakCtl.exe live at user-level (~/.cues/scripts/),
     // shared with OpenCode. seed-configs ships them there + compiles
     // SpeakCtl.cs colocated. Honors OPENCUES_HOME for env-driven overrides.

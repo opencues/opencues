@@ -120,7 +120,7 @@ Words with tips get instant alternatives (~0ms). Words without tips get LLM alte
 
 ## Multi-Instance
 
-Each Claude Code instance uses its PID in the file path: `/tmp/opencues-highlight-state-{PID}.json`. The status line script walks up the process tree to find the correct PID.
+Each Claude Code instance uses its PID in the file path: `/tmp/opencues-status-{PID}.json`. The status line script walks up the process tree to find the correct PID.
 
 **Process name gotcha:** Claude Code's cmdline is `claude`, not `node cli.js`. The script greps for `^claude` in `/proc/{PID}/cmdline`.
 

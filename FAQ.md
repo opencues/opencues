@@ -132,7 +132,7 @@ The main failure mode is OpenCode's uninstall refusing to `git checkout` a dirty
 | `<cwd>/.cues/` | Your project | Project-level overrides for cues/blanks. |
 | `/tmp/opencues.log` | Runtime | Debug log from whichever host is actively running. |
 | `/tmp/opencues-install-<host>.log` | Installer | Most recent install output (kept on success too for re-inspection). |
-| `/tmp/opencues-cursor-state.json`, `/tmp/opencues-highlight-state-<pid>.json` | Runtime | Host-agnostic IPC files; created while a patched host runs. |
+| `/tmp/opencues-status-<pid>.json`, `/tmp/opencues-cursor-state-<pid>.json` | Runtime | Host-agnostic IPC files; created while a patched host runs (per-PID so multiple hosts can coexist). |
 
 For a live view: `opencues which` prints every path with ✓ / − markers showing what actually exists.
 

@@ -104,7 +104,7 @@ export interface HostInfo {
   statusFilePath?: string;
   /**
    * Optional: absolute path for the cursor-state-export JSON
-   * (e.g. /tmp/opencues-cursor-state.json). No in-tree consumer;
+   * (e.g. /tmp/opencues-cursor-state-<pid>.json). No in-tree consumer;
    * external tooling can read it. When unset, the runtime doesn't
    * write anything.
    */

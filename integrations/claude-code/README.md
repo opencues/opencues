@@ -171,8 +171,8 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 
 **Runtime state** (NOT created by install — appears when CC runs):
 - `/tmp/opencues.log`
-- `/tmp/opencues-highlight-state-<pid>.json`
-- `/tmp/opencues-cursor-state.json`
+- `/tmp/opencues-status-<pid>.json`
+- `/tmp/opencues-cursor-state-<pid>.json`
 
 These are runtime IPC files; OS rotates `/tmp/`.
 

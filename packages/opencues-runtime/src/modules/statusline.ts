@@ -2,7 +2,7 @@
 // for an external consumer (e.g. integrations/claude-code/patches/highlight-statusline.sh).
 //
 // The shape mirrors what the original CC patch wrote to
-// /tmp/opencues-highlight-state-<pid>.json so the existing shell consumer
+// /tmp/opencues-status-<pid>.json so the existing shell consumer
 // keeps working unchanged. The payload covers navigation, cycling,
 // LLM-resolved alternatives, and blank-fill state.
 //
@@ -21,7 +21,7 @@ import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
   /**
-   * Absolute path. Typically /tmp/opencues-highlight-state-<pid>.json.
+   * Absolute path. Typically /tmp/opencues-status-<pid>.json.
    * Empty string disables file export — useful when only onSnapshot is
    * wired (host renders the tip in-process).
    */

@@ -23,7 +23,7 @@ See [Tip Priority](tip-priority.md) for the full resolution order and how the br
 
 ## How It Works
 
-1. **On every render**, the integration writes a JSON export file (`/tmp/opencues-highlight-state-{pid}.json`) containing the current highlight state
+1. **On every render**, the integration writes a JSON export file (`/tmp/opencues-status-{pid}.json`) containing the current highlight state
 2. **A status line script** reads this file and formats it for display below the input
 3. **When a word is highlighted**, the export includes the word name, its alternatives, the current cycle position, and cue-tip text
 4. **When navigation is inactive** (`active: false`), the status line shows the shell-style prompt (user@host:dir). When a word is active, the word info is appended after the PS1-style prefix on a new line
@@ -64,7 +64,7 @@ The `highlight-statusline.sh` script is a self-contained bash script that reads 
 { "statusLine": { "type": "command", "command": "/full/path/highlight-statusline.sh" } }
 ```
 
-**PID discovery:** The script walks up the process tree (`/proc/{pid}/stat`) looking for a process whose `cmdline` starts with `claude`, then reads `/tmp/opencues-highlight-state-{pid}.json`.
+**PID discovery:** The script walks up the process tree (`/proc/{pid}/stat`) looking for a process whose `cmdline` starts with `claude`, then reads `/tmp/opencues-status-{pid}.json`.
 
 **Display format:**
 - **Inactive:** `user@host:dir` (PS1-style prefix, colored with tput — always shown)

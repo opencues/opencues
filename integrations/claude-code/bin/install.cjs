@@ -421,8 +421,8 @@ function printHelp() {
   console.log('    packages/*/dist/, .turbo/  build cache');
   console.log('  Runtime state (NOT created by install — appears when CC runs):');
   console.log('    /tmp/opencues.log');
-  console.log('    /tmp/opencues-highlight-state-<pid>.json');
-  console.log('    /tmp/opencues-cursor-state.json');
+  console.log('    /tmp/opencues-status-<pid>.json');
+  console.log('    /tmp/opencues-cursor-state-<pid>.json');
 }
 
 // Prefer the short "opencues" form when the binary is on PATH; fall back

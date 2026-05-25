@@ -57,8 +57,8 @@ module.exports = function which(argv, ctx) {
     ]],
     ['Runtime IPC files (created when CC/OC/Gemini actually runs)', [
       ['Debug log',                  '/tmp/opencues.log'],
-      ['Statusline IPC',             '/tmp/opencues-highlight-state-<pid>.json'],
-      ['Cursor state IPC',           '/tmp/opencues-cursor-state.json'],
+      ['Statusline IPC',             '/tmp/opencues-status-<pid>.json'],
+      ['Cursor state IPC',           '/tmp/opencues-cursor-state-<pid>.json'],
     ]],
   ];
 

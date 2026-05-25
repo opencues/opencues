@@ -21,7 +21,10 @@ while [ "$WALK_PID" != "1" ] && [ -n "$WALK_PID" ]; do
   WALK_PID=$(awk '{print $4}' /proc/$WALK_PID/stat 2>/dev/null)
 done
 
-HIGHLIGHT_FILE="/tmp/opencues-highlight-state-${CLAUDE_PID:-unknown}.json"
+# Canonical per-host status path — same filename every host adapter writes
+# (oc, gemini, terminal). Aligned 2026-05-25; legacy
+# `/tmp/opencues-highlight-state-<pid>.json` is no longer emitted.
+HIGHLIGHT_FILE="/tmp/opencues-status-${CLAUDE_PID:-unknown}.json"
 
 # PS1-style prefix
 BOLD=$(tput bold 2>/dev/null)

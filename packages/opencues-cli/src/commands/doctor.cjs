@@ -509,7 +509,7 @@ module.exports = function doctor(argv, ctx) {
   {
     const s = section('Runtime IPC', 'files created on disk when a host actually runs');
     s.ok('/tmp/opencues.log', fs.existsSync('/tmp/opencues.log'));
-    const cursorState = '/tmp/opencues-cursor-state.json';
+    const cursorState = '/tmp/opencues-cursor-state-<pid>.json';
     s.ok(cursorState, fs.existsSync(cursorState));
     s.render();
   }
