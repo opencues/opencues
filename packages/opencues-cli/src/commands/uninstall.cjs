@@ -28,6 +28,11 @@ const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'terminal'];
 const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'terminal'];
 
 module.exports = function uninstall(argv, ctx) {
+  // Symmetric to `opencues install skill / plugin` — dispatch before
+  // the help check + host resolver so subcommands don't fall through.
+  if (argv[0] === 'skill') return uninstallSkill(argv.slice(1), ctx);
+  if (argv[0] === 'plugin') return uninstallPlugin(argv.slice(1), ctx);
+
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let target = null;
@@ -95,8 +100,97 @@ function printHelp() {
   console.log('Each per-host uninstall is the inverse of its install — see the host\'s installer');
   console.log('docstring for exactly what gets removed.');
   console.log('');
+  console.log('Special subcommands:');
+  console.log('  skill <name>   Remove a previously-installed skill from both ~/.claude/skills/');
+  console.log('                 and ~/.config/opencode/skills/');
+  console.log('  plugin <name>  Remove a previously-installed opencode plugin');
+  console.log('');
   console.log('Examples:');
   console.log('  opencues uninstall cc');
   console.log('  opencues uninstall cc --target /path/to/cli.js');
   console.log('  opencues uninstall --all --dry-run');
+  console.log('  opencues uninstall skill cues');
+  console.log('  opencues uninstall plugin cues');
+}
+
+// `opencues uninstall skill <name>` — remove from both Claude Code's
+// and opencode's skill directories. Also removes the .bak backup
+// files created by --force installs.
+function uninstallSkill(argv, _ctx) {
+  const os = require('node:os');
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log('opencues uninstall skill <name>');
+    console.log('Removes ~/.claude/skills/<name>/SKILL.md (+ .bak) and');
+    console.log('        ~/.config/opencode/skills/<name>/SKILL.md (+ .bak)');
+    process.exit(0);
+  }
+  const name = argv.find(a => !a.startsWith('-'));
+  if (!name) {
+    console.error('opencues uninstall skill: missing <name>');
+    process.exit(2);
+  }
+  const candidates = [
+    path.join(os.homedir(), '.claude', 'skills', name),
+    path.join(os.homedir(), '.config', 'opencode', 'skills', name),
+  ];
+  let removed = 0;
+  for (const dir of candidates) {
+    if (!fs.existsSync(dir)) {
+      console.log(`${tag('skip')} ${dir} (not present)`);
+      continue;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+    console.log(`${tag('ok')} removed ${dir}`);
+    removed++;
+  }
+  if (removed === 0) {
+    console.log(`${dim(`skill "${name}" was not installed at either location`)}`);
+  }
+  process.exit(0);
+}
+
+// `opencues uninstall plugin <name>` — remove the plugin file from
+// ~/.config/opencode/plugins/<name>.ts AND unregister it from
+// ~/.config/opencode/config.json's `plugin: [...]` array.
+function uninstallPlugin(argv, _ctx) {
+  const os = require('node:os');
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log('opencues uninstall plugin <name>');
+    console.log('Removes the plugin file and unregisters it from opencode config.');
+    process.exit(0);
+  }
+  const name = argv.find(a => !a.startsWith('-'));
+  if (!name) {
+    console.error('opencues uninstall plugin: missing <name>');
+    process.exit(2);
+  }
+  const pluginFile = path.join(os.homedir(), '.config', 'opencode', 'plugins', `${name}.ts`);
+  if (fs.existsSync(pluginFile)) {
+    fs.rmSync(pluginFile);
+    console.log(`${tag('ok')} removed ${pluginFile}`);
+  } else {
+    console.log(`${tag('skip')} ${pluginFile} (not present)`);
+  }
+
+  // De-register from opencode config.
+  const cfgPath = path.join(os.homedir(), '.config', 'opencode', 'config.json');
+  if (fs.existsSync(cfgPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      if (Array.isArray(cfg.plugin)) {
+        const fileUrl = `file://${pluginFile}`;
+        const before = cfg.plugin.length;
+        cfg.plugin = cfg.plugin.filter(p => (typeof p === 'string' ? p : p[0]) !== fileUrl);
+        if (cfg.plugin.length < before) {
+          fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+          console.log(`${tag('ok')} unregistered from ${cfgPath}`);
+        } else {
+          console.log(`${tag('skip')} ${cfgPath} (entry not present)`);
+        }
+      }
+    } catch (err) {
+      console.log(`${tag('err')} could not parse ${cfgPath}: ${err.message}`);
+    }
+  }
+  process.exit(0);
 }
