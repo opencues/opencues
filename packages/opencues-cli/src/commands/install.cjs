@@ -44,7 +44,19 @@ function loadHostResolver(ctx) {
 }
 
 module.exports = function install(argv, ctx) {
+  // `opencues install skill <name> [--project] [--target <path>] [--force] [--link]`
+  // is a separate code path from the host installers — skills aren't a
+  // host integration, they're prompt-text files copied into Claude
+  // Code's / opencode's skill directories. Dispatched here before the
+  // help check + host resolver run (so "skill" doesn't get treated as
+  // a host name and `install skill --help` doesn't fall through to the
+  // top-level help).
+  if (argv[0] === 'skill') {
+    return installSkill(argv.slice(1), ctx);
+  }
+
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
+
   const { HOSTS, resolve } = loadHostResolver(ctx);
 
   // Parse: first non-flag positional is the host. `--all` is a special
@@ -124,6 +136,144 @@ function runHostInstaller(host, action, extraArgs, ctx) {
   return result.status ?? 1;
 }
 
+// `opencues install skill <name> [--project] [--target <path>] [--force] [--link]`
+//
+// Sources: defaults/skills/<name>/SKILL.md (canonical shipped version,
+// promoted from tests/agentic/skills/ via scripts/release-skill.sh).
+//
+// Targets: writes to BOTH Claude Code's and opencode's skill directories
+// when the parent install of either tool is detectable (so users with
+// both tools get the skill in both; users with only one get it once).
+//   Global (default): ~/.claude/skills/<name>/SKILL.md  +
+//                     ~/.config/opencode/skills/<name>/SKILL.md
+//   --project       : <cwd>/.claude/skills/<name>/SKILL.md +
+//                     <cwd>/.config/opencode/skills/<name>/SKILL.md
+//   --target <path> : explicit single-file override
+//
+// Won't overwrite an existing SKILL.md unless --force (avoids silently
+// clobbering local tweaks).  --link symlinks instead of copying (for
+// power users iterating on the skill from a repo clone).
+function installSkill(argv, ctx) {
+  if (argv.includes('--help') || argv.includes('-h')) return printSkillHelp();
+  const os = require('node:os');
+
+  let name = null;
+  let mode = 'global'; // 'global' | 'project' | 'target'
+  let explicitTarget = null;
+  let force = false;
+  let useLink = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--project') { mode = 'project'; continue; }
+    if (a === '--global') { mode = 'global'; continue; }
+    if (a === '--target') { mode = 'target'; explicitTarget = argv[++i]; continue; }
+    if (a === '--force') { force = true; continue; }
+    if (a === '--link') { useLink = true; continue; }
+    if (!a.startsWith('-') && !name) { name = a; continue; }
+    console.error(`opencues install skill: unknown arg "${a}"`);
+    process.exit(2);
+  }
+
+  if (!name) {
+    console.error('opencues install skill: missing <name>. Currently shipped: cues');
+    console.error('Run `opencues install skill --help` for details.');
+    process.exit(2);
+  }
+
+  const src = path.join(ctx.REPO_ROOT, 'defaults', 'skills', name, 'SKILL.md');
+  if (!fs.existsSync(src)) {
+    console.error(`opencues install skill: no such skill "${name}" (expected ${src})`);
+    process.exit(2);
+  }
+
+  // Build the target list.
+  let targets;
+  if (mode === 'target') {
+    targets = [{ path: explicitTarget, host: 'explicit' }];
+  } else {
+    const base = mode === 'project' ? process.cwd() : os.homedir();
+    // Claude Code skills always go under .claude/skills/<name>/SKILL.md.
+    const ccTarget = path.join(base, '.claude', 'skills', name, 'SKILL.md');
+    // opencode skills go under .config/opencode/skills/<name>/SKILL.md
+    // ONLY if the user has opencode installed (detected by the parent
+    // directory existing). Without that, writing into a freshly-created
+    // ~/.config/opencode/ would be confusing for users who don't run opencode.
+    const ocBase = mode === 'project' ? path.join(base, '.config', 'opencode') : path.join(base, '.config', 'opencode');
+    const ocTarget = path.join(ocBase, 'skills', name, 'SKILL.md');
+    const ocExists = fs.existsSync(ocBase);
+    targets = [{ path: ccTarget, host: 'claude-code' }];
+    if (ocExists) targets.push({ path: ocTarget, host: 'opencode' });
+  }
+
+  let exitCode = 0;
+  for (const t of targets) {
+    fs.mkdirSync(path.dirname(t.path), { recursive: true });
+
+    // Refuse to clobber an existing file unless --force.
+    if (fs.existsSync(t.path) && !force) {
+      const isSymlink = fs.lstatSync(t.path).isSymbolicLink();
+      if (isSymlink && useLink) {
+        // Re-pointing a symlink at the same source is fine — silently update.
+        fs.unlinkSync(t.path);
+      } else {
+        console.log(`${tag('skip')} ${t.host}: ${t.path} already exists (use --force to overwrite)`);
+        continue;
+      }
+    } else if (fs.existsSync(t.path) && force) {
+      // Back up before overwriting.
+      const backup = t.path + '.bak';
+      fs.copyFileSync(t.path, backup);
+      console.log(`${dim('backup → ' + backup)}`);
+      fs.unlinkSync(t.path);
+    }
+
+    try {
+      if (useLink) {
+        fs.symlinkSync(src, t.path);
+        console.log(`${tag('ok')} ${t.host}: linked ${t.path} → ${src}`);
+      } else {
+        fs.copyFileSync(src, t.path);
+        console.log(`${tag('ok')} ${t.host}: ${t.path}`);
+      }
+    } catch (e) {
+      console.error(`${tag('err')} ${t.host}: ${e.message}`);
+      exitCode = 1;
+    }
+  }
+
+  if (exitCode === 0 && targets.length > 0) {
+    console.log('');
+    console.log(`${dim('Restart Claude Code / opencode to pick up the skill.')}`);
+  }
+  process.exit(exitCode);
+}
+
+function printSkillHelp() {
+  console.log('opencues install skill <name> [options]');
+  console.log('');
+  console.log('Install an OpenCues-shipped Claude skill into the host\'s skill directory.');
+  console.log('Skills are prompt-text files that Claude Code / opencode auto-load on start.');
+  console.log('');
+  console.log('Currently shipped:');
+  console.log('  cues          Ambient skill that writes .cues/CUES.md predicting next-turn vocabulary');
+  console.log('');
+  console.log('Locations:');
+  console.log('  default (--global): ~/.claude/skills/<name>/SKILL.md');
+  console.log('                      + ~/.config/opencode/skills/<name>/SKILL.md  (if opencode detected)');
+  console.log('  --project         : <cwd>/.claude/skills/<name>/SKILL.md');
+  console.log('                      + <cwd>/.config/opencode/skills/<name>/SKILL.md  (if opencode detected)');
+  console.log('  --target <path>   : explicit single-file path');
+  console.log('');
+  console.log('Other flags:');
+  console.log('  --force           Overwrite an existing SKILL.md (backs up to .bak first)');
+  console.log('  --link            Symlink instead of copy (for dev iteration from a clone)');
+  console.log('');
+  console.log('Examples:');
+  console.log('  opencues install skill cues');
+  console.log('  opencues install skill cues --project');
+  console.log('  opencues install skill cues --force        # overwrite local tweaks');
+}
+
 function printHelp(ctx) {
   console.log(`opencues install <host> [options]`);
   console.log('');
@@ -138,6 +288,9 @@ function printHelp(ctx) {
   console.log('  terminal      Standalone Bun + OpenTUI app (oc-edit)         (aliases: term, oc-edit)');
   console.log('  --all         Install all five');
   console.log('');
+  console.log('Special subcommands:');
+  console.log('  skill <name>  Install a shipped Claude skill (see `opencues install skill --help`)');
+  console.log('');
   console.log('Common flags (passed through to the per-host installer):');
   console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode/gemini-cli)');
   console.log('  --dry-run         Print plan, do not execute');
@@ -148,4 +301,5 @@ function printHelp(ctx) {
   console.log('  opencues install claude-code');
   console.log('  opencues install claude-code --target ~/claude-code-cues/.../cli.js');
   console.log('  opencues install --all --dry-run');
+  console.log('  opencues install skill cues');
 }
