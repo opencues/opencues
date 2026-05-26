@@ -288,4 +288,31 @@ describe('Gemini CLI v0.41 boot()', () => {
 
     result.dispose();
   });
+
+  // ─── resetBufferState contract ──────────────────────────────────────────
+  // Per-band guarantee that the method is wired. Deep wipe-set + journey
+  // assertions live in `src/modules/reset-buffer-state.scenarios.test.ts`.
+  const minimalHost = {
+    hostVersion: '0.41.x',
+    cwd: '/proj',
+    getText: () => '',
+    getCursorOffset: () => 0,
+    setText: () => {},
+    setCursorOffset: () => {},
+    forceRender: () => {},
+  };
+
+  it('exposes resetBufferState as a method', () => {
+    const result = boot(minimalHost);
+    expect(typeof result.resetBufferState).toBe('function');
+  });
+
+  it('resetBufferState is idempotent on a cold boot (no prior state)', () => {
+    const result = boot(minimalHost);
+    expect(() => {
+      result.resetBufferState();
+      result.resetBufferState();
+      result.resetBufferState();
+    }).not.toThrow();
+  });
 });

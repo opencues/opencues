@@ -339,3 +339,59 @@ export function buildSharedRuntime(
     markdownRender,
   };
 }
+
+/* ─── Per-buffer state reset ─────────────────────────────────────────────
+ *
+ * Wipe the state objects whose contents are bound to specific character
+ * offsets / word indices in the live buffer. Callers fire this whenever
+ * an external mutation has invalidated those offsets:
+ *
+ *   - Chrome content script — focus change between fields (each field
+ *     is its own buffer with its own word indices), AND buffer-replacing
+ *     input events (undo / redo / paste / IME commit / native autocomplete).
+ *   - Native hosts — TBD per host. Terminal undo, paste, and any host-
+ *     UI write that bypasses the runtime's setText pipeline qualify.
+ *
+ * What gets cleared:
+ *   dynDefs                — leftover word-position entries either render
+ *                            phantom highlights or block legit substitutions
+ *                            (the May 2026 "first `_` doesn't work" bug).
+ *   hlState                — stale highlight pointer renders the wrong
+ *                            word as "current" until the user moves caret.
+ *   spanFillState          — in-flight span-fill from the prior buffer
+ *                            state would splice into the new text at the
+ *                            same character range.
+ *   selectorSatelliteState — mid-cycle on a settings selector would resume
+ *                            against the wrong buffer (wrong-buffer settings
+ *                            writes).
+ *
+ * Deliberately NOT cleared (session-scoped, not buffer-scoped):
+ *   agentTaskState  — armed `agentically X _` task survives so users can
+ *                     leave a draft, tab away, return without re-arming.
+ *   dismissedBlanks — dismissing `weather _` once stays dismissed for the
+ *                     session; undo shouldn't resurrect the suggestion.
+ *
+ * Resolver re-runs on the next keystroke debounce — the user sees a clean
+ * buffer briefly, then cues repopulate. Acceptable UX cost vs. the silent
+ * desync that partial reconciliation would produce.
+ *
+ * Idempotent — safe to call repeatedly (focus-change spam, input-event
+ * bursts during paste or IME composition).
+ *
+ * Signature takes a minimal structural type, not `SharedRuntime`, so the
+ * CC v2.1 boot (which builds its state classes inline rather than via
+ * `buildSharedRuntime`) can pass the same locals it already has — every
+ * band stays in lockstep on the wipe set without forcing CC to also
+ * adopt SharedRuntime.
+ */
+export function resetSharedBufferState(state: {
+  readonly dynDefs: Pick<DynDefs, 'clear'>;
+  readonly hlState: Pick<HighlightState, 'deactivate'>;
+  readonly spanFillState: Pick<SpanFillState, 'clear'>;
+  readonly selectorSatelliteState: Pick<SelectorSatelliteState, 'clear'>;
+}): void {
+  state.dynDefs.clear();
+  state.hlState.deactivate();
+  state.spanFillState.clear();
+  state.selectorSatelliteState.clear();
+}

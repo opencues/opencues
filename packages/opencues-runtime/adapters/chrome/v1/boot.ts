@@ -25,7 +25,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -139,23 +139,31 @@ export interface BootResult {
   onModuleEvent(handler: (type: string, body?: Record<string, unknown>) => void): () => void;
   /**
    * Reset per-buffer runtime state — DynDefs, HighlightState, SpanFill,
-   * BlankLoading frames. Called by chrome's content script when the
-   * focused field changes (focusin / focusout) because chrome's
-   * normal-input mode attaches to many independent `<input>` elements
-   * in one page, each with its own buffer text and word-position
-   * semantics.
+   * SelectorSatellite. Callers are responsible for emitting this signal
+   * whenever the buffer was mutated outside the runtime's setText path,
+   * which invalidates every span / word-index the runtime currently
+   * tracks. Concretely, chrome's content script calls this for:
    *
-   * Without this, a fluid-blank substitution in field A leaves a
-   * `DynDef` at wordIndex 0 with `blankName: 'fluid-blank'`. When the
-   * user focuses field B and types `_`, the Resolver's "don't clobber
-   * blank-bound entries" guard (`if (existing.blankName) continue;`)
-   * silently refuses to substitute in field B because dynDefs[0] is
-   * still B-relevant from field A's leftover state. Bug surfaces as
-   * "first `_` doesn't work, `answer _` does" (different wordIndex).
+   *   - Focused-field switch (focusin / focusout). Chrome's normal-input
+   *     mode attaches to many independent `<input>` elements in one page;
+   *     each is its own buffer with its own word-position semantics.
    *
-   * Native hosts (CC/OC/gemini-cli) work on ONE buffer per session, so
-   * this is a no-op there. Chrome with normal-input mode is the only
-   * caller today; safe to call from any host.
+   *   - Buffer-replacing input events (beforeinput.inputType ∈
+   *     {historyUndo, historyRedo, insertFromPaste, insertCompositionText}).
+   *     Browser-managed undo restores text without restoring the runtime's
+   *     spans; paste / IME commit write text the runtime didn't author.
+   *
+   * Without this, leftover state corrupts the next buffer's behaviour in
+   * non-obvious ways — fluid-blank substitutions blocked by stale
+   * blank-bound DynDefs from a prior field; phantom highlights anchored
+   * to character offsets that no longer exist after an undo; selector-
+   * satellite cycle that resumes against the wrong buffer.
+   *
+   * Implementation lives in `resetSharedBufferState` (boot-common.ts) so
+   * every band wipes the same state objects.
+   *
+   * Idempotent — safe to call repeatedly (focus-change spam, input-event
+   * bursts during paste or IME composition).
    */
   resetBufferState(): void;
   dispose(): void;
@@ -380,35 +388,14 @@ export function boot(host: HostInfo): BootResult {
       return moduleEvents.subscribe(({ type, body }) => handler(type, body));
     },
     resetBufferState() {
-      // Per-buffer state — clear on focused-field switch. Each cleared
-      // object's leakage causes a distinct subtle bug:
-      //
-      //   dynDefs                — leftover word-position entries block
-      //                            legit substitutions in the new buffer
-      //                            ("first `_` doesn't work, `answer _`
-      //                            does" — different wordIndex).
-      //   hlState                — stale highlight pointer renders the
-      //                            wrong word as "current" in the new
-      //                            buffer until the user moves the caret.
-      //   spanFillState          — span-fill blank in flight from buffer
-      //                            A would resolve into buffer B at the
-      //                            same character range.
-      //   selectorSatelliteState — user mid-cycle on a settings selector
-      //                            in A would resume on B (wrong-buffer
-      //                            settings writes).
-      //
-      // NOT cleared (intentionally session-scoped, not buffer-scoped):
-      //   agentTaskState — armed `agentically X _` task survives buffer
-      //                    switches so the user can leave a Gmail draft
-      //                    to check a tab + return without re-arming.
-      //   dismissedBlanks — dismissing `weather _` once stays dismissed
-      //                     in this page until reload.
-      shared.dynDefs.clear();
-      shared.hlState.deactivate();
-      shared.spanFillState.clear();
-      shared.selectorSatelliteState.clear();
+      // Wipe set + rationale lives in boot-common.ts's
+      // `resetSharedBufferState` so every band stays in lockstep.
+      resetSharedBufferState(shared);
       // Reset lastSeen so the next collectRenderDirectives doesn't
-      // diff against a stale snapshot from the prior buffer.
+      // diff against a stale snapshot from the prior buffer. This
+      // piece is local to the chrome boot closure (each band tracks
+      // its own diff baseline) so it doesn't belong in the shared
+      // helper.
       lastSeenText = '';
       lastSeenCursor = 0;
     },

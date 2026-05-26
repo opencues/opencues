@@ -115,4 +115,31 @@ describe('OpenCode v1.4 boot()', () => {
     const caps = (startupCall?.[2] as { capabilities?: string[] } | undefined)?.capabilities ?? [];
     expect(caps).toContain('spawn-process');
   });
+
+  // ─── resetBufferState contract ──────────────────────────────────────────
+  // Per-band guarantee that the method is wired. Deep wipe-set + journey
+  // assertions live in `src/modules/reset-buffer-state.scenarios.test.ts`.
+  const minimalHost = {
+    hostVersion: '1.4.11',
+    cwd: '/proj',
+    getText: () => '',
+    getCursorOffset: () => 0,
+    setText: () => {},
+    setCursorOffset: () => {},
+    forceRender: () => {},
+  };
+
+  it('exposes resetBufferState as a method', () => {
+    const result = boot(minimalHost);
+    expect(typeof result.resetBufferState).toBe('function');
+  });
+
+  it('resetBufferState is idempotent on a cold boot (no prior state)', () => {
+    const result = boot(minimalHost);
+    expect(() => {
+      result.resetBufferState();
+      result.resetBufferState();
+      result.resetBufferState();
+    }).not.toThrow();
+  });
 });
