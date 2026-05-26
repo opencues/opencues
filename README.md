@@ -217,6 +217,8 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 | OpenCode integration | Available | Pinned at OpenCode 1.14.17. |
 | Gemini CLI integration | Beta | Pinned at Gemini CLI 0.41.2. |
 | Chrome integration | Beta | MV3 extension, Chrome 121+. |
+| Cues skill (`install skill cues`) | Experimental / WIP | Claude skill that asks the chat model to write `.cues/CUES.md` ambiently. Fire reliability varies per chat model — see [`docs/features/cues-skill-and-plugin.md`](docs/features/cues-skill-and-plugin.md). |
+| Cues plugin (`install plugin cues`) | Experimental / WIP | OpenCode plugin that fires the same idea on `chat.message` deterministically (uses Haiku for the cues call). |
 
 Version-bump runbooks for each integration: [`integrations/<host>/UPGRADING.md`](integrations).
 
