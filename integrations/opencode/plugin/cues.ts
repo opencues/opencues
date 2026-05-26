@@ -45,6 +45,18 @@ const SKILL_LOCATIONS = [
 // call. 0 = just the new message. Higher = better continuity, more tokens.
 const CONTEXT_TURNS = parseInt(process.env["OPENCUES_CONTEXT_TURNS"] || "5", 10)
 
+// Model used for the cues call — defaults to Haiku for low latency
+// (~15-20s vs Sonnet's ~60s). Cues are an ambient surface that
+// doesn't need deep reasoning; we want fast turnaround so the
+// editor's prediction matches what the user types in the next few
+// keystrokes. Override via OPENCUES_CUES_MODEL=provider/model.
+function parseModel(spec: string): { providerID: string; modelID: string } {
+  const slash = spec.indexOf("/")
+  if (slash < 0) return { providerID: "anthropic", modelID: spec }
+  return { providerID: spec.slice(0, slash), modelID: spec.slice(slash + 1) }
+}
+const CUES_MODEL = parseModel(process.env["OPENCUES_CUES_MODEL"] || "anthropic/claude-haiku-4-5")
+
 function loadSkillText(): string | null {
   for (const loc of SKILL_LOCATIONS) {
     if (fs.existsSync(loc)) {
@@ -205,6 +217,9 @@ async function runCuesUpdate(input: any, hookInput: any, output: any): Promise<v
     const response = await input.client.session.prompt({
       path: { id: sessionID },
       body: {
+        // Pin a fast model for the cues call — decoupled from the
+        // user's chat model so cues stay snappy on Sonnet/Opus sessions.
+        model: CUES_MODEL,
         // System prompt = the skill text. User prompt = the context block.
         system: skill,
         // Disable all tools — we want a direct text response, not Write calls.
