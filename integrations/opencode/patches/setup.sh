@@ -165,7 +165,7 @@ hook = '''
     startOpenCues({
       renderer: __ocRenderer,
       promptAccess: holderBackedPromptAccess(),
-      cwd: process.env.OPENCUES_HOME || "/home/wilfred/opencues",
+      cwd: process.env.OPENCUES_HOME || process.cwd(),
       hostVersion: "__OPENCUES_PINNED_VERSION__",
     })
   })
