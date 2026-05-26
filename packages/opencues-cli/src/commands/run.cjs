@@ -185,6 +185,16 @@ function runOC(passthrough, fullArgv, ctx) {
   // Drop --target if it was passed; it's ours, not bun's.
   const cleaned = passthrough.filter((a, i, arr) => a !== '--target' && arr[i - 1] !== '--target');
 
+  // Forward the caller's cwd as opencode's --project. Without this,
+  // bun's --cwd in the fork's `dev` script discards the user's
+  // working directory and opencode starts inside ~/opencode-cues/
+  // packages/opencode/ — never the project they typed `opencues run
+  // opencode` from. We append rather than prepend so a user-supplied
+  // --project (last-one-wins on opencode's CLI parser) still overrides.
+  const userCwd = process.cwd();
+  const hasUserProject = cleaned.some((a, i, arr) => a === '--project' || a.startsWith('--project='));
+  const projectArgs = hasUserProject ? [] : ['--project', userCwd];
+
   // Force the DB path to ~/.local/share/opencode/opencode.db. Without
   // this, OpenCode's channel-aware path resolver writes to
   // opencode-local.db (because Installation.isLocal() is true for our
@@ -197,12 +207,12 @@ function runOC(passthrough, fullArgv, ctx) {
 
   printLaunchBanner(ctx, 'opencode', [
     ['host',    'opencode  ' + style.dim('(patched fork)')],
-    ['command', `bun run dev ${cleaned.join(' ')}`.trim()],
-    ['cwd',     style.fileLink(fork, fork)],
+    ['command', `bun run dev ${[...projectArgs, ...cleaned].join(' ')}`.trim()],
+    ['cwd',     style.fileLink(userCwd, userCwd)],
   ]);
   // --silent suppresses bun's `$ bun run --cwd ... src/index.ts` echo
   // — we already printed the command above; the echo is just noise.
-  const result = spawnSync('bun', ['run', '--silent', 'dev', ...cleaned], { cwd: fork, stdio: 'inherit', env });
+  const result = spawnSync('bun', ['run', '--silent', 'dev', ...projectArgs, ...cleaned], { cwd: fork, stdio: 'inherit', env });
   exitFromSpawn(result, 'bun');
 }
 
