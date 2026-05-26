@@ -244,6 +244,43 @@ export function publishTarget(el: HTMLElement | null): void {
   if (bootResult) bootResult.resetBufferState();
 }
 
+/** Called by content.ts when a `beforeinput` event signals the focused
+ *  buffer is about to be mutated outside the runtime's `setText` /
+ *  `pushText` pipeline. The triggering inputTypes today:
+ *
+ *    historyUndo           — Ctrl+Z / Cmd+Z / Edit-menu Undo
+ *    historyRedo           — Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y / Edit-menu Redo
+ *    insertFromPaste       — Ctrl+V / right-click→Paste / middle-click on Linux
+ *                            (paste-event-trusted gating is done upstream)
+ *    insertCompositionText — CJK / IME composition commit (each composed
+ *                            chunk is owned by the browser, not the runtime)
+ *
+ *  In every case the post-mutation text reflects content the runtime
+ *  didn't author, so the per-buffer state objects (`DynDefs`,
+ *  `HighlightState`, `SpanFillState`, `SelectorSatelliteState`) anchor
+ *  to character offsets that no longer correspond to the buffer the
+ *  user is now editing. Without this wipe, the next cycle splices
+ *  against stale offsets, the next dim repaints against a phantom
+ *  span, or the next blank fill blocks on a leftover `blankName`
+ *  entry from before the undo. Same failure class as the focus-change
+ *  bug `publishTarget` fixes, different trigger.
+ *
+ *  Session-scoped state (`AgentTaskState`, `dismissedBlanks`)
+ *  intentionally survives — an armed `agentically X _` task should
+ *  outlive Ctrl+Z so the user can experiment without re-arming. Per-
+ *  state-object rationale: `docs/architecture/universal-integration.md`
+ *  § "Per-buffer state must reset on focus change" (same wipe set
+ *  applies to both triggers).
+ *
+ *  No-op when boot hasn't completed yet (rare race during initial
+ *  attach) or there's no current target (event fired against an
+ *  unattached field).
+ */
+export function notifyBufferReplacedExternally(): void {
+  if (!bootResult) return;
+  bootResult.resetBufferState();
+}
+
 /** Real-time API-key update — called by content.ts when chrome.storage
  *  reports a host-push or popup-save changed the LLM key bag. The
  *  runtime's BootResult exposes `updateApiKeys` which mutates the

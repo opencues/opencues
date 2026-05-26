@@ -28,7 +28,7 @@ import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
-import { createSourceReclassifier } from '../../../src/boot-common';
+import { createSourceReclassifier, resetSharedBufferState } from '../../../src/boot-common';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
@@ -172,6 +172,16 @@ export interface BootResult {
    * no handlers are subscribed or the input isn't a string.
    */
   applyRender(rendered: unknown, text: string, cursorOffset: number): unknown;
+
+  /**
+   * Wipe per-buffer runtime state (DynDefs, HighlightState, SpanFill,
+   * SelectorSatellite). Fire whenever an external mutation has invalidated
+   * the runtime's tracked spans — terminal paste, host-level undo, any
+   * write that bypasses the runtime's setText pipeline. Idempotent.
+   * See `resetSharedBufferState` in `src/boot-common.ts` for the full
+   * rationale + state objects deliberately NOT wiped.
+   */
+  resetBufferState(): void;
 }
 
 /**
@@ -718,6 +728,10 @@ export function boot(host: HostInfo): BootResult {
       // it doesn't get flagged as user-typed drift.
       lastSeenText = result.text;
       return result;
+    },
+
+    resetBufferState() {
+      resetSharedBufferState({ dynDefs, hlState, spanFillState, selectorSatelliteState });
     },
 
     applyRender(rendered, text, cursorOffset) {

@@ -82,4 +82,23 @@ describe('Terminal v1 boot()', () => {
     });
     expect(consumed).toBe(true);
   });
+
+  // ─── resetBufferState contract ──────────────────────────────────────────
+  // Mirrors chrome's contract test. The wipe set + multi-step journey
+  // assertions live in `src/modules/reset-buffer-state.scenarios.test.ts`;
+  // this is just the per-band guarantee that the method exists, accepts
+  // repeated calls, and doesn't throw on a cold boot.
+  it('exposes resetBufferState as a method', () => {
+    const result = boot(minimalHost);
+    expect(typeof result.resetBufferState).toBe('function');
+  });
+
+  it('resetBufferState is idempotent on a cold boot (no prior state)', () => {
+    const result = boot(minimalHost);
+    expect(() => {
+      result.resetBufferState();
+      result.resetBufferState();
+      result.resetBufferState();
+    }).not.toThrow();
+  });
 });
