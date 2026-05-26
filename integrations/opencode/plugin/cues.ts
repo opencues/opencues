@@ -31,9 +31,13 @@ function log(level: string, msg: string) {
 }
 
 const SKILL_LOCATIONS = [
-  // User-installed (opencues install skill cues writes here)
+  // Plugin-bundled prompt — `opencues install plugin cues` copies the
+  // skill text alongside the plugin file at this exact path. Self-
+  // contained: works even when the skill itself is uninstalled.
+  path.join(os.homedir(), ".config/opencode/plugins/cues.SKILL.md"),
+  // Fallback: user-installed skill (kept for backwards compat with
+  // setups where only the skill was installed before the plugin existed).
   path.join(os.homedir(), ".config/opencode/skills/cues/SKILL.md"),
-  // Claude Code shared location, useful when the user only installed there
   path.join(os.homedir(), ".claude/skills/cues/SKILL.md"),
 ]
 

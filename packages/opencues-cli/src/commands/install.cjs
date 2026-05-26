@@ -337,6 +337,18 @@ function installPlugin(argv, ctx) {
     console.log(`${tag('ok')} plugin file: ${target}`);
   }
 
+  // Copy the prompt source alongside the plugin file. The cues plugin
+  // (and any future plugin shipping a prompt) reads from <plugin-dir>/
+  // <name>.SKILL.md. This makes the plugin self-contained — removing
+  // the standalone skill via `opencues uninstall skill cues` doesn't
+  // break the plugin's prompt source.
+  const promptSrc = path.join(ctx.REPO_ROOT, 'defaults', 'skills', name, 'SKILL.md');
+  if (fs.existsSync(promptSrc)) {
+    const promptTarget = path.join(path.dirname(target), `${name}.SKILL.md`);
+    fs.copyFileSync(promptSrc, promptTarget);
+    console.log(`${tag('ok')} prompt source: ${promptTarget}`);
+  }
+
   // Register the plugin in opencode's config.json so it loads on next launch.
   const cfgPath = path.join(os.homedir(), '.config', 'opencode', 'config.json');
   let cfg = {};
