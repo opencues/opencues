@@ -143,6 +143,21 @@ export interface ProviderAdapter {
    */
   readonly optionalAuth?: boolean;
   /**
+   * When true, this provider's ToS allows the operator to train on
+   * submitted inputs. The resolver refuses to wire prose-bearing
+   * sources (word-cues, sentence-cues, auditors, agent-rewrite)
+   * through such a provider — those carry the user's actual buffer
+   * text and would be leaked at every emit. Blanks (the user-opt-in
+   * `_` surface) are still allowed: typing `_` is a deliberate
+   * keystroke, the user can pick where it routes.
+   *
+   * Today only `opencode-zen` opts in. The flag generalises so any
+   * future free-pool / training-pool provider can be added safely:
+   * mark it `trainsOnInput`, and the prose-source guard kicks in
+   * automatically.
+   */
+  readonly trainsOnInput?: boolean;
+  /**
    * Per-provider reasoning-effort default. Applied when a call site
    * leaves `req.reasoningEffort` undefined. Derived from the May 18
    * 2026 thinking-budget bench (`tests/results/thinking-budget-2026-05-18.md`):
@@ -757,11 +772,16 @@ const OPENCODE_ZEN: ProviderAdapter = {
   displayName: 'OpenCode Zen',
   defaultEndpoint: 'https://opencode.ai/zen/v1/chat/completions',
   // First entry of the free pool. Used when no model is explicitly set
-  // (most common case for `blank-llm-provider: free`).
+  // (most common case for `blank-llm-provider: opencode-zen`).
   defaultModel: 'big-pickle',
   // Optional. Free models work without it; paid models need it.
   envKeyName: 'OPENCODE_ZEN_API_KEY',
   optionalAuth: true,
+  // Free-tier ToS says collected inputs may be used to improve the
+  // models. Prose-bearing sources (cues / sentence-cues / auditors /
+  // agent-rewrite) are refused on this provider by the resolver guard.
+  // The user-opt-in `_` blank surface is still allowed.
+  trainsOnInput: true,
   // Most free models are reasoning models; low keeps latency reasonable.
   defaultReasoningEffort: 'low',
   buildRequest(req, ctx) {

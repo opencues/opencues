@@ -395,17 +395,22 @@ export class Resolver {
       apiKey: this.options.apiKey,
       endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
-      // Global tier (read once per build). `llm-provider: free` is
-      // rejected here — `free` is a blank-only opt-in (see
-      // `blank-llm-provider`). Routing cues + auditors through the
-      // OpenCode Zen free pool would leak prose to a provider that
-      // trains on inputs; we refuse rather than silently allow it.
+      // Global tier (read once per build). Prose-bearing sources
+      // (word-cues, sentence-cues, auditors, agent-rewrite) refuse to
+      // dispatch through providers with `trainsOnInput: true` (today
+      // only opencode-zen) — that guard is enforced at source-build
+      // time downstream, not here, because we still need to surface
+      // the user's choice to blank sources (which CAN use it via
+      // explicit `<feature>-llm-provider: opencode-zen` + `model: free`).
+      //
+      // Deprecated alias: pre-2026-05-27 `llm-provider: free` (which
+      // was rejected) — now silently mapped to `opencode-zen` with the
+      // trainsOnInput guard taking over. The guard refuses prose
+      // sources just like the old reject did, so behaviour is
+      // unchanged at the wire — only the config surface is cleaner.
       globalProvider: (() => {
         const raw = settings.get('llm-provider');
-        if (raw?.toLowerCase() === 'free') {
-          this.adapter.log('warn', 'llm-provider: free is blank-only — ignoring (set blank-llm-provider: free instead). Cues + auditors fall back to inherit.');
-          return undefined;
-        }
+        if (raw?.toLowerCase() === 'free') return 'opencode-zen';
         return raw;
       })(),
       globalModel: settings.get('llm-model') ?? this.options.defaultModel,
@@ -413,12 +418,11 @@ export class Resolver {
       // Blank-class override tier — applies only to FluidBlank /
       // TransformBlank / ConfigIntent / keyword BlankSource (the
       // user-opt-in `_` surface). Cues + auditors never read these.
-      // `free` is translated to `opencode-zen` (the underlying provider
-      // adapter id); other values flow through verbatim. `inherit`
-      // falls through to globalProvider at the resolveFor layer.
+      // `inherit` falls through to globalProvider at the resolveFor
+      // layer. The legacy `free` alias is normalised to `opencode-zen`
+      // in config-loader.ts before reaching here.
       blankGlobalProvider: (() => {
         const v = this.configLoader.opencuesState.blankLlmProvider;
-        if (v === 'free') return 'opencode-zen';
         if (v === 'inherit') return undefined;
         return v;
       })(),

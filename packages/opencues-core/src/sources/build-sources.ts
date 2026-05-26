@@ -83,17 +83,19 @@ export interface BuildSourcesOptions {
    * `globalProvider` for blank-class sources only. Cue-class sources
    * (ConfigSource word-cues, SentenceCueSource) ignore it entirely.
    *
-   * Set from OPENCUES.md `blank-llm-provider:`. The runtime translates
-   * the special value `'free'` → `'opencode-zen'` before passing here;
-   * other ProviderId values flow through verbatim. `'inherit'` (the
-   * default) collapses to undefined — falls through to globalProvider.
+   * Set from OPENCUES.md `blank-llm-provider:`. ProviderId values flow
+   * through verbatim. `'inherit'` (the default) collapses to undefined
+   * — falls through to globalProvider. The pre-2026-05-27 magic value
+   * `'free'` is now a deprecated alias for `'opencode-zen'`, normalised
+   * in config-loader.ts before reaching this layer.
    *
-   * The structural rule: NEVER let cue-class sources resolve to
-   * `opencode-zen` via this path — OpenCode Zen's free-tier ToS says
-   * inputs may be used for training, and cues run automatically on
-   * user prose (not opt-in like blanks). The build-sources factory
-   * enforces this by reading blankGlobalProvider only at blank-class
-   * call sites.
+   * Structural rule: NEVER let cue-class sources resolve to a provider
+   * with `trainsOnInput: true` (today: opencode-zen). Cues run
+   * automatically on user prose, not opt-in like blanks. Enforced
+   * two ways: (1) the build-sources factory reads blankGlobalProvider
+   * only at blank-class call sites; (2) resolveFor's trainsOnInput
+   * guard refuses cue-class sources resolving to a training-pool
+   * provider via any path (per-feature, global, etc.).
    */
   blankGlobalProvider?: string;
   blankGlobalModel?: string;
@@ -289,9 +291,10 @@ export function buildSourcesFromConfig(
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
   // blank-class override tier. `inherit` from the scalar has already
-  // been collapsed to undefined by the runtime; only concrete values
-  // (or 'free' pre-translation) reach us. Defensive: empty/inherit are
-  // treated as undefined here too.
+  // been collapsed to undefined by the runtime; only concrete provider
+  // ids reach us. Defensive: empty/inherit are treated as undefined
+  // here too. The deprecated `free` alias is normalised to
+  // `opencode-zen` in config-loader.ts before reaching this layer.
   const rawBlankProvider = options.blankGlobalProvider?.toLowerCase();
   const blankGlobalProvider = (!rawBlankProvider || rawBlankProvider === 'inherit') ? undefined : rawBlankProvider;
   const blankGlobalModel = options.blankGlobalModel;
@@ -317,17 +320,17 @@ export function buildSourcesFromConfig(
   function resolveFor(featureSetting: FeatureLLMSetting | undefined, perSource?: SourceConfig, isBlankClass?: boolean): ResolvedLLM | null {
     // When the blank-class provider override fires, the global `llm-model`
     // would otherwise leak into resolveLLM as the model for the
-    // overridden provider — e.g. `blank-llm-provider: free` +
+    // overridden provider — e.g. `blank-llm-provider: opencode-zen` +
     // `llm-model: gpt-oss-120b` would try to ask opencode-zen for a
     // model that doesn't exist there. If the user hasn't set a
     // matching `blank-llm-model`, pass undefined so resolveLLM picks
-    // the provider's defaultModel (big-pickle for opencode-zen).
+    // the provider's defaultModel.
     const useBlankOverride = isBlankClass && !!blankGlobalProvider;
     const effectiveGlobalProvider = useBlankOverride ? blankGlobalProvider : globalProvider;
     const effectiveGlobalModel = useBlankOverride
       ? (blankGlobalModel ?? undefined)
       : globalModel;
-    return resolveLLM({
+    const resolved = resolveLLM({
       providerOverride: perSource?.provider,
       modelOverride: perSource?.model,
       endpointOverride: perSource?.endpoint,
@@ -337,17 +340,54 @@ export function buildSourcesFromConfig(
       globalModel: effectiveGlobalModel,
       apiKeys,
     });
+
+    // Prose-source safety guard: refuse to wire a cue-class source
+    // through a provider whose ToS lets the operator train on submitted
+    // inputs (today: opencode-zen). Cues run on the user's actual buffer
+    // text — leaking prose to a training pool is the failure mode this
+    // flag exists to prevent. Blanks are user-opt-in (`_` keystroke =
+    // consent) and may use such providers.
+    //
+    // Belt-and-braces in addition to the structural design that
+    // blank-class call sites set isBlankClass=true: if a user (or
+    // future feature) routed a cue through `<feature>-llm-provider:
+    // opencode-zen` per-feature, this fires.
+    if (resolved && !isBlankClass && resolved.provider.trainsOnInput) {
+      options.log?.(
+        `buildSources: refusing to wire cue source through ${resolved.provider.id} — provider trains on input. ` +
+        `Set the per-feature provider explicitly, or remove the override.`,
+      );
+      return null;
+    }
+    return resolved;
   }
 
   /**
    * Pick the right HTTP-adapter wrapper for a resolved blank-class
-   * source. When the resolved provider is `opencode-zen`, we wrap with
-   * `withFreePool` so transient failures walk the free-pool model list
-   * (and sticky auth/quota errors bubble up for ProviderHealth). Other
-   * providers get the standard `withFallback` (groq↔cerebras).
+   * source. When the resolved provider is `opencode-zen` AND the user
+   * explicitly set model=`free`, wrap with `withFreePool` so transient
+   * failures walk the free-pool model list (and sticky auth/quota
+   * errors bubble up for ProviderHealth).
+   *
+   * The explicit `model: free` is the user's consent gate for routing
+   * blank text through a training-pool provider. Without it (provider
+   * picked but model left at default/unset), we still use the free
+   * pool because opencode-zen has no other entry point today, but log
+   * once at build time so the user knows what's happening.
+   *
+   * Other providers get the standard `withFallback` (groq↔cerebras).
    */
   function wrapAdapterForBlank(resolved: ResolvedLLM) {
-    if (resolved.provider.id === 'opencode-zen') return withFreePool(options.httpAdapter);
+    if (resolved.provider.id === 'opencode-zen') {
+      if (resolved.model !== 'free') {
+        options.log?.(
+          `buildSources: blank-class source routed to opencode-zen with model='${resolved.model}' — ` +
+          `opencode-zen only serves a free pool today. Set \`<feature>-llm-model: free\` to ` +
+          `acknowledge the privacy trade-off explicitly (provider trains on input).`,
+        );
+      }
+      return withFreePool(options.httpAdapter);
+    }
     return withFallback(options.httpAdapter, resolved.fallback);
   }
 

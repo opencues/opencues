@@ -148,7 +148,7 @@ export interface OpenCuesState {
    * of valid provider ids is owned by `@opencues/core`'s ProviderId
    * union — pinning the union here would force config-loader to import
    * that and create a circular structural dependency. Resolver maps
-   * 'free' → 'opencode-zen' at dispatch time.
+   * `free` (pre-2026-05-27 alias for `opencode-zen`) is normalised here.
    */
   readonly blankLlmProvider: string;
   /** Raw key→value of every top-level scalar in the frontmatter. */
@@ -213,15 +213,26 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : 'off';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
-  // blank-llm-provider — `inherit` (default), `free` (opencode-zen
-  // pool), or any concrete provider id. Stored raw; resolver translates
-  // `free` → `opencode-zen` at dispatch time. Unknown values fall back
-  // to `inherit` rather than silently picking an invalid provider —
-  // protects users from typos that would otherwise silently disable all
-  // blanks.
-  const blankProviderRaw = get('blank-llm-provider', 'inherit').toLowerCase();
+  // blank-llm-provider — `inherit` (default) or any concrete provider
+  // id. Unknown values fall back to `inherit` rather than silently
+  // picking an invalid provider — protects users from typos that
+  // would otherwise silently disable all blanks.
+  //
+  // BACK-COMPAT: pre-2026-05-27 OPENCUES.md files used the magic value
+  // `free` to opt into the opencode-zen pool. We now treat `free` as a
+  // deprecated alias for `opencode-zen` — the user is expected to set
+  // `blank-llm-model: free` separately to confirm the privacy
+  // trade-off (opencode-zen has `trainsOnInput: true`, so the
+  // model-side opt-in is the user's consent gate). Alias logs a warn
+  // on load; remove after one release.
+  const blankProviderRawIn = get('blank-llm-provider', 'inherit').toLowerCase();
+  const blankProviderRaw = blankProviderRawIn === 'free' ? 'opencode-zen' : blankProviderRawIn;
+  if (blankProviderRawIn === 'free') {
+    // eslint-disable-next-line no-console
+    console.warn('[opencues] `blank-llm-provider: free` is deprecated. Use `blank-llm-provider: opencode-zen` + `blank-llm-model: free` instead.');
+  }
   const VALID_BLANK_PROVIDERS = new Set([
-    'inherit', 'free',
+    'inherit',
     'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen',
   ]);
   const blankLlmProvider = VALID_BLANK_PROVIDERS.has(blankProviderRaw) ? blankProviderRaw : 'inherit';
@@ -519,8 +530,9 @@ export class ConfigLoader {
       })(),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
       blankLlmProvider: ((): string => {
-        const v = get('blank-llm-provider', 'inherit').toLowerCase();
-        const VALID = new Set(['inherit', 'free', 'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen']);
+        const vRaw = get('blank-llm-provider', 'inherit').toLowerCase();
+        const v = vRaw === 'free' ? 'opencode-zen' : vRaw; // deprecated alias
+        const VALID = new Set(['inherit', 'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen']);
         return VALID.has(v) ? v : 'inherit';
       })(),
       settings: newSettings as ReadonlyMap<string, string>,
