@@ -18,6 +18,7 @@ import {
   isNormalInput,
   readTargetText,
   updateRuntimeApiKeys,
+  notifyBufferReplacedExternally,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
@@ -198,6 +199,41 @@ async function init(): Promise<void> {
     const text = e.dataTransfer?.getData('text') ?? '';
     const n = (text.match(/_/g) || []).length;
     if (n > 0) noteUserUnderscoreInsertion(n);
+  }, true);
+
+  // ─── Buffer-replacing input events: undo / redo / paste / IME commit ──
+  // The post-mutation text reflects content the runtime didn't author,
+  // so every span / DynDef / dim range the runtime tracks is anchored
+  // to a character offset that no longer corresponds to the buffer the
+  // user is now editing. Without a wipe, the next cycle splices on
+  // stale offsets, the next dim repaints a phantom span, or the next
+  // blank fill is silently blocked by a leftover `blankName` entry.
+  //
+  // `beforeinput` fires BEFORE the DOM mutates and carries `inputType`,
+  // which lets us key off the precise trigger instead of guessing from
+  // keydown. Browser-issued events from real user actions always have
+  // `isTrusted: true`; we drop synthetic dispatches from hostile pages
+  // (same security model as the `_`-credit gates above).
+  //
+  // We DO NOT preventDefault — the browser must still perform the
+  // native undo / redo / paste / IME commit. We only reset the runtime's
+  // in-memory state so the post-mutation buffer is treated as a fresh
+  // edit surface. The Resolver re-runs on the next keystroke debounce.
+  //
+  // Companion to `publishTarget` (same wipe, focus-change trigger).
+  // Per-state-object rationale: docs/architecture/universal-integration.md
+  // § "Per-buffer state must reset on focus change".
+  document.addEventListener('beforeinput', (e) => {
+    if (!e.isTrusted) return;
+    const t = (e as InputEvent).inputType;
+    if (
+      t === 'historyUndo' ||
+      t === 'historyRedo' ||
+      t === 'insertFromPaste' ||
+      t === 'insertCompositionText'
+    ) {
+      notifyBufferReplacedExternally();
+    }
   }, true);
 
   // Forward 'input' events from the focused target to the runtime.

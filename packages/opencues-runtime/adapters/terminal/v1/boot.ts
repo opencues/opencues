@@ -23,7 +23,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -46,6 +46,16 @@ export interface BootResult {
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
+  /**
+   * Wipe per-buffer runtime state (DynDefs, HighlightState, SpanFill,
+   * SelectorSatellite). Fire whenever an external mutation has invalidated
+   * the runtime's tracked spans — e.g. host-level undo, paste, IME commit,
+   * or any UI write that bypasses the runtime's setText pipeline.
+   * Idempotent. See `resetSharedBufferState` in `src/boot-common.ts` for
+   * the full rationale + the state objects deliberately NOT wiped
+   * (agentTaskState, dismissedBlanks).
+   */
+  resetBufferState(): void;
   dispose(): void;
 }
 
@@ -214,6 +224,9 @@ export function boot(host: HostInfo): BootResult {
       lastSeenCursor = cursor;
       const ctx: RenderContext = { text, cursor, externalHighlights: [] };
       return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
+    },
+    resetBufferState() {
+      resetSharedBufferState(shared);
     },
     dispose() {
       adapter.dispose();

@@ -20,7 +20,7 @@ import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
@@ -113,6 +113,15 @@ export interface BootResult {
    * "looks the same").
    */
   consumePendingRender(currentText: string, currentCursor: number): { text: string; cursor: number } | null;
+  /**
+   * Wipe per-buffer runtime state (DynDefs, HighlightState, SpanFill,
+   * SelectorSatellite). Fire whenever an external mutation has invalidated
+   * the runtime's tracked spans — terminal paste, host-level undo, any
+   * write that bypasses the runtime's setText pipeline. Idempotent.
+   * See `resetSharedBufferState` in `src/boot-common.ts` for the full
+   * rationale + state objects deliberately NOT wiped.
+   */
+  resetBufferState(): void;
   /** Call to dispose the runtime (e.g. on AppContainer unmount). */
   dispose(): void;
 }
@@ -591,6 +600,9 @@ export function boot(host: HostInfo): BootResult {
     },
     consumePendingRender(currentText, currentCursor) {
       return consumePendingRenderImpl(currentText, currentCursor);
+    },
+    resetBufferState() {
+      resetSharedBufferState(shared);
     },
     dispose() {
       adapter.dispose();

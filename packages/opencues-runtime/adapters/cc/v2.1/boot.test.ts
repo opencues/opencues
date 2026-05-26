@@ -164,4 +164,36 @@ describe('boot()', () => {
     const out = result.applyRender('one two three', host.getText(), 0);
     expect(out).toBe('one \x1b[97mtwo\x1b[39m three');
   });
+
+  // ─── resetBufferState contract ──────────────────────────────────────────
+  // Per-band guarantee that the method is wired. Deep wipe-set + journey
+  // assertions live in `src/modules/reset-buffer-state.scenarios.test.ts`.
+  it('exposes resetBufferState as a method', () => {
+    const result = boot(fakeHost());
+    expect(typeof result.resetBufferState).toBe('function');
+  });
+
+  it('resetBufferState is idempotent on a cold boot (no prior state)', () => {
+    const result = boot(fakeHost());
+    expect(() => {
+      result.resetBufferState();
+      result.resetBufferState();
+      result.resetBufferState();
+    }).not.toThrow();
+  });
+
+  it('resetBufferState clears dynDefs populated by a prior cycle', () => {
+    // Integration-flavoured check at the boot-result level: dispatch a
+    // navigation key to populate dynDefs, then reset, then assert dynDefs
+    // is empty via the BootResult's exposed handle.
+    const host = fakeHost('alpha beta gamma');
+    const result = boot(host);
+    result.dispatchKey({ key: 'left', ctrl: true, alt: true }, host.getText(), 0);
+    expect(result.hlState.active).toBe(true);
+
+    result.resetBufferState();
+
+    expect(result.dynDefs.size).toBe(0);
+    expect(result.hlState.active).toBe(false);
+  });
 });
