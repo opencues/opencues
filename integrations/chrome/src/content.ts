@@ -236,6 +236,30 @@ async function init(): Promise<void> {
     }
   }, true);
 
+  // Managed editors (Lexical, ProseMirror, Draft.js) bind ctrl/cmd+z and
+  // ctrl/cmd+y to their OWN keymap and run history internally — they
+  // fire `input` after the model rewinds but the InputEvent's
+  // `inputType` is the substituted-text type, not `historyUndo`. So the
+  // `beforeinput` filter above misses them, and our per-buffer state
+  // (DynDefs / spans / dim ranges) stays bound to offsets that no
+  // longer correspond to the live text.
+  //
+  // Catch the keydown directly as a fallback. We DO NOT preventDefault
+  // — the editor still owns the actual undo/redo; we just wipe runtime
+  // state in parallel. `isTrusted` filters out synthetic dispatches.
+  // Capture phase so editors that stopPropagation in bubble don't
+  // swallow it.
+  document.addEventListener('keydown', (e) => {
+    if (!e.isTrusted) return;
+    const cmdOrCtrl = e.metaKey || e.ctrlKey;
+    if (!cmdOrCtrl) return;
+    const k = e.key.toLowerCase();
+    // ctrl+z = undo; ctrl+y or ctrl+shift+z = redo (cross-platform).
+    if (k === 'z' || k === 'y') {
+      notifyBufferReplacedExternally();
+    }
+  }, true);
+
   // Forward 'input' events from the focused target to the runtime.
   // Runtime modules (DimRender, BlankFill, Resolver) subscribe to
   // onTextChange. Use a single document listener to avoid per-attach
