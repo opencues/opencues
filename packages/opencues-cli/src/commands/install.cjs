@@ -55,6 +55,15 @@ module.exports = function install(argv, ctx) {
     return installSkill(argv.slice(1), ctx);
   }
 
+  // `opencues install plugin <name>` — install a host-plugin (currently
+  // only opencode supported). Unlike skills (text the chat model
+  // consults), plugins are CODE that hooks deterministic events. The
+  // cues plugin uses opencode's chat.message hook to write CUES.md on
+  // every user message — no model judgment needed.
+  if (argv[0] === 'plugin') {
+    return installPlugin(argv.slice(1), ctx);
+  }
+
   if (argv.includes('--help') || argv.includes('-h')) return printHelp(ctx);
 
   const { HOSTS, resolve } = loadHostResolver(ctx);
@@ -274,6 +283,104 @@ function printSkillHelp() {
   console.log('  opencues install skill cues --force        # overwrite local tweaks');
 }
 
+// `opencues install plugin <name> [--target <path>] [--force]`
+//
+// Installs an OpenCues-shipped opencode plugin (TypeScript code that
+// hooks an event in the opencode plugin system). Currently only the
+// `cues` plugin ships — it hooks `chat.message` and writes
+// .cues/CUES.md on every user submit (deterministic; doesn't depend on
+// the chat model deciding to invoke a skill).
+//
+// Source: integrations/opencode/plugin/<name>.ts
+// Default target: ~/.config/opencode/plugins/<name>.ts +
+//   adds a "file://<absolute-path>" entry to ~/.config/opencode/config.json
+//   under the `plugin: [...]` array.
+function installPlugin(argv, ctx) {
+  if (argv.includes('--help') || argv.includes('-h')) return printPluginHelp();
+  const os = require('node:os');
+
+  let name = null;
+  let explicitTarget = null;
+  let force = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--target') { explicitTarget = argv[++i]; continue; }
+    if (a === '--force') { force = true; continue; }
+    if (!a.startsWith('-') && !name) { name = a; continue; }
+    console.error(`opencues install plugin: unknown arg "${a}"`);
+    process.exit(2);
+  }
+
+  if (!name) {
+    console.error('opencues install plugin: missing <name>. Currently shipped: cues');
+    process.exit(2);
+  }
+
+  const src = path.join(ctx.REPO_ROOT, 'integrations', 'opencode', 'plugin', `${name}.ts`);
+  if (!fs.existsSync(src)) {
+    console.error(`opencues install plugin: no such plugin "${name}" (expected ${src})`);
+    process.exit(2);
+  }
+
+  const target = explicitTarget || path.join(os.homedir(), '.config', 'opencode', 'plugins', `${name}.ts`);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+
+  if (fs.existsSync(target) && !force) {
+    console.log(`${tag('skip')} ${target} already exists (use --force to overwrite)`);
+  } else {
+    if (fs.existsSync(target) && force) {
+      const backup = target + '.bak';
+      fs.copyFileSync(target, backup);
+      console.log(`${dim('backup → ' + backup)}`);
+    }
+    fs.copyFileSync(src, target);
+    console.log(`${tag('ok')} plugin file: ${target}`);
+  }
+
+  // Register the plugin in opencode's config.json so it loads on next launch.
+  const cfgPath = path.join(os.homedir(), '.config', 'opencode', 'config.json');
+  let cfg = {};
+  if (fs.existsSync(cfgPath)) {
+    try { cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch { cfg = {}; }
+  }
+  if (!Array.isArray(cfg.plugin)) cfg.plugin = [];
+  const fileUrl = `file://${target}`;
+  const already = cfg.plugin.some(p => (typeof p === 'string' ? p : p[0]) === fileUrl);
+  if (already) {
+    console.log(`${tag('skip')} plugin already registered in ${cfgPath}`);
+  } else {
+    cfg.plugin.push(fileUrl);
+    fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+    console.log(`${tag('ok')} registered in ${cfgPath}`);
+  }
+
+  console.log('');
+  console.log(`${dim('Restart opencode to load the plugin.')}`);
+  console.log(`${dim('Plugin fires on chat.message → writes <cwd>/.cues/CUES.md every turn.')}`);
+  process.exit(0);
+}
+
+function printPluginHelp() {
+  console.log('opencues install plugin <name> [options]');
+  console.log('');
+  console.log('Install an opencode plugin shipped with OpenCues.');
+  console.log('Plugins hook opencode events (e.g. chat.message) deterministically — no LLM judgment.');
+  console.log('');
+  console.log('Currently shipped:');
+  console.log('  cues          On chat.message: writes <cwd>/.cues/CUES.md using the cues prompt');
+  console.log('');
+  console.log('Default target: ~/.config/opencode/plugins/<name>.ts');
+  console.log('Also registers the plugin in ~/.config/opencode/config.json under `plugin: [...]`.');
+  console.log('');
+  console.log('Flags:');
+  console.log('  --target <path>   Override the install path');
+  console.log('  --force           Overwrite existing plugin file (backs up to .bak)');
+  console.log('');
+  console.log('Example:');
+  console.log('  opencues install plugin cues');
+}
+
 function printHelp(ctx) {
   console.log(`opencues install <host> [options]`);
   console.log('');
@@ -290,6 +397,7 @@ function printHelp(ctx) {
   console.log('');
   console.log('Special subcommands:');
   console.log('  skill <name>  Install a shipped Claude skill (see `opencues install skill --help`)');
+  console.log('  plugin <name> Install an opencode plugin (see `opencues install plugin --help`)');
   console.log('');
   console.log('Common flags (passed through to the per-host installer):');
   console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode/gemini-cli)');
