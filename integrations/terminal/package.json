@@ -5,7 +5,10 @@
   "description": "OpenCues for the terminal — a standalone Bun/OpenTUI TUI you launch as `oc-edit`. Brings full cues, blanks, cycling, agent-rewrite to any shell via $EDITOR or a ZLE widget.",
   "type": "module",
   "bin": {
-    "oc-edit": "./bin/oc-edit"
+    "oc-edit": "./bin/oc-edit",
+    "oc-shell": "./bin/oc-shell",
+    "oc-popup": "./bin/oc-popup",
+    "oc-install-tmux": "./bin/oc-install-tmux"
   },
   "scripts": {
     "//comment-on-build": "Intentionally a no-op in CI. bin/oc-edit falls back to src/app.tsx when dist/app.js is absent (Bun handles TSX natively at run time), so a pre-bundled dist is purely a perf optimisation for warm starts — not required for correctness. CI runners don't have Bun installed; running `bun build` there fails. To produce a pre-bundled dist for a release, run `pnpm run bundle` locally with Bun on PATH.",
@@ -26,6 +29,7 @@
   },
   "files": [
     "bin/",
+    "conf/",
     "dist/",
     "README.md"
   ]

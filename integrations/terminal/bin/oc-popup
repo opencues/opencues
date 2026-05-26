@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# oc-popup — runs inside a tmux display-popup. Invokes oc-edit and,
+# on a successful commit, bracket-pastes the result into the
+# originating pane (the pane that was active when Ctrl+Alt+X fired).
+#
+# Usage: oc-popup <originating-pane-id>
+#
+# Why bracket-paste (paste-buffer -p) instead of send-keys -l:
+#   - Preserves multi-line text without each newline triggering
+#     command execution in the shell.
+#   - Modern bash/zsh/fish respect bracketed paste — the pasted
+#     block lands at the prompt as a single editable chunk.
+#
+# Lifecycle:
+#   - tmux opens this script in a display-popup with `-E`, which
+#     closes the popup when oc-popup exits.
+#   - On Ctrl+S in oc-edit: text written to tmpfile, popup closes,
+#     bracket-paste fires.
+#   - On Ctrl+C / Esc / empty buffer: tmpfile is empty or missing,
+#     nothing is pasted.
+
+set -u
+
+ORIGIN_PANE="${1:-}"
+TMPFILE="$(mktemp -t oc-popup.XXXXXX)"
+trap 'rm -f "$TMPFILE"' EXIT
+
+# Resolve through symlinks so a symlinked oc-popup still finds its sibling oc-edit.
+SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+if [ -x "$HERE/oc-edit" ]; then
+  OC_EDIT="$HERE/oc-edit"
+else
+  OC_EDIT="$(command -v oc-edit 2>/dev/null || true)"
+fi
+
+if [ -z "${OC_EDIT:-}" ]; then
+  echo "oc-popup: oc-edit not found on PATH or in sibling bin/" >&2
+  sleep 2
+  exit 127
+fi
+
+"$OC_EDIT" --out "$TMPFILE" || true
+
+# Use the same vendored tmux oc-shell exported. We must NOT
+# PATH-resolve `tmux` here — the system tmux's client speaks a
+# different protocol than our vendored server (different versions),
+# and the user explicitly opted out of system-tmux involvement.
+TMUX_BIN="${OPENCUES_TMUX:-$HOME/.opencues/vendor/tmux/bin/tmux}"
+if [ ! -x "$TMUX_BIN" ]; then
+  echo "oc-popup: vendored tmux not found at $TMUX_BIN" >&2
+  sleep 2
+  exit 1
+fi
+
+# Inject only if oc-edit committed text AND we have a pane target.
+if [ -n "$ORIGIN_PANE" ] && [ -s "$TMPFILE" ]; then
+  "$TMUX_BIN" load-buffer -b oc-popup "$TMPFILE"
+  "$TMUX_BIN" paste-buffer -p -b oc-popup -t "$ORIGIN_PANE"
+  "$TMUX_BIN" delete-buffer -b oc-popup
+fi
