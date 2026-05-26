@@ -26,6 +26,10 @@ import * as fs from "node:fs"
 import * as path from "node:path"
 import * as os from "node:os"
 
+function log(level: string, msg: string) {
+  try { fs.appendFileSync("/tmp/opencues.log", `[${new Date().toISOString()}][oc-cues-plugin][${level}] ${msg}\n`) } catch {}
+}
+
 const SKILL_LOCATIONS = [
   // User-installed (opencues install skill cues writes here)
   path.join(os.homedir(), ".config/opencode/skills/cues/SKILL.md"),
@@ -116,9 +120,17 @@ function extractCuesContent(text: string): string {
   return t
 }
 
+// Sessions we created for our own LLM calls — used to break the
+// recursion loop where session.prompt fires chat.message back at us.
+const ownSessions = new Set<string>()
+
 export const cuesPlugin: Plugin = async (input) => {
+  log("info", "plugin initialised")
   return {
     "chat.message": async (hookInput, output) => {
+      // If this is our own throwaway session, skip — otherwise we'd
+      // recurse infinitely (every session.prompt triggers chat.message).
+      if (ownSessions.has(hookInput.sessionID)) return
       try {
         await runCuesUpdate(input, hookInput, output)
       } catch (err: any) {
@@ -134,36 +146,43 @@ export const cuesPlugin: Plugin = async (input) => {
   }
 }
 
-async function runCuesUpdate(input: any, _hookInput: any, output: any): Promise<void> {
-  const userText = extractUserText(output.message.parts || [])
+async function runCuesUpdate(input: any, hookInput: any, output: any): Promise<void> {
+  // chat.message hook input shape: { message: AssistantMessage, parts: Part[] }.
+  // Parts live at output.parts (sibling of message), not output.message.parts.
+  const parts = output?.parts ?? output?.message?.parts ?? []
+  const userText = extractUserText(parts)
   if (!userText) return
 
   const skill = loadSkillText()
   if (!skill) {
-    fs.appendFileSync(
-      "/tmp/opencues.log",
-      `[${new Date().toISOString()}][oc-cues-plugin][warn] no SKILL.md found at any of ${SKILL_LOCATIONS.join(", ")}\n`,
-    )
+    log("warn", `no SKILL.md found at any of ${SKILL_LOCATIONS.join(", ")}`)
     return
   }
 
   const projectDir = input.directory || process.cwd()
-  const context = await buildContext(input.client, _hookInput.sessionID)
+  const context = await buildContext(input.client, hookInput.sessionID)
   const existing = existingCuesMd(projectDir)
 
-  // The cues prompt is the skill text (full body) + a USER section with
-  // the conversation context, the new message, and the existing file.
-  // We tell the LLM to respond with the raw CUES.md content only.
+  // The cues prompt is the skill text (full body) + a USER section
+  // overriding the skill's tool-calling and chat-reply directives. We
+  // need the LLM to OUTPUT the file content directly, not call Write.
   const userPrompt = [
+    "# CRITICAL OVERRIDES (these take precedence over the skill text)",
+    "",
+    "- DO NOT call any tools. No Write, no Edit, no Read, nothing. Tools are disabled.",
+    "- DO NOT append a parenthetical chat reply (the skill says to — ignore that).",
+    "- DO NOT include commentary, preamble, or explanation of any kind.",
+    "- Your ENTIRE response must be the raw CUES.md file content.",
+    "- The response MUST start with `---` (YAML frontmatter open) on the first line.",
+    "- The response MUST end with ` ``` ` (closing fence of the tips JSON block).",
+    "",
     context ? `# Recent conversation\n\n${context}` : "",
     `# User's new message\n\n${userText}`,
     existing ? `# Existing .cues/CUES.md\n\n\`\`\`\n${existing}\n\`\`\`` : "# No existing CUES.md — INITIAL mode.",
     "",
     "# Your task",
     "",
-    "Following the skill instructions above, output the FULL UPDATED `.cues/CUES.md` content.",
-    "Respond with ONLY the file content — no preamble, no commentary, no code fences.",
-    "Start the response with the YAML frontmatter (---).",
+    "Following the skill instructions above (and the overrides at the top), output the FULL UPDATED `.cues/CUES.md` content. Just the file content, nothing else.",
   ].filter(Boolean).join("\n\n")
 
   // Throwaway session for the cues call. Uses the user's configured
@@ -174,26 +193,32 @@ async function runCuesUpdate(input: any, _hookInput: any, output: any): Promise<
     const create = await input.client.session.create({ body: {} })
     sessionID = create?.data?.id || create?.data?.sessionID
     if (!sessionID) {
-      fs.appendFileSync("/tmp/opencues.log", `[${new Date().toISOString()}][oc-cues-plugin][err] no session id in create response\n`)
+      log("warn", "no session id in create response")
       return
     }
+    ownSessions.add(sessionID)
 
     const response = await input.client.session.prompt({
       path: { id: sessionID },
       body: {
         // System prompt = the skill text. User prompt = the context block.
         system: skill,
+        // Disable all tools — we want a direct text response, not Write calls.
+        // session.prompt's `tools` is a per-tool enable map; passing an empty
+        // object disables every standard tool.
+        tools: {},
         parts: [{ type: "text", text: userPrompt }],
       },
     })
 
-    // Extract text from the response. Response shape varies; try common paths.
-    let responseText: string | null = null
+    // Extract text from the response. Per SDK types: { info: AssistantMessage,
+    // parts: Part[] }. Try all paths just in case the wrapper level differs.
     const parts =
       response?.data?.parts ??
-      response?.data?.message?.parts ??
       response?.data?.info?.parts ??
+      response?.parts ??
       []
+    let responseText: string | null = null
     if (Array.isArray(parts)) {
       responseText = parts
         .filter((p: any) => p?.type === "text" && typeof p.text === "string")
@@ -202,22 +227,20 @@ async function runCuesUpdate(input: any, _hookInput: any, output: any): Promise<
         .trim()
     }
     if (!responseText) {
-      fs.appendFileSync("/tmp/opencues.log", `[${new Date().toISOString()}][oc-cues-plugin][warn] empty response text\n`)
+      log("warn", "empty response text from session.prompt")
       return
     }
 
     const cuesContent = extractCuesContent(responseText)
     if (!cuesContent.startsWith("---")) {
-      fs.appendFileSync(
-        "/tmp/opencues.log",
-        `[${new Date().toISOString()}][oc-cues-plugin][warn] response did not start with frontmatter; first 80 chars: ${cuesContent.slice(0, 80).replace(/\n/g, "\\n")}\n`,
-      )
-      // Still write it — better a partial file than nothing.
+      log("warn", `response did not start with frontmatter — first 80 chars: ${cuesContent.slice(0, 80).replace(/\n/g, "\\n")}`)
+      // Still write — better a partial file than nothing.
     }
     writeCuesMd(projectDir, cuesContent)
-    fs.appendFileSync("/tmp/opencues.log", `[${new Date().toISOString()}][oc-cues-plugin][info] wrote ${path.join(projectDir, ".cues/CUES.md")} (${cuesContent.length} bytes)\n`)
+    log("info", `wrote ${path.join(projectDir, ".cues/CUES.md")} (${cuesContent.length} bytes)`)
   } finally {
     if (sessionID) {
+      ownSessions.delete(sessionID)
       try { await input.client.session.delete({ path: { id: sessionID } }) } catch { /* best effort */ }
     }
   }
