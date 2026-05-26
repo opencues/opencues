@@ -164,12 +164,20 @@ function uninstallPlugin(argv, _ctx) {
     console.error('opencues uninstall plugin: missing <name>');
     process.exit(2);
   }
-  const pluginFile = path.join(os.homedir(), '.config', 'opencode', 'plugins', `${name}.ts`);
-  if (fs.existsSync(pluginFile)) {
-    fs.rmSync(pluginFile);
-    console.log(`${tag('ok')} removed ${pluginFile}`);
-  } else {
-    console.log(`${tag('skip')} ${pluginFile} (not present)`);
+  const pluginDir = path.join(os.homedir(), '.config', 'opencode', 'plugins');
+  // Remove the plugin file plus its companions: the .SKILL.md prompt
+  // source we copy at install time, plus any .bak backup left by a
+  // prior --force install.
+  const companions = [
+    path.join(pluginDir, `${name}.ts`),
+    path.join(pluginDir, `${name}.ts.bak`),
+    path.join(pluginDir, `${name}.SKILL.md`),
+  ];
+  for (const f of companions) {
+    if (fs.existsSync(f)) {
+      fs.rmSync(f);
+      console.log(`${tag('ok')} removed ${f}`);
+    }
   }
 
   // De-register from opencode config.
