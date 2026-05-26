@@ -221,19 +221,44 @@ sub-vocabulary am I missing?" and keep going to 15–20. **Upfront
 breadth is the loop's product.** A turn-2 source-addition that
 covers a word the user just typed is a turn-1 failure.
 
-## The three cue types — pick per surface
+## The three cue types — TIPS FIRST, then word-cues, then sentence-cues
 
-OpenCues supports three cue kinds. A useful pack mixes them based
-on what KIND OF WORDS sit in each topic, not the domain.
+OpenCues supports three cue kinds. **Tips are the most valuable
+output of the skill** — they carry actual knowledge (facts,
+trade-offs, decision-prompts, pitfalls) that the user does not
+already know. A word-cue surfaces alternatives the user could
+have brainstormed; a tip surfaces information they couldn't.
+
+Priority order when emitting:
+1. **Tips first.** For every notable term you'd mention, ask:
+   "is there a one-line fact / pitfall / decision-prompt I can
+   give them?" If yes — emit a tip.
+2. **Word-cues only when there are multiple equivalent forms
+   the user might cycle between.** If a word has one canonical
+   form, don't bother with a word-cue.
+3. **Sentence-cues for prose surfaces** the user is composing.
+
+### Tip-cues — static one-line knowledge on a term, no LLM call
+
+User types `webp`, tip pops up: "WebP gives ~30% smaller files
+than JPEG at same quality." Instant, no round-trip. **This is the
+single most valuable surface OpenCues offers.** Every term where
+the user would benefit from operational knowledge — not just a
+synonym — deserves a tip.
 
 ### Word-cues — alternatives for a highlighted word
 
-The default. User types `wedding`, cycles to `bridal`.
+The default fallback. User types `wedding`, cycles to `bridal`.
 
 - **Yaml:** `match: <regex>` or `keywords: <comma-list>`, plus
   `priority:`. No `scope:` field (or `scope: words`).
 - **Best for:** domain vocabulary that has multiple roughly
   equivalent forms — register, formality, niche jargon.
+- **For every term you put in an alts list, ask: "does this term
+  also deserve a tip entry?"** If yes — add the tip too. Most
+  technical / domain / proper-noun alts SHOULD have an
+  accompanying tip explaining when/why to pick each. Alts
+  without tips are vocabulary without context — half the value.
 
 ### Sentence-cues — rewrite a whole sentence in a different style
 
@@ -250,10 +275,7 @@ User wrote a sentence; cue offers three rewrites of it.
   (recitals); a code-comment has prose; an email is mostly
   prose. **Decide per surface, not per document type.**
 
-### Tip-cues — static one-line knowledge on a term, no LLM call
-
-User types `webp`, tip pops up: "WebP gives ~30% smaller files
-than JPEG at same quality." Instant, no round-trip.
+### Tip-cues — DETAIL (formats, taxonomy, content types)
 
 - **Yaml:** `name:` only (in the source folder OR inside CUES.md's
   `## Tips` body). Body is a JSON code block with the
@@ -274,14 +296,24 @@ than JPEG at same quality." Instant, no round-trip.
 
 ### Per-surface picking rule
 
-For each topic you would emit, ask which surface it covers:
+For each topic you would emit, ask which surface it covers — and
+always check the tip-cue option FIRST:
 
 ```
-prose the user is composing (any length, any document)   → sentence-cue
-single term with one canonical form + worth knowing       → tip-cue
-single term with multiple equivalent forms                → word-cue
-otherwise                                                 → skip
+term where the user would benefit from a one-line FACT /
+  TRADE-OFF / DECISION-PROMPT / PITFALL                     → tip-cue (PREFER)
+term + has a tip AND has multiple equivalent forms          → tip-cue WITH alts:
+                                                              (gives user both)
+single term with multiple equivalent forms (no useful tip)  → word-cue
+prose the user is composing (any length, any document)      → sentence-cue
+otherwise                                                   → skip
 ```
+
+**A tip-cue entry can also carry its own `alts: [...]` list** —
+this gives the user both the operational knowledge AND the cycling
+alternatives for that one term in a single tip-group entry. This
+is the highest-density cue type. Use it whenever a term has both
+"here's what you should know" AND "here are equivalent forms".
 
 This is per-topic, NOT per-domain. The same project usually has
 all three: an API doc has technical terms (tip-cue), parameter
@@ -289,6 +321,15 @@ names (word-cue), and endpoint description prose (sentence-cue).
 A novel has emotional vocabulary (word-cue), period-specific
 proper nouns (tip-cue), and on-the-nose prose (sentence-cue).
 **Don't classify the document; classify each surface inside it.**
+
+### Tip-coverage check before writing the file
+
+Before calling Write, do this pass: scan the alts lists of every
+word-cue you're about to emit. For each notable term in those
+lists, ask "is there a useful tip I could write?" If yes — add
+it to a tip-group. Aim for **majority of alt-list terms to also
+appear as tip entries.** A CUES.md heavy on word-cue alts but
+light on tips is missing half its value.
 
 ## File layout — one CUES.md by default
 
