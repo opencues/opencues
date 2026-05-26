@@ -78,7 +78,25 @@ Verify Ctrl+Alt+↑/↓ actually cycles on each terminal you care about:
 
 This list mirrors the long-tail the OC + Gemini integrations already document in their REPAIR.md files. Failures here aren't blockers for merge — they're reasons to add a `KEY-COMPAT.md` for the terminal app.
 
-## 9. Uninstall (10 s)
+## 9. Tmux popup wrapper — `oc-shell` (5 min, includes one-time tmux build)
+
+### 9a. Vendored tmux install (one-time, ~30s)
+- [ ] On a machine without `libevent-dev` / `bison`: `oc-install-tmux` exits cleanly with `oc-install-tmux: missing build deps: ...` and prints the apt/dnf/pacman/brew command. No half-finished build state in `~/.opencues/vendor/`.
+- [ ] After `sudo apt install -y libevent-dev bison` (or platform equivalent): `oc-install-tmux` downloads source, builds, installs to `~/.opencues/vendor/tmux/bin/tmux`. Final line confirms version. Build logs at `~/.opencues/vendor/{configure,make,install}.log`.
+- [ ] Re-running `oc-install-tmux` after install: no-op with "tmux X.Y already vendored" message.
+- [ ] System tmux (`/usr/bin/tmux`, brew tmux, etc.) is untouched. Verify with `which -a tmux` — both old and new paths visible.
+
+### 9b. oc-shell behavior
+- [ ] `oc-shell` before running `oc-install-tmux`: clean exit with "vendored tmux not found" + instructions. No PATH fallback to system tmux.
+- [ ] On tmux >= 3.2 outside any tmux: `oc-shell` drops into the user's `$SHELL` at the current `$PWD`. Bottom-right status line reads `OpenCues  Ctrl+Alt+X popup   type "exit" to leave`. `pwd` matches the dir oc-shell was invoked from.
+- [ ] Press **Ctrl+Alt+X**: a centered floating box opens (80% × 70%), running `oc-edit` inside. The OpenCues runtime is active — typing `the attorney filed today` highlights words, Ctrl+Alt+↑ cycles, etc.
+- [ ] Compose multi-line text in the popup (Enter for newline). Press **Ctrl+S**. Popup closes; the composed block is bracket-pasted into the originating pane at the shell prompt — multi-line text lands as a single editable paste, not as separate executed commands.
+- [ ] Press **Ctrl+Alt+X** then **Ctrl+C** (or Esc) inside oc-edit: popup closes with nothing pasted.
+- [ ] Type `exit` (or Ctrl+D) at the wrapped shell — the tmux session is destroyed (`destroy-unattached on`) and `oc-shell` returns to the outer terminal. No orphan `tmux` server on the `opencues-*` socket (verify with `ls /tmp/tmux-*/opencues-*` → empty).
+- [ ] Already-inside-tmux case: from inside an existing tmux session, run `oc-shell`. It does NOT nest. Instead it prints `OpenCues popup registered in this tmux session.` and exits. Ctrl+Alt+X then works in the user's existing tmux. `tmux unbind-key -n M-C-x` cleanly removes.
+- [ ] Status line removal note (no test, just verify the comment block in `conf/oc-shell.tmux.conf` describes the one-line change — `set -g status on` → `set -g status off` — and that it works when applied).
+
+## 10. Uninstall (10 s)
 - [ ] `opencues uninstall terminal` removes `integrations/terminal/node_modules/@opencues/*/`
 - [ ] `opencues install terminal --dry-run` shows the plan; **no files modified**
 

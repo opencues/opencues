@@ -61,7 +61,11 @@ function doInstall() {
     console.log('[dry-run] Would stage runtime + core into:');
     console.log(`  ${path.join(PKG_DIR, 'node_modules', '@opencues', 'core')}/`);
     console.log(`  ${path.join(PKG_DIR, 'node_modules', '@opencues', 'runtime')}/`);
-    if (args.link) console.log(`[dry-run] Would symlink: ${args.link}/oc-edit → ${path.join(PKG_DIR, 'bin', 'oc-edit')}`);
+    if (args.link) {
+      for (const b of ['oc-edit', 'oc-shell', 'oc-popup', 'oc-install-tmux']) {
+        console.log(`[dry-run] Would symlink: ${args.link}/${b} → ${path.join(PKG_DIR, 'bin', b)}`);
+      }
+    }
     return;
   }
 
@@ -89,13 +93,15 @@ function doUninstall() {
   // local node_modules + the optional symlink the user passed via --link.
   const stagedCore = path.join(PKG_DIR, 'node_modules', '@opencues', 'core');
   const stagedRt = path.join(PKG_DIR, 'node_modules', '@opencues', 'runtime');
-  const linkPath = args.link ? path.join(args.link, 'oc-edit') : null;
+  const linkPaths = args.link
+    ? ['oc-edit', 'oc-shell', 'oc-popup', 'oc-install-tmux'].map((b) => path.join(args.link, b))
+    : [];
 
   console.log('Uninstall plan:');
   for (const p of [stagedCore, stagedRt]) {
     if (fs.existsSync(p)) console.log(`  rm -rf ${p}`);
   }
-  if (linkPath) {
+  for (const linkPath of linkPaths) {
     try {
       if (fs.lstatSync(linkPath).isSymbolicLink()) console.log(`  rm ${linkPath}`);
     } catch { /* ignore */ }
@@ -106,7 +112,7 @@ function doUninstall() {
   for (const p of [stagedCore, stagedRt]) {
     if (fs.existsSync(p)) { fs.rmSync(p, { recursive: true, force: true }); console.log(`  removed ${p}/`); }
   }
-  if (linkPath) {
+  for (const linkPath of linkPaths) {
     try {
       if (fs.lstatSync(linkPath).isSymbolicLink()) { fs.unlinkSync(linkPath); console.log(`  removed ${linkPath}`); }
     } catch { /* ignore */ }
@@ -172,7 +178,7 @@ function printHelp() {
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');
-  console.log('  --link <dir>        Symlink bin/oc-edit into <dir> (typically ~/.local/bin)');
+  console.log('  --link <dir>        Symlink bin/oc-edit, oc-shell, oc-popup, oc-install-tmux into <dir> (typically ~/.local/bin)');
   console.log('  --dry-run           Print the plan; do not execute');
   console.log('  --help              Show this message');
   console.log('');
