@@ -70,15 +70,21 @@ fi
 # ─── Optional symlink ────────────────────────────────────────────────
 if [[ -n "$LINK_DIR" ]]; then
   mkdir -p "$LINK_DIR"
-  ln -sf "$TERM_DIR/bin/oc-edit" "$LINK_DIR/oc-edit"
-  echo "  ▸ symlinked oc-edit → $LINK_DIR/oc-edit"
+  for bin in oc-edit oc-shell oc-popup oc-install-tmux; do
+    ln -sf "$TERM_DIR/bin/$bin" "$LINK_DIR/$bin"
+    echo "  ▸ symlinked $bin → $LINK_DIR/$bin"
+  done
 fi
 
 echo "✓ Terminal integration ready."
 echo
 echo "Try it:"
-echo "  $TERM_DIR/bin/oc-edit"
-echo "  echo 'the attorney filed today' | $TERM_DIR/bin/oc-edit"
+echo "  $TERM_DIR/bin/oc-edit                  # standalone editor"
+echo "  $TERM_DIR/bin/oc-shell                 # shell wrapped with Ctrl+Alt+X popup"
+echo
+echo "For oc-shell, build the vendored tmux 3.4 first (one-time, ~30s):"
+echo "  $TERM_DIR/bin/oc-install-tmux          # builds to ~/.opencues/vendor/tmux/"
+echo "  (system tmux is never touched; user PATH is never changed)"
 echo
 echo "As your editor:"
 echo "  export EDITOR=$TERM_DIR/bin/oc-edit"

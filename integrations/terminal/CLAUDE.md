@@ -22,6 +22,10 @@ against it, and prints the buffer on submit.
 | `compat.json` | Declared compatibility (`host-kind: self`) |
 | `patches/setup.sh` | One-command installer (Bun, build runtime, optional symlink) |
 | `bin/oc-edit` | Bun entrypoint — chooses dist/ if built, else src/ |
+| `bin/oc-shell` | tmux wrapper — launches user's shell with Ctrl+Alt+X popup binding. Always uses the vendored tmux at `~/.opencues/vendor/tmux/bin/tmux`; PATH is never consulted. |
+| `bin/oc-popup` | Invoked by the tmux popup; runs `oc-edit`, bracket-pastes the committed text back into the originating pane via the vendored tmux. |
+| `bin/oc-install-tmux` | Builds tmux 3.4 from source into `~/.opencues/vendor/tmux/`. Required once before `oc-shell` first runs. System tmux is never touched. |
+| `conf/oc-shell.tmux.conf` | Private tmux config loaded by oc-shell (doesn't touch `~/.tmux.conf`). |
 | `src/app.tsx` | The Solid app — single `<textarea>` + statusline |
 | `src/bootstrap.ts` | OpenCues wiring (analog of `integrations/opencode/patches/opencuesBootstrap.ts`, but without the holder/publish dance) |
 | `../../packages/opencues-runtime/adapters/terminal/v1/` | Adapter band |
