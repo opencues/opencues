@@ -322,14 +322,41 @@ A novel has emotional vocabulary (word-cue), period-specific
 proper nouns (tip-cue), and on-the-nose prose (sentence-cue).
 **Don't classify the document; classify each surface inside it.**
 
-### Tip-coverage check before writing the file
+### Tip-coverage check before writing the file (MANDATORY)
 
-Before calling Write, do this pass: scan the alts lists of every
-word-cue you're about to emit. For each notable term in those
-lists, ask "is there a useful tip I could write?" If yes — add
-it to a tip-group. Aim for **majority of alt-list terms to also
-appear as tip entries.** A CUES.md heavy on word-cue alts but
-light on tips is missing half its value.
+Before calling Write, do this pass: for EVERY word-cue source you
+emit, scan its `match:` regex terms AND its alts lists. For each
+**notable** term, you MUST emit a tip entry.
+
+A term is "notable" if it is:
+- A proper noun (library, framework, platform, brand, tool)
+- A technical primitive with a non-obvious behaviour
+- A domain concept with operational meaning
+- A status code, error class, jurisdiction, version number
+- A pattern name (e.g. middleware-ordering, race-condition)
+
+A term is NOT notable (and may be skipped) if it is:
+- A generic verb (`save`, `parse`, `apply`, `trim`)
+- A stop-word or filler (`it`, `the`, `for`)
+- A purely-syntactic match-target (`status`, `body`)
+
+**Target: 100% of notable terms have tips.** A CUES.md where any
+word-cue source has zero accompanying tips is incomplete. Stop
+and add the missing tips before you write. Aim for tip-group
+density of 4-8 tips per word-cue source covering that source's
+notable terms.
+
+Example failure mode (May 2026): a word-cue source `testing-
+verification` with `match: test|unit|integration|vitest|
+supertest|describe|it|expect|mock` was emitted with ZERO tips.
+At least `vitest`, `supertest`, `describe/it/expect` (test
+patterns), and `mock` deserve tips:
+- vitest: "FACT: Vitest reuses Vite config; bun-fast on cold start, watch-mode TS support without ts-node."
+- supertest: "FACT: supertest(app).post(...) bypasses HTTP server; works against any Express/Koa handler."
+- mock: "PITFALL: vi.mock is hoisted ABOVE imports; reference variables must use vi.hoisted() to avoid TDZ."
+
+This is the single most common failure mode of the skill in
+bench testing. Catch it in the coverage check.
 
 ## File layout — one CUES.md by default
 
