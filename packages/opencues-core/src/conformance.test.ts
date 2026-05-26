@@ -40,7 +40,7 @@ import { describe, it, expect, test } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { parseSingleCueMd, parseSingleAuditorMd, parseCuesMaster, parseBlanksMaster, parseAuditorsMaster } from './cues-md';
+import { parseSingleCueMd, parseSingleAuditorMd, parseCuesMaster, parseBlanksMaster, parseAuditorsMaster, type SingleCueFrontmatter } from './cues-md';
 import { parseAlternatives } from './sources/parsers';
 import { unknownHostNames } from './host-compat';
 
@@ -254,7 +254,7 @@ describe('invalid/blank/*.md', () => {
       case 'blank-no-binding': {
         it(`${file} declares none of stepValues / blankScript / impl`, () => {
           const config = parseSingleCueMd(content, ROOT, 'invalid');
-          const fm = config.frontmatter;
+          const fm = config.frontmatter as SingleCueFrontmatter;
           const profiles = [fm.stepValues, fm.blankScript, fm.impl]
             .filter(p => p !== undefined).length;
           expect(profiles).toBe(0);
@@ -264,7 +264,7 @@ describe('invalid/blank/*.md', () => {
       case 'blank-script-missing': {
         it(`${file} blankScript references a path that does not exist on disk`, () => {
           const config = parseSingleCueMd(content, ROOT, 'invalid');
-          const rawPath = config.frontmatter.blankScript;
+          const rawPath = (config.frontmatter as SingleCueFrontmatter).blankScript;
           expect(rawPath).toBeTruthy();
           // Resolve relative to the fixture's folder (invalid/blank/)
           const fixtureDir = join(ROOT, 'invalid', 'blank');
