@@ -402,17 +402,7 @@ export class Resolver {
       // time downstream, not here, because we still need to surface
       // the user's choice to blank sources (which CAN use it via
       // explicit `<feature>-llm-provider: opencode-zen` + `model: free`).
-      //
-      // Deprecated alias: pre-2026-05-27 `llm-provider: free` (which
-      // was rejected) — now silently mapped to `opencode-zen` with the
-      // trainsOnInput guard taking over. The guard refuses prose
-      // sources just like the old reject did, so behaviour is
-      // unchanged at the wire — only the config surface is cleaner.
-      globalProvider: (() => {
-        const raw = settings.get('llm-provider');
-        if (raw?.toLowerCase() === 'free') return 'opencode-zen';
-        return raw;
-      })(),
+      globalProvider: settings.get('llm-provider'),
       globalModel: settings.get('llm-model') ?? this.options.defaultModel,
       globalEndpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       // Blank-class override tier — applies only to FluidBlank /

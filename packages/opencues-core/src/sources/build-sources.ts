@@ -85,9 +85,7 @@ export interface BuildSourcesOptions {
    *
    * Set from OPENCUES.md `blank-llm-provider:`. ProviderId values flow
    * through verbatim. `'inherit'` (the default) collapses to undefined
-   * — falls through to globalProvider. The pre-2026-05-27 magic value
-   * `'free'` is now a deprecated alias for `'opencode-zen'`, normalised
-   * in config-loader.ts before reaching this layer.
+   * — falls through to globalProvider.
    *
    * Structural rule: NEVER let cue-class sources resolve to a provider
    * with `trainsOnInput: true` (today: opencode-zen). Cues run
@@ -293,8 +291,7 @@ export function buildSourcesFromConfig(
   // blank-class override tier. `inherit` from the scalar has already
   // been collapsed to undefined by the runtime; only concrete provider
   // ids reach us. Defensive: empty/inherit are treated as undefined
-  // here too. The deprecated `free` alias is normalised to
-  // `opencode-zen` in config-loader.ts before reaching this layer.
+  // here too.
   const rawBlankProvider = options.blankGlobalProvider?.toLowerCase();
   const blankGlobalProvider = (!rawBlankProvider || rawBlankProvider === 'inherit') ? undefined : rawBlankProvider;
   const blankGlobalModel = options.blankGlobalModel;
