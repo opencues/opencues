@@ -13,7 +13,8 @@
 //                     Uninstall: implied
 //   --help            Show usage
 //
-// Today this runs from a clone via `pnpm --filter @opencues/claude-code dev-install`.
+// Today this runs from a clone via `opencues install claude-code` (which
+// itself resolves to `node integrations/claude-code/bin/install.cjs install`).
 // Post-publish (Stage 8) the same script becomes the bin entry for
 // `npx @opencues/claude-code`.
 
@@ -86,7 +87,7 @@ if (!isClone) {
     'For now, install from a clone:\n' +
     '  git clone https://github.com/opencues/opencues\n' +
     '  pnpm install\n' +
-    '  pnpm --filter @opencues/claude-code dev-install\n',
+    '  pnpm exec opencues install claude-code\n',
   );
   process.exit(1);
 }

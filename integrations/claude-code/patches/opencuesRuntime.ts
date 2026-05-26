@@ -101,26 +101,34 @@ function findStatusLineRefresh(source: string): StatusLineRefreshMatch | null {
 }
 
 // ─── S7: RenderKick ────────────────────────────────────────────────────
-// Captures the InputZone-parent component (e.g. `function J68({inputState:H,
-// ...})` in 2.1.150) so we can inject a useState bumper at its body start.
-// The bumper's setter is exposed as `globalThis.__oc_kickRender`. Calling
-// the kick triggers a parent re-render → the whole input subtree re-renders →
-// applyRender sees fresh runtime state (highlight position, dim ranges) and
-// emits new ANSI without needing to change the buffer text.
+// Captures the InputZone GRANDPARENT component — the one that CALLS the S2
+// handler (`D69`-equivalent) to produce `inputState`, which it then passes
+// down to J68 (`function J68({inputState:H, ...})`). The renderedValue
+// (which wraps Q.render with applyRender) is computed inside the S2
+// handler; for our kick to re-evaluate it, the COMPONENT THAT CALLS the
+// S2 handler must re-render. Bumping useState in J68 (the consumer) is
+// insufficient — J68 just receives the already-computed inputState as a
+// prop and re-rendering J68 doesn't re-invoke D69.
 //
-// Eliminates the ZWS-toggle hack in `__oc_pushHostText`: with a real state-
-// bumper available, force-renders no longer require polluting the buffer
-// with invisible chars to defeat React's string-equality bail-out. Same
-// pattern Gemini's adapter uses (see `useOpenCuesRenderTick`).
+// Pattern in 2.1.150:
+//   function I8q(H){
+//     let[$]=d7(),q=v3(),K=rRH.useMemo(H9H,[]);
+//     c88(q,!!H.onImagePaste);
+//     let _=D69({value:H.value,onChange:H.onChange,...});  // ← S2 callsite
+//     ...
+//     return <J68 inputState={_} ... />
+//   }
+// Injection point: just inside `I8q(H){` — adds `var s7=ns.useState(0)[1]`
+// and exposes setter as `globalThis.__oc_kickRender`.
 //
 // S7 is OPTIONAL — if missing, `__oc_pushHostText` falls back to the ZWS
 // toggle path. The patch logs a warning but doesn't fail.
 //
 // Capture groups: (1) full match through the opening `{` of the function
-// body, (2) function name, (3) inputState param name, (4) the React
-// namespace local used inside the body (first `X.useRef(` we see).
+// body, (2) function name, (3) the React namespace local used inside the
+// body (first `X.useMemo|useRef|useState|useEffect` we see).
 const RENDER_KICK_REGEX =
-  /(function ([$\w]+)\(\{inputState:([$\w]+),[\s\S]*?\)\{)[\s\S]{0,500}?([$\w]+)\.useRef\(/;
+  /(function ([$\w]+)\([$\w]+\)\{)[\s\S]{0,500}?([$\w]+)\.(?:useMemo|useRef|useState|useEffect)\([\s\S]{0,3000}?(?:let|const|var)\s+[$\w]+\s*=\s*[$\w]+\(\{value:[^,]+,onChange:/;
 
 interface RenderKickMatch {
   readonly injectAt: number;     // position AFTER the opening `{` of the function body
@@ -134,7 +142,7 @@ function findRenderKick(source: string): RenderKickMatch | null {
   return {
     injectAt: m.index + m[1].length,
     funcName: m[2],
-    reactNs: m[4],
+    reactNs: m[3],
   };
 }
 
@@ -327,11 +335,12 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // child_process-backed spawnProcess for fire-and-forget TTS etc. Returns
     // a ProcessHandle whose .result resolves on exit (or never, if detached).
     `pushText:function(t,c){try{if(globalThis.__oc_pushHostText)globalThis.__oc_pushHostText(t,c);}catch(__ocXe){}},` +
-    // Render-kick: bumps a useState in the InputZone parent (S7 injected
-    // useState). Triggers a React re-render even if text/cursor unchanged,
-    // letting the runtime force ANSI redraws (Navigation highlight moves,
-    // dim updates) without polluting the buffer with ZWS toggles.
-    `forceRender:function(){try{if(globalThis.__oc_kickRender)globalThis.__oc_kickRender();}catch(__ocFRe){}},` +
+    // Render-kick. Delegates to __oc_pushHostText with no args so both
+    // refresh paths (S7 kickRender on 2.1.150+, ZWS-toggle fallback on
+    // 2.1.110) flow through the same plumbing. The function reads the
+    // last clean text from globalThis and routes to the right path based
+    // on whether S7 was wired at install time.
+    `forceRender:function(){try{if(globalThis.__oc_pushHostText)globalThis.__oc_pushHostText();}catch(__ocFRe){}},` +
     // Sandbox + audit log via the shared @opencues/runtime helpers.
     // Path-validate every arg against the CUES roots, refuse on
     // escape, append to <root>/.opencues-log on every exit.
@@ -478,17 +487,78 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // if the text happens to equal the previous string. Falls back to the
     // ZWS toggle when S7 was not found (legacy CC versions / missed seam).
     `globalThis.__oc_pushHostText=function(__ocPt,__ocPc){try{` +
-    `if(globalThis.__oc_kickRender){` +
-      `${s2!.bindings.onChangeParam}(__ocPt);` +
-      `globalThis.__oc_kickRender();` +
-    `}else{` +
-      // Fallback: ZWS toggle defeats React's string-equality bail-out.
-      `var __ocPv=${iz}.text||"";var __ocPhasB=__ocPv.indexOf("\\u200B")>=0;var __ocPtc=__ocPhasB?"\\u200C":"\\u200B";` +
-      `${s2!.bindings.onChangeParam}(__ocPt+__ocPtc);` +
+    // Kick-only mode: forceRender path passes undefined text. Three
+    // possible sources of "current text", picked by precedence:
+    //  1. WITHIN this dispatch we already pushed via setText (flagged
+    //     by globalThis.__oc_dispatchPushed): use __oc_lastPushedText —
+    //     the value WE just set. iz.text is STALE here because iz was
+    //     captured at dispatch start (before our setText). Reading
+    //     iz.text would revert our just-pushed value.
+    //     Example: cycling.ts does setText(newText)→setCursorOffset→
+    //     forceRender(). The forceRender must NOT undo setText.
+    //  2. INSIDE dispatch but no setText yet (pure Navigation kick):
+    //     iz.text is FRESH — it's the per-keystroke React state read.
+    //  3. OUTSIDE dispatch (timer, async LLM substitute): iz.text from
+    //     this function's closure is from the LAST dispatch — too
+    //     stale. Read globalThis.__oc.adapter.getText() which returns
+    //     boot.ts's `lastSeenText`, refreshed on every applyRender.
+    `if(__ocPt===undefined||__ocPt===null){` +
+      `if(globalThis.__oc_insideDispatch){` +
+        `if(globalThis.__oc_dispatchPushed&&globalThis.__oc_lastPushedText!=null)__ocPt=globalThis.__oc_lastPushedText;` +
+        `else __ocPt=${iz}.text;` +
+      `}else{try{__ocPt=globalThis.__oc&&globalThis.__oc.adapter?globalThis.__oc.adapter.getText():${iz}.text;}catch(__ocGe){__ocPt=${iz}.text;}}` +
     `}` +
+    `var __ocStripped=String(__ocPt).replace(/[\\u200B\\u200C]/g,"");` +
+    // Two refresh paths, mutually exclusive — picked by which seam landed:
+    //   1. kickRender (S7 wired, 2.1.150+ native binary): bump a useState
+    //      in the I8q grandparent (the component that CALLS the S2 handler
+    //      to produce inputState). I8q re-renders → S2 handler re-invoked
+    //      → renderedValue recomputed via applyRender against the latest
+    //      hlState/DynDefs → fresh ANSI flows down to J68 (consumer) →
+    //      Ink repaints. Buffer stays CLEAN — no ZWS pollution.
+    //      ⚠ S7 must inject into I8q (the GRANDPARENT, caller of D69),
+    //      NOT J68 (the consumer that destructures inputState.*). Bumping
+    //      useState in the consumer re-renders the consumer but doesn't
+    //      re-invoke the upstream handler, so renderedValue stays stale.
+    //      See seams.ts § S7 + UPGRADING.md § "S7 anchor".
+    //   2. ZWS-toggle fallback (S7 missing, 2.1.110 cli.js): no kickRender
+    //      available, so we bump the controlled-input value with a 1-char
+    //      invisible trailing ZWS. Buffer carries the ZWS until the next
+    //      push. boot.ts checkTextDrift strips ZWS before storing
+    //      lastSeenText so the runtime's view stays clean.
+    `if(globalThis.__oc_kickRender){` +
+      `${s2!.bindings.onChangeParam}(__ocStripped);` +
+      `globalThis.__oc_kickRender();` +
+      `globalThis.__oc_lastPushedText=__ocStripped;` +
+      `globalThis.__oc_lastPushedTextWire=__ocStripped;` +
+    `}else{` +
+      `var __ocPhasB=(globalThis.__oc_lastPushedTextWire||"").indexOf("\\u200B")>=0;` +
+      `var __ocPtc=__ocPhasB?"\\u200C":"\\u200B";` +
+      `var __ocWire=__ocStripped+__ocPtc;` +
+      `${s2!.bindings.onChangeParam}(__ocWire);` +
+      `globalThis.__oc_lastPushedText=__ocStripped;` +
+      `globalThis.__oc_lastPushedTextWire=__ocWire;` +
+    `}` +
+    // Flag that this dispatch already pushed text — subsequent
+    // forceRender() in the same dispatch must reuse this push value
+    // rather than re-reading iz.text (which is the pre-dispatch value).
+    // Only flip the flag for EXPLICIT pushes (text arg provided), not
+    // for kick-only calls (forceRender → no-arg pushHostText).
+    `if(arguments.length>0&&arguments[0]!=null)globalThis.__oc_dispatchPushed=true;` +
     `if(typeof __ocPc==="number"&&${s2!.bindings.onOffsetChangeVar})${s2!.bindings.onOffsetChangeVar}(__ocPc);` +
     `}catch(__ocPe){}};` +
     `if(globalThis.__oc.adapter)globalThis.__oc.adapter.log("debug","dispatch in",{key:${ev}.key,ctrl:!!${ev}.ctrl,alt:!!${ev}.alt,meta:!!${ev}.meta,option:!!${ev}.option,shift:!!${ev}.shift,mtext:${iz}.text,moff:${iz}.offset});` +
+    // Set globalThis.__oc_insideDispatch around the dispatch call so
+    // __oc_pushHostText knows whether iz.text is FRESH (in-dispatch,
+    // reflects current React state) or STALE (timer-driven from outside
+    // dispatch, falls back to __oc_lastPushedText). Also reset
+    // __oc_dispatchPushed — set true by any explicit text-pushing
+    // pushHostText call during this dispatch; signals the no-arg
+    // (forceRender) path to reuse __oc_lastPushedText instead of iz.text
+    // (which is the pre-dispatch snapshot, not the just-set value).
+    `globalThis.__oc_insideDispatch=true;` +
+    `globalThis.__oc_dispatchPushed=false;` +
+    `try{` +
     `if(globalThis.__oc.dispatchKey(${ev},${iz}.text,${iz}.offset)){` +
     // Pass fresh m.text/m.offset to consumePendingRender — the closure in
     // boot's bindings.getText is stale across React re-renders (it captures
@@ -504,6 +574,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}` +
     `return ${iz};` +
     `}` +
+    `}finally{globalThis.__oc_insideDispatch=false;}` +
     `}` +
     `}catch(__ocOe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("error","dispatch error",__ocOe&&__ocOe.stack||__ocOe);}`;
 

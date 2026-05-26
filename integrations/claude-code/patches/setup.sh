@@ -2,6 +2,13 @@
 #
 # setup.sh — install OpenCues into Claude Code (claude-cues fork).
 #
+# Scope: handles the **npm cli.js** install shape (Claude Code 2.1.111 and
+# earlier — default fork `~/claude-code-cues/`, pinned to 2.1.110). For
+# the **native bun-binary** shape (2.1.113+, including 2.1.150 — default
+# fork `~/claude-code-cues-150/`), see `integrations/claude-code/UPGRADING.md`
+# § "Reinstall" — tweakcc 4.0.13+ patches the binary directly; the install
+# pipeline differs at the npm-install step but the patch source is identical.
+#
 # Always-from-scratch by default: every install nukes prior state and
 # rebuilds deterministically. The ONLY way to drift is to opt in via
 # --keep-state (dev iteration only).
@@ -12,7 +19,7 @@
 # State that gets nuked + rebuilt every install (default):
 #   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
-#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pinned 2.1.110)
+#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pinned 2.1.110, cli.js shape)
 #
 # State that survives every install:
 #   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)

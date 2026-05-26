@@ -219,7 +219,7 @@ opencues version
 # opencues v0.X.X
 # @opencues/core      v0.X.X
 # @opencues/runtime   v0.X.X
-# @opencues/claude-code v0.X.X (CC 2.1.110 ✓ compatible)
+# @opencues/claude-code v0.X.X (CC 2.1.110 / 2.1.150 ✓ compatible)
 # ...
 ```
 

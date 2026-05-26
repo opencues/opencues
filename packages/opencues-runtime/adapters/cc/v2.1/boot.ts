@@ -28,6 +28,7 @@ import { HighlightState } from '../../../src/state/highlight-state';
 import { DynDefs } from '../../../src/state/dyn-defs';
 import { SpanFillState } from '../../../src/state/span-fill';
 import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
+import { createSourceReclassifier } from '../../../src/boot-common';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
@@ -236,27 +237,47 @@ export function boot(host: HostInfo): BootResult {
   let lastSeenCursor = 0;
   const ZW_RE = /[\u200B\u200C]+/g;
   const visible = (s: string): string => s.replace(ZW_RE, '');
+
+  // Source reclassifier — mirrors chrome's safeguard against runtime
+  // writes echoing back as 'user' events. Every time WE push text via
+  // setText, we mark the (clean) value. checkTextDrift, when it would
+  // otherwise emit source='user', asks the reclassifier first — if the
+  // text matches a recent runtime write, it's reclassified to 'runtime'
+  // and the Resolver skips it. Prevents the cycle-Down → original
+  // "draft an email _" → resolver re-fires → new transform-blank LLM
+  // call → infinite-loop scenario the user hit.
+  const sourceReclassifier = createSourceReclassifier();
+
   const checkTextDrift = (text: string, cursorOffset: number): void => {
     lastSeenCursor = cursorOffset;
+    // Always work in ZWS-stripped space. The wire text (what onChange
+    // received) carries a trailing ZWS on the 2.1.110 fallback path that
+    // the patch toggles every pushHostText to defeat React's string-
+    // equality bail-out. The runtime must never see those ZWS chars —
+    // splitWords matches `\S+` so a ZWS sticks to the last word
+    // ("Information]\u200B"), which breaks any def comparison that uses
+    // `originalWord` / multi-word match and lets re-resolvers fire
+    // inside a substituted span. Strip first, then compare + store + emit.
+    const clean = visible(text);
     if (lastSeenText === null) {
-      lastSeenText = text;
+      lastSeenText = clean;
       return;
     }
-    if (text === lastSeenText) return;
-    if (visible(text) !== visible(lastSeenText)) {
-      const event: TextChangeEvent = {
-        text,
-        cursorOffset,
-        previousText: lastSeenText,
-        source: pendingText !== null ? 'runtime' : 'user',
-      };
-      for (const handler of textHandlers) {
-        try { handler(event); } catch (err) {
-          log('error', 'textChange handler error', err);
-        }
+    if (clean === lastSeenText) return;
+    const proposed: 'user' | 'runtime' = pendingText !== null ? 'runtime' : 'user';
+    const source = sourceReclassifier.reclassify(clean, proposed);
+    const event: TextChangeEvent = {
+      text: clean,
+      cursorOffset,
+      previousText: lastSeenText,
+      source,
+    };
+    for (const handler of textHandlers) {
+      try { handler(event); } catch (err) {
+        log('error', 'textChange handler error', err);
       }
     }
-    lastSeenText = text;
+    lastSeenText = clean;
   };
 
   const removeFrom = <T>(arr: T[], item: T): void => {
@@ -283,6 +304,14 @@ export function boot(host: HostInfo): BootResult {
       const prev = lastSeenText;
       pendingText = text;
       lastSeenText = text;
+      // Mark this push so any subsequent matching text event (the React
+      // re-render echo, a parent component's debounced onChange echo,
+      // any other reflex of our setText that comes back through input
+      // detection) gets reclassified to source='runtime' and the Resolver
+      // ignores it. Stash the CLEAN text (after ZWS strip) since
+      // checkTextDrift compares in that space. See boot-common.ts §
+      // RUNTIME_WRITE_TTL_MS for the 250ms freshness window.
+      sourceReclassifier.markRuntimeWrite(visible(text));
       // CC's J68 (the InputZone parent on 2.1.150) discards WH's return,
       // so the consumePendingRender → return-new-IZ pattern can't actually
       // propagate text changes. Only host.pushText reaches the parent's

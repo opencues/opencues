@@ -28,7 +28,7 @@ host and the runtime.
 
 
 **Current Integrations**:
-- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.110+ via tweakcc
+- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.x (tested 2.1.110 cli.js + 2.1.150 native binary) via tweakcc 4.0.13+
 - **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.4.x; runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
@@ -46,12 +46,13 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 
 | Command | Location | Version | Purpose |
 |---|---|---|---|
-| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.110 (pegged) | OpenCues patches applied here |
-| `claude` | `~/.local/bin/claude` (native) | 2.1.110 | Clean/unpatched — development use |
+| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.110 (cli.js, pegged) | OpenCues patches applied here — npm cli.js shape |
+| `claude-cues-150` | `~/claude-code-cues-150` (local npm) | 2.1.150 (native bun-binary) | OpenCues patches applied here — native-binary shape (post-2.1.113 cutover) |
+| `claude` | `~/.local/bin/claude` (native) | latest | Clean/unpatched — development use |
 
-- `claude-cues` is the patched instance. All `setup.sh` runs and tweakcc patch applies target it.
+- Both `claude-cues` and `claude-cues-150` are patched instances. `setup.sh` targets the cli.js fork; the native-binary fork is patched via tweakcc 4.0.13+'s `.bun` ELF section extract/repack.
 - `claude` is never patched. Use it for unaffected Claude Code sessions during development.
-- The version on `claude-cues` is pegged at **2.1.110** — do not upgrade it without verifying patch compatibility.
+- Each patched fork is pegged to its declared version — do not upgrade without re-running the [UPGRADING runbook](integrations/claude-code/UPGRADING.md) to verify the five seam anchors (S1/S2/S3 required, S6/S7 optional).
 
 ---
 

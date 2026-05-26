@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
-| Compatible with | Claude Code 2.1.110+ (2.1.x line) |
+| Compatible with | Claude Code 2.1.x — tested on 2.1.110 (cli.js shape) and 2.1.150 (native bun-binary shape, 2.1.113+ cutover). Patch source is the same for both; tweakcc 4.0.13+ handles `.bun` ELF extract/repack. |
 | Source | `integrations/claude-code/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/claude-code-cues/node_modules/@opencues/`) |
 
@@ -19,14 +19,13 @@
 git clone https://github.com/opencues/opencues
 cd opencues
 pnpm install
-pnpm --filter @opencues/claude-code dev-install
+pnpm exec opencues install claude-code
 ```
 
 If your `claude` CLI lives at a non-standard path (e.g. you use [`claude-cues`](../../CLAUDE.md#claude-installs) at `~/claude-code-cues/`):
 
 ```bash
-pnpm --filter @opencues/claude-code dev-install -- \
-  --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
+pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
 ```
 
 The installer (`opencues install claude-code`) chains two scripts:
@@ -38,7 +37,7 @@ The installer (`opencues install claude-code`) chains two scripts:
    - Compile colocated `.cs` → `.exe` (WSL only)
 
 2. **CC-specific setup.sh** (default behavior: nuke + rebuild from scratch)
-   - `npm install @anthropic-ai/claude-code` — pinned to exact version 2.1.110
+   - `npm install @anthropic-ai/claude-code` — pinned to exact version (2.1.110 for the cli.js fork at `~/claude-code-cues/`; 2.1.150+ for the native-binary fork at `~/claude-code-cues-150/`). See [UPGRADING.md](UPGRADING.md) for the cross-shape install dance.
    - Clones tweakcc into `<CC_FORK>/.cues/tweakcc/` (the patcher lives inside the fork)
    - Builds + installs `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/`
    - Installs `statusline.sh` into `<CC_FORK>/.cues/`
@@ -96,7 +95,7 @@ Project-level wins on name conflicts (cue source name, blank mode name, blank na
 **Seed `~/.cues/` from the repo's defaults:**
 
 ```bash
-pnpm --filter @opencues/claude-code seed-configs
+pnpm exec opencues seed-configs
 ```
 
 Idempotent — copies any file that doesn't already exist at the destination, skips files you've already created. Preview first with `-- --dry-run`.
@@ -127,7 +126,7 @@ The OpenCues Settings blank (`OPENCUES.md` → `voice-mode`, `tips-mode`, etc.) 
 cd opencues
 git pull
 pnpm install                              # picks up dep changes
-pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
+pnpm exec opencues install claude-code             # rebuilds + redeploys
 # Restart claude-cues
 ```
 
@@ -141,7 +140,7 @@ pnpm --filter @opencues/claude-code dev-install    # rebuilds + redeploys
 
 ```
 ~/claude-code-cues/                 (CC fork — npm-installed locally, single CC blast radius)
-├── package.json                    pin @anthropic-ai/claude-code: "2.1.110" (exact, no caret)
+├── package.json                    pin @anthropic-ai/claude-code: "2.1.110" or "2.1.150" (exact, no caret)
 ├── node_modules/
 │   ├── @anthropic-ai/claude-code/cli.js   patched in place
 │   └── @opencues/
@@ -181,8 +180,7 @@ These are runtime IPC files; OS rotates `/tmp/`.
 ## Removing
 
 ```bash
-pnpm --filter @opencues/claude-code dev-uninstall -- \
-  --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
+pnpm exec opencues uninstall claude-code
 ```
 
 Reverts `cli.js` from the backup in `~/claude-code-cues/.cues/patch-state/`, then removes `~/claude-code-cues/.cues/` entirely. Two operations, one dir to clean. Preview first with `--dry-run`.

@@ -251,25 +251,50 @@ export function findStatusLineRefresh(source: string): SeamMatch | null {
 
 // ─── S7: RenderKick ───────────────────────────────────────────────────────
 //
-// Shape: the React component that consumes InputStateHandler's return —
-// in 2.1.150:
-//   function J68({inputState:H, ...}){
-//     let {handleKeyDown:Y, renderedValue:f, cursorLine:O, ...} = H;
-//     ... w = BV.useRef(null), D = BV.useCallback(...) ...
+// Anchors the GRANDPARENT of the InputZone — the component that CALLS the
+// S2 handler (`D69`-equivalent) to produce `inputState`. In 2.1.150:
+//
+//   function I8q(H){
+//     let[$]=d7(),q=v3(),K=rRH.useMemo(H9H,[]);  // ← React hook anchor
+//     c88(q,!!H.onImagePaste);
+//     let _=D69({value:H.value,onChange:H.onChange,...});  // ← S2 callsite
+//     ...
+//     return <J68 inputState={_} ... />
 //   }
 //
-// The patch injects a useState bumper at the start of this function's body
-// (right after the opening `{`) and exposes the setter as
-// globalThis.__oc_kickRender. Calling the kick re-renders the parent
-// without changing the buffer — Gemini-style React-state nudge. Replaces
-// the ZWS-toggle hack in __oc_pushHostText for the force-render-with-no-
-// text-change case.
+// The patch injects `var s7=ns.useState(0)[1]; globalThis.__oc_kickRender=
+// function(){s7(n=>n+1)};` at the start of I8q's body. Calling kickRender
+// re-renders I8q → re-invokes D69 → recomputes `renderedValue` against
+// fresh hlState/DynDefs → fresh ANSI flows down to J68 → Ink repaints.
+// Buffer stays clean — no ZWS pollution.
 //
-// Capture: (1) full prefix through `){`, (2) function name, (3) inputState
-// param, (4) the React namespace local used inside the body.
+// ⚠ HISTORICAL FOOTGUN — DO NOT MOVE S7 INTO J68 (the consumer):
+//   J68 destructures `inputState.renderedValue` from props. Bumping a
+//   useState inside J68 re-renders J68 but doesn't re-invoke D69
+//   (the upstream handler that PRODUCES inputState). The destructured
+//   renderedValue stays the same stale string and Ink sees no diff.
+//   Symptom: state machine is correct (hlState toggles, DynDefs update)
+//   but the visible terminal doesn't repaint until the next text-change
+//   event triggers a fuller render cycle. Earlier versions of this
+//   regex anchored on `function ([$\w]+)\(\{inputState:` (= J68) which
+//   silently produced this no-paint bug for everyone. We then chased
+//   ZWS-toggle workarounds for hours before realising the real fix:
+//   anchor on the upstream caller, not the downstream consumer. The
+//   current regex anchors via two distinctive features of the parent:
+//   (a) a React hook (`ns.useMemo/useRef/useState/useEffect`) and
+//   (b) a downstream `let X = handler({value:..., onChange:..., ...})`
+//   callsite. UPGRADING.md § "S7 anchor" carries the postmortem in full.
+//
+// S7 is OPTIONAL — if the regex misses on a future CC version, the patch
+// logs a warning and `__oc_pushHostText` falls back to the ZWS-toggle path
+// (which works but pollutes the buffer with one trailing ZWS, breaking
+// mouse-selection and word boundary matches inside transform-blank spans).
+//
+// Capture: (1) full prefix through `){`, (2) parent function name, (3)
+// the React namespace local used in the parent body.
 
 const RENDER_KICK_REGEX =
-  /(function ([$\w]+)\(\{inputState:([$\w]+),[\s\S]*?\)\{)[\s\S]{0,500}?([$\w]+)\.useRef\(/;
+  /(function ([$\w]+)\([$\w]+\)\{)[\s\S]{0,500}?([$\w]+)\.(?:useMemo|useRef|useState|useEffect)\([\s\S]{0,3000}?(?:let|const|var)\s+[$\w]+\s*=\s*[$\w]+\(\{value:[^,]+,onChange:/;
 
 export function findRenderKick(source: string): SeamMatch | null {
   const m = source.match(RENDER_KICK_REGEX);
@@ -280,8 +305,7 @@ export function findRenderKick(source: string): SeamMatch | null {
     endIndex: injectAt,
     bindings: {
       funcName: m[2],
-      inputStateParam: m[3],
-      reactNs: m[4],
+      reactNs: m[3],
     },
     method: 'regex',
   };

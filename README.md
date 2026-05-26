@@ -108,7 +108,7 @@ For per-host installs, deeper troubleshooting, and uninstall: [`docs/install.md`
 | **Terminal (`oc-edit`)** | Beta | `opencues install terminal` | [`integrations/terminal/README.md`](integrations/terminal/README.md) |
 | **VS Code** | Planned | — | — |
 
-Each install pins a specific upstream version (e.g. Claude Code 2.1.110, OpenCode 1.14.17), clones it into its own dir (`~/claude-code-cues/`, `~/opencode-cues/`), and patches that copy. **Your native editor installs are never touched.** Uninstall is `opencues uninstall <host>`.
+Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.150, OpenCode 1.14.17), clones it into its own dir (`~/claude-code-cues/`, `~/opencode-cues/`), and patches that copy. **Your native editor installs are never touched.** Uninstall is `opencues uninstall <host>`.
 
 ## What you get
 
@@ -213,7 +213,7 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 | `spec/` | 0.1-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
 | `@opencues/core` | 0.x | Workspace dep, pre-publish. Public API may change. |
 | `@opencues/runtime` | 0.x | Workspace dep, pre-publish. Public API may change. |
-| Claude Code integration | Available | Pinned at Claude Code 2.1.110. |
+| Claude Code integration | Available | Tested on Claude Code 2.1.110 (cli.js) and 2.1.150 (native bun-binary). |
 | OpenCode integration | Available | Pinned at OpenCode 1.14.17. |
 | Gemini CLI integration | Beta | Pinned at Gemini CLI 0.41.2. |
 | Chrome integration | Beta | MV3 extension, Chrome 121+. |
