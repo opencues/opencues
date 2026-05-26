@@ -1340,7 +1340,44 @@ export class Resolver {
           // lets the merge see the buffers as actually-equal modulo ZWS,
           // so no fake user-edits arise.
           const stripZw = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
-          const merge = threeWayMerge(stripZw(originalText), rewrittenText, stripZw(liveText));
+          // Pre-removal of the trigger phrase from BOTH originalText and
+          // liveText. The fused-path LLM emits FULL_REWRITE without the
+          // trigger; threeWayMerge then has to derive "remove the trigger"
+          // from a word-level diff against originalText. When the trigger
+          // sits on its own line after pre-existing content
+          // (`...email body\n\ndraft an email _`), the surrounding
+          // paragraph-break gap tokens straddle the trigger and the merge
+          // emits multi-fragment hunks whose boundaries don't cleanly
+          // wrap the trigger phrase — leaving parts of the summon text
+          // ("draft an email" or just the `_`) parked in the merged
+          // result. User-visible: "my summon text doesn't get deleted
+          // when on another line". Pre-removing the trigger from both
+          // merge inputs guarantees the merge never has to delete it on
+          // its own — the trigger is simply absent from both sides.
+          const trig = transformInstruction
+            ? locateTrigger(originalText, transformInstruction, 0, 0)
+            : null;
+          let originalForMerge = stripZw(originalText);
+          let liveForMerge = stripZw(liveText);
+          if (trig) {
+            const removeRange = (text: string, t: { start: number; end: number }): string => {
+              // Also swallow a leading newline gap if the trigger occupies
+              // its own line — otherwise the paragraph break before the
+              // trigger is left dangling as a stray blank line in the
+              // rewritten buffer.
+              let start = t.start;
+              while (start > 0 && (text[start - 1] === '\n' || text[start - 1] === ' ' || text[start - 1] === '\t')) start--;
+              return text.slice(0, start) + text.slice(t.end);
+            };
+            originalForMerge = stripZw(removeRange(originalText, trig));
+            // The trigger should live at the same offsets in liveText
+            // (resolveAndApply runs against a snapshot the LLM analyzed),
+            // but be tolerant: only strip from live if the trigger phrase
+            // is still there at the recorded position.
+            const liveTrig = locateTrigger(liveText, transformInstruction!, 0, 0);
+            if (liveTrig) liveForMerge = stripZw(removeRange(liveText, liveTrig));
+          }
+          const merge = threeWayMerge(originalForMerge, rewrittenText, liveForMerge);
           sub = applyMarkdownAwareSubstitution(
             this.adapter, merge.newText, { cursor: Number.MAX_SAFE_INTEGER },
           );
