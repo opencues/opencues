@@ -93,13 +93,11 @@ module.exports = function run(argv, ctx) {
 };
 
 function runCC(passthrough, ctx) {
-  // First choice: the patched cli.js at the known install location
-  // (~/claude-code-cues/...). This is what `opencues install claude-code`
-  // produces — the binary is `node <that-cli.js>`. Going direct skips
-  // PATH/shell-alias resolution entirely (which used to fall back to
-  // the native unpatched `claude` binary, leaving cues + highlights
-  // silently broken because the runtime never loaded — claude-cues was
-  // a shell alias and `which` couldn't see it).
+  // Preferred binary: ~/claude-code-cues-150/.../bin/claude.exe — the
+  // 2.1.150 native bun-compile install. That's the current default
+  // pin (compat.json current-pin=2.1.150). Falls back to the older
+  // cli.js install at ~/claude-code-cues/ for users still on 2.1.110.
+  // --bin always wins for explicit overrides.
   const binFlag = passthrough.indexOf('--bin');
   if (binFlag >= 0 && passthrough[binFlag + 1]) {
     const explicit = passthrough[binFlag + 1];
@@ -112,11 +110,26 @@ function runCC(passthrough, ctx) {
     return;
   }
 
+  // 2.1.150 native bun-binary (the new default).
+  const native150 = path.join(os.homedir(), 'claude-code-cues-150', 'node_modules',
+    '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+  if (fs.existsSync(native150)) {
+    printLaunchBanner(ctx, 'claude-code', [
+      ['host',    'claude-code  ' + style.dim('(patched, native 2.1.150)')],
+      ['command', `claude.exe ${passthrough.join(' ')}`.trim()],
+      ['fork',    style.fileLink(native150, native150)],
+    ]);
+    const result = spawnSync(native150, passthrough, { stdio: 'inherit' });
+    exitFromSpawn(result, native150);
+    return;
+  }
+
+  // 2.1.110 cli.js (legacy fork, kept for users who haven't migrated).
   const patchedCli = path.join(os.homedir(), 'claude-code-cues', 'node_modules',
     '@anthropic-ai', 'claude-code', 'cli.js');
   if (fs.existsSync(patchedCli)) {
     printLaunchBanner(ctx, 'claude-code', [
-      ['host',    'claude-code  ' + style.dim('(patched)')],
+      ['host',    'claude-code  ' + style.dim('(patched, cli.js 2.1.110)')],
       ['command', `node cli.js ${passthrough.join(' ')}`.trim()],
       ['fork',    style.fileLink(patchedCli, patchedCli)],
     ]);
@@ -127,7 +140,7 @@ function runCC(passthrough, ctx) {
 
   // Fallback: PATH-based lookup. `claude-cues` shell alias won't
   // resolve via `which` — only a real binary on PATH works.
-  console.warn(`${style.tag('warn')} patched install not found at ~/claude-code-cues`);
+  console.warn(`${style.tag('warn')} patched install not found at ~/claude-code-cues-150 or ~/claude-code-cues`);
   console.warn(`     Install with: ${style.bold('opencues install claude-code')}`);
   console.warn(`     Falling back to PATH lookup (likely UNPATCHED — cues will not work):`);
   for (const c of ['claude-cues', 'claude']) {

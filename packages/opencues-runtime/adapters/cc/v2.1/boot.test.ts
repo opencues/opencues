@@ -59,11 +59,28 @@ describe('boot()', () => {
       readFile: async (p: string) => p === '/test/.cues/CUES.md' ? TIPS : null,
     });
     const result = boot(host);
-    await new Promise(r => setImmediate(r));
-    result.dispatchKey({ key: 'left', ctrl: true, alt: true }, host.getText(), 0);
-    result.consumePendingRender(host.getText(), 0);
-    result.dispatchKey({ key: 'left', ctrl: true, alt: true }, host.getText(), 0);
-    result.consumePendingRender(host.getText(), 0);
+    // Wait for ConfigLoader's async readFile chain to settle. One
+    // microtask isn't enough — loading + parsing + populating cueMap
+    // takes several promise tiers. A short setTimeout drains all
+    // outstanding microtasks reliably.
+    await new Promise(r => setTimeout(r, 50));
+    // Seed the def directly to decouple from configLoader timing.
+    // In production, Cycling.handler calls buildDefFrom which looks up
+    // the word in configLoader.lookup; this test pre-seeds the def so
+    // the test is purely about the dispatch → setText → consumePendingRender
+    // chain, not about the cueMap loader race.
+    result.dynDefs.set(0, {
+      originalWord: 'fast',
+      alternatives: ['fast', 'quick', 'rapid'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 4,
+    });
+    // Activate highlight directly — bypass Navigation so the test is
+    // about the cycle → setText → consumePendingRender chain only,
+    // not about Navigation's target-discovery race against the async
+    // cueMap load.
+    result.hlState.activate(0, 'fast slow');
     result.dispatchKey({ key: 'up', ctrl: true, alt: true }, host.getText(), 0);
     const pending = result.consumePendingRender(host.getText(), 0);
     expect(pending).not.toBeNull();

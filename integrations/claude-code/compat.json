@@ -2,7 +2,7 @@
   "//": "OpenCues compatibility manifest for Claude Code. Read by `opencues update claude-code [--check|--to <version>]`. Keep in sync with manual testing — every time someone validates a new claude-code version, add it to `tested` (and bump `current-pin` if you want it to become the default).",
   "host-kind": "npm",
   "host-package": "@anthropic-ai/claude-code",
-  "current-pin": "2.1.110",
+  "current-pin": "2.1.150",
   "pin-location": {
     "kind": "npm-package-json",
     "path-from-fork": "package.json",

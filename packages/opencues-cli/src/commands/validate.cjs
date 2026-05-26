@@ -277,7 +277,12 @@ function checkCueBody(file, parsed, lint) {
   const src = parsed.promptConfig?.sources && Object.values(parsed.promptConfig.sources)[0];
   const hasPromptText = !!(src && src.promptText && src.promptText.trim().length > 0);
   if (!isStatic && !hasPromptText) {
-    lint('cue-empty-body', 'error', file, `body has neither a JSON tip-group block nor non-empty prompt text — no behaviour declared`);
+    // WARN, not error. An empty-body cue declares no behaviour and is
+    // silently ignored at runtime — that's suspicious but not fatal
+    // (could be a stub mid-development). Hard-failing here also bails
+    // out validate before downstream rules get to run, masking other
+    // findings the user would want to see in one pass.
+    lint('cue-empty-body', 'warn', file, `body has neither a JSON tip-group block nor non-empty prompt text — no behaviour declared`);
   }
   if (!isStatic && !isSentenceScope && !fm.match && !fm.keywords) {
     lint('cue-missing-trigger', 'error', file, `frontmatter declares neither match: nor keywords: — cue would be unreachable`);
