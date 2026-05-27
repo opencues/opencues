@@ -31,7 +31,7 @@ function printLaunchBanner(ctx, host, rows) {
   // via the statusline + /tmp/opencues.log. Tell the user where to
   // look BEFORE that handoff so silent-failure looks like silent-
   // failure instead of "I guess it just doesn't do anything".
-  console.log(style.dim('  Try: type a rough draft + " improve prompt _" (the runtime rewrites it inline)'));
+  console.log(style.dim('  Try: `[Your prompt] improve prompt _` (the runtime rewrites it inline)'));
   console.log(style.dim(`  Logs: tail -f /tmp/opencues.log${host ? ` | grep '\\[${shortPrefix(host)}\\]'` : ''}`));
   console.log(style.dim('  Stuck? Run `opencues doctor` in another shell'));
   console.log('');

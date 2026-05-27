@@ -185,7 +185,7 @@ with whatever the surrounding text asks for.
 
 | Type | What you should see |
 |---|---|
-| `[paste your rough question] improve prompt _` | The whole sentence is rewritten into a structured, well-formed prompt. The **prompt-improver** blank (triggered by `improve prompt` / `enhance prompt` / `refine prompt`) — the daily-driver blank for any LLM CLI. |
+| `[Your prompt] improve prompt _` | The whole sentence is rewritten into a structured, well-formed prompt. The **prompt-improver** blank (triggered by `improve prompt` / `enhance prompt` / `refine prompt`) — the daily-driver blank for any LLM CLI. |
 | `draft an email to my landlord asking for a rent reduction _` | The `_` is replaced with a polite, structured email body. **Fluid blank** — open-ended generation from a free-form query. |
 | `translate to french _ where is the nearest train station` | The phrase after the trigger is replaced with the French translation. **Transform blank** — `translate to <language>`. |
 | `format as bullet points _ apples bananas oranges grapes` | The list becomes properly-formatted bullets. **Transform blank** — `format as <style>` (also: `as a table`, `as JSON`, etc.). |

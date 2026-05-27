@@ -74,8 +74,8 @@ After install, restart `claude-cues` (or whichever Claude CLI you patched) and t
 
 | Test | What it checks |
 |---|---|
-| Type `[your draft question] improve prompt _` | **Prompt-improver blank** — the headline daily-driver: rewrites your rough prompt into a structured one before you send it to Claude. |
-| Type `[your draft] add a paragraph about security _` | **Transform blank** — extends your existing draft with the requested addition, in place. |
+| Type `[Your prompt] improve prompt _` | **Prompt-improver blank** — the headline daily-driver: rewrites your rough prompt into a structured one before you send it to Claude. |
+| Type `[Your prompt] add a paragraph about security _` | **Transform blank** — extends your existing draft with the requested addition, in place. |
 | Type `format as bullet points _ apples bananas oranges` | **Transform blank** — formatting instruction with surrounding content. |
 | Type `opencues settings _`, cycle Up | **Selector / satellite** — slide-out for runtime settings (voice-mode, tips-mode, …). |
 | Type `i want to ultrathink this`, Ctrl+Alt+Right to `ultrathink`, Ctrl+Alt+Up | **Word cycle** with tooltip — the shipped `ultrathink` cue offers Tab / deep thinking / think harder. |

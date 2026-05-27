@@ -101,8 +101,8 @@ Open Gmail (compose), ChatGPT, claude.ai, LinkedIn, or any
 
 | Test | Expected |
 |---|---|
-| `[your draft] improve prompt _` | The whole text becomes a structured, improved version of your rough draft. Cycle Up/Down to toggle between the rewrite and the original. |
-| `[your draft] add a paragraph about security _` | Extends your existing draft with the requested addition, in place. **Transform blank**. |
+| `[Your prompt] improve prompt _` | The whole text becomes a structured, improved version of your rough draft. Cycle Up/Down to toggle between the rewrite and the original. |
+| `[Your prompt] add a paragraph about security _` | Extends your existing draft with the requested addition, in place. **Transform blank**. |
 | `format as bullet points _ apples bananas oranges` | The list becomes properly-formatted bullets. **Transform blank**. |
 | `translate to french _ where is the nearest train station` | The phrase after the trigger is replaced with the French translation. |
 | Click into the editable, type a few words | Words with alternatives get a slightly darker mid-tone (cue marker). |
