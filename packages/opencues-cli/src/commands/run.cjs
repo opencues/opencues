@@ -296,10 +296,17 @@ function runTerminal(passthrough, ctx) {
   // invoked from. Also pass --preload explicitly as a belt-and-braces
   // guard in case bunfig discovery breaks in a future Bun release.
   const termDir = path.join(ctx.REPO_ROOT, 'integrations', 'terminal');
+  // OPENCUES_USER_CWD: oc-edit / app.tsx / bootstrap read this to
+  // resolve the user's project .cues/ — same env var the standalone
+  // `oc-edit` shim sets, so direct invocation and `opencues run
+  // terminal` see the same cwd. Without this, process.cwd() inside
+  // the app is `integrations/terminal/` (the bunfig-discovery
+  // cwd-pin), not where the user typed the command.
+  const env = { ...process.env, OPENCUES_USER_CWD: process.cwd() };
   const result = spawnSync(
     'bun',
     ['--preload', '@opentui/solid/preload', ocEdit, ...passthrough],
-    { stdio: 'inherit', cwd: termDir },
+    { stdio: 'inherit', cwd: termDir, env },
   );
   exitFromSpawn(result, 'bun');
 }

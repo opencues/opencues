@@ -1,11 +1,45 @@
-#!/usr/bin/env bun
-// Entry shim. Resolves the bundled or source app.tsx and runs it.
-import { fileURLToPath } from 'node:url';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
+#!/usr/bin/env bash
+# oc-edit — launch the OpenCues terminal app.
+#
+# Why a bash shim and not a `#!/usr/bin/env bun` direct entry: bun
+# reads bunfig.toml from its CWD, not from the script's directory.
+# bunfig.toml lives in integrations/terminal/ and supplies
+# `preload = ["@opentui/solid/preload"]` — without it the JSX
+# runtime resolves to react/jsx-dev-runtime and the app dies on
+# import. Direct invocation (`oc-edit` via PATH from anywhere)
+# would run bun in the user's cwd and miss bunfig entirely.
+#
+# Strategy (mirrors `opencues run terminal` in run.cjs):
+#   1. Capture the user's calling cwd in OPENCUES_USER_CWD so the
+#      runtime can still resolve .cues/ from the right project.
+#   2. cd into integrations/terminal/ so bun finds bunfig.toml.
+#   3. Invoke bun with --preload explicitly as a belt-and-braces
+#      guard (in case bunfig discovery breaks in a future Bun release).
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const distApp = path.join(here, '..', 'dist', 'app.js');
-const srcApp = path.join(here, '..', 'src', 'app.tsx');
-const entry = fs.existsSync(distApp) ? distApp : srcApp;
-await import(entry);
+set -u
+
+# Resolve symlinks so a ~/.local/bin/oc-edit symlink still finds
+# ../src/app.tsx relative to the REAL script location.
+SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+TERM_DIR="$(cd -- "$HERE/.." && pwd)"
+DIST_APP="$TERM_DIR/dist/app.js"
+SRC_APP="$TERM_DIR/src/app.tsx"
+
+if [ -f "$DIST_APP" ]; then
+  ENTRY="$DIST_APP"
+elif [ -f "$SRC_APP" ]; then
+  ENTRY="$SRC_APP"
+else
+  echo "oc-edit: no app entry found at $DIST_APP or $SRC_APP" >&2
+  exit 1
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "oc-edit: bun not on PATH. Install: https://bun.sh" >&2
+  exit 127
+fi
+
+export OPENCUES_USER_CWD="$PWD"
+cd "$TERM_DIR"
+exec bun --preload @opentui/solid/preload "$ENTRY" "$@"

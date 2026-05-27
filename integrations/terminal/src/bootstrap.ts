@@ -36,10 +36,18 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { spawn as nodeSpawn } from 'node:child_process';
 
+function userCwd(): string {
+  // `oc-edit` cd's into integrations/terminal/ to find bunfig.toml
+  // before launching bun, so process.cwd() is the integration dir,
+  // not where the user actually invoked oc-edit. The shim captures
+  // the calling cwd in OPENCUES_USER_CWD; honour that.
+  return process.env['OPENCUES_USER_CWD'] || process.cwd();
+}
+
 function getCuesRoots(): string[] {
   const roots: string[] = [];
   if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME']);
-  roots.push(path.join(process.cwd(), '.cues'));
+  roots.push(path.join(userCwd(), '.cues'));
   roots.push(path.join(os.homedir(), '.cues'));
   return roots;
 }
@@ -73,7 +81,7 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
 function _discoverUserBlankConfigs(): BlankConfigLike[] {
   const rawRoots: string[] = [];
   if (process.env['OPENCUES_HOME']) rawRoots.push(process.env['OPENCUES_HOME']);
-  rawRoots.push(path.join(process.cwd(), '.cues'));
+  rawRoots.push(path.join(userCwd(), '.cues'));
   rawRoots.push(path.join(process.env['HOME'] ?? os.homedir(), '.cues'));
   const seen = new Set<string>();
   const roots: string[] = [];

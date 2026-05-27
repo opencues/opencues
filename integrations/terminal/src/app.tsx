@@ -33,7 +33,12 @@ function App(props: AppOpts) {
       renderer,
       textarea,
       syntax,
-      cwd: process.cwd(),
+      // The oc-edit shim cd's into integrations/terminal/ to find
+      // bunfig.toml, so process.cwd() inside the app is the terminal
+      // dir — not where the user actually invoked oc-edit. The shim
+      // captures the calling cwd in OPENCUES_USER_CWD; use that if
+      // set, fall back to process.cwd() for in-repo dev runs.
+      cwd: process.env.OPENCUES_USER_CWD || process.cwd(),
       onTipChange: (t) => setTip(t),
     });
     textarea.focus();
