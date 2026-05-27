@@ -33,7 +33,7 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 # Capture the calling cwd so the daemon's snapshot includes the
-# right project-level .cues/. oc-shell exports this; standalone
+# right project-level .cues/. bin/oc-shell exports this; standalone
 # invocations pick up the current shell's cwd.
 export OPENCUES_USER_CWD="${OPENCUES_USER_CWD:-$PWD}"
 cd "$TERM_DIR"

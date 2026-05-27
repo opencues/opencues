@@ -1,5 +1,9 @@
 # OpenCues for Claude Code
 
+> Part of **[OpenCues](../../README.md)**. Other integrations:
+> [OpenCode](../opencode/README.md) · [Gemini CLI](../gemini-cli/README.md) ·
+> [Chrome](../chrome/README.md) · [Shell](../shell/README.md).
+
 `@opencues/claude-code` — patches Claude Code's CLI via [tweakcc](https://github.com/Piebald-AI/tweakcc) to add real-time word alternatives, blanks, and cue-blanks inline in your prompts.
 
 > **tweakcc is just our patcher tool.** Every stock tweakcc patch (verbose-property, opusplan1m, thinker-symbol-*, worktree-mode, the launch banner, etc.) is disabled — only the OpenCues v2 wiring lands in cli.js. Users who want tweakcc's other features should run stock tweakcc separately.
@@ -13,19 +17,31 @@
 
 ---
 
-## Install (from a clone)
+## Install
+
+### Prerequisites
+
+You need the `opencues` CLI on PATH. If you haven't set that up yet,
+follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap-the-opencues-cli)
+in the root README — that covers Node, pnpm, the clone, and the
+shell alias. The rest of this guide assumes `opencues` runs.
+
+### Install command
 
 ```bash
-git clone https://github.com/opencues/opencues
-cd opencues
-pnpm install
-pnpm exec opencues install claude-code
+opencues install claude-code
 ```
 
-If your `claude` CLI lives at a non-standard path (e.g. you use [`claude-cues`](../../CLAUDE.md#claude-installs) at `~/claude-code-cues/`):
+That clones a pinned `@anthropic-ai/claude-code` into
+`~/claude-code-cues/` and patches it in place. Your native `claude`
+install is never touched.
+
+### Custom fork location
+
+If your `claude` CLI lives at a non-standard path:
 
 ```bash
-pnpm exec opencues install claude-code --target ~/claude-code-cues/node_modules/@anthropic-ai/claude-code/cli.js
+opencues install claude-code --target /path/to/cli.js
 ```
 
 The installer (`opencues install claude-code`) chains two scripts:
@@ -58,11 +74,12 @@ After install, restart `claude-cues` (or whichever Claude CLI you patched) and t
 
 | Test | What it checks |
 |---|---|
-| Type `volume _`, cycle Up | Cue-blank: auto-populates with system volume, Up/Down changes it |
-| Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
-| Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
-| Cycle any cyclable word | TTS announces the cycled value (uses `~/.cues/scripts/speak.sh` — shared by all native hosts) |
-| Verify highlighted word shows tip in the status bar | Statusline export → `highlight-statusline.sh` |
+| Type `[your draft question] improve prompt _` | **Prompt-improver blank** — the headline daily-driver: rewrites your rough prompt into a structured one before you send it to Claude. |
+| Type `[your draft] add a paragraph about security _` | **Transform blank** — extends your existing draft with the requested addition, in place. |
+| Type `format as bullet points _ apples bananas oranges` | **Transform blank** — formatting instruction with surrounding content. |
+| Type `opencues settings _`, cycle Up | **Selector / satellite** — slide-out for runtime settings (voice-mode, tips-mode, …). |
+| Type `i want to ultrathink this`, Ctrl+Alt+Right to `ultrathink`, Ctrl+Alt+Up | **Word cycle** with tooltip — the shipped `ultrathink` cue offers Tab / deep thinking / think harder. |
+| Type `volume _` | Scripted system blank — proves the spawn-process path works (auto-fills with current OS volume). |
 
 If any of these fail, tail `/tmp/opencues.log` in another shell — the runtime writes diagnostics there regardless of whether the TUI swallows stderr.
 

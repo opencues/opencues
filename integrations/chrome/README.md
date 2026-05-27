@@ -1,5 +1,9 @@
 # OpenCues Chrome Extension
 
+> Part of **[OpenCues](../../README.md)**. Other integrations:
+> [Claude Code](../claude-code/README.md) · [OpenCode](../opencode/README.md) ·
+> [Gemini CLI](../gemini-cli/README.md) · [Shell](../shell/README.md).
+
 `@opencues/chrome` — an MV3 extension that adds real-time word alternatives, blanks, and cue-blanks to any `contenteditable` on the web. Renders via the CSS Custom Highlight API; no DOM mutation, no caret disruption.
 
 > **What works in Chrome vs native hosts**: with `opencues install chrome-host` installed, parity is essentially complete — cycling, blanks (including `volume _` / `brightness _` / any user `.sh`-backed blank), opencues-settings, prompt-improver, stocks/weather/HackerNews. TTS uses the Web Speech API (not `speak.sh`). Live `~/.cues/` sync and subprocess execution both ride the same native-messaging pipe — see `docs/features/chrome-sync.md`. Without the host, the extension still works using the bake-time defaults; scripted blanks return exit 127 (the keyword is recognised but the script can't run from a content script).
@@ -13,27 +17,51 @@
 
 ---
 
-## Install (from a clone)
+## Install
+
+### Prerequisites
+
+You need the `opencues` CLI on PATH. If you haven't set that up yet,
+follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap-the-opencues-cli)
+in the root README — that covers Node, pnpm, the clone, and the
+shell alias.
+
+### Install command
 
 ```bash
-git clone https://github.com/opencues/opencues
-cd opencues
-pnpm install
-pnpm --filter @opencues/chrome dev-install
+opencues install chrome
 ```
 
-This builds the extension and prints the path to load as an unpacked extension. By default the load path is `integrations/chrome/` itself — works on macOS / Linux / native Windows where Chrome and the build directory share a filesystem.
+This builds the extension and prints the path to load as an unpacked
+extension. By default the load path is `integrations/chrome/` itself —
+works on macOS / Linux / native Windows where Chrome and the build
+directory share a filesystem.
 
 ### WSL → Windows Chrome
 
-Chrome runs on Windows; the build runs in WSL. Use `--target` to deploy the built extension to a path Chrome can see:
+Chrome runs on Windows; the build runs in WSL. Use `--target` to deploy
+the built extension to a path Chrome can see:
 
 ```bash
-pnpm --filter @opencues/chrome dev-install -- \
-  --target /mnt/c/Users/USERNAME/Desktop/opencues-chrome
+opencues install chrome -- --target /mnt/c/Users/USERNAME/Desktop/opencues-chrome
 ```
 
-Re-run the same command after each rebuild — the deploy step copies `dist/` + `manifest.json` to the target. Then click the reload button on the extension card at `chrome://extensions`.
+Re-run the same command after each rebuild — the deploy step copies
+`dist/` + `manifest.json` to the target. Then click the reload button
+on the extension card at `chrome://extensions`.
+
+### Optional: live `~/.cues/` sync + subprocess execution
+
+For full parity with the native hosts (scripted blanks like `volume _`
+and `brightness _`, live config sync from your filesystem), also
+install the native-messaging host:
+
+```bash
+opencues install chrome-host --extension-id <id-from-chrome://extensions>
+```
+
+Without it, the extension still works using the bake-time defaults;
+scripted blanks return exit 127.
 
 ---
 
@@ -68,13 +96,18 @@ Click **Save**. The extension reinitializes on the active page.
 
 ## Verify
 
+Open Gmail (compose), ChatGPT, claude.ai, LinkedIn, or any
+`contenteditable` site and try:
+
 | Test | Expected |
 |---|---|
-| Click into a `contenteditable` div, type a few words | Words with alternatives get a slightly darker mid-tone |
-| Ctrl+Alt+Right | Highlights the next navigable word in bright white |
-| Type `weather _ paris` | `_` fills with current Paris weather |
-| Type `improve prompt write a poem _` | After ~2s, full text is replaced with an improved version; cycle Up/Down to toggle between the rewrite and the original |
-| `chrome://extensions` console shows `[opencues][info] OpenCues runtime starting (Chrome v1)` | Bootstrap booted |
+| `[your draft] improve prompt _` | The whole text becomes a structured, improved version of your rough draft. Cycle Up/Down to toggle between the rewrite and the original. |
+| `[your draft] add a paragraph about security _` | Extends your existing draft with the requested addition, in place. **Transform blank**. |
+| `format as bullet points _ apples bananas oranges` | The list becomes properly-formatted bullets. **Transform blank**. |
+| `translate to french _ where is the nearest train station` | The phrase after the trigger is replaced with the French translation. |
+| Click into the editable, type a few words | Words with alternatives get a slightly darker mid-tone (cue marker). |
+| Ctrl+Alt+Right | Highlights the next navigable word in bright white. Ctrl+Alt+Up/Down cycles alternatives. |
+| Service worker console shows `[opencues][info] OpenCues runtime starting (Chrome v1)` | Bootstrap booted (open via `chrome://extensions` → service-worker link). |
 
 If you see legacy `[OpenCues] ...` logs but **no** `[opencues][info] OpenCues runtime starting` line, you loaded a stale bundle — re-run `dev-install` (and re-deploy via `--target` if applicable).
 
@@ -134,7 +167,7 @@ no rebuild, no page refresh, no long-running daemon. Works under WSL
 ```bash
 # 1. Copy the extension ID from chrome://extensions (Developer mode)
 # 2. Install the host:
-pnpm exec opencues install chrome-host --extension-id <id>
+opencues install chrome-host --extension-id <id>
 # 3. Reload the extension once at chrome://extensions
 ```
 

@@ -1,4 +1,4 @@
-// Terminal v1 HostAdapter.
+// Shell v1 HostAdapter.
 //
 // Standalone OpenTUI app (Bun + SolidJS + @opentui/core), invoked as
 // `oc-edit` from a shell. Unlike CC/OC/Gemini we own the host: there
@@ -29,7 +29,7 @@ import type {
 } from '../../../src/adapter';
 import { HOST_ADAPTER_INTERFACE_VERSION } from '../../../src/adapter';
 
-export interface TerminalBindings {
+export interface ShellBindings {
   hostVersion: string;
   cwd: string;
   getText(): string;
@@ -62,16 +62,16 @@ export const TERMINAL_V1_CAPABILITIES: readonly Capability[] = [
   'render-rgb-color',
 ];
 
-export class TerminalV1Adapter implements HostAdapter {
+export class ShellV1Adapter implements HostAdapter {
   readonly interfaceVersion = HOST_ADAPTER_INTERFACE_VERSION;
-  readonly hostName = 'terminal';
+  readonly hostName = 'shell';
   readonly hostVersion: string;
   readonly cwd: string;
   readonly capabilities: readonly Capability[];
 
   private _disposed = false;
 
-  constructor(private bindings: TerminalBindings) {
+  constructor(private bindings: ShellBindings) {
     this.hostVersion = bindings.hostVersion;
     this.cwd = bindings.cwd;
     const caps: Capability[] = [...TERMINAL_V1_CAPABILITIES];

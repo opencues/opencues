@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# oc-shell — launch a tmux-wrapped shell with the OpenCues popup binding.
+# shell — launch a tmux-wrapped shell with the OpenCues input box bound.
 #
 # Always uses our own vendored tmux. The system tmux (/usr/bin/tmux,
 # brew tmux, etc.) is NEVER invoked — by absolute path only.
 #
 # From the user's POV:
-#   - Run `oc-shell` from anywhere.
+#   - Run `shell` from anywhere.
 #   - They get their normal $SHELL prompt in the current $PWD.
-#   - Press Ctrl+Alt+X to open a floating OpenCues popup.
-#   - Type `exit` (or Ctrl+D) to leave; the wrapped tmux session is
-#     destroyed and oc-shell returns.
+#   - Press Alt+Shift+↑ to open the OpenCues input box (and capture
+#     whatever they were typing at the prompt, if shell-integration
+#     is installed).
+#   - Press Ctrl+Alt+X (or Alt+Shift+←) to leave; the wrapped tmux
+#     session is destroyed and `shell` returns.
 #
 # Resolution order for the tmux binary:
 #   1. $OPENCUES_TMUX (explicit override; useful for tests / packagers)
@@ -17,11 +19,11 @@
 #   ─── nothing else ───
 #
 # PATH is intentionally NOT consulted. If the vendored binary isn't
-# present, oc-shell exits with a clear "run oc-install-tmux" message.
+# present, `shell` exits with a clear "run oc-install-tmux" message.
 
 set -u
 
-# Resolve through symlinks so `~/.local/bin/oc-shell -> .../integrations/terminal/bin/oc-shell`
+# Resolve through symlinks so `~/.local/bin/shell -> .../integrations/terminal/bin/shell`
 # still finds ../conf/oc-shell.tmux.conf relative to the REAL script location.
 SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
@@ -29,26 +31,28 @@ CONF="$HERE/../conf/oc-shell.tmux.conf"
 VENDOR_TMUX="$HOME/.opencues/vendor/tmux/bin/tmux"
 OC_TMUX="${OPENCUES_TMUX:-$VENDOR_TMUX}"
 
-# Make oc-edit / oc-popup visible to the wrapped session even if the
-# user invoked oc-shell via an absolute path (no PATH entry).
+# Make the internal helpers (oc-edit, oc-popup, oc-open-input,
+# oc-shell-init, oc-editd) visible to the wrapped session even if
+# the user invoked `shell` via an absolute path (no PATH entry).
+# These are private — not user-runnable on their own.
 export PATH="$HERE:$PATH"
-# Propagate the chosen tmux to oc-popup (which also needs to invoke
-# tmux for buffer ops against the wrapped server).
+# Propagate the chosen tmux to internal helpers (which also need to
+# invoke tmux for buffer ops against the wrapped server).
 export OPENCUES_TMUX="$OC_TMUX"
 
 if [ ! -f "$CONF" ]; then
-  echo "oc-shell: missing tmux config at $CONF" >&2
+  echo "shell: missing tmux config at $CONF" >&2
   exit 1
 fi
 
 if [ ! -x "$OC_TMUX" ]; then
-  echo "oc-shell: vendored tmux not found at $OC_TMUX" >&2
+  echo "shell: vendored tmux not found at $OC_TMUX" >&2
   echo "" >&2
   echo "Build it (one-time, ~30s):" >&2
   echo "  $HERE/oc-install-tmux" >&2
   echo "" >&2
   echo "Or point at an existing >=3.2 binary:" >&2
-  echo "  OPENCUES_TMUX=/path/to/tmux oc-shell" >&2
+  echo "  OPENCUES_TMUX=/path/to/tmux shell" >&2
   exit 1
 fi
 
@@ -60,7 +64,7 @@ TMUX_MINOR_REST="${TMUX_VER#*.}"
 TMUX_MINOR="${TMUX_MINOR_REST%%.*}"
 if [ -n "$TMUX_MAJOR" ] && [ -n "$TMUX_MINOR" ]; then
   if [ "$TMUX_MAJOR" -lt 3 ] || { [ "$TMUX_MAJOR" -eq 3 ] && [ "$TMUX_MINOR" -lt 2 ]; }; then
-    echo "oc-shell: $OC_TMUX is tmux $TMUX_VER; >= 3.2 required for display-popup." >&2
+    echo "shell: $OC_TMUX is tmux $TMUX_VER; >= 3.2 required for display-popup." >&2
     echo "  Rebuild: rm -rf ~/.opencues/vendor/tmux && $HERE/oc-install-tmux" >&2
     exit 1
   fi
@@ -85,7 +89,7 @@ if [ -x "$HERE/oc-editd" ] && command -v bun >/dev/null 2>&1; then
   export OPENCUES_OCEDITD_SOCK="$DAEMON_SOCK"
   export OPENCUES_USER_CWD="$PWD"
   # nohup-style: daemon survives an accidental SIGHUP from the parent
-  # shell; oc-shell's EXIT trap is what actually terminates it.
+  # shell; this script's EXIT trap is what actually terminates it.
   "$HERE/oc-editd" --socket "$DAEMON_SOCK" --cwd "$PWD" >/dev/null 2>&1 &
   DAEMON_PID=$!
 fi
@@ -104,10 +108,38 @@ cleanup_daemon() {
 trap cleanup_daemon EXIT
 
 # ── Fresh wrap ──────────────────────────────────────────────────────
-SHELL_TO_RUN="${SHELL:-/bin/sh}"
+# Run oc-shell-init as the first pane command. That script wires the
+# tmux session and then exec's the user's interactive shell — so the
+# pane behaves identically to a plain terminal. All setup happens
+# INSIDE the session (after attach), which sidesteps the conf's
+# destroy-unattached behaviour we'd otherwise race with.
 SOCKET="opencues-$$"
+export OPENCUES_OC_EDIT="$HERE/oc-edit"
+export OPENCUES_OC_OPEN_INPUT="$HERE/oc-open-input"
 
-# Drop `exec` so the EXIT trap above still fires when tmux returns
-# (exec would replace the shell, skipping the trap entirely).
+# Per-session tempfile that the shell-integration snippet writes the
+# captured readline buffer into. oc-edit reads + unlinks it at
+# startup so it appears as the textarea's initial text. Pid keeps
+# it isolated to this shell instance.
+export OPENCUES_LINE_BUF="${XDG_RUNTIME_DIR:-/tmp}/oc-line-$$.buf"
+rm -f "$OPENCUES_LINE_BUF"
+
+# Force opentui to assume synchronized output (DEC mode 2026) is
+# supported. Without this, opentui's terminal capability detection
+# fails (responses to its mode-state queries route to the wrong
+# pane, see DAEMON-PLAN.md), so it falls back to non-atomic
+# repaints — visible as a flash of the statusline bar each time the
+# oc-input pane resizes (activate / deactivate). Forcing the
+# capability on lets the renderer batch each frame into a single
+# BSU/ESU-bracketed update, eliminating the flash on supporting
+# terminals (kitty, wezterm, alacritty 0.13+, mintty, foot, etc.).
+export OPENTUI_FORCE_UNICODE=1
+
+# Stay on the main screen instead of entering tmux's alt-screen
+# buffer. The slide-pane oc-edit lives inside a dedicated tmux pane,
+# so we don't need alt-screen.
+export OTUI_USE_ALTERNATE_SCREEN=false
+
+# No `exec` — the EXIT trap above needs to fire on return.
 "$OC_TMUX" -L "$SOCKET" -f "$CONF" \
-  new-session -A -s main -c "$PWD" "$SHELL_TO_RUN"
+  new-session -A -s main -c "$PWD" "$HERE/oc-shell-init"

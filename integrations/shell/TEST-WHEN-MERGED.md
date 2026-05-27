@@ -13,17 +13,17 @@ This file is the **reviewer's manual pass** — boxes to tick after pulling the 
 - [ ] Fresh clone, `pnpm install` at the repo root
 
 ## 1. Install (1 min)
-- [ ] `opencues install terminal` runs to completion in under a minute
+- [ ] `opencues install shell` runs to completion in under a minute
 - [ ] Final line is `✓ Terminal integration ready.`
-- [ ] `ls integrations/terminal/node_modules/@opencues/{core,runtime}` shows both staged
-- [ ] `ls integrations/terminal/node_modules/@opencues/core/node-http-adapter.js` exists at the package root (NOT inside `dist/`) — this is the LF-7 trap repeat point
+- [ ] `ls integrations/shell/node_modules/@opencues/{core,runtime}` shows both staged
+- [ ] `ls integrations/shell/node_modules/@opencues/core/node-http-adapter.js` exists at the package root (NOT inside `dist/`) — this is the LF-7 trap repeat point
 
 ## 2. Doctor sanity (10 s)
 - [ ] `opencues doctor` shows a `Terminal (oc-edit)` section with all four ticks green
 - [ ] No `WARN: bun not on PATH` finding
 
 ## 3. Boot + minimal cue (1 min)
-- [ ] `bun integrations/terminal/bin/oc-edit` opens a full-screen TUI with a single textarea + statusline at the bottom
+- [ ] `bun integrations/shell/bin/oc-edit` opens a full-screen TUI with a single textarea + statusline at the bottom
 - [ ] `tail -f /tmp/opencues.log | grep '\[term\]'` (in another shell) shows:
   - `OpenCues runtime starting (Terminal v1)` with `host: terminal`
   - `ConfigLoader: USER.md → N fields`
@@ -62,7 +62,7 @@ This file is the **reviewer's manual pass** — boxes to tick after pulling the 
 - [ ] Pressing Enter at the shell runs the edited command
 
 ## 7. $EDITOR mode (1 min)
-- [ ] `EDITOR="$PWD/integrations/terminal/bin/oc-edit" git commit --allow-empty` in any git repo
+- [ ] `EDITOR="$PWD/integrations/shell/bin/oc-edit" git commit --allow-empty` in any git repo
 - [ ] oc-edit opens with the standard `# Please enter the commit message...` template
 - [ ] Cycling works on words in the prefilled commit-template body
 - [ ] Ctrl+S writes the edited file; `git log -1` shows the message
@@ -86,19 +86,19 @@ This list mirrors the long-tail the OC + Gemini integrations already document in
 - [ ] Re-running `oc-install-tmux` after install: no-op with "tmux X.Y already vendored" message.
 - [ ] System tmux (`/usr/bin/tmux`, brew tmux, etc.) is untouched. Verify with `which -a tmux` — both old and new paths visible.
 
-### 9b. oc-shell behavior
+### 9b. `oc-shell` behavior
 - [ ] `oc-shell` before running `oc-install-tmux`: clean exit with "vendored tmux not found" + instructions. No PATH fallback to system tmux.
-- [ ] On tmux >= 3.2 outside any tmux: `oc-shell` drops into the user's `$SHELL` at the current `$PWD`. Bottom-right status line reads `OpenCues  Ctrl+Alt+X popup   type "exit" to leave`. `pwd` matches the dir oc-shell was invoked from.
+- [ ] On tmux >= 3.2 outside any tmux: `oc-shell` drops into the user's `$SHELL` at the current `$PWD`. Bottom-right status line reads `OpenCues  Ctrl+Alt+X popup   type "exit" to leave`. `pwd` matches the dir `oc-shell` was invoked from.
 - [ ] Press **Ctrl+Alt+X**: a centered floating box opens (80% × 70%), running `oc-edit` inside. The OpenCues runtime is active — typing `the attorney filed today` highlights words, Ctrl+Alt+↑ cycles, etc.
 - [ ] Compose multi-line text in the popup (Enter for newline). Press **Ctrl+S**. Popup closes; the composed block is bracket-pasted into the originating pane at the shell prompt — multi-line text lands as a single editable paste, not as separate executed commands.
 - [ ] Press **Ctrl+Alt+X** then **Ctrl+C** (or Esc) inside oc-edit: popup closes with nothing pasted.
 - [ ] Type `exit` (or Ctrl+D) at the wrapped shell — the tmux session is destroyed (`destroy-unattached on`) and `oc-shell` returns to the outer terminal. No orphan `tmux` server on the `opencues-*` socket (verify with `ls /tmp/tmux-*/opencues-*` → empty).
 - [ ] Already-inside-tmux case: from inside an existing tmux session, run `oc-shell`. It does NOT nest. Instead it prints `OpenCues popup registered in this tmux session.` and exits. Ctrl+Alt+X then works in the user's existing tmux. `tmux unbind-key -n M-C-x` cleanly removes.
-- [ ] Status line removal note (no test, just verify the comment block in `conf/oc-shell.tmux.conf` describes the one-line change — `set -g status on` → `set -g status off` — and that it works when applied).
+- [ ] Status line removal note (no test, just verify the comment block in `conf/shell.tmux.conf` describes the one-line change — `set -g status on` → `set -g status off` — and that it works when applied).
 
 ## 10. Uninstall (10 s)
-- [ ] `opencues uninstall terminal` removes `integrations/terminal/node_modules/@opencues/*/`
-- [ ] `opencues install terminal --dry-run` shows the plan; **no files modified**
+- [ ] `opencues uninstall terminal` removes `integrations/shell/node_modules/@opencues/*/`
+- [ ] `opencues install shell --dry-run` shows the plan; **no files modified**
 
 ## Known not-yet-shipped (won't be in this PR)
 - A published `oc-edit` npm bin (today: install from clone only — same as opencode + gemini-cli)
@@ -110,4 +110,4 @@ This list mirrors the long-tail the OC + Gemini integrations already document in
 - Trace: `OPENCUES_TRACE_CURSOR=1` env var enables `/tmp/opencues-cursor-trace.log` (parity with OC)
 - Bridge: `OPENCUES_BRIDGE=1` opens the JSONL event bridge for off-process inspection
 
-File issues against `integrations/terminal/` with the relevant /tmp log attached.
+File issues against `integrations/shell/` with the relevant /tmp log attached.

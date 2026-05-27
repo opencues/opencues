@@ -1,5 +1,9 @@
 # OpenCues for OpenCode
 
+> Part of **[OpenCues](../../README.md)**. Other integrations:
+> [Claude Code](../claude-code/README.md) · [Gemini CLI](../gemini-cli/README.md) ·
+> [Chrome](../chrome/README.md) · [Shell](../shell/README.md).
+
 `@opencues/opencode` — patches an [OpenCode](https://github.com/sst/opencode) TUI fork to add real-time word alternatives, blanks, and cue-blanks inline in your prompts. Native rendering via the TUI's syntax-highlighting layer.
 
 > **Shares user-level state with CC**: `~/.cues/` (cue/blank configs) and `~/.cues/scripts/speak.sh` (TTS) are common across both native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on OpenCode because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC uses. You can install OpenCode standalone (no CC required) and TTS still works.
@@ -15,12 +19,21 @@
 
 ## Install
 
-Requires: Node.js 18+, [pnpm](https://pnpm.io), [bun](https://bun.sh/).
-From a fresh clone of the OpenCues repo:
+### Prerequisites
+
+You need the `opencues` CLI on PATH. If you haven't set that up yet,
+follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap-the-opencues-cli)
+in the root README — that covers Node, pnpm, the clone, and the
+shell alias.
+
+This integration also needs **[bun](https://bun.sh/)** — OpenCode
+itself is a Bun app, so the fork's own dependencies install via
+`bun install`.
+
+### Install command
 
 ```bash
-pnpm install
-opencues install opencode     # or: pnpm exec opencues install opencode
+opencues install opencode
 ```
 
 That's the whole install — one command, end to end. The installer will:
@@ -48,7 +61,7 @@ Set `OPENCUES_INSTALL_VERBOSE=1` to stream every command's output. By default th
 ## Run
 
 ```bash
-opencues run opencode         # or: pnpm exec opencues run opencode
+opencues run opencode
 ```
 
 Launches `bun run dev` inside the patched fork. Watch `/tmp/opencues.log` in a second shell for the boot line:
@@ -79,10 +92,12 @@ rm -rf ~/opencode-cues
 
 | Test | What it checks |
 |---|---|
-| Type `we should ultrathink this approach`, navigate to `ultrathink` (Ctrl+Alt+Right), cycle Up | Local-lookup tip cycle (no LLM round-trip) |
-| Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
-| Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
-| Status bar at bottom of TUI shows tip when a word is highlighted | `opencuesTip()` SolidJS signal wired into `home/footer.tsx` |
+| Type `[your draft question] improve prompt _` | **Prompt-improver blank** — the headline daily-driver: rewrites your rough prompt into a structured one before you send it. |
+| Type `[your draft] add a paragraph about security _` | **Transform blank** — extends your existing draft with the requested addition, in place. |
+| Type `format as bullet points _ apples bananas oranges` | **Transform blank** — formatting instruction with surrounding content. |
+| Type `opencues settings _`, cycle Up | **Selector / satellite** — slide-out for runtime settings. |
+| Type `we should ultrathink this approach`, navigate to `ultrathink` (Ctrl+Alt+Right), cycle Up | **Word cycle** — local-lookup tip with no LLM round-trip. |
+| Status bar at bottom of TUI shows tip when a word is highlighted | `opencuesTip()` SolidJS signal wired into `home/footer.tsx`. |
 
 If something fails, the runtime writes diagnostics to `/tmp/opencues.log`.
 

@@ -12,7 +12,7 @@ writing any code, and amend it as you learn things.
 
 ## What problem this solves
 
-Every time the user presses Ctrl+Alt+S inside oc-shell, the tmux popup
+Every time the user presses Ctrl+Alt+S inside `oc-shell`, the tmux popup
 spawns a fresh `bun` process that:
 
 1. Loads `@opentui/core` + `@opentui/solid` (terminal renderer, ~300ms)
@@ -36,7 +36,7 @@ file-descriptor handoff + render).
 ## Architecture
 
 ```
-oc-shell start
+shell start
   ├── tmux server (vendored)
   └── oc-editd daemon (background, bun process)
         ├── all modules loaded
@@ -124,7 +124,7 @@ Don't repeat these — they're dead ends for this codebase:
   segfault polluted dist/ during testing). Re-enable in setup.sh
   ONCE the daemon work makes the bundle relevant.
 
-- **`bin/oc-edit`** — bash shim that `cd`s into `integrations/terminal/`
+- **`bin/oc-edit`** — bash shim that `cd`s into `integrations/shell/`
   (for bunfig.toml discovery), exports `OPENCUES_USER_CWD=$PWD` so
   the runtime knows where the user actually invoked from, then
   `exec bun --preload @opentui/solid/preload src/app.tsx`. Used by
@@ -141,7 +141,7 @@ Don't repeat these — they're dead ends for this codebase:
   send-keys/paste-buffer logic unchanged — that runs after the
   daemon returns the buffer over the socket.
 
-- **`conf/oc-shell.tmux.conf`** — has the M-C-s / M-C-q / F2 bindings
+- **`conf/shell.tmux.conf`** — has the M-C-s / M-C-q / F2 bindings
   and the `@popup-open`-gated status-left. No change needed for
   daemon work (daemon lifecycle is in `bin/oc-shell`, not in tmux
   config).
@@ -327,8 +327,8 @@ exec "$OC_TMUX" ...
 
 - Daemon crash → next popup falls back to direct invocation (no
   user-visible breakage, just slower). Optionally restart the daemon.
-- oc-shell exit → trap kills daemon, removes socket.
-- Stale socket file (e.g. previous oc-shell killed -9) → daemon
+- `oc-shell` exit → trap kills daemon, removes socket.
+- Stale socket file (e.g. previous `oc-shell` killed -9) → daemon
   startup checks + unlinks the path before binding.
 
 ### Step 7 — Bundle the daemon
@@ -359,8 +359,8 @@ needs to NOT have a controlling terminal already — the daemon's
 parent tty would be a problem).
 
 Workaround if needed: daemon calls `setsid()` at startup to detach
-from oc-shell's session, then can `TIOCSCTTY` freely. Side effect:
-daemon survives oc-shell crash — would need explicit lifecycle wiring.
+from `oc-shell`'s session, then can `TIOCSCTTY` freely. Side effect:
+daemon survives `oc-shell` crash — would need explicit lifecycle wiring.
 
 ---
 
@@ -369,7 +369,7 @@ daemon survives oc-shell crash — would need explicit lifecycle wiring.
 - **glibc vs musl `cmsghdr` layout** — same struct shape on Linux
   AFAIK, but worth noting if anyone runs this on Alpine.
 - **macOS `sendmsg` / `recvmsg`** — different libc; the FFI bindings
-  need a macOS variant. Out of scope for v1 (terminal integration is
+  need a macOS variant. Out of scope for v1 (shell integration is
   Linux/WSL only today), but document the assumption.
 - **opentui re-init across iterations** — opentui's renderer may
   cache terminal state (alt-screen, cursor pos, etc.) at module
@@ -405,14 +405,14 @@ daemon survives oc-shell crash — would need explicit lifecycle wiring.
 ## Files you'll touch
 
 ```
-integrations/terminal/
+integrations/shell/
 ├── DAEMON-PLAN.md                  (this doc)
 ├── bin/
-│   ├── oc-shell                    (modify: spawn/kill daemon)
+│   ├── `oc-shell`                    (modify: spawn/kill daemon)
 │   ├── oc-popup                    (modify: try daemon, fall back)
 │   ├── oc-popup-client (NEW)       (talks to daemon via SCM_RIGHTS)
 │   └── oc-editd (NEW)              (daemon shim, like bin/oc-edit)
-├── conf/oc-shell.tmux.conf         (no change expected)
+├── conf/shell.tmux.conf         (no change expected)
 ├── patches/setup.sh                (modify: re-enable bundle, ship daemon)
 ├── scripts/
 │   ├── bundle.ts                   (modify: also build daemon)
@@ -493,7 +493,7 @@ popup directly, no second module load.
 ### What Option B *does* give us
 
 - **Foundation for Option A**: socket protocol, daemon lifecycle,
-  oc-shell wiring, snapshot framing. The FD-passing path can reuse all
+  `oc-shell` wiring, snapshot framing. The FD-passing path can reuse all
   of it.
 - **Hot-reload coalescing**: daemon's `fs.watch(recursive:true)` + 150ms
   debounce + 250ms min-interval cleanly collapses bursty inotify events

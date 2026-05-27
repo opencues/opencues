@@ -4,7 +4,7 @@
   "host-repo": "opencues/opencues",
   "current-pin-source": {
     "kind": "json-file",
-    "path-from-repo": "integrations/terminal/pin.json"
+    "path-from-repo": "integrations/shell/pin.json"
   },
   "tested": [
     { "version": "0.1.0", "opentui": "0.1.99" }

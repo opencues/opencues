@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # Terminal integration setup.
 #
-# Builds @opencues/{core,runtime}, installs the standalone @opencues/terminal
-# package's deps via bun, and (optionally) symlinks `oc-edit` into a
-# PATH location. Unlike CC/OC there is no upstream fork to clone or
-# patch — the app is self-owned.
+# Builds @opencues/{core,runtime}, installs the standalone @opencues/shell
+# package's deps via bun, and (optionally) symlinks the user-facing
+# commands (`oc-shell`, `oc-install-tmux`, `oc-install-shell-integration`)
+# into a PATH location. Internal helpers (oc-edit, oc-popup,
+# oc-shell-init, oc-open-input, oc-editd) are never symlinked —
+# `oc-shell` adds bin/ to PATH for its own children only.
 #
 # Usage: ./setup.sh [--link DIR]
-#   --link DIR  symlink bin/oc-edit into DIR (default: skip)
+#   --link DIR  symlink user-facing commands into DIR (default: skip)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OPENCUES_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-TERM_DIR="$OPENCUES_ROOT/integrations/terminal"
+TERM_DIR="$OPENCUES_ROOT/integrations/shell"
 
 LINK_DIR=""
 while (( "$#" )); do
@@ -40,7 +42,7 @@ echo "  ▸ building @opencues/core + @opencues/runtime"
 ) >>"$LOG" 2>&1
 
 # ─── Install terminal deps ───────────────────────────────────────────
-echo "  ▸ installing @opencues/terminal deps via bun"
+echo "  ▸ installing @opencues/shell deps via bun"
 (
   cd "$TERM_DIR"
   bun install
@@ -72,16 +74,16 @@ fi
 # we hit a leftover .jsc-segfault issue with the bytecode experiment
 # that bit production usage. Until the daemon model (see
 # DAEMON-PLAN.md) is built, oc-edit runs src/app.tsx directly via
-# the bun shim — ~1s cold start per popup, but reliable. To opt in
-# manually, run `bun run bundle` from integrations/terminal/.
+# the bun shim — ~1s cold start per input-box open, but reliable.
+# To opt in manually, run `bun run bundle` from integrations/shell/.
 
 # ─── Optional symlink ────────────────────────────────────────────────
 if [[ -n "$LINK_DIR" ]]; then
   mkdir -p "$LINK_DIR"
-  # Only the user-facing commands are symlinked. oc-edit and oc-popup
-  # are internal to the popup flow — invoked by oc-shell's tmux
-  # config directly, not run by the user.
-  for bin in oc-shell oc-install-tmux; do
+  # Only the user-facing commands are symlinked. Internal helpers
+  # (oc-edit, oc-popup, oc-shell-init, oc-open-input, oc-editd) are
+  # invoked by `oc-shell` via its own PATH adjustment.
+  for bin in oc-shell oc-install-tmux oc-install-shell-integration; do
     ln -sf "$TERM_DIR/bin/$bin" "$LINK_DIR/$bin"
     echo "  ▸ symlinked $bin → $LINK_DIR/$bin"
   done
@@ -90,8 +92,12 @@ fi
 echo "✓ Terminal integration ready."
 echo
 echo "Try it:"
-echo "  $TERM_DIR/bin/oc-shell                 # shell wrapped with Ctrl+Alt+S popup"
+echo "  $TERM_DIR/bin/oc-shell                    # shell wrapped with Alt+Shift+↑ input box"
 echo
-echo "For oc-shell, build the vendored tmux 3.4 first (one-time, ~30s):"
+echo "Before first launch, build the vendored tmux 3.4 (one-time, ~30s):"
 echo "  $TERM_DIR/bin/oc-install-tmux          # builds to ~/.opencues/vendor/tmux/"
 echo "  (system tmux is never touched; user PATH is never changed)"
+echo
+echo "Optional — capture-current-line shell integration:"
+echo "  $TERM_DIR/bin/oc-install-shell-integration"
+echo "  (adds a one-time source line to your .bashrc/.zshrc/.fishrc)"

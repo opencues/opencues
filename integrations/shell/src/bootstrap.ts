@@ -7,7 +7,7 @@
 
 import type { CliRenderer, TextareaRenderable } from '@opentui/core';
 import { RGBA, SyntaxStyle } from '@opentui/core';
-import { boot, type BootResult } from '@opencues/runtime/dist/adapters/terminal/v1/boot';
+import { boot, type BootResult } from '@opencues/runtime/dist/adapters/shell/v1/boot';
 import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import {
@@ -41,7 +41,7 @@ import { fetchSnapshot, SnapshotCache } from './daemon-client';
 // If $OPENCUES_OCEDITD_SOCK is set, fetch the pre-built config snapshot
 // from the daemon at module-load time. Subsequent readFile/readDir calls
 // consult this cache before falling through to the real filesystem.
-// See integrations/terminal/DAEMON-PLAN.md for the architecture; this is
+// See integrations/shell/DAEMON-PLAN.md for the architecture; this is
 // "Option B" — saves file-I/O + warm parsing, NOT the @opentui module
 // load. Silent fallback to direct fs on any failure.
 
@@ -57,7 +57,7 @@ if (_ocSock) {
 }
 
 function userCwd(): string {
-  // `oc-edit` cd's into integrations/terminal/ to find bunfig.toml
+  // `oc-edit` cd's into integrations/shell/ to find bunfig.toml
   // before launching bun, so process.cwd() is the integration dir,
   // not where the user actually invoked oc-edit. The shim captures
   // the calling cwd in OPENCUES_USER_CWD; honour that.
@@ -267,7 +267,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       for (const a of rawArgs) {
         const r = validateScriptPath(a, cuesRoots);
         if (!r.ok) {
-          appendAuditLog('terminal', spec, { exitCode: 126 }, cuesRoots);
+          appendAuditLog('shell', spec, { exitCode: 126 }, cuesRoots);
           return {
             result: Promise.resolve({ exitCode: 126, stdout: '', stderr: r.reason ?? 'path outside CUES roots', timedOut: false }),
             kill: () => {},
@@ -293,7 +293,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
           stdio,
         });
       } catch (err: any) {
-        appendAuditLog('terminal', spec, { exitCode: 127 }, cuesRoots);
+        appendAuditLog('shell', spec, { exitCode: 127 }, cuesRoots);
         return {
           result: Promise.resolve({ exitCode: 127, stdout: '', stderr: String(err?.message ?? err), timedOut: false }),
           kill: () => {},
@@ -319,7 +319,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
           if (timer) clearTimeout(timer);
           if (killer) clearTimeout(killer);
           const exit = code ?? 0;
-          appendAuditLog('terminal', spec, { exitCode: exit, timedOut }, cuesRoots, Date.now() - startedAt);
+          appendAuditLog('shell', spec, { exitCode: exit, timedOut }, cuesRoots, Date.now() - startedAt);
           resolve({ exitCode: exit, stdout, stderr, timedOut });
         };
         child.on('exit', finish);

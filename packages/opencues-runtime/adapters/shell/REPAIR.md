@@ -1,17 +1,17 @@
 # Terminal adapter — repair guide
 
-Standalone Bun + OpenTUI app (`oc-edit`). Pin: **@opentui/core 0.1.99**, served by the `terminal/v1/` adapter band. Unlike CC / OC / Gemini, there is no upstream host to fork — we own the entire app.
+Standalone Bun + OpenTUI app (`oc-edit`). Pin: **@opentui/core 0.1.99**, served by the `shell/v1/` adapter band. Unlike CC / OC / Gemini, there is no upstream host to fork — we own the entire app.
 
 The band-specific code lives at:
 
-- `packages/opencues-runtime/adapters/terminal/v1/adapter.ts`
-- `packages/opencues-runtime/adapters/terminal/v1/boot.ts`
-- `integrations/terminal/src/app.tsx`
-- `integrations/terminal/src/bootstrap.ts`
-- `integrations/terminal/patches/setup.sh`
-- `integrations/terminal/bin/install.cjs`
+- `packages/opencues-runtime/adapters/shell/v1/adapter.ts`
+- `packages/opencues-runtime/adapters/shell/v1/boot.ts`
+- `integrations/shell/src/app.tsx`
+- `integrations/shell/src/bootstrap.ts`
+- `integrations/shell/patches/setup.sh`
+- `integrations/shell/bin/install.cjs`
 
-OpenTUI itself is identical to what OC uses, so the **OC REPAIR.md** (`packages/opencues-runtime/adapters/oc/REPAIR.md`) is the first place to look for any OpenTUI-flavoured failure — LF-1 through LF-8 all apply structurally. This file documents only what's **terminal-specific**.
+OpenTUI itself is identical to what OC uses, so the **OC REPAIR.md** (`packages/opencues-runtime/adapters/oc/REPAIR.md`) is the first place to look for any OpenTUI-flavoured failure — LF-1 through LF-8 all apply structurally. This file documents only what's **shell-specific**.
 
 ## Host quirks (Terminal v1) — known fixes baked into the bootstrap
 
@@ -19,15 +19,15 @@ OpenTUI itself is identical to what OC uses, so the **OC REPAIR.md** (`packages/
 
 **File:** `packages/opencues-cli/src/commands/run.cjs` — `runTerminal()`.
 
-**Symptom:** `oc-edit` (or `opencues run terminal`) launched from any directory other than `integrations/terminal/` dies with `Cannot find module 'react/jsx-dev-runtime' from .../src/app.tsx`.
+**Symptom:** `oc-edit` (or `opencues run shell`) launched from any directory other than `integrations/shell/` dies with `Cannot find module 'react/jsx-dev-runtime' from .../src/app.tsx`.
 
 **Why:** Bun's bunfig discovery looks in the cwd, not where the script lives. The terminal app's bunfig contains `preload = ["@opentui/solid/preload"]`, which is what installs the Solid JSX runtime. Without it, Bun falls back to the default JSX import source — `react/jsx-dev-runtime` — and bails.
 
-**Fix:** `runTerminal()` spawns bun with `cwd: integrations/terminal` **and** passes `--preload @opentui/solid/preload` explicitly. Belt-and-braces — losing either alone has bitten us. If you change the launch path, keep both.
+**Fix:** `runTerminal()` spawns bun with `cwd: integrations/shell` **and** passes `--preload @opentui/solid/preload` explicitly. Belt-and-braces — losing either alone has bitten us. If you change the launch path, keep both.
 
 ### LT-2. `@opencues/core/node-http-adapter` must live at the package root, NOT in `dist/`
 
-**File:** `integrations/terminal/patches/setup.sh` — staging step.
+**File:** `integrations/shell/patches/setup.sh` — staging step.
 
 **Symptom:** Boot log shows `Resolver: NodeHttpAdapter load failed { ... Cannot find module '@opencues/core/node-http-adapter' from .../resolver.js }`. Cues never resolve (no LLM round-trip).
 
@@ -37,13 +37,13 @@ OpenTUI itself is identical to what OC uses, so the **OC REPAIR.md** (`packages/
 
 ### LT-3. `@opencues/solid`'s `jsx-runtime` export is a `.d.ts` file — the real runtime comes from the Bun preload
 
-**File:** `integrations/terminal/bunfig.toml`.
+**File:** `integrations/shell/bunfig.toml`.
 
 **Symptom:** Without the bunfig preload, TypeScript "resolves" the JSX import to `@opentui/solid/jsx-runtime.d.ts` and Bun reports `Export named 'jsxDEV' not found in module .../jsx-runtime.d.ts`.
 
 **Why:** `@opentui/solid`'s `exports` map points `./jsx-runtime` → `./jsx-runtime.d.ts` deliberately — there is no separate jsx-runtime JS. The actual JSX runtime is installed at import time by `@opentui/solid/preload`, which hooks Bun's JSX transform to emit Solid-flavoured calls.
 
-**Fix:** the bunfig at `integrations/terminal/bunfig.toml` carries:
+**Fix:** the bunfig at `integrations/shell/bunfig.toml` carries:
 
 ```toml
 preload = ["@opentui/solid/preload"]
@@ -53,7 +53,7 @@ Don't remove this even if a future Bun version "fixes" the d.ts confusion — th
 
 ### LT-4. `editBuffer.setText` / `replaceText` clear all extmarks; insert/delete only adjust
 
-**File:** `integrations/terminal/src/bootstrap.ts` — `setText` and `pushText` paths.
+**File:** `integrations/shell/src/bootstrap.ts` — `setText` and `pushText` paths.
 
 This is the OC LF-4 trap repeating — the OpenTUI primitive is identical between hosts.
 

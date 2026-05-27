@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { banner, tree, dim, cliVersion } = require('../lib/style.cjs');
 
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'terminal'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
 
 module.exports = function version(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();

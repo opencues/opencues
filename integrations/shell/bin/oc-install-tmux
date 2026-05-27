@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # oc-install-tmux — build a private tmux 3.4 into ~/.opencues/vendor/tmux/.
 #
-# oc-shell uses the vendored binary exclusively; the system tmux
+# `oc-shell` uses the vendored binary exclusively; the system tmux
 # (/usr/bin/tmux, brew tmux, etc.) is never invoked.
 #
 # Build-time deps are NOT vendored — we link against the system's
@@ -85,7 +85,7 @@ echo ""
 echo "✓ tmux $installed_ver installed at $VENDOR_DIR/bin/tmux"
 echo "  Build logs: $LOG_DIR/{configure,make,install}.log"
 echo ""
-echo "oc-shell will use this automatically. System tmux is untouched:"
+echo "\`shell\` will use this automatically. System tmux is untouched:"
 echo "  vendored: $VENDOR_DIR/bin/tmux ($installed_ver)"
 sys_tmux="$(command -v tmux 2>/dev/null || echo '(none)')"
 if [ "$sys_tmux" != "(none)" ] && [ "$sys_tmux" != "$VENDOR_DIR/bin/tmux" ]; then

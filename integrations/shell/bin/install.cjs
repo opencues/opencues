@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// @opencues/terminal CLI — install / uninstall.
+// @opencues/shell CLI — install / uninstall.
 //
 // Unlike CC / OC / Gemini, the terminal integration ships its own app
 // (Bun + OpenTUI). There is no upstream fork to clone or patch —
 // install just builds @opencues/{core,runtime}, stages them into the
 // integration's local node_modules, runs `bun install` for OpenTUI,
-// and optionally symlinks `oc-edit` into a PATH location.
+// and optionally symlinks `oc-shell` into a PATH location.
 
 'use strict';
 
@@ -30,7 +30,7 @@ if (!isClone) {
     'For now, install from a clone:\n' +
     '  git clone https://github.com/opencues/opencues\n' +
     '  pnpm install\n' +
-    '  opencues install terminal\n',
+    '  opencues install shell\n',
   );
   process.exit(1);
 }
@@ -50,7 +50,7 @@ function doInstall() {
       : '\nERROR: bun is not on PATH. The terminal app is a Bun + OpenTUI app, so install cannot proceed.';
     console.error(msg);
     console.error('Install bun: curl -fsSL https://bun.sh/install | bash  (or https://bun.sh/)');
-    console.error('Then re-run: opencues install terminal');
+    console.error('Then re-run: opencues install shell');
     if (!args.dryRun) process.exit(127);
   }
 
@@ -62,10 +62,12 @@ function doInstall() {
     console.log(`  ${path.join(PKG_DIR, 'node_modules', '@opencues', 'core')}/`);
     console.log(`  ${path.join(PKG_DIR, 'node_modules', '@opencues', 'runtime')}/`);
     if (args.link) {
-      // oc-edit is intentionally NOT symlinked — it's the internal
-      // binary oc-popup invokes inside the tmux popup. The user-facing
-      // surface is oc-shell only.
-      for (const b of ['oc-shell', 'oc-install-tmux']) {
+      // oc-edit and other internal helpers are intentionally NOT
+      // symlinked — they're spawned by `oc-shell` via its own PATH
+      // adjustment. The user-facing surface is `oc-shell` plus the two
+      // one-time setup commands (oc-install-tmux,
+      // oc-install-shell-integration).
+      for (const b of ['oc-shell', 'oc-install-tmux', 'oc-install-shell-integration']) {
         console.log(`[dry-run] Would symlink: ${args.link}/${b} → ${path.join(PKG_DIR, 'bin', b)}`);
       }
     }
@@ -73,7 +75,7 @@ function doInstall() {
   }
 
   // Seed configs first so cues/blanks/OPENCUES.md are present before
-  // the user's first `oc-edit`.
+  // the user's first `oc-shell` invocation.
   const seedConfigsPath = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands/seed-configs.cjs');
   if (fs.existsSync(seedConfigsPath)) {
     const seedConfigs = require(seedConfigsPath);
@@ -97,7 +99,7 @@ function doUninstall() {
   const stagedCore = path.join(PKG_DIR, 'node_modules', '@opencues', 'core');
   const stagedRt = path.join(PKG_DIR, 'node_modules', '@opencues', 'runtime');
   const linkPaths = args.link
-    ? ['oc-shell', 'oc-install-tmux'].map((b) => path.join(args.link, b))
+    ? ['oc-shell', 'oc-install-tmux', 'oc-install-shell-integration'].map((b) => path.join(args.link, b))
     : [];
 
   console.log('Uninstall plan:');
@@ -176,13 +178,14 @@ function printHelp() {
   console.log('');
   console.log('Commands:');
   console.log('  install (default)   Build runtime, stage @opencues/* into local node_modules, run bun install');
-  console.log('  uninstall           Remove the staged @opencues/* and optional `oc-edit` symlink');
+  console.log('  uninstall           Remove the staged @opencues/* and optional `oc-shell` symlink');
   console.log('  seed-configs        Copy repo defaults to ~/.cues/ (skips files that exist)');
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');
-  console.log('  --link <dir>        Symlink bin/oc-shell + oc-install-tmux into <dir> (typically ~/.local/bin).');
-  console.log('                        oc-edit / oc-popup are internal — the popup invokes them directly.');
+  console.log('  --link <dir>        Symlink bin/oc-shell + oc-install-tmux + oc-install-shell-integration into <dir>');
+  console.log('                        (typically ~/.local/bin). oc-edit and other helpers are internal —');
+  console.log('                        `oc-shell` adds the bin/ dir to PATH for its own children only.');
   console.log('  --dry-run           Print the plan; do not execute');
   console.log('  --help              Show this message');
   console.log('');

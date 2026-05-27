@@ -49,7 +49,7 @@ if [ -z "${OC_EDIT:-}" ]; then
   exit 127
 fi
 
-# Use the same vendored tmux oc-shell exported. We must NOT
+# Use the same vendored tmux `oc-shell` exported. We must NOT
 # PATH-resolve `tmux` here — the system tmux's client speaks a
 # different protocol than our vendored server (different versions),
 # and the user explicitly opted out of system-tmux involvement.

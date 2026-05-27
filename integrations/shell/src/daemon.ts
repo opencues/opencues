@@ -1,6 +1,6 @@
-// oc-editd — partial daemon for the oc-shell terminal integration.
+// oc-editd — partial daemon for the `oc-shell` terminal integration.
 //
-// Background process spawned by `bin/oc-shell`. Pre-reads every config
+// Background process spawned by `bin/`oc-shell``. Pre-reads every config
 // file the runtime would otherwise hit per popup (~/.cues/OPENCUES.md,
 // USER.md, CUES.md, BLANKS.md, AUDITORS.md, cues/**, blanks/**,
 // auditors/**) and serves them over a unix socket. The popup's
@@ -14,11 +14,11 @@
 // tried and ruled out" #7 for the trade-off.
 //
 // Lifecycle:
-//   - Spawned by bin/oc-shell before the tmux session starts.
+//   - Spawned by bin/`oc-shell` before the tmux session starts.
 //   - Listens on $OPENCUES_OCEDITD_SOCK (also passed to popups via env).
 //   - Watches ~/.cues/ + (if it exists) <user-cwd>/.cues/ for changes;
 //     re-reads on debounce. The popup sees fresh data on every fetch.
-//   - SIGTERM (from oc-shell's EXIT trap) → unlink socket + exit.
+//   - SIGTERM (from `oc-shell`'s EXIT trap) → unlink socket + exit.
 //
 // Protocol: length-prefixed JSON. Each message is `<4-byte BE u32 length>
 // <utf8 JSON body>`. v1 commands: `HELLO`, `GET_SNAPSHOT`. Future commands
@@ -264,7 +264,7 @@ async function handleConnection(sock: net.Socket): Promise<void> {
 // ─── Startup ──────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  // Stale socket from a previous run (e.g. oc-shell killed -9).
+  // Stale socket from a previous run (e.g. `oc-shell` killed -9).
   try { fs.unlinkSync(sockPath); } catch { /* fine if absent */ }
 
   // Build the first snapshot in parallel with socket setup.

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { boot } from './boot';
 import type { KeyEvent } from '../../../src/adapter';
 
-describe('Terminal v1 boot()', () => {
+describe('Shell v1 boot()', () => {
   const minimalHost = {
     hostVersion: '0.1.0',
     cwd: '/proj',
@@ -33,20 +33,20 @@ describe('Terminal v1 boot()', () => {
     expect(result.dispatchKey(evt)).toBe(false);
   });
 
-  it('logs "OpenCues runtime starting (Terminal v1)" with host=terminal', () => {
+  it('logs "OpenCues runtime starting (Shell v1)" with host=shell', () => {
     const log = vi.fn();
     boot({ ...minimalHost, log });
     expect(log).toHaveBeenCalledWith(
       'info',
-      expect.stringContaining('Terminal v1'),
-      expect.objectContaining({ host: 'terminal' }),
+      expect.stringContaining('Shell v1'),
+      expect.objectContaining({ host: 'shell' }),
     );
   });
 
   it('reports the right capability set (no spawn unless host.spawnProcess)', () => {
     const log = vi.fn();
     boot({ ...minimalHost, log });
-    const startupCall = log.mock.calls.find(c => String(c[1]).includes('Terminal v1'));
+    const startupCall = log.mock.calls.find(c => String(c[1]).includes('Shell v1'));
     const caps = (startupCall?.[2] as { capabilities?: string[] } | undefined)?.capabilities ?? [];
     expect(caps).toContain('file-read');
     expect(caps).toContain('file-write');
@@ -59,7 +59,7 @@ describe('Terminal v1 boot()', () => {
   it('opt-in spawn-process when host supplies spawnProcess', () => {
     const log = vi.fn();
     boot({ ...minimalHost, spawnProcess: () => ({} as any), log });
-    const startupCall = log.mock.calls.find(c => String(c[1]).includes('Terminal v1'));
+    const startupCall = log.mock.calls.find(c => String(c[1]).includes('Shell v1'));
     const caps = (startupCall?.[2] as { capabilities?: string[] } | undefined)?.capabilities ?? [];
     expect(caps).toContain('spawn-process');
   });

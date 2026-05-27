@@ -121,7 +121,7 @@ Before touching code:
    - **Source patches** (gemini, opencode): host ships `.tsx`/`.ts` source. Apply `str.replace` patches against unique anchor strings, then build the host.
    - **Built-artifact patches** (claude-code via tweakcc): host ships minified `cli.js`. Use regex anchors against the minified structure.
    - **Inline runtime** (chrome): we own the build — runtime is bundled into the extension at build time, no host fork.
-   - **Self-owned app** (terminal): there is no upstream host to patch. The integration ships its own TUI app (Bun + OpenTUI + SolidJS, invoked as `oc-edit`). Adapter band lives in the runtime as usual; the integration directory holds the Solid app + a bootstrap that hands the textarea ref directly to `boot()`. See `integrations/terminal/` for the worked example.
+   - **Self-owned app** (terminal): there is no upstream host to patch. The integration ships its own TUI app (Bun + OpenTUI + SolidJS, invoked as `oc-edit`). Adapter band lives in the runtime as usual; the integration directory holds the Solid app + a bootstrap that hands the textarea ref directly to `boot()`. See `integrations/shell/` for the worked example.
 
 The Gemini recipe below is the **source-patch** flavour. CC's REPAIR.md covers the built-artifact flavour.
 

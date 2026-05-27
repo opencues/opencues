@@ -1,7 +1,7 @@
-// Terminal v1 host bootstrap.
+// Shell v1 host bootstrap.
 //
 // The terminal-side app's job:
-//   1. Build a TerminalBindings object from its TUI primitives (an
+//   1. Build a ShellBindings object from its TUI primitives (an
 //      OpenTUI TextareaRenderable + the renderer for forceRender).
 //   2. Call boot(host) once on app mount.
 //   3. Forward useKeyboard events to BootResult.dispatchKey.
@@ -11,11 +11,11 @@
 // Identical wiring to the OC v1.14 band — the underlying primitive
 // (OpenTUI TextareaRenderable) is the same. The split exists so the
 // host-name/version surface stays accurate (`adapter.hostName ===
-// 'terminal'`) and so future divergence between the two doesn't
+// 'shell'`) and so future divergence between the two doesn't
 // require rebooting OpenCode users.
 
 import { Runtime } from '../../../src/runtime';
-import { TerminalV1Adapter, type TerminalBindings } from './adapter';
+import { ShellV1Adapter, type ShellBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
@@ -95,7 +95,7 @@ export function boot(host: HostInfo): BootResult {
     lastSeenText = text;
   };
 
-  const bindings: TerminalBindings = {
+  const bindings: ShellBindings = {
     hostVersion: host.hostVersion,
     cwd: host.cwd,
     getText: host.getText,
@@ -110,7 +110,7 @@ export function boot(host: HostInfo): BootResult {
     readFile: host.readFile,
     readDir: host.readDir,
     writeFile: host.writeFile,
-    spawnProcess: host.spawnProcess as TerminalBindings['spawnProcess'],
+    spawnProcess: host.spawnProcess as ShellBindings['spawnProcess'],
     blankInvoke: host.blankInvoke,
     pushText: host.pushText,
     log,
@@ -121,7 +121,7 @@ export function boot(host: HostInfo): BootResult {
     registerEventHandler: cb => moduleEvents.subscribe(({ type, body }) => cb(type, body)),
   };
 
-  const adapter = new TerminalV1Adapter(bindings);
+  const adapter = new ShellV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
   const HOME = process.env.HOME ?? '~';
@@ -190,8 +190,8 @@ export function boot(host: HostInfo): BootResult {
     agentRewrite.start();
   }
 
-  log('info', 'OpenCues runtime starting (Terminal v1)', {
-    host: 'terminal',
+  log('info', 'OpenCues runtime starting (Shell v1)', {
+    host: 'shell',
     hostVersion: host.hostVersion,
     capabilities: adapter.capabilities,
   });

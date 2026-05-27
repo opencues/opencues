@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# oc-shell-init — runs as the initial pane command inside the `oc-shell`
+# tmux session. Splits a 1-row bottom pane running `oc-edit
+# --keep-alive`, then exec's the user's interactive shell so the pane
+# behaves exactly like a normal terminal.
+#
+# Why this script exists: the previous attempt used `new-session -d`
+# from outside tmux, then a separate `attach`. Between those two
+# calls the session is in "no clients" state, and the conf's
+# `destroy-unattached on` (now removed) would tear it down before
+# the split-window could fire. Running setup from INSIDE the new
+# session — as the very first pane command — avoids that gap.
+#
+# Env contract (set by bin/shell):
+#   OPENCUES_TMUX  — path to the vendored tmux binary (kept identical
+#                    to the tmux that started the server, so all
+#                    commands go to the right socket).
+#   OPENCUES_OC_EDIT — path to bin/oc-edit (the keep-alive bun host).
+#   SHELL          — user's preferred interactive shell.
+#
+# tmux sets TMUX_PANE for child processes — that's our own pane id
+# (the shell pane, where we are now). We pass it to oc-edit as the
+# target so the slide-pane submit logic knows where to paste.
+
+set -u
+
+LOG=/tmp/oc-shell-init.log
+log() { echo "[$(date '+%H:%M:%S')][pid=$$] $*" >> "$LOG" 2>/dev/null || true; }
+
+log "started — TMUX_PANE=${TMUX_PANE:-unset} TMUX=${TMUX:-unset}"
+log "env — OPENCUES_OC_EDIT=${OPENCUES_OC_EDIT:-unset} OPENCUES_TMUX=${OPENCUES_TMUX:-unset}"
+log "bun on PATH: $(command -v bun 2>/dev/null || echo MISSING)"
+
+# The bottom pane needs oc-edit + bun. If either is unavailable, skip
+# the split — user still gets a working shell, just without
+# OpenCues. Log every reason for skipping so the user can diagnose
+# from /tmp/oc-shell-init.log.
+log "starting with main pane=${TMUX_PANE:-unset}"
+
+# No split at startup — the oc-input pane is created on-demand via
+# the M-C-s binding (see conf/oc-shell.tmux.conf). Idle state has
+# only the shell pane plus tmux's status bar; no border row, no
+# blank gap. Trade-off: each activation pays a ~1s cold start.
+exec "${SHELL:-/bin/sh}"
