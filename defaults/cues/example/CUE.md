@@ -25,6 +25,10 @@
 # Required — must match the folder name (the runtime keys on this).
 name: example
 
+# Shipped OFF — this pack is tutorial scaffolding to copy + edit,
+# not a default-on cue. Remove the line (or set true) to enable it.
+enabled: false
+
 # Output shape: alternatives (the LLM emits INDEX:alt1,alt2,...).
 # Other choices: raw (verbatim string), answer (single value).
 parser: alternatives

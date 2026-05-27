@@ -772,6 +772,7 @@ export class ConfigLoader {
     for (const k of cueMap.keys()) navigableWords.add(k);
 
     const addBlank = (name: string, blank: BlankConfig): void => {
+      if (blank.enabled === false) return;
       const lcName = name.toLowerCase();
       navigableWords.add(lcName);
       blanksByWord.set(lcName, { name: lcName, blank });

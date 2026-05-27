@@ -4,6 +4,11 @@ scope: words
 priority: 75
 match: diagnosis|prognosis|etiology|contraindication|prophylaxis|anamnesis|comorbidity|pathology
 classify: Clinical and medical terminology, healthcare language, pharmaceutical terms
+# Default-on for prose-composing hosts (shell + chrome). Coding TUIs
+# (claude-code, opencode, gemini-cli) almost never write clinical
+# prose, so the per-highlight LLM cost isn't worth it. Override at
+# the user level by editing this list.
+on-host: [shell, chrome]
 ---
 
 Suggest 3 alternatives for each highlighted clinical term. Prefer
