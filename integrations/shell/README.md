@@ -115,8 +115,8 @@ they paste into your shell prompt:
 |---|---|
 | `[Your prompt] improve prompt _` | Rewrites your rough text into a structured prompt. Submit to send it to whichever CLI you're about to invoke. |
 | `[Your prompt] add a paragraph about security _` | Extends your existing text with the requested addition, in place. |
-| `format as bullet points _ apples bananas oranges` | Formats the list. Useful when composing a markdown comment / commit message before pasting. |
-| `translate to french _ where is the nearest train station` | Replaces with the French translation. |
+| `[your list] format as bullet points _` | Formats the body as bullets. Useful when composing a markdown comment / commit message before pasting. |
+| `[your text] translate to french _` | Replaces with the French translation. |
 | `opencues settings _` | Slide-out selector for runtime settings — cycle a setting with Ctrl+Alt+Right/Left, cycle the value with Ctrl+Alt+Up/Down. |
 
 ---

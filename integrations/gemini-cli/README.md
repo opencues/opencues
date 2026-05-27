@@ -94,7 +94,7 @@ rm -rf ~/gemini-cli-cues
 |---|---|
 | Type `[Your prompt] improve prompt _` | **Prompt-improver blank** — the headline daily-driver: rewrites your rough prompt into a structured one before you send it to Gemini. |
 | Type `[Your prompt] add a paragraph about security _` | **Transform blank** — extends your existing draft with the requested addition, in place. |
-| Type `format as bullet points _ apples bananas oranges` | **Transform blank** — formatting instruction with surrounding content. |
+| Type `[your list] format as bullet points _` | **Transform blank** — formatting instruction following the body. |
 | Type `opencues settings _`, cycle Up | **Selector / satellite** — slide-out for runtime settings. |
 | Type `i want to ultrathink this`, navigate to `ultrathink` (Ctrl+Alt+Right), Ctrl+Alt+Up | **Word cycle** — local-lookup tip with no LLM round-trip. |
 | Footer at bottom of the TUI shows tip when a word is highlighted | `useOpenCuesTip()` React hook wired into `Footer.tsx`. |

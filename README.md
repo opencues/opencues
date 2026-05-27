@@ -51,7 +51,7 @@ The three file formats (Cues / Blanks / Auditors) are open standards — designe
 > **In 30 seconds — the vocabulary**
 >
 > - **Cue** — a word the runtime offers alternatives for. You navigate to it with Ctrl+Alt+arrow and cycle synonyms with Ctrl+Alt+Up/Down. The buffer stays as you typed it until you cycle.
-> - **Blank** — a `_` you type. The runtime auto-fills it (`draft an email to my landlord _` → the email body, `translate to french _ hello world` → `bonjour le monde`, `format as bullet points _ a b c` → bullets). Each blank is gated by a keyword or by free-form lookup.
+> - **Blank** — a `_` you type. The runtime auto-fills it (`draft an email to my landlord _` → the email body, `hello world translate to french _` → `bonjour le monde`, `a b c format as bullet points _` → bullets). Each blank is gated by a keyword or by free-form lookup.
 > - **Auditor** — an inline rewriter that composes with other auditors (grammar, clarity, tone, ...) into one LLM call per agent tick.
 >
 > Everything else in this README assumes these three.
@@ -187,9 +187,9 @@ with whatever the surrounding text asks for.
 |---|---|
 | `[Your prompt] improve prompt _` | The whole sentence is rewritten into a structured, well-formed prompt. The **prompt-improver** blank (triggered by `improve prompt` / `enhance prompt` / `refine prompt`) — the daily-driver blank for any LLM CLI. |
 | `draft an email to my landlord asking for a rent reduction _` | The `_` is replaced with a polite, structured email body. **Fluid blank** — open-ended generation from a free-form query. |
-| `translate to french _ where is the nearest train station` | The phrase after the trigger is replaced with the French translation. **Transform blank** — `translate to <language>`. |
-| `format as bullet points _ apples bananas oranges grapes` | The list becomes properly-formatted bullets. **Transform blank** — `format as <style>` (also: `as a table`, `as JSON`, etc.). |
-| `make past tense _ he runs fast and jumps over the fence` | The sentence is rewritten in past tense. Same transform-blank shape — the runtime reads the imperative, applies it, splices the result back. |
+| `where is the nearest train station translate to french _` | The text is replaced with its French translation. **Transform blank** — `translate to <language>`. |
+| `apples bananas oranges grapes format as bullet points _` | The list is reformatted as bullets. **Transform blank** — `format as <style>` (also: `as a table`, `as JSON`, etc.). |
+| `he runs fast and jumps over the fence make past tense _` | The sentence is rewritten in past tense. Same transform-blank shape — the runtime reads the imperative, applies it, splices the result back. |
 | `what is the word for "happy at someone elses misfortune" _` | The query is replaced with `schadenfreude`. The **answer** blank — vocabulary lookup (triggered by `what is the word for` / `how to say`). |
 | `opencues settings _` | Slide-out **selector + satellite** view of every cycleable runtime setting (voice-mode, tips-mode, debug-mode, fluid-blank-mode, …). Ctrl+Alt+Right/Left swaps the *setting*; Ctrl+Alt+Up/Down cycles the *value*. Changes write through to `~/.cues/OPENCUES.md` live. |
 
