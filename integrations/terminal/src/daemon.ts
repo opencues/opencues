@@ -31,6 +31,8 @@ import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 interface Snapshot {
   /** Absolute path → file content (or null if missing). */
@@ -242,15 +244,29 @@ async function handleConnection(sock: net.Socket): Promise<void> {
   try {
     const msg = await readMessage(sock) as { cmd?: string };
     if (msg.cmd === 'HELLO') {
-      writeMessage(sock, { ok: true, version: snapshotVersion, builtAt: currentSnapshot.builtAt, pid: process.pid });
+      writeMessage(sock, {
+        ok: true,
+        version: snapshotVersion,
+        builtAt: currentSnapshot.builtAt,
+        pid: process.pid,
+        workerReady: warmWorker?.state === 'ready',
+      });
     } else if (msg.cmd === 'GET_SNAPSHOT') {
-      // If somehow the watcher missed (or we're racing first build), do a
-      // fresh refresh before serving. Cheap; most calls hit the cached
-      // snapshot directly.
       if (currentSnapshot.version === 0) {
         await refreshSnapshot();
       }
       writeMessage(sock, { ok: true, snapshot: currentSnapshot });
+    } else if (msg.cmd === 'BORROW_WORKER') {
+      // Hand out the warm worker's socket path; spawn a replacement
+      // immediately so the next popup also gets a warm one.
+      const w = warmWorker;
+      if (!w || w.state !== 'ready') {
+        writeMessage(sock, { ok: false, error: 'no warm worker available' });
+      } else {
+        warmWorker = null;
+        spawnWarmWorker();  // background — fills the slot for next popup
+        writeMessage(sock, { ok: true, sockPath: w.sockPath, pid: w.pid });
+      }
     } else {
       writeMessage(sock, { ok: false, error: `unknown cmd: ${msg.cmd}` });
     }
@@ -259,6 +275,105 @@ async function handleConnection(sock: net.Socket): Promise<void> {
   } finally {
     sock.end();
   }
+}
+
+// ─── Warm worker pool (single slot) ───────────────────────────────────
+
+interface WarmWorker {
+  child: ChildProcess;
+  pid: number;
+  sockPath: string;
+  state: 'spawning' | 'ready' | 'used';
+  spawnedAt: number;
+}
+
+let warmWorker: WarmWorker | null = null;
+
+function workerEntryPath(): string {
+  // daemon.ts and render-worker.ts live in the same src/ dir. When
+  // bundled (dist/), both live in the same dist/ dir. Either way the
+  // worker is one directory over from this module.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // Prefer dist/ when present (matches bin/oc-edit's dist-first
+  // fallback).
+  const distWorker = path.join(here, '..', 'dist', 'render-worker.js');
+  if (fs.existsSync(distWorker)) return distWorker;
+  return path.join(here, 'render-worker.ts');
+}
+
+function spawnWarmWorker(): void {
+  if (warmWorker) return;
+  const sockPath = path.join(
+    process.env.XDG_RUNTIME_DIR ?? os.tmpdir(),
+    `oc-worker-${process.pid}-${Date.now()}.sock`,
+  );
+  const entry = workerEntryPath();
+  const childEnv = { ...process.env, OPENCUES_WORKER_SOCK: sockPath };
+  // The bash shim oc-editd already cd'd into integrations/terminal/
+  // for bunfig discovery. Inherit cwd from the daemon so the worker's
+  // bunfig + preload resolution is identical.
+  // stderr inherits — worker's log() also writes to /tmp/oc-editd.log,
+  // but anything else (FFI errors, etc.) lands on the daemon's stderr.
+  // stdio[3] = pipe is our IPC channel for the worker's "ready" signal.
+  // We can't use stdout — opentui's preload writes alt-screen escape
+  // codes to fd 1 at module load, which would garble any JSON line we
+  // tried to multiplex through. stderr is also no good (we inherit it
+  // so log noise reaches the user). fd 3 is unused by opentui/runtime.
+  const child = spawn(
+    'bun',
+    ['--preload', '@opentui/solid/preload', entry],
+    { env: childEnv, stdio: ['ignore', 'ignore', 'inherit', 'pipe'] },
+  );
+  const slot: WarmWorker = {
+    child,
+    pid: child.pid ?? -1,
+    sockPath,
+    state: 'spawning',
+    spawnedAt: Date.now(),
+  };
+  warmWorker = slot;
+  logLine(`worker spawning pid=${child.pid} sock=${sockPath}`);
+
+  // Read ready signal from worker's fd 3.
+  const readyPipe = child.stdio[3] as NodeJS.ReadableStream | null;
+  if (!readyPipe) {
+    logLine(`worker spawn: no fd-3 pipe — readiness will never fire`);
+  } else {
+    let lineBuf = '';
+    readyPipe.setEncoding!('utf8');
+    readyPipe.on('data', (chunk: string) => {
+      lineBuf += chunk;
+      let nl: number;
+      while ((nl = lineBuf.indexOf('\n')) >= 0) {
+        const line = lineBuf.slice(0, nl);
+        lineBuf = lineBuf.slice(nl + 1);
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj?.ready && obj?.sockPath === sockPath && slot.state === 'spawning') {
+            slot.state = 'ready';
+            logLine(`worker ready pid=${slot.pid} (${Date.now() - slot.spawnedAt}ms warmup)`);
+          }
+        } catch (e) {
+          logLine(`worker ready-pipe parse failed: ${(e as Error).message}`);
+        }
+      }
+    });
+  }
+
+  child.on('exit', (code, signal) => {
+    logLine(`worker pid=${slot.pid} exited code=${code} signal=${signal} state=${slot.state}`);
+    if (warmWorker === slot) {
+      warmWorker = null;
+      // If the worker died without being used, respawn so the slot
+      // stays filled. If it was used (popup completed), let it die —
+      // BORROW_WORKER already triggered the next spawn.
+      if (slot.state !== 'used') {
+        setTimeout(() => spawnWarmWorker(), 1000);
+      }
+    }
+    try { fs.unlinkSync(slot.sockPath); } catch {}
+  });
 }
 
 // ─── Startup ──────────────────────────────────────────────────────────
@@ -282,11 +397,19 @@ async function main(): Promise<void> {
   await firstBuild;
   logLine('ready');
 
+  // Kick off the first warm worker. It runs in parallel with whatever
+  // the user does next — by the time they hit Ctrl+Alt+S, the worker
+  // has finished loading @opentui + @opencues/runtime.
+  spawnWarmWorker();
+
   const cleanup = (sig: string): void => {
     logLine(`received ${sig}, shutting down`);
     for (const w of watchers) { try { w.close(); } catch {} }
     try { server.close(); } catch {}
     try { fs.unlinkSync(sockPath); } catch {}
+    if (warmWorker?.child && !warmWorker.child.killed) {
+      try { warmWorker.child.kill('SIGTERM'); } catch {}
+    }
     process.exit(0);
   };
   process.on('SIGTERM', () => cleanup('SIGTERM'));

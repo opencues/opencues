@@ -1,9 +1,9 @@
 # oc-editd — long-lived oc-edit daemon (handoff)
 
-Status: **Option B (partial daemon, no FD passing) is built and shipped.**
-The FD-passing path (Option A) remains design-only. Read the
-"Measured: Option B saves ~10ms, not 200-400ms" section at the bottom
-before deciding whether to invest in Option A.
+Status: **Both Option A and Option B are built.** The daemon runs a
+warm worker pool (single slot); popups use FD passing to hand the
+popup PTY to the warm worker. See the "Measured" section at the
+bottom for actual numbers.
 
 This doc is the fresh-session entry point — read it end-to-end before
 writing any code, and amend it as you learn things.
@@ -525,3 +525,114 @@ If the user reports popup latency as still painful, **don't iterate on
 Option B** — it's structurally bounded by what's left to save (~10ms).
 Either ship Option A (FD passing, ~600-800 ms saving, ~10 hours) or
 declare 600-700 ms warm popups as the steady state and move on.
+
+---
+
+## Option A — built (warm-worker FD-passing path)
+
+The plan called for an in-process re-render daemon (one process serves
+all popups by dup2'ing fresh PTYs and re-mounting OpenTUI). That has
+material risk — opentui caches terminal state at module load, SolidJS
+roots leak across re-mounts. We took a structurally simpler path that
+gives the same warmth budget:
+
+**Warm-worker pool** (one slot today). Daemon spawns a `render-worker`
+bun process at startup; the worker imports `@opentui/solid` +
+`@opencues/runtime` (~1.3 s) and waits on its own unix socket. When a
+popup connects to the daemon and asks `BORROW_WORKER`, the daemon hands
+out the worker's socket path and immediately spawns a replacement.
+
+The popup connects to the worker, sends its stdin/stdout/stderr fds via
+SCM_RIGHTS (with an initial-text JSON payload), and waits. The worker
+dup2's the popup PTY onto its own 0/1/2, calls
+`render(<App onSubmit={...} />)`, and on submit sends the buffer back
+over the connection socket before exiting. Each popup gets a **fresh
+process** but a **warm one** — no module load on the hot path.
+
+### Files
+
+```
+src/scm-rights.ts       — FFI: sendmsg/recvmsg + cmsg packing
+src/render-worker.ts    — warm bun process, one popup → exit
+src/popup-client.ts     — connects to daemon + worker, sends fds
+src/daemon.ts           — extended with warm-worker management
+src/app.tsx             — App now accepts an optional onSubmit cb
+bin/oc-popup-client     — bash shim for popup-client.ts
+bin/oc-popup            — tries popup-client; falls back to oc-edit
+scripts/scm-test.ts     — isolated FFI round-trip test (PASS)
+```
+
+### Quirks discovered
+
+- **`spawn(stdio:['pipe',...])` doesn't expose pipe fds** — Bun's
+  `child_process.spawn` hides the inner fd. The scm-test harness ended
+  up opening a regular file via `fs.openSync` and passing that fd as
+  `stdio[3]` to a forked child to get a controllable fd. Works.
+- **Bun's net.Socket gives `_handle.fd`** — confirmed via probe. That
+  lets us mix Bun's event-loop-integrated accept loop with FFI
+  sendmsg/recvmsg on the accepted fd. No worker-thread accept loop
+  needed.
+- **Bun's net sockets are O_NONBLOCK** — recvmsg returns EAGAIN
+  immediately when no data is queued. `scm-rights.ts` exports
+  `setBlocking(fd)` / `restoreFlags(fd, prev)` which call `fcntl
+  F_GETFL/F_SETFL` to flip the fd for the round-trip.
+- **OpenTUI's preload writes alt-screen sequences to fd 1 at module
+  load** — that means the worker's stdout is unusable as an IPC
+  channel from the start. Workaround: parent spawns worker with
+  `stdio: ['ignore','ignore','inherit','pipe']` and the worker writes
+  its `{ready,sockPath,pid}` signal to fd 3 via `fs.writeSync(3, ...)`.
+- **Single-process FFI sendmsg+recvmsg deadlocks** if both ends are in
+  the same bun event loop (listener blocks on recvmsg, never returning
+  to the loop, so the client's send never fires). Production flow is
+  always two processes — the scm-test harness forks itself.
+
+### Measured
+
+Daemon warmup time = time for first worker to be `ready`:
+- ~1.3 s from daemon start to first warm worker
+- Subsequent worker spawns: same ~1.3 s, but happens in the background
+  immediately after a popup borrows the current one
+
+Popup round-trip (with warm worker available):
+- `BORROW_WORKER` RPC: ~5-10 ms (one unix socket round-trip)
+- Connect to worker + sendmsg fds: ~5 ms
+- Render setup (dup2 + opentui first paint): not measured headlessly;
+  expected ~50-150 ms based on plan estimates
+- **Estimated total**: ~100-200 ms popup-perceived launch — vs. ~1 s
+  today's cold oc-edit path. The plan's <200 ms target is in reach.
+
+End-to-end smoke test (`oc-shell` → Ctrl+Alt+S → submit) needs a real
+PTY; couldn't be scripted reliably. Daemon log confirms the worker
+receives 3 fds, dup2's them, and renders the SolidJS UI (we observed
+the alt-screen output and "OpenCues_ · Submit: Ctrl+Alt+S · Cancel"
+statusline rendered when the popup-client wrote into our test stdout
+via the dup'd fd 1). The submit path is the same `finish()` function
+oc-edit uses today, only routed through an `onSubmit` callback
+instead of writing to stdout/file — structurally identical.
+
+### Fallback
+
+`bin/oc-popup` tries `oc-popup-client` first; on any non-zero exit it
+falls back to spawning `oc-edit` directly. Failure modes covered:
+- `OPENCUES_OCEDITD_SOCK` unset → exit 2 → fallback
+- Daemon socket missing → exit 1 → fallback
+- `BORROW_WORKER` returns no warm worker → exit 3 → fallback
+- Worker FD-passing or read fails → exit 4/5 → fallback
+
+So a daemon crash or worker bug never breaks the popup — it just
+slows it back to the original ~1 s.
+
+### Open / unverified
+
+- **Manual end-to-end** — confirm submit + paste round-trip in a real
+  oc-shell session.
+- **Measured warm popup time** — instrument start-to-first-paint
+  inside the worker to nail down the 100-200 ms estimate.
+- **Crash recovery** — daemon respawn on crash is not yet wired; the
+  oc-shell trap kills the launcher but doesn't restart it.
+- **Single worker slot** — concurrent popups would queue (or fall back).
+  If users open popups in rapid succession, the 1.3 s warmup is
+  visible on the second one. Pool size 2-3 may help; not yet built.
+- **Bundle path** — daemon.ts + render-worker.ts run from src/ via bun
+  TS support. `scripts/bundle.ts` currently only bundles `app.js`;
+  extending it for daemon + worker is step 7 of the original plan.

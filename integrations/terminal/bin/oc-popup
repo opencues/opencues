@@ -70,7 +70,24 @@ fi
 "$TMUX_BIN" set -g status off 2>/dev/null || true
 trap '"$TMUX_BIN" set -g @popup-open 0 2>/dev/null || true; "$TMUX_BIN" set -g status on 2>/dev/null || true; rm -f "$TMPFILE"' EXIT
 
-"$OC_EDIT" --out "$TMPFILE" || true
+# Prefer the daemon's warm-worker path (oc-popup-client) when the
+# daemon socket is reachable; fall back to spawning oc-edit otherwise.
+# popup-client exit code 2 = no daemon socket (env unset). Other
+# non-zero codes mean the daemon/worker handshake failed mid-flight —
+# also fall back, since we can't recover the popup PTY state once
+# fds were partially sent.
+POPUP_CLIENT="$HERE/oc-popup-client"
+USED_DAEMON=0
+if [ -n "${OPENCUES_OCEDITD_SOCK:-}" ] && [ -S "${OPENCUES_OCEDITD_SOCK:-}" ] && [ -x "$POPUP_CLIENT" ]; then
+  if "$POPUP_CLIENT" --out "$TMPFILE"; then
+    USED_DAEMON=1
+  else
+    USED_DAEMON=0
+  fi
+fi
+if [ "$USED_DAEMON" -ne 1 ]; then
+  "$OC_EDIT" --out "$TMPFILE" || true
+fi
 
 # Diagnostic — remove once stable. Lands in /tmp/opencues.log along
 # with the runtime logs from the same oc-edit run, so a tail of that
