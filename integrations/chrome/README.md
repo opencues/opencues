@@ -102,9 +102,9 @@ Open Gmail (compose), ChatGPT, claude.ai, LinkedIn, or any
 | Test | Expected |
 |---|---|
 | `[Your prompt] improve prompt _` | The whole text becomes a structured, improved version of your rough draft. Cycle Up/Down to toggle between the rewrite and the original. |
-| `[Your prompt] add a paragraph about security _` | Extends your existing draft with the requested addition, in place. **Transform blank**. |
-| `format as bullet points _ apples bananas oranges` | The list becomes properly-formatted bullets. **Transform blank**. |
-| `translate to french _ where is the nearest train station` | The phrase after the trigger is replaced with the French translation. |
+| `[Your draft] add a paragraph about security _` | Extends your existing draft with the requested addition, in place. **Transform blank**. |
+| `format as bullet points _ [your list]` | Formats the list following the trigger. **Transform blank** — `format as <style>` (also `as a table`, `as JSON`, …). |
+| `translate to french _ [your text]` | The phrase after the trigger is replaced with the French translation. |
 | Click into the editable, type a few words | Words with alternatives get a slightly darker mid-tone (cue marker). |
 | Ctrl+Alt+Right | Highlights the next navigable word in bright white. Ctrl+Alt+Up/Down cycles alternatives. |
 | Service worker console shows `[opencues][info] OpenCues runtime starting (Chrome v1)` | Bootstrap booted (open via `chrome://extensions` → service-worker link). |
