@@ -80,25 +80,40 @@ fi
 #     and multi-line drafts in a shell prompt.
 #     Caveat: rich TUIs (Claude Code, vim, etc.) detect bracketed
 #     paste and collapse it to a "[paste]" placeholder.
-#   - typed: send-keys -l. Each character is sent as a literal
-#     keystroke — TUIs see it as typed input, no paste collapse.
-#     Caveat: every `\n` becomes Enter. In a shell prompt each
-#     line executes; in Claude Code each `\n` submits the message.
-#     Best for short single-line snippets.
+#   - typed: literal characters via send-keys -l, with `C-j` (LF)
+#     between lines instead of letting `\n` collapse to Enter. TUIs
+#     that distinguish C-j from C-m (Claude Code, vim, emacs, etc.)
+#     treat C-j as a soft newline inside the current input — so the
+#     full multi-line draft lands inline without auto-submitting.
+#     Caveat: shells (bash/zsh) generally treat C-j and C-m the same
+#     way (both run the line), so this mode is best for TUIs.
 #   - raw: paste-buffer (no -p). Like bracketed but each `\n` is
 #     Enter. Best for shell scripts you actually want line-execute.
 MODE="${OPENCUES_POPUP_PASTE_MODE:-bracketed}"
 if [ -n "$ORIGIN_PANE" ] && [ -s "$TMPFILE" ]; then
   case "$MODE" in
     typed)
-      # send-keys -l takes the text via args. Read tmpfile into a
-      # variable; tmux sends each char literally. Strip a single
-      # trailing newline so the popup's `+ '\n'` from app.tsx
-      # doesn't auto-submit at the receiving end.
-      TEXT="$(cat "$TMPFILE")"
-      if ! "$TMUX_BIN" send-keys -t "$ORIGIN_PANE" -l "$TEXT" 2>>/tmp/opencues.log; then
-        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] send-keys FAILED (origin=$ORIGIN_PANE)" >> /tmp/opencues.log
-      fi
+      # Send each line as literal keystrokes (-l) and use `C-j`
+      # between lines instead of letting the literal `\n` byte get
+      # interpreted as Enter. Most TUIs (Claude Code, vim, emacs,
+      # readline-shells with the right config) treat C-j (LF) as
+      # a soft newline inside the current input and C-m (CR) as
+      # submit — so this lands multi-line text inline without
+      # firing the submit handler on each newline.
+      #
+      # mapfile -t splits on `\n` and strips the trailing newline.
+      # Empty lines are preserved (the array has empty strings).
+      mapfile -t LINES < "$TMPFILE"
+      for ((i=0; i<${#LINES[@]}; i++)); do
+        if [ -n "${LINES[i]}" ]; then
+          "$TMUX_BIN" send-keys -t "$ORIGIN_PANE" -l "${LINES[i]}" 2>>/tmp/opencues.log || \
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] send-keys literal FAILED at line $i" >> /tmp/opencues.log
+        fi
+        if (( i < ${#LINES[@]} - 1 )); then
+          "$TMUX_BIN" send-keys -t "$ORIGIN_PANE" C-j 2>>/tmp/opencues.log || \
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] send-keys C-j FAILED at line $i" >> /tmp/opencues.log
+        fi
+      done
       ;;
     bracketed|raw|*)
       if ! "$TMUX_BIN" load-buffer -b oc-popup "$TMPFILE" 2>>/tmp/opencues.log; then
