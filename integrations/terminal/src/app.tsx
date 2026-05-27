@@ -87,8 +87,24 @@ function App(props: AppOpts) {
           wrapMode="word"
         />
       </box>
+      {/*
+        Statusline. When a tip is active (the runtime hovered a
+        word and surfaced its tip), show that across the line.
+        Otherwise show the keybindings split L/R: submit on the
+        left, cancel on the right. No OpenCues branding here — the
+        wrapping `oc-shell` tmux bar already carries that.
+      */}
       <box style={{ height: 1, width: '100%', flexDirection: 'row' }}>
-        <text>{tip() ?? 'opencues — Ctrl+S submit, Ctrl+C cancel'}</text>
+        {tip() != null
+          ? <text>{tip()}</text>
+          : <box style={{ width: '100%', flexDirection: 'row' }}>
+              <box style={{ flexGrow: 1 }}>
+                <text>Ctrl+S — submit (sends the buffer back)</text>
+              </box>
+              <box>
+                <text>Ctrl+C — cancel (discard, send nothing)</text>
+              </box>
+            </box>}
       </box>
     </box>
   );

@@ -75,21 +75,22 @@ fi
 # Inject only if oc-edit committed text AND we have a pane target.
 #
 # Three paste modes via OPENCUES_POPUP_PASTE_MODE:
-#   - bracketed (default): paste-buffer -p. Shell holds the block as
-#     one editable chunk; newlines do NOT execute. Best for prose
-#     and multi-line drafts in a shell prompt.
-#     Caveat: rich TUIs (Claude Code, vim, etc.) detect bracketed
-#     paste and collapse it to a "[paste]" placeholder.
-#   - typed: literal characters via send-keys -l, with `C-j` (LF)
-#     between lines instead of letting `\n` collapse to Enter. TUIs
-#     that distinguish C-j from C-m (Claude Code, vim, emacs, etc.)
-#     treat C-j as a soft newline inside the current input — so the
-#     full multi-line draft lands inline without auto-submitting.
-#     Caveat: shells (bash/zsh) generally treat C-j and C-m the same
-#     way (both run the line), so this mode is best for TUIs.
+#   - typed (default): literal characters via send-keys -l, with
+#     `C-j` (LF) between lines instead of letting `\n` collapse to
+#     Enter. TUIs that distinguish C-j from C-m (Claude Code, vim,
+#     emacs, etc.) treat C-j as a soft newline inside the current
+#     input — so the full multi-line draft lands inline without
+#     auto-submitting. Bare shells (bash/zsh) generally treat C-j
+#     the same as Enter, so each line will execute at a prompt —
+#     switch modes if that's not what you want.
+#   - bracketed: paste-buffer -p. Shell holds the block as one
+#     editable chunk; newlines do NOT execute. Best for multi-line
+#     drafts at a shell prompt — but rich TUIs (Claude Code, vim)
+#     detect the bracketed-paste sequence and collapse it to a
+#     "[paste]" placeholder instead of showing the text inline.
 #   - raw: paste-buffer (no -p). Like bracketed but each `\n` is
 #     Enter. Best for shell scripts you actually want line-execute.
-MODE="${OPENCUES_POPUP_PASTE_MODE:-bracketed}"
+MODE="${OPENCUES_POPUP_PASTE_MODE:-typed}"
 if [ -n "$ORIGIN_PANE" ] && [ -s "$TMPFILE" ]; then
   case "$MODE" in
     typed)
