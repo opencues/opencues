@@ -1,17 +1,17 @@
 ---
-name: tips
-# The shipped JSON below is Claude Code specific — slash commands
-# (/compact, /clear, /rewind, /model, /usage, …), CC keybindings
-# (Esc x2, Shift+Tab, Ctrl+G/R), CC flags (--print, --add-dir,
-# --dangerously-skip-permissions), and CC features (CLAUDE.md, hooks,
-# MCP, plan mode, skills, ultrathink). Scope to claude-code so the
-# tips don't fire on hosts where the trigger words have different
-# meanings or no meaning at all.
+name: tips-claude-code
+# Claude Code tip pack — slash commands (/compact, /clear, /rewind,
+# /model, /usage, …), CC keybindings (Esc x2, Shift+Tab, Ctrl+G/R),
+# CC flags (--print, --add-dir, --dangerously-skip-permissions), and
+# CC features (CLAUDE.md, hooks, MCP, plan mode, skills, ultrathink).
+# Scoped to claude-code so trigger words don't collide with vocabulary
+# on other hosts.
 #
-# To add tips for another host: create defaults/cues/tips-<host>/CUE.md
-# with `on-host: [<host>]` and its own JSON. Folder-based loader picks
-# it up automatically (one cue source per folder). The `tips-mode`
-# scalar in OPENCUES.md gates tip RENDERING for all packs uniformly.
+# Sibling packs: tips-opencode/, tips-gemini-cli/, tips-shell/. The
+# folder loader's host-compat filter (discover.ts:isAllowedOnHost)
+# skips each pack on every host outside its on-host list. The
+# `tips-mode` scalar in OPENCUES.md gates tip RENDERING for all packs
+# uniformly.
 on-host: [claude-code]
 ---
 
