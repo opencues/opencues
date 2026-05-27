@@ -6,7 +6,6 @@
 // exits — same shape as $EDITOR-style invocations.
 
 import { render, useKeyboard, useRenderer } from '@opentui/solid';
-export { render };
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
 import { SyntaxStyle, TextAttributes } from '@opentui/core';
@@ -15,16 +14,9 @@ import { startOpenCues, dispatchOpenCuesKey } from './bootstrap';
 interface AppOpts {
   initialText: string;
   outputPath: string | null;
-  /**
-   * Optional submit handler used by the daemon's render-worker path.
-   * When provided, takes precedence over outputPath/stdout — the
-   * worker forwards the buffer back over its socket connection and
-   * controls process exit itself. See src/render-worker.ts.
-   */
-  onSubmit?: (text: string, exitCode: number) => void;
 }
 
-export function App(props: AppOpts) {
+function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
   let textarea: TextareaRenderable | undefined;
@@ -94,14 +86,12 @@ export function App(props: AppOpts) {
     // renderer.destroy() restores the main screen — stdout writes
     // after that show up in the user's shell.
     try { renderer?.destroy?.(); } catch { /* swallow */ }
-    if (props.onSubmit) {
-      try { props.onSubmit(text, exitCode); } catch { /* worker handles its own exit */ }
-      return;
-    }
     try {
       if (props.outputPath) {
         require('node:fs').writeFileSync(props.outputPath, text);
       } else {
+        // Trailing newline so the text doesn't collide with the
+        // shell's next prompt (which is on the line below).
         process.stdout.write(text + '\n');
       }
     } catch { /* swallow */ }
