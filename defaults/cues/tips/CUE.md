@@ -1,5 +1,18 @@
 ---
 name: tips
+# The shipped JSON below is Claude Code specific — slash commands
+# (/compact, /clear, /rewind, /model, /usage, …), CC keybindings
+# (Esc x2, Shift+Tab, Ctrl+G/R), CC flags (--print, --add-dir,
+# --dangerously-skip-permissions), and CC features (CLAUDE.md, hooks,
+# MCP, plan mode, skills, ultrathink). Scope to claude-code so the
+# tips don't fire on hosts where the trigger words have different
+# meanings or no meaning at all.
+#
+# To add tips for another host: create defaults/cues/tips-<host>/CUE.md
+# with `on-host: [<host>]` and its own JSON. Folder-based loader picks
+# it up automatically (one cue source per folder). The `tips-mode`
+# scalar in OPENCUES.md gates tip RENDERING for all packs uniformly.
+on-host: [claude-code]
 ---
 
 ```json
@@ -1005,20 +1018,6 @@ name: tips
           "skill",
           "skills",
           "reusable"
-        ]
-      }
-    }
-  },
-  {
-    "id": "span-test",
-    "words": {
-      "spantest": {
-        "tip": "Multi-word span test fixture — cycles through spaced alts to exercise span tracking without the LLM",
-        "alts": [
-          "one word",
-          "two words",
-          "three short words",
-          "back to one"
         ]
       }
     }

@@ -24,6 +24,12 @@ export interface CuesMdFrontmatter {
    *  Project-level `disable:` skips the named source for this project
    *  without modifying the user-level library. */
   disable?: string[];
+  /** Host-compat allow-list. Folder discovery skips the whole pack when
+   *  the running host isn't in this list. See `discover.ts:isAllowedOnHost`. */
+  onHost?: string[];
+  /** Host-compat deny-list. Folder discovery skips the whole pack when
+   *  the running host is in this list. */
+  notOnHost?: string[];
 }
 
 /**
