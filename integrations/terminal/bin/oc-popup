@@ -73,15 +73,48 @@ fi
 } >> /tmp/opencues.log 2>&1 || true
 
 # Inject only if oc-edit committed text AND we have a pane target.
+#
+# Three paste modes via OPENCUES_POPUP_PASTE_MODE:
+#   - bracketed (default): paste-buffer -p. Shell holds the block as
+#     one editable chunk; newlines do NOT execute. Best for prose
+#     and multi-line drafts in a shell prompt.
+#     Caveat: rich TUIs (Claude Code, vim, etc.) detect bracketed
+#     paste and collapse it to a "[paste]" placeholder.
+#   - typed: send-keys -l. Each character is sent as a literal
+#     keystroke — TUIs see it as typed input, no paste collapse.
+#     Caveat: every `\n` becomes Enter. In a shell prompt each
+#     line executes; in Claude Code each `\n` submits the message.
+#     Best for short single-line snippets.
+#   - raw: paste-buffer (no -p). Like bracketed but each `\n` is
+#     Enter. Best for shell scripts you actually want line-execute.
+MODE="${OPENCUES_POPUP_PASTE_MODE:-bracketed}"
 if [ -n "$ORIGIN_PANE" ] && [ -s "$TMPFILE" ]; then
-  if ! "$TMUX_BIN" load-buffer -b oc-popup "$TMPFILE" 2>>/tmp/opencues.log; then
-    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] load-buffer FAILED" >> /tmp/opencues.log
-  fi
-  if ! "$TMUX_BIN" paste-buffer -p -b oc-popup -t "$ORIGIN_PANE" 2>>/tmp/opencues.log; then
-    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] paste-buffer FAILED (origin=$ORIGIN_PANE)" >> /tmp/opencues.log
-  fi
-  "$TMUX_BIN" delete-buffer -b oc-popup 2>/dev/null || true
-  echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] paste sequence done" >> /tmp/opencues.log
+  case "$MODE" in
+    typed)
+      # send-keys -l takes the text via args. Read tmpfile into a
+      # variable; tmux sends each char literally. Strip a single
+      # trailing newline so the popup's `+ '\n'` from app.tsx
+      # doesn't auto-submit at the receiving end.
+      TEXT="$(cat "$TMPFILE")"
+      if ! "$TMUX_BIN" send-keys -t "$ORIGIN_PANE" -l "$TEXT" 2>>/tmp/opencues.log; then
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] send-keys FAILED (origin=$ORIGIN_PANE)" >> /tmp/opencues.log
+      fi
+      ;;
+    bracketed|raw|*)
+      if ! "$TMUX_BIN" load-buffer -b oc-popup "$TMPFILE" 2>>/tmp/opencues.log; then
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] load-buffer FAILED" >> /tmp/opencues.log
+      fi
+      PASTE_FLAGS=(-b oc-popup -t "$ORIGIN_PANE")
+      if [ "$MODE" != "raw" ]; then
+        PASTE_FLAGS=(-p "${PASTE_FLAGS[@]}")
+      fi
+      if ! "$TMUX_BIN" paste-buffer "${PASTE_FLAGS[@]}" 2>>/tmp/opencues.log; then
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] paste-buffer FAILED (origin=$ORIGIN_PANE)" >> /tmp/opencues.log
+      fi
+      "$TMUX_BIN" delete-buffer -b oc-popup 2>/dev/null || true
+      ;;
+  esac
+  echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] paste sequence done (mode=$MODE)" >> /tmp/opencues.log
 else
   echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] skipped paste (origin='$ORIGIN_PANE' file_empty=$([ -s "$TMPFILE" ] && echo no || echo yes))" >> /tmp/opencues.log
 fi
