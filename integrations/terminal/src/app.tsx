@@ -60,11 +60,19 @@ function App(props: AppOpts) {
   });
 
   function finish(text: string, exitCode: number): void {
+    // Tear down OpenTUI BEFORE writing to stdout. The renderer holds
+    // the terminal in the alt-screen buffer; anything written there
+    // is discarded when we leave alt-screen mode. Calling
+    // renderer.destroy() restores the main screen — stdout writes
+    // after that show up in the user's shell.
+    try { renderer?.destroy?.(); } catch { /* swallow */ }
     try {
       if (props.outputPath) {
         require('node:fs').writeFileSync(props.outputPath, text);
       } else {
-        process.stdout.write(text);
+        // Trailing newline so the text doesn't collide with the
+        // shell's next prompt (which is on the line below).
+        process.stdout.write(text + '\n');
       }
     } catch { /* swallow */ }
     setTimeout(() => process.exit(exitCode), 0);
