@@ -62,7 +62,10 @@ function doInstall() {
     console.log(`  ${path.join(PKG_DIR, 'node_modules', '@opencues', 'core')}/`);
     console.log(`  ${path.join(PKG_DIR, 'node_modules', '@opencues', 'runtime')}/`);
     if (args.link) {
-      for (const b of ['oc-edit', 'oc-shell', 'oc-popup', 'oc-install-tmux']) {
+      // oc-edit is intentionally NOT symlinked — it's the internal
+      // binary oc-popup invokes inside the tmux popup. The user-facing
+      // surface is oc-shell only.
+      for (const b of ['oc-shell', 'oc-install-tmux']) {
         console.log(`[dry-run] Would symlink: ${args.link}/${b} → ${path.join(PKG_DIR, 'bin', b)}`);
       }
     }
@@ -94,7 +97,7 @@ function doUninstall() {
   const stagedCore = path.join(PKG_DIR, 'node_modules', '@opencues', 'core');
   const stagedRt = path.join(PKG_DIR, 'node_modules', '@opencues', 'runtime');
   const linkPaths = args.link
-    ? ['oc-edit', 'oc-shell', 'oc-popup', 'oc-install-tmux'].map((b) => path.join(args.link, b))
+    ? ['oc-shell', 'oc-install-tmux'].map((b) => path.join(args.link, b))
     : [];
 
   console.log('Uninstall plan:');
@@ -178,7 +181,8 @@ function printHelp() {
   console.log('  help                Show this message');
   console.log('');
   console.log('Flags:');
-  console.log('  --link <dir>        Symlink bin/oc-edit, oc-shell, oc-popup, oc-install-tmux into <dir> (typically ~/.local/bin)');
+  console.log('  --link <dir>        Symlink bin/oc-shell + oc-install-tmux into <dir> (typically ~/.local/bin).');
+  console.log('                        oc-edit / oc-popup are internal — the popup invokes them directly.');
   console.log('  --dry-run           Print the plan; do not execute');
   console.log('  --help              Show this message');
   console.log('');

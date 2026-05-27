@@ -8,7 +8,7 @@
 import { render, useKeyboard, useRenderer } from '@opentui/solid';
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
-import { SyntaxStyle } from '@opentui/core';
+import { SyntaxStyle, TextAttributes } from '@opentui/core';
 import { startOpenCues, dispatchOpenCuesKey } from './bootstrap';
 
 interface AppOpts {
@@ -42,15 +42,35 @@ function App(props: AppOpts) {
       onTipChange: (t) => setTip(t),
     });
     textarea.focus();
+
+    // oc-popup now hides the outer status bar BEFORE invoking
+    // oc-edit (so the inner UI doesn't trigger a redraw cascade
+    // mid-render). Nothing for us to do here for the bar.
   });
 
   useKeyboard((evt: any) => {
-    // Ctrl+S commits the buffer; Ctrl+C exits without committing.
-    if (evt.ctrl && (evt.name === 's' || evt.sequence === '\x13')) {
+    // Unified shortcuts across both panels of oc-shell:
+    //   Ctrl+Alt+S — submit here, opens the popup from oc-shell.
+    //   Ctrl+Alt+Q — cancel here, exits oc-shell entirely.
+    // Same chord serves the same SEMANTIC action on both layers.
+    //
+    // The terminal encodes Ctrl+Alt+<letter> as ESC + Ctrl-<letter>,
+    // which OpenTUI surfaces as `{ ctrl: true, meta: true, name: 'x' }`.
+    // We also accept the raw byte sequences as a defensive fallback
+    // in case an emulator forwards them pre-decoded.
+    if (evt.ctrl && evt.meta && evt.name === 's') {
       finish(textarea?.plainText ?? '', 0);
       return;
     }
-    if (evt.ctrl && (evt.name === 'c' || evt.sequence === '\x03')) {
+    if (evt.sequence === '\x1b\x13') {  // ESC + Ctrl-S literal
+      finish(textarea?.plainText ?? '', 0);
+      return;
+    }
+    if (evt.ctrl && evt.meta && evt.name === 'q') {
+      finish('', 130);
+      return;
+    }
+    if (evt.sequence === '\x1b\x11') {  // ESC + Ctrl-Q literal
       finish('', 130);
       return;
     }
@@ -79,7 +99,7 @@ function App(props: AppOpts) {
   }
 
   return (
-    <box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
       <box style={{ flexGrow: 1, width: '100%' }}>
         <textarea
           ref={(t: TextareaRenderable) => { textarea = t; }}
@@ -88,22 +108,32 @@ function App(props: AppOpts) {
         />
       </box>
       {/*
-        Statusline. When a tip is active (the runtime hovered a
-        word and surfaced its tip), show that across the line.
-        Otherwise show the keybindings split L/R: submit on the
-        left, cancel on the right. No OpenCues branding here — the
-        wrapping `oc-shell` tmux bar already carries that.
+        Statusline — same dark bar, same brand block, same fg
+        colour as the outer oc-shell tmux bar. When this popup is
+        open the outer bar hides itself completely (see
+        oc-shell.tmux.conf), so visually the bar "jumps" from the
+        bottom of the screen up into the popup. Only the action
+        words change: outer says "Input Box / Exit", inner says
+        "Submit / Cancel".
+        When a tip is active (the runtime hovered a word and
+        surfaced its tip), show that across the full width instead.
       */}
-      <box style={{ height: 1, width: '100%', flexDirection: 'row' }}>
+      <box
+        style={{
+          height: 1,
+          width: '100%',
+          flexDirection: 'row',
+          backgroundColor: '#1a1a1a',
+          paddingLeft: 1,
+          paddingRight: 1,
+        }}
+      >
         {tip() != null
-          ? <text>{tip()}</text>
-          : <box style={{ width: '100%', flexDirection: 'row' }}>
-              <box style={{ flexGrow: 1 }}>
-                <text>Ctrl+S — submit (sends the buffer back)</text>
-              </box>
-              <box>
-                <text>Ctrl+C — cancel (discard, send nothing)</text>
-              </box>
+          ? <text fg="#ffffff">{tip()}</text>
+          : <box style={{ flexDirection: 'row' }}>
+              {/* Brand: reverse-video bright-white badge, then wordmark in plain bright white */}
+              <text fg="#1a1a1a" bg="#ffffff" attributes={TextAttributes.BOLD}>C_</text>
+              <text fg="#ffffff"> OpenCues_  ·  Submit: Ctrl+Alt+S   ·   Cancel: Ctrl+Alt+Q</text>
             </box>}
       </box>
     </box>

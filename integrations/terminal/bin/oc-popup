@@ -30,6 +30,8 @@ set -u
 # Fall back to $1 for hand-invocations / tests.
 ORIGIN_PANE="${ORIGIN_PANE:-${1:-}}"
 TMPFILE="$(mktemp -t oc-popup.XXXXXX)"
+# Default cleanup — superseded below once TMUX_BIN is resolved so
+# the EXIT trap can also clear the @popup-open marker.
 trap 'rm -f "$TMPFILE"' EXIT
 
 # Resolve through symlinks so a symlinked oc-popup still finds its sibling oc-edit.
@@ -59,6 +61,14 @@ if [ ! -x "$TMUX_BIN" ]; then
   sleep 2
   exit 1
 fi
+
+# Hide the outer status bar BEFORE launching oc-edit so the inner
+# UI doesn't trigger a redraw cascade by flipping `status off`
+# mid-render (caused a visible flash). EXIT trap restores it
+# regardless of how oc-edit exits.
+"$TMUX_BIN" set -g @popup-open 1 2>/dev/null || true
+"$TMUX_BIN" set -g status off 2>/dev/null || true
+trap '"$TMUX_BIN" set -g @popup-open 0 2>/dev/null || true; "$TMUX_BIN" set -g status on 2>/dev/null || true; rm -f "$TMPFILE"' EXIT
 
 "$OC_EDIT" --out "$TMPFILE" || true
 

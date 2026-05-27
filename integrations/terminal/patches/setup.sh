@@ -67,10 +67,21 @@ if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
   cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CORE_DEST/"
 fi
 
+# ─── Bundle skipped (oc-edit runs src/app.tsx directly) ────────────
+# A `bun run bundle` (scripts/bundle.ts) is wired up and works, but
+# we hit a leftover .jsc-segfault issue with the bytecode experiment
+# that bit production usage. Until the daemon model (see
+# DAEMON-PLAN.md) is built, oc-edit runs src/app.tsx directly via
+# the bun shim — ~1s cold start per popup, but reliable. To opt in
+# manually, run `bun run bundle` from integrations/terminal/.
+
 # ─── Optional symlink ────────────────────────────────────────────────
 if [[ -n "$LINK_DIR" ]]; then
   mkdir -p "$LINK_DIR"
-  for bin in oc-edit oc-shell oc-popup oc-install-tmux; do
+  # Only the user-facing commands are symlinked. oc-edit and oc-popup
+  # are internal to the popup flow — invoked by oc-shell's tmux
+  # config directly, not run by the user.
+  for bin in oc-shell oc-install-tmux; do
     ln -sf "$TERM_DIR/bin/$bin" "$LINK_DIR/$bin"
     echo "  ▸ symlinked $bin → $LINK_DIR/$bin"
   done
@@ -79,13 +90,8 @@ fi
 echo "✓ Terminal integration ready."
 echo
 echo "Try it:"
-echo "  $TERM_DIR/bin/oc-edit                  # standalone editor"
-echo "  $TERM_DIR/bin/oc-shell                 # shell wrapped with Ctrl+Alt+X popup"
+echo "  $TERM_DIR/bin/oc-shell                 # shell wrapped with Ctrl+Alt+S popup"
 echo
 echo "For oc-shell, build the vendored tmux 3.4 first (one-time, ~30s):"
 echo "  $TERM_DIR/bin/oc-install-tmux          # builds to ~/.opencues/vendor/tmux/"
 echo "  (system tmux is never touched; user PATH is never changed)"
-echo
-echo "As your editor:"
-echo "  export EDITOR=$TERM_DIR/bin/oc-edit"
-echo "  git commit  # opens oc-edit"
