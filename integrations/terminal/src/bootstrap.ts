@@ -35,6 +35,26 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { spawn as nodeSpawn } from 'node:child_process';
+import { fetchSnapshot, SnapshotCache } from './daemon-client';
+
+// ─── Daemon snapshot (oc-editd) ────────────────────────────────────────
+// If $OPENCUES_OCEDITD_SOCK is set, fetch the pre-built config snapshot
+// from the daemon at module-load time. Subsequent readFile/readDir calls
+// consult this cache before falling through to the real filesystem.
+// See integrations/terminal/DAEMON-PLAN.md for the architecture; this is
+// "Option B" — saves file-I/O + warm parsing, NOT the @opentui module
+// load. Silent fallback to direct fs on any failure.
+
+let _daemonCache: SnapshotCache | null = null;
+const _ocSock = process.env['OPENCUES_OCEDITD_SOCK'];
+if (_ocSock) {
+  try {
+    const snap = await fetchSnapshot(_ocSock);
+    if (snap) {
+      _daemonCache = new SnapshotCache(snap);
+    }
+  } catch { /* fall through to direct fs */ }
+}
 
 function userCwd(): string {
   // `oc-edit` cd's into integrations/terminal/ to find bunfig.toml
@@ -91,16 +111,52 @@ function _discoverUserBlankConfigs(): BlankConfigLike[] {
     seen.add(abs);
     roots.push(abs);
   }
+
+  // Sync helpers that prefer the daemon snapshot when available;
+  // fall through to disk on a miss. Match the read shape the real fs
+  // calls returned: existsSync (boolean), readdirSync (Dirent-like),
+  // readFileSync (string).
+  const cache = _daemonCache;
+  const dirEntries = (p: string): ReadonlyArray<{ name: string; isDirectory: boolean }> | null => {
+    if (cache) {
+      const hit = cache.readDir(p);
+      if (hit.hit) return hit.entries;
+    }
+    try {
+      return fsReaddirSync(p, { withFileTypes: true }).map(e => ({ name: e.name, isDirectory: e.isDirectory() }));
+    } catch { return null; }
+  };
+  const fileContent = (p: string): string | null => {
+    if (cache) {
+      const hit = cache.readFile(p);
+      if (hit.hit) return hit.content;
+    }
+    try { return fsReadFileSync(p, 'utf8'); } catch { return null; }
+  };
+  const fileExists = (p: string): boolean => {
+    if (cache) {
+      // A snapshot hit with non-null content (or any dir entry) implies
+      // existence; missing entry means the daemon checked and didn't see it.
+      const fileHit = cache.readFile(p);
+      if (fileHit.hit) return fileHit.content !== null;
+      const dirHit = cache.readDir(p);
+      if (dirHit.hit) return dirHit.entries !== null;
+    }
+    return fsExistsSync(p);
+  };
+
   const out: BlankConfigLike[] = [];
   for (const root of roots) {
     const blanksDir = path.join(root, 'blanks');
-    if (!fsExistsSync(blanksDir)) continue;
-    for (const entry of fsReaddirSync(blanksDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+    if (!fileExists(blanksDir)) continue;
+    const entries = dirEntries(blanksDir);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (!entry.isDirectory) continue;
       const blankMdPath = path.join(blanksDir, entry.name, 'BLANK.md');
-      if (!fsExistsSync(blankMdPath)) continue;
+      const content = fileContent(blankMdPath);
+      if (content === null) continue;
       try {
-        const content = fsReadFileSync(blankMdPath, 'utf8');
         const parsed = parseSingleCueMd(content, path.dirname(blankMdPath));
         const blk = parsed.blanks?.[entry.name];
         if (blk?.impl) out.push(blk as BlankConfigLike);
@@ -186,8 +242,18 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       try { triggerOpenCuesRender(getText(), getCursor()); } catch { /* swallow */ }
       opts.renderer.requestRender();
     },
-    readFile: async (p) => { try { return await fs.readFile(p, 'utf8'); } catch { return null; } },
+    readFile: async (p) => {
+      if (_daemonCache) {
+        const hit = _daemonCache.readFile(p);
+        if (hit.hit) return hit.content;
+      }
+      try { return await fs.readFile(p, 'utf8'); } catch { return null; }
+    },
     readDir: async (p) => {
+      if (_daemonCache) {
+        const hit = _daemonCache.readDir(p);
+        if (hit.hit) return hit.entries;
+      }
       try {
         const entries = await fs.readdir(p, { withFileTypes: true });
         return entries.map(e => ({ name: e.name, isDirectory: e.isDirectory() }));

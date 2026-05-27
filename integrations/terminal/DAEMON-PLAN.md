@@ -1,8 +1,12 @@
 # oc-editd — long-lived oc-edit daemon (handoff)
 
-Status: design complete, not yet built. This doc is the fresh-session
-entry point — read it end-to-end before writing any code, and amend
-it as you learn things.
+Status: **Option B (partial daemon, no FD passing) is built and shipped.**
+The FD-passing path (Option A) remains design-only. Read the
+"Measured: Option B saves ~10ms, not 200-400ms" section at the bottom
+before deciding whether to invest in Option A.
+
+This doc is the fresh-session entry point — read it end-to-end before
+writing any code, and amend it as you learn things.
 
 ---
 
@@ -453,3 +457,71 @@ only, ~30-50% of the speedup but no FD-passing).
    user-facing file until SCM_RIGHTS round-trip works.
 4. Amend this doc as you discover things. The next handoff will
    thank you.
+
+---
+
+## Measured: Option B saves ~10ms, not 200-400ms
+
+Option B (RPC daemon for raw config files, no FD passing) is built and
+running. Files in the tree today:
+
+- `src/daemon.ts` — daemon main loop, unix-socket server, hot-reload
+- `src/daemon-client.ts` — popup-side fetch + `SnapshotCache`
+- `bin/oc-editd` — bash shim (mirrors `bin/oc-edit`)
+- `bin/oc-shell` — spawns/kills daemon, sets `OPENCUES_OCEDITD_SOCK`
+- `src/bootstrap.ts` — top-level `await fetchSnapshot()`; wraps the
+  adapter's `readFile`/`readDir` to consult the snapshot first
+
+**Measured benchmark (29 files / 79KB of `~/.cues/`, OS cache warm):**
+
+| Path                     | Cold run | Warm run |
+|---|---|---|
+| Direct `fs.readFile`     | 12 ms    | 19-22 ms |
+| Daemon fetch + cache hit | 14 ms    | 9-10 ms  |
+
+The daemon saves **~5-15 ms** per popup launch, not the 200-400 ms the
+plan optimistically predicted. The bulk of cold-start time is bun
+process startup + `@opentui/core` + `@opentui/runtime` module loading,
+all of which the daemon does **not** address (each popup is a separate
+bun process; modules re-parse from disk).
+
+The plan's estimate assumed parsing was the dominant cost; in practice
+parsing is fast and module-load dominates. Module-load can only be
+shared via the FD-passing path (Option A) — the warm daemon serves the
+popup directly, no second module load.
+
+### What Option B *does* give us
+
+- **Foundation for Option A**: socket protocol, daemon lifecycle,
+  oc-shell wiring, snapshot framing. The FD-passing path can reuse all
+  of it.
+- **Hot-reload coalescing**: daemon's `fs.watch(recursive:true)` + 150ms
+  debounce + 250ms min-interval cleanly collapses bursty inotify events
+  (sed-style "rename over original" produces 3 events; daemon does one
+  refresh). Without this, every popup would race the kernel.
+- **A correct fallback path**: `bootstrap.ts` silently falls through to
+  direct fs reads when the socket is missing/unreachable, so a daemon
+  crash never breaks a popup — just slows it ~10ms.
+
+### Quirks discovered during the build
+
+- **bun forks a launcher + child** for `bun script.ts`. `kill $!`
+  signals the launcher and orphans the child. Use `pkill -P $LAUNCHER`
+  followed by `kill $LAUNCHER` in trap handlers. Already wired in
+  `bin/oc-shell`'s `cleanup_daemon`.
+- **fs.watch on Linux fires events in batches after async work
+  completes** — the debounce alone wasn't enough; we needed a
+  hard `minInterval` since `lastRefreshAt` as well. See `scheduleRefresh`
+  in `src/daemon.ts`.
+- **Zombie daemons share log files**: during early dev, leftover
+  daemons from earlier test runs (orphaned by the bun-launcher bug
+  above) all kept writing to `/tmp/oc-editd.log` and watching
+  `~/.cues/`. The "10 builds per file mod" mystery was 5 zombies each
+  incrementing their own `snapshotVersion` into a shared log.
+
+### Recommendation for next session
+
+If the user reports popup latency as still painful, **don't iterate on
+Option B** — it's structurally bounded by what's left to save (~10ms).
+Either ship Option A (FD passing, ~600-800 ms saving, ~10 hours) or
+declare 600-700 ms warm popups as the steady state and move on.

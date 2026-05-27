@@ -72,9 +72,42 @@ fi
 # tmux is still there underneath and untouched.
 unset TMUX
 
+# ── Daemon: oc-editd ────────────────────────────────────────────────
+# Pre-loads ~/.cues/ config so popups skip the file-I/O budget.
+# Spawned in the background; killed on session exit via the EXIT trap.
+# Failure here is non-fatal: oc-edit falls back to direct fs reads
+# when OPENCUES_OCEDITD_SOCK is unset or the socket is unreachable.
+DAEMON_PID=""
+DAEMON_SOCK=""
+if [ -x "$HERE/oc-editd" ] && command -v bun >/dev/null 2>&1; then
+  RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+  DAEMON_SOCK="$RUNTIME_DIR/oc-editd-$$.sock"
+  export OPENCUES_OCEDITD_SOCK="$DAEMON_SOCK"
+  export OPENCUES_USER_CWD="$PWD"
+  # nohup-style: daemon survives an accidental SIGHUP from the parent
+  # shell; oc-shell's EXIT trap is what actually terminates it.
+  "$HERE/oc-editd" --socket "$DAEMON_SOCK" --cwd "$PWD" >/dev/null 2>&1 &
+  DAEMON_PID=$!
+fi
+
+cleanup_daemon() {
+  if [ -n "$DAEMON_PID" ]; then
+    # bun runs a launcher + child; signals only reach the child if
+    # sent directly. SIGTERM the whole subtree so the daemon's
+    # cleanup handler fires (unlink socket, close watchers).
+    pkill -TERM -P "$DAEMON_PID" 2>/dev/null || true
+    kill -TERM "$DAEMON_PID" 2>/dev/null || true
+    wait "$DAEMON_PID" 2>/dev/null || true
+  fi
+  [ -n "$DAEMON_SOCK" ] && rm -f "$DAEMON_SOCK"
+}
+trap cleanup_daemon EXIT
+
 # ── Fresh wrap ──────────────────────────────────────────────────────
 SHELL_TO_RUN="${SHELL:-/bin/sh}"
 SOCKET="opencues-$$"
 
-exec "$OC_TMUX" -L "$SOCKET" -f "$CONF" \
+# Drop `exec` so the EXIT trap above still fires when tmux returns
+# (exec would replace the shell, skipping the trap entirely).
+"$OC_TMUX" -L "$SOCKET" -f "$CONF" \
   new-session -A -s main -c "$PWD" "$SHELL_TO_RUN"
