@@ -715,3 +715,51 @@ multi-paragraph bodies:
 
 Both apply to all hosts (CC, OC, chrome) but were discovered via chrome
 debugging.
+
+---
+
+## Dev workflow (from top-level CLAUDE.md, May 2026)
+
+Chrome runs on Windows; this repo lives in WSL2. The unpacked extension Chrome loads from is on the Windows desktop, **not** the WSL build dir:
+
+- **Build (WSL)**: `/home/wilfred/opencues/integrations/chrome/`
+- **Loaded by Chrome (Windows)**: `/mnt/c/Users/wilfred/AppData/Local/opencues-chrome/`
+  (i.e. `C:\Users\wilfred\AppData\Local\opencues-chrome\`)
+
+After every `npm run build`, sync the fresh artefacts to the Windows path or Chrome will keep running the stale bundle (no errors, just no new behaviour):
+
+```bash
+cp -r integrations/chrome/dist/* /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/dist/
+cp integrations/chrome/manifest.json /mnt/c/Users/wilfred/AppData/Local/opencues-chrome/manifest.json
+```
+
+Then reload the extension at `chrome://extensions` and hard-refresh the page.
+
+> Symptom that this step was skipped: `[opencues][info] OpenCues runtime starting (Chrome v1)` is missing from devtools console while legacy `[OpenCues] ...` lines still fire.
+
+### `opencues sync chrome` source discovery
+
+Chrome is a global browser extension — it runs across every tab, has no cwd, and isn't scoped to any single project. So `sync chrome` deliberately breaks from the user+project search-paths model the native hosts use. By default, **only `~/.cues/` feeds into the chrome bundle.** The cwd you happen to run sync from does NOT get mixed in.
+
+To bundle project configs, opt them in explicitly:
+
+```bash
+opencues sync chrome --wsl                              # user-level only (default)
+opencues sync chrome --include ~/work/proj/.cues --wsl    # + one project
+opencues sync chrome --include ~/a/.cues --include ~/b/.cues --wsl  # + several
+opencues sync chrome --project --wsl                    # + <cwd>/.cues
+opencues sync chrome --pack demo-pack --wsl             # ONLY that pack
+opencues sync chrome --source ~/custom/.cues --wsl  # ONLY that dir
+```
+
+Why this matters — `sync chrome --watch` is a long-running process. Under the old cwd-default model, starting the watcher from `~/scratch` would bind it to `~/scratch/.cues` forever, silently missing edits in the project the user actually cares about. The explicit `--include` / `--project` model makes the watched paths part of the command, not a side-effect of startup cwd.
+
+Rule of thumb: if you're iterating on configs *inside this repo*, use
+
+```bash
+opencues sync chrome --include ~/opencues/.cues --wsl --watch
+```
+
+so the watcher's path list is stable regardless of shell cwd.
+
+Full spec: `docs/features/chrome-sync.md`.

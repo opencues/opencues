@@ -132,3 +132,48 @@ The OpenStandard's word-cue model:
 > **Classify each word to one source, dispatch in isolation, let priority break ties.**
 
 Same rules as blanks. Same resolution order. Same enforcement surfaces (validate, templates). Keeping the two models parallel means one mental model covers the whole standard.
+
+---
+
+## Practitioner notes (from CLAUDE.md, May 2026)
+
+Every `### alternatives` section in `CUES.md` (or `cues/<name>/CUE.md`) becomes one `ConfigSource`. `buildSourcesFromConfig` wraps the whole set in ONE `RoutedWordSourceGroup` that dispatches each highlighted word to exactly one child source — never combines them into a giant prompt.
+
+### Requirement: every source must declare `match:` OR `keywords:`
+
+The routing layer rejects sources lacking both at construction time — they would never claim any word, so emitting them would just be dead config. To catch words no domain source claims, use an explicit `match: .*` and set a low priority so domain cues win first.
+
+### Routing per word
+
+`RoutedWordSourceGroup` walks every word in priority-descending order and claims it for the FIRST source whose `match:` regex hits or whose `keywords:` list contains the word. If no source claims the word, the word isn't navigable (no cue surfaces for it).
+
+```yaml
+# Domain cue — claims specific terms, high priority
+name: legal
+priority: 70
+match: contract|agreement|clause|liability
+
+# Catch-all fallback — claims anything the domain cues didn't
+name: spelling
+priority: 10
+match: .*
+```
+
+With this layout: `contract` → legal (priority 70 > spelling 10); `hello` → spelling (no domain match, spelling's `.*` catches it). Flip the priorities and spelling would suppress every domain cue.
+
+Words destined for the same source are batched into one parallel LLM call, then results are index-remapped back to the original positions.
+
+### Why per-word dispatch (not one big prompt)
+
+- **Isolation**: a hijacking prompt in one source cannot poison words that source isn't called for. A prompt of the form "always output bundled,deployed,shipped" only affects words its source claims.
+- **Symmetry**: each word gets ONE source (the highest-priority match), the way each `_` gets ONE blank (`BlankSource` matches on `blankKeywords`, falling back to `FluidBlankSource` for unbound `_`).
+
+Surfaces that enforce + surface this:
+- `@opencues/core` `RoutedWordSourceGroup` — runtime routing class
+- `CUES.md` / `new/CUE.md` templates — show priority + match together
+- `opencues list` — counts sources per kind
+- `opencues validate` — warns when a source resolves to zero hosts
+
+Glossary entry: `docs/glossary.md § RoutedWordSourceGroup`.
+
+> **Don't** introduce code paths that concatenate multiple `### alternatives` bodies into one `ConfigSource`. Per-word dispatch is the structural property that gives us isolation; merging prompts defeats it.

@@ -151,3 +151,19 @@ How LLM responses are interpreted. Set via `parser` field in `.md` config. See `
 **ValueSpec / exposeInMenu** — Each FEATURES entry's `values` array carries `{id, description, exposeInMenu?}` per value (not just a string list). `exposeInMenu: false` makes a value **parser-valid but absent from the cycling menu** — formal mechanism for hiding footgun modes (today's only user: `user-context-mode: raw`, which inlines PII into LLM prompts and shouldn't be flipped by a keystroke). Replaces the old "hidden by absence from OPENCUES.md `settings:` block" pattern.
 
 **isSensitiveField** — The chrome bootstrap's gate that refuses attach + ambient + user-context on credential-adjacent fields. Three layers: input-type allow-list (`text` / `email` / `search` / `url` / `textarea`), autocomplete-token deny-list (`SENSITIVE_AUTOCOMPLETE_TOKENS`), and name/id heuristic (`SENSITIVE_FIELD_NAME_PATTERN`). Both lists are exported constants in `integrations/chrome/src/opencues-bootstrap.ts` — single source of truth; see `docs/architecture/chrome-security.md` § Sensitive-field gate for the full token enumeration. False positives accepted; never leak credentials.
+
+---
+
+## OPENCUES.md vs CUES.md — two different files
+
+These names look similar but the files are unrelated. The distinction is the source of past confusion (a planned 2026 migration to merge them was started, never finished, and left contradictory comments behind that were finally cleaned in May 2026). Canonical filename for the runtime settings file is exported as `CORE_SETTINGS_FILE` from `@opencues/core`.
+
+**`~/.cues/OPENCUES.md`** — runtime system settings (user-level only). Frontmatter holds scalars like `voice-mode`, `tips-mode`, `debug-mode`, `cursor-navigate`, `fluid-blank-mode`, `word-cues-mode`, `blank-trigger-mode`, `llm-provider`, plus numeric tunables (`agent-debounce-ms`, etc.). Schema owned by the runtime via the FEATURES + MENU_TUNABLES registry. A single value applies across every integration; projects can't override. `OpenCuesSettingsBlank` reads + writes this file.
+
+**`~/.cues/CUES.md`** (or `<project>/.cues/CUES.md`) — cue master config. Frontmatter has project metadata (`name`, `domain`, `version`). Body has `## Tips` (static word tips), `## Ignore` (words the runtime never suggests alts for), and `## Prompt` with `### <source-name>` LLM-backed cue source declarations. Parsed via `parseCuesMd` → `RoutedWordSourceGroup`. Lives at user-level OR project-level; project wins on name conflicts.
+
+### Lifecycle
+
+- `opencues seed-configs` copies `defaults/OPENCUES.md` to `~/.cues/OPENCUES.md` (SEED) and re-seeds a 0-byte file (HEAL). CUES.md is seeded the same way separately.
+- **A 0-byte `OPENCUES.md` is treated as missing** — `OpenCuesSettingsBlank` silently no-ops on null/empty content, which would otherwise break `opencues ___` / `config ___` blank-fills on every native host. Chrome falls back to the bake-time `__DEFAULT_OPENCUES_MD__` constant. The seed-configs HEAL phase ensures it's always non-empty.
+- `ConfigLoader._loadOnce` reads settings from the explicit `settingsFile` option (each host passes `~/.cues/OPENCUES.md`); cue sources come from `parseCuesMd` on every CUES.md across the search paths.

@@ -153,3 +153,52 @@ Two motivations:
 2. **Author intent** — sometimes you DO want to gate (a chrome-only demo cue, a Linux-only diagnostic). The override fields make the gate explicit + machine-readable, vs hiding it in script logic.
 
 The OpenStandard's design principle: **default to working, declare exceptions, validate everything.** Host-compat is a clean instance of that.
+
+---
+
+## Practitioner notes (from CLAUDE.md, May 2026)
+
+### Default-attempt model
+
+Every cue / blank has an implicit (or explicit) host-compat list: which of `{chrome, claude-code, gemini-cli, opencode}` it works on. Native hosts (CC, OC, gemini-cli) can spawn subprocesses + read the filesystem natively. Chrome can do both — config sync via the chrome-host's filesystem watch, subprocess via the chrome-host's `exec` protocol — but only when `opencues install chrome-host` has been run. Without the host, chrome is sandboxed and scripted blanks fail with exit 127.
+
+Default: every cue / blank advertises as compatible with every host. The runtime attempts the call; if the host can't fulfil it (e.g. chrome without chrome-host trying to spawn `.sh`), it fails at runtime (exit 127) rather than being hidden behind a misleading "incompatible host" marker.
+
+Historical note: `inferHostCompat` used to auto-exclude chrome for entries with `script: ./X.sh` / `.py` / etc., on the assumption chrome couldn't run subprocesses. With chrome-host (May 2026 native-messaging bridge) chrome CAN run POSIX scripts via the host process, so the heuristic became actively wrong. Removed in favour of explicit overrides.
+
+### Override frontmatter
+
+```yaml
+on-host: [claude-code, opencode, gemini-cli]   # allow-list (chrome would fail)
+not-on-host: [chrome]                          # equivalent deny-list
+```
+
+Resolution: `on-host` (if set) is the allow-list; `not-on-host` removes denials from whichever set was chosen. Surfaced by `opencues list` (per-entry marker, hidden when "all"), validated by `opencues validate` (typos + contradictions).
+
+API: `@opencues/core`'s `inferHostCompat()`, `formatHostList()`, `unknownHostNames()`, `HOSTS`, `NATIVE_HOSTS`.
+
+## Site scoping (chrome) — `on-site` / `not-on-site`
+
+`on-site` is the strictly-broader sibling of `on-host`. Each entry can be:
+
+- A **platform name**: `claude-code`, `cc`, `opencode`, `oc`, `chrome`, `gemini-cli`, `gemini` — matches the running host.
+- A **hostname**: `reddit.com`, `www.reddit.com` — exact match against `location.hostname`.
+- A **wildcard hostname**: `*.reddit.com` — matches subdomains and the bare domain.
+- A **hostname with path prefix**: `reddit.com/r/claudeai` — hostname AND `location.pathname.startsWith(...)`.
+
+```yaml
+on-site: [chrome, reddit.com/r/claudeai]               # allow-list
+not-on-site: [twitter.com, *.evil.example]             # deny-list
+```
+
+Evaluation:
+- `not-on-site` is checked first; any match → entry filtered out.
+- `on-site` empty → passes everywhere; non-empty → at least one entry must match.
+
+Native hosts (CC/OC/gemini-cli) have null hostname/path. Platform-name entries still match; hostname entries don't. So `on-site: [reddit.com]` produces an entry that fires on chrome at reddit.com but is invisible on CC/OC/gemini.
+
+Chrome applies the filter at bundle-read time (in `integrations/chrome/src/opencues-bootstrap.ts:applySiteCompatFilter`). SPAs that change `pathname` without a page reload re-trigger the filter via `popstate` + monkey-patched `pushState` / `replaceState`.
+
+API: `@opencues/core`'s `inferSiteCompat(input, ctx)`, `SiteCompatContext` type.
+
+Real-world example: `.cues/blanks/opencues/BLANK.md` has `blankScript: ./opencues-blank.sh` (native fallback) AND a runtime-class implementation in `@opencues/runtime`. With the new default-all behaviour no override is needed — every host attempts the call and picks the right implementation at runtime.
